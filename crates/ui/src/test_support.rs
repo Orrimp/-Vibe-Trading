@@ -157,6 +157,113 @@ impl TestApp {
     }
 }
 
+/// lab-run-save-compare T7 — render-layer harness for the Lab/Compare equity
+/// **overlay** widget (`widgets::chart`), the curve R5 diffs two persisted runs
+/// on. Builds a one-screen iced `Program` whose `view` is exactly the
+/// `chart::view(bars, …, equity, compare, …)` overlay the Lab screen renders,
+/// so `iced_test::screenshot` drives the real `ChartProgram::draw` →
+/// `tiny_skia` rasterization path (the same pixels the operator sees). The
+/// caller supplies a primary `equity` series (drawn `ACCENT`) and optional
+/// `compare` series (drawn `ACCENT_2..5`) — both hydrated from `lab-runs/`
+/// reports via `equity_loader::load_equity` in the test — plus bars to anchor
+/// the overlay's x-axis.
+///
+/// This is the project-law render-layer proof (MEMORY.md "verify UI at the
+/// render layer"): model-Ready is necessary but not sufficient; this asserts
+/// the polyline actually rasterizes.
+#[must_use]
+pub fn chart_overlay_program(
+    bars: Vec<trading_core::Bar>,
+    equity: Option<crate::lab::equity_loader::LabEquitySeries>,
+    compare: Vec<crate::lab::equity_loader::LabEquitySeries>,
+) -> iced::Application<
+    impl iced::Program<State = ChartOverlayApp, Message = Message, Theme = iced::Theme>,
+> {
+    let scene = ChartOverlayScene {
+        bars,
+        equity,
+        compare,
+    };
+    let boot = move || {
+        (
+            ChartOverlayApp {
+                scene: scene.clone(),
+            },
+            iced::Task::none(),
+        )
+    };
+    iced::application(boot, ChartOverlayApp::update, ChartOverlayApp::view)
+        .title(ChartOverlayApp::title)
+        .theme(ChartOverlayApp::theme)
+}
+
+/// Owned inputs for the [`chart_overlay_program`] render scene.
+#[derive(Clone)]
+struct ChartOverlayScene {
+    bars: Vec<trading_core::Bar>,
+    equity: Option<crate::lab::equity_loader::LabEquitySeries>,
+    compare: Vec<crate::lab::equity_loader::LabEquitySeries>,
+}
+
+/// Test app whose `view` is the bare chart-overlay widget (no shell chrome) so
+/// the screenshot crop frames the overlay canvas directly.
+pub struct ChartOverlayApp {
+    scene: ChartOverlayScene,
+}
+
+impl Default for ChartOverlayApp {
+    fn default() -> Self {
+        Self {
+            scene: ChartOverlayScene {
+                bars: Vec::new(),
+                equity: None,
+                compare: Vec::new(),
+            },
+        }
+    }
+}
+
+impl ChartOverlayApp {
+    #[must_use]
+    pub fn title(&self) -> String {
+        crate::strings::APP_TITLE.to_string()
+    }
+
+    #[must_use]
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
+    }
+
+    pub fn update(&mut self, _msg: Message) -> iced::Task<Message> {
+        iced::Task::none()
+    }
+
+    /// View — the chart-overlay widget, full-bleed in a `PANEL`-background
+    /// container so the crop window sees only the canvas.
+    #[must_use]
+    pub fn view(&self) -> iced::Element<'_, Message> {
+        use iced::Length;
+        use iced::widget::{Container, container};
+        let chart = crate::widgets::chart::view(
+            self.scene.bars.clone(),
+            Vec::new(),
+            Vec::new(),
+            None,
+            self.scene.equity.clone(),
+            self.scene.compare.clone(),
+            ThemeMode::Dark,
+        );
+        Container::new(chart)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_theme: &iced::Theme| container::Style {
+                background: Some(crate::theme::color::PANEL.current(ThemeMode::Dark).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+}
+
 /// ui-quality-gate-overhaul M1-C — pub(crate) widget accessors lifted
 /// up to the always-compiled `pub` surface so the
 /// `tests/layout_invariants.rs` proptest can fuzz the F1-fix widget

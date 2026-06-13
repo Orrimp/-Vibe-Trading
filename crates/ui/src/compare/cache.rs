@@ -26,7 +26,7 @@
 //! - `btc-*`   → BTCUSDT only
 //! - `pairs-*` → (BTCUSDT, ETHUSDT) — v1.5a.pairs universe
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use smol_str::SmolStr;
@@ -140,6 +140,27 @@ fn parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>> {
     if map.is_empty() { None } else { Some(map) }
 }
 
+/// Return the report body that follows the YAML frontmatter — the substring
+/// after the SECOND `---`-only delimiter line (or the whole content when there
+/// is no frontmatter). Line-based so a Markdown table separator (`|---|---|`)
+/// inside the body is never mistaken for the frontmatter terminator
+/// (lab-run-save-compare T5 fix).
+fn body_after_frontmatter(content: &str) -> &str {
+    let mut dash_lines = 0u32;
+    let mut offset = 0usize;
+    for line in content.lines() {
+        offset += line.len() + 1; // +1 for the consumed '\n'
+        if line.trim() == "---" {
+            dash_lines += 1;
+            if dash_lines == 2 {
+                return content.get(offset..).unwrap_or("");
+            }
+        }
+    }
+    // No closing frontmatter delimiter — treat the whole content as body.
+    content
+}
+
 /// Extract a `CachedCell` KPI snapshot from the Markdown body of a backtest
 /// report.
 ///
@@ -155,13 +176,18 @@ fn extract_kpis_from_body(
     source_path: &str,
     is_multi_symbol: bool,
 ) -> Option<CachedCell> {
-    // Skip the frontmatter block.
-    let body = {
-        let mut iter = content.splitn(4, "---");
-        iter.next()?; // before first ---
-        iter.next()?; // frontmatter content
-        iter.next()? // body (after second ---)
-    };
+    // Skip the frontmatter block via a LINE-based scan to the closing `---`
+    // delimiter line.
+    //
+    // lab-run-save-compare T5 fix: the previous `content.splitn(4, "---")`
+    // truncated the body at the FIRST `---` substring — which a Markdown table
+    // separator row (`|----------|----------|`) always contains — so no data
+    // row was ever in the returned "body" and every KPI parsed as 0. (The bug
+    // was dormant: `scan_spec_tree` had no production caller until this
+    // feature wired the Compare cold-boot path.) A delimiter-LINE scan stops
+    // only at a line that is exactly `---`, leaving the full `## Summary`
+    // table intact.
+    let body = body_after_frontmatter(content);
 
     // Parse key metrics from the body table.
     // The body contains a Markdown table with rows like:
@@ -169,17 +195,25 @@ fn extract_kpis_from_body(
     //   | Total return     | **12.3 %**|
     //   | Max drawdown     | **-5.6 %**|
     //   | Trade count      | **42**    |
-    let sharpe = extract_table_value(body, "Sharpe ratio")
-        .and_then(|v| clean_bold_value(&v).parse::<f64>().ok())
-        .unwrap_or(0.0);
-
-    let total_return_pct = extract_table_value(body, "Total return")
-        .and_then(|v| {
-            // Strip trailing " %" or "%" before parsing.
-            let cleaned = clean_bold_value(&v).replace('%', "").trim().to_string();
-            cleaned.parse::<f64>().ok()
-        })
-        .unwrap_or(0.0);
+    //
+    // Fail-soft contract (K2): if the body has NO recognizable KPI table row
+    // at all, return `None` so the file is skipped rather than producing a
+    // junk all-zero cell (e.g. a non-report `.md` that slipped the name
+    // filter). `Total return` / `Sharpe ratio` are the load-bearing rows every
+    // backtest report carries; absence of BOTH means "this is not a report
+    // body we can read".
+    let sharpe_raw = extract_table_value(body, "Sharpe ratio")
+        .and_then(|v| clean_bold_value(&v).parse::<f64>().ok());
+    let total_return_raw = extract_table_value(body, "Total return").and_then(|v| {
+        // Strip trailing " %" or "%" before parsing.
+        let cleaned = clean_bold_value(&v).replace('%', "").trim().to_string();
+        cleaned.parse::<f64>().ok()
+    });
+    if sharpe_raw.is_none() && total_return_raw.is_none() {
+        return None;
+    }
+    let sharpe = sharpe_raw.unwrap_or(0.0);
+    let total_return_pct = total_return_raw.unwrap_or(0.0);
 
     let max_drawdown_pct = extract_table_value(body, "Max drawdown")
         .and_then(|v| {
@@ -188,7 +222,11 @@ fn extract_kpis_from_body(
         })
         .unwrap_or(0.0);
 
+    // Real reports label this `Trades`; older fixtures use `Trade count`. Try
+    // both (prefix match on `extract_table_value`, so `Trade count` also
+    // catches `Trades` — but be explicit for readability).
     let trade_count = extract_table_value(body, "Trade count")
+        .or_else(|| extract_table_value(body, "Trades"))
         .and_then(|v| clean_bold_value(&v).parse::<u32>().ok())
         .unwrap_or(0);
 
@@ -288,27 +326,70 @@ fn extract_equity_curve_tail(body: &str, max_points: usize) -> Vec<f64> {
     }
 }
 
-/// Scan the spec tree for all backtest report `.md` files and build a
+/// Scan a SINGLE report root for all backtest report `.md` files and build a
 /// `BTreeMap<(strategy_id, symbol, range), CachedCell>` cache.
 ///
 /// Only the most-recent report per `(strategy_id, symbol, range)` tuple
 /// is kept (R3.3: most-recent wins; older reports reachable from Trail).
 ///
-/// `spec_root` should be the absolute path to the repo's `spec/` directory.
-/// On parse failure the file is skipped with a `tracing::warn!` (K2 fail-soft).
+/// `spec_root` should be the absolute path to one report root (the repo's
+/// `spec/` directory, or a `lab-runs/` tree). On parse failure the file is
+/// skipped with a `tracing::warn!` (K2 fail-soft).
+///
+/// For the production two-root union (`lab-runs/` + `spec/`) use
+/// [`scan_report_roots`] (lab-run-save-compare T5 / Q4).
 #[must_use]
 pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
-    use std::fs;
+    let roots = [spec_root.to_path_buf()];
+    scan_report_roots(&roots)
+}
 
+/// Scan a FIXED-ORDER union of report roots and build the Compare cache
+/// (lab-run-save-compare T5 / Q4 / ADR-0055 § D5).
+///
+/// Production passes `[default_lab_runs_root(), default_spec_root()]` —
+/// **lab-runs FIRST, then spec/**. Precedence rules (pinned, ADR-0055 § D5):
+///
+/// 1. Search order is the slice order: `lab-runs/` first.
+/// 2. On an **identical filename across roots** (same `backtest-<stamp>-<scenario>.md`
+///    in both `lab-runs/` and `spec/`), the FIRST root's copy wins — the later
+///    root's same-named file is skipped before it is even parsed.
+/// 3. Within the union, the existing **most-recent-`generated:`-wins**
+///    per-tuple tiebreaker decides which report represents a tuple in Compare.
+#[must_use]
+pub fn scan_report_roots(
+    roots: &[std::path::PathBuf],
+) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
     let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
+    // Filenames already claimed by a higher-priority (earlier) root. The
+    // collision rule (ADR-0055 § D5 #2): identical filename ⇒ lab-runs wins,
+    // so a later root's same-named file is skipped.
+    let mut seen_filenames: BTreeSet<SmolStr> = BTreeSet::new();
+    for root in roots {
+        scan_one_root(root, &mut cache, &mut seen_filenames);
+    }
+    cache
+}
+
+/// Scan one report root into `cache`, honoring the cross-root filename
+/// collision rule via `seen_filenames` (earlier roots win).
+fn scan_one_root(
+    spec_root: &Path,
+    cache: &mut BTreeMap<(SmolStr, Symbol, DateRange), CachedCell>,
+    seen_filenames: &mut BTreeSet<SmolStr>,
+) {
+    use std::fs;
 
     // Walk spec_root/**/ looking for backtest-*.md files.
     let Ok(outer) = fs::read_dir(spec_root) else {
-        tracing::warn!(
-            "compare::cache: spec_root not found or not a directory: {}",
+        // A missing root is normal (a fresh checkout has no `lab-runs/`);
+        // fail soft. `trace!` (not `warn!`) so the absent-lab-runs case is
+        // not noisy on every cold boot.
+        tracing::trace!(
+            "compare::cache: report root not found or not a directory: {}",
             spec_root.display()
         );
-        return cache;
+        return;
     };
 
     for entry in outer.flatten() {
@@ -335,6 +416,13 @@ pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange)
                     .extension()
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
             {
+                continue;
+            }
+
+            // Collision rule: if an earlier (higher-priority) root already
+            // claimed this exact filename, skip it (lab-runs wins).
+            let fname_key = SmolStr::new(fname);
+            if !seen_filenames.insert(fname_key) {
                 continue;
             }
 
@@ -369,7 +457,7 @@ pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange)
             let is_multi = scenario_is_multi_symbol(scenario);
 
             // Use the repo-relative path as the cell identifier.
-            // Build a repo-relative path by stripping the spec_root parent prefix.
+            // Build a repo-relative path by stripping the root's parent prefix.
             let source_path = report_path
                 .strip_prefix(spec_root.parent().unwrap_or(spec_root))
                 .map_or_else(
@@ -404,8 +492,6 @@ pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange)
             }
         }
     }
-
-    cache
 }
 
 /// Look up a single cell from a pre-built cache (O(log n)).
@@ -425,6 +511,11 @@ pub fn lookup_cell<'a>(
 // ── Unit tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::needless_raw_string_hashes
+)]
 mod tests {
     use super::*;
 
@@ -492,5 +583,177 @@ strategy:
         let uni = scenario_universe("btc-2023-1m-sma-cross").expect("must map");
         assert_eq!(uni.len(), 1);
         assert_eq!(uni[0], Symbol::new("BTCUSDT"));
+    }
+
+    // ── lab-run-save-compare T5 — two-root union scan ──────────────────────────
+
+    use std::io::Write;
+
+    /// A complete BTC SMA report with a `strategy.id` block + a `## Summary`
+    /// KPI table `extract_kpis_from_body` parses. `{sharpe}` is the only
+    /// substituted field so two roots can carry distinguishable cells.
+    fn btc_report(generated: &str, sharpe: &str) -> String {
+        format!(
+            r#"---
+scenario: btc-2023-1m-sma-cross
+seed: 0xC0FFEE
+generated: {generated}
+wall_clock_s: 0.0
+data_source: synthetic
+strategy:
+  id: btc_sma_cross
+  kind: sma_crossover
+  source: config/strategies/btc_sma.toml
+---
+
+# Backtest Report — btc-2023-1m-sma-cross
+
+## Summary
+
+| Metric        | Value      |
+|---------------|------------|
+| Sharpe ratio  | **{sharpe}** |
+| Total return  | **12.3 %** |
+| Max drawdown  | **-5.6 %** |
+| Trade count   | **42**     |
+"#
+        )
+    }
+
+    fn write_report(dir: &std::path::Path, fname: &str, content: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        let mut f = std::fs::File::create(dir.join(fname)).unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+    }
+
+    /// T5 / AC5 — `scan_report_roots` over a `lab-runs/` tempdir with TWO
+    /// distinct reports (two strategies) builds two `CachedCell`s with KPIs
+    /// parsed. This is the minimal "compare two persisted runs" cache build.
+    #[test]
+    fn scan_report_roots_builds_two_cells_from_lab_runs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lab_runs = tmp.path().join("lab-runs");
+
+        // Run A — BTC SMA.
+        write_report(
+            &lab_runs.join("v0-paper-sma").join("reports"),
+            "backtest-20260601-120000-btc-2023-1m-sma-cross.md",
+            &btc_report("2026-06-01T12:00:00Z", "0.94"),
+        );
+        // Run B — a top10 momentum report (multi-symbol universe).
+        write_report(
+            &lab_runs.join("v1-cross-sectional-momentum").join("reports"),
+            "backtest-20260601-130000-top10-2023-1h-momentum.md",
+            &format!(
+                r#"---
+scenario: top10-2023-1h-momentum
+seed: 0xC0FFEE
+generated: 2026-06-01T13:00:00Z
+wall_clock_s: 0.0
+data_source: synthetic
+strategy:
+  id: top10_momentum_h1
+  kind: cross_sectional_momentum
+  source: config/strategies/top10_momentum_h1.toml
+---
+
+## Summary
+
+| Metric        | Value      |
+|---------------|------------|
+| Sharpe ratio  | **{}** |
+| Total return  | **8.1 %**  |
+| Max drawdown  | **-12.0 %**|
+| Trade count   | **120**    |
+"#,
+                "1.20"
+            ),
+        );
+
+        let roots = [lab_runs, std::path::PathBuf::from("/nonexistent/spec")];
+        let cache = scan_report_roots(&roots);
+
+        // BTC SMA cell.
+        let btc = cache
+            .get(&(
+                SmolStr::new("btc_sma_cross"),
+                Symbol::new("BTCUSDT"),
+                DateRange::default(),
+            ))
+            .expect("BTC SMA cell present");
+        assert!((btc.sharpe - 0.94).abs() < 1e-9, "BTC Sharpe parsed");
+        assert_eq!(btc.trade_count, 42);
+
+        // top10 momentum cell (multi-symbol — appears for every universe symbol).
+        let mom = cache
+            .get(&(
+                SmolStr::new("top10_momentum_h1"),
+                Symbol::new("XRPUSDT"),
+                DateRange::default(),
+            ))
+            .expect("momentum cell present");
+        assert!((mom.sharpe - 1.20).abs() < 1e-9, "momentum Sharpe parsed");
+        assert!(mom.is_multi_symbol, "top10 is a multi-symbol universe");
+    }
+
+    /// T5 / ADR-0055 § D5 #2 — on an IDENTICAL filename across `lab-runs/` and
+    /// `spec/`, the `lab-runs/` copy wins (it is searched first). Same filename,
+    /// different Sharpe in each root → the union must surface the lab-runs value.
+    #[test]
+    fn scan_report_roots_identical_filename_lab_runs_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fname = "backtest-20260101-000000-btc-2023-1m-sma-cross.md";
+
+        let lab_runs = tmp.path().join("lab-runs");
+        write_report(
+            &lab_runs.join("v0-paper-sma").join("reports"),
+            fname,
+            &btc_report("2026-01-01T00:00:00Z", "0.99"), // lab-runs Sharpe
+        );
+
+        let spec = tmp.path().join("spec");
+        write_report(
+            &spec.join("v0-paper-sma").join("reports"),
+            fname,
+            &btc_report("2026-01-01T00:00:00Z", "0.11"), // spec Sharpe (same name)
+        );
+
+        // Production order: lab-runs FIRST.
+        let roots = [lab_runs, spec];
+        let cache = scan_report_roots(&roots);
+        let btc = cache
+            .get(&(
+                SmolStr::new("btc_sma_cross"),
+                Symbol::new("BTCUSDT"),
+                DateRange::default(),
+            ))
+            .expect("BTC cell present");
+        assert!(
+            (btc.sharpe - 0.99).abs() < 1e-9,
+            "identical filename: lab-runs copy (0.99) must win, not spec (0.11); got {}",
+            btc.sharpe
+        );
+    }
+
+    /// T5 — `scan_spec_tree` (single-root wrapper) still works after the union
+    /// refactor; a spec-rooted scan resolves a committed report unchanged.
+    #[test]
+    fn scan_spec_tree_single_root_still_works() {
+        let tmp = tempfile::tempdir().unwrap();
+        let spec = tmp.path().join("spec");
+        write_report(
+            &spec.join("v0-paper-sma").join("reports"),
+            "backtest-20260101-000000-btc-2023-1m-sma-cross.md",
+            &btc_report("2026-01-01T00:00:00Z", "0.55"),
+        );
+        let cache = scan_spec_tree(&spec);
+        let btc = cache
+            .get(&(
+                SmolStr::new("btc_sma_cross"),
+                Symbol::new("BTCUSDT"),
+                DateRange::default(),
+            ))
+            .expect("single-root spec scan resolves the report");
+        assert!((btc.sharpe - 0.55).abs() < 1e-9);
     }
 }

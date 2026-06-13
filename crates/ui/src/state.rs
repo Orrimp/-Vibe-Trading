@@ -2315,6 +2315,18 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 Screen::Debug => model.settings_active_tab = SettingsTab::Debug,
                 _ => {}
             }
+            // lab-run-save-compare T5 / R5 / Q6 — Compare cold-boot index. On
+            // the FIRST navigation to Compare (cache un-indexed), scan the
+            // two-root union (`lab-runs/` FIRST, then `spec/`) so persisted Lab
+            // runs AND committed reports populate the matrix. Synchronous read
+            // of small Markdown files (the existing `scan_spec_tree` budget,
+            // R3.5); re-scans only after `invalidate_compare_index` clears the
+            // tag (e.g. on a fresh Lab run completing).
+            if s == Screen::Compare && model.compare_screen_state.last_indexed_at.is_none() {
+                let roots = crate::lab::equity_loader::default_report_roots();
+                model.compare_screen_state.cache = crate::compare::cache::scan_report_roots(&roots);
+                model.compare_screen_state.last_indexed_at = Some(time::OffsetDateTime::now_utc());
+            }
         }
 
         // ── Phase C — Settings rollup sub-tab ────────────────────────────────
@@ -2521,6 +2533,13 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 Ok(_) => {
                     model.lab_state.last_run_error = None;
                     model.lab_state.last_run_notice = None;
+                    // lab-run-save-compare T5 / R5 — a successful run persists a
+                    // new report under `lab-runs/`. Clear the Compare cold-boot
+                    // tag so the next Compare navigation re-scans the two-root
+                    // union and surfaces the just-persisted run (no restart
+                    // needed). Cheap: the re-scan only fires on the next visit
+                    // to Compare, not here.
+                    model.compare_screen_state.last_indexed_at = None;
                 }
                 Err(raw) => {
                     use crate::lab::runner::preload_notice::{RunMessageKind, classify};
@@ -5254,6 +5273,55 @@ mod tests {
             c.toast_queue.front().map(|t| t.message.as_str()),
             Some("hello"),
             "message must match"
+        );
+    }
+
+    /// lab-run-save-compare T5 — Compare cold-boot index gating. The cache is
+    /// un-indexed on cold start; the FIRST `SwitchScreen(Compare)` runs the
+    /// two-root scan exactly once (stamps `last_indexed_at`); a second
+    /// navigation does NOT re-stamp (no redundant re-scan); a successful Lab
+    /// run clears the tag so the NEXT Compare visit re-scans the just-persisted
+    /// report.
+    #[test]
+    fn compare_cold_boot_index_gating() {
+        let mut c = Cockpit::new();
+        assert!(
+            c.compare_screen_state.last_indexed_at.is_none(),
+            "cache must be un-indexed on cold start"
+        );
+
+        // First navigation → scan runs, tag stamped.
+        update(&mut c, Message::SwitchScreen(Screen::Compare));
+        let first_stamp = c.compare_screen_state.last_indexed_at;
+        assert!(
+            first_stamp.is_some(),
+            "first Compare navigation must run the cold-boot scan and stamp last_indexed_at"
+        );
+
+        // Second navigation (away then back) → tag unchanged (no re-scan).
+        update(&mut c, Message::SwitchScreen(Screen::Live));
+        update(&mut c, Message::SwitchScreen(Screen::Compare));
+        assert_eq!(
+            c.compare_screen_state.last_indexed_at, first_stamp,
+            "re-navigating to Compare must NOT re-scan while already indexed"
+        );
+
+        // A successful Lab run clears the tag → next Compare visit re-scans.
+        let summary = crate::lab::runner::RunSummary {
+            strategy_id: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            report_path: None,
+            equity_series: Vec::new(),
+            fills: Vec::new(),
+            kpis: backtest::BacktestKpis::default(),
+            bars: std::sync::Arc::new(Vec::new()),
+            position_curve: Vec::new(),
+        };
+        update(&mut c, Message::LabRunCompleted(Ok(summary)));
+        assert!(
+            c.compare_screen_state.last_indexed_at.is_none(),
+            "a successful Lab run must clear the Compare index so the freshly-persisted \
+             report is picked up on the next Compare visit"
         );
     }
 }

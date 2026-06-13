@@ -662,6 +662,9 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         sma_slow_len: cfg.sma_slow_len,
         // v5-latency-slippage-sim R1 — default noop (anchor-safe).
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        // lab-run-save-compare ADR-0055 § D3 — Lab caller supplies the
+        // lab-runs root; None falls back to the engine's workspace-root default.
+        reports_dir: None,
     })
 }
 

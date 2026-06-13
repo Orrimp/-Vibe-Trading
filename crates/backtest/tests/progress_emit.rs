@@ -28,6 +28,7 @@ fn sma_config() -> ScenarioConfig {
         sma_fast_len: None,
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        reports_dir: None,
     }
 }
 
@@ -119,6 +120,7 @@ fn cross_sectional_config(strategy: &str) -> ScenarioConfig {
         sma_fast_len: None,
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        reports_dir: None,
     }
 }
 

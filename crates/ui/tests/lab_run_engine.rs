@@ -38,7 +38,15 @@ mod inner {
     use ui::lab::state::{DateRange, Preset};
 
     /// Build the canonical test `ScenarioConfig`.
-    fn test_config(_tmp_dir: &std::path::Path) -> ScenarioConfig {
+    ///
+    /// lab-run-save-compare ADR-0055 § D6 (H3 invariant): `reports_dir` is
+    /// set to `Some(tmp_dir)` so the engine writes
+    /// `<tmp_dir>/<slug>/reports/backtest-<ms-stamp>-<scenario>.md`.
+    /// The test derives the read-root as
+    /// `report_path.parent().parent().parent()` (== `tmp_dir`) and calls
+    /// `get_or_load(tuple, read_root)`.  Equal roots ⇒ the just-written
+    /// file is the one parsed ⇒ element-by-element `in_memory == cached_disk`.
+    fn test_config(tmp_dir: &std::path::Path) -> ScenarioConfig {
         ScenarioConfig {
             strategy: StrategyId("v1.momentum".into()),
             pair: (Venue::Binance, Symbol::new("XRPUSDT")),
@@ -51,6 +59,9 @@ mod inner {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+            // ADR-0055 § D6: write-root == read-root — engine writes to tmp_dir,
+            // test reads from tmp_dir; equality is structural, not incidental.
+            reports_dir: Some(tmp_dir.to_path_buf()),
         }
     }
 

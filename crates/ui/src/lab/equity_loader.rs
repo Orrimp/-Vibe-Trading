@@ -120,10 +120,17 @@ impl EquityCache {
     }
 
     /// Return a cached `Arc<LabEquitySeries>` if present, otherwise load it
-    /// synchronously from disk, cache it, and return it.
+    /// synchronously from a SINGLE disk root, cache it, and return it.
     ///
-    /// `spec_root` should point to the repository's `spec/` directory. The
-    /// loader searches `spec/<strategy-slug>/reports/backtest-*.md`.
+    /// `spec_root` should point to one report root (e.g. the repository's
+    /// `spec/` directory, or a `lab-runs/` tempdir). The loader searches
+    /// `<root>/<strategy-slug>/reports/backtest-*.md`.
+    ///
+    /// This single-root entry point is the H3 invariant's read seam
+    /// (ADR-0055 § D6 — `crates/ui/tests/lab_run_engine.rs` calls it with the
+    /// engine's `report_path.parent().parent().parent()` write-root). The
+    /// production Lab path uses [`EquityCache::get_or_load_roots`] for the
+    /// two-root (`lab-runs/` + `spec/`) union (Q4).
     ///
     /// # Errors
     ///
@@ -141,6 +148,48 @@ impl EquityCache {
         let arc = Arc::new(loaded);
         self.by_tuple.insert(tuple.clone(), Arc::clone(&arc));
         Ok(arc)
+    }
+
+    /// Two-root union loader (lab-run-save-compare T2 / Q4 / ADR-0055 § D5).
+    ///
+    /// Like [`EquityCache::get_or_load`] but searches a **fixed-order slice of
+    /// roots** (production passes `[default_lab_runs_root(),
+    /// default_spec_root()]`, lab-runs FIRST). The first root that yields a
+    /// matching report wins — so a fresh Lab run under `lab-runs/` shadows a
+    /// committed `spec/` report for the same tuple (the collision rule:
+    /// lab-runs wins). A tuple resolves to exactly one series, so the cache
+    /// stays keyed on `tuple` alone (root-independent); the cached `Arc` is
+    /// returned on subsequent hits regardless of which root won.
+    ///
+    /// # Errors
+    ///
+    /// Returns the LAST root's `EquityLoadError` when no root yields a report
+    /// (the spec-root error is the most informative for the operator — it is
+    /// the committed tree). Empty `roots` yields a `NoReport` error.
+    pub fn get_or_load_roots(
+        &mut self,
+        tuple: &LabTuple,
+        roots: &[PathBuf],
+    ) -> Result<Arc<LabEquitySeries>, EquityLoadError> {
+        if let Some(cached) = self.by_tuple.get(tuple) {
+            return Ok(Arc::clone(cached));
+        }
+        let mut last_err: Option<EquityLoadError> = None;
+        for root in roots {
+            match load_equity(tuple, root) {
+                Ok(loaded) => {
+                    let arc = Arc::new(loaded);
+                    self.by_tuple.insert(tuple.clone(), Arc::clone(&arc));
+                    return Ok(arc);
+                }
+                Err(e) => last_err = Some(e),
+            }
+        }
+        Err(last_err.unwrap_or_else(|| EquityLoadError::NoReport {
+            strategy: tuple.strategy.clone(),
+            symbol: tuple.symbol.clone(),
+            range: tuple.range.clone(),
+        }))
     }
 
     /// Invalidate a cached series so the next `get_or_load` re-reads from
@@ -415,6 +464,27 @@ fn range_score(meta: &ReportMeta, range: &DateRange) -> u32 {
     }
 }
 
+/// lab-run-save-compare Wave-2: read the companion equity CSV beside `md_path`
+/// (`backtest-<stamp>-<scenario>-equity.csv`) for full per-bar fidelity, via
+/// the existing [`reports::csv_artifacts::read_equity_csv`]. Returns `None` if
+/// the companion is absent or unparseable — the caller then falls back to the
+/// sparkline / start-end path (older committed reports have no companion).
+fn load_companion_equity_csv(md_path: &std::path::Path) -> Option<Vec<(i64, Decimal)>> {
+    let name = md_path.file_name()?.to_str()?;
+    let stem = name.strip_suffix(".md")?;
+    let csv = md_path.with_file_name(format!("{stem}-equity.csv"));
+    let samples = reports::csv_artifacts::read_equity_csv(&csv).ok()?;
+    if samples.is_empty() {
+        return None;
+    }
+    Some(
+        samples
+            .into_iter()
+            .map(|s| (s.ts.unix_millis(), s.equity_total))
+            .collect(),
+    )
+}
+
 /// Parse the `## Equity curve` section from a report body.
 /// Returns `(timestamp_millis, equity_decimal)` pairs.
 fn parse_equity_section(body: &str) -> Vec<(i64, Decimal)> {
@@ -540,7 +610,15 @@ pub fn load_equity(
     let body_start = find_body_start(&content);
     let body = &content[body_start..];
 
-    let (samples, fidelity) = if meta.has_equity_section {
+    // lab-run-save-compare Wave-2 (ADR-0055 § D-companion): prefer the companion
+    // equity CSV (full per-bar series) if present beside the `.md`. Lab runs
+    // persist it, so a saved run hydrates a REAL curve instead of the sparkline
+    // start-end 2-point fallback (the `.md`'s `## Equity curve` is only a
+    // visual sparkline, not machine-parseable). Older committed `spec/` reports
+    // without a companion stay at their existing fidelity.
+    let (samples, fidelity) = if let Some(csv_pts) = load_companion_equity_csv(&best_path) {
+        (csv_pts, Fidelity::PerBar)
+    } else if meta.has_equity_section {
         let pts = parse_equity_section(body);
         if pts.is_empty() {
             // Fall through to start-end fallback.
@@ -648,6 +726,37 @@ pub fn default_spec_root() -> PathBuf {
     PathBuf::from("spec")
 }
 
+/// Resolve the git-ignored `lab-runs/` root at the workspace root
+/// (lab-run-save-compare T2 / Q1 / ADR-0055 § D1).
+///
+/// Sibling of [`default_spec_root`]: walks up from `CARGO_MANIFEST_DIR`
+/// (`crates/ui` → `crates` → workspace root) and returns `<workspace>/lab-runs`.
+/// This is the home the engine's `run_scenario` writes persisted Lab reports
+/// to (the developer's write-root) — read-root == write-root is the H3
+/// invariant. Unlike `default_spec_root` this does NOT require the directory
+/// to exist: a fresh checkout has no `lab-runs/` until the first Lab run
+/// persists, and the loaders fail soft on a missing root (return no series).
+#[must_use]
+pub fn default_lab_runs_root() -> PathBuf {
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").map_or_else(|_| PathBuf::from("."), PathBuf::from);
+    // `crates/ui` → `crates` → workspace root.
+    if let Some(root) = manifest_dir.parent().and_then(|p| p.parent()) {
+        return root.join("lab-runs");
+    }
+    PathBuf::from("lab-runs")
+}
+
+/// The production Lab/Compare read-root union (Q4 / ADR-0055 § D5):
+/// `[lab-runs/, spec/]` — **lab-runs FIRST**. Persisted Lab runs shadow
+/// committed `spec/` reports on a tuple collision (lab-runs wins). Exposed so
+/// the Lab screen and the Compare cold-boot wire pass the identical ordered
+/// roots.
+#[must_use]
+pub fn default_report_roots() -> Vec<PathBuf> {
+    vec![default_lab_runs_root(), default_spec_root()]
+}
+
 // ── route_equity_overlay (T-D-N11 / R5.1–R5.4) ──────────────────────────────
 
 /// Route the chart equity-overlay data source.
@@ -658,10 +767,15 @@ pub fn default_spec_root() -> PathBuf {
 ///    `current_tuple`, return a `LabEquitySeries` built from the in-memory
 ///    `equity_series` (no I/O). The `narrowed_from` field is `None` (exact
 ///    match by construction — R5.3 suppresses the narrowed-from badge).
-/// 2. Otherwise fall through to `EquityCache::get_or_load` (Phase A
-///    behaviour — R5.4 / R10.2). If the cache miss returns an error, returns
-///    `None` so the chart renders with no equity overlay (graceful degradation).
+/// 2. Otherwise fall through to the cold disk path — the two-root union
+///    (`EquityCache::get_or_load_roots`, lab-runs FIRST then spec/ —
+///    lab-run-save-compare T4 / R4 / Q4). After a Lab run persists its report
+///    under `lab-runs/`, the curve repaints from disk on the next boot /
+///    tuple-select even with the in-memory mirror cleared (AC4). If the cache
+///    miss returns an error, returns `None` so the chart renders with no
+///    equity overlay (graceful degradation).
 ///
+/// `roots` is searched in order; pass `default_report_roots()` in production.
 /// `cache` is mutated only on cache misses (existing Phase A behaviour
 /// unchanged).
 #[must_use]
@@ -669,7 +783,7 @@ pub fn route_equity_overlay(
     lab_state: &crate::lab::state::LabState,
     cache: &mut EquityCache,
     current_tuple: &LabTuple,
-    spec_root: &std::path::Path,
+    roots: &[PathBuf],
 ) -> Option<LabEquitySeries> {
     // Hot path: in-memory mirror from the most recent completed run.
     if let Some(ref mirror) = lab_state.last_run_report
@@ -688,9 +802,9 @@ pub fn route_equity_overlay(
         }
     }
 
-    // Cold path: fall through to EquityCache (Phase A behaviour).
+    // Cold path: the two-root union (lab-runs first, then spec/).
     cache
-        .get_or_load(current_tuple, spec_root)
+        .get_or_load_roots(current_tuple, roots)
         .ok()
         .map(|arc| arc.as_ref().clone())
 }
@@ -698,7 +812,11 @@ pub fn route_equity_overlay(
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::needless_raw_string_hashes
+)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -744,6 +862,44 @@ data_source: synthetic
 ## Notes
 
 - v1 cross-sectional momentum
+"#;
+
+    /// A 2-point `lab-runs/`-style report for the `top10-2024-h1-momentum`
+    /// tuple — used to prove the two-root union picks the lab-runs copy over
+    /// the 4-point `spec/` copy (the collision rule, T2).
+    const LAB_RUNS_REPORT_TWO_POINT: &str = r#"---
+scenario: top10-2024-h1-momentum
+seed: 0xC0FFEE
+generated: 2026-06-01T12:00:00Z
+wall_clock_s: 0.0
+data_source: synthetic
+---
+
+# Backtest Report — top10-2024-h1-momentum
+
+## Summary
+
+| Metric               | Value                         |
+|----------------------|-------------------------------|
+| Scenario             | top10-2024-h1-momentum        |
+| Initial capital      | $100000.00 USDT               |
+| Final equity         | $123456.00 USDT               |
+| Max drawdown         | 12.00%                        |
+
+## Universe
+
+- XRPUSDT
+
+## Equity curve
+
+| Timestamp (ms) | Equity (USDT) |
+|---------------|---------------|
+| 1704067200000 | 100000.00     |
+| 1719791999000 | 123456.00     |
+
+## Notes
+
+- lab-runs collision fixture
 "#;
 
     const FIXTURE_REPORT_NO_EQUITY: &str = r#"---
@@ -925,6 +1081,60 @@ data_source: synthetic
         assert_eq!(strategy_slug("v0.5.macd"), "v05-composed-strategies");
     }
 
+    /// lab-run-save-compare T2 — `default_lab_runs_root()` resolves a sibling
+    /// `lab-runs/` of `spec/` at the workspace root, and `default_report_roots()`
+    /// orders lab-runs FIRST (Q4 / ADR-0055 § D5).
+    #[test]
+    fn default_roots_order_lab_runs_first() {
+        let spec = default_spec_root();
+        let lab_runs = default_lab_runs_root();
+        // Both resolve under the same workspace parent.
+        assert_eq!(
+            lab_runs.file_name().and_then(|n| n.to_str()),
+            Some("lab-runs"),
+            "lab-runs root must end in /lab-runs"
+        );
+        if let (Some(spec_parent), Some(lr_parent)) = (spec.parent(), lab_runs.parent()) {
+            assert_eq!(
+                spec_parent, lr_parent,
+                "spec/ and lab-runs/ must be siblings at the workspace root"
+            );
+        }
+        let roots = default_report_roots();
+        assert_eq!(roots.len(), 2, "union is exactly two roots");
+        assert_eq!(roots[0], lab_runs, "lab-runs MUST be searched first");
+        assert_eq!(roots[1], spec, "spec/ is searched second");
+    }
+
+    /// lab-run-save-compare T2 — `get_or_load_roots` resolves a report from a
+    /// `lab-runs/` tempdir (the write-root the engine persists to). Proves the
+    /// cold loader reaches the Lab-runs home, the AC4 repaint-from-disk seam.
+    #[test]
+    fn get_or_load_roots_resolves_from_lab_runs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lab_runs = tmp.path().join("lab-runs");
+        let slug_dir = lab_runs.join("v1-cross-sectional-momentum").join("reports");
+        std::fs::create_dir_all(&slug_dir).unwrap();
+        write_fixture_report(
+            &slug_dir,
+            "backtest-20260601-120000-top10-2024-h1-momentum.md",
+            FIXTURE_REPORT_WITH_EQUITY,
+        );
+
+        let tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        // lab-runs first; a nonexistent spec/ second — the union still resolves.
+        let roots = [lab_runs, PathBuf::from("/nonexistent/spec")];
+        let mut cache = EquityCache::new();
+        let series = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect("lab-runs report must resolve via the union");
+        assert_eq!(series.samples.len(), 4);
+    }
+
     // ── route_equity_overlay tests (T-D-N11) ────────────────────────────────
 
     /// Build a minimal `LabState` with `last_run_report` set to the given
@@ -981,10 +1191,13 @@ data_source: synthetic
         let mirror = make_mirror(tuple.clone(), samples.clone());
         let lab_state = lab_state_with_mirror(mirror);
         let mut cache = EquityCache::new();
-        // Spec root points nowhere — any disk read would fail.
-        let spec_root = std::path::Path::new("/nonexistent/spec");
+        // Roots point nowhere — any disk read would fail.
+        let roots = [
+            PathBuf::from("/nonexistent/lab-runs"),
+            PathBuf::from("/nonexistent/spec"),
+        ];
 
-        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, spec_root);
+        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, &roots);
         let series = result.expect("expected Some from hot path");
         assert_eq!(series.samples.len(), 2, "should have both equity points");
         assert_eq!(series.source_report, SmolStr::new("in-memory (last run)"));
@@ -1012,17 +1225,22 @@ data_source: synthetic
         let mirror = make_mirror(mirror_tuple, vec![(0, Decimal::from(100_000))]);
         let lab_state = lab_state_with_mirror(mirror);
         let mut cache = EquityCache::new();
-        // Spec root doesn't exist → cache miss → None.
-        let spec_root = std::path::Path::new("/nonexistent/spec");
+        // Roots don't exist → cache miss → None.
+        let roots = [
+            PathBuf::from("/nonexistent/lab-runs"),
+            PathBuf::from("/nonexistent/spec"),
+        ];
 
-        let result = route_equity_overlay(&lab_state, &mut cache, &current_tuple, spec_root);
+        let result = route_equity_overlay(&lab_state, &mut cache, &current_tuple, &roots);
         assert!(
             result.is_none(),
             "tuple mismatch must fall through to cache (returns None here)"
         );
     }
 
-    /// T-D-N11 cold path: when no `last_run_report`, uses the cache/disk path.
+    /// T-D-N11 cold path: when no `last_run_report`, uses the two-root union
+    /// disk path. Passing `[spec]` (single root) still resolves the report —
+    /// existing spec-rooted behaviour is preserved under the slice API (T2).
     #[test]
     fn route_overlay_cold_path_uses_cache() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1035,10 +1253,60 @@ data_source: synthetic
         let lab_state = crate::lab::state::LabState::default(); // no last_run_report
         let mut cache = EquityCache::new();
 
-        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, &spec);
+        let roots = [spec];
+        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, &roots);
         let series = result.expect("expected Some from disk cache");
         assert_eq!(series.samples.len(), 4, "fixture has 4 equity points");
         assert_eq!(series.fidelity, Fidelity::PerBar);
+    }
+
+    /// lab-run-save-compare T2 — the two-root union resolves a report placed
+    /// in EITHER a `lab-runs/` root OR a `spec/` root, AND **lab-runs wins on a
+    /// tuple collision** (Q4 / ADR-0055 § D5: lab-runs searched FIRST). Builds
+    /// the SAME tuple in both roots with DISTINGUISHABLE equity tails, then
+    /// asserts the union picks the lab-runs copy.
+    #[test]
+    fn route_overlay_two_root_union_lab_runs_wins_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        // spec/ copy — 4-point fixture (final equity 46401.41).
+        let spec = tmp.path().join("spec");
+        let spec_slug = spec.join("v1-cross-sectional-momentum").join("reports");
+        std::fs::create_dir_all(&spec_slug).unwrap();
+        write_fixture_report(
+            &spec_slug,
+            "backtest-20260101-000000-top10-2024-h1-momentum.md",
+            FIXTURE_REPORT_WITH_EQUITY,
+        );
+
+        // lab-runs/ copy — SAME tuple, a DIFFERENT (2-point) equity series so
+        // the winning root is unambiguous from the sample count.
+        let lab_runs = tmp.path().join("lab-runs");
+        let lr_slug = lab_runs.join("v1-cross-sectional-momentum").join("reports");
+        std::fs::create_dir_all(&lr_slug).unwrap();
+        write_fixture_report(
+            &lr_slug,
+            "backtest-20260601-120000-top10-2024-h1-momentum.md",
+            LAB_RUNS_REPORT_TWO_POINT,
+        );
+
+        let tuple = LabTuple {
+            strategy: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+        };
+        let lab_state = crate::lab::state::LabState::default();
+        let mut cache = EquityCache::new();
+
+        // Production ordering: lab-runs FIRST, then spec.
+        let roots = [lab_runs, spec];
+        let series = route_equity_overlay(&lab_state, &mut cache, &tuple, &roots)
+            .expect("two-root union must resolve a series");
+        assert_eq!(
+            series.samples.len(),
+            2,
+            "lab-runs copy (2-point) must win the collision, not the spec copy (4-point)"
+        );
     }
 
     /// T-D-N11: empty equity_series in mirror is not returned (falls through to cache).
@@ -1053,9 +1321,12 @@ data_source: synthetic
         let mirror = make_mirror(tuple.clone(), vec![]);
         let lab_state = lab_state_with_mirror(mirror);
         let mut cache = EquityCache::new();
-        let spec_root = std::path::Path::new("/nonexistent/spec");
+        let roots = [
+            PathBuf::from("/nonexistent/lab-runs"),
+            PathBuf::from("/nonexistent/spec"),
+        ];
 
-        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, spec_root);
+        let result = route_equity_overlay(&lab_state, &mut cache, &tuple, &roots);
         // Empty samples → falls through to disk; disk absent → None.
         assert!(result.is_none(), "empty mirror series must fall through");
     }

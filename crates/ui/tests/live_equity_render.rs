@@ -776,3 +776,424 @@ fn flat_and_single_point_curves_render_without_panic() {
     // value-rich assertions live in `live_equity_curve_actually_renders`.)
     let _ = render_live(flat);
 }
+
+// ── PHASE 4 — lab-run-save-compare: Lab repaint + Compare overlay (T7) ────────
+//
+// The render-layer proof that the lab-run-save-compare feature's two new
+// surfaces actually rasterize (project law — MEMORY.md "verify UI at the render
+// layer"; model-Ready is necessary but NOT sufficient):
+//
+//   T7(a) — a Lab equity curve HYDRATED FROM A `lab-runs/` REPORT (loaded by the
+//           two-root loader from a tempdir `lab-runs/` root) rasterizes a
+//           non-empty `ACCENT` polyline on the real `chart::view` overlay widget
+//           the Lab screen renders.
+//   T7(b) — a Compare OVERLAY OF TWO RUNS (both loaded from `lab-runs/` reports)
+//           rasterizes BOTH series — the primary `ACCENT` curve AND a second
+//           `ACCENT_2` curve — proving two distinct curves drew on one chart
+//           (R5: KPIs + equity overlay of both series).
+//
+// Both feed `ui::widgets::chart::view(bars, …, equity, compare, …)` via
+// `ui::test_support::chart_overlay_program`, the EXACT overlay draw path
+// (`ChartProgram::draw` → tiny_skia) the Lab/Compare screens paint.
+
+use std::io::Write;
+
+use ui::lab::equity_loader::{LabTuple, load_equity};
+use ui::lab::state::{DateRange as LabDateRange, Preset};
+use ui::test_support::chart_overlay_program;
+
+/// Number of synthetic bars under the overlay. `synthetic_candles` stamps bar
+/// `i` at `(FIXED_EPOCH_SECS + i*60)` seconds, so the bar window in
+/// milliseconds is `[BAR_BASE_MS, BAR_BASE_MS + (RENDER_BARS-1)*60_000]`. The
+/// `lab-runs/` fixture equity timestamps MUST fall INSIDE this window
+/// (`bar_ms()` below) or `draw_equity_polyline` clamps them to one edge → a
+/// degenerate vertical line; `compute_equity_range` would also drop them
+/// (it windows to `[bars.first, bars.last]`).
+const RENDER_BARS: usize = 60;
+
+/// `FIXED_EPOCH_SECS` from `fixtures.rs` (Jan 2024) — the base second
+/// `synthetic_candles` stamps bar 0 at. Mirrored here so the fixture equity
+/// timestamps land inside the synthetic-bar window.
+const FIXED_EPOCH_SECS: i64 = 1_705_320_000;
+const BAR_BASE_MS: i64 = FIXED_EPOCH_SECS * 1000;
+
+/// Equity-curve timestamp (ms) for the `n`-th fixture point — one bar-minute
+/// apart, anchored at the bar window's base so the overlay traverses the
+/// x-axis inside `[bars.first, bars.last]`.
+fn bar_ms(n: i64) -> i64 {
+    BAR_BASE_MS + n * 60_000
+}
+
+/// A `lab-runs/`-style report whose `## Equity curve` timestamps (milliseconds)
+/// fall inside the `RENDER_BARS` synthetic-bar window `[0, 3_540_000]` ms.
+/// `{symbol}` resolves the loader's `## Universe` symbol-match for the
+/// requested tuple. `level` shifts the whole curve vertically so two runs can
+/// be made to occupy DISTINCT y-bands (the two overlay polylines then paint
+/// separate pixels — the proof that two distinct curves drew, not one line
+/// overdrawn twice). Each curve still rises/dips/recovers (a tall traverse).
+fn lab_runs_report_at(scenario: &str, symbol: &str, level: i64) -> String {
+    // Six points: base + {0, +3000, +1000, -3000, +4000, +8000} offsets,
+    // shifted by `level`. A run at level=100_000 lives ~97k–108k; a run at
+    // level=60_000 lives ~57k–68k — disjoint y-bands.
+    let p = |off: i64| level + off;
+    format!(
+        r#"---
+scenario: {scenario}
+seed: 0xC0FFEE
+generated: 2026-06-01T12:00:00Z
+wall_clock_s: 0.0
+data_source: synthetic
+---
+
+# Backtest Report — {scenario}
+
+## Summary
+
+| Metric          | Value             |
+|-----------------|-------------------|
+| Scenario        | {scenario}        |
+| Initial capital | ${} USDT          |
+| Final equity    | ${} USDT          |
+| Max drawdown    | 18.00%            |
+
+## Universe
+
+- {symbol}
+
+## Equity curve
+
+| Timestamp (ms) | Equity (USDT) |
+|----------------|---------------|
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+"#,
+        level,
+        p(8000),
+        bar_ms(0),
+        p(0),
+        bar_ms(10),
+        p(3000),
+        bar_ms(20),
+        p(1000),
+        bar_ms(30),
+        p(-3000),
+        bar_ms(40),
+        p(4000),
+        bar_ms(50),
+        p(8000),
+    )
+}
+
+/// Write a `lab-runs/<slug>/reports/<fname>` fixture report and return the
+/// `lab-runs/` root path. Mirrors the developer's write-root shape exactly.
+fn write_lab_run(lab_runs_root: &std::path::Path, slug: &str, fname: &str, content: &str) {
+    let reports = lab_runs_root.join(slug).join("reports");
+    std::fs::create_dir_all(&reports).expect("create lab-runs reports dir");
+    let mut f = std::fs::File::create(reports.join(fname)).expect("create lab-runs report");
+    f.write_all(content.as_bytes())
+        .expect("write lab-runs report");
+}
+
+/// Synthetic bars for the overlay x-axis (same builder + seed the fixtures
+/// cockpit uses, so the bar window is deterministic).
+fn render_bars() -> Vec<trading_core::Bar> {
+    let venue = trading_core::Venue::Binance;
+    let symbol = trading_core::Symbol::new("XRPUSDT");
+    let seed = ui::fixtures::seed_for(venue, &symbol);
+    ui::fixtures::synthetic_candles(seed, venue, symbol, RENDER_BARS)
+}
+
+/// `(r,g,b)` 0-255 of an `ACCENT_2` (dark theme) pixel — the SECOND overlay
+/// curve's color (the `accent_palette()[0]` compare line). ACCENT dark =
+/// (111,182,174) teal-300; ACCENT_2 dark = (166,213,207) teal-200 (lighter).
+/// They share a hue, so a loose per-channel box would let AA pixels count as
+/// both — instead [`classify_curve`] below uses a NEAREST-of-two classifier so
+/// each curve pixel is attributed to exactly ONE curve (the proof that two
+/// DISTINCT curves drew).
+fn accent2_rgb() -> (i32, i32, i32) {
+    let c = color::ACCENT_2.current(ThemeMode::Dark);
+    (
+        (c.r * 255.0).round() as i32,
+        (c.g * 255.0).round() as i32,
+        (c.b * 255.0).round() as i32,
+    )
+}
+
+/// Squared Euclidean RGB distance.
+fn dist2(p: (i32, i32, i32), q: (i32, i32, i32)) -> i32 {
+    let dr = p.0 - q.0;
+    let dg = p.1 - q.1;
+    let db = p.2 - q.2;
+    dr * dr + dg * dg + db * db
+}
+
+/// Which overlay curve (if any) a pixel belongs to. A pixel is attributed to
+/// the NEAREST of {ACCENT, ACCENT_2} when it is within `CURVE_MATCH_R2` of that
+/// color AND strictly closer to it than to the other (a clear margin). Pixels
+/// near neither (background, gridlines, AA midpoints between the two) are
+/// `Neither`. Because the classifier is winner-take-all, no pixel is ever
+/// counted for BOTH curves — so two non-zero counts prove two distinct curves.
+#[derive(PartialEq, Eq)]
+enum Curve {
+    Accent,
+    Accent2,
+    Neither,
+}
+
+/// Max squared distance for a pixel to be claimed by a curve color. The
+/// ACCENT↔ACCENT_2 squared separation is 55²+31²+33² = 5075; a radius² of 900
+/// (≈30/channel) is well inside half that separation, so the two acceptance
+/// balls are disjoint and an AA pixel exactly between them is `Neither`.
+const CURVE_MATCH_R2: i32 = 900;
+
+fn classify_curve(r: u8, g: u8, b: u8) -> Curve {
+    let p = (i32::from(r), i32::from(g), i32::from(b));
+    let d_accent = dist2(p, accent_rgb());
+    let d_accent2 = dist2(p, accent2_rgb());
+    if d_accent <= CURVE_MATCH_R2 && d_accent < d_accent2 {
+        Curve::Accent
+    } else if d_accent2 <= CURVE_MATCH_R2 && d_accent2 < d_accent {
+        Curve::Accent2
+    } else {
+        Curve::Neither
+    }
+}
+
+/// Count `(accent, accent2)` curve pixels across the WHOLE frame via the
+/// winner-take-all classifier. The bare overlay widget fills the frame, so no
+/// sidebar/crop offset is needed (unlike the Live screen harness above).
+fn count_curve_pixels(shot: &iced::window::Screenshot) -> (usize, usize) {
+    let rgba: &[u8] = &shot.rgba;
+    let (mut accent, mut accent2) = (0usize, 0usize);
+    let mut i = 0;
+    while i + 2 < rgba.len() {
+        match classify_curve(rgba[i], rgba[i + 1], rgba[i + 2]) {
+            Curve::Accent => accent += 1,
+            Curve::Accent2 => accent2 += 1,
+            Curve::Neither => {}
+        }
+        i += 4;
+    }
+    (accent, accent2)
+}
+
+/// Render the bare chart-overlay widget (bars + equity + compare) and return
+/// its RGBA screenshot via the real `ChartProgram::draw` path.
+fn render_overlay(
+    bars: Vec<trading_core::Bar>,
+    equity: Option<ui::lab::equity_loader::LabEquitySeries>,
+    compare: Vec<ui::lab::equity_loader::LabEquitySeries>,
+) -> iced::window::Screenshot {
+    // SAFETY: test-only single-threaded env init before iced_test::screenshot,
+    // mirroring `render_live` (UTC time-axis labels for determinism).
+    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    let program = chart_overlay_program(bars, equity, compare);
+    let theme = iced::Theme::Dark;
+    iced_test::screenshot(&program, &theme, (VIEW_W, VIEW_H), SCALE, Duration::ZERO)
+}
+
+/// Floor for "the overlay polyline actually drew". The overlay stroke is
+/// thinner (1.5 px) than the Live curve's, and there is no fill under the
+/// compare line, so the per-curve pixel budget is smaller; 120 is a
+/// comfortable floor above AA noise yet well below a real traversing
+/// polyline's count on a 1280-wide frame.
+const OVERLAY_DREW_MIN: usize = 120;
+
+/// Diagnostic (run with `--nocapture`): print the per-curve pixel counts for a
+/// single-run overlay and a two-run overlay so `OVERLAY_DREW_MIN` is calibrated
+/// empirically, not guessed. Mirrors `diag_accent_bounding_box` above.
+#[test]
+fn diag_overlay_curve_pixel_counts() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = write_two_run_scene(&tmp);
+    let (a, b) = load_two_run_scene(&lab_runs);
+
+    let (bars_only_accent, bars_only_accent2) =
+        count_curve_pixels(&render_overlay(render_bars(), None, vec![]));
+    let (one_accent, one_accent2) =
+        count_curve_pixels(&render_overlay(render_bars(), Some(a.clone()), vec![]));
+    let (two_accent, two_accent2) =
+        count_curve_pixels(&render_overlay(render_bars(), Some(a), vec![b]));
+    eprintln!(
+        "[diag] bars-only (no equity): ACCENT={bars_only_accent} ACCENT_2={bars_only_accent2}; \
+         single-run overlay: ACCENT={one_accent} ACCENT_2={one_accent2}; \
+         two-run overlay: ACCENT={two_accent} ACCENT_2={two_accent2}"
+    );
+}
+
+/// Write a two-run `lab-runs/` scene: run A (momentum/XRPUSDT) at the ~100k
+/// level + run B (sma/BTCUSDT) at the ~60k level — DISJOINT y-bands so the two
+/// overlay polylines paint separate pixels. Returns the `lab-runs/` root.
+fn write_two_run_scene(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+    let lab_runs = tmp.path().join("lab-runs");
+    write_lab_run(
+        &lab_runs,
+        "v1-cross-sectional-momentum",
+        "backtest-20260601-120000-top10-2024-h1-momentum.md",
+        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+    );
+    write_lab_run(
+        &lab_runs,
+        "v0-paper-sma",
+        "backtest-20260601-130000-btc-2023-1m-sma-cross.md",
+        &lab_runs_report_at("btc-2023-1m-sma-cross", "BTCUSDT", 60_000),
+    );
+    lab_runs
+}
+
+/// Load both runs of the two-run scene via the loader the production path uses.
+fn load_two_run_scene(
+    lab_runs: &std::path::Path,
+) -> (
+    ui::lab::equity_loader::LabEquitySeries,
+    ui::lab::equity_loader::LabEquitySeries,
+) {
+    let tuple_a = LabTuple {
+        strategy: smol_str::SmolStr::new("v1.momentum"),
+        symbol: smol_str::SmolStr::new("XRPUSDT"),
+        range: LabDateRange::Preset(Preset::H1_2024),
+    };
+    let tuple_b = LabTuple {
+        strategy: smol_str::SmolStr::new("v0.sma"),
+        symbol: smol_str::SmolStr::new("BTCUSDT"),
+        range: LabDateRange::Preset(Preset::Last90d),
+    };
+    let a = load_equity(&tuple_a, lab_runs).expect("run A loads");
+    let b = load_equity(&tuple_b, lab_runs).expect("run B loads");
+    (a, b)
+}
+
+/// Minimum EXTRA `ACCENT` pixels the hydrated equity overlay must add over the
+/// bars-only (price-line) baseline. Calibration (`diag_overlay_curve_pixel_counts`):
+/// bars-only ≈ 2610 ACCENT (the price line, also `ACCENT`); +equity overlay
+/// ≈ 3894 (+1284). 400 is a comfortable floor well above paint jitter yet far
+/// below the ~1284 a real overlay polyline adds. The CONTRAST (with-equity ≫
+/// bars-only) is what isolates the equity curve from the same-color price line.
+const OVERLAY_ACCENT_DELTA_MIN: usize = 400;
+
+/// **T7(a) — Lab repaint-from-`lab-runs/` render proof.** A `LabEquitySeries`
+/// LOADED by the two-root loader from a tempdir `lab-runs/` report rasterizes a
+/// non-empty `ACCENT` polyline on the real Lab overlay widget (`chart::view`).
+/// This is the AC4 "the curve survives a restart by repainting from the
+/// persisted report" guarantee, proven at the pixel layer.
+///
+/// The Lab chart's PRICE line is also `ACCENT`, so a raw ACCENT count cannot
+/// tell "the equity curve drew" from "the price line drew". The proof is a
+/// CONTRAST: render the SAME bars WITHOUT the equity overlay (price line only)
+/// and WITH the hydrated overlay, and assert the overlay adds a non-trivial
+/// band of EXTRA `ACCENT` pixels — i.e. the loaded-from-disk equity polyline is
+/// genuinely on screen, additive to the price line.
+#[test]
+fn lab_curve_hydrated_from_lab_runs_report_renders() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = tmp.path().join("lab-runs");
+    write_lab_run(
+        &lab_runs,
+        "v1-cross-sectional-momentum",
+        "backtest-20260601-120000-top10-2024-h1-momentum.md",
+        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+    );
+
+    // Load the series via the loader the production Lab cold path uses, pointed
+    // at the `lab-runs/` root (the developer's write-root shape).
+    let tuple = LabTuple {
+        strategy: smol_str::SmolStr::new("v1.momentum"),
+        symbol: smol_str::SmolStr::new("XRPUSDT"),
+        range: LabDateRange::Preset(Preset::H1_2024),
+    };
+    let series = load_equity(&tuple, &lab_runs).expect("series loads from lab-runs report");
+    assert!(
+        series.samples.len() >= 2,
+        "hydrated series must have ≥2 points to traverse (got {})",
+        series.samples.len()
+    );
+
+    let bars = render_bars();
+    let (baseline_accent, _) = count_curve_pixels(&render_overlay(bars.clone(), None, vec![]));
+    let (with_equity_accent, _) = count_curve_pixels(&render_overlay(bars, Some(series), vec![]));
+
+    let delta = with_equity_accent.saturating_sub(baseline_accent);
+    assert!(
+        delta >= OVERLAY_ACCENT_DELTA_MIN,
+        "Lab curve hydrated from a lab-runs/ report did NOT render: the equity overlay added \
+         only {delta} ACCENT pixels over the price-line baseline ({baseline_accent} → \
+         {with_equity_accent}; expected +≥{OVERLAY_ACCENT_DELTA_MIN}). The series parsed from \
+         disk but the overlay canvas painted no visible polyline — the repaint-from-disk \
+         render bug."
+    );
+}
+
+/// **T7(b) — Compare two-run overlay render proof (the headline render gate for
+/// R5).** TWO `LabEquitySeries`, BOTH loaded from `lab-runs/` reports, overlaid
+/// on ONE chart (`equity` = run A drawn `ACCENT`; `compare[0]` = run B drawn
+/// `ACCENT_2`) must rasterize BOTH curves. Asserts ACCENT pixels (run A) AND
+/// ACCENT_2 pixels (run B) BOTH cross the "drew" floor — i.e. two DISTINCT
+/// curves are on screen, not one. A single-curve regression (compare series
+/// dropped, or both collapsed to the same color) fails here.
+#[test]
+fn compare_two_run_overlay_renders_both_series() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    // Run A (primary, ACCENT) at ~100k; run B (compare, ACCENT_2) at ~60k —
+    // disjoint y-bands so the two polylines paint separate pixels.
+    let lab_runs = write_two_run_scene(&tmp);
+    let (series_a, series_b) = load_two_run_scene(&lab_runs);
+
+    let shot = render_overlay(render_bars(), Some(series_a), vec![series_b]);
+
+    let (accent, accent2) = count_curve_pixels(&shot);
+
+    // Run A (primary, ACCENT) drew.
+    assert!(
+        accent >= OVERLAY_DREW_MIN,
+        "Compare overlay: the PRIMARY (ACCENT) run did NOT render: only {accent} ACCENT \
+         pixels (expected ≥ {OVERLAY_DREW_MIN})."
+    );
+    // Run B (compare, ACCENT_2) drew — the proof TWO distinct curves are on
+    // screen. This is the assertion that fails if the second series is dropped
+    // or both render in the same color.
+    assert!(
+        accent2 >= OVERLAY_DREW_MIN,
+        "Compare overlay: the SECOND (ACCENT_2) run did NOT render: only {accent2} ACCENT_2 \
+         pixels (expected ≥ {OVERLAY_DREW_MIN}). The two-run overlay must rasterize BOTH \
+         series as distinct curves — a dropped compare series or a same-color collapse lands \
+         here."
+    );
+}
+
+/// **T7(b) contrast self-proof.** Render the SAME overlay scene WITHOUT the
+/// compare series and assert NO `ACCENT_2` pixels appear — proving the
+/// `ACCENT_2` count in `compare_two_run_overlay_renders_both_series` genuinely
+/// comes from the second run, not from chrome/AA bleed. Belt-and-braces so the
+/// two-curve discriminator can never silently degrade into "ACCENT_2 is always
+/// present".
+#[test]
+fn single_run_overlay_draws_no_accent2() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = tmp.path().join("lab-runs");
+    write_lab_run(
+        &lab_runs,
+        "v1-cross-sectional-momentum",
+        "backtest-20260601-120000-top10-2024-h1-momentum.md",
+        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+    );
+    let tuple = LabTuple {
+        strategy: smol_str::SmolStr::new("v1.momentum"),
+        symbol: smol_str::SmolStr::new("XRPUSDT"),
+        range: LabDateRange::Preset(Preset::H1_2024),
+    };
+    let series = load_equity(&tuple, &lab_runs).expect("series loads");
+
+    // No compare series → ACCENT_2 must be absent.
+    let shot = render_overlay(render_bars(), Some(series), vec![]);
+    let (_accent, accent2) = count_curve_pixels(&shot);
+    assert!(
+        accent2 < OVERLAY_DREW_MIN,
+        "single-run overlay must draw NO second (ACCENT_2) curve, but saw {accent2} ACCENT_2 \
+         pixels (≥ {OVERLAY_DREW_MIN}). If this fails the two-curve discriminator is reading \
+         chrome/AA bleed, not the actual compare series — fix the detector before trusting it."
+    );
+}

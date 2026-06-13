@@ -591,10 +591,13 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         model.lab_state.pair.as_ref(),
     ) {
         let current_tuple = LabTuple::new(strategy, *venue, symbol, model.lab_state.range.clone());
-        let spec_root = crate::lab::equity_loader::default_spec_root();
+        // lab-run-save-compare T4 / R4 / Q4 — read the two-root union
+        // (`lab-runs/` FIRST, then `spec/`) so a persisted Lab run repaints the
+        // curve from disk on the next boot / tuple-select (the cold path), not
+        // only from the in-memory `last_run_report` mirror.
+        let roots = crate::lab::equity_loader::default_report_roots();
         let mut cache = model.equity_cache.borrow_mut();
-        let overlay =
-            route_equity_overlay(&model.lab_state, &mut cache, &current_tuple, &spec_root);
+        let overlay = route_equity_overlay(&model.lab_state, &mut cache, &current_tuple, &roots);
         tracing::trace!(
             target: "lab.equity_overlay",
             strategy = %strategy.0,

@@ -1,5 +1,10 @@
 /target
 
+# Lab-run report cache (lab-run-save-compare ADR-0055 § D1/D2).
+# Git-ignored ⇒ never committed ⇒ invisible to `verify_anchors.sh`
+# `find spec …` glob ⇒ 119 anchored report bodies are byte-immutable BY CONSTRUCTION.
+/lab-runs/
+
 # Runtime state — not source
 # `/data/` excluded except for `data/yahoo/REVISION.toml` (revision-pin manifest
 # committed per ADR-0040 / Q10=(b) so v0.1.1 anchor locks are reproducible).

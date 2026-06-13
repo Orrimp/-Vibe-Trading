@@ -2881,3 +2881,14 @@ tests       = [
 ]
 anchors     = []   # anchor-additive, ZERO new rows per tasks.md [[req]] + ADR-0053 D4 — the anchors namespace is backtest SCENARIOS, and this feature adds none. The divergence gate is satisfied by TESTS (in the tests field above): AC6 render-layer Y-variation (y_variation_gate_moving_passes_flat_fails, CURVE_Y_VAR_MIN=30) + AC1 data-layer non-constant equity (paper_loop_produces_moving_equity). Backtest anchors byte-unchanged by construction (119/119 PASS). Baseline-divergence gate INTENT satisfied, NOT rubber-stamped N/A (Q6). [orchestrator 2026-06-12: fixed presenter-caught namespace misuse — test names had been placed in the anchors field.]
 state       = "shipped"   # operator approved 2026-06-12 (deck 2026-06-12). Was: tester-done 2026-06-12 VERDICT PASS.
+
+[[req]]
+id          = "REQ-LAB-RUN-SAVE-COMPARE-001"
+title       = "Lab runs persist a durable backtest report (outside the anchor namespace) and Compare diffs two runs"
+feature     = "lab-run-save-compare"
+product     = "spec/product.md"
+arch        = ["spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md"]
+crates      = []
+tests       = []
+anchors     = []
+state       = "arch-done"

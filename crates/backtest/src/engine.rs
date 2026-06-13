@@ -234,6 +234,17 @@ pub struct ScenarioConfig {
     /// **Anchor contract**: the default value (`LatencySlippageSimConfig::default()`)
     /// produces byte-identical output for all 34 anchored backtest reports.
     pub latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig,
+
+    /// lab-run-save-compare R3 / ADR-0055 § D3 — override the directory the
+    /// Lab report is written under when `write_report = true`. `None` +
+    /// `write_report` resolves the workspace-root `lab-runs/` default.
+    /// CLI/anchor paths pass `write_report = false` (or leave this `None`) →
+    /// byte-unaffected.
+    ///
+    /// **Anchor-additive**: constructed via struct-update / explicit
+    /// `reports_dir: None` so the existing anchor-generating call sites stay
+    /// byte-identical. The field is never read when `write_report = false`.
+    pub reports_dir: Option<PathBuf>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -568,6 +579,223 @@ fn sma_composed_result_to_report(
     }
 }
 
+// ── Lab-runs root helper ─────────────────────────────────────────────────────
+
+/// Default `lab-runs/` cache dir at the workspace root (ADR-0055 § D1).
+///
+/// Walks up from `CARGO_MANIFEST_DIR` to the workspace root (the directory
+/// containing `Cargo.toml` with a `[workspace]` declaration), then appends
+/// `lab-runs/`. Mirrors `ui::lab::equity_loader::default_lab_runs_root()` but
+/// lives in the `backtest` crate so `backtest` NEVER depends on `ui`
+/// (`engine::DateRange` is duplicated for this exact reason — `engine.rs:72-83`).
+///
+/// Git-ignored (`.gitignore`: `/lab-runs/`) → invisible to `verify_anchors.sh`
+/// `find spec …` glob → 119/119 anchor-safety BY CONSTRUCTION (AC7 / ADR-0055
+/// § D2).
+fn default_lab_runs_root() -> PathBuf {
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").map_or_else(|_| PathBuf::from("."), PathBuf::from);
+    // `crates/backtest` → `crates` → workspace root.
+    if let Some(root) = manifest_dir.parent().and_then(|p| p.parent()) {
+        return root.join("lab-runs");
+    }
+    PathBuf::from("lab-runs")
+}
+
+/// Map a strategy id to the directory slug used for `lab-runs/<slug>/reports/`.
+///
+/// Mirrors `ui::lab::equity_loader::strategy_slug` exactly so the ui-designer's
+/// loader root finds what the engine writes.  Unknown ids fall back to the
+/// verbatim id string (safe: the loader does the same).
+fn strategy_dir_slug(strategy_id: &str) -> &str {
+    match strategy_id {
+        "v1.momentum" | "top10_momentum_h1" => "v1-cross-sectional-momentum",
+        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" => "v0-paper-sma",
+        "v0.5.macd"
+        | "macd_trend"
+        | "btc_macd_trend"
+        | "macd_trend_h1"
+        | "v0.5.rsi"
+        | "rsi_reversion"
+        | "btc_rsi_reversion"
+        | "rsi_reversion_h1"
+        | "v0.5.bbands"
+        | "bbands_mean_revert"
+        | "btc_bbands_mean_revert"
+        | "bbands_mean_revert_h1" => "v05-composed-strategies",
+        "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => "v15a-mean-reversion-pairs",
+        "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",
+        "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => "v2.5.tcn_overlay_weights",
+        other => other,
+    }
+}
+
+/// Thin write seam for Lab report persistence (ADR-0055 § D3 / lab-run-save-compare T1/T3).
+///
+/// When `cfg.write_report` is `true`:
+/// 1. Resolves the target dir: `cfg.reports_dir` or the workspace-root
+///    `lab-runs/` default (via `default_lab_runs_root()`).
+/// 2. Appends `<strategy-slug>/reports/` and creates the directory.
+/// 3. Builds a **millisecond-granularity** filename stamp (Q3 pin — the CLI's
+///    second-precision collides on fast successive Lab runs).
+/// 4. Invokes `writer(&path)` to write the report.
+/// 5. Runs the Q5 retention purge: keeps the last N = 20 files matching
+///    `backtest-*-<scenario_name>.md` in the same dir, unlinking older ones.
+/// 6. Returns `Ok(Some(path))`.
+///
+/// When `!cfg.write_report` — returns `Ok(None)` and touches no filesystem.
+///
+/// `scenario_name` is the canonical scenario name embedded in the filename,
+/// matching the `scenario:` frontmatter field of the written report.
+/// `strategy_id` drives the `strategy_dir_slug` lookup.
+///
+/// # Errors
+///
+/// Returns `RunError::ReportIo` on any filesystem error.
+fn maybe_write_report(
+    cfg: &ScenarioConfig,
+    strategy_id: &str,
+    scenario_name: &str,
+    equity_series: &[(Timestamp, Money<Usdt>)],
+    writer: impl FnOnce(&std::path::Path) -> anyhow::Result<()>,
+) -> Result<Option<PathBuf>, RunError> {
+    if !cfg.write_report {
+        return Ok(None);
+    }
+
+    // Resolve the root: explicit override or default lab-runs/.
+    let root = cfg
+        .reports_dir
+        .clone()
+        .unwrap_or_else(default_lab_runs_root);
+
+    let slug = strategy_dir_slug(strategy_id);
+    let reports_dir = root.join(slug).join("reports");
+
+    std::fs::create_dir_all(&reports_dir).map_err(|e| {
+        RunError::ReportIo(format!("create_dir_all({}): {e}", reports_dir.display()))
+    })?;
+
+    // Millisecond-granularity stamp (Q3 pin — avoids filename collisions on
+    // fast successive Lab runs; the CLI's second-precision is insufficient).
+    let now = OffsetDateTime::now_utc();
+    let stamp = format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}{:03}",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second(),
+        now.millisecond(),
+    );
+
+    let filename = format!("backtest-{stamp}-{scenario_name}.md");
+    let report_path = reports_dir.join(&filename);
+
+    // Invoke the family-specific writer closure.
+    writer(&report_path).map_err(|e| RunError::ReportIo(format!("write report: {e}")))?;
+
+    // lab-run-save-compare Wave-2 (ADR-0055 § D-companion): also persist the
+    // FULL per-bar equity series as a companion CSV beside the `.md`. The `.md`
+    // carries only a sparkline (visual, not machine-parseable), so the loader
+    // reads THIS CSV for per-bar fidelity — which is what flips H3 skip→pass
+    // and makes a saved Lab run's curve real (not a degenerate 2-point line).
+    // Schema is identical to `reports::csv_artifacts::{write,read}_equity_csv`.
+    // The `.md` byte format is UNCHANGED (anchored reports untouched); the CSV
+    // is additive and lab-runs/-only.
+    let csv_path = reports_dir.join(format!("backtest-{stamp}-{scenario_name}-equity.csv"));
+    write_equity_companion_csv(&csv_path, equity_series)
+        .map_err(|e| RunError::ReportIo(format!("write equity csv: {e}")))?;
+
+    tracing::info!(
+        report_path = %report_path.display(),
+        "lab-run-save-compare: report written (ADR-0055 § D4)"
+    );
+
+    // Q5 retention purge: keep the last N = 20 per (strategy, scenario) tuple.
+    purge_old_lab_reports(&reports_dir, scenario_name);
+
+    Ok(Some(report_path))
+}
+
+/// Q5 retention purge — keep last N = 20 files matching
+/// `backtest-*-<scenario_name>.md` in `reports_dir`, unlinking older ones.
+///
+/// Sort is lexicographic on filename (the ms-stamp prefix guarantees newest-last
+/// for runs within the same second; across seconds the stamp is monotone).
+/// Any I/O error during purge is logged and swallowed — a failed purge never
+/// fails the run that just completed successfully.
+fn purge_old_lab_reports(reports_dir: &std::path::Path, scenario_name: &str) {
+    const KEEP_LAST_N: usize = 20;
+    let suffix = format!("-{scenario_name}.md");
+
+    let Ok(read_dir) = std::fs::read_dir(reports_dir) else {
+        return;
+    };
+    let mut matching: Vec<PathBuf> = read_dir
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("backtest-") && n.ends_with(suffix.as_str()))
+        })
+        .collect();
+
+    if matching.len() <= KEEP_LAST_N {
+        return;
+    }
+
+    matching.sort();
+    let to_remove = matching.len() - KEEP_LAST_N;
+    for path in matching.iter().take(to_remove) {
+        // lab-run-save-compare Wave-2: also unlink the companion equity CSV so
+        // it doesn't orphan-accumulate (best-effort; absent is fine).
+        if let Some(stem) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(".md"))
+        {
+            let csv = path.with_file_name(format!("{stem}-equity.csv"));
+            let _ = std::fs::remove_file(&csv);
+        }
+        if let Err(e) = std::fs::remove_file(path) {
+            tracing::warn!(path = %path.display(), err = %e, "lab-runs purge: failed to remove old report");
+        } else {
+            tracing::debug!(path = %path.display(), "lab-runs purge: removed old report");
+        }
+    }
+}
+
+/// Write the companion equity CSV (lab-run-save-compare Wave-2 / ADR-0055).
+///
+/// Column schema is byte-identical to
+/// [`reports::csv_artifacts::read_equity_csv`] so the UI loader round-trips it:
+/// `ts,equity_total_usdt,realized_pnl_usdt,unrealized_pnl_usdt,cash_balance_usdt`.
+/// The Lab engine path tracks only total per-bar equity, so realized /
+/// unrealized / cash columns are `0` (the loader only needs `equity_total` for
+/// the curve). `ts` is RFC3339 (the format `read_equity_csv` parses).
+fn write_equity_companion_csv(
+    path: &std::path::Path,
+    equity_series: &[(Timestamp, Money<Usdt>)],
+) -> std::io::Result<()> {
+    use std::fmt::Write as _;
+    let mut out = String::from(
+        "ts,equity_total_usdt,realized_pnl_usdt,unrealized_pnl_usdt,cash_balance_usdt\n",
+    );
+    for (ts, eq) in equity_series {
+        let ts_str = ts
+            .inner()
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        // Decimal → string (never f64). realized/unrealized/cash unavailable on
+        // the Lab engine path → 0.
+        let _ = writeln!(out, "{ts_str},{},0,0,0", eq.amount());
+    }
+    std::fs::write(path, out)
+}
+
 // ── run_scenario ─────────────────────────────────────────────────────────────
 
 /// Run a backtest for the given `ScenarioConfig` and return an
@@ -677,7 +905,16 @@ pub async fn run_scenario(
                         RunError::Internal(e.to_string())
                     }
                 })?;
-            Ok(momentum_result_to_report(&result, start_year))
+            let mut report = momentum_result_to_report(&result, start_year);
+            // lab-run-save-compare T1/T3 — write seam (ADR-0055 § D3/D4).
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &input.scenario_name,
+                &report.equity_series,
+                |path| crate::report::momentum::write(&input, &result, seed_u64, "synthetic", path),
+            )?;
+            Ok(report)
         }
 
         // ── v1.5a mean-reversion pairs ───────────────────────────────────────
@@ -706,7 +943,16 @@ pub async fn run_scenario(
                         RunError::Internal(e.to_string())
                     }
                 })?;
-            Ok(pairs_result_to_report(&result, start_year))
+            let mut report = pairs_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4).
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &input.scenario_name,
+                &report.equity_series,
+                |path| crate::report::pairs::write(&input, &result, seed_u64, "synthetic", path),
+            )?;
+            Ok(report)
         }
 
         // ── v2.5 TCN overlay momentum (passthrough / no-candle) ──────────────
@@ -732,7 +978,7 @@ pub async fn run_scenario(
             };
             // Bug #63 — cancel + progress.
             let result =
-                crate::scenarios::tcn_overlay::run(input, seed_u64, cancel_rx, progress_tx)
+                crate::scenarios::tcn_overlay::run(input.clone(), seed_u64, cancel_rx, progress_tx)
                     .await
                     .map_err(|e| {
                         if e.to_string().contains("Cancelled") {
@@ -741,7 +987,28 @@ pub async fn run_scenario(
                             RunError::Internal(e.to_string())
                         }
                     })?;
-            Ok(tcn_result_to_report(&result, start_year))
+            let mut report = tcn_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4).
+            // rev_sha = "n/a" for Synthetic (matches CLI main.rs:1572 for synthetic path).
+            // loaded_info = None for Synthetic.
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::tcn_overlay::write(
+                        &input,
+                        &result,
+                        seed_u64,
+                        "synthetic",
+                        path,
+                        "n/a",
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
         }
 
         // ── v2.5 TCN overlay momentum with real weights (candle feature) ─────
@@ -765,10 +1032,29 @@ pub async fn run_scenario(
                 funding_override: None,
                 basis_override: None,
             };
-            let result = crate::scenarios::tcn_overlay_weights::run(input, seed_u64)
+            let result = crate::scenarios::tcn_overlay_weights::run(input.clone(), seed_u64)
                 .await
                 .map_err(|e| RunError::Internal(e.to_string()))?;
-            Ok(tcn_result_to_report(&result, start_year))
+            let mut report = tcn_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4).
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::tcn_overlay::write(
+                        &input,
+                        &result,
+                        seed_u64,
+                        "synthetic",
+                        path,
+                        "n/a",
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
         }
 
         // ── v0 single-symbol SMA crossover ───────────────────────────────────
@@ -795,7 +1081,7 @@ pub async fn run_scenario(
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
-                cfg.bars_override,
+                cfg.bars_override.clone(),
                 seed_u64,
                 cancel_rx,
                 progress_tx,
@@ -807,7 +1093,50 @@ pub async fn run_scenario(
                     RunError::Internal(e.to_string())
                 }
             })?;
-            Ok(sma_composed_result_to_report(&result, start_year))
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
+            // SmaScenarioInput is constructed from known fields; state/strategy_meta
+            // come off SmaComposedRunResult as main.rs:2109-2110.
+            // elapsed_secs = 0.0: frontmatter-only, stripped before hashing (A2.1).
+            // data_source string: "synthetic" for Binance/synthetic path; "yahoo"
+            // for YahooCache (the rev_sha for Yahoo is None here — the Lab caller
+            // sets the Yahoo-specific rev_sha; for engine dispatch we use None).
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-sma-cross".to_string(),
+                body_name: "btc-2023-1m-sma-cross".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None, // rev_sha: None for synthetic/engine path
+                    )
+                },
+            )?;
+            Ok(report)
         }
 
         // ── v0.5 MACD trend ──────────────────────────────────────────────────
@@ -829,7 +1158,7 @@ pub async fn run_scenario(
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
-                cfg.bars_override,
+                cfg.bars_override.clone(),
                 seed_u64,
                 cancel_rx,
                 progress_tx,
@@ -841,7 +1170,44 @@ pub async fn run_scenario(
                     RunError::Internal(e.to_string())
                 }
             })?;
-            Ok(sma_composed_result_to_report(&result, start_year))
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-macd-trend".to_string(),
+                body_name: "btc-2023-1m-macd-trend".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
         }
 
         // ── v0.5 RSI reversion ───────────────────────────────────────────────
@@ -863,7 +1229,7 @@ pub async fn run_scenario(
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
-                cfg.bars_override,
+                cfg.bars_override.clone(),
                 seed_u64,
                 cancel_rx,
                 progress_tx,
@@ -875,7 +1241,44 @@ pub async fn run_scenario(
                     RunError::Internal(e.to_string())
                 }
             })?;
-            Ok(sma_composed_result_to_report(&result, start_year))
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-rsi-reversion".to_string(),
+                body_name: "btc-2023-1m-rsi-reversion".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
         }
 
         // ── v0.5 BBands mean-revert ──────────────────────────────────────────
@@ -900,7 +1303,7 @@ pub async fn run_scenario(
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
-                cfg.bars_override,
+                cfg.bars_override.clone(),
                 seed_u64,
                 cancel_rx,
                 progress_tx,
@@ -912,7 +1315,44 @@ pub async fn run_scenario(
                     RunError::Internal(e.to_string())
                 }
             })?;
-            Ok(sma_composed_result_to_report(&result, start_year))
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-bbands-mean-revert".to_string(),
+                body_name: "btc-2023-1m-bbands-mean-revert".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
         }
 
         // ── Unknown strategy ─────────────────────────────────────────────────
@@ -942,6 +1382,7 @@ pub async fn run_scenario_for_test(cfg: ScenarioConfig) -> Result<RunReport, Run
 // ── Unit tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -967,6 +1408,7 @@ mod tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            reports_dir: None,
         }
     }
 
@@ -1187,5 +1629,167 @@ mod tests {
             matches!(result, Err(RunError::Cancelled)),
             "pre-cancelled run must return Cancelled; got: {result:?}"
         );
+    }
+
+    // ── lab-run-save-compare T1/T3 unit tests ────────────────────────────────
+
+    /// AC1 — `maybe_write_report` with `write_report=false` returns `None`
+    /// and writes NO file.
+    #[test]
+    fn maybe_write_report_write_false_returns_none() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cfg = ScenarioConfig {
+            strategy: StrategyId("v0.sma".into()),
+            pair: (Venue::Binance, Symbol::new("BTCUSDT")),
+            range: DateRange::Last30d,
+            params: None,
+            seed: valid_seed(),
+            write_report: false,
+            data_source: ScenarioDataSource::default(),
+            bars_override: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            reports_dir: Some(tmp.path().to_path_buf()),
+        };
+        let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |_path| Ok(()));
+        assert!(
+            matches!(result, Ok(None)),
+            "write_report=false must return Ok(None); got: {result:?}"
+        );
+        // No files written.
+        let count = std::fs::read_dir(tmp.path())
+            .map(std::iter::Iterator::count)
+            .unwrap_or(0);
+        assert_eq!(
+            count, 0,
+            "no directories should be created when write_report=false"
+        );
+    }
+
+    /// AC1 — `maybe_write_report` with `write_report=true` writes a file and
+    /// returns `Some(path)`.
+    #[test]
+    fn maybe_write_report_write_true_creates_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cfg = ScenarioConfig {
+            strategy: StrategyId("v0.sma".into()),
+            pair: (Venue::Binance, Symbol::new("BTCUSDT")),
+            range: DateRange::Last30d,
+            params: None,
+            seed: valid_seed(),
+            write_report: true,
+            data_source: ScenarioDataSource::default(),
+            bars_override: None,
+            sma_fast_len: None,
+            sma_slow_len: None,
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            reports_dir: Some(tmp.path().to_path_buf()),
+        };
+        let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |path| {
+            // Write minimal content so the file exists.
+            std::fs::write(path, b"---\ntest: true\n---\nbody\n").map_err(anyhow::Error::from)
+        });
+        let path = result
+            .expect("maybe_write_report must succeed")
+            .expect("write_report=true must return Some(path)");
+        assert!(path.exists(), "report file must exist at {path:?}");
+        let slug_dir = tmp.path().join("v0-paper-sma").join("reports");
+        assert!(
+            path.starts_with(&slug_dir),
+            "path {path:?} must be under {slug_dir:?}"
+        );
+        let name = path.file_name().unwrap().to_str().unwrap();
+        assert!(
+            name.starts_with("backtest-"),
+            "filename must start with 'backtest-'"
+        );
+        assert!(
+            name.ends_with("-test-scenario.md"),
+            "filename must end with scenario name"
+        );
+    }
+
+    /// AC8 — retention purge keeps at most N = 20 files per tuple.
+    #[test]
+    fn purge_old_lab_reports_keeps_last_n() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let reports_dir = tmp.path();
+        let scenario = "test-scenario";
+        // Create 25 fake report files.
+        for i in 0..25_u32 {
+            let name = format!("backtest-2026{i:04}-{scenario}.md");
+            std::fs::write(reports_dir.join(&name), b"test").expect("write test file");
+        }
+        // Confirm 25 exist before purge.
+        let before: Vec<_> = std::fs::read_dir(reports_dir).unwrap().flatten().collect();
+        assert_eq!(before.len(), 25, "should have 25 files before purge");
+        // Run purge.
+        purge_old_lab_reports(reports_dir, scenario);
+        // Count after — must be exactly N = 20.
+        let after: Vec<_> = std::fs::read_dir(reports_dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(
+            after.len(),
+            20,
+            "purge must leave exactly 20 files; got: {after:?}"
+        );
+        // The OLDEST 5 files (i=0..4, alphabetically first) must be gone;
+        // the NEWEST 20 (i=5..24) must remain.
+        for i in 0..5_u32 {
+            let name = format!("backtest-2026{i:04}-{scenario}.md");
+            assert!(
+                !after.contains(&name),
+                "old file {name} should have been purged"
+            );
+        }
+        for i in 5..25_u32 {
+            let name = format!("backtest-2026{i:04}-{scenario}.md");
+            assert!(
+                after.contains(&name),
+                "recent file {name} must be kept after purge"
+            );
+        }
+    }
+
+    /// AC8 — retention purge is a no-op when ≤ N files exist.
+    #[test]
+    fn purge_old_lab_reports_noop_when_few_files() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let reports_dir = tmp.path();
+        let scenario = "test-scenario";
+        // Create exactly 5 files — well under N=20.
+        for i in 0..5_u32 {
+            let name = format!("backtest-20260001{i:04}-{scenario}.md");
+            std::fs::write(reports_dir.join(&name), b"test").expect("write test file");
+        }
+        purge_old_lab_reports(reports_dir, scenario);
+        let count = std::fs::read_dir(reports_dir).unwrap().count();
+        assert_eq!(count, 5, "purge must not remove files when count <= 20");
+    }
+
+    /// T1 — `strategy_dir_slug` maps known ids to expected directory slugs.
+    #[test]
+    fn strategy_dir_slug_known_ids() {
+        assert_eq!(
+            strategy_dir_slug("v1.momentum"),
+            "v1-cross-sectional-momentum"
+        );
+        assert_eq!(
+            strategy_dir_slug("top10_momentum_h1"),
+            "v1-cross-sectional-momentum"
+        );
+        assert_eq!(strategy_dir_slug("v0.sma"), "v0-paper-sma");
+        assert_eq!(strategy_dir_slug("sma_crossover"), "v0-paper-sma");
+        assert_eq!(strategy_dir_slug("v0.5.macd"), "v05-composed-strategies");
+        assert_eq!(strategy_dir_slug("v0.5.rsi"), "v05-composed-strategies");
+        assert_eq!(strategy_dir_slug("v0.5.bbands"), "v05-composed-strategies");
+        assert_eq!(strategy_dir_slug("v1.5a.mr"), "v15a-mean-reversion-pairs");
+        assert_eq!(strategy_dir_slug("v2.5.tcn_overlay"), "v2.5.tcn_overlay");
+        // Unknown falls back to verbatim id.
+        assert_eq!(strategy_dir_slug("some_unknown_id"), "some_unknown_id");
     }
 }
