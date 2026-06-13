@@ -1134,6 +1134,10 @@ pub const LAB_SOURCE_SYNTHETIC: &str = "Synthetic";
 /// Source toggle chip label for Yahoo Finance real-data cache.
 pub const LAB_SOURCE_YAHOO: &str = "Yahoo";
 
+/// Source toggle chip label for the pinned Binance hourly parquet corpus
+/// (simple-strategies-realdata T-B1 — the third real-data source).
+pub const LAB_SOURCE_BINANCE: &str = "Binance";
+
 /// Cadence badge label for 1-minute bars.
 pub const LAB_CADENCE_1M: &str = "1m";
 
@@ -1147,6 +1151,30 @@ pub const LAB_CADENCE_1D: &str = "1d";
 /// is missing for the selected (ticker, interval, range) combination.
 /// The CLI hint is appended by the error path in the runner.
 pub const LAB_YAHOO_CACHE_MISS_PREFIX: &str = "Yahoo cache miss — run: ";
+
+// ── simple-strategies-realdata — Binance data-missing UX (Q-miss / AC4) ──────
+//
+// Binance is the PINNED corpus (revision 3a8b96c4…), gitignored + manually
+// re-fetchable (ADR-0032). Unlike Yahoo there is NO in-Lab auto-fetch — on a
+// cache miss / coverage shortfall the loader returns a typed Err with a
+// re-fetch HINT (run the fetch tool). It NEVER silently synthesizes bars: a
+// silent synthetic fallback would let the operator believe they are testing
+// real BTC while seeing a random walk (the v3-vol-overlay-noop failure class).
+
+/// Shown when the Binance parquet corpus is missing / has insufficient
+/// coverage for the selected `(symbol, range)`. `{symbol}` and `{window}`
+/// are substituted by `lab::runner::preload_binance_bars`. Points the
+/// operator at the offline fetch tool (Binance does NOT auto-fetch in-Lab).
+pub const LAB_BINANCE_CACHE_MISS_NOTICE: &str = "No pinned Binance data for {symbol} in {window} \
+     \u{2014} re-fetch the corpus: `cargo run --bin fetch_binance_klines` (see data/binance/REVISION.toml).";
+
+/// Shown when the on-disk Binance corpus fails its pinned revision-SHA check
+/// (`data/binance/REVISION.toml` mismatch or missing). The corpus is the
+/// determinism contract (ADR-0032): a tampered / re-fetched-divergent corpus
+/// MUST fail loudly rather than produce a silently-wrong report. `{detail}`
+/// carries the underlying `RevisionError` message.
+pub const LAB_BINANCE_REVISION_ERROR: &str = "Binance data failed its pinned revision check \
+     \u{2014} {detail}. Re-fetch the corpus from data/binance/REVISION.toml before running.";
 
 /// Cache-state badge label when the Yahoo cache directory for the active
 /// ticker is missing entirely (no parquet files at `data/yahoo/<TICKER>/`).
@@ -1769,6 +1797,13 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         // lab-yahoo-realdata T-C3 — source toggle + cadence badge
         ("LAB_SOURCE_SYNTHETIC", LAB_SOURCE_SYNTHETIC),
         ("LAB_SOURCE_YAHOO", LAB_SOURCE_YAHOO),
+        // simple-strategies-realdata T-B1/Q-miss — Binance source + data-missing UX
+        ("LAB_SOURCE_BINANCE", LAB_SOURCE_BINANCE),
+        (
+            "LAB_BINANCE_CACHE_MISS_NOTICE",
+            LAB_BINANCE_CACHE_MISS_NOTICE,
+        ),
+        ("LAB_BINANCE_REVISION_ERROR", LAB_BINANCE_REVISION_ERROR),
         ("LAB_CADENCE_1M", LAB_CADENCE_1M),
         ("LAB_CADENCE_1H", LAB_CADENCE_1H),
         ("LAB_CADENCE_1D", LAB_CADENCE_1D),

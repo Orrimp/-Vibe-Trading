@@ -1,6 +1,6 @@
 ---
 slug: simple-strategies-realdata
-status: arch-done
+status: presenter-done
 owner: architect
 updated: 2026-06-13
 version: 0.2.0
@@ -10,6 +10,32 @@ trace: REQ-SIMPLE-STRATEGIES-REALDATA-001
 # Simple strategies on real Binance data — sma / macd / rsi / bbands in the Lab
 
 ## Changelog
+
+- 2026-06-13 (presenter): **release deck assembled; status →
+  `presenter-done` (awaiting operator approval).** Deck at
+  `presentations/simple-strategies-realdata-2026-06-13.md`. Live-captured
+  evidence embedded: `cargo test -p backtest --test binance_cache_dispatch`
+  **9/9 PASS** (incl. the AC4 no-op-source guard
+  `binance_cache_real_bars_diverge_from_synthetic_baseline`, epsilon = 1 USD,
+  real corpus revision `3a8b96c4…`) + `scripts/verify_anchors.sh` →
+  **119/119 PASS**. Verification matrix built from the tester AC matrix
+  (AC1–AC8 + H3 + ADR-0050 callthrough, all VERIFIED). Approval block ships
+  UN-ticked; `scripts/check_presentation.sh` PASS. No production code, no
+  `anchors.toml`, no committed `spec/*/reports/` body touched.
+
+- 2026-06-13 (ui-designer): **§ UI added — Wave 0 (T0.2) + Wave B (T-B1..B5) +
+  the UI-side gates (T-C1/C2/C4 render+round-trip) IMPLEMENTED.** The
+  three-way `source_toggle` (Synthetic / Yahoo / **Binance**, Binance chip
+  `#[cfg(feature = "binance")]`-gated), `LabDataSource::BinanceCache` +
+  `"binance_cache"` serde, `preload_binance_bars` behind a new
+  `LabBinanceBarSource` marker trait routed through a **generalized**
+  `spawn_preload_on_rt<S: LabBarSource>` (shared `LabBarSource` super-trait —
+  the ADR-0050 § D4 rt.spawn invariant + the `lab_runner_preload_callthrough_e2e`
+  guard both preserved), the `binance` cargo feature (added to `default`), the
+  data-missing UX (typed `Err` + re-fetch hint, NEVER silent synthetic), and
+  the render-layer proofs. Matched the developer's pinned engine contract
+  (`ScenarioDataSource::BinanceCache`, label `"binance"`). UN-ANCHORED; no
+  `anchors.toml`, no `spec/*/reports/` write, no trace.toml edit. See § UI.
 
 - 2026-06-13 (architect): **v0.2.0 — § Architecture added (A1–A6); status →
   `arch-done`.** Code-anchor claims verified at file:line (engine enum + the 4
@@ -894,3 +920,126 @@ SAME pinned real data the canonical scenarios use — with the just-shipped pers
 compare/overlay tooling characterizing it for free, and **zero risk to the 119
 anchored reports** (Binance Lab runs stay in `lab-runs/`, never anchored, never
 committed). The mechanism is the proven Yahoo seam, applied to a second source.
+
+## UI
+
+_ui-designer-owned (2026-06-13). The UI half of the feature: the three-way
+source toggle, the Binance loader seam, the cargo feature, the data-missing UX,
+and the render-layer gates. Mirrors the shipped Yahoo seam end-to-end._
+
+### Wireframe — the Lab source-toggle row (three-way)
+
+```
+┌─ Lab ───────────────────────────────────────────────────────────────────────┐
+│  [Yahoo cache: 10 tickers · last fetch 2026-05-18]            (toolbar badge) │
+│  ⟨ BTCUSDT ⟩ ⟨ ETHUSDT ⟩ ⟨ SOLUSDT ⟩ …                       (pair chips)    │
+│  Source:  [ Synthetic ] [ Yahoo ] [ Binance ]   ← three-way (Binance gated)  │
+│           └ active chip = ACCENT bg; inactive = PANEL_RAISED + BORDER_1       │
+│  Strategies (Binance selected → single-symbol only):                         │
+│           ⟨ v0.sma ⟩ ⟨ v0.5.macd ⟩ ⟨ v0.5.rsi ⟩ ⟨ v0.5.bbands ⟩             │
+│           └ cross-sectional (v1.* / v2.*) HIDDEN (engine rejects them)        │
+│  [ Run ]                                                                      │
+│  …chart / KPIs / position curve / histogram…                                 │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+When `Source = Binance` is selected and the build LACKS the `binance` feature,
+the chip is simply absent (two-chip toggle) and a persisted Binance selection
+loaded under such a build returns a friendly "rebuild with `--features binance`"
+notice on Run — never a panic, never a silent synthetic fallback.
+
+### Data flow (UI seam, mirrors Yahoo)
+
+```
+source_toggle (Binance chip)
+  └─ Message::LabSelectDataSource(LabDataSource::BinanceCache)   [state.rs:2488]
+       └─ spawn_lab_run  (data_source == BinanceCache)
+            └─ spawn_preload_on_rt<S: LabBarSource>(DefaultLabBinanceBarSource)  ← ONE rt.spawn point
+                 └─ preload_binance_bars(cfg, range)
+                      ├─ data::revision::read_and_verify_revision_manifest("data/binance")  (assert 3a8b96c4…)
+                      └─ data::ReplayFeed::merge_symbols(&[(sym, root)], Timeframe::OneHour)  → clip to range
+            └─ scenario_cfg.bars_override = Some(bars); data_source = ScenarioDataSource::BinanceCache
+                 └─ backtest::engine::run_scenario  → maybe_write_report → lab-runs/ → Compare
+```
+
+### New / changed screens · panels · widgets
+
+- **`widgets::source_toggle`** — became three-way. The Binance chip is
+  `#[cfg(feature = "binance")]` so the no-feature build renders two chips
+  (byte-unchanged). No new widget; one chip added to the existing row.
+- **`screens::lab`** — the single-symbol strategy filter (`is_realdata =
+  is_yahoo || is_binance`) now hides cross-sectional chips for Binance too;
+  the Binance pair universe stays the Binance-native `XRP_FIRST_UNIVERSE`
+  (its loader reads `data/binance/<SYM>USDT/…`), only Yahoo swaps to the
+  crypto-mirror universe + the Yahoo-only cache badge. No new panel.
+- **`lab::runner`** — new `LabBarSource` super-trait (the shared `preload`
+  contract), `LabBinanceBarSource` marker trait, `DefaultLabBinanceBarSource`,
+  `preload_binance_bars` + `binance_range_to_ms_pair` + `binance_cache_miss_notice`;
+  `spawn_preload_on_rt` generalized to `<S: LabBarSource + ?Sized>` (one
+  enforcement point for both sources); `spawn_lab_run` gains a `binance`
+  preload block + a `#[cfg(not(feature = "binance"))]` rebuild guard.
+- **`test_support`** — new `source_toggle_program` render harness (bare toggle
+  → tiny-skia, for the three-way render proof).
+
+### New strings (`ui::strings`)
+
+- `LAB_SOURCE_BINANCE = "Binance"` — the third chip label.
+- `LAB_BINANCE_CACHE_MISS_NOTICE` — data-missing notice (`{symbol}` / `{window}`)
+  pointing at the offline fetch tool (`cargo run --bin fetch_binance_klines` +
+  `data/binance/REVISION.toml`). NO in-Lab auto-fetch; NEVER synthetic.
+- `LAB_BINANCE_REVISION_ERROR` — loud revision-mismatch notice (`{detail}`).
+- All three registered in the `ALL_*` registry (the no-empty-strings test).
+  Zero inline user-visible copy added anywhere.
+
+### New theme tokens
+
+**Zero.** The Binance chip reuses the existing `ACCENT` / `PANEL_RAISED` /
+`BORDER_1` / `FG_*` tokens via the shared `chip_button` helper. No hex literals,
+no magic spacing. (Per the design-system rule, near-zero token additions is the
+target; this feature adds none.)
+
+### New cargo feature
+
+- **`binance = ["dep:data"]`** on the `ui` crate, sibling to `yahoo`, added to
+  `default = ["live", "yahoo", "binance"]`. NO `data/*` sub-feature (the
+  `ReplayFeed` + `revision` read path is un-gated in `data`; only `yahoo` is
+  gated there), and NO `*-online` variant (Binance is pinned + manually
+  re-fetchable, never auto-fetched).
+
+### Accessibility notes
+
+- **Keyboard:** the Binance chip is an iced `button`, focusable + activatable
+  by keyboard like the existing Synthetic/Yahoo chips (same `chip_button`).
+- **Contrast:** reuses the `ACCENT` (active) / `PANEL_RAISED` (inactive) token
+  pair already contrast-verified for the Synthetic/Yahoo chips — no new color
+  pairing introduced.
+- **Color is not the only signal:** the active source is also the leftmost-to-
+  rightmost ordered chip with a distinct label ("Binance"); the
+  render-layer proof asserts the active-highlight position, not only its color.
+- **No blank states:** a Binance cache miss / coverage shortfall / revision
+  mismatch each surface an explicit, plain-language notice with the next action
+  (re-fetch the corpus) — never an empty panel, never a silent random walk.
+
+### Render-layer verification (project law — the gate)
+
+- **Three-way toggle (T-B1, AC7):** `lab_binance_render.rs::three_way_toggle_active_chip_marches_right`
+  rasterizes the toggle at all three states and asserts the ACCENT highlight
+  marches right (Synthetic < Yahoo < Binance) — proving three chips render with
+  the correct active state. `binance_chip_renders_visible_highlight` pins the
+  Binance chip is a real filled band (≥ 50 px).
+- **No-feature two-chip (AC8):** `lab_source_toggle_no_binance.rs` (gated
+  `not(binance)`) proves a no-`binance` build renders two chips; run with
+  `cargo test -p ui --no-default-features --features live --test lab_source_toggle_no_binance`.
+- **Binance equity curve rasterizes (T-C4, AC7):**
+  `lab_binance_render.rs::binance_sourced_equity_curve_rasterizes` runs `v0.sma`
+  on REAL Binance 2023-H1 BTC bars and asserts the equity curve paints a visible
+  `ACCENT_2` polyline on the real overlay draw path.
+- **No-op-source divergence (T-C1, AC4 — the headline gate):**
+  `lab_binance_divergence.rs::binance_run_diverges_from_synthetic_baseline`
+  asserts Binance vs synthetic equity diverge (same seed) — the v3-vol-overlay-noop
+  analog. `loader_missing_corpus_returns_typed_err_not_synthetic` proves the
+  no-silent-fallback design half.
+- **Persist/Compare round-trip (T-C2, AC5):**
+  `lab_binance_persist_compare.rs` proves the shipped lab-run-save-compare chain
+  (`.md` + companion CSV → `EquityCache` element-by-element → `scan_spec_tree`
+  cell) auto-applies to a Binance run.

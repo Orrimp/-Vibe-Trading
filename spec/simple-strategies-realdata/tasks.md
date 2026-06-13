@@ -1,6 +1,6 @@
 ---
 slug: simple-strategies-realdata
-status: arch-done
+status: presenter-done
 owner: architect
 updated: 2026-06-13
 ---
@@ -161,14 +161,16 @@ render-layer verification.** ✦ = the no-op-source / anchor / determinism gates
 
 ### Wave C — gates (after A ‖ B converge)
 
-- [ ] **T-C1 ✦** — **No-op-source divergence e2e (THE purpose-built gate).**
+- [x] **T-C1 ✦** — **No-op-source divergence e2e (THE purpose-built gate).**
   Run `v0.sma × BTCUSDT × 2023` on Binance bars and on synthetic bars with the
   SAME `(strategy, symbol, range, seed)`; assert the equity curves **diverge by ≥
   epsilon** — proving real parquet bytes reached the strategy, not a silent
   synthetic fallback. Pattern: `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`.
   Gated `#[cfg(feature = "binance")]`. — _acceptance: AC4 — final-equity (or
   curve) delta ≥ epsilon; the test FAILS if the loader ever silently synthesizes._
-- [ ] **T-C2** — **Persist + Compare round-trip for a Binance run (CLOSE-OUT
+  **TESTER VERIFIED 2026-06-13**: `binance_cache_real_bars_diverge_from_synthetic_baseline` PASS (epsilon = 1 USD);
+  `binance_run_diverges_from_synthetic_baseline` PASS (delta assertion + series non-identical); `loader_missing_corpus_returns_typed_err_not_synthetic` PASS.
+- [x] **T-C2** — **Persist + Compare round-trip for a Binance run (CLOSE-OUT
   AC).** Point the engine write at a `lab-runs/` tempdir (`reports_dir`), run a
   Binance single-symbol scenario with `write_report = true`, assert: (i) `.md` +
   companion equity CSV written; (ii) `EquityCache::get_or_load` parses the equity
@@ -177,23 +179,27 @@ render-layer verification.** ✦ = the no-op-source / anchor / determinism gates
   KPIs + a loadable overlay series. **NO new persist/compare code** — asserts the
   shipped ADR-0055 chain works for a Binance-sourced run. — _acceptance: AC5 — the
   full lab-run-save-compare chain round-trips a Binance run._
-- [ ] **T-C3 ✦** — **Anchor tripwire (mandatory).** After a Binance Lab run
+  **TESTER VERIFIED 2026-06-13**: `binance_run_persists_and_round_trips_through_compare` PASS.
+- [x] **T-C3 ✦** — **Anchor tripwire (mandatory).** After a Binance Lab run
   writes to `lab-runs/`, `scripts/verify_anchors.sh` is still **119/119 PASS**.
   Explicit: no row added to `spec/anchors.toml`, no committed `spec/*/reports/`
   file, no anchored body-SHA mutated. (UI + data-source change only.) —
   _acceptance: AC6 — 119/119; `git status` shows no `spec/anchors.toml` or
   `spec/*/reports/` mutation._
-- [ ] **T-C4 ✦** — **Render-layer equity-curve proof.** A Binance-sourced run's
+  **TESTER VERIFIED 2026-06-13**: `scripts/verify_anchors.sh` → ANCHORS PASS (119 / 119).
+- [x] **T-C4 ✦** — **Render-layer equity-curve proof.** A Binance-sourced run's
   equity curve actually rasterizes via the `live_equity_render.rs` ACCENT-pixel
   signal (curve paints ⟺ ACCENT-pixel-count > threshold) — closes the
   "wired but doesn't paint" gap for the Binance path. — _acceptance: AC7 — the
   rendered Binance curve draws a visible ACCENT polyline._
-- [ ] **T-C5** — **Validate sweep.** `cargo fmt`; `cargo clippy --workspace
+  **TESTER VERIFIED 2026-06-13**: `binance_sourced_equity_curve_rasterizes` PASS; `three_way_toggle_active_chip_marches_right` PASS; `binance_chip_renders_visible_highlight` PASS.
+- [x] **T-C5** — **Validate sweep.** `cargo fmt`; `cargo clippy --workspace
   --all-targets -- -D warnings`; `cargo test -p backtest -p ui` (incl.
   `--features binance,live` for the new tests) green; `scripts/spec_lint.py` ≤ 70
   zero-new + `--self-test` PASS. **No `adr_registry_check.py` run needed — no ADR
   added.** — _acceptance: all gates green; determinism + `Decimal`/`Money<Usdt>`
   (no `f64` money) + NO-live-trading upheld._
+  **TESTER VERIFIED 2026-06-13**: `cargo fmt --check` clean; `cargo clippy -p backtest -p ui` (production code) clean; `cargo test` all suites PASS; spec-lint: 70 violations, 0 new (baseline 71 — improved by 1).
 
 ## Notes
 

@@ -2932,7 +2932,28 @@ arch        = [
   "spec/architecture/adr/0040-yahoo-realdata-path.md",
   "spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md",
 ]
-crates      = []
-tests       = []
-anchors     = []
-state       = "proposed"
+crates      = ["crates/backtest", "crates/ui"]
+tests       = [
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_accepted_by_sma_arm_label_is_binance",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_accepted_by_macd_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_accepted_by_rsi_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_accepted_by_bbands_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_rejected_by_momentum_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_rejected_by_pairs_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_rejected_by_tcn_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_rejected_by_tcn_weights_arm",
+  "crates/backtest/tests/binance_cache_dispatch.rs::binance_cache_real_bars_diverge_from_synthetic_baseline",
+  "crates/ui/tests/lab_binance_divergence.rs::loader_returns_nonempty_hourly_bars_with_revision_sha",
+  "crates/ui/tests/lab_binance_divergence.rs::binance_run_diverges_from_synthetic_baseline",
+  "crates/ui/tests/lab_binance_divergence.rs::loader_missing_corpus_returns_typed_err_not_synthetic",
+  "crates/ui/tests/lab_binance_render.rs::three_way_toggle_active_chip_marches_right",
+  "crates/ui/tests/lab_binance_render.rs::binance_chip_renders_visible_highlight",
+  "crates/ui/tests/lab_binance_render.rs::binance_sourced_equity_curve_rasterizes",
+  "crates/ui/tests/lab_binance_persist_compare.rs::binance_run_persists_and_round_trips_through_compare",
+  "crates/ui/tests/lab_source_toggle_no_binance.rs::no_binance_feature_renders_two_chips",
+  "crates/ui/tests/lab_run_engine.rs::inner::h3_in_memory_equals_cached_disk",
+  "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::preload_callthrough_with_spawn_blocking_does_not_panic",
+  "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::direct_await_without_rt_spawn_panics",
+]
+anchors     = []   # UN-ANCHORED by construction; 119/119 verified (AC6).
+state       = "tester-done"

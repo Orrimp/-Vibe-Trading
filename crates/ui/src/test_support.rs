@@ -345,6 +345,75 @@ impl ChartOverlayApp {
     }
 }
 
+// ── source_toggle render harness (simple-strategies-realdata T-B1 / AC7) ──────
+
+/// Build a render program whose `view` is the bare Lab `source_toggle` widget,
+/// for the three-way-toggle render proof (simple-strategies-realdata T-B1).
+///
+/// The toggle is rendered full-bleed on a `PANEL` background so the screenshot
+/// crop frames only the chip row — the active chip's `ACCENT` background band
+/// is then countable / locatable (mirrors `chart_overlay_program`'s pattern).
+/// The Binance chip is itself `#[cfg(feature = "binance")]`, so a no-`binance`
+/// build renders TWO chips and a `binance` build renders THREE (AC8).
+#[must_use]
+pub fn source_toggle_program(
+    current: crate::lab::state::LabDataSource,
+) -> iced::Application<
+    impl iced::Program<State = SourceToggleApp, Message = Message, Theme = iced::Theme>,
+> {
+    let boot = move || (SourceToggleApp { current }, iced::Task::none());
+    iced::application(boot, SourceToggleApp::update, SourceToggleApp::view)
+        .title(SourceToggleApp::title)
+        .theme(SourceToggleApp::theme)
+}
+
+/// Test app whose `view` is the bare `source_toggle` widget (no shell chrome).
+pub struct SourceToggleApp {
+    current: crate::lab::state::LabDataSource,
+}
+
+impl Default for SourceToggleApp {
+    fn default() -> Self {
+        Self {
+            current: crate::lab::state::LabDataSource::Synthetic,
+        }
+    }
+}
+
+impl SourceToggleApp {
+    #[must_use]
+    pub fn title(&self) -> String {
+        crate::strings::APP_TITLE.to_string()
+    }
+
+    #[must_use]
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
+    }
+
+    pub fn update(&mut self, _msg: Message) -> iced::Task<Message> {
+        iced::Task::none()
+    }
+
+    /// View — the source-toggle chip row, top-left-anchored in a `PANEL`-
+    /// background container so the crop window sees only the chips.
+    #[must_use]
+    pub fn view(&self) -> iced::Element<'_, Message> {
+        use iced::Length;
+        use iced::widget::{Container, container};
+        let toggle = crate::widgets::source_toggle::view(self.current, ThemeMode::Dark);
+        Container::new(toggle)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(8)
+            .style(move |_theme: &iced::Theme| container::Style {
+                background: Some(crate::theme::color::PANEL.current(ThemeMode::Dark).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+}
+
 /// ui-quality-gate-overhaul M1-C — pub(crate) widget accessors lifted
 /// up to the always-compiled `pub` surface so the
 /// `tests/layout_invariants.rs` proptest can fuzz the F1-fix widget

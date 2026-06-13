@@ -49,7 +49,7 @@ use std::time::Duration;
 
 use backtest::engine::DateRange;
 use smol_str::SmolStr;
-use ui::lab::runner::{LabRunConfig, LabYahooBarSource, PreloadFuture};
+use ui::lab::runner::{LabBarSource, LabRunConfig, LabYahooBarSource, PreloadFuture};
 use ui::lab::state::LabDataSource;
 use ui::state::{Cockpit, Message, update};
 
@@ -59,7 +59,9 @@ use ui::state::{Cockpit, Message, update};
 /// for the window" (future-dated range or delisted ticker, HTTP-200, no error).
 struct EmptySuccessMock;
 
-impl LabYahooBarSource for EmptySuccessMock {
+// simple-strategies-realdata T-B3: `preload` body on the shared `LabBarSource`;
+// `LabYahooBarSource` is a pure marker tagging this as the Yahoo seam.
+impl LabBarSource for EmptySuccessMock {
     fn preload<'a>(
         &'a self,
         _cfg: &'a LabRunConfig,
@@ -76,12 +78,14 @@ impl LabYahooBarSource for EmptySuccessMock {
     }
 }
 
+impl LabYahooBarSource for EmptySuccessMock {}
+
 /// Mock that returns a transport error — simulates network failure / 429 / timeout.
 /// The error string is untagged (no `NO_DATA_TAG` prefix) so `classify` routes
 /// it to `last_run_error` (red ⚠, K1).
 struct TransportErrMock;
 
-impl LabYahooBarSource for TransportErrMock {
+impl LabBarSource for TransportErrMock {
     fn preload<'a>(
         &'a self,
         _cfg: &'a LabRunConfig,
@@ -93,6 +97,8 @@ impl LabYahooBarSource for TransportErrMock {
         })
     }
 }
+
+impl LabYahooBarSource for TransportErrMock {}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

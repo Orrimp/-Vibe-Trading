@@ -27,6 +27,11 @@ use crate::widgets::training_log::RingBuffer;
 /// `Synthetic` (default) — GBM-generated bars as in all pre-v0.1.0 runs.
 /// `YahooCache` — bars loaded from `data/yahoo/<TICKER>/<INTERVAL>/…` parquet
 /// cache via `data::yahoo::YahooBarSource::load_cached`.
+/// `BinanceCache` — bars loaded from the pinned `data/binance/<SYM>USDT/<YEAR>/
+/// <MM>.parquet` corpus (revision `3a8b96c4…`, 1h bars) via
+/// `data::ReplayFeed::merge_symbols` at `Timeframe::OneHour`
+/// (simple-strategies-realdata T0.2 / R3 — the third real-data source,
+/// added ALONGSIDE Yahoo per the operator's three-way-toggle decision).
 ///
 /// The enum is `#[serde(…)]`-ready so it can round-trip through the Lab
 /// persistence schema (version: 1) without breaking existing saved state
@@ -39,6 +44,10 @@ pub enum LabDataSource {
     Synthetic,
     /// Yahoo Finance parquet cache — real historical OHLCV data.
     YahooCache,
+    /// Pinned Binance hourly parquet corpus — real BTC/ETH/… 1h OHLCV.
+    /// Maps to `backtest::engine::ScenarioDataSource::BinanceCache`.
+    /// Single-symbol strategies only at v0.1.0 (cross-sectional arms reject it).
+    BinanceCache,
 }
 
 /// Operator-facing strategy family labels (Design § 2.2 family pill).
@@ -590,12 +599,14 @@ mod tests {
         assert_eq!(state.data_source, LabDataSource::Synthetic);
     }
 
-    /// T-C3.1 — LabDataSource serde round-trip via JSON.
+    /// T-C3.1 / simple-strategies-realdata T0.2 — LabDataSource serde
+    /// round-trip via JSON (now three-way: Synthetic / Yahoo / Binance).
     #[test]
     fn lab_data_source_serde_round_trip() {
         let cases = [
             (LabDataSource::Synthetic, "\"synthetic\""),
             (LabDataSource::YahooCache, "\"yahoo_cache\""),
+            (LabDataSource::BinanceCache, "\"binance_cache\""),
         ];
         for (variant, expected_json) in cases {
             let json = serde_json::to_string(&variant).unwrap();

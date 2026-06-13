@@ -216,7 +216,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # (e.g. `--no-default-features --features fixtures` for the gallery-only bin).
 #
 # 2026-05-25: promoted from explicit-opt-in to default per operator request.
-default = ["live", "yahoo"]
+# 2026-06-13 (simple-strategies-realdata T-B5): `binance` added to default so
+# the everyday `cargo run -p ui --bin cockpit_live` ships the Binance Lab
+# source chip alongside Yahoo (operator chose both-in-Lab, three-way toggle).
+default = ["live", "yahoo", "binance"]
 
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
 # Used by `cargo run --bin cockpit --features fixtures` to smoke-test the
@@ -236,6 +239,20 @@ fixtures = []
 # fetches online in-flight instead of erroring out — first Run takes
 # 30-60 s for the network round-trip, subsequent Runs hit the cache.
 yahoo = ["dep:data", "data/yahoo", "data/yahoo-online"]
+
+# `binance` — enables the pinned Binance hourly parquet reader in
+# `lab::runner::preload_binance_bars` (simple-strategies-realdata T-B5,
+# sibling to `yahoo`). When this feature is absent, toggling the Source =
+# Binance chip and pressing Run returns a friendly error directing the
+# operator to rebuild with `--features binance` (NEVER a panic, NEVER a
+# silent synthetic fallback).
+#
+# Pulls only `dep:data` — NOT a `data/*` sub-feature. The Binance read path
+# uses `data::ReplayFeed` + `data::revision`, which are always-compiled
+# (un-gated) modules in the `data` crate (only `data/yahoo` is gated there).
+# There is deliberately NO `*-online` variant: the Binance corpus is pinned
+# + manually re-fetchable per ADR-0032; the cockpit never auto-fetches it.
+binance = ["dep:data"]
 
 # `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
 # two surfaces under one flag per architect Q7 resolution

@@ -85,7 +85,9 @@ use std::time::Duration;
 use backtest::engine::DateRange;
 use smol_str::SmolStr;
 use trading_core::Bar;
-use ui::lab::runner::{LabRunConfig, LabYahooBarSource, PreloadFuture, spawn_preload_on_rt};
+use ui::lab::runner::{
+    LabBarSource, LabRunConfig, LabYahooBarSource, PreloadFuture, spawn_preload_on_rt,
+};
 use ui::lab::state::LabDataSource;
 
 // ── SpawnBlockingFakeSource ───────────────────────────────────────────────────
@@ -102,7 +104,12 @@ use ui::lab::state::LabDataSource;
 /// `spawn_preload_on_rt` removes its `rt.spawn()` wrapper.
 struct SpawnBlockingFakeSource;
 
-impl LabYahooBarSource for SpawnBlockingFakeSource {
+// simple-strategies-realdata T-B3: the `preload` body now lives on the shared
+// `LabBarSource` super-trait; `LabYahooBarSource` is a pure marker. The
+// regression guard is unchanged — `spawn_preload_on_rt` still receives a
+// `Box<dyn LabYahooBarSource>` (coerced into `Box<S: LabBarSource>`) and a
+// direct-await revert still fires the spawn_blocking-without-reactor panic.
+impl LabBarSource for SpawnBlockingFakeSource {
     fn preload<'a>(&'a self, _cfg: &'a LabRunConfig, _range: &'a DateRange) -> PreloadFuture<'a> {
         Box::pin(async {
             // This is the exact primitive that reqwest/hyper uses for DNS.
@@ -124,6 +131,8 @@ impl LabYahooBarSource for SpawnBlockingFakeSource {
         })
     }
 }
+
+impl LabYahooBarSource for SpawnBlockingFakeSource {}
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 

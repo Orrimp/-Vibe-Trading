@@ -1,0 +1,10 @@
+=== verify_anchors.sh (119/119 tripwire) ===
+PASS  v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy  38ccc463f248552b07618fcf26bc7652ac7d91eb324583602f15814c3e776ff1
+PASS  v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy  2e2ba8b60d1ca757c0e23f6913dd8a8428e6289976aa43f1bb290f5696d2f23b
+PASS  v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy  1af13f140626be0a94e5d01deeb508eee2cfdc907d23c3ce856bb9da3fabbd82
+PASS  v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy  058820ff1e6011262fb868c621cf84a7c831d63fa3dae0862b83b61d86d17732
+PASS  v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy  aedbc28ad3ec29ae112e44499f6af2ca2174a34356488cb7eb810de429880623
+PASS  v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy  23f03994730a67368d92f7a6c2405ae43b0d0081c180347d7ebd5e4181d69885
+---
+ANCHORS PASS  (119 / 119)
+EXIT_CODE=

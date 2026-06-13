@@ -94,12 +94,13 @@ const TRAINING_PANEL_COLLAPSED_HEIGHT_PX: f32 = 32.0;
 /// Training panel height when expanded (log + status strip + buttons, T-D-N3).
 const TRAINING_PANEL_EXPANDED_HEIGHT_PX: f32 = 240.0;
 
-/// lab-yahoo-realdata T-C3.4 — strategies compatible with the Yahoo data path.
+/// lab-yahoo-realdata T-C3.4 / simple-strategies-realdata T-B2 — strategies
+/// compatible with a real-data Lab path (Yahoo OR Binance).
 ///
-/// Cross-sectional strategies (v1.*, v2.*) require the Binance hourly
-/// multi-symbol universe and reject `YahooCache` at the engine level with
+/// Cross-sectional strategies (v1.*, v2.*) require the multi-symbol universe
+/// and reject `YahooCache` / `BinanceCache` at the engine level with
 /// `RunError::UnsupportedDataSource`. Only these four single-symbol
-/// strategies are shown when `data_source == YahooCache`.
+/// strategies are shown when `data_source` is a real-data source.
 const SINGLE_SYMBOL_STRATEGIES: &[&str] = &["v0.sma", "v0.5.macd", "v0.5.rsi", "v0.5.bbands"];
 
 /// Pure calculation of the chart canvas's vertical allocation given a
@@ -212,6 +213,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // the Yahoo crypto-mirror universe (Venue::Yahoo chips) instead of
     // the Binance universe.
     let is_yahoo = model.lab_state.data_source == LabDataSource::YahooCache;
+    // simple-strategies-realdata T-B2: `is_realdata` gates the single-symbol
+    // strategy filter (cross-sectional arms hidden) for BOTH Yahoo and
+    // Binance, since the engine rejects each on the cross-sectional arms.
+    // Binance keeps the Binance-native universe (`BTCUSDT`, …) because its
+    // loader reads `data/binance/<SYM>USDT/…`; only Yahoo swaps to the
+    // Venue::Yahoo crypto-mirror universe + the Yahoo-only cache badge.
+    let is_binance = model.lab_state.data_source == LabDataSource::BinanceCache;
+    let is_realdata = is_yahoo || is_binance;
     let mut pair_chip_row = Row::new().spacing(space::S);
     let pair_universe: &[(trading_core::Venue, &str)] = if is_yahoo {
         crate::lab::universe::YAHOO_CRYPTO_UNIVERSE
@@ -259,17 +268,18 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // at cold start (strategies panel is Loading). No family-registry at
     // Phase A — all strategies default to `Rule` family.
     //
-    // lab-yahoo-realdata T-C3.4: when data_source == YahooCache, only show
+    // lab-yahoo-realdata T-C3.4 / simple-strategies-realdata T-B2: when the
+    // data_source is a real-data source (YahooCache OR BinanceCache), only show
     // the 4 single-symbol strategies (v0.sma, v0.5.macd, v0.5.rsi, v0.5.bbands).
     // Cross-sectional strategies (v1.*, v2.*) are hidden because they require
-    // the Binance hourly multi-symbol universe and reject YahooCache at the
+    // the multi-symbol universe and reject both real-data sources at the
     // engine level (RunError::UnsupportedDataSource).
     // (Filter list defined at module level: SINGLE_SYMBOL_STRATEGIES.)
     let strategy_ids: Vec<trading_core::StrategyId> = match &model.strategies {
         PanelState::Ready(rows) => rows
             .iter()
             .filter(|r| {
-                if is_yahoo {
+                if is_realdata {
                     SINGLE_SYMBOL_STRATEGIES
                         .iter()
                         .any(|s| r.id.0.as_str() == *s)

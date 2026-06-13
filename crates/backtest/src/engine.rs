@@ -165,6 +165,11 @@ impl Default for BacktestKpis {
 ///
 /// `YahooCache` is Lab-only at v0.1.0; the 4 cross-sectional arms reject it
 /// with `RunError::UnsupportedDataSource`.
+///
+/// `BinanceCache` is Lab-only at v0.1.0 (simple-strategies-realdata, A1);
+/// the 4 cross-sectional arms reject it exactly as `YahooCache`.
+/// CLI/anchor paths never construct it — anchor-additive by the `YahooCache`
+/// precedent (`lab-yahoo-realdata/decomp.md § T-AR9`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScenarioDataSource {
@@ -174,6 +179,11 @@ pub enum ScenarioDataSource {
     /// Real Yahoo Finance bars loaded from the local parquet cache.
     /// Only valid for the 4 single-symbol strategy arms at v0.1.0.
     YahooCache,
+    /// Real Binance hourly bars loaded from the pinned parquet cache
+    /// (`data/binance/<SYM>USDT/<YEAR>/<MM>.parquet`, revision `3a8b96c4…`).
+    /// Lab-only at v0.1.0; single-symbol arms only.
+    /// Cross-sectional arms reject this with `RunError::UnsupportedDataSource`.
+    BinanceCache,
 }
 
 /// Configuration for a single backtest run (ADR-0030).
@@ -215,7 +225,9 @@ pub struct ScenarioConfig {
     /// Pre-loaded bars passed verbatim to the 4 single-symbol scenario arms
     /// instead of generating synthetic GBM bars (T-AR1 / ADR-0040 § D4).
     ///
-    /// Set by `lab::runner::preload_yahoo_bars` when `data_source == YahooCache`.
+    /// Set by `lab::runner::preload_yahoo_bars` when `data_source == YahooCache`,
+    /// or by `lab::runner::preload_binance_bars` when `data_source == BinanceCache`
+    /// (simple-strategies-realdata A3 / T-A3).
     /// CLI paths always pass `None` — anchor-safe default.
     pub bars_override: Option<Vec<Bar>>,
     /// lab-polish-round-2 R2 — operator-tuned SMA fast window (None → 20).
@@ -876,9 +888,13 @@ pub async fn run_scenario(
     match strategy_str {
         // ── v1 cross-sectional momentum ──────────────────────────────────────
         "v1.momentum" | "top10_momentum_h1" => {
-            // YahooCache is unsupported for cross-sectional arms at v0.1.0
-            // (they require the Binance hourly multi-symbol universe).
-            if cfg.data_source == ScenarioDataSource::YahooCache {
+            // YahooCache and BinanceCache are unsupported for cross-sectional arms
+            // at v0.1.0 — they require the multi-symbol Binance universe, not a
+            // single pre-loaded bar vector. (simple-strategies-realdata T-A2.)
+            if matches!(
+                cfg.data_source,
+                ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
+            ) {
                 return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
             }
             let input = crate::cli_types::MomentumScenarioInput {
@@ -919,7 +935,11 @@ pub async fn run_scenario(
 
         // ── v1.5a mean-reversion pairs ───────────────────────────────────────
         "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => {
-            if cfg.data_source == ScenarioDataSource::YahooCache {
+            // single-symbol override not supported for cross-sectional arms (T-A2).
+            if matches!(
+                cfg.data_source,
+                ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
+            ) {
                 return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
             }
             let input = crate::cli_types::PairsScenarioInput {
@@ -957,7 +977,11 @@ pub async fn run_scenario(
 
         // ── v2.5 TCN overlay momentum (passthrough / no-candle) ──────────────
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => {
-            if cfg.data_source == ScenarioDataSource::YahooCache {
+            // single-symbol override not supported for cross-sectional arms (T-A2).
+            if matches!(
+                cfg.data_source,
+                ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
+            ) {
                 return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
             }
             let input = crate::cli_types::TcnScenarioInput {
@@ -1013,7 +1037,11 @@ pub async fn run_scenario(
 
         // ── v2.5 TCN overlay momentum with real weights (candle feature) ─────
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => {
-            if cfg.data_source == ScenarioDataSource::YahooCache {
+            // single-symbol override not supported for cross-sectional arms (T-A2).
+            if matches!(
+                cfg.data_source,
+                ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
+            ) {
                 return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
             }
             let input = crate::cli_types::TcnScenarioInput {
@@ -1098,11 +1126,12 @@ pub async fn run_scenario(
             // SmaScenarioInput is constructed from known fields; state/strategy_meta
             // come off SmaComposedRunResult as main.rs:2109-2110.
             // elapsed_secs = 0.0: frontmatter-only, stripped before hashing (A2.1).
-            // data_source string: "synthetic" for Binance/synthetic path; "yahoo"
-            // for YahooCache (the rev_sha for Yahoo is None here — the Lab caller
-            // sets the Yahoo-specific rev_sha; for engine dispatch we use None).
+            // data_source string: "binance" for BinanceCache, "yahoo" for YahooCache,
+            // "synthetic" for Synthetic.  Non-exhaustive match → compile-enforced
+            // when a new variant is added (simple-strategies-realdata A1 / T-A1).
             let data_source_str = match cfg.data_source {
                 ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
@@ -1174,6 +1203,7 @@ pub async fn run_scenario(
             // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
             let data_source_str = match cfg.data_source {
                 ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
@@ -1245,6 +1275,7 @@ pub async fn run_scenario(
             // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
             let data_source_str = match cfg.data_source {
                 ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
@@ -1319,6 +1350,7 @@ pub async fn run_scenario(
             // lab-run-save-compare T3 — write seam (ADR-0055 § D3/D4 + A2.1).
             let data_source_str = match cfg.data_source {
                 ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {

@@ -41,7 +41,7 @@ use backtest::engine::DateRange;
 use backtest::progress::{Progress, progress_pair};
 use smol_str::SmolStr;
 use tokio::time::timeout;
-use ui::lab::runner::{LabRunConfig, LabYahooBarSource};
+use ui::lab::runner::{LabBarSource, LabRunConfig, LabYahooBarSource};
 use ui::lab::state::LabDataSource;
 
 // ── MockLabYahooBarSource ─────────────────────────────────────────────────────
@@ -77,7 +77,9 @@ impl MockLabYahooBarSource {
     }
 }
 
-impl LabYahooBarSource for MockLabYahooBarSource {
+// simple-strategies-realdata T-B3: `preload` body on the shared `LabBarSource`;
+// `LabYahooBarSource` is a pure marker tagging this as the Yahoo seam.
+impl LabBarSource for MockLabYahooBarSource {
     fn preload<'a>(
         &'a self,
         _cfg: &'a LabRunConfig,
@@ -95,6 +97,8 @@ impl LabYahooBarSource for MockLabYahooBarSource {
         })
     }
 }
+
+impl LabYahooBarSource for MockLabYahooBarSource {}
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
