@@ -2956,4 +2956,4 @@ tests       = [
   "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::direct_await_without_rt_spawn_panics",
 ]
 anchors     = []   # UN-ANCHORED by construction; 119/119 verified (AC6).
-state       = "tester-done"
+state       = "shipped"   # operator approved 2026-06-13 (deck same day). Capstone of the post-live-removal Lab strategy-checking arc. Was: tester-done.

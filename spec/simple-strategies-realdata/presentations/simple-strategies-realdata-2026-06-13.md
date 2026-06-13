@@ -259,7 +259,7 @@ screenshot above is for the record only).
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
