@@ -119,7 +119,13 @@ async fn realdata_simple_strategy_survey() {
         ("2023", 1_672_531_200_000, 1_704_067_200_000),
         ("2024", 1_704_067_200_000, 1_735_689_600_000),
     ];
-    let symbols = ["BTCUSDT", "ETHUSDT"];
+    // Full Binance corpus universe (10 symbols). A symbol/year with no on-disk
+    // parquet is reported as a "(only N bars)" row and skipped — never silently
+    // synthetic.
+    let symbols = [
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
+        "DOTUSDT", "LINKUSDT",
+    ];
 
     println!("\n## Real-data simple-strategy survey — Binance hourly, net of 4 bps taker cost\n");
     println!("Each cell: strategy total return % (trade count). Compare against Buy & Hold.\n");
