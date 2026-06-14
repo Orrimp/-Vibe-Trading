@@ -113,6 +113,18 @@ scope the terminal verdict does not call for.
 
 ---
 
+## Real-data validation (2026-06-14)
+
+The shipped Lab tooling backtested the simple strategies (sma/macd/rsi/bbands)
+against buy-and-hold on the **real** Binance hourly corpus (10 symbols × 2023–24,
+net of cost). **Passive dominates in the 18/20 symbol-years where B&H was
+positive** (often by an order of magnitude) — confirming ship-passive as the base.
+Nuance: in the 2 down-market cases (AVAX 2024 −8.2%, DOT 2024 −19.6%) the
+**trend-followers (SMA/MACD) protected capital** — a defensible down-market hedge,
+not a reason to go active. Mean-reverters (RSI/BBands) had no edge anywhere. Full
+table + re-runnable harness:
+[`spec/dev-notes/realdata-simple-strategy-survey-2026-06-13.md`](../dev-notes/realdata-simple-strategy-survey-2026-06-13.md).
+
 ## Changelog
 
 - 2026-06-08 (developer): produced realized equity-curve + full metrics for the BH baseline.
