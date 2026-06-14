@@ -306,6 +306,138 @@ async fn binance_cache_rejected_by_tcn_weights_arm() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ETH regression — composed strategies must trade on non-BTC symbols
+//
+// Root-cause: ComposedStrategy::emit_signal previously hardcoded `self.symbol`
+// (= "BTCUSDT" from config TOML). When run on ETHUSDT bars, sig.symbol was
+// "BTCUSDT" while position.symbol was "ETHUSDT", so Order::new returned
+// AssetMismatch; the silent `.ok()` discarded every order → 0 trades.
+// Fixed in `crates/strategy/src/composed/node.rs` by emitting `bar.symbol`.
+// These tests assert trade_count > 0 on ETHUSDT synthetic bars for all three
+// affected strategies (v0.5.macd / v0.5.rsi / v0.5.bbands).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Regression test: v0.5.macd must produce >0 trades on ETHUSDT synthetic bars.
+///
+/// Bug: `ComposedStrategy::emit_signal` emitted `sig.symbol = "BTCUSDT"` (from
+/// config TOML) even when running on ETHUSDT bars. Order::new rejected it with
+/// `AssetMismatch`; the `.ok()` silently discarded every order → 0 trades.
+/// Fix: emit `bar.symbol` instead of `self.symbol`.
+#[tokio::test]
+async fn composed_strategy_macd_trades_on_ethusdt_not_zero() {
+    let root = workspace_root();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("cwd: {e}"));
+
+    let sym = Symbol::new("ETHUSDT");
+    let start_price = default_start_price(&sym);
+    // Use enough bars to warm up MACD(12,26,9) + EMA(200): 200 + warmup ≈ 500+
+    let bars = synthetic_bars_minute(&sym, 2_000, TEST_SEED_U64, start_price, 2023);
+
+    let cfg = ScenarioConfig {
+        strategy: StrategyId("v0.5.macd".into()),
+        pair: (Venue::Binance, sym),
+        range: DateRange::Last30d,
+        params: None,
+        seed: TEST_SEED,
+        write_report: false,
+        data_source: ScenarioDataSource::BinanceCache,
+        bars_override: Some(bars),
+        sma_fast_len: None,
+        sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        reports_dir: None,
+    };
+
+    let (_handle, cancel_rx) = cancellation_pair();
+    let report = backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled())
+        .await
+        .expect("v0.5.macd ETHUSDT run must succeed");
+
+    assert!(
+        report.kpis.trade_count > 0,
+        "v0.5.macd on ETHUSDT must produce > 0 trades (was 0 due to AssetMismatch bug); \
+         got trade_count = {}",
+        report.kpis.trade_count
+    );
+}
+
+/// Regression test: v0.5.rsi must produce >0 trades on ETHUSDT synthetic bars.
+#[tokio::test]
+async fn composed_strategy_rsi_trades_on_ethusdt_not_zero() {
+    let root = workspace_root();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("cwd: {e}"));
+
+    let sym = Symbol::new("ETHUSDT");
+    let start_price = default_start_price(&sym);
+    let bars = synthetic_bars_minute(&sym, 2_000, TEST_SEED_U64, start_price, 2023);
+
+    let cfg = ScenarioConfig {
+        strategy: StrategyId("v0.5.rsi".into()),
+        pair: (Venue::Binance, sym),
+        range: DateRange::Last30d,
+        params: None,
+        seed: TEST_SEED,
+        write_report: false,
+        data_source: ScenarioDataSource::BinanceCache,
+        bars_override: Some(bars),
+        sma_fast_len: None,
+        sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        reports_dir: None,
+    };
+
+    let (_handle, cancel_rx) = cancellation_pair();
+    let report = backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled())
+        .await
+        .expect("v0.5.rsi ETHUSDT run must succeed");
+
+    assert!(
+        report.kpis.trade_count > 0,
+        "v0.5.rsi on ETHUSDT must produce > 0 trades (was 0 due to AssetMismatch bug); \
+         got trade_count = {}",
+        report.kpis.trade_count
+    );
+}
+
+/// Regression test: v0.5.bbands must produce >0 trades on ETHUSDT synthetic bars.
+#[tokio::test]
+async fn composed_strategy_bbands_trades_on_ethusdt_not_zero() {
+    let root = workspace_root();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("cwd: {e}"));
+
+    let sym = Symbol::new("ETHUSDT");
+    let start_price = default_start_price(&sym);
+    let bars = synthetic_bars_minute(&sym, 2_000, TEST_SEED_U64, start_price, 2023);
+
+    let cfg = ScenarioConfig {
+        strategy: StrategyId("v0.5.bbands".into()),
+        pair: (Venue::Binance, sym),
+        range: DateRange::Last30d,
+        params: None,
+        seed: TEST_SEED,
+        write_report: false,
+        data_source: ScenarioDataSource::BinanceCache,
+        bars_override: Some(bars),
+        sma_fast_len: None,
+        sma_slow_len: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        reports_dir: None,
+    };
+
+    let (_handle, cancel_rx) = cancellation_pair();
+    let report = backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled())
+        .await
+        .expect("v0.5.bbands ETHUSDT run must succeed");
+
+    assert!(
+        report.kpis.trade_count > 0,
+        "v0.5.bbands on ETHUSDT must produce > 0 trades (was 0 due to AssetMismatch bug); \
+         got trade_count = {}",
+        report.kpis.trade_count
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // T-C1 — No-op-source divergence guard (AC4)
 //
 // Runs v0.sma × BTCUSDT on REAL Binance hourly bars (from on-disk parquet)

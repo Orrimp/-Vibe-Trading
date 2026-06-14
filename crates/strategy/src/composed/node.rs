@@ -1146,6 +1146,10 @@ fn ensure_bollinger_lower(states: &mut Vec<IndicatorState>, period: usize, mult:
 /// ring buffers are pre-sized at construction.
 pub struct ComposedStrategy {
     id: StrategyId,
+    /// The symbol from the TOML config. Not used in signal emission (signals use
+    /// `bar.symbol` for multi-symbol safety) but retained for diagnostic purposes
+    /// and to preserve the round-trip TOML → struct → metadata.
+    #[allow(dead_code)]
     symbol: Symbol,
     hash: [u8; 32],
     source_path: SmolStr,
@@ -1194,9 +1198,14 @@ impl ComposedStrategy {
     }
 
     fn emit_signal(&self, bar: &Bar, kind: SignalKind) -> Signal {
+        // Use the incoming bar's symbol rather than the TOML-hardcoded `self.symbol`
+        // so that a BTC-named config (e.g. `btc_macd_trend`) can be run on any
+        // symbol without the signal/position AssetMismatch that silently suppresses
+        // all trades.  For BTC bars `bar.symbol == self.symbol`, so the anchored
+        // BTC backtest reports remain byte-identical (anchor-safe).
         Signal {
             strategy_id: self.id.clone(),
-            symbol: self.symbol.clone(),
+            symbol: bar.symbol.clone(),
             ts: bar.close_ts,
             kind,
             evidence: SignalEvidence::empty(),
