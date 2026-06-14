@@ -111,6 +111,8 @@ impl canvas::Program<Message> for PositionCurveProgram {
             .fold((i64::MAX, i64::MIN), |(lo, hi), &(ts, _)| {
                 (lo.min(ts), hi.max(ts))
             });
+        #[allow(clippy::cast_precision_loss)]
+        // timestamp span → f64 for pixel fraction; precision loss is acceptable in rendering
         let ts_span = (ts_max - ts_min).max(1) as f64;
 
         // Compute max qty for y-scaling. Use the max absolute qty so both long
@@ -134,6 +136,8 @@ impl canvas::Program<Message> for PositionCurveProgram {
         let mut prev_h = 0.0f32; // pixel height above baseline
 
         for &(ts, ref qty) in &self.points {
+            #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+            // pixel fraction cast: precision loss and f64→f32 truncation are acceptable in rendering
             let t_frac = ((ts - ts_min) as f64 / ts_span) as f32;
             let x = inner.x + t_frac * inner.width;
             let h = (decimal_to_f32(qty).max(0.0) / max_qty) * draw_height;
@@ -231,7 +235,7 @@ mod tests {
             let max_qty: Decimal = points
                 .iter()
                 .map(|(_, q)| *q)
-                .fold(Decimal::ZERO, |a, b| a.max(b));
+                .fold(Decimal::ZERO, rust_decimal::Decimal::max);
             let total_qty: Decimal = points.iter().map(|(_, q)| *q).sum();
             out.push_str(&format!("max_qty: {max_qty}\n"));
             out.push_str(&format!("total_qty_sum: {total_qty}\n"));

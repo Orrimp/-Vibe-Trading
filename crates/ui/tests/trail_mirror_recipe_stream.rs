@@ -205,8 +205,7 @@ async fn stream_impl_multiple_events_in_order() {
 /// a message published after `stream()` is called arrives in the stream.
 #[tokio::test]
 async fn trail_mirror_recipe_stream_end_to_end() {
-    use iced::advanced::subscription::{EventStream, Recipe};
-    use ui::live::trail_mirror_subscription;
+    use iced::advanced::subscription::EventStream;
 
     let (tick_tx, _dummy_rx) = broadcast::channel::<TrailMirrorTick>(16);
     // Keep req_rx alive so the mpsc channel doesn't close immediately.

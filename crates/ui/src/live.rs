@@ -605,6 +605,7 @@ impl Recipe for TrailMirrorRecipe {
 ///
 /// The caller (i.e. `Recipe::stream`) is responsible for subscribing eagerly
 /// before passing `rx` here, to avoid the publish-before-subscribe race.
+#[must_use]
 pub fn trail_mirror_stream_impl(
     mut rx: tokio::sync::broadcast::Receiver<reflection::trail_mirror::TrailMirrorTick>,
 ) -> BoxStream<'static, Message> {
@@ -739,6 +740,7 @@ impl Recipe for ActivityRecipe {
 /// - Loops on `rx.recv()`, yielding `Message::ActivityEventReceived(event)`.
 /// - On `Lagged(n)`: logs a warning and continues (display-only; no replay).
 /// - On `Closed`: logs at debug level and terminates the stream cleanly.
+#[must_use]
 pub fn activity_stream_impl(
     mut rx: tokio::sync::broadcast::Receiver<ActivityEvent>,
 ) -> BoxStream<'static, Message> {

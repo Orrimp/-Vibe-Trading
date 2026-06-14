@@ -200,7 +200,7 @@ mod tests {
     /// Y-axis scales to max * 1.1.
     #[test]
     fn y_axis_scales_to_max_plus_10_pct() {
-        let epochs = vec![
+        let epochs = [
             EpochPoint {
                 epoch: 1,
                 train_loss: 0.5,

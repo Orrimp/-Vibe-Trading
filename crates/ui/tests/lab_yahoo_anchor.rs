@@ -24,9 +24,8 @@
 
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use trading_core::{StrategyId, Symbol, Venue};
 use ui::lab::runner::LabRunConfig;
-use ui::lab::state::{DateRange, LabDataSource, Preset};
+use ui::lab::state::LabDataSource;
 
 /// Lock #1 — BTC-USD 1d 2024 expected revision SHA (aggregate of all 12
 /// monthly parquet files; computed via `compute_aggregate_sha` on first
@@ -65,7 +64,7 @@ const FINAL_EQUITY_TOLERANCE: Decimal = dec!(1);
              2024-01-01 --end 2024-12-31). v0.1.1 follow-up will wire this \
              into CI."]
 async fn yahoo_btc_2024_sma_deterministic() {
-    use ui::lab::runner::{RunSummary, lab_config_to_scenario};
+    use ui::lab::runner::lab_config_to_scenario;
 
     let cfg = LabRunConfig {
         strategy_id: smol_str::SmolStr::new("v0.sma"),

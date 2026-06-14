@@ -126,7 +126,7 @@ pub(crate) fn x_for_index(i: usize, count: usize, left: f32, right: f32) -> f32 
 mod tests {
     use super::*;
 
-    /// Verify tick_positions produces the same Vec as the previous in-chart
+    /// Verify `tick_positions` produces the same Vec as the previous in-chart
     /// helper for common inputs (T-D-N17 invariant).
     #[test]
     fn tick_positions_scale_1_max_5() {
@@ -142,7 +142,10 @@ mod tests {
     #[test]
     fn tick_positions_scale_10_max_5() {
         let ticks = tick_positions(10.0, 5);
-        assert_eq!(ticks[0], 0.0);
+        assert!(
+            ticks[0].abs() < f32::EPSILON,
+            "first tick must be exactly 0.0"
+        );
         // With scale=10 and max_ticks=5, step should be 2.0
         assert!(
             ticks.len() >= 3,

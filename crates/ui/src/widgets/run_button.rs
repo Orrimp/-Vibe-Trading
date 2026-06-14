@@ -196,6 +196,7 @@ pub fn view(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
+#[allow(non_snake_case)] // double-underscore test names are a local snapshot-panel naming convention
 mod tests {
     use super::*;
     use crate::theme::ThemeMode;

@@ -1164,6 +1164,7 @@ fn position_mirror<'a>(p: Option<&PositionView>, mode: ThemeMode) -> crate::Elem
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(non_snake_case)] // double-underscore test names are a local snapshot-panel naming convention
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
@@ -1287,13 +1288,13 @@ mod tests {
 
     /// Orphan annotation renders when the pid is alive (current process).
     ///
-    /// We test the pid_alive helper directly (the rendering itself is snapshot-
+    /// We test the `pid_alive` helper directly (the rendering itself is snapshot-
     /// tested in T-D-N18). This verifies the liveness-check path that controls
-    /// whether we show ORPHAN_LIVE_FMT or ORPHAN_DEAD_FMT.
+    /// whether we show `ORPHAN_LIVE_FMT` or `ORPHAN_DEAD_FMT`.
     #[test]
     fn orphan_annotation_renders_when_pid_alive() {
         use crate::lab::pid_alive::pid_alive;
-        let my_pid = std::process::id() as i64;
+        let my_pid = i64::from(std::process::id());
         assert!(
             pid_alive(my_pid),
             "orphan annotation path: pid_alive must return true for current process"

@@ -149,7 +149,7 @@ mod tests {
     /// T-D-N2 — ring buffer evicts oldest when capacity is exceeded.
     ///
     /// Push 250 lines; assert only 200 are retained and the first 50 are gone
-    /// (pop_front semantics — oldest evicted first).
+    /// (`pop_front` semantics — oldest evicted first).
     #[test]
     fn ring_buffer_evicts_oldest() {
         let mut buf: RingBuffer = VecDeque::new();

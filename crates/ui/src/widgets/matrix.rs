@@ -282,6 +282,7 @@ fn build_header_row<'a>(column_symbols: &[Symbol], mode: ThemeMode) -> Element<'
     clippy::fn_params_excessive_bools,
     clippy::too_many_arguments
 )]
+#[allow(clippy::useless_conversion)] // Tooltip → Element .into() looks useless but is needed for if-else branch unification
 fn populated_cell<'a>(
     sharpe: f64,
     is_multi_symbol: bool,
@@ -387,9 +388,9 @@ fn populated_cell<'a>(
             text_color: Some(color::FG_2.current(mode)),
             ..Default::default()
         })
-        .into()
+        .into() // Tooltip → Element; both branches must return Element
     } else {
-        inner.into()
+        inner
     }
 }
 

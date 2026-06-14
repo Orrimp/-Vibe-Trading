@@ -92,7 +92,7 @@ pub fn view(cadence: CadenceLabel, mode: ThemeMode) -> crate::Element<'static> {
 mod tests {
     use super::*;
 
-    /// T-C3.3 — derive_from_range boundary truth table (mirrors T-AR4).
+    /// T-C3.3 — `derive_from_range` boundary truth table (mirrors T-AR4).
     #[test]
     fn cadence_badge_derive_from_range_boundaries() {
         const MS: i64 = 86_400_000;

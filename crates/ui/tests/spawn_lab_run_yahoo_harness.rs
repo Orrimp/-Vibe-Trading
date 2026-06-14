@@ -328,15 +328,10 @@ async fn ticker_events_stop_after_preload_complete() {
     // We expect: zero OR one event (the sentinel only).
     // We must NOT see ticker-shaped events with elapsed_ms > 0 after the close.
     let mut post_preload_ticker_events: Vec<Progress> = Vec::new();
-    loop {
-        match timeout(Duration::from_millis(50), progress_rx.recv()).await {
-            Ok(Some(p)) => {
-                // A ticker event is: current_bar == 0, total_bars == 1, elapsed_ms > 0.
-                if p.current_bar == 0 && p.total_bars == 1 && p.elapsed_ms > 0 {
-                    post_preload_ticker_events.push(p);
-                }
-            }
-            _ => break,
+    while let Ok(Some(p)) = timeout(Duration::from_millis(50), progress_rx.recv()).await {
+        // A ticker event is: current_bar == 0, total_bars == 1, elapsed_ms > 0.
+        if p.current_bar == 0 && p.total_bars == 1 && p.elapsed_ms > 0 {
+            post_preload_ticker_events.push(p);
         }
     }
 

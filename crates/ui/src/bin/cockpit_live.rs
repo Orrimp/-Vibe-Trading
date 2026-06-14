@@ -1309,28 +1309,24 @@ impl AppState {
         #[cfg(feature = "live")]
         {
             // Tick on progress.
-            if let Some(current) = lab_run_progress_current {
-                if let Some(ref handle) = self.lab_activity_handle {
-                    handle.tick(current);
-                }
+            if let Some(current) = lab_run_progress_current
+                && let Some(ref handle) = self.lab_activity_handle
+            {
+                handle.tick(current);
             }
             // End on stop-requested: cancel the activity.
-            if lab_run_stop_requested {
-                if let Some(handle) = self.lab_activity_handle.take() {
-                    handle.cancel();
-                    // Drop emits End { Cancelled }.
-                }
+            if lab_run_stop_requested && let Some(handle) = self.lab_activity_handle.take() {
+                handle.cancel();
+                // Drop emits End { Cancelled }.
             }
             // End on completion.
-            if lab_run_completed_any {
-                if let Some(handle) = self.lab_activity_handle.take() {
-                    if let Some(ref err) = lab_run_completed_err {
-                        handle.fail(err.as_str());
-                        // Drop emits End { Failed }.
-                    }
-                    // Else: Success — Drop emits End { Success }.
-                    drop(handle);
+            if lab_run_completed_any && let Some(handle) = self.lab_activity_handle.take() {
+                if let Some(ref err) = lab_run_completed_err {
+                    handle.fail(err.as_str());
+                    // Drop emits End { Failed }.
                 }
+                // Else: Success — Drop emits End { Success }.
+                drop(handle);
             }
         }
 
@@ -1340,22 +1336,19 @@ impl AppState {
         #[cfg(feature = "live")]
         {
             // Tick on new training events.
-            if let Some(count) = training_events_count {
-                if count > 0 {
-                    if let Some(ref handle) = self.training_activity_handle {
-                        // Use the running total length of training_events as
-                        // a monotonic progress counter.
-                        let total_events = self.cockpit.lab_state.training_events.len() as u64;
-                        handle.tick(total_events);
-                    }
-                }
+            if let Some(count) = training_events_count
+                && count > 0
+                && let Some(ref handle) = self.training_activity_handle
+            {
+                // Use the running total length of training_events as
+                // a monotonic progress counter.
+                let total_events = self.cockpit.lab_state.training_events.len() as u64;
+                handle.tick(total_events);
             }
             // End on cancel pressed: cancel the activity.
-            if training_cancel_pressed {
-                if let Some(handle) = self.training_activity_handle.take() {
-                    handle.cancel();
-                    // Drop emits End { Cancelled }.
-                }
+            if training_cancel_pressed && let Some(handle) = self.training_activity_handle.take() {
+                handle.cancel();
+                // Drop emits End { Cancelled }.
             }
             // End on subprocess exited: success.
             if training_exited {

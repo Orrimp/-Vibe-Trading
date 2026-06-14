@@ -47,6 +47,8 @@
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+// These loops use match-to-break/panic patterns intentionally; clippy::never_loop is a false positive here.
+#![allow(clippy::never_loop)]
 
 use std::sync::Arc;
 use std::time::Duration;

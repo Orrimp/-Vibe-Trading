@@ -148,7 +148,7 @@ fn loader_returns_nonempty_hourly_bars_with_revision_sha() {
     for b in &bars {
         let ts_ms = b.open_ts.unix_millis();
         assert!(
-            ts_ms >= 1_672_531_200_000 && ts_ms < 1_688_169_600_000,
+            (1_672_531_200_000..1_688_169_600_000).contains(&ts_ms),
             "bar at {ts_ms} ms is outside the requested 2023-H1 window"
         );
         assert_eq!(b.symbol, Symbol::new("BTCUSDT"), "wrong symbol in bars");

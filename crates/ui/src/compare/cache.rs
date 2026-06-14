@@ -784,7 +784,7 @@ strategy:
     }
 
     /// T1 / R1 — a report WITH a companion equity CSV hydrates the cell's
-    /// `equity_series_ts` with the full timestamped per-bar series (PerBar
+    /// `equity_series_ts` with the full timestamped per-bar series (`PerBar`
     /// fidelity), preserving timestamps + Decimal money. This is the series that
     /// feeds the two-run overlay (`equity_curve_tail` alone has no x-axis).
     #[test]
@@ -861,7 +861,11 @@ strategy:
                 DateRange::default(),
             ))
             .expect("BTC cell present");
-        assert_eq!(btc.sharpe, 0.55, "KPIs still populate without a companion");
+        assert!(
+            (btc.sharpe - 0.55).abs() < 1e-9,
+            "KPIs still populate without a companion (sharpe={:.4})",
+            btc.sharpe
+        );
         assert!(
             btc.equity_series_ts.is_empty(),
             "no companion CSV → empty timestamped series (graceful fallback)"

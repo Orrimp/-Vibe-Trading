@@ -193,8 +193,7 @@ pub mod tests {
             kind,
             timestamp: Some("12:34:56.789".to_string()),
             actor: Some(match kind {
-                TrailNodeKind::Fill => "strategy:sma_crossover".to_string(),
-                TrailNodeKind::Signal => "strategy:sma_crossover".to_string(),
+                TrailNodeKind::Fill | TrailNodeKind::Signal => "strategy:sma_crossover".to_string(),
                 TrailNodeKind::Forecast => "tcn:d1c3696d".to_string(),
                 TrailNodeKind::LlmDebate => "llm:tier-1".to_string(),
             }),

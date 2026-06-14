@@ -229,13 +229,14 @@ mod tests {
 
     /// Helper: build a flat equity series (initial → same value repeated).
     fn flat_series(initial: Decimal, n: usize) -> Vec<(i64, Decimal)> {
+        #[allow(clippy::cast_possible_wrap)] // test-only: n is always tiny, no wrap risk
         (0..n).map(|i| (i as i64, initial)).collect()
     }
 
-    /// All 8 sign combinations for (Δ P&L sign × Δ MaxDD sign × Δ Sharpe sign).
+    /// All 8 sign combinations for (Δ P&L sign × Δ `MaxDD` sign × Δ Sharpe sign).
     ///
-    /// Convention for DD sign: delta.dd_delta > 0 means drawdown got worse
-    /// (colour = DOWN). delta.dd_delta < 0 means drawdown improved (colour = UP).
+    /// Convention for DD sign: `delta.dd_delta` > 0 means drawdown got worse
+    /// (colour = DOWN). `delta.dd_delta` < 0 means drawdown improved (colour = UP).
     ///
     /// For Sharpe, a rising equity curve vs flat gives a positive Sharpe delta.
     /// For Pnl, the difference in (final − initial) between last and prev runs.

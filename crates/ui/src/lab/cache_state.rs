@@ -229,6 +229,7 @@ pub fn probe_summary(cache_root: &Path, tickers: &[&str], _now: SystemTime) -> C
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)] // test module: panicking on test-setup failure is appropriate
 mod tests {
     use super::*;
     use std::fs;

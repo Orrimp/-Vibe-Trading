@@ -198,14 +198,15 @@ pub fn training_poller_stream_impl(
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)] // test module: panicking on test-setup failure is appropriate
 mod tests {
     use super::*;
 
     /// When `run_id` is `None`, subscription must be `Subscription::none()`.
     ///
     /// We test this indirectly by verifying the function compiles and returns
-    /// without panicking with a None run_id. The actual iced subscription type
-    /// doesn't expose an is_none() method, so we rely on the compile-time
+    /// without panicking with a None `run_id`. The actual iced subscription type
+    /// doesn't expose an `is_none()` method, so we rely on the compile-time
     /// proof that `iced::Subscription::none()` is the return value.
     #[tokio::test]
     async fn none_run_id_returns_no_subscription() {
@@ -229,7 +230,7 @@ mod tests {
         drop(sub);
     }
 
-    /// last_seen_ts_advances_only_on_new_rows — idempotent polling does not
+    /// `last_seen_ts_advances_only_on_new_rows` — idempotent polling does not
     /// re-emit rows already seen.
     ///
     /// We test the filtering logic directly (not the full subscription recipe).
@@ -255,8 +256,8 @@ mod tests {
         );
     }
 
-    /// stops_when_training_completes — placeholder test demonstrating that
-    /// the subscription is wired to `run_id` identity (different run_ids =
+    /// `stops_when_training_completes` — placeholder test demonstrating that
+    /// the subscription is wired to `run_id` identity (different `run_ids` =
     /// different recipe hashes). The full iced lifecycle is not testable
     /// without an iced runtime.
     #[tokio::test]

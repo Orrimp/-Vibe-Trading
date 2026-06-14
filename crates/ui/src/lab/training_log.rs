@@ -100,6 +100,7 @@ mod live_recipe {
     ///   When the sender side closes (channel disconnected), the stream ends.
     /// - When `rx_opt` is `None` (i.e. `stream()` was called a second time
     ///   after the receiver was already taken): the stream yields nothing.
+    #[must_use]
     pub fn stream_impl(
         rx_opt: Option<std::sync::mpsc::Receiver<TrainingLogLine>>,
     ) -> BoxStream<'static, Message> {
@@ -148,7 +149,7 @@ mod tests {
     use futures::StreamExt;
     use smol_str::SmolStr;
 
-    /// stream_impl yields lines then terminates when sender drops.
+    /// `stream_impl` yields lines then terminates when sender drops.
     #[test]
     fn stream_yields_lines_and_terminates() {
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -181,7 +182,7 @@ mod tests {
         assert!(matches!(&messages[1], Message::TrainingLogLine(s) if s == "world"));
     }
 
-    /// stream_impl with None yields nothing.
+    /// `stream_impl` with None yields nothing.
     #[test]
     fn stream_with_none_yields_nothing() {
         let rt = tokio::runtime::Runtime::new().unwrap();

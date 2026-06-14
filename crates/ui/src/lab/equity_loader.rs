@@ -1069,7 +1069,7 @@ data_source: synthetic
         );
     }
 
-    /// T-D-10 — NoReport error when strategy/pair combo doesn't exist.
+    /// T-D-10 — `NoReport` error when strategy/pair combo doesn't exist.
     /// The fixture dir exists and has a report but for a different pair.
     #[test]
     fn load_equity_no_report_error() {
@@ -1094,12 +1094,11 @@ data_source: synthetic
         let result = load_equity(&tuple, &spec);
         assert!(
             matches!(result, Err(EquityLoadError::NoReport { .. })),
-            "expected NoReport error, got: {:?}",
-            result
+            "expected NoReport error, got: {result:?}"
         );
     }
 
-    /// T-D-10 — strategy_slug maps known ids correctly.
+    /// T-D-10 — `strategy_slug` maps known ids correctly.
     #[test]
     fn strategy_slug_mapping() {
         assert_eq!(strategy_slug("v1.momentum"), "v1-cross-sectional-momentum");
@@ -1238,7 +1237,7 @@ data_source: synthetic
         );
     }
 
-    /// T-D-N11 hot path: when the mirror's tuple does NOT match current_tuple,
+    /// T-D-N11 hot path: when the mirror's tuple does NOT match `current_tuple`,
     /// falls through to the disk cache (returns None when spec root is absent).
     #[test]
     fn route_overlay_hot_path_tuple_mismatch_falls_through() {
@@ -1339,7 +1338,7 @@ data_source: synthetic
         );
     }
 
-    /// T-D-N11: empty equity_series in mirror is not returned (falls through to cache).
+    /// T-D-N11: empty `equity_series` in mirror is not returned (falls through to cache).
     #[test]
     fn route_overlay_empty_in_memory_series_falls_through() {
         let tuple = LabTuple {

@@ -17,6 +17,7 @@
 //! has ~6 widgets.
 
 #![allow(clippy::needless_raw_string_hashes)]
+#![allow(deprecated)] // tests use deprecated Screen variants to exercise backward-compat aliases
 
 use insta::assert_snapshot;
 use rust_decimal_macros::dec;
@@ -1898,7 +1899,7 @@ fn training_status_strip__failed() {
 
 fn training_status_summary(c: &Cockpit, scenario: &str) -> String {
     let mut out = String::new();
-    out.push_str(&format!("panel: training_status_strip\n"));
+    out.push_str("panel: training_status_strip\n");
     out.push_str(&format!("scenario: {scenario}\n"));
     let inflight = c.lab_state.training_inflight.is_some();
     let status = if inflight {
@@ -2991,7 +2992,7 @@ mod strategy_registry_screen {
         ));
         match &c.strategies {
             PanelState::Loading => {
-                out.push_str(&format!("state: loading\n"));
+                out.push_str("state: loading\n");
                 out.push_str(&format!("copy: {}\n", ui::strings::STRATEGIES_LOADING));
             }
             PanelState::Empty => {
@@ -3003,7 +3004,7 @@ mod strategy_registry_screen {
                 out.push_str(&format!("error: {e}\n"));
             }
             PanelState::Ready(rows) => {
-                out.push_str(&format!("state: ready\n"));
+                out.push_str("state: ready\n");
                 out.push_str(&format!("cards: {}\n", rows.len()));
                 for row in rows {
                     out.push_str(&format!(

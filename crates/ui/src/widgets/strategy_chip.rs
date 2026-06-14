@@ -238,6 +238,7 @@ pub fn row<'a>(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
+#[allow(non_snake_case)] // double-underscore test names are a local snapshot-panel naming convention
 mod tests {
     use std::collections::HashMap;
 
@@ -274,7 +275,7 @@ mod tests {
         );
     }
 
-    /// T-D-6 — `view` constructs for all ACCENT_2..5 compare slots.
+    /// T-D-6 — `view` constructs for all `ACCENT_2..5` compare slots.
     #[test]
     fn strategy_chip_all_compare_slots_construct() {
         for slot in 0..4 {

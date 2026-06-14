@@ -100,7 +100,7 @@ mod tests {
     /// The current process's PID must be alive.
     #[test]
     fn pid_alive_returns_true_for_self() {
-        let my_pid = std::process::id() as i64;
+        let my_pid = i64::from(std::process::id());
         assert!(
             pid_alive(my_pid),
             "current process (pid={my_pid}) must be alive"
@@ -109,7 +109,7 @@ mod tests {
 
     /// A non-existent PID must return false.
     ///
-    /// We use PID `i32::MAX` (2_147_483_647) — no OS will ever assign this.
+    /// We use PID `i32::MAX` (`2_147_483_647`) — no OS will ever assign this.
     #[test]
     fn pid_alive_returns_false_for_nonexistent() {
         let impossible_pid = i64::from(i32::MAX);

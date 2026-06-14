@@ -1887,6 +1887,7 @@ mod tests {
 
     fn make_equity_series(slug: &str, n_points: usize) -> LabEquitySeries {
         use crate::lab::equity_loader::Fidelity;
+        #[allow(clippy::cast_possible_wrap)] // test-only: n_points is always small, no wrap risk
         let samples: Vec<(i64, Decimal)> = (0..n_points)
             .map(|i| {
                 (

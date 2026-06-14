@@ -237,7 +237,7 @@ fn yahoo_bar_source_jan_2024_fixture_loads_bars() {
         .expect("load_cached with Jan-2024 fixture must succeed");
 
     assert!(
-        loaded.bars.len() > 0,
+        !loaded.bars.is_empty(),
         "fixture must yield at least one bar; got 0"
     );
     assert_eq!(

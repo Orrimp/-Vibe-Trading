@@ -42,14 +42,11 @@ fn drain_activity(
     let mut starts = 0usize;
     let mut ticks = 0usize;
     let mut ends: Vec<ActivityOutcome> = Vec::new();
-    loop {
-        match rx.try_recv() {
-            Ok(ev) => match ev.phase {
-                ActivityPhase::Start { .. } => starts += 1,
-                ActivityPhase::Tick { .. } => ticks += 1,
-                ActivityPhase::End(outcome) => ends.push(outcome),
-            },
-            Err(_) => break,
+    while let Ok(ev) = rx.try_recv() {
+        match ev.phase {
+            ActivityPhase::Start { .. } => starts += 1,
+            ActivityPhase::Tick { .. } => ticks += 1,
+            ActivityPhase::End(outcome) => ends.push(outcome),
         }
     }
     (starts, ticks, ends)

@@ -93,6 +93,7 @@ mod live_recipe {
     ///   after the receiver was already taken): the stream yields nothing.
     ///   This is the smoking-gun case: a silent empty stream means the UI
     ///   never receives progress messages.
+    #[must_use]
     pub fn stream_impl(
         rx_opt: Option<tokio::sync::mpsc::Receiver<Progress>>,
     ) -> BoxStream<'static, Message> {

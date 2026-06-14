@@ -1024,7 +1024,7 @@ fn classify_preload_result(
 /// When `Some`, the function emits a `YahooPreload` `ActivityHandle` around
 /// the preload block (T-D-N7). `ActivitySender` is `Clone + Send` so it
 /// crosses the `iced::Task::perform` async closure safely.
-/// The LabRun `ActivityHandle` lifecycle (T-D-N8) is managed by the caller
+/// The `LabRun` `ActivityHandle` lifecycle (T-D-N8) is managed by the caller
 /// on the iced side — see `AppState::lab_activity_handle`.
 #[allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
 pub fn spawn_lab_run(
@@ -1351,7 +1351,7 @@ pub fn spawn_lab_run(
                                     // running. abort() stops it at the next yield
                                     // point (reqwest yields frequently; well within
                                     // ≤500 ms Stop SLA).
-                                    _ = cancel.cancelled() => {
+                                    () = cancel.cancelled() => {
                                         fetch_join.abort();
                                         // Emit End{Cancelled} activity (if wired).
                                         if let Some(h) = yahoo_activity_handle {
@@ -1695,7 +1695,7 @@ mod tests {
         let _ = handle; // drop here — compiler warning suppressed
     }
 
-    /// T-D-N9 — lab_config_to_scenario maps preset range labels correctly.
+    /// T-D-N9 — `lab_config_to_scenario` maps preset range labels correctly.
     #[test]
     fn lab_config_to_scenario_preset_labels() {
         let labels = [
@@ -1728,7 +1728,7 @@ mod tests {
         }
     }
 
-    /// T-D-N9 — lab_config_to_scenario returns Err on unknown range label.
+    /// T-D-N9 — `lab_config_to_scenario` returns Err on unknown range label.
     #[test]
     fn lab_config_to_scenario_unknown_range_is_err() {
         let cfg = LabRunConfig {
@@ -1746,7 +1746,7 @@ mod tests {
         assert!(result.is_err(), "unknown range label must return Err");
     }
 
-    /// T-D-N9 — lab_config_to_scenario passes seed and write_report through.
+    /// T-D-N9 — `lab_config_to_scenario` passes seed and `write_report` through.
     #[test]
     fn lab_config_to_scenario_passthrough_fields() {
         let seed = crate::lab::defaults::LAB_DEFAULT_SEED;
@@ -1798,7 +1798,7 @@ mod tests {
         );
     }
 
-    /// T-D-14 — spawn_lab_run without a runtime resolves immediately.
+    /// T-D-14 — `spawn_lab_run` without a runtime resolves immediately.
     #[test]
     fn spawn_lab_run_no_runtime_resolves_immediately() {
         let cfg = LabRunConfig {

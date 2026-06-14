@@ -29,7 +29,7 @@
 //! 2. `smoke_synthetic_longer_range` — v0.sma × BTCUSDT × Last90d (multiple progress cycles)
 //! 3. `smoke_cancel_mid_run`         — cancel after first progress event
 //! 4. `smoke_yahoo_cache_hit`        — v0.sma × BTCUSDT × H1_2024, Yahoo bars
-//!                                     (gated: `#[ignore]` skipped if no parquet on disk)
+//!    (gated: `#[ignore]` skipped if no parquet on disk)
 //! 5. `smoke_empty_selection`        — pair=None → engine never called, no run fires
 
 #![cfg(feature = "live")]
@@ -43,7 +43,7 @@ use tokio::time::timeout;
 use trading_core::{StrategyId, Symbol, Venue};
 
 use backtest::cancel::cancellation_pair;
-use backtest::progress::{Progress, ProgressSender, progress_pair};
+use backtest::progress::{Progress, progress_pair};
 use ui::lab::equity_loader::LabTuple;
 use ui::lab::runner::{LabRunConfig, RunReportMirror, RunSummary, lab_config_to_scenario};
 use ui::lab::state::{DateRange, LabDataSource, Preset};

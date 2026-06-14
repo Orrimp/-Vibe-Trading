@@ -711,7 +711,7 @@ mod tests {
     }
 
     /// T-D-15 — `compare_color_slot_assignment_is_stable`: the 4 compare
-    /// slots map to ACCENT_2/3/4/5 in order. Pinned so a future palette
+    /// slots map to `ACCENT_2/3/4/5` in order. Pinned so a future palette
     /// reorder is visible before it ships.
     #[test]
     fn compare_color_slot_assignment_is_stable() {

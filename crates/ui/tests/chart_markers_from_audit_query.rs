@@ -4,6 +4,8 @@
 //! `(venue, symbol)` re-seeds the marker panel against the per-symbol
 //! synthetic fills feed.
 
+#![allow(deprecated)] // test uses deprecated Screen::Charts alias to verify backward-compat routing
+
 use trading_core::{Symbol, Venue};
 use ui::fixtures::synthetic_fills_for;
 use ui::state::{Cockpit, Message, PanelState, Screen, update};

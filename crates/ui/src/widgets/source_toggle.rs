@@ -130,7 +130,7 @@ mod tests {
         }
     }
 
-    /// T-C3.2 — active chip differs by data_source selection.
+    /// T-C3.2 — active chip differs by `data_source` selection.
     #[test]
     fn source_toggle_active_selection() {
         // Just verify the enum-level logic — no render runtime needed.

@@ -3074,6 +3074,7 @@ fn lookup_strategy_for_fill(_model: &Cockpit, _fill: &FillView) -> Option<SmolSt
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(deprecated)] // tests that exercise deprecated Screen aliases are intentional backward-compat checks
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
@@ -3245,7 +3246,7 @@ mod tests {
         );
     }
 
-    /// AC2 (the is_all_absent proof) — the KPI strip stays Loading at 1 point
+    /// AC2 (the `is_all_absent` proof) — the KPI strip stays Loading at 1 point
     /// and becomes Ready only at ≥2 points, with live Total-return + Max-DD
     /// and absent Sharpe/CAGR/Win-rate + Trades = 0.
     #[test]
@@ -3462,6 +3463,7 @@ mod tests {
         let mut c = Cockpit::new();
         // Push cap + 5 monotone points; assert the buffer caps and the oldest
         // evicts (front advances past ts=0).
+        #[allow(clippy::cast_possible_wrap)] // test-only: cap is tiny, no wrap risk
         for i in 0..(LIVE_EQUITY_BUFFER_CAP as i64 + 5) {
             update(
                 &mut c,
@@ -3676,6 +3678,7 @@ mod tests {
         let bar_base: i64 = 1_673_789_400;
         let wall_base: i64 = 1_700_000_000;
         let over_cap = LIVE_EQUITY_BUFFER_CAP + 50;
+        #[allow(clippy::cast_possible_wrap)] // test-only: cap is tiny, no wrap risk
         let rows: Vec<_> = (0..over_cap as i64)
             .map(|i| {
                 hydrate_row(
@@ -4455,7 +4458,7 @@ mod tests {
     /// T-D-14c — boot with a pre-written state file restores the saved tuple.
     ///
     /// Writes a `cockpit-lab-state.json` to a temp dir, boots a `Cockpit` via
-    /// `boot(Some(&path))`, asserts the lab_state tuple matches.
+    /// `boot(Some(&path))`, asserts the `lab_state` tuple matches.
     #[test]
     fn boot_restores_persisted_state() {
         use crate::lab::persistence;
@@ -4621,7 +4624,7 @@ mod tests {
 
     // ── Phase C — Settings rollup (ui-rethink-phase-c-sidebar-ia T-D-N03/04) ──
 
-    /// T-D-N03 — Default settings_active_tab is Risk.
+    /// T-D-N03 — Default `settings_active_tab` is Risk.
     #[test]
     fn settings_tab_default_is_risk() {
         assert_eq!(SettingsTab::default(), SettingsTab::Risk);
@@ -4743,7 +4746,7 @@ mod tests {
         );
     }
 
-    /// Phase D+ T-D-N3 — `TrailMirrorTick(TrailUpdated)` clears reconstructed_trail.
+    /// Phase D+ T-D-N3 — `TrailMirrorTick(TrailUpdated)` clears `reconstructed_trail`.
     #[test]
     fn trail_mirror_tick_updated_clears_reconstructed_trail() {
         let mut c = Cockpit::new();
@@ -4828,7 +4831,7 @@ mod tests {
     /// Lab`, `lab_state.strategy`, `lab_state.pair`, and `lab_state.range`.
     ///
     /// This is the K4 mitigation test — mirrors the Phase D `OpenTrailFor`
-    /// round-trip pattern at `:3234-3254`. Falsifies H5 ("OpenLabFromCompare
+    /// round-trip pattern at `:3234-3254`. Falsifies H5 ("`OpenLabFromCompare`
     /// round-trip is atomic with respect to the lab seeding contract").
     #[test]
     fn open_lab_from_compare_sets_lab_strategy_pair_and_range() {
@@ -5248,7 +5251,7 @@ mod tests {
         );
     }
 
-    /// T-D-N4 / R1 acceptance: enqueue 3, dispatch DismissToastById on the
+    /// T-D-N4 / R1 acceptance: enqueue 3, dispatch `DismissToastById` on the
     /// middle entry; queue len == 2 with the middle id gone.
     #[test]
     fn toast_queue_dismiss_by_id() {

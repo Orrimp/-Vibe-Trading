@@ -38,7 +38,7 @@ use agent::activity::{ActivityEvent, ActivityId, ActivityKind, ActivityPhase};
 // ── Percentile helper ─────────────────────────────────────────────────────────
 
 /// Compute the Pth percentile of a sample list (sorts in-place).
-fn percentile(samples: &mut Vec<Duration>, p: usize) -> Duration {
+fn percentile(samples: &mut [Duration], p: usize) -> Duration {
     if samples.is_empty() {
         return Duration::ZERO;
     }

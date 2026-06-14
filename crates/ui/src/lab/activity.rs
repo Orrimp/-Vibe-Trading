@@ -308,9 +308,7 @@ mod tests {
         let expected_min = state.started_at + Duration::from_secs(3);
         assert!(
             hold >= expected_min,
-            "hold deadline must be ≥ started_at + 3s (got {:?}, expected ≥ {:?})",
-            hold,
-            expected_min
+            "hold deadline must be ≥ started_at + 3s (got {hold:?}, expected ≥ {expected_min:?})"
         );
         // Not yet expired — we are well within the 3-second window.
         assert!(

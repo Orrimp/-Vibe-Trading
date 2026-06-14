@@ -53,7 +53,7 @@
 //!   - `salt_bump_survives_arc_mutex_take` FAILED — `left: 0, right: 3`
 //!   - `log_stream_survives_recipe_drop` FAILED — `left: 0, right: 2`
 //! - Restored line 124: all 3 tests PASS.
-//! Exact output: `test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s`
+//!   Exact output: `test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s`
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]

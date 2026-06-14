@@ -269,7 +269,7 @@ mod tests {
         assert_snapshot!("sidebar__phase_a_workflow_group", summary);
     }
 
-    /// T-D-2 — default boot screen (Screen::default()) is Lab.
+    /// T-D-2 — default boot screen (`Screen::default()`) is Lab.
     #[test]
     fn default_screen_is_lab() {
         assert_eq!(Screen::default(), Screen::Lab);

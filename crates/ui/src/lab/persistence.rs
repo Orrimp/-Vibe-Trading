@@ -403,7 +403,7 @@ mod tests {
         );
     }
 
-    /// T-D-17 — write_sync creates the file and parent dirs.
+    /// T-D-17 — `write_sync` creates the file and parent dirs.
     #[test]
     fn write_sync_creates_file() {
         let tmp = tempfile::tempdir().unwrap();
@@ -415,7 +415,7 @@ mod tests {
         assert!(content.contains("version"), "expected 'version' in JSON");
     }
 
-    /// T-D-17 — restore_or_default returns cold-start when file absent.
+    /// T-D-17 — `restore_or_default` returns cold-start when file absent.
     #[test]
     fn restore_absent_file_returns_cold_start() {
         let state = restore_or_default(Path::new("/tmp/nonexistent-lab-state-999.json"));
@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(restored.compare_len(), original.compare_len());
     }
 
-    /// T-D-17 — debouncer: mark_dirty then is_due (before deadline) = false.
+    /// T-D-17 — debouncer: `mark_dirty` then `is_due` (before deadline) = false.
     #[test]
     fn debouncer_not_due_immediately() {
         let mut d = PersistenceDebouncer::default();
@@ -453,7 +453,7 @@ mod tests {
         assert!(d.is_dirty());
     }
 
-    /// T-D-17 — debouncer: no write without mark_dirty.
+    /// T-D-17 — debouncer: no write without `mark_dirty`.
     #[test]
     fn debouncer_no_flush_when_clean() {
         let tmp = tempfile::tempdir().unwrap();
@@ -464,7 +464,7 @@ mod tests {
         assert!(!path.exists(), "no file should be written when not dirty");
     }
 
-    /// T-D-17 — debouncer: force_flush writes immediately.
+    /// T-D-17 — debouncer: `force_flush` writes immediately.
     #[test]
     fn debouncer_force_flush_writes() {
         let tmp = tempfile::tempdir().unwrap();
@@ -483,7 +483,7 @@ mod tests {
     /// T-D-17 — proptest placeholder: rapid mutations result in ≤1 write per
     /// 500 ms. The full proptest is in `tests/lab_persistence_proptest.rs`.
     /// This unit-level test verifies the debouncer never writes more than once
-    /// per DEBOUNCE_MS period.
+    /// per `DEBOUNCE_MS` period.
     #[test]
     fn debouncer_coalesces_multiple_marks() {
         let mut d = PersistenceDebouncer::default();

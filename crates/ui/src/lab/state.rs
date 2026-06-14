@@ -569,11 +569,11 @@ mod tests {
             Preset::H1_2024,
             Preset::H2_2024,
         ] {
-            assert!(!p.label().is_empty(), "empty label for {:?}", p);
+            assert!(!p.label().is_empty(), "empty label for {p:?}");
         }
     }
 
-    /// T-D-4 — all StrategyFamily badge labels are non-empty and ≤4 chars.
+    /// T-D-4 — all `StrategyFamily` badge labels are non-empty and ≤4 chars.
     #[test]
     fn strategy_family_badges_valid() {
         for f in [
@@ -584,8 +584,8 @@ mod tests {
             StrategyFamily::Hybrid,
         ] {
             let badge = f.badge_label();
-            assert!(!badge.is_empty(), "empty badge for {:?}", f);
-            assert!(badge.len() <= 4, "badge too long: {:?} = {:?}", f, badge);
+            assert!(!badge.is_empty(), "empty badge for {f:?}");
+            assert!(badge.len() <= 4, "badge too long: {f:?} = {badge:?}");
         }
     }
 
@@ -599,7 +599,7 @@ mod tests {
         assert_eq!(state.data_source, LabDataSource::Synthetic);
     }
 
-    /// T-C3.1 / simple-strategies-realdata T0.2 — LabDataSource serde
+    /// T-C3.1 / simple-strategies-realdata T0.2 — `LabDataSource` serde
     /// round-trip via JSON (now three-way: Synthetic / Yahoo / Binance).
     #[test]
     fn lab_data_source_serde_round_trip() {
@@ -616,11 +616,13 @@ mod tests {
         }
     }
 
-    /// T-C3.1 — Clone preserves data_source (it is a UI selection, not a handle).
+    /// T-C3.1 — Clone preserves `data_source` (it is a UI selection, not a handle).
     #[test]
     fn lab_state_clone_preserves_data_source() {
-        let mut state = LabState::default();
-        state.data_source = LabDataSource::YahooCache;
+        let state = LabState {
+            data_source: LabDataSource::YahooCache,
+            ..Default::default()
+        };
         let cloned = state.clone();
         assert_eq!(cloned.data_source, LabDataSource::YahooCache);
     }

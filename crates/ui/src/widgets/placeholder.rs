@@ -59,6 +59,7 @@ pub fn view(title: &'static str, mode: ThemeMode) -> crate::Element<'static> {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // tests use deprecated placeholder constants that are pending removal
 mod tests {
     /// T-D-3 — placeholder view compiles and doesn't panic on construction.
     /// We can't easily assert visual output without a renderer, but we can

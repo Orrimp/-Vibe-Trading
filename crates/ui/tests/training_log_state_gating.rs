@@ -49,7 +49,7 @@
 //!   `assert!(cockpit.lab_state.training_inflight.is_none())` panicked with
 //!   "training_inflight must be None after TrainingExited".
 //! - Restoring line 2232: all 3 tests PASS.
-//! (See commit message for exact test output line.)
+//!   (See commit message for exact test output line.)
 
 #![cfg(feature = "live")]
 #![cfg(unix)] // spawn_training_run uses Unix process semantics in tests

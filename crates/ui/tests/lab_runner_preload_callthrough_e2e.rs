@@ -116,7 +116,7 @@ impl LabBarSource for SpawnBlockingFakeSource {
             // It requires a tokio reactor on the polling thread.
             // Without rt.spawn() wrapping: panics "there is no reactor running".
             // With rt.spawn() wrapping: runs on a tokio worker thread → OK.
-            let _result = tokio::task::spawn_blocking(|| {
+            tokio::task::spawn_blocking(|| {
                 // Simulate a blocking DNS/network operation.
                 std::thread::sleep(Duration::from_millis(1));
             })

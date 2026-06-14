@@ -230,6 +230,7 @@ fn discriminate_family(file_name: &str) -> Option<ModelFamily> {
 // ── Unit tests (H5 falsification) ────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used)] // test module: panicking on test-setup failure is appropriate
 mod tests {
     use super::*;
 

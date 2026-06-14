@@ -256,6 +256,7 @@ fn resolve_output_dir() -> std::path::PathBuf {
 /// # Errors
 /// Returns `Err` if `tokio::process::Command::spawn()` fails.
 #[cfg(feature = "live")]
+#[allow(clippy::needless_pass_by_value)] // activity_sender ownership is part of the public API contract
 pub fn spawn_training_run(
     rt_handle: Option<&tokio::runtime::Handle>,
     cfg: &TrainingConfig,
@@ -375,7 +376,7 @@ pub fn spawn_training_run(
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test module: panicking on test-setup failure is appropriate
 mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
@@ -386,7 +387,7 @@ mod tests {
     /// Spawns `sleep 60` via tokio, wraps it in a `TrainingHandle` (live) or
     /// kills it directly (non-live), and verifies the process exits within 500ms.
     ///
-    /// In `live` builds: the TrainingHandle Drop impl calls `start_kill()` → SIGKILL.
+    /// In `live` builds: the `TrainingHandle` Drop impl calls `start_kill()` → SIGKILL.
     /// In non-live builds: we call `start_kill()` directly to exercise the same
     /// kill-on-drop semantics without the feature-gated struct.
     #[test]
@@ -396,7 +397,7 @@ mod tests {
 
         #[cfg(feature = "live")]
         {
-            let mut child = rt.block_on(async {
+            let child = rt.block_on(async {
                 tokio::process::Command::new("sleep")
                     .arg("60")
                     .spawn()
@@ -473,13 +474,11 @@ mod tests {
         // Drain stdout in the current thread.
         if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(l) = line {
-                    let _ = tx.send(TrainingLogLine {
-                        text: SmolStr::new(&l),
-                        is_stderr: false,
-                    });
-                }
+            for l in reader.lines().map_while(Result::ok) {
+                let _ = tx.send(TrainingLogLine {
+                    text: SmolStr::new(&l),
+                    is_stderr: false,
+                });
             }
         }
 
@@ -562,8 +561,8 @@ mod tests {
 
     /// T-D-N3 — `default_training_config` produces a valid `TrainingConfig`.
     ///
-    /// Asserts the defaults match the R3 requirements: dry_run=false, epochs=None,
-    /// scenario=None, audit_db=None.
+    /// Asserts the defaults match the R3 requirements: `dry_run=false`, epochs=None,
+    /// scenario=None, `audit_db=None`.
     #[test]
     fn default_training_config_has_correct_defaults() {
         let cfg = default_training_config();

@@ -209,6 +209,7 @@ fn count_accent2(shot: &iced::window::Screenshot) -> usize {
 /// Load real Binance bars and run `v0.sma` to produce a genuine Binance-sourced
 /// equity series. Returns `(bars, equity_series)` or `None` if the corpus is
 /// absent (test skips — the gitignored corpus may not be present in CI).
+#[allow(clippy::type_complexity)] // return type is clear in context; extracting a type alias adds indirection without benefit
 fn binance_sourced_run() -> Option<(Vec<trading_core::Bar>, Vec<(i64, Decimal)>)> {
     let cfg = LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),

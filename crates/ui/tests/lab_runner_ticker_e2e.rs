@@ -44,6 +44,7 @@ use ui::lab::state::LabDataSource;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Build a standard `LabRunConfig` pointing at YahooCache source.
+#[allow(dead_code)] // helper available for future tests
 fn yahoo_cache_cfg() -> LabRunConfig {
     LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
@@ -143,14 +144,8 @@ async fn ticker_fires_at_least_3_times_in_1s_window() {
     // Collect all events with a generous 2 s window (well above the 1 s
     // preload duration).
     let mut events: Vec<Progress> = Vec::new();
-    loop {
-        match timeout(Duration::from_millis(200), progress_rx.recv()).await {
-            Ok(Some(p)) => {
-                events.push(p);
-            }
-            // Channel closed or 200ms timeout without new event.
-            _ => break,
-        }
+    while let Ok(Some(p)) = timeout(Duration::from_millis(200), progress_rx.recv()).await {
+        events.push(p);
     }
 
     preload_task.await.expect("preload task must not panic");
