@@ -305,6 +305,16 @@ pub async fn run(
 ) -> Result<SmaComposedRunResult, SmaRunError> {
     use crate::engine::MatchingEngine as _;
 
+    // Order-discard observability (post the 2026-06 composed-strategy ETH bug):
+    // a bare `.ok()` on the sizing/construction `Result`s below silently dropped
+    // orders — on ETH an `OrderError::AssetMismatch` was swallowed every bar,
+    // yielding 0 trades with no signal at all. We now COUNT + log each discard
+    // (`.map_err(note_discard).ok()` keeps identical control flow → anchored
+    // reports byte-identical) and raise a loud run-level alert below when a
+    // strategy signals but lands zero trades (the bug's exact signature).
+    let mut total_discarded_orders = 0usize;
+    let mut total_signals_with_side = 0usize;
+
     let start_instant = Instant::now();
 
     // ── 1. Load strategy into registry ───────────────────────────────────────
@@ -462,6 +472,7 @@ pub async fn run(
             };
 
             if let Some(side) = desired_side {
+                total_signals_with_side += 1;
                 let order_opt = match side {
                     Side::Buy => {
                         let eq_money: Money<Usdt> = Money::from_decimal(equity);
@@ -475,6 +486,9 @@ pub async fn run(
                             &position,
                             &risk_limits,
                         )
+                        .map_err(|e| {
+                            note_discard(e, &sig.symbol, side, &mut total_discarded_orders)
+                        })
                         .ok()
                     }
                     Side::Sell => Quantity::new(position.base_qty)
@@ -493,6 +507,14 @@ pub async fn run(
                                 &risk_limits,
                                 equity,
                             )
+                            .map_err(|e| {
+                                note_discard(
+                                    e,
+                                    &sig.symbol,
+                                    Side::Sell,
+                                    &mut total_discarded_orders,
+                                )
+                            })
                             .ok()
                         }),
                 };
@@ -571,6 +593,31 @@ pub async fn run(
         }
     }
 
+    // Run-level discard alert (post the 2026-06 composed ETH bug). A strategy
+    // that SIGNALS but lands zero trades because every candidate order was
+    // discarded is almost certainly broken (a symbol/asset mismatch or a
+    // misconfig) — the silent `.ok()` above let exactly that hide. Loud now;
+    // logging only, so control flow + anchored output are unchanged.
+    if total_discarded_orders > 0 {
+        if state.trades == 0 && total_signals_with_side > 0 {
+            tracing::error!(
+                strategy = %input.strategy_id,
+                symbol = %input.symbol,
+                signals = total_signals_with_side,
+                discarded = total_discarded_orders,
+                "composed-run: {total_signals_with_side} signals produced ZERO trades — all \
+                 {total_discarded_orders} candidate orders were discarded; likely a symbol/asset \
+                 mismatch or misconfiguration (this guard would have caught the 2026-06 composed ETH bug)"
+            );
+        } else {
+            tracing::warn!(
+                discarded = total_discarded_orders,
+                trades = state.trades,
+                "composed-run: {total_discarded_orders} candidate orders discarded (sizing/construction)"
+            );
+        }
+    }
+
     let elapsed = start_instant.elapsed().as_secs_f64();
     let final_equity = state.equity(position.last_mark.get());
 
@@ -601,6 +648,24 @@ pub async fn run(
     })
 }
 
+/// Log + count an order discarded due to a sizing/construction error, instead
+/// of silently dropping it. A bare `.ok()` on these `Result`s swallowed the
+/// `OrderError::AssetMismatch` that hid the 2026-06 composed-strategy ETH symbol
+/// bug (0 trades, no signal). Returns the error UNCHANGED so the caller's
+/// `.ok()` keeps identical control flow (Err → no order) — anchored reports stay
+/// byte-identical; this only adds observability (the `discarded` counter + a
+/// debug log; the run-level alert in `run` escalates a wholesale discard).
+fn note_discard<E: std::fmt::Display>(
+    err: E,
+    symbol: &Symbol,
+    side: Side,
+    discarded: &mut usize,
+) -> E {
+    *discarded += 1;
+    tracing::debug!(symbol = %symbol, ?side, error = %err, "composed-run: order discarded (sizing/construction)");
+    err
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -611,6 +676,35 @@ mod tests {
     use trading_core::Symbol;
 
     const TEST_SEED: u64 = 0x00C0_FFEE;
+
+    /// The order-discard guard COUNTS a discarded order and returns the error
+    /// UNCHANGED — proving a swallowed `.ok()` is now observable, not silent
+    /// (the mechanism that hid the 2026-06 composed-strategy ETH symbol bug).
+    #[test]
+    fn order_discard_is_counted_not_silent() {
+        let mut n = 0usize;
+        let e = note_discard(
+            "assetmismatch",
+            &Symbol::new("ETHUSDT"),
+            trading_core::Side::Sell,
+            &mut n,
+        );
+        assert_eq!(
+            n, 1,
+            "a discarded order must be COUNTED, not silently dropped"
+        );
+        assert_eq!(
+            e, "assetmismatch",
+            "the error is returned unchanged → .ok() control flow preserved (anchor-safe)"
+        );
+        note_discard(
+            "again",
+            &Symbol::new("BTCUSDT"),
+            trading_core::Side::Buy,
+            &mut n,
+        );
+        assert_eq!(n, 2);
+    }
 
     /// SMA crossover run produces a deterministic result (same seed → same trades).
     #[tokio::test]
