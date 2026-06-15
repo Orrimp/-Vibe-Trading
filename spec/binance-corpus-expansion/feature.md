@@ -1,6 +1,6 @@
 ---
 slug: binance-corpus-expansion
-status: proposed
+status: presenter-done
 owner: architect
 updated: 2026-06-15
 version: 0.1.0

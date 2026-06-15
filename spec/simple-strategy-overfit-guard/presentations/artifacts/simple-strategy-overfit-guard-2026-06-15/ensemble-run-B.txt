@@ -1,0 +1,52 @@
+    Finished `release` profile [optimized] target(s) in 0.49s
+     Running tests/realdata_simple_strategy_overfit_guard.rs (target/release/deps/realdata_simple_strategy_overfit_guard-3885183cf9a50d45)
+
+running 1 test
+
+## Simple-strategy overfit / robustness guard — block-bootstrap N=500
+## Frozen § 0 rule: FRAGILE if sharpe.p5<0 OR prob_loss>0.35 OR dd_p95>0.70
+##                  ROBUST  if sharpe.p5≥0.5 AND prob_loss≤0.15 AND dd_p95≤0.50
+##                  MARGINAL otherwise. Composite = worst band.
+
+| Cell | Strategy | N | sharpe p5/p25/p50/p75/p95 | prob_loss | P(sharpe>0) | dd_p50 | dd_p95 | VERDICT |
+|---|---|---|---|---|---|---|---|---|
+  running AVAX·2024 (down) × SMA 20/50 (seed=0x00C0FFEE00000000) …   block_length(Auto)=200 for AVAXUSDT/v0.sma
+| AVAX·2024 (down) | SMA 20/50 | 500 | -0.810/0.020/0.570/1.119/1.909 | 0.248 | 0.752 | 0.055 | 0.100 | **FRAGILE** |
+FRAGILE
+  running AVAX·2024 (down) × MACD (seed=0x00C0FFEE00000100) …   block_length(Auto)=200 for AVAXUSDT/v0.5.macd
+| AVAX·2024 (down) | MACD | 500 | -0.475/0.252/0.895/1.369/2.146 | 0.160 | 0.840 | 0.027 | 0.048 | **FRAGILE** |
+FRAGILE
+  running AVAX·2024 (down) × RSI (seed=0x00C0FFEE00000200) …   block_length(Auto)=200 for AVAXUSDT/v0.5.rsi
+| AVAX·2024 (down) | RSI | 500 | -0.788/-0.252/0.189/0.674/1.612 | 0.396 | 0.604 | 0.026 | 0.047 | **FRAGILE** |
+FRAGILE
+  running AVAX·2024 (down) × BBands (seed=0x00C0FFEE00000300) …   block_length(Auto)=200 for AVAXUSDT/v0.5.bbands
+| AVAX·2024 (down) | BBands | 500 | -1.217/-0.603/-0.175/0.246/0.909 | 0.594 | 0.406 | 0.025 | 0.046 | **FRAGILE** |
+FRAGILE
+  running DOT·2024  (down) × SMA 20/50 (seed=0x00C0FFEE00000001) …   block_length(Auto)=204 for DOTUSDT/v0.sma
+| DOT·2024  (down) | SMA 20/50 | 500 | -0.910/0.017/0.653/1.354/2.310 | 0.248 | 0.752 | 0.053 | 0.097 | **FRAGILE** |
+FRAGILE
+  running DOT·2024  (down) × MACD (seed=0x00C0FFEE00000101) …   block_length(Auto)=204 for DOTUSDT/v0.5.macd
+| DOT·2024  (down) | MACD | 500 | -1.915/-0.896/-0.230/0.429/1.271 | 0.598 | 0.402 | 0.047 | 0.080 | **FRAGILE** |
+FRAGILE
+  running DOT·2024  (down) × RSI (seed=0x00C0FFEE00000201) …   block_length(Auto)=204 for DOTUSDT/v0.5.rsi
+| DOT·2024  (down) | RSI | 500 | -0.308/0.185/0.640/1.114/1.986 | 0.152 | 0.848 | 0.020 | 0.036 | **FRAGILE** |
+FRAGILE
+  running DOT·2024  (down) × BBands (seed=0x00C0FFEE00000301) …   block_length(Auto)=204 for DOTUSDT/v0.5.bbands
+test realdata_simple_strategy_overfit_guard has been running for over 60 seconds
+| DOT·2024  (down) | BBands | 500 | -2.263/-1.372/-0.837/-0.393/0.304 | 0.886 | 0.114 | 0.033 | 0.060 | **FRAGILE** |
+FRAGILE
+  running AVAX·2023 (up-market control) × SMA 20/50 (seed=0x00C0FFEE00000002) …   block_length(Auto)=218 for AVAXUSDT/v0.sma
+| AVAX·2023 (up-market control) | SMA 20/50 | 500 | -0.137/1.005/1.651/2.305/3.175 | 0.062 | 0.938 | 0.043 | 0.073 | **FRAGILE** |
+FRAGILE
+
+## Legend
+## - sharpe p5/.../p95: percentile distribution of annualised hourly Sharpe over 500 paths
+## - prob_loss: P(final_equity < initial_equity)
+## - P(sharpe>0): fraction of paths with positive Sharpe
+## - dd_p50/dd_p95: max-drawdown tail percentiles (p50 and p95 across paths)
+## - Negative control: RSI + BBands MUST score FRAGILE/MARGINAL (AC-OG.4).
+##   If RSI/BBands come back ROBUST → harness miscalibrated, escalate.
+test realdata_simple_strategy_overfit_guard ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 78.31s
+

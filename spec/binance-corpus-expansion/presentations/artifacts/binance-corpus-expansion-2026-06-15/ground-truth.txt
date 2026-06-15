@@ -1,0 +1,28 @@
+# Live ground-truth capture — binance-corpus-expansion — 2026-06-15
+# (presenter, read-only probes; no fetch, no build)
+
+$ git ls-files data/binance-2122/
+data/binance-2122/REVISION.toml
+
+$ git ls-files --others --exclude-standard data/binance-2122/   # untracked, gitignore-respecting
+(empty — no parquet leaked into git)
+
+$ find data/binance-2122 -name '*.parquet' | wc -l
+240
+
+$ du -sh data/binance-2122
+5.6M
+
+$ head -9 data/binance-2122/REVISION.toml   # new pin + metadata
+[revision]
+sha256 = "4f3906222cbca90c4188443f9a09440c2b7cb72a3a1fa40b7f7598b3fad22a62"
+
+[revision.metadata]
+generated_at = "2026-06-15T05:52:22Z"
+binance_base = "https://api.binance.com"
+fetch_tool = "fetch_binance_klines"
+fetch_version = "0.1.0"
+interval = "1h"
+
+$ grep -m1 '^sha256' data/binance/REVISION.toml   # legacy pin, must stay byte-identical
+sha256 = "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7"

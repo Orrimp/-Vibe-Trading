@@ -2990,7 +2990,7 @@ arch        = [
 crates      = ["crates/backtest"]
 tests       = ["crates/backtest/tests/realdata_simple_strategy_overfit_guard.rs"]
 anchors     = []   # UN-ANCHORED by construction (survey precedent; #[ignore] harness, no anchors.toml row) — see feature.md § 3
-state       = "tester-done"   # tester 2026-06-15 VERDICT PASS: determinism diff byte-identical across 2 release runs; negative control confirmed (RSI/BBands FRAGILE, worse than SMA/MACD); AVAX-2023 control p5=-0.137 thin-margin as expected; 82 default-suite pass, clippy --tests clean. Finding stands: down-market hedge path-fragile → ship passive. Remaining: T-OG.13 analyst dev-note (revise survey finding) → presenter.
+state       = "presenter-done"   # presenter 2026-06-15: operator deck spec/simple-strategy-overfit-guard/presentations/simple-strategy-overfit-guard-2026-06-15.md ready (PRESENTATION CHECK PASS, approval block un-ticked). All 13 tasks done, VERDICT PASS, dev-note authored. Finding: down-market hedge path-fragile → ship-passive unqualified. Awaiting operator approval → shipped.
 
 [[req]]
 id          = "REQ-BINANCE-CORPUS-EXPANSION-001"
@@ -3004,4 +3004,4 @@ arch        = [
 crates      = ["crates/data"]
 tests       = ["crates/data/tests/binance_2122_revision_consistency.rs"]
 anchors     = []   # data-corpus feature, no anchors.toml row; AC2 asserts existing data/binance 3a8b96c4 pin stays byte-identical
-state       = "tester-done"   # tester 2026-06-15 VERDICT PASS: anchors 119/119, data/binance 3a8b96c4 byte-identical; manifest-consistency + smoke consumer (17507 BTCUSDT bars) pass; AC4 re-fetch determinism stable SHA (50/240 months legitimately short vs calendar-expected, re-fetch byte-identical); gitignore clean (only REVISION.toml); spec-lint 70 zero-new; clippy clean. Pending presenter/operator.
+state       = "presenter-done"   # presenter 2026-06-15: operator deck spec/binance-corpus-expansion/presentations/binance-corpus-expansion-2026-06-15.md ready (PRESENTATION CHECK PASS). VERDICT PASS: anchors 119/119, 3a8b96c4 byte-identical, gitignore clean. Unblocks a future down-market survey re-run (test path-robustness per overfit-guard finding). Awaiting operator approval → shipped.
