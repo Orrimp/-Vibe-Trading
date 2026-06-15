@@ -1,10 +1,25 @@
 ---
 slug: ui-contrast-asserter
-version: 0.1.0
-status: dev-done
-owner: tester
+version: 0.2.0
+status: proposed
+owner: analyst
 priority: P2
-updated: 2026-05-29
+updated: 2026-06-15
+---
+
+# UI contrast asserter — v0.2.0 (close-out: ship + gate-flip + 6-pair disposition)
+
+> **v0.2.0 close-out brief — appended 2026-06-15 (analyst).** Scopes the
+> tidy-toward-done of the shipped-but-never-presented WCAG asserter. THREE
+> deliverables, low-risk and proportionate (this is a close-out, NOT a color
+> redesign): (1) run the parked presenter on v0.1.0 to formally ship the
+> asserter as-is (already PASSES in WARN mode); (2) flip the default
+> `UI_CONTRAST_MODE` WARN→gate so the asserter ENFORCES; (3) dispose of the
+> 6 known sub-AA light-mode pairs — RECOMMENDED zero-churn path is ratify all
+> 6 as documented `OPT_OUTS` entries. **The v0.1.0 body below is preserved
+> verbatim as the shipped baseline; v0.2.0 content is in
+> [§ v0.2.0 close-out](#v020-close-out) at the end of this file.**
+
 ---
 
 # UI contrast asserter — v0.1.0
@@ -837,8 +852,273 @@ warnings, if any) + the falsification probe outcomes +
 pre/post + confirmation that the existing visual-snapshot tests
 under `crates/ui/tests/visual_*.rs` PASS byte-identical._
 
+## v0.2.0 close-out
+
+> **Analyst close-out scope 2026-06-15.** v0.1.0 is `tester-done` (VERDICT
+> PASS 2026-05-29, WARN default) but was NEVER formally shipped — the
+> presenter was parked (`HANDOFF → presenter`, never run). The 2-week WARN
+> observation window contracted at v0.1.0 (per Q-DUO-WARN) has elapsed. This
+> close-out ships the asserter, promotes it to enforcing, and disposes of the
+> 6 known sub-AA pairs. **Proportionate, low-risk: the RECOMMENDED path adds
+> ZERO color change and ZERO visual-baseline churn.**
+
+### Why now (close-out trigger)
+
+Two loose ends from v0.1.0:
+
+1. **Shipped-but-unpresented.** The asserter PASSES in WARN mode and is wired
+   into `cargo test -p ui`, but no presenter deck closed the loop. Per
+   AGENT.md the presenter is the sprint-review face that runs after
+   `VERDICT → PASS`; v0.1.0 earned its PASS but the deck was parked. Formal
+   ship is overdue.
+2. **WARN-but-not-enforcing.** The asserter currently only `eprintln!`s on a
+   sub-AA pair — a NEW contrast regression (e.g. a future `FG_3` hex tweak
+   that drops `fg_3_on_panel_light` below 4.5) would log a WARN and the test
+   would still PASS. The asserter does not yet do the one job it exists for:
+   BLOCK the regression. Flipping the default to `gate` closes that gap.
+
+### V2-R1 — Run the parked presenter on v0.1.0 (ship as-is)
+
+- **V2-R1.1** The presenter assembles
+  `spec/ui-contrast-asserter/presentations/ui-contrast-asserter-<date>.md`
+  per the parked `T-CONT-P1` acceptance criteria (cross-cutting safety-duo
+  framing recap; the M-T1 pair-count + opt-out-count table; the 6 design-intent
+  WARN lines as the asserter's first signal; the 2-week WARN observation
+  contract now elapsed; sibling-redactor cross-link; operator-decide-ready).
+- **V2-R1.2** This is the FIRST deliverable and is **independent of the
+  gate-flip decision** — the asserter ships as-is (WARN-default, PASSING)
+  regardless of whether V2-R2/V2-R3 land in this cycle or the next. Ship is
+  not blocked on the 6-pair disposition.
+- **V2-R1.3** No code change. Pure presenter deck + frontmatter
+  `status: shipped` on the v0.1.0 baseline once the deck is operator-approved.
+
+### V2-R2 — Flip default `UI_CONTRAST_MODE` WARN → gate (enforce)
+
+- **V2-R2.1** `current_mode()` in
+  [`crates/ui/tests/contrast.rs:101-106`](../../crates/ui/tests/contrast.rs)
+  flips its default arm from `_ => Mode::Warn` to `_ => Mode::Gate`. The env
+  var `UI_CONTRAST_MODE=warn` becomes the explicit opt-out escape hatch
+  (local dev, CI-pinning); operator default becomes `gate`. This is the
+  v0.2.0 promotion contract pre-drawn at v0.1.0 § D-CONT-6.
+- **V2-R2.2** The gate-flip is **conditional on V2-R3** — a bare flip with the
+  6 sub-AA pairs still classed `Body` would turn the existing 6 WARN lines into
+  a hard `panic!` and RED-fail `cargo test -p ui`. The 6 MUST be disposed
+  (ratified opt-out OR tuned to ≥AA) in the same change-set as the flip.
+- **V2-R2.3** Doc-comment + file-header updates in `contrast.rs` to reflect
+  gate-as-default (the v0.1.0 header says "warn (default at v0.1.0)"; v0.2.0
+  says "gate (default at v0.2.0); UI_CONTRAST_MODE=warn opts out").
+- **V2-R2.4** Update the in-file `all_theme_pairs_meet_wcag` doc block (lines
+  826-834) that enumerates the "~6 WARN-log lines" — under gate-default with
+  the 6 ratified opt-out, that doc block describes the opt-out audit lines
+  instead.
+
+### V2-R3 — Disposition of the 6 sub-AA light-mode pairs (OPERATOR DECISION)
+
+All 6 sub-AA pairs are LIGHT-mode (confirmed by the v0.1.0 tester + re-verified
+by this analyst against the live `theme.rs` hex). Per-pair analysis with the
+ratio gap to AA (4.5:1) and tune-vs-opt-out recommendation:
+
+| # | pair_id | ratio | gap to 4.5 | tune feasibility | analyst rec |
+|---|---------|-------|-----------|------------------|-------------|
+| 1 | `up_500_on_canvas_light` | 4.46 | −0.04 | **trivial** — `UP_500.light #547A52 → #4C6F4A` lifts to 5.19 canvas / 5.47 panel | TUNE (easy AA win) if (B); else opt-out |
+| 2 | `down_500_on_canvas_light` | 4.33 | −0.17 | **trivial** — `DOWN_500.light #A95F46 → #9E5740` lifts to 4.91 / 5.17 | TUNE (easy AA win) if (B); else opt-out |
+| 3 | `fg_3_on_panel_raised_dark`† | 3.75 | −0.75 | **easy, single-surface** — `FG_3.dark #808993 → #9098A2` lifts to 4.56 on raised | TUNE if (B); else opt-out |
+| 4 | `fg_on_accent_on_accent_light` | 3.52 | −0.98 | **easy, reuses existing hex** — `ACCENT.light #3F968D → #2A7B73` (already the `ACCENT_HOVER.light` value) lifts white-on-accent to 5.02 | TUNE if (B); else opt-out |
+| 5 | `warn_500_on_panel_light` | 3.11 | −1.39 | **hard** — amber-on-light; `WARN_500.light` would need `#704F1C`-class darkening (big hue/value shift, muddies the amber) to clear panel at 7.1; `#8C6324` only reaches 5.13 panel / 4.87 canvas (marginal) | **OPT-OUT** |
+| 6 | `warn_500_on_canvas_light` | 2.96 | −1.54 | **hardest** — same amber-on-light problem; the worst pair | **OPT-OUT** |
+
+† **Correction to the brief's "all 6 are light-mode":** pair #3
+`fg_3_on_panel_raised_dark` (3.75) is a **DARK-mode** pair (`FG_3.dark` on
+`PANEL_RAISED.dark`). The other 5 are light-mode. The 6-as-a-set are the exact
+pairs the v0.1.0 asserter WARN-logs; their disposition is what V2-R3 decides
+regardless of mode. (Analyst flags this so the architect does not lock a
+"6 light-mode" invariant that the code contradicts — the no-silent-divergence
+non-negotiable.)
+
+**Tune feasibility re-verified** by this analyst running the shipped WCAG
+formula against the live `theme.rs` hex (candidate darkenings listed above all
+computed ≥4.5 on the named surfaces). 4 of 6 are trivially tunable; the 2
+`WARN_500` amber pairs are classically hard (yellow on a near-white surface
+cannot reach 4.5 without becoming a brown).
+
+#### The operator choice
+
+**(A) Ratify all 6 as opt-out debt — RECOMMENDED (DURABLE for a close-out).**
+Add 6 `OptOut(&'static str)` entries to the PAIRS table (re-class the 6 from
+`Body` → `OptOut("known-light-mode-sub-aa-debt-v0.2.0")` or a per-pair reason)
+PLUS 6 mirror rows in the `OPT_OUTS` manifest table, each with a mandatory
+reason string naming the ratio + the v0.2.0 disposition. **Zero color change,
+zero visual-baseline churn, zero rebaseline, zero operator color sign-off.**
+The gate still ENFORCES for every OTHER pair (44 of 50 asserting pairs stay
+`Body`/`Equity` under a hard gate) — so the a11y gate goes enforcing
+*immediately* while the 6 known exceptions are honestly documented as debt.
+This is the proportionate close-out: it ships the enforcing gate now and parks
+the color question as documented, reviewable, per-pair debt that a later
+dedicated palette-tune feature can retire. **Recommended because it makes the
+gate durable-enforcing in ONE cycle without spawning a color-redesign
+sub-project** — the alternative (B) couples a tidy-up to a baseline-churning
+color change that needs its own operator sign-off loop.
+
+**(B) Tune the N trivially-fixable pairs + opt-out the rest — fallback if the
+operator wants the AA wins now.** Tune pairs #1, #2, #3, #4 (all reach ≥4.5
+with the small darkenings above) and opt-out only #5, #6 (the hard amber).
+Result: 2 opt-out entries instead of 6; 4 genuine AA fixes. **NOT zero-cost:**
+tuning a Lumen token CHANGES rendered colors → changes visual snapshot
+baselines (`crates/ui/tests/visual_snapshots.rs`, 51 snapshots) → requires a
+rebaseline AND operator sign-off on each new hex (the colors ship to the live
+cockpit). It also touches production `theme.rs` (v0.1.0 was strictly
+test-only; R-NR.1 no longer holds). Pair #4 is the cleanest of the four
+(reuses an existing palette hex, `ACCENT_HOVER.light`) so even a partial-(B)
+"tune only #4, opt-out 5" is defensible if the operator wants one quick win.
+
+**Disposition is the operator's call (V-CONT2-1 below). The analyst recommends
+(A)** for a close-out: it is the durable choice *for this feature's stated goal*
+(make the gate enforcing) and avoids spawning a color-redesign follow-on. The
+color question is real but belongs to a dedicated palette-tune feature, not a
+tidy-toward-done close-out. **If-budget-tightens annotation:** (A) is also the
+cheaper path here — there is no cheaper fallback to name; (B) is the MORE
+expensive option, chosen only if the operator explicitly wants the AA wins
+banked this cycle.
+
+### V2-acceptance criteria
+
+- **V2-AC.1** Presenter deck `ui-contrast-asserter-<date>.md` exists,
+  operator-approved; v0.1.0 baseline frontmatter `status: shipped`. (V2-R1)
+- **V2-AC.2** With all 6 ratified as opt-out (path A), `current_mode()`
+  defaults to `Gate`, and `UI_CONTRAST_MODE` **unset** → gate mode →
+  `cargo test -p ui --test contrast` **PASSES** (the 6 are opt-out'd and
+  logged as audit lines; every other `Body`/`Equity` pair is ≥ its threshold
+  under a hard gate). (V2-R2 + V2-R3-A)
+- **V2-AC.3** With `UI_CONTRAST_MODE=warn` set, behavior is byte-identical to
+  v0.1.0 WARN mode (escape hatch preserved). (V2-R2.1)
+- **V2-AC.4** A NEW deliberately-sub-AA `Body` pair (the P-CONT-1.A probe)
+  added to PAIRS → gate-default (env unset) → test **FAILS** (panic). This is
+  the regression-blocking proof the flip exists for. (V2-R2)
+- **V2-AC.5** `opt_outs_all_have_reasons` still PASSES — every new opt-out
+  entry carries a non-empty reason string. (V2-R3-A)
+- **V2-AC.6** Under path (A): `git diff -- crates/ui/src/` is EMPTY (R-NR.1
+  still holds — opt-out ratification is test-only); `bash scripts/verify_anchors.sh`
+  byte-identical; `visual_snapshots` byte-identical (zero color change). Under
+  path (B): `theme.rs` diff is the N tuned tokens, visual baselines
+  rebaselined with operator color sign-off, anchors re-checked.
+- **V2-AC.7** `MIN_PAIRS = 60` floor unchanged; re-classing 6 pairs `Body →
+  OptOut` does not change PAIRS table length (83 entries stay).
+
+### V2 — baseline-equity-divergence e2e gate: N/A (justified)
+
+The CLAUDE.md non-negotiable "every strategy overlay or sizing-modifier ships
+with a baseline-equity-divergence e2e test" is **N/A** for this feature.
+`crates/ui/tests/contrast.rs` is **UI test-tooling** — it reads `pub const`
+color tokens and asserts a closed-math WCAG ratio. It has **no strategy, no
+sizing modifier, no equity curve, and touches no backtest path**. There is no
+equity output to diverge. The v0.1.0 regression guarantee is carried by the
+anchor contract (75/75 byte-identical) + the `visual_snapshots` byte-identity
+under path (A), and by the gate-mode falsification probe (V2-AC.4) which is the
+contrast-domain analogue of the divergence assertion: it proves the gate's
+output (PASS vs panic) actually responds to a non-trivial input (a sub-AA
+pair). Same justification class as v0.1.0 § Backtest Scenarios N/A.
+
+### V2 — operator decisions
+
+#### V-CONT2-1 — Disposition of the 6 sub-AA pairs: (A) ratify-all vs (B) tune-N
+
+**Q.** How are the 6 known sub-AA pairs disposed when the gate flips to
+enforcing? **(A)** re-class all 6 as documented `OPT_OUTS` debt (zero color
+change, zero baseline churn) — **RECOMMENDED**; **(B)** tune the 4 trivially-
+fixable pairs (#1 up_500, #2 down_500, #3 fg_3-dark, #4 fg-on-accent) to ≥AA +
+opt-out the 2 hard amber pairs (#5, #6) — banks 4 AA wins but touches
+production `theme.rs`, changes rendered colors, and needs a visual rebaseline +
+per-hex operator sign-off.
+
+**Default: (A).** Proportionate to a close-out; makes the gate enforcing in one
+cycle; parks the color question as honest per-pair debt for a future dedicated
+palette-tune feature. **This is the riskiest open question** — it determines
+whether v0.2.0 stays test-only (A) or becomes a production color change (B).
+
+#### V-CONT2-2 — Gate-flip timing: ship the gate-default in v0.2.0, or one more env-opt-in cycle?
+
+**Q.** Does the WARN→gate default flip (V2-R2) ship IN this v0.2.0, or does
+v0.2.0 ship only the presenter (V2-R1) + the 6-pair ratification (V2-R3-A) and
+leave `current_mode()` defaulting to WARN for one more cycle (operator opts in
+via `UI_CONTRAST_MODE=gate` until then)?
+
+**(Recommended) Option A — flip in v0.2.0.** The 2-week WARN observation
+window contracted at v0.1.0 has elapsed; the 6 WARN lines are stable and
+understood; ratifying them (V2-R3-A) removes the only thing that would
+RED-fail a hard gate. Holding the flip another cycle leaves the asserter
+non-enforcing — a new contrast regression would still slip through as a WARN.
+The whole point of the close-out is to make the gate DO ITS JOB. **Durable.**
+
+**Option B (fallback) — presenter + ratify now, flip next cycle.** Ships the
+deck + documents the 6 as opt-out but leaves WARN as default one more cycle.
+Lower blast-radius (no chance a missed asserting pair RED-fails CI on the flip
+day) but leaves the gate toothless and adds a v0.2.1 flip-only follow-on.
+Choose only if the operator wants to eyeball the gate-mode run output (env-set)
+for a cycle before making it default.
+
+**Default: A** (flip in v0.2.0) — conditional on V-CONT2-1 disposing the 6 so
+the hard gate is GREEN on first default run.
+
+### V2 — falsifiers
+
+- **V2-K1 — A pair currently asserting `Body` is below 4.5 but was NOT in the
+  known-6.** If the gate-flip change-set's dry-run (developer/tester re-run in
+  gate mode) surfaces a 7th sub-AA `Body` pair the v0.1.0 audit missed, the
+  hard gate RED-fails on first default run. **Mitigation:** the developer MUST
+  run `UI_CONTRAST_MODE=gate cargo test -p ui --test contrast` BEFORE flipping
+  the default and confirm exactly the known 6 (now opt-out'd) and zero others.
+  Route back to analyst if a 7th surfaces — that is a genuine new defect, not a
+  close-out item.
+- **V2-K2 — Path-(B) token tune cascades to a DARK-mode or PANEL pair.**
+  Darkening `UP_500.light` is light-mode-only (the `.light` field), so it
+  cannot regress a dark pair; but a careless tune that edits the `.dark` field
+  too would. **Mitigation:** path-(B) edits touch ONLY the `.light` field of
+  the 4 tuned tokens; the gate re-run catches any dark regression. (N/A under
+  recommended path A.)
+- **V2-K3 — Re-classing 6 `Body → OptOut` silently masks a real future
+  regression on those same pair_ids.** If a later refactor makes
+  `warn_500_on_canvas_light` somehow tunable but the opt-out entry persists,
+  the gate would never re-flag it. **Mitigation:** each opt-out reason string
+  names the ratio + "v0.2.0 debt" so a code-review diff of `OPT_OUTS` surfaces
+  the debt; a future palette-tune feature is expected to retire these 6 entries
+  and re-class them `Body`.
+
+### V2 — hypotheses
+
+- **V2-H1 — Path (A) is ≤ ~20 LoC + 1 deck.** 6 PAIRS re-class edits (1 line
+  each: `class:` field) + 6 `OPT_OUTS` rows (~4 lines each) + the
+  `current_mode()` default arm flip (1 line) + header/doc-comment updates.
+  No new types, no new tests beyond what V2-AC asserts. ~0.25 dev day +
+  ~0.25 tester day + presenter deck.
+- **V2-H2 — Gate-flip surfaces exactly the known 6, zero new.** The v0.1.0
+  M-T1 audit enumerated all 83 pairs; the WARN window logged exactly 6; no
+  `theme.rs` color change has landed since (verify: `git log` on theme.rs since
+  2026-05-29). So the gate-mode dry-run should show exactly the 6. If it shows
+  more, V2-K1 fires.
+- **V2-H3 — Path (A) keeps R-NR.1 (zero production code).** Opt-out
+  ratification is entirely within `crates/ui/tests/contrast.rs`; `theme.rs`
+  untouched; anchors + visual snapshots byte-identical.
+
 ## Changelog
 
+- 2026-06-15 (analyst): v0.2.0 close-out brief appended. THREE deliverables —
+  V2-R1 run the parked presenter on v0.1.0 (formal ship, as-is, WARN-default
+  PASSING); V2-R2 flip default `UI_CONTRAST_MODE` WARN→gate (enforce);
+  V2-R3 dispose the 6 known sub-AA pairs (RECOMMENDED path A: ratify all 6 as
+  documented `OPT_OUTS` debt — zero color change, zero baseline churn; gate
+  enforces for every other pair). Per-pair tune-vs-opt-out table computed
+  against live `theme.rs` hex (4 of 6 trivially tunable; the 2 `WARN_500`
+  amber pairs classically hard). **Correction logged:** pair #3
+  `fg_3_on_panel_raised_dark` is DARK-mode, not light (brief said "all 6
+  light-mode"); the no-silent-divergence non-negotiable flagged so the
+  architect does not lock a false invariant. baseline-equity-divergence e2e
+  gate N/A (UI test-tooling; no strategy/equity) — justified. Riskiest open
+  question V-CONT2-1 (disposition A vs B) + V-CONT2-2 (gate-flip timing this
+  cycle vs one more env-opt-in cycle). Frontmatter version 0.1.0 → 0.2.0,
+  status dev-done → proposed, owner tester → analyst. Trace
+  `REQ-UI-CONTRAST-ASSERTER-001` intended change reported to orchestrator
+  (v0.1.0 tester-done → present/ship; v0.2.0 scope opened) — analyst does NOT
+  edit trace.toml per close-out constraint. HANDOFF → architect.
 - 2026-05-29 (architect): M-T1 design pass. Q-CONT-1 (a) WARN-default,
   Q-CONT-2 (a) hand-rolled formula, Q-CONT-3 (a) in-file OPT_OUTS all
   RATIFIED on the DURABLE Recommended path. D-CONT-1..D-CONT-7 locked.

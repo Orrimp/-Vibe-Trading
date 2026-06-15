@@ -1,9 +1,16 @@
 ---
 slug: ui-contrast-asserter
-status: shipped
-owner: presenter
-updated: 2026-05-29
+status: proposed
+owner: analyst
+updated: 2026-06-15
 ---
+
+# Tasks — ui-contrast-asserter
+
+> **v0.2.0 close-out tasks appended 2026-06-15 (analyst)** — see
+> [§ v0.2.0 close-out](#v020-close-out-tasks) below. The v0.1.0 task tree is
+> preserved verbatim; its parked `T-CONT-P1` presenter task is the first
+> v0.2.0 deliverable (V2-R1).
 
 # Tasks — ui-contrast-asserter v0.1.0
 
@@ -73,6 +80,54 @@ updated: 2026-05-29
 ## M-PRESENT — Presenter
 
 - [ ] T-CONT-P1 — Deck `spec/ui-contrast-asserter/presentations/ui-contrast-asserter-<date>.md` — _accept: cross-cutting safety duo framing recap; pair-count + opt-out-count table from M-T1 audit; sample WARN-mode failure log (if any); 2-week WARN observation contract with explicit v0.2.0 promotion-to-gate plan; sibling redactor cross-link; operator-decide-ready_
+
+---
+
+## v0.2.0 close-out tasks
+
+> **Analyst V2-M0 2026-06-15.** Three deliverables per
+> [feature.md § v0.2.0 close-out](feature.md#v020-close-out): V2-R1 ship the
+> parked presenter, V2-R2 flip the gate default, V2-R3 dispose the 6 sub-AA
+> pairs (recommended path A = ratify all 6 as opt-out). ~0.25 dev day +
+> ~0.25 tester day + presenter deck. **Gated on V-CONT2-1 (A vs B) +
+> V-CONT2-2 (flip-now vs flip-next) operator decisions.**
+
+### V2-M0 — Analyst (DONE 2026-06-15)
+
+- [x] V2-CONT-M0.1 — v0.2.0 close-out brief appended to feature.md — _accept: § v0.2.0 close-out with V2-R1/R2/R3 + V2-AC.1-7 + per-pair tune-vs-opt-out table + V-CONT2-1/2 operator decisions + V2-K1-3 + V2-H1-3; baseline-equity-divergence e2e N/A justified_
+- [x] V2-CONT-M0.2 — Per-pair tune feasibility re-verified against live theme.rs hex — _accept: WCAG formula run on candidate darkenings; 4 of 6 trivially tunable (#1 up_500 #2 down_500 #3 fg_3-dark #4 fg-on-accent), 2 hard amber (#5 #6 warn_500); pair #3 dark-mode correction logged_
+- [x] V2-CONT-M0.3 — Frontmatter bumped + intended trace change reported — _accept: feature.md/tasks.md version 0.1.0→0.2.0, status→proposed, owner→analyst; trace REQ-UI-CONTRAST-ASSERTER-001 intended change reported to orchestrator (NOT edited by analyst per close-out constraint)_
+
+### V2-M-T1 — Architect
+
+- [ ] V2-CONT-T1.1 — Ratify V-CONT2-1 (disposition A vs B) + V-CONT2-2 (gate-flip timing) operator decisions — _accept: § Design records the chosen disposition + timing; if (A), lock the 6→OptOut re-class list + 6 OPT_OUTS manifest rows with per-pair reason strings; if (B), lock the N tuned tokens + visual-rebaseline + operator-color-sign-off plan_
+- [ ] V2-CONT-T1.2 — Lock the `current_mode()` default-arm flip + header/doc-comment edits — _accept: D-clause names the exact `_ => Mode::Gate` change at contrast.rs:101-106 + the file-header / all_theme_pairs_meet_wcag doc-block updates (lines 826-834) describing gate-as-default_
+- [ ] V2-CONT-T1.3 — Confirm V2-K1 mitigation: gate-mode dry-run shows exactly the known 6 — _accept: architect dry-run (or developer pre-flight) confirms `UI_CONTRAST_MODE=gate` surfaces exactly the 6, zero 7th; git log on theme.rs since 2026-05-29 confirms no color change landed_
+- [ ] V2-CONT-T1.4 — Confirm ADR-0048 carry-forward (or no-ADR) for the gate-flip — _accept: § D-clause records whether the WARN→gate promotion needs an ADR-0048 Changelog ride-along row (v0.1.0 § D-CONT-7 set the boundary-test precedent; the flip is within that contract)_
+- [ ] V2-CONT-T1.5 — Frontmatter flipped arch-done; HANDOFF → developer — _accept: feature.md/tasks.md status proposed → arch-done, owner analyst → developer_
+
+### V2-M-DEV — Developer (path-A scope; ~0.25 day)
+
+- [ ] V2-CONT-D1 — (path A) Re-class the 6 sub-AA pairs `Body → OptOut("<reason>")` in PAIRS — _accept: 6 `class:` field edits in contrast.rs PAIRS; each reason names ratio + "v0.2.0-light-mode-sub-aa-debt" (or per-pair); PAIRS length stays 83_
+- [ ] V2-CONT-D2 — (path A) Add 6 mirror rows to the `OPT_OUTS` manifest table — _accept: 6 `OptOutEntry { pair_id, reason }` rows; `opt_outs_all_have_reasons` PASSES_
+- [ ] V2-CONT-D3 — Flip `current_mode()` default arm to `Mode::Gate` + update header/doc-comments — _accept: contrast.rs:101-106 `_ => Mode::Gate`; file-header + all_theme_pairs_meet_wcag doc-block (826-834) say gate-default / UI_CONTRAST_MODE=warn opts out_
+- [ ] V2-CONT-D4 — Verify gate-default PASS with env unset — _accept: `cargo test -p ui --test contrast` (env UNSET) → 7/7 PASS; 6 opt-out audit lines logged; V2-AC.2_
+- [ ] V2-CONT-D5 — Verify WARN escape hatch byte-identical to v0.1.0 — _accept: `UI_CONTRAST_MODE=warn cargo test -p ui --test contrast` → same 6 WARN lines, PASS; V2-AC.3_
+- [ ] V2-CONT-D6 — Re-run P-CONT-1.A probe under gate-DEFAULT (env unset) — _accept: deliberately-sub-AA Body probe inserted → test PANICS with env unset (proves the flip blocks regressions); reverted; V2-AC.4_
+- [ ] V2-CONT-D7 — Verify R-NR.1 holds under path A — _accept: `git diff -- crates/ui/src/` EMPTY; `bash scripts/verify_anchors.sh` byte-identical; visual_snapshots byte-identical; V2-AC.6_
+- [ ] V2-CONT-D8 — _(path B ONLY)_ Tune the N `.light` tokens + rebaseline visuals — _accept: ONLY `.light` fields of the chosen tuned tokens edited; visual_snapshots rebaselined; operator color sign-off recorded; gate re-run confirms no dark/PANEL regression (V2-K2)_
+
+### V2-M-FINAL — Tester
+
+- [ ] V2-CONT-FINAL.1 — Gate-default run (env unset) PASS — _accept: 7/7 PASS; exactly 6 opt-out audit lines; zero panic; V2-AC.2_
+- [ ] V2-CONT-FINAL.2 — WARN escape-hatch run byte-identical to v0.1.0 — _accept: 6 WARN lines, PASS; V2-AC.3_
+- [ ] V2-CONT-FINAL.3 — Regression-block probe under gate-default — _accept: P-CONT-1.A probe → panic with env unset; reverted; V2-AC.4_
+- [ ] V2-CONT-FINAL.4 — R-NR / anchor / visual non-regression (path A) — _accept: 75/75 anchors byte-identical; visual_snapshots byte-identical; `git diff -- crates/ui/src/` empty; V2-AC.6_
+- [ ] V2-CONT-FINAL.5 — Write v0.2.0 test-final report — _accept: `spec/ui-contrast-asserter/reports/test-<date>-v0.2.0-ui-contrast-asserter.md`; VERDICT; all V2-AC gates green; gate-flip + 6-pair disposition confirmed_
+
+### V2-M-PRESENT — Presenter
+
+- [ ] V2-CONT-P1 — **(V2-R1; also closes the parked v0.1.0 T-CONT-P1)** Deck `spec/ui-contrast-asserter/presentations/ui-contrast-asserter-<date>.md` — _accept: cross-cutting safety-duo recap; M-T1 pair-count + opt-out-count table; the 6 design-intent WARN lines; 2-week WARN observation contract (now elapsed); the v0.2.0 gate-flip + 6-pair disposition outcome; sibling-redactor cross-link; operator-decide-ready. v0.1.0 baseline frontmatter → status: shipped on approval_
 
 ## Notes
 
