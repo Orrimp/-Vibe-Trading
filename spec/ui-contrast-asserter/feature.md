@@ -1,7 +1,7 @@
 ---
 slug: ui-contrast-asserter
 version: 0.2.0
-status: proposed
+status: presenter-done
 owner: analyst
 priority: P2
 updated: 2026-06-15

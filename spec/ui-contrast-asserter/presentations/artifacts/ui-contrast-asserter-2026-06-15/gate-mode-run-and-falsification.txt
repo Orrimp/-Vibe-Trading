@@ -1,0 +1,78 @@
+ui-contrast-asserter v0.2.0 — captured test output
+====================================================
+Source: tester PASS report
+  spec/ui-contrast-asserter/reports/test-2026-06-15-1300-v0.2.0-ui-contrast-asserter.md
+Commit under test: 61ba42d
+Transcribed verbatim by the presenter (presenter does NOT run cargo per close-out
+constraint). These are the tester's own captured runs.
+
+
+[1] GATE-DEFAULT RUN (UI_CONTRAST_MODE unset → gate is the v0.2.0 default)
+-------------------------------------------------------------------------
+Command:
+  cargo test -p ui --test contrast --no-default-features --features live -- --nocapture
+
+running 9 tests
+test probe_low_contrast_rejects_in_gate_mode ... ignored
+test probe_min_pairs_floor_fires_when_pairs_truncated ... ignored
+test opt_outs_all_have_reasons ... ok
+test pairs_table_meets_minimum_count ... ok
+test ref_vector_777_on_fff_is_4_48 ... ok
+test ref_vector_888_on_000_is_5_92 ... ok
+test ref_vector_black_on_white_is_21 ... ok
+test ref_vector_white_on_black_is_21 ... ok
+test all_theme_pairs_meet_wcag ... ok
+
+test result: ok. 7 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+The 6 ratified sub-AA pairs surfaced as `opt-out:` AUDIT lines (NOT failures):
+  fg_3_on_panel_raised_dark; ratio: 3.75
+  fg_on_accent_on_accent_light; ratio: 3.52
+  up_500_on_canvas_light; ratio: 4.46
+  down_500_on_canvas_light; ratio: 4.33
+  warn_500_on_canvas_light; ratio: 2.96
+  warn_500_on_panel_light; ratio: 3.11
+Exactly 6 opt-out lines. No 7th asserting pair failed (hidden-regression check passed).
+
+
+[2] WARN ESCAPE-HATCH RUN (UI_CONTRAST_MODE=warn → v0.1.0 back-compat)
+---------------------------------------------------------------------
+Command:
+  UI_CONTRAST_MODE=warn cargo test -p ui --test contrast --no-default-features --features live -- --nocapture
+
+test result: ok. 7 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+(The 6 formerly-WARN pairs are now OptOut-classed, so they route to the audit
+branch, not the WARN branch — no WARN lines emitted, as expected.)
+
+
+[3] FALSIFICATION PROBE — gate actually enforces (P-CONT-1.A)
+------------------------------------------------------------
+Tester independently inserted a deliberately-bad pair into PAIRS:
+  ContrastPair {
+      pair_id: "probe_tester_white_on_pale_grey",
+      fg: Color::WHITE,
+      bg: Color::from_rgb(0.9, 0.9, 0.9),
+      class: ContrastClass::Body,
+  },
+
+Command (env UNSET — gate is default):
+  cargo test -p ui --test contrast --no-default-features --features live -- all_theme_pairs_meet_wcag --nocapture
+
+thread 'all_theme_pairs_meet_wcag' (58389668) panicked at crates/ui/tests/contrast.rs:967:9:
+contrast assertion failed:
+  probe_tester_white_on_pale_grey = 1.25 < threshold 4.5
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+RED confirmed — gate panics with env unset at 1.25 < 4.5, exit code nonzero.
+Probe reverted; clean re-run: 7 passed; 0 failed; 2 ignored.
+
+
+[4] REFERENCE-VECTOR VALIDATION (the hand-rolled WCAG formula is correct)
+-------------------------------------------------------------------------
+4 reference-vector unit tests pass (architect dry-run validated to 4 decimals):
+  WHITE on BLACK = 21.0000   (WCAG 2.1 maximum)
+  BLACK on WHITE = 21.0000   (symmetric)
+  #777 on #FFF   = 4.4781    (published WCAG 2.1 reference)
+  #888 on #000   = 5.9240    (published WCAG 2.1 reference)
