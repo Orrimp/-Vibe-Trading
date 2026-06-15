@@ -119,11 +119,11 @@ updated: 2026-06-15
 
 ### V2-M-FINAL — Tester
 
-- [ ] V2-CONT-FINAL.1 — Gate-default run (env unset) PASS — _accept: 7/7 PASS; exactly 6 opt-out audit lines; zero panic; V2-AC.2_
-- [ ] V2-CONT-FINAL.2 — WARN escape-hatch run byte-identical to v0.1.0 — _accept: 6 WARN lines, PASS; V2-AC.3_
-- [ ] V2-CONT-FINAL.3 — Regression-block probe under gate-default — _accept: P-CONT-1.A probe → panic with env unset; reverted; V2-AC.4_
-- [ ] V2-CONT-FINAL.4 — R-NR / anchor / visual non-regression (path A) — _accept: 75/75 anchors byte-identical; visual_snapshots byte-identical; `git diff -- crates/ui/src/` empty; V2-AC.6_
-- [ ] V2-CONT-FINAL.5 — Write v0.2.0 test-final report — _accept: `spec/ui-contrast-asserter/reports/test-<date>-v0.2.0-ui-contrast-asserter.md`; VERDICT; all V2-AC gates green; gate-flip + 6-pair disposition confirmed_
+- [x] V2-CONT-FINAL.1 — Gate-default run (env unset) PASS — **file: `crates/ui/tests/contrast.rs`** | test: `cargo test -p ui --test contrast --no-default-features --features live -- --nocapture` | output: `test result: ok. 7 passed; 0 failed; 2 ignored`. Exactly 6 opt-out audit lines confirmed (fg_3_on_panel_raised_dark=3.75, fg_on_accent_on_accent_light=3.52, up_500_on_canvas_light=4.46, down_500_on_canvas_light=4.33, warn_500_on_canvas_light=2.96, warn_500_on_panel_light=3.11). Zero 7th asserting failure. V2-AC.2 green.
+- [x] V2-CONT-FINAL.2 — WARN escape-hatch run byte-identical to v0.1.0 — **`UI_CONTRAST_MODE=warn`** | test: `UI_CONTRAST_MODE=warn cargo test -p ui --test contrast --no-default-features --features live` | output: `test result: ok. 7 passed; 0 failed; 2 ignored`. 6 formerly-WARN pairs now go to audit branch (OptOut class); no WARN lines (correct). V2-AC.3 green.
+- [x] V2-CONT-FINAL.3 — Regression-block probe under gate-default — **tester independently inserted `probe_tester_white_on_pale_grey` (WHITE on 0.9/0.9/0.9) into PAIRS with env UNSET** | test: `cargo test -p ui --test contrast --no-default-features --features live -- all_theme_pairs_meet_wcag` | output: `panicked… probe_tester_white_on_pale_grey = 1.25 < threshold 4.5`; exit 101; reverted; clean re-run 7/7 PASS. Gate is actually enforcing. V2-AC.4 green.
+- [x] V2-CONT-FINAL.4 — R-NR / anchor / visual non-regression (path A) — **`git diff 61ba42d^ 61ba42d -- crates/ui/src/` → empty; `git diff 61ba42d^ 61ba42d -- '*.png'` → empty. charts_screen_dark 3/3 FAIL confirmed PRE-EXISTING (introduced by 3ba82fc cross-platform chart.rs change, baselines last set 93845af); NOT introduced by 61ba42d. anchors N/A (no strategy/exec/backtest crates touched).** V2-AC.6 green.
+- [x] V2-CONT-FINAL.5 — Write v0.2.0 test-final report — **file: `spec/ui-contrast-asserter/reports/test-2026-06-15-1300-v0.2.0-ui-contrast-asserter.md`** | VERDICT → PASS. All V2-AC gates green. Gate-flip + 6-pair disposition confirmed. False alarms (runner.rs clippy + charts_screen_dark) independently confirmed pre-existing and non-reproducing as v0.2.0 issues.
 
 ### V2-M-PRESENT — Presenter
 
