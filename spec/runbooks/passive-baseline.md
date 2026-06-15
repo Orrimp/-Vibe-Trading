@@ -125,7 +125,33 @@ not a reason to go active. Mean-reverters (RSI/BBands) had no edge anywhere. Ful
 table + re-runnable harness:
 [`spec/dev-notes/realdata-simple-strategy-survey-2026-06-13.md`](../dev-notes/realdata-simple-strategy-survey-2026-06-13.md).
 
+> **REVISION (2026-06-15) — the down-market hedge nuance did NOT survive
+> path-robustness testing.** A block-bootstrap Monte-Carlo (N=500 stationary-resampled
+> paths per cell, scored against the frozen § 0 decision rule) tested whether the 2-case
+> AVAX-2024 / DOT-2024 trend-following protection is a real strategy property or an
+> artifact of the one 2024 bar ordering. **All 9 cells scored FRAGILE** (every cell's p5
+> Sharpe < 0). SMA/MACD have a positive *median*-path Sharpe on the down-market cells
+> (AVAX·2024 SMA p50 +0.570, DOT·2024 SMA p50 +0.653) but their p5 left tails dip
+> negative (-0.810, -0.910) — roughly 1 in 4 resampled orderings ends below the starting
+> equity (SMA prob_loss 0.248 on both). **The down-market hedge is path-fragile**:
+> sensitive to the specific 2024 ordering, NOT a robust property. **Net effect on this
+> runbook: the ship-passive base recommendation is UNQUALIFIED on this evidence** — the
+> "but trend-following is a defensible down-market hedge" qualifier above does not hold
+> up to path-resampling and should not be quoted as a standalone reason to go active. The
+> claim is capped at the per-symbol-year level (AVAX-2024 / DOT-2024 individually; 2
+> symbol-years, hourly, default params — not down-markets in general). Confirmed numbers
+> + scope cap:
+> [`spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md`](../dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md).
+
 ## Changelog
+
+- 2026-06-15 (analyst): added the REVISION callout to the § Real-data validation
+  (2026-06-14) section. The survey's down-market trend-following hedge nuance did NOT
+  survive path-robustness testing (block-bootstrap N=500, frozen § 0 rule → all 9 cells
+  FRAGILE; positive median but negative p5 tail). The ship-passive base recommendation is
+  now UNQUALIFIED on this evidence. Existing section history preserved; revision appended,
+  not rewritten. Evidence:
+  [`spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md`](../dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md).
 
 - 2026-06-08 (developer): produced realized equity-curve + full metrics for the BH baseline.
   Added `crates/backtest/examples/passive_baseline_equity.rs` (read-only probe, `--features realdata`).

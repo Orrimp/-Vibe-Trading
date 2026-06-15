@@ -77,6 +77,13 @@ following (SMA, MACD) is a defensible downside hedge** — it gives up upside in
 runs to avoid the worst of the bear ones. That is a real, asymmetric trade-off,
 not noise.
 
+> **REVISED 2026-06-15 — do NOT take the +5.0% / +6.4% down-market hedge at face
+> value.** A block-bootstrap robustness test (N=500 resampled paths, frozen § 0 rule)
+> found this 2-case hedge does NOT survive path-resampling: all cells score FRAGILE
+> (positive median Sharpe but negative p5 tail), so the protection was sensitive to the
+> specific 2024 ordering, not a robust strategy property. See
+> [`analysis-2026-06-15-simple-strategy-overfit-guard.md`](analysis-2026-06-15-simple-strategy-overfit-guard.md).
+
 **The mean-reverters (RSI, BBands) have no edge anywhere** — across all 10 symbols
 × 2 years they are flat-to-negative (BBands negative in 16 of 20), pure
 cost-churn. Nothing recommends them on this corpus.

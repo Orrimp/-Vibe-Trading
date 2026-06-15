@@ -103,12 +103,18 @@ substance is **Q-OG.2 (the seam)**; everything else is pre-registered.
 
 ## Analyst (close the loop)
 
-- [ ] **T-OG.13** — After the tester's run, author the `findings`-status dev-note
+- [x] **T-OG.13** — After the tester's run, author the `findings`-status dev-note
       `spec/dev-notes/analysis-<date>-simple-strategy-overfit-guard.md` with the ACTUAL p5 Sharpe +
       prob-of-loss numbers, stating whether the down-market trend-following hedge is **path-robust (real)**
       or **fragile (one lucky path)**, capped at the § 6 small-N latitude (claim scoped to AVAX-2024 /
       DOT-2024 individually, not down-markets in general — Q-OG.5). Fold into the passive-baseline thesis.
       (AC-OG.5)
+      - **done**: wrote `spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md` (findings
+        status) with the confirmed N=500 table (all 9 cells FRAGILE; SMA p50 +0.570/+0.653, p5 -0.810/-0.910).
+        Verdict: **the down-market hedge is PATH-FRAGILE** (sensitive to the one 2024 ordering, not robust).
+        Claim capped at per-symbol-year (D-OG.5). Revised the survey Finding 1 (one-line pointer) + amended
+        the passive-baseline runbook § Real-data-validation (ship-passive base now UNQUALIFIED on this evidence).
+        spec_lint = 70 (unchanged, 0 new).
 
 ## Watch recipe (long-running ensemble run)
 
@@ -122,6 +128,13 @@ watch -n 10 'tail -20 /tmp/og-run.log'
 
 ## Changelog
 
+- 2026-06-15 (analyst): ticked T-OG.13. Authored the `findings` dev-note
+  `spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md` from the tester's
+  confirmed numbers (PASS, commit `3d843fa`): all 9 cells FRAGILE; the down-market
+  trend-following hedge is **path-fragile** (positive median, negative p5 tail), scope-capped
+  to AVAX-2024 / DOT-2024 individually (D-OG.5). Revised the survey's Finding 1 + amended the
+  passive-baseline runbook (ship-passive base now unqualified on this evidence). spec_lint = 70,
+  0 new. All 13 tasks complete — feature ready for presenter.
 - 2026-06-15 (developer): implemented T-OG.5–8. Created
   `crates/backtest/tests/realdata_simple_strategy_overfit_guard.rs`. Harness compiles + passes
   `cargo clippy --tests -p backtest -- -D warnings` clean (0 errors, 0 warnings). Default suite
