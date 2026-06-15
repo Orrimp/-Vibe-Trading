@@ -143,8 +143,48 @@ table + re-runnable harness:
 > + scope cap:
 > [`spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md`](../dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md).
 
+> **BEAR-SURVEY (2026-06-15) — a wider, deeper 2021-22 bear stress-test FIRMS
+> ship-passive.** The overfit-guard revision above rested on **2 idiosyncratic
+> alt-coin dips inside an otherwise-bull 2023-24**. To test the ship-passive verdict
+> against a real market-wide bear, the four simple strategies were re-run over
+> `data/binance-2122/` (10 symbols × {2021, 2022} hourly — the whole universe down
+> in 2022: BTC ≈ −64%, SOL ≈ −94%, AVAX ≈ −90%) in a two-stage harness: Stage 1
+> point-surveyed all 80 cells and found **40 apparent winners** (cells beating B&H
+> by ≥ 10 pp while B&H was negative — **all from 2022**, several with spectacular
+> single-path margins, e.g. SOL·2022 RSI B&H −94.2% vs strat +2.8%, a **+97.0 pp**
+> margin); Stage 2 then block-bootstrap path-tested the top 16 (N=500, same frozen
+> § 0 rule). **All 16 scored FRAGILE** — every candidate's p5 Sharpe is negative,
+> including the +97 pp headline winner (p5 −0.888). The up-market contrast cell
+> (SOL·2021 SMA) scored MARGINAL (p5 **+0.439**, positive), so the test
+> discriminates regime direction; 9 of 16 candidates were RSI/BBands and none came
+> back ROBUST. **Net effect on this runbook: ship-passive is firmed on the strongest
+> available bear evidence.** This strengthens the same-day overfit-guard revision
+> from "the 2024 hedge wasn't real" to "across a whole deep-bear universe — 40
+> apparent winners, the single most spectacular +97 pp margin in the corpus — no
+> apparent winner is path-robust." In a catastrophic bear almost any strategy that
+> sat out the crash on the one realized ordering looks heroic on point returns;
+> path-resampling separates lucky timing from a robust edge, and none survived. The
+> high-value ROBUST-survivor tail (which would have REOPENED the active-vs-passive
+> question for a v0.2.0 trend-following product line) did NOT appear, so the question
+> stays closed. Scope-capped: still hourly, default params, 4 simple strategies, 10
+> large-caps, the specific 2021-22 window — this FIRMS ship-passive but does NOT
+> prove "no strategy can ever work." Confirmed numbers + scope cap:
+> [`spec/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md`](../dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md).
+
 ## Changelog
 
+- 2026-06-15 (analyst): added the BEAR-SURVEY callout to the § Real-data validation
+  section. A wider/deeper 2021-22 bear stress-test (`data/binance-2122/`, two-stage:
+  80-cell point survey → 40 apparent winners, all 2022 → N=500 block-bootstrap on the
+  top 16, frozen § 0 rule) scored all 16 candidates FRAGILE — including the +97.0 pp
+  headline winner SOL·2022 RSI (p5 −0.888); up-market contrast SOL·2021 SMA MARGINAL
+  (p5 +0.439, discriminates). This FIRMS ship-passive on the strongest available bear
+  evidence, strengthening the same-day overfit-guard revision from "the 2024 hedge
+  wasn't real" to "across a whole deep-bear universe, no apparent winner is
+  path-robust." The high-value ROBUST-survivor reopen tail did NOT materialise →
+  question stays closed. Scope-capped. Existing section history preserved; note
+  appended, not rewritten. Evidence:
+  [`spec/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md`](../dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md).
 - 2026-06-15 (analyst): added the REVISION callout to the § Real-data validation
   (2026-06-14) section. The survey's down-market trend-following hedge nuance did NOT
   survive path-robustness testing (block-bootstrap N=500, frozen § 0 rule → all 9 cells

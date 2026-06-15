@@ -161,7 +161,7 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
 
 ## Analyst (close the loop)
 
-- [ ] **T-BS.14** — After the tester's run, author the `findings`-status dev-note
+- [x] **T-BS.14** — After the tester's run, author the `findings`-status dev-note
       `spec/dev-notes/analysis-<date>-simple-strategy-bear-survey.md` with the ACTUAL
       per-candidate p5 Sharpe + prob-of-loss numbers, stating whether **ANY** simple strategy
       shows a **path-robust edge** on the 2021-22 bear sample. Apply the **§ Scope cap**
@@ -202,6 +202,16 @@ mandatory per R-BS.11.)
 
 ## Changelog
 
+- 2026-06-15 (analyst): T-BS.14 ticked. Authored the `findings` dev-note
+  `spec/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md` with the
+  confirmed numbers (Stage 1: 40 apparent winners, all 2022, top SOL·2022 RSI
+  +97.0 pp; Stage 2: all 16 candidates FRAGILE incl. the +97 pp winner at p5
+  −0.888; up-market contrast SOL·2021 SMA MARGINAL p5 +0.439). Headline: the
+  2021-22 deep bear FIRMS ship-passive — apparent winners are path-luck, not a
+  robust edge; the high-value ROBUST-survivor tail did NOT materialise so the
+  reopen path is not triggered and the question stays closed. Scope-capped.
+  Amended the passive-baseline runbook § Real-data validation with a dated
+  2026-06-15 bear-survey note. spec-lint stays 70 (zero new). AC-BS.7 satisfied.
 - 2026-06-15 (tester): T-BS.10–.13 verified and ticked. VERDICT → PASS.
   Determinism: empty diff (AC-BS.5). Discrimination: SOLUSDT·2021 SMA p5=+0.439 MARGINAL
   vs all 16 bear candidates FRAGILE p5<0; 9/16 candidates RSI/BBands all FRAGILE — no
