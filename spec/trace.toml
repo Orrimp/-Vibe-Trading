@@ -2979,10 +2979,10 @@ arch        = [
   "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md",
   "spec/dev-notes/robustness-decision-rule-2026-05-30.md",
 ]
-crates      = []   # developer fills
-tests       = []   # developer fills
+crates      = ["crates/backtest"]
+tests       = ["crates/backtest/tests/realdata_simple_strategy_overfit_guard.rs"]
 anchors     = []   # UN-ANCHORED by construction (survey precedent; #[ignore] harness, no anchors.toml row) — see feature.md § 3
-state       = "proposed"
+state       = "dev-done"   # developer 2026-06-15: N=500 block-bootstrap harness built + ran; all 9 cells (AVAX/DOT 2024 × 4 strats + AVAX-2023 control) scored FRAGILE (p5 Sharpe<0) → the survey's down-market trend-following hedge is NOT path-robust; negative control (RSI/BBands worse) confirms calibration. Pending tester (determinism + neg-control sign-off).
 
 [[req]]
 id          = "REQ-BINANCE-CORPUS-EXPANSION-001"
