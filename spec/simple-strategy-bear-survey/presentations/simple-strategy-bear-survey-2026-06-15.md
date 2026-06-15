@@ -1,7 +1,7 @@
 ---
 slug: simple-strategy-bear-survey
 mode: release
-status: draft
+status: approved-shipped
 audience: human-operator
 updated: 2026-06-15
 generated: 2026-06-15T00:00:00Z
@@ -200,7 +200,7 @@ closed and no v0.2.0 trend-following product line is greenlit off this evidence.
 
 ## Approval
 
-- [ ] Approved — ship
+- [x] Approved — ship — operator, 2026-06-15
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

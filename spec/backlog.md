@@ -3320,7 +3320,17 @@ Cohorts through 2026-06-08 are archived in
 (2026-06-11 cleanup sweep, `CLEANUP-PLAN.md` P2-3). New shipped entries
 land below as features ship.
 
-### 2026-06-15 cohort — overfit-guard finding + Binance 2021-22 hourly corpus
+### 2026-06-15 cohort — robustness double-confirm (overfit-guard + bear-survey) + Binance 2021-22 hourly corpus
+
+- **simple-strategy-bear-survey SHIPPED** (operator-approved 2026-06-15) —
+  two-stage stress-test of ship-passive on the deep 2021-22 bear corpus. Stage 1
+  found 40 apparent winners (all 2022; strategies that sat out the crash, up to
+  SOL-2022 RSI "beating" a −94.2% buy-and-hold by +97pp); Stage 2 (N=500
+  block-bootstrap, frozen § 0 rule) scored ALL 16 top candidates FRAGILE — the
+  apparent bear edge is path-luck, not robust. Up-market contrast (SOL-2021 SMA)
+  MARGINAL → discriminates. FIRMS ship-passive on the deepest/widest bear evidence;
+  the 2026-06-08 terminal verdict stands. Un-anchored #[ignore] harness; dev-note
+  `spec/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md`.
 
 - **simple-strategy-overfit-guard SHIPPED** (operator-approved 2026-06-15) —
   N=500 block-bootstrap robustness guard on the survey's down-market
