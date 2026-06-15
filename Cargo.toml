@@ -121,7 +121,11 @@ tempfile = { version = "3.14" }
 notify = { version = "8.0" }
 
 # Networking
-reqwest = { version = "0.12", features = ["json"] }
+# cockpit-cross-platform D1: flip to rustls-tls so the Linux/Windows build
+# needs no system OpenSSL (libssl-dev / vcpkg) — zero-setup cross-platform
+# build. native-tls rejected: spawns a per-env libssl-dev carve-out on
+# every new Linux box (the un-durable path per durable-over-quick rule).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 
 # UUID

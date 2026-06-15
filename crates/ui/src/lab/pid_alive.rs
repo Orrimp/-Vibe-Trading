@@ -5,10 +5,12 @@
 //!
 //! ## Platform-specific implementation
 //!
-//! - **Unix** (macOS / Linux): `libc::kill(pid, 0)`. Returns `true` if the
-//!   process exists and is addressable. PID 0 or negative PIDs are always
-//!   `false`. Note: `kill(pid, 0)` may return `EPERM` for processes owned by
-//!   another user — we treat `EPERM` as alive (the process exists).
+//! - **Unix** (macOS / Linux / other): `libc::kill(pid, 0)`. Returns `true`
+//!   if the process exists and is addressable. PID 0 or negative PIDs are
+//!   always `false`. Note: `kill(pid, 0)` may return `EPERM` for processes
+//!   owned by another user — we treat `EPERM` as alive (the process exists).
+//!   errno is read via `std::io::Error::last_os_error()` (portable: uses
+//!   `__error()` on macOS/BSD, `__errno_location()` on glibc automatically).
 //! - **Windows**: `OpenProcess(SYNCHRONIZE, FALSE, pid)` + non-null handle
 //!   check. If the process is not found, returns `false`.
 //! - **Other**: always returns `false` (conservative).
@@ -55,9 +57,10 @@ fn pid_alive_platform(pid: i64) -> bool {
         return true;
     }
     // EPERM means the process exists but we don't have permission to signal it.
-    // Treat as alive.
-    let errno = unsafe { *libc::__error() };
-    errno == libc::EPERM
+    // Treat as alive. Use the portable std accessor so this compiles on any
+    // Unix (macOS uses __error(), glibc uses __errno_location() — std knows
+    // which to call). This also removes one unsafe block (R-NR.3).
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 #[cfg(windows)]

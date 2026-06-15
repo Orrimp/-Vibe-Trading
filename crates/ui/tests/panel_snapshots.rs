@@ -16,6 +16,11 @@
 //! inspection, not here. That's appropriate for a cockpit whose layout
 //! has ~6 widgets.
 
+// cockpit-cross-platform ADR-0057 D2: visual baselines are macOS-canonical.
+// On Linux/Windows the insta snapshot rendering would produce different text
+// layout via cosmic-text PlatformFallback; gate this file to macOS only so
+// these tests are skipped (never re-baselined) off-macOS. See ADR-0057 D2.
+#![cfg(target_os = "macos")]
 #![allow(clippy::needless_raw_string_hashes)]
 #![allow(deprecated)] // tests use deprecated Screen variants to exercise backward-compat aliases
 

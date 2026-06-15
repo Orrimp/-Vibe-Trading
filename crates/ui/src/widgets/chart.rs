@@ -226,8 +226,9 @@ pub(crate) fn format_time_axis_label(local_ts: time::OffsetDateTime, span_second
 ///
 /// **Production** reads the OS-local offset via
 /// `time::UtcOffset::current_local_offset()`. If the lookup fails
-/// (e.g. multi-threaded glibc unsoundness — does not bite on macOS,
-/// the only cockpit-supported platform), falls back to
+/// (e.g. multi-threaded glibc unsoundness on Linux — handled safely by
+/// the fallback below; cockpit now supports Linux and Windows per
+/// `cockpit-cross-platform` v0.1 / ADR-0057), falls back to
 /// `UtcOffset::UTC` deterministically.
 ///
 /// **Snapshot determinism** is preserved via two complementary gates:

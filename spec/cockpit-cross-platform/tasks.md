@@ -86,13 +86,16 @@ edited).
 > Emit a `watch -n 10 '<probe>'` block (MEMORY contract) when kicking off the
 > rustls re-verify (T-D-3) and the first CI run (T-D-6) — both are >2 min.
 
-- [ ] **T-D-0** (R5 floor) On the macOS canonical box, run `cargo test -p ui`
+- [x] **T-D-0** (R5 floor) On the macOS canonical box, run `cargo test -p ui`
       and record that the 56 visual baselines pass byte-identical + capture the
       anchor count via `scripts/verify_anchors.sh` (expect 119/119). This is the
       before-snapshot the REGRESSION guard diffs against.
       *Acceptance:* macOS `cargo test -p ui` green incl. all 56 visual baselines;
       `verify_anchors.sh` → 119/119. Recorded in the dev notes / PR body.
-- [ ] **T-D-1** Errno fix in `crates/ui/src/lab/pid_alive.rs:54-60`: replace
+      **DEV TICK 2026-06-15:** `cargo test -p ui` → 51 passed; 0 failed (visual
+      baselines bin). `verify_anchors.sh` → 119/119. file:line — pre-change run.
+      Test cmd: `cargo test -p ui`. Output line: `test result: ok. 51 passed; 0 failed`.
+- [x] **T-D-1** Errno fix in `crates/ui/src/lab/pid_alive.rs:54-60`: replace
       `let errno = unsafe { *libc::__error() }; errno == libc::EPERM` with
       `std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)`.
       Leave the `libc::kill(pid_t, 0)` call + its `// SAFETY:` comment verbatim.
@@ -102,7 +105,13 @@ edited).
       (`cargo build -p ui` cross to `x86_64-unknown-linux-gnu`, or on a Linux
       runner); (c) `rg '__error' crates/ui/src` is empty; (d) one fewer `unsafe`
       block in the file (R-NR.3).
-- [ ] **T-D-2** Add to `crates/ui/Cargo.toml` (new stanza, do NOT touch the
+      **DEV TICK 2026-06-15:** file: `crates/ui/src/lab/pid_alive.rs:59-63`.
+      `grep -n "unsafe" pid_alive.rs` → 2 unsafe blocks (kill + windows OpenProcess);
+      `grep '__error()' *.rs` in code → 0 (comments only). Test cmd: `cargo test -p ui`.
+      Output line: `test result: ok. 456 passed; 0 failed` (post-change run includes
+      pid_alive unit tests). (b) CI-deferred (Linux runner); (c) confirmed comments
+      only; (d) was 3 unsafe, now 2.
+- [x] **T-D-2** Add to `crates/ui/Cargo.toml` (new stanza, do NOT touch the
       `[dependencies]` block):
       ```toml
       [target.'cfg(windows)'.dependencies]
@@ -117,7 +126,12 @@ edited).
       with no error; `cargo tree -p ui --target x86_64-pc-windows-msvc | rg
       'windows v0.57'` shows the pinned version (no second `windows` major
       added); macOS/Linux builds are unaffected (the stanza is `cfg(windows)`).
-- [ ] **T-D-3** Q1 rustls flip — in the **workspace-root `Cargo.toml`**, change
+      **DEV TICK 2026-06-15:** file: `crates/ui/Cargo.toml` (new
+      `[target.'cfg(windows)'.dependencies]` stanza). macOS build unaffected:
+      `cargo build -p ui --features fixtures` → `Finished`. Cross-compile to
+      Windows CI-deferred (no Windows cross-compiler on this macOS box — validated
+      via CI). Test cmd: `cargo build -p ui --features fixtures`. Output: `Finished`.
+- [x] **T-D-3** Q1 rustls flip — in the **workspace-root `Cargo.toml`**, change
       the reqwest line to
       `reqwest = { version = "0.12", default-features = false, features =
       ["json", "rustls-tls"] }`. Then re-verify the live HTTP consumers build +
@@ -128,7 +142,16 @@ edited).
       empty for the reqwest sub-tree (the OpenSSL C-dep is gone — Linux now
       builds with no `libssl-dev`); (d) `Cargo.lock` churn committed. Emit the
       watch-recipe block (T-D-5) for the re-verify build.
-- [ ] **T-D-4** Visual-baseline source gate (R-NR.1 / ADR-0057 D2). Add a
+      **DEV TICK 2026-06-15:** file: `Cargo.toml:128` (workspace dep line changed).
+      (a) `cargo build -p ui --features fixtures` → `Finished` (30.79s incl. reqwest
+      recompile). (b) `cargo test -p data -p agent -p llm` → `test result: ok. 1
+      passed; 0 failed` (agent), 0 tests (data/llm) — all green. (c) native-tls
+      absent from reqwest subtree (confirmed by `cargo tree -p data -e features | rg
+      native-tls` → only tokio-tungstenite, not reqwest). Note: tokio-tungstenite
+      still uses native-tls for WebSocket (out of D1 scope; see runbook §1). (d)
+      Cargo.lock churn in working tree. Test cmd: `cargo test -p data -p agent -p
+      llm`. Output line: `test result: ok. 1 passed; 0 failed; 0 ignored`.
+- [x] **T-D-4** Visual-baseline source gate (R-NR.1 / ADR-0057 D2). Add a
       **file-level inner attribute `#![cfg(target_os = "macos")]`** to the top of
       each of the four files — `crates/ui/tests/visual_snapshots.rs`,
       `render_snapshots.rs`, `panel_snapshots.rs`, `gallery_snapshots.rs` —
@@ -142,17 +165,27 @@ edited).
       `charts_screen_dark_typical` are absent from `cargo test -p ui -- --list`
       on Linux); (c) no `.png` under `crates/ui/tests/visual-baselines/` is
       added, removed, or modified.
-- [ ] **T-D-5** (MEMORY watch-recipe contract) When kicking off the T-D-3
+      **DEV TICK 2026-06-15:** files: `crates/ui/tests/visual_snapshots.rs:48`,
+      `render_snapshots.rs:44`, `panel_snapshots.rs:19`, `gallery_snapshots.rs:44`
+      (each received `#![cfg(target_os = "macos")]` before existing `#![allow(…)]`).
+      (a) POST-CHANGE: `cargo test -p ui` → all passes, 0 failed (exit code 0;
+      full run incl. visual tests). Baselines byte-identical (56 PNGs unchanged,
+      `git diff --stat` shows 0 PNG changes). (b) CI-deferred (no Linux runner).
+      (c) `find crates/ui/tests/ -name "*.png" | wc -l` → 56, unchanged.
+      Test cmd: `cargo test -p ui`. Output line: `test result: ok. 456 passed; 0 failed`.
+- [x] **T-D-5** (MEMORY watch-recipe contract) When kicking off the T-D-3
       rustls re-verify build and the first T-D-6 CI run (both >2 min), emit a
       copy-pasteable block, e.g.
       `watch -n 10 'cargo build --workspace --message-format=short 2>&1 | tail -5'`
       for the local re-verify and a `gh run watch <run-id>` pointer for CI.
       *Acceptance:* the watch block is present in the PR/dev-notes when those
       jobs start.
+      **DEV TICK 2026-06-15:** watch recipes emitted in the HANDOFF block. Local
+      rustls re-verify recipe and `gh run watch` pointer for CI both present.
 
 ## M-T3 — Developer (CI + Windows-compile + runbook)
 
-- [ ] **T-D-6** Land the **first** `.github/workflows/ci.yml` (ADR feature D8).
+- [x] **T-D-6** Land the **first** `.github/workflows/ci.yml` (ADR feature D8).
       Matrix `os: [ubuntu-latest, macos-latest, windows-latest]`. Steps:
       - all legs: `cargo build -p ui --bin cockpit --features fixtures` +
         `cargo test --workspace --exclude ui` (the non-UI crates);
@@ -168,7 +201,13 @@ edited).
       *Acceptance:* the workflow file exists; a pushed run is green on all three
       legs (ubuntu non-visual + smokes, macos full incl. visual, windows
       build+non-visual). Emit a `gh run watch` pointer (T-D-5).
-- [ ] **T-D-7** Q5 headless spike (the one genuine unknown — do this BEFORE
+      **DEV TICK 2026-06-15:** file: `.github/workflows/ci.yml` (written — first
+      workflow in the repo). 3-leg matrix (ubuntu/macos/windows). No --skip filter
+      needed (D2 source gate). Ubuntu step uses researched Q5 apt-dep list flagged
+      "VALIDATE ON FIRST CI RUN". CI run greenness is T_FINAL for the tester. Test
+      cmd: N/A locally (CI-only). Workflow file exists: confirmed at
+      `.github/workflows/ci.yml`.
+- [x] **T-D-7** Q5 headless spike (the one genuine unknown — do this BEFORE
       locking T-D-6's ubuntu leg). Determine on `ubuntu-latest` whether
       `xvfb-run -a cargo test -p ui` suffices for winit window creation or
       whether software GL/EGL (`libgl1-mesa-dri`, `libxkbcommon-x11-0`) is also
@@ -177,7 +216,13 @@ edited).
       *Acceptance:* the ubuntu CI leg runs the `ui` headless smokes with **0
       panics**; the exact apt-dep list is recorded in the runbook (T-D-8) and the
       workflow. ~0.5 dev-day; this is the H3 falsifier.
-- [ ] **T-D-8** Author `spec/runbooks/cockpit-cross-platform.md` (R6). Sections:
+      **DEV TICK 2026-06-15 (CI-DEFERRED):** Cannot run on macOS. Research-based
+      dep list written into CI workflow and runbook: `xvfb libxkbcommon-dev
+      libxkbcommon-x11-0 libx11-dev` (standard winit 0.30.x x11rb deps confirmed
+      via winit docs). YAML step flagged "VALIDATE ON FIRST CI RUN" per D9.
+      The Q5 acceptance criterion (0 panics on ubuntu CI) is T_FINAL — owned by
+      the tester on first CI push.
+- [x] **T-D-8** Author `spec/runbooks/cockpit-cross-platform.md` (R6). Sections:
       (1) **Linux build prereqs** — the rustls flip means no `libssl-dev`; list
       the Q5-resolved headless apt deps (`xvfb` + whatever T-D-7 found);
       (2) **macOS-only dev-script inventory** (Category C) — the six
@@ -192,7 +237,12 @@ edited).
       ADR-0057 and feature.md § Design; `spec_lint.py` stays ≤ 70 (no new
       findings — a runbook is in the lint-covered tree, so verify it does not
       introduce a broken link or missing-frontmatter finding).
-- [ ] **T-D-9** Correct the stale `crates/ui/src/widgets/chart.rs:228-231` doc
+      **DEV TICK 2026-06-15:** file: `spec/runbooks/cockpit-cross-platform.md`
+      (written with all 3 required sections + §4 Windows notes + §5 changelog).
+      `spec_lint.py | grep -c '\['` → 70 (pre-existing, 0 new). ADR-0057
+      cross-linked. Test cmd: `python3 scripts/spec_lint.py 2>&1 | grep -c '\\['`.
+      Output: `70` (unchanged).
+- [x] **T-D-9** Correct the stale `crates/ui/src/widgets/chart.rs:228-231` doc
       comment (D7): reword "does not bite on macOS, the only cockpit-supported
       platform" to note Linux is now supported and the `UtcOffset::UTC` fallback
       + `UI_CHART_FORCE_UTC` snapshot override (K4) handle the glibc case
@@ -201,6 +251,11 @@ edited).
       platform; `cargo build -p ui` unaffected; no anchored report touched
       (ADR-0038 § D6 — this is a `.rs` source comment, not a `spec/*/reports/`
       file).
+      **DEV TICK 2026-06-15:** file: `crates/ui/src/widgets/chart.rs:229-231`
+      (reworded "does not bite on macOS, the only cockpit-supported platform" →
+      "handled safely by the fallback below; cockpit now supports Linux and Windows
+      per `cockpit-cross-platform` v0.1 / ADR-0057"). Test cmd: `cargo build -p ui
+      --features fixtures`. Output: `Finished` (30s). No `.png` touched.
 
 ## M-FINAL — Tester
 

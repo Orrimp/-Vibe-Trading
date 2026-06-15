@@ -159,6 +159,19 @@ uuid = { workspace = true, optional = true }
 # crate happens transitively through the `record-tests` feature
 # below (`iced/tester` → `dep:iced_tester` inside iced's manifest).
 
+# cockpit-cross-platform (D4): the #[cfg(windows)] arm in pid_alive.rs
+# already imports windows::Win32::{Foundation::CloseHandle,
+# System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE}}. Pinned exactly
+# to the version already present transitively in Cargo.lock (=0.57.0 via
+# tokio/mio) so no second `windows` major is added to the tree. The two
+# feature slices expose only the 3 symbols the arm needs; the crate is
+# otherwise not compiled into macOS/Linux builds (cfg-gated stanza).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.57.0", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 criterion.workspace = true
 insta = { version = "=1.47.2", features = ["yaml"] }

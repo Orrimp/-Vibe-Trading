@@ -676,3 +676,33 @@ transport-implementation swap, not an API change).
   snapshot gate. chart.rs:228 stale comment flagged for in-scope correction (D7).
   Baseline-equity-divergence e2e gate N/A (justified — no equity-producing
   decision variable). vendor/ untouched (R-NR.6). HANDOFF → developer.
+- 2026-06-15 (developer): implemented T-D-0..T-D-9. All locally-verifiable items
+  confirmed green; CI-deferred items written with research-based apt-dep list.
+  See § Implementation below.
+
+## Implementation
+
+Developer pass 2026-06-15. Baseline-equity-divergence e2e gate: N/A (confirmed
+— this feature adds no strategy/sizing/exec decision variable; the
+`v3-volatility-forecaster-noop-fix` precedent does not apply). vendor/ untouched.
+
+### Locally verified (macOS canonical box)
+
+- **D3 errno fix** (`crates/ui/src/lab/pid_alive.rs:59-63`): replaced
+  `unsafe { *libc::__error() }` with `std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)`. Unsafe count: 3 → 2. Module doc updated.
+- **D4 windows dep** (`crates/ui/Cargo.toml`, new `[target.'cfg(windows)'].dependencies]` stanza): `windows = { version = "=0.57.0", features = ["Win32_Foundation", "Win32_System_Threading"] }`. Zero source change to the `#[cfg(windows)]` arm. macOS build unaffected.
+- **D1 rustls flip** (`Cargo.toml:128`): `reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }`. Verified: `cargo test -p data -p agent -p llm` → 0 failed. `cargo tree -p data -e features | rg native-tls` → only tokio-tungstenite (out of D1 scope, WebSocket dep not reqwest).
+- **D2 visual-baseline gate**: `#![cfg(target_os = "macos")]` added as file-level inner attr to `visual_snapshots.rs`, `render_snapshots.rs`, `panel_snapshots.rs`, `gallery_snapshots.rs`.
+- **R5 REGRESSION guard**: POST-CHANGE `cargo test -p ui` → 0 failed, 56 PNGs unchanged. Confirmed via full test run after all changes applied.
+- **D7 chart.rs comment** (`crates/ui/src/widgets/chart.rs:229-231`): stale "the only cockpit-supported platform" reworded.
+- **Anchors**: 119/119 before AND after changes (verify_anchors.sh).
+- **Clippy**: `cargo clippy -p ui --tests -- -D warnings` → 0 warnings.
+- **fmt**: `cargo fmt` → no changes.
+
+### CI-deferred (require push to GitHub Actions)
+
+- **D8 CI workflow** (`.github/workflows/ci.yml`): first workflow in the repo, 3-leg matrix. Written; actual CI run greenness is T_FINAL for the tester.
+- **T-D-2 Windows cross-compile verify**: no `x86_64-pc-windows-msvc` cross-compiler on this macOS box. The Cargo.toml stanza is correct by construction; verified on CI.
+- **T-D-1(b) Linux compile verify**: no Linux runner available locally. errno fix is portable by construction (`std::io::Error::last_os_error()` is stdlib).
+- **T-D-4(b) Linux `--no-run` verify**: visual tests absent on Linux compilation is structural (they compile to nothing off-macOS). Verified by CI.
+- **Q5 headless apt-dep list**: researched and baked into CI YAML. Flagged "VALIDATE ON FIRST CI RUN" per D9.

@@ -41,6 +41,13 @@
 //!
 //! `SSIM_THRESHOLD = 0.99` strict, **no epsilon band**. Same contract as M1-B.
 
+// cockpit-cross-platform ADR-0057 D2: visual baselines are macOS-canonical.
+// On Linux/Windows cosmic-text resolves body text via PlatformFallback against
+// the per-OS system font DB, producing different glyph rasterization — these
+// tests would not match the macOS-captured PNGs. Gate the entire file to
+// compile only on macOS; on Linux/Windows the file compiles to nothing (tests
+// are skipped, never re-baselined). See ADR-0057 D2 and the runbook.
+#![cfg(target_os = "macos")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 // The viewport-matrix slot test fn names use double-underscore separators
 // that match the baseline PNG filenames exactly (e.g. `strategies_ready__floor`).
