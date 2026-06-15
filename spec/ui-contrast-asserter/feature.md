@@ -1099,6 +1099,38 @@ the hard gate is GREEN on first default run.
   ratification is entirely within `crates/ui/tests/contrast.rs`; `theme.rs`
   untouched; anchors + visual snapshots byte-identical.
 
+## Implementation — v0.2.0
+
+**Developer V2-M-DEV 2026-06-15.** Path (A) delivery — test-file-only change.
+
+### Files changed
+
+- **MODIFIED** `crates/ui/tests/contrast.rs` only. Zero production code touched. R-NR.1 holds.
+
+### Changes
+
+1. **V2-R2 — gate-flip**: `current_mode()` default arm flipped `_ => Mode::Warn` → `_ => Mode::Gate`. `UI_CONTRAST_MODE=warn` is now the explicit escape hatch. File-header Mode section + `all_theme_pairs_meet_wcag` doc-block updated.
+2. **V2-R3 — 6-pair ratification**: 6 PAIRS entries re-classed `Body → OptOut` with honest reason strings. 6 mirror rows added to `OPT_OUTS` manifest (now 15 entries, was 9). 2 `warn_500` amber pairs: "amber-on-light cannot reach 4.5:1 AA without abandoning the amber semantic — ratified light-mode debt". Other 4: "sub-AA [dark/light]-mode pair ratified as v0.2.0 opt-out debt; candidate for a future dedicated palette-tune (4 are trivially darkenable — see analyst per-pair table)".
+
+### Test results (gate mode, env unset — KEY AC)
+
+```
+running 9 tests
+test result: ok. 7 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+### Hidden-regression check (V2-K1)
+
+Pre-flight gate-mode run (before opt-outs added) confirmed exactly 6 violations, zero 7th. Gate-default run after opt-out ratification: 0 violations.
+
+### P-CONT-1.A probe (gate-default blocks regression)
+
+Probe pair `probe_d6_white_on_pale_grey` (WHITE on 0.9/0.9/0.9) inserted → panic "probe_d6_white_on_pale_grey = 1.25 < threshold 4.5" with env unset. Reverted; 7/7 PASS confirmed.
+
+### Byte-identity
+
+`git diff --stat -- '*.png'` → zero; `git diff -- crates/ui/src/` → zero. Path (A): zero color change, zero visual-baseline churn.
+
 ## Changelog
 
 - 2026-06-15 (analyst): v0.2.0 close-out brief appended. THREE deliverables —

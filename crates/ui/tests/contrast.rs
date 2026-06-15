@@ -17,10 +17,12 @@
 //!
 //! # Mode
 //! Controlled by the `UI_CONTRAST_MODE` env var:
-//!   - `warn` (default at v0.1.0): failures emit `eprintln!` and the test
-//!     exits PASS. WARN-mode observation window is 2 weeks per Q-DUO-WARN
-//!     bundle ratification before v0.2.0 promotes the default to `gate`.
-//!   - `gate`: failures collect into a `Vec` and `panic!` at end of test.
+//!   - `gate` (default at v0.2.0): failures collect into a `Vec` and `panic!`
+//!     at end of test. The 2-week Q-DUO-WARN observation window from v0.1.0
+//!     has elapsed; gate is now enforcing for all non-opt-out'd pairs.
+//!   - `warn`: failures emit `eprintln!` and the test exits PASS. Set
+//!     `UI_CONTRAST_MODE=warn` as the explicit opt-out escape hatch (local
+//!     dev, CI-pinning).
 //!
 //! # Opt-out marker
 //! Pairs that physically cannot meet WCAG (disabled text tier, chart-line
@@ -97,11 +99,14 @@ enum Mode {
     Gate,
 }
 
-/// Returns `Mode::Warn` unless `UI_CONTRAST_MODE=gate`.
+/// Returns `Mode::Gate` unless `UI_CONTRAST_MODE=warn`.
+///
+/// v0.2.0: gate is now the default. Set `UI_CONTRAST_MODE=warn` to opt out
+/// (local dev, CI-pinning). The v0.1.0 default arm was `_ => Mode::Warn`.
 fn current_mode() -> Mode {
     match std::env::var("UI_CONTRAST_MODE").as_deref() {
-        Ok("gate") => Mode::Gate,
-        _ => Mode::Warn,
+        Ok("warn") => Mode::Warn,
+        _ => Mode::Gate,
     }
 }
 
@@ -198,7 +203,11 @@ const PAIRS: &[ContrastPair] = &[
         pair_id: "fg_3_on_panel_raised_dark",
         fg: color::FG_3.dark,
         bg: color::PANEL_RAISED.dark,
-        class: ContrastClass::Body,
+        class: ContrastClass::OptOut(
+            "sub-AA dark-mode pair ratified as v0.2.0 opt-out debt; \
+             candidate for a future dedicated palette-tune (4 are trivially darkenable \
+             — see analyst per-pair table)",
+        ),
     },
     ContrastPair {
         pair_id: "fg_3_on_panel_sunken_dark",
@@ -382,12 +391,16 @@ const PAIRS: &[ContrastPair] = &[
     },
     // Light mode accent — genuine WCAG-AA defect surfaced by M-T1 dry-run:
     //   FG_ON_ACCENT.light (pure white) on ACCENT.light (#3F968D) = 3.52:1
-    //   WARN-mode logs; operator decides at v0.2.0 promotion.
+    //   Ratified as v0.2.0 opt-out debt per operator path (A) decision.
     ContrastPair {
         pair_id: "fg_on_accent_on_accent_light",
         fg: color::FG_ON_ACCENT.light,
         bg: color::ACCENT.light,
-        class: ContrastClass::Body,
+        class: ContrastClass::OptOut(
+            "sub-AA light-mode pair ratified as v0.2.0 opt-out debt; \
+             candidate for a future dedicated palette-tune (4 are trivially darkenable \
+             — see analyst per-pair table)",
+        ),
     },
     ContrastPair {
         pair_id: "fg_on_accent_on_accent_hover_light",
@@ -417,11 +430,16 @@ const PAIRS: &[ContrastPair] = &[
         class: ContrastClass::Body,
     },
     // Light — marginal sub-AA: up_500_on_canvas_light = ~4.46 per M-T1 dry-run
+    // Ratified as v0.2.0 opt-out debt per operator path (A) decision.
     ContrastPair {
         pair_id: "up_500_on_canvas_light",
         fg: color::UP_500.light,
         bg: color::CANVAS.light,
-        class: ContrastClass::Body,
+        class: ContrastClass::OptOut(
+            "sub-AA light-mode pair ratified as v0.2.0 opt-out debt; \
+             candidate for a future dedicated palette-tune (4 are trivially darkenable \
+             — see analyst per-pair table)",
+        ),
     },
     ContrastPair {
         pair_id: "up_500_on_panel_light",
@@ -443,11 +461,16 @@ const PAIRS: &[ContrastPair] = &[
         class: ContrastClass::Body,
     },
     // Light — marginal sub-AA: down_500_on_canvas_light = ~4.33 per M-T1 dry-run
+    // Ratified as v0.2.0 opt-out debt per operator path (A) decision.
     ContrastPair {
         pair_id: "down_500_on_canvas_light",
         fg: color::DOWN_500.light,
         bg: color::CANVAS.light,
-        class: ContrastClass::Body,
+        class: ContrastClass::OptOut(
+            "sub-AA light-mode pair ratified as v0.2.0 opt-out debt; \
+             candidate for a future dedicated palette-tune (4 are trivially darkenable \
+             — see analyst per-pair table)",
+        ),
     },
     ContrastPair {
         pair_id: "down_500_on_panel_light",
@@ -471,18 +494,25 @@ const PAIRS: &[ContrastPair] = &[
     // Light — genuine WCAG-AA defects per M-T1 dry-run:
     //   warn_500_on_canvas_light = 2.96:1
     //   warn_500_on_panel_light  = 3.11:1
-    //   WARN-mode logs; operator decides at v0.2.0 promotion.
+    //   Ratified as v0.2.0 opt-out debt per operator path (A) decision:
+    //   amber-on-light cannot reach 4.5:1 AA without abandoning the amber semantic.
     ContrastPair {
         pair_id: "warn_500_on_canvas_light",
         fg: color::WARN_500.light,
         bg: color::CANVAS.light,
-        class: ContrastClass::Body,
+        class: ContrastClass::OptOut(
+            "amber-on-light cannot reach 4.5:1 AA without abandoning the amber semantic \
+             — ratified light-mode debt",
+        ),
     },
     ContrastPair {
         pair_id: "warn_500_on_panel_light",
         fg: color::WARN_500.light,
         bg: color::PANEL.light,
-        class: ContrastClass::Body,
+        class: ContrastClass::OptOut(
+            "amber-on-light cannot reach 4.5:1 AA without abandoning the amber semantic \
+             — ratified light-mode debt",
+        ),
     },
     // INFO_500
     ContrastPair {
@@ -679,7 +709,8 @@ const PAIRS: &[ContrastPair] = &[
 
 // ── Design-intent opt-out table (D-CONT-4) ────────────────────────────────────
 //
-// 9 entries: 8× FG_4 disabled-tier + 1× BORDER_STRONG decorative.
+// 15 entries (v0.2.0): 8× FG_4 disabled-tier + 1× BORDER_STRONG decorative
+// + 6× v0.2.0 sub-AA pairs ratified as opt-out debt (operator path A).
 // These are the same pair_ids as the OPT_OUT-classed entries in PAIRS above.
 // This table serves as the compile-time manifest for code-review auditability
 // — reviewers can diff this table to track opt-out growth.
@@ -732,6 +763,45 @@ const OPT_OUTS: &[OptOutEntry] = &[
     OptOutEntry {
         pair_id: "border_strong_on_canvas_dark",
         reason: "border-not-text",
+    },
+    // v0.2.0 sub-AA pairs ratified as documented opt-out debt (operator path A).
+    // 4 trivially-darkenable pairs — future dedicated palette-tune feature expected
+    // to retire these entries and re-class them Body.
+    OptOutEntry {
+        pair_id: "up_500_on_canvas_light",
+        reason: "sub-AA light-mode pair ratified as v0.2.0 opt-out debt; \
+                 candidate for a future dedicated palette-tune (4 are trivially darkenable \
+                 — see analyst per-pair table)",
+    },
+    OptOutEntry {
+        pair_id: "down_500_on_canvas_light",
+        reason: "sub-AA light-mode pair ratified as v0.2.0 opt-out debt; \
+                 candidate for a future dedicated palette-tune (4 are trivially darkenable \
+                 — see analyst per-pair table)",
+    },
+    OptOutEntry {
+        pair_id: "fg_3_on_panel_raised_dark",
+        reason: "sub-AA dark-mode pair ratified as v0.2.0 opt-out debt; \
+                 candidate for a future dedicated palette-tune (4 are trivially darkenable \
+                 — see analyst per-pair table)",
+    },
+    OptOutEntry {
+        pair_id: "fg_on_accent_on_accent_light",
+        reason: "sub-AA light-mode pair ratified as v0.2.0 opt-out debt; \
+                 candidate for a future dedicated palette-tune (4 are trivially darkenable \
+                 — see analyst per-pair table)",
+    },
+    // 2 hard amber-on-light pairs — cannot reach 4.5:1 AA without abandoning the
+    // amber semantic; ratified as permanent light-mode debt.
+    OptOutEntry {
+        pair_id: "warn_500_on_panel_light",
+        reason: "amber-on-light cannot reach 4.5:1 AA without abandoning the amber semantic \
+                 — ratified light-mode debt",
+    },
+    OptOutEntry {
+        pair_id: "warn_500_on_canvas_light",
+        reason: "amber-on-light cannot reach 4.5:1 AA without abandoning the amber semantic \
+                 — ratified light-mode debt",
     },
 ];
 
@@ -820,18 +890,19 @@ fn pairs_table_meets_minimum_count() {
 
 /// Main asserter — iterates all PAIRS and asserts per-class WCAG thresholds.
 ///
-/// In WARN mode (default): failures emit `eprintln!` and the test PASSES.
-/// In gate mode (`UI_CONTRAST_MODE=gate`): failures panic at end of test.
+/// In gate mode (default at v0.2.0): failures panic at end of test.
+/// In WARN mode (`UI_CONTRAST_MODE=warn`): failures emit `eprintln!` and the
+/// test PASSES. Set `UI_CONTRAST_MODE=warn` as the explicit opt-out escape hatch.
 ///
-/// At v0.1.0 expect ~6 WARN-log lines (design-intent signal, NOT bugs to chase):
-///   - `fg_3_on_panel_raised_dark`    (3.75 — marginal)
-///   - `fg_on_accent_on_accent_light` (3.52 — genuine AA defect)
-///   - `up_500_on_canvas_light`       (4.46 — marginal)
-///   - `down_500_on_canvas_light`     (4.33 — marginal)
-///   - `warn_500_on_canvas_light`     (2.96 — genuine AA defect)
-///   - `warn_500_on_panel_light`      (3.11 — genuine AA defect)
-///
-/// Operator decides at v0.2.0 promotion: upstream hex tune vs known-debt.
+/// At v0.2.0 the 6 known sub-AA pairs are ratified as `OptOut` entries (operator
+/// path A). The gate ENFORCES for all other `Body`/`Equity` pairs. Expect opt-out
+/// audit lines (NOT failures) for:
+///   - `fg_3_on_panel_raised_dark`    (3.75 — dark-mode debt, trivially darkenable)
+///   - `fg_on_accent_on_accent_light` (3.52 — light-mode debt, trivially darkenable)
+///   - `up_500_on_canvas_light`       (4.46 — light-mode debt, trivially darkenable)
+///   - `down_500_on_canvas_light`     (4.33 — light-mode debt, trivially darkenable)
+///   - `warn_500_on_canvas_light`     (2.96 — amber-on-light ratified debt)
+///   - `warn_500_on_panel_light`      (3.11 — amber-on-light ratified debt)
 #[test]
 fn all_theme_pairs_meet_wcag() {
     let mode = current_mode();
