@@ -3005,3 +3005,19 @@ crates      = ["crates/data"]
 tests       = ["crates/data/tests/binance_2122_revision_consistency.rs"]
 anchors     = []   # data-corpus feature, no anchors.toml row; AC2 asserts existing data/binance 3a8b96c4 pin stays byte-identical
 state       = "shipped"   # operator approved 2026-06-15 (deck same day). 2021-22 hourly sibling corpus data/binance-2122/ pinned (4f390622…); data/binance 3a8b96c4 byte-identical, anchors 119/119, gitignore clean. Unblocks a future down-market survey re-run (which should test path-robustness per the overfit-guard finding).
+
+[[req]]
+id          = "REQ-SIMPLE-STRATEGY-BEAR-SURVEY-001"
+title       = "Two-stage point-survey + block-bootstrap path-robustness re-run of the 4 simple strategies over the 2021-22 bear corpus — does any apparent down-market winner survive the frozen § 0 rule, or does it firm ship-passive?"
+feature     = "simple-strategy-bear-survey"
+product     = "spec/product.md"
+arch        = [
+  "spec/simple-strategy-bear-survey/feature.md",
+  "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md",
+  "spec/dev-notes/robustness-decision-rule-2026-05-30.md",
+  "spec/architecture/adr/0056-binance-corpus-timeframe-layout-convention.md",
+]
+crates      = []   # developer fills (expect crates/backtest)
+tests       = []   # developer fills (expect a new #[ignore] harness over data/binance-2122/)
+anchors     = []   # UN-ANCHORED by construction (survey + overfit-guard precedent; #[ignore] harness, fixed seeds, NO anchors.toml row) — see feature.md § Anchoring
+state       = "arch-done"  # architect 2026-06-15: combined #[ignore] harness over data/binance-2122 (COPY survey+overfit-guard primitives, shipped harnesses byte-untouched); no new ADR (reuses ADR-0051 D1 + § 0 rule). PRE-REGISTERED FROZEN predicate: apparent winner iff B&H<0 AND (strat−B&H)≥10pp; cap N≤16 top-by-margin + 1 up-market contrast cell. Stage-2 ~140s. Pending developer.
