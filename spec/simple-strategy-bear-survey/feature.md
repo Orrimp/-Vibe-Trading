@@ -667,7 +667,38 @@ scored against the frozen § 0 rule. Both UN-ANCHORED; fixed seeds for determini
 no `anchors.toml` row._
 
 ## Implementation
-_developer fills this._
+
+ONE new `#[ignore]` harness created at
+`crates/backtest/tests/realdata_simple_strategy_bear_survey.rs`.
+
+Stage-1 primitives (`workspace_root`, `load_year_bars`, `buy_and_hold_pct`) copied
+from `realdata_simple_strategy_survey.rs` with corpus root → `data/binance-2122/` and
+years → 2021/2022 UTC boundaries.
+
+Stage-2 primitives (`run_one_path`, `path_metrics_from_report`, `score_verdict`,
+`run_ensemble_from_bars`) copied from `realdata_simple_strategy_overfit_guard.rs`.
+`Stage1Cell` struct and `select_candidates` implement the frozen D-BS.2 predicate
+(`bh_pct < 0 AND margin >= 10 pp`, cap 16, deterministic tie-break).
+`ensemble_seed_for(strat_idx, candidate_rank)` implements the D-BS.3 seed derivation.
+Up-market contrast cell uses a reserved rank `0xF0` (no cap collision).
+
+Both shipped harnesses verified byte-untouched (`git diff` = empty).
+
+**Stage-1 result (2026-06-15):** 40 qualifying cells before cap; top-16 bootstrapped.
+All 16 candidates + contrast cell results:
+- All 16 candidates: **FRAGILE** (sharpe.p5 < 0 on every cell).
+- Up-market contrast (SOLUSDT·2021 SMA): **MARGINAL** (p5=0.439, positive median).
+- Negative control (RSI/BBands in candidates): all FRAGILE — harness is correctly
+  calibrated (mean-reverters did NOT score ROBUST).
+- `Auto` block length: 200–210 bars across all cells (no L≤1 degeneration — Q-BS.5).
+
+**Headline:** The 2021-22 bear sample FIRMS ship-passive. 16/16 candidates FRAGILE.
+The 2026-06-08 terminal verdict stands.
+
+Build: `cargo clippy --tests -p backtest -- -D warnings` clean.
+Default suite: `cargo test -p backtest --tests` green (harness is `#[ignore]`d).
+Determinism (AC-BS.5): two consecutive runs produce byte-identical table rows.
+spec-lint: 70 (zero new findings).
 
 ## Verification
 _tester links to reports here (note: UN-ANCHORED — the deliverable is the
@@ -675,6 +706,14 @@ _tester links to reports here (note: UN-ANCHORED — the deliverable is the
 
 ## Changelog
 
+- 2026-06-15 (developer): T-BS.5–.9 complete. Created
+  `crates/backtest/tests/realdata_simple_strategy_bear_survey.rs` (381 lines).
+  Stage-1: 80-cell survey over data/binance-2122/ — 40 qualifying cells before cap,
+  top-16 bootstrapped. Stage-2: all 16 candidates FRAGILE (sharpe.p5 < 0 on every
+  cell); up-market contrast (SOLUSDT·2021 SMA) MARGINAL; Auto block length 200–210
+  (no degeneration). Headline: 2021-22 bear sample FIRMS ship-passive.
+  Clippy clean; default suite green; determinism verified; spec-lint 70.
+  Two shipped harnesses byte-untouched. HANDOFF → tester.
 - 2026-06-15 (architect): M-T1 design lock. Resolved Q-BS.1–.5 and wrote § Design
   (D-BS.1–.4). **Q-BS.1 seam → option (a)**: ONE new combined `#[ignore]` harness
   `crates/backtest/tests/realdata_simple_strategy_bear_survey.rs` that COPIES the

@@ -63,7 +63,7 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
 > point survey is copy-adapt from `realdata_simple_strategy_survey.rs` — both with
 > the corpus root changed to `data/binance-2122/` and the years to 2021 + 2022.
 
-- [ ] **T-BS.5 (Stage-1 harness + loader)** — Create the combined `#[ignore]` harness at
+- [x] **T-BS.5 (Stage-1 harness + loader)** — Create the combined `#[ignore]` harness at
       the locked path **`crates/backtest/tests/realdata_simple_strategy_bear_survey.rs`**
       (D-BS.1). COPY `workspace_root`/`load_year_bars`/`buy_and_hold_pct` from the survey,
       with the corpus root → **`data/binance-2122/`** (`ReplayFeed::new(root.join("data/binance-2122"), true)`)
@@ -77,7 +77,7 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
       cells (`bars.len() < 100`) print `(only N bars)` + skip (no `Stage1Cell` pushed).
       _acceptance: AC-BS.1 + AC-BS.4 — full Stage-1 table prints on a corpus-present box;
       clean SKIP + green default suite when absent._
-- [ ] **T-BS.6 (candidate selection — PRE-REGISTERED predicate)** — Implement
+- [x] **T-BS.6 (candidate selection — PRE-REGISTERED predicate)** — Implement
       `select_candidates(&[Stage1Cell]) -> Vec<&Stage1Cell>` to the **FROZEN** D-BS.2 rule:
       keep cells where **`bh_pct < 0` AND `strat_ret_pct − bh_pct ≥ dec!(10.0)`**; sort the
       qualifiers by `(margin DESC, symbol ASC, year ASC [2021<2022], strat_idx ASC
@@ -87,7 +87,7 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
       change is unavoidable, STOP and escalate per the D-BS.2 pre-registration notice; do
       not silently tune). _acceptance: AC-BS.2 — selected set printed with the exact
       predicate + threshold; count ≤ 16; selection byte-identical across two runs._
-- [ ] **T-BS.7 (Stage-2 bootstrap ensemble)** — COPY `run_one_path` /
+- [x] **T-BS.7 (Stage-2 bootstrap ensemble)** — COPY `run_one_path` /
       `path_metrics_from_report` / `run_ensemble` from the overfit-guard. For each
       candidate (and the contrast cell), build ONE
       `BlockBootstrapPathGen::new(vec![(sym, real_bars)], BlockLengthPolicy::Auto)`, loop
@@ -106,7 +106,7 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
       `selected_block_length ≤ 1` (Q-BS.5 — log + surface as a finding, do NOT pin `Fixed`).
       _acceptance: AC-BS.3 — each candidate returns a populated 500-path
       `DistributionSummary`; seeds distinct per (strategy × cell)._
-- [ ] **T-BS.8 (score + print + negative control + up-market contrast)** — COPY
+- [x] **T-BS.8 (score + print + negative control + up-market contrast)** — COPY
       `score_verdict` from the overfit-guard; score each ensemble against the frozen § 0
       bands AS-IS (`sharpe.p5 < 0 ⇒ FRAGILE`; `prob_loss > 0.35 ⇒ FRAGILE`;
       `max_dd_tail_p95 > 0.70 ⇒ FRAGILE`; ROBUST iff `p5 ≥ 0.5 AND prob_loss ≤ 0.15 AND
@@ -122,7 +122,7 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
       pre-registered predicate. _acceptance: AC-BS.3 + AC-BS.6 — § 0 columns + composite
       verdict per candidate; any selected RSI/BBands scores FRAGILE/MARGINAL not ROBUST;
       the up-market contrast cell is scored and labelled._
-- [ ] **T-BS.9 (determinism + watch recipe + clippy + lint)** — `#[tokio::test] #[ignore]`.
+- [x] **T-BS.9 (determinism + watch recipe + clippy + lint)** — `#[tokio::test] #[ignore]`.
       Confirm two consecutive `--release --ignored --nocapture` runs are byte-identical
       (AC-BS.5). **Emit a copy-pasteable `watch -n N '<probe>'` block** when kicking off the
       Stage-2 release run (R-BS.11 — likely > 2 min on a market-wide-bear candidate count).
@@ -192,6 +192,10 @@ mandatory per R-BS.11.)
 
 ## Changelog
 
+- 2026-06-15 (developer): T-BS.5–.9 ticked. Harness created and run (153s release).
+  Stage-1: 80 cells, 40 qualifying, top-16 bootstrapped. All 16 FRAGILE.
+  Contrast cell (SOLUSDT·2021 SMA) MARGINAL. Determinism verified (two identical
+  table outputs). Clippy clean. spec-lint 70. HANDOFF → tester.
 - 2026-06-15 (architect): M-T1 lock. Checked off T-BS.1–.4 with the decisions
   (seam → option (a) one new combined harness; predicate FROZEN at `B&H<0 AND
   margin≥10pp`, cap N≤16 by-margin with deterministic tie-break; N=500 + Auto +

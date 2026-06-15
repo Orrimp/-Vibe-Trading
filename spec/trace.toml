@@ -3017,7 +3017,7 @@ arch        = [
   "spec/dev-notes/robustness-decision-rule-2026-05-30.md",
   "spec/architecture/adr/0056-binance-corpus-timeframe-layout-convention.md",
 ]
-crates      = []   # developer fills (expect crates/backtest)
-tests       = []   # developer fills (expect a new #[ignore] harness over data/binance-2122/)
+crates      = ["crates/backtest"]
+tests       = ["crates/backtest/tests/realdata_simple_strategy_bear_survey.rs"]
 anchors     = []   # UN-ANCHORED by construction (survey + overfit-guard precedent; #[ignore] harness, fixed seeds, NO anchors.toml row) — see feature.md § Anchoring
-state       = "arch-done"  # architect 2026-06-15: combined #[ignore] harness over data/binance-2122 (COPY survey+overfit-guard primitives, shipped harnesses byte-untouched); no new ADR (reuses ADR-0051 D1 + § 0 rule). PRE-REGISTERED FROZEN predicate: apparent winner iff B&H<0 AND (strat−B&H)≥10pp; cap N≤16 top-by-margin + 1 up-market contrast cell. Stage-2 ~140s. Pending developer.
+state       = "dev-done"  # developer 2026-06-15: harness built + ran. Stage-1: 40 qualifying cells (all 2022, deepest bear), top-16 bootstrapped. Stage-2: ALL 16 candidates FRAGILE (p5 Sharpe<0) — even the +97pp SOL-2022-RSI apparent winner; up-market contrast (SOL-2021 SMA) MARGINAL → discriminates; Auto block-len 200-210 (no degeneration). HEADLINE: 2021-22 bear FIRMS ship-passive. Determinism byte-identical; both shipped harnesses untouched; clippy --tests clean; spec-lint 70. Pending tester.
