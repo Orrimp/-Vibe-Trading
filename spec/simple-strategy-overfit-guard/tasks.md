@@ -88,14 +88,18 @@ substance is **Q-OG.2 (the seam)**; everything else is pre-registered.
 
 ## Tester (verify)
 
-- [ ] **T-OG.9** — On a corpus-present machine: run the harness, confirm all 8 down-market ensembles + the
+- [x] **T-OG.9** — On a corpus-present machine: run the harness, confirm all 8 down-market ensembles + the
       up-market contrast print full § 0 summaries (AC-OG.1). Capture the `--nocapture` stdout for the finding.
-- [ ] **T-OG.10** — Determinism: diff two consecutive `--nocapture` runs → byte-identical summaries (AC-OG.3 /
+      - **verified**: all 9 ensembles (8 down-market + AVAX·2023 SMA control) printed full § 0 columns + verdict. Exit 0, 1 passed, 0 failed, finished in 77.82s.
+- [x] **T-OG.10** — Determinism: diff two consecutive `--nocapture` runs → byte-identical summaries (AC-OG.3 /
       R-OG.7). Corpus-absent: confirm clean SKIP, green default suite (AC-OG.2).
-- [ ] **T-OG.11** — Negative-control check: RSI + BBands on the down-market cells score FRAGILE/MARGINAL, NOT
+      - **verified**: `diff <(grep -E 'AVAX|DOT|FRAGILE|ROBUST|MARGINAL' /tmp/og-A.log) <(grep -E 'AVAX|DOT|FRAGILE|ROBUST|MARGINAL' /tmp/og-B.log)` → exit 0, empty diff. Byte-identical. Default suite: 82 passed, 0 failed, 5 ignored (harness absent from default run, AC-OG.2 confirmed).
+- [x] **T-OG.11** — Negative-control check: RSI + BBands on the down-market cells score FRAGILE/MARGINAL, NOT
       ROBUST (AC-OG.4) — proves the test discriminates and isn't blessing no-edge churn.
-- [ ] **T-OG.12** — `scripts/spec_lint.py` <= 70 zero-new (AC-OG.6 / R-OG.10); `cargo clippy -- -D warnings`
+      - **verified**: AVAX·2024 RSI FRAGILE (p5=-0.788), AVAX·2024 BBands FRAGILE (p5=-1.217), DOT·2024 RSI FRAGILE (p5=-0.308), DOT·2024 BBands FRAGILE (p5=-2.263). No miscalibration. AVAX·2023 SMA p5=-0.137 matches spec-anticipated value exactly.
+- [x] **T-OG.12** — `scripts/spec_lint.py` <= 70 zero-new (AC-OG.6 / R-OG.10); `cargo clippy -- -D warnings`
       clean; no `.unwrap()` outside tests.
+      - **verified**: spec_lint=70 (65 dead-link + 5 trace-broken-path, all pre-existing; 0 new from this feature). clippy --tests -p backtest: 0 warnings, 0 errors. unwrap/expect confined to `#[allow]`-gated test file only.
 
 ## Analyst (close the loop)
 

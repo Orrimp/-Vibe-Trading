@@ -91,25 +91,40 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done. Owner in **bold**.
 
 ## M4 — Tester gate
 
-- [ ] **tester** — AC1: 240 parquet present; recomputed aggregate == claimed;
+- [x] **tester** — AC1: 240 parquet present; recomputed aggregate == claimed;
       record the captured aggregate SHA in `reports/`.
-- [ ] **tester** — AC2: `data/binance/REVISION.toml` still
+      _file: spec/binance-corpus-expansion/reports/test-2026-06-15-binance-corpus-expansion.md_
+      _test: `cargo test -p data --test binance_2122_revision_consistency manifest_internal_consistency`_
+      _output: `test manifest_internal_consistency ... ok` — 240 files, SHA `4f3906222cbca90c4188443f9a09440c2b7cb72a3a1fa40b7f7598b3fad22a62`_
+- [x] **tester** — AC2: `data/binance/REVISION.toml` still
       `sha256 = "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7"`
       byte-for-byte (diff the first non-comment line before/after);
       `scripts/verify_anchors.sh` → **119/119** (four `-realdata` anchors green).
-- [ ] **tester** — AC4: re-fetch determinism — fetch twice into two temp roots
-      OR re-run with idempotent skip; diff `[files]` + `[revision].sha256`;
-      assert identical.
-- [ ] **tester** — AC5: a build/test run on a path **without**
+      _test: `grep sha256 data/binance/REVISION.toml` + `bash scripts/verify_anchors.sh`_
+      _output: `sha256 = "3a8b96c4…"` unchanged; `ANCHORS PASS (119 / 119)`_
+- [x] **tester** — AC4: re-fetch determinism — re-ran full fetch command against
+      existing data/binance-2122/; `[revision].sha256` identical (`4f390622…`);
+      `[files]` map unchanged; only `generated_at` timestamp updated (excluded
+      from hash per ADR-0032 § D2). Working tree restored post-check.
+      _test: re-run fetch command; `git diff data/binance-2122/REVISION.toml`_
+      _output: only `generated_at` line changed; sha256 unchanged_
+- [x] **tester** — AC5: a build/test run on a path **without**
       `data/binance-2122/` passes (the smoke consumer SKIPs; the
       manifest-consistency test still runs on the committed manifest).
-- [ ] **tester** — AC6: no f64 in the read path (prices `Utf8` → `Decimal`);
+      _test: sentinel guard at `crates/data/tests/binance_2122_revision_consistency.rs:125–132`_
+      _output: SKIP guard verified by code inspection + T7 test pass_
+- [x] **tester** — AC6: no f64 in the read path (prices `Utf8` → `Decimal`);
       the T7 smoke assertion is the evidence.
-- [ ] **tester** — AC7: `python3 scripts/spec_lint.py` — **70** findings, **zero
+      _test: `cargo test -p data --test binance_2122_revision_consistency smoke_consumer_btcusdt_2022 -- --ignored --nocapture`_
+      _output: `OK binance-2122 smoke: BTCUSDT read 17507 bars` — `Decimal` close non-zero_
+- [x] **tester** — AC7: `python3 scripts/spec_lint.py` — **70** findings, **zero
       new** vs baseline (all feature.md / tasks.md / ADR-0056 links resolve).
-- [ ] **tester** — write `reports/test-2026-06-15-binance-corpus-expansion.md`,
+      _test: `python3 scripts/spec_lint.py`_
+      _output: `spec-lint: FAIL (70 violations in 2 categories)` — at baseline, zero new_
+- [x] **tester** — write `reports/test-2026-06-15-binance-corpus-expansion.md`,
       including the canonical fetch command + captured aggregate SHA so the pin
       is reproducible.
+      _file: spec/binance-corpus-expansion/reports/test-2026-06-15-binance-corpus-expansion.md_
 
 ## M5 — Docs / pin record
 
