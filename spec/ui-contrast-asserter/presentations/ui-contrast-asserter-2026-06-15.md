@@ -3,7 +3,7 @@ slug: ui-contrast-asserter
 mode: release
 date: 2026-06-15
 agent: presenter
-status: awaiting-approval
+status: approved-shipped
 tester_report: spec/ui-contrast-asserter/reports/test-2026-06-15-1300-v0.2.0-ui-contrast-asserter.md
 feature: spec/ui-contrast-asserter/feature.md
 ---
@@ -200,7 +200,7 @@ v0.2.0 enforcing gate) or route it back.
 
 ## Approval block
 
-- [ ] Approved — ship
+- [x] Approved — ship — operator, 2026-06-15
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 

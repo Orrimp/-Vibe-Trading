@@ -3320,6 +3320,20 @@ Cohorts through 2026-06-08 are archived in
 (2026-06-11 cleanup sweep, `CLEANUP-PLAN.md` P2-3). New shipped entries
 land below as features ship.
 
+### 2026-06-15 — close-out: contrast asserter enforcing gate (ui-contrast-asserter v0.2.0)
+
+- **ui-contrast-asserter v0.1.0 + v0.2.0 SHIPPED** (operator-approved 2026-06-15) —
+  the cockpit's WCAG 2.1 contrast asserter (83 fg/bg Lumen pairs vs AA 4.5:1).
+  v0.1.0 (the 83-pair gate, tester PASS 2026-05-29) was never presented; v0.2.0
+  flips the default from advisory WARN to an ENFORCING gate — new sub-AA color
+  pairings now FAIL the build (`UI_CONTRAST_MODE=warn` is the local-dev/CI-pin
+  opt-out). The 6 known sub-AA pairs (5 light + 1 dark) ratified as documented
+  OPT_OUTs (operator path A — zero color change, zero visual-baseline churn; 4 are
+  trivially darkenable in a future palette-tune). Proven enforcing via a
+  white-on-grey falsification panic. Test-tooling only; un-anchored. Pre-existing
+  flaky `charts_screen_dark` tests + an `--all-features` deprecation surfaced
+  during the close-out are spawned out-of-scope (task_23647c48).
+
 ### 2026-06-15 cohort — robustness double-confirm (overfit-guard + bear-survey) + Binance 2021-22 hourly corpus
 
 - **simple-strategy-bear-survey SHIPPED** (operator-approved 2026-06-15) —
