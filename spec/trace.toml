@@ -2990,7 +2990,7 @@ arch        = [
 crates      = ["crates/backtest"]
 tests       = ["crates/backtest/tests/realdata_simple_strategy_overfit_guard.rs"]
 anchors     = []   # UN-ANCHORED by construction (survey precedent; #[ignore] harness, no anchors.toml row) — see feature.md § 3
-state       = "presenter-done"   # presenter 2026-06-15: operator deck spec/simple-strategy-overfit-guard/presentations/simple-strategy-overfit-guard-2026-06-15.md ready (PRESENTATION CHECK PASS, approval block un-ticked). All 13 tasks done, VERDICT PASS, dev-note authored. Finding: down-market hedge path-fragile → ship-passive unqualified. Awaiting operator approval → shipped.
+state       = "shipped"   # operator approved 2026-06-15 (deck same day). Finding: down-market trend-following hedge is path-fragile (N=500 block-bootstrap, 9/9 cells FRAGILE) → ship-passive UNQUALIFIED on this evidence. Analysis-only (zero code/anchors); passive-baseline runbook revised. Reinforces the 2026-06-08 SHIP-PASSIVE terminal verdict.
 
 [[req]]
 id          = "REQ-BINANCE-CORPUS-EXPANSION-001"
@@ -3004,4 +3004,4 @@ arch        = [
 crates      = ["crates/data"]
 tests       = ["crates/data/tests/binance_2122_revision_consistency.rs"]
 anchors     = []   # data-corpus feature, no anchors.toml row; AC2 asserts existing data/binance 3a8b96c4 pin stays byte-identical
-state       = "presenter-done"   # presenter 2026-06-15: operator deck spec/binance-corpus-expansion/presentations/binance-corpus-expansion-2026-06-15.md ready (PRESENTATION CHECK PASS). VERDICT PASS: anchors 119/119, 3a8b96c4 byte-identical, gitignore clean. Unblocks a future down-market survey re-run (test path-robustness per overfit-guard finding). Awaiting operator approval → shipped.
+state       = "shipped"   # operator approved 2026-06-15 (deck same day). 2021-22 hourly sibling corpus data/binance-2122/ pinned (4f390622…); data/binance 3a8b96c4 byte-identical, anchors 119/119, gitignore clean. Unblocks a future down-market survey re-run (which should test path-robustness per the overfit-guard finding).

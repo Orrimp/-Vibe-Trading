@@ -157,7 +157,7 @@ it's picked up.
 
 ## Approval block
 
-- [ ] Approved — ship
+- [x] Approved — ship — operator, 2026-06-15
 - [ ] Approve with notes (notes below)
 - [ ] Reject — <add reason below>
 

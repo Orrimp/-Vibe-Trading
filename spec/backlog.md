@@ -3315,9 +3315,19 @@ Cohorts through 2026-06-08 are archived in
 (2026-06-11 cleanup sweep, `CLEANUP-PLAN.md` P2-3). New shipped entries
 land below as features ship.
 
-### 2026-06-15 cohort — Binance 2021-22 hourly corpus expansion
+### 2026-06-15 cohort — overfit-guard finding + Binance 2021-22 hourly corpus
 
-- **binance-corpus-expansion SHIPPED** (ADR-0056; developer 2026-06-15) — adds
+- **simple-strategy-overfit-guard SHIPPED** (operator-approved 2026-06-15) —
+  N=500 block-bootstrap robustness guard on the survey's down-market
+  trend-following "hedge" (AVAX/DOT 2024). Result: **all 9 cells FRAGILE** (p5
+  Sharpe < 0) — SMA/MACD median paths are positive but the bad-luck tail is
+  negative, so the hedge is **path-fragile**, not a real strategy property.
+  Revises the survey's Finding 1 + the passive-baseline runbook: **ship-passive
+  is now UNQUALIFIED** on this evidence (reinforces the 2026-06-08 terminal
+  verdict). Analysis-only — un-anchored `#[ignore]` harness, zero trading-behavior
+  change. Dev-note: `spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md`.
+
+- **binance-corpus-expansion SHIPPED** (ADR-0056; operator-approved 2026-06-15) — adds
   `data/binance-2122/` sibling corpus root: 10-symbol Binance OHLCV, 2021-2022
   hourly, 240 parquet files, ~5.5 MB on disk, gitignored except the
   `REVISION.toml` pin. Provides the down-market depth missing from the 2023-24
@@ -3333,8 +3343,10 @@ land below as features ship.
   ```
   **Pinned aggregate SHA:** `4f3906222cbca90c4188443f9a09440c2b7cb72a3a1fa40b7f7598b3fad22a62`
 
-  Downstream follow-on: survey re-run over 2021-22 to firm up the
-  trend-following-hedge finding (out of scope here; queue when ready).
+  Downstream follow-on: survey re-run over 2021-22 to re-test the
+  trend-following-hedge finding — and per the overfit-guard result it must test
+  PATH-ROBUSTNESS (block-bootstrap), not just point returns (out of scope here;
+  queue when ready).
 
 ### 2026-06-12 → 2026-06-13 cohort — live trading removed; Lab → real-data strategy-checking tool
 

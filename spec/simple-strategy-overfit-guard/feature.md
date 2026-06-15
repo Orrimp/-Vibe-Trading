@@ -1,7 +1,7 @@
 ---
 slug: simple-strategy-overfit-guard
 version: 0.1.0
-status: presenter-done
+status: shipped
 owner: architect
 priority: P2
 updated: 2026-06-15

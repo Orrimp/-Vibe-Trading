@@ -3,7 +3,7 @@ slug: simple-strategy-overfit-guard
 mode: release
 date: 2026-06-15
 agent: presenter
-status: awaiting-human-approval
+status: approved-shipped
 tester_report: spec/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md
 findings_note: spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md
 ---
@@ -184,7 +184,7 @@ two spec revisions it drove, or route it back.
 
 ## Approval block
 
-- [ ] Approved — ship
+- [x] Approved — ship — operator, 2026-06-15
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
