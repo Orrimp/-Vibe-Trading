@@ -2938,18 +2938,23 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
   and live in the Recent section; this Queue entry is the only
   remaining initiative work, gated on v2 LLM.)_
 
-- **TBD — Cockpit Windows / Linux support (`cockpit-cross-platform`).**
-  _candidate_ — surfaced 2026-05-12 by operator decision D3 in
-  [`spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`](dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#section-9).
-  Today the cockpit is macOS-only (Retina assumptions, `screencapture` +
-  TCC dependencies, `iced_tiny_skia` chosen partly for CPU determinism on
-  Apple Silicon). Scope when promoted: validate `iced_tiny_skia` rendering
-  parity on Linux X11/Wayland + Windows; replace `screencapture`-based
-  test artifact capture with cross-platform `xcap` or equivalent;
-  re-evaluate the `time` `local-offset` feature's Linux multi-threaded
-  caveat once v1.11 lands. Analyst spawn deferred — operator triggers
-  when external demand (paper-trading on Linux server, Windows operator
-  hardware) appears.
+- **Cockpit Windows / Linux support (`cockpit-cross-platform`) — SOURCE SHIPPED;
+  CI verification DEFERRED to NEAR PROJECT COMPLETION.** _surfaced 2026-05-12
+  (operator D3); SCOPED + BUILT 2026-06-15 (analyst→architect→developer; ADR-0057;
+  trace `REQ-COCKPIT-CROSS-PLATFORM-001` state `dev-done`)._ The portability source
+  layer shipped this session and is **macOS-verified**: errno fix
+  (`std::io::Error::last_os_error`), `windows="=0.57.0"` target stanza,
+  reqwest→rustls-tls flip, the 4 snapshot test files `#![cfg(target_os="macos")]`-gated
+  (visual baselines stay macOS-canonical per ADR-0057), 56 baselines byte-identical,
+  anchors 119/119. The 3-OS CI matrix YAML (ubuntu/macos/windows) is written and
+  **parked INERT** at `.github/workflows/ci.yml.deferred` (GitHub does not run a
+  `.deferred` file). **⏸ MILESTONE (operator, 2026-06-15): activating the CI matrix
+  — `git mv ci.yml.deferred ci.yml`, which is the actual Linux/Windows verification —
+  is DEFERRED to NEAR PROJECT COMPLETION**, not near-term (push starts GitHub Actions
+  on the repo + runs on every push/PR). Until that milestone: do NOT activate CI;
+  Linux/Windows builds stay unverified-by-CI. Activation trigger = operator, at the
+  near-done milestone → first CI run → tester signs off T-T1..3. _vendor/iced_tiny_skia
+  was confirmed OS-agnostic this session — no fork change (operator-lock upheld)._
 
 ### Process / tooling
 

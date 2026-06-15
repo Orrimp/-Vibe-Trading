@@ -1,0 +1,115 @@
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ DEFERRED — NOT ACTIVE. Parked as `.deferred` so GitHub Actions does NOT    │
+# │ run it (only *.yml / *.yaml under .github/workflows/ are processed).       │
+# │ Operator decision 2026-06-15: activating cross-platform CI is deferred to  │
+# │ NEAR PROJECT COMPLETION. To activate at that milestone:                    │
+# │     git mv .github/workflows/ci.yml.deferred .github/workflows/ci.yml      │
+# │ Pushing the activated file starts GitHub Actions on the operator's repo    │
+# │ and runs on every push/PR thereafter. Until the milestone, leave parked.   │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# cockpit-cross-platform v0.1 — First CI in the repo (ADR feature D8).
+#
+# Matrix: { ubuntu-latest, macos-latest, windows-latest }
+# Scope:
+#   - All legs: build the ui crate (cockpit + fixtures) + test the non-UI workspace crates.
+#   - ubuntu-latest: headless winit via xvfb-run + the Q5-researched apt deps
+#     (validate on first CI run — see spec/runbooks/cockpit-cross-platform.md §Q5).
+#     Runs the ui headless smokes. Visual baselines are compiled OUT on Linux by
+#     the #![cfg(target_os="macos")] source gate (ADR-0057 D2) — no --skip filter needed.
+#   - macos-latest: full cargo test -p ui including all 56 visual baselines (canonical gate).
+#   - windows-latest: build + non-visual cargo test -p ui (D5 scope).
+#
+# TLS: reqwest is now rustls-tls (D1) — no libssl-dev/pkg-config needed on any leg.
+# tokio-tungstenite still uses native-tls for WebSocket connections (data crate);
+# on Ubuntu that requires libssl-dev. On Windows it uses schannel (no extra setup).
+#
+# Keep it minimal — no caching, no release pipeline, no matrix-fanciness at v0.1.
+# The goal is a green build + non-visual test floor, not a release pipeline.
+
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # ── Ubuntu: headless display + winit X11 deps ──────────────────────────
+      # Q5 note (cockpit-cross-platform ADR D9): winit 0.30.x on Linux requires
+      # an X/Wayland display for window creation even when tiny-skia renders
+      # fully CPU-side. xvfb-run provides the virtual X display. The libxkb* +
+      # libx11 packages are required by winit's x11rb backend.
+      # libssl-dev is required by tokio-tungstenite native-tls (WebSocket, data crate).
+      # VALIDATE ON FIRST CI RUN — if winit panics with "no display server",
+      # add libwayland-dev or check xvfb startup. See the runbook Q5 section.
+      - name: Install Linux system deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            libxkbcommon-dev \
+            libxkbcommon-x11-0 \
+            libx11-dev \
+            libssl-dev \
+            pkg-config
+
+      # ── All legs: build the ui crate (fixtures binary) ────────────────────
+      - name: Build ui (fixtures)
+        run: cargo build -p ui --bin cockpit --features fixtures
+
+      # ── All legs: test the non-UI workspace crates ─────────────────────────
+      # Excludes `ui` because:
+      #   - ubuntu/windows: visual snapshots are compiled out by the
+      #     #![cfg(target_os="macos")] source gate, but headless smokes need
+      #     the platform-specific step below.
+      #   - macos: full ui test suite runs in a dedicated step below.
+      - name: Test workspace (non-ui crates)
+        run: cargo test --workspace --exclude ui
+
+      # ── Ubuntu: headless ui tests (smokes only — visual baselines not compiled) ──
+      # xvfb-run provides a virtual X display for winit window creation.
+      # The visual snapshot tests are compiled OUT on Linux (#![cfg(target_os="macos")])
+      # so this runs only the headless smokes: headless_emulator_smoke,
+      # cockpit_live_lab_run_smoke, and all other non-visual ui integration tests.
+      - name: Test ui (headless, Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a cargo test -p ui --features fixtures
+
+      # ── macOS: full ui test suite including the 56 visual baselines ────────
+      # This is the canonical visual regression gate (ADR-0057 D1/D2, R-NR.1).
+      # The #![cfg(target_os="macos")] source gate compiles the visual tests IN
+      # on macOS only; they run against the 56 committed baseline PNGs.
+      - name: Test ui (full suite, macOS canonical gate)
+        if: matrix.os == 'macos-latest'
+        run: cargo test -p ui
+
+      # ── Windows: build + non-visual cargo test -p ui (D5 scope) ───────────
+      # The windows = "=0.57.0" dep stanza (D4) makes pid_alive.rs compile.
+      # Visual baselines are compiled OUT by the #![cfg(target_os="macos")] gate.
+      # Interactive window UX on Windows is best-effort at v0.1 (no Windows HW
+      # for manual QA); full interactive parity is a v0.2 follow-on (D5).
+      - name: Test ui (non-visual, Windows)
+        if: matrix.os == 'windows-latest'
+        run: cargo test -p ui --features fixtures
