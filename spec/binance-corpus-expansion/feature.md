@@ -383,6 +383,18 @@ the tester runs before and after: the first non-comment line of
 `data/binance/REVISION.toml` is `sha256 = "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7"`.
 Coupled with `scripts/verify_anchors.sh → 119/119`, this closes AC2.
 
+## Implementation
+
+Developer, 2026-06-15.
+
+- **M1 (fetch):** `cargo run -p data --bin fetch_binance_klines -- --symbols BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,ADAUSDT,DOGEUSDT,AVAXUSDT,DOTUSDT,LINKUSDT --start 2021-01-01 --end 2022-12-31 --interval 1h --out data/binance-2122 --emit-revision-manifest` completed exit 0. 240 files written. Aggregate SHA: `4f3906222cbca90c4188443f9a09440c2b7cb72a3a1fa40b7f7598b3fad22a62`. No ragged early-2021 coverage: all 10 symbols had 744 bars in 2021-01.
+- **M2 (gitignore):** stanza added to `.gitignore` after `binance-basis` block. `git ls-files --others --exclude-standard data/binance-2122/` → `data/binance-2122/REVISION.toml` only. No parquet untracked.
+- **M3 (tests):** `crates/data/tests/binance_2122_revision_consistency.rs` added. Two tests: `manifest_internal_consistency` (always-on, T6) and `smoke_consumer_btcusdt_2022` (`#[ignore]`, T7). T6 passes with no parquet. T7 reads 17 507 BTCUSDT bars and asserts `Decimal` close prices.
+- **M5 (docs):** report at `spec/binance-corpus-expansion/reports/fetch-2026-06-15-binance-2122.md`. Backlog Recent note added.
+- **Anchor safety:** `data/binance/REVISION.toml` SHA == `3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7` — unchanged. `verify_anchors.sh` → 119/119.
+- **Clippy:** `cargo clippy --tests -p data -- -D warnings` → 0 warnings.
+- **Baseline-equity-divergence gate:** N/A (no strategy code, no overlay, no equity produced). AC1 + AC4 are the evidence-analogues.
+
 ## Changelog
 
 - 2026-06-15 (architect): M-T1 lock. Resolved Q1–Q4; wrote **ADR-0056**

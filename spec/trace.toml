@@ -2989,8 +2989,11 @@ id          = "REQ-BINANCE-CORPUS-EXPANSION-001"
 title       = "Add 2021-2022 hourly Binance OHLCV for the 10-symbol universe as a pinned sibling corpus root, widening the down-market sample that firms up the trend-following hedge finding"
 feature     = "binance-corpus-expansion"
 product     = "spec/product.md"
-arch        = []   # architect fills
-crates      = []   # developer fills (no fetcher code change expected; .gitignore stanza + manifest-consistency test)
-tests       = []   # developer fills
+arch        = [
+  "spec/binance-corpus-expansion/feature.md",
+  "spec/architecture/adr/0056-binance-corpus-timeframe-layout-convention.md",
+]
+crates      = ["crates/data"]
+tests       = ["crates/data/tests/binance_2122_revision_consistency.rs"]
 anchors     = []   # data-corpus feature, no anchors.toml row; AC2 asserts existing data/binance 3a8b96c4 pin stays byte-identical
-state       = "proposed"
+state       = "dev-done"   # developer 2026-06-15: fetched 2021-22 hourly into sibling root data/binance-2122/ (240 parquet, REVISION pin 4f390622…); data/binance 3a8b96c4 byte-identical, anchors 119/119; gitignore tracks only REVISION.toml. Pending tester (AC1/AC4 re-fetch determinism + AC7 lint).

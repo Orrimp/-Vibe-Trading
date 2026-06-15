@@ -29,6 +29,12 @@
 !/data/binance-basis/
 /data/binance-basis/*
 !/data/binance-basis/REVISION.toml
+# 2021-22 hourly down-market corpus (feature binance-corpus-expansion,
+# 2026-06-15): same 10 symbols as data/binance, 2021-2022. Bulk parquets
+# gitignored (mirrors data/binance); only the REVISION.toml pin is tracked.
+!/data/binance-2122/
+/data/binance-2122/*
+!/data/binance-2122/REVISION.toml
 # On-chain stablecoin-supply spike (2026-06-08, onchain-netflow-spike): daily
 # per-chain stablecoin circulating supply from the free DefiLlama API. Net-flows
 # were ruled out at the PIT gate; stablecoin supply is the cleaner-PIT fallback.

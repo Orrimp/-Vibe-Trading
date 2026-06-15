@@ -3315,6 +3315,27 @@ Cohorts through 2026-06-08 are archived in
 (2026-06-11 cleanup sweep, `CLEANUP-PLAN.md` P2-3). New shipped entries
 land below as features ship.
 
+### 2026-06-15 cohort — Binance 2021-22 hourly corpus expansion
+
+- **binance-corpus-expansion SHIPPED** (ADR-0056; developer 2026-06-15) — adds
+  `data/binance-2122/` sibling corpus root: 10-symbol Binance OHLCV, 2021-2022
+  hourly, 240 parquet files, ~5.5 MB on disk, gitignored except the
+  `REVISION.toml` pin. Provides the down-market depth missing from the 2023-24
+  corpus (2022 = deep crypto bear: BTC −64%, ETH −67%). `data/binance` pin
+  `3a8b96c4…` byte-identical; 119/119 anchors green.
+
+  **Canonical reproduce command:**
+  ```bash
+  cargo run -p data --bin fetch_binance_klines -- \
+    --symbols BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT,XRPUSDT,ADAUSDT,DOGEUSDT,AVAXUSDT,DOTUSDT,LINKUSDT \
+    --start 2021-01-01 --end 2022-12-31 --interval 1h \
+    --out data/binance-2122 --emit-revision-manifest
+  ```
+  **Pinned aggregate SHA:** `4f3906222cbca90c4188443f9a09440c2b7cb72a3a1fa40b7f7598b3fad22a62`
+
+  Downstream follow-on: survey re-run over 2021-22 to firm up the
+  trend-following-hedge finding (out of scope here; queue when ready).
+
 ### 2026-06-12 → 2026-06-13 cohort — live trading removed; Lab → real-data strategy-checking tool
 
 - **Live execution REMOVED from the project** (`c9c4561`, operator decision
