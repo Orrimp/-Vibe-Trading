@@ -430,6 +430,20 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ## Active
 
+> **📋 WIND-DOWN RECONCILIATION (2026-06-15).** The research program concluded
+> 2026-06-08 (ship passive); most entries below are SHIPPED or CONCLUDED, not live
+> work — retained inline for archaeology per this backlog's convention. Full per-entry
+> reconciliation: [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](dev-notes/backlog-staleness-audit-2026-06-15.md)
+> (14 stale / 5 accurate / 9 genuinely-open). The only GENUINELY-OPEN items are:
+> `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` (arch-done; dev blocked on operator Yahoo fetch),
+> `subscription-pipe-server-time-template` (in-progress), `lab-polish-round-2` (proposed),
+> `visual-fail-html-reporter` (tester-done → presenter),
+> `ui-test-harness-viewport-matrix` (dev-done → tester),
+> `v2-1-tracing-layer-redactor` (tester-done → presenter),
+> `lab-recipe-test-harness v0.3.0+` (awaiting analyst), `cockpit-cross-platform`
+> (dev-done; CI deferred to near-done), and `v2-llm-strategy-v21-followups a+c`
+> (deferred indefinitely). Everything else in Active is done.
+
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PROGRAM CONCLUDED 2026-06-08 — ACTIVE-EDGE SEARCH CLOSED, SHIP PASSIVE.
      This block is the AUTHORITATIVE terminal state and SUPERSEDES the two
@@ -2671,13 +2685,29 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 
 ### Strategy
 
+> **⚠️ STRATEGY RESEARCH CONCLUDED 2026-06-08 — SHIP PASSIVE. Every entry in this
+> subsection is CONCLUDED / RETIRED / SUPERSEDED, NOT pending.** Across all three reachable
+> channels (price/OHLCV, derivatives-positioning, on-chain) no active strategy beat passive
+> buy-and-hold net of cost. Both remaining forks were tested and FAILED: the derivatives
+> **market-neutral perp-basis spread** ran 2026-06-08 → FAMILY-UNIFORM-FRAGILE on all 12
+> surfaces (domain CLOSED with finality), and the **on-chain** fork → PIT-infeasible / fragile.
+> The robustness follow-ons (C3 shipped FRAGILE; C5 superseded by the 2026-06-15
+> overfit-guard + bear-survey, both FRAGILE) and the v2.5 DL chain are retired. **No
+> active-strategy bets remain.** Reconciliation:
+> [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](dev-notes/backlog-staleness-audit-2026-06-15.md).
+
 <!-- updated 2026-06-06 (analyst, basis-reversal vehicle-vs-signal fork) —
      QUEUED `perp-basis-mn-spread` v0.2.0 (the RECOMMENDED next strategic bet),
      awaiting operator greenlight of the A-vs-B fork. -->
 
 - **perp-basis-mn-spread v0.2.0 — market-neutral long/short basis spread**
-  (the RECOMMENDED next bet; ~5-8 dev-days; trace `REQ-PERP-BASIS-MN-SPREAD-001`
-  state `proposed`; brief at `spec/perp-basis-mn-spread/feature.md`). **Follow-on
+  **🚫 CONCLUDED 2026-06-08 — DO NOT RE-RUN. Built + tested → FAMILY-UNIFORM-FRAGILE on all
+  12 surfaces; derivatives-positioning domain CLOSED with finality (this is the test that
+  produced "ship passive"). trace `REQ-PERP-BASIS-MN-SPREAD-001` = `tester-done`; 12
+  robustness reports + `crates/backtest/tests/mn_spread_divergence_e2e.rs` on disk. Text
+  below is the pre-build analyst rationale, kept as archaeology.**
+  (pre-build framing, NOT current: "the RECOMMENDED next bet; ~5-8 dev-days; trace
+  `REQ-PERP-BASIS-MN-SPREAD-001` state `proposed`"; brief at `spec/perp-basis-mn-spread/feature.md`). **Follow-on
   to `perp-basis-signal-robustness` v0.1.0** (closed PASS / FAMILY-UNIFORM-FRAGILE
   at all fees incl. 0bps gross). The adjudication
   (`spec/dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md`) found the
