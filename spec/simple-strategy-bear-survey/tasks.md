@@ -2,7 +2,7 @@
 slug: simple-strategy-bear-survey
 version: 0.1.0
 status: in-progress
-owner: developer
+owner: analyst
 updated: 2026-06-15
 ---
 
@@ -132,22 +132,32 @@ rule, N=500, ADR-0051 seeds — all transfer AS-IS).
 
 ## Tester (verify)
 
-- [ ] **T-BS.10** — On a corpus-present box: run the harness; confirm the full Stage-1 table
+- [x] **T-BS.10** — On a corpus-present box: run the harness; confirm the full Stage-1 table
       prints (AC-BS.1), the candidate set + predicate print (AC-BS.2), and each candidate's
       Stage-2 § 0 summary + verdict prints (AC-BS.3). Capture the `--nocapture` stdout for
       the finding. _acceptance: all three sections present; exit 0._
-- [ ] **T-BS.11** — Determinism: diff two consecutive `--release --ignored --nocapture` runs
+      _verified 2026-06-15 (tester): 80-cell Stage-1 table printed; 40 qualifiers → 16 candidates
+      explicit with predicate; all 16 Stage-2 rows + contrast row printed. Exit 0. PASS._
+- [x] **T-BS.11** — Determinism: diff two consecutive `--release --ignored --nocapture` runs
       → byte-identical (AC-BS.5), including an identical candidate set. Corpus-absent:
       confirm clean SKIP + green default suite (AC-BS.4). _acceptance: empty diff; default
       suite green with the harness ignored._
-- [ ] **T-BS.12** — Negative-control + contrast check: any selected RSI/BBands candidate
+      _verified 2026-06-15 (tester): diff <(grep '^|' /tmp/bear-A.log) <(grep '^|' /tmp/bear-B.log)
+      = EMPTY. Default suite: 8 passed, 0 failed, harness ignored. PASS._
+- [x] **T-BS.12** — Negative-control + contrast check: any selected RSI/BBands candidate
       scores FRAGILE/MARGINAL (NOT ROBUST); the up-market-contrast cell scores as expected
       (AC-BS.6). A mean-reverter coming back ROBUST is a RED flag → escalate, do not pass.
       _acceptance: no mean-reverter ROBUST; harness discriminates._
-- [ ] **T-BS.13** — `scripts/spec_lint.py` = 70 zero-new (R-BS.13 / AC-BS.9); `cargo clippy
+      _verified 2026-06-15 (tester): 9 RSI/BBands candidates in top-16, all FRAGILE (highest
+      p5 = −0.888). Up-market contrast SOLUSDT·2021 SMA: p5=+0.439, MARGINAL — clearly
+      discriminates from all-negative-p5 bear candidates. No mean-reverter ROBUST. PASS._
+- [x] **T-BS.13** — `scripts/spec_lint.py` = 70 zero-new (R-BS.13 / AC-BS.9); `cargo clippy
       --tests -p backtest -- -D warnings` clean; `git status` shows no `REVISION.toml` /
       `anchors.toml` / `spec/*/reports/` change (AC-BS.8); `scripts/verify_anchors.sh` green.
       _acceptance: lint 70, clippy clean, corpus + anchors untouched._
+      _verified 2026-06-15 (tester): spec-lint 70 (zero new); clippy clean; git status shows
+      only pre-existing M data/yahoo/REVISION.toml (not this feature); verify_anchors.sh
+      ANCHORS PASS (119/119). PASS._
 
 ## Analyst (close the loop)
 
@@ -192,6 +202,13 @@ mandatory per R-BS.11.)
 
 ## Changelog
 
+- 2026-06-15 (tester): T-BS.10–.13 verified and ticked. VERDICT → PASS.
+  Determinism: empty diff (AC-BS.5). Discrimination: SOLUSDT·2021 SMA p5=+0.439 MARGINAL
+  vs all 16 bear candidates FRAGILE p5<0; 9/16 candidates RSI/BBands all FRAGILE — no
+  mean-reverter ROBUST (AC-BS.6). Frozen predicate confirmed AS WRITTEN (40→16).
+  Clippy clean; spec-lint 70 zero-new; verify_anchors.sh 119/119; shipped harnesses
+  byte-untouched. No doctest failures. HANDOFF → analyst (T-BS.14).
+  Report: spec/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md
 - 2026-06-15 (developer): T-BS.5–.9 ticked. Harness created and run (153s release).
   Stage-1: 80 cells, 40 qualifying, top-16 bootstrapped. All 16 FRAGILE.
   Contrast cell (SOLUSDT·2021 SMA) MARGINAL. Determinism verified (two identical
