@@ -1,7 +1,7 @@
 ---
 slug: visual-fail-html-reporter
 version: 0.1.0
-status: dev-done
+status: shipped
 owner: tester
 priority: P2
 updated: 2026-05-29

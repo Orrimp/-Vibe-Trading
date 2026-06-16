@@ -437,9 +437,11 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 > (audit said 14 stale / 5 accurate / 9 genuinely-open; a 2026-06-16 re-verify found
 > `lab-polish-round-2` was ALSO already shipped — built ad-hoc 2026-05-25 (issue #62),
 > now registered, and `lab-yahoo-realdata-v0.1.4` RETIRED 2026-06-16 (operator: non-load-bearing
-> completeness; research concluded) → 6 genuinely-open after v2-1-tracing-layer-redactor shipped 2026-06-16). The GENUINELY-OPEN items are:
+> completeness; research concluded). The genuinely-open set is shrinking as the operator's
+> 1-5 close-out lands — 2026-06-16: #1 lab-polish + #2 tracing-redactor + #3 visual-fail-html-reporter
+> SHIPPED, #7 retired; #4 viewport-matrix reconciling, #5 subscription-pipe in dev. Remaining
+> genuinely-open:
 > `subscription-pipe-server-time-template` (in-progress),
-> `visual-fail-html-reporter` (tester-done → presenter),
 > `ui-test-harness-viewport-matrix` (dev-done → tester),
 > `lab-recipe-test-harness v0.3.0+` (awaiting analyst), `cockpit-cross-platform`
 > (dev-done; CI deferred to near-done), and `v2-llm-strategy-v21-followups a+c`
