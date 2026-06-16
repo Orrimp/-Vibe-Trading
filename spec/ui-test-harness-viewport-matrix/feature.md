@@ -1,7 +1,7 @@
 ---
 slug: ui-test-harness-viewport-matrix
 version: 0.1.0
-status: dev-done
+status: shipped
 owner: tester
 priority: P2
 predecessor: ui-test-harness-bootstrap v0.1.0

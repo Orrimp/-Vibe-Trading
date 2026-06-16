@@ -1,6 +1,6 @@
 ---
 slug: ui-test-harness-viewport-matrix
-status: presenter-done
+status: shipped
 owner: human-operator
 updated: 2026-05-30
 ---
