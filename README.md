@@ -1,24 +1,31 @@
 # Trading
 
-A **Rust crypto trading agent** with persistent reflection memory and a double-entry audit ledger, built as a spec-driven research platform. Targets paper and (future) live trading on top-10 USDT-quote crypto pairs.
+A **Rust crypto trading agent** with persistent reflection memory and a double-entry audit ledger, built as a spec-driven research platform. Operates on real-data backtesting + paper simulation over top-10 USDT-quote crypto pairs (live trading is out of scope).
 
 This README is the human entry point. AI agents should start at **[CLAUDE.md](CLAUDE.md)** then **[AGENT.md](AGENT.md)**.
 
 ---
 
-## Status (2026-05-23)
+## Status (2026-06-16)
+
+**The active-vs-passive research program is CONCLUDED (2026-06-08): SHIP PASSIVE.**
+Across all three reachable channels — price/OHLCV, derivatives-positioning, and on-chain —
+no active strategy beat passive buy-and-hold net of cost. The verdict was firmed on real
+bear-market data 2026-06-15 (block-bootstrap overfit-guard + a 2021-22 bear-market survey:
+every apparent edge was path-fragile, not robust). The project is now in post-research
+build-out / wind-down.
 
 | Dimension | State |
 |---|---|
-| Mode | **Research** (paper + backtest). Live trading not yet wired. |
+| Mode | **Research CONCLUDED — ship passive.** Real-data backtest + paper sim. Live trading removed from scope 2026-06-12 (not wired, not planned). |
 | Workspace | Rust stable, edition 2024 |
-| Test gates | 692 lib + 98 integration + 19 UI visual snapshots + 11 layout proptests + 34/34 anchored body-SHAs |
-| UI | 14 screens shipped (`cockpit_live` binary, iced 0.14.0 + vendored `iced_tiny_skia` patch) |
-| Strategies shipped | SMA, composed, cross-sectional momentum, mean-reversion pairs, multi-venue, LLM-as-analyst, LLM-as-forecaster (partial) |
-| Strategy research retired | TCN, PatchTST, GARCH (4 retirement chains; see `spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`) |
-| Largest unfilled gap | Live order flow (no venue execution path yet). Risk envelope shipped as config caps only. |
+| Test gates | 119/119 anchored body-SHAs byte-identical; full lib/integration/UI-snapshot suite green. Visual-regression gate de-flaked 2026-06-16 (a multithread `set_var` race was randomizing chart renders); WCAG contrast gate flipped WARN→ENFORCING 2026-06-15. |
+| UI | Cockpit shipped (`cockpit_live` + `cockpit` fixtures binaries, iced 0.14.0 + vendored `iced_tiny_skia` patch); Linux/Windows portability source shipped 2026-06-15 (macOS-verified; CI matrix deferred to the near-done milestone). |
+| Strategies | SMA, composed, cross-sectional momentum, mean-reversion pairs, multi-venue, LLM-as-analyst all shipped — and all dominated by passive net of cost. |
+| Strategy research retired | The full DL chain (TCN/PatchTST/GARCH/Transformer), LLM-/xgboost-/regime-forecasters, AND the derivatives perp-basis market-neutral spread (FAMILY-UNIFORM-FRAGILE 2026-06-08) + on-chain (PIT-infeasible) — i.e. the entire active-edge search. |
+| Data | 10-symbol Binance hourly 2023-24 (pinned `3a8b96c4`) + a 2021-22 bear corpus added 2026-06-15 (pinned `4f390622`); fetcher made idempotent for gapped months 2026-06-16. |
 
-For a comprehensive feature-by-feature audit see [`spec/dev-notes/feature-state-table-2026-05-22.md`](spec/dev-notes/feature-state-table-2026-05-22.md).
+For the feature-by-feature audit see [`spec/dev-notes/feature-state-table-2026-05-22.md`](spec/dev-notes/feature-state-table-2026-05-22.md); for the current wind-down reconciliation see [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](spec/dev-notes/backlog-staleness-audit-2026-06-15.md).
 
 ---
 
