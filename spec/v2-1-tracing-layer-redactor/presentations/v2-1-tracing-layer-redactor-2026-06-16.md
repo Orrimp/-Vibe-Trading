@@ -156,7 +156,7 @@ There is no anchor re-lock cost and no manual capture required for this approval
 
 ## Approval block
 
-- [ ] Approved — ship
+- [x] Approved — ship — operator, 2026-06-16
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
