@@ -23,6 +23,7 @@
 //! ```
 
 use std::{
+    collections::BTreeMap,
     io::BufWriter,
     path::{Path, PathBuf},
     time::Duration,
@@ -377,15 +378,29 @@ pub fn write_parquet(klines: &[Kline], path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Check idempotency: if file exists and row-count matches expected, skip it.
+/// Check idempotency: if file exists and is already complete, skip it.
 ///
-/// Returns `true` if we should skip this month.
-fn should_skip(path: &Path, expected_bars: Option<usize>) -> bool {
+/// Returns `true` if we should skip this month (no re-fetch needed).
+///
+/// # Skip decision tree
+///
+/// 1. File absent → `false` (must fetch).
+/// 2. Interval bars unverifiable (e.g. `1d`) → `true` conservatively (file exists).
+/// 3. Row count == calendar-expected → `true` (fast path: full month with no gaps).
+/// 4. Row count < calendar-expected AND `pinned_sha` matches the on-disk file's
+///    content SHA → `true` (short-but-complete: a legitimately-gapped month whose
+///    bytes are byte-identical to the previously-pinned fetch; no re-fetch needed).
+/// 5. Otherwise → `false` (genuinely partial or corrupt file; re-fetch).
+///
+/// The `pinned_sha` comes from the existing `REVISION.toml` `[files]` map for
+/// this parquet's relative path.  When `REVISION.toml` is absent or the path is
+/// not listed, pass `None` — step 4 is skipped and the old behaviour is preserved.
+fn should_skip(path: &Path, expected_bars: Option<usize>, pinned_sha: Option<&str>) -> bool {
     if !path.exists() {
         return false;
     }
     let Some(expected) = expected_bars else {
-        // Cannot check — skip only if file exists (conservative).
+        // Cannot check bar count for this interval — skip conservatively.
         info!(path = %path.display(), "file exists (bar count unverifiable for this interval) — skipping");
         return true;
     };
@@ -403,21 +418,55 @@ fn should_skip(path: &Path, expected_bars: Option<usize>) -> bool {
             Ok(df) => {
                 let rows = df.height();
                 if rows == expected {
+                    // Fast path: calendar-complete month.
                     info!(
                         path = %path.display(),
                         rows,
                         "file exists with expected row count — skipping"
                     );
-                    true
+                    return true;
+                }
+
+                // Rescue path: short month — check if bytes are identical to
+                // the previously-pinned fetch via content SHA comparison.
+                if let Some(pin) = pinned_sha {
+                    match data::revision::file_sha256(path) {
+                        Ok(on_disk_sha) if on_disk_sha == pin => {
+                            info!(
+                                path = %path.display(),
+                                rows,
+                                expected,
+                                "row count short but content SHA matches pinned manifest — \
+                                 legitimately gapped month, skipping"
+                            );
+                            return true;
+                        }
+                        Ok(on_disk_sha) => {
+                            warn!(
+                                path = %path.display(),
+                                rows,
+                                expected,
+                                on_disk_sha,
+                                "row count mismatch and content SHA differs from manifest — will re-fetch"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                path = %path.display(),
+                                error = %e,
+                                "could not hash existing parquet — will re-fetch"
+                            );
+                        }
+                    }
                 } else {
                     warn!(
                         path = %path.display(),
                         rows,
                         expected,
-                        "row count mismatch — will re-fetch"
+                        "row count mismatch (no pinned manifest to verify) — will re-fetch"
                     );
-                    false
                 }
+                false
             }
         },
     }
@@ -449,6 +498,31 @@ async fn main() -> Result<()> {
         .build()
         .context("build reqwest client")?;
     let fetcher = HttpKlineFetcher::new(client);
+
+    // Load the existing REVISION.toml manifest once (if present).
+    // The `[files]` map records per-file content SHAs from the previous fetch.
+    // We pass the pinned SHA to `should_skip` so legitimately-short months
+    // (real Binance exchange gaps) are recognised as byte-identical and skipped
+    // without hitting the network.  When no manifest exists yet (first run),
+    // `pinned_manifest` is empty and we fall back to calendar-count-only logic.
+    let pinned_manifest: BTreeMap<String, String> =
+        match data::revision::read_manifest_raw(&cli.out) {
+            Ok((files, _agg)) => {
+                info!(
+                    out = %cli.out.display(),
+                    files = files.len(),
+                    "loaded existing REVISION.toml for idempotency check"
+                );
+                files
+            }
+            Err(_) => {
+                info!(
+                    out = %cli.out.display(),
+                    "no existing REVISION.toml — first-run mode, calendar-count check only"
+                );
+                BTreeMap::new()
+            }
+        };
 
     for symbol in &cli.symbols {
         let symbol_upper = symbol.to_uppercase();
@@ -492,7 +566,12 @@ async fn main() -> Result<()> {
 
             let expected = expected_bars_per_month(year, month, &cli.interval);
 
-            if !cli.force && should_skip(&parquet_path, expected) {
+            // Relative manifest key matches the layout written by `write_revision_manifest`:
+            // "<SYMBOL>/<YEAR>/<MM>.parquet"
+            let manifest_key = format!("{symbol_upper}/{year}/{month_num:02}.parquet");
+            let pinned_sha = pinned_manifest.get(&manifest_key).map(String::as_str);
+
+            if !cli.force && should_skip(&parquet_path, expected, pinned_sha) {
                 if advance_month(&mut year, &mut month, end_date) {
                     break;
                 }
@@ -875,5 +954,122 @@ mod tests {
         // skip bar-count verification for "1d").
         let bars = expected_bars_per_month(2024, Month::January, "1d");
         assert_eq!(bars, None);
+    }
+
+    // ── Test 4: should_skip idempotency with pinned manifest SHA ─────────────
+
+    /// Helper: write a minimal real-schema parquet with `n` rows to `path`.
+    fn write_n_row_parquet(path: &std::path::Path, n: usize) {
+        let klines: Vec<Kline> = (0..n)
+            .map(|i| Kline {
+                open_time: i as i64 * 3_600_000,
+                close_time: i as i64 * 3_600_000 + 3_599_999,
+                open: "100.00".to_owned(),
+                high: "101.00".to_owned(),
+                low: "99.00".to_owned(),
+                close: "100.50".to_owned(),
+                volume: "1.0".to_owned(),
+                trade_count: 1,
+            })
+            .collect();
+        write_parquet(&klines, path).expect("write_n_row_parquet");
+    }
+
+    /// A short month (on-disk rows < calendar-expected) with a matching pinned
+    /// content SHA must be SKIPPED — this is the "legitimately gapped month" case.
+    ///
+    /// This exercises the rescue path in `should_skip` (step 4 of the doc-tree).
+    #[test]
+    fn test_should_skip_short_month_with_matching_pinned_sha_returns_true() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parquet = tmp.path().join("02.parquet");
+
+        // Feb 2021 (non-leap): calendar expects 28*24 = 672 bars.
+        // We write only 671 (real Binance gap scenario).
+        let calendar_expected = 672_usize;
+        write_n_row_parquet(&parquet, 671);
+
+        // Compute the on-disk SHA — this is what the manifest would record.
+        let on_disk_sha = data::revision::file_sha256(&parquet).expect("sha256");
+
+        // should_skip must return true: short, but SHA matches → complete fetch.
+        assert!(
+            should_skip(&parquet, Some(calendar_expected), Some(&on_disk_sha)),
+            "short month with matching pinned SHA should be skipped"
+        );
+    }
+
+    /// A short month where the pinned SHA does NOT match (file has changed or is
+    /// corrupt) must return false — the old "row count mismatch → re-fetch" path.
+    #[test]
+    fn test_should_skip_short_month_with_mismatched_pinned_sha_returns_false() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parquet = tmp.path().join("02.parquet");
+
+        let calendar_expected = 672_usize;
+        write_n_row_parquet(&parquet, 671);
+
+        // Pass a deliberately wrong pinned SHA.
+        let wrong_sha = "0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(
+            !should_skip(&parquet, Some(calendar_expected), Some(wrong_sha)),
+            "mismatched SHA must trigger re-fetch"
+        );
+    }
+
+    /// A short month with NO pinned manifest available must still return false
+    /// (preserves pre-fix behaviour — no regression on first-run paths).
+    #[test]
+    fn test_should_skip_short_month_no_manifest_returns_false() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parquet = tmp.path().join("02.parquet");
+
+        let calendar_expected = 672_usize;
+        write_n_row_parquet(&parquet, 671);
+
+        assert!(
+            !should_skip(&parquet, Some(calendar_expected), None),
+            "no manifest → short month must trigger re-fetch"
+        );
+    }
+
+    /// A full month (rows == calendar-expected) must be skipped regardless of
+    /// whether a pinned SHA is provided (fast path, no SHA computation needed).
+    #[test]
+    fn test_should_skip_full_month_skipped_regardless_of_manifest() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parquet = tmp.path().join("01.parquet");
+
+        let calendar_expected = 744_usize; // January
+        write_n_row_parquet(&parquet, calendar_expected);
+
+        // No manifest needed for a full month.
+        assert!(
+            should_skip(&parquet, Some(calendar_expected), None),
+            "full month (rows == expected) must be skipped without manifest"
+        );
+
+        // Providing a (wrong) SHA must not matter — fast path returns before SHA check.
+        let wrong_sha = "0000000000000000000000000000000000000000000000000000000000000000";
+        assert!(
+            should_skip(&parquet, Some(calendar_expected), Some(wrong_sha)),
+            "full month must be skipped even with a wrong SHA (fast path)"
+        );
+    }
+
+    /// A missing file must never be skipped.
+    #[test]
+    fn test_should_skip_absent_file_returns_false() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parquet = tmp.path().join("missing.parquet");
+
+        assert!(
+            !should_skip(&parquet, Some(744), None),
+            "absent file must not be skipped"
+        );
+        assert!(
+            !should_skip(&parquet, Some(744), Some("anysha")),
+            "absent file must not be skipped even with manifest SHA"
+        );
     }
 }
