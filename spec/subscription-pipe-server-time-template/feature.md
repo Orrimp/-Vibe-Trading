@@ -1,7 +1,7 @@
 ---
 slug: subscription-pipe-server-time-template
 version: 0.1.0
-status: draft
+status: shipped
 owner: analyst
 priority: P2
 updated: 2026-05-26

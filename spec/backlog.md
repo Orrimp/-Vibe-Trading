@@ -441,7 +441,6 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 > 1-5 close-out lands — 2026-06-16: #1 lab-polish + #2 tracing-redactor + #3 visual-fail-html-reporter
 > SHIPPED, #7 retired; #4 viewport-matrix reconciling, #5 subscription-pipe in dev. Remaining
 > genuinely-open:
-> `subscription-pipe-server-time-template` (in-progress),
 > `lab-recipe-test-harness v0.3.0+` (awaiting analyst), `cockpit-cross-platform`
 > (dev-done; CI deferred to near-done), and `v2-llm-strategy-v21-followups a+c`
 > (deferred indefinitely). Everything else in Active is done.

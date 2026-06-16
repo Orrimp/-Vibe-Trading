@@ -1783,7 +1783,7 @@ tests       = [
   "crates/ui/tests/trail_mirror_recipe_stream.rs",          # PRECEDENT REFERENCE (R2) — Wave 1 template (4 tests); R4.5 non-regression contract — byte-identical confirmed at M-DEV (not modified).
 ]
 anchors     = "34/34 PASS"  # DEVELOPER M-DEV confirmed 2026-05-26: `bash scripts/verify_anchors.sh` → `ANCHORS PASS (34 / 34)`. ZERO anchor delta by construction (UI bin + new test file only; no backtest / strategy / exec / risk / forecast / reports / audit changes).
-state       = "in-progress"  # developer M-DEV 2026-05-26 — HANDOFF → tester. Tester flips to `passed` at M-FINAL once R-O1 SHIP path confirmed (T-T1..T-T7 gates).
+state       = "shipped"  # operator reconcile-to-shipped 2026-06-16. Already built (developer M-DEV 2026-05-26): server_time_stream_impl at crates/ui/src/live.rs:804 + 4 tests in crates/ui/tests/server_time_recipe_stream.rs. Orchestrator re-verified 2026-06-16: cargo test -p ui --features live --test server_time_recipe_stream → 4/4 pass; anchors unaffected. Closes the 3rd/final canonical UI Recipe (ServerTimeRecipe) subscription-pipe coverage. Was stuck "in-progress" (dev-done, never tester-flipped). Original dev note: developer M-DEV 2026-05-26 — HANDOFF → tester.
 
 # ── v5-latency-slippage-sim v0.1.0 (analyst M0 + architect M-T1 same-day 2026-05-26) ──
 #   Operator-directed P1 feature track to close the backtest-vs-live execution gap.
