@@ -26,7 +26,7 @@ use ui::state::{Cockpit, Message, PanelState, Screen, update};
 #[test]
 fn select_strategy_from_home_persists_id() {
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Home;
+    cockpit.current_screen = Screen::Live;
     cockpit.strategies = PanelState::Ready(vec![ui::fixtures::fake_strategy_row_ready()]);
     assert!(cockpit.selected_strategy.is_none());
 
@@ -36,7 +36,7 @@ fn select_strategy_from_home_persists_id() {
     // Pure-update arm sets selected_strategy; current_screen unchanged
     // (the binary's update wrapper chains SwitchScreen via Task::done).
     assert_eq!(cockpit.selected_strategy.as_ref(), Some(&target));
-    assert_eq!(cockpit.current_screen, Screen::Home);
+    assert_eq!(cockpit.current_screen, Screen::Live);
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn select_strategy_then_switch_screen_lands_on_strategies() {
     // SelectStrategy(id))` followed by `update(..., SwitchScreen(
     // Strategies))` — the chain the binary issues via Task::done.
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Home;
+    cockpit.current_screen = Screen::Live;
     cockpit.strategies = PanelState::Ready(vec![ui::fixtures::fake_strategy_row_ready()]);
 
     let target = StrategyId::new("btc_macd_trend");

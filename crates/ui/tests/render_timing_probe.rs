@@ -51,9 +51,13 @@ struct RenderSamples {
     setup: Vec<Duration>,
 }
 
+/// Process-wide UTC-forcing initialiser — thread-safe replacement for
+/// `unsafe { std::env::set_var(CHART_FORCE_UTC_ENV, "1") }`.
+static INIT_UTC: std::sync::Once = std::sync::Once::new();
+
 fn time_render(screen: Screen, viewport: iced::Size, frames: usize) -> RenderSamples {
-    // SAFETY: single-threaded test setup before any render.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // Thread-safe UTC init via AtomicBool — no env data race.
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
 
     let mut cockpit = charts_screen_cockpit();
     cockpit.current_screen = screen;

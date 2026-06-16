@@ -25,7 +25,7 @@ use ui::state::{Cockpit, JournalModalState, Message, PanelState, Screen, update}
 #[test]
 fn audit_row_click_flips_modal_to_loading() {
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Audit;
+    cockpit.current_screen = Screen::Trail;
     let rows = ui::fixtures::fake_journal_rows(3);
     let target_tx_id = rows[0].tx_id.clone();
     let total = u64::try_from(rows.len()).unwrap_or(0);
@@ -56,7 +56,7 @@ fn audit_row_click_does_not_affect_audit_screen_state() {
     // audit panel's filter, page, or rows — the modal overlays the
     // screen, the screen state is preserved underneath.
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Audit;
+    cockpit.current_screen = Screen::Trail;
     let rows = ui::fixtures::fake_journal_rows(5);
     let target_tx_id = rows[0].tx_id.clone();
     let initial_total = u64::try_from(rows.len()).unwrap_or(0);

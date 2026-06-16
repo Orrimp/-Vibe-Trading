@@ -100,3 +100,15 @@ pub use state::{
 /// [`Message`]. Avoids repeating `iced::Element<'_, Message>` at every
 /// widget boundary.
 pub type Element<'a> = iced::Element<'a, Message>;
+
+/// Integration-test helper: force all chart time-zone formatting to UTC
+/// for the lifetime of this process.
+///
+/// Call this once from any integration-test binary that renders chart
+/// widgets (instead of `unsafe { std::env::set_var(CHART_FORCE_UTC_ENV, "1") }`).
+/// The underlying mechanism is a `SeqCst` `AtomicBool` — no env-var
+/// data race, safe to call from parallel test threads.
+///
+/// See `crates/ui/src/widgets/chart.rs::force_chart_utc_for_tests` for
+/// the full motivation comment.
+pub use widgets::chart::force_chart_utc_for_tests;

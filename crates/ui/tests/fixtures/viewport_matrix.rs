@@ -98,6 +98,16 @@ pub fn slot(slot_name: &str) -> ((u32, u32), f32) {
 /// Panics with a multi-line operator-friendly message when the baseline
 /// and actual PNGs differ (after writing diff artifacts to
 /// `target/visual-diff/`).
+/// Process-wide UTC-forcing initialiser for the viewport-matrix helper.
+///
+/// Uses `std::sync::Once` so parallel test threads calling
+/// `snapshot_widget_at_slot` concurrently only execute the inner
+/// `force_chart_utc_for_tests()` store once, yet every thread is
+/// guaranteed to see the flag set before proceeding.  This replaces the
+/// old `unsafe { std::env::set_var(…) }` call which was NOT thread-safe
+/// (root cause of the 2026-06-13 / 2026-06-15 flaky failures).
+static INIT_UTC: std::sync::Once = std::sync::Once::new();
+
 pub fn snapshot_widget_at_slot<P, B>(
     fixture_name: &str,
     slot_name: &str,
@@ -110,14 +120,10 @@ pub fn snapshot_widget_at_slot<P, B>(
     // v1.11 chart-x-axis-local-time: integration tests link against the
     // library compiled WITHOUT `cfg(test)`, so the `cfg(test)` UTC
     // override in `widgets::chart::local_offset_or_utc` does not fire
-    // here. The env-var gate (`UI_CHART_FORCE_UTC`) preserves snapshot
-    // determinism across host time zones — see the function's doc comment
-    // for the full contract.
-    //
-    // SAFETY: `set_var` is unsafe in edition 2024; this is a test-only
-    // single-threaded init before iced_test::screenshot — no other thread
-    // observes the env at this point.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // here.  The atomic flag ensures UTC rendering without a data race —
+    // safe to call from parallel test threads.  See
+    // `ui::force_chart_utc_for_tests` for the full contract.
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
 
     let ((w, h), scale) = slot(slot_name);
 

@@ -24,7 +24,7 @@ use ui::state::{AuditFilter, AuditTimeRange, Cockpit, Message, PanelState, Scree
 #[test]
 fn audit_filter_changed_resets_page_and_rows_to_loading() {
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Audit;
+    cockpit.current_screen = Screen::Trail;
     cockpit.audit_screen_state.page = 5;
     cockpit.audit_screen_state.rows = PanelState::Ready(ui::fixtures::fake_journal_rows(5));
 
@@ -51,7 +51,7 @@ fn audit_filter_changed_resets_page_and_rows_to_loading() {
 #[test]
 fn audit_filter_with_kind_chip_isolates_kind_field() {
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Audit;
+    cockpit.current_screen = Screen::Trail;
     let initial = AuditFilter::default();
     let kind_changed = initial.with_kind(AuditKindFilter::Fill);
     update(&mut cockpit, Message::AuditFilterChanged(kind_changed));
@@ -69,7 +69,7 @@ fn audit_filter_chip_chain_is_compositional() {
     // Three chip clicks in sequence — each `with_*` returns a fresh
     // filter; the cockpit's filter ends with all three changes applied.
     let mut cockpit = Cockpit::default();
-    cockpit.current_screen = Screen::Audit;
+    cockpit.current_screen = Screen::Trail;
 
     let f1 = AuditFilter::default().with_venues(vec![Venue::Binance, Venue::Coinbase]);
     update(&mut cockpit, Message::AuditFilterChanged(f1));

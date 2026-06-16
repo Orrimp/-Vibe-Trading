@@ -51,6 +51,29 @@ use crate::theme::{ThemeMode, color, shadow, space, text};
 /// Sized to match the left price gutter for visual symmetry (R2.2).
 pub(crate) const AXIS_GUTTER_EQUITY_PX: f32 = 56.0;
 
+/// Thread-safe flag that forces `local_offset_or_utc()` to return UTC
+/// unconditionally.  Set once at integration-test startup via
+/// [`force_chart_utc_for_tests`] — no `set_var`/`var_os` env race.
+///
+/// `SeqCst` load/store: snapshot tests run in parallel threads; we need
+/// the store from any one thread to be visible in all others immediately.
+static FORCE_UTC_ATOMIC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Signal that all chart time-zone formatting must use UTC for the
+/// lifetime of this process.
+///
+/// Called by integration-test helpers instead of the old
+/// `unsafe { std::env::set_var(CHART_FORCE_UTC_ENV, "1") }` pattern.
+/// `std::env::set_var` is NOT thread-safe (UB when any thread concurrently
+/// calls `var_os`), which was the root cause of the flaky
+/// `charts_screen_dark_*` snapshot tests (2026-06-13 / 2026-06-15).
+///
+/// This function is idempotent — it is safe to call from multiple threads
+/// without synchronisation (a `SeqCst` store is atomic by definition).
+pub fn force_chart_utc_for_tests() {
+    FORCE_UTC_ATOMIC.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Equity-line stroke width — 1.5 px (slightly thinner than the 2.0 px price
 /// line so price stays visually dominant; Design § 3).
 const EQUITY_STROKE_PX: f32 = 1.5;
@@ -258,6 +281,17 @@ pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
 #[cfg(not(test))]
 pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
     // Integration-test snapshot determinism: see doc comment above.
+    //
+    // Check the thread-safe atomic flag FIRST — this is the preferred
+    // gate for integration tests (set via `force_chart_utc_for_tests()`).
+    // The env-var path below is kept as a fallback for manual/CI overrides
+    // but MUST NOT be relied on from parallel test threads (not thread-safe).
+    if FORCE_UTC_ATOMIC.load(std::sync::atomic::Ordering::SeqCst) {
+        // CLOCK-OK: atomic flag set by integration-test init.
+        return time::UtcOffset::UTC;
+    }
+    // Legacy env-var gate (single-threaded / external-process usage only).
+    // Do NOT set this from parallel test threads — use `force_chart_utc_for_tests()`.
     if std::env::var_os(crate::strings::CHART_FORCE_UTC_ENV).is_some() {
         // CLOCK-OK: env-var override for integration tests.
         return time::UtcOffset::UTC;

@@ -105,11 +105,14 @@ where
 /// The program + emulator are constructed inline (one scope) so their
 /// `impl iced::Program` opaque types unify — passing them across a helper
 /// boundary would mint two distinct opaque types iced's API rejects.
+
+/// Process-wide UTC-forcing initialiser — thread-safe, idempotent.
+static INIT_UTC: std::sync::Once = std::sync::Once::new();
+
 fn bench_render(c: &mut Criterion, name: &str, screen: Screen, viewport: iced::Size) {
     // Determinism for the chart's local-time axis (matches the snapshot
     // tests). Irrelevant to timing but keeps the rendered frame stable.
-    // SAFETY: single-threaded bench setup before any render.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
 
     let mut cockpit = charts_screen_cockpit();
     cockpit.current_screen = screen;
@@ -137,8 +140,8 @@ fn bench_render(c: &mut Criterion, name: &str, screen: Screen, viewport: iced::S
 ///   per_frame_render ≈ <screen>_render_<vp>  −  emulator_construct_only
 /// ```
 fn emulator_construct_only(c: &mut Criterion) {
-    // SAFETY: single-threaded bench setup before any render.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // Thread-safe UTC init via AtomicBool.
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
     let cockpit = charts_screen_cockpit();
     let program = program_from_cockpit(cockpit);
     let viewport = iced::Size::new(1920.0, 1080.0);

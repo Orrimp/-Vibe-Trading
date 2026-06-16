@@ -44,6 +44,15 @@ const VIEW_W: u32 = 1280;
 const VIEW_H: u32 = 720;
 const SCALE: f32 = 1.0;
 
+/// Process-wide UTC-forcing initialiser — thread-safe replacement for
+/// `unsafe { std::env::set_var(CHART_FORCE_UTC_ENV, "1") }` in this binary.
+/// All three render helpers call this before `iced_test::screenshot` so
+/// time-axis labels are UTC regardless of host time zone.
+static INIT_UTC: std::sync::Once = std::sync::Once::new();
+fn force_utc_once() {
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
+}
+
 /// Curve-region crop window in physical pixels (scale 1.0 → logical == physical).
 ///
 /// The Live screen layout (`screens/live.rs`) stacks
@@ -111,8 +120,8 @@ fn snap(secs: i64, equity: Decimal) -> PnlSnapshot {
 fn render_live(cockpit: Cockpit) -> iced::window::Screenshot {
     // Snapshot-determinism: render the bottom time-axis labels at UTC so this
     // harness is machine-independent (matches the visual-snapshot contract).
-    // SAFETY: test-only single-threaded env init before iced_test::screenshot.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // Thread-safe atomic flag — no env data race.
+    force_utc_once();
     let program = program_from_cockpit(cockpit);
     let theme = iced::Theme::Dark;
     iced_test::screenshot(&program, &theme, (VIEW_W, VIEW_H), SCALE, Duration::ZERO)
@@ -988,9 +997,8 @@ fn render_overlay(
     equity: Option<ui::lab::equity_loader::LabEquitySeries>,
     compare: Vec<ui::lab::equity_loader::LabEquitySeries>,
 ) -> iced::window::Screenshot {
-    // SAFETY: test-only single-threaded env init before iced_test::screenshot,
-    // mirroring `render_live` (UTC time-axis labels for determinism).
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // Thread-safe atomic flag — no env data race, mirrors `render_live`.
+    force_utc_once();
     let program = chart_overlay_program(bars, equity, compare);
     let theme = iced::Theme::Dark;
     iced_test::screenshot(&program, &theme, (VIEW_W, VIEW_H), SCALE, Duration::ZERO)
@@ -1425,9 +1433,8 @@ fn count_curve_pixels_chart_band(shot: &iced::window::Screenshot) -> (usize, usi
 
 /// Render the real Compare screen body of `cockpit` and return its screenshot.
 fn render_compare_screen(cockpit: Cockpit) -> iced::window::Screenshot {
-    // SAFETY: test-only single-threaded env init before iced_test::screenshot
-    // (UTC time-axis labels for determinism), mirroring `render_live`.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // Thread-safe atomic flag — no env data race, mirrors `render_live`.
+    force_utc_once();
     let program = compare_screen_program(cockpit);
     let theme = iced::Theme::Dark;
     iced_test::screenshot(&program, &theme, (VIEW_W, VIEW_H), SCALE, Duration::ZERO)

@@ -88,6 +88,21 @@ const CHARTS_SLOTS: &[(&str, (u32, u32), f32)] = &[
     ("operator", (3360, 1890), 2.0),
 ];
 
+/// Process-wide UTC-forcing initialiser — called once regardless of how
+/// many tests run in parallel. `std::sync::Once` makes the call
+/// idempotent and the underlying `SeqCst` atomic makes it thread-safe.
+///
+/// Replaces the old `unsafe { std::env::set_var(CHART_FORCE_UTC_ENV, "1") }`
+/// pattern which was the root cause of the intermittent
+/// `charts_screen_dark_*` failures (2026-06-13 / 2026-06-15): parallel
+/// threads racing on `set_var` / `var_os` constitute a data race on the
+/// process environment — `set_var` is `unsafe` in edition 2024 precisely
+/// for this reason.
+static INIT_UTC: std::sync::Once = std::sync::Once::new();
+fn force_utc_once() {
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
+}
+
 /// Drive `iced_test::screenshot` for `slot_name`, then route the
 /// resulting `iced::window::Screenshot` through the
 /// `matches_screenshot` helper. Panics with a multi-line cite-the-
@@ -97,13 +112,10 @@ fn run_slot(slot_name: &str) {
     // v1.11 chart-x-axis-local-time: integration tests link against
     // the library compiled WITHOUT `cfg(test)`, so the `cfg(test)`
     // UTC override in `widgets::chart::local_offset_or_utc` does not
-    // fire here. The env-var gate (`UI_CHART_FORCE_UTC`) preserves
-    // snapshot determinism across host time zones — see the function's
-    // doc comment for the full contract.
-    // SAFETY: `set_var` is unsafe in edition 2024; this is a test-only
-    // single-threaded init before iced_test::screenshot — no other
-    // thread observes the env at this point.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // fire here.  The atomic flag set below preserves snapshot
+    // determinism across host time zones and is thread-safe — see
+    // `ui::force_chart_utc_for_tests` for the full contract.
+    force_utc_once();
 
     let (_, (w, h), scale) = CHARTS_SLOTS
         .iter()

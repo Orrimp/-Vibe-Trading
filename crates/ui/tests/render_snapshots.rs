@@ -74,6 +74,14 @@ use ui::test_support::program_from_cockpit;
 #[allow(dead_code)]
 pub const SSIM_THRESHOLD: f64 = 0.99_f64;
 
+/// Process-wide UTC-forcing initialiser — called once regardless of how many
+/// tests run in parallel within this binary.  Replaces the per-call
+/// `unsafe { std::env::set_var(…) }` pattern which was not thread-safe.
+static INIT_UTC: std::sync::Once = std::sync::Once::new();
+fn force_utc_once() {
+    INIT_UTC.call_once(ui::force_chart_utc_for_tests);
+}
+
 /// Legacy M1-B helper for the two pre-existing stable baselines that
 /// used the M1-B PoC `("typical", 1280×720)` viewport convention. These
 /// baselines are kept byte-identical per R-NR.1 — they are NOT renamed
@@ -82,10 +90,8 @@ pub const SSIM_THRESHOLD: f64 = 0.99_f64;
 /// Used only by `strategies_ready_renders_clean` and `chart_screen_renders_clean`
 /// legacy tests which act as regression guards on the old baselines.
 fn run_panel_slot_legacy(panel_name: &str, slot_name: &str, cockpit: ui::Cockpit) {
-    // SAFETY: `set_var` is unsafe in edition 2024; this is a test-only
-    // single-threaded init before iced_test::screenshot — no other
-    // thread observes the env at this point.
-    unsafe { std::env::set_var(ui::strings::CHART_FORCE_UTC_ENV, "1") };
+    // Thread-safe UTC init via AtomicBool (replaces the old unsafe set_var).
+    force_utc_once();
 
     // M1-B PoC slot — "typical" maps to (1280, 720) in the legacy convention.
     let (w, h, scale): (u32, u32, f32) = match slot_name {
