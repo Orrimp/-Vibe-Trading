@@ -1,14 +1,21 @@
 ---
 slug: lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit
 version: 0.1.0
-status: arch-done
+status: retired
 owner: developer
-updated: 2026-05-29
+updated: 2026-06-16
 predecessor: lab-yahoo-realdata-v0.1.3 v0.1.0
 priority: P2
 ---
 
 # Lab Yahoo realdata v0.1.4 — bulk-ticker re-emit (9 new + ETH-daily redo)
+
+> **🚫 RETIRED 2026-06-16 (operator decision).** Non-load-bearing completeness item
+> (full 10-ticker Yahoo coverage + a "2 → 10 tickers" badge). The active-vs-passive
+> research program concluded 2026-06-08 (ship passive), so 9 more Yahoo SMA backtests
+> change no conclusion and unlock nothing; it was also blocked on a manual operator-side
+> Yahoo fetch (Yahoo blocks automated requests). Owned-debt from the v0.1.3 deck, honestly
+> retired in wind-down rather than forced. The brief below is retained as archaeology.
 
 > Closes the v0.1.3 deck's explicit **owned-debt** commitment: re-emit the 9
 > remaining Yahoo crypto-mirror tickers (BNB, SOL, XRP, ADA, DOGE, AVAX, DOT,

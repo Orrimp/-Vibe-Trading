@@ -436,8 +436,8 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 > reconciliation: [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](dev-notes/backlog-staleness-audit-2026-06-15.md)
 > (audit said 14 stale / 5 accurate / 9 genuinely-open; a 2026-06-16 re-verify found
 > `lab-polish-round-2` was ALSO already shipped — built ad-hoc 2026-05-25 (issue #62),
-> now registered → 8 genuinely-open). The GENUINELY-OPEN items are:
-> `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` (arch-done; dev blocked on operator Yahoo fetch),
+> now registered, and `lab-yahoo-realdata-v0.1.4` RETIRED 2026-06-16 (operator: non-load-bearing
+> completeness; research concluded) → 7 genuinely-open). The GENUINELY-OPEN items are:
 > `subscription-pipe-server-time-template` (in-progress),
 > `visual-fail-html-reporter` (tester-done → presenter),
 > `ui-test-harness-viewport-matrix` (dev-done → tester),
