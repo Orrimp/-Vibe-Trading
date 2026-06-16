@@ -3021,3 +3021,14 @@ crates      = ["crates/backtest"]
 tests       = ["crates/backtest/tests/realdata_simple_strategy_bear_survey.rs"]
 anchors     = []   # UN-ANCHORED by construction (survey + overfit-guard precedent; #[ignore] harness, fixed seeds, NO anchors.toml row) — see feature.md § Anchoring
 state       = "shipped"  # operator approved 2026-06-15 (deck same day). HEADLINE: deep 2021-22 bear FIRMS ship-passive — Stage-1 found 40 apparent winners (all 2022, strategies that sat out the crash), Stage-2 N=500 bootstrap scored ALL 16 FRAGILE (apparent bear edge is path-luck, incl +97pp SOL-2022-RSI); up-market contrast MARGINAL → discriminates. Reinforces overfit-guard + the 2026-06-08 terminal verdict. Analysis-only, un-anchored.
+
+[[req]]
+id          = "REQ-LAB-POLISH-ROUND-2-001"
+title       = "Lab polish round 2 — position-curve overlay + SMA fast/slow param editor + KPI-strip densification on the cockpit Lab screen (user-facing chart/UX; anchor-additive, in-memory only)"
+feature     = "lab-polish-round-2"
+product     = "spec/product.md"
+arch        = ["spec/lab-polish-round-2/feature.md"]
+crates      = ["crates/ui", "crates/backtest"]
+tests       = ["crates/ui/src/widgets/position_curve.rs"]
+anchors     = []   # anchor-additive (in-memory position_curve_raw + UI-only KPI render; no Markdown report-body change) — verify_anchors stays 119/119
+state       = "shipped"  # RETROACTIVE REGISTRATION 2026-06-16: built + shipped ad-hoc 2026-05-25 (issue #62 — c1cddbe R2 backend, ae26281 R2 SMA-param UI, 371d870 R3 KPI densification; R1 position_curve widget) but never given a trace row (bypassed the pipeline). All 3 Rs are LIVE in the cockpit Lab screen; position_curve 5/5 widget tests pass. Status was stuck "proposed"; reconciled → shipped during the 2026-06-16 backlog-staleness follow-up. No deck (retroactive registration of live code, not a fresh ship for approval).

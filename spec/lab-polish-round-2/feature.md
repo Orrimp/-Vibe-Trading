@@ -1,9 +1,9 @@
 ---
 slug: lab-polish-round-2
 version: 0.1.0
-status: proposed
+status: shipped
 owner: analyst
-updated: 2026-05-25
+updated: 2026-06-16
 parent: lab-end-to-end-v2
 ---
 

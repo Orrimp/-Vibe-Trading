@@ -434,9 +434,11 @@ into a `spec/<slug>/feature.md` brief and removes the entry here.
 > 2026-06-08 (ship passive); most entries below are SHIPPED or CONCLUDED, not live
 > work — retained inline for archaeology per this backlog's convention. Full per-entry
 > reconciliation: [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](dev-notes/backlog-staleness-audit-2026-06-15.md)
-> (14 stale / 5 accurate / 9 genuinely-open). The only GENUINELY-OPEN items are:
+> (audit said 14 stale / 5 accurate / 9 genuinely-open; a 2026-06-16 re-verify found
+> `lab-polish-round-2` was ALSO already shipped — built ad-hoc 2026-05-25 (issue #62),
+> now registered → 8 genuinely-open). The GENUINELY-OPEN items are:
 > `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` (arch-done; dev blocked on operator Yahoo fetch),
-> `subscription-pipe-server-time-template` (in-progress), `lab-polish-round-2` (proposed),
+> `subscription-pipe-server-time-template` (in-progress),
 > `visual-fail-html-reporter` (tester-done → presenter),
 > `ui-test-harness-viewport-matrix` (dev-done → tester),
 > `v2-1-tracing-layer-redactor` (tester-done → presenter),
