@@ -596,7 +596,7 @@ during M-T1 close — already committed; developer does NOT re-amend):
   on visual-assertion FAIL only. PASS path byte-identical; 71/71
   anchors unaffected (helper produces zero output on PASS). No
   D1-D6 row revised. See
-  [`spec/visual-fail-html-reporter/feature.md`](../../visual-fail-html-reporter/feature.md)
+  [`spec/visual-fail-html-reporter/feature.md`](feature.md)
   § Design D-VF-1..D-VF-6. Wave 1 sibling
   `ui-test-harness-viewport-matrix` inherits the
   `.claude/agents/tester.md` "Visual failures — HTML artifact

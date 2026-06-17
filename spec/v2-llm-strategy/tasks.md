@@ -2701,7 +2701,7 @@ row + bundled re-lock).
     `### v2 — LLM strategy resolutions (Q4–Q11) — confirmed
     2026-05-10` with seven sub-sections (Q4–Q11), each a
     one-paragraph summary of the decision + a back-pointer
-    `[→ details](spec/v2-llm-strategy/feature.md#design)`.
+    `[→ details] (spec/v2-llm-strategy/feature.md#design)`.
   —
   _acceptance: `markdownlint spec/architecture.md` exits 0;
   the new section renders correctly in any markdown viewer;

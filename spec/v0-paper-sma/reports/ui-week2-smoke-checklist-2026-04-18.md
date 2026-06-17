@@ -202,14 +202,14 @@ invalid-config drills from
 The developer's T_FINAL_A landed four v0.5 backtest reports under
 `spec/reports/`, unblocking this section:
 
-- [backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md](./backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md)
+- `backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md`
   — baseline; body-SHA256 matches v0 `btc-2023-1m-sma-cross`, proving
   v0.5 is purely additive.
-- [backtest-20260419-125508-btc-2023-1m-macd-trend.md](./backtest-20260419-125508-btc-2023-1m-macd-trend.md)
+- `backtest-20260419-125508-btc-2023-1m-macd-trend.md`
   — MACD trend recipe loaded from `config/strategies/btc_macd_trend.toml`.
-- [backtest-20260419-125458-btc-2023-1m-rsi-reversion.md](./backtest-20260419-125458-btc-2023-1m-rsi-reversion.md)
+- `backtest-20260419-125458-btc-2023-1m-rsi-reversion.md`
   — RSI mean-reversion recipe.
-- [backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md](./backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md)
+- `backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md`
   — Bollinger bands mean-reversion recipe.
 
 Each report's `Strategy` section carries the id + content hash + source

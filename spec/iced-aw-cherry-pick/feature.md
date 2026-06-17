@@ -467,7 +467,7 @@ landing belongs to the developer pass per
   (496 LOC) + `src/style/badge.rs` (475 LOC).
 - **Catalog trait at `style/badge.rs:27-37`:**
   ```rust
-  /// The Catalog of a [`Badge`](crate::widget::badge::Badge).
+  /// The Catalog of a `Badge` (`crate::widget::badge::Badge`).
   pub trait Catalog {
       type Class<'a>;
       fn default<'a>() -> Self::Class<'a>;

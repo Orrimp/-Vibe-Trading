@@ -192,7 +192,7 @@ REQ trace: **REQ-ICED-AW-001**.
     debuginfo] target(s) in 4.17s` with **6 rustdoc warnings** — all
     pre-existing (none introduced by this pass; an initial multiple-
     anchors warning on the new docstring was fixed by relinking via
-    the explicit `[label](path)` form).
+    the explicit `[label] (path)` form).
   - Trace row satisfied: REQ-ICED-AW-001.
 
 ## M2 — B2 `iced_aw::spinner` (developer, single lane)

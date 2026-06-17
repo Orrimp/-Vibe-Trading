@@ -376,7 +376,7 @@ defaults — the cost of a wrong default is < 50 LOC to flip.
     chronologically: tape = NOW, toasts = JUST-FINISHED above.
   - (b) Below the activity tape — pushes the tape up off the
     bottom edge; breaks the
-    [`lumen-phase-1-foundation R13 24 px bottom`](../lumen-phase-1-foundation/feature.md)
+    [`lumen-phase-1-foundation R13 24 px bottom`](../lumen-design-adoption/phase-1-foundation/feature.md)
     contract. Hard veto.
   - (c) Merged with the activity tape — same surface, terminal
     events get a special hold style. Discussed in K2; defer to
@@ -447,7 +447,7 @@ M-FINAL by `scripts/verify_anchors.sh`.
   inherits.
 - **Future producer**: [`cockpit-activity-llm-producer v0.1.0`](../cockpit-activity-llm-producer/feature.md)
   — Active queued; will likely surface per-call completion toasts.
-- **Lumen contract**: [`lumen-phase-1-foundation R13`](../lumen-phase-1-foundation/feature.md)
+- **Lumen contract**: [`lumen-phase-1-foundation R13`](../lumen-design-adoption/phase-1-foundation/feature.md)
   — the 24 px bottom status bar; Q4=(b) hard-vetoed because it
   violates this.
 

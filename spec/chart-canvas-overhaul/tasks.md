@@ -687,7 +687,7 @@ All three tasks gate on operator decisions before architect spawn.
 
       **Coordination with ui-designer (T3027):** The ui-designer
       lane may temporarily patch
-      [`crates/ui/src/main.rs`](../../crates/ui/src/main.rs)
+      `crates/ui/src/main.rs`
       or `cockpit.rs:158` (`Screen::Home → Screen::Charts`) to
       auto-land on the Charts screen for their before/after
       legend captures. **DO NOT use that patched binary for the

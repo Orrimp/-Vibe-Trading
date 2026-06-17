@@ -405,7 +405,7 @@ The four T1207 modal snapshots stay byte-identical:
 The `…_ready_paper_fill` fixture already pre-stamps `description:
 "buy 0.04 BTCUSDT @ 50000"` and `strategy_id: Some("sma_crossover")`
 (verified at
-[`crates/ui/tests/snapshots/panel_snapshots__tape_audit_modal_ready_paper_fill.snap:14-15`](../../crates/ui/tests/snapshots/panel_snapshots__tape_audit_modal_ready_paper_fill.snap)).
+`crates/ui/tests/snapshots/panel_snapshots__tape_audit_modal_ready_paper_fill.snap:14-15`).
 The snapshot summarizes `JournalModalState` shape — it does not
 inspect the *source* of the populated fields. Re-running T1207 after
 this feature lands MUST produce byte-identical output.
@@ -645,7 +645,7 @@ _developer fills this — left blank intentionally._
 ## Verification — links
 
 - 2026-05-03 (tester) FINAL gate:
-  [`spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`](../reports/test-2026-05-03-1608-journal-transactions-metadata-final.md)
+  `spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`
   — VERDICT → PASS. All five V-items VERIFIED:
   - **V1** `t1302_v1_returns_metadata_for_existing_transaction ... ok`
     (`crates/audit/tests/journal_transaction_metadata.rs`).
@@ -860,5 +860,5 @@ live mode. No new strings, no new tokens, no new widgets._
   independent re-run; no overclaim. T_FINAL_TX_METADATA ticked.
   Frontmatter `status: in-progress → shipped` on both feature + task
   files. Report:
-  [`spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`](../reports/test-2026-05-03-1608-journal-transactions-metadata-final.md).
+  `spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`.
   VERDICT → PASS. Feature ready for presenter.

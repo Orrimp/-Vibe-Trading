@@ -398,7 +398,7 @@ use `format!("{}", x)`.
 
 Per feature.md § R8.3 + decomp.md § T-AR-7 Wave E, the Sharpe-
 comparison bin
-[`crates/forecast/src/bin/sharpe_comparison.rs`](../../crates/forecast/src/bin/sharpe_comparison.rs)
+[`crates/forecast/src/bin/sharpe_comparison.rs`](../../../crates/forecast/src/bin/sharpe_comparison.rs)
 extends with a new dispatch arm for the LLM-forecaster scenarios:
 
 ```yaml

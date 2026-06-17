@@ -1368,10 +1368,10 @@ corresponding UI subscribers.
 Developer T_FINAL_A landed the four v0.5 backtest reports under
 `spec/reports/`:
 
-- [backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md](../reports/backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md)
-- [backtest-20260419-125508-btc-2023-1m-macd-trend.md](../reports/backtest-20260419-125508-btc-2023-1m-macd-trend.md)
-- [backtest-20260419-125458-btc-2023-1m-rsi-reversion.md](../reports/backtest-20260419-125458-btc-2023-1m-rsi-reversion.md)
-- [backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md](../reports/backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md)
+- `backtest-20260419-125532-btc-2023-1m-sma-baseline-refresh.md`
+- `backtest-20260419-125508-btc-2023-1m-macd-trend.md`
+- `backtest-20260419-125458-btc-2023-1m-rsi-reversion.md`
+- `backtest-20260419-125501-btc-2023-1m-bbands-mean-revert.md`
 
 With those in place the smoke-checklist extension is now authored and
 committed at

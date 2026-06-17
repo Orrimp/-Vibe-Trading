@@ -71,7 +71,7 @@ reuse it without re-litigation.
    `cockpit.rs` and `cockpit_live.rs`. Phase 4 *creates*
    `crates/ui/src/bin/viewer.rs` from scratch — no in-place refactor.
 2. **No KPI-strip primitive.** The 11 anchored reports under
-   [`spec/reports/`](../reports/) carry the six metrics (Total
+   `spec/reports/` carry the six metrics (Total
    return, CAGR, Sharpe, Max DD, Win rate, Trades) in a 2-column
    markdown table inside the body — anchored, must not be altered.
    The KPI strip reads from a **side-channel structured contract**:

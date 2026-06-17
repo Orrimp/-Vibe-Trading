@@ -1052,7 +1052,7 @@ rectangle`" goal the user implicitly asked for.
 honestly).**
 - Adds a wrapper Renderer that diverges from upstream iced's
   Renderer impl. We are NOT forking iced (per the
-  [`trading_ui_library_constraints.md`](../../spec/dev-notes/trading_ui_library_constraints.md)
+  `trading_ui_library_constraints.md`
   user-memory constraint and Brief B's "iced 0.14 stays pinned"
   decision), but we ARE introducing a wrapper that intercepts a
   public trait method. This is well within iced 0.14's documented

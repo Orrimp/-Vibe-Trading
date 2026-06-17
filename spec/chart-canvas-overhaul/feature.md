@@ -520,7 +520,7 @@ invariant as v1.9.0 R9.4.
 ### R9 — Legend card visually distinguishable from chart panel (new, 2026-05-12)
 
 Surfaced by the orchestrator's clean-tree screenshot
-[`/tmp/orch-diag/cockpit-final-charts.png`](/tmp/orch-diag/cockpit-final-charts.png)
+`/tmp/orch-diag/cockpit-final-charts.png`
 after T3015–T3017 landed. The legend card paints with
 `color::PANEL_RAISED` fill and `color::BORDER_1 @ 1 px` outline
 ([`chart_legend.rs:99-118`](../../crates/ui/src/widgets/chart_legend.rs#L99-L118)).
@@ -1219,7 +1219,7 @@ half-scale rendering. The iced 0.14 `Frame::new(renderer,
 bounds.size())` + `Program::draw` + `Geometry`-blit pipeline
 produces a geometry that fills the canvas's reported `bounds`.
 
-Evidence: [`/tmp/orch-diag/cockpit-red-rect.png`](/tmp/orch-diag/cockpit-red-rect.png).
+Evidence: `/tmp/orch-diag/cockpit-red-rect.png`.
 
 ### Test 2 — Cyan-dot per-bar: bars span the full inner-rect width
 
@@ -1246,9 +1246,9 @@ chart line actually traverses the entire canvas. The fix is
 **nothing**; the fixture shape is the visual artifact.
 
 Evidence:
-- [`/tmp/orch-diag/cockpit-cyan-charts.png`](/tmp/orch-diag/cockpit-cyan-charts.png)
-- [`/tmp/orch-diag/cockpit-cyan-dots.png`](/tmp/orch-diag/cockpit-cyan-dots.png)
-- [`/tmp/orch-diag/cockpit-cyan-v2.png`](/tmp/orch-diag/cockpit-cyan-v2.png)
+- `/tmp/orch-diag/cockpit-cyan-charts.png`
+- `/tmp/orch-diag/cockpit-cyan-dots.png`
+- `/tmp/orch-diag/cockpit-cyan-v2.png`
 - Trace log at `/tmp/orch-diag/chart-draw.log` recorded the
   `first_x` / `last_x` / `inner.width` numbers above; the log
   itself was lost when the diagnostic process was killed, but
@@ -1261,7 +1261,7 @@ returned to clean (T3001 + T3004 + T3006 + T3009–T3022 landed,
 nothing else), the orchestrator captured the cockpit in its
 v1.10.0 v-current shipping shape:
 
-- [`/tmp/orch-diag/cockpit-final-charts.png`](/tmp/orch-diag/cockpit-final-charts.png)
+- `/tmp/orch-diag/cockpit-final-charts.png`
 
 This screenshot is the empirical baseline for R9 (the legend
 card visibility bug surfaces clearly in this capture).
@@ -1617,7 +1617,7 @@ runs as defence-in-depth at tester time.
   chrome escalation ladder.** The legend card's `PANEL_RAISED` fill +
   `BORDER_1` outline reads as nearly invisible against `PANEL` at
   3360×1890 dark mode (evidence:
-  [`/tmp/orch-diag/cockpit-final-charts.png`](/tmp/orch-diag/cockpit-final-charts.png)).
+  `/tmp/orch-diag/cockpit-final-charts.png`).
   The architect picks the **decision framework**; the ui-designer makes
   the **empirical call** at dev-pass time after capturing screenshot
   evidence at each rung of the ladder. Closes R9. See ## Legend chrome

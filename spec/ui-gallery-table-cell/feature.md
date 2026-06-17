@@ -43,7 +43,7 @@ cycle.
 **R1 — Restore V5+ render path.** The gallery binary
 (`cargo run -p ui --bin ui-gallery --features fixtures`) must
 render the full
-[`GALLERY_CELLS`](../../crates/ui/src/gallery.rs) set
+[`GALLERY_CELLS`](../../crates/ui/src/gallery/mod.rs) set
 (including `GALLERY_CELLS[7]` and any later cells using
 `widget::table::Table`) without panicking, both interactively
 and under

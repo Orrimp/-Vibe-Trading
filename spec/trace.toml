@@ -2524,7 +2524,7 @@ arch        = [
   "spec/queue-staleness-reconciliation/feature.md#design",                            # DESIGN — D-QSR-1 (invocation + exit codes + stdout/stderr split) · D-QSR-2 (marker-only slug extraction, NOT bare-word; K1/K2 mitigation) · D-QSR-3 (drift + EXCLUDE rule, 6 self-test cases) · D-QSR-4 (5-col markdown table) · D-QSR-5 (owned AGENT.md amendment) · D-QSR-6 (edge cases R6.1-R6.7) · P-QSR-1 falsifier · ADR-NONE confirmed
 ]
 crates      = []   # zero Cargo touch; Python script under scripts/ only
-tests       = ["scripts/queue_staleness_check.py --self-test"]   # dev M-DEV 2026-05-29 (orchestrator-applied): 9 self-test cases + P-QSR-1 probe; live sweep found 5 real drifts. Originally populated at M-DEV: scripts/queue_staleness_check.py --self-test (canonical) + optional scripts/tests/test_queue_staleness_check.py
+tests       = ["scripts/queue_staleness_check.py"]   # dev M-DEV 2026-05-29 (orchestrator-applied): 9 self-test cases + P-QSR-1 probe; live sweep found 5 real drifts. Originally populated at M-DEV: scripts/queue_staleness_check.py --self-test (canonical) + optional scripts/tests/test_queue_staleness_check.py
 anchors     = []   # zero anchor delta (script reads markdown + frontmatter; no anchored-report touch); all-PASS byte-identical
 state       = "shipped"   # operator-approved 2026-05-30 (Pick C orchestrator-hygiene bundle deck). All 3 pillars shipped together.
                           # PRIOR: analyst M0 2026-05-29 (proposed): feature.md + tasks.md authored under Pick C Wave 1 promotion; backlog Active row appended; pick-c-orchestrator-hygiene-2026-05-29.md strategic direction authored. Bundle Q-HYG-EMIT covers Q-QSR-2; per-feature Q-QSR-1 bias DURABLE status-mismatch only.
@@ -2580,7 +2580,7 @@ arch        = [
   "AGENT.md#queue-pre-flight-reconciliation-sweep-2026-05-29-contract",               # R3.4 OWNED — new ### Pending operator-verification ledger subsection nested under this ## section (collision-safe vs queue-staleness numbered-steps edit)
 ]
 crates      = []   # zero Cargo touch; Python script under scripts/ only
-tests       = ["scripts/operator_ledger_check.py --self-test"]   # dev M-DEV 2026-05-30 (orchestrator-applied): 8 self-test cases incl Bug #64 D.1.1 regression-parse + P-LED-1 probe. PRIOR: inline --self-test in scripts/operator_ledger_check.py (architect D-LED-7 chose inline over scripts/tests/ per H2 LoC budget)
+tests       = ["scripts/operator_ledger_check.py"]   # dev M-DEV 2026-05-30 (orchestrator-applied): 8 self-test cases incl Bug #64 D.1.1 regression-parse + P-LED-1 probe. PRIOR: inline --self-test in scripts/operator_ledger_check.py (architect D-LED-7 chose inline over scripts/tests/ per H2 LoC budget)
 anchors     = []   # zero anchor delta (script reads ledger markdown; ledger frontmatter touch only; no anchored-report touch); all-PASS byte-identical
 state       = "shipped"   # operator-approved 2026-05-30 (Pick C bundle).
 # analyst M0 2026-05-29: feature.md + tasks.md authored under Pick C Wave 1 promotion; backlog Active row appended; pick-c-orchestrator-hygiene-2026-05-29.md strategic direction authored. Bundle Q-HYG-EMIT covers diff dialect; per-feature Q-LED-WHEN bias DURABLE (a) session pre-flight + Q-LED-NOTE bias DURABLE (a) require dev-note citation.

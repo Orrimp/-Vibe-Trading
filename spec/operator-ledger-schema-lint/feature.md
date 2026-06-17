@@ -501,7 +501,7 @@ for **markdown-tolerant, schema-keyed-by-heading** parsing:
      status-enum match and the date-parse, NEVER for storing the raw cell
      (the raw cell is preserved for the diff `observed` column):
      - strip surrounding `**`/`__` (bold), `*`/`_` (italic), backticks;
-     - collapse markdown links `[text](url)` → `text`;
+     - collapse markdown links `[text] (url)` → `text`;
      - `.strip()`.
      Applied via small regexes; e.g. the Bug #64-style
      `**FAILED 2026-05-29**` normalizes to `FAILED 2026-05-29`, from which
@@ -600,7 +600,7 @@ for **markdown-tolerant, schema-keyed-by-heading** parsing:
   Pending row whose normalized status is `FAILED`, the **raw** `Notes`
   cell must contain at least one substring matching the regex
   `spec/dev-notes/[A-Za-z0-9._\-/]+\.md` (matched against the raw cell so
-  links inside `[...](...)` still match the path text). Missing → HARD
+  links inside `[...] (...)` still match the path text). Missing → HARD
   `missing-devnote-citation`, exit 1. This check runs INDEPENDENTLY of
   the stale check — a 1-day-old FAILED row with no citation still hard-fails
   (the citation is required from row creation, not after 7 days). This is
@@ -754,7 +754,7 @@ Rationale for this choice over the two analyst options:
 
 The single source of truth for operator-run recipes that survive
 session boundaries is
-[`spec/dev-notes/operator-side-pending-ledger.md`](spec/dev-notes/operator-side-pending-ledger.md)
+[`spec/dev-notes/operator-side-pending-ledger.md`](../dev-notes/operator-side-pending-ledger.md)
 (orchestrator-maintained, append-only). Its schema is enforced by
 `scripts/operator_ledger_check.py` (Python stdlib; exit 0 clean / 1 on
 schema violation or stale-FAILED escalation / ≥ 2 on script failure).
@@ -767,7 +767,7 @@ FAILED rows older than 7 days escalate (exit 1); FAILED rows within the
 window emit a soft carry-over line for the session header. Every FAILED
 row MUST cite a follow-up `spec/dev-notes/*.md` investigation in its
 Notes cell (Q-LED-NOTE). See
-[`spec/operator-ledger-schema-lint/feature.md`](spec/operator-ledger-schema-lint/feature.md).
+[`spec/operator-ledger-schema-lint/feature.md`](feature.md).
 ```
 
 ### ADR confirmation

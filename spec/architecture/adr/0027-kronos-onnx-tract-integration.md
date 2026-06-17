@@ -27,7 +27,7 @@ foundation model from candidate to in-progress per
 ("v2.5 — DL forecaster — Kronos foundation model primary candidate").
 Kronos is a decoder-only Transformer pre-trained on K-line data from
 45+ exchanges, MIT-licensed, AAAI 2026. The analyst pass landed
-2026-05-16 — [feature.md](../../v25-kronos-forecast-overlay/feature.md)
+2026-05-16 — feature.md (`v25-kronos-forecast-overlay`, retired)
 — with 13 open questions, four of which the operator locked at spawn
 (Q1 / Q3 / Q9 / Q10-budget / Q12 / Q13) and five of which the architect
 resolves here (Q4 / Q5 / Q6 / Q7 / Q8).
@@ -38,7 +38,7 @@ Three integration paths were on the table from the
 plus in-process `tract` inference, (C) pure-Rust re-implementation
 in `candle`. All five operator decisions (notably Q3 — Option B) and
 the analyst's four-axis argument
-([feature.md § Integration-path argument](../../v25-kronos-forecast-overlay/feature.md#integration-path-argument-r4-expanded))
+(feature.md § Integration-path argument)
 point to Option B; this ADR ratifies it.
 
 The cross-cutting "what is a forecast overlay" pattern (signal-level
@@ -72,7 +72,7 @@ serving default in
 **Fallback:** if ONNX conversion fails on unsupported decoder ops, a
 1-day spike either (a) adds the op to `tract` (PR upstream) or (b)
 falls back to Option A (subprocess + IPC). The fallback is named in
-[feature.md § R4.3](../../v25-kronos-forecast-overlay/feature.md#r4--integration-path-onnx-export--tract)
+feature.md § R4.3
 but not pre-built. The spike outcome routes back through the
 architect; no developer-side decision on fallback shape.
 
@@ -95,7 +95,7 @@ carries. None of those are load-bearing for the v2.5 ship gate.
 ### Q5 — Strategy shape: overlay, not pure-Kronos
 
 Analyst-decide already-resolved at the R2 level
-([feature.md § R2](../../v25-kronos-forecast-overlay/feature.md#r2--strategy-shape-overlay-not-pure)).
+(feature.md § R2).
 The architect confirms: signal-level overlay (per Q13) on
 `v1_momentum`. Pure-Kronos is a v2.6 brief option if the overlay
 composition doesn't produce clean signals; the integration work
@@ -199,7 +199,7 @@ existing v1 momentum anchor `top10-2023-1h-momentum` (a 2023 anchor
 already exists at line 41–43) for BS-1; BS-2 needs a fresh
 `top10-2024-fy-momentum` baseline anchor locked at the same tester
 pass for the side-by-side comparison
-([feature.md § R8.2](../../v25-kronos-forecast-overlay/feature.md#r8--backtest-scenarios)).
+(feature.md § R8.2).
 
 If BS-2's v1 baseline anchor is locked at the v2.5 tester pass, that
 is **a third new anchor** (so 14 total post-v2.5). The tester chooses

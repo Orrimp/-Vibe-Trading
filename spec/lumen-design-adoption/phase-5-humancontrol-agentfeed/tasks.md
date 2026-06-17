@@ -1572,7 +1572,7 @@ spec/architecture.md                           [Q1–Q15 ratification block (Pha
 - Kill widget (typed-confirm precedent for override modal):
   [`crates/ui/src/widgets/kill.rs`](../../../crates/ui/src/widgets/kill.rs).
 - Tape widget (rename target):
-  [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs).
+  [`crates/ui/src/widgets/activity_tape.rs`](../../../crates/ui/src/widgets/activity_tape.rs).
 - Lumen HumanControl reference component (visual contract source):
   [`spec/design/project/ui_kits/desktop/HumanControl.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).
 - Lumen AgentFeed reference component (rename source):

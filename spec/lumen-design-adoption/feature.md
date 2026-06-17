@@ -392,7 +392,7 @@ collapsible header or move to a dedicated **Control** sidebar entry
   (one button per row, typed-confirm flow per the principles
   doc — `OVERRIDE` for risk-veto, no phrase needed for pause).
 - **Rename `tape` widget to `AgentFeed`.** The existing
-  [`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs)
+  [`crates/ui/src/widgets/activity_tape.rs`](../../crates/ui/src/widgets/activity_tape.rs)
   rendering stays; the rename is module-level only. The Lumen
   vocabulary in the chat transcript and the
   [`AgentFeed.jsx`](../archive/design-prototypes-2026-Q2.tar.gz)

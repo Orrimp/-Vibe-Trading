@@ -26,7 +26,7 @@ successor: <successor-slug> v<X.Y.Z>  # NEW field — points to the follow-up
 And a body callout immediately under the H1 / TL;DR:
 
 > **Status (YYYY-MM-DD):** vX.Y.Z-partial-terminal. <one-line description of
-> what's covered>. V<N>+ tracked in successor [`<successor-slug>`](../<successor-slug>/feature.md).
+> what's covered>. V<N>+ tracked in successor `<successor-slug>` (`../<successor-slug>/feature.md`).
 
 The matching successor feature.md carries the inverse:
 

@@ -301,7 +301,7 @@ cross-feature invariants in the
     `theme::color_for_latency_ms`).
   - **Daily loss section** — single bar: used / `daily_loss_stop_pct`
     from
-    [`agent::config::RiskConfig`](../../crates/agent/src/config.rs:181).
+    [`agent::config::RiskConfig`](../../../crates/agent/src/config.rs).
     Same ramp.
   - **Kill-threshold proximity gauge** — single bar:
     time-since-last-heartbeat / `heartbeat_timeout_ms` from

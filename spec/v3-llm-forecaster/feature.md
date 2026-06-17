@@ -268,7 +268,7 @@ Phase F Assistant slot, retro-fed into the next decision via top_k)
     ([`crates/reflection/src/retrieval.rs:22`](../../crates/reflection/src/retrieval.rs))
     on a `RetrievalQuery` derived from `(symbol, regime_tag,
     recent_outcome)`. Default K = 5 per
-    [`crates/reflection::REPORT_TIME_TOP_K`](../../crates/reflection/src/lib.rs:69)
+    [`crates/reflection::REPORT_TIME_TOP_K`](../../crates/reflection/src/lib.rs)
     (existing constant).
   - Q3=(c) hybrid composition: cards are top-K by similarity AND a
     1-paragraph distilled summary of the last N days of
@@ -901,7 +901,7 @@ fresh-checkout determinism for CI/tester.
     [DR / backups line 438](../product.md#open-decisions)).
 **Analyst-recommended: (ii)** — cache checked in (compressed); same
 pattern as
-[`crates/llm/tests/fixtures/llm-replay.db`](../../crates/llm/tests/fixtures/)
+`crates/llm/tests/fixtures/llm-replay.db`
 already shipped at v2-llm-strategy v2.0.0.
 
 ### K6 — Q6 ADR-0038 scope creep

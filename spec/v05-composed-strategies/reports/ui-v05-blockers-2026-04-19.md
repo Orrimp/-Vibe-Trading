@@ -109,7 +109,7 @@ Confirmation scan (2026-04-19, at ui-designer spawn time):
 ### T528 — screenshots README row
 
 - Added §4.5 "`strategies` — loaded strategies + swap log" to
-  [spec/v0-paper-sma/reports/screenshots/README.md](screenshots/v0-paper-sma/README.md)
+  [spec/v0-paper-sma/reports/screenshots/README.md](../../v0-paper-sma/reports/screenshots/README.md)
   covering all four panel states + the per-row-error visual + the list
   of string keys + the subscription → message mapping for T526.
 - Bumped the "Panels landed" text in §2 / §4 intro from four panels to

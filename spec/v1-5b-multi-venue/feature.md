@@ -1830,7 +1830,7 @@ defer to a follow-up._
 ## Verification — links
 
 - **2026-05-03 19:46 UTC — FINAL gate:**
-  [`spec/archive/test-2026-05-03-1946-v1-5b-multi-venue-final.md (archived; see spec/archive/README.md)`](../reports/test-2026-05-03-1946-v1-5b-multi-venue-final.md)
+  `spec/archive/test-2026-05-03-1946-v1-5b-multi-venue-final.md (archived; see spec/archive/README.md)`
   — `VERDICT → PASS`. Anchors 11/11; V1-V12 all VERIFIED; 5/5 prior features
   regress-free. T_FINAL_V15B ticked.
 

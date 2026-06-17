@@ -656,7 +656,7 @@ invariants in the
   modal continues to be reachable from any tape row on the
   Home screen; modal trigger preserved. Phase 3's Audit
   screen will reuse the same modal.
-- **R14.6** [`journal-tx-metadata`](journal-tx-metadata.md):
+- **R14.6** [`journal-tx-metadata`](../../journal-transactions-metadata/feature.md):
   modal-header rendering unchanged.
 - **R14.7** [`v1.5b-multi-venue`](../../v1-5b-multi-venue/feature.md): venue
   dimension surfaces in **Debug screen** (per-venue

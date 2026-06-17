@@ -648,7 +648,7 @@ Architect's sub-agent sandbox blocks `Read` and `Bash` against
 `~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/iced_widget-0.14.2/src/`
 (verified: `Read` and `find/grep/ls` all return "Permission denied" on
 that path). Substituted: build-artifact evidence from
-[`target/debug/deps/iced_widget-e0d51c2a6d696d3b.d`](../../target/debug/deps/iced_widget-e0d51c2a6d696d3b.d)
+`target/debug/deps/iced_widget-e0d51c2a6d696d3b.d`
 (.d manifest — confirms `table.rs`, `grid.rs`, `float.rs` are all
 compiled into the present iced_widget-0.14.2 build under
 `features=["advanced","canvas"]`; M0 sub-agent's predecessor result

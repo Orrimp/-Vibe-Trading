@@ -66,7 +66,7 @@ initiative
 
 ### Plus the AgentFeed rename — vocabulary alignment
 
-[`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs)
+[`crates/ui/src/widgets/activity_tape.rs`](../../../crates/ui/src/widgets/activity_tape.rs)
 (147 lines) renders the live fills panel. Lumen's
 [`AgentFeed.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz)
 is the operator vocabulary alignment for the same surface. **Visual
@@ -256,7 +256,7 @@ the
 [Phase 3 RiskTelemetry channel](../phase-3-detail-screens/feature.md),
 the existing
 [`crates/ui/src/widgets/kill.rs`](../../../crates/ui/src/widgets/kill.rs),
-[`crates/ui/src/widgets/tape.rs`](../../crates/ui/src/widgets/tape.rs),
+[`crates/ui/src/widgets/activity_tape.rs`](../../../crates/ui/src/widgets/activity_tape.rs),
 [`crates/ui/src/state.rs`](../../../crates/ui/src/state.rs),
 [`crates/audit/src/journal.rs`](../../../crates/audit/src/journal.rs),
 [`crates/core/src/strategy_events.rs`](../../../crates/core/src/strategy_events.rs),
@@ -1171,13 +1171,13 @@ pub struct Cockpit {
     /// Operator-selected execution mode (Q4 — runtime-only).
     pub execution_mode: ExecutionMode,
     /// Per-strategy pause set (R4.3). Sibling of `tape_paused: bool`
-    /// at [`state.rs:455`](state.rs); single-click toggles membership.
+    /// at `state.rs:455`; single-click toggles membership.
     pub paused_strategies: HashSet<StrategyId>,
     /// Typed-confirm state for the per-veto override modal (R7).
     pub override_risk_veto: OverrideRiskVetoState,
     /// Surfaced risk-engine veto events (R7.2). Live upstream is the
     /// `default_risk_telemetry_stub` at
-    /// [`crates/agent/src/runtime.rs:1023–1090`](runtime.rs); real
+    /// `crates/agent/src/runtime.rs:1023–1090`; real
     /// wiring tracked as TD-2 (see Phase 5 Design / Risk-engine
     /// veto-emit deferral).
     pub risk_veto_events: Vec<VetoEvent>,

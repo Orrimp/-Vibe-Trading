@@ -590,7 +590,7 @@ committed backtest reports without missing variants.**
   in a viewer-bin smoke test, the operator decision is well-supported.
 - *Falsifier:* Dev sub-agent enables iced's `markdown` feature, writes
   a minimal viewer-bin smoke test loading
-  [`spec/reports/success-fixed-report-sample-7d.md`](../reports/),
+  `spec/reports/success-fixed-report-sample-7d.md`,
   asserts the test compiles and runs to completion. If `markdown::Item`
   variants don't cover all features (tables, code-blocks, links per
   analyst H3 fallback), falsified → operator decides whether to ship

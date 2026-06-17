@@ -75,7 +75,7 @@ updated: 2026-05-30
   - **Test command** `bash scripts/verify_anchors.sh && cargo test -p ui --test visual_snapshots --no-default-features --features live && cargo test -p ui --test render_snapshots --no-default-features --features live`
   - **Output line** `ANCHORS PASS  (75 / 75)` + `test result: ok. 51 passed; 0 failed` + `test result: ok. 10 passed; 0 failed; 15 ignored`
   - **P-VPM-1** `cargo test -p ui --test visual_snapshots --no-default-features --features live` with SLOTS rotated to `[operator, typical, floor]` → `test result: ok. 51 passed; 0 failed; 0 ignored` — zero baseline byte deltas, zero new files, P-VPM-1 PASS.
-- [ ] T-VPM-D6 — Operator-side PNG review request — _accept: developer emits a six-section recipe per [memory/feedback_human_verification_recipe.md](../../.claude/projects/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/memory/feedback_human_verification_recipe.md):_
+- [ ] T-VPM-D6 — Operator-side PNG review request — _accept: developer emits a six-section recipe per the `feedback_human_verification_recipe.md` user-memory note:_
   - **Command**: `open crates/ui/tests/visual-baselines/` in Finder (column view; preview pane on)
   - **Steps**: eyeball each new PNG for rendering sanity — focus the 22 × 2 = 44 NEW slot PNGs + the 16 renamed `__typical` PNGs (60 PNGs total to review; the existing 3 Charts triple and the 5 opt-out cases are unchanged and skipped); check for clipping (content cut off at viewport edge), blank canvas (white/black-only PNG), or obviously-broken layout (overlapping panels, misaligned text); operator-slot PNGs in particular are at 6720×3780 — confirm they render the full cockpit at scale 2.0 without clipping
   - **Timing**: ~10-15 min for 60 PNGs (about 10-15s per PNG eyeball)

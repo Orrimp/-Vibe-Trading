@@ -807,7 +807,7 @@ the whole chain to land in one parallel pass after T1302.
       per-symbol-position-accounts, tape-row-audit-modal) GREEN
       with zero regression.
     - **Report:**
-      [`spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`](../reports/test-2026-05-03-1608-journal-transactions-metadata-final.md)
+      `spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`
       VERDICT → PASS.
     - **Frontmatter status bumps:** `spec/journal-transactions-metadata/feature.md`
       `in-progress → shipped`; this tasks file
@@ -850,5 +850,5 @@ the whole chain to land in one parallel pass after T1302.
   tape-row-audit-modal) all GREEN. Frontmatter
   `status: in-progress → shipped` on both feature + task files.
   Report:
-  [`spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`](../reports/test-2026-05-03-1608-journal-transactions-metadata-final.md).
+  `spec/archive/test-2026-05-03-1608-journal-transactions-metadata-final.md (archived; see spec/archive/README.md)`.
   VERDICT → PASS.

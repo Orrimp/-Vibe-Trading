@@ -341,7 +341,7 @@ at `data/llm-forecaster-replay.db`** (live recording) +
 (checked-in compressed fixture). Rationale:
 
 - (1) Mirrors the precedent at v2-llm-strategy v2.0.0
-  ([`crates/llm/tests/fixtures/llm-replay.db`](../../crates/llm/tests/fixtures/)).
+  (`crates/llm/tests/fixtures/llm-replay.db`).
 - (2) Keeps the existing `data/llm-replay.db` (used by the operator-
   success-reports analyst LLM call site) byte-identical — no shared-
   file lock contention, no cross-strategy cache pollution.
