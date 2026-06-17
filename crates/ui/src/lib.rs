@@ -51,6 +51,16 @@ pub mod assistant;
 /// body lives at `screens::baseline`.
 pub mod baseline;
 pub mod lab;
+/// cockpit-reports-viewer v0.1.0 — browse + render committed backtest
+/// reports in-cockpit. Houses `reports::loader` (the shared report-load
+/// parse, lifted from `bin/viewer.rs` so the viewer bin + the Reports
+/// screen call ONE implementation — D2/AC5), `reports::body_render` (the
+/// markdown heading pre-pass), and `reports::state` (ReportsScreenState +
+/// ReportEntry + boot-load helper). Pure-`ui` over `core` + `reports` +
+/// `std::fs`; no new crate edge (AC7). The screen body lives at
+/// `screens::reports`. (Distinct from the `reports` extern crate — see
+/// `reports/mod.rs`.)
+pub mod reports;
 pub mod screens;
 pub mod shell;
 pub mod state;

@@ -126,6 +126,58 @@ fn headless_emulator_paints_baseline_route() {
     );
 }
 
+/// cockpit-reports-viewer v0.1.0 (AC4) — the fixtures cockpit paints the
+/// **Reports** route headlessly without panic. Boots the same fixtures
+/// cockpit, navigates to `Screen::Reports`, runs the production
+/// `reports::load_into` discovery scan (the corpus resolves to `Ready(list)`
+/// when `spec/` reports are present, or degrades to an empty list in a
+/// fixtures-only checkout — never a panic, R7), drains to `Ready`, and
+/// asserts a non-empty first-frame screenshot. The smoke's default route
+/// stays `Live` (D5 — Reports is navigable, not default-routed).
+#[test]
+fn headless_emulator_paints_reports_route() {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    // Production boot path: scan the committed `backtest-*.md` corpus
+    // (Ready(list) or Empty — never a panic).
+    ui::reports::load_into(&mut cockpit);
+
+    let program = program_from_cockpit(cockpit);
+    let theme = iced::Theme::Dark;
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let mut emulator = Emulator::new(tx, &program, Mode::Zen, iced::Size::new(1280.0, 720.0));
+
+    executor::block_on(async {
+        for tick in 0..READY_DEADLINE_TICKS {
+            match rx.next().await {
+                Some(Event::Ready) => {
+                    eprintln!("reports emulator ready after {tick} tick(s)");
+                    break;
+                }
+                Some(Event::Action(action)) => {
+                    emulator.perform(&program, action);
+                }
+                Some(Event::Failed(instruction)) => {
+                    panic!("unexpected Event::Failed for instruction: {instruction:?}");
+                }
+                None => {
+                    eprintln!("reports event channel closed at tick {tick} before Ready");
+                    break;
+                }
+            }
+        }
+    });
+
+    let screenshot = emulator.screenshot(&program, &theme, 1.0);
+    assert_eq!(screenshot.size.width, 1280);
+    assert_eq!(screenshot.size.height, 720);
+    assert!(
+        !screenshot.rgba.is_empty(),
+        "Reports route first-frame screenshot must be non-empty (boot + view ran, no panic)"
+    );
+}
+
 /// cockpit-live-dashboard-wiring v0.1.0 (AC3 / R7) — the fixtures cockpit
 /// paints the **Live** route (the cockpit's default route under
 /// `cockpit_live`) headlessly without panic. Fixtures mode has no `live`

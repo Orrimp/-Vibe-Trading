@@ -2736,10 +2736,10 @@ title       = "In-cockpit Reports screen: browse committed backtest-*.md reports
 feature     = "cockpit-reports-viewer"
 product     = "spec/product.md"
 arch        = ["spec/cockpit-reports-viewer/feature.md#design"]   # architect 2026-06-17: D1 bespoke ReportsScreenState / D2 lift loader to crate::reports::{loader,body_render} / D3 ship body / D4 Library group after Models / D5 navigable + dedicated smoke / D6 no curve demo
-crates      = []   # developer fills — expected pure-`ui`: crates/ui/src/reports/{loader,body_render,state,mod}.rs + Screen::Reports touchpoints + bin/viewer.rs refactor to the lifted loader; no new crate edge (ui→core+reports already exist)
-tests       = []   # developer fills — panel_snapshots (both themes) + a reports four-state test + headless_emulator_paints_reports_route + the lifted-loader unit tests
+crates      = ["crates/ui/src/reports/mod.rs", "crates/ui/src/reports/loader.rs", "crates/ui/src/reports/body_render.rs", "crates/ui/src/reports/state.rs", "crates/ui/src/screens/reports.rs"]   # ui-designer 2026-06-17: new crate::reports module (D2 lifted loader shared with bin/viewer.rs) + Screen::Reports list-detail; touchpoints state.rs/theme.rs/strings.rs/lib.rs/shell.rs/screens/mod.rs/widgets/sidebar_nav.rs/bin{cockpit,cockpit_live,viewer}.rs. No new crate edge.
+tests       = ["crates/ui/tests/panel_snapshots.rs", "crates/ui/tests/headless_emulator_smoke.rs", "crates/ui/src/reports/loader.rs"]   # panel snapshots both themes (ready/empty/error) + headless_emulator_paints_reports_route + lifted-loader unit tests. cargo test -p ui = 856 passed / 0 failed (orchestrator re-verified, rc0).
 anchors     = []   # tester fills (read-only UI feature → no new backtest anchors; regression floor is the unchanged 119/119 gate — Reports only reads committed reports, touches no anchored file)
-state       = "arch-done"
+state       = "dev-done"
 
 # REQ-COCKPIT-CHARTCACHE-001 → cockpit-chart-cache (measured 2026-06-08) — Phase 1 MEASURE → NO-GO
 [[req]]

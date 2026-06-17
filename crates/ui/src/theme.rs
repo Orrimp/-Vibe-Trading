@@ -755,16 +755,21 @@ pub mod layout {
         Screen::Strategies,
         Screen::Memory,
         Screen::Models,
+        // cockpit-reports-viewer v0.1.0 (R6 / D4) — Library group, after
+        // Models (browse-a-corpus shape, same as Models). Must stay
+        // lock-step with `SIDEBAR_GROUPS_PHASE_C` library group below (the
+        // flatten-invariant test is the guard, AC6).
+        Screen::Reports,
         Screen::Trail,
         Screen::Settings,
     ];
 
     /// Phase C — Three-group sidebar IA.
     ///
-    /// Groups: `work` (Lab · Live · Compare) / `library` (Strategies ·
-    /// Memory · Models · Trail) / `chrome` (Settings). A 1-px `BORDER_1`
-    /// hairline divider is rendered between each group in
-    /// `widgets::sidebar_nav::view` (Design § A1/A2).
+    /// Groups: `work` (Lab · Live · Compare · Baseline) / `library`
+    /// (Strategies · Memory · Models · Reports · Trail) / `chrome`
+    /// (Settings). A 1-px `BORDER_1` hairline divider is rendered between
+    /// each group in `widgets::sidebar_nav::view` (Design § A1/A2).
     ///
     /// Invariant: `SIDEBAR_GROUPS_PHASE_C.iter().flat_map(|g| g.iter())
     /// .copied().collect::<Vec<_>>()` must equal
@@ -778,6 +783,8 @@ pub mod layout {
             Screen::Strategies,
             Screen::Memory,
             Screen::Models,
+            // cockpit-reports-viewer v0.1.0 (R6 / D4) — after Models.
+            Screen::Reports,
             Screen::Trail,
         ], // library
         &[Screen::Settings], // chrome
@@ -1605,6 +1612,7 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn sidebar_groups_phase_c__flatten_matches_phase_a() {
+        use crate::state::Screen;
         use layout::{SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C};
         let flat: Vec<crate::state::Screen> = SIDEBAR_GROUPS_PHASE_C
             .iter()
@@ -1615,6 +1623,30 @@ mod tests {
             flat,
             SIDEBAR_ENTRIES_PHASE_A.to_vec(),
             "SIDEBAR_GROUPS_PHASE_C flattened must equal SIDEBAR_ENTRIES_PHASE_A"
+        );
+
+        // cockpit-reports-viewer v0.1.0 (R6 / D4 / AC6) — `Reports` is in the
+        // Library group, immediately between `Models` and `Trail`, in BOTH
+        // consts (the lock-step the flatten check above guards). Using
+        // `position(...).unwrap_or(usize::MAX)` keeps the assert panic-free
+        // (no `expect`): a missing entry sorts to `MAX` and trips the ordering
+        // assertion with a clear message rather than an unwrap panic.
+        let models_idx = flat
+            .iter()
+            .position(|s| *s == Screen::Models)
+            .unwrap_or(usize::MAX);
+        let reports_idx = flat
+            .iter()
+            .position(|s| *s == Screen::Reports)
+            .unwrap_or(usize::MAX);
+        let trail_idx = flat
+            .iter()
+            .position(|s| *s == Screen::Trail)
+            .unwrap_or(usize::MAX);
+        assert!(
+            models_idx < reports_idx && reports_idx < trail_idx,
+            "Reports must sit between Models and Trail (Library group, D4); \
+             got Models@{models_idx} Reports@{reports_idx} Trail@{trail_idx}"
         );
     }
 }

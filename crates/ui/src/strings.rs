@@ -1483,6 +1483,12 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("BASELINE_YEAR_2024_LABEL", BASELINE_YEAR_2024_LABEL),
         ("BASELINE_DATA_UNAVAILABLE", BASELINE_DATA_UNAVAILABLE),
         ("BASELINE_RISK_DETAIL", BASELINE_RISK_DETAIL),
+        // cockpit-reports-viewer v0.1.0
+        ("REPORTS_SIDEBAR_LABEL", REPORTS_SIDEBAR_LABEL),
+        ("REPORTS_PICKER_TITLE", REPORTS_PICKER_TITLE),
+        ("REPORTS_EMPTY_LIST", REPORTS_EMPTY_LIST),
+        ("REPORTS_SELECT_PROMPT", REPORTS_SELECT_PROMPT),
+        ("REPORTS_LOAD_ERROR", REPORTS_LOAD_ERROR),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -1862,6 +1868,33 @@ pub const BASELINE_DATA_UNAVAILABLE: &str = "Baseline equity data isn't bundled 
 /// `FG_3` below the drawdown band.
 pub const BASELINE_RISK_DETAIL: &str =
     "Sortino 2.51 / Calmar 5.68 (2023)  \u{00b7}  Sortino 1.20 / Calmar 1.85 (2024)";
+
+// ── cockpit-reports-viewer v0.1.0 — browse + render backtest reports ─────────
+// All Reports-screen copy lives here (R5 / AC6 — no inline literals). The
+// picker title surfaces the scope ("Backtest reports") so the exclusion of
+// the robustness-sweep / test-report families is not a mystery (§ Data
+// contract).
+
+/// Sidebar nav label for the Reports screen (R6 / D4 — Library group).
+pub const REPORTS_SIDEBAR_LABEL: &str = "Reports";
+
+/// Picker (left list) title. Names the scope — the picker browses the
+/// committed `backtest-*.md` corpus only (R1 / § Data contract).
+pub const REPORTS_PICKER_TITLE: &str = "Backtest reports";
+
+/// Empty-list copy when no `backtest-*.md` reports are discovered under
+/// `spec/` (R3) — never a blank screen; tells the operator the scope.
+pub const REPORTS_EMPTY_LIST: &str = "No backtest reports found in spec/ yet.";
+
+/// Detail-pane prompt when no report is selected yet (R3) — the cold-start
+/// detail surface; tells the operator what to do next.
+pub const REPORTS_SELECT_PROMPT: &str = "Select a report to view its results.";
+
+/// Error-state copy for a selection that is missing on disk (deleted
+/// between discovery + selection) or whose body is unreadable (R3). Never a
+/// bare "no data" — says what happened and what to check.
+pub const REPORTS_LOAD_ERROR: &str = "This report could not be read — it may have been moved \
+    or its summary table is malformed.";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

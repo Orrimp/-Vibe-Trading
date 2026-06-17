@@ -20,10 +20,10 @@ use iced::{Border, Length};
 
 use crate::state::{Message, Screen};
 use crate::strings::{
-    BASELINE_SIDEBAR_LABEL, LAB_TITLE, LIVE_TITLE, SIDEBAR_NAV_AUDIT, SIDEBAR_NAV_CHARTS,
-    SIDEBAR_NAV_COMPARE, SIDEBAR_NAV_CONTROL, SIDEBAR_NAV_DEBUG, SIDEBAR_NAV_HOME,
-    SIDEBAR_NAV_MEMORY, SIDEBAR_NAV_MODELS, SIDEBAR_NAV_RISK, SIDEBAR_NAV_SETTINGS,
-    SIDEBAR_NAV_STRATEGIES, TRAIL_TITLE,
+    BASELINE_SIDEBAR_LABEL, LAB_TITLE, LIVE_TITLE, REPORTS_SIDEBAR_LABEL, SIDEBAR_NAV_AUDIT,
+    SIDEBAR_NAV_CHARTS, SIDEBAR_NAV_COMPARE, SIDEBAR_NAV_CONTROL, SIDEBAR_NAV_DEBUG,
+    SIDEBAR_NAV_HOME, SIDEBAR_NAV_MEMORY, SIDEBAR_NAV_MODELS, SIDEBAR_NAV_RISK,
+    SIDEBAR_NAV_SETTINGS, SIDEBAR_NAV_STRATEGIES, TRAIL_TITLE,
 };
 use crate::theme::{ThemeMode, color, layout, radius, space, text};
 use crate::widgets::frame;
@@ -41,6 +41,7 @@ pub const fn label_for(screen: Screen) -> &'static str {
         Screen::Baseline => BASELINE_SIDEBAR_LABEL,
         Screen::Memory => SIDEBAR_NAV_MEMORY,
         Screen::Models => SIDEBAR_NAV_MODELS,
+        Screen::Reports => REPORTS_SIDEBAR_LABEL,
         Screen::Trail => TRAIL_TITLE,
         Screen::Settings => SIDEBAR_NAV_SETTINGS,
         Screen::Strategies => SIDEBAR_NAV_STRATEGIES,

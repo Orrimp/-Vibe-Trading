@@ -23,16 +23,20 @@
 //! `File::create` / `tokio::fs::write` against `spec/**` paths and
 //! fails loudly if any surface.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
 use iced::widget::{Column, Container, container};
 use iced::{Element, Length};
-use trading_core::{BacktestMetrics, EquitySeries, Money, Timestamp, Usdt};
-use ui::state::PanelState;
+use ui::reports::body_render;
+// cockpit-reports-viewer v0.1.0 (D2/AC5): the report-load parse now lives in
+// the shared `ui::reports::loader` module (lifted out of this bin) so the
+// viewer bin + the in-cockpit Reports screen call ONE implementation. The
+// bin's `App::view` / `main` call sites are unchanged in behaviour.
+use ui::reports::loader::load_report;
 use ui::theme::{ThemeMode, color, layout, space};
-use ui::viewer::{ReportFrontMatter, ReportLoadResult, ViewerMessage, ViewerModel};
+use ui::viewer::{ReportLoadResult, ViewerMessage, ViewerModel};
 use ui::widgets::{drawdown_band, equity_curve, kpi_strip};
 
 /// CLI args.
@@ -131,173 +135,13 @@ impl App {
     }
 }
 
-/// Synchronous load. Reads the markdown body + parses the KPI table
-/// + reads the companion equity CSV (when present).
-fn load_report(path: &Path) -> Result<ReportLoadResult, std::io::Error> {
-    let raw = std::fs::read_to_string(path)?;
-
-    let front_matter = parse_front_matter(&raw);
-
-    // KPI metrics — graceful fallback to `BacktestMetrics::all_absent`
-    // when the parser hits a malformed body (R3.5 / Q3 graceful
-    // fallback). Errors flip to `PanelState::Error(msg)` so the strip
-    // renders the unavailable state with the muted body.
-    let metrics: PanelState<BacktestMetrics> = match reports::parse::parse_from_report(path) {
-        Ok(m) => PanelState::Ready(m),
-        Err(e) => PanelState::Error(smol_str::SmolStr::new(e.to_string())),
-    };
-
-    // Equity CSV — companion file at `<dir>/artifacts/<run_id>/equity-*.csv`.
-    // Phase 4 reads the existing committed companion via
-    // `reports::csv_artifacts::read_equity_csv` (R11.2). When the
-    // companion is missing or unreadable, the equity curve / drawdown
-    // band render their empty state independently of the KPI strip
-    // (R11.3).
-    let equity = load_equity_companion(path)
-        .unwrap_or_else(|e| PanelState::Error(smol_str::SmolStr::new(e.as_str())));
-
-    let body_markdown = strip_front_matter(&raw).to_string();
-
-    Ok(ReportLoadResult {
-        front_matter,
-        metrics,
-        equity,
-        body_markdown,
-    })
-}
-
-/// Locate and read the companion equity CSV. Returns
-/// `Ok(PanelState::Ready(series))` on success, `Ok(PanelState::Empty)`
-/// when no companion exists, `Err(...)` on read / parse failure.
-fn load_equity_companion(report_path: &Path) -> Result<PanelState<EquitySeries>, String> {
-    let parent = report_path
-        .parent()
-        .ok_or_else(|| "report has no parent directory".to_string())?;
-    // The reports binary writes the companion under
-    // `<parent>/artifacts/<run_id>/equity-*.csv`. We don't have the
-    // run_id here; scan for the first `equity-*.csv` under any
-    // run-id folder. If none, return Empty.
-    let artifacts_root = parent.join("artifacts");
-    if !artifacts_root.exists() {
-        return Ok(PanelState::Empty);
-    }
-    let mut candidate: Option<PathBuf> = None;
-    let entries = std::fs::read_dir(&artifacts_root).map_err(|e| e.to_string())?;
-    for entry in entries.flatten() {
-        let p = entry.path();
-        if !p.is_dir() {
-            continue;
-        }
-        if let Ok(inner) = std::fs::read_dir(&p) {
-            for inner_entry in inner.flatten() {
-                let ip = inner_entry.path();
-                let name = ip.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with("equity-") && name.ends_with(".csv") {
-                    candidate = Some(ip);
-                    break;
-                }
-            }
-        }
-        if candidate.is_some() {
-            break;
-        }
-    }
-    let Some(csv_path) = candidate else {
-        return Ok(PanelState::Empty);
-    };
-    let samples = reports::csv_artifacts::read_equity_csv(&csv_path).map_err(|e| e.to_string())?;
-    if samples.is_empty() {
-        return Ok(PanelState::Empty);
-    }
-    let points: Vec<(Timestamp, Money<Usdt>)> = samples
-        .into_iter()
-        .map(|s| (s.ts, Money::<Usdt>::from_decimal(s.equity_total)))
-        .collect();
-    let series = EquitySeries::from_points(points).map_err(|e| e.to_string())?;
-    // Q5 — cap at 2000 points for paint budget.
-    let series = series.downsample(2000);
-    Ok(PanelState::Ready(series))
-}
-
-/// Parse the `scenario:` field out of the YAML front-matter.
-fn parse_front_matter(raw: &str) -> ReportFrontMatter {
-    let trimmed = raw.trim_start_matches('\u{feff}');
-    if !trimmed.starts_with("---\n") && !trimmed.starts_with("---\r\n") {
-        return ReportFrontMatter::default();
-    }
-    let after = match trimmed.find('\n') {
-        Some(n) => &trimmed[n + 1..],
-        None => return ReportFrontMatter::default(),
-    };
-    let end = after.find("\n---").unwrap_or(after.len());
-    let yaml = &after[..end];
-    let mut scenario = smol_str::SmolStr::default();
-    for line in yaml.lines() {
-        if let Some(rest) = line.strip_prefix("scenario:") {
-            scenario = smol_str::SmolStr::new(rest.trim());
-            break;
-        }
-    }
-    ReportFrontMatter { scenario }
-}
-
-fn strip_front_matter(raw: &str) -> &str {
-    let trimmed = raw.trim_start_matches('\u{feff}');
-    if !trimmed.starts_with("---\n") && !trimmed.starts_with("---\r\n") {
-        return trimmed;
-    }
-    let after_first = match trimmed.find('\n') {
-        Some(n) => &trimmed[n + 1..],
-        None => return trimmed,
-    };
-    if let Some(rel) = after_first.find("\n---") {
-        let rest = &after_first[rel + 1..];
-        if let Some(nl) = rest.find('\n') {
-            return &rest[nl + 1..];
-        }
-    }
-    trimmed
-}
-
-// ── body_render — minimal markdown pre-pass ──────────────────────────────────
-mod body_render {
-    use iced::Length;
-    use iced::widget::{Column, Text, container, scrollable};
-
-    use ui::theme::{ThemeMode, color, space, text};
-    use ui::viewer::ViewerMessage;
-
-    /// Render the report body verbatim with a tiny heading-level
-    /// pre-pass: `# / ## / ###` lines map to `text::H2` / `text::H3`
-    /// rows; everything else stays as monospaced `text::BODY`.
-    pub fn view<'a>(markdown: &'a str, mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
-        let mut col = Column::new().spacing(space::XS);
-        for line in markdown.lines() {
-            let stripped = line.trim_start();
-            let element = if let Some(rest) = stripped.strip_prefix("### ") {
-                Text::new(rest.to_string())
-                    .size(text::H3)
-                    .color(color::FG_1.current(mode))
-            } else if let Some(rest) = stripped.strip_prefix("## ") {
-                Text::new(rest.to_string())
-                    .size(text::H2)
-                    .color(color::FG_1.current(mode))
-            } else if let Some(rest) = stripped.strip_prefix("# ") {
-                Text::new(rest.to_string())
-                    .size(text::H2)
-                    .color(color::FG_1.current(mode))
-            } else {
-                Text::new(line.to_string())
-                    .size(text::BODY)
-                    .color(color::FG_2.current(mode))
-            };
-            col = col.push(element);
-        }
-        scrollable(container(col).padding(space::S as u16).width(Length::Fill))
-            .height(Length::Fill)
-            .into()
-    }
-}
+// cockpit-reports-viewer v0.1.0 (D2/AC5): `load_report`,
+// `load_equity_companion`, `parse_front_matter`, `strip_front_matter`, and
+// `mod body_render` were lifted out of this bin into `ui::reports::loader` +
+// `ui::reports::body_render` so the in-cockpit `Screen::Reports` and this bin
+// share ONE parse implementation (no drift). The `parse_front_matter`
+// scenario-extraction test moved with the fn into `reports/loader.rs`
+// `#[cfg(test)]`; the CLI/exit-code tests below stay in the bin.
 
 #[cfg(test)]
 mod tests {
@@ -339,10 +183,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn parse_front_matter_extracts_scenario() {
-        let raw = "---\nscenario: btc-2023-1m-rsi-reversion\nseed: 0xC0FFEE\n---\n# Body\n";
-        let fm = parse_front_matter(raw);
-        assert_eq!(fm.scenario.as_str(), "btc-2023-1m-rsi-reversion");
-    }
+    // `parse_front_matter_extracts_scenario` moved to
+    // `ui::reports::loader` `#[cfg(test)]` with the lifted fn (D2/AC5) — its
+    // assertion survives there.
 }

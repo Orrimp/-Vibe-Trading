@@ -617,6 +617,12 @@ fn main() -> Result<()> {
     // files; no bus/audit dependency.
     ui::baseline::load_into(&mut cockpit);
 
+    // cockpit-reports-viewer v0.1.0 — boot-scan the committed `backtest-*.md`
+    // corpus so the navigable Reports screen lists it on first visit (or the
+    // empty-list copy, never a panic, if `spec/` reports are absent). Read-only
+    // over committed files; no bus/audit dependency. Default route stays Live.
+    ui::reports::load_into(&mut cockpit);
+
     // F7 fix 2026-05-24 — seed the strategy registry from the engine's
     // dispatched ScenarioStrategy ids so the Lab chip row is non-empty
     // at cold boot. Without this seed, model.strategies stays at

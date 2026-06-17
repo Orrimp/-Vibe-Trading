@@ -1,0 +1,11 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: "reports_summary(&st, ThemeMode::Dark)"
+---
+screen: reports
+theme: Dark
+picker_title: Backtest reports
+picker_rows:
+  empty: No backtest reports found in spec/ yet.
+detail:
+  state: prompt copy=Select a report to view its results.

@@ -3540,3 +3540,267 @@ mod baseline_screen {
         );
     }
 }
+
+// ── cockpit-reports-viewer v0.1.0 — Reports screen (M-TEST-4 / AC2/AC6) ───────
+//
+// Textual-summary snapshot of the Reports screen body for Dark + Light,
+// mirroring what `screens::reports::view` composes (left picker + right
+// detail). A deterministic fixture `ReportsScreenState` (hand-built
+// `ReportEntry` list + a `Ready` `ReportLoadResult`) makes the snapshot
+// checkout-independent — it does NOT touch the real `spec/` corpus.
+mod reports_screen {
+    use super::*;
+    use std::path::PathBuf;
+    use trading_core::BacktestMetrics;
+    use ui::reports::{ReportEntry, ReportsScreenState};
+    use ui::theme::{ThemeMode, color as t};
+    use ui::viewer::{ReportFrontMatter, ReportLoadResult};
+    use ui::widgets::num::{format_count, format_pct_max_dd, format_pct_sentiment, format_sharpe};
+
+    /// The one theme-dependent decision the picker makes: the active-row
+    /// accent token. Resolved to a theme-tagged name so the snapshot proves
+    /// the screen picks the right token in BOTH themes.
+    fn accent_name(mode: ThemeMode) -> &'static str {
+        match mode {
+            ThemeMode::Dark => "accent(dark)",
+            ThemeMode::Light => "accent(light)",
+        }
+    }
+
+    fn sentiment_name(c: iced::Color, mode: ThemeMode) -> &'static str {
+        if c == t::UP_500.current(mode) {
+            "pos"
+        } else if c == t::DOWN_500.current(mode) {
+            "neg"
+        } else if c == t::FG_1.current(mode) {
+            "fg"
+        } else if c == t::FG_3.current(mode) {
+            "fg_muted"
+        } else {
+            "other"
+        }
+    }
+
+    /// Format the six KPI cards as `kpi_strip::ready_strip` would (theme-
+    /// resolved sentiment colours) — same helper shape as `baseline_screen`.
+    fn kpi_lines(m: &BacktestMetrics, mode: ThemeMode) -> String {
+        let mut out = String::new();
+        let (tr, tr_c) = format_pct_sentiment(m.total_return_pct, mode);
+        out.push_str(&format!(
+            "    total_return: {tr} color={}\n",
+            sentiment_name(tr_c, mode)
+        ));
+        if m.cagr_present {
+            let (s, _) = format_pct_sentiment(m.cagr_pct, mode);
+            out.push_str(&format!("    cagr: {s}\n"));
+        } else {
+            out.push_str("    cagr: \u{2014}\n");
+        }
+        if m.sharpe_present {
+            out.push_str(&format!("    sharpe: {}\n", format_sharpe(m.sharpe)));
+        } else {
+            out.push_str("    sharpe: \u{2014}\n");
+        }
+        let (mdd, mdd_c) = format_pct_max_dd(m.max_drawdown_pct, mode);
+        out.push_str(&format!(
+            "    max_dd: {mdd} color={}\n",
+            sentiment_name(mdd_c, mode)
+        ));
+        if m.win_rate_present {
+            let (s, _) = format_pct_sentiment(m.win_rate_pct, mode);
+            out.push_str(&format!("    win_rate: {s}\n"));
+        } else {
+            out.push_str("    win_rate: \u{2014}\n");
+        }
+        out.push_str(&format!("    trades: {}\n", format_count(m.trades)));
+        out
+    }
+
+    /// Plain-text summary of the Reports screen body, mirroring
+    /// `screens::reports::view` (left picker + right detail) top → bottom.
+    /// All copy resolves through `strings::REPORTS_*` (no hardcoded strings).
+    fn reports_summary(st: &ReportsScreenState, mode: ThemeMode) -> String {
+        let mut out = String::new();
+        out.push_str("screen: reports\n");
+        out.push_str(&format!("theme: {mode:?}\n"));
+
+        // ── Left picker ──────────────────────────────────────────────────────
+        out.push_str(&format!(
+            "picker_title: {}\n",
+            strings::REPORTS_PICKER_TITLE
+        ));
+        out.push_str("picker_rows:\n");
+        match &st.discovered {
+            PanelState::Ready(entries) if !entries.is_empty() => {
+                for (idx, e) in entries.iter().enumerate() {
+                    let active = st.selected == Some(idx);
+                    let label = format!("{} \u{00b7} {}", e.slug, e.file_stem);
+                    if active {
+                        out.push_str(&format!(
+                            "  [{label}] active color={} bg=panel_raised\n",
+                            accent_name(mode)
+                        ));
+                    } else {
+                        out.push_str(&format!("  [{label}] inactive color=fg_muted\n"));
+                    }
+                }
+            }
+            _ => out.push_str(&format!("  empty: {}\n", strings::REPORTS_EMPTY_LIST)),
+        }
+
+        // ── Right detail ─────────────────────────────────────────────────────
+        out.push_str("detail:\n");
+        match (&st.selected, &st.loaded) {
+            (Some(_), PanelState::Ready(r)) => {
+                out.push_str("  kpi_strip:\n");
+                match &r.metrics {
+                    PanelState::Ready(m) => out.push_str(&kpi_lines(m, mode)),
+                    PanelState::Error(_) => out.push_str("    state: error (muted strip)\n"),
+                    _ => out.push_str("    state: unavailable\n"),
+                }
+                out.push_str("  curve+band:\n");
+                match &r.equity {
+                    PanelState::Ready(s) => {
+                        out.push_str(&format!("    state: ready points={}\n", s.points.len()));
+                    }
+                    PanelState::Loading => out.push_str("    state: loading\n"),
+                    // The common corpus case — no companion CSV (§ Data contract).
+                    PanelState::Empty => out.push_str("    state: empty (no companion CSV)\n"),
+                    PanelState::Error(_) => out.push_str("    state: error\n"),
+                }
+                // Markdown body — first non-blank line, heading-mapped.
+                let first = r
+                    .body_markdown
+                    .lines()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("");
+                out.push_str(&format!("  body_first_line: {first}\n"));
+            }
+            (Some(_), PanelState::Error(_)) => {
+                out.push_str(&format!(
+                    "  state: error copy={}\n",
+                    strings::REPORTS_LOAD_ERROR
+                ));
+            }
+            _ => {
+                out.push_str(&format!(
+                    "  state: prompt copy={}\n",
+                    strings::REPORTS_SELECT_PROMPT
+                ));
+            }
+        }
+        out
+    }
+
+    /// A deterministic two-entry discovered list + a `Ready` selection whose
+    /// KPI strip is populated and whose equity is `Empty` (the corpus's
+    /// honest state). Checkout-independent — no `spec/` access.
+    fn reports_state_ready() -> ReportsScreenState {
+        let entries = vec![
+            ReportEntry {
+                slug: SmolStr::new("v0-paper-sma"),
+                file_stem: SmolStr::new("backtest-20260418-090000-btc-sma"),
+                path: PathBuf::from(
+                    "/fixture/v0-paper-sma/reports/backtest-20260418-090000-btc-sma.md",
+                ),
+            },
+            ReportEntry {
+                slug: SmolStr::new("v05-composed-strategies"),
+                file_stem: SmolStr::new("backtest-20260420-152017-btc-rsi"),
+                path: PathBuf::from(
+                    "/fixture/v05-composed-strategies/reports/backtest-20260420-152017-btc-rsi.md",
+                ),
+            },
+        ];
+        let metrics = BacktestMetrics {
+            total_return_pct: dec!(12.34),
+            cagr_pct: dec!(12.34),
+            cagr_present: true,
+            sharpe: dec!(1.1000),
+            sharpe_present: true,
+            max_drawdown_pct: dec!(5.00),
+            win_rate_pct: dec!(55.0),
+            win_rate_present: true,
+            trades: 7,
+        };
+        let loaded = ReportLoadResult {
+            front_matter: ReportFrontMatter {
+                scenario: SmolStr::new("btc-sma"),
+            },
+            metrics: PanelState::Ready(metrics),
+            // Equity Empty — the honest corpus state (no companion CSV).
+            equity: PanelState::Empty,
+            body_markdown: "# Backtest report\n\n## Summary\nrow\n".to_string(),
+        };
+        ReportsScreenState {
+            discovered: PanelState::Ready(entries),
+            selected: Some(0),
+            loaded: PanelState::Ready(loaded),
+        }
+    }
+
+    /// AC2/AC6 — Ready selection snapshot (dark). KPI strip populated, curve
+    /// + band Empty-by-data (asserted as the expected state, not a failure).
+    #[test]
+    #[allow(non_snake_case)]
+    fn reports_snapshot__ready_dark() {
+        let st = reports_state_ready();
+        assert_snapshot!(
+            "reports_snapshot__ready_dark",
+            reports_summary(&st, ThemeMode::Dark)
+        );
+    }
+
+    /// AC2/AC6 — Ready selection snapshot (light — both-theme gate). The
+    /// active-row accent token differs Dark vs Light.
+    #[test]
+    #[allow(non_snake_case)]
+    fn reports_snapshot__ready_light() {
+        let st = reports_state_ready();
+        assert_snapshot!(
+            "reports_snapshot__ready_light",
+            reports_summary(&st, ThemeMode::Light)
+        );
+    }
+
+    /// AC3 — empty-list state (no reports discovered): the picker shows the
+    /// `REPORTS_EMPTY_LIST` copy, the detail pane the select prompt. Dark.
+    #[test]
+    #[allow(non_snake_case)]
+    fn reports_snapshot__empty_list_dark() {
+        let st = ReportsScreenState {
+            discovered: PanelState::Empty,
+            selected: None,
+            loaded: PanelState::Loading,
+        };
+        assert_snapshot!(
+            "reports_snapshot__empty_list_dark",
+            reports_summary(&st, ThemeMode::Dark)
+        );
+    }
+
+    /// AC3 — Error-on-detail state: a selection whose load failed (vanished
+    /// file) renders the `REPORTS_LOAD_ERROR` copy, no panic. Dark.
+    #[test]
+    #[allow(non_snake_case)]
+    fn reports_snapshot__detail_error_dark() {
+        let mut st = reports_state_ready();
+        st.loaded = PanelState::Error(strings::REPORTS_LOAD_ERROR.into());
+        assert_snapshot!(
+            "reports_snapshot__detail_error_dark",
+            reports_summary(&st, ThemeMode::Dark)
+        );
+    }
+
+    /// AC6 — the active-row accent token genuinely differs between themes
+    /// (color is theme-resolved, not hardcoded). Belt-and-braces beyond the
+    /// snapshot text.
+    #[test]
+    fn reports_active_accent_differs_by_theme() {
+        assert_ne!(
+            t::ACCENT.current(ThemeMode::Dark),
+            t::ACCENT.current(ThemeMode::Light),
+            "active-row accent must differ Dark vs Light (theme-resolved token)"
+        );
+    }
+}

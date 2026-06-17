@@ -14,6 +14,7 @@ active: Lab
   rule=— label=Strategies screen=Strategies fg=fg_2
   rule=— label=Memory screen=Memory fg=fg_2
   rule=— label=Models screen=Models fg=fg_2
+  rule=— label=Reports screen=Reports fg=fg_2
   rule=— label=Trail screen=Trail fg=fg_2
 --- group 2 ---
   rule=— label=Settings screen=Settings fg=fg_2

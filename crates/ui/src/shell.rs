@@ -27,7 +27,7 @@ use iced::widget::{Column, Container, Row, Stack};
 
 use crate::assistant;
 use crate::screens::{
-    baseline, compare, lab, live, memory, models, settings, strategy_registry, trail,
+    baseline, compare, lab, live, memory, models, reports, settings, strategy_registry, trail,
 };
 use crate::state::{Cockpit, Screen};
 use crate::theme::layout::{
@@ -150,6 +150,9 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         Screen::Memory => memory::view(model, mode),
         // Phase F: Models routes to the full models screen (replaces Phase A placeholder).
         Screen::Models => models::view(model, mode),
+        // cockpit-reports-viewer v0.1.0: browse + render committed backtest
+        // reports (D5 — navigable via the Library group, not default-routed).
+        Screen::Reports => reports::view(model, mode),
         // Phase D: Trail routes to the new trail::view which delegates to
         // audit::view in list mode (R2.2 byte-identity gate) and renders
         // the upstream node stack in trail mode (R2.3).

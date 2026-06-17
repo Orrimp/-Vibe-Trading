@@ -1,0 +1,21 @@
+---
+source: crates/ui/tests/panel_snapshots.rs
+expression: "reports_summary(&st, ThemeMode::Dark)"
+---
+screen: reports
+theme: Dark
+picker_title: Backtest reports
+picker_rows:
+  [v0-paper-sma · backtest-20260418-090000-btc-sma] active color=accent(dark) bg=panel_raised
+  [v05-composed-strategies · backtest-20260420-152017-btc-rsi] inactive color=fg_muted
+detail:
+  kpi_strip:
+    total_return: 12.34% color=pos
+    cagr: 12.34%
+    sharpe: 1.1000
+    max_dd: −5.00% color=neg
+    win_rate: 55.00%
+    trades: 7
+  curve+band:
+    state: empty (no companion CSV)
+  body_first_line: # Backtest report

@@ -237,6 +237,14 @@ impl App {
         // change the deterministic first-frame smoke baseline.
         ui::baseline::load_into(&mut cockpit);
 
+        // cockpit-reports-viewer v0.1.0 — boot-scan the committed
+        // `backtest-*.md` corpus so the navigable Reports screen lists it on
+        // first visit (or shows the empty-list copy, never a blank/panic, in
+        // a fixtures-only checkout where `spec/` reports are absent —
+        // D5/AC4). Filename-only scan, cheap + synchronous; the default
+        // screen stays on `Live` (D5 — navigable, not default-routed).
+        ui::reports::load_into(&mut cockpit);
+
         (Self { cockpit }, iced::Task::none())
     }
 

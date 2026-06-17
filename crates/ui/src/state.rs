@@ -141,6 +141,16 @@ pub enum Screen {
     /// strip, with a 2023/2024 year toggle.
     Baseline,
 
+    // ── cockpit-reports-viewer v0.1.0 ─────────────────────────────────
+    /// Browse + render any committed `spec/*/reports/backtest-*.md`
+    /// (cockpit-reports-viewer R6 / D4). Navigable from the **Library**
+    /// sidebar group, after `Models` (D5 — navigable, not default-routed).
+    /// List-detail: a left picker over the discovered corpus + a right
+    /// detail pane rendering the selected report's KPI strip + markdown
+    /// body (the equity curve / drawdown band render Empty-by-data for the
+    /// current corpus — § Data contract).
+    Reports,
+
     // ── Deprecated aliases — kept for one cycle (Phase A → Phase C) ──
     /// @deprecated — routes to `Live`. Kept for test-harness compat.
     #[deprecated(since = "0.2.0", note = "use Screen::Live")]
@@ -986,6 +996,14 @@ pub struct Cockpit {
     /// `Loading`.
     pub baseline_screen_state: crate::baseline::BaselineScreenState,
 
+    /// cockpit-reports-viewer v0.1.0 — Reports-screen per-session state (D1).
+    /// Sibling of `baseline_screen_state`. Holds the discovered
+    /// `backtest-*.md` corpus (scanned once at boot via
+    /// `reports::state::load_into`), the active selection index, and the
+    /// active selection's `ReportLoadResult`. Cold-start: `discovered:
+    /// Loading`, `selected: None`, `loaded: Loading`.
+    pub reports_screen_state: crate::reports::ReportsScreenState,
+
     /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
     /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
     /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
@@ -1142,6 +1160,7 @@ impl std::fmt::Debug for Cockpit {
             .field("trail_screen_state", &self.trail_screen_state)
             .field("compare_screen_state", &self.compare_screen_state)
             .field("baseline_screen_state", &self.baseline_screen_state)
+            .field("reports_screen_state", &self.reports_screen_state)
             .field("memory_screen_state", &self.memory_screen_state)
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
@@ -1205,6 +1224,7 @@ impl Default for Cockpit {
             trail_screen_state: TrailScreenState::default(),
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
             baseline_screen_state: crate::baseline::BaselineScreenState::default(),
+            reports_screen_state: crate::reports::ReportsScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1319,6 +1339,7 @@ impl Cockpit {
             trail_screen_state: TrailScreenState::default(),
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
             baseline_screen_state: crate::baseline::BaselineScreenState::default(),
+            reports_screen_state: crate::reports::ReportsScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1949,6 +1970,15 @@ pub enum Message {
     /// `Cockpit::baseline_screen_state.active_year`. Typed payload — no
     /// `String` catch-all.
     BaselineSelectYear(BaselineYear),
+
+    // ── cockpit-reports-viewer v0.1.0 — report picker ────────────────────────
+    /// Operator picked the report at index `usize` in the discovered list
+    /// on the Reports screen (R1). Synchronous one-file load in the arm
+    /// (parse the `## Summary` table + scan for the companion CSV). The
+    /// `PathBuf` lives in `reports_screen_state.discovered[idx].path` — the
+    /// message key is the typed index, NEVER a `String`/`PathBuf` payload
+    /// (R1, mirroring `BaselineSelectYear`'s typed-message discipline).
+    ReportsSelect(usize),
 
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
@@ -2826,6 +2856,18 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // loaded (boot-load via `baseline::state::load_into`); the view
             // pulls the active year's curve + the `const` metrics. No I/O.
             model.baseline_screen_state.active_year = year;
+        }
+
+        // ── cockpit-reports-viewer v0.1.0 — report picker ────────────────────
+        Message::ReportsSelect(idx) => {
+            // R1/R2 — record the selection + synchronously load the report
+            // (parse the `## Summary` table + scan for the companion CSV).
+            // Lifted loader; never panics (parse-miss → the loaded field's
+            // metrics PanelState carries Error; vanished file → loaded Error).
+            // The files are small (<100 ms parse), so no async `Task` —
+            // synchronous in the arm, matching the Baseline precedent.
+            model.reports_screen_state.selected = Some(idx);
+            model.reports_screen_state.load_selection(idx);
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────
