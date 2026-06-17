@@ -262,10 +262,18 @@ def check_orphan_features(spec_dir: Path, report: Report) -> None:
         #   - candidate: feature being evaluated, not yet scoped
         #   - roadmap: parent of phase subfolders (tasks live in phases)
         #   - deprecated: archived
+        #   - completed/terminal states (2026-06-17): a finished feature needs no
+        #     active task list — its history lives in git + the root CHANGELOG.md
+        #     index. The orphan rule guards in-flight features (draft/proposed/
+        #     in-progress/arch-done/dev-done), where a missing task list is a real
+        #     drift signal. Per the spec-compression pass that gutted completed
+        #     feature.md files to one-line stubs and removed their tasks.md.
         # Per-status leniency, not a blanket skip.
         fm = parse_frontmatter(feature.read_text())
         status = (fm or {}).get("status", "")
-        if status in {"candidate", "roadmap", "deprecated"}:
+        if status in {"candidate", "roadmap", "deprecated",
+                      "shipped", "shipped-partial", "retired",
+                      "presenter-done", "tester-done"}:
             continue
         if not tasks.exists():
             report.add(

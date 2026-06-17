@@ -239,7 +239,6 @@ arch        = [
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",
   "spec/architecture/01-data-flow.md#backtest-real-binance-data-path-v260-realdata",
   "spec/backtest-real-binance-data/feature.md#design",
-  "spec/backtest-real-binance-data/tasks.md#parallelism-map-for-the-orchestrator",
 ]
 crates      = [
   "crates/backtest",
@@ -265,7 +264,6 @@ product     = "spec/product.md"
 arch        = [
   "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md",
   "spec/v25-tcn-alpha-investigation/feature.md#design",
-  "spec/v25-tcn-alpha-investigation/tasks.md#parallelism-map-for-the-orchestrator",
   "spec/v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6",
   "spec/v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds",
   "spec/architecture/adr/0029-tcn-checkpoint-provenance.md",
@@ -322,7 +320,6 @@ title       = "v2.5 TCN threshold tuning — cheap τ × ε sweep over recalibra
 feature     = "v25-tcn-threshold-tuning"
 product     = "spec/product.md"
 arch        = [
-  "spec/v25-tcn-threshold-tuning/decomp.md",                    # architect M-T1 decomposition (2026-05-21)
   "spec/v25-tcn-threshold-tuning/feature.md#design",            # § Design block locked at M-T1 (cross-pointer to decomp.md)
   "spec/architecture/adr/0033-tcn-alpha-investigation-report-shape.md", # F-verdict algorithm (IMMUTABLE per Q4 = (c); T-classifier embeds in report body)
   "spec/architecture/adr/0035-tcn-sigma-train-recalibration.md", # σ_train recalibration overlay (D3 metadata-path flag re-used)
@@ -361,7 +358,6 @@ feature     = "cockpit-training-control"
 product     = "spec/product.md"
 arch        = [
   "spec/cockpit-training-control/feature.md#design",
-  "spec/cockpit-training-control/tasks.md#parallelism-map-for-the-orchestrator",
   "spec/architecture/adr/0034-cockpit-training-control.md",
   "spec/architecture/adr/0024-audit-sqlite-raw-sqlx.md",       # WAL-mode invariant + latent gap (ADR-0034 § D1)
   "spec/architecture/adr/0030-cockpit-in-process-backtest.md", # lab::runner cancellation-pair precedent (ADR-0034 § D3)
@@ -484,7 +480,6 @@ feature     = "v3-volatility-forecaster"
 product     = "spec/product.md"
 arch        = [
   "spec/v3-volatility-forecaster/feature.md",
-  "spec/v3-volatility-forecaster/decomp.md",                      # ARCHITECT M-T1 2026-05-22 — T-AR-1..T-AR-10 resolved with file:line citations + Wave A-E ordered breakdown + rollback shape per wave
   "spec/dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md",   # § Candidate 1 cost / EV / reuse scoping — analyst inherits
   "spec/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md",    # § Lessons learned (cheap-first, F-verdict immutability, σ_train load-bearing) + § What COULD next chase (vol-target head item)
   "spec/architecture/12-forecast-overlay.md",                     # forecast lane infra carries forward; consumer shape (strategy-side vs risk-engine) is K-vol-2 ADR amendment territory
@@ -931,7 +926,6 @@ arch        = [
   "spec/ui-quality-gate-overhaul/feature.md#m1-a--cockpit-smoke-skill-mandatory-orchestrator-pre-tick-gate",
   "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
   "spec/ui-quality-gate-overhaul/feature.md#h-a4--7s-cockpit-cold-start-budget--unverified-in-spec",
-  "spec/ui-quality-gate-overhaul/tasks.md#m1-a--cockpit-smoke-skill-orchestrator-pre-tick-gate",
 ]
 # AGENT.md edits (skills catalog row + Process discipline rule 6) landed
 # by developer 2026-05-15. The `.claude/skills/cockpit-smoke/SKILL.md`
@@ -953,8 +947,6 @@ arch        = [
   "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
   "spec/ui-quality-gate-overhaul/feature.md#h-a1--iced_testsimulator-rasterization-claim--falsified-with-refined-architecture",
   "spec/ui-quality-gate-overhaul/feature.md#h-a3--proptest-workspace-dep-status--partially-falsified-confirmed",
-  "spec/ui-quality-gate-overhaul/tasks.md#m1-b--real-renderer-snapshots-iced_testscreenshot--existing-visual-diff-helper",
-  "spec/ui-quality-gate-overhaul/tasks.md#m1-c--proptest-layout-invariants",
 ]
 crates      = [
   "crates/ui/Cargo.toml",
@@ -981,7 +973,6 @@ arch        = [
   "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
   "spec/ui-quality-gate-overhaul/feature.md#q2--m2-a-tracing-span-destination--stderr-only-via-tracing_subscriberfmt",
   "spec/ui-quality-gate-overhaul/feature.md#q7--render-debug-cargo-feature-name--confirmed-render-debug",
-  "spec/ui-quality-gate-overhaul/tasks.md#m2-a--tracing-spans-on-widget-draw--layout-lifecycle",
 ]
 crates      = [
   "crates/ui/Cargo.toml",
@@ -1003,7 +994,6 @@ arch        = [
   "spec/ui-quality-gate-overhaul/feature.md#design--architect-synthesis",
   "spec/ui-quality-gate-overhaul/feature.md#q3--m2-b-debugrenderer-lifecycle--build-time-via-cfgfeature--render-debug",
   "spec/ui-quality-gate-overhaul/feature.md#q7--render-debug-cargo-feature-name--confirmed-render-debug",
-  "spec/ui-quality-gate-overhaul/tasks.md#m2-b--debugrenderer-newtype",
 ]
 crates      = [
   "crates/ui/Cargo.toml",
@@ -1049,7 +1039,6 @@ feature     = "ui-rethink-phase-b-lab-run"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-b-lab-run/feature.md",
-  "spec/ui-rethink-phase-b-lab-run/tasks.md",  # ARCHITECT M-T1 (2026-05-19) — wave map + T-D-N decomposition
   "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",   # §6 Phase B sequencing source-of-truth
   "spec/architecture/adr/0030-cockpit-in-process-backtest.md",
   "spec/architecture/adr/0037-phase-b-scenario-dispatch-extraction.md",  # ARCHITECT M-T1 — extends ADR-0030; renumbered 0035→0037 in audit-2026-05-22 (collision with 0035-tcn-sigma-train-recalibration)
@@ -1079,7 +1068,6 @@ feature     = "ui-rethink-phase-c-sidebar-ia"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-c-sidebar-ia/feature.md",         # R1-R10 contract + Design § A1-A12 (architect M-T1)
-  "spec/ui-rethink-phase-c-sidebar-ia/tasks.md",           # Waves A-F + T-D-N01-N25 (architect M-T1)
   "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",               # §6 Phase C sequencing source-of-truth + §3 IA + §J6 Live sketch
 ]
 crates      = [
@@ -1122,8 +1110,6 @@ feature     = "ui-rethink-phase-d-trail-followup"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-d-trail-followup/feature.md",
-  "spec/ui-rethink-phase-d-trail-followup/decomp.md",                                      # M-T1 architect deliverable: Q2/Q3/Q4 resolutions + change-map + Wave A-E decomposition + rollback shape (2026-05-20)
-  "spec/ui-rethink-phase-d-trail-followup/tasks.md",
   "spec/archive/presentations-2026-Q2.tar.gz",   # § 5 deferred-items rationale + § 8 next-up follow-up brief — scope source-of-truth
   "spec/archive/tester-reports-2026-05-to-06.tar.gz",                       # § 11 deferred-items table
   "spec/architecture/adr/0031-audit-tick-consumer-envelope.md",                           # carry-forward; § "Phase D amendment (2026-05-20)" applies verbatim, no new ADR
@@ -1144,8 +1130,6 @@ feature     = "ui-rethink-phase-e-compare"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-e-compare/feature.md",                  # M0 analyst deliverable — R1-R8 + Q1-Q8 + K1-K8 + H1-H5 + non-regression contract (2026-05-20)
-  "spec/ui-rethink-phase-e-compare/tasks.md",                    # M0 analyst T-A1..T-A12 + M-OD T-OD1..T-OD8 + M-T1 T-T1-1..T-T1-7 (ticked) + Wave A-E T-D-N1..T-D-N18 (pending developer)
-  "spec/ui-rethink-phase-e-compare/decomp.md",                   # M-T1 architect decomposition (2026-05-20) — K3 hand-parse resolution, H1=40 % first-open hit-rate, H4 ≤ 15 ms p99 static argument, Q6 sub-decision (subtitle + per-cell tooltip), state location locked at `state.rs:~880`, 5-wave shape A-E with T-D-N1..N18, spike requirement = NONE
   "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",                     # §6 Phase E sequencing source-of-truth (lines 1082-1096) + §J3 (lines 340-390) + §3 IA (lines 651-744)
 ]
 crates      = ["crates/ui"]   # Phase E is UI-only (R7.1-R7.7 contract: no backtest binary changes, no anchored renderer touch). Files: src/compare/mod.rs, src/compare/state.rs, src/compare/cache.rs, src/widgets/matrix.rs, src/screens/compare.rs, src/state.rs, src/strings.rs, src/lib.rs, src/shell.rs, src/widgets/mod.rs, src/screens/mod.rs, src/lab/state.rs
@@ -1166,8 +1150,6 @@ feature     = "ui-rethink-phase-f-memory-models-assistant"
 product     = "spec/product.md"
 arch        = [
   "spec/ui-rethink-phase-f-memory-models-assistant/feature.md",   # M0 analyst deliverable — R1-R8 + Q1-Q8 + K1-K8 + H1-H6 + non-regression contract (2026-05-20)
-  "spec/ui-rethink-phase-f-memory-models-assistant/tasks.md",     # M0 analyst T-A1..T-A15 + M-OD T-OD1..T-OD8 + M-T1 T-T1-1..T-T1-9 (ticked 2026-05-20) + Wave A-F T-D-N1..T-D-N23 (pending developer)
-  "spec/ui-rethink-phase-f-memory-models-assistant/decomp.md",    # M-T1 architect decomposition (2026-05-20) — K1+Q8 refined to crates/reflection/src/query.rs (sibling of store/; honors "no trait change" while respecting cockpit_live as async/sync boundary), K2 full serde shape with #[serde(default)] (inventoried live tcn-bs1/bs2 metadata.json), K3 forecast namespace EMPTY → sparkline deferred to v0.2.0, K4 drawer + Assistant slot live in different shell columns (no co-existence conflict, no auto-collapse), K6 Option A (RIGHT_RAIL_OPEN_WIDTH_PX = 320.0 additive; RIGHT_RAIL_WIDTH_PX = 0.0 preserved; trail_drawer byte-identical), H1 reflection.db ABSENT at 2026-05-20 → 0-row cold-empty path dominant, H2 ≤ 1 ms by static argument over 2 × ≤ 1 KB JSON. 6-wave A-F shape with T-D-N1..N23. Net-new file count: 12 source + 6 PNG baselines + 1 trace row. Spike requirement = NONE.
   "spec/dev-notes/archive/2026-Q2/ui-rethink-2026-05-17.md",                      # §6 Phase F sequencing source-of-truth (lines 1098-1112) + §J7 (lines 561-595, reflection memory) + §J8 (lines 596-637, model versions) + §6 Phase ordering (lines 1114-1140)
 ]
 crates      = [
@@ -1278,7 +1260,6 @@ arch        = [
   "spec/cockpit-performance-and-input-responsiveness/feature.md#hypothesis-register",
   "spec/cockpit-performance-and-input-responsiveness/feature.md#design--architect-synthesis",
   "spec/cockpit-performance-and-input-responsiveness/feature.md#m0-falsifier-batch--final-state-going-into-the-orchestrator-run",
-  "spec/cockpit-performance-and-input-responsiveness/tasks.md",
 ]
 crates      = [
   "crates/ui/src/widgets/throttled_spinner.rs",
@@ -1314,12 +1295,10 @@ product     = "spec/product.md"
 arch        = [
   # analyst-authored Architecture findings F1-F6 in feature.md
   "spec/lab-end-to-end-v2/feature.md",
-  "spec/lab-end-to-end-v2/tasks.md",
   # ARCHITECT M-T1 (2026-05-24) — decomp.md is the developer's verbatim
   # copy-source for T-AR-1..T-AR-8 (file:line + Rust block + cargo
   # invocation + expected literal output). Wave plan with 4 waves
   # (D-1 → D-2 → D-3 ∥ D-4); ~7-10 days dev wall-clock.
-  "spec/lab-end-to-end-v2/decomp.md",
 ]
 crates      = [
   # ANALYST M0 (2026-05-24) — paths surfaced from F1-F6 + R1-R9 in feature.md.
@@ -1368,7 +1347,6 @@ arch        = [
   # ANALYST M0 (2026-05-24) — feature.md + tasks.md authored.
   # ARCHITECT M-T1 (2026-05-24) — decomp.md + ADR-0040 authored.
   "spec/lab-yahoo-realdata/feature.md",
-  "spec/lab-yahoo-realdata/tasks.md",
   "spec/lab-yahoo-realdata/decomp.md",
   "spec/architecture/adr/0040-yahoo-realdata-path.md",
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",
@@ -1508,7 +1486,6 @@ arch        = [
   # No decomp.md authored (tasks.md § T-AR is sufficient at this scope).
   # No ADR amendment required (ADR-0038 § D6.b applies trivially with empty anchor set).
   "spec/vol-killswitch-overlay-noop-fix/feature.md",
-  "spec/vol-killswitch-overlay-noop-fix/tasks.md",               # ARCHITECT M-T1: T-AR-OD-1 (Q4 escalation) + revised T-D-N1..T-D-N8 wave shape under Q4=(p1) default
   "spec/v3-volatility-forecaster-noop-fix/feature.md",           # PRECEDENT — sibling fix shape; Q1=(ii) / Q2=(a) / Q3=(b) pattern
   "spec/v3-volatility-forecaster-noop-fix/decomp.md",            # PRECEDENT — wave shape + forensic-gate FAIL/PASS protocol
   "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",  # PRECEDENT — diagnostic chain for the sibling no-op
@@ -1632,7 +1609,6 @@ arch        = [
   # ANALYST M0 (2026-05-26) — paths surfaced from R1-R4 + non-regression contract.
   # ARCHITECT M-T1 (2026-05-26) — Q1=(a) + Q2=(a) standing-Autoapprove applied; H2 partially-falsified (Recipe pattern, not Task::stream); K5 single-slot replace acceptable with non-clobber assertion at T-D-N4 case 4; K3 config verified at 1136 bytes on disk; NO NEW ADR (binary glue, no architectural surface change). Intercept site: `crates/ui/src/bin/cockpit_live.rs::AppState::update` around lines 1314-1362 (LabRunRequested precedent block — new TrainingPressed branch inserts ABOVE the `ui::state::update(&mut self.cockpit, msg)` delegation at line 1034). H2 resolution: NEW `crates/ui/src/lab/training_log.rs::TrainingLogRecipe` mirrors `crates/ui/src/lab/progress.rs::LabProgressRecipe` symbol-for-symbol with a `std::sync::mpsc::Receiver<TrainingLogLine>` → `tokio::task::spawn_blocking` bridge inside `stream()`.
   "spec/cockpit-training-pressed-wiring/feature.md",
-  "spec/cockpit-training-pressed-wiring/tasks.md",
   "spec/cockpit-activity-status-bar/feature.md",                 # PREDECESSOR — Wave C T-D-N9 introduced the `training_activity_handle` field this brief populates
   "spec/cockpit-training-control/feature.md",                    # PARENT — defines `spawn_training_run`, `TrainingConfig`, `TrainingHandle`, cancellation contract
   "crates/ui/src/bin/cockpit_live.rs",                           # FIX SITE — new TrainingPressed intercept around lines 1314-1362 (LabRunRequested precedent); subscription() recipe addition around lines 1407-1448 (alongside progress_sub)
@@ -1699,7 +1675,6 @@ arch        = [
   # in the call site at anthropic_impl.rs:412-416. Send-constraint
   # workaround = scope-drop before `decode_response()` at line 421.
   "spec/cockpit-activity-llm-producer/feature.md",
-  "spec/cockpit-activity-llm-producer/tasks.md",                   # ARCH M-T1 — T-AR-1..T-AR-5 inline closure
   "spec/cockpit-activity-status-bar/feature.md",                   # PARENT — § Q8 + § R5.1 forward-list closed by this brief
   "spec/architecture/adr/0042-cockpit-activity-broadcast.md",      # PARENT ADR — ActivityKind::LlmCall forward-list (§ Q8) + 64-char label budget (§ R1.2); NO amendment required at v0.1.1
   "spec/v3-llm-forecaster/feature.md",                             # provider lifecycle owner; this brief taps the existing complete() call site
@@ -1767,7 +1742,6 @@ arch        = [
   # Architect M-T1 ratifies; M-T1 is optional / light (~30 min) and may be
   # skipped per the orchestrator's discretion (small refactor + test only).
   "spec/subscription-pipe-server-time-template/feature.md",
-  "spec/subscription-pipe-server-time-template/tasks.md",
   "spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md",   # AUDIT FRAMING — § R1 "Promote channel-recipe-state-widget end-to-end to a first-class layer" recommendation; identifies ServerTimeRecipe as Recipe needing this treatment
   "spec/cockpit-activity-status-bar/feature.md",            # PREDECESSOR (CARVE-OUT) — v0.1.0 shipped 2026-05-26 cleared the cockpit_live.rs file for this refactor
 ]
@@ -1854,7 +1828,6 @@ feature     = "cockpit-toast-queue"
 product     = "spec/product.md"
 arch        = [
   "spec/cockpit-toast-queue/feature.md",
-  "spec/cockpit-toast-queue/tasks.md",
   "spec/architecture/adr/0046-cockpit-toast-queue.md",                          # ADR — storage + bound + render + dismissal lock (architect M-T1 2026-05-27)
   "spec/cockpit-training-pressed-wiring/feature.md",                           # PARENT — K5 deferral
   "spec/cockpit-activity-status-bar/feature.md",                                # SIBLING — activity-tape surface (Q4=(a) above this)
@@ -1957,7 +1930,6 @@ feature     = "cockpit-toast-queue-v0.2.0-cleanup"
 product     = "spec/product.md"
 arch        = [
   "spec/cockpit-toast-queue-v0.2.0-cleanup/feature.md",
-  "spec/cockpit-toast-queue-v0.2.0-cleanup/tasks.md",
   "spec/cockpit-toast-queue/feature.md",                                       # PREDECESSOR — v0.1.0 shipped 2026-05-27, commit a723d24
   "spec/architecture/adr/0046-cockpit-toast-queue.md",                          # PARENT ADR — § T-AR-5 specified the method shim; this brief restores the ADR-locked end state
 ]
@@ -1985,7 +1957,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-27) — feature.md + tasks.md authored.
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",
-  "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/tasks.md",
   "spec/lab-yahoo-realdata/feature.md",                                         # PREDECESSOR — v0.1.1 shipped 2026-05-27, anchor 69 locked
   "spec/archive/presentations-2026-Q2.tar.gz", # § Open decisions Q1+Q3 sourced this brief
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                          # parent ADR — Yahoo realdata path + revision pin
@@ -2032,7 +2003,6 @@ product     = "spec/product.md"
 arch        = [
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                       # PARENT ADR — D1 pattern (d) Combination; D2 file:line locations; D3 categories A+B+C; D4 known-gaps; D5 invocation cadence (per-feature M-FINAL + workspace test gate); D6 anchor-additivity contract
   "spec/lab-recipe-test-harness/feature.md",
-  "spec/lab-recipe-test-harness/tasks.md",
   "spec/bug-log.md",                                                             # ROOT-CAUSE CONTEXT — bug #64 attempt-1 post-mortem documenting the 3 regressions this harness catches
   "spec/dev-notes/archive/2026-Q2/bug-64-progress-bar-investigation-2026-05-27.md",              # 11-hop code-path trace + D.1.1/D.2.1 fix-option taxonomy that attempt-1 implemented
 ]
@@ -2064,7 +2034,6 @@ feature     = "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit"
 product     = "spec/product.md"
 arch        = [
   "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md",
-  "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/tasks.md",
   "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/feature.md",            # PREDECESSOR — v0.3.0 partial-coverage ship; this brief closes the SOFT-PASS carve-out
   "spec/archive/tester-reports-2026-05-to-06.tar.gz",  # § 8 Open Items naming the 8 deferred scenarios
   "spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/sharpe-delta-table-2026-05-27.md",  # the per-scenario template R3 extends
@@ -2122,7 +2091,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-28) — feature.md + tasks.md authored.
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md",
-  "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md",
   "spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/feature.md",                                        # PREDECESSOR — v0.1.2 shipped 2026-05-28 SOFT-PASS, anchor 70 locked
   "spec/archive/tester-reports-2026-05-to-06.tar.gz",  # ROOT-CAUSE — § H3 BTC SHA drift + § H1 K1 fallback writeups
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                               # parent ADR — architect M-T1 amended § Changelog 2026-05-28
@@ -2164,7 +2132,6 @@ feature     = "v5-latency-slippage-sim-v0.5.0-square-root-market-impact"
 product     = "spec/product.md"
 arch        = [
   "spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/feature.md",
-  "spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/tasks.md",
   "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/feature.md",                                  # PREDECESSOR — v0.4.0 closed candle/realdata coverage gap; v0.5.0 closes the model-quality gap
   "spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/sharpe-delta-table-2026-05-28.md",     # the 19-scenario per-scenario template R5 extends with sqrt column
   "spec/architecture/adr/0043-simulated-latency-and-slippage.md",                                                 # ENGINE ADR — § D3 is the deferred-to-v0.2.0+ promise this brief closes; architect M-T1 amends Changelog OR authors ADR-0050
@@ -2212,7 +2179,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored.
   "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md",
-  "spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/tasks.md",
   "spec/lab-recipe-test-harness/feature.md",                                                                        # PREDECESSOR — v0.1.0 shipped 2026-05-28
   "spec/archive/presentations-2026-Q2.tar.gz",                                # PREDECESSOR DECK — § What's next extension targets
   "spec/architecture/adr/0048-lab-recipe-test-harness.md",                                                          # PARENT ADR — D1-D6 carries forward verbatim (Changelog row appended 2026-05-29; no new ADR)
@@ -2256,7 +2222,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored.
   "spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/feature.md",
-  "spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md",
   "spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/feature.md",                                                # PREDECESSOR — v0.1.3 shipped 2026-05-29; helper extraction + ETH-H1 registration + ETH-daily row 70 explicit deferral
   "spec/archive/presentations-2026-Q2.tar.gz",  # PREDECESSOR DECK — § What's deferred to v0.1.4 (owned-debt declaration)
   "spec/architecture/adr/0040-yahoo-realdata-path.md",                                                                            # PARENT ADR — § Changelog 2026-05-29 v0.1.4 amendment (D-V0.1.4-5) emitted by architect M-T1 fast-skip; no new ADR
@@ -2299,7 +2264,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick A Wave 1 promotion.
   "spec/visual-fail-html-reporter/feature.md",
-  "spec/visual-fail-html-reporter/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; bundle ordering; tester contract amendment ownership
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
   "spec/dev-notes/archive/2026-Q2/ui-testability-deep-dive-2026-05-15.md",            # ROOT-CAUSE — § 4.1 agent-contract gap analysis
@@ -2321,7 +2285,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick A Wave 1 promotion.
   "spec/ui-test-harness-viewport-matrix/feature.md",
-  "spec/ui-test-harness-viewport-matrix/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # STRATEGIC DIRECTION — Pick A Wave 1 framing; sequencing parallel-with-visual-fail-HTML; risk R1 stanza inheritance contract
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick A Top-5 Rank 2 ranking
   "spec/ui-test-harness-bootstrap/feature.md",                                        # PREDECESSOR — Charts-only three-viewport bootstrap shipped 2026-05-12; SLOTS table + helper layout precedent
@@ -2354,7 +2317,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick B Wave 1 promotion.
   "spec/v2-1-tracing-layer-redactor/feature.md",
-  "spec/v2-1-tracing-layer-redactor/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation; shared opt-out shape
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 3 ranking
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
@@ -2429,7 +2391,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick B Wave 1 promotion.
   "spec/ui-contrast-asserter/feature.md",
-  "spec/ui-contrast-asserter/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-b-cross-cutting-safety-duo-2026-05-29.md",                     # STRATEGIC DIRECTION — Pick B Wave 1 framing; bundle Q-DUO-WARN 2-week WARN observation
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick B Top-5 Rank 4 ranking ("best-cheap-pick")
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
@@ -2509,7 +2470,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick C Wave 1 promotion.
   "spec/queue-staleness-reconciliation/feature.md",
-  "spec/queue-staleness-reconciliation/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT markdown-diff dialect; K4 amendment ownership table
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking ("already paid reactively 3×")
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301 shape for analyst-authored bundles
@@ -2537,7 +2497,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick C Wave 1 promotion.
   "spec/adr-registry-atomic-lint/feature.md",
-  "spec/adr-registry-atomic-lint/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT; K4 amendment ownership-table
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking ("already paid reactively 3×")
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301
@@ -2565,7 +2524,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-29) — feature.md + tasks.md authored under Pick C Wave 1 promotion.
   "spec/operator-ledger-schema-lint/feature.md",
-  "spec/operator-ledger-schema-lint/tasks.md",
   "spec/dev-notes/archive/2026-Q2/pick-c-orchestrator-hygiene-2026-05-29.md",                         # STRATEGIC DIRECTION — Pick C Wave 1 framing; bundle Q-HYG-EMIT; K4 amendment ownership-table
   "spec/dev-notes/archive/2026-Q2/process-tooling-survey-2026-05-29.md",                              # SURVEY — Pick C Top-5 Rank 5 ranking
   "spec/dev-notes/archive/2026-Q2/pick-a-test-infra-trifecta-2026-05-29.md",                          # BUNDLE-PATTERN PRECEDENT — Pick A trifecta commit 0cea301
@@ -2593,7 +2551,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST M0 (2026-05-30) — feature.md + tasks.md authored from Bug #64 attempt-3 deck FYI #2 carry-forward.
   "spec/lab-yahoo-empty-range-ux/feature.md",
-  "spec/lab-yahoo-empty-range-ux/tasks.md",
   "spec/dev-notes/archive/2026-Q2/bug-64-yahoo-run-code-map-2026-05-29.md",                                          # ROOT-CAUSE MAP — YahooError variant table + state table + cancellation/progress diagrams
   "spec/archive/presentations-2026-Q2.tar.gz", # CARRY-FORWARD SOURCE — § Notes/feedback FYI #2 ("no data for range" UX-polish candidate)
   "spec/lab-yahoo-realdata/feature.md",                                                              # PREDECESSOR — Yahoo realdata v0.1.0 (data_source toggle, preload_yahoo_bars, 95% coverage threshold)
@@ -2716,7 +2673,6 @@ feature     = "perp-basis-mn-spread"
 product     = "spec/product.md"
 arch        = [
   "spec/perp-basis-mn-spread/feature.md#design",                                                         # D-MN.0..9 (Q-MN-1..5 resolved)
-  "spec/perp-basis-mn-spread/tasks.md",                                                                   # M-DEV-0..10 + M-TEST
   "spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md",              # § D6.10 — the short-side engine + 2nd sidecar (FIRST run_path touch)
   "spec/architecture/adr/0003-decimal-money-math.md",                                                     # short notional + funding accrual + rank-residual are Decimal (no f64)
   "spec/architecture/adr/0002-rng-chacha20.md",                                                           # ZERO new RNG (2nd sidecar gathers the existing idx_seq)
@@ -2760,7 +2716,6 @@ feature     = "cockpit-baseline-panel"
 product     = "spec/product.md"
 arch        = [
   "spec/cockpit-baseline-panel/feature.md#design",                 # § Design — D1/D2 resolved, loader contract, Screen::Baseline integration
-  "spec/cockpit-baseline-panel/tasks.md",                          # ordered T1–T10 breakdown (ui-designer ‖ developer)
   "spec/architecture/adr/0030-cockpit-in-process-backtest.md",     # ui→backtest edge (Lab Run only) — NOT used here; confirms AC7 no-new-edge
 ]
 crates      = ["crates/ui"]   # pure-`ui` — crates/ui/src/baseline/{mod,state,loader}.rs + screens/baseline.rs; no new crate edge (ui→backtest already exists per ADR-0030, unused here)
@@ -2809,7 +2764,6 @@ feature     = "cockpit-live-dashboard-wiring"
 product     = "spec/product.md"
 arch        = [
   "spec/cockpit-live-dashboard-wiring/feature.md#design",          # § Design — D1–D5 resolved, equity-buffer contract, KPI-source mapping, 4 PanelState transitions, screens/live.rs:58,66 swap; no ADR (additive, within cockpit_live subscription + PanelState precedent)
-  "spec/cockpit-live-dashboard-wiring/tasks.md",                   # ordered T1–T9 (ui-designer-solo)
   "spec/cockpit-baseline-panel/feature.md#design",                 # reused render path — equity_curve/kpi_strip widgets + 4-state PanelState pattern (this is the live-feed sibling of the Baseline file-fed panel)
 ]
 crates      = [
@@ -2835,7 +2789,6 @@ crates      = ["crates/audit", "crates/agent", "crates/ui"]
 arch        = [
   # ANALYST (2026-06-11) — v0.1.0 brief, Q1-Q7 with recommended defaults.
   "spec/live-equity-history-durable/feature.md",
-  "spec/live-equity-history-durable/tasks.md",
   # ARCHITECT (2026-06-11) — A1-A7 resolutions; ADR-0052 decision record.
   "spec/architecture/adr/0052-durable-live-equity-series.md",
 ]
@@ -2862,7 +2815,6 @@ product     = "spec/product.md"
 arch        = [
   # ANALYST (2026-06-11) — v0.1.0 brief, Q1-Q6 with recommended defaults.
   "spec/paper-mode-equity-wiring/feature.md",
-  "spec/paper-mode-equity-wiring/tasks.md",
   # ARCHITECT (2026-06-11) — v0.2.0 arch-done. Q1-Q6 all = analyst default, ACCEPTED.
   # ADR-0053: unify the per-bar trading loop (research + paper) into one feed-parameterized
   # spawn_trading_loop + Option<LiveEquityStore> param (mode gate moves to the caller: research
@@ -2909,7 +2861,6 @@ product     = "spec/product.md"
 crates      = ["crates/ui"]
 arch        = [
   "spec/lab-compare-equity-overlay/feature.md",
-  "spec/lab-compare-equity-overlay/tasks.md",
   "spec/architecture/adr/0055-lab-run-persistence-topology-and-anchor-safety.md",
 ]
 tests       = [
