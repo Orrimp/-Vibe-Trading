@@ -94,8 +94,8 @@ use trading_core::{Bar, StrategyId, Symbol, Timeframe, Venue};
 /// Constant engine seed per ADR-0051 D1 orthogonality.
 /// Per-path variation lives ONLY in `path_seed_j`, NOT in this seed.
 const SEED: [u8; 32] = [
-    0xC0, 0xFF, 0xEE, 0x01, 0x02, 0x03, 0x04, 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0xC0, 0xFF, 0xEE, 0x01, 0x02, 0x03, 0x04, 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 /// Number of bootstrap paths per ensemble. DO NOT reduce — § 0 bands calibrated at N=500.
@@ -381,11 +381,7 @@ async fn run_ensemble_from_bars(
 }
 
 /// Print the Stage-2 verdict row.
-fn print_verdict_row(
-    cell_label: &str,
-    strat_label: &str,
-    result: Option<&DistributionSummary>,
-) {
+fn print_verdict_row(cell_label: &str, strat_label: &str, result: Option<&DistributionSummary>) {
     match result {
         None => {
             println!(
@@ -433,8 +429,8 @@ async fn realdata_simple_strategy_bear_survey() {
     }
 
     let symbols: &[&str] = &[
-        "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT",
-        "LINKUSDT", "SOLUSDT", "XRPUSDT",
+        "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT", "DOTUSDT", "ETHUSDT", "LINKUSDT",
+        "SOLUSDT", "XRPUSDT",
     ];
 
     let years: &[(&'static str, u64, u64)] = &[
@@ -447,12 +443,8 @@ async fn realdata_simple_strategy_bear_survey() {
     // ─────────────────────────────────────────────────────────────────────────
 
     println!();
-    println!(
-        "## Bear-market survey (2021-22) — simple strategies vs buy-and-hold"
-    );
-    println!(
-        "## Corpus: data/binance-2122/ (Binance hourly, net of 4 bps taker cost)"
-    );
+    println!("## Bear-market survey (2021-22) — simple strategies vs buy-and-hold");
+    println!("## Corpus: data/binance-2122/ (Binance hourly, net of 4 bps taker cost)");
     println!();
     println!("### Stage 1 — Point survey (80 cells: 10 symbols × 2 years × 4 strategies)");
     println!();
@@ -533,7 +525,9 @@ async fn realdata_simple_strategy_bear_survey() {
     println!(
         "Predicate: `bh_pct < 0`  AND  `strat_ret_pct − bh_pct ≥ 10.0 pp`  (down-market + margin gate)"
     );
-    println!("Cap: top-{CANDIDATE_CAP} by margin DESC; tie-break (margin DESC, symbol ASC, year ASC, strat_idx ASC).");
+    println!(
+        "Cap: top-{CANDIDATE_CAP} by margin DESC; tie-break (margin DESC, symbol ASC, year ASC, strat_idx ASC)."
+    );
     println!();
 
     // Collect all qualifiers before cap (for visibility).
@@ -558,13 +552,18 @@ async fn realdata_simple_strategy_bear_survey() {
         println!();
     } else {
         println!(
-            "**Total qualifying cells: {}** (before cap)", total_qualifiers
+            "**Total qualifying cells: {}** (before cap)",
+            total_qualifiers
         );
         println!();
         println!("| Rank | Symbol · Year | Strategy | B&H% | Strat% | Margin | Keep? |");
         println!("|---|---|---|---|---|---|---|");
         for (i, c) in all_qualifiers.iter().enumerate() {
-            let keep = if i < CANDIDATE_CAP { "KEEP" } else { "DROP (cap)" };
+            let keep = if i < CANDIDATE_CAP {
+                "KEEP"
+            } else {
+                "DROP (cap)"
+            };
             println!(
                 "| {} | {} · {} | {} | {:+.1}% | {:+.1}% | {:+.1} pp | {} |",
                 i + 1,
@@ -637,8 +636,7 @@ async fn realdata_simple_strategy_bear_survey() {
         );
 
         let real_bars = load_year_bars(&root, &sym, cand.year_start, cand.year_end).await;
-        let result =
-            run_ensemble_from_bars(&sym, cand.strat_id, real_bars, ensemble_seed).await;
+        let result = run_ensemble_from_bars(&sym, cand.strat_id, real_bars, ensemble_seed).await;
 
         if let Some(ref s) = result {
             let verdict = score_verdict(s);
@@ -666,13 +664,10 @@ async fn realdata_simple_strategy_bear_survey() {
         );
         let contrast_seed = ensemble_seed_for(0 /* SMA */, CONTRAST_RANK);
 
-        eprint!(
-            "  running {contrast_label} × SMA (seed=0x{contrast_seed:016X}) … "
-        );
+        eprint!("  running {contrast_label} × SMA (seed=0x{contrast_seed:016X}) … ");
 
         let real_bars = load_year_bars(&root, &sym, cc.year_start, cc.year_end).await;
-        let result =
-            run_ensemble_from_bars(&sym, cc.strat_id, real_bars, contrast_seed).await;
+        let result = run_ensemble_from_bars(&sym, cc.strat_id, real_bars, contrast_seed).await;
 
         if let Some(ref s) = result {
             let verdict = score_verdict(s);
@@ -681,7 +676,11 @@ async fn realdata_simple_strategy_bear_survey() {
             eprintln!("SKIP (contrast)");
         }
 
-        print_verdict_row(&contrast_label, "SMA 20/50 (up-market contrast)", result.as_ref());
+        print_verdict_row(
+            &contrast_label,
+            "SMA 20/50 (up-market contrast)",
+            result.as_ref(),
+        );
     }
 
     println!();
@@ -695,9 +694,7 @@ async fn realdata_simple_strategy_bear_survey() {
              the bear sample FIRMS ship-passive. No Stage-2 path-robustness test needed."
         );
     } else if any_robust {
-        println!(
-            "**AT LEAST ONE CANDIDATE SCORED ROBUST under the frozen § 0 rule.**"
-        );
+        println!("**AT LEAST ONE CANDIDATE SCORED ROBUST under the frozen § 0 rule.**");
         println!(
             "This is the HIGH-VALUE tail: a ROBUST survivor on a real market-wide bear \
              is the most credible non-passive signal the program has produced. \
@@ -710,9 +707,7 @@ async fn realdata_simple_strategy_bear_survey() {
             );
         }
     } else {
-        println!(
-            "**All candidates scored FRAGILE or MARGINAL under the frozen § 0 rule.**"
-        );
+        println!("**All candidates scored FRAGILE or MARGINAL under the frozen § 0 rule.**");
         println!(
             "The 2021-22 bear sample FIRMS ship-passive. Even in the deepest available bear \
              (2022: BTC ≈−64%, cross-universe drawdown), no simple strategy shows a \
@@ -728,14 +723,18 @@ async fn realdata_simple_strategy_bear_survey() {
     println!("## - prob_loss: P(final_equity < initial_equity)");
     println!("## - P(sharpe>0): fraction of paths with positive Sharpe");
     println!("## - dd_p50/dd_p95: max-drawdown tail percentiles across paths");
-    println!("## - Negative control (AC-BS.6): any RSI/BBands candidate MUST score FRAGILE/MARGINAL.");
+    println!(
+        "## - Negative control (AC-BS.6): any RSI/BBands candidate MUST score FRAGILE/MARGINAL."
+    );
     println!(
         "##   A mean-reverter scoring ROBUST is a RED FLAG — harness miscalibrated, escalate."
     );
     println!("## - Up-market contrast: SMA on highest-2021-B&H symbol must score differently");
     println!("##   from the down-market candidates (discrimination check).");
     println!("## - Scope cap: hourly bars, default params, 10 large-caps, 2 specific bear years.");
-    println!("##   Null firms ship-passive on available evidence — does NOT prove no strategy ever wins.");
+    println!(
+        "##   Null firms ship-passive on available evidence — does NOT prove no strategy ever wins."
+    );
     println!("##   ROBUST survivor REOPENs the question — flag it loudly.");
 
     // Negative-control assertion (AC-BS.6): if a mean-reverter scored ROBUST, that is a
