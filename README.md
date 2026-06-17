@@ -25,7 +25,7 @@ build-out / wind-down.
 | Strategy research retired | The full DL chain (TCN/PatchTST/GARCH/Transformer), LLM-/xgboost-/regime-forecasters, AND the derivatives perp-basis market-neutral spread (FAMILY-UNIFORM-FRAGILE 2026-06-08) + on-chain (PIT-infeasible) — i.e. the entire active-edge search. |
 | Data | 10-symbol Binance hourly 2023-24 (pinned `3a8b96c4`) + a 2021-22 bear corpus added 2026-06-15 (pinned `4f390622`); fetcher made idempotent for gapped months 2026-06-16. |
 
-For the feature-by-feature audit see [`spec/dev-notes/feature-state-table-2026-05-22.md`](spec/dev-notes/feature-state-table-2026-05-22.md); for the current wind-down reconciliation see [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](spec/dev-notes/backlog-staleness-audit-2026-06-15.md).
+For the feature-by-feature index see [`CHANGELOG.md`](CHANGELOG.md) (one line per implemented feature, grouped by subsystem/version); for the current wind-down reconciliation see [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](spec/dev-notes/backlog-staleness-audit-2026-06-15.md).
 
 ---
 
@@ -123,7 +123,7 @@ cargo test --workspace --lib --features candle
 
 ## Features at a glance (grouped)
 
-Full audit: see [`spec/dev-notes/feature-state-table-2026-05-22.md`](spec/dev-notes/feature-state-table-2026-05-22.md) for all 54 features.
+Full per-feature index: see [`CHANGELOG.md`](CHANGELOG.md) — one line per implemented feature, grouped by subsystem/version.
 
 ### Trading strategies (shipped)
 
@@ -215,11 +215,12 @@ trading/
 
 | File | Purpose |
 |---|---|
+| **[CHANGELOG.md](CHANGELOG.md)** | Canonical "what's been built" index — one line per implemented feature, by subsystem/version. Completed `spec/<slug>/feature.md` are one-line stubs pointing here; full narrative in `git log`. |
 | **[CLAUDE.md](CLAUDE.md)** | Project rules + non-negotiables + coding conventions. AI agents read this first. |
 | **[AGENT.md](AGENT.md)** | Multi-agent orchestration: analyst → architect → developer ‖ ui-designer → tester → presenter loop. |
 | **[spec/product.md](spec/product.md)** | What this project is and isn't (analyst-owned). |
 | **[spec/architecture.md](spec/architecture.md)** | System design (architect-owned). |
-| **[spec/backlog.md](spec/backlog.md)** | What's Active / Queued / Recent. |
+| **[spec/backlog.md](spec/backlog.md)** | Forward-looking Queue + open items (shipped work lives in CHANGELOG.md). |
 
 ---
 
@@ -267,7 +268,7 @@ All `spec/` file edits go through the [`spec-update`](.claude/skills/spec-update
 
 When orienting on the project, these dev-notes give the most signal per word:
 
-- [`feature-state-table-2026-05-22.md`](spec/dev-notes/feature-state-table-2026-05-22.md) — comprehensive 54-feature inventory
+- [`CHANGELOG.md`](CHANGELOG.md) — the comprehensive per-feature inventory (supersedes the retired `feature-state-table` snapshot)
 - [`v25-dl-journey-retrospective-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md) — what the forecaster track taught (4 retirements)
 - [`v3-vol-overlay-noop-discovery-2026-05-22.md`](spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) — the load-bearing engineering pattern
 - [`strategic-reset-2026-05-23.md`](spec/dev-notes/archive/2026-Q2/strategic-reset-2026-05-23.md) — half-validated moat finding + next-6-week roadmap framing

@@ -6,12 +6,12 @@ multi-agent workflow. Before doing anything non-trivial, read [AGENT.md](AGENT.m
 ## Where to start (file precedence for AI agents)
 
 1. **[README.md](README.md)** — human-facing project overview + quickstart + status snapshot + feature groups. Read this first to get oriented.
-2. **CLAUDE.md** (this file) — coding rules + skills + non-negotiables.
-3. **[AGENT.md](AGENT.md)** — multi-agent orchestration contract (analyst → architect → developer ‖ ui-designer → tester → presenter).
-4. **[spec/product.md](spec/product.md)** — what this project IS and ISN'T (analyst-owned).
-5. **[spec/architecture.md](spec/architecture.md)** — system design (architect-owned).
-6. **[spec/backlog.md](spec/backlog.md)** — Active / Queue / Recent.
-7. **[spec/dev-notes/feature-state-table-2026-05-22.md](spec/dev-notes/feature-state-table-2026-05-22.md)** — 54-feature comprehensive inventory.
+2. **[CHANGELOG.md](CHANGELOG.md)** — canonical "what's been built" index: one line per implemented feature, grouped by subsystem/version. The fastest way to learn current state. (Completed `spec/<slug>/feature.md` are one-line stubs that point here; full narrative is in `git log -- spec/<slug>/`.)
+3. **CLAUDE.md** (this file) — coding rules + skills + non-negotiables.
+4. **[AGENT.md](AGENT.md)** — multi-agent orchestration contract (analyst → architect → developer ‖ ui-designer → tester → presenter).
+5. **[spec/product.md](spec/product.md)** — what this project IS and ISN'T (analyst-owned).
+6. **[spec/architecture.md](spec/architecture.md)** — system design (architect-owned).
+7. **[spec/backlog.md](spec/backlog.md)** — forward-looking Queue + open items (shipped work lives in CHANGELOG.md).
 
 ## TL;DR for Claude
 
