@@ -394,6 +394,69 @@ pointed at the exact committed paths above; it asserts `Ready`). AC1 (companion
 exists + reads), AC3 (loader resolves a populated curve for a committed
 report), and AC4 (anchors 119/119) are all satisfied.
 
+### Render-layer verification — populated-curve path (ui-designer, 2026-06-17)
+
+**Operator report:** the cockpit Reports screen "STILL shows no equity data"
+for the demo. **Ground-truth finding: NOT a render bug.** The screen renders
+the populated curve correctly when a `Ready`-equity report is selected; the
+operator was selecting the *no-companion* sibling report (see below).
+
+The prior verification floor (AC3) relied on the `load_*` unit tests + the
+offline `viewer` bin (no-panic) + a *textual-summary* Reports snapshot. But the
+in-cockpit **render-layer** populated-curve path was never exercised: every
+Reports panel snapshot fixture hardcodes `equity: PanelState::Empty`
+(`crates/ui/tests/panel_snapshots.rs::reports_state_ready` @3732), so the
+`(Some(_), PanelState::Ready(r))` arm in `screens::reports::detail_pane` that
+calls `equity_curve::view` / `drawdown_band::view` with a *populated* series
+had zero render coverage. This was the verification gap behind the operator's
+report.
+
+**Ground truth obtained (headless real-renderer, macOS, 1920×1080):**
+
+1. **Live discover→load path is `Ready`.** `loader::discover_reports()` finds
+   the demo at its committed path; `loader::load_report(&entry.path)` resolves
+   the stem-matched companion to `equity: PanelState::Ready` with 1951 points
+   (post-downsample). No discovery/resolver path mismatch.
+2. **The cockpit Reports screen DRAWS the curve.** Rendering the real
+   `screens::reports::view` (full shell) with the demo selected via the
+   production `load_into` → `load_selection` path paints a populated equity
+   curve (ACCENT polyline + UP_500 fill) + drawdown band in the detail pane —
+   verified both by eyeball (`/tmp/reports_demo_render.png`) and by a pixel
+   assertion (4384 curve-hue px in the detail pane vs 284 for the empty state).
+3. **The "no equity data" the operator saw = the wrong (no-companion) report.**
+   The committed corpus has TWO `btc-2024-h1-sma-cross` reports; discovery
+   sorts by `(slug, file_stem)`, so the pre-existing **no-companion**
+   `backtest-20260527-143549-btc-2024-h1-sma-cross` (idx 24, earlier stamp)
+   sorts BEFORE the demo `backtest-20260617-180015-…` (idx 26, with companion).
+   Selecting the earlier row correctly renders the "No equity data" empty state
+   (`equity: Empty`) — its KPI strip still populates (metrics come from the
+   markdown body, not the companion), which is exactly the "charts empty but
+   numbers present" symptom reported. Evidence:
+   `/tmp/reports_nocompanion_render.png`.
+
+**Durable render-layer guard added** (no new crate edge / widget / theme token —
+pure test surface) — `crates/ui/tests/reports_populated_curve_render.rs`:
+- `reports_demo_discover_load_is_ready` — JOB-1 live path: real
+  `discover_reports()` → find demo by `file_stem` → `load_report` → assert
+  `equity: Ready`. Skip-if-absent (demo + companion guards).
+- `reports_demo_real_selection_renders_curve` — e2e through the production
+  `load_into` → `load_selection` → `view` path on the REAL demo; asserts the
+  detail pane paints a populated curve; regenerates the operator-facing PNG at
+  `/tmp/reports_demo_render.png`. Skip-if-absent.
+- `reports_populated_curve_draws_in_detail_pane` — the checkout-independent
+  guard: real `screens::reports::view` rendered headless with a synthetic
+  `Ready` equity series; asserts >1000 ACCENT/UP_500 px in the detail pane
+  (the populated-curve render path that had no coverage). macOS-gated like
+  `render_snapshots.rs` (ADR-0057 D2).
+- `reports_empty_equity_draws_no_curve` — negative control: the SAME harness
+  with `equity: Empty` paints <500 curve-hue px, proving the populated-curve
+  assertion discriminates (not a tautology) and that the empty state renders
+  the "No equity data" body correctly.
+
+No production code changed — `screens::reports`, `loader`, and the emitter were
+already correct. AC3 is now backed by an actual render-layer assertion, not
+just a textual snapshot.
+
 ### Verification results
 
 Developer (backtest emit, 2026-06-17):
@@ -416,6 +479,17 @@ ui-designer (loader stem-match + committable demo, 2026-06-17):
   clean.
 - `cargo fmt -p ui --check`: clean.
 - `cargo test -p backtest`: re-run green (emit code unchanged by ui work).
+
+ui-designer (render-layer populated-curve proof, 2026-06-17):
+- `scripts/verify_anchors.sh`: **ANCHORS PASS (119 / 119)** — unchanged
+  (test-only additions; no report touched).
+- `cargo test -p ui`: **864 passed; 0 failed; 27 ignored** (the +4 over 860 are
+  the new `reports_populated_curve_render` durable render-layer tests).
+  `layout_invariants` proptest green after removing the stale
+  `.proptest-regressions` cache.
+- `cargo clippy -p ui --lib --tests --bins -- -D warnings` (forced re-lint):
+  clean (exit 0, 0 warnings).
+- `cargo fmt -p ui --check`: clean.
 
 ## Changelog
 
@@ -443,3 +517,16 @@ ui-designer (loader stem-match + committable demo, 2026-06-17):
   `btc-2024-h1-sma-cross` (report + companion paths under `## Implementation`);
   `verify_anchors.sh` stays 119/119, `cargo test -p ui` 860/0, clippy + fmt
   clean. No new crate edge / widget / theme token. HANDOFF → tester.
+- 2026-06-17 (ui-designer): closed the render-layer verification gap behind the
+  operator's "still shows no equity data" report. Confirmed via headless
+  real-renderer (PNG eyeball + pixel assertion) that the cockpit Reports screen
+  DOES draw a populated curve for the demo report — **not a render bug**; the
+  operator was selecting the no-companion sibling `backtest-20260527-…` (sorts
+  first). Added a durable render-layer test file
+  `crates/ui/tests/reports_populated_curve_render.rs` (4 tests: live
+  discover→load, real-demo e2e selection render, synthetic populated-curve
+  render guard, empty-state negative control) that exercises the previously
+  untested `(Some, Ready(equity))` detail-pane path. No production code change;
+  no new crate edge / widget / theme token. Gates: anchors 119/119,
+  `cargo test -p ui` 864/0/27, clippy + fmt clean. See `## Implementation` →
+  *Render-layer verification*. HANDOFF → tester.
