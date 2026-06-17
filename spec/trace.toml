@@ -2739,7 +2739,7 @@ arch        = ["spec/cockpit-reports-viewer/feature.md#design"]   # architect 20
 crates      = ["crates/ui/src/reports/mod.rs", "crates/ui/src/reports/loader.rs", "crates/ui/src/reports/body_render.rs", "crates/ui/src/reports/state.rs", "crates/ui/src/screens/reports.rs"]   # ui-designer 2026-06-17: new crate::reports module (D2 lifted loader shared with bin/viewer.rs) + Screen::Reports list-detail; touchpoints state.rs/theme.rs/strings.rs/lib.rs/shell.rs/screens/mod.rs/widgets/sidebar_nav.rs/bin{cockpit,cockpit_live,viewer}.rs. No new crate edge.
 tests       = ["crates/ui/tests/panel_snapshots.rs", "crates/ui/tests/headless_emulator_smoke.rs", "crates/ui/src/reports/loader.rs"]   # panel snapshots both themes (ready/empty/error) + headless_emulator_paints_reports_route + lifted-loader unit tests. cargo test -p ui = 856 passed / 0 failed (orchestrator re-verified, rc0).
 anchors     = []   # tester 2026-06-17: read-only UI feature → no new backtest anchors; verify_anchors 119/119 unchanged (touches no anchored file). Report: spec/cockpit-reports-viewer/reports/test-2026-06-17-cockpit-reports-viewer.md (VERDICT PASS, AC1-AC7 7/7)
-state       = "tester-done"
+state       = "shipped"   # operator-approved 2026-06-17 (cockpit-smoke PASS 0-panics; operator ship go-ahead)
 
 # REQ-COCKPIT-CHARTCACHE-001 → cockpit-chart-cache (measured 2026-06-08) — Phase 1 MEASURE → NO-GO
 [[req]]

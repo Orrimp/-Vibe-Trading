@@ -77,6 +77,7 @@ design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 - **live-equity-history-durable** — durable equity history surviving `cockpit_live` restarts.
 - **paper-mode-equity-wiring** — real (not flat-line) paper-mode cockpit equity.
 - **cockpit-baseline-panel** — surfaces the shipped passive buy-and-hold result.
+- **cockpit-reports-viewer** — in-cockpit Reports screen (Library sidebar group): browses the committed `backtest-*.md` corpus and renders the selected report (KPI strip + markdown body; equity curve/drawdown band empty-by-data, as no report ships a companion CSV), reusing the offline viewer's render logic via a shared `crate::reports` loader.
 - **cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer** — continuously-updated "what is the cockpit doing right now" activity bar with audit-ledger and LLM-call producers.
 - **cockpit-toast-queue** (+ v0.2 cleanup) — bounded toast queue replacing the single-slot REPLACE semantic.
 - **cockpit-training-control** + **cockpit-training-pressed-wiring** — operator-driven `train_tcn` launcher and Train-button wiring.
@@ -129,5 +130,5 @@ design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 ## Deferred / not built (by decision)
 
 - **cockpit-cross-platform** — Linux/Windows source shipped + macOS-verified; 3-OS CI matrix parked inert (`.github/workflows/ci.yml.deferred`), activation deferred to the near-done milestone.
-- **cockpit-app-bundle**, **cockpit-reports-viewer**, **iced-ecosystem-evaluation**, **ui-gallery-table-cell** — candidate/draft, not built.
+- **cockpit-app-bundle**, **iced-ecosystem-evaluation**, **ui-gallery-table-cell** — candidate/draft, not built.
 - **Out of scope (follow-up project):** real-money execution, KYC, exchange API keys, withdrawals, multi-venue real-money, tax/lot accounting.
