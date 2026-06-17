@@ -77,7 +77,8 @@ design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 - **live-equity-history-durable** — durable equity history surviving `cockpit_live` restarts.
 - **paper-mode-equity-wiring** — real (not flat-line) paper-mode cockpit equity.
 - **cockpit-baseline-panel** — surfaces the shipped passive buy-and-hold result.
-- **cockpit-reports-viewer** — in-cockpit Reports screen (Library sidebar group): browses the committed `backtest-*.md` corpus and renders the selected report (KPI strip + markdown body; equity curve/drawdown band empty-by-data, as no report ships a companion CSV), reusing the offline viewer's render logic via a shared `crate::reports` loader.
+- **cockpit-reports-viewer** — in-cockpit Reports screen (Library sidebar group): browses the committed `backtest-*.md` corpus and renders the selected report (KPI strip + markdown body + equity curve/drawdown band when the report ships a companion CSV — see `backtest-equity-companion`), reusing the offline viewer's render logic via a shared `crate::reports` loader.
+- **backtest-equity-companion** — backtest runs emit a companion `reports/artifacts/<stem>/equity-*.csv` (real per-bar equity) so the Reports screen + offline viewer render a populated equity curve + drawdown band; includes the loader stem-match correctness fix (pair companion→report by file stem, not first-match-any) and a committed non-anchored demo report.
 - **cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer** — continuously-updated "what is the cockpit doing right now" activity bar with audit-ledger and LLM-call producers.
 - **cockpit-toast-queue** (+ v0.2 cleanup) — bounded toast queue replacing the single-slot REPLACE semantic.
 - **cockpit-training-control** + **cockpit-training-pressed-wiring** — operator-driven `train_tcn` launcher and Train-button wiring.

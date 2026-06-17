@@ -1,7 +1,7 @@
 ---
 slug: backtest-equity-companion
-status: dev-done
-owner: ui-designer
+status: shipped
+owner: operator
 updated: 2026-06-17
 version: 0.1.0
 ---
