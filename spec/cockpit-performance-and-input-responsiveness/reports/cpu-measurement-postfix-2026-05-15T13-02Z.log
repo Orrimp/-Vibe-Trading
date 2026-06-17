@@ -1,6 +1,0 @@
-  PID  %CPU ELAPSED COMM
-17396   2.2   00:06 ./target/release/cockpit
-(t=6s settle)
-  PID  %CPU ELAPSED COMM
-17396  13.1   00:15 ./target/release/cockpit
-(t=14s sustained)
