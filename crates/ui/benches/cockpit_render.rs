@@ -89,22 +89,22 @@ where
     });
 }
 
-/// Time one full interaction→render frame: a fresh `Emulator` →
-/// `view()` + `update(RedrawRequested)` (canvas geometry rebuild) +
-/// `draw()` + tiny-skia RGBA readback — the exact cost an operator pays
-/// per click in the live cockpit.
-///
-/// **Why a fresh `Emulator` per iteration:** `Emulator::screenshot`
-/// (iced_test 0.14, emulator.rs:458) `take()`s its `UserInterface::Cache`
-/// and never restores it, so a second `screenshot()` on the same emulator
-/// panics on `Option::unwrap()`. Constructing a fresh emulator per frame
-/// side-steps that. The fixed construction cost is identical across dev /
-/// release and across screens, so it cancels in both the dev-vs-release
-/// ratio and the heavy-minus-light (`lab` − `home`) chart-cost isolation.
-///
-/// The program + emulator are constructed inline (one scope) so their
-/// `impl iced::Program` opaque types unify — passing them across a helper
-/// boundary would mint two distinct opaque types iced's API rejects.
+// Time one full interaction→render frame: a fresh `Emulator` →
+// `view()` + `update(RedrawRequested)` (canvas geometry rebuild) +
+// `draw()` + tiny-skia RGBA readback — the exact cost an operator pays
+// per click in the live cockpit.
+//
+// **Why a fresh `Emulator` per iteration:** `Emulator::screenshot`
+// (iced_test 0.14, emulator.rs:458) `take()`s its `UserInterface::Cache`
+// and never restores it, so a second `screenshot()` on the same emulator
+// panics on `Option::unwrap()`. Constructing a fresh emulator per frame
+// side-steps that. The fixed construction cost is identical across dev /
+// release and across screens, so it cancels in both the dev-vs-release
+// ratio and the heavy-minus-light (`lab` − `home`) chart-cost isolation.
+//
+// The program + emulator are constructed inline (one scope) so their
+// `impl iced::Program` opaque types unify — passing them across a helper
+// boundary would mint two distinct opaque types iced's API rejects.
 
 /// Process-wide UTC-forcing initialiser — thread-safe, idempotent.
 static INIT_UTC: std::sync::Once = std::sync::Once::new();

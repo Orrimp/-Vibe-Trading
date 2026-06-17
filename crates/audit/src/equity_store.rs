@@ -244,6 +244,11 @@ impl LiveEquityStore for FakeLiveEquityStore {
 
 #[cfg(test)]
 mod tests {
+    // The crate denies unwrap/expect (lib.rs:9) for production safety; in test
+    // code unwrap-on-known-good is the idiomatic assertion. Scope the allow to
+    // this test module only — production paths keep the crate-wide deny.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use rust_decimal_macros::dec;
     use trading_core::{Money, Timestamp};
 
