@@ -91,6 +91,10 @@ smol_str.workspace = true
 tokio-util = { workspace = true }
 
 [[test]]
+name = "equity_companion_roundtrip"
+path = "tests/equity_companion_roundtrip.rs"
+
+[[test]]
 name = "threshold_sweep_readonly"
 path = "tests/threshold_sweep_readonly.rs"
 required-features = ["candle", "realdata"]
@@ -116,3 +120,8 @@ tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 data = { path = "../data" }
 polars.workspace = true
+# M-TEST-1 (backtest-equity-companion v0.1.0): test-only edge so the round-trip
+# test can call the canonical `reports::csv_artifacts::read_equity_csv` reader.
+# A production edge is NOT justified (the companion writer needs no reports API);
+# this dev edge is acyclic (`reports` has no dev-dep on `backtest`).
+reports = { path = "../reports" }

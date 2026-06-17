@@ -96,15 +96,26 @@ fn test_reports_dir_override_accepted() {
     }
 
     // Verify a report was written to the tempdir (not the anchored spec/ dir).
-    let entries: Vec<_> = std::fs::read_dir(&reports_path)
+    // Filter for .md files only; the companion writer now also creates an
+    // `artifacts/` sub-directory alongside the .md, so we must not rely on
+    // `entries[0]` being the report file.
+    let md_entries: Vec<_> = std::fs::read_dir(&reports_path)
         .expect("read reports dir")
-        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with(".md") {
+                Some(name)
+            } else {
+                None
+            }
+        })
         .collect();
     assert!(
-        !entries.is_empty(),
-        "--reports-dir override: at least one report should be written to the tempdir"
+        !md_entries.is_empty(),
+        "--reports-dir override: at least one .md report should be written to the tempdir"
     );
-    let report_name = entries[0].file_name().to_string_lossy().to_string();
+    let report_name = &md_entries[0];
     assert!(
         report_name.ends_with(".md"),
         "report file should be a .md file: {report_name}"

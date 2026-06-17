@@ -399,7 +399,7 @@ fn seed_to_u64(seed: &[u8; 32]) -> u64 {
 ///
 /// Each entry corresponds to one bar: base timestamp + i hours.
 /// Used to zip with the per-bar equity values when building `RunReport.equity_series`.
-fn synthetic_timestamps(start_year: i32, count: usize) -> Vec<Timestamp> {
+pub(crate) fn synthetic_timestamps(start_year: i32, count: usize) -> Vec<Timestamp> {
     let epoch_base = {
         let date = time::Date::from_calendar_date(start_year, time::Month::January, 1)
             .unwrap_or_else(|_| {

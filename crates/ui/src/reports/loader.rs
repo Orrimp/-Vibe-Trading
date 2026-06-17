@@ -12,8 +12,11 @@
 //! 1. [`load_report`] — read a `backtest-*.md`, parse its `## Summary` KPI
 //!    table (graceful `Error` on a malformed body, never a panic) + the
 //!    companion equity CSV (`Empty` when absent — the common case today).
-//! 2. [`load_equity_companion`] — scan `<dir>/artifacts/<run_id>/equity-*.csv`
-//!    (the native 5-column schema), `Empty` when no companion exists.
+//! 2. [`load_equity_companion`] — resolve the **stem-matched**
+//!    `<dir>/artifacts/<report-file-stem>/equity-*.csv` (the native
+//!    5-column schema), `Empty` when no companion exists. The run-id dir
+//!    name is the report's own file stem, so the pairing is 1:1 — see the
+//!    fn doc for why a first-match scan was the wrong contract.
 //! 3. [`discover_reports`] — a **new** all-slug scan of
 //!    `spec/*/reports/backtest-*.md`, the corpus the picker browses. K2
 //!    never-panic: an unreadable dir is skipped with a `tracing` breadcrumb;
@@ -84,48 +87,57 @@ pub fn load_report(path: &Path) -> Result<ReportLoadResult, std::io::Error> {
 /// `Ok(PanelState::Ready(series))` on success, `Ok(PanelState::Empty)`
 /// when no companion exists, `Err(...)` on read / parse failure.
 ///
-/// **Lifted verbatim from `bin/viewer.rs:172` (D2 / AC5).**
+/// **Stem-matched companion resolution (backtest-equity-companion v0.1.0).**
+/// The emitter (`backtest::report::write_equity_companion`) writes the
+/// companion at `<report_dir>/artifacts/<REPORT-FILE-STEM>/equity-*.csv` —
+/// the run-id directory name **is** the report's own file stem
+/// (`backtest-<stamp>-<scenario>`), per the architect's design. So we
+/// resolve **only** that one matching-stem directory rather than scanning
+/// every `artifacts/<X>/` and taking the first hit. The old first-match
+/// scan paired the wrong companion to a report whenever an `artifacts/`
+/// tree held more than one run-id directory (a correctness bug in the
+/// shipped cockpit-reports-viewer loader); stem-matching makes the pairing
+/// 1:1 with the report.
 ///
 /// # Errors
 ///
-/// Returns `Err(String)` when the `artifacts/` directory is unreadable or
+/// Returns `Err(String)` when the matching-stem directory is unreadable or
 /// the discovered CSV fails to parse / yields a curve `from_points`
-/// rejects. A missing `artifacts/` dir or zero matching files is **not**
-/// an error — it returns `Ok(PanelState::Empty)`.
+/// rejects. A missing `artifacts/` dir, a missing matching-stem dir, or a
+/// matching-stem dir with no `equity-*.csv` is **not** an error — it
+/// returns `Ok(PanelState::Empty)`.
 pub fn load_equity_companion(report_path: &Path) -> Result<PanelState<EquitySeries>, String> {
     let parent = report_path
         .parent()
         .ok_or_else(|| "report has no parent directory".to_string())?;
-    // The reports binary writes the companion under
-    // `<parent>/artifacts/<run_id>/equity-*.csv`. We don't have the
-    // run_id here; scan for the first `equity-*.csv` under any
-    // run-id folder. If none, return Empty.
-    let artifacts_root = parent.join("artifacts");
-    if !artifacts_root.exists() {
+    // The emitter writes the companion under
+    // `<parent>/artifacts/<report-file-stem>/equity-*.csv`. The run-id
+    // directory name is the report's own file stem, so resolve ONLY that
+    // matching-stem directory (never a first-match across all subdirs).
+    let Some(stem) = report_path.file_stem().and_then(|s| s.to_str()) else {
+        // A report path with no UTF-8 file stem can't have a stem-matched
+        // companion — treat as Empty, never panic.
+        return Ok(PanelState::Empty);
+    };
+    let stem_dir = parent.join("artifacts").join(stem);
+    if !stem_dir.is_dir() {
+        // No matching-stem artifacts dir → no companion for this report.
         return Ok(PanelState::Empty);
     }
     let mut candidate: Option<PathBuf> = None;
-    let entries = std::fs::read_dir(&artifacts_root).map_err(|e| e.to_string())?;
+    let entries = std::fs::read_dir(&stem_dir).map_err(|e| e.to_string())?;
     for entry in entries.flatten() {
-        let p = entry.path();
-        if !p.is_dir() {
+        let ip = entry.path();
+        if !ip.is_file() {
             continue;
         }
-        if let Ok(inner) = std::fs::read_dir(&p) {
-            for inner_entry in inner.flatten() {
-                let ip = inner_entry.path();
-                let name = ip.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                // Equity companion files are always written with a lowercase
-                // `.csv` extension (the `reports` crate's writer contract).
-                #[allow(clippy::case_sensitive_file_extension_comparisons)]
-                let is_equity_csv = name.starts_with("equity-") && name.ends_with(".csv");
-                if is_equity_csv {
-                    candidate = Some(ip);
-                    break;
-                }
-            }
-        }
-        if candidate.is_some() {
+        let name = ip.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        // Equity companion files are always written with a lowercase
+        // `.csv` extension (the `reports` crate's writer contract).
+        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+        let is_equity_csv = name.starts_with("equity-") && name.ends_with(".csv");
+        if is_equity_csv {
+            candidate = Some(ip);
             break;
         }
     }
@@ -483,5 +495,122 @@ mod tests {
             load_report(&bogus).is_err(),
             "a missing report file must surface as Err, not a panic"
         );
+    }
+
+    // ── load_equity_companion stem-matching (backtest-equity-companion) ───────
+
+    /// The minimal 5-column equity CSV body the canonical
+    /// `reports::csv_artifacts::read_equity_csv` parses (RFC3339 `ts`,
+    /// `Decimal` amount columns). Three bars is enough for
+    /// `EquitySeries::from_points` to build a curve.
+    const EQUITY_CSV_FIXTURE: &str = "ts,equity_total_usdt,realized_pnl_usdt,unrealized_pnl_usdt,cash_balance_usdt\n\
+         2024-01-01T00:00:00Z,100000,0,0,0\n\
+         2024-01-01T01:00:00Z,100500,0,0,0\n\
+         2024-01-01T02:00:00Z,101250,0,0,0\n";
+
+    /// A companion CSV under the **matching** `artifacts/<report-stem>/`
+    /// directory resolves to `Ready` (the stem-match happy path). This is
+    /// the populated-curve case the demo report exercises.
+    #[test]
+    fn load_equity_companion_matching_stem_dir_is_ready() {
+        let dir = std::env::temp_dir().join(format!("eqcomp_match_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let stem = "backtest-20260101-000000-fixture-scn";
+        let report_path = dir.join(format!("{stem}.md"));
+        // Companion lives at <dir>/artifacts/<stem>/equity-*.csv (the
+        // emitter's layout: the run-id dir name IS the report file stem).
+        let comp_dir = dir.join("artifacts").join(stem);
+        std::fs::create_dir_all(&comp_dir).expect("companion dir");
+        std::fs::write(
+            comp_dir.join("equity-20260101-000000.csv"),
+            EQUITY_CSV_FIXTURE,
+        )
+        .expect("write companion");
+        // The report .md itself need not exist for the companion resolver.
+
+        let state = load_equity_companion(&report_path).expect("never Err for a valid companion");
+        assert!(
+            matches!(state, PanelState::Ready(_)),
+            "companion under the matching-stem dir → Ready, got {}",
+            state.variant_name()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Regression guard for the first-match bug.** A companion exists, but
+    /// only under a DIFFERENT report's stem directory (no dir matches this
+    /// report's stem). The old first-match scan would have mis-paired that
+    /// foreign companion to this report; stem-matching must return `Empty`.
+    #[test]
+    fn load_equity_companion_non_matching_stem_dir_is_empty() {
+        let dir = std::env::temp_dir().join(format!("eqcomp_nomatch_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // This report's stem — no artifacts/<this-stem>/ dir will exist.
+        let this_stem = "backtest-20260101-000000-this-report";
+        let report_path = dir.join(format!("{this_stem}.md"));
+        // A companion DOES exist, but under a *different* report's stem dir.
+        let other_stem = "backtest-20260202-111111-other-report";
+        let other_dir = dir.join("artifacts").join(other_stem);
+        std::fs::create_dir_all(&other_dir).expect("other companion dir");
+        std::fs::write(
+            other_dir.join("equity-20260202-111111.csv"),
+            EQUITY_CSV_FIXTURE,
+        )
+        .expect("write foreign companion");
+
+        let state =
+            load_equity_companion(&report_path).expect("never Err when the matching dir is absent");
+        assert!(
+            matches!(state, PanelState::Empty),
+            "a companion under a non-matching stem dir must NOT be paired (stem-match, \
+             not first-match) → Empty, got {}",
+            state.variant_name()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Real-demo smoke (backtest-equity-companion): the committed
+    /// `btc-2024-h1-sma-cross` demo report has a stem-matched companion on
+    /// disk, so it resolves to `Ready` (the populated-curve case AC3
+    /// renders). Skip-if-absent (mirrors the `discover_*` guards) so a
+    /// checkout that prunes the demo artifact does not fail this unit test.
+    #[test]
+    fn load_equity_companion_real_demo_report_is_ready() {
+        let demo = workspace_root()
+            .join("spec/v0-paper-sma/reports")
+            .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
+        if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
+            // Demo artifact pruned from this checkout — skip.
+            return;
+        }
+        let state =
+            load_equity_companion(&demo).expect("real demo companion must read without Err");
+        assert!(
+            matches!(state, PanelState::Ready(_)),
+            "the committed demo report's stem-matched companion → Ready, got {}",
+            state.variant_name()
+        );
+    }
+
+    /// The matching-stem dir exists but holds no `equity-*.csv` → `Empty`
+    /// (no panic). Guards the "dir present, file absent" branch.
+    #[test]
+    fn load_equity_companion_matching_stem_dir_no_csv_is_empty() {
+        let dir = std::env::temp_dir().join(format!("eqcomp_nocsv_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let stem = "backtest-20260101-000000-empty-dir";
+        let report_path = dir.join(format!("{stem}.md"));
+        let comp_dir = dir.join("artifacts").join(stem);
+        std::fs::create_dir_all(&comp_dir).expect("companion dir");
+        // A non-equity file in the matching dir must be ignored.
+        std::fs::write(comp_dir.join("notes.txt"), "not a companion").expect("write decoy");
+
+        let state = load_equity_companion(&report_path).expect("never Err for an empty dir");
+        assert!(
+            matches!(state, PanelState::Empty),
+            "matching-stem dir with no equity-*.csv → Empty, got {}",
+            state.variant_name()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

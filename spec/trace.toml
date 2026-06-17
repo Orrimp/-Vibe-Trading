@@ -2983,3 +2983,14 @@ crates      = ["crates/ui", "crates/backtest"]
 tests       = ["crates/ui/src/widgets/position_curve.rs"]
 anchors     = []   # anchor-additive (in-memory position_curve_raw + UI-only KPI render; no Markdown report-body change) — verify_anchors stays 119/119
 state       = "shipped"  # RETROACTIVE REGISTRATION 2026-06-16: built + shipped ad-hoc 2026-05-25 (issue #62 — c1cddbe R2 backend, ae26281 R2 SMA-param UI, 371d870 R3 KPI densification; R1 position_curve widget) but never given a trace row (bypassed the pipeline). All 3 Rs are LIVE in the cockpit Lab screen; position_curve 5/5 widget tests pass. Status was stuck "proposed"; reconciled → shipped during the 2026-06-16 backlog-staleness follow-up. No deck (retroactive registration of live code, not a fresh ship for approval).
+
+[[req]]
+id          = "REQ-BACKTEST-EQUITY-COMPANION-001"
+title       = "Backtest equity companion — emit reports/artifacts/<stem>/equity-*.csv (read_equity_csv 5-col schema) at the CLI report seam so cockpit-reports-viewer + the offline viewer bin render a populated equity curve + drawdown band instead of the no-equity-data empty state (additive sibling; report body untouched; anchors stay 119/119)"
+feature     = "backtest-equity-companion"
+product     = "spec/product.md"
+arch        = ["spec/backtest-equity-companion/feature.md", "spec/backtest-equity-companion/feature.md#design"]
+crates      = ["crates/backtest"]
+tests       = []   # developer fills once the file exists — planned crates/backtest/tests/equity_companion_roundtrip.rs (read_equity_csv round-trip, AC2); forward-ref omitted to keep the trace path-gate green.
+anchors     = []   # anchor-ADDITIVE: writes a NEW .csv under reports/artifacts/<stem>/; zero change to any backtest-*.md body. verify_anchors.sh globs only */reports/*.md (never *.csv, never descends artifacts/), so all 119 body-SHAs stay byte-identical — gate stays 119/119.
+state       = "arch-done"  # architect authored Requirements + ## Design 2026-06-17. Follow-on to cockpit-reports-viewer v0.1.0 (render path built+correct; this supplies the data). Emit seam = new pub(crate) report::write_equity_companion in crates/backtest/src/report/mod.rs, called once after each report::<family>::write in main.rs. Schema = ts,equity_total_usdt,realized_pnl_usdt,unrealized_pnl_usdt,cash_balance_usdt; engine tracks only per-bar equity_total (real), P&L/cash = honest 0 (matches lab-runs ADR-0055 § D-companion precedent — NOT fabricated). run_id dir = report file stem (avoids the backtest→reports production edge run_id::compute would force; loader first-match scan needs no true run_id). No new production crate edge; test-only backtest→reports dev edge for the read_equity_csv round-trip (AC2). Demo = btc-2023-1m-sma-cross (anchored, cheapest CLI path) — body re-emits byte-identical. HANDOFF → developer.

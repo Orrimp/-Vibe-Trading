@@ -1402,6 +1402,11 @@ async fn main() -> Result<()> {
         let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 
         backtest::report::momentum::write(&input, &result, seed, &data_source, &report_path)?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            input.start_year,
+        )?;
 
         // Emit equity bin (moved to MomentumScenarioInput; kept here for
         // backwards-compat with the --emit-equity-bin flag path used by sharpe_comparison).
@@ -1472,6 +1477,11 @@ async fn main() -> Result<()> {
         let report_path = report_dir.join(format!("backtest-{stamp}-{}.md", args.scenario));
 
         backtest::report::pairs::write(&pairs_input, &result, seed, &data_source, &report_path)?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            pairs_input.start_year,
+        )?;
 
         println!("Report written: {}", report_path.display());
         println!("Scenario     : {}", args.scenario);
@@ -1577,6 +1587,11 @@ async fn main() -> Result<()> {
             &report_path,
             rev_sha,
             loaded_info,
+        )?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            tcn_input_for_report.start_year,
         )?;
 
         // T-D-8: --emit-equity-bin (strictly additive; report body unchanged).
@@ -1696,6 +1711,11 @@ async fn main() -> Result<()> {
             rev_sha,
             loaded_info,
         )?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            tcn_w_input_for_report.start_year,
+        )?;
 
         // T-D-8: --emit-equity-bin (strictly additive; report body unchanged).
         if let Some(ref eq_path) = args.emit_equity_bin {
@@ -1813,6 +1833,11 @@ async fn main() -> Result<()> {
             rev_sha,
             loaded_info,
         )?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            patchtst_input_for_report.start_year,
+        )?;
 
         if let Some(ref eq_path) = args.emit_equity_bin {
             let eq_text: String = result
@@ -1929,6 +1954,11 @@ async fn main() -> Result<()> {
             rev_sha,
             loaded_info,
         )?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            vol_target_input_for_report.start_year,
+        )?;
 
         if let Some(ref eq_path) = args.emit_equity_bin {
             let eq_text: String = result
@@ -2013,6 +2043,11 @@ async fn main() -> Result<()> {
             &data_source,
             &report_path,
             rev_sha,
+        )?;
+        backtest::report::write_equity_companion(
+            &report_path,
+            &result.equity_curve,
+            regime_input.start_year,
         )?;
 
         // Emit equity bin for sharpe_comparison subprocess use.
@@ -2150,6 +2185,11 @@ async fn main() -> Result<()> {
         &report_path,
         &strategy_meta,
         None, // Binance/synthetic path — None preserves 33 existing SMA anchors byte-identically
+    )?;
+    backtest::report::write_equity_companion(
+        &report_path,
+        &result.equity_curve,
+        scenario.start_year,
     )?;
 
     println!("Report written: {}", report_path.display());
