@@ -541,6 +541,16 @@ diff; no other field moved). `reports_snapshot__empty_list_dark` is unchanged
 Reports smoke still asserts non-empty first frame (auto-select only improves
 the rendered content).
 
+### 5 demo curve scenarios (2026-06-18)
+
+5 demo curve scenarios added (`sol/bnb/xrp/link/ada-2024-h1-sma-cross`) so the
+Reports screen has a browsable batch of curves. Each uses real Binance hourly
+Parquet data (`data/binance/<SYM>USDT/2024/`), SMA(20/50) strategy, 17543 bars,
+seed `0xC0FFEE`, mapping to `spec/v0-paper-sma/reports/` via `scenario_to_feature`.
+Reports and companions emitted: `backtest-20260618-113748-sol-…`, `…113753-bnb-…`,
+`…113759-xrp-…`, `…113803-link-…`, `…113807-ada-…`. All 5 are non-anchored.
+`verify_anchors.sh` remains **119/119** after all runs.
+
 ### Verification results
 
 Developer (backtest emit, 2026-06-17):

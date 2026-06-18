@@ -492,6 +492,101 @@ impl Scenario {
                 data_source: ScenarioDataSource::Synthetic,
                 expected_revision_sha: None,
             }),
+            "sol-2024-h1-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("SOLUSDT"),
+                start_year: 2024,
+                bar_count: 262_800, // ~182.5 days × 1440 bars/day
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "bnb-2024-h1-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("BNBUSDT"),
+                start_year: 2024,
+                bar_count: 262_800, // ~182.5 days × 1440 bars/day
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "xrp-2024-h1-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("XRPUSDT"),
+                start_year: 2024,
+                bar_count: 262_800, // ~182.5 days × 1440 bars/day
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "link-2024-h1-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("LINKUSDT"),
+                start_year: 2024,
+                bar_count: 262_800, // ~182.5 days × 1440 bars/day
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "ada-2024-h1-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("ADAUSDT"),
+                start_year: 2024,
+                bar_count: 262_800, // ~182.5 days × 1440 bars/day
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
             "btc-2023-1m-macd-trend" => Ok(Self {
                 name: name.to_string(),
                 body_name: name.to_string(),
@@ -1318,6 +1413,11 @@ async fn main() -> Result<()> {
                 | "btc-2023-1m-bbands-mean-revert" => dec!(16_500),
                 "btc-2024-h1-sma-cross" => dec!(42_000),
                 "eth-2024-h1-sma-cross" => dec!(2_400),
+                "sol-2024-h1-sma-cross" => dec!(140),
+                "bnb-2024-h1-sma-cross" => dec!(600),
+                "xrp-2024-h1-sma-cross" => dec!(0.6),
+                "link-2024-h1-sma-cross" => dec!(15),
+                "ada-2024-h1-sma-cross" => dec!(0.6),
                 _ => dec!(30_000),
             };
             let bars = synthetic_bars(
@@ -2236,7 +2336,12 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         "btc-2023-1m-sma-cross"
         | "btc-2023-1m-sma-baseline-refresh"
         | "btc-2024-h1-sma-cross"
-        | "eth-2024-h1-sma-cross" => "v0-paper-sma",
+        | "eth-2024-h1-sma-cross"
+        | "sol-2024-h1-sma-cross"
+        | "bnb-2024-h1-sma-cross"
+        | "xrp-2024-h1-sma-cross"
+        | "link-2024-h1-sma-cross"
+        | "ada-2024-h1-sma-cross" => "v0-paper-sma",
         "btc-2023-1m-macd-trend"
         | "btc-2023-1m-rsi-reversion"
         | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",
