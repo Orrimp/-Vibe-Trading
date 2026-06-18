@@ -26,7 +26,7 @@
     clippy::needless_pass_by_value
 )]
 
-use iced::widget::{Button, Column, Container, Row, Text, button};
+use iced::widget::{Button, Column, Container, Row, Scrollable, Text, button};
 use iced::{Border, Length};
 
 use crate::state::{
@@ -66,14 +66,28 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         }
     };
 
+    // The journal table can carry a full `AUDIT_PAGE_SIZE` (= 250) page of
+    // rows — far more than fit in any viewport. Without a scroll container
+    // the bare `Column` overflows the panel and the rows past the viewport
+    // bottom are unreachable (proven at the render layer:
+    // `tests/_audit_group_c_render.rs::audit_table_overflow_probe` showed a
+    // 60-row page cut off at ~row 13). Wrap the table region in a
+    // `Scrollable` that fills the remaining vertical space so the filter row
+    // + pagination header stay pinned while the rows scroll. (Mirrors the
+    // `Scrollable::new(col)` pattern already used in `screens::strategy_registry`,
+    // `screens::memory`, `screens::models`, `screens::reports`.)
+    let scrollable_table = Scrollable::new(table).height(Length::Fill);
+
     let inner = Column::new()
         .spacing(space::M)
         .push(filter_row)
         .push(pagination)
-        .push(table);
+        .push(scrollable_table)
+        .height(Length::Fill);
 
     let panel_body = Container::new(inner)
         .width(Length::Fill)
+        .height(Length::Fill)
         .padding(layout::PANEL_PADDING as u16);
 
     Column::new()
