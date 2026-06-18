@@ -1,0 +1,9 @@
+error[E0451]: fields `as_of_ts` and `value` of struct `AsOf` are private
+  --> tests/compile_fail/pit_no_public_constructor.rs:10:9
+   |
+ 9 |     let _: AsOf<rust_decimal::Decimal> = AsOf {
+   |                                          ---- in this type
+10 |         as_of_ts: TimestampMs(99_999),
+   |         ^^^^^^^^ private field
+11 |         value: dec!(0.5),
+   |         ^^^^^ private field

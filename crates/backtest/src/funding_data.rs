@@ -26,7 +26,7 @@ use std::str::FromStr;
 
 use rust_decimal::Decimal;
 use time::OffsetDateTime;
-use trading_core::Symbol;
+use trading_core::{PitSeries, Symbol, TimestampMs};
 
 // ── Expected revision SHA ──────────────────────────────────────────────────────
 
@@ -374,27 +374,28 @@ fn month_start_ms(year: i32, month: time::Month) -> i64 {
 /// Only funding settled **at or before** the bar's `open_ts` is used.
 /// Future-shifting the funding series (e.g. by +8 h) WILL produce a
 /// different result — verified by the unit test `no_look_ahead_falsifier`.
+///
+/// Routes through `trading_core::pit::PitSeries` (ADR-0058 / M-DEV-2).
+/// The public signature is kept byte-stable (existing callers and tests
+/// are unchanged). The migration is behaviour-preserving: same
+/// `partition_point(t <= q)` predicate, same `None` warm-up, `Decimal`
+/// moved with no `f64` round-trip — identical as-of values.
 #[must_use]
 pub fn funding_as_of(funding: &[(i64, Decimal)], bar_open_ts_ms: &[i64]) -> Vec<Option<Decimal>> {
     if funding.is_empty() {
         return vec![None; bar_open_ts_ms.len()];
     }
 
+    // Build a PitSeries once. The loader pre-sorts funding by funding_time
+    // before calling this function, so from_sorted would succeed; we use
+    // from_unsorted here so this library function is infallible — the sort
+    // is a stable no-op on an already-sorted slice.
+    let series =
+        PitSeries::from_unsorted(funding.iter().map(|&(t, r)| (TimestampMs(t), r)).collect());
+
     bar_open_ts_ms
         .iter()
-        .map(|&bar_ts| {
-            // Binary-search for the rightmost settlement ≤ bar_ts.
-            // `partition_point(|&(t, _)| t <= bar_ts)` gives the index of the
-            // first element > bar_ts; the settlement we want is at idx-1.
-            let idx = funding.partition_point(|&(t, _)| t <= bar_ts);
-            if idx == 0 {
-                // No settlement at or before this bar → warm-up.
-                None
-            } else {
-                // The settlement just before or at bar_ts.
-                Some(funding[idx - 1].1)
-            }
-        })
+        .map(|&q| series.as_of_value(TimestampMs(q)))
         .collect()
 }
 

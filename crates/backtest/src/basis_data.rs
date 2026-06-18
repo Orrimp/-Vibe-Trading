@@ -36,7 +36,7 @@ use std::str::FromStr;
 
 use rust_decimal::Decimal;
 use time::OffsetDateTime;
-use trading_core::Symbol;
+use trading_core::{PitSeries, Symbol, TimestampMs};
 
 // ── Expected revision SHA ──────────────────────────────────────────────────────
 
@@ -393,27 +393,28 @@ fn month_start_ms(year: i32, month: time::Month) -> i64 {
 /// the most-recent completed basis bar, which is the basis from bar `t-1`
 /// when the query timestamp is exactly `t` (bar `t`'s open = bar `t-1`'s
 /// close on the 1h grid). This is the strict no-look-ahead convention (D-BR.5).
+///
+/// Routes through `trading_core::pit::PitSeries` (ADR-0058 / M-DEV-3).
+/// The public signature is kept byte-stable (existing callers and tests
+/// are unchanged). The migration is behaviour-preserving: same
+/// `partition_point(t <= q)` predicate, same `None` warm-up, `Decimal`
+/// moved with no `f64` round-trip — identical as-of values.
 #[must_use]
 pub fn basis_as_of(basis: &[(i64, Decimal)], bar_open_ts_ms: &[i64]) -> Vec<Option<Decimal>> {
     if basis.is_empty() {
         return vec![None; bar_open_ts_ms.len()];
     }
 
+    // Build a PitSeries once. The loader pre-sorts basis by open_time_ms
+    // before calling this function, so from_sorted would succeed; we use
+    // from_unsorted here so this library function is infallible — the sort
+    // is a stable no-op on an already-sorted slice.
+    let series =
+        PitSeries::from_unsorted(basis.iter().map(|&(t, r)| (TimestampMs(t), r)).collect());
+
     bar_open_ts_ms
         .iter()
-        .map(|&bar_ts| {
-            // Binary-search for the rightmost basis bar with open_time_ms ≤ bar_ts.
-            // `partition_point(|&(t, _)| t <= bar_ts)` gives the index of the
-            // first element > bar_ts; the basis we want is at idx-1.
-            let idx = basis.partition_point(|&(t, _)| t <= bar_ts);
-            if idx == 0 {
-                // No basis bar has opened at or before this query timestamp → warm-up.
-                None
-            } else {
-                // The basis bar just before or at bar_ts (the t-1 bar on the 1h grid).
-                Some(basis[idx - 1].1)
-            }
-        })
+        .map(|&q| series.as_of_value(TimestampMs(q)))
         .collect()
 }
 

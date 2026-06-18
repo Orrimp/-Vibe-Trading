@@ -296,6 +296,7 @@ fn load_funding(root: &Path, sym: &str, year: i64) -> Vec<(i64, f64)> {
     out
 }
 
+// PIT: research-grade f64 mirror of trading_core::pit::PitSeries; NaN = warm-up (None in the Decimal API).
 /// As-of funding at a bar open: the rate of the last settlement at-or-before
 /// `bar_ts`. Mirrors `funding_data.rs::funding_as_of`.
 fn funding_as_of(funding: &[(i64, f64)], bar_ts: i64) -> f64 {

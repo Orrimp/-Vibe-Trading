@@ -15,6 +15,7 @@ pub mod funding;
 pub mod money;
 pub mod order;
 pub mod pair;
+pub mod pit;
 pub mod position;
 pub mod signal;
 pub mod strategy_events;
@@ -44,6 +45,7 @@ pub use money::Money;
 pub use money::{Price, Quantity};
 pub use order::{Order, OrderId, OrderKind, ProposedOrder, RiskLimits, TimeInForce};
 pub use pair::{Pair, PairError, PairKey, PairMembership};
+pub use pit::{AsOf, PitError, PitSeries, TimestampMs};
 pub use position::{OpenPosition, Position};
 pub use signal::{Decision, PairSignalData, Signal, SignalEvidence, SignalKind, StopReason};
 pub use strategy_events::{

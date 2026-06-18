@@ -1,7 +1,7 @@
 ---
 slug: point-in-time-data-discipline
-status: proposed
-owner: analyst
+status: shipped
+owner: operator
 updated: 2026-06-18
 version: 0.1.0
 ---
@@ -396,3 +396,383 @@ section must be revisited.)
   the correct outcome is equity UNCHANGED). NO code; NO new database; NO vendor
   feed; NO re-opening the concluded active-edge search; NO anchored-report edits.
   Created REQ-POINT-IN-TIME-DATA-001 (proposed). HANDOFF → architect.
+- 2026-06-18 (architect): M-T1 design lock. Resolved D1–D5; chose **type-level
+  `PitSeries<T>` + `AsOf<T>`** in **`crates/core`** (new `pit` module). Verified
+  feasibility against the real types (no borrow/lifetime wall): the bootstrap
+  consumes a fully-materialized owned `Vec<Vec<Option<Decimal>>>`
+  (`BlockBootstrapPathGen::with_funding`/`with_basis`), never a borrow, so the
+  per-query method returns owned `Option<AsOf<T>>` and `build_*_at_return` stay as
+  thin materialization adapters that `.map(AsOf::into_value)`. Join key is `i64`
+  ms-since-epoch (NOT `Timestamp`) → preserves `partition_point(|&(t,_)| t<=q)`
+  byte-for-byte. Authored **ADR-0058** (new `core` domain primitive + 4-call-site
+  cross-crate migration on the anchor-feeding path warrants a numbered record;
+  registered atomically). Anchor safety: same algorithm, same `≤` convention, same
+  `Option` warm-up, same `Decimal` (no f64 round-trip) ⇒ identical as-of values ⇒
+  119/119 byte-identical. Found a **FOURTH** copy the brief did not list
+  (`crates/data/examples/stablecoin_diag.rs:301`, identical `f64` clone) — folded
+  into the migration. D2: lint DROPPED (type-level makes it redundant for the core
+  join; an optional `#[deny]`-style grep guard is captured as a v0.2 follow-on, not
+  built). D4: both f64 diag probes keep a thin documented research adapter (NaN-not-
+  None, f64-not-Decimal) — not forced onto the Decimal API. D5: one shared canonical
+  falsifier in `core::pit` is the contract; the two per-loader `no_look_ahead_falsifier`
+  tests stay as thin regression guards (belt-and-suspenders, zero anchor cost).
+  status proposed → arch-done. HANDOFF → developer.
+
+---
+
+## Design
+
+> **M-T1 design lock (architect, 2026-06-18).** This section is the buildable
+> contract. It resolves Open decisions D1–D5, fixes the exact API surface, maps
+> the migration of all **four** call sites (the brief listed three; a fourth
+> identical `f64` clone exists — see § Migration plan), states the anchor-safety
+> argument, and records the verification floor. The numbered design record is
+> [ADR-0058](../architecture/adr/0058-pit-as-of-series-primitive.md).
+
+### Feasibility verdict (the load-bearing check the orchestrator asked for)
+
+The analyst-preferred **type-level** design is **feasible** against the real
+`Bar` / `Timestamp` / `Decimal` types — there is **no borrow/lifetime wall**.
+Three facts decide it:
+
+1. **The bootstrap consumes an owned, fully-materialized array, not a borrow.**
+   `BlockBootstrapPathGen::with_funding` / `with_basis`
+   ([`crates/data/src/synth/bootstrap.rs:155,177`](../../crates/data/src/synth/bootstrap.rs))
+   take `Option<Vec<Vec<Option<Decimal>>>>` *by value*; the gen copies `Decimal`
+   out of it at `funding_at_return[sym_i][idx_seq[k]]`. The as-of API therefore
+   never needs to thread a lifetime into the bootstrap — its per-query method
+   returns an **owned** `Option<AsOf<T>>`, and the existing
+   `build_funding_at_return` / `build_basis_at_return` wrappers
+   ([`funding_data.rs:421`](../../crates/backtest/src/funding_data.rs),
+   [`basis_data.rs:440`](../../crates/backtest/src/basis_data.rs)) stay exactly
+   as they are except their inner loop calls the shared API and `.map`s to the
+   value. The output type `Vec<Vec<Option<Decimal>>>` is **unchanged**.
+
+2. **The join key is `i64` ms-since-epoch, not `Timestamp`.** Both production
+   loaders join `bar_open_ts_ms: &[i64]` against `funding_time_ms: i64` /
+   `open_time_ms: i64`. Forcing the key to `core::Timestamp` would round-trip
+   through `Timestamp::unix_millis()` (`i128 → i64` truncation) and risk an
+   anchor delta. The primitive is therefore keyed on a transparent `i64` newtype
+   `TimestampMs` (ms-since-Unix-epoch), preserving the `partition_point` predicate
+   `|&(t, _)| t <= q` **character-for-character**.
+
+3. **`crates/core` is the base crate; the dep edge already exists.** `backtest`
+   and `data` both `path`-depend on `trading_core`; `core` depends on **neither**
+   (verified — no cycle). `core/Cargo.toml` already carries `rust_decimal`,
+   `time`, `proptest`, `trybuild` — so the typed primitive + its `trybuild`
+   compile-fail test land with **zero new dependency edge**, consistent with the
+   ADR-0041 layering invariant (code lives in the crate whose layer it serves; a
+   crate must gain no edge that violates the hierarchy).
+
+There is no scenario in the four call sites where a `PitSeries<T>` must outlive
+the slice it wraps or be stored across an `await`/iteration boundary — all four
+are synchronous `build`-then-`map` loops. **Type-level wins; no fallback needed.**
+(If a future consumer needed a borrowing view, `PitSeries::new(&slice)` over a
+`&[(TimestampMs, T)]` is the borrowing constructor and `PitSeries::from_owned`
+the owning one — both specified below — so the borrow case is covered without
+re-architecting.)
+
+### Resolved Open decisions (D1–D5)
+
+| # | Decision | Resolution | Crate-edge reason |
+|---|----------|------------|-------------------|
+| **D1** | Type-level vs runtime-guard | **RATIFY type-level** `PitSeries<T>` + `AsOf<T>`. | Feasible (above) with no lifetime wall; makes look-ahead *unrepresentable* (no public method returns a record at `ts > query`), so the Nth consumer is causal by construction — the moat property holds without a "remember the falsifier" discipline. Durable-over-quick: spawns zero v0.2 cleanup brief. |
+| **D2** | Lint vs typed-API-only | **OVERRIDE toward typed-API-only — DROP the lint** (AC5 = N/A). | With D1, the *core* join is safe by construction; a `scripts/` regex lint would only catch a *new* hand-rolled `partition_point` that bypasses the API — a low-frequency event already covered by code review + the shared falsifier being the obvious reach-for. Building+maintaining a grep lint now is carry-cost for marginal coverage. Captured as a **v0.2 follow-on** (an optional `cargo`-deny-style "no raw as-of join outside `core::pit`" grep guard) in tasks.md Notes, not built. |
+| **D3** | Home crate | **RATIFY `crates/core`** (new `pit` module, `pub mod pit;`). | `core` is the base crate (data/backtest depend on it; it depends on neither — no cycle); it already carries `rust_decimal`/`time`; it is where domain primitives `Bar`/`Timestamp`/`FundingObs` live. A `data` home would force `backtest` to depend on `data` for the primitive (it does not today) — a new, wrong-direction edge. ADR-0041-consistent. |
+| **D4** | Migrate or adapter the f64 diag copies | **OVERRIDE toward "thin documented research adapter"** — keep the `f64` probes local; do **not** force them onto the Decimal API. | The two diag probes (`basis_diag.rs:219`, `stablecoin_diag.rs:301`) are research-grade `f64` with `NaN`-not-`None` warm-up semantics, used only inside `examples/`. Folding them onto `PitSeries<Decimal>` would change their warm-up sentinel and add `f64↔Decimal` conversion friction for zero production benefit. Each keeps a **one-line `// PIT: mirrors core::pit::PitSeries — research-grade f64 adapter, NaN=warm-up`** doc-pointer so a reader is routed to the canonical API. (They are NOT anchor-feeding — `examples/` only.) |
+| **D5** | Falsifier home + retire/keep per-loader copies | **One shared canonical falsifier** in `core::pit` tests is the contract (AC2); **KEEP** the two existing `no_look_ahead_falsifier` tests as thin per-loader regression guards. | The shared falsifier proves the *primitive* is causal. The per-loader copies (`funding_data.rs:519`, `basis_data.rs:554`) now exercise the *migrated wrappers* and cost nothing (no anchor touch — they are `#[cfg(test)]`). Belt-and-suspenders: they pin that the wrapper still routes through the guard. Retiring them would remove a cheap regression net for no benefit. |
+
+### The API surface (exact signatures — `crates/core/src/pit.rs`)
+
+A new module `core::pit`, re-exported from `lib.rs` as
+`pub use pit::{PitSeries, AsOf, TimestampMs};`. **No new dependency.** All
+`Result`-free where infallible; the one fallible constructor returns
+`Result<_, PitError>`.
+
+```rust
+//! Point-in-time (PIT) as-of join primitive.
+//!
+//! A `PitSeries<T>` is a sorted, timestamped series whose ONLY query method is
+//! `as_of(query) -> Option<AsOf<T>>`, returning the most-recent record at-or-
+//! before `query` (`None` during warm-up). There is no public method that
+//! returns a record with `ts > query`, so joining future data onto a bar is
+//! UNREPRESENTABLE — look-ahead is a compile error, not a runtime bug. This is
+//! the single guarded as-of join every sidecar feature (funding, basis, on-chain)
+//! routes through; a hand-rolled `partition_point` is the anti-pattern this
+//! replaces. See spec/point-in-time-data-discipline/feature.md § Design and
+//! ADR-0058.
+
+use rust_decimal::Decimal;          // only used by callers; T is generic
+use serde::{Deserialize, Serialize};
+
+/// Milliseconds since the Unix epoch — the as-of join key.
+///
+/// Transparent `i64` newtype. We key on raw ms (NOT `Timestamp`) because the
+/// production loaders join on `i64` ms and a `Timestamp` round-trip would
+/// truncate (`i128 → i64`) and risk an anchor delta. `Ord` is the plain `i64`
+/// ordering, so the `partition_point(|r| r.ts <= q)` predicate is preserved
+/// byte-for-byte against the legacy `|&(t, _)| t <= bar_ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TimestampMs(pub i64);
+
+/// The result of an as-of query: a value whose timestamp is PROVEN `≤` the
+/// query timestamp. Constructed ONLY by `PitSeries::as_of`; there is no public
+/// constructor that lets a caller fabricate an `AsOf` whose `ts > query`.
+///
+/// `as_of_ts` is the timestamp of the record that was in force at the query
+/// (the proof-carrying field); `value` is its payload. Callers that only need
+/// the payload use `.into_value()` / `.value()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AsOf<T> {
+    as_of_ts: TimestampMs,
+    value: T,
+}
+
+impl<T> AsOf<T> {
+    /// The timestamp of the in-force record. Invariant: `as_of_ts <= query`
+    /// for the `query` that produced this `AsOf`.
+    #[must_use]
+    pub fn as_of_ts(&self) -> TimestampMs { self.as_of_ts }
+
+    /// Borrow the payload.
+    #[must_use]
+    pub fn value(&self) -> &T { &self.value }
+
+    /// Consume into the payload (the hot path for `build_*_at_return`).
+    #[must_use]
+    pub fn into_value(self) -> T { self.value }
+}
+
+/// Error from the checked constructor.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PitError {
+    /// The series was not sorted ascending by timestamp (ties allowed).
+    #[error("PitSeries records not sorted ascending by ts (violation at index {0})")]
+    NotSorted(usize),
+}
+
+/// A sorted, timestamped series supporting causal (no-look-ahead) as-of queries.
+///
+/// `T` is the payload (`Decimal` in production; generic so research/tests can
+/// use any `Clone` type). Stores `Vec<(TimestampMs, T)>` sorted ascending.
+#[derive(Debug, Clone)]
+pub struct PitSeries<T> {
+    records: Vec<(TimestampMs, T)>,
+}
+
+impl<T: Clone> PitSeries<T> {
+    /// Build from an already-sorted owned vec, CHECKING the sort invariant.
+    /// Returns `PitError::NotSorted` on the first descending pair.
+    /// (Ties — equal adjacent timestamps — are allowed and preserved.)
+    pub fn from_sorted(records: Vec<(TimestampMs, T)>) -> Result<Self, PitError> { /* check then store */ }
+
+    /// Build from an unsorted owned vec, sorting by `ts` with a STABLE sort
+    /// (`sort_by_key`) so equal-timestamp records keep input order — matching
+    /// the loaders' `sort_unstable_by_key`-then-dedup discipline is the
+    /// caller's job; this primitive preserves whatever order it is given for ties.
+    #[must_use]
+    pub fn from_unsorted(mut records: Vec<(TimestampMs, T)>) -> Self { /* stable sort then store */ }
+
+    /// Borrowing constructor over a sorted slice (zero-copy view); CHECKED.
+    /// For callers (future) that hold a `&[(TimestampMs, T)]` and do not want
+    /// to clone. The production loaders use the owned constructors above.
+    pub fn from_sorted_slice(records: &[(TimestampMs, T)]) -> Result<Self, PitError> { /* check + clone */ }
+
+    /// THE query. Returns the most-recent record at-or-before `query`
+    /// (`ts <= query`), or `None` if no record precedes `query` (warm-up).
+    ///
+    /// Implemented as `self.records.partition_point(|&(t, _)| t <= query)` — the
+    /// EXACT legacy predicate — taking `idx-1` (or `None` when `idx == 0`). This
+    /// is the single line that guarantees byte-identical migration (R3).
+    #[must_use]
+    pub fn as_of(&self, query: TimestampMs) -> Option<AsOf<T>> { /* partition_point, idx-1, wrap */ }
+
+    /// Convenience: as-of, projecting straight to the owned payload. This is the
+    /// EXACT shape `funding_as_of`/`basis_as_of` need — `Option<T>` per query —
+    /// so the migrated wrappers are `series.as_of_value(q)` and nothing else.
+    #[must_use]
+    pub fn as_of_value(&self, query: TimestampMs) -> Option<T> {
+        self.as_of(query).map(AsOf::into_value)
+    }
+
+    /// Number of records (for warm-up/diagnostic assertions in tests).
+    #[must_use]
+    pub fn len(&self) -> usize { self.records.len() }
+    #[must_use]
+    pub fn is_empty(&self) -> bool { self.records.is_empty() }
+}
+```
+
+**Why this is the minimal surface that makes look-ahead unrepresentable.** The
+only way to get a `T` out of a `PitSeries<T>` keyed to a query is `as_of` /
+`as_of_value`, and both return only the record at `idx-1` where
+`idx = partition_point(t <= query)` — i.e. a record with `ts <= query`. `AsOf<T>`
+has **no public field** and **no public constructor**, so a caller cannot
+fabricate an at-`ts > query` value and pass it off as as-of. There is no
+`get(i)`, no `Index`, no `iter()` returning future records, no
+`records()` accessor. A fourth, fifth, Nth sidecar consumer that reaches for
+`PitSeries` is causal *by construction*; one that hand-rolls `partition_point`
+is the visible anti-pattern (and the dropped-lint's v0.2 follow-on would flag it).
+
+### Migration plan — all FOUR call sites (the brief named three)
+
+> **Note for the developer:** the brief's table lists three copies. A grep for
+> `partition_point` across `crates/` finds a **fourth**: an identical `f64` clone
+> at [`crates/data/examples/stablecoin_diag.rs:301`](../../crates/data/examples/stablecoin_diag.rs)
+> (the on-chain spike's probe), byte-identical to `basis_diag.rs:219`. This is
+> *exactly* the "duplication invites a fourth uncaught copy" risk the brief warns
+> about — it already happened. Both f64 probes get the same D4 research-adapter
+> treatment.
+
+| # | Site | Change | Behaviour-preservation proof |
+|---|------|--------|------------------------------|
+| **1** | [`funding_as_of`](../../crates/backtest/src/funding_data.rs) (`funding_data.rs:378`) — `&[(i64, Decimal)] → Vec<Option<Decimal>>` | Keep the `pub fn` signature **unchanged** (it is a public API; callers/tests stay byte-stable). Body becomes: build `PitSeries::from_sorted(funding.iter().map(|&(t,r)| (TimestampMs(t), r)).collect())` once, then `bar_open_ts_ms.iter().map(|&q| series.as_of_value(TimestampMs(q))).collect()`. Empty-series fast-path retained verbatim. | The inner predicate is the same `partition_point(t <= q)` → `idx-1`; `Decimal` is moved, never converted; `None` warm-up identical. **Same bytes.** |
+| **2** | [`basis_as_of`](../../crates/backtest/src/basis_data.rs) (`basis_data.rs:397`) — identical shape | Identical treatment to #1 (the two functions differ only by doc-comment). Signature unchanged. | Same as #1. **Same bytes.** |
+| **3** | [`build_funding_at_return`](../../crates/backtest/src/funding_data.rs) (`funding_data.rs:421`) + [`build_basis_at_return`](../../crates/backtest/src/basis_data.rs) (`basis_data.rs:440`) — `Vec<Vec<Option<Decimal>>>` | **No signature change.** Inner `funding_as_of(funding, return_bar_ts)` / `basis_as_of(...)` calls now reach the migrated wrappers from #1/#2 transitively. Output type `Vec<Vec<Option<Decimal>>>` is unchanged → `BlockBootstrapPathGen::with_funding`/`with_basis` consume it identically. | The materialization shape is untouched; it just calls the migrated leaf. **Same bytes; same bootstrap input.** |
+| **4a** | `funding_as_of` f64 clone in [`basis_diag.rs:219`](../../crates/data/examples/basis_diag.rs) — `&[(i64, f64)] → f64` (NaN warm-up) | **D4: keep local.** Add a one-line doc-pointer `// PIT: research-grade f64 mirror of core::pit::PitSeries; NaN = warm-up (None in the Decimal API).` No code change beyond the comment. | Not anchor-feeding (`examples/` only). No production path touched. |
+| **4b** | `funding_as_of` f64 clone in [`stablecoin_diag.rs:301`](../../crates/data/examples/stablecoin_diag.rs) — identical | **D4: keep local.** Same doc-pointer as 4a. | Same as 4a. |
+
+**Tests touched by the migration:**
+
+- `funding_data.rs` tests (`warm_up_before_first_settlement_is_none`,
+  `bar_at_settlement_uses_that_settlement`, `bar_between_settlements_uses_earlier`,
+  `step_function_correctness`, `no_look_ahead_falsifier`,
+  `empty_funding_series_all_none`, `build_funding_at_return_aligns_to_t_minus_1`,
+  `out_of_span_filter_via_funding_as_of`) — **all keep passing unchanged** because
+  the public `funding_as_of` signature and semantics are preserved. They become
+  the D5 per-loader regression guards over the migrated wrapper.
+- `basis_data.rs` tests (mirror set, incl. `no_look_ahead_falsifier`,
+  `out_of_span_filter_via_basis_as_of`) — same: unchanged, kept.
+- **New** `core::pit` test module is added (see § Verification).
+
+### Anchor-safety argument (R3 / AC3 — the load-bearing guarantee)
+
+The funding-carry and basis arms feed the anchored backtest surfaces (the
+`v1-carry-*`, `v1-basis-reversal-*`, `v2-mn-*` families in `anchors.toml`, plus
+the funding/basis-fed bootstrap distributions). The migration produces
+**byte-identical as-of values** for three independent reasons, each verifiable by
+reading one line:
+
+1. **Same algorithm.** `PitSeries::as_of` is literally
+   `self.records.partition_point(|&(t, _)| t <= query)` then `idx-1`/`None` — the
+   same predicate and the same off-by-one as the legacy `funding_as_of` /
+   `basis_as_of`. Not a re-derivation; a lift of the exact two lines.
+2. **Same warm-up.** `idx == 0 → None`, unchanged. The empty-series fast-path
+   (`if funding.is_empty() { return vec![None; n] }`) is retained verbatim in the
+   wrapper, so even the degenerate path is bit-stable.
+3. **No numeric conversion.** `Decimal` is **moved** through `(TimestampMs(t), r)`
+   construction and `AsOf::into_value`; there is **no `f64` round-trip**, no
+   `Decimal` rescale, no `to_f64`/`from_f64`. The key change `i64 → TimestampMs(i64)`
+   is a transparent newtype with `i64` `Ord`, so the comparison `t <= query` is
+   bit-for-bit the same integer compare.
+
+Therefore every as-of value fed to the carry/basis signals and to
+`build_*_at_return` → bootstrap is identical, so every downstream report body is
+byte-identical, so **`scripts/verify_anchors.sh` stays 119/119**. The developer
+**re-runs `scripts/verify_anchors.sh` after the migration and confirms 119/119
+with zero delta** (M-TEST-3); a single non-matching anchor is a REGRESSION and
+blocks the ship per CLAUDE.md. No anchored `spec/*/reports/*.md` file is edited
+(this feature touches none); no `anchors.toml` SHA changes (no new anchor); no
+ADR-0038 § D6 re-emission is invoked.
+
+### Why the CLAUDE.md day-1 equity-divergence gate is N/A (restated)
+
+CLAUDE.md mandates a baseline-equity-divergence e2e test "from day 1" for **every
+strategy overlay or sizing modifier** (the `v3-volatility-forecaster-noop-fix`
+precedent: a `scale` computed but never applied). **This feature is neither.** It
+introduces no decision variable, no scale, no signal, no overlay — it lifts an
+existing as-of join behind a type. There is no "did the overlay apply?" question
+because there is no overlay; the *correct* and *required* outcome is that equity
+does **not** move (AC3 — zero anchor delta is the explicit success condition).
+Applying the divergence gate here would be a category error, asserting the
+opposite of the design goal. The substituted, stricter floor for this feature is
+**AC2 (the falsifier proves the guard works) + AC3 (zero anchor delta proves the
+migration changed nothing)** — see § Verification. (Should any future amendment
+make this design touch a decision path — it must not — the CLAUDE.md gate
+re-applies and this clause is revisited.)
+
+### Verification floor
+
+1. **AC2 — the self-proving look-ahead falsifier, lifted to `core::pit`.** A
+   `#[test] fn as_of_no_look_ahead_falsifier()` in `core::pit` tests: build a
+   `PitSeries` of `(ts, value)`, query `as_of(q)` causally, then **forward-shift**
+   every record's `ts` by `+Δ` and query the same `q` again; assert the two
+   results **differ** (`assert_ne!`). This mirrors the existing
+   `funding_data.rs::no_look_ahead_falsifier` exactly. It is wired so that
+   **breaking the guard makes it fail**: a companion `trybuild` compile-fail
+   fixture (`core/tests/pit_compile_fail/`) asserts there is **no** API that
+   returns a record at `ts > query` (e.g. `AsOf::new` does not exist; the private
+   field is inaccessible) — proving the guarantee is structural, not just a happy
+   path. (The trybuild dep is already in `core/Cargo.toml`.)
+2. **AC3 — zero anchor delta.** `scripts/verify_anchors.sh` reports the same
+   **119/119** byte-identical before and after migration. This is the
+   behaviour-preservation proof.
+3. **AC4 — gates green.** `python3 scripts/spec_lint.py spec/point-in-time-data-discipline`;
+   `cargo clippy -p trading_core -p trading_backtest -p trading_data -- -D warnings`;
+   `cargo test -p trading_core -p trading_backtest` (incl. the migrated loaders +
+   the new `core::pit` falsifier).
+4. **AC1 — single join path.** Every production sidecar as-of join
+   (`funding_as_of`, `basis_as_of`, transitively `build_*_at_return`) routes
+   through `core::pit::PitSeries`; the f64 diag probes carry the documented
+   research-adapter pointer (D4). AC5 is **N/A** — the lint is dropped (D2).
+
+### Layering & dependency note (ADR-0041-consistent)
+
+```mermaid
+graph TD
+  core["crates/core<br/>+ pit::PitSeries / AsOf / TimestampMs<br/>(base crate — depends on nothing)"]
+  data["crates/data<br/>examples/*_diag.rs keep f64 adapters (D4)"]
+  backtest["crates/backtest<br/>funding_data.rs / basis_data.rs<br/>migrated to core::pit"]
+  bootstrap["data::synth::bootstrap<br/>consumes Vec&lt;Vec&lt;Option&lt;Decimal&gt;&gt;&gt; (unchanged)"]
+  core --> data
+  core --> backtest
+  backtest -. "build_*_at_return → owned array" .-> bootstrap
+```
+
+The new primitive sits **below** every consumer — no new edge, no cycle, and the
+`backtest → data` non-edge is preserved (the primitive lives in `core`, so
+`backtest` does not need `data` to reach it). This is the ADR-0041 rule applied:
+the as-of join is a domain primitive, so it lives in the domain-primitive crate.
+
+---
+
+## Implementation
+
+Implemented 2026-06-18 by developer. All M-DEV tasks complete; all M-TEST gates green.
+
+### Module map
+
+| File | What changed |
+|------|-------------|
+| `crates/core/src/pit.rs` (new) | `TimestampMs`, `AsOf<T>` (private fields), `PitError`, `PitSeries<T>` with all 5 constructors + `as_of`/`as_of_value`/`len`/`is_empty`; 12 unit tests including `as_of_no_look_ahead_falsifier` |
+| `crates/core/src/lib.rs` | Added `pub mod pit;` + `pub use pit::{AsOf, PitError, PitSeries, TimestampMs};` |
+| `crates/core/tests/compile_fail/pit_no_public_constructor.rs` (new) | trybuild fixture: attempts `AsOf { as_of_ts, value }` struct literal — fails at compile time (private fields) |
+| `crates/core/tests/compile_fail/pit_no_public_constructor.stderr` (new) | pinned expected error for `E0451 fields are private` |
+| `crates/core/tests/pit_compile_fail.rs` (new) | `pit_look_ahead_is_a_compile_error` trybuild runner (M-TEST-2) |
+| `crates/backtest/src/funding_data.rs` | Added `trading_core::{PitSeries, TimestampMs}` import; migrated `funding_as_of` body to `PitSeries::from_unsorted` + `as_of_value`; public signature **unchanged** |
+| `crates/backtest/src/basis_data.rs` | Identical treatment to `funding_data.rs`; public `basis_as_of` signature **unchanged** |
+| `crates/data/examples/basis_diag.rs` | One-line doc-pointer `// PIT: research-grade f64 mirror of trading_core::pit::PitSeries; NaN = warm-up (None in the Decimal API).` added above `funding_as_of` f64 clone (D4) |
+| `crates/data/examples/stablecoin_diag.rs` | Same doc-pointer (the fourth copy) |
+
+### Call sites (all four)
+
+| # | Site | Treatment | Signatures unchanged |
+|---|------|-----------|---------------------|
+| 1 | `funding_data.rs::funding_as_of` | Body migrated to `PitSeries::from_unsorted` + `as_of_value` | Yes — `pub fn funding_as_of(&[(i64, Decimal)], &[i64]) -> Vec<Option<Decimal>>` |
+| 2 | `basis_data.rs::basis_as_of` | Identical treatment | Yes — `pub fn basis_as_of(&[(i64, Decimal)], &[i64]) -> Vec<Option<Decimal>>` |
+| 3 | `build_funding_at_return` / `build_basis_at_return` | Bodies unchanged — call the migrated wrappers transitively | Yes — `Vec<Vec<Option<Decimal>>>` output shape unchanged |
+| 4a | `basis_diag.rs:219` f64 clone | D4: doc-pointer added only, no code change | N/A (not production) |
+| 4b | `stablecoin_diag.rs:301` f64 clone | D4: doc-pointer added only, no code change | N/A (not production) |
+
+### Verification summary
+
+- **M-TEST-1**: 12 pit unit tests in `crates/core/src/pit.rs` — all pass (`cargo test -p trading_core`). Including `as_of_no_look_ahead_falsifier` (AC2 day-1 gate).
+- **M-TEST-2**: trybuild compile-fail `pit_no_public_constructor.rs` — `E0451 fields are private` pins that `AsOf` cannot be constructed externally. Passes as `pit_look_ahead_is_a_compile_error` test.
+- **M-TEST-3**: `scripts/verify_anchors.sh` → **119/119 ANCHORS PASS** (zero delta). Migration is byte-identical: same `partition_point(t <= q)` algorithm, same `None` warm-up, `Decimal` moved with no `f64` round-trip.
+- **M-TEST-4**: `cargo test -p backtest --lib --features realdata` → 103 passed, 0 failed. Both `no_look_ahead_falsifier` tests (D5 per-loader regression guards) pass.
+- **M-TEST-5 / AC4**: `cargo clippy -p trading_core -p backtest -- -D warnings` → 0 warnings. `cargo fmt --check` → clean.
+
+### AC5 (lint) — N/A
+
+Lint dropped (D2: type-level sufficient for all four current sites). See `tasks.md` Notes for the v0.2 follow-on option.

@@ -119,6 +119,7 @@ design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 - **reflection-memory** (+ trader-wiring) — persistent lesson-card store with retrieval at decision time, wired through the sanctioned ADR-0041 layering seam.
 - **operator-success-reports** — auto-generated "is this working?" reports (equity, Sharpe/Sortino/drawdown, attribution, system health).
 - **audit-tick-consumer-envelope** — audit tick consumer with an aggregation envelope.
+- **point-in-time-data-discipline** — `core::pit::PitSeries`/`AsOf`: a type-level as-of primitive making look-ahead *unrepresentable* (`AsOf` has private fields + no public ctor; a trybuild compile-fail is the proof), consolidating the hand-rolled as-of joins (funding/basis) behind one guarded API. Behaviour-preserving — anchors 119/119. (ADR-0058, extends ADR-0041.)
 
 ## Tooling & process
 
