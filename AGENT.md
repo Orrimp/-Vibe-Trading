@@ -58,6 +58,14 @@ historically wrote to the wrong tree when CWD and brief paths diverged.
 Opus for deep thinking (analyst, architect, ui-designer, presenter — communication is hard).
 Sonnet for high-throughput execution (developer, tester).
 
+Beyond the six pipeline agents, two **on-demand specialists** exist (invoked by name,
+not part of the linear flow): `spec-auditor` (read-only spec-drift audit) and
+**`ui-debugger`** (`.claude/agents/ui-debugger.md`, opus — diagnoses + fixes cockpit/UI
+render & behavior bugs at the rendered-PIXEL layer). Route a UI **bug** ("no graph",
+"blank panel", "looks wrong", a mystery UI-test failure) to `ui-debugger`; route UI
+**design/implementation** to `ui-designer`. Both follow
+[`spec/dev-notes/iced-ui-render-verification.md`](spec/dev-notes/iced-ui-render-verification.md).
+
 ## Canonical workflow
 
 ```

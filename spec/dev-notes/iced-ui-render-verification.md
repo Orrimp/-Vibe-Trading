@@ -49,6 +49,36 @@ is blank.
 to cosmic-text font jitter) rather than byte-comparing PNGs, and are `#[cfg(target_os
 = "macos")]`-gated for pixel determinism (ADR-0057).
 
+## Iced 0.14 tooling (verified against the pinned `=0.14.0` source, 2026-06-18)
+
+This repo builds iced `default-features = false, features = [tiny-skia, thread-pool,
+advanced, canvas]` — so the `debug`/`hot`/devtools paths are **OFF**. What's actually
+available for debugging:
+
+- **`iced_test::screenshot(&program, &theme, (w,h), scale, Duration)`** ⭐ — the
+  headless render primitive every pixel harness uses (full `view → update → draw →
+  tiny-skia RGBA readback`). `iced_test::run(...)` simulates a running program. This
+  is the day-to-day debug tool.
+- **`iced_tester` / `iced_selector`** — interaction simulation (clicks/keys) + widget
+  selection, for click/selection/hover bugs (the `ui-session-journal-iced-tester`
+  adapter + the `chart_*` / `audit_*` interaction tests).
+- **`debug` feature → `iced_devtools` + `iced_winit/debug`** — an OPTIONAL
+  inspector/devtools overlay (`iced_debug` = "a pluggable API for debugging iced
+  applications"); a **`hot`** feature adds hot-reload. **Neither is enabled here.**
+  Using the inspector means rebuilding `crates/ui`'s iced dep with `--features debug`
+  AND running the **live window** (orchestrator-only) — heavy; reach for it only when
+  headless render + interaction-sim can't localize a bug.
+- **`tracing`** — the cockpit logs through tracing; add temporary spans / `debug!` on
+  the suspect path, run the binary, read stderr (remove probes after).
+
+Bottom line: iced 0.14 has **no always-on web-devtools-style inspector in this
+build** — the project's `iced_test::screenshot` pixel harnesses ARE the debugging
+tool; the `iced_devtools` overlay is a heavier escalation.
+
+> A dedicated **`ui-debugger` agent** (`.claude/agents/ui-debugger.md`) operationalizes
+> this guide end-to-end (reproduce at pixels → inspect the PNG → fix → re-prove).
+> Invoke it for any cockpit/UI bug ("no graph", "blank panel", "looks wrong").
+
 ## The rules (each one = a way the curve shipped blind)
 
 1. **Verify the POPULATED state, not the empty one.** A green snapshot of `Empty`
