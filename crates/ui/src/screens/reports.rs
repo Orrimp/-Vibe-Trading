@@ -51,7 +51,8 @@ use iced::{Border, Length};
 use crate::reports::ReportEntry;
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    REPORTS_EMPTY_LIST, REPORTS_LOAD_ERROR, REPORTS_PICKER_TITLE, REPORTS_SELECT_PROMPT,
+    REPORTS_EMPTY_LIST, REPORTS_HAS_CURVE_MARKER, REPORTS_LOAD_ERROR, REPORTS_PICKER_TITLE,
+    REPORTS_SELECT_PROMPT,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::{drawdown_band, equity_curve, kpi_strip};
@@ -125,6 +126,14 @@ fn picker_pane(st: &crate::reports::ReportsScreenState, mode: ThemeMode) -> crat
 /// inactive = muted text + hairline border. Colour is never the only active
 /// signal — the active row also gets the raised background (shape), per the
 /// accessibility minimum (the Baseline chip pattern).
+///
+/// **Has-curve marker (backtest-equity-companion UX follow-on).** When
+/// `entry.has_companion`, a compact `ACCENT` "● curve" tag is pushed to the
+/// trailing edge of the row so the operator can see at a glance which reports
+/// paint a populated equity curve — without hunting through the picker. The
+/// marker is `ACCENT`-coloured AND carries the explicit "curve" label, so
+/// colour is never the only signal (accessibility minimum). No new theme
+/// token, no new widget (AC7) — an existing `Text` in the `ACCENT` token.
 fn picker_row(
     idx: usize,
     entry: &ReportEntry,
@@ -132,37 +141,58 @@ fn picker_row(
     mode: ThemeMode,
 ) -> crate::Element<'_> {
     let label = format!("{} \u{00b7} {}", entry.slug, entry.file_stem);
-    Button::new(Text::new(label).size(text::SMALL).color(if is_active {
-        color::ACCENT.current(mode)
-    } else {
-        color::FG_3.current(mode)
-    }))
-    .on_press(Message::ReportsSelect(idx))
-    .width(Length::Fill)
-    .padding([space::XS as u16, space::S as u16])
-    .style(move |_: &iced::Theme, _: button::Status| button::Style {
-        background: if is_active {
-            Some(color::PANEL_RAISED.current(mode).into())
-        } else {
-            None
-        },
-        text_color: if is_active {
+    let label_text = Text::new(label)
+        .size(text::SMALL)
+        .color(if is_active {
             color::ACCENT.current(mode)
         } else {
             color::FG_3.current(mode)
-        },
-        border: Border {
-            color: if is_active {
+        })
+        .width(Length::Fill);
+
+    // Row = label (filling) + optional trailing "● curve" marker. The marker
+    // stays `ACCENT` on both active + inactive rows (it contrasts against the
+    // muted/raised row backgrounds either way) so the has-curve hint is
+    // legible regardless of selection state.
+    let mut content = Row::new()
+        .spacing(space::XS)
+        .align_y(iced::alignment::Vertical::Center)
+        .push(label_text);
+    if entry.has_companion {
+        content = content.push(
+            Text::new(REPORTS_HAS_CURVE_MARKER)
+                .size(text::SMALL)
+                .color(color::ACCENT.current(mode)),
+        );
+    }
+
+    Button::new(content)
+        .on_press(Message::ReportsSelect(idx))
+        .width(Length::Fill)
+        .padding([space::XS as u16, space::S as u16])
+        .style(move |_: &iced::Theme, _: button::Status| button::Style {
+            background: if is_active {
+                Some(color::PANEL_RAISED.current(mode).into())
+            } else {
+                None
+            },
+            text_color: if is_active {
                 color::ACCENT.current(mode)
             } else {
-                color::BORDER_1.current(mode)
+                color::FG_3.current(mode)
             },
-            width: 1.0,
-            radius: radius::R1.into(),
-        },
-        ..Default::default()
-    })
-    .into()
+            border: Border {
+                color: if is_active {
+                    color::ACCENT.current(mode)
+                } else {
+                    color::BORDER_1.current(mode)
+                },
+                width: 1.0,
+                radius: radius::R1.into(),
+            },
+            ..Default::default()
+        })
+        .into()
 }
 
 /// Build the right detail pane (R2 / R3).

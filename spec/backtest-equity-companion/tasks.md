@@ -2,7 +2,7 @@
 slug: backtest-equity-companion
 status: dev-done
 owner: ui-designer
-updated: 2026-06-17
+updated: 2026-06-18
 version: 0.1.0
 ---
 
@@ -167,13 +167,54 @@ is edited; `scripts/verify_anchors.sh` must stay **119/119** throughout.
   - test: `python3 scripts/spec_lint.py spec/backtest-equity-companion`
   - output: `spec-lint: PASS (0 violations)`
 
+- [x] **M-TEST-6 — Discoverability UX follow-on (ui-designer, 2026-06-18).**
+  (AC3) The render-layer proof (M-TEST-5 / `## Implementation` → *Render-layer
+  verification*) diagnosed that the Reports screen "looked empty" because the
+  ONE companion-bearing report was buried in a ~112-row picker with a
+  no-companion near-duplicate (`…20260527…`) sorting right above it — the
+  operator never found the row whose curve populates. This task fixes the
+  discoverability so the curve surfaces without hunting. Three changes, all in
+  `crates/ui`, no new crate edge / widget / theme token:
+  - **(1) `has_companion: bool` on `ReportEntry`** — `crates/ui/src/reports/state.rs:38`;
+    computed per entry in `discover_reports()` via the new existence-only
+    `loader::report_has_companion()` (`crates/ui/src/reports/loader.rs`), which
+    reuses `load_equity_companion`'s stem-match convention but stops at
+    existence (dir `is_dir()` + one `read_dir` for `equity-*.csv`; never reads/
+    parses the CSV; K2 never-panic).
+  - **(2) "● curve" picker marker** — `crates/ui/src/screens/reports.rs::picker_row`
+    pushes a trailing `ACCENT` `REPORTS_HAS_CURVE_MARKER` tag
+    (`crates/ui/src/strings.rs`) on companion rows. Colour + label (never colour
+    alone — accessibility minimum). Existing `ACCENT` token, existing `Text`.
+  - **(3) Boot auto-select of the newest companion-bearing report** —
+    `crates/ui/src/reports/state.rs::load_into` defaults `selected` to
+    `newest_companion_index()` (greatest `file_stem` among `has_companion`
+    rows) and `load_selection`s it when the list first becomes `Ready`, guarded
+    on `selected.is_none()` (never overrides an operator choice). No companion
+    anywhere → unselected (pre-follow-on cold-start prompt).
+  - file: `crates/ui/src/reports/state.rs`, `crates/ui/src/reports/loader.rs`,
+    `crates/ui/src/screens/reports.rs`, `crates/ui/src/strings.rs`.
+  - test: `cargo test -p ui` (incl. 7 new unit tests — `report_has_companion_*`
+    ×4, `newest_companion_index_*` ×3 — and the new render-layer guard
+    `reports_marker_and_autoselect_render` in
+    `crates/ui/tests/reports_populated_curve_render.rs`).
+  - render proof: `/tmp/reports_marker_render.png` — shows the "● curve" marker
+    on the companion row (only) AND the auto-selected report's populated curve
+    in the detail pane (asserts marker ACCENT px isolated to the companion row +
+    >1000 curve px). Reuses the >1000-curve-px guard pattern.
+  - output: `cargo test -p ui` → **873 passed; 0 failed; 27 ignored**; clippy
+    (forced re-lint) + fmt clean; `verify_anchors.sh` → 119/119. The three
+    reports textual snapshots (`reports_snapshot__{ready_dark,ready_light,
+    detail_error_dark}`) regenerated — the ONLY delta is the new
+    `marker=[● curve] color=accent` line on the companion row (confirmed via
+    diff; no other field moved).
+
 ## Mapping to acceptance criteria
 
 | AC  | Covered by                |
 |-----|---------------------------|
 | AC1 | M-DEV-1, M-DEV-2          |
 | AC2 | M-TEST-1                  |
-| AC3 | M-TEST-3, M-TEST-5        |
+| AC3 | M-TEST-3, M-TEST-5, M-TEST-6 |
 | AC4 | M-DEV-3, M-TEST-2         |
 | AC5 | M-DEV-4, M-TEST-1         |
 | AC6 | M-TEST-4                  |

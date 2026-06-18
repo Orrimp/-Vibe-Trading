@@ -1489,6 +1489,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("REPORTS_EMPTY_LIST", REPORTS_EMPTY_LIST),
         ("REPORTS_SELECT_PROMPT", REPORTS_SELECT_PROMPT),
         ("REPORTS_LOAD_ERROR", REPORTS_LOAD_ERROR),
+        ("REPORTS_HAS_CURVE_MARKER", REPORTS_HAS_CURVE_MARKER),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -1895,6 +1896,15 @@ pub const REPORTS_SELECT_PROMPT: &str = "Select a report to view its results.";
 /// bare "no data" — says what happened and what to check.
 pub const REPORTS_LOAD_ERROR: &str = "This report could not be read — it may have been moved \
     or its summary table is malformed.";
+
+/// Picker-row marker for a report that has a stem-matched equity companion
+/// CSV — i.e. selecting it paints a populated equity curve (backtest-equity-
+/// companion UX follow-on). Rendered in the `ACCENT` token on the row so the
+/// operator can see at a glance which reports have a curve, without hunting.
+/// The filled-circle glyph is paired with the marker's `ACCENT` colour AND a
+/// tooltip-able position so colour is never the only signal (accessibility
+/// minimum). Kept to a single glyph to stay compact in the 320 px rail.
+pub const REPORTS_HAS_CURVE_MARKER: &str = "\u{25CF} curve";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

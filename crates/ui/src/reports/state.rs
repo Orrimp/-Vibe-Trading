@@ -35,6 +35,15 @@ pub struct ReportEntry {
     pub file_stem: SmolStr,
     /// Full path to the `.md` report — held in state, NEVER the message key.
     pub path: PathBuf,
+    /// Whether a stem-matched equity companion CSV exists on disk for this
+    /// report — i.e. `<report_dir>/artifacts/<file_stem>/equity-*.csv` is
+    /// present (backtest-equity-companion UX follow-on). Computed cheaply at
+    /// discovery time (existence-only; the CSV is **not** parsed here — that
+    /// happens lazily in [`load_selection`]). Drives the picker's "has-curve"
+    /// marker (so the operator can see at a glance which reports will paint a
+    /// populated curve) and the boot auto-select (newest companion-bearing
+    /// report is selected on entry).
+    pub has_companion: bool,
 }
 
 /// Per-session Reports-screen state (D1). Sibling of `BaselineScreenState`.
@@ -126,13 +135,59 @@ impl ReportsScreenState {
 /// cheap" Loading→Ready contract (R3). **Never panics**: the scan degrades
 /// to an empty list (K2), which lands as `PanelState::Empty` — the
 /// deterministic empty-list surface in a fixtures-only checkout.
+///
+/// **Auto-select the newest companion-bearing report (backtest-equity-
+/// companion UX follow-on).** Only one report in the corpus today ships a
+/// stem-matched equity companion, and it sorts deep in the `(slug, stem)`
+/// list with a no-companion near-duplicate right above it, so the operator
+/// could not find the row whose curve actually populates — the screen looked
+/// empty on entry. To fix discoverability, when the discovered list first
+/// becomes `Ready` we default the selection to the **newest** entry whose
+/// `has_companion == true` (newest = highest `file_stem`, which carries the
+/// `YYYYMMDD-HHMMSS` stamp) and load it synchronously, so a populated curve
+/// renders the moment the operator opens Reports. If no entry has a companion
+/// the selection is left unset (the cold-start "pick a report" prompt — the
+/// pre-follow-on behaviour). An operator selection already in place is never
+/// overridden (guarded on `selected.is_none()`); `load_into` runs once at
+/// boot, before any interaction, so this guard holds by construction and is
+/// belt-and-braces against a future re-call.
 pub fn load_into(model: &mut crate::state::Cockpit) {
     let discovered = loader::discover_reports();
-    model.reports_screen_state.discovered = if discovered.is_empty() {
-        PanelState::Empty
-    } else {
-        PanelState::Ready(discovered)
-    };
+    let st = &mut model.reports_screen_state;
+    if discovered.is_empty() {
+        st.discovered = PanelState::Empty;
+        return;
+    }
+
+    let auto = newest_companion_index(&discovered);
+    st.discovered = PanelState::Ready(discovered);
+
+    // Only auto-select on a cold screen (no operator choice yet). `load_into`
+    // is a boot-time one-shot, so `selected` is `None` here in practice.
+    if st.selected.is_none()
+        && let Some(idx) = auto
+    {
+        st.selected = Some(idx);
+        st.load_selection(idx);
+    }
+}
+
+/// Index of the **newest** companion-bearing entry in `entries`, or `None`
+/// when none has a companion (backtest-equity-companion UX follow-on).
+///
+/// "Newest" = the lexicographically-greatest `file_stem` among
+/// `has_companion == true` rows — the stem embeds the `YYYYMMDD-HHMMSS` stamp
+/// (`backtest-<stamp>-<scenario>`), so a string `max` is a chronological max.
+/// Pure + total (no panic, no I/O); factored out of [`load_into`] so the
+/// auto-select decision is unit-testable without disk discovery.
+#[must_use]
+pub fn newest_companion_index(entries: &[ReportEntry]) -> Option<usize> {
+    entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.has_companion)
+        .max_by(|(_, a), (_, b)| a.file_stem.cmp(&b.file_stem))
+        .map(|(idx, _)| idx)
 }
 
 #[cfg(test)]
@@ -163,6 +218,7 @@ mod tests {
             slug: SmolStr::new("slug"),
             file_stem: SmolStr::new("backtest-20260101-000000-x"),
             path: PathBuf::from("/definitely/not/real/backtest-20260101-000000-x.md"),
+            has_companion: false,
         }]);
         s.selected = Some(0);
         s.load_selection(0);
@@ -211,6 +267,7 @@ mod tests {
             slug: SmolStr::new("slug"),
             file_stem: SmolStr::new("backtest-20260101-000000-fixture"),
             path: path.clone(),
+            has_companion: false,
         }]);
         s.selected = Some(0);
         s.load_selection(0);
@@ -224,5 +281,65 @@ mod tests {
             Some("backtest-20260101-000000-fixture")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── auto-select the newest companion-bearing report (UX follow-on) ───────
+
+    fn entry(stem: &str, has_companion: bool) -> ReportEntry {
+        ReportEntry {
+            slug: SmolStr::new("v0-paper-sma"),
+            file_stem: SmolStr::new(stem),
+            path: PathBuf::from(format!("/fixture/v0-paper-sma/reports/{stem}.md")),
+            has_companion,
+        }
+    }
+
+    /// The picker's real shape: a no-companion near-duplicate sorts ABOVE the
+    /// one companion-bearing report (lexicographically `…20260527…` <
+    /// `…20260617…`, but the older one has no companion). Auto-select MUST
+    /// pick the companion-bearing row, never the higher-sorting no-companion
+    /// one — the exact discoverability bug this fixes.
+    #[test]
+    fn newest_companion_index_skips_higher_sorting_no_companion() {
+        let entries = vec![
+            entry("backtest-20260527-000000-btc-2024-h1-sma-cross", false),
+            entry("backtest-20260617-180015-btc-2024-h1-sma-cross", true),
+        ];
+        assert_eq!(
+            newest_companion_index(&entries),
+            Some(1),
+            "must select the companion-bearing row, not the higher-sorting \
+             no-companion near-duplicate above it"
+        );
+    }
+
+    /// Among MULTIPLE companion-bearing rows, the newest (greatest stem) wins.
+    #[test]
+    fn newest_companion_index_picks_greatest_stem_among_companions() {
+        let entries = vec![
+            entry("backtest-20260101-000000-old", true),
+            entry("backtest-20260901-000000-newest", true),
+            entry("backtest-20260301-000000-mid", true),
+            // A still-newer stem but NO companion — must be ignored.
+            entry("backtest-20261231-235959-no-curve", false),
+        ];
+        assert_eq!(
+            newest_companion_index(&entries),
+            Some(1),
+            "the greatest-stem companion-bearing row wins; a newer no-companion \
+             row is ignored"
+        );
+    }
+
+    /// No companion anywhere → `None` (the screen stays on the cold-start
+    /// prompt — the pre-follow-on behaviour).
+    #[test]
+    fn newest_companion_index_none_when_no_companions() {
+        let entries = vec![
+            entry("backtest-20260101-000000-a", false),
+            entry("backtest-20260202-000000-b", false),
+        ];
+        assert_eq!(newest_companion_index(&entries), None);
+        assert_eq!(newest_companion_index(&[]), None);
     }
 }

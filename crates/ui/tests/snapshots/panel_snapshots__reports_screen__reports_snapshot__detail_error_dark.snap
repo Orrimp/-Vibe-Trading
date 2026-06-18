@@ -6,7 +6,7 @@ screen: reports
 theme: Dark
 picker_title: Backtest reports
 picker_rows:
-  [v0-paper-sma · backtest-20260418-090000-btc-sma] active color=accent(dark) bg=panel_raised
+  [v0-paper-sma · backtest-20260418-090000-btc-sma] active color=accent(dark) bg=panel_raised marker=[● curve] color=accent
   [v05-composed-strategies · backtest-20260420-152017-btc-rsi] inactive color=fg_muted
 detail:
   state: error copy=This report could not be read — it may have been moved or its summary table is malformed.

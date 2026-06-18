@@ -158,6 +158,63 @@ pub fn load_equity_companion(report_path: &Path) -> Result<PanelState<EquitySeri
     Ok(PanelState::Ready(series))
 }
 
+/// Cheap existence-only probe: does a stem-matched equity companion CSV exist
+/// on disk for the report at `report_path`? (backtest-equity-companion UX
+/// follow-on — drives the picker's "has-curve" marker + boot auto-select.)
+///
+/// Uses the **exact same stem-match convention** as
+/// [`load_equity_companion`] — the companion lives at
+/// `<report_dir>/artifacts/<report-file-stem>/equity-*.csv` — but stops at
+/// *existence*: it never reads or parses the CSV (no `read_equity_csv`, no
+/// `EquitySeries::from_points`), just a directory `is_dir()` check plus a
+/// single `read_dir` scan for the first `equity-*.csv` filename. This keeps
+/// discovery filename-cheap (one extra `stat` + at most one `read_dir` per
+/// report) so the boot scan stays synchronous.
+///
+/// **K2 never-panic**: a path with no UTF-8 stem, an absent `artifacts/` dir,
+/// an absent matching-stem dir, or an unreadable matching-stem dir all return
+/// `false` — never an error, never a panic. (An unreadable dir is treated as
+/// "no companion" rather than surfaced; the marker is an at-a-glance hint, so
+/// a false negative degrades gracefully to "no marker", and the lazy
+/// [`load_equity_companion`] path would still surface a real read error if the
+/// row were selected.)
+#[must_use]
+pub fn report_has_companion(report_path: &Path) -> bool {
+    let Some(parent) = report_path.parent() else {
+        return false;
+    };
+    let Some(stem) = report_path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let stem_dir = parent.join("artifacts").join(stem);
+    if !stem_dir.is_dir() {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir(&stem_dir) else {
+        // Unreadable matching-stem dir → treat as no companion (no panic). The
+        // lazy load path surfaces a real read error on selection if needed.
+        tracing::debug!(
+            path = %stem_dir.display(),
+            "report_has_companion: matching-stem artifacts dir unreadable — treating as no companion"
+        );
+        return false;
+    };
+    for entry in entries.flatten() {
+        let ip = entry.path();
+        if !ip.is_file() {
+            continue;
+        }
+        let name = ip.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        // Same equity-companion filename contract as `load_equity_companion`.
+        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+        let is_equity_csv = name.starts_with("equity-") && name.ends_with(".csv");
+        if is_equity_csv {
+            return true;
+        }
+    }
+    false
+}
+
 /// Parse the `scenario:` field out of the YAML front-matter.
 ///
 /// **Lifted verbatim from `bin/viewer.rs:223` (D2 / AC5).**
@@ -270,10 +327,15 @@ pub fn discover_reports() -> Vec<ReportEntry> {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(name);
+            // Cheap existence-only companion probe (no CSV parse) so the
+            // picker can mark which rows paint a curve + the boot can
+            // auto-select the newest companion-bearing report.
+            let has_companion = report_has_companion(&file_path);
             out.push(ReportEntry {
                 slug: smol_str::SmolStr::new(slug),
                 file_stem: smol_str::SmolStr::new(stem),
                 path: file_path.clone(),
+                has_companion,
             });
         }
     }
@@ -612,5 +674,98 @@ mod tests {
             state.variant_name()
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── report_has_companion existence probe (UX follow-on) ──────────────────
+
+    /// The existence probe mirrors `load_equity_companion`'s stem-match but
+    /// stops at existence: a matching-stem dir holding an `equity-*.csv` →
+    /// `true`. Same fixture layout as the loader happy-path test.
+    #[test]
+    fn report_has_companion_true_for_matching_stem_csv() {
+        let dir = std::env::temp_dir().join(format!("hascomp_yes_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let stem = "backtest-20260101-000000-fixture-scn";
+        let report_path = dir.join(format!("{stem}.md"));
+        let comp_dir = dir.join("artifacts").join(stem);
+        std::fs::create_dir_all(&comp_dir).expect("companion dir");
+        std::fs::write(comp_dir.join("equity-20260101-000000.csv"), "ts\n").expect("write csv");
+
+        assert!(
+            report_has_companion(&report_path),
+            "a matching-stem dir with an equity-*.csv must probe true"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A companion under a NON-matching stem dir must probe `false` (the same
+    /// stem-match discipline as the loader — never a first-match false hit).
+    #[test]
+    fn report_has_companion_false_for_non_matching_stem() {
+        let dir = std::env::temp_dir().join(format!("hascomp_nomatch_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let this_stem = "backtest-20260101-000000-this";
+        let report_path = dir.join(format!("{this_stem}.md"));
+        let other_dir = dir.join("artifacts").join("backtest-20260202-111111-other");
+        std::fs::create_dir_all(&other_dir).expect("other dir");
+        std::fs::write(other_dir.join("equity-20260202-111111.csv"), "ts\n").expect("write csv");
+
+        assert!(
+            !report_has_companion(&report_path),
+            "a companion under a non-matching stem dir must NOT count (stem-match, \
+             not first-match)"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A matching-stem dir present but holding no `equity-*.csv` → `false`.
+    #[test]
+    fn report_has_companion_false_for_dir_without_csv() {
+        let dir = std::env::temp_dir().join(format!("hascomp_nocsv_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let stem = "backtest-20260101-000000-empty";
+        let report_path = dir.join(format!("{stem}.md"));
+        let comp_dir = dir.join("artifacts").join(stem);
+        std::fs::create_dir_all(&comp_dir).expect("companion dir");
+        std::fs::write(comp_dir.join("notes.txt"), "decoy").expect("write decoy");
+
+        assert!(
+            !report_has_companion(&report_path),
+            "a matching-stem dir with no equity-*.csv must probe false"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A path with no `artifacts/` tree at all → `false`, never a panic (K2).
+    #[test]
+    fn report_has_companion_false_and_no_panic_for_absent_tree() {
+        let bogus =
+            workspace_root().join("definitely/not/real/reports/backtest-20260101-000000-x.md");
+        assert!(
+            !report_has_companion(&bogus),
+            "an absent artifacts tree must probe false, never panic"
+        );
+    }
+
+    /// Consistency invariant: when `report_has_companion` reports `true` for
+    /// the real committed demo, `load_equity_companion` resolves it to `Ready`
+    /// — the probe must agree with the loader on the live corpus (skip-if-
+    /// absent, mirroring the other real-demo guards).
+    #[test]
+    fn report_has_companion_agrees_with_loader_on_real_demo() {
+        let demo = workspace_root()
+            .join("spec/v0-paper-sma/reports")
+            .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
+        if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
+            return; // demo artifact pruned — skip
+        }
+        if report_has_companion(&demo) {
+            let state = load_equity_companion(&demo).expect("loader must not Err on the demo");
+            assert!(
+                matches!(state, PanelState::Ready(_)),
+                "probe says has-companion → loader must resolve Ready, got {}",
+                state.variant_name()
+            );
+        }
     }
 }

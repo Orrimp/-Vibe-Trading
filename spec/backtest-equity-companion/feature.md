@@ -2,7 +2,7 @@
 slug: backtest-equity-companion
 status: shipped
 owner: operator
-updated: 2026-06-17
+updated: 2026-06-18
 version: 0.1.0
 ---
 
@@ -457,6 +457,90 @@ No production code changed — `screens::reports`, `loader`, and the emitter wer
 already correct. AC3 is now backed by an actual render-layer assertion, not
 just a textual snapshot.
 
+### Discoverability UX follow-on (ui-designer, 2026-06-18)
+
+The render-layer verification above proved the curve *renders*, but left the
+**discoverability** problem the operator actually hit: the screen "looked
+empty" because the ONE companion-bearing report (`backtest-20260617-180015-…`)
+is buried in a ~112-row picker sorted by `(slug, file_stem)`, with a
+no-companion near-duplicate (`backtest-20260527-…`) sorting right above it. The
+operator ran `cargo run -p ui --release --bin cockpit_live`, landed on Reports
+with nothing selected (or selected the no-companion sibling), and saw the empty
+state. The fix surfaces the curve *without hunting* — three changes, all in
+`crates/ui`, **no new crate edge / widget / theme token**:
+
+1. **`has_companion: bool` on `ReportEntry`** (`crates/ui/src/reports/state.rs`).
+   Computed per entry in `discover_reports()` via a **new existence-only**
+   probe `loader::report_has_companion()` (`crates/ui/src/reports/loader.rs`).
+   It reuses `load_equity_companion`'s exact stem-match convention
+   (`<report_dir>/artifacts/<file_stem>/equity-*.csv`) but stops at
+   *existence*: a `stem_dir.is_dir()` check plus a single `read_dir` scan for
+   the first `equity-*.csv` filename — it never reads or parses the CSV. K2
+   never-panic: no UTF-8 stem / absent `artifacts/` / absent matching-stem dir /
+   unreadable dir all return `false`. Keeps discovery filename-cheap (one extra
+   `stat` + at most one `read_dir` per report) so the boot scan stays
+   synchronous.
+
+2. **A "● curve" marker in the picker row** (`crates/ui/src/screens/reports.rs::picker_row`).
+   When `entry.has_companion`, a compact trailing tag rendered in the existing
+   `ACCENT` token (copy = the new `strings::REPORTS_HAS_CURVE_MARKER` const
+   `"● curve"`) is pushed to the row. It is `ACCENT`-coloured **and** carries
+   the explicit "curve" label, so colour is never the only signal (accessibility
+   minimum). The marker stays `ACCENT` on both active + inactive rows (legible
+   against the muted/raised row bg either way). Existing `Text` widget, existing
+   token — no new widget, no new theme token (AC7).
+
+3. **Auto-select the newest companion-bearing report on entry**
+   (`crates/ui/src/reports/state.rs::load_into`). When the discovered list first
+   becomes `Ready`, the boot defaults `selected` to
+   `newest_companion_index(&discovered)` — the greatest `file_stem` (the stamp
+   orders lexicographically) among `has_companion == true` rows — and calls
+   `load_selection` for it, so a populated curve renders the moment the operator
+   opens Reports. If no entry has a companion, the selection is left unset (the
+   pre-follow-on cold-start "pick a report" prompt). Guarded on
+   `selected.is_none()` so an operator selection already in place is never
+   overridden (`load_into` is a boot-time one-shot, so this holds by
+   construction; the guard is belt-and-braces against a future re-call). The
+   selection decision is factored into the pure, total `newest_companion_index`
+   helper so it is unit-testable without disk discovery.
+
+**Render-layer proof** (mandatory — operator-facing PNG at
+`/tmp/reports_marker_render.png`): `reports_marker_and_autoselect_render` in
+`crates/ui/tests/reports_populated_curve_render.rs` renders the real
+`screens::reports::view` (full shell, headless, 1920×1080) with a discovered
+list holding BOTH a companion-bearing entry and companion-less ones, after the
+real auto-select decision (`newest_companion_index` → row 1, NOT the
+higher-sorting no-companion row 0). It asserts (a) the "● curve" marker paints
+`ACCENT`-teal pixels on the companion row band while the no-companion control
+band has fewer (isolating the marker from chrome/active-row bleed — the
+companion row tested is INACTIVE so its only `ACCENT` source is the marker
+glyph), and (b) the auto-selected report's detail pane paints a populated curve
+(>1000 `ACCENT`/`UP_500` px — the same guard pattern as
+`reports_populated_curve_draws_in_detail_pane`). macOS-gated (ADR-0057 D2) like
+the rest of the file.
+
+**Unit tests added** (no new crate edge):
+- `crates/ui/src/reports/loader.rs` — `report_has_companion_{true_for_matching_stem_csv,
+  false_for_non_matching_stem,false_for_dir_without_csv,
+  false_and_no_panic_for_absent_tree,agrees_with_loader_on_real_demo}` (5).
+- `crates/ui/src/reports/state.rs` — `newest_companion_index_{skips_higher_sorting_no_companion,
+  picks_greatest_stem_among_companions,none_when_no_companions}` (3) — the
+  first is the exact discoverability scenario (companion row 1 wins over the
+  higher-sorting no-companion row 0).
+
+**Snapshots regenerated (expected, not a regression):** the three Reports
+*textual* snapshots — `reports_snapshot__{ready_dark,ready_light,
+detail_error_dark}` — changed because the textual `reports_summary` harness
+mirrors the screen and now reflects the marker, and the
+`reports_state_ready()` fixture's first entry was set `has_companion: true`.
+The ONLY delta in each `.snap` is the added
+`marker=[● curve] color=accent` suffix on the companion row (confirmed via
+diff; no other field moved). `reports_snapshot__empty_list_dark` is unchanged
+(no entries → no marker). The PNG render tests' fixtures gained
+`has_companion: true` (the demo is companion-bearing); the headless-emulator
+Reports smoke still asserts non-empty first frame (auto-select only improves
+the rendered content).
+
 ### Verification results
 
 Developer (backtest emit, 2026-06-17):
@@ -490,6 +574,25 @@ ui-designer (render-layer populated-curve proof, 2026-06-17):
 - `cargo clippy -p ui --lib --tests --bins -- -D warnings` (forced re-lint):
   clean (exit 0, 0 warnings).
 - `cargo fmt -p ui --check`: clean.
+
+ui-designer (discoverability UX follow-on — marker + auto-select, 2026-06-18):
+- `scripts/verify_anchors.sh`: **ANCHORS PASS (119 / 119)** — unchanged (no
+  `spec/*/reports/*.md` touched; the three changed files are
+  `crates/ui/tests/snapshots/*.snap` textual fixtures + source).
+- `cargo test -p ui`: **873 passed; 0 failed; 27 ignored** across all targets
+  (the +9 over 864 are: 5 `report_has_companion_*` + 3 `newest_companion_index_*`
+  unit tests + 1 `reports_marker_and_autoselect_render` render guard).
+  `layout_invariants` proptest green after removing the stale
+  `.proptest-regressions` cache.
+- 3 reports textual snapshots regenerated via `cargo insta accept` —
+  `reports_snapshot__{ready_dark,ready_light,detail_error_dark}`; diff confirms
+  the sole change is the `marker=[● curve] color=accent` suffix on the
+  companion row (no regression). `empty_list_dark` unchanged.
+- `cargo clippy -p ui --lib --tests --bins -- -D warnings` (forced re-lint via
+  `touch crates/ui/src/lib.rs`): clean (exit 0, 0 warnings).
+- `cargo fmt -p ui --check`: clean.
+- Render proof: `/tmp/reports_marker_render.png` (1920×1080) — "● curve" marker
+  on the companion row only + auto-selected report's populated curve.
 
 ## Changelog
 
@@ -530,3 +633,18 @@ ui-designer (render-layer populated-curve proof, 2026-06-17):
   no new crate edge / widget / theme token. Gates: anchors 119/119,
   `cargo test -p ui` 864/0/27, clippy + fmt clean. See `## Implementation` →
   *Render-layer verification*. HANDOFF → tester.
+- 2026-06-18 (ui-designer): discoverability UX follow-on — made the populated
+  curve surface without the operator hunting. (1) Added `has_companion: bool`
+  to `ReportEntry`, computed at discovery via a new existence-only
+  `loader::report_has_companion()` (stem-matched, never parses the CSV, K2
+  never-panic). (2) Added a "● curve" `ACCENT` marker on companion picker rows
+  (`screens::reports::picker_row` + `strings::REPORTS_HAS_CURVE_MARKER`). (3)
+  Auto-select the newest companion-bearing report on boot
+  (`reports::load_into` → `newest_companion_index`), guarded on
+  `selected.is_none()`. Render-proven by `reports_marker_and_autoselect_render`
+  (PNG `/tmp/reports_marker_render.png`: marker on companion row + auto-selected
+  populated curve) plus 8 unit tests. No new crate edge / widget / theme token.
+  Gates: anchors 119/119, `cargo test -p ui` 873/0/27, clippy (forced re-lint) +
+  fmt clean; 3 reports textual snapshots regenerated (sole delta = the marker
+  line). See `## Implementation` → *Discoverability UX follow-on*. HANDOFF →
+  tester.

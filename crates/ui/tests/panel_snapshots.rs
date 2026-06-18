@@ -3635,13 +3635,24 @@ mod reports_screen {
                 for (idx, e) in entries.iter().enumerate() {
                     let active = st.selected == Some(idx);
                     let label = format!("{} \u{00b7} {}", e.slug, e.file_stem);
+                    // Has-curve marker (backtest-equity-companion UX follow-on):
+                    // `picker_row` pushes a trailing `ACCENT` "● curve" tag when
+                    // the entry has a stem-matched companion CSV.
+                    let marker = if e.has_companion {
+                        format!(
+                            " marker=[{}] color=accent",
+                            strings::REPORTS_HAS_CURVE_MARKER
+                        )
+                    } else {
+                        String::new()
+                    };
                     if active {
                         out.push_str(&format!(
-                            "  [{label}] active color={} bg=panel_raised\n",
+                            "  [{label}] active color={} bg=panel_raised{marker}\n",
                             accent_name(mode)
                         ));
                     } else {
-                        out.push_str(&format!("  [{label}] inactive color=fg_muted\n"));
+                        out.push_str(&format!("  [{label}] inactive color=fg_muted{marker}\n"));
                     }
                 }
             }
@@ -3697,19 +3708,24 @@ mod reports_screen {
     /// honest state). Checkout-independent — no `spec/` access.
     fn reports_state_ready() -> ReportsScreenState {
         let entries = vec![
+            // First row is companion-bearing → the picker renders the
+            // "● curve" marker on it (backtest-equity-companion UX follow-on).
             ReportEntry {
                 slug: SmolStr::new("v0-paper-sma"),
                 file_stem: SmolStr::new("backtest-20260418-090000-btc-sma"),
                 path: PathBuf::from(
                     "/fixture/v0-paper-sma/reports/backtest-20260418-090000-btc-sma.md",
                 ),
+                has_companion: true,
             },
+            // Second row has no companion → no marker.
             ReportEntry {
                 slug: SmolStr::new("v05-composed-strategies"),
                 file_stem: SmolStr::new("backtest-20260420-152017-btc-rsi"),
                 path: PathBuf::from(
                     "/fixture/v05-composed-strategies/reports/backtest-20260420-152017-btc-rsi.md",
                 ),
+                has_companion: false,
             },
         ];
         let metrics = BacktestMetrics {

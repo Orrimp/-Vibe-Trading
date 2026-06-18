@@ -51,6 +51,7 @@ use std::time::Duration;
 
 use smol_str::SmolStr;
 use trading_core::{BacktestMetrics, EquitySeries};
+use ui::reports::state::newest_companion_index;
 use ui::reports::{ReportEntry, ReportsScreenState, loader};
 use ui::state::{Cockpit, PanelState, Screen};
 use ui::test_support::{charts_screen_cockpit, program_from_cockpit};
@@ -171,6 +172,7 @@ fn reports_cockpit_with_equity(equity: PanelState<EquitySeries>) -> Cockpit {
         slug: SmolStr::new("v0-paper-sma"),
         file_stem: SmolStr::new(DEMO_STEM),
         path: PathBuf::from(format!("/fixture/v0-paper-sma/reports/{DEMO_STEM}.md")),
+        has_companion: true,
     };
     let metrics = BacktestMetrics {
         total_return_pct: rust_decimal_macros::dec!(7.38),
@@ -298,5 +300,181 @@ fn reports_empty_equity_draws_no_curve() {
         "the Empty equity state must NOT paint a curve (expected <500 stray \
          curve-hue px from chrome, got {hits}). If this is high the discriminator \
          is unreliable and the populated-curve guard is a tautology."
+    );
+}
+
+// ─── JOB 3: discoverability render proof (marker + auto-select curve) ─────
+//
+// backtest-equity-companion UX follow-on. The operator could not find the one
+// companion-bearing report (buried in a 112-row picker, with a no-companion
+// near-duplicate sorting above it), so the Reports screen looked empty. Two
+// changes fix discoverability: a "● curve" picker marker on companion rows,
+// and a boot auto-select of the newest companion-bearing report. This render
+// proof asserts BOTH paint at the render layer in ONE frame.
+
+/// Count `ACCENT`-teal (#6FB6AE, the has-curve marker hue) pixels inside the
+/// LEFT picker rail (x < 320 px) within the vertical band `[y0, y1)`. The
+/// marker text "● curve" is the only `ACCENT` source on an **inactive** row
+/// (an inactive row's label is `FG_3` muted + its border is `BORDER_1`), so a
+/// band over an inactive companion row isolates the marker pixels — a clean,
+/// non-tautological discriminator (the no-companion control band stays ~0).
+fn marker_pixels_in_band(w: u32, rgba: &[u8], y0: u32, y1: u32) -> u64 {
+    let x1 = 320u32.min(w); // the picker rail width (PICKER_WIDTH)
+    let mut hits = 0u64;
+    for y in y0..y1.min((rgba.len() as u32 / 4) / w) {
+        for x in 0..x1 {
+            let idx = ((y as usize * w as usize) + x as usize) * 4;
+            let r = i32::from(rgba[idx]);
+            let g = i32::from(rgba[idx + 1]);
+            let b = i32::from(rgba[idx + 2]);
+            // Teal ACCENT glyph: green & blue high and close, red clearly lower
+            // (same predicate as the curve's teal polyline).
+            if g > 120 && b > 120 && (g - b).abs() < 40 && (g - r) > 25 {
+                hits += 1;
+            }
+        }
+    }
+    hits
+}
+
+/// Build a Reports cockpit whose discovered list contains BOTH a
+/// companion-bearing entry and companion-less ones, driven through the REAL
+/// auto-select decision (`newest_companion_index`). The selected entry's
+/// `loaded` is a pre-populated `Ready(ReportLoadResult)` with `Ready` equity
+/// (the `path`s are synthetic + never read, so the load is injected — exactly
+/// as `reports_cockpit_with_equity` does), so the render is checkout-
+/// independent. Returns the cockpit + the auto-selected index.
+///
+/// Row order (the picker's real shape): a no-companion near-duplicate
+/// (`…20260527…`) sorts FIRST, the companion-bearing demo (`…20260617…`)
+/// SECOND, an older no-companion report THIRD. The auto-select MUST land on
+/// row 1 (the companion-bearing one), not row 0.
+fn reports_cockpit_marker_and_autoselect() -> (Cockpit, usize) {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+
+    let entries = vec![
+        // Row 0 — the no-companion near-duplicate that sorts ABOVE the demo.
+        ReportEntry {
+            slug: SmolStr::new("v0-paper-sma"),
+            file_stem: SmolStr::new("backtest-20260527-120000-btc-2024-h1-sma-cross"),
+            path: PathBuf::from(
+                "/fixture/v0-paper-sma/reports/backtest-20260527-120000-btc-2024-h1-sma-cross.md",
+            ),
+            has_companion: false,
+        },
+        // Row 1 — the companion-bearing demo (newest companion → auto-selected).
+        ReportEntry {
+            slug: SmolStr::new("v0-paper-sma"),
+            file_stem: SmolStr::new(DEMO_STEM),
+            path: PathBuf::from(format!("/fixture/v0-paper-sma/reports/{DEMO_STEM}.md")),
+            has_companion: true,
+        },
+        // Row 2 — an older, no-companion report (the control band).
+        ReportEntry {
+            slug: SmolStr::new("v05-composed-strategies"),
+            file_stem: SmolStr::new("backtest-20260101-090000-btc-rsi"),
+            path: PathBuf::from(
+                "/fixture/v05-composed-strategies/reports/backtest-20260101-090000-btc-rsi.md",
+            ),
+            has_companion: false,
+        },
+    ];
+
+    // The production auto-select decision, exercised directly.
+    let auto = newest_companion_index(&entries).expect("a companion-bearing row exists");
+    assert_eq!(
+        auto, 1,
+        "auto-select must choose the companion-bearing demo (row 1), not the \
+         higher-sorting no-companion near-duplicate (row 0)"
+    );
+
+    let metrics = BacktestMetrics {
+        total_return_pct: rust_decimal_macros::dec!(7.38),
+        cagr_pct: rust_decimal_macros::dec!(3.60),
+        cagr_present: true,
+        sharpe: rust_decimal_macros::dec!(7.7975),
+        sharpe_present: true,
+        max_drawdown_pct: rust_decimal_macros::dec!(4.20),
+        win_rate_pct: rust_decimal_macros::dec!(52.0),
+        win_rate_present: true,
+        trades: 441,
+    };
+    let loaded = ReportLoadResult {
+        front_matter: ReportFrontMatter {
+            scenario: SmolStr::new("btc-2024-h1-sma-cross"),
+        },
+        metrics: PanelState::Ready(metrics),
+        equity: PanelState::Ready(ui::fixtures::fake_equity_series_for_viewer()),
+        body_markdown: "# Backtest Report — btc-2024-h1-sma-cross\n\n## Summary\nrow\n".to_string(),
+    };
+
+    cockpit.reports_screen_state = ReportsScreenState {
+        discovered: PanelState::Ready(entries),
+        selected: Some(auto),
+        loaded: PanelState::Ready(loaded),
+    };
+    (cockpit, auto)
+}
+
+/// **The discoverability render guard.** Renders the Reports screen headless
+/// with a discovered list holding BOTH a companion-bearing entry and
+/// companion-less ones, after auto-select, and asserts BOTH fixes paint:
+///
+/// (a) the "● curve" marker shows ACCENT-teal pixels on the **companion** row
+///     band, while a no-companion control row band has ~none (isolates the
+///     marker — the companion row tested is INACTIVE, so its only ACCENT
+///     source is the marker glyph), and
+/// (b) the auto-selected report's detail pane paints a populated curve
+///     (>1000 ACCENT/UP_500 px — the same guard as
+///     `reports_populated_curve_draws_in_detail_pane`).
+///
+/// Saves the operator-facing PNG to `/tmp/reports_marker_render.png` (memory:
+/// verify UI at the render layer).
+#[test]
+fn reports_marker_and_autoselect_render() {
+    let (cockpit, _auto) = reports_cockpit_marker_and_autoselect();
+    let (w, h, rgba) = render_reports_rgba(cockpit);
+
+    // Operator-facing deliverable.
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/reports_marker_render.png");
+    }
+
+    // The three picker rows sit at the top of the rail under the title. Scan
+    // generous vertical bands per row (the picker title + L padding push the
+    // first row down ~64–96 px; each compact row ≈ 28–40 px tall). Row 1 (the
+    // companion-bearing demo) carries the marker; rows 0 & 2 do not.
+    //
+    // Band 0 ≈ rows 0–1 top region (no-companion #0). Band 1 ≈ the companion
+    // row #1. We scan a wide [60, 220) span covering all three rows for the
+    // marker total, then a no-companion-only control span to prove isolation.
+    let marker_all_rows = marker_pixels_in_band(w, &rgba, 60, 220);
+    // The no-companion control: the FIRST row band only (row 0, the
+    // `…20260527…` near-duplicate). Its label is muted + border hairline → no
+    // ACCENT. A tight band over just row 0.
+    let control_row0 = marker_pixels_in_band(w, &rgba, 60, 92);
+
+    assert!(
+        marker_all_rows > 30,
+        "the '● curve' marker must paint ACCENT-teal pixels in the picker rail \
+         on the companion row (expected >30 px across the row band, got \
+         {marker_all_rows}). PNG: /tmp/reports_marker_render.png"
+    );
+    assert!(
+        control_row0 < marker_all_rows,
+        "the marker must be ISOLATED to the companion row: the no-companion row 0 \
+         band ({control_row0} px) must hold fewer ACCENT px than the full \
+         marker-bearing span ({marker_all_rows} px) — proving the marker is not \
+         chrome/active-row bleed. PNG: /tmp/reports_marker_render.png"
+    );
+
+    // (b) the auto-selected detail pane paints a populated curve.
+    let hits = curve_pixels(w, h, &rgba);
+    assert!(
+        hits > 1000,
+        "auto-select must land on the companion-bearing report so its populated \
+         curve renders on entry (expected >1000 ACCENT/UP_500 px in the detail \
+         pane, got {hits}). PNG: /tmp/reports_marker_render.png"
     );
 }
