@@ -49,35 +49,34 @@ is blank.
 to cosmic-text font jitter) rather than byte-comparing PNGs, and are `#[cfg(target_os
 = "macos")]`-gated for pixel determinism (ADR-0057).
 
-## Iced 0.14 tooling (verified against the pinned `=0.14.0` source, 2026-06-18)
+## Iced 0.14 tooling — the full arsenal (verified against the pinned `=0.14.0` source + CHANGELOG)
 
-This repo builds iced `default-features = false, features = [tiny-skia, thread-pool,
-advanced, canvas]` — so the `debug`/`hot`/devtools paths are **OFF**. What's actually
-available for debugging:
+iced 0.14 ships a complete debug arsenal (comet #2879, time-travel #2910, hot-reload
+#3000). **This repo builds iced `default-features = false, features = [tiny-skia,
+thread-pool, advanced, canvas]`**, so the live-inspector tools are OFF and need a
+feature added to `crates/ui`'s iced dep to use. Pick the right tool per task — the
+`ui-debugger` agent encodes the full matrix; summary:
 
-- **`iced_test::screenshot(&program, &theme, (w,h), scale, Duration)`** ⭐ — the
-  headless render primitive every pixel harness uses (full `view → update → draw →
-  tiny-skia RGBA readback`). `iced_test::run(...)` simulates a running program. This
-  is the day-to-day debug tool.
-- **`iced_tester` / `iced_selector`** — interaction simulation (clicks/keys) + widget
-  selection, for click/selection/hover bugs (the `ui-session-journal-iced-tester`
-  adapter + the `chart_*` / `audit_*` interaction tests).
-- **`debug` feature → `iced_devtools` + `iced_winit/debug`** — an OPTIONAL
-  inspector/devtools overlay (`iced_debug` = "a pluggable API for debugging iced
-  applications"); a **`hot`** feature adds hot-reload. **Neither is enabled here.**
-  Using the inspector means rebuilding `crates/ui`'s iced dep with `--features debug`
-  AND running the **live window** (orchestrator-only) — heavy; reach for it only when
-  headless render + interaction-sim can't localize a bug.
-- **`tracing`** — the cockpit logs through tracing; add temporary spans / `debug!` on
-  the suspect path, run the binary, read stderr (remove probes after).
+| Tool | What it gives you | Enable / run | Who |
+|------|-------------------|--------------|-----|
+| **Headless render** — `iced_test::screenshot(&program,&theme,(w,h),scale,Duration)` ⭐ | real `view→update→draw→tiny-skia` → deterministic RGBA PNG; the automated PROOF layer + CI guard | copy a pixel harness; `cargo test -p ui` | headless — anyone/CI |
+| **Simulator / test recorder** — `iced_test::simulator(view).click("Reports")` (`tester` feat) | drive clicks/keys by `Selector`, headless; comet can record a live session → export these calls | write a simulator test | headless |
+| **comet** — live inspector | widget tree/inspector + **message log** + perf/presentation metrics; **F12** summons it; app emits to the `iced_beacon` socket | add `"debug"` to iced features → run cockpit → F12 (or `cargo install --git https://github.com/iced-rs/comet`) | **live window → orchestrator/operator** |
+| **time-travel** | **rewind** message/state history in comet, replay deterministically | `time-travel` feature + `iced::application::timed` update + comet | **live window** |
+| **hot-reload** | edit view code without restart | `hot` feature → `cargo-hot` (or `cargo install chaud-cli` → `cargo chaud`) | **live window** |
+| **tracing / `iced_debug` spans** | `boot/update/view/layout/draw/…` spans; cheap "did this path run / how slow" probe | temporary `tracing::debug!` | anyone |
 
-Bottom line: iced 0.14 has **no always-on web-devtools-style inspector in this
-build** — the project's `iced_test::screenshot` pixel harnesses ARE the debugging
-tool; the `iced_devtools` overlay is a heavier escalation.
+**Correction to memory:** iced 0.14 *does* have an inspector — **comet**, summoned by
+**F12** when the `debug` feature is enabled (it replaced the old debug overlay). It's
+just not compiled into this project's default build. The headless `screenshot`
+harnesses stay the day-to-day automated tool; **comet / time-travel / hot-reload are
+the heavier live-window escalations** (and the cockpit isn't on `application::timed`,
+so time-travel needs a wiring change first). Adding `debug`/`hot` to `crates/ui` is a
+TEMPORARY diagnostic build — revert before shipping.
 
 > A dedicated **`ui-debugger` agent** (`.claude/agents/ui-debugger.md`) operationalizes
-> this guide end-to-end (reproduce at pixels → inspect the PNG → fix → re-prove).
-> Invoke it for any cockpit/UI bug ("no graph", "blank panel", "looks wrong").
+> all of this — reproduce headless at pixels → escalate to comet/time-travel only when
+> needed → fix → re-prove. Invoke it for any cockpit/UI bug ("no graph", "looks wrong").
 
 ## The rules (each one = a way the curve shipped blind)
 
