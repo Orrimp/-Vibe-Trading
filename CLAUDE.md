@@ -78,6 +78,11 @@ land.
 - Every external I/O behind a trait so tests can fake it.
 - `unsafe` requires a `// SAFETY:` comment.
 - `cargo fmt` on save; `cargo clippy -- -D warnings` must pass.
+- **Iced/cockpit UI: verify at the rendered-PIXEL layer** (the `iced_test::Emulator::screenshot`
+  harnesses — `render_snapshots.rs`, `live_equity_render.rs`, `reports_populated_curve_render.rs`),
+  exercising the *populated* state with a negative control — NOT unit tests, text-summary
+  snapshots, or a no-panic boot. Read the rendered PNG; a passing proxy is not proof the screen
+  draws. Full guide: [`spec/dev-notes/iced-ui-render-verification.md`](spec/dev-notes/iced-ui-render-verification.md).
 
 ## What to do when the user asks for a change
 
