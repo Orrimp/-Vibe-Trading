@@ -587,6 +587,161 @@ impl Scenario {
                 data_source: ScenarioDataSource::Synthetic,
                 expected_revision_sha: None,
             }),
+            // Group A-ext: AVAX, DOT, DOGE on 2024 full-year SMA — data/binance
+            "avax-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("AVAXUSDT"),
+                start_year: 2024,
+                bar_count: 525_600, // full-year synthetic fallback
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "dot-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("DOTUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "doge-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("DOGEUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root,
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            // Group A-broaduni: NEAR, OP, ARB, ATOM, SUI on 2024 full-year SMA
+            // data/binance-broaduni — same SMA crossover parameters.
+            "near-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("NEARUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root: PathBuf::from("data/binance-broaduni"),
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "op-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("OPUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root: PathBuf::from("data/binance-broaduni"),
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "arb-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("ARBUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root: PathBuf::from("data/binance-broaduni"),
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "atom-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("ATOMUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root: PathBuf::from("data/binance-broaduni"),
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
+            "sui-2024-sma-cross" => Ok(Self {
+                name: name.to_string(),
+                body_name: name.to_string(),
+                body_elapsed_override: Some(0.1),
+                symbol: Symbol::new("SUIUSDT"),
+                start_year: 2024,
+                bar_count: 525_600,
+                strategy: ScenarioStrategy::SmaCrossover {
+                    fast_len: 20,
+                    slow_len: 50,
+                },
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+                data_root: PathBuf::from("data/binance-broaduni"),
+                data_source: ScenarioDataSource::Synthetic,
+                expected_revision_sha: None,
+            }),
             "btc-2023-1m-macd-trend" => Ok(Self {
                 name: name.to_string(),
                 body_name: name.to_string(),
@@ -1369,7 +1524,11 @@ async fn main() -> Result<()> {
             "synthetic (seeded RNG, v1.5a multi-symbol)".to_string(),
         )
     } else {
-        let parquet_dir = data_root
+        // Use scenario.data_root so that broaduni scenarios (near-2024-sma-cross, etc.)
+        // resolve to data/binance-broaduni rather than the global data/binance root.
+        // All existing scenarios store data/binance in their data_root, so anchors are unchanged.
+        let sma_data_root = &scenario.data_root;
+        let parquet_dir = sma_data_root
             .join(scenario.symbol.to_string())
             .join(scenario.start_year.to_string());
 
@@ -1388,7 +1547,7 @@ async fn main() -> Result<()> {
         if has_parquet {
             info!(path = ?parquet_dir, "loading Parquet data");
             use data::MarketDataSource as _;
-            let feed = data::ReplayFeed::new(&data_root, true);
+            let feed = data::ReplayFeed::new(sma_data_root, true);
             let stream = feed
                 .subscribe_bars(scenario.symbol.clone(), Timeframe::OneMinute)
                 .await
@@ -1418,6 +1577,16 @@ async fn main() -> Result<()> {
                 "xrp-2024-h1-sma-cross" => dec!(0.6),
                 "link-2024-h1-sma-cross" => dec!(15),
                 "ada-2024-h1-sma-cross" => dec!(0.6),
+                // Group A-ext synthetic fallback price hints
+                "avax-2024-sma-cross" => dec!(37),
+                "dot-2024-sma-cross" => dec!(8),
+                "doge-2024-sma-cross" => dec!(0.09),
+                // Group A-broaduni synthetic fallback price hints
+                "near-2024-sma-cross" => dec!(2.5),
+                "op-2024-sma-cross" => dec!(2.8),
+                "arb-2024-sma-cross" => dec!(1.7),
+                "atom-2024-sma-cross" => dec!(10),
+                "sui-2024-sma-cross" => dec!(1.5),
                 _ => dec!(30_000),
             };
             let bars = synthetic_bars(
@@ -2341,7 +2510,17 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
         | "bnb-2024-h1-sma-cross"
         | "xrp-2024-h1-sma-cross"
         | "link-2024-h1-sma-cross"
-        | "ada-2024-h1-sma-cross" => "v0-paper-sma",
+        | "ada-2024-h1-sma-cross"
+        // Group A-ext: AVAX, DOT, DOGE 2024 full-year
+        | "avax-2024-sma-cross"
+        | "dot-2024-sma-cross"
+        | "doge-2024-sma-cross"
+        // Group A-broaduni: NEAR, OP, ARB, ATOM, SUI 2024 full-year
+        | "near-2024-sma-cross"
+        | "op-2024-sma-cross"
+        | "arb-2024-sma-cross"
+        | "atom-2024-sma-cross"
+        | "sui-2024-sma-cross" => "v0-paper-sma",
         "btc-2023-1m-macd-trend"
         | "btc-2023-1m-rsi-reversion"
         | "btc-2023-1m-bbands-mean-revert" => "v05-composed-strategies",

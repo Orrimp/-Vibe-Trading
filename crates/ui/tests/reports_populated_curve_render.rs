@@ -478,3 +478,129 @@ fn reports_marker_and_autoselect_render() {
          pane, got {hits}). PNG: /tmp/reports_marker_render.png"
     );
 }
+
+// ─── JOB 4: switch-regression — the operator's "switch → empty" report ────
+//
+// 2026-06-19: operator reported "open a report → I see a graph; switch to
+// another report → the graph is empty." Investigation (orchestrator) found the
+// selection/render path is CORRECT — `ReportsScreenState::load_selection`
+// reloads `equity` on every `ReportsSelect`, and `equity_curve::view` rebuilds
+// its canvas program per frame (no stale cache). The empties were a DATA fact:
+// only some reports ship a stem-matched companion CSV, so switching to a
+// no-companion report legitimately shows the empty state. The fix expanded the
+// companion-bearing set (6 → 14). These guards lock the real behaviour in at
+// the PIXEL layer: switching between two distinct companion reports repaints a
+// DIFFERENT populated curve each time, and switching to a no-companion report
+// shows the honest empty state. Skip-if-absent (pruned checkout).
+
+/// Index of the newest discovered companion report whose `file_stem` contains
+/// `needle` (the live `discover_reports` list, exactly as the cockpit sees it).
+fn companion_idx_for(cockpit: &Cockpit, needle: &str) -> Option<usize> {
+    match &cockpit.reports_screen_state.discovered {
+        PanelState::Ready(list) => list
+            .iter()
+            .position(|e| e.has_companion && e.file_stem.as_str().contains(needle)),
+        _ => None,
+    }
+}
+
+/// **Switch-regression guard (the operator's bug).** In ONE session, select a
+/// companion report, render (curve A), then SWITCH to a second distinct
+/// companion report and render (curve B). Both must paint a populated curve —
+/// refuting "switch → empty" — and the two frames must DIFFER, refuting a
+/// hypothetical stale-cache "switch → keeps showing curve A". Drives the real
+/// production path (`load_into` → `load_selection`) over the live corpus, so it
+/// only passes when the on-disk companion CSVs actually resolve + render.
+#[test]
+fn reports_switch_between_companions_repaints_distinct_curve() {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    ui::reports::load_into(&mut cockpit);
+
+    // Two distinct curve-bearing reports from the 2026-06-19 companion batch.
+    let (Some(a), Some(b)) = (
+        companion_idx_for(&cockpit, "avax-2024-sma-cross"),
+        companion_idx_for(&cockpit, "dot-2024-sma-cross"),
+    ) else {
+        eprintln!("avax/dot companions not discovered — skipping (pruned checkout)");
+        return;
+    };
+
+    // Select report A → render.
+    cockpit.reports_screen_state.selected = Some(a);
+    cockpit.reports_screen_state.load_selection(a);
+    let (wa, ha, rgba_a) = render_reports_rgba(cockpit.clone());
+    if let Some(img) = image::RgbaImage::from_raw(wa, ha, rgba_a.clone()) {
+        let _ = img.save("/tmp/reports_switch_a_avax.png");
+    }
+    let hits_a = curve_pixels(wa, ha, &rgba_a);
+    assert!(
+        hits_a > 1000,
+        "companion report A (avax) must paint a populated curve (got {hits_a}). \
+         PNG: /tmp/reports_switch_a_avax.png"
+    );
+
+    // SWITCH to report B → render. This is the operator's exact action.
+    cockpit.reports_screen_state.selected = Some(b);
+    cockpit.reports_screen_state.load_selection(b);
+    let (wb, hb, rgba_b) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(wb, hb, rgba_b.clone()) {
+        let _ = img.save("/tmp/reports_switch_b_dot.png");
+    }
+    let hits_b = curve_pixels(wb, hb, &rgba_b);
+    assert!(
+        hits_b > 1000,
+        "after switching A->B the curve must STILL paint — this is the operator's \
+         'switch -> empty' report; empty here = regression (got {hits_b}). \
+         PNG: /tmp/reports_switch_b_dot.png"
+    );
+    assert!(
+        rgba_a != rgba_b,
+        "switching avax->dot must REPAINT a different frame (identical = stale-cache \
+         bug: the switch did not reload the new report's equity)"
+    );
+}
+
+/// **Negative control — switch to a no-companion report shows empty.** This is
+/// the state the operator saw and (correctly) read as "empty": a report with no
+/// companion CSV has no curve to draw. Proves the empties are honest data, not
+/// a render/selection bug — and that the populated guard above discriminates.
+#[test]
+fn reports_switch_to_no_companion_is_empty() {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    ui::reports::load_into(&mut cockpit);
+
+    let Some(a) = companion_idx_for(&cockpit, "avax-2024-sma-cross") else {
+        eprintln!("avax companion not discovered — skipping (pruned checkout)");
+        return;
+    };
+    let no_comp = match &cockpit.reports_screen_state.discovered {
+        PanelState::Ready(list) => list.iter().position(|e| !e.has_companion),
+        _ => None,
+    };
+    let Some(no_comp) = no_comp else {
+        eprintln!("no no-companion report in corpus — skipping");
+        return;
+    };
+
+    // Start on the companion report → curve paints.
+    cockpit.reports_screen_state.selected = Some(a);
+    cockpit.reports_screen_state.load_selection(a);
+    let (wa, ha, rgba_a) = render_reports_rgba(cockpit.clone());
+    assert!(
+        curve_pixels(wa, ha, &rgba_a) > 1000,
+        "precondition: the companion report must paint a curve first"
+    );
+
+    // Switch to a no-companion report → honest empty state (CORRECT behaviour).
+    cockpit.reports_screen_state.selected = Some(no_comp);
+    cockpit.reports_screen_state.load_selection(no_comp);
+    let (we, he, rgba_e) = render_reports_rgba(cockpit);
+    let hits_e = curve_pixels(we, he, &rgba_e);
+    assert!(
+        hits_e < 500,
+        "a no-companion report must show the empty state (no curve); got {hits_e} \
+         curve px — if high, the screen is painting a stale/previous curve"
+    );
+}
