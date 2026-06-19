@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-06-17
+updated: 2026-06-19
 ---
 
 # Backlog
@@ -20,13 +20,38 @@ updated: 2026-06-17
 > robustness rule. **No active-strategy bets remain.** Terminal verdict + scope:
 > [`spec/product.md`](product.md).
 
-## Active
+## Active — Single-Coin Investment Advisor (2026-06-19 pivot)
 
-The program is at a clean terminal state. One open operator decision:
+The product was **redefined 2026-06-19** (see [`product.md`](product.md)): a paper
+decision-support tool for a retail investor — *pick a coin + budget → bake off all
+strategies → rank & pick the best → forward plan → watch it paper-trade your €200*. The
+shipped engine (backtest, strategy library, LLM, paper-sim, Live view, ledger, reflection,
+cockpit) is **reused**; the queue below is the new connective tissue + UX.
 
-- **Passive-baseline rebalance cadence + weighting** — confirm the proposed default
-  (monthly / equal-weight) for [`spec/runbooks/passive-baseline.md`](runbooks/passive-baseline.md)
-  and record it in that runbook's changelog. Everything else in the wind-down is closed.
+**Decisions (operator-set 2026-06-19):** rank by risk-adjusted return (Sharpe) + a
+robustness gate, with buy-and-hold always the benchmark; ship the single best strategy
+first, mixes / LLM-ML ensemble next; treat €200 ≈ 200 USDT (FX not modelled in the MVP);
+paper-only, not-advice on every recommendation.
+
+### MVP — the end-to-end loop (build in dependency order)
+- **F1 — bake-off orchestrator** (M, NEW) — loop every strategy + buy-and-hold on one
+  `(coin, lookback)`, collect KPIs. Lives in `agent`/`backtest` (the `ui`-never-imports-`strategy`
+  invariant); wraps the existing Lab runner / `run_scenario`, no new backtest math.
+- **F2 — ranking + recommendation** (M, NEW) — leaderboard by Sharpe + robustness gate; one
+  highlighted pick + a plain-language "why this one".
+- **F3 — guided "new investment" input** (S, reuses Lab pickers) — coin + budget + lookback.
+- **F4 — budget-aware €200 sizing** (S-M, NEW; ships with the day-1 baseline-equity-divergence
+  e2e test per the CLAUDE.md non-negotiable).
+- **F5 — forward paper-trade of the selection** (M, reuses Live view + paper agent) — run the
+  chosen strategy forward, show running €200 P/L.  ← **MVP complete.**
+
+### v0.2 enhancements
+- **F6 — forward buy/sell plan detail** (M) — today's stance + entry/exit rules + projected sizing.
+- **F7 — EUR→USD fixed-rate** (S) — convert €200 at a config rate before sizing.
+- **F8 — strategy mix / LLM-ML ensemble** (L) — capital split across top-K; LLM-as-analyst confirm.
+- **F9 — guided UX polish + LLM-narrated "why"** (M).
+
+Full rationale + reuse-vs-new mapping + the ranked product decisions: [`product.md`](product.md).
 
 ## Queue (open / deferred)
 
