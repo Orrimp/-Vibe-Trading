@@ -37,8 +37,21 @@ pub async fn generate_card(
     opening_capital: Money<Usdt>,
     btc_closes: &[(Timestamp, Decimal)],
 ) -> Result<LessonCard, GenerateCardError> {
-    let entry_regime = classify_regime(btc_closes, closed_trade.opened_at)?;
-    let exit_regime = classify_regime(btc_closes, closed_trade.closed_at)?;
+    // Regime classification requires at least 7 days of BTC daily data.
+    // In short soaks / paper mode with no seed data, the 7d lookback will fail
+    // with `NoCloseAtMinus7d`.  Rather than dropping the card entirely, we fall
+    // back to `Chop` (the "undetermined/insufficient-data" bucket) so that
+    // lesson cards are still generated and the reflection pipeline exercises
+    // the durable-write path.  Production long-running agents will have the
+    // full seed loaded and see accurate regime tags.
+    //
+    // `NoCloseAtTimestamp` (can't find current close) is a hard error —
+    // it means the trade close timestamp is before all known data, which
+    // indicates a logic error upstream, so we keep that as a real failure.
+    let entry_regime = classify_regime(btc_closes, closed_trade.opened_at)
+        .unwrap_or(crate::regime::RegimeTag::Chop);
+    let exit_regime = classify_regime(btc_closes, closed_trade.closed_at)
+        .unwrap_or(crate::regime::RegimeTag::Chop);
     let outcome_class = classify_outcome(closed_trade.signed_pnl, opening_capital);
 
     let card_id_str = card_id(

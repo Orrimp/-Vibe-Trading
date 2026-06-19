@@ -1,0 +1,106 @@
+# SOAK CONFIG (research/replay mode) — for paper-soak-longevity evidence run only.
+# Research mode: uses the parquet replay feed (fast-forward through 2023+2024 data).
+# This produces fills / trades / bar-count evidence that the SMA strategy is working.
+# NEVER edit config/agent.toml in place — use this separate file.
+
+mode = "research"
+
+[data.sources.binance]
+ws_url   = "wss://stream.binance.com:9443/ws"
+rest_url = "https://api.binance.com"
+
+[data.historical]
+parquet_root = "./data/binance"
+replay_fast  = true
+# replay_pace_ms not set → full-speed
+
+[data]
+clock_skew_warn_ms = 2000
+clock_skew_halt_ms = 10000
+
+[strategies.sma_crossover]
+enabled  = true
+fast_len = 20
+slow_len = 50
+
+[risk]
+per_symbol_exposure_cap = 0.40
+daily_loss_stop_pct     = -5.0
+max_drawdown_stop_pct   = -15.0
+
+[risk.sizing]
+fixed_fraction = 0.10
+
+[backtest]
+slippage_bps         = 2
+taker_fee_bps        = 4
+maker_fee_bps        = 2
+initial_capital_usdt = 100000
+
+[audit]
+ledger_db_path                = "/tmp/soak-research.db"
+reconciliation_tolerance_usdt = 0.01
+tick_bus_capacity = 1024
+
+[kill_switch]
+halt_file             = "/tmp/.soak-research-halt"
+heartbeat_timeout_ms  = 5000
+
+[observability]
+prometheus_listen = "0.0.0.0:9201"
+prometheus_enabled = false
+
+[cost]
+budget_usd_month = 20
+
+[bus]
+bars_capacity  = 1024
+ticks_capacity = 8192
+fills_capacity = 1024
+
+[funding]
+enabled       = false
+interval_secs = 3600
+universe      = ["BTCUSDT"]
+
+[universe]
+usdt_enabled = true
+usdc_enabled = false
+
+[llm]
+enabled = false
+default_provider     = "anthropic"
+budget_usd_month     = 0.0
+replay_cache_path    = "/tmp/soak-research-llm.db"
+
+[llm.deep_think]
+provider = "anthropic"
+model    = "claude-opus-4-7"
+
+[llm.quick_think]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"
+
+[llm.providers.anthropic]
+base_url = "https://api.anthropic.com/v1"
+api_key = "disabled"
+
+[llm.providers.openai]
+base_url = "https://api.openai.com/v1"
+
+[llm.providers.openrouter]
+base_url = "https://openrouter.ai/api/v1"
+
+[llm.providers.deepseek]
+base_url = "https://api.deepseek.com/v1"
+
+[llm.providers.ollama]
+base_url = "http://localhost:11434"
+
+[llm.pricing]
+
+[reflection]
+path = "/tmp/soak-research-reflection.db"
+channel_capacity = 1024
+enable_writer = false
+audit_tick_consumer_enabled = false

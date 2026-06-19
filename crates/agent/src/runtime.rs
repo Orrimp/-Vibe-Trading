@@ -120,6 +120,15 @@ pub struct RunHandles {
     ///
     /// Constructed by the caller from `Arc::new(audit::LedgerEquityStore::new(ledger.clone()))`.
     pub equity_store: Option<Arc<dyn audit::LiveEquityStore>>,
+
+    /// Producer side of the reflection mpsc (T1807 / lesson-card wiring).
+    ///
+    /// `Some` when `cfg.reflection.enable_writer = true` AND the runtime is
+    /// in paper mode — the trading loop calls `try_enqueue` on each
+    /// position-close fill.  Research mode always gets `None` (no durable
+    /// fills, no lesson cards in replay).  `cockpit_live` leaves this `None`
+    /// because it re-uses the same reflection DB but does not wire fills.
+    pub reflection_writer: Option<reflection::ReflectionWriter>,
 }
 
 /// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
@@ -276,6 +285,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         registry,
         boot_id,
         equity_store,
+        reflection_writer,
     } = handles;
 
     // ── Kill-switch halt-file watcher ─────────────────────────────────────────
@@ -536,6 +546,9 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 "research",
                 &mut set,
                 &cancel,
+                None,   // research: no journal persistence
+                None,   // research: no lesson cards
+                vec![], // research: no btc_closes seed needed
             );
             info!("agent subsystems initialized — research trading loop + replay feed running");
         }
@@ -673,6 +686,50 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                     );
                 }
 
+                // lesson-card-wiring: BTC daily closes for regime seed.
+                //
+                // The seed is loaded via `tokio::task::spawn_blocking` so polars
+                // (which initialises BLAS + Metal GPU at first use on Apple Silicon)
+                // runs on a dedicated blocking thread and never stalls the async
+                // reactor.  We `.await` the join handle here — this is called BEFORE
+                // `spawn_trading_loop`, i.e. before the paper feed connects to the
+                // live WS feed, so the latency (typically < 1 s on warm disk) is
+                // acceptable.  The trading loop starts only after the seed is ready.
+                //
+                // `./data/yahoo` is the conventional yahoo-cache root: the same root
+                // used by the lab runner and the `fetch_yahoo_klines` binary.
+                // `parquet_root` is `./data/binance`, so we derive yahoo as a sibling.
+                let yahoo_root = {
+                    let pr = std::path::PathBuf::from(&config.data.historical.parquet_root);
+                    pr.parent()
+                        .unwrap_or(std::path::Path::new("."))
+                        .join("yahoo")
+                };
+                let btc_closes_seed: Vec<(Timestamp, rust_decimal::Decimal)> = {
+                    let yahoo_root_clone = yahoo_root.clone();
+                    match tokio::task::spawn_blocking(move || {
+                        load_btc_daily_closes_for_regime(&yahoo_root_clone, 30)
+                    })
+                    .await
+                    {
+                        Ok(seed) => {
+                            info!(
+                                seed_len = seed.len(),
+                                yahoo_root = %yahoo_root.display(),
+                                "btc_closes_seed loaded off-hot-path via spawn_blocking"
+                            );
+                            seed
+                        }
+                        Err(join_err) => {
+                            warn!(
+                                error = %join_err,
+                                "btc_closes_seed load panicked in blocking thread — using empty seed"
+                            );
+                            vec![]
+                        }
+                    }
+                };
+
                 spawn_trading_loop(
                     paper_feed,
                     Arc::clone(&bus),
@@ -685,6 +742,9 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                     "paper",
                     &mut set,
                     &cancel,
+                    Some(Arc::clone(&ledger)), // paper: persist fills to journal_transactions
+                    reflection_writer,         // paper: enqueue lesson cards on close
+                    btc_closes_seed,           // paper: seed for regime classification
                 );
                 info!("paper trading loop spawned (live feed → paper engine → equity store)");
             }
@@ -745,6 +805,86 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
 
     info!("agent stopped");
     Ok(())
+}
+
+/// Load recent BTC daily close prices from the Yahoo parquet cache for
+/// regime classification in paper-mode lesson cards.
+///
+/// Returns up to `days` days of BTC-USD 1d closes sorted ascending by
+/// timestamp.  Any I/O error is warn-logged and an empty vec returned —
+/// the lesson-card generator then fails `classify_regime` gracefully
+/// (warn-logged, no card generated) rather than blocking the loop.
+///
+/// `yahoo_cache_root` is typically `./data/yahoo` (from the agent config
+/// `parquet_root` parent, or a conventional path).
+///
+/// If the current month is not in the cache yet (cache is updated monthly),
+/// we fall back to the end-of-previous-month as `end_ms` so the load
+/// succeeds with the most recently available data.
+#[must_use]
+pub fn load_btc_daily_closes_for_regime(
+    yahoo_cache_root: &std::path::Path,
+    days: u32,
+) -> Vec<(Timestamp, rust_decimal::Decimal)> {
+    use data::yahoo::{Interval, YahooBarSource};
+    use time::OffsetDateTime;
+
+    let source = YahooBarSource::new(yahoo_cache_root.to_path_buf());
+    let now = OffsetDateTime::now_utc();
+    let now_ms: i64 = (now.unix_timestamp_nanos() / 1_000_000)
+        .try_into()
+        .unwrap_or(i64::MAX);
+    let start_ms: i64 = now_ms.saturating_sub(i64::from(days) * 86_400_000);
+
+    // Helper: build epoch-ms for the 1st of a given year-month.
+    let month_start_ms = |y: i32, m: u8| -> i64 {
+        time::Date::from_calendar_date(
+            y,
+            time::Month::try_from(m).unwrap_or(time::Month::January),
+            1,
+        )
+        .ok()
+        .map(|d| time::PrimitiveDateTime::new(d, time::Time::MIDNIGHT).assume_utc())
+        .map(|dt| (dt.unix_timestamp_nanos() / 1_000_000) as i64)
+        .unwrap_or(now_ms)
+    };
+
+    // Try progressively: today → start of current month → start of previous month.
+    // This ensures we land on a range covered by complete monthly parquet files.
+    let cur_y = now.year();
+    let cur_m = now.month() as u8;
+    let (prev_y, prev_m) = if cur_m == 1 {
+        (cur_y - 1, 12u8)
+    } else {
+        (cur_y, cur_m - 1)
+    };
+
+    let try_load = |end: i64| source.load_cached("BTC-USD", Interval::Days1, start_ms, end);
+
+    let result = try_load(now_ms)
+        .or_else(|_| try_load(month_start_ms(cur_y, cur_m)))
+        .or_else(|_| try_load(month_start_ms(prev_y, prev_m)));
+
+    match result {
+        Ok(loaded) => {
+            let mut out: Vec<(Timestamp, rust_decimal::Decimal)> = loaded
+                .bars
+                .iter()
+                .map(|b| (b.close_ts, b.close.get()))
+                .collect();
+            out.sort_by_key(|(ts, _)| ts.inner());
+            info!(count = out.len(), "btc_daily_closes loaded for regime seed");
+            out
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                yahoo_root = %yahoo_cache_root.display(),
+                "btc_daily_closes load failed — lesson cards will skip regime (warn-only)"
+            );
+            vec![]
+        }
+    }
 }
 
 /// Build a [`exec::PaperEnginePublisher`] backed by the agent's
@@ -953,6 +1093,11 @@ pub(crate) async fn spawn_feed_taps_with_observer<S: MarketDataSource + ?Sized>(
 // `mode_label: &'static str`.  Research passes `None` (byte-identical behavior);
 // paper passes `Some(store)` + `"paper"` so the loop-direct persist seam (A2)
 // fires per bar without any `if mode != Research` inside the body.
+//
+// lesson-card-wiring: extended with `ledger`, `reflection_writer`, and
+// `btc_closes_seed` so paper mode writes `journal_transactions` on every fill
+// and enqueues a `LessonCardWriteRequest` on every position-close fill.
+// Research mode passes `None, None, vec![]` — byte-identical with pre-extension.
 #[allow(clippy::too_many_arguments)]
 #[doc(hidden)]
 pub fn spawn_trading_loop(
@@ -967,6 +1112,10 @@ pub fn spawn_trading_loop(
     mode_label: &'static str,                              // NEW ("paper" | "research")
     set: &mut JoinSet<()>,
     cancel: &CancellationToken,
+    // lesson-card-wiring additions: None/None/vec![] for research (no-op)
+    ledger: Option<Arc<audit::Ledger>>,
+    reflection_writer: Option<reflection::ReflectionWriter>,
+    btc_closes_seed: Vec<(Timestamp, rust_decimal::Decimal)>,
 ) {
     use backtest::MatchingEngine as _;
     use backtest::paper::{FillPriceMode, MatchConfig, PaperEngine};
@@ -1026,6 +1175,20 @@ pub fn spawn_trading_loop(
         let mut realized_pnl = Decimal::ZERO;
         let mut cost_basis = Decimal::ZERO;
         let mut fill_count = 0usize;
+        let mut bar_count = 0u32;
+
+        // lesson-card-wiring: track open-side trade state so we can build
+        // a ClosedTrade when a sell closes the position.
+        let mut open_tx_id: Option<String> = None;
+        let mut opened_at: Option<Timestamp> = None;
+        let mut open_capital: Option<Money<Usdt>> = None;
+        let mut open_strategy_id: Option<trading_core::StrategyId> = None;
+        let mut bar_count_at_open: u32 = 0;
+
+        // Accumulate live bars for btc_closes (regime classifier).
+        // Pre-seeded with the caller-supplied historical seed so that
+        // classify_regime has at least 7d of data even on a short soak.
+        let mut btc_closes: Vec<(Timestamp, Decimal)> = btc_closes_seed;
 
         loop {
             tokio::select! {
@@ -1045,6 +1208,10 @@ pub fn spawn_trading_loop(
 
                     let mark = bar.close.get();
                     position.last_mark = bar.close;
+                    bar_count += 1;
+
+                    // Accumulate bar close prices for regime classification.
+                    btc_closes.push((bar.close_ts, mark));
 
                     // Equity at start of bar (for risk sizing).
                     let equity = cash + position.base_qty * mark;
@@ -1101,10 +1268,21 @@ pub fn spawn_trading_loop(
                         }
                     }
 
+                    // lesson-card-wiring: capture strategy_ids before orders are moved.
+                    // There is at most one order per bar (SMA crossover); we take
+                    // the first strategy_id (or "(unattributed)" if absent).
+                    let orders_strategy_id: Option<trading_core::StrategyId> = orders
+                        .first()
+                        .map(|o| o.strategy_id().clone());
+
                     if !orders.is_empty()
                         && let Ok(fills) = engine.step(&bar, orders).await
                     {
                         for fill in &fills {
+                            // lesson-card-wiring: capture pre-update position qty
+                            // to detect position-close on sell fills.
+                            let pre_fill_qty = position.base_qty;
+
                             // Update cash + position (mirror of sma_composed_run.rs).
                             match fill.side {
                                 Side::Buy => {
@@ -1165,6 +1343,95 @@ pub fn spawn_trading_loop(
                                         "trading_loop fill"
                                     );
                                 }
+                            }
+
+                            // lesson-card-wiring: persist fill to journal_transactions.
+                            // Fire-and-forget (spawned) — never blocks the loop.
+                            if let Some(ref jledger) = ledger {
+                                let fill_clone = fill.clone();
+                                let ledger_clone = Arc::clone(jledger);
+                                let strat_id = orders_strategy_id
+                                    .as_ref()
+                                    .map(|s| s.0.to_string());
+                                tokio::spawn(async move {
+                                    if let Err(e) = audit::journal::post_fill_with_signal(
+                                        &ledger_clone,
+                                        &fill_clone,
+                                        trading_core::Venue::Binance,
+                                        strat_id.as_deref(),
+                                        None,
+                                    ).await {
+                                        warn!(error = %e, "trading_loop: post_fill_with_signal failed (non-fatal)");
+                                    }
+                                });
+                            }
+
+                            // Capture open-side state on buy fills.
+                            if fill.side == Side::Buy
+                                && pre_fill_qty <= Decimal::ZERO
+                            {
+                                // Opening a new position.
+                                open_tx_id = Some(fill.id.to_string());
+                                opened_at = Some(fill.venue_ts);
+                                open_capital = Some(Money::<Usdt>::from_decimal(
+                                    cash + (position.base_qty * fill.price.get()),
+                                ));
+                                open_strategy_id = orders_strategy_id.clone();
+                                bar_count_at_open = bar_count;
+                            }
+
+                            // Enqueue lesson card on position-close sell fills.
+                            if fill.side == Side::Sell
+                                && pre_fill_qty > Decimal::ZERO
+                                && position.base_qty <= Decimal::ZERO
+                            {
+                                // Position just closed — construct and enqueue a lesson card req.
+                                let strategy_for_card = orders_strategy_id
+                                    .clone()
+                                    .or_else(|| open_strategy_id.clone())
+                                    .unwrap_or_else(|| trading_core::StrategyId::new("(unattributed)"));
+                                if let (
+                                    Some(rw),
+                                    Some(oat),
+                                    Some(ocap),
+                                    Some(oid),
+                                ) = (
+                                    &reflection_writer,
+                                    &opened_at,
+                                    &open_capital,
+                                    &open_tx_id,
+                                ) {
+                                    let symbol_or_pair =
+                                        reflection::SymbolOrPair::Single(fill.symbol.clone());
+                                    let signed_pnl = Money::<Usdt>::from_decimal(
+                                        realized_pnl,
+                                    );
+                                    let holding_bars = bar_count.saturating_sub(bar_count_at_open);
+                                    let closed_trade = reflection::ClosedTrade {
+                                        close_transaction_id: fill.id.to_string(),
+                                        open_transaction_id: oid.clone(),
+                                        symbol_or_pair,
+                                        strategy_id: strategy_for_card,
+                                        signed_pnl,
+                                        closed_at: fill.venue_ts,
+                                        opened_at: *oat,
+                                        holding_period_bars: holding_bars,
+                                    };
+                                    let req = reflection::LessonCardWriteRequest {
+                                        closed_trade,
+                                        opening_capital: *ocap,
+                                        btc_closes: btc_closes.clone(),
+                                    };
+                                    match rw.try_enqueue(req) {
+                                        Ok(()) => debug!(mode = mode_label, "lesson card enqueued"),
+                                        Err(e) => warn!(error = %e, mode = mode_label, "lesson card enqueue failed (non-fatal)"),
+                                    }
+                                }
+                                // Reset open-side state.
+                                open_tx_id = None;
+                                opened_at = None;
+                                open_capital = None;
+                                open_strategy_id = None;
                             }
                         }
                     }
@@ -1824,7 +2091,8 @@ mod tests {
             kill_switch: Arc::clone(&kill_switch),
             registry,
             boot_id: boot_id.clone(),
-            equity_store: None, // tests use no equity store
+            equity_store: None,      // tests use no equity store
+            reflection_writer: None, // tests do not exercise lesson-card wiring
         };
 
         let cancel = CancellationToken::new();

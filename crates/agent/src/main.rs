@@ -135,7 +135,9 @@ async fn main() -> Result<()> {
     // research / fixture profiles.  Producer side is held by the
     // executor's fill-handler tap; consumer task drains the queue
     // and persists via `SqliteReflectionStore::upsert`.
-    let _reflection_writer = if cfg.reflection.enable_writer {
+    // lesson-card-wiring: create writer only in paper mode when enabled.
+    // Research mode never writes lesson cards (no durable fills, no closed trades).
+    let reflection_writer_for_runtime = if cfg.reflection.enable_writer {
         if let Some(parent) = cfg.reflection.path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -329,6 +331,7 @@ async fn main() -> Result<()> {
         registry: Arc::clone(&registry),
         boot_id: boot_id.clone(),
         equity_store,
+        reflection_writer: reflection_writer_for_runtime,
     };
     agent::runtime::run(handles, cancel).await?;
 

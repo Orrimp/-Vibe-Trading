@@ -495,6 +495,10 @@ fn main() -> Result<()> {
             registry: Arc::clone(&registry),
             boot_id: boot_id.clone(),
             equity_store,
+            // cockpit_live reads the reflection DB but does not wire lesson-card
+            // generation — fills flow through the paper trading loop which is
+            // owned by RunHandles in the headless bin. Pass None here.
+            reflection_writer: None,
         };
         let ledger_for_close = Arc::clone(&ledger);
         let boot_id_for_close = boot_id.clone();

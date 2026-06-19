@@ -120,6 +120,7 @@ design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 - **operator-success-reports** — auto-generated "is this working?" reports (equity, Sharpe/Sortino/drawdown, attribution, system health).
 - **audit-tick-consumer-envelope** — audit tick consumer with an aggregation envelope.
 - **point-in-time-data-discipline** — `core::pit::PitSeries`/`AsOf`: a type-level as-of primitive making look-ahead *unrepresentable* (`AsOf` has private fields + no public ctor; a trybuild compile-fail is the proof), consolidating the hand-rolled as-of joins (funding/basis) behind one guarded API. Behaviour-preserving — anchors 119/119. (ADR-0058, extends ADR-0041.)
+- **paper-soak-longevity** (reflection-loop paper-wiring) — wires the reflection writer into the paper trading loop so a lesson card is written on each closed trade (the moat #2 differentiator, previously never wired in the paper path); regime tags are accurate via a BTC-daily-close seed loaded off the async hot path (`spawn_blocking`, no startup hang). Ships the longevity evidence artifact (in-session soak: durable fills, equity movement, restart-continuity, kill-switch, lesson accumulation) + an operator runbook for the real-time 90-day soak. Regression guard: `reflection_wiring_regression.rs` (with a no-writer negative control).
 
 ## Tooling & process
 

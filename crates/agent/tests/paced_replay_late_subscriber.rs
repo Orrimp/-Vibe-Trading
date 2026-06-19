@@ -174,6 +174,9 @@ async fn paced_replay_late_subscriber_receives_fills_positions_pnl() {
         "research",
         &mut set,
         &cancel,
+        None,   // research: no journal persistence
+        None,   // research: no lesson cards
+        vec![], // research: no btc_closes seed needed
     );
 
     // ── Simulate iced boot delay (late subscriber) ────────────────────────────

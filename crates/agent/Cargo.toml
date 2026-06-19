@@ -24,7 +24,7 @@ forecast-audit-tick = ["strategy/forecast-audit-tick"]
 
 [dependencies]
 trading_core = { path = "../core" }
-data = { path = "../data" }
+data = { path = "../data", features = ["yahoo"] }
 features = { path = "../features" }
 risk = { path = "../risk" }
 strategy = { path = "../strategy" }

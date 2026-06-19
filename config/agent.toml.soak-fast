@@ -1,0 +1,127 @@
+# SOAK-FAST CONFIG — mechanism-exercise only; NOT a performance claim.
+# Demonstrates: durable fills in journal_transactions, equity movement,
+# and lesson card accumulation in a short in-session paper soak.
+#
+# Key parameters that differ from config/agent.toml:
+#   - mode = "paper"           (real live Binance WS; no real orders)
+#   - sma fast=2, slow=3       (warms in ~3 bars / ~3 min, crosses frequently)
+#   - scratch DBs in /tmp      (never touches committed data/audit/ledger.db)
+#   - llm.enabled = false      (deterministic, key-free)
+#   - reflection.enable_writer = true (lesson cards accumulate on closed trades)
+#   - prometheus disabled      (headless; no listener needed)
+#
+# WARNING: This is a MECHANISM-EXERCISE config. The SMA(2,3) windows are
+# deliberately tiny to allow warmup and crossing within a short soak window.
+# They would be unprofitable in production. Do NOT copy these windows into
+# the committed config/agent.toml.
+
+mode = "paper"
+
+[data.sources.binance]
+ws_url   = "wss://stream.binance.com:9443/ws"
+rest_url = "https://api.binance.com"
+
+[data.historical]
+parquet_root = "./data/binance"
+replay_fast  = true
+
+[data]
+clock_skew_warn_ms = 2000
+clock_skew_halt_ms = 10000
+
+# MECHANISM-EXERCISE: SMA(2,3) — warms in ~3 live 1m bars, crosses every
+# few bars.  The purpose is to generate OPEN + CLOSE fills quickly so that:
+#   journal_transactions count > 1 (durable fills)
+#   equity moves off $100k (durable P&L)
+#   lesson_cards count > 0 (lessons accumulating on closed trades)
+[strategies.sma_crossover]
+enabled  = true
+fast_len = 2
+slow_len = 3
+
+[risk]
+per_symbol_exposure_cap = 0.40
+daily_loss_stop_pct     = -5.0
+max_drawdown_stop_pct   = -15.0
+
+[risk.sizing]
+fixed_fraction = 0.10
+
+[backtest]
+slippage_bps         = 2
+taker_fee_bps        = 4
+maker_fee_bps        = 2
+initial_capital_usdt = 100000
+
+[audit]
+ledger_db_path                = "/tmp/soak-fast-audit.db"
+reconciliation_tolerance_usdt = 0.01
+tick_bus_capacity = 1024
+
+[kill_switch]
+halt_file             = "/tmp/.soak-fast-halt"
+heartbeat_timeout_ms  = 5000
+
+[observability]
+prometheus_listen  = "0.0.0.0:9201"
+prometheus_enabled = false
+
+[cost]
+budget_usd_month = 20
+
+[bus]
+bars_capacity  = 1024
+ticks_capacity = 8192
+fills_capacity = 1024
+
+[funding]
+enabled       = false
+interval_secs = 3600
+universe      = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT",
+]
+
+[universe]
+usdt_enabled = true
+usdc_enabled = false
+
+[llm]
+enabled              = false
+default_provider     = "anthropic"
+budget_usd_month     = 0.0
+replay_cache_path    = "/tmp/soak-fast-llm-replay.db"
+
+[llm.deep_think]
+provider = "anthropic"
+model    = "claude-opus-4-7"
+
+[llm.quick_think]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"
+
+[llm.providers.anthropic]
+base_url = "https://api.anthropic.com/v1"
+api_key  = "disabled"
+
+[llm.providers.openai]
+base_url = "https://api.openai.com/v1"
+
+[llm.providers.openrouter]
+base_url = "https://openrouter.ai/api/v1"
+
+[llm.providers.deepseek]
+base_url = "https://api.deepseek.com/v1"
+
+[llm.providers.ollama]
+base_url = "http://localhost:11434"
+
+[llm.pricing]
+
+# Reflection: enable_writer = true so lesson cards accumulate on closed trades.
+# Lesson cards are DETERMINISTIC (key-free, LLM disabled).
+[reflection]
+path                       = "/tmp/soak-fast-reflection.db"
+channel_capacity           = 1024
+enable_writer              = true
+audit_tick_consumer_enabled = false
