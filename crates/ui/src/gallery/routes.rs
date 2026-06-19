@@ -809,9 +809,10 @@ fn seed_trail_drawer() -> Cockpit {
 fn render_trail_drawer_fill(_model: &Cockpit) -> iced::Element<'_, Message> {
     use crate::widgets::trail_drawer::{DrawerPayload, view as drawer_view};
     use crate::widgets::trail_node::TrailNodeKind;
-    let payload: &'static DrawerPayload = Box::leak(Box::new(DrawerPayload::Fill {
+    // `view` now takes the payload by value — no `Box::leak` needed.
+    let payload = DrawerPayload::Fill {
         metadata_json: r#"{"side":"Buy","qty":"0.05","price":"50000"}"#.to_string(),
-    }));
+    };
     drawer_view(TrailNodeKind::Fill, Some(payload), ThemeMode::Dark)
 }
 

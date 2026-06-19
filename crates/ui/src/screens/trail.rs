@@ -29,7 +29,32 @@ use iced::{Border, Element, Length};
 
 use crate::state::{Cockpit, Message};
 use crate::theme::{ThemeMode, color, radius, space, text};
+use crate::widgets::trail_drawer::DrawerPayload;
 use crate::widgets::trail_node::{self, TrailNode, TrailNodeKind};
+
+/// Build the side-drawer payload for the selected `kind` from the hydrated
+/// `reconstructed_trail`. Returns `Some(DrawerPayload::Fill { metadata_json })`
+/// — the scrollable raw-JSON viewer — when the matching stage carries a
+/// `raw_payload` (the serialised SQL row). Returns `None` (drawer renders the
+/// placeholder body) when the trail is unhydrated or the stage has no payload.
+///
+/// Why `Fill` for every kind: see the data-plumbing follow-up note at the
+/// drawer construction site. The structured per-kind variants require discrete
+/// columns that `reflection::TrailStage` does not yet emit; the honest,
+/// non-fabricating render today is the raw row under the correct per-kind
+/// title (the drawer title comes from `kind`, not the payload variant).
+fn drawer_payload_for(model: &Cockpit, kind: TrailNodeKind) -> Option<DrawerPayload> {
+    let trail = model.trail_screen_state.reconstructed_trail.as_ref()?;
+    let stage = match kind {
+        TrailNodeKind::Forecast => &trail.forecast,
+        TrailNodeKind::LlmDebate => &trail.debate,
+        TrailNodeKind::Signal => &trail.signal,
+        TrailNodeKind::Fill => &trail.fill,
+    };
+    stage.raw_payload.as_ref().map(|json| DrawerPayload::Fill {
+        metadata_json: json.clone(),
+    })
+}
 
 /// Static fallback nodes (all-`None`) used when `reconstructed_trail` is
 /// `None` (SQL backfill not yet completed). All-`None` fields resolve to
@@ -197,10 +222,29 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> Element<'_, Message> {
     // Optional side-drawer.
     let main_area: Element<'_, Message> = if let Some(node_kind) = drawer_selected {
         // Drawer open — show node stack left, drawer right.
+        //
+        // Build the drawer payload from the SELECTED stage's `raw_payload`
+        // (the serialised SQL row), which lives in `reconstructed_trail`.
+        // The drawer takes the payload BY VALUE, so we can construct it from
+        // an owned clone here with no E0515 lifetime concern.
+        //
+        // NOTE (data-plumbing follow-up): the structured `DrawerPayload`
+        // variants (`Forecast { direction, confidence, .. }`, `Signal { side,
+        // intended_qty, .. }`) carry discrete fields that are NOT yet plumbed
+        // onto `TrailStageUi`/`reflection::TrailStage` — that mirror is a
+        // default-only stub at v0.1.0 (only the opaque `raw_payload: Option
+        // <String>` exists). Until the reflection layer parses the four
+        // correlation rows into discrete columns, we render the REAL raw-JSON
+        // payload via the scrollable `Fill` body under the correct per-kind
+        // title (NOT the LLM "(no transcript)" placeholder for every kind).
+        // When a stage has no `raw_payload` (e.g. the always-`None` LLM debate
+        // stage, or an unhydrated stage), the drawer falls back to the
+        // placeholder body.
+        let payload = drawer_payload_for(model, node_kind);
         Row::new()
             .spacing(space::L)
             .push(Column::new().push(node_col).width(Length::Fill))
-            .push(crate::widgets::trail_drawer::view(node_kind, None, mode))
+            .push(crate::widgets::trail_drawer::view(node_kind, payload, mode))
             .into()
     } else {
         Column::new().push(node_col).into()

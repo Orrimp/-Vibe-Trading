@@ -9,7 +9,9 @@
 //!   - Forecast → forecast_events row dump + one-line summary
 //!   - LLM debate → "(no transcript recorded)" placeholder (R1.5)
 //!
-//! Reuses `RIGHT_RAIL_WIDTH_PX` from `shell.rs` (no new layout token).
+//! Uses `RIGHT_RAIL_OPEN_WIDTH_PX` (= 320 px) — the OPEN right-rail width
+//! (the drawer only exists in the open state; `RIGHT_RAIL_WIDTH_PX` is the
+//! 0-px CLOSED-state token and would render an invisible drawer).
 //! Trigger: chevron-click on a trail node (Q3 = chevron-click).
 //! Dismissal: `Message::TrailDrawerClosed`.
 
@@ -72,13 +74,22 @@ fn title_for_kind(kind: TrailNodeKind) -> &'static str {
 
 /// Render the trail side-drawer.
 ///
-/// Width is `RIGHT_RAIL_WIDTH_PX`. All four body variants (Fill / Signal /
-/// Forecast / LLM-placeholder) are covered per R4.2.
+/// Width is `RIGHT_RAIL_OPEN_WIDTH_PX` (= 320 px). The drawer is only ever
+/// built in the OPEN state (`screens::trail::view` constructs it inside
+/// `if let Some(node_kind) = drawer_selected`), so it uses the *open* rail
+/// width — NOT the `RIGHT_RAIL_WIDTH_PX = 0.0` closed-state token (which would
+/// render an invisible 0-px-wide drawer). All four body variants (Fill /
+/// Signal / Forecast / LLM-placeholder) are covered per R4.2.
 /// Dismissal via `Message::TrailDrawerClosed` (R4.4).
+///
+/// `payload` is taken BY VALUE so the body's `Text` widgets can own their
+/// strings: `screens::trail::view` builds the payload from the selected
+/// stage's data (which lives in `model`) and moves it in, avoiding an E0515
+/// "borrows local" lifetime error on the returned `Element`.
 #[must_use]
 pub fn view<'a>(
     kind: TrailNodeKind,
-    payload: Option<&'a DrawerPayload>,
+    payload: Option<DrawerPayload>,
     mode: ThemeMode,
 ) -> Element<'a, Message> {
     let title = title_for_kind(kind);
@@ -117,8 +128,11 @@ pub fn view<'a>(
         .push(close_btn);
 
     let body: Element<'a, Message> = match payload {
+        // Raw-JSON viewer (the production path today): the selected stage's
+        // serialised `raw_payload` row, scrollable. `metadata_json` is owned
+        // here, so move it into the `Text` (owning `Cow`) — no local borrow.
         Some(DrawerPayload::Fill { metadata_json }) => Scrollable::new(
-            Text::new(metadata_json.as_str())
+            Text::new(metadata_json)
                 .size(text::MICRO)
                 .color(color::FG_1.current(mode)),
         )
@@ -133,26 +147,25 @@ pub fn view<'a>(
         }) => {
             let mut col = Column::new()
                 .spacing(space::XS)
-                .push(kv(TRAIL_SIGNAL_SIDE_LABEL, side.as_str(), mode))
-                .push(kv(TRAIL_SIGNAL_QTY_LABEL, intended_qty.as_str(), mode))
+                .push(kv(TRAIL_SIGNAL_SIDE_LABEL, side, mode))
+                .push(kv(TRAIL_SIGNAL_QTY_LABEL, intended_qty, mode))
                 .push(kv(
                     TRAIL_SIGNAL_PRICE_LABEL,
-                    intended_price
-                        .as_deref()
-                        .unwrap_or(TRAIL_SIGNAL_PRICE_MARKET),
+                    intended_price.unwrap_or_else(|| TRAIL_SIGNAL_PRICE_MARKET.to_string()),
                     mode,
                 ))
                 .push(kv(
                     TRAIL_SIGNAL_CLAMPED_LABEL,
-                    if *was_clamped {
+                    if was_clamped {
                         TRAIL_BOOL_YES
                     } else {
                         TRAIL_BOOL_NO
-                    },
+                    }
+                    .to_string(),
                     mode,
                 ));
             if let Some(reason) = clamp_reason {
-                col = col.push(kv(TRAIL_SIGNAL_CLAMP_REASON_LABEL, reason.as_str(), mode));
+                col = col.push(kv(TRAIL_SIGNAL_CLAMP_REASON_LABEL, reason, mode));
             }
             col.into()
         }
@@ -162,7 +175,7 @@ pub fn view<'a>(
             model_revision,
             cache_hit,
         }) => {
-            let summary = trail_forecast_summary(direction, confidence);
+            let summary = trail_forecast_summary(&direction, &confidence);
             Column::new()
                 .spacing(space::XS)
                 .push(
@@ -170,24 +183,17 @@ pub fn view<'a>(
                         .size(text::BODY)
                         .color(color::FG_1.current(mode)),
                 )
-                .push(kv(TRAIL_FORECAST_DIRECTION_LABEL, direction.as_str(), mode))
-                .push(kv(
-                    TRAIL_FORECAST_CONFIDENCE_LABEL,
-                    confidence.as_str(),
-                    mode,
-                ))
-                .push(kv(
-                    TRAIL_FORECAST_MODEL_LABEL,
-                    model_revision.as_str(),
-                    mode,
-                ))
+                .push(kv(TRAIL_FORECAST_DIRECTION_LABEL, direction, mode))
+                .push(kv(TRAIL_FORECAST_CONFIDENCE_LABEL, confidence, mode))
+                .push(kv(TRAIL_FORECAST_MODEL_LABEL, model_revision, mode))
                 .push(kv(
                     TRAIL_FORECAST_CACHE_HIT_LABEL,
-                    if *cache_hit {
+                    if cache_hit {
                         TRAIL_BOOL_YES
                     } else {
                         TRAIL_BOOL_NO
-                    },
+                    }
+                    .to_string(),
                     mode,
                 ))
                 .into()
@@ -203,11 +209,11 @@ pub fn view<'a>(
         .padding(space::M as u16)
         .push(header)
         .push(body)
-        .width(Length::Fixed(layout::RIGHT_RAIL_WIDTH_PX));
+        .width(Length::Fixed(layout::RIGHT_RAIL_OPEN_WIDTH_PX));
 
     Container::new(content)
         .height(Length::Fill)
-        .width(Length::Fixed(layout::RIGHT_RAIL_WIDTH_PX))
+        .width(Length::Fixed(layout::RIGHT_RAIL_OPEN_WIDTH_PX))
         .style(move |_theme: &iced::Theme| iced::widget::container::Style {
             background: Some(color::PANEL_RAISED.current(mode).into()),
             border: Border {
@@ -220,8 +226,11 @@ pub fn view<'a>(
         .into()
 }
 
-/// Render a key-value row for the drawer body.
-fn kv<'a>(key: &'a str, value: &'a str, mode: ThemeMode) -> Element<'a, Message> {
+/// Render a key-value row for the drawer body. `value` is taken by owned
+/// `String` (moved into the value `Text`) so the row borrows nothing local —
+/// the caller builds these from a by-value `DrawerPayload`. `key` is a
+/// `'static` string constant from `crate::strings`.
+fn kv<'a>(key: &'static str, value: String, mode: ThemeMode) -> Element<'a, Message> {
     Row::new()
         .spacing(space::S)
         .push(
