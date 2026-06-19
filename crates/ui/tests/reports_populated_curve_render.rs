@@ -198,6 +198,8 @@ fn reports_cockpit_with_equity(equity: PanelState<EquitySeries>) -> Cockpit {
         discovered: PanelState::Ready(vec![entry]),
         selected: Some(0),
         loaded: PanelState::Ready(loaded),
+        // reports-picker-curve-filter — default curve-only filter.
+        show_all_reports: false,
     };
     cockpit
 }
@@ -413,6 +415,8 @@ fn reports_cockpit_marker_and_autoselect() -> (Cockpit, usize) {
         discovered: PanelState::Ready(entries),
         selected: Some(auto),
         loaded: PanelState::Ready(loaded),
+        // reports-picker-curve-filter — default curve-only filter.
+        show_all_reports: false,
     };
     (cockpit, auto)
 }
@@ -602,5 +606,343 @@ fn reports_switch_to_no_companion_is_empty() {
         hits_e < 500,
         "a no-companion report must show the empty state (no curve); got {hits_e} \
          curve px — if high, the screen is painting a stale/previous curve"
+    );
+}
+
+// ─── JOB 5: curve-only picker filter (reports-picker-curve-filter) ────────
+//
+// The operator kept landing on companion-less "no equity data" reports (only
+// 14 of 117 ship a curve), so the picker now DEFAULTS to a curve-only filter
+// with an "All" toggle. These render guards prove, at the PIXEL layer:
+//   (a) default (curve-only) shows ONLY companion rows;
+//   (b) toggled (show_all) shows STRICTLY MORE rows (the full corpus);
+//   (c) index-safety — selecting a filtered companion row loads the CORRECT
+//       report (its own curve paints), proving the enumerate-and-skip keeps
+//       each visible row's TRUE full-discovered-list index.
+
+/// The picker rail's absolute X span in the rendered frame: it sits AFTER the
+/// left sidebar (`SIDEBAR_WIDTH_PX` ≈ 180 px) and the body's `space::L` left
+/// padding, and is `PICKER_WIDTH` (320 px) wide. We scan a conservative span
+/// that excludes the sidebar nav labels on the left and the detail pane on the
+/// right, so only the picker rows are measured.
+const RAIL_X0: u32 = 185;
+const RAIL_X1: u32 = 520;
+
+/// Whether a scanline carries picker-rail "row content" — i.e. enough
+/// foreground (label text / marker / active-row fill) pixels in the rail x-span
+/// to be a row rather than inter-row gap. Background tiers (CANVAS / PANEL /
+/// PANEL_RAISED) are near-black (< ~45 per channel); text + markers cross a
+/// luma floor the dark tiers never reach.
+fn rail_scanline_has_content(w: u32, rgba: &[u8], y: u32) -> bool {
+    let x1 = RAIL_X1.min(w);
+    let mut fg = 0u32;
+    for x in RAIL_X0..x1 {
+        let idx = ((y as usize * w as usize) + x as usize) * 4;
+        let r = i32::from(rgba[idx]);
+        let g = i32::from(rgba[idx + 1]);
+        let b = i32::from(rgba[idx + 2]);
+        let luma = (r * 2 + g * 3 + b) / 6;
+        if luma > 70 {
+            fg += 1;
+        }
+    }
+    fg >= 8
+}
+
+/// Bottom margin to exclude from rail scans: the full-width status bar
+/// ("Disconnected · Latency …") sits in the bottom ~30 px and crosses the rail
+/// x-span, so it would otherwise register as a spurious picker row. Picker rows
+/// never reach this low (the synthetic corpus is ≤ 4 short rows at the top).
+const RAIL_Y_BOTTOM_MARGIN: u32 = 40;
+
+/// Count visible picker ROWS in the rail within `[y_start, h - bottom_margin)`
+/// (skipping the title + filter-toggle band above and the status bar below).
+/// Collapses content scanlines into bands, MERGING runs closer than `MERGE_GAP`
+/// px so a single row's label-text run and its active-row border run (a 1-2 px
+/// line ~8 px below the text) count as ONE row, while distinct rows (≥ ~14 px
+/// apart center-to-center, with the next row's top border well past the merge
+/// window) stay separate. Counts ROWS (coarse bands), robust to cosmic-text
+/// glyph jitter.
+fn picker_row_bands(w: u32, h: u32, rgba: &[u8], y_start: u32) -> u32 {
+    const MERGE_GAP: u32 = 10;
+    let y_end = h.saturating_sub(RAIL_Y_BOTTOM_MARGIN);
+    let mut bands = 0u32;
+    let mut in_band = false;
+    let mut gap = 0u32;
+    for y in y_start..y_end {
+        if rail_scanline_has_content(w, rgba, y) {
+            if !in_band {
+                bands += 1;
+                in_band = true;
+            }
+            gap = 0;
+        } else if in_band {
+            gap += 1;
+            if gap >= MERGE_GAP {
+                in_band = false;
+            }
+        }
+    }
+    bands
+}
+
+/// Total foreground (text / marker / active-fill) pixel count in the picker
+/// rail within `[y_start, h - bottom_margin)`. Monotonic in the number of
+/// visible rows: more rows → more text → more foreground pixels. A band-free,
+/// calibration-light signal used to corroborate the row-band count
+/// (curve-only < show_all). Excludes the bottom status bar.
+fn rail_foreground_pixels(w: u32, h: u32, rgba: &[u8], y_start: u32) -> u64 {
+    let x1 = RAIL_X1.min(w);
+    let y_end = h.saturating_sub(RAIL_Y_BOTTOM_MARGIN);
+    let mut hits = 0u64;
+    for y in y_start..y_end {
+        for x in RAIL_X0..x1 {
+            let idx = ((y as usize * w as usize) + x as usize) * 4;
+            let r = i32::from(rgba[idx]);
+            let g = i32::from(rgba[idx + 1]);
+            let b = i32::from(rgba[idx + 2]);
+            let luma = (r * 2 + g * 3 + b) / 6;
+            if luma > 70 {
+                hits += 1;
+            }
+        }
+    }
+    hits
+}
+
+/// Build a Reports cockpit with a deterministic, synthetic discovered list:
+/// ONE companion-bearing report (the avax demo stem) + THREE companion-less
+/// reports. Curve-only shows 1 row; show_all shows 4. The selection + loaded
+/// state are injected (synthetic paths never read), so the render is checkout-
+/// independent. `show_all_reports` is set by the caller.
+///
+/// The companion row's loaded `equity` is `Ready` so its detail-pane curve
+/// paints (used by the index-safety guard). Returns the cockpit + the TRUE
+/// full-list index of the companion row.
+fn reports_cockpit_filter_scene(show_all: bool) -> (Cockpit, usize) {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+
+    // Row order: a no-companion report FIRST (so the companion is NOT row 0 —
+    // this is what makes the index-safety test meaningful: the visible
+    // companion row's true index is 1, not 0).
+    //
+    // SHORT slugs + stems so each row label fits on ONE line in the 320-px rail
+    // (no 2-line wrap), keeping the row-band probe exact: 1 row = 1 band. The
+    // real corpus stems wrap, but row COUNT is what we assert; single-line rows
+    // make the count unambiguous. (The live-corpus avax/dot rows are exercised
+    // by JOB 4 + the index-safety guard below.)
+    let entries = vec![
+        ReportEntry {
+            slug: SmolStr::new("sma"),
+            file_stem: SmolStr::new("bt-btc-1"),
+            path: PathBuf::from("/fixture/sma/reports/bt-btc-1.md"),
+            has_companion: false,
+        },
+        // The ONE companion-bearing row (true full-list index = 1).
+        ReportEntry {
+            slug: SmolStr::new("sma"),
+            file_stem: SmolStr::new("bt-avax-2"),
+            path: PathBuf::from("/fixture/sma/reports/bt-avax-2.md"),
+            has_companion: true,
+        },
+        ReportEntry {
+            slug: SmolStr::new("rsi"),
+            file_stem: SmolStr::new("bt-eth-3"),
+            path: PathBuf::from("/fixture/rsi/reports/bt-eth-3.md"),
+            has_companion: false,
+        },
+        ReportEntry {
+            slug: SmolStr::new("macd"),
+            file_stem: SmolStr::new("bt-sol-4"),
+            path: PathBuf::from("/fixture/macd/reports/bt-sol-4.md"),
+            has_companion: false,
+        },
+    ];
+    let companion_idx = 1usize;
+
+    let metrics = BacktestMetrics {
+        total_return_pct: rust_decimal_macros::dec!(7.38),
+        cagr_pct: rust_decimal_macros::dec!(3.60),
+        cagr_present: true,
+        sharpe: rust_decimal_macros::dec!(7.7975),
+        sharpe_present: true,
+        max_drawdown_pct: rust_decimal_macros::dec!(4.20),
+        win_rate_pct: rust_decimal_macros::dec!(52.0),
+        win_rate_present: true,
+        trades: 441,
+    };
+    let loaded = ReportLoadResult {
+        front_matter: ReportFrontMatter {
+            scenario: SmolStr::new("avax-2024-sma-cross"),
+        },
+        metrics: PanelState::Ready(metrics),
+        equity: PanelState::Ready(ui::fixtures::fake_equity_series_for_viewer()),
+        body_markdown: "# Backtest Report — avax-2024-sma-cross\n\n## Summary\nrow\n".to_string(),
+    };
+
+    cockpit.reports_screen_state = ReportsScreenState {
+        discovered: PanelState::Ready(entries),
+        selected: Some(companion_idx),
+        loaded: PanelState::Ready(loaded),
+        show_all_reports: show_all,
+    };
+    (cockpit, companion_idx)
+}
+
+/// Default (curve-only) shows ONLY companion rows. With the default filter
+/// (`show_all_reports == false`) and a synthetic corpus of one companion row
+/// and three companion-less rows, the picker rail must show exactly ONE row
+/// band. This proves the three "no equity data" reports are hidden by default
+/// — the exact operator pain this fixes. Saves + (caller Reads) the PNG.
+#[test]
+fn reports_filter_curve_only_shows_only_companion_rows() {
+    let (cockpit, _companion_idx) = reports_cockpit_filter_scene(false);
+    let (w, h, rgba) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/reports_filter_curve_only.png");
+    }
+    // Rows start below the title + filter-toggle band (~80 px); the status bar
+    // at the bottom is excluded inside `picker_row_bands`.
+    let bands = picker_row_bands(w, h, &rgba, 80);
+    assert_eq!(
+        bands, 1,
+        "curve-only (default) must show exactly the 1 companion row; the 3 \
+         companion-less reports must be hidden (got {bands} row bands). \
+         PNG: /tmp/reports_filter_curve_only.png"
+    );
+}
+
+/// **(b) Toggled (show_all) shows STRICTLY MORE rows.** The SAME corpus with
+/// `show_all_reports == true` must show all 4 rows — strictly more than the
+/// curve-only view's 1. Proves the "All" toggle reveals the full corpus.
+/// Saves + (caller Reads) the PNG.
+#[test]
+fn reports_filter_show_all_reveals_more_rows() {
+    let (cockpit_curve, _) = reports_cockpit_filter_scene(false);
+    let (wc, hc, rgba_c) = render_reports_rgba(cockpit_curve);
+    let bands_curve = picker_row_bands(wc, hc, &rgba_c, 80);
+    let fg_curve = rail_foreground_pixels(wc, hc, &rgba_c, 80);
+
+    let (cockpit_all, _) = reports_cockpit_filter_scene(true);
+    let (wa, ha, rgba_a) = render_reports_rgba(cockpit_all);
+    if let Some(img) = image::RgbaImage::from_raw(wa, ha, rgba_a.clone()) {
+        let _ = img.save("/tmp/reports_filter_show_all.png");
+    }
+    let bands_all = picker_row_bands(wa, ha, &rgba_a, 80);
+    let fg_all = rail_foreground_pixels(wa, ha, &rgba_a, 80);
+
+    assert_eq!(
+        bands_all, 4,
+        "show_all must reveal all 4 discovered rows (got {bands_all}). \
+         PNG: /tmp/reports_filter_show_all.png"
+    );
+    assert!(
+        bands_all > bands_curve,
+        "show_all ({bands_all} rows) must show STRICTLY MORE than curve-only \
+         ({bands_curve} rows). PNG: /tmp/reports_filter_show_all.png"
+    );
+    // Corroborating, band-free signal: more rows → more rail foreground px.
+    assert!(
+        fg_all > fg_curve,
+        "show_all rail foreground px ({fg_all}) must exceed curve-only \
+         ({fg_curve}) — strictly more row text is visible. PNG: \
+         /tmp/reports_filter_show_all.png"
+    );
+}
+
+/// Index-safety — the filtered companion row loads the CORRECT report. This is
+/// the exact bug class the feature must NOT introduce: when curve-only hides
+/// rows, the visible companion row's `Message::ReportsSelect(idx)` must carry
+/// its TRUE full-discovered-list index, so `load_selection(idx)` resolves the
+/// RIGHT report — NEVER a filtered-subset position that loads a different
+/// report.
+///
+/// The guard drives the REAL production path over the LIVE corpus (so the
+/// on-disk companion CSV actually resolves + renders, exactly like JOB 4).
+/// First it `load_into`s the real discovered list (the cockpit's own), then
+/// finds a companion row's TRUE full-list index via `companion_idx_for` (avax)
+/// and asserts there is a no-companion report at a LOWER index — that lower row
+/// is hidden under curve-only, so a buggy "position in the filtered subset"
+/// would resolve to a DIFFERENT (smaller) index and load the wrong report.
+/// Then it drives `update(Message::ReportsSelect(true_idx))` through the
+/// production handler (the same message the curve-only picker row emits) and
+/// asserts the detail pane paints avax's OWN curve AND that the loaded
+/// front-matter scenario is avax's — proving the index resolved to the intended
+/// report, not a neighbour. Skip-if-absent (pruned checkout).
+#[test]
+fn reports_filter_curve_only_selects_correct_report_by_true_index() {
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    // Curve-only is the default; this is the operator's default surface.
+    cockpit.reports_screen_state.show_all_reports = false;
+    ui::reports::load_into(&mut cockpit);
+
+    let Some(true_idx) = companion_idx_for(&cockpit, "avax-2024-sma-cross") else {
+        eprintln!("avax companion not discovered — skipping (pruned checkout)");
+        return;
+    };
+
+    // Precondition that makes re-indexing a real, detectable bug: there is at
+    // least one HIDDEN (no-companion) report at an index BELOW the avax row. If
+    // the picker wrongly re-indexed against the curve-only filtered subset,
+    // avax (whose subset position is smaller than its true index) would resolve
+    // to a different, lower full-list index → the wrong report.
+    let lower_no_companion = match &cockpit.reports_screen_state.discovered {
+        PanelState::Ready(list) => list
+            .iter()
+            .enumerate()
+            .take(true_idx)
+            .any(|(_, e)| !e.has_companion),
+        _ => false,
+    };
+    assert!(
+        lower_no_companion,
+        "test precondition: a hidden no-companion report must sit below the avax \
+         companion (true idx {true_idx}) so a filtered-subset re-index would \
+         resolve to the WRONG report — otherwise this guard cannot catch the bug"
+    );
+
+    // Capture the avax stem at its TRUE index (what the picker row's
+    // ReportsSelect(true_idx) must resolve to).
+    let expected_stem: String = match &cockpit.reports_screen_state.discovered {
+        PanelState::Ready(list) => list[true_idx].file_stem.to_string(),
+        _ => unreachable!(),
+    };
+
+    // Drive the EXACT message the curve-only picker row emits, through the REAL
+    // update handler (not a hand-set field) — proving the wired path is index-
+    // safe end to end.
+    ui::state::update(&mut cockpit, ui::state::Message::ReportsSelect(true_idx));
+
+    // The selection + load must resolve to the avax report at its TRUE index.
+    assert_eq!(
+        cockpit.reports_screen_state.selected,
+        Some(true_idx),
+        "the handler must select the TRUE full-list index"
+    );
+    let loaded_scenario = match &cockpit.reports_screen_state.loaded {
+        PanelState::Ready(r) => r.front_matter.scenario.to_string(),
+        other => panic!("expected the avax report to load Ready, got {other:?}"),
+    };
+    assert!(
+        loaded_scenario.contains("avax"),
+        "ReportsSelect(true_idx={true_idx}) must load the avax report (stem \
+         {expected_stem}); got scenario {loaded_scenario:?} — a wrong index \
+         loaded a different report (the killed bug class)"
+    );
+
+    // Render the detail pane and prove avax's OWN curve paints (>1000 px). A
+    // re-index to a no-companion neighbour would show the empty state instead.
+    let (w, h, rgba) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/reports_filter_index_safety.png");
+    }
+    let hits = curve_pixels(w, h, &rgba);
+    assert!(
+        hits > 1000,
+        "selecting the filtered companion row by its TRUE index ({true_idx}) must \
+         load THAT report and paint its curve (>1000 px, got {hits}). PNG: \
+         /tmp/reports_filter_index_safety.png"
     );
 }

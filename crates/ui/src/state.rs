@@ -1980,6 +1980,15 @@ pub enum Message {
     /// (R1, mirroring `BaselineSelectYear`'s typed-message discipline).
     ReportsSelect(usize),
 
+    // ── reports-picker-curve-filter — picker rail filter toggle ──────────────
+    /// Operator flipped the Reports picker filter between "Curve only" (the
+    /// default — companion-bearing rows only) and "All" (the full discovered
+    /// corpus). Pure flag flip in the handler; affects the picker LIST only,
+    /// never the current selection (`selected` is a FULL-list index that stays
+    /// valid regardless of which rows are displayed). Niladic — the two chips
+    /// both dispatch this one toggle, so there is no payload to mis-route.
+    ReportsToggleShowAll,
+
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
     /// `ActivityRecipe`. Delegates to `ActivityTape::apply`.
@@ -2868,6 +2877,17 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // synchronous in the arm, matching the Baseline precedent.
             model.reports_screen_state.selected = Some(idx);
             model.reports_screen_state.load_selection(idx);
+        }
+
+        // ── reports-picker-curve-filter — picker rail filter toggle ──────────
+        Message::ReportsToggleShowAll => {
+            // Pure flag flip — no I/O, no reload. The picker view re-filters
+            // the FULL discovered list at render time; the current selection
+            // (a full-list index) is untouched, so the detail pane keeps
+            // showing whatever is loaded. Curve-only (false) is the default;
+            // this flips to show every discovered report and back.
+            let st = &mut model.reports_screen_state;
+            st.show_all_reports = !st.show_all_reports;
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────

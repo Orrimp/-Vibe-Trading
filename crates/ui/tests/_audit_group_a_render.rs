@@ -441,6 +441,8 @@ fn reports_cockpit(equity: ui::state::PanelState<trading_core::EquitySeries>) ->
         discovered: ui::state::PanelState::Ready(vec![entry]),
         selected: Some(0),
         loaded: ui::state::PanelState::Ready(loaded),
+        // reports-picker-curve-filter — default curve-only filter.
+        show_all_reports: false,
     };
     c
 }

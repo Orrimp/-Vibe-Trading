@@ -1490,6 +1490,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("REPORTS_SELECT_PROMPT", REPORTS_SELECT_PROMPT),
         ("REPORTS_LOAD_ERROR", REPORTS_LOAD_ERROR),
         ("REPORTS_HAS_CURVE_MARKER", REPORTS_HAS_CURVE_MARKER),
+        ("REPORTS_FILTER_CURVE_ONLY", REPORTS_FILTER_CURVE_ONLY),
+        ("REPORTS_FILTER_ALL", REPORTS_FILTER_ALL),
+        ("REPORTS_FILTER_NO_CURVE_HINT", REPORTS_FILTER_NO_CURVE_HINT),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -1905,6 +1908,28 @@ pub const REPORTS_LOAD_ERROR: &str = "This report could not be read — it may h
 /// tooltip-able position so colour is never the only signal (accessibility
 /// minimum). Kept to a single glyph to stay compact in the 320 px rail.
 pub const REPORTS_HAS_CURVE_MARKER: &str = "\u{25CF} curve";
+
+/// "Curve only" filter chip label (reports-picker-curve-filter). The DEFAULT,
+/// active filter — the picker rail shows only reports that ship a stem-matched
+/// equity companion (the `\u{25CF} curve` rows). The chip carries the count of
+/// companion-bearing reports as a trailing `(N)`, formatted at the call site so
+/// the prose stays here and the number stays a runtime value. Uses the `ACCENT`
+/// hue when active (matching the `\u{25CF}` marker), so the filter that "shows
+/// the curves" is visually tied to the curve marker itself.
+pub const REPORTS_FILTER_CURVE_ONLY: &str = "Curve only";
+
+/// "All" filter chip label (reports-picker-curve-filter). Reveals the FULL
+/// discovered corpus (companion-bearing AND companion-less reports). Carries the
+/// full discovered count as a trailing `(M)`, formatted at the call site.
+pub const REPORTS_FILTER_ALL: &str = "All";
+
+/// Hint shown in the picker rail when the "Curve only" filter is active but the
+/// discovered corpus has ZERO companion-bearing reports (reports-picker-curve-
+/// filter edge case). Never a blank list — tells the operator the curve-only
+/// view is empty and to use the "All" toggle to see every report. Belt-and-
+/// braces (the live corpus ships 14 companion reports), but honest if a pruned
+/// checkout drops them all.
+pub const REPORTS_FILTER_NO_CURVE_HINT: &str = "No reports have an equity curve yet \u{2014} switch to \u{201c}All\u{201d} to see every report.";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

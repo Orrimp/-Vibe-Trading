@@ -3752,6 +3752,8 @@ mod reports_screen {
             discovered: PanelState::Ready(entries),
             selected: Some(0),
             loaded: PanelState::Ready(loaded),
+            // reports-picker-curve-filter — default curve-only filter.
+            show_all_reports: false,
         }
     }
 
@@ -3788,6 +3790,8 @@ mod reports_screen {
             discovered: PanelState::Empty,
             selected: None,
             loaded: PanelState::Loading,
+            // reports-picker-curve-filter — default curve-only filter.
+            show_all_reports: false,
         };
         assert_snapshot!(
             "reports_snapshot__empty_list_dark",

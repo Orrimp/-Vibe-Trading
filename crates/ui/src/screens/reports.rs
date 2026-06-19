@@ -49,10 +49,12 @@ use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text, butt
 use iced::{Border, Length};
 
 use crate::reports::ReportEntry;
+use crate::reports::state::companion_count;
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    REPORTS_EMPTY_LIST, REPORTS_HAS_CURVE_MARKER, REPORTS_LOAD_ERROR, REPORTS_PICKER_TITLE,
-    REPORTS_SELECT_PROMPT,
+    REPORTS_EMPTY_LIST, REPORTS_FILTER_ALL, REPORTS_FILTER_CURVE_ONLY,
+    REPORTS_FILTER_NO_CURVE_HINT, REPORTS_HAS_CURVE_MARKER, REPORTS_LOAD_ERROR,
+    REPORTS_PICKER_TITLE, REPORTS_SELECT_PROMPT,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::{drawdown_band, equity_curve, kpi_strip};
@@ -83,6 +85,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 }
 
 /// Build the left report picker (R1 / R3).
+///
+/// **reports-picker-curve-filter.** Below the title sits a compact two-chip
+/// filter toggle ("Curve only (N)" / "All (M)"). It defaults to "Curve only"
+/// — the operator kept landing on companion-less "no equity data" reports, so
+/// the rail shows only `has_companion` rows by default, with "All" to reveal
+/// the full corpus. When the corpus carries reports but none have a curve and
+/// the curve-only filter is active, a graceful hint replaces the empty list
+/// (never a blank rail).
 fn picker_pane(st: &crate::reports::ReportsScreenState, mode: ThemeMode) -> crate::Element<'_> {
     let title = Text::new(REPORTS_PICKER_TITLE)
         .size(text::H3)
@@ -92,16 +102,50 @@ fn picker_pane(st: &crate::reports::ReportsScreenState, mode: ThemeMode) -> crat
 
     match &st.discovered {
         PanelState::Ready(entries) if !entries.is_empty() => {
+            // The two filter counts: N = companion-bearing rows ("Curve only"),
+            // M = the full discovered corpus ("All"). Both derived from the
+            // FULL list so the chips report the true scope regardless of which
+            // rows are currently displayed.
+            let curve_n = companion_count(entries);
+            let all_m = entries.len();
+            col = col.push(filter_toggle(st.show_all_reports, curve_n, all_m, mode));
+
+            // ── INDEX-SAFETY CONTRACT (reports-picker-curve-filter) ──────────
+            // `selected` and `Message::ReportsSelect(idx)` are indices into the
+            // FULL discovered list (`entries`), consumed verbatim by
+            // `load_selection(idx)`. We MUST emit each visible row's TRUE
+            // full-list index. So we iterate the FULL list with `.enumerate()`
+            // (preserving the real index) and SKIP `!has_companion` rows when
+            // the curve-only filter is active — we NEVER re-index against a
+            // filtered subset. A wrong index would load the wrong report; this
+            // enumerate-and-skip keeps `idx` authoritative.
             let mut rows = Column::new().spacing(space::XS);
+            let mut visible = 0usize;
             for (idx, entry) in entries.iter().enumerate() {
+                if !st.show_all_reports && !entry.has_companion {
+                    continue; // curve-only filter hides companion-less rows
+                }
                 let is_active = st.selected == Some(idx);
                 rows = rows.push(picker_row(idx, entry, is_active, mode));
+                visible += 1;
             }
-            col = col.push(
-                Scrollable::new(rows)
-                    .width(Length::Fixed(PICKER_WIDTH))
-                    .height(Length::Fill),
-            );
+
+            if visible == 0 {
+                // Curve-only is active but the corpus has zero companion rows
+                // (belt-and-braces — live corpus has 14). Graceful hint, not a
+                // blank rail; points the operator at the "All" toggle above.
+                col = col.push(
+                    Text::new(REPORTS_FILTER_NO_CURVE_HINT)
+                        .size(text::BODY)
+                        .color(color::FG_3.current(mode)),
+                );
+            } else {
+                col = col.push(
+                    Scrollable::new(rows)
+                        .width(Length::Fixed(PICKER_WIDTH))
+                        .height(Length::Fill),
+                );
+            }
         }
         // Empty corpus OR pre-boot Loading both surface the same "nothing to
         // pick" copy — honest, never a blank list. (The boot scan resolves
@@ -119,6 +163,80 @@ fn picker_pane(st: &crate::reports::ReportsScreenState, mode: ThemeMode) -> crat
     Container::new(col)
         .width(Length::Fixed(PICKER_WIDTH))
         .height(Length::Fill)
+        .into()
+}
+
+/// The compact two-chip filter toggle at the top of the picker rail
+/// (reports-picker-curve-filter). Mirrors the Lab source-toggle
+/// (`widgets::source_toggle`) + the Audit filter chips
+/// (`screens::audit::make_chip`): a `Row` of chip buttons where the ACTIVE
+/// chip uses the `ACCENT` background + `FG_ON_ACCENT` text (the same hue as
+/// the row "● curve" marker), and the inactive chip uses `PANEL_RAISED` +
+/// muted text. Both chips dispatch the same niladic `ReportsToggleShowAll`.
+///
+/// - `show_all == false` → "Curve only (N)" is active (ACCENT).
+/// - `show_all == true`  → "All (M)" is active (ACCENT).
+///
+/// The count is appended numerically at the call site so the prose stays in
+/// `crate::strings` and the number is a runtime value (no inline copy).
+fn filter_toggle(
+    show_all: bool,
+    curve_n: usize,
+    all_m: usize,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    // `format!` here only joins a `strings::` prose constant with a count and
+    // parentheses — the user-visible prose lives in `strings`; the template is
+    // punctuation + a placeholder.
+    let curve_label = format!("{REPORTS_FILTER_CURVE_ONLY} ({curve_n})");
+    let all_label = format!("{REPORTS_FILTER_ALL} ({all_m})");
+
+    let curve_chip = filter_chip(curve_label, !show_all, mode);
+    let all_chip = filter_chip(all_label, show_all, mode);
+
+    Row::new()
+        .spacing(space::XXS)
+        .push(curve_chip)
+        .push(all_chip)
+        .width(Length::Shrink)
+        .into()
+}
+
+/// One filter chip. Active = `ACCENT` bg + `FG_ON_ACCENT` text + `ACCENT`
+/// border; inactive = `PANEL_RAISED` bg + `FG_3` text + `BORDER_1` border —
+/// the exact `widgets::source_toggle::chip_button` contract (reused tokens,
+/// no new token, no new widget). Colour is never the only signal: the active
+/// chip also gets the solid accent fill (shape/contrast), per the
+/// accessibility minimum.
+fn filter_chip(label: String, active: bool, mode: ThemeMode) -> crate::Element<'static> {
+    let fg = if active {
+        color::FG_ON_ACCENT.current(mode)
+    } else {
+        color::FG_3.current(mode)
+    };
+    let bg = if active {
+        color::ACCENT.current(mode)
+    } else {
+        color::PANEL_RAISED.current(mode)
+    };
+    let border_color = if active {
+        color::ACCENT.current(mode)
+    } else {
+        color::BORDER_1.current(mode)
+    };
+    Button::new(Text::new(label).size(text::SMALL).color(fg))
+        .on_press(Message::ReportsToggleShowAll)
+        .padding([space::XXS as u16, space::S as u16])
+        .style(move |_t: &iced::Theme, _s: button::Status| button::Style {
+            background: Some(bg.into()),
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius: radius::R3.into(),
+            },
+            text_color: fg,
+            ..Default::default()
+        })
         .into()
 }
 

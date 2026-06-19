@@ -68,6 +68,23 @@ pub struct ReportsScreenState {
     /// per-panel states) or `Error` if the file vanished between discovery
     /// and selection.
     pub loaded: PanelState<ReportLoadResult>,
+    /// Picker-rail filter (reports-picker-curve-filter). `false` (the
+    /// default) shows ONLY companion-bearing reports — the `has_companion`
+    /// rows that paint a populated equity curve. `true` reveals the full
+    /// discovered corpus. The operator kept landing on companion-less
+    /// "no equity data" reports (only 14 of 117 ship a curve), so curve-only
+    /// is the default and a compact toggle reveals all.
+    ///
+    /// **Filter affects the picker LIST only, never the selection.** The
+    /// rows are filtered at render time by iterating the FULL discovered list
+    /// with `.enumerate()` and skipping `!has_companion` rows when this is
+    /// `false`; the row that survives still carries its TRUE full-list index
+    /// for `Message::ReportsSelect(idx)`, so `load_selection(idx)` always
+    /// resolves the right report. A non-companion report that happens to be
+    /// the current `selected` (e.g. boot auto-select can only pick a companion,
+    /// but a future flow might) still renders in the detail pane regardless of
+    /// this flag — the toggle never clears or re-points the selection.
+    pub show_all_reports: bool,
 }
 
 impl Default for ReportsScreenState {
@@ -76,6 +93,9 @@ impl Default for ReportsScreenState {
             discovered: PanelState::Loading,
             selected: None,
             loaded: PanelState::Loading,
+            // reports-picker-curve-filter — default to the curve-only view so
+            // the operator does not land on "no equity data" reports.
+            show_all_reports: false,
         }
     }
 }
@@ -190,6 +210,14 @@ pub fn newest_companion_index(entries: &[ReportEntry]) -> Option<usize> {
         .map(|(idx, _)| idx)
 }
 
+/// Number of companion-bearing (`has_companion == true`) entries in `entries`
+/// (reports-picker-curve-filter). Drives the "Curve only (N)" chip count.
+/// Pure + total; the full discovered count is just `entries.len()` ("All (M)").
+#[must_use]
+pub fn companion_count(entries: &[ReportEntry]) -> usize {
+    entries.iter().filter(|e| e.has_companion).count()
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -206,6 +234,31 @@ mod tests {
         assert_eq!(s.selected, None);
         assert!(matches!(s.loaded, PanelState::Loading));
         assert!(s.selected_entry().is_none());
+        // reports-picker-curve-filter — curve-only is the default surface.
+        assert!(
+            !s.show_all_reports,
+            "Reports picker must default to curve-only (show_all_reports = false)"
+        );
+    }
+
+    /// reports-picker-curve-filter — `companion_count` matches the number of
+    /// `has_companion` rows (the "Curve only (N)" chip count). `entries.len()`
+    /// is the "All (M)" count.
+    #[test]
+    fn companion_count_matches_has_companion_rows() {
+        let entries = vec![
+            entry("backtest-20260101-000000-a", true),
+            entry("backtest-20260202-000000-b", false),
+            entry("backtest-20260303-000000-c", true),
+            entry("backtest-20260404-000000-d", false),
+        ];
+        assert_eq!(
+            companion_count(&entries),
+            2,
+            "two of four rows have a curve"
+        );
+        assert_eq!(entries.len(), 4, "the full corpus is the All count");
+        assert_eq!(companion_count(&[]), 0);
     }
 
     /// A vanished-path index → `loaded: Error`, no panic (AC3). We build a
