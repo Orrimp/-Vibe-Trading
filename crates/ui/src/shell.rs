@@ -27,7 +27,8 @@ use iced::widget::{Column, Container, Row, Stack};
 
 use crate::assistant;
 use crate::screens::{
-    baseline, compare, lab, live, memory, models, reports, settings, strategy_registry, trail,
+    baseline, compare, lab, leaderboard, live, memory, models, reports, settings,
+    strategy_registry, trail,
 };
 use crate::state::{Cockpit, Screen};
 use crate::theme::layout::{
@@ -146,6 +147,10 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         // cockpit-baseline-panel v0.1.0: passive-BH baseline screen (D2 —
         // navigable, not default-routed; the smoke's default stays on Live).
         Screen::Baseline => baseline::view(model, mode),
+        // advisor-leaderboard-screen v0.1.0: the strategy bake-off leaderboard
+        // (single-coin advisor journey step 3 — navigable via the Work group,
+        // not default-routed).
+        Screen::Leaderboard => leaderboard::view(model, mode),
         // Phase F: Memory routes to the full memory screen (replaces Phase A placeholder).
         Screen::Memory => memory::view(model, mode),
         // Phase F: Models routes to the full models screen (replaces Phase A placeholder).

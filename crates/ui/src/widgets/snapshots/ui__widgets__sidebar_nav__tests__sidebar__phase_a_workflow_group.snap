@@ -10,6 +10,7 @@ entries:
   rule=— label=Live screen=Live fg=fg_2
   rule=— label=Compare screen=Compare fg=fg_2
   rule=— label=Baseline screen=Baseline fg=fg_2
+  rule=— label=Leaderboard screen=Leaderboard fg=fg_2
   rule=— label=Strategies screen=Strategies fg=fg_2
   rule=— label=Memory screen=Memory fg=fg_2
   rule=— label=Models screen=Models fg=fg_2

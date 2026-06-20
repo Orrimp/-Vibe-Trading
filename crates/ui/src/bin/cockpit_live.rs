@@ -696,6 +696,9 @@ fn main() -> Result<()> {
         training_log_rx: None,
         #[cfg(feature = "live")]
         training_log_recipe_salt: 0,
+        // advisor-leaderboard-screen v0.1.0 — no bake-off in flight at boot.
+        #[cfg(feature = "live")]
+        bakeoff_cancel: None,
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -1024,6 +1027,17 @@ struct AppState {
     /// returns a fresh identity per run (iced de-duplicates subscriptions by hash).
     #[cfg(feature = "live")]
     training_log_recipe_salt: u64,
+
+    /// advisor-leaderboard-screen v0.1.0 — in-flight bake-off cancel handle.
+    ///
+    /// Held here (NOT in `LeaderboardScreenState`, which must stay `Clone` for
+    /// the render-test harness — `RunCancelHandle` is `!Clone`) so it OUTLIVES
+    /// the dispatched `run_bakeoff` future. Dropping the handle cancels the
+    /// token, so it must NOT be dropped before the run completes — same F4
+    /// lifetime fix as `LabState::run_cancel`. `Some` while a bake-off is in
+    /// flight; cleared on `BakeoffRunCompleted`.
+    #[cfg(feature = "live")]
+    bakeoff_cancel: Option<ui::lab::runner::RunCancelHandle>,
 }
 
 // ── Manual Clone for AppState ─────────────────────────────────────────────────
@@ -1058,6 +1072,10 @@ impl Clone for AppState {
             training_log_rx: None,
             #[cfg(feature = "live")]
             training_log_recipe_salt: self.training_log_recipe_salt,
+            // Bake-off cancel handle is never cloned — unique per run, always
+            // None at cold-boot (the only clone site).
+            #[cfg(feature = "live")]
+            bakeoff_cancel: None,
         }
     }
 }
@@ -1157,6 +1175,14 @@ impl AppState {
             None
         };
 
+        // advisor-leaderboard-screen v0.1.0 — capture BakeoffRunRequested BEFORE
+        // state::update flips `running` to true, and only dispatch when no
+        // bake-off is already in flight (the LabRunRequested double-dispatch
+        // guard, applied to the bake-off). The default config (BTCUSDT / 2024 H1
+        // / BinanceCache / Skip) is built fresh on dispatch — niladic message.
+        let bakeoff_run_requested = matches!(msg, Message::BakeoffRunRequested)
+            && !self.cockpit.leaderboard_screen_state.running;
+
         // T-D1.3 (lab-end-to-end-v2 T-AR-1) — capture LabRunCompleted BEFORE
         // state::update so we still see the pre-forward LabState (operator MAY
         // have clicked away during the run; the pre-forward snapshot is what
@@ -1168,6 +1194,10 @@ impl AppState {
         // T-D3.1 — detect any LabRunCompleted (Ok or Err) so we can clear the
         // cancel handle + progress receiver unconditionally on run completion.
         let lab_run_completed_any = matches!(&msg, Message::LabRunCompleted(_));
+        // advisor-leaderboard-screen v0.1.0 — detect any BakeoffRunCompleted so
+        // we can drop the bake-off cancel handle on completion (mirrors
+        // `lab_run_completed_any`).
+        let bakeoff_run_completed_any = matches!(&msg, Message::BakeoffRunCompleted(_));
         // T-D3.4 — detect LabRunStopRequested to drop the cancel handle.
         let lab_run_stop_requested = matches!(&msg, Message::LabRunStopRequested);
 
@@ -1311,6 +1341,15 @@ impl AppState {
         if lab_run_completed_any {
             self.cockpit.lab_state.run_cancel = None;
             self.lab_progress_rx = None;
+        }
+
+        // advisor-leaderboard-screen v0.1.0 — on any BakeoffRunCompleted: drop
+        // the bake-off cancel handle (idempotent; the run is done so the handle
+        // is no longer needed). `ui::state::update` already landed the result
+        // + cleared `running` in the pure-state arm.
+        #[cfg(feature = "live")]
+        if bakeoff_run_completed_any {
+            self.bakeoff_cancel = None;
         }
 
         // ── cockpit-activity-status-bar T-D-N8 — Lab Run activity handle ───────
@@ -1616,6 +1655,35 @@ impl AppState {
                 // lab-recipe-test-harness T-D1: production path uses default Yahoo
                 // source (None = DefaultLabYahooBarSource via preload_yahoo_bars).
                 None,
+            )
+        } else if bakeoff_run_requested {
+            // advisor-leaderboard-screen v0.1.0 — dispatch the bake-off on the
+            // side-thread runtime (mirrors the LabRunRequested dispatch above).
+            // The pure-state half (Loading + running) already ran inside
+            // ui::state::update; here we do the I/O half: build the default
+            // config + cancel/progress pair and spawn `run_bakeoff`. The result
+            // is mirrored into the pure-`ui` BakeoffReportMirror INSIDE
+            // spawn_bakeoff, so no engine type crosses into iced state.
+            //
+            // F4 LIFETIME FIX (mirrors LabState::run_cancel): STORE the cancel
+            // handle on the app state so it OUTLIVES the dispatched future.
+            // Dropping the handle cancels the token, and `run_bakeoff` checks
+            // `is_cancelled()` before its FIRST arm — so dropping it here would
+            // make every bake-off return `Cancelled` on the first poll. Holding
+            // it in `self.bakeoff_cancel` (cleared on `BakeoffRunCompleted`)
+            // keeps the receiver live for the whole run.
+            let (cancel_handle, cancel_recv) = ui::lab::runner::cancellation_pair();
+            self.bakeoff_cancel = Some(cancel_handle);
+            // Progress is not surfaced on the leaderboard yet (the screen shows
+            // an indeterminate spinner); a disabled sender keeps run_bakeoff's
+            // progress calls cheap no-ops without standing up a recipe.
+            let progress_tx = backtest::progress::ProgressSender::disabled();
+            let cfg = ui::leaderboard::runner::default_bakeoff_config();
+            ui::leaderboard::runner::spawn_bakeoff(
+                Some(&self.rt_handle),
+                cfg,
+                cancel_recv,
+                progress_tx,
             )
         } else {
             iced::Task::none()

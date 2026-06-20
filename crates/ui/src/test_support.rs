@@ -345,6 +345,91 @@ impl ChartOverlayApp {
     }
 }
 
+// ── leaderboard render harness (advisor-leaderboard-screen v0.1.0) ────────────
+
+/// Render-layer harness for the **real Leaderboard screen body**
+/// (`screens::leaderboard::view`) — the production path that renders a
+/// `backtest::bakeoff` result (mirrored into `BakeoffReportMirror`) as the
+/// ranked table + recommendation + disclaimer.
+///
+/// Renders the BARE screen body (no shell sidebar) so the screenshot frames the
+/// table + recommendation without the sidebar's `ACCENT` active-item highlight
+/// leaking into the crowned-row `ACCENT` pixel classifier — exactly the
+/// rationale `compare_screen_program` documents. The caller seeds the
+/// `Cockpit`'s `leaderboard_screen_state` (e.g. via
+/// `fixtures::fake_cockpit_leaderboard`).
+#[must_use]
+pub fn leaderboard_screen_program(
+    cockpit: Cockpit,
+) -> iced::Application<
+    impl iced::Program<State = LeaderboardScreenApp, Message = Message, Theme = iced::Theme>,
+> {
+    let boot = move || {
+        (
+            LeaderboardScreenApp {
+                cockpit: cockpit.clone(),
+            },
+            iced::Task::none(),
+        )
+    };
+    iced::application(
+        boot,
+        LeaderboardScreenApp::update,
+        LeaderboardScreenApp::view,
+    )
+    .title(LeaderboardScreenApp::title)
+    .theme(LeaderboardScreenApp::theme)
+}
+
+/// Test app whose `view` is the bare Leaderboard screen body (no shell chrome)
+/// so the screenshot frames the table + recommendation directly.
+pub struct LeaderboardScreenApp {
+    cockpit: Cockpit,
+}
+
+impl Default for LeaderboardScreenApp {
+    fn default() -> Self {
+        Self {
+            cockpit: Cockpit::new(),
+        }
+    }
+}
+
+impl LeaderboardScreenApp {
+    #[must_use]
+    pub fn title(&self) -> String {
+        crate::strings::APP_TITLE.to_string()
+    }
+
+    #[must_use]
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
+    }
+
+    pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        update(&mut self.cockpit, msg);
+        iced::Task::none()
+    }
+
+    /// View — the real Leaderboard screen body, full-bleed on a `CANVAS`
+    /// background (the shell's outer background) so the table's `PANEL` surfaces
+    /// read against the same chrome the operator sees.
+    #[must_use]
+    pub fn view(&self) -> iced::Element<'_, Message> {
+        use iced::Length;
+        use iced::widget::{Container, container};
+        let body = crate::screens::leaderboard::view(&self.cockpit, ThemeMode::Dark);
+        Container::new(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_theme: &iced::Theme| container::Style {
+                background: Some(crate::theme::color::CANVAS.current(ThemeMode::Dark).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+}
+
 // ── source_toggle render harness (simple-strategies-realdata T-B1 / AC7) ──────
 
 /// Build a render program whose `view` is the bare Lab `source_toggle` widget,

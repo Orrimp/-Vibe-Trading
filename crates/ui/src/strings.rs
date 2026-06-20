@@ -1493,6 +1493,79 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("REPORTS_FILTER_CURVE_ONLY", REPORTS_FILTER_CURVE_ONLY),
         ("REPORTS_FILTER_ALL", REPORTS_FILTER_ALL),
         ("REPORTS_FILTER_NO_CURVE_HINT", REPORTS_FILTER_NO_CURVE_HINT),
+        // advisor-leaderboard-screen v0.1.0
+        ("LEADERBOARD_SIDEBAR_LABEL", LEADERBOARD_SIDEBAR_LABEL),
+        ("LEADERBOARD_HEADLINE", LEADERBOARD_HEADLINE),
+        ("LEADERBOARD_CAPTION", LEADERBOARD_CAPTION),
+        ("LEADERBOARD_RUN_BUTTON", LEADERBOARD_RUN_BUTTON),
+        (
+            "LEADERBOARD_RUN_BUTTON_RUNNING",
+            LEADERBOARD_RUN_BUTTON_RUNNING,
+        ),
+        ("LEADERBOARD_EMPTY_PROMPT", LEADERBOARD_EMPTY_PROMPT),
+        ("LEADERBOARD_LOADING", LEADERBOARD_LOADING),
+        ("LEADERBOARD_ERROR_PREFIX", LEADERBOARD_ERROR_PREFIX),
+        ("LEADERBOARD_RUN_NEEDS_LIVE", LEADERBOARD_RUN_NEEDS_LIVE),
+        ("LEADERBOARD_COL_RANK", LEADERBOARD_COL_RANK),
+        ("LEADERBOARD_COL_STRATEGY", LEADERBOARD_COL_STRATEGY),
+        ("LEADERBOARD_COL_RETURN", LEADERBOARD_COL_RETURN),
+        ("LEADERBOARD_COL_SHARPE", LEADERBOARD_COL_SHARPE),
+        ("LEADERBOARD_COL_MAX_DD", LEADERBOARD_COL_MAX_DD),
+        ("LEADERBOARD_COL_TRADES", LEADERBOARD_COL_TRADES),
+        ("LEADERBOARD_BENCHMARK_TAG", LEADERBOARD_BENCHMARK_TAG),
+        ("LEADERBOARD_CROWN_TAG", LEADERBOARD_CROWN_TAG),
+        ("LEADERBOARD_FRAGILE_TAG", LEADERBOARD_FRAGILE_TAG),
+        ("LEADERBOARD_ROBUST_TAG", LEADERBOARD_ROBUST_TAG),
+        ("LEADERBOARD_MARGINAL_TAG", LEADERBOARD_MARGINAL_TAG),
+        (
+            "LEADERBOARD_HEADLINE_BENCHMARK_WINS",
+            LEADERBOARD_HEADLINE_BENCHMARK_WINS,
+        ),
+        (
+            "LEADERBOARD_HEADLINE_ACTIVE_WINS",
+            LEADERBOARD_HEADLINE_ACTIVE_WINS,
+        ),
+        (
+            "LEADERBOARD_HEADLINE_ALL_FRAGILE",
+            LEADERBOARD_HEADLINE_ALL_FRAGILE,
+        ),
+        (
+            "LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE",
+            LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE,
+        ),
+        (
+            "LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE",
+            LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE,
+        ),
+        (
+            "LEADERBOARD_REASON_BENCHMARK_UNDEFEATED",
+            LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
+        ),
+        (
+            "LEADERBOARD_REASON_ALL_FRAGILE",
+            LEADERBOARD_REASON_ALL_FRAGILE,
+        ),
+        (
+            "LEADERBOARD_REASON_TIE_RETURN",
+            LEADERBOARD_REASON_TIE_RETURN,
+        ),
+        (
+            "LEADERBOARD_REASON_TIE_DRAWDOWN",
+            LEADERBOARD_REASON_TIE_DRAWDOWN,
+        ),
+        ("LEADERBOARD_DISCLAIMER", LEADERBOARD_DISCLAIMER),
+        (
+            "LEADERBOARD_RECOMMENDATION_TITLE",
+            LEADERBOARD_RECOMMENDATION_TITLE,
+        ),
+        (
+            "LEADERBOARD_WINNER_ROBUST_CLAUSE",
+            LEADERBOARD_WINNER_ROBUST_CLAUSE,
+        ),
+        (
+            "LEADERBOARD_WINNER_FRAGILE_CLAUSE",
+            LEADERBOARD_WINNER_FRAGILE_CLAUSE,
+        ),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -1930,6 +2003,137 @@ pub const REPORTS_FILTER_ALL: &str = "All";
 /// braces (the live corpus ships 14 companion reports), but honest if a pruned
 /// checkout drops them all.
 pub const REPORTS_FILTER_NO_CURVE_HINT: &str = "No reports have an equity curve yet \u{2014} switch to \u{201c}All\u{201d} to see every report.";
+
+// ── advisor-leaderboard-screen v0.1.0 — strategy bake-off leaderboard ─────────
+//
+// Step 3 of the single-coin investment-advisor journey (rank & pick best).
+// The UI owns ALL copy + the mandatory not-advice disclaimer (the engine ships
+// a STRUCTURED `Recommendation`, never a pre-rendered string). Placeholders
+// (`{coin}`, `{winner}`, `{window}`) are filled at the call site via `.replace`
+// — the prose lives here, the runtime values stay values (the established
+// `LAB_BINANCE_*` template discipline).
+
+/// Sidebar nav label for the Leaderboard screen (Work group, after Baseline).
+pub const LEADERBOARD_SIDEBAR_LABEL: &str = "Leaderboard";
+
+/// Page headline — names the screen's job in plain language.
+pub const LEADERBOARD_HEADLINE: &str = "Strategy bake-off";
+
+/// Page caption — one line on what the bake-off does + how to read it.
+pub const LEADERBOARD_CAPTION: &str = "Every strategy backtested on the same coin and window, ranked by risk-adjusted return. \
+     Buy-and-hold is always in the field as the benchmark.";
+
+/// Primary action button — runs the bake-off with the default coin + window.
+pub const LEADERBOARD_RUN_BUTTON: &str = "Run bake-off";
+
+/// Primary action button label while a bake-off is in flight (button disabled).
+pub const LEADERBOARD_RUN_BUTTON_RUNNING: &str = "Running\u{2026}";
+
+/// Empty-state prompt — the cold "no run yet" surface (never a blank screen).
+/// Tells the operator exactly what to do next.
+pub const LEADERBOARD_EMPTY_PROMPT: &str = "No bake-off yet. Press \u{201c}Run bake-off\u{201d} to rank every strategy on BTCUSDT over \
+     2024 H1.";
+
+/// Loading copy — shown beside the spinner while the bake-off runs. Sets the
+/// expectation that backtesting the field takes a moment.
+pub const LEADERBOARD_LOADING: &str =
+    "Backtesting every strategy on the same window\u{2026} this takes a few seconds.";
+
+/// Error-state prefix — paired with the engine's failure detail (R: never a
+/// bare "no data"; says what to check).
+pub const LEADERBOARD_ERROR_PREFIX: &str = "The bake-off could not run";
+
+/// Friendly message when the bake-off is triggered in a build without the
+/// engine runtime (fixtures / no-`live`). Directs the operator to the live
+/// build rather than hanging or panicking.
+pub const LEADERBOARD_RUN_NEEDS_LIVE: &str = "Running a bake-off needs the live build. Launch the cockpit with \
+     `cargo run -p ui --bin cockpit_live` to rank strategies on real data.";
+
+/// Table column header — the rank position (1 = the crowned pick).
+pub const LEADERBOARD_COL_RANK: &str = "#";
+
+/// Table column header — the strategy id.
+pub const LEADERBOARD_COL_STRATEGY: &str = "Strategy";
+
+/// Table column header — total return over the window.
+pub const LEADERBOARD_COL_RETURN: &str = "Return";
+
+/// Table column header — annualised Sharpe (the primary ranking metric).
+pub const LEADERBOARD_COL_SHARPE: &str = "Sharpe";
+
+/// Table column header — maximum drawdown over the window.
+pub const LEADERBOARD_COL_MAX_DD: &str = "Max drawdown";
+
+/// Table column header — executed trade count.
+pub const LEADERBOARD_COL_TRADES: &str = "Trades";
+
+/// Row tag for the buy-and-hold benchmark arm — so the passive baseline is
+/// always labelled plainly (the operator's "BH is always a candidate" rule).
+pub const LEADERBOARD_BENCHMARK_TAG: &str = "benchmark";
+
+/// Row tag for the crowned pick — the `ACCENT` "best" marker, paired with the
+/// row's accent treatment so colour is never the only signal (accessibility).
+pub const LEADERBOARD_CROWN_TAG: &str = "\u{2605} best";
+
+/// Robustness tag — fragile under resampling. Carries a word (not just colour)
+/// so the warning is legible without colour (accessibility minimum).
+pub const LEADERBOARD_FRAGILE_TAG: &str = "fragile";
+
+/// Robustness tag — survived resampling.
+pub const LEADERBOARD_ROBUST_TAG: &str = "robust";
+
+/// Robustness tag — borderline under resampling.
+pub const LEADERBOARD_MARGINAL_TAG: &str = "marginal";
+
+/// Recommendation headline — buy-and-hold won. `{coin}` is filled at the call
+/// site. The operator's honesty rule made literal: "if holding wins, say so".
+pub const LEADERBOARD_HEADLINE_BENCHMARK_WINS: &str =
+    "Nothing beat simply holding {coin} over this window.";
+
+/// Recommendation headline — an active strategy won. `{winner}` filled at call.
+pub const LEADERBOARD_HEADLINE_ACTIVE_WINS: &str = "{winner} is the best risk-adjusted pick.";
+
+/// Recommendation headline — everything looked fragile under resampling.
+pub const LEADERBOARD_HEADLINE_ALL_FRAGILE: &str =
+    "Every strategy looked fragile under resampling \u{2014} treat with caution.";
+
+/// Supporting reason — crowned on Sharpe among the non-fragile arms.
+pub const LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE: &str =
+    "Highest Sharpe among the strategies that held up under resampling.";
+
+/// Supporting reason — winner's Sharpe beat the benchmark's Sharpe.
+pub const LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE: &str =
+    "Beat buy-and-hold on risk-adjusted return.";
+
+/// Supporting reason — no active arm beat buy-and-hold.
+pub const LEADERBOARD_REASON_BENCHMARK_UNDEFEATED: &str = "No strategy beat just holding the coin.";
+
+/// Supporting reason — the robustness gate found nothing robust.
+pub const LEADERBOARD_REASON_ALL_FRAGILE: &str =
+    "No strategy stayed positive across resampled price paths.";
+
+/// Supporting reason — a Sharpe tie was resolved by the higher total return.
+pub const LEADERBOARD_REASON_TIE_RETURN: &str = "Tie on Sharpe broken by the higher total return.";
+
+/// Supporting reason — a Sharpe + return tie was resolved by lower drawdown.
+pub const LEADERBOARD_REASON_TIE_DRAWDOWN: &str =
+    "Tie on Sharpe and return broken by the smaller drawdown.";
+
+/// The persistent NOT-ADVICE + simulated-results disclaimer (product § D5).
+/// Shown on every recommendation surface — this is a research tool over
+/// historical/simulated data, not financial advice.
+pub const LEADERBOARD_DISCLAIMER: &str = "Not financial advice. Results are simulated on historical data and do not predict future \
+     performance. Past returns are not a guarantee.";
+
+/// Title above the recommendation block.
+pub const LEADERBOARD_RECOMMENDATION_TITLE: &str = "Recommendation";
+
+/// Clause appended to the headline when the winner is robust under resampling.
+pub const LEADERBOARD_WINNER_ROBUST_CLAUSE: &str = "It held up under resampling.";
+
+/// Clause appended to the headline when the winner is fragile under resampling.
+pub const LEADERBOARD_WINNER_FRAGILE_CLAUSE: &str =
+    "But it looked fragile under resampling \u{2014} treat with caution.";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

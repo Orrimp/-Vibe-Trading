@@ -1240,6 +1240,156 @@ pub fn fake_run_report_mirror_pair() -> (
     (last, prev)
 }
 
+// ── advisor-leaderboard-screen v0.1.0 — bake-off leaderboard fixtures ─────────
+
+/// A populated, deterministic `BakeoffReportMirror` for the Leaderboard screen.
+///
+/// Five candidates (the 4 rule engines + buy-and-hold benchmark) over BTCUSDT /
+/// 2024 H1, ranked best-first. `v0.sma` is crowned (`ActiveWins`); `v0.buyhold`
+/// is the benchmark; `v0.5.rsi` is a fragile loser (to exercise the warn tag).
+/// Realistic-ish numbers so the rendered table reads like a real bake-off, but
+/// fixed (no RNG) so the render guard is stable.
+///
+/// Built directly as the mirror type — fixtures NEVER stand up the engine; the
+/// mirror is the whole point of the `ui`-pure seam.
+#[must_use]
+pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{
+        BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
+        RobustnessLabel,
+    };
+
+    // Rows in INSERTION order (= field order: sma, macd, rsi, bbands, buyhold).
+    let rows = vec![
+        LeaderRow {
+            strategy: SmolStr::new("v0.sma"),
+            is_benchmark: false,
+            sharpe: 1.42,
+            total_return_pct: dec!(0.1837),
+            max_drawdown: dec!(0.0612),
+            trade_count: 38,
+            robustness: None,
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.macd"),
+            is_benchmark: false,
+            sharpe: 0.88,
+            total_return_pct: dec!(0.0921),
+            max_drawdown: dec!(0.1043),
+            trade_count: 64,
+            robustness: None,
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.rsi"),
+            is_benchmark: false,
+            sharpe: -0.31,
+            total_return_pct: dec!(-0.0457),
+            max_drawdown: dec!(0.1872),
+            trade_count: 112,
+            // A fragile loser — exercises the warn tag in the table.
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.bbands"),
+            is_benchmark: false,
+            sharpe: 0.54,
+            total_return_pct: dec!(0.0388),
+            max_drawdown: dec!(0.0921),
+            trade_count: 47,
+            robustness: None,
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.buyhold"),
+            is_benchmark: true,
+            sharpe: 0.73,
+            total_return_pct: dec!(0.1124),
+            max_drawdown: dec!(0.1338),
+            trade_count: 2,
+            robustness: None,
+        },
+    ];
+
+    // Best-first ranked order: sma(1.42) > macd(0.88) > buyhold(0.73) >
+    // bbands(0.54) > rsi(-0.31). Indices into `rows`.
+    let ranked = vec![0, 1, 4, 3, 2];
+
+    BakeoffReportMirror {
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        rows,
+        ranked,
+        crowned: Some(0),
+        recommendation: RecommendationMirror {
+            outcome: OutcomeKind::ActiveWins,
+            winner: SmolStr::new("v0.sma"),
+            winner_robustness: None,
+            reasons: vec![
+                ReasonLabel::HighestRobustSharpe,
+                ReasonLabel::BeatBenchmarkSharpe,
+            ],
+        },
+    }
+}
+
+/// A `BakeoffReportMirror` where buy-and-hold won (`BenchmarkWins`) — exercises
+/// the "Nothing beat simply holding BTCUSDT…" headline branch. Two rows kept
+/// minimal; buy-and-hold crowned.
+#[must_use]
+pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{
+        BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
+    };
+
+    let rows = vec![
+        LeaderRow {
+            strategy: SmolStr::new("v0.sma"),
+            is_benchmark: false,
+            sharpe: 0.21,
+            total_return_pct: dec!(0.0143),
+            max_drawdown: dec!(0.1521),
+            trade_count: 41,
+            robustness: None,
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.buyhold"),
+            is_benchmark: true,
+            sharpe: 0.69,
+            total_return_pct: dec!(0.1124),
+            max_drawdown: dec!(0.1338),
+            trade_count: 2,
+            robustness: None,
+        },
+    ];
+    BakeoffReportMirror {
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        rows,
+        ranked: vec![1, 0],
+        crowned: Some(1),
+        recommendation: RecommendationMirror {
+            outcome: OutcomeKind::BenchmarkWins,
+            winner: SmolStr::new("v0.buyhold"),
+            winner_robustness: None,
+            reasons: vec![ReasonLabel::BenchmarkUndefeated],
+        },
+    }
+}
+
+/// A `Cockpit` routed to `Screen::Leaderboard` with the supplied result state
+/// installed. Synthetic — no engine, no I/O; the render guard drives this.
+#[must_use]
+pub fn fake_cockpit_leaderboard(
+    result: PanelState<crate::leaderboard::BakeoffReportMirror>,
+) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Leaderboard;
+    cockpit.leaderboard_screen_state = crate::leaderboard::LeaderboardScreenState {
+        result,
+        running: false,
+    };
+    cockpit
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

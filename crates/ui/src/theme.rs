@@ -752,6 +752,11 @@ pub mod layout {
         // Must stay lock-step with `SIDEBAR_GROUPS_PHASE_C` Work group below
         // (the flatten-invariant test is the guard, AC6).
         Screen::Baseline,
+        // advisor-leaderboard-screen v0.1.0 — Work group, after Baseline (the
+        // single-coin advisor "rank & pick" step belongs next to Baseline,
+        // which is the passive-BH companion it benchmarks against). Must stay
+        // lock-step with `SIDEBAR_GROUPS_PHASE_C` Work group below.
+        Screen::Leaderboard,
         Screen::Strategies,
         Screen::Memory,
         Screen::Models,
@@ -777,8 +782,16 @@ pub mod layout {
     /// `theme::layout::tests::sidebar_groups_phase_c__flatten_matches_phase_a`.
     pub const SIDEBAR_GROUPS_PHASE_C: &[&[Screen]] = &[
         // work — cockpit-baseline-panel v0.1.0 (R6) inserts `Baseline`
-        // after `Compare`; mirrors `SIDEBAR_ENTRIES_PHASE_A` in lock-step.
-        &[Screen::Lab, Screen::Live, Screen::Compare, Screen::Baseline],
+        // after `Compare`; advisor-leaderboard-screen v0.1.0 inserts
+        // `Leaderboard` after `Baseline`; mirrors `SIDEBAR_ENTRIES_PHASE_A`
+        // in lock-step (the flatten-invariant test is the guard).
+        &[
+            Screen::Lab,
+            Screen::Live,
+            Screen::Compare,
+            Screen::Baseline,
+            Screen::Leaderboard,
+        ],
         &[
             Screen::Strategies,
             Screen::Memory,

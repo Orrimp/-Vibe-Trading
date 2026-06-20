@@ -1,8 +1,8 @@
 ---
 slug: advisor-bakeoff-ranking
-status: draft
+status: in-progress
 owner: architect
-updated: 2026-06-19
+updated: 2026-06-20
 version: 0.1.0
 ---
 
@@ -586,8 +586,142 @@ M-TEST T6.1–T6.9 left for tester.
 - `scripts/verify_anchors.sh` → 119/119 PASS.
 - `cargo tree -p ui` → 1839 lines (unchanged; no new dep edges).
 
+## UI
+
+(ui-designer — the cockpit LEADERBOARD screen that renders the `BakeoffReport`,
+single-coin investment-advisor journey step 3: *rank & pick best*. Shipped
+2026-06-20.)
+
+### Wireframe
+
+```text
+┌─ Strategy bake-off ─────────────────────────────────────────────────────────┐
+│ Every strategy backtested on the same coin and window…       [ Run bake-off ]│
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Recommendation                                                                │
+│   v0.sma is the best risk-adjusted pick.            ← headline FROM Recommendation
+│   · Highest Sharpe among the strategies that held up under resampling.        │
+│   · Beat buy-and-hold on risk-adjusted return.       ← reasons as sub-copy     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  #  Strategy              Return    Sharpe   Max drawdown   Trades             │
+│  1  v0.sma  ★ best        +18.37%   1.4200   −6.12%         38   ← ACCENT row   │
+│  2  v0.5.macd             +9.21%    0.8800   −10.43%        64                  │
+│  3  v0.buyhold benchmark  +11.24%   0.7300   −13.38%        2    ← benchmark    │
+│  4  v0.5.bbands           +3.88%    0.5400   −9.21%         47                  │
+│  5  v0.5.rsi  fragile     −4.57%    −0.3100  −18.72%        112  ← warn tag     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Not financial advice. Results are simulated on historical data…  (persistent) │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Empty (cold) → "press Run bake-off" prompt; Loading → spinner + "running…";
+Error → `LEADERBOARD_ERROR_PREFIX` + the engine detail + disclaimer. The result
+lives behind `PanelState<BakeoffReportMirror>` (no blank screen — all four arms
+covered).
+
+### New screens / panels / widgets
+
+- **Screen `Screen::Leaderboard`** (Work sidebar group, after `Baseline`;
+  navigable, not default-routed). Body: `crate::screens::leaderboard::view`.
+- No new reusable widget — the screen reuses `frame::panel` (recommendation
+  block), `frame::active_row` (the 2 px `ACCENT` crowned-row rule),
+  `frame::loading_with_spinner`, and the `num::*` formatters
+  (`fmt_pct_signed` / `format_pct_max_dd` / `format_sharpe` / `format_count`).
+  The ranked table is a `Column` of `Row`s (the Reports/audit precedent, not a
+  `Grid` — the table has one wide strategy column + fixed-width right-aligned
+  numeric columns).
+- **State `LeaderboardScreenState`** + the engine→ui **mirror**
+  `BakeoffReportMirror` / `LeaderRow` / `RecommendationMirror` (closed UI-side
+  enums `OutcomeKind` / `ReasonLabel` / `RobustnessLabel`). The mirror is the
+  INVARIANT seam: `backtest::BakeoffReport` is read **only** in
+  `BakeoffReportMirror::from_report`, at the dispatch boundary, so `view` never
+  threads an engine type and `ui` holds no `strategy`/`exec`/`forecast`/`llm`
+  type.
+- **Trigger** `leaderboard::runner::spawn_bakeoff` — async-dispatch
+  `backtest::run_bakeoff` mirroring `lab::runner::spawn_lab_run`. Default config
+  (`default_bakeoff_config`): BTCUSDT / `DateRange::H1_2024` / `BinanceCache` /
+  `RobustnessMode::Skip`, field = the 4 rule engines (buy-and-hold appended by
+  the loop). Wired binary-side in `cockpit_live.rs` (the `LabRunRequested`
+  intercept precedent; the in-flight cancel handle is held on `AppState` so it
+  outlives the run — the F4 lifetime fix). The full guided coin/budget input is
+  the next feature (F3).
+- **Messages** `BakeoffRunRequested` (niladic; pure-state begins Loading) +
+  `BakeoffRunCompleted(BakeoffRunResult)` (lands `Ready`/`Empty`/`Error`). Both
+  typed — no `String` catch-all.
+
+### New strings (`crate::strings`, all registered in `all()`)
+
+Sidebar/header: `LEADERBOARD_SIDEBAR_LABEL`, `LEADERBOARD_HEADLINE`,
+`LEADERBOARD_CAPTION`. Action/state: `LEADERBOARD_RUN_BUTTON`,
+`LEADERBOARD_RUN_BUTTON_RUNNING`, `LEADERBOARD_EMPTY_PROMPT`,
+`LEADERBOARD_LOADING`, `LEADERBOARD_ERROR_PREFIX`, `LEADERBOARD_RUN_NEEDS_LIVE`.
+Table headers: `LEADERBOARD_COL_RANK` / `_STRATEGY` / `_RETURN` / `_SHARPE` /
+`_MAX_DD` / `_TRADES`. Row tags: `LEADERBOARD_BENCHMARK_TAG`,
+`LEADERBOARD_CROWN_TAG` (★ best), `LEADERBOARD_FRAGILE_TAG`,
+`LEADERBOARD_ROBUST_TAG`, `LEADERBOARD_MARGINAL_TAG`. Recommendation headlines
+(rendered FROM `RecommendationOutcome`): `LEADERBOARD_HEADLINE_BENCHMARK_WINS`
+(`{coin}`), `LEADERBOARD_HEADLINE_ACTIVE_WINS` (`{winner}`),
+`LEADERBOARD_HEADLINE_ALL_FRAGILE`. Reasons (from `ReasonCode`):
+`LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE` / `_BEAT_BENCHMARK_SHARPE` /
+`_BENCHMARK_UNDEFEATED` / `_ALL_FRAGILE` / `_TIE_RETURN` / `_TIE_DRAWDOWN`.
+Recommendation chrome + winner clauses + disclaimer:
+`LEADERBOARD_RECOMMENDATION_TITLE`, `LEADERBOARD_WINNER_ROBUST_CLAUSE`,
+`LEADERBOARD_WINNER_FRAGILE_CLAUSE`, `LEADERBOARD_DISCLAIMER` (the persistent
+not-advice + simulated-results line, product § D5).
+
+### New theme tokens
+
+**Zero.** The screen uses only existing tokens (`ACCENT` crowned-row +
+`★ best`, `UP_500`/`DOWN_500` sentiment, `WARN_500` fragile tag, `FG_1/2/3`,
+`PANEL`/`PANEL_RAISED`/`BORDER_1`, `FG_ON_ACCENT` on the button, the `space::*`
+4/8/12/16/24 scale, the `text::*` MICRO/SMALL/BODY/H1/H2/H3 ladder, `radius::R3/R4`).
+
+### Accessibility notes
+
+- **Keyboard:** every interactive element (the sidebar nav row, the Run button)
+  is an iced `Button` with a typed `on_press` — keyboard-focusable/activatable.
+  The Run button drops its `on_press` while a run is in flight (disabled).
+- **Colour is never the only signal:** the crowned row carries the `★ best`
+  *word-bearing* tag (not just `ACCENT` colour) + the 2 px accent left-rule
+  (shape); the benchmark row carries the `benchmark` word; the fragile row
+  carries the `fragile` word alongside `WARN_500`. P&L colour (`UP_500`/
+  `DOWN_500`) is paired with the explicit `+`/`−` sign.
+- **Contrast:** all tokens are the theme's verified-contrast set (the
+  `tests/contrast.rs` gate covers the token palette); no inline colour.
+- **Numbers are scannable:** Return / Sharpe / Max drawdown / Trades columns are
+  right-aligned with thousands separators (`format_count`); colour limited to
+  `pos`/`neg`/`warn`.
+
+### Render-layer verification (the operator's #1 sensitivity)
+
+`crates/ui/tests/leaderboard_populated_render.rs` (macOS-gated `iced_test::
+screenshot`): renders the REAL `screens::leaderboard::view` with a POPULATED
+`BakeoffReportMirror` fixture and asserts on the rendered PIXELS that the ranked
+rows + the crowned `ACCENT` highlight + the `DOWN_500` numeric column + the
+recommendation paint — with a NEGATIVE CONTROL (`PanelState::Empty` → no
+crowned-row teal, no clay column, far less foreground) and a `BenchmarkWins`
+headline render. PNGs written to `/tmp/leaderboard_*_render.png` and eyeballed.
+4/4 green; the whole-suite stays green and `cargo tree -p ui` is unchanged
+(1841 lines — no new dep edge).
+
 ## Changelog
 
+- 2026-06-20 (ui-designer): built the cockpit LEADERBOARD screen (journey step
+  3) — `Screen::Leaderboard` + `screens::leaderboard::view` rendering a
+  `BakeoffReport` via the pure-`ui` `BakeoffReportMirror` (the INVARIANT seam:
+  `backtest::BakeoffReport` read only at the dispatch boundary, `ui` gains no
+  `strategy`/`exec`/`forecast`/`llm` edge — `cargo tree -p ui` unchanged at 1841
+  lines). Ranked table (crowned `ACCENT` row + `★ best`, benchmark + fragile
+  tags), recommendation headline rendered FROM the structured `Recommendation`
+  (UI-owned copy in `crate::strings`), reasons as sub-copy, persistent
+  not-advice + simulated disclaimer (product § D5), `PanelState`
+  Loading/Empty/Error/Ready. Minimal trigger `spawn_bakeoff` (default BTCUSDT /
+  H1_2024 / BinanceCache / Skip) mirroring `spawn_lab_run`, wired binary-side in
+  `cockpit_live.rs`. Render-guard at the pixel layer
+  (`tests/leaderboard_populated_render.rs`, 4/4) with a negative control.
+  Gates: `cargo test -p ui` green (914 tests, 82 binaries), forced clippy clean,
+  fmt clean, anchors 119/119. Re-baselined 56 sidebar-bearing visual snapshots
+  (the new nav row; not anchored — `render_snapshots` + `visual_snapshots`).
 - 2026-06-19 (architect): created the F1+F2 design — bake-off orchestrator +
   ranking. Homed the orchestrator in `crates/backtest` (it owns `run_scenario` +
   `stats` + the `data` bootstrap dep, and `ui` already imports it → the

@@ -51,6 +51,16 @@ pub mod assistant;
 /// body lives at `screens::baseline`.
 pub mod baseline;
 pub mod lab;
+/// advisor-leaderboard-screen v0.1.0 — the strategy bake-off LEADERBOARD
+/// (single-coin investment-advisor journey, step 3: rank & pick best).
+/// Houses `leaderboard::state` (LeaderboardScreenState + BakeoffReportMirror —
+/// the engine→ui mirror over `backtest::BakeoffReport`, the INVARIANT seam)
+/// and `leaderboard::runner` (spawn_bakeoff — async-dispatch
+/// `backtest::run_bakeoff`, mirroring `lab::runner::spawn_lab_run`). Pure-`ui`
+/// over `core` + `backtest`; NO new crate edge (`ui` never imports
+/// `strategy`/`exec`/`forecast`/`llm`). The screen body lives at
+/// `screens::leaderboard`.
+pub mod leaderboard;
 /// cockpit-reports-viewer v0.1.0 — browse + render committed backtest
 /// reports in-cockpit. Houses `reports::loader` (the shared report-load
 /// parse, lifted from `bin/viewer.rs` so the viewer bin + the Reports

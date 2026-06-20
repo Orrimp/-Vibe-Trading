@@ -23,6 +23,13 @@ pub mod home;
 /// (R1.2). The legacy `Screen::Charts` variant auto-routes to `lab::view`
 /// via the shell match arm (deprecated alias for backward compatibility).
 pub mod lab;
+/// advisor-leaderboard-screen v0.1.0 — the strategy bake-off leaderboard
+/// (single-coin investment-advisor journey, step 3). Ranked table over a
+/// `backtest::bakeoff` result (best-first, crowned row highlighted, benchmark
+/// labelled) + a recommendation headline rendered from the structured
+/// `Recommendation` + the persistent not-advice disclaimer. Navigable via the
+/// Work sidebar group (after Baseline); not default-routed.
+pub mod leaderboard;
 /// Phase C — Live trading dashboard (ui-rethink-phase-c-sidebar-ia R2.1).
 /// Replaces the legacy `home::view` 2×2 grid for the `Screen::Live` route.
 /// `Screen::Home` (deprecated) also routes here via the compat shim (R5.2).

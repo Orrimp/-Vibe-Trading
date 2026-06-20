@@ -141,6 +141,17 @@ pub enum Screen {
     /// strip, with a 2023/2024 year toggle.
     Baseline,
 
+    // ── advisor-leaderboard-screen v0.1.0 ─────────────────────────────
+    /// The strategy bake-off LEADERBOARD (single-coin investment-advisor
+    /// journey, step 3: rank & pick best). Navigable from the **Work**
+    /// sidebar group, after `Baseline` (navigable, not default-routed).
+    /// Renders a `backtest::bakeoff` result: a ranked table (crowned row
+    /// highlighted, buy-and-hold labelled as the benchmark) + a
+    /// plain-language recommendation rendered from the structured
+    /// `Recommendation` + a persistent not-advice + simulated disclaimer.
+    /// A "Run bake-off" action dispatches `backtest::run_bakeoff` async.
+    Leaderboard,
+
     // ── cockpit-reports-viewer v0.1.0 ─────────────────────────────────
     /// Browse + render any committed `spec/*/reports/backtest-*.md`
     /// (cockpit-reports-viewer R6 / D4). Navigable from the **Library**
@@ -1004,6 +1015,15 @@ pub struct Cockpit {
     /// Loading`, `selected: None`, `loaded: Loading`.
     pub reports_screen_state: crate::reports::ReportsScreenState,
 
+    /// advisor-leaderboard-screen v0.1.0 — Leaderboard-screen per-session
+    /// state. Sibling of `reports_screen_state`. Holds the strategy
+    /// bake-off result behind a `PanelState` (Loading / Empty / Error /
+    /// Ready) — the `backtest::BakeoffReport` mirrored into a pure-`ui`
+    /// shape at the dispatch boundary (the INVARIANT seam; `ui` never holds
+    /// an engine type). Cold-start: `result: Empty` (the "press Run
+    /// bake-off" prompt), `running: false`.
+    pub leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState,
+
     /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
     /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
     /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
@@ -1161,6 +1181,7 @@ impl std::fmt::Debug for Cockpit {
             .field("compare_screen_state", &self.compare_screen_state)
             .field("baseline_screen_state", &self.baseline_screen_state)
             .field("reports_screen_state", &self.reports_screen_state)
+            .field("leaderboard_screen_state", &self.leaderboard_screen_state)
             .field("memory_screen_state", &self.memory_screen_state)
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
@@ -1225,6 +1246,7 @@ impl Default for Cockpit {
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
             baseline_screen_state: crate::baseline::BaselineScreenState::default(),
             reports_screen_state: crate::reports::ReportsScreenState::default(),
+            leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1340,6 +1362,7 @@ impl Cockpit {
             compare_screen_state: crate::compare::state::CompareScreenState::default(),
             baseline_screen_state: crate::baseline::BaselineScreenState::default(),
             reports_screen_state: crate::reports::ReportsScreenState::default(),
+            leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1988,6 +2011,23 @@ pub enum Message {
     /// valid regardless of which rows are displayed). Niladic — the two chips
     /// both dispatch this one toggle, so there is no payload to mis-route.
     ReportsToggleShowAll,
+
+    // ── advisor-leaderboard-screen v0.1.0 — strategy bake-off ────────────────
+    /// Operator pressed "Run bake-off" on the Leaderboard screen. Flips the
+    /// result `PanelState` to `Loading` + sets `running` (pure, in the update
+    /// arm); the BINARY-side intercept (mirroring the `LabRunRequested`
+    /// precedent in `cockpit_live.rs`) builds the cancel/progress pair and
+    /// dispatches `leaderboard::runner::spawn_bakeoff`, which awaits
+    /// `backtest::run_bakeoff` on the side-thread runtime. Niladic — the
+    /// default coin (BTCUSDT) + lookback (2024 H1) are config, not payload (the
+    /// full guided coin/budget input is the next feature, F3).
+    BakeoffRunRequested,
+    /// A bake-off completed (or failed). Carries the `backtest::BakeoffReport`
+    /// already mirrored into the pure-`ui` `BakeoffReportMirror` (the engine
+    /// type never crosses into iced state — the INVARIANT seam). Lands
+    /// `Ready(mirror)` / `Empty` (zero rows) / `Error(msg)` in the result
+    /// `PanelState` and clears `running`.
+    BakeoffRunCompleted(crate::leaderboard::runner::BakeoffRunResult),
 
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
@@ -2888,6 +2928,25 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // this flips to show every discovered report and back.
             let st = &mut model.reports_screen_state;
             st.show_all_reports = !st.show_all_reports;
+        }
+
+        // ── advisor-leaderboard-screen v0.1.0 — strategy bake-off ────────────
+        Message::BakeoffRunRequested => {
+            // Pure-state half: flip to Loading + set the in-flight token so the
+            // Run button disables and the spinner shows. The actual async
+            // dispatch (cancel/progress pair + `spawn_bakeoff`) is wired
+            // BINARY-side in `cockpit_live.rs` (the `LabRunRequested` precedent)
+            // — `update` stays pure (no I/O, no Task spawn from inside update).
+            // Guard against double-dispatch while a run is already in flight.
+            if !model.leaderboard_screen_state.running {
+                model.leaderboard_screen_state.begin_run();
+            }
+        }
+        Message::BakeoffRunCompleted(outcome) => {
+            // Land the mirrored result (Ready / Empty / Error) + clear running.
+            // The engine `BakeoffReport` was already mirrored into the pure-`ui`
+            // `BakeoffReportMirror` at the dispatch boundary in `spawn_bakeoff`.
+            model.leaderboard_screen_state.finish_run(outcome);
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────
