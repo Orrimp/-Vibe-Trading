@@ -95,6 +95,24 @@ impl RunCancelReceiver {
     pub async fn cancelled(&self) {
         self.token.cancelled().await;
     }
+
+    /// Create a sibling receiver that observes the same cancellation signal.
+    ///
+    /// Used by the bake-off orchestrator (`bakeoff::run_bakeoff`) to pass an
+    /// independent `RunCancelReceiver` to each `run_scenario` arm without
+    /// consuming the original receiver.  Both receivers are cancelled
+    /// simultaneously when the handle is dropped — they share the same
+    /// `CancellationToken` (ADR-0050 § D2).
+    ///
+    /// This does **not** create a child token (which would be independent):
+    /// it creates a cloned reference to the same token so that cancellation
+    /// from the UI propagates to all bake-off arms immediately.
+    #[must_use]
+    pub fn sibling(&self) -> Self {
+        Self {
+            token: self.token.clone(),
+        }
+    }
 }
 
 /// Build a `(RunCancelHandle, RunCancelReceiver)` pair.

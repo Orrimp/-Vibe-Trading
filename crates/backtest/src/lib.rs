@@ -2,6 +2,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
 #![warn(clippy::pedantic)]
 
+pub mod bakeoff;
 pub mod engine;
 pub mod paper;
 
@@ -68,6 +69,14 @@ pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,
 };
 pub use paper::PaperEngine;
+
+// Bake-off + ranking public surface (advisor feature F1+F2, ADR-0059).
+pub use bakeoff::robustness::{ParamRobustnessVerdict, RobustnessFlag};
+pub use bakeoff::{
+    BakeoffConfig, BakeoffReport, BakeoffRequest, CandidateKpis, CandidateResult, Ranking,
+    ReasonCode, Recommendation, RecommendationOutcome, RobustnessMode, rank_candidates,
+    run_bakeoff,
+};
 
 /// Annualised Sharpe ratio from a minute-resolution equity curve.
 ///

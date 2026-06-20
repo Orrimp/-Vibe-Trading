@@ -76,105 +76,15 @@ const DEFAULT_FUNDING_REVISION_SHA: &str =
 
 // ── Verdict classifier ─────────────────────────────────────────────────────────
 
-/// Per-θ verdict from the 5-signal weakest-link composite.
-///
-/// Bands are the frozen `robustness-decision-rule-2026-05-30.md` § 0 values,
-/// encoded as `const` thresholds. Spread + p50-vs-real-path are interpretive
-/// (NOT verdict-forcing) per rule § 4 step 3.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParamRobustnessVerdict {
-    /// Every primary signal in ROBUST band.
-    Robust,
-    /// No primary signal in FRAGILE band, but not all in ROBUST.
-    Marginal,
-    /// At least one primary signal in FRAGILE band.
-    Fragile,
-}
-
-impl ParamRobustnessVerdict {
-    /// Classify a single primary signal value against the frozen bands.
-    /// Returns the per-signal band (FRAGILE overrides MARGINAL overrides ROBUST).
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Robust => "ROBUST",
-            Self::Marginal => "MARGINAL",
-            Self::Fragile => "FRAGILE",
-        }
-    }
-}
-
-/// Frozen decision-rule bands (§ 0 / spec/dev-notes/robustness-decision-rule-2026-05-30.md).
-///
-/// FRAGILE if any primary signal breaches the FRAGILE threshold.
-/// ROBUST only if ALL primary signals are in the ROBUST band.
-/// MARGINAL otherwise.
-///
-/// Primary signals (weakest-link composite):
-///   p5_sharpe, p50_sharpe, prob_loss, prob_sharpe_gt_1, p95_maxdd
-mod verdict_bands {
-    // ── FRAGILE thresholds (ANY signal breaching → FRAGILE verdict) ──────────
-    /// p5 Sharpe < 0 → FRAGILE (tail loses money).
-    pub const P5_SHARPE_FRAGILE: f64 = 0.0;
-    /// p50 Sharpe < 0.5 → FRAGILE (central tendency weak).
-    pub const P50_SHARPE_FRAGILE: f64 = 0.5;
-    /// prob_loss > 0.35 → FRAGILE (coin-flip-ish loss rate).
-    pub const PROB_LOSS_FRAGILE: f64 = 0.35;
-    /// P(Sharpe > 1.0) < 0.35 → FRAGILE (minority clears gate).
-    pub const PROB_SHARPE_GT1_FRAGILE: f64 = 0.35;
-    /// p95 MaxDD > 0.70 → FRAGILE (tail drawdown worse than 73% single-path).
-    pub const P95_MAXDD_FRAGILE: f64 = 0.70;
-
-    // ── ROBUST thresholds (ALL signals must clear → ROBUST verdict) ──────────
-    /// p5 Sharpe ≥ 0.5 → ROBUST band.
-    pub const P5_SHARPE_ROBUST: f64 = 0.5;
-    /// p50 Sharpe ≥ 1.0 → ROBUST band.
-    pub const P50_SHARPE_ROBUST: f64 = 1.0;
-    /// prob_loss ≤ 0.15 → ROBUST band.
-    pub const PROB_LOSS_ROBUST: f64 = 0.15;
-    /// P(Sharpe > 1.0) ≥ 0.60 → ROBUST band.
-    pub const PROB_SHARPE_GT1_ROBUST: f64 = 0.60;
-    /// p95 MaxDD ≤ 0.50 → ROBUST band.
-    pub const P95_MAXDD_ROBUST: f64 = 0.50;
-}
-
-/// Compute the composite per-θ verdict (5-signal weakest-link).
-///
-/// This is a pure function — unit-testable at band boundaries.
-#[must_use]
-pub fn classify_verdict(summary: &backtest::stats::DistributionSummary) -> ParamRobustnessVerdict {
-    use verdict_bands::*;
-
-    let p5_sharpe = summary.sharpe.p5;
-    let p50_sharpe = summary.sharpe.p50;
-    let prob_loss = summary.prob_loss;
-    let prob_sharpe_gt1 = summary.prob_sharpe_gt_1;
-    let p95_maxdd = summary.max_dd_tail_p95;
-
-    // FRAGILE check: any single primary signal in FRAGILE band → composite FRAGILE.
-    let is_fragile = p5_sharpe < P5_SHARPE_FRAGILE
-        || p50_sharpe < P50_SHARPE_FRAGILE
-        || prob_loss > PROB_LOSS_FRAGILE
-        || prob_sharpe_gt1 < PROB_SHARPE_GT1_FRAGILE
-        || p95_maxdd > P95_MAXDD_FRAGILE;
-
-    if is_fragile {
-        return ParamRobustnessVerdict::Fragile;
-    }
-
-    // ROBUST check: ALL primary signals in ROBUST band → composite ROBUST.
-    let is_robust = p5_sharpe >= P5_SHARPE_ROBUST
-        && p50_sharpe >= P50_SHARPE_ROBUST
-        && prob_loss <= PROB_LOSS_ROBUST
-        && prob_sharpe_gt1 >= PROB_SHARPE_GT1_ROBUST
-        && p95_maxdd <= P95_MAXDD_ROBUST;
-
-    if is_robust {
-        ParamRobustnessVerdict::Robust
-    } else {
-        ParamRobustnessVerdict::Marginal
-    }
-}
+// ── Verdict + classifier — relocated to `backtest::bakeoff::robustness` ──────
+//
+// ADR-0059 M-DEV-1: `ParamRobustnessVerdict`, `classify_verdict`, and the band
+// constants were extracted from this bin into the `backtest` library so the
+// bake-off orchestrator can share them without code duplication.
+//
+// This bin re-imports them for backward compatibility — the output is
+// byte-identical because the logic is identical (pure structural relocation).
+pub use backtest::bakeoff::robustness::{ParamRobustnessVerdict, classify_verdict};
 
 // ── θ-grid (LOCKED — ADR-0051 § D6.3 / D-C3.2-LOCKED) ────────────────────────
 
@@ -1680,83 +1590,15 @@ pub fn cell_config(
 /// Implementation: equal-weight buy of all n symbols at bar 0 close, then track
 /// mark-to-market equity (no rebalancing, no fees after bar 0).
 #[must_use]
+/// Delegate to the library implementation (ADR-0059 M-DEV-1: extracted from this
+/// bin into `backtest::bakeoff::buyhold` for the bake-off orchestrator to share).
+/// Behaviour is byte-identical — pure structural relocation.
 fn run_buyhold_path(
     bars: &[trading_core::Bar],
     initial_capital: Decimal,
     n_symbols: usize,
 ) -> (Vec<Decimal>, Decimal) {
-    if bars.is_empty() || n_symbols == 0 {
-        return (vec![initial_capital], initial_capital);
-    }
-
-    // Equal-weight allocation per symbol.
-    #[allow(clippy::cast_precision_loss)]
-    let weight = initial_capital / Decimal::try_from(n_symbols as f64).unwrap_or(dec!(10));
-
-    // Group bars by symbol (in order).
-    let mut by_symbol: std::collections::BTreeMap<String, Vec<Decimal>> =
-        std::collections::BTreeMap::new();
-    for bar in bars {
-        by_symbol
-            .entry(bar.symbol.to_string())
-            .or_default()
-            .push(bar.close.get());
-    }
-
-    // Buy at bar 0 close; track qty per symbol.
-    let mut qtys: std::collections::BTreeMap<String, Decimal> = std::collections::BTreeMap::new();
-    for (sym, prices) in &by_symbol {
-        let buy_price = *prices.first().unwrap_or(&dec!(1));
-        if buy_price > Decimal::ZERO {
-            qtys.insert(sym.clone(), weight / buy_price);
-        }
-    }
-
-    // Build equity curve (bar count + 1 entries).
-    // Determine the number of distinct timestamps.
-    let n_bars = {
-        let bar_ts: std::collections::BTreeSet<i64> = bars
-            .iter()
-            .map(|b| b.open_ts.inner().unix_timestamp_nanos() as i64)
-            .collect();
-        bar_ts.len()
-    };
-
-    // For each timestep, compute mark-to-market equity.
-    // Strategy: group bars by timestamp in order.
-    let mut bar_map: std::collections::BTreeMap<i128, std::collections::BTreeMap<String, Decimal>> =
-        std::collections::BTreeMap::new();
-    for bar in bars {
-        let ts = bar.open_ts.inner().unix_timestamp_nanos();
-        bar_map
-            .entry(ts)
-            .or_default()
-            .insert(bar.symbol.to_string(), bar.close.get());
-    }
-
-    let mut equity_curve: Vec<Decimal> = Vec::with_capacity(n_bars + 1);
-    equity_curve.push(initial_capital);
-
-    // Carry last known price so we handle missing bars gracefully.
-    let mut last_prices: std::collections::BTreeMap<String, Decimal> =
-        std::collections::BTreeMap::new();
-
-    for prices_at_ts in bar_map.values() {
-        for (sym, price) in prices_at_ts {
-            last_prices.insert(sym.clone(), *price);
-        }
-        let equity: Decimal = qtys
-            .iter()
-            .map(|(sym, qty)| {
-                let p = last_prices.get(sym).copied().unwrap_or(dec!(0));
-                qty * p
-            })
-            .sum();
-        equity_curve.push(equity);
-    }
-
-    let final_eq = *equity_curve.last().unwrap_or(&initial_capital);
-    (equity_curve, final_eq)
+    backtest::bakeoff::buyhold::run_buyhold_path(bars, initial_capital, n_symbols)
 }
 
 // ── Grid definition string (hashed body field — K3 / § D6.3) ─────────────────

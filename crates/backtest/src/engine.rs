@@ -1387,6 +1387,137 @@ pub async fn run_scenario(
             Ok(report)
         }
 
+        // ── v0.buyhold — passive buy-and-hold benchmark (anchor-additive, ADR-0059) ───
+        //
+        // Equal-weight buy-and-hold: buys the coin at bar-0 close (or bar-0
+        // synthetic price) and marks to market every bar.  Single-coin bake-off
+        // passes n_symbols = 1 → 100% of budget held.
+        //
+        // Anchor-additive contract:
+        // - New id "v0.buyhold" — existing arms are byte-untouched.
+        // - write_report = false in bake-off calls → no report body is created.
+        // - A new id cannot collide with an existing anchored body.
+        // - `scripts/verify_anchors.sh` → 119/119 byte-identical (T0.1/T1.4/T2.3).
+        "v0.buyhold" => {
+            use crate::bakeoff::buyhold::run_buyhold_path;
+
+            const INITIAL_CAPITAL: rust_decimal::Decimal = dec!(100_000);
+            const N_SYMBOLS: usize = 1; // single-coin bake-off
+
+            // ── Resolve bars (BinanceCache/YahooCache: use bars_override;
+            //    Synthetic: generate with the same GBM engine used by SMA arms) ──
+            let bars: Vec<trading_core::Bar> = if let Some(b) = cfg.bars_override.clone() {
+                b
+            } else {
+                // Synthetic path — generate the same GBM bars as the SMA arm
+                // so comparisons on the same seed are apples-to-apples.
+                let start_price =
+                    crate::scenarios::sma_composed_run::default_start_price(&cfg.pair.1);
+                crate::scenarios::sma_composed_run::synthetic_bars_minute(
+                    &cfg.pair.1,
+                    bar_count,
+                    seed_u64,
+                    start_price,
+                    start_year,
+                )
+            };
+
+            // ── Run buy-and-hold on the bars ──────────────────────────────────
+            let (eq_curve, _final_eq_decimal) = run_buyhold_path(&bars, INITIAL_CAPITAL, N_SYMBOLS);
+
+            // ── Build equity_series with per-bar timestamps ───────────────────
+            //
+            // If bars are available use their open_ts for the curve timestamps
+            // (real-data path); otherwise fall back to synthetic_timestamps
+            // (synthetic path — same convention as the SMA arm).
+            let equity_series: Vec<(Timestamp, Money<Usdt>)> = if bars.is_empty() {
+                // Degenerate path: no bars, return the single initial-capital entry.
+                vec![(
+                    synthetic_timestamps(start_year, 1)
+                        .into_iter()
+                        .next()
+                        .unwrap_or_else(|| Timestamp::new(OffsetDateTime::UNIX_EPOCH)),
+                    Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                )]
+            } else {
+                // Build a sorted, deduplicated list of bar timestamps (one entry
+                // per distinct timestep), then zip with the equity curve.
+                // The equity curve has n_ts + 1 entries (entry 0 = initial_capital);
+                // we emit all n_ts + 1.
+                let ts_iter = {
+                    // Collect sorted unique bar open_ts values.
+                    let mut seen: std::collections::BTreeSet<i128> =
+                        std::collections::BTreeSet::new();
+                    let mut sorted_ts: Vec<Timestamp> = Vec::new();
+                    for bar in &bars {
+                        let ns = bar.open_ts.inner().unix_timestamp_nanos();
+                        if seen.insert(ns) {
+                            sorted_ts.push(bar.open_ts);
+                        }
+                    }
+                    sorted_ts
+                };
+
+                // Entry 0 in eq_curve = initial_capital (before bar 0).
+                // Use the first bar timestamp minus 1 hour for the initial entry.
+                let first_ts = ts_iter.first().copied().map_or_else(
+                    || Timestamp::new(OffsetDateTime::UNIX_EPOCH),
+                    |t| Timestamp::new(t.inner() - time::Duration::hours(1)),
+                );
+
+                let mut series: Vec<(Timestamp, Money<Usdt>)> = Vec::with_capacity(eq_curve.len());
+                // Push the initial-capital entry.
+                series.push((
+                    first_ts,
+                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&INITIAL_CAPITAL)),
+                ));
+                // Push one entry per bar timestamp.
+                for (ts, &eq) in ts_iter.iter().zip(eq_curve.iter().skip(1)) {
+                    series.push((*ts, Money::<Usdt>::from_decimal(eq)));
+                }
+                series
+            };
+
+            // ── Build KPIs ────────────────────────────────────────────────────
+            let final_eq = *eq_curve.last().unwrap_or(&INITIAL_CAPITAL);
+            let eq_dec_only: Vec<rust_decimal::Decimal> =
+                equity_series.iter().map(|(_, m)| m.amount()).collect();
+
+            let max_dd = crate::stats::compute_max_drawdown_f64(&eq_dec_only);
+
+            let kpis = BacktestKpis {
+                final_equity: Money::<Usdt>::from_decimal(final_eq),
+                initial_equity: Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                max_drawdown: rust_decimal::Decimal::try_from(max_dd)
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                trade_count: 0, // buy-and-hold: 1 buy at t=0, never sold → 0 "active" trades
+                total_fees: Money::<Usdt>::zero(),
+                buys: 1,
+                sells: 0,
+                total_return_pct: total_return_pct(INITIAL_CAPITAL, final_eq),
+            };
+
+            // write_report is always false for the bake-off arm (ADR-0059).
+            // The maybe_write_report call is a no-op when write_report = false,
+            // but we keep it for consistency in case a future caller sets it.
+            let report_path = maybe_write_report(
+                &cfg,
+                "v0.buyhold",
+                "v0.buyhold",
+                &equity_series,
+                |_path| Ok(()), // No-op writer: no anchored report format exists for BH yet.
+            )?;
+
+            Ok(RunReport {
+                equity_series,
+                fills: vec![],
+                kpis,
+                report_path,
+                bars: std::sync::Arc::new(bars),
+                position_curve_raw: vec![],
+            })
+        }
+
         // ── Unknown strategy ─────────────────────────────────────────────────
         other => Err(RunError::UnknownStrategy(other.to_string())),
     }
