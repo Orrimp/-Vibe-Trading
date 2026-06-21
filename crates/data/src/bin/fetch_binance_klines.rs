@@ -3,6 +3,11 @@
 //! Fetches historical OHLCV (klines) from Binance public REST API and writes
 //! per-symbol-month Parquet files that `ReplayFeed` can read directly.
 //!
+//! Core fetch + parse + parquet-write logic lives in
+//! `crates/data/src/binance_klines.rs` (extracted in Wave A of
+//! `advisor-dynamic-data`). This bin re-exports those pieces and adds only the
+//! CLI glue (`Cli`, month-iteration, skip-idempotency, `main`).
+//!
 //! # Output layout
 //!
 //! ```text
@@ -22,21 +27,21 @@
 //! trade_count Int64  — number of trades in bar
 //! ```
 
-use std::{
-    collections::BTreeMap,
-    io::BufWriter,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use polars::prelude::*;
 use reqwest::Client;
-use serde::Deserialize;
-use time::{Date, Month, PrimitiveDateTime, Time};
+use time::{Date, Month};
 use tracing::{info, warn};
 // EnvFilter now used via llm::tracing_init::install_global (T-RED-D12).
+
+// Re-export the shared types from the library module (Wave A extraction).
+use data::binance_klines::{
+    HttpKlineFetcher, date_to_millis, expected_bars_per_month, next_month_start, paginate_klines,
+    parse_date, write_parquet,
+};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -77,307 +82,6 @@ struct Cli {
     emit_revision_manifest: bool,
 }
 
-// ── Binance API types ─────────────────────────────────────────────────────────
-
-/// One kline bar, parsed from Binance's array-of-arrays response.
-///
-/// Binance response indices:
-/// ```text
-/// 0  open_time             (i64  ms)
-/// 1  open                  (String)
-/// 2  high                  (String)
-/// 3  low                   (String)
-/// 4  close                 (String)
-/// 5  volume                (String)
-/// 6  close_time            (i64  ms)
-/// 7  quote_volume          (String) — ignored
-/// 8  trade_count           (i64)
-/// 9  taker_buy_base_volume (String) — ignored
-/// 10 taker_buy_quote_volume(String) — ignored
-/// 11 ignore                (String) — ignored
-/// ```
-#[derive(Debug, Clone)]
-pub struct Kline {
-    pub open_time: i64,
-    pub close_time: i64,
-    pub open: String,
-    pub high: String,
-    pub low: String,
-    pub close: String,
-    pub volume: String,
-    pub trade_count: i64,
-}
-
-/// Intermediate JSON representation for a kline array element.
-/// Binance uses a heterogeneous JSON array; we deserialize to `Value` first.
-#[derive(Deserialize)]
-struct RawKline(serde_json::Value);
-
-impl RawKline {
-    fn parse(self) -> Result<Kline> {
-        let arr = self
-            .0
-            .as_array()
-            .ok_or_else(|| anyhow!("kline element is not an array"))?;
-        if arr.len() < 9 {
-            return Err(anyhow!("kline array too short: len={}", arr.len()));
-        }
-        let open_time = arr[0]
-            .as_i64()
-            .ok_or_else(|| anyhow!("open_time not i64"))?;
-        let open = arr[1]
-            .as_str()
-            .ok_or_else(|| anyhow!("open not str"))?
-            .to_owned();
-        let high = arr[2]
-            .as_str()
-            .ok_or_else(|| anyhow!("high not str"))?
-            .to_owned();
-        let low = arr[3]
-            .as_str()
-            .ok_or_else(|| anyhow!("low not str"))?
-            .to_owned();
-        let close = arr[4]
-            .as_str()
-            .ok_or_else(|| anyhow!("close not str"))?
-            .to_owned();
-        let volume = arr[5]
-            .as_str()
-            .ok_or_else(|| anyhow!("volume not str"))?
-            .to_owned();
-        let close_time = arr[6]
-            .as_i64()
-            .ok_or_else(|| anyhow!("close_time not i64"))?;
-        let trade_count = arr[8]
-            .as_i64()
-            .ok_or_else(|| anyhow!("trade_count not i64"))?;
-        Ok(Kline {
-            open_time,
-            close_time,
-            open,
-            high,
-            low,
-            close,
-            volume,
-            trade_count,
-        })
-    }
-}
-
-// ── URL builder ───────────────────────────────────────────────────────────────
-
-const BINANCE_KLINES_URL: &str = "https://api.binance.com/api/v3/klines";
-
-/// Build a Binance klines query URL.
-///
-/// Pure function — no I/O. Used by tests.
-pub fn build_klines_url(symbol: &str, interval: &str, start_ms: i64, end_ms: i64) -> String {
-    format!(
-        "{BINANCE_KLINES_URL}?symbol={symbol}&interval={interval}&startTime={start_ms}&endTime={end_ms}&limit=1000"
-    )
-}
-
-// ── Date utilities ────────────────────────────────────────────────────────────
-
-/// Parse "YYYY-MM-DD" into a `time::Date`.
-fn parse_date(s: &str) -> Result<Date> {
-    let parts: Vec<&str> = s.split('-').collect();
-    if parts.len() != 3 {
-        return Err(anyhow!("date must be YYYY-MM-DD, got: {s}"));
-    }
-    let year: i32 = parts[0]
-        .parse()
-        .with_context(|| format!("bad year in date: {s}"))?;
-    let month_num: u8 = parts[1]
-        .parse()
-        .with_context(|| format!("bad month in date: {s}"))?;
-    let day: u8 = parts[2]
-        .parse()
-        .with_context(|| format!("bad day in date: {s}"))?;
-    let month = Month::try_from(month_num)
-        .map_err(|_| anyhow!("month {month_num} out of range in date: {s}"))?;
-    Date::from_calendar_date(year, month, day).map_err(|e| anyhow!("invalid date {s}: {e}"))
-}
-
-/// Convert a `Date` to Unix milliseconds at midnight UTC.
-fn date_to_millis(d: Date) -> i64 {
-    let pdt = PrimitiveDateTime::new(d, Time::MIDNIGHT);
-    let odt = pdt.assume_utc();
-    odt.unix_timestamp() * 1_000
-}
-
-/// Return the first day of the month after `d`'s month (next-month boundary).
-fn next_month_start(year: i32, month: Month) -> Date {
-    let next_month_num = u8::from(month) % 12 + 1;
-    let next_year = if next_month_num == 1 { year + 1 } else { year };
-    let next_month = Month::try_from(next_month_num).expect("month arithmetic 1-12 always valid");
-    Date::from_calendar_date(next_year, next_month, 1).expect("first-of-month always valid")
-}
-
-/// Compute expected bars per month for the given interval.
-/// Returns `None` for intervals where bar count varies (e.g. `1d`).
-fn expected_bars_per_month(year: i32, month: Month, interval: &str) -> Option<usize> {
-    let minutes_per_bar: Option<u64> = match interval {
-        "1m" => Some(1),
-        "5m" => Some(5),
-        "15m" => Some(15),
-        "1h" => Some(60),
-        "4h" => Some(240),
-        "1d" => None, // day count varies — skip idempotency check
-        _ => None,
-    };
-    let mins = minutes_per_bar?;
-
-    // Days in month
-    let month_start = Date::from_calendar_date(year, month, 1).ok()?;
-    let next_start = next_month_start(year, month);
-    let days = (next_start - month_start).whole_days() as u64;
-    let total_minutes = days * 24 * 60;
-    Some((total_minutes / mins) as usize)
-}
-
-// ── Paginator ─────────────────────────────────────────────────────────────────
-
-/// Trait so tests can inject a mock fetcher.
-#[async_trait::async_trait]
-pub trait KlineFetcher: Send + Sync {
-    async fn fetch(&self, url: &str) -> Result<Vec<Kline>>;
-}
-
-/// Real HTTP fetcher backed by `reqwest`.
-pub struct HttpKlineFetcher {
-    client: Client,
-}
-
-impl HttpKlineFetcher {
-    pub fn new(client: Client) -> Self {
-        Self { client }
-    }
-}
-
-#[async_trait::async_trait]
-impl KlineFetcher for HttpKlineFetcher {
-    async fn fetch(&self, url: &str) -> Result<Vec<Kline>> {
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("Binance returned HTTP {status}: {body}"));
-        }
-        let raw: Vec<RawKline> = resp
-            .json()
-            .await
-            .with_context(|| format!("JSON decode for {url}"))?;
-        raw.into_iter()
-            .map(|r| r.parse())
-            .collect::<Result<Vec<_>>>()
-    }
-}
-
-/// Paginate over Binance klines for a symbol + month window.
-///
-/// Returns all klines whose `open_time` falls within `[start_ms, end_ms)`.
-/// Sleeps `sleep_ms` between requests to stay under rate-limit budget.
-pub async fn paginate_klines(
-    fetcher: &dyn KlineFetcher,
-    symbol: &str,
-    interval: &str,
-    start_ms: i64,
-    end_ms: i64,
-    sleep_ms: u64,
-) -> Result<Vec<Kline>> {
-    let mut all: Vec<Kline> = Vec::new();
-    let mut cursor = start_ms;
-    let mut request_count: u32 = 0;
-
-    loop {
-        let url = build_klines_url(symbol, interval, cursor, end_ms - 1);
-        let batch = fetcher.fetch(&url).await?;
-        request_count += 1;
-
-        if batch.is_empty() {
-            break;
-        }
-
-        let last_close = batch.last().expect("non-empty batch").close_time;
-        all.extend(batch);
-
-        // Advance cursor past the last bar's close_time.
-        // Binance pagination: next startTime = last_close_time + 1 ms.
-        let next_cursor = last_close + 1;
-        if next_cursor >= end_ms {
-            break;
-        }
-        cursor = next_cursor;
-
-        if sleep_ms > 0 {
-            tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
-        }
-    }
-
-    info!(
-        symbol,
-        interval,
-        requests = request_count,
-        bars = all.len(),
-        "paginated klines"
-    );
-    Ok(all)
-}
-
-// ── Parquet writer ────────────────────────────────────────────────────────────
-
-/// Write a `Vec<Kline>` to a Parquet file at `path`.
-///
-/// Creates parent directories as needed.
-pub fn write_parquet(klines: &[Kline], path: &Path) -> Result<()> {
-    if klines.is_empty() {
-        warn!(?path, "no klines to write — skipping parquet creation");
-        return Ok(());
-    }
-
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create directories for {}", path.display()))?;
-    }
-
-    let open_times: Vec<i64> = klines.iter().map(|k| k.open_time).collect();
-    let close_times: Vec<i64> = klines.iter().map(|k| k.close_time).collect();
-    let opens: Vec<&str> = klines.iter().map(|k| k.open.as_str()).collect();
-    let highs: Vec<&str> = klines.iter().map(|k| k.high.as_str()).collect();
-    let lows: Vec<&str> = klines.iter().map(|k| k.low.as_str()).collect();
-    let closes: Vec<&str> = klines.iter().map(|k| k.close.as_str()).collect();
-    let volumes: Vec<&str> = klines.iter().map(|k| k.volume.as_str()).collect();
-    let trade_counts: Vec<i64> = klines.iter().map(|k| k.trade_count).collect();
-
-    let mut df = DataFrame::new(vec![
-        Column::new("open_time".into(), open_times.as_slice()),
-        Column::new("close_time".into(), close_times.as_slice()),
-        Column::new("open".into(), opens.as_slice()),
-        Column::new("high".into(), highs.as_slice()),
-        Column::new("low".into(), lows.as_slice()),
-        Column::new("close".into(), closes.as_slice()),
-        Column::new("volume".into(), volumes.as_slice()),
-        Column::new("trade_count".into(), trade_counts.as_slice()),
-    ])
-    .with_context(|| format!("build DataFrame for {}", path.display()))?;
-
-    let file = std::fs::File::create(path)
-        .with_context(|| format!("create parquet file: {}", path.display()))?;
-    let writer = BufWriter::new(file);
-    ParquetWriter::new(writer)
-        .finish(&mut df)
-        .with_context(|| format!("write parquet: {}", path.display()))?;
-
-    info!(path = %path.display(), rows = klines.len(), "wrote parquet");
-    Ok(())
-}
-
 /// Check idempotency: if file exists and is already complete, skip it.
 ///
 /// Returns `true` if we should skip this month (no re-fetch needed).
@@ -395,7 +99,11 @@ pub fn write_parquet(klines: &[Kline], path: &Path) -> Result<()> {
 /// The `pinned_sha` comes from the existing `REVISION.toml` `[files]` map for
 /// this parquet's relative path.  When `REVISION.toml` is absent or the path is
 /// not listed, pass `None` — step 4 is skipped and the old behaviour is preserved.
-fn should_skip(path: &Path, expected_bars: Option<usize>, pinned_sha: Option<&str>) -> bool {
+fn should_skip(
+    path: &std::path::Path,
+    expected_bars: Option<usize>,
+    pinned_sha: Option<&str>,
+) -> bool {
     if !path.exists() {
         return false;
     }
@@ -418,7 +126,6 @@ fn should_skip(path: &Path, expected_bars: Option<usize>, pinned_sha: Option<&st
             Ok(df) => {
                 let rows = df.height();
                 if rows == expected {
-                    // Fast path: calendar-complete month.
                     info!(
                         path = %path.display(),
                         rows,
@@ -528,7 +235,6 @@ async fn main() -> Result<()> {
         let symbol_upper = symbol.to_uppercase();
         info!(symbol = %symbol_upper, "starting download");
 
-        // Walk over calendar months from start_date to end_date.
         let mut year = start_date.year();
         let mut month = start_date.month();
 
@@ -537,26 +243,19 @@ async fn main() -> Result<()> {
                 Date::from_calendar_date(year, month, 1).expect("month iteration always valid");
             let month_end_exclusive = next_month_start(year, month);
 
-            // Skip months entirely before start_date or after end_date.
             if month_end_exclusive <= start_date || month_start > end_date {
-                // Advance month and check loop termination.
                 if advance_month(&mut year, &mut month, end_date) {
                     break;
                 }
                 continue;
             }
 
-            // Clamp window to [start_date, end_date+1).
             let window_start = month_start.max(start_date);
-            let window_end = month_end_exclusive.min(
-                // end_date is inclusive; add 1 day to make it exclusive.
-                end_date.next_day().unwrap_or(end_date),
-            );
+            let window_end = month_end_exclusive.min(end_date.next_day().unwrap_or(end_date));
 
             let start_ms = date_to_millis(window_start);
             let end_ms = date_to_millis(window_end);
 
-            // Parquet path: <out>/<SYMBOL>/<YEAR>/<MM>.parquet
             let month_num = u8::from(month);
             let parquet_path = cli
                 .out
@@ -566,8 +265,6 @@ async fn main() -> Result<()> {
 
             let expected = expected_bars_per_month(year, month, &cli.interval);
 
-            // Relative manifest key matches the layout written by `write_revision_manifest`:
-            // "<SYMBOL>/<YEAR>/<MM>.parquet"
             let manifest_key = format!("{symbol_upper}/{year}/{month_num:02}.parquet");
             let pinned_sha = pinned_manifest.get(&manifest_key).map(String::as_str);
 
@@ -643,7 +340,6 @@ fn advance_month(year: &mut i32, month: &mut Month, end_date: Date) -> bool {
     let next_year = if next_num == 1 { *year + 1 } else { *year };
     *month = Month::try_from(next_num).expect("1-12 always valid");
     *year = next_year;
-    // Done when we advance past end_date's month.
     let cur_month_start =
         Date::from_calendar_date(*year, *month, 1).expect("month-start always valid");
     cur_month_start > end_date
@@ -659,43 +355,22 @@ fn advance_month(year: &mut i32, month: &mut Month, end_date: Date) -> bool {
     clippy::pedantic
 )]
 mod tests {
+    use super::should_skip;
     use super::*;
+    use anyhow::Result;
+    use data::binance_klines::{
+        Kline, KlineFetcher, build_klines_url, expected_bars_per_month, next_month_start,
+        paginate_klines, parse_date, write_parquet,
+    };
 
-    // ── Test 1: URL builder ───────────────────────────────────────────────────
-
-    /// Verify `build_klines_url` produces the expected query string.
-    #[test]
-    fn test_url_builder() {
-        let url = build_klines_url("BTCUSDT", "1h", 1_704_067_200_000, 1_706_745_599_999);
-        assert_eq!(
-            url,
-            "https://api.binance.com/api/v3/klines\
-?symbol=BTCUSDT&interval=1h&startTime=1704067200000&endTime=1706745599999&limit=1000"
-        );
-    }
-
-    #[test]
-    fn test_url_builder_ethusdt_1m() {
-        let url = build_klines_url("ETHUSDT", "1m", 0, 60_000);
-        assert!(url.contains("symbol=ETHUSDT"), "symbol in url");
-        assert!(url.contains("interval=1m"), "interval in url");
-        assert!(url.contains("startTime=0"), "startTime in url");
-        assert!(url.contains("endTime=60000"), "endTime in url");
-        assert!(url.contains("limit=1000"), "limit in url");
-    }
-
-    // ── Test 2: Paginator boundary logic ─────────────────────────────────────
-
-    /// Mock fetcher that simulates paginated responses.
-    struct MockFetcher {
-        /// Each call returns the next batch from this queue.
-        /// When exhausted, returns empty (signals end of data).
+    // Inline mock fetcher for the bin's tests (the library's MockFetcher is
+    // gated by #[cfg(test)] which is a different compilation unit here).
+    struct BinMockFetcher {
         batches: std::sync::Mutex<Vec<Vec<Kline>>>,
-        /// Records each URL that was called.
         calls: std::sync::Mutex<Vec<String>>,
     }
 
-    impl MockFetcher {
+    impl BinMockFetcher {
         fn new(batches: Vec<Vec<Kline>>) -> Self {
             Self {
                 batches: std::sync::Mutex::new(batches),
@@ -709,7 +384,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl KlineFetcher for MockFetcher {
+    impl KlineFetcher for BinMockFetcher {
         async fn fetch(&self, url: &str) -> Result<Vec<Kline>> {
             self.calls.lock().unwrap().push(url.to_owned());
             let mut batches = self.batches.lock().unwrap();
@@ -721,7 +396,7 @@ mod tests {
         }
     }
 
-    fn make_kline(open_time: i64, close_time: i64) -> Kline {
+    fn bin_make_kline(open_time: i64, close_time: i64) -> Kline {
         Kline {
             open_time,
             close_time,
@@ -734,73 +409,71 @@ mod tests {
         }
     }
 
-    /// Make a batch of `n` klines starting at `start_ms` with `step_ms` spacing.
-    fn make_batch(start_ms: i64, step_ms: i64, n: usize) -> Vec<Kline> {
+    fn bin_make_batch(start_ms: i64, step_ms: i64, n: usize) -> Vec<Kline> {
         (0..n)
             .map(|i| {
                 let open = start_ms + i as i64 * step_ms;
-                let close = open + step_ms - 1;
-                make_kline(open, close)
+                bin_make_kline(open, open + step_ms - 1)
             })
             .collect()
     }
 
-    /// Test: paginator advances cursor to `last_close_time + 1` after a 1000-bar batch.
+    // ── Test 1: URL builder (re-exported from lib) ────────────────────────────
+
+    #[test]
+    fn test_url_builder() {
+        let url = build_klines_url("BTCUSDT", "1h", 1_704_067_200_000, 1_706_745_599_999);
+        assert_eq!(
+            url,
+            "https://api.binance.com/api/v3/klines\
+?symbol=BTCUSDT&interval=1h&startTime=1704067200000&endTime=1706745599999&limit=1000"
+        );
+    }
+
+    #[test]
+    fn test_url_builder_ethusdt_1m() {
+        let url = build_klines_url("ETHUSDT", "1m", 0, 60_000);
+        assert!(url.contains("symbol=ETHUSDT"));
+        assert!(url.contains("interval=1m"));
+        assert!(url.contains("startTime=0"));
+        assert!(url.contains("endTime=60000"));
+        assert!(url.contains("limit=1000"));
+    }
+
+    // ── Test 2: Paginator boundary logic ─────────────────────────────────────
+
     #[tokio::test]
     async fn test_paginator_cursor_advances_after_full_batch() {
-        // Batch 1: 1000 bars from 0 to 999*3600000 ms (1h interval)
-        let step = 3_600_000_i64; // 1 hour in ms
-        let batch1 = make_batch(0, step, 1000);
-        let last_close = batch1.last().unwrap().close_time; // = 999 * step + step - 1
-
-        // The expected next startTime = last_close + 1.
+        let step = 3_600_000_i64;
+        let batch1 = bin_make_batch(0, step, 1000);
+        let last_close = batch1.last().unwrap().close_time;
         let expected_next_cursor = last_close + 1;
+        let batch2 = bin_make_batch(expected_next_cursor, step, 5);
 
-        // Batch 2: fewer bars (signals end of data for this window).
-        let batch2 = make_batch(expected_next_cursor, step, 5);
-
-        let fetcher = MockFetcher::new(vec![batch1, batch2, vec![]]);
-
+        let fetcher = BinMockFetcher::new(vec![batch1, batch2, vec![]]);
         let end_ms = expected_next_cursor + 5 * step;
         let result = paginate_klines(&fetcher, "BTCUSDT", "1h", 0, end_ms, 0)
             .await
             .expect("pagination should succeed");
 
-        assert_eq!(
-            result.len(),
-            1005,
-            "should collect all bars from both batches"
-        );
-
+        assert_eq!(result.len(), 1005);
         let calls = fetcher.recorded_calls();
-        assert_eq!(
-            calls.len(),
-            2,
-            "should have made exactly 2 requests (second batch < 1000 means done)"
-        );
-
-        // Second call must use expected_next_cursor as startTime.
-        assert!(
-            calls[1].contains(&format!("startTime={expected_next_cursor}")),
-            "second request startTime should be last_close + 1 = {expected_next_cursor}, got: {}",
-            calls[1]
-        );
+        assert_eq!(calls.len(), 2);
+        assert!(calls[1].contains(&format!("startTime={expected_next_cursor}")));
     }
 
-    /// Test: paginator stops when API returns empty.
     #[tokio::test]
     async fn test_paginator_stops_on_empty_response() {
-        let fetcher = MockFetcher::new(vec![vec![]]);
+        let fetcher = BinMockFetcher::new(vec![vec![]]);
         let result = paginate_klines(&fetcher, "BTCUSDT", "1h", 0, 3_600_000, 0)
             .await
             .expect("should not error on empty");
-        assert!(result.is_empty(), "empty response → no klines");
-        assert_eq!(fetcher.recorded_calls().len(), 1, "exactly one call");
+        assert!(result.is_empty());
+        assert_eq!(fetcher.recorded_calls().len(), 1);
     }
 
     // ── Test 3: Parquet schema round-trip ─────────────────────────────────────
 
-    /// Write a fixture kline Vec to parquet, read it back, assert schema + values.
     #[test]
     fn test_parquet_schema_roundtrip() {
         let klines = vec![
@@ -828,79 +501,30 @@ mod tests {
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().join("test_klines.parquet");
-
         write_parquet(&klines, &path).expect("write_parquet");
 
-        // Read back with polars.
         let df = LazyFrame::scan_parquet(&path, ScanArgsParquet::default())
             .expect("scan parquet")
             .collect()
             .expect("collect");
 
-        // Row count.
-        assert_eq!(df.height(), 2, "expected 2 rows");
+        assert_eq!(df.height(), 2);
+        assert_eq!(df.width(), 8);
 
-        // Column count.
-        assert_eq!(df.width(), 8, "expected 8 columns");
-
-        // Column types.
         let schema = df.schema();
-        assert_eq!(
-            schema.get("open_time").cloned(),
-            Some(DataType::Int64),
-            "open_time must be Int64"
-        );
-        assert_eq!(
-            schema.get("close_time").cloned(),
-            Some(DataType::Int64),
-            "close_time must be Int64"
-        );
-        assert_eq!(
-            schema.get("open").cloned(),
-            Some(DataType::String),
-            "open must be Utf8/String"
-        );
-        assert_eq!(
-            schema.get("high").cloned(),
-            Some(DataType::String),
-            "high must be Utf8/String"
-        );
-        assert_eq!(
-            schema.get("low").cloned(),
-            Some(DataType::String),
-            "low must be Utf8/String"
-        );
-        assert_eq!(
-            schema.get("close").cloned(),
-            Some(DataType::String),
-            "close must be Utf8/String"
-        );
-        assert_eq!(
-            schema.get("volume").cloned(),
-            Some(DataType::String),
-            "volume must be Utf8/String"
-        );
-        assert_eq!(
-            schema.get("trade_count").cloned(),
-            Some(DataType::Int64),
-            "trade_count must be Int64"
-        );
+        assert_eq!(schema.get("open_time").cloned(), Some(DataType::Int64));
+        assert_eq!(schema.get("close_time").cloned(), Some(DataType::Int64));
+        assert_eq!(schema.get("open").cloned(), Some(DataType::String));
 
-        // Sample row 0 values.
         let open_times = df.column("open_time").unwrap().i64().unwrap();
         assert_eq!(open_times.get(0), Some(1_704_067_200_000_i64));
         assert_eq!(open_times.get(1), Some(1_704_070_800_000_i64));
 
         let opens = df.column("open").unwrap().str().unwrap();
         assert_eq!(opens.get(0), Some("42000.00"));
-        assert_eq!(opens.get(1), Some("42300.00"));
 
         let trade_counts = df.column("trade_count").unwrap().i64().unwrap();
         assert_eq!(trade_counts.get(0), Some(8_000_i64));
-        assert_eq!(trade_counts.get(1), Some(7_200_i64));
-
-        let volumes = df.column("volume").unwrap().str().unwrap();
-        assert_eq!(volumes.get(0), Some("123.456"));
     }
 
     // ── Auxiliary: date / month helpers ───────────────────────────────────────
@@ -936,29 +560,24 @@ mod tests {
 
     #[test]
     fn test_expected_bars_per_month_1h_jan() {
-        // January has 31 days × 24 bars/day = 744 bars at 1h.
         let bars = expected_bars_per_month(2024, Month::January, "1h");
         assert_eq!(bars, Some(744));
     }
 
     #[test]
     fn test_expected_bars_per_month_1h_feb_leap() {
-        // February 2024 is a leap year: 29 days × 24 = 696 bars.
         let bars = expected_bars_per_month(2024, Month::February, "1h");
         assert_eq!(bars, Some(696));
     }
 
     #[test]
     fn test_expected_bars_per_month_1d_none() {
-        // 1d returns None (variable day count per month is fine but we also
-        // skip bar-count verification for "1d").
         let bars = expected_bars_per_month(2024, Month::January, "1d");
         assert_eq!(bars, None);
     }
 
     // ── Test 4: should_skip idempotency with pinned manifest SHA ─────────────
 
-    /// Helper: write a minimal real-schema parquet with `n` rows to `path`.
     fn write_n_row_parquet(path: &std::path::Path, n: usize) {
         let klines: Vec<Kline> = (0..n)
             .map(|i| Kline {
@@ -975,101 +594,63 @@ mod tests {
         write_parquet(&klines, path).expect("write_n_row_parquet");
     }
 
-    /// A short month (on-disk rows < calendar-expected) with a matching pinned
-    /// content SHA must be SKIPPED — this is the "legitimately gapped month" case.
-    ///
-    /// This exercises the rescue path in `should_skip` (step 4 of the doc-tree).
     #[test]
     fn test_should_skip_short_month_with_matching_pinned_sha_returns_true() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let parquet = tmp.path().join("02.parquet");
-
-        // Feb 2021 (non-leap): calendar expects 28*24 = 672 bars.
-        // We write only 671 (real Binance gap scenario).
         let calendar_expected = 672_usize;
         write_n_row_parquet(&parquet, 671);
-
-        // Compute the on-disk SHA — this is what the manifest would record.
         let on_disk_sha = data::revision::file_sha256(&parquet).expect("sha256");
-
-        // should_skip must return true: short, but SHA matches → complete fetch.
-        assert!(
-            should_skip(&parquet, Some(calendar_expected), Some(&on_disk_sha)),
-            "short month with matching pinned SHA should be skipped"
-        );
+        assert!(should_skip(
+            &parquet,
+            Some(calendar_expected),
+            Some(&on_disk_sha)
+        ));
     }
 
-    /// A short month where the pinned SHA does NOT match (file has changed or is
-    /// corrupt) must return false — the old "row count mismatch → re-fetch" path.
     #[test]
     fn test_should_skip_short_month_with_mismatched_pinned_sha_returns_false() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let parquet = tmp.path().join("02.parquet");
-
         let calendar_expected = 672_usize;
         write_n_row_parquet(&parquet, 671);
-
-        // Pass a deliberately wrong pinned SHA.
         let wrong_sha = "0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(
-            !should_skip(&parquet, Some(calendar_expected), Some(wrong_sha)),
-            "mismatched SHA must trigger re-fetch"
-        );
+        assert!(!should_skip(
+            &parquet,
+            Some(calendar_expected),
+            Some(wrong_sha)
+        ));
     }
 
-    /// A short month with NO pinned manifest available must still return false
-    /// (preserves pre-fix behaviour — no regression on first-run paths).
     #[test]
     fn test_should_skip_short_month_no_manifest_returns_false() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let parquet = tmp.path().join("02.parquet");
-
         let calendar_expected = 672_usize;
         write_n_row_parquet(&parquet, 671);
-
-        assert!(
-            !should_skip(&parquet, Some(calendar_expected), None),
-            "no manifest → short month must trigger re-fetch"
-        );
+        assert!(!should_skip(&parquet, Some(calendar_expected), None));
     }
 
-    /// A full month (rows == calendar-expected) must be skipped regardless of
-    /// whether a pinned SHA is provided (fast path, no SHA computation needed).
     #[test]
     fn test_should_skip_full_month_skipped_regardless_of_manifest() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let parquet = tmp.path().join("01.parquet");
-
-        let calendar_expected = 744_usize; // January
+        let calendar_expected = 744_usize;
         write_n_row_parquet(&parquet, calendar_expected);
-
-        // No manifest needed for a full month.
-        assert!(
-            should_skip(&parquet, Some(calendar_expected), None),
-            "full month (rows == expected) must be skipped without manifest"
-        );
-
-        // Providing a (wrong) SHA must not matter — fast path returns before SHA check.
+        assert!(should_skip(&parquet, Some(calendar_expected), None));
         let wrong_sha = "0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(
-            should_skip(&parquet, Some(calendar_expected), Some(wrong_sha)),
-            "full month must be skipped even with a wrong SHA (fast path)"
-        );
+        assert!(should_skip(
+            &parquet,
+            Some(calendar_expected),
+            Some(wrong_sha)
+        ));
     }
 
-    /// A missing file must never be skipped.
     #[test]
     fn test_should_skip_absent_file_returns_false() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let parquet = tmp.path().join("missing.parquet");
-
-        assert!(
-            !should_skip(&parquet, Some(744), None),
-            "absent file must not be skipped"
-        );
-        assert!(
-            !should_skip(&parquet, Some(744), Some("anysha")),
-            "absent file must not be skipped even with manifest SHA"
-        );
+        assert!(!should_skip(&parquet, Some(744), None));
+        assert!(!should_skip(&parquet, Some(744), Some("anysha")));
     }
 }

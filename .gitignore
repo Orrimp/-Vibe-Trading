@@ -43,6 +43,12 @@
 !/data/defillama-stablecoins/
 /data/defillama-stablecoins/*
 !/data/defillama-stablecoins/REVISION.toml
+# Dynamic on-demand Binance klines cache (advisor-dynamic-data, ADR-0061).
+# git-ignored by the existing `/data/*` rule above — this comment documents the
+# intent. NO `!data/binance-dynamic/` exception is added: the dynamic cache is
+# non-reproducible (live API; no REVISION pin), never committed, and
+# invisible to `verify_anchors.sh` (which only walks spec/). Delete with
+# `rm -rf data/binance-dynamic/` — it re-fetches on the next bake-off run.
 /logs/
 /snapshot/
 /data-snapshot/

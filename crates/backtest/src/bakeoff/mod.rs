@@ -123,6 +123,150 @@ fn preload_bakeoff_binance_bars(
     Ok(bars)
 }
 
+// ── Coverage predicate ────────────────────────────────────────────────────────
+
+/// Return `true` if `bars` fully cover `[start_ms, end_ms)` with no gap larger
+/// than one bar period (defined here as 1h for the bake-off interval).
+///
+/// A window is considered covered when:
+/// - `bars` is non-empty,
+/// - `bars[0].open_ts.unix_millis() <= start_ms` (no leading gap),
+/// - `bars[last].close_ts.unix_millis() >= end_ms - ONE_HOUR_MS` (no trailing gap).
+///
+/// When the window straddles the boundary of the pinned corpus (i.e. neither
+/// fully inside nor fully outside), we treat it as **not covered** and fetch
+/// the whole window from the dynamic path (D3 — correctness over cleverness;
+/// the straddle case is rare and the dynamic fetch is a safe superset).
+pub(crate) fn covers(start_ms: i64, end_ms: i64, bars: &[trading_core::Bar]) -> bool {
+    const ONE_HOUR_MS: i64 = 3_600_000;
+    let Some(first) = bars.first() else {
+        return false;
+    };
+    let Some(last) = bars.last() else {
+        return false;
+    };
+    let first_open = first.open_ts.unix_millis();
+    let last_close = last.close_ts.unix_millis();
+    first_open <= start_ms && last_close >= end_ms - ONE_HOUR_MS
+}
+
+// ── Dynamic-resolving bake-off preload ───────────────────────────────────────
+
+/// Resolve hourly bars for `(symbol, range, data_source)` for the bake-off.
+///
+/// # Resolution algorithm (ADR-0061 D3)
+///
+/// - `Synthetic` / `YahooCache` → existing path unchanged (returns `None`).
+/// - `BinanceCache` + window fully covered by the pinned corpus → existing
+///   read-only, REVISION-verified pinned path (fast; no network).
+/// - `BinanceCache` + not covered → `dynamic_cache::load_or_fetch` for the
+///   WHOLE window (fetch-the-whole-window, not gap-stitching). NEVER writes to
+///   `data/binance/`.
+///
+/// Returns `Ok(Some(bars))` for `BinanceCache`, `Ok(None)` for `Synthetic`/
+/// `YahooCache`, or `Err(RunError::Internal(<friendly copy>))` on failure.
+pub(crate) async fn resolve_bakeoff_bars(
+    symbol: &Symbol,
+    range: &DateRange,
+    data_source: ScenarioDataSource,
+) -> Result<Option<Vec<trading_core::Bar>>, crate::engine::RunError> {
+    use data::dynamic_cache::load_or_fetch;
+    use trading_core::Timeframe;
+
+    match data_source {
+        ScenarioDataSource::Synthetic | ScenarioDataSource::YahooCache => {
+            // Existing path unchanged — synthetic / Yahoo bars generated or
+            // loaded by run_scenario itself.
+            return Ok(None);
+        }
+        ScenarioDataSource::BinanceCache => {}
+    }
+
+    let (start_ms, end_ms) = date_range_to_ms_pair(range);
+
+    // 1. Try the pinned corpus first (read-only, REVISION-verified).
+    let pinned = preload_bakeoff_binance_bars(symbol, range);
+    match pinned {
+        Ok(bars) if covers(start_ms, end_ms, &bars) => {
+            tracing::info!(
+                target: "bakeoff.resolve",
+                symbol = %symbol,
+                start_ms,
+                end_ms,
+                bars = bars.len(),
+                "pinned corpus covers the window — using cached data"
+            );
+            return Ok(Some(bars));
+        }
+        Ok(_) | Err(_) => {
+            // Either the corpus is missing/short for this window, or the bars
+            // don't cover the range (straddle or post-2024 window). Fall
+            // through to the dynamic path.
+            tracing::info!(
+                target: "bakeoff.resolve",
+                symbol = %symbol,
+                start_ms,
+                end_ms,
+                "pinned corpus does not cover the window — using dynamic fetch"
+            );
+        }
+    }
+
+    // 2. Dynamic path: fetch the whole window from Binance (non-anchored).
+    //    NEVER writes to data/binance/; the dynamic root is git-ignored (ADR-0061 D4).
+
+    let bars = load_or_fetch(symbol, start_ms, end_ms, Timeframe::OneHour)
+        .await
+        .map_err(|e| {
+            let friendly = dynamic_error_to_friendly(symbol.0.as_str(), &e);
+            crate::engine::RunError::Internal(friendly)
+        })?;
+
+    tracing::info!(
+        target: "bakeoff.resolve",
+        symbol = %symbol,
+        bars = bars.len(),
+        start_ms,
+        end_ms,
+        "dynamic cache loaded bars for bake-off"
+    );
+    Ok(Some(bars))
+}
+
+/// Map a `DynamicCacheError` to an operator-friendly error string.
+///
+/// The string reaches `PanelState::Error` via `RunError::Internal` →
+/// `SmolStr` in `spawn_bakeoff`.  Copy from `ui::strings` error-model table.
+fn dynamic_error_to_friendly(symbol: &str, e: &data::dynamic_cache::DynamicCacheError) -> String {
+    use data::binance_klines::BinanceFetchError;
+    use data::dynamic_cache::DynamicCacheError;
+
+    match e {
+        DynamicCacheError::Fetch(
+            BinanceFetchError::Network { .. } | BinanceFetchError::Timeout { .. },
+        ) => "Couldn't reach Binance to fetch market data. Check your connection and try again."
+            .to_owned(),
+        DynamicCacheError::Fetch(BinanceFetchError::RateLimited { .. }) => {
+            "Binance is rate-limiting requests; wait a moment and try again.".to_owned()
+        }
+        DynamicCacheError::Fetch(BinanceFetchError::UnknownSymbol { .. }) => {
+            format!("Binance has no market data for {symbol}.")
+        }
+        DynamicCacheError::Fetch(BinanceFetchError::NoDataForRange { .. })
+        | DynamicCacheError::NoData { .. } => {
+            format!("No market data available for {symbol} in that window.")
+        }
+        DynamicCacheError::Fetch(BinanceFetchError::Other { detail, .. }) => {
+            tracing::warn!(symbol, detail, "Binance fetch Other error");
+            "Couldn't fetch market data (details logged).".to_owned()
+        }
+        DynamicCacheError::Write(msg) | DynamicCacheError::Read(msg) => {
+            tracing::warn!(symbol, %msg, "dynamic cache I/O error");
+            "Couldn't fetch market data (details logged).".to_owned()
+        }
+    }
+}
+
 // ── Public config ─────────────────────────────────────────────────────────────
 
 /// Request envelope for a bake-off run (echoed into `BakeoffReport` for
@@ -359,14 +503,14 @@ pub async fn run_bakeoff(
     // same `Vec<Bar>` (cloned) to every candidate arm.  All candidates see the
     // identical real bars — that is the apples-to-apples invariant.
     //
-    // For `Synthetic`, `bars_override` stays `None` (synthetic is the intended
-    // unit-test path; the synthetic GBM generator is seeded per-call).
-    let preloaded_bars: Option<Vec<trading_core::Bar>> = match cfg.data_source {
-        ScenarioDataSource::BinanceCache => {
-            Some(preload_bakeoff_binance_bars(&req.symbol, &req.range)?)
-        }
-        ScenarioDataSource::Synthetic | ScenarioDataSource::YahooCache => None,
-    };
+    // `resolve_bakeoff_bars` (ADR-0061):
+    //   - pinned-corpus path: read-only, REVISION-verified (fast; no network).
+    //   - dynamic path: fetch the whole window from Binance when the corpus
+    //     does not fully cover the requested range.  NEVER writes to data/binance/.
+    //   - Synthetic/Yahoo: returns None (synthetic GBM or Yahoo bars are
+    //     generated/loaded by run_scenario itself).
+    let preloaded_bars: Option<Vec<trading_core::Bar>> =
+        resolve_bakeoff_bars(&req.symbol, &req.range, cfg.data_source).await?;
 
     // Build the full candidate field: explicit strategies + benchmark.
     let mut strategy_ids: Vec<(StrategyId, bool)> =

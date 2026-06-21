@@ -7,9 +7,11 @@
 pub mod bar_aggregator;
 pub mod bar_stream;
 pub mod binance;
+pub mod binance_klines;
 pub mod clock_skew;
 pub mod coinbase;
 pub mod daily_volume;
+pub mod dynamic_cache;
 pub mod fake_feed;
 pub mod funding;
 pub mod kraken;

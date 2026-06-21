@@ -1512,6 +1512,20 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LEADERBOARD_LOADING", LEADERBOARD_LOADING),
         ("LEADERBOARD_ERROR_PREFIX", LEADERBOARD_ERROR_PREFIX),
         ("LEADERBOARD_RUN_NEEDS_LIVE", LEADERBOARD_RUN_NEEDS_LIVE),
+        // advisor-dynamic-data fetch-error copy (ADR-0061 Wave C)
+        (
+            "LEADERBOARD_FETCH_NETWORK_ERROR",
+            LEADERBOARD_FETCH_NETWORK_ERROR,
+        ),
+        (
+            "LEADERBOARD_FETCH_RATE_LIMITED",
+            LEADERBOARD_FETCH_RATE_LIMITED,
+        ),
+        (
+            "LEADERBOARD_FETCH_UNKNOWN_SYMBOL",
+            LEADERBOARD_FETCH_UNKNOWN_SYMBOL,
+        ),
+        ("LEADERBOARD_FETCH_NO_DATA", LEADERBOARD_FETCH_NO_DATA),
         ("LEADERBOARD_COL_RANK", LEADERBOARD_COL_RANK),
         ("LEADERBOARD_COL_STRATEGY", LEADERBOARD_COL_STRATEGY),
         ("LEADERBOARD_COL_RETURN", LEADERBOARD_COL_RETURN),
@@ -2088,6 +2102,24 @@ pub const LEADERBOARD_ERROR_PREFIX: &str = "The bake-off could not run";
 /// build rather than hanging or panicking.
 pub const LEADERBOARD_RUN_NEEDS_LIVE: &str = "Running a bake-off needs the live build. Launch the cockpit with \
      `cargo run -p ui --bin cockpit_live` to rank strategies on real data.";
+
+/// Dynamic fetch failed — no network connectivity or Binance unreachable.
+/// Maps to `BinanceFetchError::Network` / `::Timeout` (ADR-0061 Wave C).
+pub const LEADERBOARD_FETCH_NETWORK_ERROR: &str =
+    "Couldn't reach Binance to fetch market data. Check your connection and try again.";
+
+/// Binance rate-limit (HTTP 429). Maps to `BinanceFetchError::RateLimited`.
+pub const LEADERBOARD_FETCH_RATE_LIMITED: &str =
+    "Binance is rate-limiting requests; wait a moment and try again.";
+
+/// Unknown / delisted symbol. Maps to `BinanceFetchError::UnknownSymbol`.
+/// The placeholder `{symbol}` is formatted at the call site.
+pub const LEADERBOARD_FETCH_UNKNOWN_SYMBOL: &str = "Binance has no market data for that symbol.";
+
+/// No klines returned for the requested window.
+/// Maps to `BinanceFetchError::NoDataForRange` / `DynamicCacheError::NoData`.
+pub const LEADERBOARD_FETCH_NO_DATA: &str =
+    "No market data available for that symbol in the selected window.";
 
 /// Table column header — the rank position (1 = the crowned pick).
 pub const LEADERBOARD_COL_RANK: &str = "#";

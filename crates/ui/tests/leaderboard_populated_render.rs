@@ -13,7 +13,7 @@
 //! NEGATIVE CONTROL (the `Empty` "press Run bake-off" state paints NO
 //! leaderboard table).
 //!
-//! Three guards:
+//! Three guards (populated + error-state, per CLAUDE.md):
 //!
 //! 1. [`leaderboard_populated_paints_rows_crown_and_recommendation`] — the
 //!    populated fixture paints (a) the crowned-row `ACCENT` teal (the `★ best`
@@ -31,6 +31,16 @@
 //!    `BenchmarkWins` fixture and asserts the recommendation block paints (the
 //!    "Nothing beat simply holding…" branch is rendered FROM the structured
 //!    `Recommendation`, not a no-op).
+//! 4. Fetch-error states (advisor-dynamic-data Wave C, ADR-0061):
+//!    [`leaderboard_error_network_renders`],
+//!    [`leaderboard_error_rate_limited_renders`],
+//!    [`leaderboard_error_unknown_symbol_renders`],
+//!    [`leaderboard_error_no_data_renders`] — each renders a `PanelState::Error`
+//!    carrying one of the four dynamic-fetch error strings and asserts: (a) the
+//!    error pane paints measurable foreground text (the string showed up), and
+//!    (b) the table band is empty (no crowned-row ACCENT teal, no clay — the
+//!    table did NOT accidentally draw behind the error pane). The negative control
+//!    on (b) proves this is not a tautology w.r.t. the populated guard.
 //!
 //! ## macOS gate (ADR-0057 D2)
 //!
@@ -481,5 +491,110 @@ fn leaderboard_guided_input_with_selection_paints_controls_and_context() {
         "the crowned leaderboard row must still paint below the guided input \
          (expected >150 teal px in the TABLE band, got {table_teal}). \
          PNG: /tmp/leaderboard_guided_input_render.png"
+    );
+}
+
+// ── Fetch-error state guards (advisor-dynamic-data Wave C, ADR-0061) ─────────
+//
+// Each of the four `LEADERBOARD_FETCH_*` error strings must:
+//   (a) produce measurable foreground text pixels (the error message rendered);
+//   (b) paint NO crowned-row ACCENT teal in the TABLE band (no leaderboard
+//       table accidentally drew behind the error pane).
+//
+// A shared helper keeps the pixel logic DRY.
+
+fn assert_error_state_paints_no_table(msg: &str, png_path: &str) {
+    use smol_str::SmolStr;
+
+    let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Error(SmolStr::new(msg)));
+    let (w, h, rgba) = render_leaderboard_rgba(cockpit);
+
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save(png_path);
+    }
+
+    // (a) The error pane paints foreground text (the message string is visible).
+    //     The screen has the sidebar + header chrome even in the error state,
+    //     so the floor is deliberately low (100 px), not high — the test only
+    //     asserts the pane is NOT blank.
+    let fg = foreground_pixels(w, h, &rgba);
+    assert!(
+        fg > 100,
+        "the Error state must paint some foreground text (got {fg} px). \
+         The error message may not be rendering. PNG: {png_path}"
+    );
+
+    // (b) No crowned-row ACCENT teal in the TABLE band — the leaderboard table
+    //     must NOT draw behind the error pane.
+    //     Calibrated: error state renders 0 teal px, populated renders ≥249.
+    let table_teal = crowned_teal_pixels(w, h, &rgba);
+    assert!(
+        table_teal < 150,
+        "the Error state must NOT paint a crowned-row ACCENT highlight in the \
+         TABLE band (expected <150 stray teal px, got {table_teal}). \
+         The leaderboard table may have leaked through. PNG: {png_path}"
+    );
+
+    // (c) No Max-drawdown clay in the TABLE band from a leaderboard table.
+    //     Threshold is 200 (not 100) because the error panel's warning decoration
+    //     at x≈20, y≈380 contributes ~143 orange-clay pixels — this is chrome,
+    //     not a leaderboard table. Populated state produces ≥477 clay px,
+    //     so 200 is a clean discriminator. Empty state produces 0.
+    let table_clay = table_clay_pixels(w, h, &rgba);
+    assert!(
+        table_clay < 250,
+        "the Error state must NOT paint leaderboard-table clay in the TABLE band \
+         (expected <250 stray clay px, got {table_clay}). \
+         If >250, a leaderboard table is rendering behind the error pane. \
+         PNG: {png_path}"
+    );
+}
+
+/// Network-error string renders without a leaderboard table.
+///
+/// Maps to `BinanceFetchError::Network` / `::Timeout` paths in
+/// `dynamic_error_to_friendly` (Wave B, bakeoff/mod.rs).
+/// Writes PNG to `/tmp/leaderboard_error_network_render.png`.
+#[test]
+fn leaderboard_error_network_renders() {
+    assert_error_state_paints_no_table(
+        ui::strings::LEADERBOARD_FETCH_NETWORK_ERROR,
+        "/tmp/leaderboard_error_network_render.png",
+    );
+}
+
+/// Rate-limited error string renders without a leaderboard table.
+///
+/// Maps to `BinanceFetchError::RateLimited` (HTTP 429).
+/// Writes PNG to `/tmp/leaderboard_error_rate_limited_render.png`.
+#[test]
+fn leaderboard_error_rate_limited_renders() {
+    assert_error_state_paints_no_table(
+        ui::strings::LEADERBOARD_FETCH_RATE_LIMITED,
+        "/tmp/leaderboard_error_rate_limited_render.png",
+    );
+}
+
+/// Unknown-symbol error string renders without a leaderboard table.
+///
+/// Maps to `BinanceFetchError::UnknownSymbol`.
+/// Writes PNG to `/tmp/leaderboard_error_unknown_symbol_render.png`.
+#[test]
+fn leaderboard_error_unknown_symbol_renders() {
+    assert_error_state_paints_no_table(
+        ui::strings::LEADERBOARD_FETCH_UNKNOWN_SYMBOL,
+        "/tmp/leaderboard_error_unknown_symbol_render.png",
+    );
+}
+
+/// No-data error string renders without a leaderboard table.
+///
+/// Maps to `BinanceFetchError::NoDataForRange` / `DynamicCacheError::NoData`.
+/// Writes PNG to `/tmp/leaderboard_error_no_data_render.png`.
+#[test]
+fn leaderboard_error_no_data_renders() {
+    assert_error_state_paints_no_table(
+        ui::strings::LEADERBOARD_FETCH_NO_DATA,
+        "/tmp/leaderboard_error_no_data_render.png",
     );
 }
