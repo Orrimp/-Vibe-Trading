@@ -2029,6 +2029,21 @@ pub enum Message {
     /// `PanelState` and clears `running`.
     BakeoffRunCompleted(crate::leaderboard::runner::BakeoffRunResult),
 
+    // ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──
+    /// Operator chose a coin in the guided-input coin picker. Stores it on the
+    /// leaderboard state (drives the next bake-off + the budget-context
+    /// header). Typed `Symbol` payload — no `String` catch-all.
+    BakeoffSelectCoin(Symbol),
+    /// Operator typed in the budget field. Stores the raw input verbatim (the
+    /// parse happens at render time via `parse_budget`). The bake-off ranking
+    /// does NOT use the budget — it carries forward to F4/F5 sizing and is
+    /// shown in the header for context.
+    BakeoffSetBudget(String),
+    /// Operator chose a lookback window in the guided-input picker. Stores the
+    /// `LeaderboardLookback`; it is mapped to a `backtest::engine::DateRange`
+    /// at dispatch time. Typed enum payload.
+    BakeoffSelectLookback(crate::leaderboard::LeaderboardLookback),
+
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
     /// `ActivityRecipe`. Delegates to `ActivityTape::apply`.
@@ -2947,6 +2962,23 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // The engine `BakeoffReport` was already mirrored into the pure-`ui`
             // `BakeoffReportMirror` at the dispatch boundary in `spawn_bakeoff`.
             model.leaderboard_screen_state.finish_run(outcome);
+        }
+
+        // ── advisor-bakeoff-ranking F3 — guided input ────────────────────────
+        Message::BakeoffSelectCoin(symbol) => {
+            // The chosen coin drives the NEXT bake-off + the header context.
+            // We do NOT clear the existing result — the operator may be
+            // comparing the prior coin's leaderboard while picking the next;
+            // pressing Run re-ranks for the new coin.
+            model.leaderboard_screen_state.coin = symbol;
+        }
+        Message::BakeoffSetBudget(raw) => {
+            // Store the keystrokes verbatim (parse is a render-time concern).
+            // Budget is context only — it does not invalidate the ranking.
+            model.leaderboard_screen_state.budget_input = raw;
+        }
+        Message::BakeoffSelectLookback(lookback) => {
+            model.leaderboard_screen_state.lookback = lookback;
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────

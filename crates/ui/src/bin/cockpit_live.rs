@@ -1178,10 +1178,23 @@ impl AppState {
         // advisor-leaderboard-screen v0.1.0 — capture BakeoffRunRequested BEFORE
         // state::update flips `running` to true, and only dispatch when no
         // bake-off is already in flight (the LabRunRequested double-dispatch
-        // guard, applied to the bake-off). The default config (BTCUSDT / 2024 H1
-        // / BinanceCache / Skip) is built fresh on dispatch — niladic message.
+        // guard, applied to the bake-off).
         let bakeoff_run_requested = matches!(msg, Message::BakeoffRunRequested)
             && !self.cockpit.leaderboard_screen_state.running;
+        // advisor-bakeoff-ranking F3 — build the BakeoffConfig from the
+        // operator's CHOSEN coin + lookback (the guided input), captured from
+        // the pre-update state (mirrors `lab_run_cfg`). The lookback's relative
+        // windows are resolved against wall-clock `now_ms` HERE, at the dispatch
+        // boundary. Replaces the hardcoded BTCUSDT / H1_2024 default.
+        let bakeoff_cfg = if bakeoff_run_requested {
+            let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+            Some(ui::leaderboard::runner::bakeoff_config_from_state(
+                &self.cockpit.leaderboard_screen_state,
+                now_ms,
+            ))
+        } else {
+            None
+        };
 
         // T-D1.3 (lab-end-to-end-v2 T-AR-1) — capture LabRunCompleted BEFORE
         // state::update so we still see the pre-forward LabState (operator MAY
@@ -1678,7 +1691,10 @@ impl AppState {
             // an indeterminate spinner); a disabled sender keeps run_bakeoff's
             // progress calls cheap no-ops without standing up a recipe.
             let progress_tx = backtest::progress::ProgressSender::disabled();
-            let cfg = ui::leaderboard::runner::default_bakeoff_config();
+            // F3 — the config built from the operator's chosen coin + lookback
+            // (captured pre-update above). `bakeoff_run_requested` ⇒
+            // `bakeoff_cfg` is `Some`; fall back to the default defensively.
+            let cfg = bakeoff_cfg.unwrap_or_else(ui::leaderboard::runner::default_bakeoff_config);
             ui::leaderboard::runner::spawn_bakeoff(
                 Some(&self.rt_handle),
                 cfg,

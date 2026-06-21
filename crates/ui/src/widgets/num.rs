@@ -65,6 +65,24 @@ pub fn fmt_usdt(d: Decimal) -> String {
     format!("{} {}", with_thousands_sep(&padded), UNIT_USDT)
 }
 
+/// Format a euro budget amount with the `€` PREFIX glyph + thousands
+/// separators (advisor-bakeoff-ranking F3 — the budget-context header). A whole
+/// amount renders without a fractional part ("€200"); a fractional amount
+/// renders to two places ("€199.50") so cents are not silently dropped. Used
+/// for the operator-facing budget display only (the ranking is
+/// budget-independent).
+#[must_use]
+pub fn fmt_eur(d: Decimal) -> String {
+    let rounded = d.round_dp(2);
+    let body = if rounded.fract().is_zero() {
+        // Whole euros read cleaner without a trailing ".00" (a budget of €200).
+        with_thousands_sep(&rounded.trunc().to_string())
+    } else {
+        with_thousands_sep(&pad_fractional(&rounded.to_string(), 2))
+    };
+    format!("{}{body}", crate::strings::CURRENCY_EUR_SYMBOL)
+}
+
 /// Format a price (Decimal) to two decimal places with thousands separators.
 /// No currency suffix — prices render next to symbol columns that already
 /// imply the quote asset.
@@ -222,6 +240,18 @@ mod tests {
         assert_eq!(fmt_usdt(dec!(100000)), "100,000.00 USDT");
         assert_eq!(fmt_usdt(dec!(1.5)), "1.50 USDT");
         assert_eq!(fmt_usdt(dec!(-1234.567)), "-1,234.57 USDT");
+    }
+
+    #[test]
+    fn eur_format_whole_and_fractional() {
+        // Whole euros: no trailing ".00" (the €200 budget reads cleanly).
+        assert_eq!(fmt_eur(dec!(200)), "\u{20ac}200");
+        assert_eq!(fmt_eur(dec!(1000)), "\u{20ac}1,000");
+        // Fractional: two places, cents preserved.
+        assert_eq!(fmt_eur(dec!(199.50)), "\u{20ac}199.50");
+        assert_eq!(fmt_eur(dec!(199.5)), "\u{20ac}199.50");
+        // Zero is a valid (empty) budget.
+        assert_eq!(fmt_eur(dec!(0)), "\u{20ac}0");
     }
 
     #[test]

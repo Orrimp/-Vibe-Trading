@@ -25,6 +25,7 @@
 
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
+use trading_core::Symbol;
 
 use crate::state::PanelState;
 
@@ -237,12 +238,157 @@ fn range_label_for(range: &backtest::engine::DateRange) -> &'static str {
     }
 }
 
+// ── F3 guided input — coin universe + lookback + budget ───────────────────────
+
+/// The coin universe the guided-input coin picker offers — the symbols that
+/// actually exist in the pinned Binance corpus (`data/binance/<SYM>/…`),
+/// XRP-first to match the Lab's operator-locked scan order (product § journey
+/// step 1: "pick a coin (e.g. XRPUSD)").
+///
+/// `&'static [&'static str]` (not `Symbol` — `Symbol` holds a `SmolStr`, which
+/// is not `const`-constructible). The screen maps each to a `Symbol` at render
+/// time. Kept here (next to the state it drives) rather than in the Lab's
+/// `universe` module because the bake-off corpus set is its own contract — the
+/// Lab universe is venue-tagged `(Venue, &str)` tuples, this is the flat coin
+/// set the single-coin advisor ranks over.
+pub const BAKEOFF_COIN_UNIVERSE: &[&str] = &[
+    "XRPUSDT", "ETHUSDT", "BTCUSDT", "ADAUSDT", "AVAXUSDT", "BNBUSDT", "DOGEUSDT", "DOTUSDT",
+    "LINKUSDT", "SOLUSDT",
+];
+
+/// The default coin the guided input starts on (product default + the v0.1.0
+/// trigger's `BTCUSDT`). Kept in sync with `runner::DEFAULT_BAKEOFF_COIN`.
+pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
+
+/// The default budget the guided input starts on — €200 (product § journey
+/// step 1: "a budget (e.g. €200)"). Stored as the raw input string so the
+/// numeric field round-trips the operator's keystrokes verbatim.
+pub const DEFAULT_BUDGET_INPUT: &str = "200";
+
+/// Milliseconds in one calendar day — the relative-lookback arithmetic unit.
+const MS_PER_DAY: i64 = 86_400_000;
+
+/// A human lookback choice the guided input offers (product § journey step 1:
+/// a configurable lookback "2 weeks → ~4 years"). Each maps to a
+/// `backtest::engine::DateRange` **in the UI** (the relative ones to a
+/// `Custom { now - N days, now }` window; the fixed 2024 presets pass through)
+/// — the backtest crate is never edited.
+///
+/// A closed UI-side enum so the picker never matches on an engine type and the
+/// chip labels are driven by a `ui`-owned discriminant (the same mirror
+/// discipline the rest of this module follows).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LeaderboardLookback {
+    /// ~2 weeks (14 days) to today.
+    TwoWeeks,
+    /// ~1 month (30 days) to today.
+    OneMonth,
+    /// ~3 months (90 days) to today.
+    ThreeMonths,
+    /// ~6 months (182 days) to today.
+    SixMonths,
+    /// ~1 year (365 days) to today.
+    OneYear,
+    /// ~2 years (730 days) to today.
+    TwoYears,
+    /// ~4 years (1460 days) to today.
+    FourYears,
+    /// Fixed preset — first half of 2024 (the v0.1.0 default; full corpus
+    /// coverage, so the leaderboard always populates).
+    H1_2024,
+    /// Fixed preset — second half of 2024.
+    H2_2024,
+}
+
+impl LeaderboardLookback {
+    /// The lookback choices in the order the picker renders them — relative
+    /// windows first (2 weeks → 4 years, the product's headline range), the
+    /// two fixed corpus-covered 2024 presets last.
+    pub const ALL: &'static [LeaderboardLookback] = &[
+        LeaderboardLookback::TwoWeeks,
+        LeaderboardLookback::OneMonth,
+        LeaderboardLookback::ThreeMonths,
+        LeaderboardLookback::SixMonths,
+        LeaderboardLookback::OneYear,
+        LeaderboardLookback::TwoYears,
+        LeaderboardLookback::FourYears,
+        LeaderboardLookback::H1_2024,
+        LeaderboardLookback::H2_2024,
+    ];
+
+    /// The relative-window span in days, or `None` for the fixed 2024 presets.
+    #[must_use]
+    pub fn relative_days(self) -> Option<i64> {
+        match self {
+            LeaderboardLookback::TwoWeeks => Some(14),
+            LeaderboardLookback::OneMonth => Some(30),
+            LeaderboardLookback::ThreeMonths => Some(90),
+            LeaderboardLookback::SixMonths => Some(182),
+            LeaderboardLookback::OneYear => Some(365),
+            LeaderboardLookback::TwoYears => Some(730),
+            LeaderboardLookback::FourYears => Some(1460),
+            LeaderboardLookback::H1_2024 | LeaderboardLookback::H2_2024 => None,
+        }
+    }
+
+    /// Map this lookback to a `backtest::engine::DateRange`, computing the
+    /// relative windows against `now_ms` (wall-clock UTC epoch-millis, passed
+    /// in so the mapping stays pure + testable).
+    ///
+    /// Relative → `Custom { start_ms: now - N*86_400_000, end_ms: now }`;
+    /// fixed presets pass through to the engine's named variants. The backtest
+    /// crate is untouched — this is a pure UI-side enum→`DateRange` mapping.
+    #[must_use]
+    pub fn to_date_range(self, now_ms: i64) -> backtest::engine::DateRange {
+        use backtest::engine::DateRange;
+        // Exhaustive `match self` (no catch-all) — a new lookback variant fails
+        // to compile until it's mapped here, so the UI→engine mapping can never
+        // silently fall through. The relative arms share the same `Custom`
+        // window shape via `relative_days()`; the two fixed presets pass through.
+        match self.relative_days() {
+            Some(days) => DateRange::Custom {
+                start_ms: now_ms - days * MS_PER_DAY,
+                end_ms: now_ms,
+            },
+            // `relative_days()` is `None` ⇒ a fixed preset (H1/H2 only).
+            None => match self {
+                LeaderboardLookback::H2_2024 => DateRange::H2_2024,
+                // Every remaining variant with `relative_days() == None` is
+                // `H1_2024` (the only other fixed preset) — mapped here.
+                _ => DateRange::H1_2024,
+            },
+        }
+    }
+}
+
+/// Parse a budget input string into a non-negative `Decimal` of euros.
+///
+/// Returns `Some(amount)` only when `s` parses to a finite `Decimal ≥ 0`
+/// (a budget cannot be negative). Empty / non-numeric / negative returns
+/// `None` → the screen shows the placeholder + the run uses the default. Pure;
+/// no I/O. Accepts a leading `€` and surrounding whitespace so paste-from-copy
+/// ("€200") round-trips.
+#[must_use]
+pub fn parse_budget(s: &str) -> Option<Decimal> {
+    let trimmed = s.trim().trim_start_matches('\u{20ac}').trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let amount = trimmed.parse::<Decimal>().ok()?;
+    if amount.is_sign_negative() {
+        None
+    } else {
+        Some(amount)
+    }
+}
+
 /// Per-session Leaderboard-screen state. Sibling of `ReportsScreenState`.
 ///
 /// `Default` = `result: PanelState::Empty` (no bake-off run yet — the cold
-/// "press Run bake-off" surface) and `running: false`. A `Run bake-off`
-/// action flips `result` to `Loading` (and `running` to `true`); the async
-/// completion lands `Ready(mirror)` or `Error(msg)`.
+/// "press Run bake-off" surface), `running: false`, and the F3 guided-input
+/// defaults (`BTCUSDT` / €200 / 2024 H1). A `Run bake-off` action flips
+/// `result` to `Loading` (and `running` to `true`); the async completion lands
+/// `Ready(mirror)` or `Error(msg)`.
 #[derive(Debug, Clone)]
 pub struct LeaderboardScreenState {
     /// The bake-off result.
@@ -256,6 +402,22 @@ pub struct LeaderboardScreenState {
     /// `lab_run_inflight` token). Guards against double-dispatch — the Run
     /// button is disabled while `true`.
     pub running: bool,
+
+    // ── F3 guided input ──────────────────────────────────────────────────────
+    /// The coin the operator chose to rank strategies on (default `BTCUSDT`).
+    /// Drives the bake-off `BakeoffRequest::symbol` and the budget-context
+    /// header copy.
+    pub coin: Symbol,
+    /// The raw budget input string (round-trips the operator's keystrokes).
+    /// Parsed to a `Decimal` via [`parse_budget`] for display; `None` parse →
+    /// the default is shown. The bake-off RANKING does not use the budget
+    /// (ranking is budget-independent); it carries forward to F4 (sizing) +
+    /// F5 (paper-trade) and is SHOWN in the header for context.
+    pub budget_input: String,
+    /// The lookback window the operator chose (default `H1_2024`). Mapped to a
+    /// `backtest::engine::DateRange` at dispatch time via
+    /// [`LeaderboardLookback::to_date_range`].
+    pub lookback: LeaderboardLookback,
 }
 
 impl Default for LeaderboardScreenState {
@@ -266,6 +428,11 @@ impl Default for LeaderboardScreenState {
             // shows when work is actually happening.
             result: PanelState::Empty,
             running: false,
+            // F3 guided-input defaults — the most-used starting point (product
+            // § journey step 1: BTCUSDT / €200 / a corpus-covered window).
+            coin: Symbol::new(DEFAULT_BAKEOFF_COIN),
+            budget_input: DEFAULT_BUDGET_INPUT.to_string(),
+            lookback: LeaderboardLookback::H1_2024,
         }
     }
 }
@@ -288,6 +455,14 @@ impl LeaderboardScreenState {
             Ok(mirror) => PanelState::Ready(mirror),
             Err(msg) => PanelState::Error(msg),
         };
+    }
+
+    /// The parsed budget (euros), or `None` when the input is blank /
+    /// unparseable / negative. The header + the down-stream sizing read this;
+    /// the bake-off ranking does not.
+    #[must_use]
+    pub fn budget_eur(&self) -> Option<Decimal> {
+        parse_budget(&self.budget_input)
     }
 }
 
@@ -333,6 +508,24 @@ mod tests {
             "cold start must be Empty (the press-Run prompt), not Loading"
         );
         assert!(!s.running, "no run in flight at cold start");
+    }
+
+    #[test]
+    fn default_guided_input_is_btc_200_h1() {
+        // F3 — the most-used starting point (product § journey step 1).
+        let s = LeaderboardScreenState::default();
+        assert_eq!(s.coin.0.as_str(), "BTCUSDT", "default coin is BTCUSDT");
+        assert_eq!(s.budget_input, "200", "default budget input is 200");
+        assert_eq!(
+            s.budget_eur(),
+            Some(dec!(200)),
+            "default budget parses to €200"
+        );
+        assert_eq!(
+            s.lookback,
+            LeaderboardLookback::H1_2024,
+            "default lookback is the corpus-covered H1 2024"
+        );
     }
 
     #[test]
@@ -386,5 +579,99 @@ mod tests {
         let mut none = m;
         none.crowned = None;
         assert!(none.crowned_row().is_none());
+    }
+
+    // ── F3 guided input — lookback + budget ──────────────────────────────────
+
+    #[test]
+    fn coin_universe_is_corpus_covered_and_xrp_first() {
+        // Every coin must exist in the pinned Binance corpus AND match the
+        // operator-locked XRP-first scan order.
+        assert_eq!(BAKEOFF_COIN_UNIVERSE.len(), 10);
+        assert_eq!(BAKEOFF_COIN_UNIVERSE[0], "XRPUSDT", "XRP-first");
+        assert_eq!(BAKEOFF_COIN_UNIVERSE[2], "BTCUSDT");
+        assert!(
+            BAKEOFF_COIN_UNIVERSE.contains(&DEFAULT_BAKEOFF_COIN),
+            "the default coin must be in the offered universe"
+        );
+    }
+
+    #[test]
+    fn relative_lookback_maps_to_custom_window_from_now() {
+        // A relative lookback → Custom { now - N days, now } (the UI mapping;
+        // the backtest crate is untouched).
+        const NOW: i64 = 1_900_000_000_000; // a fixed wall-clock for the test
+        let two_weeks = LeaderboardLookback::TwoWeeks.to_date_range(NOW);
+        match two_weeks {
+            backtest::engine::DateRange::Custom { start_ms, end_ms } => {
+                assert_eq!(end_ms, NOW, "the window ends at now");
+                assert_eq!(
+                    end_ms - start_ms,
+                    14 * 86_400_000,
+                    "2-weeks spans exactly 14 days of millis"
+                );
+            }
+            other => panic!("relative lookback must map to Custom, got {other:?}"),
+        }
+
+        // 4-years is the product's widest headline window.
+        let four_years = LeaderboardLookback::FourYears.to_date_range(NOW);
+        match four_years {
+            backtest::engine::DateRange::Custom { start_ms, end_ms } => {
+                assert_eq!(end_ms - start_ms, 1460 * 86_400_000);
+            }
+            other => panic!("4-years must map to Custom, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fixed_preset_lookback_passes_through() {
+        const NOW: i64 = 1_900_000_000_000;
+        assert!(matches!(
+            LeaderboardLookback::H1_2024.to_date_range(NOW),
+            backtest::engine::DateRange::H1_2024
+        ));
+        assert!(matches!(
+            LeaderboardLookback::H2_2024.to_date_range(NOW),
+            backtest::engine::DateRange::H2_2024
+        ));
+    }
+
+    #[test]
+    fn all_lookbacks_render_in_order() {
+        // The picker offers all nine choices, relative first then the 2024
+        // presets last (the order the chips render).
+        let all = LeaderboardLookback::ALL;
+        assert_eq!(all.len(), 9);
+        assert_eq!(all[0], LeaderboardLookback::TwoWeeks);
+        assert_eq!(all[6], LeaderboardLookback::FourYears);
+        assert_eq!(all[7], LeaderboardLookback::H1_2024);
+        assert_eq!(all[8], LeaderboardLookback::H2_2024);
+    }
+
+    #[test]
+    fn parse_budget_accepts_plain_euro_and_whitespace() {
+        assert_eq!(parse_budget("200"), Some(dec!(200)));
+        assert_eq!(parse_budget("  200  "), Some(dec!(200)));
+        assert_eq!(parse_budget("\u{20ac}200"), Some(dec!(200)), "leading € ok");
+        assert_eq!(parse_budget("199.50"), Some(dec!(199.50)));
+        assert_eq!(
+            parse_budget("0"),
+            Some(dec!(0)),
+            "zero is a valid (empty) budget"
+        );
+    }
+
+    #[test]
+    fn parse_budget_rejects_blank_negative_and_garbage() {
+        assert_eq!(parse_budget(""), None);
+        assert_eq!(parse_budget("   "), None);
+        assert_eq!(parse_budget("-50"), None, "a budget cannot be negative");
+        assert_eq!(parse_budget("abc"), None);
+        assert_eq!(
+            parse_budget("1,000"),
+            None,
+            "no thousands sep in the raw field"
+        );
     }
 }

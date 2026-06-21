@@ -1126,6 +1126,11 @@ pub const SIDE_SELL: &str = "SELL";
 pub const UNIT_USDT: &str = "USDT";
 pub const UNIT_BTC: &str = "BTC";
 
+/// Euro currency symbol — a PREFIX glyph for budget amounts (product § journey:
+/// "a budget (e.g. €200)"). A typographic symbol, kept here (not inline in
+/// `num.rs`) so the glyph is reviewable in one place alongside the other units.
+pub const CURRENCY_EUR_SYMBOL: &str = "\u{20ac}";
+
 // ── lab-yahoo-realdata — source toggle + cadence badge (T-C3 / R-UI-1) ──────
 
 /// Source toggle chip label for Synthetic GBM bars (default).
@@ -1384,6 +1389,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("SIDE_SELL", SIDE_SELL),
         ("UNIT_USDT", UNIT_USDT),
         ("UNIT_BTC", UNIT_BTC),
+        ("CURRENCY_EUR_SYMBOL", CURRENCY_EUR_SYMBOL),
         ("PLACEHOLDER_NONE", PLACEHOLDER_NONE),
         ("STATUS_BAR_CONNECTED", STATUS_BAR_CONNECTED),
         ("STATUS_BAR_RECONNECTING", STATUS_BAR_RECONNECTING),
@@ -1566,6 +1572,33 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_WINNER_FRAGILE_CLAUSE",
             LEADERBOARD_WINNER_FRAGILE_CLAUSE,
         ),
+        // advisor-bakeoff-ranking F3 — guided input
+        ("LEADERBOARD_PLAN_TITLE", LEADERBOARD_PLAN_TITLE),
+        ("LEADERBOARD_COIN_LABEL", LEADERBOARD_COIN_LABEL),
+        ("LEADERBOARD_BUDGET_LABEL", LEADERBOARD_BUDGET_LABEL),
+        ("LEADERBOARD_LOOKBACK_LABEL", LEADERBOARD_LOOKBACK_LABEL),
+        (
+            "LEADERBOARD_BUDGET_PLACEHOLDER",
+            LEADERBOARD_BUDGET_PLACEHOLDER,
+        ),
+        ("LEADERBOARD_BUDGET_HINT", LEADERBOARD_BUDGET_HINT),
+        (
+            "LEADERBOARD_BUDGET_CONTEXT_FMT",
+            LEADERBOARD_BUDGET_CONTEXT_FMT,
+        ),
+        (
+            "LEADERBOARD_CONTEXT_NO_BUDGET_FMT",
+            LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
+        ),
+        ("LEADERBOARD_LOOKBACK_2W", LEADERBOARD_LOOKBACK_2W),
+        ("LEADERBOARD_LOOKBACK_1M", LEADERBOARD_LOOKBACK_1M),
+        ("LEADERBOARD_LOOKBACK_3M", LEADERBOARD_LOOKBACK_3M),
+        ("LEADERBOARD_LOOKBACK_6M", LEADERBOARD_LOOKBACK_6M),
+        ("LEADERBOARD_LOOKBACK_1Y", LEADERBOARD_LOOKBACK_1Y),
+        ("LEADERBOARD_LOOKBACK_2Y", LEADERBOARD_LOOKBACK_2Y),
+        ("LEADERBOARD_LOOKBACK_4Y", LEADERBOARD_LOOKBACK_4Y),
+        ("LEADERBOARD_LOOKBACK_H1_2024", LEADERBOARD_LOOKBACK_H1_2024),
+        ("LEADERBOARD_LOOKBACK_H2_2024", LEADERBOARD_LOOKBACK_H2_2024),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -2030,9 +2063,10 @@ pub const LEADERBOARD_RUN_BUTTON: &str = "Run bake-off";
 pub const LEADERBOARD_RUN_BUTTON_RUNNING: &str = "Running\u{2026}";
 
 /// Empty-state prompt — the cold "no run yet" surface (never a blank screen).
-/// Tells the operator exactly what to do next.
-pub const LEADERBOARD_EMPTY_PROMPT: &str = "No bake-off yet. Press \u{201c}Run bake-off\u{201d} to rank every strategy on BTCUSDT over \
-     2024 H1.";
+/// Tells the operator exactly what to do next, reflecting the CURRENT
+/// selection. `{coin}` / `{lookback}` are filled at the call site (F3).
+pub const LEADERBOARD_EMPTY_PROMPT: &str = "No bake-off yet. Press \u{201c}Run bake-off\u{201d} to rank every strategy on {coin} over \
+     {lookback}.";
 
 /// Loading copy — shown beside the spinner while the bake-off runs. Sets the
 /// expectation that backtesting the field takes a moment.
@@ -2134,6 +2168,59 @@ pub const LEADERBOARD_WINNER_ROBUST_CLAUSE: &str = "It held up under resampling.
 /// Clause appended to the headline when the winner is fragile under resampling.
 pub const LEADERBOARD_WINNER_FRAGILE_CLAUSE: &str =
     "But it looked fragile under resampling \u{2014} treat with caution.";
+
+// ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──────
+
+/// Title of the guided-input panel above the leaderboard table.
+pub const LEADERBOARD_PLAN_TITLE: &str = "Plan your bake-off";
+
+/// Label above the coin picker — plain language for "which coin".
+pub const LEADERBOARD_COIN_LABEL: &str = "Coin";
+
+/// Label above the budget field.
+pub const LEADERBOARD_BUDGET_LABEL: &str = "Budget";
+
+/// Label above the lookback picker.
+pub const LEADERBOARD_LOOKBACK_LABEL: &str = "Lookback";
+
+/// Placeholder in the empty budget field — shows the default the run uses.
+pub const LEADERBOARD_BUDGET_PLACEHOLDER: &str = "200";
+
+/// Helper under the budget field (product § D4): the €/USDT 1:1 modelling
+/// assumption, stated so the operator isn't misled about FX.
+pub const LEADERBOARD_BUDGET_HINT: &str = "\u{20ac}200 \u{2248} 200 USDT \u{2014} FX not modelled.";
+
+/// Budget-context header shown above the leaderboard once a budget is set
+/// (R: "ranking strategies for €200 in XRPUSDT"). `{budget}` / `{coin}` are
+/// filled at the call site. Carries the budget forward visually even though the
+/// ranking itself is budget-independent.
+pub const LEADERBOARD_BUDGET_CONTEXT_FMT: &str = "Ranking strategies for {budget} in {coin}.";
+
+/// Budget-context header when the budget field is blank/unparseable — the coin
+/// is still named so the header never goes empty. `{coin}` filled at the call
+/// site.
+pub const LEADERBOARD_CONTEXT_NO_BUDGET_FMT: &str = "Ranking strategies in {coin}.";
+
+// ── Lookback chip labels (F3) — one per `LeaderboardLookback` ──────────────────
+
+/// Lookback chip — ~2 weeks to today.
+pub const LEADERBOARD_LOOKBACK_2W: &str = "2 weeks";
+/// Lookback chip — ~1 month to today.
+pub const LEADERBOARD_LOOKBACK_1M: &str = "1 month";
+/// Lookback chip — ~3 months to today.
+pub const LEADERBOARD_LOOKBACK_3M: &str = "3 months";
+/// Lookback chip — ~6 months to today.
+pub const LEADERBOARD_LOOKBACK_6M: &str = "6 months";
+/// Lookback chip — ~1 year to today.
+pub const LEADERBOARD_LOOKBACK_1Y: &str = "1 year";
+/// Lookback chip — ~2 years to today.
+pub const LEADERBOARD_LOOKBACK_2Y: &str = "2 years";
+/// Lookback chip — ~4 years to today.
+pub const LEADERBOARD_LOOKBACK_4Y: &str = "4 years";
+/// Lookback chip — fixed preset, first half of 2024.
+pub const LEADERBOARD_LOOKBACK_H1_2024: &str = "2024 H1";
+/// Lookback chip — fixed preset, second half of 2024.
+pub const LEADERBOARD_LOOKBACK_H2_2024: &str = "2024 H2";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

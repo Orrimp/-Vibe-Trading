@@ -59,11 +59,12 @@ use crate::leaderboard::state::{
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK,
-    LEADERBOARD_COL_RETURN, LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY,
-    LEADERBOARD_COL_TRADES, LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER,
-    LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_FRAGILE_TAG,
-    LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
+    LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_BUDGET_CONTEXT_FMT, LEADERBOARD_CAPTION,
+    LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN, LEADERBOARD_COL_SHARPE,
+    LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES, LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
+    LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT,
+    LEADERBOARD_ERROR_PREFIX, LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE,
+    LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
     LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
     LEADERBOARD_REASON_ALL_FRAGILE, LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE,
     LEADERBOARD_REASON_BENCHMARK_UNDEFEATED, LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE,
@@ -91,6 +92,11 @@ const W_NUM: f32 = 110.0;
 /// Render the Leaderboard screen body.
 ///
 /// Called by `shell::screen_body` when `current_screen == Screen::Leaderboard`.
+///
+/// Layout, top-to-bottom: the headline/caption + Run button header, the F3
+/// guided-input form (coin + budget + lookback), the budget-context line
+/// ("Ranking strategies for €200 in XRPUSDT"), then the result body (the
+/// `PanelState` table / prompt / spinner / error).
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let st = &model.leaderboard_screen_state;
@@ -103,15 +109,48 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(Space::new().width(Length::Fill))
         .push(run_button(st.running, mode));
 
+    // F3 guided input — the entry point to the whole journey: pick coin +
+    // budget + lookback. Drives the next bake-off (the binary reads this state
+    // to build the `BakeoffConfig`).
+    let guided_input =
+        crate::widgets::bakeoff_input::view(&st.coin, &st.budget_input, st.lookback, mode);
+
+    // Budget-context line — carries the budget forward visually (the ranking
+    // itself is budget-independent; this is shown for context per F3).
+    let budget_context = budget_context_line(st, mode);
+
     let body = result_body(st, mode);
 
     Column::new()
         .padding(space::L as u16)
         .spacing(space::L)
         .push(header)
+        .push(guided_input)
+        .push(budget_context)
         .push(body)
         .width(Length::Fill)
         .height(Length::Fill)
+        .into()
+}
+
+/// The budget-context line shown under the guided input — "Ranking strategies
+/// for €200 in XRPUSDT." When the budget field is blank/unparseable the budget
+/// clause drops but the coin is still named, so the line never goes empty
+/// (no-blank-screen rule). Built from the structured selection (the UI owns the
+/// copy; the runtime values stay values).
+fn budget_context_line(
+    st: &crate::leaderboard::LeaderboardScreenState,
+    mode: ThemeMode,
+) -> crate::Element<'_> {
+    let copy = match st.budget_eur() {
+        Some(amount) => LEADERBOARD_BUDGET_CONTEXT_FMT
+            .replace("{budget}", &crate::widgets::num::fmt_eur(amount))
+            .replace("{coin}", st.coin.0.as_str()),
+        None => LEADERBOARD_CONTEXT_NO_BUDGET_FMT.replace("{coin}", st.coin.0.as_str()),
+    };
+    Text::new(copy)
+        .size(text::H3)
+        .color(color::FG_2.current(mode))
         .into()
 }
 
@@ -189,8 +228,10 @@ fn result_body(
         .width(Length::Fill)
         .height(Length::Fill)
         .into(),
-        // Cold start — the "press Run bake-off" prompt (honest Empty).
-        PanelState::Empty => prompt(LEADERBOARD_EMPTY_PROMPT, mode),
+        // Cold start — the "press Run bake-off" prompt (honest Empty). The copy
+        // reflects the CURRENT selection so the operator sees exactly what the
+        // next Run will do (F3): "…rank every strategy on {coin} over {lookback}".
+        PanelState::Empty => prompt(empty_prompt_copy(st), mode),
         // The run failed — prefix + the engine's detail (never a bare "no data").
         PanelState::Error(detail) => error_pane(detail, mode),
         // The ranked leaderboard + recommendation.
@@ -198,8 +239,9 @@ fn result_body(
     }
 }
 
-/// A centred prompt/empty message — never a blank surface.
-fn prompt(copy: &str, mode: ThemeMode) -> crate::Element<'_> {
+/// A centred prompt/empty message — never a blank surface. Takes the copy by
+/// value (the empty-prompt copy is computed from the live selection).
+fn prompt(copy: String, mode: ThemeMode) -> crate::Element<'static> {
     Container::new(
         Column::new()
             .push(Space::new().height(Length::Fixed(space::XL as f32)))
@@ -212,6 +254,17 @@ fn prompt(copy: &str, mode: ThemeMode) -> crate::Element<'_> {
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+/// Fill the empty-prompt template with the current coin + lookback so the cold
+/// surface tells the operator exactly what the next Run will rank (F3).
+fn empty_prompt_copy(st: &crate::leaderboard::LeaderboardScreenState) -> String {
+    LEADERBOARD_EMPTY_PROMPT
+        .replace("{coin}", st.coin.0.as_str())
+        .replace(
+            "{lookback}",
+            crate::widgets::bakeoff_input::lookback_copy(st.lookback),
+        )
 }
 
 /// The error surface — `LEADERBOARD_ERROR_PREFIX` + the engine's detail, so the

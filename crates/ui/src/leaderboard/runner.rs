@@ -22,13 +22,13 @@
 //! never threads an engine type through `view`. `ui` gains NO new crate edge
 //! (`strategy`/`exec`/`forecast`/`llm` stay out of the dep graph).
 //!
-//! ## Default-coin trigger (F1 → F3 boundary)
+//! ## Guided-input trigger (F3)
 //!
-//! v0.1.0 ships a MINIMAL trigger: a single "Run bake-off" action with a
-//! default coin (`BTCUSDT`) + lookback (`H1_2024`), `data_source =
-//! BinanceCache`, `robustness = Skip`. The full guided coin/budget input is
-//! the next feature (F3); a default-coin button is enough to demonstrate the
-//! leaderboard end-to-end here.
+//! [`bakeoff_config_from_state`] builds the config from the operator's CHOSEN
+//! coin + lookback (the F3 guided input), `data_source = BinanceCache`,
+//! `robustness = Skip`. [`default_bakeoff_config`] is retained as the
+//! cold-start default (`BTCUSDT` / `H1_2024`) that seeds the guided-input
+//! state and as a stable reference for tests.
 
 use smol_str::SmolStr;
 
@@ -40,9 +40,10 @@ use crate::leaderboard::state::BakeoffReportMirror;
 /// operator-friendly failure reason (mirrors `LabRunResult`'s shape).
 pub type BakeoffRunResult = Result<BakeoffReportMirror, SmolStr>;
 
-/// The default coin the v0.1.0 trigger runs the bake-off on (F3 will make this
-/// operator-selectable). Binance-style symbol, resolved against the pinned
-/// hourly corpus.
+/// The default coin the cold-start config runs the bake-off on. The F3 guided
+/// input makes this operator-selectable (`LeaderboardScreenState::coin`); this
+/// remains the default the state seeds with + the `default_bakeoff_config`
+/// fallback. Binance-style symbol, resolved against the pinned hourly corpus.
 pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
 
 /// Build the default `BakeoffConfig` for the v0.1.0 trigger.
@@ -63,6 +64,39 @@ pub fn default_bakeoff_config() -> backtest::BakeoffConfig {
         request: backtest::BakeoffRequest {
             symbol: Symbol::new(DEFAULT_BAKEOFF_COIN),
             range: backtest::engine::DateRange::H1_2024,
+            seed: crate::lab::defaults::LAB_DEFAULT_SEED,
+            field: backtest::BakeoffConfig::default_field(),
+        },
+        data_source: backtest::engine::ScenarioDataSource::BinanceCache,
+        robustness: backtest::RobustnessMode::Skip,
+    }
+}
+
+/// Build a `BakeoffConfig` from the F3 guided-input state — the operator's
+/// CHOSEN coin + lookback (replacing the hardcoded `BTCUSDT` / `H1_2024`
+/// default).
+///
+/// The lookback enum is mapped to a `backtest::engine::DateRange` against
+/// `now_ms` (wall-clock UTC epoch-millis) HERE, at the dispatch boundary —
+/// relative windows become `Custom { now - N days, now }`, the fixed 2024
+/// presets pass through. Everything else matches `default_bakeoff_config`: the
+/// 4 rule engines (buy-and-hold is appended by `run_bakeoff`), the Lab's
+/// deterministic seed (apples-to-apples across arms), `BinanceCache` (the real
+/// hourly corpus), `robustness = Skip` (fast; ranking correct). Pure; no I/O.
+///
+/// The budget is intentionally NOT threaded here — the bake-off ranking is
+/// budget-independent (product § journey: ranking compares risk-adjusted
+/// return, the same for any budget). The budget carries forward to F4 (sizing)
+/// + F5 (paper-trade) and is shown in the leaderboard header for context.
+#[must_use]
+pub fn bakeoff_config_from_state(
+    st: &crate::leaderboard::LeaderboardScreenState,
+    now_ms: i64,
+) -> backtest::BakeoffConfig {
+    backtest::BakeoffConfig {
+        request: backtest::BakeoffRequest {
+            symbol: st.coin.clone(),
+            range: st.lookback.to_date_range(now_ms),
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             field: backtest::BakeoffConfig::default_field(),
         },
@@ -171,5 +205,43 @@ mod tests {
                 .any(|s| s.0.as_str() == "v0.buyhold"),
             "buy-and-hold must NOT be in the field — run_bakeoff appends it"
         );
+    }
+
+    /// F3 — `bakeoff_config_from_state` carries the operator's chosen coin +
+    /// lookback into the request (replacing the hardcoded default), keeps the
+    /// same field / seed / source / gate contract.
+    #[test]
+    fn config_from_state_uses_chosen_coin_and_lookback() {
+        use crate::leaderboard::{LeaderboardLookback, LeaderboardScreenState};
+        use trading_core::Symbol;
+
+        const NOW: i64 = 1_900_000_000_000;
+        let mut st = LeaderboardScreenState {
+            coin: Symbol::new("XRPUSDT"),
+            lookback: LeaderboardLookback::OneMonth,
+            ..Default::default()
+        };
+        st.budget_input = "200".to_string();
+
+        let cfg = bakeoff_config_from_state(&st, NOW);
+        assert_eq!(
+            cfg.request.symbol.0.as_str(),
+            "XRPUSDT",
+            "the chosen coin drives the request"
+        );
+        match cfg.request.range {
+            backtest::engine::DateRange::Custom { start_ms, end_ms } => {
+                assert_eq!(end_ms, NOW);
+                assert_eq!(end_ms - start_ms, 30 * 86_400_000, "1-month = 30 days");
+            }
+            other => panic!("OneMonth must map to a Custom window, got {other:?}"),
+        }
+        // Field / seed / source / gate are unchanged from the default contract.
+        assert_eq!(cfg.request.field.len(), 4);
+        assert!(matches!(
+            cfg.data_source,
+            backtest::engine::ScenarioDataSource::BinanceCache
+        ));
+        assert!(matches!(cfg.robustness, backtest::RobustnessMode::Skip));
     }
 }

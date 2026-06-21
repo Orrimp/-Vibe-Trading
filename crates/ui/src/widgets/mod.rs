@@ -17,6 +17,9 @@ pub mod agent_feed;
 /// Tick spacing, label formatting, and coordinate mapping for use by
 /// `widgets::training_plot` and potentially `widgets::chart`.
 pub(crate) mod axis;
+/// advisor-bakeoff-ranking F3 — the guided bake-off input (coin + budget +
+/// lookback) rendered atop the Leaderboard screen.
+pub mod bakeoff_input;
 pub(crate) mod canvas_chart;
 pub mod chart;
 /// `cockpit-chart-cache` Phase 1 — geometry-build-vs-raster timing

@@ -1386,6 +1386,35 @@ pub fn fake_cockpit_leaderboard(
     cockpit.leaderboard_screen_state = crate::leaderboard::LeaderboardScreenState {
         result,
         running: false,
+        // F3 guided-input defaults (BTCUSDT / €200 / 2024 H1) — the default
+        // cockpit start state, used by the negative-control render path.
+        ..Default::default()
+    };
+    cockpit
+}
+
+/// A `Cockpit` routed to `Screen::Leaderboard` with an EXPLICIT F3 guided-input
+/// selection (coin + budget + lookback) installed alongside the result state.
+///
+/// Drives the render guard that proves the guided-input controls + the
+/// budget-context header paint with a NON-default selection (a chosen coin +
+/// budget + lookback) — so the assertion is not satisfied by the defaults
+/// alone. Synthetic — no engine, no I/O.
+#[must_use]
+pub fn fake_cockpit_leaderboard_with_input(
+    result: PanelState<crate::leaderboard::BakeoffReportMirror>,
+    coin: &str,
+    budget_input: &str,
+    lookback: crate::leaderboard::LeaderboardLookback,
+) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Leaderboard;
+    cockpit.leaderboard_screen_state = crate::leaderboard::LeaderboardScreenState {
+        result,
+        running: false,
+        coin: Symbol::new(coin),
+        budget_input: budget_input.to_string(),
+        lookback,
     };
     cockpit
 }

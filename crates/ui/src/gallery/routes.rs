@@ -22,12 +22,12 @@ use crate::state::{
 use crate::strings;
 use crate::theme::ThemeMode;
 use crate::widgets::{
-    activity_tape, agent_feed, cache_state_badge, cache_state_summary_badge, cadence_badge, chart,
-    date_range, focus_ring, frame, human_control, journal_transaction_modal, kill, kpi_strip,
-    latency, num, override_risk_veto, pair_chip, placeholder, pnl, position_curve, positions,
-    progress_bar, run_button, run_delta_badge, settings_tabs, sidebar_nav, source_toggle,
-    sparkline, status_bar, strategies, strategy_card, strategy_chip, training_log, training_plot,
-    volume_histogram,
+    activity_tape, agent_feed, bakeoff_input, cache_state_badge, cache_state_summary_badge,
+    cadence_badge, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
+    kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, position_curve,
+    positions, progress_bar, run_button, run_delta_badge, settings_tabs, sidebar_nav,
+    source_toggle, sparkline, status_bar, strategies, strategy_card, strategy_chip, training_log,
+    training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -590,6 +590,18 @@ fn render_pair_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
     pair_chip::row(universe, selected.as_ref(), false, ThemeMode::Dark)
 }
 
+/// advisor-bakeoff-ranking F3 — the guided bake-off input (coin + budget +
+/// lookback). Rendered with a representative selection (XRPUSDT / €200 /
+/// 1 month).
+fn render_bakeoff_input(_model: &Cockpit) -> iced::Element<'_, Message> {
+    use crate::leaderboard::LeaderboardLookback;
+    use trading_core::Symbol;
+    // Leak the Symbol so the borrow satisfies the gallery `'static` contract
+    // (test-only binary path — bounded leak, no production code follows this).
+    let coin: &'static Symbol = Box::leak(Box::new(Symbol::new("XRPUSDT")));
+    bakeoff_input::view(coin, "200", LeaderboardLookback::OneMonth, ThemeMode::Dark)
+}
+
 fn render_strategy_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
     use crate::lab::state::{COMPARE_SET_CAP, StrategyFamily};
     use std::collections::HashMap;
@@ -1028,6 +1040,12 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         state: "xrp_first_row",
         render: render_pair_chip,
         seed: seed_pair_chip,
+    },
+    GalleryCell {
+        widget: "bakeoff_input",
+        state: "xrp_200_one_month",
+        render: render_bakeoff_input,
+        seed: fx::fake_cockpit_ready,
     },
     GalleryCell {
         widget: "strategy_chip",
@@ -1469,6 +1487,7 @@ fn render_toast_tray_three_severities(model: &Cockpit) -> iced::Element<'_, Mess
 pub const EXPECTED_WIDGETS: &[&str] = &[
     "activity_tape",
     "agent_feed",
+    "bakeoff_input",
     "cache_state_badge",
     "cache_state_summary_badge",
     "cadence_badge",

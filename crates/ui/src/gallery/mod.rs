@@ -76,8 +76,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   toast_tray (empty + three_severities).
     // lab-yahoo-realdata v0.1.2 T-DU5 adds 4 new cells:
     //   cache_state_summary_badge (empty + one + two + ten).
-    // 72 * 260 = 18_720. Adding 360 px headroom for outer container padding.
-    19_080
+    // advisor-bakeoff-ranking F3 adds 1 new cell:
+    //   bakeoff_input (xrp_200_one_month).
+    // 74 * 260 = 19_240. Adding 360 px headroom for outer container padding.
+    19_600
 };
 
 /// Compose all gallery cells into a bare `column!` (no scrollable).

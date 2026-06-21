@@ -704,8 +704,143 @@ headline render. PNGs written to `/tmp/leaderboard_*_render.png` and eyeballed.
 4/4 green; the whole-suite stays green and `cargo tree -p ui` is unchanged
 (1841 lines — no new dep edge).
 
+## UI — F3 guided input (coin + budget + lookback)
+
+(ui-designer — the guided "new investment" input atop the Leaderboard, the entry
+point to the whole journey: product § journey step 1 *pick a coin + a budget
+over a configurable lookback*. Shipped 2026-06-20. Replaces the v0.1.0 hardcoded
+BTCUSDT / H1_2024 default — the operator now chooses.)
+
+### Wireframe
+
+```text
+┌─ Strategy bake-off ─────────────────────────────────────────────────[ Run ]──┐
+├─ Plan your bake-off ──────────────────────────────────────────────────────────┤
+│ Coin                                                                          │
+│ [XRPUSDT] [ETHUSDT] [BTCUSDT★] [ADAUSDT] [AVAXUSDT] [BNBUSDT] [DOGEUSDT] …     │  ← coin chips (active = SOLID ACCENT)
+│ Budget          Lookback                                                      │
+│ [ 200 ]         [2 weeks] [1 month] [3 months] [6 months] [1 year] … [H1★] …  │  ← lookback chips
+│ €200 ≈ 200 USDT — FX not modelled.                                            │  ← budget hint (product § D4)
+├──────────────────────────────────────────────────────────────────────────────┤
+│ Ranking strategies for €200 in BTCUSDT.            ← budget-context header     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ … (the recommendation + ranked table, unchanged from v0.1.0) …                │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+The form is **always present** (Empty + Loading + Error + Ready) — it is the
+journey entry point, so it is visible before any run. The Empty-state prompt
+copy reflects the live selection ("…rank every strategy on {coin} over
+{lookback}").
+
+### New screens / panels / widgets
+
+- **New widget `crate::widgets::bakeoff_input`** — the titled `frame::panel`
+  "Plan your bake-off" holding the coin-chip row + the budget `text_input` + the
+  lookback-chip row + the FX hint. The chip is the `pair_chip` shape (a
+  `Container` + transparent `button`), but the active chip uses the **SOLID
+  `ACCENT` fill + `FG_ON_ACCENT` text** (the source-toggle / Run-button "selected"
+  treatment) so the chosen coin/lookback pops and reads beyond colour
+  (accessibility) — and renders detectably at the pixel layer. Public
+  `lookback_copy(LeaderboardLookback) -> &'static str` so the screen header reuses
+  the SAME chip copy (single source for the window name).
+- **Budget-context header** (`screens::leaderboard::budget_context_line`) — an
+  `H3`/`FG_2` line "Ranking strategies for €200 in {coin}." When the budget is
+  blank/unparseable the budget clause drops but the coin is still named (the
+  line never goes empty).
+- **State on `LeaderboardScreenState`**: `coin: Symbol` (default BTCUSDT),
+  `budget_input: String` (raw keystrokes; default "200"),
+  `lookback: LeaderboardLookback` (default `H1_2024`). Plus `budget_eur() ->
+  Option<Decimal>` (parsed, for the header; the ranking does not use it).
+- **`LeaderboardLookback`** — a closed UI-side enum (`TwoWeeks` … `FourYears` +
+  `H1_2024`/`H2_2024`) with `to_date_range(now_ms) -> backtest::engine::DateRange`
+  mapping the relative windows to `Custom { now − N·86 400 000, now }` and the
+  fixed presets through. **The backtest crate is untouched** — the enum→`DateRange`
+  mapping lives entirely in the UI. `BAKEOFF_COIN_UNIVERSE` is the corpus-covered
+  XRP-first coin set (`data/binance/<SYM>/…`).
+- **Config builder `runner::bakeoff_config_from_state(st, now_ms)`** — builds the
+  `BakeoffConfig` from the operator's chosen coin + lookback (replacing
+  `default_bakeoff_config`), keeping the same field / seed / `BinanceCache` /
+  `Skip` contract. Wired binary-side in `cockpit_live.rs` (captured pre-update,
+  the `lab_run_cfg` precedent; `now_ms` = wall-clock UTC). **The budget is not
+  threaded into the bake-off** — ranking is budget-independent; the budget
+  carries forward to F4 (sizing) + F5 (paper-trade).
+- **Messages** `BakeoffSelectCoin(Symbol)` / `BakeoffSetBudget(String)` /
+  `BakeoffSelectLookback(LeaderboardLookback)` — all typed; the budget message
+  stores keystrokes verbatim (parse is render-time). None invalidate the existing
+  result (the operator can compare the prior leaderboard while re-selecting).
+
+### New strings (F3 — `crate::strings`, all registered in `all()`)
+
+`LEADERBOARD_PLAN_TITLE`, `LEADERBOARD_COIN_LABEL`, `LEADERBOARD_BUDGET_LABEL`,
+`LEADERBOARD_LOOKBACK_LABEL`, `LEADERBOARD_BUDGET_PLACEHOLDER`,
+`LEADERBOARD_BUDGET_HINT` (the "€200 ≈ 200 USDT — FX not modelled" line, product
+§ D4), `LEADERBOARD_BUDGET_CONTEXT_FMT` (`{budget}`/`{coin}`),
+`LEADERBOARD_CONTEXT_NO_BUDGET_FMT` (`{coin}`). Lookback chip labels
+`LEADERBOARD_LOOKBACK_{2W,1M,3M,6M,1Y,2Y,4Y,H1_2024,H2_2024}`. Currency glyph
+`CURRENCY_EUR_SYMBOL` (the `€` prefix, kept in `strings` next to `UNIT_USDT`).
+`LEADERBOARD_EMPTY_PROMPT` re-templated to `{coin}`/`{lookback}` (filled at the
+call site). New formatter `num::fmt_eur` (€-prefix, thousands sep, drops the
+trailing `.00` for whole budgets).
+
+### New theme tokens (F3)
+
+**Zero.** The form reuses `ACCENT` / `ACCENT_SOFT` / `FG_ON_ACCENT` / `FG_2/3` /
+`PANEL` / `BORDER_1`, the `space::*` 4/8/12/16/24 scale, the `text::*`
+MICRO/SMALL/BODY/H3 ladder, and `radius::R4`.
+
+### Accessibility notes (F3)
+
+- **Keyboard:** every coin chip + every lookback chip is an iced `Button` with a
+  typed `on_press`; the budget `text_input` is focus/type-navigable.
+- **Colour is never the only signal:** the active chip pairs the `ACCENT` fill
+  with `FG_ON_ACCENT` text contrast (the selected chip is the only filled one in
+  its row — a shape/fill difference, not just a hue). The budget hint states the
+  €/USDT 1:1 assumption in words (no colour reliance).
+- **Sensible defaults:** the form opens on the most-used start (BTCUSDT / €200 /
+  a corpus-covered window) so the "right" Run is one click away.
+
+### Render-layer verification (F3)
+
+`leaderboard_populated_render.rs` extended to 5 guards. Region-banded pixel
+classifiers split FORM (y 110–305) / CONTEXT (y 308–350) / TABLE (y ≥ 355) so the
+form's always-present `ACCENT` active chips never confound the crowned-row teal
+(the v0.1.0 negative control was re-scoped to the TABLE band — it had broken
+because the form's teal leaked into the below-header region). New guard
+`leaderboard_guided_input_with_selection_paints_controls_and_context` renders a
+NON-DEFAULT selection (XRPUSDT / €350 / 1 month via
+`fixtures::fake_cockpit_leaderboard_with_input`) and asserts the FORM active-chip
+teal (> 1500 px), the form foreground (> 2500 px), the budget-context line
+(> 400 px), AND the crowned table below. PNG `/tmp/leaderboard_guided_input_render.png`
+eyeballed: XRPUSDT + "1 month" highlighted, "Ranking strategies for €350 in
+XRPUSDT." header, table intact. 5/5 green; `cargo tree -p ui` unchanged (no new
+edge). No visual baselines re-generated (the leaderboard body is not in the
+`render_snapshots`/`visual_snapshots` baseline set; no nav row added; the gallery
+snapshot tests are `#[ignore]`d).
+
 ## Changelog
 
+- 2026-06-20 (ui-designer): built the F3 GUIDED INPUT (coin + budget + lookback)
+  atop the Leaderboard — the journey entry point (product § step 1). New widget
+  `widgets::bakeoff_input` (coin chips + budget field + lookback chips, active
+  chip = SOLID `ACCENT`), a budget-context header ("Ranking strategies for €200
+  in {coin}"), and the `LeaderboardLookback` enum whose `to_date_range(now_ms)`
+  maps the human ranges (2 weeks → 4 years + the 2024 presets) to
+  `backtest::engine::DateRange` **in the UI** (relative → `Custom { now−N·day, now }`;
+  the backtest crate untouched). `runner::bakeoff_config_from_state` replaces the
+  hardcoded BTCUSDT/H1_2024 default; wired binary-side in `cockpit_live.rs`. The
+  budget is shown for context but NOT threaded into the bake-off (ranking is
+  budget-independent → carries to F4/F5). New strings `LEADERBOARD_PLAN_TITLE` /
+  `_COIN_LABEL` / `_BUDGET_LABEL` / `_LOOKBACK_LABEL` / `_BUDGET_HINT` (D4 FX
+  note) / `_BUDGET_CONTEXT_FMT` / `_CONTEXT_NO_BUDGET_FMT` / `_LOOKBACK_*` (9
+  chips) / `CURRENCY_EUR_SYMBOL`; `_EMPTY_PROMPT` re-templated to `{coin}`/`{lookback}`;
+  new `num::fmt_eur`. Zero new theme tokens. Render guard extended to 5 (region-
+  banded FORM/CONTEXT/TABLE classifiers; the v0.1.0 negative control re-scoped to
+  the TABLE band; new non-default-selection guard reading
+  `/tmp/leaderboard_guided_input_render.png`). Gates: `cargo test -p ui` green
+  (lib 501 + all binaries), forced clippy clean, fmt clean, anchors 119/119;
+  `cargo tree -p ui` unchanged (no new edge — INVARIANT held). No visual baselines
+  re-generated (leaderboard body not in the baseline set; no nav row added).
 - 2026-06-20 (ui-designer): built the cockpit LEADERBOARD screen (journey step
   3) — `Screen::Leaderboard` + `screens::leaderboard::view` rendering a
   `BakeoffReport` via the pure-`ui` `BakeoffReportMirror` (the INVARIANT seam:
