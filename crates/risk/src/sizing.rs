@@ -13,13 +13,32 @@ use trading_core::{
 pub struct FixedFractionSizer {
     /// Fraction of equity to size (e.g. 0.10 for 10%).
     pub fraction: Decimal,
+    /// Hard notional ceiling on a single position's deployed capital, in USDT.
+    /// `Some(budget)` for the budget-aware forward run (F4); `None` preserves
+    /// the legacy behaviour byte-for-byte (default-capital sizing).
+    pub budget_cap: Option<Money<Usdt>>,
 }
 
 impl FixedFractionSizer {
-    /// Create a new sizer with the given fraction.
+    /// Legacy ctor — no budget cap (un-budgeted baseline). Behaviour UNCHANGED.
     #[must_use]
     pub fn new(fraction: Decimal) -> Self {
-        Self { fraction }
+        Self {
+            fraction,
+            budget_cap: None,
+        }
+    }
+
+    /// Budget-aware ctor (F4): cap deployed notional at `budget`.
+    ///
+    /// The cap is a **permanent notional ceiling**: qty·price ≤ budget even
+    /// after equity grows — the user can never deploy more than the budget.
+    #[must_use]
+    pub fn with_budget_cap(fraction: Decimal, budget: Money<Usdt>) -> Self {
+        Self {
+            fraction,
+            budget_cap: Some(budget),
+        }
     }
 
     /// Compute the quantity at the given price, clamped to the exposure cap.
@@ -50,6 +69,16 @@ impl FixedFractionSizer {
         let max_qty = max_notional / price;
         if qty > max_qty {
             qty = max_qty;
+        }
+
+        // F4 — budget clamp (M-DEV-F4.2): qty·price ≤ budget.
+        // Composed as a min after the exposure-cap clamp; the tighter of
+        // {exposure cap, budget} binds. Decimal-exact, no f64.
+        if let Some(budget) = self.budget_cap {
+            let max_qty_budget = budget.amount() / price;
+            if qty > max_qty_budget {
+                qty = max_qty_budget;
+            }
         }
 
         Quantity::new(qty).map_err(|_| SizingError::NegativeQty)
@@ -117,7 +146,7 @@ pub fn size_and_validate(
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::doc_markdown)]
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
@@ -194,6 +223,78 @@ mod tests {
         );
         let order = result.unwrap();
         assert_eq!(order.qty().get(), dec!(0.25));
+    }
+
+    // ── M-DEV-F4.3 — budget-cap both-ways unit tests ─────────────────────────
+
+    /// Budget tighter than exposure cap: budget binds.
+    ///
+    /// Inputs: equity 500 USDT, fraction 0.9, price 50_000, `per_symbol_exposure_cap` 1.0.
+    /// Fraction notional = 500 * 0.9 = 450 USDT. Budget cap = 100 USDT.
+    /// `max_qty_budget` = 100 / 50_000 = 0.002 BTC.
+    /// Expected: budget cap is the tighter limit; qty = 0.002 BTC.
+    #[test]
+    fn t23_budget_cap_tighter_than_exposure_cap_binds() {
+        let budget = Money::<Usdt>::from_decimal(dec!(100)); // 100 USDT cap
+        let sizer = FixedFractionSizer::with_budget_cap(dec!(0.9), budget);
+        let equity: Money<Usdt> = Money::from_decimal(dec!(500));
+        let limits = RiskLimits {
+            per_symbol_exposure_cap: dec!(1.0), // 100 % — exposure cap is slack
+            price_sanity_band: dec!(0.10),
+            portfolio_exposure_cap: None,
+        };
+        let qty = sizer.compute_qty(equity, dec!(50_000), &limits).unwrap();
+        // Expected: 100 / 50_000 = 0.002 BTC
+        assert_eq!(
+            qty.get(),
+            dec!(0.002),
+            "budget cap (100 USDT) should bind: qty = budget/price = 0.002 BTC, got {qty}"
+        );
+    }
+
+    /// Budget looser than exposure cap: exposure cap binds, budget is slack.
+    ///
+    /// Inputs: equity 100_000 USDT, fraction 0.5, price 40_000, `per_symbol_exposure_cap` 0.40.
+    /// Fraction gives 1.25 BTC notional; exposure cap clamps to 1.0 BTC.
+    /// Budget cap = 50_000 USDT = 1.25 BTC at this price — looser than the exposure clamp.
+    /// Expected: exposure cap is the tighter limit; qty = 1.0 BTC.
+    #[test]
+    fn t23_budget_cap_looser_than_exposure_cap_is_slack() {
+        let budget = Money::<Usdt>::from_decimal(dec!(50_000)); // loose budget
+        let sizer = FixedFractionSizer::with_budget_cap(dec!(0.5), budget);
+        let equity: Money<Usdt> = Money::from_decimal(dec!(100_000));
+        let limits = default_limits(); // `per_symbol_exposure_cap` = 0.40
+        let qty = sizer.compute_qty(equity, dec!(40_000), &limits).unwrap();
+        // Expected: exposure cap binds → 100_000 * 0.40 / 40_000 = 1.0 BTC
+        assert_eq!(
+            qty.get(),
+            dec!(1.0),
+            "exposure cap should bind (budget is slack): qty = 1.0 BTC, got {qty}"
+        );
+    }
+
+    /// `budget_cap: None` is byte-identical to existing `t23_basic_sizing` and
+    /// `t23_exposure_cap_clamps_qty` — no regression for legacy callers.
+    #[test]
+    fn t23_no_budget_cap_is_legacy_identical() {
+        // Case 1: basic sizing — matches t23_basic_sizing.
+        let sizer_none = FixedFractionSizer::new(dec!(0.1));
+        let equity_a: Money<Usdt> = Money::from_decimal(dec!(100_000));
+        let qty_a = sizer_none
+            .compute_qty(equity_a, dec!(40_000), &default_limits())
+            .unwrap();
+        assert_eq!(qty_a.get(), dec!(0.25), "None-cap basic: expected 0.25 BTC");
+
+        // Case 2: exposure-cap clamp — matches t23_exposure_cap_clamps_qty.
+        let sizer_none2 = FixedFractionSizer::new(dec!(0.5));
+        let qty_b = sizer_none2
+            .compute_qty(equity_a, dec!(40_000), &default_limits())
+            .unwrap();
+        assert_eq!(
+            qty_b.get(),
+            dec!(1.0),
+            "None-cap exposure: expected 1.0 BTC"
+        );
     }
 
     #[test]
