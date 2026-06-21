@@ -1197,6 +1197,24 @@ impl ComposedStrategy {
         &self.sizing
     }
 
+    /// Non-mutating read: the last evaluated rule value (true=rule fired, false=rule off).
+    ///
+    /// Used by `PlanDescribe::describe_plan` (F6, ADR-0062 § D2) to derive the
+    /// current stance without advancing any indicator state.
+    /// Returns `None` if no bar has been consumed yet (indicators not warmed).
+    #[must_use]
+    pub fn last_rule_value(&self) -> Option<bool> {
+        self.last_rule_value
+    }
+
+    /// Non-mutating read: the strategy id string.
+    ///
+    /// Used by `PlanDescribe` to identify which rule family to describe.
+    #[must_use]
+    pub fn id_str(&self) -> &str {
+        self.id.0.as_str()
+    }
+
     fn emit_signal(&self, bar: &Bar, kind: SignalKind) -> Signal {
         // Use the incoming bar's symbol rather than the TOML-hardcoded `self.symbol`
         // so that a BTC-named config (e.g. `btc_macd_trend`) can be run on any
@@ -1265,6 +1283,92 @@ impl Strategy for ComposedStrategy {
                 "params": { "type": "object" }
             }
         })
+    }
+}
+
+// ── PlanDescribe impl for ComposedStrategy ────────────────────────────────────
+
+impl crate::plan::PlanDescribe for ComposedStrategy {
+    /// Describe the ComposedStrategy's current stance + rule family.
+    ///
+    /// The stance is derived from `last_rule_value` (true = rule fired → Long).
+    /// The rule family is derived from the strategy id (keyed by which TOML
+    /// the supervisor loaded via `build_registry_for`).
+    ///
+    /// ## ID → Rule mapping (faithful to config/strategies/*.toml)
+    ///
+    /// - `btc_macd_trend`        → `MacdCross { fast:12, slow:26, signal:9 }`
+    ///   (entry: MACD hist > 0 AND close > EMA(200); flip-to-false exit)
+    /// - `btc_rsi_reversion`     → `RsiReversion { len:14, lower:30 }`
+    ///   (entry: RSI < 30 AND close > min(low,20); exits when RSI climbs back
+    ///   above 30 — flip-to-false, no RSI-70 threshold)
+    /// - `btc_bbands_mean_revert` → `BollingerReversion { len:20, k:2 }`
+    ///   (entry: close < bollinger_lower(20,2) AND volume surge; exits when
+    ///   price closes back inside the band — flip-to-false exit)
+    /// - (unknown)               → `SmaCross { fast_len:20, slow_len:50 }`
+    ///   (defensive fallback so the plan never panics on an unrecognised id)
+    ///
+    /// ## Non-mutation contract
+    ///
+    /// Reads only `self.last_rule_value` and `self.id` — no indicator push,
+    /// no state advance.  `ctx.last_close` is used only for sizing (ADR-0062 § D2).
+    fn describe_plan(&self, ctx: &crate::plan::PlanContext) -> crate::plan::StrategyPlan {
+        use crate::plan::{PlanRuleShape, PlanSignal, PlanStance, ProjectedSizing, StrategyPlan};
+        use rust_decimal_macros::dec;
+
+        // Stance from the last evaluated rule value:
+        //   true  → rule fired on the last bar → Long
+        //   false → rule was off               → Flat
+        //   None  → not yet warmed             → Flat
+        let stance = match self.last_rule_value {
+            Some(true) => PlanStance::Long,
+            _ => PlanStance::Flat,
+        };
+
+        // latest_signal: Buy when rule just fired, Sell when rule just turned off,
+        // Hold otherwise. Since we don't track the PREVIOUS value here, we derive
+        // a conservative signal from the current stance.
+        let latest_signal = match self.last_rule_value {
+            Some(true) => Some(PlanSignal::Buy),
+            Some(false) => Some(PlanSignal::Sell),
+            None => None,
+        };
+
+        // Rule shape by strategy id — parameters must match config/strategies/*.toml exactly.
+        let rule = match self.id_str() {
+            // btc_macd_trend: MACD histogram positive AND close > EMA(200); flip-to-false exit.
+            "btc_macd_trend" => PlanRuleShape::MacdCross {
+                fast: 12,
+                slow: 26,
+                signal: 9,
+            },
+            // btc_rsi_reversion: RSI(14) < 30 AND close > min(low,20); exits when RSI climbs
+            // back above 30 (the entry condition clears — flip-to-false, NOT an RSI-70 cross).
+            "btc_rsi_reversion" => PlanRuleShape::RsiReversion {
+                len: 14,
+                lower: dec!(30),
+            },
+            // btc_bbands_mean_revert: close < bollinger_lower(20,2) AND volume surge;
+            // exits when price closes back inside the band (flip-to-false exit).
+            "btc_bbands_mean_revert" => PlanRuleShape::BollingerReversion {
+                len: 20,
+                k: dec!(2),
+            },
+            // Unknown / future id — defensive fallback so the plan never panics.
+            _ => PlanRuleShape::SmaCross {
+                fast_len: 20,
+                slow_len: 50,
+            },
+        };
+
+        let sizing = ProjectedSizing::compute(ctx.budget, ctx.budget_cap, ctx.last_close);
+
+        StrategyPlan {
+            stance,
+            latest_signal,
+            rule,
+            sizing,
+        }
     }
 }
 

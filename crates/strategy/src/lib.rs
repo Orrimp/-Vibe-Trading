@@ -27,6 +27,8 @@ pub mod cross_sectional;
 pub mod pairs;
 pub mod patchtst_overlay_momentum;
 pub mod patchtst_sync;
+/// F6 forward-plan read seam (ADR-0062): `PlanDescribe` sibling trait + structured rule data.
+pub mod plan;
 pub mod regime_dispatcher;
 pub mod registry;
 pub mod sma_crossover;
@@ -48,6 +50,9 @@ pub use pairs::{MeanReversionPairsConfig, MeanReversionPairsStrategy, PairsLoadE
 pub use patchtst_overlay_momentum::PatchTstSyncForecaster;
 pub use patchtst_overlay_momentum::{
     PatchTstOverlayMomentumConfig, PatchTstOverlayMomentumStrategy,
+};
+pub use plan::{
+    PlanContext, PlanDescribe, PlanRuleShape, PlanSignal, PlanStance, ProjectedSizing, StrategyPlan,
 };
 pub use regime_dispatcher::{
     DispatchedRegime, PendingRegimeTag, RegimeDispatcher, RegimeDispatcherConfig,

@@ -1419,6 +1419,110 @@ pub fn fake_cockpit_leaderboard_with_input(
     cockpit
 }
 
+// ── advisor-forward-plan v0.1.0 (roadmap F6) — forward-plan fixtures ───────────
+
+/// A populated, deterministic ACTIVE-strategy [`ForwardPlanView`] for the
+/// Forward-plan screen — an SMA pick currently FLAT, with the IF/THEN standing
+/// rules and the €200 projected next-BUY sizing. This is the render guard's
+/// POSITIVE case (a full conditional plan).
+///
+/// Built directly as the view type — fixtures NEVER stand up the engine; the
+/// mirror is the whole point of the `ui`-pure seam (the
+/// `fake_bakeoff_report_mirror` precedent).
+#[must_use]
+pub fn fake_forward_plan() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    };
+    ForwardPlanView {
+        strategy: SmolStr::new("v0.sma"),
+        symbol: SmolStr::new("BTCUSDT"),
+        // Currently FLAT — waiting for the entry cross (exercises the next-BUY
+        // sizing line, the most informative case).
+        stance: PlanStanceView::Flat,
+        latest_signal: Some(PlanSignalView::Hold),
+        rule: PlanRuleView::SmaCross {
+            fast_len: 12,
+            slow_len: 26,
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 19 14:00"),
+        budget: dec!(200),
+        // 200 / 64000 = 0.003125 units.
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 26"),
+    }
+}
+
+/// An RSI-reversion [`ForwardPlanView`] fixture — the `btc_rsi_reversion` strategy.
+///
+/// Entry: RSI(14) < 30 (oversold). Exit: RSI climbs back above 30 (flip-to-false).
+/// There is no overbought threshold (no RSI-70). Used by the render guard to verify
+/// the faithful RSI rule copy (entry + flip-to-false exit, no fabricated 70) actually
+/// paints in the cockpit Forward-plan screen.
+#[must_use]
+pub fn fake_forward_plan_rsi() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    };
+    ForwardPlanView {
+        strategy: SmolStr::new("btc_rsi_reversion"),
+        symbol: SmolStr::new("BTCUSDT"),
+        // FLAT — oversold condition not currently met; waiting for an entry.
+        stance: PlanStanceView::Flat,
+        latest_signal: Some(PlanSignalView::Hold),
+        rule: PlanRuleView::RsiReversion { len: 14, lower: 30 },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 21 14:00"),
+        budget: dec!(200),
+        // 200 / 64000 = 0.003125 units.
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 28"),
+    }
+}
+
+/// The buy-and-hold degenerate [`ForwardPlanView`] (the `BenchmarkWins`
+/// honesty branch) — stance LONG after the first buy, NO sell trigger, "buy
+/// the full €200 now and hold the horizon". This is the render guard's
+/// NEGATIVE CONTROL: it must read as obviously the same KIND of object as the
+/// active plan but visibly DIFFER (no sell-rule line, no re-evaluation
+/// cadence), proving the populated guard is not a tautology.
+#[must_use]
+pub fn fake_forward_plan_buy_and_hold() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{ForwardPlanView, PlanRuleView, PlanStanceView};
+    ForwardPlanView {
+        strategy: SmolStr::new("v0.buyhold"),
+        symbol: SmolStr::new("BTCUSDT"),
+        // LONG after the first buy; no latest signal (no re-evaluation, D5).
+        stance: PlanStanceView::Long,
+        latest_signal: None,
+        rule: PlanRuleView::BuyAndHold,
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 19 14:00"),
+        budget: dec!(200),
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 26"),
+    }
+}
+
+/// A `Cockpit` routed to `Screen::ForwardPlan` with the supplied plan state
+/// installed. Synthetic — no engine, no I/O; the render guard drives this.
+#[must_use]
+pub fn fake_cockpit_forward_plan(
+    plan: PanelState<crate::forward_plan::ForwardPlanView>,
+) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::ForwardPlan;
+    cockpit.forward_plan_screen_state = crate::forward_plan::ForwardPlanScreenState { plan };
+    cockpit
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

@@ -493,6 +493,14 @@ fn main() -> Result<()> {
     #[cfg(feature = "live")]
     let (forward_tx_live, forward_rx_live) = tokio::sync::mpsc::channel::<agent::ForwardCommand>(4);
 
+    // F6-PLAN (ADR-0062 § D4) — build the forward-plan return channel.
+    // The runtime side holds `plan_tx` (Sender) and sends a ForwardPlan on
+    // each ForwardCommand::Launch. The iced side holds `_plan_rx_live`
+    // (Receiver) for the iced subscription that feeds the plan surface.
+    // Depth = 4 (same rationale as forward_command channel).
+    #[cfg(feature = "live")]
+    let (plan_tx_live, _plan_rx_live) = tokio::sync::mpsc::channel::<agent::ForwardPlan>(4);
+
     let agent_handle = {
         let cancel = cancel.clone();
 
@@ -506,6 +514,14 @@ fn main() -> Result<()> {
         let forward_rx_for_handles: Option<
             tokio::sync::mpsc::Receiver<agent::ForwardCommand>,
         > = None;
+
+        // F6-PLAN: pass the Sender into RunHandles so the supervisor can
+        // emit a ForwardPlan on each Launch. When compiled without `live`
+        // feature, plan_tx = None → byte-identical pre-F6 path.
+        #[cfg(feature = "live")]
+        let plan_tx_for_handles = Some(plan_tx_live);
+        #[cfg(not(feature = "live"))]
+        let plan_tx_for_handles: Option<tokio::sync::mpsc::Sender<agent::ForwardPlan>> = None;
 
         let handles = RunHandles {
             config: Arc::new(cfg),
@@ -522,6 +538,9 @@ fn main() -> Result<()> {
             // F5-LAUNCH: the Receiver carries forward-command hot-swap requests.
             // `None` (headless / soak path) → byte-identical to pre-F5L.
             forward_rx: forward_rx_for_handles,
+            // F6-PLAN: the Sender emits ForwardPlan on each Launch.
+            // `None` (headless / soak path) → byte-identical pre-F6 path.
+            plan_tx: plan_tx_for_handles,
         };
         let ledger_for_close = Arc::clone(&ledger);
         let boot_id_for_close = boot_id.clone();

@@ -35,8 +35,14 @@ non-negotiables that any architectural change must preserve.
    `rust_decimal::Decimal`. Aggregation rules are exact-cent with
    zero tolerance. See [ADR-0003](architecture/adr/0003-decimal-money-math.md).
 3. **The `ui` crate (lib + every binary target) never depends on
-   `strategy`, `exec`, `models`, or `llm`.** Bootstrap of those
-   types happens in `agent`. Detail in
+   `strategy`, `exec`, `forecast`, or `llm`.** Bootstrap of those
+   types happens in `agent`. (There is **no `crates/models`** — the
+   real workspace crate set is agent / audit / backtest / core / cost /
+   data / exec / features / forecast / llm / reflection / replay-cache /
+   reports / risk / strategy / trader / ui; the ML / DL work lives in
+   `crates/forecast` + `crates/features`, not a `models` crate. The four
+   crates `ui` must not import are `strategy` / `exec` / `forecast` / `llm`
+   — the seam ADR-0059 / ADR-0060 / ADR-0062 all enforce.) Detail in
    [06-ui-and-cockpit.md § App layout](architecture/06-ui-and-cockpit.md#app-layout).
 
 Anchor regressions, RNG seeding, timestamp precision, and report
@@ -150,6 +156,32 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-21 (architect): **ADR-0062 — forward-plan read seam** (feature
+  `advisor-forward-plan`, single-coin-advisor pivot F6). Recorded in the
+  canonical ADR registry ([architecture/adr/README.md](architecture/adr/README.md)
+  + `architecture/adr/0062-forward-plan-read-seam.md`). The F6 forward
+  buy/sell plan (a CONDITIONAL, reactive, rule-driven decision surface —
+  current stance + standing rules + €200 projected sizing, explicitly NOT a
+  price forecast) reaches `ui` via a NEW read-only sibling trait
+  `strategy::PlanDescribe` resolved AGENT-SIDE at the `ForwardCommand::Launch`
+  boundary from the SAME `build_registry_for(Some(&cfg))` registry the F5
+  hot-swap runs (plan↔engine consistency by construction, R7), mirrored to
+  `ui` as a `core`-typed `agent::config::ForwardPlan` over a second mpsc
+  `RunHandles.forward_plan_rx` (symmetric with the F5 `forward_rx`) — so
+  `cargo tree -p ui` stays unchanged (extends the ADR-0059 `BakeoffReport`
+  mirror + the ADR-0060 §D6 launch seam). The horizon is display-only
+  metadata; **F5 stays byte-identical** (no self-terminate; the forward run
+  remains open-ended). Anchor-neutral — `verify_anchors.sh` stays 119/119 by
+  construction. **Folded-in honest-spec fix (same pass):** the § Cross-cutting
+  invariants layering bullet (invariant 3) named a **phantom `models` crate**
+  that does not exist; corrected to the real forbidden-edge set
+  `strategy` / `exec` / `forecast` / `llm` and annotated with the actual
+  workspace crate set (the ML/DL work lives in `crates/forecast` +
+  `crates/features`, not a `models` crate). The stale `models` placeholder
+  still lingers in three section-file bodies (00-overview.md crate tree,
+  06-ui-and-cockpit.md § App layout, 01-data-flow.md dep mermaid) +
+  12-forecast-overlay.md — flagged for a section-file sweep (out of scope for
+  this feature; tracked as a spec-auditor item).
 - 2026-05-16 (architect): Phase 1A finalised. `architecture.md`
   compressed from 345 lines (a mixed registry + 12 long historical
   HTML preamble comments + sprawl of "_Migrated to..._" pointer

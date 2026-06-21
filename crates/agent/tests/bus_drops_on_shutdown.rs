@@ -80,6 +80,7 @@ async fn t903d_bus_strong_count_collapses_on_cancel() {
         equity_store: None,      // tests use no equity store
         reflection_writer: None, // tests do not exercise lesson-card wiring
         forward_rx: None,        // tests: no forward-command channel (byte-identical legacy path)
+        plan_tx: None,           // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
     };
 
     // Drop the outer `bus` rebinding so `bus_outer` is the only "outside

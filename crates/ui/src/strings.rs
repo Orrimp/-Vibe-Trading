@@ -1613,6 +1613,119 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LEADERBOARD_LOOKBACK_4Y", LEADERBOARD_LOOKBACK_4Y),
         ("LEADERBOARD_LOOKBACK_H1_2024", LEADERBOARD_LOOKBACK_H1_2024),
         ("LEADERBOARD_LOOKBACK_H2_2024", LEADERBOARD_LOOKBACK_H2_2024),
+        // advisor-forward-plan v0.1.0 (roadmap F6)
+        ("FORWARD_PLAN_SIDEBAR_LABEL", FORWARD_PLAN_SIDEBAR_LABEL),
+        ("FORWARD_PLAN_HEADLINE", FORWARD_PLAN_HEADLINE),
+        ("FORWARD_PLAN_CAPTION", FORWARD_PLAN_CAPTION),
+        ("FORWARD_PLAN_EMPTY_PROMPT", FORWARD_PLAN_EMPTY_PROMPT),
+        ("FORWARD_PLAN_LOADING", FORWARD_PLAN_LOADING),
+        ("FORWARD_PLAN_ERROR_PREFIX", FORWARD_PLAN_ERROR_PREFIX),
+        ("FORWARD_PLAN_STANCE_TITLE", FORWARD_PLAN_STANCE_TITLE),
+        ("FORWARD_PLAN_STANCE_FLAT", FORWARD_PLAN_STANCE_FLAT),
+        ("FORWARD_PLAN_STANCE_LONG", FORWARD_PLAN_STANCE_LONG),
+        ("FORWARD_PLAN_AS_OF_FMT", FORWARD_PLAN_AS_OF_FMT),
+        (
+            "FORWARD_PLAN_LATEST_SIGNAL_FMT",
+            FORWARD_PLAN_LATEST_SIGNAL_FMT,
+        ),
+        ("FORWARD_PLAN_SIGNAL_BUY", FORWARD_PLAN_SIGNAL_BUY),
+        ("FORWARD_PLAN_SIGNAL_SELL", FORWARD_PLAN_SIGNAL_SELL),
+        ("FORWARD_PLAN_SIGNAL_HOLD", FORWARD_PLAN_SIGNAL_HOLD),
+        ("FORWARD_PLAN_RULES_TITLE", FORWARD_PLAN_RULES_TITLE),
+        ("FORWARD_PLAN_RULE_IF", FORWARD_PLAN_RULE_IF),
+        ("FORWARD_PLAN_RULE_THEN", FORWARD_PLAN_RULE_THEN),
+        (
+            "FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT",
+            FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SMA_ENTRY_THEN",
+            FORWARD_PLAN_RULE_SMA_ENTRY_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT",
+            FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SMA_EXIT_THEN",
+            FORWARD_PLAN_RULE_SMA_EXIT_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT",
+            FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_MACD_ENTRY_THEN",
+            FORWARD_PLAN_RULE_MACD_ENTRY_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_MACD_EXIT_IF",
+            FORWARD_PLAN_RULE_MACD_EXIT_IF,
+        ),
+        (
+            "FORWARD_PLAN_RULE_MACD_EXIT_THEN",
+            FORWARD_PLAN_RULE_MACD_EXIT_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT",
+            FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_RSI_ENTRY_THEN",
+            FORWARD_PLAN_RULE_RSI_ENTRY_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT",
+            FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_RSI_EXIT_THEN",
+            FORWARD_PLAN_RULE_RSI_EXIT_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_BBANDS_ENTRY_IF_FMT",
+            FORWARD_PLAN_RULE_BBANDS_ENTRY_IF_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN",
+            FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_BBANDS_EXIT_IF",
+            FORWARD_PLAN_RULE_BBANDS_EXIT_IF,
+        ),
+        (
+            "FORWARD_PLAN_RULE_BBANDS_EXIT_THEN",
+            FORWARD_PLAN_RULE_BBANDS_EXIT_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_BUY_AND_HOLD",
+            FORWARD_PLAN_RULE_BUY_AND_HOLD,
+        ),
+        (
+            "FORWARD_PLAN_RULE_COMPOUND_CAVEAT",
+            FORWARD_PLAN_RULE_COMPOUND_CAVEAT,
+        ),
+        ("FORWARD_PLAN_CADENCE_FMT", FORWARD_PLAN_CADENCE_FMT),
+        ("FORWARD_PLAN_SIZING_TITLE", FORWARD_PLAN_SIZING_TITLE),
+        ("FORWARD_PLAN_SIZING_FLAT_FMT", FORWARD_PLAN_SIZING_FLAT_FMT),
+        ("FORWARD_PLAN_SIZING_LONG_FMT", FORWARD_PLAN_SIZING_LONG_FMT),
+        (
+            "FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT",
+            FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT,
+        ),
+        ("FORWARD_PLAN_BUDGET_LINE", FORWARD_PLAN_BUDGET_LINE),
+        (
+            "FORWARD_PLAN_SIZING_CAPPED_NOTE",
+            FORWARD_PLAN_SIZING_CAPPED_NOTE,
+        ),
+        ("FORWARD_PLAN_HORIZON_TITLE", FORWARD_PLAN_HORIZON_TITLE),
+        ("FORWARD_PLAN_HORIZON_FMT", FORWARD_PLAN_HORIZON_FMT),
+        (
+            "FORWARD_PLAN_NOT_A_PREDICTION",
+            FORWARD_PLAN_NOT_A_PREDICTION,
+        ),
+        ("FORWARD_PLAN_DISCLAIMER", FORWARD_PLAN_DISCLAIMER),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -2259,6 +2372,216 @@ pub const LEADERBOARD_LOOKBACK_4Y: &str = "4 years";
 pub const LEADERBOARD_LOOKBACK_H1_2024: &str = "2024 H1";
 /// Lookback chip — fixed preset, second half of 2024.
 pub const LEADERBOARD_LOOKBACK_H2_2024: &str = "2024 H2";
+
+// ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward buy/sell plan ───────
+//
+// The plan is a CONDITIONAL, REACTIVE, rule-driven decision plan — NOT a price
+// forecast (ADR-0062 / OQ-D). Every line below is written to make the
+// conditional ("IF … THEN …"), reactive ("re-checked each bar"), and
+// not-a-prediction nature unmistakable. The disclaimers are INTEGRAL copy, not
+// fine-print: the not-a-prediction framing leads the surface, and the
+// not-financial-advice + simulated-budget line is always visible.
+
+/// Sidebar nav label for the forward-plan screen.
+pub const FORWARD_PLAN_SIDEBAR_LABEL: &str = "Plan";
+
+/// Page headline — names the screen's job in plain language. "Forward plan",
+/// not "forecast" — deliberately avoids any prediction connotation.
+pub const FORWARD_PLAN_HEADLINE: &str = "Forward plan";
+
+/// Page caption — the one-line "what this is", framed as conditional rules,
+/// NOT a prediction. This is the first not-a-prediction signal on the surface.
+pub const FORWARD_PLAN_CAPTION: &str = "What the crowned strategy will do as new bars arrive \u{2014} the standing buy/sell rules, \
+     not a forecast of price. The same rules your simulated \u{20ac}200 paper-trade runs.";
+
+/// Empty-state prompt — no crowned pick yet → no plan (the clean tautology
+/// guard). Tells the operator exactly what to do next (never a blank screen).
+pub const FORWARD_PLAN_EMPTY_PROMPT: &str = "No plan yet. Run a bake-off and crown a strategy first \u{2014} the plan shows what that \
+     strategy will do over the coming days.";
+
+/// Loading copy — shown beside the spinner while the agent resolves the plan
+/// from the crowned selection at the launch boundary.
+pub const FORWARD_PLAN_LOADING: &str =
+    "Reading the crowned strategy\u{2019}s standing rules\u{2026}";
+
+/// Error-state prefix — paired with the failure detail (never a bare "no
+/// data"; says what to check).
+pub const FORWARD_PLAN_ERROR_PREFIX: &str = "The plan could not be built";
+
+// ── Stance badge (R1 — current stance, dated to the latest bar) ────────────────
+
+/// Section label above the current-stance badge.
+pub const FORWARD_PLAN_STANCE_TITLE: &str = "Right now";
+
+/// Stance badge — the strategy holds no position (waiting for an entry).
+pub const FORWARD_PLAN_STANCE_FLAT: &str = "Flat \u{2014} no position";
+
+/// Stance badge — the strategy is holding a position (watching for an exit).
+pub const FORWARD_PLAN_STANCE_LONG: &str = "Long \u{2014} holding";
+
+/// "As of" line under the stance badge — the honest-staleness stamp. `{close}`
+/// (last close) + `{as_of}` (bar date/time) filled at the call site. Makes the
+/// stance explicitly a snapshot of the last bar, not a live or future claim.
+pub const FORWARD_PLAN_AS_OF_FMT: &str = "As of the last close {close} ({as_of}).";
+
+/// Latest-signal sub-line — the most recent BUY/SELL/HOLD reading, shown so the
+/// operator sees what the last bar did. `{signal}` filled at the call site.
+pub const FORWARD_PLAN_LATEST_SIGNAL_FMT: &str = "Latest signal on that bar: {signal}.";
+
+/// Signal word — the latest bar fired a BUY.
+pub const FORWARD_PLAN_SIGNAL_BUY: &str = "buy";
+/// Signal word — the latest bar fired a SELL.
+pub const FORWARD_PLAN_SIGNAL_SELL: &str = "sell";
+/// Signal word — the latest bar fired no action (conditions unmet).
+pub const FORWARD_PLAN_SIGNAL_HOLD: &str = "hold (no action)";
+
+// ── Standing rules (R2 — the IF/THEN entry/exit conditions) ────────────────────
+
+/// Section label above the standing IF/THEN rules.
+pub const FORWARD_PLAN_RULES_TITLE: &str = "Standing rules";
+
+/// The "IF" lead-in word for an entry rule line (rendered as a labelled
+/// condition, deliberately NOT a timeline — the conditional framing, OQ-D).
+pub const FORWARD_PLAN_RULE_IF: &str = "IF";
+
+/// The "THEN" lead-in word for the action half of a rule line.
+pub const FORWARD_PLAN_RULE_THEN: &str = "THEN";
+
+/// SMA entry rule — IF condition. `{fast}` / `{slow}` filled at the call site.
+pub const FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT: &str =
+    "the {fast}-bar average crosses above the {slow}-bar average";
+/// SMA entry rule — THEN action.
+pub const FORWARD_PLAN_RULE_SMA_ENTRY_THEN: &str = "buy (open a position)";
+/// SMA exit rule — IF condition. `{fast}` / `{slow}` filled at the call site.
+pub const FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT: &str =
+    "the {fast}-bar average crosses back below the {slow}-bar average";
+/// SMA exit rule — THEN action.
+pub const FORWARD_PLAN_RULE_SMA_EXIT_THEN: &str = "sell (close the position)";
+
+/// MACD trend entry rule — IF condition. `{fast}`/`{slow}`/`{signal}`.
+///
+/// The primary signal is a positive MACD histogram — this is the headline
+/// indicator shown here.  The strategy also applies a trend filter (price
+/// above EMA(200)); see `FORWARD_PLAN_RULE_COMPOUND_CAVEAT`.
+pub const FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT: &str =
+    "the MACD ({fast}/{slow}/{signal}) histogram is positive";
+/// MACD entry rule — THEN action.
+pub const FORWARD_PLAN_RULE_MACD_ENTRY_THEN: &str = "buy (open a position)";
+/// MACD exit rule — IF condition.  The exit fires when the entry compound
+/// condition (MACD histogram positive AND price above EMA(200)) flips false.
+pub const FORWARD_PLAN_RULE_MACD_EXIT_IF: &str =
+    "the MACD histogram turns negative or price falls below the 200-bar EMA";
+/// MACD exit rule — THEN action.
+pub const FORWARD_PLAN_RULE_MACD_EXIT_THEN: &str = "sell (close the position)";
+
+/// RSI reversion entry rule — IF condition. `{len}`/`{lower}`.
+///
+/// The primary signal is RSI falling below the oversold threshold — this is
+/// the headline indicator.  The strategy also requires the close to be above
+/// the recent support floor; see `FORWARD_PLAN_RULE_COMPOUND_CAVEAT`.
+pub const FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT: &str =
+    "the {len}-bar RSI falls below {lower} (oversold)";
+/// RSI entry rule — THEN action.
+pub const FORWARD_PLAN_RULE_RSI_ENTRY_THEN: &str = "buy (open a position)";
+/// RSI exit rule — IF condition. `{lower}`.
+///
+/// This is a flip-to-false exit: the strategy exits when the RSI climbs back
+/// above the same oversold threshold (`lower`) and the entry condition clears.
+/// There is NO overbought threshold (no RSI-70 or similar) in this strategy.
+pub const FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT: &str =
+    "the RSI climbs back above {lower} (the oversold condition clears)";
+/// RSI exit rule — THEN action.
+pub const FORWARD_PLAN_RULE_RSI_EXIT_THEN: &str = "sell (close the position)";
+
+/// Bollinger reversion entry rule — IF condition. `{len}`/`{k}`.
+///
+/// The primary signal is price closing below the lower band — this is the
+/// headline indicator.  The strategy also requires a volume surge to confirm
+/// the move; see `FORWARD_PLAN_RULE_COMPOUND_CAVEAT`.
+pub const FORWARD_PLAN_RULE_BBANDS_ENTRY_IF_FMT: &str =
+    "price closes below the lower band ({len}-bar, {k}\u{03c3})";
+/// Bollinger entry rule — THEN action.
+pub const FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN: &str = "buy (open a position)";
+/// Bollinger exit rule — IF condition.
+///
+/// This is a flip-to-false exit: the strategy exits when price closes back
+/// inside the band and the entry condition clears.  It is NOT a reverse
+/// upper-band cross.
+pub const FORWARD_PLAN_RULE_BBANDS_EXIT_IF: &str =
+    "price closes back inside the band (the lower-band condition clears)";
+/// Bollinger exit rule — THEN action.
+pub const FORWARD_PLAN_RULE_BBANDS_EXIT_THEN: &str = "sell (close the position)";
+
+/// Compound-condition caveat — shown below the IF/THEN rules for composed
+/// strategies (MACD, RSI, `BBands`).  Makes the simplification honest: each
+/// strategy's entry is a compound AND; only the primary indicator is shown
+/// above.
+pub const FORWARD_PLAN_RULE_COMPOUND_CAVEAT: &str = "This shows the strategy\u{2019}s primary signal. It may also apply \
+     additional trend or volume confirmation before acting.";
+
+/// Buy-and-hold degenerate plan — the single standing "rule" (D5). No IF/THEN,
+/// no sell trigger, no re-evaluation: the honest degenerate case stated plainly.
+pub const FORWARD_PLAN_RULE_BUY_AND_HOLD: &str = "Buy once now and hold the whole horizon. There is no sell trigger and no \
+     re-evaluation \u{2014} nothing beat simply holding over the tested window.";
+
+/// Cadence line under the rules — restates that the rules are re-checked every
+/// bar (the reactive framing), NOT a dated schedule. Shown for active rules
+/// only (buy-and-hold has no re-evaluation). `{horizon}` filled at the call site.
+pub const FORWARD_PLAN_CADENCE_FMT: &str = "These rules stay in force and are re-checked on every new bar for the next {horizon} days \u{2014} \
+     this is not a day-by-day schedule.";
+
+// ── Projected sizing (R3 — budget-aware €200 next-BUY, "at the last close") ────
+
+/// Section label above the projected-sizing line.
+pub const FORWARD_PLAN_SIZING_TITLE: &str = "If it buys next";
+
+/// Projected next-BUY sizing for an active strategy currently FLAT. `{units}`
+/// (projected units) + `{close}` (last close) filled at the call site. Labelled
+/// "at the last close" (an estimate at the last price), NOT "you will buy at".
+pub const FORWARD_PLAN_SIZING_FLAT_FMT: &str = "On the next buy it would deploy about {units} units at the last close {close}. The actual \
+     fill price will be the next bar\u{2019}s \u{2014} this is an estimate at the last close, not a promised fill.";
+
+/// Projected held sizing for an active strategy currently LONG. `{units}` +
+/// `{close}` filled at the call site.
+pub const FORWARD_PLAN_SIZING_LONG_FMT: &str = "It is already holding about {units} units (bought near {close}); the standing exit rule \
+     above is what closes it.";
+
+/// Buy-and-hold sizing — deploy the FULL €200 now (D5). `{units}` + `{close}`.
+pub const FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT: &str = "Deploy the full \u{20ac}200 now \u{2014} about {units} units at the last close {close} \u{2014} \
+     and hold for the horizon.";
+
+/// Budget line — the €200 ≈ 200 USDT modelling assumption + the hard cap (D4).
+/// Always shown so the operator sees the budget framing and the cap.
+pub const FORWARD_PLAN_BUDGET_LINE: &str = "\u{20ac}200 \u{2248} 200 USDT (FX not modelled). It never deploys more than \u{20ac}200 \u{2014} a hard cap.";
+
+/// Appended when the F4 budget cap actually bound the projected units — so the
+/// operator knows the cap bit (shown only when `sizing_capped`).
+pub const FORWARD_PLAN_SIZING_CAPPED_NOTE: &str = "The \u{20ac}200 cap limited this size.";
+
+// ── Horizon (R4 — "planned through <date>") ────────────────────────────────────
+
+/// Section label above the horizon framing.
+pub const FORWARD_PLAN_HORIZON_TITLE: &str = "Horizon";
+
+/// Horizon framing line — "planned through <date>", restating that the horizon
+/// is the window the rules are in force (the planning frame), not a forecast
+/// window. `{days}` (horizon days) + `{through}` (the through-date) filled at
+/// the call site.
+pub const FORWARD_PLAN_HORIZON_FMT: &str = "Planned through {through} \u{2014} the next {days} days. That is how long these rules are in \
+     force; it is not a prediction of where the price will be.";
+
+// ── Disclaimers (R6 — integral, not fine-print) ───────────────────────────────
+
+/// The not-a-prediction framing — the central honesty line (OQ-D). Rendered
+/// prominently near the top of the plan (integral to the layout), NOT a
+/// footnote: the plan is conditional rules, not a forecast or an implied return.
+pub const FORWARD_PLAN_NOT_A_PREDICTION: &str = "This is a conditional, rule-based plan \u{2014} not a price prediction, and not an implied or \
+     expected return. It only describes what the strategy will do when its conditions are met.";
+
+/// The standing not-financial-advice + simulated-budget disclaimer (product
+/// § D5). Always present at the foot of the plan surface.
+pub const FORWARD_PLAN_DISCLAIMER: &str = "Not financial advice. The \u{20ac}200 is a simulated paper budget on historical/live data \u{2014} \
+     no real orders are placed. Past behaviour does not guarantee future results.";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

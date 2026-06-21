@@ -152,6 +152,19 @@ pub enum Screen {
     /// A "Run bake-off" action dispatches `backtest::run_bakeoff` async.
     Leaderboard,
 
+    // ── advisor-forward-plan v0.1.0 (roadmap F6) ──────────────────────
+    /// The forward buy/sell PLAN (single-coin investment-advisor journey,
+    /// step 4: the conditional, reactive decision plan between the crowned
+    /// Leaderboard pick and the Live view). Navigable from the **Work**
+    /// sidebar group, after `Leaderboard` (navigable, not default-routed).
+    /// Renders a `ForwardPlanView` (mirrored from the `core`-typed
+    /// `agent::config::ForwardPlan`): the dated current-stance badge
+    /// (FLAT/LONG), the standing IF/THEN entry/exit rules, the budget-aware
+    /// €200 next-BUY sizing "at the last close", and the "planned through
+    /// <date>" horizon — presented as conditional, NOT a forecast (OQ-D) —
+    /// plus the mandatory not-a-prediction + not-advice disclaimers.
+    ForwardPlan,
+
     // ── cockpit-reports-viewer v0.1.0 ─────────────────────────────────
     /// Browse + render any committed `spec/*/reports/backtest-*.md`
     /// (cockpit-reports-viewer R6 / D4). Navigable from the **Library**
@@ -1024,6 +1037,16 @@ pub struct Cockpit {
     /// bake-off" prompt), `running: false`.
     pub leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState,
 
+    /// advisor-forward-plan v0.1.0 — Forward-plan-screen per-session state
+    /// (roadmap F6). Sibling of `leaderboard_screen_state`. Holds the
+    /// conditional forward plan behind a `PanelState` (Loading / Empty /
+    /// Error / Ready) — the `core`-typed `agent::config::ForwardPlan`
+    /// mirrored into a pure-`ui` `ForwardPlanView` at the dispatch boundary
+    /// (the INVARIANT seam; `ui` never holds an engine type). Cold-start:
+    /// `plan: Empty` (no crowned pick yet → the "run a bake-off first"
+    /// prompt).
+    pub forward_plan_screen_state: crate::forward_plan::ForwardPlanScreenState,
+
     /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
     /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
     /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
@@ -1196,6 +1219,7 @@ impl std::fmt::Debug for Cockpit {
             .field("baseline_screen_state", &self.baseline_screen_state)
             .field("reports_screen_state", &self.reports_screen_state)
             .field("leaderboard_screen_state", &self.leaderboard_screen_state)
+            .field("forward_plan_screen_state", &self.forward_plan_screen_state)
             .field("memory_screen_state", &self.memory_screen_state)
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
@@ -1262,6 +1286,7 @@ impl Default for Cockpit {
             baseline_screen_state: crate::baseline::BaselineScreenState::default(),
             reports_screen_state: crate::reports::ReportsScreenState::default(),
             leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState::default(),
+            forward_plan_screen_state: crate::forward_plan::ForwardPlanScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1379,6 +1404,7 @@ impl Cockpit {
             baseline_screen_state: crate::baseline::BaselineScreenState::default(),
             reports_screen_state: crate::reports::ReportsScreenState::default(),
             leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState::default(),
+            forward_plan_screen_state: crate::forward_plan::ForwardPlanScreenState::default(),
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -2060,6 +2086,16 @@ pub enum Message {
     /// `LeaderboardLookback`; it is mapped to a `backtest::engine::DateRange`
     /// at dispatch time. Typed enum payload.
     BakeoffSelectLookback(crate::leaderboard::LeaderboardLookback),
+
+    // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────────
+    /// A forward plan arrived from the agent's plan-return channel
+    /// (`RunHandles.plan_tx` → the iced recipe over `_plan_rx_live`). Carries
+    /// the `core`-typed `agent::config::ForwardPlan` already mirrored into the
+    /// pure-`ui` `ForwardPlanView` at the recipe boundary (the engine/agent
+    /// type never crosses into iced state — the INVARIANT seam, exactly like
+    /// `BakeoffRunCompleted` carrying a `BakeoffReportMirror`, not the engine
+    /// `BakeoffReport`). Lands `Ready(view)` on the forward-plan screen state.
+    ForwardPlanReceived(crate::forward_plan::ForwardPlanView),
 
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
@@ -3008,6 +3044,15 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::BakeoffSelectLookback(lookback) => {
             model.leaderboard_screen_state.lookback = lookback;
+        }
+
+        // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────
+        Message::ForwardPlanReceived(view) => {
+            // Land the already-mirrored plan view on the forward-plan screen
+            // state (Ready). Pure — the `ForwardPlan` → `ForwardPlanView`
+            // mirror happened at the recipe boundary (the binary side), so the
+            // engine/agent type never reaches `update` (the INVARIANT seam).
+            model.forward_plan_screen_state.set_plan(view);
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────

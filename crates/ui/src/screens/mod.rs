@@ -18,6 +18,16 @@ pub mod baseline;
 pub mod compare;
 pub mod control;
 pub mod debug;
+/// advisor-forward-plan v0.1.0 — the forward buy/sell plan (single-coin
+/// investment-advisor journey, step 4). A conditional, reactive, rule-driven
+/// decision plan over a `ForwardPlanView` (mirrored from the `core`-typed
+/// `agent::config::ForwardPlan`): the dated current-stance badge, the standing
+/// IF/THEN entry/exit rules, the budget-aware €200 next-BUY sizing "at the last
+/// close", the "planned through <date>" horizon, and the mandatory
+/// not-a-prediction + not-advice disclaimers — presented as decision-support,
+/// NOT a forecast (OQ-D). Navigable via the Work sidebar group (after
+/// Leaderboard, before Live); not default-routed.
+pub mod forward_plan;
 pub mod home;
 /// Phase A — Lab screen (ex-`charts.rs`, T-D-2 rename). New default route
 /// (R1.2). The legacy `Screen::Charts` variant auto-routes to `lab::view`

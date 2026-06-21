@@ -72,6 +72,27 @@ impl SmaStream {
     pub fn is_empty(&self) -> bool {
         self.window.is_empty()
     }
+
+    /// Returns the current SMA value if the window is full, without advancing state.
+    ///
+    /// This is the non-mutating read accessor used by `PlanDescribe::describe_plan`
+    /// (F6 forward-plan read seam, ADR-0062 § D2) to snapshot the last computed
+    /// SMA without pushing a new price.
+    #[must_use]
+    pub fn current(&self) -> Option<Decimal> {
+        if self.window.len() == self.period {
+            let count = Decimal::from(self.period);
+            Some(self.sum / count)
+        } else {
+            None
+        }
+    }
+
+    /// The configured window period.
+    #[must_use]
+    pub fn period(&self) -> usize {
+        self.period
+    }
 }
 
 // ── Batch adapter (kand semantics, Decimal arithmetic) ────────────────────────

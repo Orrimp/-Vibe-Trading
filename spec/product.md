@@ -2,7 +2,7 @@
 slug: product
 status: shipped
 owner: analyst
-updated: 2026-06-21
+updated: 2026-06-22
 ---
 
 # Product Requirements — Single-Coin Investment Advisor (paper)
@@ -28,7 +28,11 @@ The user journey — the product, end to end:
    with a plain-language **"why this one."**
 4. **Plan**: generate a budget-aware **buy/sell plan for the coming N days**
    (configurable horizon) — the current signal + entry/exit rules + projected
-   €200 sizing.
+   €200 sizing. This is a **conditional, rule-driven plan, not a price
+   forecast** (the crowned strategy is a deterministic rule engine with no
+   ability to predict prices): current stance + standing entry/exit conditions +
+   projected sizing, re-evaluated each bar — *not* a dated trade calendar.
+   Scoped as F6 ([`advisor-forward-plan/feature.md`](advisor-forward-plan/feature.md)).
 5. **Watch**: in the **Live view**, the selected strategy (or mix/LLM)
    **paper-trades forward** on real incoming data and the user sees running
    profit/loss on their simulated €200.
@@ -446,6 +450,19 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-22 (analyst, F6 forward-plan scoping): clarified **journey step 4
+  (Plan)** to state the honest semantics the operator's "buy/sell plan for the
+  coming days" requires — a **conditional, rule-driven plan, NOT a price
+  forecast** (current stance + standing entry/exit conditions + projected €200
+  sizing, re-evaluated each bar; not a dated trade calendar), and pointed it at
+  the new F6 feature ([`advisor-forward-plan/feature.md`](advisor-forward-plan/feature.md),
+  trace `REQ-ADVISOR-FORWARD-PLAN-001`). F6 fills the gap where the journey
+  jumps from the crowned pick straight into the F5 forward paper-trade with no
+  legible plan shown; it is consistent-by-construction with F5 (the plan
+  describes the same rules F5 executes). The framing is load-bearing for the
+  product's "measured robustness, not asserted alpha" core, the 2026-06-08
+  ship-passive verdict, and the not-advice stance — a fabricated price/trade
+  forecast would violate all three. No engine code; no anchored content touched.
 - 2026-06-21 (analyst, spec-honesty close-out): flipped `status: draft →
   shipped` — the operator personally defined this product and the MVP is built,
   tested, and committed (advisor F1–F5 + dynamic-data: `58b55b1`, `e0cc34b`,

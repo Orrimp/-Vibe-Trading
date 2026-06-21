@@ -30,6 +30,9 @@ use std::collections::HashSet;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Symbol, Tick};
 
 use crate::Strategy;
+use crate::plan::{
+    PlanContext, PlanDescribe, PlanRuleShape, PlanStance, ProjectedSizing, StrategyPlan,
+};
 
 // ── AlwaysLongStrategy ────────────────────────────────────────────────────────
 
@@ -95,6 +98,34 @@ impl Strategy for AlwaysLongStrategy {
         Self: Sized,
     {
         serde_json::json!({})
+    }
+}
+
+// ── PlanDescribe impl for AlwaysLongStrategy ─────────────────────────────────
+
+impl PlanDescribe for AlwaysLongStrategy {
+    /// Describe the buy-and-hold degenerate plan (ADR-0062 § D5).
+    ///
+    /// The plan is always: **buy now, hold the whole horizon, no sell trigger**.
+    /// `stance = Long` (the intent is immediate buy + hold);
+    /// `latest_signal = None` (no re-evaluation; buy-and-hold has no sell trigger);
+    /// `rule = BuyAndHold`;
+    /// `sizing = full budget` (capped by the F4 cap).
+    ///
+    /// ## Non-mutation contract
+    ///
+    /// No indicator state to advance — `AlwaysLongStrategy` has no warmed
+    /// indicators.  This is trivially non-mutating.
+    fn describe_plan(&self, ctx: &PlanContext) -> StrategyPlan {
+        // Buy-and-hold: the intent is always to be Long.
+        // latest_signal = None — no conditional re-evaluation, no sell trigger.
+        let sizing = ProjectedSizing::compute(ctx.budget, ctx.budget_cap, ctx.last_close);
+        StrategyPlan {
+            stance: PlanStance::Long,
+            latest_signal: None,
+            rule: PlanRuleShape::BuyAndHold,
+            sizing,
+        }
     }
 }
 

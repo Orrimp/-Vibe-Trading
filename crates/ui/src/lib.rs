@@ -50,6 +50,17 @@ pub mod assistant;
 /// Pure-`ui` over `core` + `std::fs`; no new crate edge (AC7). The screen
 /// body lives at `screens::baseline`.
 pub mod baseline;
+/// advisor-forward-plan v0.1.0 — the forward buy/sell PLAN (single-coin
+/// investment-advisor journey, step 4: the conditional, reactive,
+/// rule-driven decision plan between the crowned pick and the Live view).
+/// Houses `forward_plan::state` (`ForwardPlanScreenState` + `ForwardPlanView`
+/// — the `agent::config::ForwardPlan` → ui mirror, the INVARIANT seam) and
+/// `forward_plan::adapter` (`from_plan`, `#[cfg(feature = "live")]` — the ONLY
+/// place ui reads the agent plan type). Pure-`ui` over `core`; NO new crate
+/// edge (`ui` never imports `strategy`/`exec`/`forecast`/`llm`, and gains no
+/// new `agent` edge in the default build). The screen body lives at
+/// `screens::forward_plan`.
+pub mod forward_plan;
 pub mod lab;
 /// advisor-leaderboard-screen v0.1.0 — the strategy bake-off LEADERBOARD
 /// (single-coin investment-advisor journey, step 3: rank & pick best).

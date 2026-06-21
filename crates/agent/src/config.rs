@@ -41,6 +41,151 @@ pub struct ForwardRunConfig {
     pub lookback: Option<backtest::engine::DateRange>,
 }
 
+// ── F6 forward-plan types (ADR-0062) ─────────────────────────────────────────
+//
+// `ForwardPlan` is the `core`-typed plan emitted by the supervisor after a
+// `ForwardCommand::Launch` and returned to the `ui` via a second mpsc.
+//
+// **`core`-types-only invariant** (same as `ForwardRunConfig`): every field
+// must be a `trading_core` type, a primitive, or an `agent`-owned closed enum.
+// NO `strategy`/`exec`/`forecast`/`llm` type crosses this boundary — the `ui`
+// imports `ForwardPlan` via `agent` and must not gain those edges.
+//
+// ADR-0062 § D4.
+
+/// F6 — the engine's current holding stance (closed `agent`-owned enum).
+///
+/// Mirrors `strategy::PlanStance` but is redefined here so `ui` never gains
+/// a direct `strategy` dependency (the ADR-0059 `LeaderRow`/`RobustnessLabel`
+/// mirror discipline).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanStance {
+    /// No position — the engine is waiting for an entry signal.
+    Flat,
+    /// Holding a long position — the engine entered and has not yet exited.
+    Long,
+}
+
+/// F6 — the most recent signal kind from the engine (closed `agent`-owned enum).
+///
+/// `None` for buy-and-hold (no re-evaluation signal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanSignal {
+    Buy,
+    Sell,
+    Hold,
+}
+
+/// F6 — the engine's rule family (closed `agent`-owned enum).
+///
+/// The `ui` exhaustively matches on this to generate IF/THEN copy.
+/// NO engine string crosses the seam (ADR-0059 `Recommendation`-not-`String`
+/// precedent) — the engine emits structured rule data; the `ui` owns the words.
+///
+/// Variants cover all F6 candidate engines (SMA, MACD, RSI, BBands, BuyAndHold).
+/// The closed enum widens if new rule families are added without an F6 rework.
+///
+/// ## Field types
+///
+/// All integer window lengths use `u32` (not `usize`) and RSI thresholds use
+/// `u32` (integer percent) to keep the enum `Copy + Eq` without any `Decimal`
+/// or `f64` (consistent with the `ui`-side `PlanRuleView` mirror).
+/// The Bollinger k is encoded as tenths: `k_tenths = 20` → 2.0σ (avoids a
+/// `Decimal` field while staying `Copy + Eq`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanRuleKind {
+    /// SMA crossover — buys when fast SMA > slow SMA, sells on reverse.
+    SmaCross {
+        /// Fast SMA window length (bars).
+        fast_len: u32,
+        /// Slow SMA window length (bars).
+        slow_len: u32,
+    },
+    /// MACD crossover — buys when MACD > signal line, sells on reverse.
+    MacdCross {
+        /// Fast EMA length.
+        fast: u32,
+        /// Slow EMA length.
+        slow: u32,
+        /// Signal EMA length.
+        signal: u32,
+    },
+    /// RSI mean-reversion — buys when RSI falls below `lower` (oversold) AND
+    /// the close is above the recent support floor.  Exits when RSI climbs back
+    /// above `lower` (the entry condition clears — flip-to-false exit; there is
+    /// no separate upper/overbought threshold in this strategy).
+    RsiReversion {
+        /// RSI window length.
+        len: u32,
+        /// Oversold entry threshold; also the flip-to-false exit threshold
+        /// (integer percent, e.g. 30).
+        lower: u32,
+    },
+    /// Bollinger-band reversion — buys when price below the lower band.
+    BollingerReversion {
+        /// Band window length.
+        len: u32,
+        /// Band width in standard deviations ×10 (e.g. `k_tenths = 20` → 2.0σ).
+        ///
+        /// Encoded as tenths to keep the enum `Copy + Eq` without a `Decimal`
+        /// field (consistent with the `ui`-side `PlanRuleView::BollingerReversion`
+        /// mirror).
+        k_tenths: u32,
+    },
+    /// Buy-and-hold — buy once, hold forever, no sell trigger.
+    BuyAndHold,
+}
+
+/// F6 — the `core`-typed plan emitted by the agent supervisor after a
+/// `ForwardCommand::Launch` (ADR-0062 § D4).
+///
+/// Constructed agent-side from the same `build_registry_for(Some(&cfg))`
+/// registry the F5 hot-swap runs (consistency by construction, R7).
+/// Crossed to `ui` as a `core`-typed struct over a second mpsc
+/// (`RunHandles.forward_plan_rx`) symmetric with the `forward_rx` command
+/// channel. The `ui` mirrors this into a `ForwardPlanView` for render.
+///
+/// ## `core`-types-only invariant
+///
+/// Every field is a `trading_core` type, a primitive, or an `agent`-owned
+/// closed enum.  NO `strategy`/`exec`/`forecast`/`llm` type appears here.
+/// Verify: `cargo tree -p ui` must not gain those deps after adding this.
+#[derive(Debug, Clone)]
+pub struct ForwardPlan {
+    /// The resolved forward-run strategy id (what `build_registry_for` loaded).
+    pub strategy: trading_core::StrategyId,
+    /// The coin (bake-off symbol, e.g. `"BTCUSDT"`).
+    pub symbol: trading_core::Symbol,
+    /// Current holding stance as of the latest bar (non-mutating stance read).
+    pub stance: PlanStance,
+    /// The most recent signal from the engine on the latest bar.
+    ///
+    /// `None` for buy-and-hold (no re-evaluation signal; no sell trigger).
+    pub latest_signal: Option<PlanSignal>,
+    /// The engine's rule family — the `ui` maps this to IF/THEN copy.
+    pub rule: PlanRuleKind,
+    /// The latest bar's close price — the projection base for sizing.
+    pub last_close: trading_core::Price,
+    /// The latest bar's close timestamp — shown for honest-staleness labelling.
+    pub last_bar_ts: trading_core::Timestamp,
+    /// The user's budget (€200 ≈ 200 USDT, product § D4).
+    pub budget: trading_core::Money<trading_core::Usdt>,
+    /// Projected next-BUY units at `last_close`, bounded by the F4 `budget_cap`.
+    ///
+    /// `units ≈ budget / last_close`, capped.  Labelled "at the last close;
+    /// the actual fill price will be the next bar's" in the UI copy (not a
+    /// promised fill — labelled as a current-price estimate per R3).
+    pub projected_units: trading_core::Quantity,
+    /// `true` iff the F4 `budget_cap` constrained the projected units.
+    pub sizing_capped: bool,
+    /// Horizon framing in days (display-only — does NOT terminate the F5 run).
+    ///
+    /// ADR-0062 § D6 / OQ-C: the horizon is a UI label ("rules in force for
+    /// the coming N days"), NOT a self-terminate condition.  The
+    /// `paper_loop_supervisor` / `spawn_trading_loop` lifecycle is unchanged.
+    pub horizon_days: u16,
+}
+
 // ── T1928 (pass 6) — `LlmConfig` re-exported from the llm crate ───────────────
 //
 // Per Design § "How it shows up in code" item 10, the canonical

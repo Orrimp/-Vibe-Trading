@@ -103,6 +103,7 @@ async fn t910_v3_graceful_shutdown_within_two_seconds_with_close_uptime_row() {
         equity_store: None,      // tests use no equity store
         reflection_writer: None, // tests do not exercise lesson-card wiring
         forward_rx: None,        // tests: no forward-command channel (byte-identical legacy path)
+        plan_tx: None,           // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
     };
 
     let cancel = CancellationToken::new();

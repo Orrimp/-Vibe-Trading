@@ -430,6 +430,92 @@ impl LeaderboardScreenApp {
     }
 }
 
+// ── forward-plan render harness (advisor-forward-plan v0.1.0, F6) ─────────────
+
+/// Render-layer harness for the **real Forward-plan screen body**
+/// (`screens::forward_plan::view`) — the production path that renders a
+/// `ForwardPlanView` (mirrored from the `core`-typed
+/// `agent::config::ForwardPlan`) as the conditional plan: the dated stance
+/// badge + the IF/THEN standing rules + the €200 projected sizing + the
+/// horizon + the not-a-prediction / not-advice disclaimers.
+///
+/// Renders the BARE screen body (no shell sidebar) so the screenshot frames the
+/// plan without the sidebar's `ACCENT` active-item highlight leaking into the
+/// pixel classifiers — exactly the rationale `leaderboard_screen_program`
+/// documents. The caller seeds the `Cockpit`'s `forward_plan_screen_state`
+/// (e.g. via `fixtures::fake_cockpit_forward_plan`).
+#[must_use]
+pub fn forward_plan_screen_program(
+    cockpit: Cockpit,
+) -> iced::Application<
+    impl iced::Program<State = ForwardPlanScreenApp, Message = Message, Theme = iced::Theme>,
+> {
+    let boot = move || {
+        (
+            ForwardPlanScreenApp {
+                cockpit: cockpit.clone(),
+            },
+            iced::Task::none(),
+        )
+    };
+    iced::application(
+        boot,
+        ForwardPlanScreenApp::update,
+        ForwardPlanScreenApp::view,
+    )
+    .title(ForwardPlanScreenApp::title)
+    .theme(ForwardPlanScreenApp::theme)
+}
+
+/// Test app whose `view` is the bare Forward-plan screen body (no shell chrome)
+/// so the screenshot frames the plan surface directly.
+pub struct ForwardPlanScreenApp {
+    cockpit: Cockpit,
+}
+
+impl Default for ForwardPlanScreenApp {
+    fn default() -> Self {
+        Self {
+            cockpit: Cockpit::new(),
+        }
+    }
+}
+
+impl ForwardPlanScreenApp {
+    #[must_use]
+    pub fn title(&self) -> String {
+        crate::strings::APP_TITLE.to_string()
+    }
+
+    #[must_use]
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
+    }
+
+    pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        update(&mut self.cockpit, msg);
+        iced::Task::none()
+    }
+
+    /// View — the real Forward-plan screen body, full-bleed on a `CANVAS`
+    /// background (the shell's outer background) so the plan's `PANEL` surfaces
+    /// read against the same chrome the operator sees.
+    #[must_use]
+    pub fn view(&self) -> iced::Element<'_, Message> {
+        use iced::Length;
+        use iced::widget::{Container, container};
+        let body = crate::screens::forward_plan::view(&self.cockpit, ThemeMode::Dark);
+        Container::new(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_theme: &iced::Theme| container::Style {
+                background: Some(crate::theme::color::CANVAS.current(ThemeMode::Dark).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+}
+
 // ── source_toggle render harness (simple-strategies-realdata T-B1 / AC7) ──────
 
 /// Build a render program whose `view` is the bare Lab `source_toggle` widget,

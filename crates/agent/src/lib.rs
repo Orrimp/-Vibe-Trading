@@ -9,6 +9,8 @@ pub mod config;
 pub mod cron;
 pub mod kill_switch;
 pub mod observability;
+/// F6 forward-plan: `StrategyPlan` → `ForwardPlan` mapping + builder (ADR-0062 § D3–D4).
+pub mod plan;
 pub mod reconciler;
 pub mod runtime;
 pub mod watcher;
@@ -19,7 +21,7 @@ pub use activity::{
 };
 pub use activity_audit_aggregator::spawn_aggregator;
 pub use bus::EventBus;
-pub use config::ForwardRunConfig;
+pub use config::{ForwardPlan, ForwardRunConfig, PlanRuleKind, PlanSignal, PlanStance};
 pub use kill_switch::{
     AgentMode, CommandIncidentSpawner, HaltReason, IncidentSpawnArgs, IncidentSpawner, KillSwitch,
     MockIncidentSpawner,

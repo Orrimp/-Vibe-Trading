@@ -757,6 +757,11 @@ pub mod layout {
         // which is the passive-BH companion it benchmarks against). Must stay
         // lock-step with `SIDEBAR_GROUPS_PHASE_C` Work group below.
         Screen::Leaderboard,
+        // advisor-forward-plan v0.1.0 (F6) — Work group, after Leaderboard
+        // (the single-coin advisor "plan" step sits between the crowned pick
+        // and the Live view). Must stay lock-step with `SIDEBAR_GROUPS_PHASE_C`
+        // Work group below (the flatten-invariant test is the guard).
+        Screen::ForwardPlan,
         Screen::Strategies,
         Screen::Memory,
         Screen::Models,
@@ -791,6 +796,9 @@ pub mod layout {
             Screen::Compare,
             Screen::Baseline,
             Screen::Leaderboard,
+            // advisor-forward-plan v0.1.0 (F6) — after Leaderboard (the
+            // "plan" step between the crowned pick and Live).
+            Screen::ForwardPlan,
         ],
         &[
             Screen::Strategies,

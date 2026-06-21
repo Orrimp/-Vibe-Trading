@@ -27,7 +27,7 @@ use iced::widget::{Column, Container, Row, Stack};
 
 use crate::assistant;
 use crate::screens::{
-    baseline, compare, lab, leaderboard, live, memory, models, reports, settings,
+    baseline, compare, forward_plan, lab, leaderboard, live, memory, models, reports, settings,
     strategy_registry, trail,
 };
 use crate::state::{Cockpit, Screen};
@@ -151,6 +151,10 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         // (single-coin advisor journey step 3 — navigable via the Work group,
         // not default-routed).
         Screen::Leaderboard => leaderboard::view(model, mode),
+        // advisor-forward-plan v0.1.0 (F6): the forward buy/sell plan
+        // (single-coin advisor journey step 4 — navigable via the Work group,
+        // between the crowned Leaderboard pick and the Live view).
+        Screen::ForwardPlan => forward_plan::view(model, mode),
         // Phase F: Memory routes to the full memory screen (replaces Phase A placeholder).
         Screen::Memory => memory::view(model, mode),
         // Phase F: Models routes to the full models screen (replaces Phase A placeholder).

@@ -4,15 +4,16 @@ use serde_json::Value;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Tick};
 
 use crate::Strategy;
+use crate::plan::{
+    PlanContext, PlanDescribe, PlanRuleShape, PlanSignal, PlanStance, ProjectedSizing, StrategyPlan,
+};
 
 /// SMA crossover: emits Buy when fast > slow, Sell when fast < slow.
 pub struct SmaCrossover {
     id: StrategyId,
     fast: Sma,
     slow: Sma,
-    #[allow(dead_code)] // used for config_schema()
     fast_len: usize,
-    #[allow(dead_code)] // used for config_schema()
     slow_len: usize,
 }
 
@@ -79,5 +80,54 @@ impl Strategy for SmaCrossover {
             },
             "required": ["fast_len", "slow_len"]
         })
+    }
+}
+
+// ── PlanDescribe impl for SmaCrossover ────────────────────────────────────────
+
+impl PlanDescribe for SmaCrossover {
+    /// Snapshot the current SMA stance + rules **without mutating indicator state**.
+    ///
+    /// Stance is derived by reading the current fast/slow SMA values from the
+    /// already-warmed `SmaStream` (via the non-mutating `current()` getter) and
+    /// applying the SAME comparison `on_bar` uses:
+    ///   `Long` iff `fast > slow + epsilon`, `Flat` otherwise.
+    ///
+    /// `ctx.last_close` is NOT pushed into the indicators — this is a read-only
+    /// snapshot of standing decision as of the last consumed bar (ADR-0062 § D2).
+    fn describe_plan(&self, ctx: &PlanContext) -> StrategyPlan {
+        let epsilon = rust_decimal::Decimal::new(1, 8);
+
+        let (stance, latest_signal) = match (self.fast.current(), self.slow.current()) {
+            (Some(f), Some(s)) => {
+                let signal = if f > s + epsilon {
+                    PlanSignal::Buy
+                } else if f < s - epsilon {
+                    PlanSignal::Sell
+                } else {
+                    PlanSignal::Hold
+                };
+                let stance = if f > s + epsilon {
+                    PlanStance::Long
+                } else {
+                    PlanStance::Flat
+                };
+                (stance, Some(signal))
+            }
+            // Indicators not yet warmed — insufficient bars; report Flat / no signal.
+            _ => (PlanStance::Flat, None),
+        };
+
+        let sizing = ProjectedSizing::compute(ctx.budget, ctx.budget_cap, ctx.last_close);
+
+        StrategyPlan {
+            stance,
+            latest_signal,
+            rule: PlanRuleShape::SmaCross {
+                fast_len: self.fast_len,
+                slow_len: self.slow_len,
+            },
+            sizing,
+        }
     }
 }

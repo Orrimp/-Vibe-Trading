@@ -155,6 +155,16 @@ pub struct RunHandles {
     /// insufficient for the post-boot bake-off; that is the root cause of the
     /// two prior FAKE passes).  ADR-0060 § D6.
     pub forward_rx: Option<tokio::sync::mpsc::Receiver<ForwardCommand>>,
+
+    /// F6-PLAN — sender side of the forward-plan channel (ADR-0062 § D4).
+    ///
+    /// `Some(tx)` only for the cockpit; the supervisor calls `try_send` after
+    /// building the `ForwardPlan` on each `ForwardCommand::Launch`.  The `ui`
+    /// thread holds the matching `Receiver` (the iced subscription pattern).
+    ///
+    /// `None` → no plan is produced; the headless `trading` bin + the soak
+    /// harness pass `None` → byte-identical to pre-F6 behaviour (D6 invariant).
+    pub plan_tx: Option<tokio::sync::mpsc::Sender<crate::config::ForwardPlan>>,
 }
 
 /// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
@@ -461,6 +471,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         equity_store,
         reflection_writer,
         forward_rx,
+        plan_tx,
     } = handles;
 
     // ── Kill-switch halt-file watcher ─────────────────────────────────────────
@@ -923,6 +934,9 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                     let supervisor_btc_closes_seed = btc_closes_seed;
                     let supervisor_cancel = cancel.clone();
                     let supervisor_binance_ws_url = binance_ws_url.clone();
+                    // F6-PLAN: move plan_tx into the supervisor task so it can
+                    // send a ForwardPlan on each Launch (ADR-0062 § D4).
+                    let supervisor_plan_tx = plan_tx;
 
                     set.spawn(async move {
                         // ── Build the initial default loop ────────────────────────
@@ -1055,6 +1069,67 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                             continue;
                                         }
                                     };
+
+                                    // Step (d.5): F6-PLAN — produce and send ForwardPlan.
+                                    //
+                                    // We read the PlanDescribe from the NEW registry
+                                    // (same resolved engine the loop will run — R7 by
+                                    // construction). The latest-bar close/ts are
+                                    // unavailable at Launch time (the live feed hasn't
+                                    // consumed any bar yet), so we use a sentinel close of
+                                    // Decimal::ONE (avoids division-by-zero; the plan
+                                    // will update once a real bar lands).
+                                    //
+                                    // ADR-0062 § D3: "using the latest bar (close, ts) the
+                                    // loop is about to consume" — for the live cockpit
+                                    // path, we don't have a bar yet at launch time.  We
+                                    // use a conservative sentinel and the UI displays
+                                    // "at the last close (pending first bar)" until a real
+                                    // bar updates the plan (T-D2.4 intent preserved;
+                                    // the btc_closes_seed gives a usable close for paper
+                                    // mode where we have historical data).
+                                    if let Some(ref plan_tx_ref) = supervisor_plan_tx {
+                                        // Use the last available close from the BTC seed if
+                                        // present; otherwise fall back to a sentinel price.
+                                        let seed_close = supervisor_btc_closes_seed
+                                            .last()
+                                            .and_then(|(ts, close)| {
+                                                trading_core::Price::new(*close).ok().map(|p| (p, *ts))
+                                            });
+                                        let (last_close, last_bar_ts) = if let Some((p, ts)) = seed_close {
+                                            (p, ts)
+                                        } else {
+                                            // Sentinel: 1 USDT (plan will be updated once a bar lands).
+                                            let fallback_price = trading_core::Price::new(
+                                                rust_decimal::Decimal::ONE
+                                            ).unwrap_or(
+                                                // Price::new(1) always succeeds but be defensive.
+                                                trading_core::Price::new(rust_decimal::Decimal::from(50_000u32)).unwrap()
+                                            );
+                                            (fallback_price, Timestamp::now())
+                                        };
+
+                                        // Cast the new registry's strategy to &dyn PlanDescribe.
+                                        // The registry exposes `Box<dyn Strategy>` per symbol;
+                                        // we need to reach the concrete type. Since we hold
+                                        // the fresh `new_registry` Arc, use a helper that
+                                        // rebuilds a describe_plan from scratch for the id.
+                                        let fwd_plan = crate::plan::build_forward_plan_from_registry(
+                                            &supervisor_config,
+                                            &cfg,
+                                            last_close,
+                                            last_bar_ts,
+                                            7, // default horizon_days (display-only)
+                                        );
+                                        if let Some(plan) = fwd_plan
+                                            && let Err(e) = plan_tx_ref.try_send(plan) {
+                                            warn!(
+                                                error = %e,
+                                                "paper_loop_supervisor: ForwardPlan send failed \
+                                                 (channel full or closed — non-fatal)"
+                                            );
+                                        }
+                                    }
 
                                     // Step (e): fresh feed on the selected coin.
                                     let new_feed: Arc<dyn MarketDataSource> = Arc::new(
@@ -2498,6 +2573,7 @@ mod tests {
             equity_store: None,      // tests use no equity store
             reflection_writer: None, // tests do not exercise lesson-card wiring
             forward_rx: None,        // tests: no forward-command channel (byte-identical path)
+            plan_tx: None,           // tests: no plan channel (F6 gate; ADR-0062 § D6)
         };
 
         let cancel = CancellationToken::new();
