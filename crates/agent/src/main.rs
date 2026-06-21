@@ -332,6 +332,7 @@ async fn main() -> Result<()> {
         boot_id: boot_id.clone(),
         equity_store,
         reflection_writer: reflection_writer_for_runtime,
+        forward_rx: None, // headless bin: no forward-command channel (byte-identical legacy path)
     };
     agent::runtime::run(handles, cancel).await?;
 

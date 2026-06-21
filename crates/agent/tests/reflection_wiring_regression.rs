@@ -208,6 +208,7 @@ async fn lesson_card_is_written_on_position_close() {
         None,         // no ledger journal (not needed here)
         Some(writer), // ← the wiring under test
         btc_seed,     // ← seeded closes for accurate regime tags
+        None,         // no budget override (legacy capital path)
     );
 
     // Wait for the trading loop to finish replaying all 120 bars.
@@ -320,6 +321,7 @@ async fn no_lesson_card_without_writer() {
         None,
         None, // ← no writer: the wiring is absent
         btc_seed,
+        None, // no budget override (legacy capital path)
     );
 
     tokio::time::timeout(Duration::from_secs(10), async {

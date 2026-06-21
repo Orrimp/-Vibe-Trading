@@ -8,6 +8,39 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use trading_core::ConfigError;
 
+// ── F5 forward-paper-trade types ──────────────────────────────────────────────
+//
+// `ForwardRunConfig` carries the selection from the leaderboard → paper loop.
+// It is built UI-side from `core` types only (`StrategyId`, `Symbol`,
+// `Money<Usdt>`) so `ui` never gains a `strategy`/`exec`/`forecast`/`llm` dep.
+// `agent` resolves the `StrategyId` → concrete strategy in
+// `build_registry_for` (which already depends on `strategy`).
+//
+// ADR-0060 § D3.
+
+/// F5 — the selection carried from the leaderboard into the forward paper run.
+///
+/// Constructed UI-side from the crowned/picked [`LeaderRow`] + the F3 budget +
+/// the bake-off coin. Consumed by `build_registry_for` (strategy injection) and
+/// `spawn_trading_loop` (budget capital + cap). `lookback` is `None` for the
+/// real-time-only MVP; the v0.2 replay-preview will populate it (OQ-1).
+///
+/// **`core`-types-only invariant**: every field type must be from `trading_core`
+/// (or `Decimal`) so the `ui` crate — which imports this via `agent` — never
+/// gains a direct `strategy`/`exec`/`forecast`/`llm` dependency.
+#[derive(Debug, Clone)]
+pub struct ForwardRunConfig {
+    /// The selected (or crowned) strategy id, e.g. `"v0.sma"`.
+    pub strategy: trading_core::StrategyId,
+    /// The bake-off coin, e.g. `"BTCUSDT"` — becomes the feed symbol.
+    pub symbol: trading_core::Symbol,
+    /// The user's budget — €200 ≈ 200 USDT (product § D4). Starting cash and
+    /// per-trade notional cap (the `with_budget_cap` F4 modifier).
+    pub budget: trading_core::Money<trading_core::Usdt>,
+    /// v0.2 replay-preview window (OQ-1 deferred). `None` = real-time-only MVP.
+    pub lookback: Option<backtest::engine::DateRange>,
+}
+
 // ── T1928 (pass 6) — `LlmConfig` re-exported from the llm crate ───────────────
 //
 // Per Design § "How it shows up in code" item 10, the canonical

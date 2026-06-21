@@ -253,6 +253,7 @@ async fn paper_loop_produces_moving_equity() {
         None,   // test: no journal persistence
         None,   // test: no lesson cards
         vec![], // test: no btc_closes seed needed
+        None,   // no budget override (legacy capital path)
     );
 
     // Wait for the loop to finish replaying all 80 bars (at 5ms/bar = ~400ms).
@@ -367,6 +368,7 @@ async fn paper_loop_equity_store_research_none_zero_rows() {
         None,   // research: no journal persistence
         None,   // research: no lesson cards
         vec![], // research: no btc_closes seed needed
+        None,   // no budget override (legacy capital path)
     );
 
     tokio::time::timeout(std::time::Duration::from_secs(5), async {

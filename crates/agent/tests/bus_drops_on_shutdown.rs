@@ -79,6 +79,7 @@ async fn t903d_bus_strong_count_collapses_on_cancel() {
         boot_id: boot_id.clone(),
         equity_store: None,      // tests use no equity store
         reflection_writer: None, // tests do not exercise lesson-card wiring
+        forward_rx: None,        // tests: no forward-command channel (byte-identical legacy path)
     };
 
     // Drop the outer `bus` rebinding so `bus_outer` is the only "outside

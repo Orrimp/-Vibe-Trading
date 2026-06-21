@@ -184,6 +184,9 @@ insta = { version = "=1.47.2", features = ["yaml"] }
 tokio = { workspace = true, features = ["test-util"] }
 futures = { workspace = true }
 agent = { path = "../agent" }
+# F5L.5 — real-loop provenance render guard: MockFeed for the budget-loop test.
+# `fixtures` feature exposes `data::MockFeed` (cfg-gated in lib.rs).
+data = { path = "../data", features = ["fixtures"] }
 # T906 stitch (Wave 3 follow-up — orchestrator-spawned 2026-05-01):
 # the `cockpit_live_kill_button_writes_audit` integration test
 # constructs an in-memory `audit::Ledger` + `KillSwitch::with_audit(...)`

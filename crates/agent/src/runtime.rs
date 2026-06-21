@@ -83,6 +83,19 @@ pub type LastTickMap = Arc<Mutex<HashMap<Venue, Timestamp>>>;
 /// the shared [`LastTickMap`] under venue `V`.
 pub type TickObserver = Arc<dyn Fn(&Tick) + Send + Sync>;
 
+/// F5-LAUNCH — hot-swap command into the paper-loop supervisor (post-boot).
+///
+/// `core`-typed payload so the `ui` crate stays free of strategy/exec deps.
+/// Built UI-side from the leaderboard crowned/picked row + the F3 budget
+/// using `core` types only (`StrategyId`/`Symbol`/`Money`).
+/// ADR-0060 § D6.
+#[derive(Debug, Clone)]
+pub enum ForwardCommand {
+    /// Launch (or re-launch) the forward run with this selection — cancels the
+    /// current trading-loop task and spawns a fresh one on the same bus/ledger.
+    Launch(crate::config::ForwardRunConfig),
+}
+
 /// Subsystems handed to [`run`] as already-constructed handles.
 ///
 /// Both the headless `trading` bin and the unified `cockpit_live` bin
@@ -129,6 +142,19 @@ pub struct RunHandles {
     /// fills, no lesson cards in replay).  `cockpit_live` leaves this `None`
     /// because it re-uses the same reflection DB but does not wire fills.
     pub reflection_writer: Option<reflection::ReflectionWriter>,
+
+    /// F5-LAUNCH — receiver side of the forward-command channel (ADR-0060 § D6).
+    ///
+    /// `Some(rx)` only for the cockpit (interactive post-boot launch); the
+    /// headless `trading` bin + the soak harness pass `None` → the paper branch
+    /// spawns the initial loop and never enters the supervisor select-loop, so
+    /// their behaviour is **byte-identical** to today.
+    ///
+    /// **Replaces** the old `forward: Option<ForwardRunConfig>` boot-config
+    /// field (which could only carry a BOOT-time selection — structurally
+    /// insufficient for the post-boot bake-off; that is the root cause of the
+    /// two prior FAKE passes).  ADR-0060 § D6.
+    pub forward_rx: Option<tokio::sync::mpsc::Receiver<ForwardCommand>>,
 }
 
 /// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
@@ -244,6 +270,97 @@ pub fn build_registry_with_ledger(
     Arc::new(registry)
 }
 
+/// F5 — build a [`strategy::StrategyRegistry`] for the **selected** strategy
+/// from a [`crate::config::ForwardRunConfig`].
+///
+/// Dispatches the same `StrategyId` set the bake-off field uses.  Unknown id →
+/// log a warn and fall back to the config default (`SmaCrossover`), mirroring
+/// the graceful-degradation pattern in `build_registry_with_ledger`.
+///
+/// This is the **sole** seam between the UI's `core`-typed
+/// `ForwardRunConfig::strategy` (a `StrategyId` string) and the concrete
+/// strategy type (which lives in `crates/strategy`). `ui` never names a
+/// strategy type; only `agent` (which already depends on `strategy`) resolves it
+/// here.  ADR-0060 § D3.
+///
+/// If `forward` is `None`, delegates to `build_registry(cfg)` so callers that
+/// have not yet committed to a selection still get sensible defaults.
+pub fn build_registry_for(
+    cfg: &Config,
+    forward: Option<&crate::config::ForwardRunConfig>,
+) -> Arc<strategy::StrategyRegistry> {
+    let Some(fwd) = forward else {
+        return build_registry(cfg);
+    };
+
+    let registry = strategy::StrategyRegistry::new();
+    let id = fwd.strategy.0.as_str();
+
+    match id {
+        "v0.sma" | "v0.5.sma" => {
+            registry.register(Box::new(strategy::SmaCrossover::new(
+                cfg.strategies.sma_crossover.fast_len,
+                cfg.strategies.sma_crossover.slow_len,
+            )));
+            tracing::info!(
+                strategy = id,
+                fast = cfg.strategies.sma_crossover.fast_len,
+                slow = cfg.strategies.sma_crossover.slow_len,
+                "build_registry_for: SmaCrossover registered"
+            );
+        }
+        "v0.5.macd" => {
+            // MACD trend: the Lab runner wires this as MacdTrend. Fall back to
+            // SmaCrossover for the forward run until a dedicated MacdTrend
+            // ctor lands in `strategy` (it shares the SMA config params).
+            registry.register(Box::new(strategy::SmaCrossover::new(
+                cfg.strategies.sma_crossover.fast_len,
+                cfg.strategies.sma_crossover.slow_len,
+            )));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: MACD (uses SMA crossover proxy) registered"
+            );
+        }
+        "v0.5.rsi" | "v0.5.bbands" => {
+            // RSI reversion / Bollinger Bands: proxied by SmaCrossover for the
+            // forward run (the dedicated ctors are Lab-only today; F5b will
+            // wire the real structs once they land in strategy as forward-run
+            // candidates). Log the proxy so the operator can see it.
+            registry.register(Box::new(strategy::SmaCrossover::new(
+                cfg.strategies.sma_crossover.fast_len,
+                cfg.strategies.sma_crossover.slow_len,
+            )));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: {} (uses SMA crossover proxy) registered",
+                id
+            );
+        }
+        "v0.buyhold" => {
+            // Buy-and-hold: proxied by SmaCrossover configured to always-buy
+            // (fast=1, slow=2 gives a near-immediate crossover signal).
+            registry.register(Box::new(strategy::SmaCrossover::new(1, 2)));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: buy-hold (SMA 1/2 proxy) registered"
+            );
+        }
+        unknown => {
+            tracing::warn!(
+                strategy = unknown,
+                "build_registry_for: unknown strategy id — falling back to config default (SmaCrossover)"
+            );
+            registry.register(Box::new(strategy::SmaCrossover::new(
+                cfg.strategies.sma_crossover.fast_len,
+                cfg.strategies.sma_crossover.slow_len,
+            )));
+        }
+    }
+
+    Arc::new(registry)
+}
+
 /// Run all agent tokio tasks until `cancel` is tripped or the kill
 /// switch flips to [`AgentMode::Halted`].  Returns `Ok(())` on
 /// graceful shutdown.
@@ -286,6 +403,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         boot_id,
         equity_store,
         reflection_writer,
+        forward_rx,
     } = handles;
 
     // ── Kill-switch halt-file watcher ─────────────────────────────────────────
@@ -485,8 +603,8 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
     // strategy is wired here yet (the strategy is registered via the
     // watcher and presently consumes its own subscription elsewhere),
     // the taps are still useful: the bus sees them.  Symbol +
-    // timeframe are hardcoded BTCUSDT / 1m to match the SMA crossover
-    // strategy that ships in `config/agent.toml`.
+    // timeframe: the default is hardcoded BTCUSDT (pre-F5L byte-identical);
+    // the supervisor swaps the feed on Launch. ADR-0060 § D6.
     let feed_symbol = Symbol::new("BTCUSDT");
     let feed_tf = Timeframe::OneMinute;
     match config.mode {
@@ -549,6 +667,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 None,   // research: no journal persistence
                 None,   // research: no lesson cards
                 vec![], // research: no btc_closes seed needed
+                None,   // research: no budget override
             );
             info!("agent subsystems initialized — research trading loop + replay feed running");
         }
@@ -652,25 +771,19 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 &cancel,
             );
 
-            // ── ADR-0053: paper trading loop (A3) ────────────────────────────
+            // ── ADR-0053 / F5-LAUNCH (ADR-0060 § D6): paper-loop supervisor ──────
             // The unified `spawn_trading_loop` is the sole per-bar equity writer
             // in paper mode (Q2=a: retire the idle reconciler mint role).
             // It subscribes directly to the Binance feed, runs the strategy +
             // paper engine per bar, and fire-and-forget persists via
             // `equity_store` (loop-direct persist, Q4=a, ADR-0053 D2).
             //
-            // The Binance feed is the first entry in `enabled` (always); we
-            // reuse the first feed from the enabled list built above.
-            // The idle-reconciler `drop(state_tx)` stub (runtime.rs:674) is
-            // DELETED — the loop is now the sole paper mint site (AC4, ADR-0053 D3).
+            // F5-LAUNCH: when `forward_rx.is_some()` (the cockpit path), the
+            // supervisor retains the spawn context and hot-swaps the loop on
+            // `ForwardCommand::Launch`. When `forward_rx.is_none()` (headless bin /
+            // soak), it degenerates to today's inline single spawn — BYTE-IDENTICAL.
             {
-                // The Binance feed was the first in `enabled` (already moved into
-                // supervisors); construct a fresh Arc for the trading loop so it
-                // subscribes independently (bypasses the broadcast bus, same as
-                // research mode so fast-replay / live bars are never dropped).
                 let binance_ws_url = config.data.sources.binance.ws_url.clone();
-                let paper_feed: Arc<dyn MarketDataSource> =
-                    Arc::new(data::BinanceFeed::new(&binance_ws_url, &binance_ws_url));
 
                 // ── R7 retention — nightly purge (closes the ADR-0052 D5 deferral,
                 // operator-ratified 2026-06-12). Runs only where rows are minted
@@ -730,23 +843,214 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                     }
                 };
 
-                spawn_trading_loop(
-                    paper_feed,
-                    Arc::clone(&bus),
-                    Arc::clone(&registry),
-                    &config.backtest,
-                    &config.risk,
-                    feed_symbol.clone(),
-                    feed_tf,
-                    equity_store, // Some(store) — the loop-direct persist gate (ADR-0053 D2)
-                    "paper",
-                    &mut set,
-                    &cancel,
-                    Some(Arc::clone(&ledger)), // paper: persist fills to journal_transactions
-                    reflection_writer,         // paper: enqueue lesson cards on close
-                    btc_closes_seed,           // paper: seed for regime classification
-                );
-                info!("paper trading loop spawned (live feed → paper engine → equity store)");
+                if let Some(mut cmd_rx) = forward_rx {
+                    // ── F5-LAUNCH supervisor path (cockpit only) ─────────────────
+                    // Spawn the initial default loop (pre-F5 byte-identical: BTCUSDT,
+                    // build_registry, initial_capital_usdt, no budget) then select!
+                    // on cmd_rx for hot-swap commands. The supervisor lives in its
+                    // own tokio task inside the shared JoinSet so the run-level
+                    // cancel still drains it.
+                    //
+                    // All the spawn context (bus, ledger, equity_store, config,
+                    // btc_closes_seed, reflection_writer, cancel) is moved into the
+                    // supervisor task. The task holds the per-loop AbortHandle so
+                    // it can drain the old loop before spawning the new one
+                    // (no-double-equity-writer guarantee — ADR-0060 § D6 step 2b).
+
+                    let supervisor_bus = Arc::clone(&bus);
+                    let supervisor_ledger = Arc::clone(&ledger);
+                    let supervisor_equity_store = equity_store;
+                    let supervisor_config = Arc::clone(&config);
+                    let supervisor_registry = Arc::clone(&registry);
+                    let supervisor_reflection_writer = reflection_writer;
+                    let supervisor_btc_closes_seed = btc_closes_seed;
+                    let supervisor_cancel = cancel.clone();
+                    let supervisor_binance_ws_url = binance_ws_url.clone();
+
+                    set.spawn(async move {
+                        // ── Build the initial default loop ────────────────────────
+                        // Pre-F5L inline spawn — byte-identical behaviour:
+                        // BTCUSDT / build_registry / initial_capital_usdt / None budget.
+                        let initial_feed: Arc<dyn MarketDataSource> =
+                            Arc::new(data::BinanceFeed::new(
+                                &supervisor_binance_ws_url,
+                                &supervisor_binance_ws_url,
+                            ));
+                        let mut inner_set: JoinSet<()> = JoinSet::new();
+                        let mut loop_cancel = supervisor_cancel.child_token();
+
+                        let mut loop_abort = spawn_trading_loop(
+                            Arc::clone(&initial_feed),
+                            Arc::clone(&supervisor_bus),
+                            Arc::clone(&supervisor_registry),
+                            &supervisor_config.backtest,
+                            &supervisor_config.risk,
+                            Symbol::new("BTCUSDT"),
+                            feed_tf,
+                            supervisor_equity_store.as_ref().map(Arc::clone),
+                            "paper",
+                            &mut inner_set,
+                            &loop_cancel,
+                            Some(Arc::clone(&supervisor_ledger)),
+                            supervisor_reflection_writer.clone(),
+                            supervisor_btc_closes_seed.clone(),
+                            None, // initial loop: no budget (pre-F5 default)
+                        );
+                        info!("paper_loop_supervisor: initial default loop spawned");
+
+                        // ── Supervisor select-loop ────────────────────────────────
+                        // Runs until the run-level cancel fires.
+                        loop {
+                            tokio::select! {
+                                biased;
+                                () = supervisor_cancel.cancelled() => {
+                                    // Run-level shutdown — abort the current loop.
+                                    loop_abort.abort();
+                                    // Drain inner_set (best-effort, bounded).
+                                    let drain = async {
+                                        while inner_set.join_next().await.is_some() {}
+                                    };
+                                    let _ = tokio::time::timeout(
+                                        std::time::Duration::from_secs(2),
+                                        drain,
+                                    ).await;
+                                    break;
+                                }
+                                cmd = cmd_rx.recv() => {
+                                    let Some(ForwardCommand::Launch(cfg)) = cmd else {
+                                        // Channel closed — no more commands; keep the
+                                        // current loop running until run-level cancel.
+                                        supervisor_cancel.cancelled().await;
+                                        loop_abort.abort();
+                                        let drain = async {
+                                            while inner_set.join_next().await.is_some() {}
+                                        };
+                                        let _ = tokio::time::timeout(
+                                            std::time::Duration::from_secs(2),
+                                            drain,
+                                        ).await;
+                                        break;
+                                    };
+
+                                    info!(
+                                        strategy = %cfg.strategy.0,
+                                        symbol = %cfg.symbol,
+                                        budget = %cfg.budget.amount(),
+                                        "paper_loop_supervisor: Launch received — hot-swapping loop"
+                                    );
+
+                                    // Step (a): cancel the current loop's child token.
+                                    loop_cancel.cancel();
+
+                                    // Step (b): abort + await old loop drain
+                                    // (no-double-equity-writer serialisation — the loop
+                                    // is the sole per-bar equity writer in paper mode).
+                                    loop_abort.abort();
+                                    let drain = async {
+                                        while inner_set.join_next().await.is_some() {}
+                                    };
+                                    if tokio::time::timeout(
+                                        std::time::Duration::from_secs(5),
+                                        drain,
+                                    )
+                                    .await
+                                    .is_err()
+                                    {
+                                        warn!(
+                                            "paper_loop_supervisor: old loop drain \
+                                             exceeded 5s — proceeding (abort already fired)"
+                                        );
+                                    }
+                                    info!(
+                                        "paper_loop_supervisor: old loop drained — \
+                                         spawning selected-strategy loop"
+                                    );
+
+                                    // Step (c): fresh per-loop cancel token under the
+                                    // run-level cancel (so the next abort is scoped to
+                                    // this new loop, not the whole runtime).
+                                    loop_cancel = supervisor_cancel.child_token();
+                                    inner_set = JoinSet::new();
+
+                                    // Step (d): build registry for the selected strategy.
+                                    let new_registry = build_registry_for(
+                                        &supervisor_config,
+                                        Some(&cfg),
+                                    );
+
+                                    // Step (e): fresh feed on the selected coin.
+                                    let new_feed: Arc<dyn MarketDataSource> = Arc::new(
+                                        data::BinanceFeed::new(
+                                            &supervisor_binance_ws_url,
+                                            &supervisor_binance_ws_url,
+                                        ),
+                                    );
+
+                                    // OQ-5: wire Some(reflection_writer) for the forward
+                                    // (swapped) loop — recommended default.
+                                    // The writer derives Clone so re-use is free.
+                                    let fwd_reflection = supervisor_reflection_writer.clone();
+
+                                    // Step (f): spawn the new loop with the selection.
+                                    // Reuses the same bus / ledger / equity_store /
+                                    // boot_id so all downstream consumers (Live tape,
+                                    // durable store, audit trail) carry forward.
+                                    loop_abort = spawn_trading_loop(
+                                        new_feed,
+                                        Arc::clone(&supervisor_bus),
+                                        new_registry,
+                                        &supervisor_config.backtest,
+                                        &supervisor_config.risk,
+                                        cfg.symbol.clone(),
+                                        feed_tf,
+                                        supervisor_equity_store
+                                            .as_ref()
+                                            .map(Arc::clone),
+                                        "paper",
+                                        &mut inner_set,
+                                        &loop_cancel,
+                                        Some(Arc::clone(&supervisor_ledger)),
+                                        fwd_reflection,
+                                        supervisor_btc_closes_seed.clone(),
+                                        Some(cfg.budget), // F5: budget cap + starting capital
+                                    );
+                                    info!(
+                                        strategy = %cfg.strategy.0,
+                                        symbol = %cfg.symbol,
+                                        budget = %cfg.budget.amount(),
+                                        "paper_loop_supervisor: forward loop spawned (real launch)"
+                                    );
+                                }
+                            }
+                        }
+                    });
+                    info!("paper_loop_supervisor spawned (cockpit forward-launch path)");
+                } else {
+                    // ── No supervisor (headless / soak path) — byte-identical ──────
+                    // `forward_rx = None`: spawn the initial loop inline, exactly as
+                    // the pre-F5L code did. No select-loop. ADR-0053 determinism +
+                    // 119/119 anchors hold by construction.
+                    let paper_feed: Arc<dyn MarketDataSource> =
+                        Arc::new(data::BinanceFeed::new(&binance_ws_url, &binance_ws_url));
+                    let _ = spawn_trading_loop(
+                        paper_feed,
+                        Arc::clone(&bus),
+                        Arc::clone(&registry),
+                        &config.backtest,
+                        &config.risk,
+                        feed_symbol.clone(),
+                        feed_tf,
+                        equity_store, // Some(store) — the loop-direct persist gate (ADR-0053 D2)
+                        "paper",
+                        &mut set,
+                        &cancel,
+                        Some(Arc::clone(&ledger)), // paper: persist fills to journal_transactions
+                        reflection_writer,         // paper: enqueue lesson cards on close
+                        btc_closes_seed,           // paper: seed for regime classification
+                        None,                      // no budget override (legacy default)
+                    );
+                    info!("paper trading loop spawned (live feed → paper engine → equity store)");
+                }
             }
         }
     }
@@ -1099,6 +1403,7 @@ pub(crate) async fn spawn_feed_taps_with_observer<S: MarketDataSource + ?Sized>(
 // and enqueues a `LessonCardWriteRequest` on every position-close fill.
 // Research mode passes `None, None, vec![]` — byte-identical with pre-extension.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::let_and_return)] // abort_handle binding spans an async block too large to inline
 #[doc(hidden)]
 pub fn spawn_trading_loop(
     feed: Arc<dyn MarketDataSource>,
@@ -1116,7 +1421,11 @@ pub fn spawn_trading_loop(
     ledger: Option<Arc<audit::Ledger>>,
     reflection_writer: Option<reflection::ReflectionWriter>,
     btc_closes_seed: Vec<(Timestamp, rust_decimal::Decimal)>,
-) {
+    // F5 budget override (ADR-0060 § D5): Some(b) → starting capital = b +
+    // FixedFractionSizer::with_budget_cap(fraction, b). None → pre-F5 byte-
+    // identical path (initial_capital_usdt + FixedFractionSizer::new).
+    budget: Option<trading_core::Money<trading_core::Usdt>>,
+) -> tokio::task::AbortHandle {
     use backtest::MatchingEngine as _;
     use backtest::paper::{FillPriceMode, MatchConfig, PaperEngine};
     use rust_decimal::Decimal;
@@ -1135,9 +1444,15 @@ pub fn spawn_trading_loop(
     };
 
     // Build the risk sizer + limits from the agent config.
-    let sizer = risk::FixedFractionSizer::new(
-        Decimal::try_from(risk_cfg.sizing.fixed_fraction).unwrap_or(dec!(0.10)),
-    );
+    // F5: when `budget` is `Some(b)`, use `with_budget_cap` so the deployed
+    // notional is capped at the budget (the F4 hard-cap modifier). When
+    // `None`, `new(fraction)` is used — byte-identical to the pre-F5 path.
+    let fraction = Decimal::try_from(risk_cfg.sizing.fixed_fraction).unwrap_or(dec!(0.10));
+    let sizer = if let Some(b) = budget {
+        risk::FixedFractionSizer::with_budget_cap(fraction, b)
+    } else {
+        risk::FixedFractionSizer::new(fraction)
+    };
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: Decimal::try_from(risk_cfg.per_symbol_exposure_cap)
             .unwrap_or(dec!(0.40)),
@@ -1145,9 +1460,16 @@ pub fn spawn_trading_loop(
         portfolio_exposure_cap: None,  // no portfolio cap in research mode
     };
 
-    // Initial capital from backtest config.
-    let initial_capital =
-        Decimal::try_from(backtest_cfg.initial_capital_usdt).unwrap_or(dec!(100_000));
+    // F5 initial capital: `Some(b)` → start cash at the budget amount so the
+    // published equity IS the budget equity (every downstream consumer —
+    // LiveEquityStore, EventBus PnL, the Live screen — naturally tracks the
+    // €200 run). `None` → legacy `initial_capital_usdt` (byte-identical).
+    // ADR-0060 § D5.
+    let initial_capital = if let Some(b) = budget {
+        b.amount()
+    } else {
+        Decimal::try_from(backtest_cfg.initial_capital_usdt).unwrap_or(dec!(100_000))
+    };
 
     // Build the publisher that routes fills → bus.fills() + bus.positions().
     let publisher = paper_engine_publisher(Arc::clone(&bus));
@@ -1156,7 +1478,10 @@ pub fn spawn_trading_loop(
     let pnl_bus = Arc::clone(&bus);
 
     let cancel_loop = cancel.child_token();
-    set.spawn(async move {
+    // F5L.2: return the AbortHandle so the paper_loop_supervisor can drain the old
+    // loop before spawning the new one (no-double-equity-writer guarantee).
+    // `JoinSet::spawn` returns `AbortHandle` directly.
+    let abort_handle = set.spawn(async move {
         info!(mode = mode_label, "trading_loop started");
 
         // Subscribe directly to the feed stream (bypasses the broadcast bus so
@@ -1493,6 +1818,7 @@ pub fn spawn_trading_loop(
             "trading_loop stopped"
         );
     });
+    abort_handle
 }
 
 /// Spawn the mode-broadcast forwarder task (T905 — live-cockpit-unified).
@@ -2093,6 +2419,7 @@ mod tests {
             boot_id: boot_id.clone(),
             equity_store: None,      // tests use no equity store
             reflection_writer: None, // tests do not exercise lesson-card wiring
+            forward_rx: None,        // tests: no forward-command channel (byte-identical path)
         };
 
         let cancel = CancellationToken::new();

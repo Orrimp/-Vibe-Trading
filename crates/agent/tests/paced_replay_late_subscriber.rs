@@ -177,6 +177,7 @@ async fn paced_replay_late_subscriber_receives_fills_positions_pnl() {
         None,   // research: no journal persistence
         None,   // research: no lesson cards
         vec![], // research: no btc_closes seed needed
+        None,   // no budget override (legacy capital path)
     );
 
     // ── Simulate iced boot delay (late subscriber) ────────────────────────────

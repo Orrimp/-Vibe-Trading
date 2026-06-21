@@ -139,6 +139,7 @@ async fn t912_runtime_with_prometheus_disabled_does_not_bind_9100() {
         boot_id: boot_id.clone(),
         equity_store: None,      // tests use no equity store
         reflection_writer: None, // tests do not exercise lesson-card wiring
+        forward_rx: None,        // tests: no forward-command channel (byte-identical legacy path)
     };
 
     let cancel = CancellationToken::new();

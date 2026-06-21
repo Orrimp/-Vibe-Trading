@@ -102,6 +102,7 @@ async fn t910_v3_graceful_shutdown_within_two_seconds_with_close_uptime_row() {
         boot_id: boot_id.clone(),
         equity_store: None,      // tests use no equity store
         reflection_writer: None, // tests do not exercise lesson-card wiring
+        forward_rx: None,        // tests: no forward-command channel (byte-identical legacy path)
     };
 
     let cancel = CancellationToken::new();

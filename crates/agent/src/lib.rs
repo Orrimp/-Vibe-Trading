@@ -19,10 +19,14 @@ pub use activity::{
 };
 pub use activity_audit_aggregator::spawn_aggregator;
 pub use bus::EventBus;
+pub use config::ForwardRunConfig;
 pub use kill_switch::{
     AgentMode, CommandIncidentSpawner, HaltReason, IncidentSpawnArgs, IncidentSpawner, KillSwitch,
     MockIncidentSpawner,
 };
 pub use reconciler::ReconcilerTask;
-pub use runtime::{RunHandles, build_registry, paper_engine_publisher, run, shutdown_writer};
+pub use runtime::{
+    ForwardCommand, RunHandles, build_registry, build_registry_for, paper_engine_publisher, run,
+    shutdown_writer,
+};
 pub use watcher::run_strategy_watcher;

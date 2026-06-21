@@ -1135,6 +1135,20 @@ pub struct Cockpit {
     /// `Cockpit` immutably. The iced update/view cycle is single-threaded
     /// (only the iced thread ever calls `view`), so `RefCell` is safe here.
     pub equity_cache: std::cell::RefCell<crate::lab::equity_loader::EquityCache>,
+
+    // ── F5 — Forward paper-trade budget context ──────────────────────────
+    /// The budget the forward paper run is trading against (F5).
+    ///
+    /// `Some(b)` when the user launched a forward run with the leaderboard's
+    /// €200 budget (or a custom amount). The Live screen renders the running
+    /// P/L = equity − budget from this value. `None` → no forward run has
+    /// been launched yet, or the run uses the default capital (no budget
+    /// framing rendered — the P/L card shows the raw session equity instead).
+    ///
+    /// Set by `Message::ForwardPaperTradeStarted(budget)` and cleared to
+    /// `None` on a new paper run without a budget (or on cockpit restart).
+    /// ADR-0060 § D5 / F5 Live P/L framing.
+    pub forward_budget: Option<Money<Usdt>>,
 }
 
 impl std::fmt::Debug for Cockpit {
@@ -1202,7 +1216,8 @@ impl std::fmt::Debug for Cockpit {
             .field("toast_next_id", &self.toast_next_id)
             .field("activity_tape", &"<ActivityTape>")
             .field("equity_cache", &"<EquityCache>")
-            .field("settings_active_tab", &self.settings_active_tab);
+            .field("settings_active_tab", &self.settings_active_tab)
+            .field("forward_budget", &self.forward_budget);
         dbg.finish()
     }
 }
@@ -1269,6 +1284,7 @@ impl Default for Cockpit {
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
+            forward_budget: None,
         }
     }
 }
@@ -1387,6 +1403,7 @@ impl Cockpit {
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
+            forward_budget: None,
         }
     }
 
@@ -2053,6 +2070,18 @@ pub enum Message {
     /// can piggyback the existing time recipe or add a dedicated one;
     /// the update arm is stateless — it only calls `tape.purge(now)`).
     ActivityTapePurgeTick,
+
+    // ── F5 — Forward paper-trade budget framing ───────────────────────────────
+    /// The cockpit binary emits this ONCE when it starts a forward paper run
+    /// with a concrete budget (€200 ≈ 200 USDT). The update arm sets
+    /// `Cockpit::forward_budget = Some(budget)` so the Live screen can
+    /// render the P/L = equity − budget framing.
+    ///
+    /// `budget=None`/`forward=None` paper runs (the legacy research/soak
+    /// path) never emit this message, keeping those paths byte-identical.
+    ///
+    /// ADR-0060 § D5 / F5 Live P/L framing.
+    ForwardPaperTradeStarted(Money<Usdt>),
 }
 
 /// lab-polish-round-2 R2 — parse SMA window text input.
@@ -2991,6 +3020,13 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Remove expired red-hold rows (Q5=(a) 3-second hold).
             // Called by the 1 Hz purge tick subscription.
             model.activity_tape.purge(std::time::Instant::now());
+        }
+        Message::ForwardPaperTradeStarted(budget) => {
+            // F5 — store the forward-run budget so the Live screen can render
+            // P/L = equity − budget.  Budget=None / forward=None paths never
+            // emit this message; those runs leave forward_budget = None and
+            // the Live screen falls back to raw equity display (pre-F5 behaviour).
+            model.forward_budget = Some(budget);
         }
     }
 }

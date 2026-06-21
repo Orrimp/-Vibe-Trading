@@ -485,8 +485,28 @@ fn main() -> Result<()> {
         } else {
             Some(Arc::new(audit::LedgerEquityStore::new(Arc::clone(&ledger))))
         };
+    // F5-LAUNCH (ADR-0060 § D6) — build the forward-command channel.
+    // The iced side holds `forward_tx` (Sender); the runtime side holds
+    // `forward_rx` (Receiver) via `RunHandles.forward_rx`.
+    // Depth = 4: tolerates rapid re-selection without blocking the iced thread.
+    // `warn-on-full` on `try_send` covers any overflow.
+    #[cfg(feature = "live")]
+    let (forward_tx_live, forward_rx_live) = tokio::sync::mpsc::channel::<agent::ForwardCommand>(4);
+
     let agent_handle = {
         let cancel = cancel.clone();
+
+        // F5-LAUNCH: pass the Receiver into RunHandles so the
+        // paper_loop_supervisor can receive hot-swap commands.
+        // When compiled without `live` feature (tests, headless bin),
+        // forward_rx = None → the pre-F5L byte-identical path runs.
+        #[cfg(feature = "live")]
+        let forward_rx_for_handles = Some(forward_rx_live);
+        #[cfg(not(feature = "live"))]
+        let forward_rx_for_handles: Option<
+            tokio::sync::mpsc::Receiver<agent::ForwardCommand>,
+        > = None;
+
         let handles = RunHandles {
             config: Arc::new(cfg),
             ledger: Arc::clone(&ledger),
@@ -499,6 +519,9 @@ fn main() -> Result<()> {
             // generation — fills flow through the paper trading loop which is
             // owned by RunHandles in the headless bin. Pass None here.
             reflection_writer: None,
+            // F5-LAUNCH: the Receiver carries forward-command hot-swap requests.
+            // `None` (headless / soak path) → byte-identical to pre-F5L.
+            forward_rx: forward_rx_for_handles,
         };
         let ledger_for_close = Arc::clone(&ledger);
         let boot_id_for_close = boot_id.clone();
@@ -699,6 +722,10 @@ fn main() -> Result<()> {
         // advisor-leaderboard-screen v0.1.0 — no bake-off in flight at boot.
         #[cfg(feature = "live")]
         bakeoff_cancel: None,
+        // F5-LAUNCH: hold the Sender in AppState so the BakeoffRunCompleted arm
+        // can send ForwardCommand::Launch(cfg) to the paper_loop_supervisor.
+        #[cfg(feature = "live")]
+        forward_tx: Some(forward_tx_live),
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -1038,6 +1065,18 @@ struct AppState {
     /// flight; cleared on `BakeoffRunCompleted`.
     #[cfg(feature = "live")]
     bakeoff_cancel: Option<ui::lab::runner::RunCancelHandle>,
+
+    /// F5-LAUNCH — sender side of the forward-command channel (ADR-0060 § D6).
+    ///
+    /// Held on the iced side. When the bake-off completes with a crowned row
+    /// the iced `update` arm sends `ForwardCommand::Launch(cfg)` on this
+    /// channel; the `paper_loop_supervisor` in the side-thread runtime receives
+    /// it and hot-swaps the trading-loop task to the selected strategy at €200.
+    ///
+    /// `Some` when built for the cockpit (feature "live"); `None` in tests that
+    /// do not exercise the forward-launch path.
+    #[cfg(feature = "live")]
+    forward_tx: Option<tokio::sync::mpsc::Sender<agent::ForwardCommand>>,
 }
 
 // ── Manual Clone for AppState ─────────────────────────────────────────────────
@@ -1076,6 +1115,10 @@ impl Clone for AppState {
             // None at cold-boot (the only clone site).
             #[cfg(feature = "live")]
             bakeoff_cancel: None,
+            // Forward-tx sender is cloned by Arc-cloning the underlying channel;
+            // mpsc::Sender derives Clone so this is a cheap refcount bump.
+            #[cfg(feature = "live")]
+            forward_tx: self.forward_tx.clone(),
         }
     }
 }
@@ -1211,6 +1254,65 @@ impl AppState {
         // we can drop the bake-off cancel handle on completion (mirrors
         // `lab_run_completed_any`).
         let bakeoff_run_completed_any = matches!(&msg, Message::BakeoffRunCompleted(_));
+
+        // F5-LAUNCH (ADR-0060 § D6) — when a bake-off completes with a crowned
+        // row, build a ForwardRunConfig from the crowned/picked strategy + bake-off
+        // coin + F3 budget, then send ForwardCommand::Launch(cfg) to the
+        // paper_loop_supervisor on the side-thread runtime. ALSO emit
+        // ForwardPaperTradeStarted(budget) to paint the UI frame (set
+        // forward_budget so the Live P/L card renders). The real equity now
+        // comes from the SWAPPED loop (selected strategy / €200 capital), NOT the
+        // default loop. The fake "No runtime re-launch is needed" comment is GONE.
+        // ADR-0060 § D6 (launch-lifecycle amendment).
+        #[cfg(feature = "live")]
+        let forward_paper_budget: Option<trading_core::Money<trading_core::Usdt>> = match &msg {
+            Message::BakeoffRunCompleted(Ok(mirror)) if mirror.crowned_row().is_some() => {
+                use rust_decimal_macros::dec;
+                let budget_decimal = self
+                    .cockpit
+                    .leaderboard_screen_state
+                    .budget_eur()
+                    .unwrap_or(dec!(200));
+                let budget =
+                    trading_core::Money::<trading_core::Usdt>::from_decimal(budget_decimal);
+
+                // Build ForwardRunConfig from core types only (StrategyId/Symbol/Money)
+                // so cargo tree -p ui stays unchanged — no ui → strategy edge.
+                if let Some(row) = mirror.crowned_row() {
+                    let strategy_id = trading_core::StrategyId::new(row.strategy.as_str());
+                    let symbol = trading_core::Symbol::new(mirror.coin.as_str());
+                    let fwd_cfg = agent::ForwardRunConfig {
+                        strategy: strategy_id,
+                        symbol,
+                        budget,
+                        lookback: None, // real-time-only (MVP; replay preview = v0.2)
+                    };
+                    if let Some(ref tx) = self.forward_tx {
+                        match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
+                            Ok(()) => {
+                                info!(
+                                    strategy = %row.strategy,
+                                    coin = %mirror.coin,
+                                    budget = %budget_decimal,
+                                    "F5-LAUNCH: ForwardCommand::Launch sent to supervisor"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    "F5-LAUNCH: ForwardCommand channel full — launch deferred"
+                                );
+                            }
+                        }
+                    } else {
+                        warn!("F5-LAUNCH: forward_tx is None — supervisor not wired (non-fatal)");
+                    }
+                }
+
+                Some(budget)
+            }
+            _ => None,
+        };
         // T-D3.4 — detect LabRunStopRequested to drop the cancel handle.
         let lab_run_stop_requested = matches!(&msg, Message::LabRunStopRequested);
 
@@ -1363,6 +1465,16 @@ impl AppState {
         #[cfg(feature = "live")]
         if bakeoff_run_completed_any {
             self.bakeoff_cancel = None;
+        }
+
+        // F5 — emit ForwardPaperTradeStarted after bakeoff completes with a
+        // crowned row. This sets `cockpit.forward_budget` so the Live P/L block
+        // activates. `Task::done` re-enters `AppState::update` with the message,
+        // where `ui::state::update` handles `ForwardPaperTradeStarted` by setting
+        // `forward_budget = Some(budget)`. ADR-0060 § D5 / boot-config mechanism.
+        #[cfg(feature = "live")]
+        if let Some(budget) = forward_paper_budget {
+            return iced::Task::done(Message::ForwardPaperTradeStarted(budget));
         }
 
         // ── cockpit-activity-status-bar T-D-N8 — Lab Run activity handle ───────

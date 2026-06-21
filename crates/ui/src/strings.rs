@@ -1937,6 +1937,12 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("ACTIVITY_KIND_TRAINING_LABEL", ACTIVITY_KIND_TRAINING_LABEL),
         ("ACTIVITY_TAPE_MORE_PREFIX", ACTIVITY_TAPE_MORE_PREFIX),
         ("ACTIVITY_TAPE_MORE_SUFFIX", ACTIVITY_TAPE_MORE_SUFFIX),
+        // F5 — Forward paper-trade P/L framing (ADR-0060 § D5)
+        ("LIVE_FORWARD_PNL_LABEL", LIVE_FORWARD_PNL_LABEL),
+        ("LIVE_FORWARD_BUDGET_LABEL", LIVE_FORWARD_BUDGET_LABEL),
+        ("LIVE_FORWARD_FX_NOTE", LIVE_FORWARD_FX_NOTE),
+        ("LIVE_FORWARD_DISCLAIMER", LIVE_FORWARD_DISCLAIMER),
+        ("LIVE_FORWARD_RUNNING_FMT", LIVE_FORWARD_RUNNING_FMT),
     ]
 }
 
@@ -2291,6 +2297,27 @@ pub const SETTINGS_TAB_CONTROL: &str = "Control";
 
 /// Tab label for the Debug sub-tab inside the Settings rollup (Q2a).
 pub const SETTINGS_TAB_DEBUG: &str = "Debug";
+
+// ── F5 — Forward paper-trade P/L framing (ADR-0060 § D5) ────────────────────
+
+/// Label for the forward-budget P/L card headline.
+/// Shown when a forward run is active (`forward_budget = Some`).
+pub const LIVE_FORWARD_PNL_LABEL: &str = "P/L";
+
+/// Label for the budget card — the starting capital of the forward run.
+pub const LIVE_FORWARD_BUDGET_LABEL: &str = "Budget";
+
+/// FX-gap disclaimer (product § D4) under the budget card.
+/// Unicode: € = U+20AC, ≈ = U+2248, — = U+2014
+pub const LIVE_FORWARD_FX_NOTE: &str = "\u{20ac}200 \u{2248} 200 USDT \u{2014} FX not modelled.";
+
+/// Persistent not-advice + simulated-budget disclaimer (product § D5).
+pub const LIVE_FORWARD_DISCLAIMER: &str = "Simulated paper budget. Not financial advice. \
+     This is not a real trade.";
+
+/// Caption shown above the P/L row in the Live screen when a forward run
+/// is active. Carries the strategy id; caller fills `{strategy}`.
+pub const LIVE_FORWARD_RUNNING_FMT: &str = "Running {strategy} on simulated budget.";
 
 #[cfg(test)]
 mod tests {
