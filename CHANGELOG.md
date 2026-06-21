@@ -12,16 +12,31 @@ regression anchors, gated by `scripts/verify_anchors.sh`). Ratified scope and
 design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 **`spec/runbooks/`**.
 
-> **Program status — the active-vs-passive research is CONCLUDED (2026-06-08): ship passive.**
-> Across all three reachable channels — price/OHLCV, derivatives-positioning, and
-> on-chain — no active strategy beat passive buy-and-hold (+1.74 Sharpe 2023 / +1.10
-> 2024) net of cost under the frozen block-bootstrap robustness rule. The shipped
-> deliverable is the **robustness machine + the auditable negative result**, a
-> success of the "measured robustness, not asserted alpha" thesis. Terminal mode is
-> continuous paper-trading on real data with simulated fills; **no live trading**
-> (removed 2026-06-12, out of scope). Full verdict: `spec/product.md`.
+> **Program status — single-coin investment advisor (paper), MVP SHIPPED (2026-06-19 pivot).**
+> The terminal deliverable is the **advisor loop**: pick a coin + budget (e.g. €200
+> XRPUSDT) → bake off *every* strategy over a configurable 2-week-to-4-year window →
+> rank & select the best by risk-adjusted Sharpe under a robustness gate → emit a
+> forward buy/sell plan → **paper-trade the budget forward** in the Live view with
+> real P/L. The 2026-06-08 active-vs-passive negative result (no active strategy beat
+> passive buy-and-hold net of cost under the frozen block-bootstrap rule) is REFRAMED,
+> not discarded: **buy-and-hold is the always-present bake-off benchmark arm** and the
+> **Monte-Carlo robustness machine is the credibility layer** that gates every pick —
+> the foundation under the advisor, not the terminal product. PAPER-ONLY (simulated
+> fills, simulated €200); not financial advice; single-coin. **No live trading**
+> (removed 2026-06-12, out of scope). Full spec: `spec/product.md`.
 
 ---
+
+## Single-coin investment advisor (paper) — 2026-06-19 pivot, MVP SHIPPED
+
+The terminal product: pick coin + budget → bake off all strategies → rank the best → forward paper-trade the €200. Buy-and-hold is the always-present benchmark arm; the Monte-Carlo robustness machine gates every pick.
+
+- **advisor-bakeoff F1+F2** (v0.1.0) — strategy bake-off + ranking engine (`crates/backtest/src/bakeoff/`: `run_bakeoff(cfg) -> BakeoffReport`; ranks Fragile-ineligible → Sharpe → return → drawdown → id; buy-and-hold always the benchmark arm; structured `Recommendation`). ADR-0059. `58b55b1`.
+- **advisor-leaderboard** (v0.1.0) — cockpit Leaderboard screen rendering the ranked bake-off (advisor journey step 3) — `crates/ui/src/screens/leaderboard.rs`, `crates/ui/src/leaderboard/`. `e0cc34b`.
+- **advisor-bakeoff F3** (v0.1.0) — guided coin + budget + lookback input widget (`crates/ui/src/widgets/bakeoff_input.rs`) opening the journey. `acc3789`.
+- **advisor-forward-paper F4** (v0.2.0) — budget-aware €200 sizing modifier (`crates/risk` `FixedFractionSizer.budget_cap`) with a day-1 baseline-equity-divergence e2e (`crates/risk/tests/budget_sizing_divergence_end_to_end.rs`). ADR-0060. `d4f4dce`.
+- **advisor-forward-paper F5** (v0.2.0) — forward paper-trade of the SELECTED strategy: `crates/agent::runtime` `paper_loop_supervisor` hot-swaps the trading loop on `ForwardCommand::Launch` to run the pick at €200 on the same bus/ledger; Live view shows real P/L. ADR-0060 §D6. `c9dd275`.
+- **advisor-dynamic-data** (v0.1.0) — on-demand Binance fetch for any coin + window the pinned corpus doesn't cover (`crates/data` `binance_klines` + `dynamic_cache`, git-ignored cache root, anchor-safe by construction — verify_anchors stays 119/119). ADR-0061. `ee5a904`.
 
 ## Strategy & backtest engine
 

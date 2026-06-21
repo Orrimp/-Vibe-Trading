@@ -1,8 +1,8 @@
 ---
 slug: product
-status: draft
+status: shipped
 owner: analyst
-updated: 2026-06-19
+updated: 2026-06-21
 ---
 
 # Product Requirements — Single-Coin Investment Advisor (paper)
@@ -446,6 +446,14 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-21 (analyst, spec-honesty close-out): flipped `status: draft →
+  shipped` — the operator personally defined this product and the MVP is built,
+  tested, and committed (advisor F1–F5 + dynamic-data: `58b55b1`, `e0cc34b`,
+  `acc3789`, `d4f4dce`, `c9dd275`, `ee5a904`). The advisor loop (pick coin +
+  budget → bake-off → ranked pick → forward paper-trade) is the terminal
+  deliverable; buy-and-hold benchmark + Monte-Carlo robustness are the
+  credibility layer underneath. Reconciled `spec/trace.toml` advisor rows and
+  the root `CHANGELOG.md` advisor section in the same sweep.
 - 2026-06-19 (analyst, PRODUCT PIVOT — single-coin investment advisor):
   **Rewrote the product identity** from a research stack ("does an active edge
   survive resampled histories?") to a **decision-support + paper-simulation
