@@ -20,6 +20,7 @@
 //! per ADR-0041 D2. The trader crate is the legitimate consumer of reflection
 //! retrieval (R8.1 layering rule). Use `trader::LlmForecasterStrategy` instead.
 
+pub mod always_long;
 pub mod cash_hold;
 pub mod composed;
 pub mod cross_sectional;
@@ -35,6 +36,7 @@ pub mod vol_killswitch_overlay;
 pub mod vol_meanreversion;
 pub mod vol_targeting_overlay;
 
+pub use always_long::AlwaysLongStrategy;
 pub use cash_hold::CashHoldStrategy;
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
 pub use cross_sectional::{

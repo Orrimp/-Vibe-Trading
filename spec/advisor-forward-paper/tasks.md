@@ -374,6 +374,80 @@ the REAL run.
 
 ---
 
+## Phase F5b — forward-run fidelity (real engine, not SMA proxy)
+
+**2026-06-21 developer:** retired the SMA proxy for all non-SMA bake-off ids in
+`build_registry_for`. The forward paper run now executes the real crowned engine.
+
+- [x] **M-DEV-F5b.1 — Rewrite non-SMA arms of `build_registry_for`.**
+  `crates/agent/src/runtime.rs`: for `v0.5.macd`, `v0.5.rsi`, `v0.5.bbands` —
+  load the real `ComposedStrategy` from `config/strategies/<mapped>.toml` via
+  `backtest::paths::resolve_workspace_path` (the sma_composed_run pattern, Bug #56
+  fix). For `v0.buyhold` — register `AlwaysLongStrategy` (new, see F5b.2).
+  Return type changed to `anyhow::Result<Arc<StrategyRegistry>>`. Unknown id
+  returns `Err` (no silent SMA fallback — the F5b anti-fake gate).
+  - **id → TOML mapping:** `v0.5.macd` → `btc_macd_trend`, `v0.5.rsi` →
+    `btc_rsi_reversion`, `v0.5.bbands` → `btc_bbands_mean_revert`.
+  - **file:line:** `crates/agent/src/runtime.rs:273-425` (`build_registry_for` +
+    `load_composed_strategy_from_toml` helper)
+  - **test command:** `cargo test -p agent --test forward_run_engine_fidelity`
+  - **output:** `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+
+- [x] **M-DEV-F5b.2 — `AlwaysLongStrategy` for buy-and-hold.**
+  `crates/strategy/src/always_long.rs` (new): `Strategy` impl that emits `Buy`
+  on the first bar per symbol and `Hold` on every subsequent bar. Bridging the
+  `bakeoff::buyhold::run_buyhold_path` semantics (buy once at bar-0 close, hold)
+  to the `Strategy` trait so it can be registered and driven bar-by-bar.
+  Exported as `strategy::AlwaysLongStrategy`.
+  - **file:line:** `crates/strategy/src/always_long.rs:1-163` (full file) +
+    `crates/strategy/src/lib.rs:24` (mod) + `crates/strategy/src/lib.rs:39` (re-export)
+  - **test command:** `cargo test -p strategy always_long`
+  - **output:** `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 170 filtered out`
+
+- [x] **M-DEV-F5b.3 — Error path: TOML load failure returns typed Err, no SMA fallback.**
+  The call site in the supervisor (`runtime.rs` ~line 1038) now matches `Err(e)`
+  from `build_registry_for`, logs the error at ERROR level, and `continue`s the
+  supervisor loop WITHOUT spawning a new trading loop — no SMA proxy escape hatch.
+  - **file:line:** `crates/agent/src/runtime.rs:1041-1057` (match block in paper_loop_supervisor)
+  - **test command:** `cargo test -p agent --test forward_run_engine_fidelity -- f5b_unknown_strategy_id_returns_err_not_sma_fallback`
+  - **output:** `test f5b_unknown_strategy_id_returns_err_not_sma_fallback ... ok`
+
+- [x] **M-DEV-F5b.4 — Anti-fake gate: identity + behavioural-divergence tests.**
+  `crates/agent/tests/forward_run_engine_fidelity.rs` (new, 8 tests):
+  - 4 identity tests: each bake-off id (`v0.5.macd`, `v0.5.rsi`, `v0.5.bbands`,
+    `v0.buyhold`) loads the real engine id (NOT `sma_crossover`).
+  - 2 behavioural-divergence tests: MACD registry vs SMA registry on 260 bars
+    diverge (different warmup lengths + different signal kinds); buy-hold registry
+    vs SMA registry diverge (buy-hold emits 55 signals, SMA emits only post-50).
+  - 1 error-path test: unknown id returns `Err` with a message containing
+    "unknown strategy id".
+  - 1 no-forward test: `forward = None` returns default SMA registry (byte-identical
+    headless path).
+  - **file:line:** `crates/agent/tests/forward_run_engine_fidelity.rs:1-365` (full test file)
+  - **test command:** `cargo test -p agent --test forward_run_engine_fidelity`
+  - **output:** `test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+
+- [x] **M-DEV-F5b.5 — F5b gate sweep.** Forced clippy (`touch crates/agent/src/lib.rs`),
+  fmt, full agent test suite.
+  - **file:line:** all changed files: `crates/strategy/src/always_long.rs`,
+    `crates/strategy/src/lib.rs`, `crates/agent/src/runtime.rs`,
+    `crates/agent/tests/forward_run_engine_fidelity.rs`
+  - **test command:** `cargo test -p agent -p strategy && cargo clippy -p agent --tests -- -D warnings && cargo fmt -p agent -p strategy --check`
+  - **output:** all 69 agent tests + 175 strategy tests pass / clippy CLEAN / fmt CLEAN
+
+### F5b tester close
+
+- [ ] **M-TEST-F5b.A — Identity + divergence gates.** Independently re-run
+  `cargo test -p agent --test forward_run_engine_fidelity`. All 8 tests must pass.
+  The divergence tests FAIL if the SMA proxy regression is reintroduced —
+  confirm this is a true anti-fake gate by reading the test assertions.
+- [ ] **M-TEST-F5b.B — Full gate sweep.** `cargo test -p agent -p strategy`,
+  `cargo clippy -p agent --tests -- -D warnings`, `cargo fmt --check`.
+- [ ] **M-TEST-F5b.C — `forward_rx = None` byte-identical.** Confirm the headless
+  bin + soak + `None`-paper path is unchanged; `scripts/verify_anchors.sh` → 119/119.
+
+---
+
 ## Definition of done (MVP-closing)
 
 - F4 ships **with** its day-1 baseline-equity-divergence e2e (FAIL-before /

@@ -270,27 +270,39 @@ pub fn build_registry_with_ledger(
     Arc::new(registry)
 }
 
-/// F5 — build a [`strategy::StrategyRegistry`] for the **selected** strategy
+/// F5b — build a [`strategy::StrategyRegistry`] for the **selected** strategy
 /// from a [`crate::config::ForwardRunConfig`].
 ///
-/// Dispatches the same `StrategyId` set the bake-off field uses.  Unknown id →
-/// log a warn and fall back to the config default (`SmaCrossover`), mirroring
-/// the graceful-degradation pattern in `build_registry_with_ledger`.
+/// # Strategy id → concrete engine mapping
 ///
-/// This is the **sole** seam between the UI's `core`-typed
-/// `ForwardRunConfig::strategy` (a `StrategyId` string) and the concrete
-/// strategy type (which lives in `crates/strategy`). `ui` never names a
-/// strategy type; only `agent` (which already depends on `strategy`) resolves it
-/// here.  ADR-0060 § D3.
+/// | `ForwardRunConfig::strategy` id | Engine loaded                                          |
+/// |---------------------------------|--------------------------------------------------------|
+/// | `"v0.sma"` / `"v0.5.sma"`      | `SmaCrossover` from `cfg.strategies.sma_crossover`     |
+/// | `"v0.5.macd"`                   | `ComposedStrategy` from `config/strategies/btc_macd_trend.toml` |
+/// | `"v0.5.rsi"`                    | `ComposedStrategy` from `config/strategies/btc_rsi_reversion.toml` |
+/// | `"v0.5.bbands"`                 | `ComposedStrategy` from `config/strategies/btc_bbands_mean_revert.toml` |
+/// | `"v0.buyhold"`                  | `AlwaysLongStrategy` (Buy on first bar, Hold thereafter) |
 ///
-/// If `forward` is `None`, delegates to `build_registry(cfg)` so callers that
-/// have not yet committed to a selection still get sensible defaults.
+/// This uses **the same TOML files the bake-off scored**, so the forward engine
+/// is byte-for-byte the strategy that won the ranking (F5b fidelity requirement).
+///
+/// # Errors
+///
+/// Returns `Err` when the TOML file for a composed strategy cannot be resolved
+/// or parsed. The caller MUST NOT silently fall back to an SMA proxy — that is
+/// the exact bug F5b kills. The supervisor at the call site logs the error and
+/// does NOT swap the running loop to avoid silent degradation.
+///
+/// # No-forward path
+///
+/// When `forward` is `None`, delegates to `build_registry(cfg)` — byte-identical
+/// to the pre-F5b headless / soak path.
 pub fn build_registry_for(
     cfg: &Config,
     forward: Option<&crate::config::ForwardRunConfig>,
-) -> Arc<strategy::StrategyRegistry> {
+) -> anyhow::Result<Arc<strategy::StrategyRegistry>> {
     let Some(fwd) = forward else {
-        return build_registry(cfg);
+        return Ok(build_registry(cfg));
     };
 
     let registry = strategy::StrategyRegistry::new();
@@ -309,56 +321,101 @@ pub fn build_registry_for(
                 "build_registry_for: SmaCrossover registered"
             );
         }
+        // ── F5b: real ComposedStrategy for MACD / RSI / BBands ───────────────
+        //
+        // Uses the SAME TOML files the bake-off scored so the forward engine
+        // is byte-for-byte the strategy that won the ranking.  The path
+        // resolver walks up from CWD to find the workspace root — identical
+        // to the pattern in `crates/backtest/src/scenarios/sma_composed_run.rs`
+        // (Bug #56 fix).
         "v0.5.macd" => {
-            // MACD trend: the Lab runner wires this as MacdTrend. Fall back to
-            // SmaCrossover for the forward run until a dedicated MacdTrend
-            // ctor lands in `strategy` (it shares the SMA config params).
-            registry.register(Box::new(strategy::SmaCrossover::new(
-                cfg.strategies.sma_crossover.fast_len,
-                cfg.strategies.sma_crossover.slow_len,
-            )));
+            let toml_name = "btc_macd_trend";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                         for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
             tracing::info!(
                 strategy = id,
-                "build_registry_for: MACD (uses SMA crossover proxy) registered"
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy (btc_macd_trend) registered"
             );
         }
-        "v0.5.rsi" | "v0.5.bbands" => {
-            // RSI reversion / Bollinger Bands: proxied by SmaCrossover for the
-            // forward run (the dedicated ctors are Lab-only today; F5b will
-            // wire the real structs once they land in strategy as forward-run
-            // candidates). Log the proxy so the operator can see it.
-            registry.register(Box::new(strategy::SmaCrossover::new(
-                cfg.strategies.sma_crossover.fast_len,
-                cfg.strategies.sma_crossover.slow_len,
-            )));
+        "v0.5.rsi" => {
+            let toml_name = "btc_rsi_reversion";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                         for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
             tracing::info!(
                 strategy = id,
-                "build_registry_for: {} (uses SMA crossover proxy) registered",
-                id
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy (btc_rsi_reversion) registered"
             );
         }
+        "v0.5.bbands" => {
+            let toml_name = "btc_bbands_mean_revert";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                         for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
+            tracing::info!(
+                strategy = id,
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy (btc_bbands_mean_revert) registered"
+            );
+        }
+        // ── F5b: real AlwaysLong for buy-and-hold ────────────────────────────
+        //
+        // `bakeoff::buyhold::run_buyhold_path` is a standalone equity-curve
+        // function, not a Strategy impl. `AlwaysLongStrategy` bridges the
+        // two: same semantics (buy once at first bar, hold indefinitely)
+        // expressed as a proper Strategy so it can be registered and driven
+        // bar-by-bar by the paper-loop engine.
         "v0.buyhold" => {
-            // Buy-and-hold: proxied by SmaCrossover configured to always-buy
-            // (fast=1, slow=2 gives a near-immediate crossover signal).
-            registry.register(Box::new(strategy::SmaCrossover::new(1, 2)));
+            registry.register(Box::new(strategy::AlwaysLongStrategy::new()));
             tracing::info!(
                 strategy = id,
-                "build_registry_for: buy-hold (SMA 1/2 proxy) registered"
+                "build_registry_for: AlwaysLongStrategy (buy-and-hold) registered"
             );
         }
         unknown => {
-            tracing::warn!(
-                strategy = unknown,
-                "build_registry_for: unknown strategy id — falling back to config default (SmaCrossover)"
+            // Unknown id — return a typed error so the supervisor can log and
+            // surface it to the UI error path. NO silent SMA fallback.
+            anyhow::bail!(
+                "build_registry_for: unknown strategy id '{}' — \
+                 refusing to silently fall back to SmaCrossover proxy (F5b anti-fake gate)",
+                unknown
             );
-            registry.register(Box::new(strategy::SmaCrossover::new(
-                cfg.strategies.sma_crossover.fast_len,
-                cfg.strategies.sma_crossover.slow_len,
-            )));
         }
     }
 
-    Arc::new(registry)
+    Ok(Arc::new(registry))
+}
+
+/// Helper: load a `ComposedStrategy` from `config/strategies/<toml_name>.toml`.
+///
+/// Uses `backtest::paths::resolve_workspace_path` (identical to the
+/// `sma_composed_run` pattern, Bug #56 fix) so that the agent binary launched
+/// from any CWD can still find the TOML.
+fn load_composed_strategy_from_toml(toml_name: &str) -> anyhow::Result<strategy::ComposedStrategy> {
+    use std::path::PathBuf;
+    let rel_path = PathBuf::from(format!("config/strategies/{toml_name}.toml"));
+    let toml_path = backtest::paths::resolve_workspace_path(&rel_path);
+    let cfg = strategy::ComposedStrategyConfig::from_file(&toml_path)
+        .with_context(|| format!("load ComposedStrategyConfig from {}", toml_path.display()))?;
+    // source_path stored as rel_path (not absolute) for audit identity — same
+    // convention as sma_composed_run (ADR-0038 § D6 anchor-preservation).
+    let source_path = smol_str::SmolStr::new(rel_path.to_string_lossy());
+    Ok(strategy::ComposedStrategy::from_config(cfg, source_path))
 }
 
 /// Run all agent tokio tasks until `cancel` is tripped or the kill
@@ -973,10 +1030,31 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                     inner_set = JoinSet::new();
 
                                     // Step (d): build registry for the selected strategy.
-                                    let new_registry = build_registry_for(
+                                    //
+                                    // F5b: build_registry_for returns a Result — if the
+                                    // TOML can't be loaded we log the error and skip the
+                                    // swap (the old loop is already cancelled/drained, so
+                                    // the supervisor continues waiting for the next Launch).
+                                    // NO silent SMA fallback — that is the F5b anti-fake gate.
+                                    let new_registry = match build_registry_for(
                                         &supervisor_config,
                                         Some(&cfg),
-                                    );
+                                    ) {
+                                        Ok(r) => r,
+                                        Err(e) => {
+                                            error!(
+                                                strategy = %cfg.strategy.0,
+                                                error = %e,
+                                                "paper_loop_supervisor: strategy load FAILED — \
+                                                 NOT swapping loop (F5b anti-fake gate: no SMA proxy)"
+                                            );
+                                            // Re-use the old cancelled token; inner_set is
+                                            // already drained. Continue to the next select
+                                            // iteration so a fresh Launch can retry.
+                                            loop_cancel = supervisor_cancel.child_token();
+                                            continue;
+                                        }
+                                    };
 
                                     // Step (e): fresh feed on the selected coin.
                                     let new_feed: Arc<dyn MarketDataSource> = Arc::new(

@@ -996,3 +996,72 @@ No-double-equity-writer: old loop is aborted + drained BEFORE new loop spawns.
 - `cargo fmt -p agent -p risk -p ui --check` → CLEAN.
 - `bash scripts/verify_anchors.sh` → ANCHORS PASS (119 / 119).
 - `cargo tree -p ui --depth 1` → unchanged; no new `strategy`/`exec`/`forecast`/`llm` edge.
+
+### F5b — forward-run fidelity: real crowned engine (2026-06-21, developer)
+
+**Scope: M-DEV-F5b.1 through M-DEV-F5b.5 complete.**
+
+Prior to F5b, `build_registry_for` registered a `SmaCrossover` PROXY for every
+non-SMA bake-off id. If the bake-off crowned MACD, the forward run was silently
+running SMA — wrong strategy, wrong signals. F5b retires all SMA proxies.
+
+**F5b.1 — `build_registry_for` rewritten (non-SMA arms):**
+
+`crates/agent/src/runtime.rs` — return type changed from
+`Arc<StrategyRegistry>` to `anyhow::Result<Arc<StrategyRegistry>>`.
+
+- `v0.5.macd` → loads `ComposedStrategy` from `config/strategies/btc_macd_trend.toml`.
+- `v0.5.rsi` → loads `ComposedStrategy` from `config/strategies/btc_rsi_reversion.toml`.
+- `v0.5.bbands` → loads `ComposedStrategy` from `config/strategies/btc_bbands_mean_revert.toml`.
+- `v0.buyhold` → registers `AlwaysLongStrategy` (see F5b.2).
+- Unknown id → `anyhow::bail!(...)` — NO silent SMA fallback.
+- `forward = None` → `Ok(build_registry(cfg))` — byte-identical headless path.
+
+New helper `load_composed_strategy_from_toml(toml_name)` uses
+`backtest::paths::resolve_workspace_path` (Bug #56 pattern) so the binary works
+from any CWD. Same TOML the bake-off scored → forward ≡ ranked.
+
+The supervisor call site (`runtime.rs` ~line 1041) now matches `Err(e)`, logs
+at ERROR level with "F5b anti-fake gate: no SMA proxy", and `continue`s the
+supervisor loop — leaving the current running loop intact rather than substituting
+an incorrect strategy.
+
+**F5b.2 — `AlwaysLongStrategy` (new, `crates/strategy/src/always_long.rs`):**
+
+Implements `Strategy`: emits `SignalKind::Buy` on the first bar per symbol,
+`SignalKind::Hold` on every subsequent bar. Correct semantic for "buy-and-hold"
+at the Strategy trait layer. Bridges `bakeoff::buyhold::run_buyhold_path`
+semantics to the bar-driven executor. Exported as `strategy::AlwaysLongStrategy`.
+
+5 unit tests (all pass): `first_bar_emits_buy`, `subsequent_bars_emit_hold`,
+`different_symbols_each_get_initial_buy`, `id_is_always_long`, `on_tick_returns_empty`.
+
+**F5b.3 — Anti-fake gate test (`crates/agent/tests/forward_run_engine_fidelity.rs`):**
+
+8 tests, all PASS:
+
+1. `f5b_macd_identity_is_btc_macd_trend_not_sma_crossover` — registry id must be
+   `"btc_macd_trend"`, asserts `≠ "sma_crossover"`.
+2. `f5b_rsi_identity_is_btc_rsi_reversion_not_sma_crossover` — id must be `"btc_rsi_reversion"`.
+3. `f5b_bbands_identity_is_btc_bbands_mean_revert_not_sma_crossover` — id must be
+   `"btc_bbands_mean_revert"`.
+4. `f5b_buyhold_identity_is_always_long_not_sma_crossover` — id must be `"always_long"`.
+5. `f5b_macd_registry_differs_from_sma_registry_on_same_bars` — feed 260 bars;
+   MACD warmup (ema(200)) needs ~200 bars; SMA(50) warmed at bar 50; signal counts
+   differ → DIVERGES. If both were SMA, outputs would be identical → test FAILS.
+6. `f5b_buyhold_registry_differs_from_sma_registry_on_same_bars` — 55 bars;
+   buy-hold emits 55 signals (Buy then 54 × Hold); SMA emits only post-50 → DIVERGES.
+7. `f5b_unknown_strategy_id_returns_err_not_sma_fallback` — `build_registry_for`
+   for unknown id returns `Err` with "unknown strategy id" in message.
+8. `f5b_no_forward_returns_default_sma_registry` — `None` forward returns
+   registry with `"sma_crossover"` — headless byte-identical path unchanged.
+
+**F5b.4 — Gate sweep (2026-06-21):**
+
+- `cargo test -p agent` → 69 passed, 0 failed.
+- `cargo test -p strategy` → 175 passed, 0 failed (incl. 5 `always_long::tests::*`).
+- `cargo test -p agent --test forward_run_engine_fidelity` → 8 passed, 0 failed.
+- `cargo clippy -p agent --tests -- -D warnings` (forced re-lint via `touch`) → CLEAN.
+- `cargo fmt -p agent -p strategy --check` → CLEAN.
+- `forward_rx = None` path: byte-identical by construction (no change to the
+  degenerate `else` branch in the supervisor).
