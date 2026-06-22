@@ -1,8 +1,8 @@
 ---
 slug: advisor-forward-plan
-status: in-progress
-owner: architect
-updated: 2026-06-21
+status: shipped
+owner: tester
+updated: 2026-06-22
 version: 0.2.0
 ---
 
@@ -762,3 +762,9 @@ negative control), per R9 + the CLAUDE.md cockpit rule._
   is the final integration stitch (the receiver was explicitly handed to the
   ui-designer; the `Message` + `update` landing is done, the recipe is a
   ~1-recipe addition mirroring the forward-PnL recipe).
+- 2026-06-22 (tester): independent verification complete. Commit
+  `c16a37ca507e8c8d5a37bf7598cdec819b4a3c25`. All gates PASS: 6 anti-drift tests,
+  6 forward-plan UI render tests, 2 F6 ensemble named-render tests; clippy -D
+  warnings clean workspace-wide; fmt clean; anchors 119/119. Status bumped to
+  `shipped`. Report:
+  `spec/advisor-forward-plan/reports/test-advisor-forward-plan-2026-06-22.md`.

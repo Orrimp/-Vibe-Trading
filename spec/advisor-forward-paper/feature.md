@@ -1,8 +1,8 @@
 ---
 slug: advisor-forward-paper
-status: in-progress
-owner: architect
-updated: 2026-06-21
+status: shipped
+owner: tester
+updated: 2026-06-22
 version: 0.2.0
 ---
 
@@ -1065,3 +1065,8 @@ semantics to the bar-driven executor. Exported as `strategy::AlwaysLongStrategy`
 - `cargo fmt -p agent -p strategy --check` → CLEAN.
 - `forward_rx = None` path: byte-identical by construction (no change to the
   degenerate `else` branch in the supervisor).
+- 2026-06-22 (tester): independent verification complete. Commit
+  `c16a37ca507e8c8d5a37bf7598cdec819b4a3c25`. All gates PASS: budget-sizing
+  divergence day-1 gate (1/1), 8 F5b engine-identity tests; clippy -D warnings
+  clean workspace-wide; fmt clean; anchors 119/119. Status bumped to `shipped`.
+  Report: `spec/advisor-forward-paper/reports/test-advisor-forward-paper-2026-06-22.md`.

@@ -1,8 +1,8 @@
 ---
 slug: advisor-ensemble
-status: in-progress
-owner: architect
-updated: 2026-06-21
+status: shipped
+owner: tester
+updated: 2026-06-22
 ---
 
 # F8 — Strategy-mix ensemble candidates for the single-coin advisor
@@ -665,3 +665,10 @@ See the analyst handoff for the prioritized split. In brief:
   re-lint), full `ui` suite 40 binaries / 0 failures, no visual baseline
   regenerated. `crates/ui` only — touched no engine crate, no `spec/*/reports/`,
   no `tasks.md`.
+- 2026-06-22 (tester): independent verification complete. Commit
+  `c16a37ca507e8c8d5a37bf7598cdec819b4a3c25`. All gates PASS: 12 ensemble vote
+  divergence e2e tests + 15 robustness bootstrap tests (both day-1 mandatory
+  gates); 11 leaderboard render tests (ensemble rows + Fragile badge); clippy -D
+  warnings clean workspace-wide; fmt clean; anchors 119/119. Status bumped to
+  `shipped`. Report:
+  `spec/advisor-ensemble/reports/test-advisor-ensemble-2026-06-22.md`.

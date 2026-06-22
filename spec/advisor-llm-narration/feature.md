@@ -1,7 +1,7 @@
 ---
 slug: advisor-llm-narration
-status: in-progress
-owner: architect
+status: shipped
+owner: tester
 updated: 2026-06-22
 version: 0.2.0
 ui_render_proof: /tmp/forward_f9_narration_ready_render.png, /tmp/forward_f9_narration_fallback_render.png
@@ -625,3 +625,10 @@ _tester links to reports here. Verification floor (provisional, per § Requireme
   `trader/llm_forecaster` and the `agent` factory bootstrap) — F9 is the first.
   Trace row `REQ-ADVISOR-LLM-NARRATION-001`. No engine code; no anchored content
   touched.
+- 2026-06-22 (tester): independent verification complete. Commit
+  `c16a37ca507e8c8d5a37bf7598cdec819b4a3c25`. All gates PASS: 21 narration
+  faithfulness + anti-hallucination tests, 6 narration relay tests, 4 leaderboard
+  narration render tests; agent crate 162 passed / 0 failed / 3 ignored; clippy
+  -D warnings clean workspace-wide; fmt clean; anchors 119/119. Status bumped to
+  `shipped`. Report:
+  `spec/advisor-llm-narration/reports/test-advisor-llm-narration-2026-06-22.md`.

@@ -1,8 +1,8 @@
 ---
 slug: advisor-dynamic-data
-status: draft
-owner: architect
-updated: 2026-06-21
+status: shipped
+owner: tester
+updated: 2026-06-22
 version: 0.1.0
 ---
 
@@ -532,3 +532,9 @@ confirmed at the pixel layer.
   root + verifier blind to non-`spec/` paths + corpus read-only). Determinism
   boundary: dynamic data is exploratory, never anchored (no REVISION pin). See
   ADR-0061; leans on ADR-0055 / ADR-0053 § D6 / ADR-0059 / ADR-0056.
+- 2026-06-22 (tester): independent verification complete. Commit
+  `c16a37ca507e8c8d5a37bf7598cdec819b4a3c25`. All gates PASS: 102 data lib unit
+  tests + ADR-0061 D4 anchor-safety gate (1/1, with `--features fixtures` mock
+  fetcher); clippy -D warnings clean workspace-wide; fmt clean; anchors 119/119.
+  Status bumped to `shipped`. Report:
+  `spec/advisor-dynamic-data/reports/test-advisor-dynamic-data-2026-06-22.md`.

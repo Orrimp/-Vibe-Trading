@@ -1,8 +1,8 @@
 ---
 slug: advisor-bakeoff-ranking
-status: in-progress
-owner: architect
-updated: 2026-06-20
+status: shipped
+owner: tester
+updated: 2026-06-22
 version: 0.1.0
 ---
 
@@ -857,6 +857,12 @@ snapshot tests are `#[ignore]`d).
   Gates: `cargo test -p ui` green (914 tests, 82 binaries), forced clippy clean,
   fmt clean, anchors 119/119. Re-baselined 56 sidebar-bearing visual snapshots
   (the new nav row; not anchored — `render_snapshots` + `visual_snapshots`).
+- 2026-06-22 (tester): independent verification complete. Commit
+  `c16a37ca507e8c8d5a37bf7598cdec819b4a3c25`. All gates PASS: 31 bakeoff lib unit
+  tests, 3 bakeoff_e2e integration tests, 11 leaderboard render tests, 3 progress
+  render tests; clippy -D warnings clean workspace-wide; fmt clean; anchors
+  119/119. Status bumped to `shipped`. Report:
+  `spec/advisor-bakeoff-ranking/reports/test-advisor-bakeoff-ranking-2026-06-22.md`.
 - 2026-06-19 (architect): created the F1+F2 design — bake-off orchestrator +
   ranking. Homed the orchestrator in `crates/backtest` (it owns `run_scenario` +
   `stats` + the `data` bootstrap dep, and `ui` already imports it → the
