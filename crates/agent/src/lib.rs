@@ -8,6 +8,9 @@ pub mod config;
 #[cfg(feature = "in_process_cron")]
 pub mod cron;
 pub mod kill_switch;
+/// F9 LLM narration: `BakeoffReport` → faithful prose generator + faithfulness post-check
+/// + `NarrationOutcome` (the `core`-clean return type) (ADR-0064 § D1–D5).
+pub mod narration;
 pub mod observability;
 /// F6 forward-plan: `StrategyPlan` → `ForwardPlan` mapping + builder (ADR-0062 § D3–D4).
 pub mod plan;
@@ -25,6 +28,12 @@ pub use config::{ForwardPlan, ForwardRunConfig, PlanRuleKind, PlanSignal, PlanSt
 pub use kill_switch::{
     AgentMode, CommandIncidentSpawner, HaltReason, IncidentSpawnArgs, IncidentSpawner, KillSwitch,
     MockIncidentSpawner,
+};
+pub use narration::{
+    BudgetExceededFakeProvider, CandidateKpiStrings, FaithfulFakeProvider, FaithfulnessVerdict,
+    NarrationFacts, NarrationOutcome, NarrationOutcome_, NarrationRequest, RejectReason,
+    UnfaithfulFakeProvider, UnfaithfulViolation, build_faithful_text, check_faithful,
+    generate_narration,
 };
 pub use reconciler::ReconcilerTask;
 pub use runtime::{

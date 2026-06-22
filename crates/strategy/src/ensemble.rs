@@ -34,7 +34,10 @@ use tracing::debug;
 use trading_core::{Bar, Signal, SignalEvidence, SignalKind, StrategyId, Tick};
 
 use crate::Strategy;
-use crate::plan::{PlanContext, PlanDescribe, PlanRuleShape, PlanSignal, PlanStance, PlanVoteMethod, ProjectedSizing, StrategyPlan};
+use crate::plan::{
+    PlanContext, PlanDescribe, PlanRuleShape, PlanSignal, PlanStance, PlanVoteMethod,
+    ProjectedSizing, StrategyPlan,
+};
 
 // ── Error type for ensemble construction ──────────────────────────────────────
 
@@ -321,7 +324,10 @@ impl PlanDescribe for EnsembleStrategy {
 
         // PlanVoteMethod mirrors VoteMethod (no free-text string).
         let plan_method = match self.method {
-            VoteMethod::Majority { k, n } => PlanVoteMethod::Majority { k: k as u32, n: n as u32 },
+            VoteMethod::Majority { k, n } => PlanVoteMethod::Majority {
+                k: k as u32,
+                n: n as u32,
+            },
             VoteMethod::Unanimous { n } => PlanVoteMethod::Unanimous { n: n as u32 },
         };
 
@@ -377,7 +383,9 @@ fn member_id_to_rule_shape(id: &str) -> PlanRuleShape {
                 lower: dec!(30),
             }
         }
-        "v0.5.bbands" | "bbands_mean_revert" | "btc_bbands_mean_revert"
+        "v0.5.bbands"
+        | "bbands_mean_revert"
+        | "btc_bbands_mean_revert"
         | "bbands_mean_revert_h1" => PlanRuleShape::BollingerReversion {
             len: 20,
             k: dec!(2),
@@ -419,7 +427,9 @@ pub fn build_member(id: &str) -> Result<Box<dyn Strategy>, EnsembleBuildError> {
             let strategy = load_composed_member("btc_rsi_reversion", id)?;
             Ok(Box::new(strategy))
         }
-        "v0.5.bbands" | "bbands_mean_revert" | "btc_bbands_mean_revert"
+        "v0.5.bbands"
+        | "bbands_mean_revert"
+        | "btc_bbands_mean_revert"
         | "bbands_mean_revert_h1" => {
             let strategy = load_composed_member("btc_bbands_mean_revert", id)?;
             Ok(Box::new(strategy))
@@ -454,11 +464,12 @@ fn load_composed_member(
 
     let toml_path = workspace_root.join(&rel_path);
 
-    let cfg = crate::ComposedStrategyConfig::from_file(&toml_path)
-        .map_err(|cause| EnsembleBuildError::TomlLoadFailure {
+    let cfg = crate::ComposedStrategyConfig::from_file(&toml_path).map_err(|cause| {
+        EnsembleBuildError::TomlLoadFailure {
             id: id.to_string(),
             cause,
-        })?;
+        }
+    })?;
 
     let source_path = SmolStr::new(rel_path.to_string_lossy());
     Ok(crate::ComposedStrategy::from_config(cfg, source_path))
@@ -718,13 +729,12 @@ mod tests {
     // ── EnsembleStrategy edge-triggered emission ──────────────────────────────
 
     use time::OffsetDateTime;
-    use trading_core::{Bar, Price, Quantity, Timeframe, Timestamp, Venue};
     use trading_core::symbol::Symbol;
+    use trading_core::{Bar, Price, Quantity, Timeframe, Timestamp, Venue};
 
     fn make_bar(symbol: &str, ts_secs: i64, close: rust_decimal::Decimal) -> Bar {
         let ts = Timestamp::new(
-            OffsetDateTime::UNIX_EPOCH
-                + time::Duration::seconds(1_700_000_000 + ts_secs),
+            OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_000 + ts_secs),
         );
         Bar {
             symbol: Symbol::new(symbol),
@@ -841,7 +851,10 @@ mod tests {
         // Bar 1: A buys. A=Long, B=Unwarmed, C=Unwarmed.
         // warmed=1 < k=2 → Flat. prev=None → (None, false) → no emit.
         let s1 = ens.on_bar(&bar1);
-        assert!(s1.is_empty(), "Bar 1: only A bought; warmed=1 < k=2 → no ensemble signal");
+        assert!(
+            s1.is_empty(),
+            "Bar 1: only A bought; warmed=1 < k=2 → no ensemble signal"
+        );
         assert_eq!(ens.last_stance, Some(false));
 
         // Bar 2: B buys. A=Long, B=Long, C=Unwarmed.
@@ -853,7 +866,10 @@ mod tests {
 
         // Bar 3: C buys (3 Long now). Still Long. prev=Some(true), now=true → no emit.
         let s3 = ens.on_bar(&bar3);
-        assert!(s3.is_empty(), "Bar 3: still majority Long → no additional signal");
+        assert!(
+            s3.is_empty(),
+            "Bar 3: still majority Long → no additional signal"
+        );
         assert_eq!(ens.last_stance, Some(true));
     }
 
@@ -926,18 +942,21 @@ mod tests {
         );
 
         let bars: Vec<Bar> = (0..5)
-            .map(|i| {
-                make_bar(
-                    "BTCUSDT",
-                    i * 3600,
-                    rust_decimal::Decimal::from(50_000 + i),
-                )
-            })
+            .map(|i| make_bar("BTCUSDT", i * 3600, rust_decimal::Decimal::from(50_000 + i)))
             .collect();
 
-        assert!(ens.on_bar(&bars[0]).is_empty(), "Bar 1: 1 warmed < 4 needed → Flat");
-        assert!(ens.on_bar(&bars[1]).is_empty(), "Bar 2: 2 warmed < 4 → Flat");
-        assert!(ens.on_bar(&bars[2]).is_empty(), "Bar 3: 3 warmed < 4 → Flat");
+        assert!(
+            ens.on_bar(&bars[0]).is_empty(),
+            "Bar 1: 1 warmed < 4 needed → Flat"
+        );
+        assert!(
+            ens.on_bar(&bars[1]).is_empty(),
+            "Bar 2: 2 warmed < 4 → Flat"
+        );
+        assert!(
+            ens.on_bar(&bars[2]).is_empty(),
+            "Bar 3: 3 warmed < 4 → Flat"
+        );
 
         // Bar 4 (index 3): D buys. Now all 4 Long.
         let s4 = ens.on_bar(&bars[3]);
@@ -945,6 +964,9 @@ mod tests {
         assert_eq!(s4[0].kind, SignalKind::Buy);
 
         // Bar 5: stable Long → no emit.
-        assert!(ens.on_bar(&bars[4]).is_empty(), "Bar 5: stable Long → no signal");
+        assert!(
+            ens.on_bar(&bars[4]).is_empty(),
+            "Bar 5: stable Long → no signal"
+        );
     }
 }

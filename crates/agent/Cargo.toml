@@ -59,6 +59,9 @@ toml.workspace = true
 clap.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
+# F9 — narration fakes implement `LlmProvider` via async_trait (available to
+# both internal unit tests and external render harnesses — ADR-0064 § D5).
+async-trait.workspace = true
 # T810 — optional in-process cron scheduler.  Pulled in only when the
 # `in_process_cron` feature is enabled; default build is unchanged.
 tokio-cron-scheduler = { version = "0.15", optional = true }

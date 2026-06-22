@@ -1437,6 +1437,23 @@ gate.
 
 
 ## Changelog
+- 2026-06-22 (architect): recorded the F9 LLM-narration leaderboard surface
+  ([ADR-0064](adr/0064-advisor-llm-narration-seam.md), feature
+  [`advisor-llm-narration`](../advisor-llm-narration/feature.md)). The narration
+  extends the § App layout `ui`-never-imports-`llm`-through-`view` isolation rule:
+  the LLM prose reaches the leaderboard recommendation block as a **plain
+  `ui`-owned `NarrationState { NotRequested | InFlight | Ready(SmolStr) | FellBack }`**
+  enum field on `LeaderboardScreenState` (String/enum only — no `llm`/`agent`
+  type crosses `view`), mirrored from the agent-side `agent::NarrationOutcome` via
+  a single `#[cfg(feature = "live")]` recipe/adapter — the exact
+  `forward_plan/adapter.rs` (ADR-0062) discipline. The narration is a **triggered
+  opt-in second async step** (an "Explain" control posts
+  `Message::BakeoffNarrationRequested`; the result lands on
+  `Message::BakeoffNarrationCompleted` and updates the block in place) over the
+  structured result that already rendered on `BakeoffRunCompleted`; the templated
+  `recommendation_block` copy + the persistent `disclaimer()` are the floor in
+  every render state but `Ready`. `cargo tree -p ui` gains no new edge through
+  `view`.
 - 2026-05-16 (architect): D2 — strengthened the UI isolation rule
   in § App layout. Prior wording said "Both cockpit binaries live
   in the `ui` crate and depend only on `core` / `audit` / `agent` —

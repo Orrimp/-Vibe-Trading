@@ -124,6 +124,67 @@ pub struct RecommendationMirror {
     pub reasons: Vec<ReasonLabel>,
 }
 
+// ── F9 LLM "why this one" narration (ADR-0064) ────────────────────────────────
+
+/// The narration's lifecycle on the leaderboard recommendation block (F9,
+/// ADR-0064 § D4).
+///
+/// **String/enum only — NO `llm`/`agent`/engine type crosses `view`** (the
+/// [`RecommendationMirror`] discipline). The render code matches on this closed
+/// `ui` enum exactly as it matches [`OutcomeKind`] / [`RobustnessLabel`] /
+/// [`ReasonLabel`]; the ONLY place an `agent`/`llm` narration type is named on
+/// the `ui` side is the one `#[cfg(feature = "live")]` recipe/adapter that maps
+/// the received `agent::NarrationOutcome` → [`NarrationOutcome`] (the
+/// `forward_plan/adapter.rs` boundary — one edit site if a name drifts).
+///
+/// The templated copy (`headline_copy` + `reason_copy`) is the FLOOR in every
+/// arm except [`Ready`](NarrationState::Ready) — there is never a blank or
+/// half-answer.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum NarrationState {
+    /// No "Explain" requested yet — show the templated copy + the Explain
+    /// control. The default.
+    #[default]
+    NotRequested,
+    /// The narration is being generated — show the templated copy + a spinner.
+    InFlight,
+    /// A faithful narration passed the agent-side post-check — show this prose
+    /// (with the `disclaimer()` framing around it).
+    Ready(SmolStr),
+    /// The narration was unavailable / errored / over budget / failed the
+    /// post-check — show the templated copy (the honest fallback). Silent.
+    FellBack,
+}
+
+impl NarrationState {
+    /// `true` once an "Explain" has been requested (`InFlight` / `Ready` /
+    /// `FellBack`) — drives whether the Explain control is still offered (it
+    /// shows only in `NotRequested`).
+    #[must_use]
+    pub fn is_requested(&self) -> bool {
+        !matches!(self, NarrationState::NotRequested)
+    }
+}
+
+/// The `core`-clean narration result that crosses the agent→iced seam, mirrored
+/// into a pure-`ui` enum (ADR-0064 § D2). This is the `NarrationOutcome`
+/// analogue of [`ForwardPlanView`](crate::forward_plan::ForwardPlanView): the
+/// developer's `agent::NarrationOutcome { Ready(SmolStr) | FellBack }` is mapped
+/// into THIS `ui`-owned type at the single `#[cfg(feature = "live")]` adapter,
+/// so the `Message::BakeoffNarrationCompleted` payload is `ui`-pure and the
+/// message enum compiles in the default (non-`live`) fixtures build.
+///
+/// Carries a plain [`SmolStr`] — NO `llm` type, NO `ChatResponse`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NarrationOutcome {
+    /// A faithful narration passed the agent-side post-check.
+    Ready(SmolStr),
+    /// Every failure mode (provider disabled / network / timeout /
+    /// `BudgetExceeded` / `ReplayMiss` / empty response / post-check reject) —
+    /// the honest fallback to the templated copy.
+    FellBack,
+}
+
 /// The full bake-off result the leaderboard screen renders, mirrored from
 /// `backtest::BakeoffReport` into render-ready shape.
 ///
@@ -418,6 +479,15 @@ pub struct LeaderboardScreenState {
     /// `backtest::engine::DateRange` at dispatch time via
     /// [`LeaderboardLookback::to_date_range`].
     pub lookback: LeaderboardLookback,
+
+    // ── F9 LLM "why this one" narration (ADR-0064) ───────────────────────────
+    /// The opt-in LLM-narration lifecycle on the recommendation block (F9).
+    /// Defaults to [`NarrationState::NotRequested`] and is INDEPENDENT of
+    /// `result` — the structured bake-off renders immediately on
+    /// `BakeoffRunCompleted`; pressing "Explain" flips this to `InFlight` and
+    /// the second async step lands `Ready`/`FellBack` in place. String/enum only
+    /// — no `llm`/`agent` type crosses `view`.
+    pub narration: NarrationState,
 }
 
 impl Default for LeaderboardScreenState {
@@ -433,27 +503,55 @@ impl Default for LeaderboardScreenState {
             coin: Symbol::new(DEFAULT_BAKEOFF_COIN),
             budget_input: DEFAULT_BUDGET_INPUT.to_string(),
             lookback: LeaderboardLookback::H1_2024,
+            // F9 — no narration requested until the operator presses "Explain".
+            narration: NarrationState::NotRequested,
         }
     }
 }
 
 impl LeaderboardScreenState {
     /// Mark a bake-off as started — flips `result` to `Loading` + `running` to
-    /// `true`. Called from the `Message::BakeoffRunRequested` update arm.
+    /// `true`. Called from the `Message::BakeoffRunRequested` update arm. Also
+    /// resets the F9 narration to `NotRequested` so a prior run's "Explain"
+    /// prose never carries over into a fresh bake-off.
     pub fn begin_run(&mut self) {
         self.result = PanelState::Loading;
         self.running = true;
+        self.narration = NarrationState::NotRequested;
     }
 
     /// Land a completed bake-off result. `Ok(mirror)` → `Ready`; `Err(msg)` →
     /// `Error`. Always clears `running`. Called from the
-    /// `Message::BakeoffRunCompleted` update arm.
+    /// `Message::BakeoffRunCompleted` update arm. The F9 narration stays
+    /// `NotRequested` (it was reset in `begin_run`) — the structured result is
+    /// complete and honest on its own; the operator opts into the narration.
     pub fn finish_run(&mut self, outcome: Result<BakeoffReportMirror, SmolStr>) {
         self.running = false;
         self.result = match outcome {
             Ok(mirror) if mirror.rows.is_empty() => PanelState::Empty,
             Ok(mirror) => PanelState::Ready(mirror),
             Err(msg) => PanelState::Error(msg),
+        };
+    }
+
+    /// Mark the F9 narration as in flight — flips `narration` to `InFlight`.
+    /// Called from the `Message::BakeoffNarrationRequested` update arm (after
+    /// guarding against a re-request). The templated copy stays visible the
+    /// whole time (the floor), so the block never goes blank.
+    pub fn begin_narration(&mut self) {
+        self.narration = NarrationState::InFlight;
+    }
+
+    /// Land a completed F9 narration in place — maps the `core`-clean
+    /// [`NarrationOutcome`] into the render-side [`NarrationState`]:
+    /// `Ready(prose) → Ready(prose)`, `FellBack → FellBack` (the honest
+    /// fallback to the templated copy). Called from the
+    /// `Message::BakeoffNarrationCompleted` update arm. Never touches `result`
+    /// — the structured bake-off is independent of the narration.
+    pub fn set_narration(&mut self, outcome: NarrationOutcome) {
+        self.narration = match outcome {
+            NarrationOutcome::Ready(prose) => NarrationState::Ready(prose),
+            NarrationOutcome::FellBack => NarrationState::FellBack,
         };
     }
 
@@ -579,6 +677,69 @@ mod tests {
         let mut none = m;
         none.crowned = None;
         assert!(none.crowned_row().is_none());
+    }
+
+    // ── F9 narration state transitions (ADR-0064) ────────────────────────────
+
+    #[test]
+    fn default_narration_is_not_requested() {
+        let s = LeaderboardScreenState::default();
+        assert_eq!(
+            s.narration,
+            NarrationState::NotRequested,
+            "no narration until the operator presses Explain"
+        );
+        assert!(
+            !s.narration.is_requested(),
+            "NotRequested is not yet requested"
+        );
+    }
+
+    #[test]
+    fn begin_narration_sets_in_flight() {
+        let mut s = LeaderboardScreenState::default();
+        s.begin_narration();
+        assert_eq!(s.narration, NarrationState::InFlight);
+        assert!(s.narration.is_requested(), "InFlight counts as requested");
+    }
+
+    #[test]
+    fn set_narration_ready_lands_prose() {
+        let mut s = LeaderboardScreenState::default();
+        s.begin_narration();
+        s.set_narration(NarrationOutcome::Ready(SmolStr::new("because reasons")));
+        match &s.narration {
+            NarrationState::Ready(prose) => assert_eq!(prose.as_str(), "because reasons"),
+            other => panic!("expected Ready, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_narration_fell_back_lands_fallback() {
+        // Every failure mode maps to FellBack — the honest floor (templated copy
+        // renders), NOT an error surface.
+        let mut s = LeaderboardScreenState::default();
+        s.begin_narration();
+        s.set_narration(NarrationOutcome::FellBack);
+        assert_eq!(s.narration, NarrationState::FellBack);
+        assert!(s.narration.is_requested());
+    }
+
+    #[test]
+    fn begin_run_resets_a_prior_narration() {
+        // A fresh bake-off must NOT carry over the prior run's "Explain" prose —
+        // begin_run resets the narration so the new result starts clean.
+        let mut s = LeaderboardScreenState::default();
+        s.begin_narration();
+        s.set_narration(NarrationOutcome::Ready(SmolStr::new("stale prose")));
+        assert!(matches!(s.narration, NarrationState::Ready(_)));
+
+        s.begin_run();
+        assert_eq!(
+            s.narration,
+            NarrationState::NotRequested,
+            "a new bake-off resets the narration to NotRequested"
+        );
     }
 
     // ── F3 guided input — lookback + budget ──────────────────────────────────

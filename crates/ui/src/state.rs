@@ -2072,6 +2072,28 @@ pub enum Message {
     /// `PanelState` and clears `running`.
     BakeoffRunCompleted(crate::leaderboard::runner::BakeoffRunResult),
 
+    // ── advisor-llm-narration F9 — the opt-in "why this one" narration ───────
+    /// Operator pressed "Explain" on the crowned recommendation block (the
+    /// opt-in trigger, ADR-0064 § D3). Flips the F9 narration to `InFlight`
+    /// (pure, in the update arm); the BINARY-side intercept (the `LabRunRequested`
+    /// / `BakeoffRunRequested` precedent in `cockpit_live.rs`) dispatches the
+    /// second async step — it builds the `NarrationFacts` from the already-mirrored
+    /// `BakeoffReportMirror` and runs the agent's `generate_narration` on the
+    /// side-thread runtime. Niladic — the facts are derived UI-side from the
+    /// rendered result, not carried as payload. The templated copy stays the
+    /// floor the whole time (no blank/half-answer).
+    BakeoffNarrationRequested,
+    /// A narration completed (faithful → `Ready(prose)`; any failure mode →
+    /// `FellBack`). Carries the `core`-clean `ui`-owned [`NarrationOutcome`]
+    /// already mapped from the agent's `agent::NarrationOutcome` at the single
+    /// `#[cfg(feature = "live")]` adapter (no `llm`/`agent` type crosses into
+    /// iced state — the INVARIANT seam, exactly like `BakeoffRunCompleted`
+    /// carrying a `BakeoffReportMirror`). Updates the recommendation block IN
+    /// PLACE; never re-fetches or blocks the structured bake-off result.
+    ///
+    /// [`NarrationOutcome`]: crate::leaderboard::NarrationOutcome
+    BakeoffNarrationCompleted(crate::leaderboard::NarrationOutcome),
+
     // ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──
     /// Operator chose a coin in the guided-input coin picker. Stores it on the
     /// leaderboard state (drives the next bake-off + the budget-context
@@ -3027,6 +3049,30 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // The engine `BakeoffReport` was already mirrored into the pure-`ui`
             // `BakeoffReportMirror` at the dispatch boundary in `spawn_bakeoff`.
             model.leaderboard_screen_state.finish_run(outcome);
+        }
+
+        // ── advisor-llm-narration F9 — the opt-in "why this one" narration ───
+        Message::BakeoffNarrationRequested => {
+            // Pure-state half: flip the narration to InFlight so the spinner
+            // shows + the Explain control hides (the templated copy stays the
+            // floor). The actual async dispatch (build the facts from the
+            // mirror + run `generate_narration` on the side-thread runtime) is
+            // wired BINARY-side in `cockpit_live.rs` (the `BakeoffRunRequested`
+            // precedent) — `update` stays pure (no I/O, no Task spawn here).
+            // Only request when a structured result is on screen and a
+            // narration is not already in flight / resolved (guard re-request).
+            let st = &mut model.leaderboard_screen_state;
+            if matches!(st.result, PanelState::Ready(_)) && !st.narration.is_requested() {
+                st.begin_narration();
+            }
+        }
+        Message::BakeoffNarrationCompleted(outcome) => {
+            // Update the recommendation block IN PLACE: Ready(prose) → show the
+            // prose; FellBack → fall back to the templated copy (silently). The
+            // `agent::NarrationOutcome` was already mapped into the pure-`ui`
+            // `NarrationOutcome` at the `#[cfg(feature = "live")]` adapter. The
+            // structured bake-off result is never re-fetched or blocked.
+            model.leaderboard_screen_state.set_narration(outcome);
         }
 
         // ── advisor-bakeoff-ranking F3 — guided input ────────────────────────

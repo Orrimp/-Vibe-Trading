@@ -42,6 +42,38 @@ all land in v2.0.0 as foundation-only — no LLM consumers ship in v2.0.0;
 each consumer is its own follow-up brief. Reflection-memory is the
 canonical first consumer; see the cross-link below.
 
+### First in-app LLM consumer — the advisor "why this one" narration (F9)
+
+The single-coin-advisor "why this one" **narration** (feature
+[`advisor-llm-narration`](../advisor-llm-narration/feature.md), pivot F9,
+[ADR-0064](adr/0064-advisor-llm-narration-seam.md)) is the **first place an
+`Arc<dyn LlmProvider>` is actually called in-app**. It is a **READ-ONLY**
+plain-language rendering of the ALREADY-DECIDED structured bake-off
+`Recommendation` (the LLM never enters the ranking — narration only, reinforcing
+the F8 lock). Two seam rules generalise beyond F9:
+
+- **The generator is agent-side, behind a deterministic faithfulness post-check.**
+  It lives in `agent::narration` (the `agent::plan`/ADR-0062 twin — `agent` owns
+  the boot-built provider + hard-deps `llm` AND `backtest`) and emits a
+  `core`-clean `NarrationOutcome { Ready(SmolStr) | FellBack }`, so no `llm` type
+  crosses the `ui` `view` line. The **load-bearing guard is a pure, `llm`-free,
+  unit-testable post-check** (`check_faithful`) whose reject predicates +
+  predict/advise banned-phrase list are FROZEN in ADR-0064 § D2 — a narration that
+  crowns the wrong winner, contradicts the outcome code, fabricates a number
+  (exact-string-vs-`num`-formatter), or trips a banned phrase falls back to the
+  templated copy. **Any LLM rendering of a structured engine result must carry this
+  post-check pattern** — the prompt is a soft first line, the post-check is the net.
+- **Honest fallback + ephemeral.** Every failure mode (disabled / unavailable /
+  error / timeout / `BudgetExceeded` / post-check-reject) lands the existing
+  templated copy; the LLM never blocks or breaks the decision. The prose is NOT
+  persisted (the structured `Recommendation` is the reproducible artifact). The
+  call goes through `BudgetedProvider` (the monthly budget + auto-degrade governs
+  it) with a `CacheBreakpoint::Ephemeral` static prefix (one cheap cached call).
+
+Tests and render harnesses exercise the path through a **fake `LlmProvider`**
+(faithful + unfaithful) with **no network**, per the "every external I/O behind a
+trait" rule.
+
 ## Reflection-memory
 
 Reflection-memory (LLM lessons persisted across runs and re-injected into
@@ -52,6 +84,16 @@ new architects know to look there before re-debating "should we
 re-inject prior session learnings".
 
 ## Changelog
+- 2026-06-22 (architect): added § "First in-app LLM consumer — the advisor 'why
+  this one' narration (F9)" recording [ADR-0064](adr/0064-advisor-llm-narration-seam.md):
+  the agent-side `agent::narration` generator (the `agent::plan` twin), the FROZEN
+  deterministic faithfulness post-check as the load-bearing guard (the
+  prompt-is-soft / post-check-is-the-net pattern any structured-result LLM
+  rendering must carry), the honest templated fallback, ephemeral non-persistence,
+  the `BudgetedProvider` + `CacheBreakpoint::Ephemeral` cost path, and the
+  fake-`LlmProvider` (faithful + unfaithful, no-network) test seam. F9 is the first
+  in-app `Arc<dyn LlmProvider>` call site (reflection's `generate_card` is
+  deterministic / not LLM-wired).
 - 2026-05-16 (architect): replaced the ML/DL deliberate-stub paragraph
   with the v2.5 Kronos pointer (cross-link to ADR-0027 and the new
   cross-cutting [12-forecast-overlay.md](12-forecast-overlay.md)

@@ -1532,7 +1532,9 @@ pub async fn run_scenario(
             use crate::scenarios::sim::sim_slippage_cost;
             use crate::scenarios::sma_composed_run;
             use strategy::StrategyRegistry;
-            use trading_core::{FillView, Order, OrderKind, Position, Quantity, RiskLimits, Side, TimeInForce};
+            use trading_core::{
+                FillView, Order, OrderKind, Position, Quantity, RiskLimits, Side, TimeInForce,
+            };
 
             const INITIAL_CAPITAL: Decimal = dec!(100_000);
 
@@ -1550,8 +1552,7 @@ pub async fn run_scenario(
             let bars: Vec<trading_core::Bar> = if let Some(b) = cfg.bars_override.clone() {
                 b
             } else {
-                let start_price =
-                    sma_composed_run::default_start_price(&cfg.pair.1);
+                let start_price = sma_composed_run::default_start_price(&cfg.pair.1);
                 sma_composed_run::synthetic_bars_minute(
                     &cfg.pair.1,
                     bar_count,
@@ -1581,8 +1582,7 @@ pub async fn run_scenario(
             let mut state = BacktestState::new(INITIAL_CAPITAL);
             let mut position = Position::empty(cfg.pair.1.clone());
             let mut all_fills: Vec<FillView> = Vec::new();
-            let mut position_curve: Vec<(i64, Decimal)> =
-                Vec::with_capacity(bar_count_actual);
+            let mut position_curve: Vec<(i64, Decimal)> = Vec::with_capacity(bar_count_actual);
 
             let bars_arc = std::sync::Arc::new(bars);
             let start_instant = std::time::Instant::now();
@@ -1603,10 +1603,8 @@ pub async fn run_scenario(
                     progress_tx.try_send(crate::progress::Progress {
                         current_bar: bar_idx,
                         total_bars: bar_count_actual,
-                        elapsed_ms: u64::try_from(
-                            start_instant.elapsed().as_millis(),
-                        )
-                        .unwrap_or(u64::MAX),
+                        elapsed_ms: u64::try_from(start_instant.elapsed().as_millis())
+                            .unwrap_or(u64::MAX),
                     });
                 }
 
@@ -1620,14 +1618,10 @@ pub async fn run_scenario(
 
                 for sig in &signals {
                     let desired_side: Option<Side> = match sig.kind {
-                        trading_core::SignalKind::Buy
-                            if position.base_qty <= Decimal::ZERO =>
-                        {
+                        trading_core::SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
                             Some(Side::Buy)
                         }
-                        trading_core::SignalKind::Sell
-                            if position.base_qty > Decimal::ZERO =>
-                        {
+                        trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
                             Some(Side::Sell)
                         }
                         _ => None,
@@ -1649,26 +1643,24 @@ pub async fn run_scenario(
                                 )
                                 .ok()
                             }
-                            Side::Sell => {
-                                Quantity::new(position.base_qty)
+                            Side::Sell => Quantity::new(position.base_qty)
+                                .ok()
+                                .filter(|q| q.get() > Decimal::ZERO)
+                                .and_then(|q| {
+                                    Order::new(
+                                        sig.strategy_id.clone(),
+                                        sig.symbol.clone(),
+                                        Side::Sell,
+                                        q,
+                                        OrderKind::Market,
+                                        TimeInForce::Ioc,
+                                        &position,
+                                        bar.close,
+                                        &risk_limits,
+                                        equity,
+                                    )
                                     .ok()
-                                    .filter(|q| q.get() > Decimal::ZERO)
-                                    .and_then(|q| {
-                                        Order::new(
-                                            sig.strategy_id.clone(),
-                                            sig.symbol.clone(),
-                                            Side::Sell,
-                                            q,
-                                            OrderKind::Market,
-                                            TimeInForce::Ioc,
-                                            &position,
-                                            bar.close,
-                                            &risk_limits,
-                                            equity,
-                                        )
-                                        .ok()
-                                    })
-                            }
+                                }),
                         };
                         if let Some(ord) = order_opt {
                             orders.push(ord);
@@ -1696,8 +1688,7 @@ pub async fn run_scenario(
                                 );
                                 state.cash -= sim_cost;
                                 position.base_qty += fill.qty.get();
-                                position.cost_basis =
-                                    Money::from_decimal(state.position_cost);
+                                position.cost_basis = Money::from_decimal(state.position_cost);
                             }
                             Side::Sell => {
                                 state.apply_sell(
@@ -1757,15 +1748,13 @@ pub async fn run_scenario(
             };
 
             let final_eq = *state.equity_curve.last().unwrap_or(&INITIAL_CAPITAL);
-            let eq_decimals: Vec<Decimal> =
-                equity_series.iter().map(|(_, m)| m.amount()).collect();
+            let eq_decimals: Vec<Decimal> = equity_series.iter().map(|(_, m)| m.amount()).collect();
             let max_dd = crate::stats::compute_max_drawdown_f64(&eq_decimals);
 
             let kpis = BacktestKpis {
                 final_equity: Money::<Usdt>::from_decimal(final_eq),
                 initial_equity: Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
-                max_drawdown: Decimal::try_from(max_dd)
-                    .unwrap_or(Decimal::ZERO),
+                max_drawdown: Decimal::try_from(max_dd).unwrap_or(Decimal::ZERO),
                 trade_count: state.trades,
                 total_fees: Money::<Usdt>::from_decimal(state.total_fees),
                 buys: state.buys,

@@ -1599,6 +1599,14 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_WINNER_FRAGILE_CLAUSE",
             LEADERBOARD_WINNER_FRAGILE_CLAUSE,
         ),
+        // advisor-llm-narration F9 — the opt-in "why this one" narration
+        ("LEADERBOARD_EXPLAIN_BUTTON", LEADERBOARD_EXPLAIN_BUTTON),
+        ("LEADERBOARD_EXPLAIN_INFLIGHT", LEADERBOARD_EXPLAIN_INFLIGHT),
+        (
+            "LEADERBOARD_EXPLAIN_LLM_LABEL",
+            LEADERBOARD_EXPLAIN_LLM_LABEL,
+        ),
+        ("LEADERBOARD_EXPLAIN_FELLBACK", LEADERBOARD_EXPLAIN_FELLBACK),
         // advisor-bakeoff-ranking F3 — guided input
         ("LEADERBOARD_PLAN_TITLE", LEADERBOARD_PLAN_TITLE),
         ("LEADERBOARD_COIN_LABEL", LEADERBOARD_COIN_LABEL),
@@ -2371,6 +2379,29 @@ pub const LEADERBOARD_WINNER_ROBUST_CLAUSE: &str = "It held up under resampling.
 /// Clause appended to the headline when the winner is fragile under resampling.
 pub const LEADERBOARD_WINNER_FRAGILE_CLAUSE: &str =
     "But it looked fragile under resampling \u{2014} treat with caution.";
+
+// ── advisor-llm-narration F9 — the opt-in "why this one" narration (ADR-0064) ──
+
+/// The opt-in "Explain" control on the crowned recommendation block — the
+/// trigger for the LLM "why this one" narration (shown only in the
+/// `NotRequested` state). Plain language: not "Generate narration".
+pub const LEADERBOARD_EXPLAIN_BUTTON: &str = "Explain in plain language";
+
+/// The in-flight affordance shown next to the templated copy while the
+/// narration is being generated (the `InFlight` state). The templated copy
+/// stays the floor — this only adds a quiet "working" line.
+pub const LEADERBOARD_EXPLAIN_INFLIGHT: &str = "Writing a plain-language summary\u{2026}";
+
+/// The label above the LLM-generated prose (the `Ready` state) — names it as an
+/// LLM summary of the numbers ON SCREEN (not new analysis), so the operator
+/// always sees the structured result the words describe (ADR-0064 § D7 / R4).
+pub const LEADERBOARD_EXPLAIN_LLM_LABEL: &str =
+    "Plain-language summary of the result above (AI-generated)";
+
+/// The quiet fallback note shown in the `FellBack` state — the templated copy
+/// is already visible (the honest floor); this just explains why no prose
+/// appeared, without alarming the operator. Deliberately understated.
+pub const LEADERBOARD_EXPLAIN_FELLBACK: &str = "Couldn\u{2019}t generate a plain-language summary \u{2014} the numbers above are the full result.";
 
 // ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──────
 

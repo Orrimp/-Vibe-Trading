@@ -29,7 +29,16 @@ The user journey — the product, end to end:
    **bounded, pre-registered** set of deterministic signal-vote mixes that earn
    their crown through the **same robustness gate + same buy-and-hold benchmark**
    as every single strategy — never assumed-better, never a weight search; LLM/ML
-   stay narration-only in v1), with a plain-language **"why this one."**
+   stay narration-only in v1), with a plain-language **"why this one"** — today
+   rendered as structured templated copy, and from F9
+   ([`advisor-llm-narration/feature.md`](advisor-llm-narration/feature.md), trace
+   `REQ-ADVISOR-LLM-NARRATION-001`) **also** as an LLM-generated plain-language
+   narration that FAITHFULLY renders the *actual* structured bake-off result (the
+   `Recommendation` reason codes + the real KPIs + the robustness flags) and
+   nothing more — a constrained prompt + a deterministic faithfulness post-check
+   keep it grounded, it falls back to the templated copy on any failure, and the
+   LLM **never** enters the ranking (narration only, reinforcing the F8
+   decision).
 4. **Plan**: generate a budget-aware **buy/sell plan for the coming N days**
    (configurable horizon) — the current signal + entry/exit rules + projected
    €200 sizing. This is a **conditional, rule-driven plan, not a price
@@ -487,6 +496,40 @@ Tracked here until the operator answers; then they migrate into the body.
   product's "measured robustness, not asserted alpha" core, the 2026-06-08
   ship-passive verdict, and the not-advice stance — a fabricated price/trade
   forecast would violate all three. No engine code; no anchored content touched.
+- 2026-06-22 (analyst, F9 LLM-narration scoping): annotated **journey step 3**
+  ("why this one") to point at the new F9 feature
+  ([`advisor-llm-narration/feature.md`](advisor-llm-narration/feature.md), trace
+  `REQ-ADVISOR-LLM-NARRATION-001`) — the v0.2 step that finally delivers the
+  2026-06-19 pivot's "...even **together with LLMs**" part, as **NARRATION** (the
+  LLM's genuine strength), never as a trading signal. The LLM turns the *actual*
+  structured bake-off result (the `Recommendation` outcome + the already-computed
+  per-candidate KPIs + the robustness flags + the reason codes) into a faithful
+  plain-language "why the crowned strategy won, what buy-and-hold did, why the
+  runners-up lost" — and the F6 plan in the same voice — and **nothing more**.
+  The framing is load-bearing: an LLM that fabricates a reason / predicts a price
+  / invents a number / recommends beyond the structured result would destroy the
+  product's "measured robustness, not asserted alpha" core (which F8 just made
+  REAL). The durable **faithfulness guard** is two layers — a constrained
+  role-locked prompt that hands the LLM the exact numbers + reason codes, **plus**
+  a deterministic post-check that discards a narration crowning the wrong winner /
+  contradicting the outcome code / inventing a number / tripping a predict-or-
+  advise banned-phrase list (→ fall back to the existing templated copy). A
+  **mandatory honest fallback** (disabled/error/timeout/budget/post-check-fail →
+  the structured templated copy; never blocks the bake-off, never a half-answer),
+  the narration as a **second async step** after the ranking (structured result
+  renders immediately; narration lands later), a **fake-LLM seam** for all
+  tests/renders (no network), and **prompt caching** complete the design. Explicit
+  NON-goals: no price prediction, no implied/expected return, no "buy this", no
+  invented number, no will-keep-working claim — the LLM **never** enters the
+  ranking (narration only, reinforcing the F8 narration-only decision). Does NOT
+  change § Open decisions D3 (ensemble = v0.2) or the 2026-06-08 ship-passive
+  verdict — it scopes the "together with LLMs" promise honestly. Verified vs code
+  (`crates/llm` provides the `LlmProvider` trait + `BudgetedProvider` +
+  `CachedSystemPromptBuilder` + record/replay, with no prior in-app narration
+  consumer; the structured `Recommendation`/`BakeoffReport` already carry every
+  fact the prompt needs; the `spawn_bakeoff`→`BakeoffRunCompleted`→mirror async
+  pattern is the second-step template). No engine code; no anchored content
+  touched.
 - 2026-06-21 (analyst, spec-honesty close-out): flipped `status: draft →
   shipped` — the operator personally defined this product and the MVP is built,
   tested, and committed (advisor F1–F5 + dynamic-data: `58b55b1`, `e0cc34b`,

@@ -21,9 +21,7 @@
 
 use backtest::{
     BakeoffConfig, BakeoffRequest, DateRange, RobustnessFlag, RobustnessMode,
-    bakeoff::{
-        bootstrap::{compute_robustness_flag, derive_master_seed},
-    },
+    bakeoff::bootstrap::{compute_robustness_flag, derive_master_seed},
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -114,7 +112,10 @@ fn bootstrap_deterministic_same_seed() {
     let master_seed = derive_master_seed(99999, 3);
     let f1 = compute_robustness_flag(&equity, 100, master_seed);
     let f2 = compute_robustness_flag(&equity, 100, master_seed);
-    assert_eq!(f1, f2, "compute_robustness_flag must be deterministic (same seed → same flag)");
+    assert_eq!(
+        f1, f2,
+        "compute_robustness_flag must be deterministic (same seed → same flag)"
+    );
 }
 
 #[test]
@@ -235,7 +236,10 @@ fn flat_bars(n: usize) -> Vec<Bar> {
 
 #[tokio::test]
 async fn bootstrap_flags_populate_in_bakeoff() {
-    use backtest::{cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender, run_bakeoff};
+    use backtest::{
+        cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender,
+        run_bakeoff,
+    };
 
     // Use the flat bars — SMA crossover holds cash the whole time.
     // With flat equity, the bootstrap should flag it as Fragile.
@@ -255,7 +259,10 @@ async fn bootstrap_flags_populate_in_bakeoff() {
             field: vec![StrategyId("v0.sma".into())],
         },
         data_source: ScenarioDataSource::Synthetic,
-        robustness: RobustnessMode::Bootstrap { paths: 100, seed: 0xF8 },
+        robustness: RobustnessMode::Bootstrap {
+            paths: 100,
+            seed: 0xF8,
+        },
     };
 
     // We need to pass bars_override but BakeoffConfig doesn't have it —
@@ -283,7 +290,10 @@ async fn bootstrap_flags_populate_in_bakeoff() {
 
 #[tokio::test]
 async fn bootstrap_skip_mode_all_none() {
-    use backtest::{cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender, run_bakeoff};
+    use backtest::{
+        cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender,
+        run_bakeoff,
+    };
 
     let seed_bytes = {
         let mut s = [0u8; 32];
@@ -330,7 +340,8 @@ async fn bootstrap_skip_mode_all_none() {
 #[tokio::test]
 async fn bakeoff_with_ensemble_field_runs_and_flags_them() {
     use backtest::{
-        cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender, run_bakeoff,
+        cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender,
+        run_bakeoff,
     };
 
     let seed_bytes = {
@@ -354,7 +365,10 @@ async fn bakeoff_with_ensemble_field_runs_and_flags_them() {
         data_source: ScenarioDataSource::Synthetic,
         // Small path count for test speed — only the populate-and-flag behaviour
         // is under test, not a specific verdict value.
-        robustness: RobustnessMode::Bootstrap { paths: 64, seed: 0xE8 },
+        robustness: RobustnessMode::Bootstrap {
+            paths: 64,
+            seed: 0xE8,
+        },
     };
 
     let (_handle, cancel_rx) = cancellation_pair();

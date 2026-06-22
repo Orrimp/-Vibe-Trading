@@ -495,11 +495,28 @@ fn main() -> Result<()> {
 
     // F6-PLAN (ADR-0062 § D4) — build the forward-plan return channel.
     // The runtime side holds `plan_tx` (Sender) and sends a ForwardPlan on
-    // each ForwardCommand::Launch. The iced side holds `_plan_rx_live`
-    // (Receiver) for the iced subscription that feeds the plan surface.
-    // Depth = 4 (same rationale as forward_command channel).
+    // each ForwardCommand::Launch. The iced side holds `plan_rx_live`
+    // (Receiver), consumed by `ForwardPlanRecipe` in `subscription()` (the
+    // "last mile" that feeds the F6 Plan surface). Depth = 4 (same rationale
+    // as the forward_command channel).
     #[cfg(feature = "live")]
-    let (plan_tx_live, _plan_rx_live) = tokio::sync::mpsc::channel::<agent::ForwardPlan>(4);
+    let (plan_tx_live, plan_rx_live) = tokio::sync::mpsc::channel::<agent::ForwardPlan>(4);
+
+    // F9-NARRATION (ADR-0064 § D3) — build the two narration channels.
+    // iced→agent: `narration_request_tx_live` (Sender) is held on the iced side
+    // and carries a `NarrationRequest` on each "Explain" click; the runtime side
+    // holds the matching Receiver (`narration_request_rx`). agent→iced:
+    // `narration_outcome_tx_live` (Sender) goes to RunHandles; the iced side
+    // holds `narration_outcome_rx_live` (Receiver), consumed by
+    // `NarrationOutcomeRecipe`. Both `Some` here ⇒ the agent narration task is
+    // spawned (runtime.rs gate); the non-`live` build passes `None` (below) →
+    // byte-identical pre-F9 path. Depth = 4 (re-selection tolerance).
+    #[cfg(feature = "live")]
+    let (narration_request_tx_live, narration_request_rx_live) =
+        tokio::sync::mpsc::channel::<agent::narration::NarrationRequest>(4);
+    #[cfg(feature = "live")]
+    let (narration_outcome_tx_live, narration_outcome_rx_live) =
+        tokio::sync::mpsc::channel::<agent::NarrationOutcome>(4);
 
     let agent_handle = {
         let cancel = cancel.clone();
@@ -523,6 +540,24 @@ fn main() -> Result<()> {
         #[cfg(not(feature = "live"))]
         let plan_tx_for_handles: Option<tokio::sync::mpsc::Sender<agent::ForwardPlan>> = None;
 
+        // F9-NARRATION: pass the request Receiver + outcome Sender into
+        // RunHandles so the agent narration task spawns (both `Some` ⇒ the task
+        // receives "Explain" requests, runs `generate_narration`, and returns
+        // the outcome). When compiled without `live`, both are `None` → the
+        // narration task is NOT spawned → byte-identical pre-F9 path.
+        #[cfg(feature = "live")]
+        let narration_request_rx_for_handles = Some(narration_request_rx_live);
+        #[cfg(not(feature = "live"))]
+        let narration_request_rx_for_handles: Option<
+            tokio::sync::mpsc::Receiver<agent::narration::NarrationRequest>,
+        > = None;
+        #[cfg(feature = "live")]
+        let narration_outcome_tx_for_handles = Some(narration_outcome_tx_live);
+        #[cfg(not(feature = "live"))]
+        let narration_outcome_tx_for_handles: Option<
+            tokio::sync::mpsc::Sender<agent::NarrationOutcome>,
+        > = None;
+
         let handles = RunHandles {
             config: Arc::new(cfg),
             ledger: Arc::clone(&ledger),
@@ -541,6 +576,15 @@ fn main() -> Result<()> {
             // F6-PLAN: the Sender emits ForwardPlan on each Launch.
             // `None` (headless / soak path) → byte-identical pre-F6 path.
             plan_tx: plan_tx_for_handles,
+            // F9-NARRATION (ADR-0064 § D3): the request Receiver + outcome Sender,
+            // now wired (the "last mile"). Both `Some` under `live` ⇒ the agent
+            // narration task spawns: it receives the iced thread's "Explain"
+            // requests, runs `generate_narration`, and returns the outcome over
+            // `narration_outcome_tx` → `NarrationOutcomeRecipe` →
+            // `Message::BakeoffNarrationCompleted`. Both `None` in the non-`live`
+            // build → the task is not spawned → byte-identical pre-F9 path.
+            narration_request_rx: narration_request_rx_for_handles,
+            narration_outcome_tx: narration_outcome_tx_for_handles,
         };
         let ledger_for_close = Arc::clone(&ledger);
         let boot_id_for_close = boot_id.clone();
@@ -745,6 +789,19 @@ fn main() -> Result<()> {
         // can send ForwardCommand::Launch(cfg) to the paper_loop_supervisor.
         #[cfg(feature = "live")]
         forward_tx: Some(forward_tx_live),
+        // F6-PLAN: hold the plan Receiver so `ForwardPlanRecipe` can consume it.
+        #[cfg(feature = "live")]
+        plan_rx: Some(std::sync::Arc::new(std::sync::Mutex::new(Some(
+            plan_rx_live,
+        )))),
+        // F9-NARRATION: hold the request Sender (Explain → agent) + the outcome
+        // Receiver (agent → `NarrationOutcomeRecipe`).
+        #[cfg(feature = "live")]
+        narration_request_tx: Some(narration_request_tx_live),
+        #[cfg(feature = "live")]
+        narration_outcome_rx: Some(std::sync::Arc::new(std::sync::Mutex::new(Some(
+            narration_outcome_rx_live,
+        )))),
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -1096,6 +1153,43 @@ struct AppState {
     /// do not exercise the forward-launch path.
     #[cfg(feature = "live")]
     forward_tx: Option<tokio::sync::mpsc::Sender<agent::ForwardCommand>>,
+
+    /// F6-PLAN — receiver side of the forward-plan return channel (ADR-0062 § D4).
+    ///
+    /// Held in an `Arc<Mutex<Option<_>>>` so `ForwardPlanRecipe` can `take()` the
+    /// receiver in its `stream()` without moving `AppState` into the subscription
+    /// (the `lab_progress_rx` ownership pattern). `subscription()` builds the
+    /// recipe whenever this is `Some`. The recipe drains `agent::ForwardPlan`,
+    /// mirrors each into `ForwardPlanView`, and emits `ForwardPlanReceived` —
+    /// THIS is the wiring that fills the F6 Plan screen (it was empty because the
+    /// receiver was never consumed).
+    #[cfg(feature = "live")]
+    plan_rx: Option<
+        std::sync::Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::ForwardPlan>>>>,
+    >,
+
+    /// F9-NARRATION — sender side of the narration-REQUEST channel (ADR-0064 § D3).
+    ///
+    /// Held on the iced side. When the operator clicks "Explain"
+    /// (`Message::BakeoffNarrationRequested`) and a `Ready` bake-off is on
+    /// screen, the `update` arm builds a `NarrationRequest` from the
+    /// on-screen `BakeoffReportMirror` and `try_send`s it here — the F5
+    /// `forward_tx` iced→agent dispatch precedent.
+    #[cfg(feature = "live")]
+    narration_request_tx: Option<tokio::sync::mpsc::Sender<agent::narration::NarrationRequest>>,
+
+    /// F9-NARRATION — receiver side of the narration-OUTCOME return channel.
+    ///
+    /// Symmetric with `plan_rx`: `NarrationOutcomeRecipe` `take()`s it in
+    /// `stream()`, drains `agent::NarrationOutcome`, maps each into the pure-`ui`
+    /// `NarrationOutcome`, and emits `BakeoffNarrationCompleted`. `subscription()`
+    /// builds the recipe whenever this is `Some`.
+    #[cfg(feature = "live")]
+    narration_outcome_rx: Option<
+        std::sync::Arc<
+            std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>,
+        >,
+    >,
 }
 
 // ── Manual Clone for AppState ─────────────────────────────────────────────────
@@ -1138,6 +1232,16 @@ impl Clone for AppState {
             // mpsc::Sender derives Clone so this is a cheap refcount bump.
             #[cfg(feature = "live")]
             forward_tx: self.forward_tx.clone(),
+            // F6-PLAN / F9-NARRATION receivers are held behind Arc<Mutex<…>>;
+            // the clone shares the SAME cell (like `lab_progress_rx`), so the
+            // single app_state that drives the subscription `take()`s the
+            // receiver once. The request Sender is `mpsc::Sender` (Clone).
+            #[cfg(feature = "live")]
+            plan_rx: self.plan_rx.clone(),
+            #[cfg(feature = "live")]
+            narration_request_tx: self.narration_request_tx.clone(),
+            #[cfg(feature = "live")]
+            narration_outcome_rx: self.narration_outcome_rx.clone(),
         }
     }
 }
@@ -1332,6 +1436,48 @@ impl AppState {
             }
             _ => None,
         };
+
+        // F9-NARRATION (ADR-0064 § D3) — "Explain" iced→agent dispatch (the F5
+        // `forward_tx` inline-send precedent). On `BakeoffNarrationRequested`,
+        // when a `Ready` bake-off is on screen and a narration is not already in
+        // flight / resolved (the SAME guard `ui::state::update` uses to flip the
+        // block to `InFlight`), build a `NarrationRequest` from the on-screen
+        // mirror and `try_send` it over `narration_request_tx`. The agent
+        // narration task receives it, runs `generate_narration`, and returns the
+        // outcome over `narration_outcome_tx` → `NarrationOutcomeRecipe` →
+        // `BakeoffNarrationCompleted`. Read the PRE-mutation mirror here (the
+        // request arm leaves `result` untouched). Without this send the screen
+        // would flip to `InFlight` and never resolve.
+        #[cfg(feature = "live")]
+        if matches!(msg, Message::BakeoffNarrationRequested)
+            && let ui::state::PanelState::Ready(mirror) =
+                &self.cockpit.leaderboard_screen_state.result
+            && !self
+                .cockpit
+                .leaderboard_screen_state
+                .narration
+                .is_requested()
+        {
+            if let Some(ref tx) = self.narration_request_tx {
+                let request = ui::live::narration_request_from_mirror(mirror);
+                match tx.try_send(request) {
+                    Ok(()) => info!(
+                        winner = %mirror.recommendation.winner,
+                        "F9-NARRATION: NarrationRequest sent to agent task"
+                    ),
+                    Err(e) => warn!(
+                        error = %e,
+                        "F9-NARRATION: narration_request channel full — Explain deferred"
+                    ),
+                }
+            } else {
+                warn!(
+                    "F9-NARRATION: narration_request_tx is None — narration not wired \
+                     (non-fatal; the templated fallback stays the floor)"
+                );
+            }
+        }
+
         // T-D3.4 — detect LabRunStopRequested to drop the cancel handle.
         let lab_run_stop_requested = matches!(&msg, Message::LabRunStopRequested);
 
@@ -1948,6 +2094,35 @@ impl AppState {
                 }
             })
             .collect();
+
+        // F6-PLAN — the forward-plan return recipe (advisor-forward-plan / ADR-0062
+        // § D4). Added after the descriptor batch (like the modal-Esc listener
+        // below) because it is bin-side channel plumbing, not a descriptor-tested
+        // always-on recipe. Active whenever the plan receiver is held; the recipe
+        // `take()`s it once and drains `agent::ForwardPlan` → `ForwardPlanReceived`,
+        // filling the F6 Plan surface. THIS is the wiring whose absence left the
+        // live Plan screen empty.
+        if let Some(rx) = self.plan_rx.as_ref() {
+            subs.push(iced::advanced::subscription::from_recipe(
+                ui::live::ForwardPlanRecipe {
+                    rt_handle: self.rt_handle.clone(),
+                    rx: std::sync::Arc::clone(rx),
+                },
+            ));
+        }
+
+        // F9-NARRATION — the narration-outcome return recipe (advisor-llm-narration
+        // / ADR-0064 § D3). Active whenever the outcome receiver is held; drains
+        // `agent::NarrationOutcome` → `BakeoffNarrationCompleted`. THIS is the
+        // wiring whose absence left "Explain" able only to FellBack.
+        if let Some(rx) = self.narration_outcome_rx.as_ref() {
+            subs.push(iced::advanced::subscription::from_recipe(
+                ui::live::NarrationOutcomeRecipe {
+                    rt_handle: self.rt_handle.clone(),
+                    rx: std::sync::Arc::clone(rx),
+                },
+            ));
+        }
 
         // Q6 — modal-open-gated Esc keyboard listener.
         // Added AFTER the base batch so the descriptor-to-iced loop stays clean.

@@ -1543,6 +1543,51 @@ pub fn fake_cockpit_leaderboard_with_input(
         coin: Symbol::new(coin),
         budget_input: budget_input.to_string(),
         lookback,
+        ..Default::default()
+    };
+    cockpit
+}
+
+// ── advisor-llm-narration F9 (ADR-0064) — the opt-in "why this one" narration ──
+
+/// A FAITHFUL fixture narration prose for the `Ready` render state — a
+/// plain-language summary of `fake_bakeoff_report_mirror()` (winner `v0.sma`,
+/// `ActiveWins`, Sharpe 1.42 vs buy-and-hold 0.73). NO `llm`/network: this is
+/// the canned text the render harness drops straight into
+/// [`NarrationState::Ready`], standing in for what the agent's
+/// `generate_narration` would return after passing the faithfulness post-check.
+///
+/// Deliberately faithful — it names the crowned strategy, states the outcome
+/// correctly, references only KPIs visible in the table, and trips no
+/// banned-phrase / prediction language — so the rendered PNG reads as the honest
+/// summary the operator would actually see (not a fabrication).
+pub const FAKE_NARRATION_READY_PROSE: &str = "SMA crossover came out on top here. Over this window it earned the strongest \
+     risk-adjusted return of the field \u{2014} a Sharpe of 1.42 against 0.73 for simply \
+     holding the coin \u{2014} while keeping its worst drawdown shallower than the other \
+     strategies. The RSI strategy looked fragile under resampling, so it could not be \
+     crowned even where its raw numbers tempted. This describes how the strategies \
+     behaved on past data; it is not a forecast.";
+
+/// A `Cockpit` routed to `Screen::Leaderboard` with a populated leaderboard AND
+/// an explicit F9 [`NarrationState`] installed on the recommendation block.
+///
+/// Drives the F9 render guards: `Ready(prose)` paints the LLM prose card;
+/// `NotRequested` / `FellBack` paint the templated reasons (the negative
+/// control). Synthetic — no engine, no `llm`, no network; the narration is the
+/// canned `ui` fixture text, exactly the seam the ADR § D5 fake-provider
+/// pattern reserves for the render harness.
+#[must_use]
+pub fn fake_cockpit_leaderboard_with_narration(
+    result: PanelState<crate::leaderboard::BakeoffReportMirror>,
+    narration: crate::leaderboard::NarrationState,
+) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Leaderboard;
+    cockpit.leaderboard_screen_state = crate::leaderboard::LeaderboardScreenState {
+        result,
+        running: false,
+        narration,
+        ..Default::default()
     };
     cockpit
 }

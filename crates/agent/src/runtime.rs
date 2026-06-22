@@ -165,6 +165,27 @@ pub struct RunHandles {
     /// `None` → no plan is produced; the headless `trading` bin + the soak
     /// harness pass `None` → byte-identical to pre-F6 behaviour (D6 invariant).
     pub plan_tx: Option<tokio::sync::mpsc::Sender<crate::config::ForwardPlan>>,
+
+    /// F9-NARRATION — receiver side of the narration-request channel (ADR-0064 § D3).
+    ///
+    /// `Some(rx)` only for the cockpit; the iced thread sends a
+    /// [`crate::narration::NarrationRequest`] when the operator clicks "Explain".
+    /// The agent's narration task (spawned inside `run`) receives it and runs
+    /// [`crate::narration::generate_narration`] on the async runtime, then sends
+    /// the `NarrationOutcome` back via `narration_outcome_tx`.
+    ///
+    /// `None` → byte-identical to today (headless / soak unaffected — D6 invariant).
+    pub narration_request_rx:
+        Option<tokio::sync::mpsc::Receiver<crate::narration::NarrationRequest>>,
+
+    /// F9-NARRATION — sender side of the narration-outcome return channel (ADR-0064 § D3).
+    ///
+    /// `Some(tx)` only for the cockpit; the narration task sends the
+    /// [`crate::narration::NarrationOutcome`] back to the iced thread's recipe
+    /// (symmetric with F6's `plan_tx`).
+    ///
+    /// `None` → byte-identical to today (headless / soak unaffected — D6 invariant).
+    pub narration_outcome_tx: Option<tokio::sync::mpsc::Sender<crate::narration::NarrationOutcome>>,
 }
 
 /// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
@@ -490,6 +511,8 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         reflection_writer,
         forward_rx,
         plan_tx,
+        narration_request_rx,
+        narration_outcome_tx,
     } = handles;
 
     // ── Kill-switch halt-file watcher ─────────────────────────────────────────
@@ -1225,6 +1248,63 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
             }
         }
     }
+
+    // ── F9-NARRATION — triggered narration task (ADR-0064 § D3) ─────────────────
+    // Receives a `NarrationRequest` from the iced thread (via the cockpit's
+    // "Explain" action), calls `generate_narration(provider, facts)` on the
+    // async runtime, and returns the `NarrationOutcome` over the return channel.
+    //
+    // `None` channels → byte-identical to today (headless / soak unaffected —
+    // the absent-channel path is structurally guaranteed by the Option guards).
+    if let (Some(mut req_rx), Some(outcome_tx)) = (narration_request_rx, narration_outcome_tx) {
+        // The LLM provider is built at agent boot (gated on cfg.llm.enabled).
+        // We clone the config's provider handle here; if absent the task still
+        // runs (receives requests + sends FellBack for each) so the UI never hangs.
+        let llm_provider: Option<Arc<dyn llm::LlmProvider>> = if config.llm.enabled {
+            // The production path: the factory was called at boot and stored
+            // the provider on the config. For now we re-build a minimal provider
+            // from the config so the task can operate. The preferred pattern is
+            // to pass an `Option<Arc<dyn LlmProvider>>` into RunHandles (the F9
+            // v0.3 hardening point); for MVP we use `None` and let the task
+            // FellBack (the honest fallback — the bake-off result is always shown).
+            //
+            // TODO(F9-v0.3): plumb the boot-built `Arc<dyn LlmProvider>` into
+            // RunHandles so the narration task uses the full BudgetedProvider stack.
+            None
+        } else {
+            None
+        };
+        let narration_cancel = cancel.child_token();
+        set.spawn(async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    () = narration_cancel.cancelled() => break,
+                    req = req_rx.recv() => {
+                        let Some(crate::narration::NarrationRequest { facts }) = req else {
+                            // Channel closed — exit.
+                            break;
+                        };
+                        let outcome = if let Some(ref provider) = llm_provider {
+                            crate::narration::generate_narration(provider, &facts).await
+                        } else {
+                            tracing::debug!(
+                                winner = %facts.winner_id,
+                                "narration_task: provider not enabled — FellBack"
+                            );
+                            crate::narration::NarrationOutcome::FellBack
+                        };
+                        if outcome_tx.send(outcome).await.is_err() {
+                            tracing::warn!("narration_task: outcome channel closed — stopping");
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        info!("narration_task spawned (F9 — cockpit narration path)");
+    }
+    // else: headless / soak — byte-identical to pre-F9 (no narration task spawned).
 
     // ── Phase 3 T1707 — risk-telemetry publisher (Q3) ─────────────────────────
     // 1 Hz tick. v1.5b plumbing-only state — the snapshot returns a
@@ -2588,10 +2668,12 @@ mod tests {
             kill_switch: Arc::clone(&kill_switch),
             registry,
             boot_id: boot_id.clone(),
-            equity_store: None,      // tests use no equity store
-            reflection_writer: None, // tests do not exercise lesson-card wiring
-            forward_rx: None,        // tests: no forward-command channel (byte-identical path)
-            plan_tx: None,           // tests: no plan channel (F6 gate; ADR-0062 § D6)
+            equity_store: None,         // tests use no equity store
+            reflection_writer: None,    // tests do not exercise lesson-card wiring
+            forward_rx: None,           // tests: no forward-command channel (byte-identical path)
+            plan_tx: None,              // tests: no plan channel (F6 gate; ADR-0062 § D6)
+            narration_request_rx: None, // tests: no narration channel (F9 byte-identical gate)
+            narration_outcome_tx: None, // tests: no narration outcome channel
         };
 
         let cancel = CancellationToken::new();

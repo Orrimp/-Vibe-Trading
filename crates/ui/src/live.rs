@@ -865,6 +865,285 @@ pub fn toast_dismiss_stream_impl(
     })
 }
 
+// ── F6 forward-plan recipe (advisor-forward-plan v0.1.0 / ADR-0062 § D4) ─────
+//
+// The agent supervisor sends a `core`-typed `agent::ForwardPlan` over the
+// `RunHandles.plan_tx` channel on each `ForwardCommand::Launch`; the iced thread
+// holds the matching `mpsc::Receiver`. THIS recipe is the "last mile": it drains
+// that receiver, mirrors each `ForwardPlan` into the pure-`ui` `ForwardPlanView`
+// at the recipe boundary (the existing `#[cfg(feature = "live")]` adapter — the
+// engine/agent type never reaches iced state), and emits
+// `Message::ForwardPlanReceived(view)`. Without it, `plan_rx` is never consumed
+// and the live Plan screen stays Empty (the gap this wiring closes).
+//
+// mpsc precedent: `LabProgressRecipe` (tokio mpsc in `Arc<Mutex<Option<_>>>`,
+// taken once in `stream()`). The Plan channel is process-lifetime (one cockpit,
+// one launch supervisor) so no salt is needed — a single take is correct.
+
+/// iced `Recipe` that drains the F6 forward-plan return channel and emits
+/// `Message::ForwardPlanReceived` per `agent::ForwardPlan`.
+///
+/// Constructed by `cockpit_live::subscription()` when `plan_rx` is `Some`.
+/// Mirrors `LabProgressRecipe`'s tokio-mpsc-in-`Mutex` ownership: the receiver
+/// is `take()`-n from the `Arc<Mutex<Option<_>>>` in `stream()`.
+pub struct ForwardPlanRecipe {
+    pub rt_handle: tokio::runtime::Handle,
+    pub rx: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::ForwardPlan>>>>,
+}
+
+impl Recipe for ForwardPlanRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+        // Static discriminant so iced never merges this with another recipe.
+        0xF6_F6u16.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        // K8 — enter the tokio runtime context to safely take the
+        // `tokio::sync::mpsc::Receiver`, then drop the guard before `Box::pin`
+        // so the returned `BoxStream` stays `Send + 'static`.
+        let rx_opt = {
+            let _guard = self.rt_handle.enter();
+            self.rx
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+        };
+        forward_plan_stream_impl(rx_opt)
+    }
+}
+
+/// Inner stream logic for `ForwardPlanRecipe`, extracted so the relay
+/// integration test can drive it directly without a running iced application or
+/// an `EventStream`. THIS is the function the relay test exercises — proving the
+/// channel→`Message` "last mile" the fixture render tests bypass.
+///
+/// - `Some(rx)`: maps each received `agent::ForwardPlan` to
+///   `Message::ForwardPlanReceived(ForwardPlanView::from_plan(&plan))` until the
+///   sender drops (channel closed → stream ends cleanly).
+/// - `None` (double-`stream()` after the receiver was already taken): yields
+///   nothing.
+#[must_use]
+pub fn forward_plan_stream_impl(
+    rx_opt: Option<tokio::sync::mpsc::Receiver<agent::ForwardPlan>>,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        if let Some(mut rx) = rx_opt {
+            while let Some(plan) = rx.recv().await {
+                // The ONE place `ui` reads the agent plan type (the INVARIANT
+                // seam) — mirror at the recipe boundary so iced state stays pure.
+                let view = crate::forward_plan::ForwardPlanView::from_plan(&plan);
+                yield Message::ForwardPlanReceived(view);
+            }
+            debug!(channel = "forward_plan", "plan channel closed — stopping recipe");
+        }
+        // If rx_opt was None: yields nothing (double-stream() after .take()).
+    })
+}
+
+// ── F9 narration-outcome recipe (advisor-llm-narration / ADR-0064 § D3) ──────
+//
+// Symmetric with F6's plan recipe. The agent narration task sends a `core`-clean
+// `agent::NarrationOutcome { Ready(SmolStr) | FellBack }` over the
+// `RunHandles.narration_outcome_tx` channel; the iced thread holds the matching
+// `mpsc::Receiver`. THIS recipe drains it, maps each outcome into the pure-`ui`
+// `crate::leaderboard::NarrationOutcome` at the single adapter (below), and emits
+// `Message::BakeoffNarrationCompleted(outcome)`. Without it, the outcome channel
+// is never consumed and "Explain" can only ever show the templated fallback.
+
+/// iced `Recipe` that drains the F9 narration-outcome return channel and emits
+/// `Message::BakeoffNarrationCompleted` per `agent::NarrationOutcome`.
+///
+/// Constructed by `cockpit_live::subscription()` when `narration_outcome_rx` is
+/// `Some`. Same tokio-mpsc-in-`Mutex` ownership as `ForwardPlanRecipe`.
+pub struct NarrationOutcomeRecipe {
+    pub rt_handle: tokio::runtime::Handle,
+    pub rx: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>>,
+}
+
+impl Recipe for NarrationOutcomeRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+        // Static discriminant so iced never merges this with another recipe.
+        0xF9_F9u16.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        // K8 — same guard discipline as ForwardPlanRecipe.
+        let rx_opt = {
+            let _guard = self.rt_handle.enter();
+            self.rx
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+        };
+        narration_outcome_stream_impl(rx_opt)
+    }
+}
+
+/// Inner stream logic for `NarrationOutcomeRecipe`, extracted so the relay
+/// integration test can drive it directly. Maps each `agent::NarrationOutcome`
+/// to `Message::BakeoffNarrationCompleted` via [`narration_outcome_to_ui`] (the
+/// single `#[cfg(feature = "live")]` adapter), until the sender drops.
+#[must_use]
+pub fn narration_outcome_stream_impl(
+    rx_opt: Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        if let Some(mut rx) = rx_opt {
+            while let Some(outcome) = rx.recv().await {
+                yield Message::BakeoffNarrationCompleted(narration_outcome_to_ui(outcome));
+            }
+            debug!(channel = "narration_outcome", "narration channel closed — stopping recipe");
+        }
+        // If rx_opt was None: yields nothing (double-stream() after .take()).
+    })
+}
+
+/// The ONE place `ui` reads `agent::NarrationOutcome` — map the `core`-clean
+/// agent outcome into the pure-`ui` `crate::leaderboard::NarrationOutcome` (the
+/// `ForwardPlanView::from_plan` discipline, but for the narration return type).
+/// Both enums are `{ Ready(SmolStr) | FellBack }`; exhaustive so a future agent
+/// variant fails to compile here until mapped.
+#[must_use]
+pub fn narration_outcome_to_ui(
+    outcome: agent::NarrationOutcome,
+) -> crate::leaderboard::NarrationOutcome {
+    match outcome {
+        agent::NarrationOutcome::Ready(prose) => crate::leaderboard::NarrationOutcome::Ready(prose),
+        agent::NarrationOutcome::FellBack => crate::leaderboard::NarrationOutcome::FellBack,
+    }
+}
+
+/// Build the F9 [`agent::narration::NarrationRequest`] for the "Explain" action
+/// from the on-screen `BakeoffReportMirror` — the iced→agent send the cockpit
+/// dispatches over `narration_request_tx` (the F5 `forward_tx` build-from-mirror
+/// precedent, but for the narration request).
+///
+/// This is the iced→agent direction of the narration seam: it names
+/// `agent::narration::*` ONLY here, under `#[cfg(feature = "live")]`, never
+/// through a `view` fn. The load-bearing prompt facts — winner id, candidate
+/// ids, outcome, robustness, reason codes — are mirrored faithfully from the
+/// mirror's `RecommendationMirror` + `LeaderRow`s.
+///
+/// ## Sortino / Calmar fidelity (documented gap)
+///
+/// `LeaderRow` carries only Sharpe / total-return / max-drawdown / trade-count
+/// (the leaderboard table's scalars); Sortino and Calmar are NOT mirrored. The
+/// P3 allowed-number set therefore omits them — which is the SAFE direction: a
+/// Sortino/Calmar the LLM emits would read as fabricated and the post-check
+/// falls back to the templated floor, never over-permitting. The MVP narration
+/// task runs with no provider (`llm_provider = None` → always `FellBack`), so this
+/// has no functional effect today; richer facts (built from the raw
+/// `backtest::BakeoffReport` via `NarrationFacts::from_report`) are the v0.3
+/// hardening point noted in `runtime.rs`.
+#[must_use]
+pub fn narration_request_from_mirror(
+    mirror: &crate::leaderboard::BakeoffReportMirror,
+) -> agent::narration::NarrationRequest {
+    use crate::leaderboard::{OutcomeKind, RobustnessLabel};
+    use agent::narration::{
+        CandidateKpiStrings, NarrationFacts, NarrationOutcome_, NarrationRequest,
+    };
+
+    fn outcome_(kind: OutcomeKind) -> NarrationOutcome_ {
+        match kind {
+            OutcomeKind::ActiveWins => NarrationOutcome_::ActiveWins,
+            OutcomeKind::BenchmarkWins => NarrationOutcome_::BenchmarkWins,
+            OutcomeKind::AllFragile => NarrationOutcome_::AllFragile,
+        }
+    }
+    fn robustness_str(label: RobustnessLabel) -> SmolStr {
+        match label {
+            RobustnessLabel::Robust => SmolStr::new("robust"),
+            RobustnessLabel::Marginal => SmolStr::new("marginal"),
+            RobustnessLabel::Fragile => SmolStr::new("fragile"),
+            RobustnessLabel::NotChecked => SmolStr::new("not checked"),
+        }
+    }
+
+    let rec = &mirror.recommendation;
+    let candidate_ids: Vec<SmolStr> = mirror.rows.iter().map(|r| r.strategy.clone()).collect();
+    // Canonical KPI strings using the SAME formatters `agent::narration`'s
+    // `render_kpi_strings` uses (4 dp ratios; "{:.2}%"; plain integer) so the P3
+    // exact-string match holds for the four KPIs the mirror carries. Sortino /
+    // Calmar are absent from the mirror (see the doc gap above) → empty string.
+    let candidate_kpi_strings: Vec<CandidateKpiStrings> = mirror
+        .rows
+        .iter()
+        .map(|r| CandidateKpiStrings {
+            strategy_id: r.strategy.clone(),
+            sharpe: fmt_ratio4(r.sharpe),
+            sortino: String::new(),
+            calmar: String::new(),
+            total_return_pct: fmt_pct2(r.total_return_pct),
+            max_drawdown: fmt_pct2(r.max_drawdown),
+            trade_count: r.trade_count.to_string(),
+        })
+        .collect();
+    let reason_codes: Vec<SmolStr> = rec.reasons.iter().map(|c| reason_code_str(*c)).collect();
+
+    NarrationRequest {
+        facts: NarrationFacts {
+            outcome: outcome_(rec.outcome),
+            winner_id: rec.winner.clone(),
+            candidate_ids,
+            candidate_kpi_strings,
+            winner_robustness_label: rec.winner_robustness.map(robustness_str),
+            reason_codes,
+        },
+    }
+}
+
+/// 4-dp ratio formatter — mirrors `agent::narration::render_kpi_strings`'
+/// `fmt_ratio4` (Sharpe/Sortino/Calmar canonical form) so P3 exact-match holds.
+fn fmt_ratio4(v: f64) -> String {
+    use rust_decimal::prelude::FromPrimitive;
+    let d = Decimal::from_f64(v).unwrap_or(Decimal::ZERO);
+    pad_fractional_kpi(&d.round_dp(4).to_string(), 4)
+}
+
+/// `"{:.2}%"` percentage formatter — mirrors `render_kpi_strings`' `fmt_pct2`.
+fn fmt_pct2(d: Decimal) -> String {
+    format!("{}%", pad_fractional_kpi(&d.round_dp(2).to_string(), 2))
+}
+
+/// Pad a decimal string to exactly `places` fractional digits — mirrors
+/// `agent::narration::pad_fractional_kpi`.
+fn pad_fractional_kpi(raw: &str, places: usize) -> String {
+    match raw.split_once('.') {
+        Some((int, frac)) if frac.len() >= places => format!("{int}.{}", &frac[..places]),
+        Some((int, frac)) => format!("{int}.{frac}{}", "0".repeat(places - frac.len())),
+        None => format!("{raw}.{}", "0".repeat(places)),
+    }
+}
+
+/// Human-readable reason string for a `ui` `ReasonLabel` — mirrors the reason
+/// copy `NarrationFacts::from_report` derives from `backtest::ReasonCode`.
+fn reason_code_str(label: crate::leaderboard::ReasonLabel) -> SmolStr {
+    use crate::leaderboard::ReasonLabel;
+    match label {
+        ReasonLabel::HighestRobustSharpe => SmolStr::new("highest Sharpe among robust candidates"),
+        ReasonLabel::BeatBenchmarkSharpe => SmolStr::new("Sharpe beat the benchmark"),
+        ReasonLabel::BenchmarkUndefeated => SmolStr::new("no active strategy beat buy-and-hold"),
+        ReasonLabel::AllCandidatesFragile => {
+            SmolStr::new("all candidates flagged fragile under resampling")
+        }
+        ReasonLabel::TieBrokenByReturn => SmolStr::new("Sharpe tie broken by total return"),
+        ReasonLabel::TieBrokenByDrawdown => {
+            SmolStr::new("Sharpe and return tie broken by lower drawdown")
+        }
+    }
+}
+
 // ── SubscriptionBatchDescriptor seam (Wave C — ADR-0048 v0.2.0) ─────────────
 //
 // `build_subscription_batch_descriptor` is the introspectable equivalent of

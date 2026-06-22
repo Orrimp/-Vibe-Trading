@@ -43,13 +43,13 @@ pub mod vol_targeting_overlay;
 pub use always_long::AlwaysLongStrategy;
 pub use cash_hold::CashHoldStrategy;
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
-pub use ensemble::{
-    EnsembleBuildError, EnsembleStrategy, MemberStance, VoteMethod, arbitrate, build_ensemble,
-    build_member,
-};
 pub use cross_sectional::{
     CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy,
     ScoreSource, SelectionMode, select_above_threshold, top_k_long,
+};
+pub use ensemble::{
+    EnsembleBuildError, EnsembleStrategy, MemberStance, VoteMethod, arbitrate, build_ensemble,
+    build_member,
 };
 pub use pairs::{MeanReversionPairsConfig, MeanReversionPairsStrategy, PairsLoadError};
 #[cfg(feature = "forecast")]

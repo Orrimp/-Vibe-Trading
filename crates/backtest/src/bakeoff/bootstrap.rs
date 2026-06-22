@@ -124,8 +124,7 @@ pub fn compute_robustness_flag(
     }
 
     // Step 2: block length via Politis–White PWSD selector.
-    let block_len =
-        data::synth::block_length::politis_white_block_length(&log_returns).max(1);
+    let block_len = data::synth::block_length::politis_white_block_length(&log_returns).max(1);
 
     // Initial equity (Decimal) for P(loss) comparisons.
     let initial_equity = equity_decimals[0];
@@ -193,11 +192,7 @@ fn equity_to_log_returns_f64(equity: &[Decimal]) -> Vec<f64> {
         .map(|w| {
             let prev = w[0].to_f64().unwrap_or(1.0);
             let curr = w[1].to_f64().unwrap_or(1.0);
-            if prev <= 0.0 {
-                0.0
-            } else {
-                (curr / prev).ln()
-            }
+            if prev <= 0.0 { 0.0 } else { (curr / prev).ln() }
         })
         .collect()
 }

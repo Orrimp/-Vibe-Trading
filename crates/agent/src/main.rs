@@ -334,6 +334,8 @@ async fn main() -> Result<()> {
         reflection_writer: reflection_writer_for_runtime,
         forward_rx: None, // headless bin: no forward-command channel (byte-identical legacy path)
         plan_tx: None,    // headless bin: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
+        narration_request_rx: None, // headless bin: no narration channel (F9 byte-identical gate; ADR-0064 § D6)
+        narration_outcome_tx: None, // headless bin: no narration outcome channel
     };
     agent::runtime::run(handles, cancel).await?;
 

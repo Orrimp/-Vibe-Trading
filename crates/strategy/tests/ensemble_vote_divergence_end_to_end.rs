@@ -24,8 +24,8 @@ use time::OffsetDateTime;
 use trading_core::{Bar, Price, Quantity, SignalKind, Symbol, Timeframe, Timestamp, Venue};
 
 use strategy::{
-    EnsembleStrategy, MemberStance, SmaCrossover, StrategyRegistry, VoteMethod,
-    build_ensemble, arbitrate,
+    EnsembleStrategy, MemberStance, SmaCrossover, StrategyRegistry, VoteMethod, arbitrate,
+    build_ensemble,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,9 +38,8 @@ fn make_btc_bar(idx: usize, close_price: f64) -> Bar {
     let symbol = Symbol::new("BTCUSDT");
     let epoch = OffsetDateTime::UNIX_EPOCH;
     let open_ts = Timestamp::new(epoch + time::Duration::hours(idx as i64));
-    let close_ts = Timestamp::new(
-        epoch + time::Duration::hours(idx as i64) + time::Duration::minutes(59),
-    );
+    let close_ts =
+        Timestamp::new(epoch + time::Duration::hours(idx as i64) + time::Duration::minutes(59));
     Bar {
         symbol,
         tf: Timeframe::OneHour,
@@ -155,19 +154,15 @@ fn majority_ensemble_diverges_from_each_sma_member() {
     let ens_final = *ens_curve.last().unwrap();
 
     // Run each member individually.
-    let member_finals: Vec<Decimal> = [
-        (5usize, 20usize),
-        (10, 30),
-        (3, 15),
-    ]
-    .iter()
-    .map(|&(fast, slow)| {
-        let reg = StrategyRegistry::new();
-        reg.register(Box::new(SmaCrossover::new(fast, slow)));
-        let curve = run_strategy_equity(&reg, &bars, INITIAL_CAPITAL);
-        *curve.last().unwrap()
-    })
-    .collect();
+    let member_finals: Vec<Decimal> = [(5usize, 20usize), (10, 30), (3, 15)]
+        .iter()
+        .map(|&(fast, slow)| {
+            let reg = StrategyRegistry::new();
+            reg.register(Box::new(SmaCrossover::new(fast, slow)));
+            let curve = run_strategy_equity(&reg, &bars, INITIAL_CAPITAL);
+            *curve.last().unwrap()
+        })
+        .collect();
 
     // The ensemble MUST produce a different signal pattern than each individual.
     // At minimum, it should diverge from at least one member by ≥ 1 bp.
@@ -182,7 +177,10 @@ fn majority_ensemble_diverges_from_each_sma_member() {
     );
 
     // Sanity: ensemble ran and produced non-trivial results.
-    assert!(ens_final > dec!(0), "ensemble equity must be positive: got {ens_final}");
+    assert!(
+        ens_final > dec!(0),
+        "ensemble equity must be positive: got {ens_final}"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -343,7 +341,11 @@ fn ensemble_equity_deterministic() {
     reg2.register(Box::new(ens2));
     let curve2 = run_strategy_equity(&reg2, &bars, INITIAL_CAPITAL);
 
-    assert_eq!(curve1.len(), curve2.len(), "determinism: curve lengths must match");
+    assert_eq!(
+        curve1.len(),
+        curve2.len(),
+        "determinism: curve lengths must match"
+    );
     for (i, (a, b)) in curve1.iter().zip(curve2.iter()).enumerate() {
         assert_eq!(a, b, "determinism: equity differs at bar {i}: {a} vs {b}");
     }
@@ -398,7 +400,11 @@ fn build_ensemble_unanimous_succeeds() {
 fn arbitrate_pure_majority_abstention() {
     // 2 warmed (1 Long + 1 Flat), 1 Unwarmed.
     // Majority { k:2, n:3 }: long_count=1 < k=2 → Flat.
-    let stances = [MemberStance::Long, MemberStance::Flat, MemberStance::Unwarmed];
+    let stances = [
+        MemberStance::Long,
+        MemberStance::Flat,
+        MemberStance::Unwarmed,
+    ];
     assert!(!arbitrate(VoteMethod::Majority { k: 2, n: 3 }, &stances));
 }
 

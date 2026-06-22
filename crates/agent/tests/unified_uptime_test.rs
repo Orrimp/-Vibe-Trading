@@ -100,10 +100,12 @@ async fn t910_v3_graceful_shutdown_within_two_seconds_with_close_uptime_row() {
         kill_switch: Arc::clone(&kill_switch),
         registry,
         boot_id: boot_id.clone(),
-        equity_store: None,      // tests use no equity store
-        reflection_writer: None, // tests do not exercise lesson-card wiring
-        forward_rx: None,        // tests: no forward-command channel (byte-identical legacy path)
-        plan_tx: None,           // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
+        equity_store: None,         // tests use no equity store
+        reflection_writer: None,    // tests do not exercise lesson-card wiring
+        forward_rx: None, // tests: no forward-command channel (byte-identical legacy path)
+        plan_tx: None,    // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
+        narration_request_rx: None, // tests: no narration channel (F9 byte-identical gate)
+        narration_outcome_tx: None, // tests: no narration outcome channel
     };
 
     let cancel = CancellationToken::new();

@@ -55,7 +55,8 @@ use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text, butt
 use iced::{Border, Length};
 
 use crate::leaderboard::state::{
-    BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror, RobustnessLabel,
+    BakeoffReportMirror, LeaderRow, NarrationState, OutcomeKind, ReasonLabel, RecommendationMirror,
+    RobustnessLabel,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
@@ -64,14 +65,15 @@ use crate::strings::{
     LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES, LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
     LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT,
     LEADERBOARD_ENSEMBLE_MAJORITY_LABEL, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
-    LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_FRAGILE_TAG,
-    LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
-    LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
-    LEADERBOARD_REASON_ALL_FRAGILE, LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE,
-    LEADERBOARD_REASON_BENCHMARK_UNDEFEATED, LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE,
-    LEADERBOARD_REASON_TIE_DRAWDOWN, LEADERBOARD_REASON_TIE_RETURN,
-    LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG, LEADERBOARD_RUN_BUTTON,
-    LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
+    LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_EXPLAIN_BUTTON,
+    LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
+    LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
+    LEADERBOARD_HEADLINE_ALL_FRAGILE, LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING,
+    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_REASON_ALL_FRAGILE,
+    LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
+    LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
+    LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
+    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
     LEADERBOARD_WINNER_ROBUST_CLAUSE,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
@@ -235,8 +237,8 @@ fn result_body(
         PanelState::Empty => prompt(empty_prompt_copy(st), mode),
         // The run failed — prefix + the engine's detail (never a bare "no data").
         PanelState::Error(detail) => error_pane(detail, mode),
-        // The ranked leaderboard + recommendation.
-        PanelState::Ready(report) => ready_pane(report, mode),
+        // The ranked leaderboard + recommendation (+ the F9 narration state).
+        PanelState::Ready(report) => ready_pane(report, &st.narration, mode),
     }
 }
 
@@ -294,8 +296,12 @@ fn error_pane(detail: &str, mode: ThemeMode) -> crate::Element<'_> {
 /// The happy path — recommendation block, the ranked table, and the persistent
 /// disclaimer, stacked vertically in a scrollable column (the table can be
 /// taller than the viewport with the full field + opt-in arms).
-fn ready_pane(report: &BakeoffReportMirror, mode: ThemeMode) -> crate::Element<'_> {
-    let recommendation = recommendation_block(report, mode);
+fn ready_pane<'a>(
+    report: &'a BakeoffReportMirror,
+    narration: &'a NarrationState,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
+    let recommendation = recommendation_block(report, narration, mode);
     let table = leaderboard_table(report, mode);
 
     let stack = Column::new()
@@ -315,8 +321,23 @@ fn ready_pane(report: &BakeoffReportMirror, mode: ThemeMode) -> crate::Element<'
 
 /// The recommendation block — a `frame::panel` titled "Recommendation" holding
 /// the plain-language headline (rendered FROM the structured `Recommendation`)
-/// + the winner-robustness clause + the supporting reasons as sub-copy.
-fn recommendation_block(report: &BakeoffReportMirror, mode: ThemeMode) -> crate::Element<'_> {
+/// + the winner-robustness clause + the F9 narration section.
+///
+/// The headline + the winner-robustness clause are ALWAYS present (the
+/// structured floor). Below them, the narration section (F9, ADR-0064 § D7)
+/// renders one of four states — the templated reasons are the floor in every
+/// arm except `Ready`, so there is NEVER a blank or half-answer:
+///
+/// - `NotRequested` → templated reasons + the **Explain** control.
+/// - `InFlight`     → templated reasons + a spinner/"writing…" affordance.
+/// - `Ready(prose)` → the LLM prose, **labelled** as an AI summary of the
+///   numbers above (the templated reasons are subsumed by the richer prose).
+/// - `FellBack`     → templated reasons + a quiet "couldn't generate" note.
+fn recommendation_block<'a>(
+    report: &'a BakeoffReportMirror,
+    narration: &'a NarrationState,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
     let rec = &report.recommendation;
 
     let headline = Text::new(headline_copy(report))
@@ -331,20 +352,143 @@ fn recommendation_block(report: &BakeoffReportMirror, mode: ThemeMode) -> crate:
         col = col.push(Text::new(clause_text).size(text::BODY).color(clause_color));
     }
 
-    // Supporting reasons — one muted line each (deterministic order).
-    if !rec.reasons.is_empty() {
-        let mut reasons = Column::new().spacing(space::XXS);
-        for reason in &rec.reasons {
-            reasons = reasons.push(
-                Text::new(format!("\u{00b7} {}", reason_copy(*reason)))
-                    .size(text::BODY)
-                    .color(color::FG_3.current(mode)),
-            );
-        }
-        col = col.push(reasons);
-    }
+    // ── F9 narration section — replaces the reasons block on `Ready`, augments
+    // it otherwise. The templated reasons are the floor in every arm but Ready.
+    col = col.push(narration_section(rec, narration, mode));
 
     frame::panel(LEADERBOARD_RECOMMENDATION_TITLE, col.into(), mode)
+}
+
+/// The F9 narration section (ADR-0064 § D7) — dispatches on the closed
+/// `ui`-owned [`NarrationState`]. The structured templated reasons are the
+/// FLOOR in every arm but `Ready`; on `Ready` the richer LLM prose stands in
+/// for them (the same facts, in fluent plain language), labelled as AI-generated
+/// and anchored to the numbers above.
+fn narration_section<'a>(
+    rec: &'a RecommendationMirror,
+    narration: &'a NarrationState,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
+    match narration {
+        // No "Explain" yet — the templated reasons + the opt-in Explain control.
+        NarrationState::NotRequested => Column::new()
+            .spacing(space::S)
+            .push(templated_reasons(rec, mode))
+            .push(explain_control(mode))
+            .into(),
+        // Generating — the templated reasons stay visible (the floor) + a quiet
+        // spinner line so the operator knows work is happening.
+        NarrationState::InFlight => Column::new()
+            .spacing(space::S)
+            .push(templated_reasons(rec, mode))
+            .push(frame::loading_with_spinner(
+                LEADERBOARD_EXPLAIN_INFLIGHT,
+                mode,
+            ))
+            .into(),
+        // A faithful narration arrived — show the LLM prose (labelled), in a
+        // subtly-distinct AI-summary card. The persistent `disclaimer()` still
+        // surrounds the whole block (it sits below in `ready_pane`).
+        NarrationState::Ready(prose) => llm_summary_card(prose.as_str(), mode),
+        // The narration fell back (disabled / error / budget / post-check
+        // reject) — the templated reasons (the honest floor) + a quiet note.
+        NarrationState::FellBack => Column::new()
+            .spacing(space::S)
+            .push(templated_reasons(rec, mode))
+            .push(
+                Text::new(LEADERBOARD_EXPLAIN_FELLBACK)
+                    .size(text::MICRO)
+                    .color(color::FG_3.current(mode)),
+            )
+            .into(),
+    }
+}
+
+/// The structured templated reasons — one muted "· reason" line each
+/// (deterministic order). The honest floor F9 falls back to; shown in every
+/// narration state but `Ready`. Returns an empty (zero-height) element when
+/// there are no reasons (the headline already carries the verdict).
+fn templated_reasons(rec: &RecommendationMirror, mode: ThemeMode) -> crate::Element<'_> {
+    if rec.reasons.is_empty() {
+        return Space::new()
+            .width(Length::Shrink)
+            .height(Length::Shrink)
+            .into();
+    }
+    let mut reasons = Column::new().spacing(space::XXS);
+    for reason in &rec.reasons {
+        reasons = reasons.push(
+            Text::new(format!("\u{00b7} {}", reason_copy(*reason)))
+                .size(text::BODY)
+                .color(color::FG_3.current(mode)),
+        );
+    }
+    reasons.into()
+}
+
+/// The opt-in "Explain" control (ADR-0064 § D3, U1) — a quiet GHOST button (a
+/// soft `ACCENT_SOFT` fill + an `ACCENT` label, no heavy chrome) so it reads as
+/// a secondary, optional affordance next to the always-honest structured copy,
+/// not a primary call-to-action. Posts `Message::BakeoffNarrationRequested`.
+/// Shows only in the `NotRequested` state.
+fn explain_control(mode: ThemeMode) -> crate::Element<'static> {
+    Button::new(
+        Text::new(LEADERBOARD_EXPLAIN_BUTTON)
+            .size(text::SMALL)
+            .color(color::ACCENT.current(mode)),
+    )
+    .padding([space::XS as u16, space::M as u16])
+    .style(move |_t: &iced::Theme, _s: button::Status| button::Style {
+        background: Some(color::ACCENT_SOFT.current(mode).into()),
+        border: Border {
+            color: color::ACCENT.current(mode),
+            width: 1.0,
+            radius: radius::R3.into(),
+        },
+        text_color: color::ACCENT.current(mode),
+        ..Default::default()
+    })
+    .on_press(Message::BakeoffNarrationRequested)
+    .into()
+}
+
+/// The LLM-summary card (ADR-0064 § D7 / R4, U2) — the `Ready` state. A
+/// subtly-distinct `ACCENT_SOFT`-tinted bordered card holding:
+/// - the AI-summary LABEL (`MICRO`, accent) naming the prose as an AI-generated
+///   summary of the numbers above (so the operator always sees the structured
+///   result the words describe — never free-floating analysis), and
+/// - the LLM prose (`BODY`, foreground).
+///
+/// The persistent not-advice / simulated-€200 `disclaimer()` still surrounds
+/// the whole recommendation block (it sits below in `ready_pane`), so the
+/// narration is framed top (label) and bottom (disclaimer).
+fn llm_summary_card(prose: &str, mode: ThemeMode) -> crate::Element<'_> {
+    let label = Text::new(LEADERBOARD_EXPLAIN_LLM_LABEL)
+        .size(text::MICRO)
+        .color(color::ACCENT.current(mode))
+        .width(Length::Fill);
+
+    let body = Text::new(prose)
+        .size(text::BODY)
+        .color(color::FG_1.current(mode))
+        .width(Length::Fill);
+
+    let inner = Column::new().spacing(space::XS).push(label).push(body);
+
+    Container::new(inner)
+        .width(Length::Fill)
+        .padding(space::M as u16)
+        .style(move |_t: &iced::Theme| iced::widget::container::Style {
+            background: Some(color::ACCENT_SOFT.current(mode).into()),
+            border: Border {
+                color: color::ACCENT.current(mode),
+                width: 1.0,
+                radius: radius::R4.into(),
+            },
+            text_color: Some(color::FG_1.current(mode)),
+            ..Default::default()
+        })
+        .into()
 }
 
 /// Build the headline string from the structured outcome (the UI owns copy).
