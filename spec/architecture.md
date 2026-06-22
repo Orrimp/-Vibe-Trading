@@ -156,6 +156,21 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-22 (orchestrator): **ADR-0066 — benchmark exemption from the
+  `AllFragile` outcome** (feature `advisor-benchmark-robustness`, the B1
+  robustness-honesty fix). Logged here because it **spans two ADRs**: it amends
+  **ADR-0059 § D5** (the F2 comparator outcome rule) and **ADR-0063 § D7** (the
+  R4.4 reachability promise), while leaving the classifier freeze (ADR-0059 § D4 /
+  ADR-0063 § D4) byte-unchanged. Recorded in the ADR registry
+  ([architecture/adr/README.md](architecture/adr/README.md) +
+  `architecture/adr/0066-benchmark-exempt-from-allfragile.md`). The F8 robustness
+  gate judged the buy-and-hold **benchmark** by the same candidate-overfit ruler
+  as the active arms, so on real BTCUSDT every arm flagged Fragile → outcome
+  always `AllFragile`, suppressing the honest `BenchmarkWins`. Two coordinated
+  `rank_candidates` edits (benchmark dropped from the `AllFragile` determination +
+  always crown-eligible) restore `BenchmarkWins` as the modal real-crypto outcome;
+  the seam is `rank_candidates`, NOT `classify_verdict`. Commits `ab13407` (fix) +
+  `884836a` (closure). Leans on ADR-0059, ADR-0063, ADR-0051.
 - 2026-06-22 (architect): **ADR-0065 — EUR→USDT budget-conversion seam
   (configurable static FX rate)** (feature `advisor-eur-fx`, single-coin-advisor
   pivot F7 — the LAST v0.2 item; resolves product § D4's deferred fixed EUR→USD
