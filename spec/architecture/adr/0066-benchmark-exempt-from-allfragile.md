@@ -213,6 +213,31 @@ outcome-determination change:
 > `t65` pattern); no corpus, no bootstrap needed for the pure-`rank_candidates`
 > reachability assertion.
 
+> **Correction (2026-06-22, post-implementation).** The `t65_all_fragile`
+> analysis in the third bullet above — and the "crown is an active arm" framing
+> in the second ("residual `AllFragile` dual") bullet — is **wrong**; it was
+> corrected during implementation and the original is left in place only as the
+> decision-time record. Both bullets assumed a higher-Sharpe Fragile **active**
+> arm could be crowned over the benchmark, leaving `t65` at `AllFragile`. It
+> cannot: D2 makes only the **benchmark** crown-eligible — a Fragile *active* arm
+> stays **ineligible** (the ADR-0059 § D5 anti-overfit lock, restated in D2). So
+> when every active arm is Fragile **and a benchmark is present**, the benchmark
+> is the *only* eligible arm and is crowned **regardless of Sharpe ordering** ⇒
+> `BenchmarkWins`. Therefore:
+> - `rank.rs::t65_all_fragile` (fixture: active `v0.sma` Fragile **Sharpe 2.0** +
+>   benchmark `v0.buyhold` Fragile Sharpe 1.0) asserts **`BenchmarkWins`** — the
+>   benchmark wins *despite* the active arm's higher raw Sharpe. Not "still
+>   `AllFragile`."
+> - The true residual `AllFragile` is reachable **only when no benchmark is in
+>   the field** — pinned by the new `rank.rs::t65_all_fragile_no_benchmark` and
+>   the day-1 gate's `all_fragile_residual_no_benchmark`.
+> - **Consequence (stronger honesty than first stated):** because the real
+>   advisor *always* includes buy-and-hold, the all-active-Fragile real-world case
+>   yields `BenchmarkWins`, **never** `AllFragile` — confirmed end-to-end by the
+>   `t7_1` BTCUSDT H1-2024 validation (all 7 arms Fragile ⇒ `Outcome:
+>   BenchmarkWins`, buy-and-hold crowned). `AllFragile` survives only as the
+>   benchmark-less residual.
+
 ### D6 — Determinism unchanged
 
 `rank_candidates` stays pure / total / deterministic. D1 adds a `filter`; D2 adds

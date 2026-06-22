@@ -56,13 +56,15 @@ Developer (T1–T6) and ui-designer (U1–U4) run **in parallel** — they share
   AND the **benchmark is the top-Sharpe arm** (e.g. benchmark Sharpe 1.0 Fragile + one
   active arm Sharpe 0.5 Fragile): `outcome == BenchmarkWins` AND
   `reasons.contains(BenchmarkUndefeated)` AND `candidates[crowned].is_benchmark == true`.
-  Add the **residual dual**: a field where all arms are Fragile AND an active arm
-  out-Sharpes the benchmark → `outcome == AllFragile` (the row-3 case; this is what `t65`
-  now covers, so the dual can cross-reference it). This is a pure-`rank_candidates`
-  assertion — construct `CandidateResult`s with explicit flags (the `make_candidate` /
-  `t65` pattern), no corpus, no bootstrap. — _acceptance: the BenchmarkWins case FAILS on
-  pre-T1/T2 code (returns `AllFragile`) and PASSES after; the residual `AllFragile` case
-  passes both ways._
+  Add the **residual dual**: a field with **no benchmark arm at all**, every active
+  Fragile → `outcome == AllFragile` (`t65_all_fragile_no_benchmark`; the only path that
+  still yields `AllFragile` once the benchmark is exempt). NB the benchmark-present
+  all-Fragile case yields `BenchmarkWins` **even when an active arm out-Sharpes the
+  benchmark** — `t65_all_fragile` (active @ 2.0 vs benchmark @ 1.0) proves eligibility
+  trumps Sharpe. This is a pure-`rank_candidates` assertion — construct `CandidateResult`s
+  with explicit flags (the `make_candidate` / `t65` pattern), no corpus, no bootstrap. —
+  _acceptance: the BenchmarkWins case FAILS on pre-T1/T2 code (returns `AllFragile`) and
+  PASSES after; the no-benchmark residual `AllFragile` case passes both ways._
 
 - [ ] **T5 — Determinism + freeze guard.** Confirm (a) `rank_candidates` is still pure /
   total — no f64 arithmetic introduced (only `total_cmp` / `Decimal::cmp`); the existing

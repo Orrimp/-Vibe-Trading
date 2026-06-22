@@ -1,7 +1,7 @@
 ---
 slug: advisor-benchmark-robustness
-status: in-progress
-owner: ui-designer
+status: shipped
+owner: tester
 updated: 2026-06-22
 ---
 
@@ -133,16 +133,21 @@ flowchart TD
 
 ### Outcome semantics after B1 (the truth table the copy + tests encode)
 
-| Active arms | Benchmark flag | Benchmark top-Sharpe? | Outcome | Crown |
-|-------------|----------------|-----------------------|---------|-------|
-| ≥1 robust   | any            | —                     | `ActiveWins` | best active |
-| all Fragile | any            | **yes**               | **`BenchmarkWins`** | benchmark |
-| all Fragile | any            | no (an active out-Sharpes it) | `AllFragile` | best active (Fragile) |
-| all Fragile | (no benchmark in field) | — | `AllFragile` | best active (Fragile) |
+| Active arms | Benchmark in field? | Outcome | Crown |
+|-------------|---------------------|---------|-------|
+| ≥1 robust   | any                 | `ActiveWins` | best robust active |
+| all Fragile | **yes** (always, in the advisor) | **`BenchmarkWins`** | benchmark — the only crown-eligible arm, **regardless of Sharpe rank** |
+| all Fragile | no benchmark in field | `AllFragile` | best active (Fragile) |
 
-Row 2 is the new reachable path B1 restores (the R4.4 gate). Row 3 is the honest
-residual `AllFragile` — nothing active was robust **and** holding was not even the
-best by Sharpe, so the field genuinely has no crownable arm.
+Row 2 is the new reachable path B1 restores (the R4.4 gate): when every active arm is
+Fragile, the benchmark is the only crown-eligible arm (D2) and wins **even if a Fragile
+active arm has a higher in-sample Sharpe** — eligibility trumps Sharpe
+(`t65_all_fragile`: active @ 2.0 vs benchmark @ 1.0 → `BenchmarkWins`, benchmark crowned).
+The "is the benchmark top-Sharpe?" question is therefore **moot** for the outcome and was
+dropped from the table. Row 3 is the *only* residual `AllFragile`: a field with **no
+benchmark arm at all** (`t65_all_fragile_no_benchmark`) — which the real advisor never
+produces, since buy-and-hold is always present. So in practice the advisor's all-Fragile
+outcome is **always** `BenchmarkWins`, never `AllFragile`.
 
 ## Backtest Scenarios
 
@@ -337,7 +342,7 @@ Added `all_fragile_residual_no_benchmark` — the `AllFragile` residual (no benc
 
 ## Verification
 
-_tester links to reports here._
+Test report: `spec/advisor-benchmark-robustness/reports/test-2026-06-22.md`
 
 Verification floor (per ADR-0066 + CLAUDE.md):
 - the day-1 `BenchmarkWins`-reachability e2e green (FAIL-before / PASS-after);
@@ -362,6 +367,7 @@ Verification floor (per ADR-0066 + CLAUDE.md):
   `advisor-ensemble` (separate operator-approved fix, own ADR, own REQ row, own task
   split). tasks.md split developer ‖ ui-designer. Trace row `REQ-ADVISOR-BENCHMARK-ROBUSTNESS-001`.
   HANDOFF → developer ‖ ui-designer.
+- 2026-06-22 (tester): VERDICT → PASS. All 36 tests green (rank unit 13/13, robustness_bootstrap_bites 17/17, benchmark_wins_render 5/5, bakeoff_e2e t7_1 1/1). Load-bearing real-data proof: `Outcome: BenchmarkWins` on BTCUSDT H1-2024 (was `AllFragile` pre-B1), crowned v0.buyhold Sharpe 1.486 +47.78%, all 7 still Fragile (classifier byte-frozen). `verify_anchors.sh` 119/119. `cargo clippy --workspace --all-targets -- -D warnings` clean. Classifier freeze confirmed (robustness.rs + bootstrap.rs absent from commit diff). Render PNG confirmed: honest copy + muted baseline note + sat-in-cash row all paint. Spec-lint: 1 pre-existing dead-link (byte-immutable anchored-report floor, non-regression). Status flipped to shipped.
 - 2026-06-22 (ui-designer): U1–U4 landed in `crates/ui` (parallel to the
   developer's `rank.rs` seam). U1 rewrote `LEADERBOARD_HEADLINE_BENCHMARK_WINS`
   to the honest "no active strategy cleared the robustness bar — holding is the
