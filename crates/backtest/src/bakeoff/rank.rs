@@ -2,8 +2,10 @@
 //!
 //! Implements the normative F2 ranking contract from `feature.md § F2`:
 //!
-//! **Eligibility.** A candidate is *ineligible to be crowned* iff
-//! `robustness == Some(Fragile)`. All other flags are eligible.
+//! **Eligibility (D2, ADR-0066).** A candidate is *ineligible to be crowned* iff
+//! `robustness == Some(Fragile)` **AND** `is_benchmark == false`.  The benchmark
+//! is always crown-eligible regardless of its own robustness flag — it is the null
+//! hypothesis, not a candidate that must clear the overfit bar.
 //!
 //! **Order (best-first), strict total order:**
 //! 1. eligible before ineligible;
@@ -12,7 +14,8 @@
 //! 4. then `max_drawdown` ascending (`Decimal::cmp`, smaller is better);
 //! 5. then `strategy` id lexicographic ascending (determinism backstop).
 //!
-//! **Crown** = `order[0]`. Fragile iff all candidates are Fragile.
+//! **Crown** = `order[0]`.  `AllFragile` iff all *active* (non-benchmark) arms
+//! are Fragile **and** the crown did not go to the benchmark (D1, ADR-0066).
 //!
 //! **Determinism:** pure function, no I/O, no f64 arithmetic — comparisons only.
 
@@ -56,14 +59,28 @@ pub fn rank_candidates(candidates: &[CandidateResult]) -> Ranking {
     let crowned = &candidates[crowned_idx];
 
     // Determine outcome.
+    //
+    // D1 (ADR-0066): the benchmark is NOT a candidate for the `AllFragile`
+    // determination.  The benchmark is the null hypothesis the active arms are
+    // scored *against* — not an arm that must clear the robustness bar itself.
+    // Range over non-benchmark arms only.  A field with no active arms (empty or
+    // benchmark-only) falls back to `all_active_fragile = true` (the iterator's
+    // vacuous-truth on an empty filter), which is handled correctly: if the only
+    // crownable arm is the benchmark (D2), the outcome is `BenchmarkWins`.
     let crown_is_fragile = crowned.robustness == Some(RobustnessFlag::Fragile);
-    let all_fragile = candidates
+    let all_active_fragile = candidates
         .iter()
+        .filter(|c| !c.is_benchmark)
         .all(|c| c.robustness == Some(RobustnessFlag::Fragile));
 
-    let outcome = if all_fragile {
+    let outcome = if all_active_fragile && !crowned.is_benchmark {
+        // All active arms are Fragile AND the crown did NOT go to the benchmark
+        // ⇒ genuinely `AllFragile` (the benchmark is not the best arm).
         RecommendationOutcome::AllFragile
     } else if crowned.is_benchmark {
+        // The benchmark is the top-ranked (crown-eligible) arm.
+        // Covers: (a) some active arm is Robust but benchmark out-Sharpes it, and
+        // (b) all active arms are Fragile → benchmark is the least-bad choice.
         RecommendationOutcome::BenchmarkWins
     } else {
         RecommendationOutcome::ActiveWins
@@ -120,9 +137,19 @@ fn compare(candidates: &[CandidateResult], a: usize, b: usize) -> Ordering {
     ca.strategy.0.as_str().cmp(cb.strategy.0.as_str())
 }
 
-/// Whether a candidate is eligible to be crowned (not Fragile).
+/// Whether a candidate is eligible to be crowned.
+///
+/// D2 (ADR-0066): the **benchmark is always crown-eligible**, regardless of its
+/// own `RobustnessFlag`.  The benchmark is the null hypothesis; the overfit-
+/// detection bar applies only to *active* arms.  Without this edit, a Fragile
+/// benchmark would still be partitioned to the ineligible tier, the crown would
+/// land on a Fragile active arm, and the outcome would fall through to
+/// `ActiveWins` on a Fragile crown — strictly worse than today's `AllFragile`.
+///
+/// The active-arm anti-overfit lock is **unchanged**: a Fragile active arm
+/// remains ineligible to be crowned (ADR-0059 § D5).
 fn is_eligible(c: &CandidateResult) -> bool {
-    c.robustness != Some(RobustnessFlag::Fragile)
+    c.is_benchmark || c.robustness != Some(RobustnessFlag::Fragile)
 }
 
 // ── Reason builder ────────────────────────────────────────────────────────────
@@ -291,9 +318,30 @@ mod tests {
         );
     }
 
-    // ── T6.5 — All fragile ──────────────────────────────────────────────────
+    // ── T6.5 — All fragile (amended for ADR-0066 B1 semantics) ─────────────
 
-    /// Every candidate Fragile → `AllFragile`, crown = highest Sharpe overall.
+    /// ADR-0066 amendment: the original `t65_all_fragile` fixture (`v0.sma` Fragile
+    /// Sharpe 2.0 + `v0.buyhold` Fragile Sharpe 1.0) now yields **`BenchmarkWins`**,
+    /// not `AllFragile`, under D1+D2.
+    ///
+    /// Reasoning (the corrected semantics under B1):
+    /// - D2 makes the benchmark **always crown-eligible**, placing it in the eligible
+    ///   tier of the sort (step 1 of the comparator: eligible before ineligible).
+    /// - The active arm `v0.sma` is Fragile → ineligible (the anti-overfit lock on
+    ///   active arms is unchanged; only the benchmark gains unconditional eligibility).
+    /// - The sort result: eligible `v0.buyhold` (idx 1) before ineligible `v0.sma`
+    ///   (idx 0), regardless of raw Sharpe.  `crowned = v0.buyhold`.
+    /// - `all_active_fragile = true` (the only active arm is Fragile) AND
+    ///   `crowned.is_benchmark = true` → the `AllFragile` branch does NOT fire;
+    ///   outcome is `BenchmarkWins` (the honest "hold is least-bad").
+    ///
+    /// **FAIL-before / PASS-after (ADR-0066 § D5 / ADR-0063 § D7 reachability gate):**
+    /// on the pre-D1+D2 code this fixture returned `AllFragile` — the benchmark's
+    /// Fragile flag triggered `all_fragile`, the benchmark was ineligible, and
+    /// `v0.sma` took the crown.  After D1+D2, `BenchmarkWins` is the correct outcome.
+    ///
+    /// The `AllFragile` residual path (all active Fragile, no benchmark present) is
+    /// exercised by `t65_all_fragile_no_benchmark` below.
     #[test]
     fn t65_all_fragile() {
         let candidates = vec![
@@ -315,12 +363,124 @@ mod tests {
             ),
         ];
         let r = rank_candidates(&candidates);
-        assert_eq!(r.outcome, RecommendationOutcome::AllFragile);
-        // Crown = highest Sharpe (v0.sma, idx 0).
-        assert_eq!(r.crowned, Some(0));
+        // D2: benchmark is crown-eligible → it is the only eligible arm → crowned.
+        // D1: all active arms are Fragile AND crowned.is_benchmark → BenchmarkWins.
+        assert_eq!(
+            r.outcome,
+            RecommendationOutcome::BenchmarkWins,
+            "under D1+D2: benchmark is the only eligible arm and is crowned → BenchmarkWins, \
+             not AllFragile (even though active arm has higher raw Sharpe 2.0 > 1.0 — \
+             eligibility trumps Sharpe in the comparator)"
+        );
+        assert_eq!(
+            r.crowned,
+            Some(1),
+            "v0.buyhold (idx 1, benchmark) must be crowned"
+        );
+        assert!(
+            candidates[r.crowned.unwrap()].is_benchmark,
+            "the benchmark must be crowned (it is the only eligible arm)"
+        );
+        assert!(
+            r.reasons.contains(&ReasonCode::BenchmarkUndefeated),
+            "BenchmarkUndefeated must be in reasons"
+        );
+    }
+
+    /// Residual `AllFragile` — all active arms Fragile, NO benchmark present.
+    ///
+    /// Added per ADR-0066 § D5.  With D2 in effect, the `AllFragile` outcome is
+    /// only reachable when there is no benchmark in the field (the bake-off always
+    /// appends `v0.buyhold`; this case covers library-caller paths without one).
+    /// Without a benchmark, all arms are ineligible, the highest-Sharpe Fragile
+    /// arm is crowned, and `all_active_fragile && !crowned.is_benchmark` → `AllFragile`.
+    #[test]
+    fn t65_all_fragile_no_benchmark() {
+        let candidates = vec![
+            make_candidate(
+                "v0.sma",
+                2.0,
+                dec!(0.20),
+                dec!(0.05),
+                false,
+                Some(RobustnessFlag::Fragile),
+            ),
+            make_candidate(
+                "v0.5.macd",
+                1.0,
+                dec!(0.10),
+                dec!(0.03),
+                false,
+                Some(RobustnessFlag::Fragile),
+            ),
+        ];
+        let r = rank_candidates(&candidates);
+        // No benchmark: all active arms Fragile → all ineligible.  v0.sma has
+        // higher Sharpe (2.0) and is crowned within the ineligible tier.
+        // all_active_fragile = true AND !crowned.is_benchmark → AllFragile.
+        assert_eq!(
+            r.outcome,
+            RecommendationOutcome::AllFragile,
+            "no benchmark, all active Fragile → AllFragile (honest: nothing cleared the bar)"
+        );
+        assert_eq!(
+            r.crowned,
+            Some(0),
+            "v0.sma (idx 0, highest Sharpe) must be crowned"
+        );
+        assert!(
+            !candidates[r.crowned.unwrap()].is_benchmark,
+            "crowned must NOT be the benchmark (there is none)"
+        );
         assert!(
             r.reasons.contains(&ReasonCode::AllCandidatesFragile),
-            "AllCandidatesFragile should be in reasons"
+            "AllCandidatesFragile must be in reasons"
+        );
+    }
+
+    /// `BenchmarkWins` — benchmark Fragile, is the only eligible arm, takes the crown.
+    ///
+    /// Explicit demonstration of the new `BenchmarkWins` path (ADR-0066 § D5).
+    /// `v0.sma` is Fragile @ Sharpe 0.5 (ineligible); `v0.buyhold` (benchmark) is
+    /// Fragile @ Sharpe 1.0 (eligible per D2).  Benchmark sorted first → crowned.
+    ///
+    /// The FAIL-before / PASS-after evidence is in
+    /// `robustness_bootstrap_bites.rs::benchmark_wins_reachable_when_all_active_fragile_and_benchmark_top_sharpe`.
+    #[test]
+    fn t65_benchmark_wins_when_top_sharpe() {
+        let candidates = vec![
+            make_candidate(
+                "v0.sma",
+                0.5,
+                dec!(0.05),
+                dec!(0.10),
+                false,
+                Some(RobustnessFlag::Fragile),
+            ),
+            make_candidate(
+                "v0.buyhold",
+                1.0,
+                dec!(0.10),
+                dec!(0.03),
+                true,
+                Some(RobustnessFlag::Fragile),
+            ),
+        ];
+        let r = rank_candidates(&candidates);
+        // The benchmark is the only eligible arm (D2); it is crowned.
+        assert_eq!(
+            r.outcome,
+            RecommendationOutcome::BenchmarkWins,
+            "benchmark is the only eligible arm → BenchmarkWins"
+        );
+        assert_eq!(r.crowned, Some(1), "benchmark (idx 1) must be crowned");
+        assert!(
+            candidates[r.crowned.unwrap()].is_benchmark,
+            "crowned must be the benchmark"
+        );
+        assert!(
+            r.reasons.contains(&ReasonCode::BenchmarkUndefeated),
+            "BenchmarkUndefeated must be in reasons"
         );
     }
 

@@ -1534,6 +1534,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LEADERBOARD_COL_MAX_DD", LEADERBOARD_COL_MAX_DD),
         ("LEADERBOARD_COL_TRADES", LEADERBOARD_COL_TRADES),
         ("LEADERBOARD_BENCHMARK_TAG", LEADERBOARD_BENCHMARK_TAG),
+        (
+            "LEADERBOARD_BENCHMARK_FRAGILE_NOTE",
+            LEADERBOARD_BENCHMARK_FRAGILE_NOTE,
+        ),
         ("LEADERBOARD_CROWN_TAG", LEADERBOARD_CROWN_TAG),
         ("LEADERBOARD_FRAGILE_TAG", LEADERBOARD_FRAGILE_TAG),
         ("LEADERBOARD_ROBUST_TAG", LEADERBOARD_ROBUST_TAG),
@@ -1550,6 +1554,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         (
             "LEADERBOARD_ENSEMBLE_VOTE_TAG",
             LEADERBOARD_ENSEMBLE_VOTE_TAG,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_SAT_IN_CASH",
+            LEADERBOARD_ENSEMBLE_SAT_IN_CASH,
         ),
         (
             "LEADERBOARD_HEADLINE_BENCHMARK_WINS",
@@ -2307,9 +2315,21 @@ pub const LEADERBOARD_COL_MAX_DD: &str = "Max drawdown";
 /// Table column header — executed trade count.
 pub const LEADERBOARD_COL_TRADES: &str = "Trades";
 
-/// Row tag for the buy-and-hold benchmark arm — so the passive baseline is
-/// always labelled plainly (the operator's "BH is always a candidate" rule).
-pub const LEADERBOARD_BENCHMARK_TAG: &str = "benchmark";
+/// Row tag for the buy-and-hold benchmark arm — names it the BASELINE the
+/// active strategies are measured against (ADR-0066: the benchmark is the null
+/// hypothesis, not a candidate that must clear the robustness bar). Reads as a
+/// reference line, never a failed/fragile candidate. The operator's "BH is
+/// always in the field" rule made plain.
+pub const LEADERBOARD_BENCHMARK_TAG: &str = "baseline (buy & hold)";
+
+/// Informational robustness note on the BENCHMARK row (ADR-0066 § D3) — the
+/// benchmark's own Fragile flag is still computed + shown, but it is the
+/// baseline (exempt from the candidate verdict), so the flag reads as context
+/// ("the baseline itself is path-dependent on a single volatile asset"), NEVER
+/// as disqualifying. Pairs with the muted informational treatment so it never
+/// reads like the prominent "cannot be crowned" badge an ACTIVE fragile arm
+/// gets.
+pub const LEADERBOARD_BENCHMARK_FRAGILE_NOTE: &str = "baseline is path-dependent";
 
 /// Row tag for the crowned pick — the `ACCENT` "best" marker, paired with the
 /// row's accent treatment so colour is never the only signal (accessibility).
@@ -2347,17 +2367,36 @@ pub const LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL: &str = "Unanimous vote (4-of-4)"
 /// with the buy-and-hold row).
 pub const LEADERBOARD_ENSEMBLE_VOTE_TAG: &str = "vote";
 
-/// Recommendation headline — buy-and-hold won. `{coin}` is filled at the call
-/// site. The operator's honesty rule made literal: "if holding wins, say so".
-pub const LEADERBOARD_HEADLINE_BENCHMARK_WINS: &str =
-    "Nothing beat simply holding {coin} over this window.";
+/// Row note for an ensemble that executed ZERO trades — its quorum
+/// (e.g. 4-of-4 unanimous agreement on a single volatile asset) was never
+/// reached, so it stayed in cash the whole window. Renders the honest "why it's
+/// flat" instead of a bare Sharpe-0 row that looks indistinguishable from a
+/// strategy that traded and lost (analyst § 1.4). The ensemble didn't fail — it
+/// never found consensus to act on.
+pub const LEADERBOARD_ENSEMBLE_SAT_IN_CASH: &str = "sat in cash \u{2014} consensus never reached";
+
+/// Recommendation headline — buy-and-hold won (`BenchmarkWins`, the honest modal
+/// crypto outcome per ADR-0066). `{coin}` is filled at the call site. Frames
+/// buy-and-hold as the BASELINE that won, not a failed candidate: no active
+/// strategy cleared the robustness bar, so simply holding is the least-bad
+/// choice on this window. The operator's honesty rule made literal — "measured
+/// robustness, not asserted alpha": if holding is the least-bad, say so. NOT
+/// "everything is broken".
+pub const LEADERBOARD_HEADLINE_BENCHMARK_WINS: &str = "No active strategy cleared the robustness bar on {coin} \u{2014} simply holding (buy-and-hold) \
+     is the least-bad choice on this window.";
 
 /// Recommendation headline — an active strategy won. `{winner}` filled at call.
 pub const LEADERBOARD_HEADLINE_ACTIVE_WINS: &str = "{winner} is the best risk-adjusted pick.";
 
-/// Recommendation headline — everything looked fragile under resampling.
-pub const LEADERBOARD_HEADLINE_ALL_FRAGILE: &str =
-    "Every strategy looked fragile under resampling \u{2014} treat with caution.";
+/// Recommendation headline — the residual `AllFragile` (ADR-0066 § D5 row 3):
+/// nothing ACTIVE cleared the robustness bar AND holding was not even the best
+/// by Sharpe, so the field has no crownable arm. Frames it as the honest "no
+/// robust active edge here" conclusion — a ranking + least-bad surface, NOT
+/// "everything is hopeless / do nothing". Says ACTIVE (the benchmark is the
+/// baseline these are measured against, exempt from the candidate verdict per
+/// ADR-0066), never "every strategy".
+pub const LEADERBOARD_HEADLINE_ALL_FRAGILE: &str = "No active strategy cleared the robustness bar on this window \u{2014} none held up across \
+     resampled price paths.";
 
 /// Supporting reason — crowned on Sharpe among the non-fragile arms.
 pub const LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE: &str =
@@ -2367,12 +2406,15 @@ pub const LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE: &str =
 pub const LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE: &str =
     "Beat buy-and-hold on risk-adjusted return.";
 
-/// Supporting reason — no active arm beat buy-and-hold.
-pub const LEADERBOARD_REASON_BENCHMARK_UNDEFEATED: &str = "No strategy beat just holding the coin.";
+/// Supporting reason — no active arm beat buy-and-hold (ADR-0066: the benchmark
+/// is the baseline, so "active" is exact — buy-and-hold doesn't "beat" itself).
+pub const LEADERBOARD_REASON_BENCHMARK_UNDEFEATED: &str =
+    "No active strategy beat simply holding the coin.";
 
-/// Supporting reason — the robustness gate found nothing robust.
+/// Supporting reason — the robustness gate found nothing robust among the active
+/// arms (ADR-0066: the benchmark is the baseline, exempt from this verdict).
 pub const LEADERBOARD_REASON_ALL_FRAGILE: &str =
-    "No strategy stayed positive across resampled price paths.";
+    "No active strategy stayed positive across resampled price paths.";
 
 /// Supporting reason — a Sharpe tie was resolved by the higher total return.
 pub const LEADERBOARD_REASON_TIE_RETURN: &str = "Tie on Sharpe broken by the higher total return.";

@@ -449,3 +449,139 @@ fn bootstrap_compute_deterministic_declining_300() {
         "compute_robustness_flag: determinism violated on 300-bar declining equity"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D-T5.2g — ADR-0066 § D5 / ADR-0063 § D7 R4.4 reachability gate
+//
+// "Allow `BenchmarkWins` to remain reachable when all active strategies lose"
+// — declared in this file's doc comment at line 9 since ADR-0063, but NEVER
+// previously implemented as a test body.  This section finally lands the gate.
+//
+// Tests are pure `rank_candidates` assertions — explicit `CandidateResult`
+// flags, no corpus, no bootstrap.  The FAIL-before/PASS-after evidence:
+//   BEFORE D1+D2: a field where all active arms are Fragile and the benchmark
+//     is top-Sharpe returns `AllFragile` (the benchmark's Fragile flag fired
+//     `all_fragile`, and it was ineligible so a Fragile active arm took the crown).
+//   AFTER  D1+D2: same field returns `BenchmarkWins` + `crowned.is_benchmark`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+use backtest::{
+    CandidateKpis, CandidateResult, ReasonCode, RecommendationOutcome, rank_candidates,
+};
+use smol_str::SmolStr;
+
+fn make_rank_candidate(
+    id: &str,
+    sharpe: f64,
+    is_benchmark: bool,
+    robustness: Option<RobustnessFlag>,
+) -> CandidateResult {
+    CandidateResult {
+        strategy: StrategyId(SmolStr::new(id)),
+        is_benchmark,
+        kpis: CandidateKpis {
+            sharpe,
+            sortino: 0.0,
+            calmar: 0.0,
+            total_return_pct: dec!(0.10),
+            max_drawdown: dec!(0.05),
+            trade_count: 0,
+        },
+        equity_curve: vec![],
+        robustness,
+    }
+}
+
+/// ADR-0066 § D5 / ADR-0063 § D7 R4.4 — primary reachability gate.
+///
+/// Field: all ACTIVE arms Fragile + benchmark is top-Sharpe arm.
+///   - v0.sma   Fragile  Sharpe 0.5  (active)
+///   - v0.buyhold Fragile Sharpe 1.0 (benchmark)
+///
+/// FAIL-before (pre-D1+D2): `AllFragile` — the benchmark's Fragile flag
+///   triggered `all_fragile`, the benchmark was ineligible, and a Fragile
+///   active arm took the crown → `AllFragile` with `crowned.is_benchmark=false`.
+///
+/// PASS-after (post-D1+D2):
+///   D1 — `all_active_fragile` ranges only over the active arm → true.
+///   D2 — the benchmark is crown-eligible regardless of its flag.
+///   The benchmark out-Sharpes the active arm (1.0 > 0.5), takes the crown.
+///   `all_active_fragile` is true, but `crowned.is_benchmark` is also true →
+///   the `AllFragile` branch does NOT fire; outcome is `BenchmarkWins`.
+#[test]
+fn benchmark_wins_reachable_when_all_active_fragile_and_benchmark_top_sharpe() {
+    let candidates = vec![
+        make_rank_candidate("v0.sma", 0.5, false, Some(RobustnessFlag::Fragile)),
+        make_rank_candidate("v0.buyhold", 1.0, true, Some(RobustnessFlag::Fragile)),
+    ];
+
+    let r = rank_candidates(&candidates);
+
+    assert_eq!(
+        r.outcome,
+        RecommendationOutcome::BenchmarkWins,
+        "all active arms Fragile + benchmark top-Sharpe MUST yield BenchmarkWins, not AllFragile \
+         (ADR-0066 § D5 / ADR-0063 § D7 R4.4). Pre-D1+D2 code returns AllFragile — this is the \
+         FAIL-before gate."
+    );
+    assert_eq!(r.crowned, Some(1), "benchmark (idx 1) must be crowned");
+    assert!(
+        candidates[r.crowned.unwrap()].is_benchmark,
+        "crowned candidate must be the benchmark"
+    );
+    assert!(
+        r.reasons.contains(&ReasonCode::BenchmarkUndefeated),
+        "BenchmarkUndefeated must be in reasons; got: {:?}",
+        r.reasons
+    );
+}
+
+/// ADR-0066 § D5 residual dual — the honest `AllFragile` path (no benchmark).
+///
+/// With D2 in effect, the `AllFragile` outcome is reachable when there is **no
+/// benchmark** in the field (the live advisor bake-off always appends `v0.buyhold`;
+/// this case covers library-caller paths without one).  When all active arms are
+/// Fragile and no benchmark is present, all arms are ineligible, the
+/// highest-Sharpe Fragile arm is crowned, and `all_active_fragile &&
+/// !crowned.is_benchmark` → `AllFragile`.
+///
+/// Note: when a benchmark IS present and all active arms are Fragile, D2 makes the
+/// benchmark the only eligible arm → it is crowned → `BenchmarkWins` (not
+/// `AllFragile`).  That is the primary reachability gate above.  This residual
+/// covers the no-benchmark edge.
+///
+/// This test passes BOTH before and after D1+D2 (the no-benchmark semantics are
+/// unchanged; D1 ranges over non-benchmark arms which is every arm here; D2 never
+/// fires since `is_benchmark = false` for all).
+///
+/// Cross-reference: `rank.rs::t65_all_fragile_no_benchmark` covers the same case.
+#[test]
+fn all_fragile_residual_no_benchmark() {
+    let candidates = vec![
+        make_rank_candidate("v0.sma", 2.0, false, Some(RobustnessFlag::Fragile)),
+        make_rank_candidate("v0.5.macd", 1.0, false, Some(RobustnessFlag::Fragile)),
+    ];
+
+    let r = rank_candidates(&candidates);
+
+    assert_eq!(
+        r.outcome,
+        RecommendationOutcome::AllFragile,
+        "no benchmark, all active arms Fragile → AllFragile \
+         (nothing cleared the bar, holding is not even in the field)"
+    );
+    assert_eq!(
+        r.crowned,
+        Some(0),
+        "v0.sma (idx 0, higher Sharpe 2.0) must be crowned within the ineligible tier"
+    );
+    assert!(
+        !candidates[r.crowned.unwrap()].is_benchmark,
+        "crowned must NOT be a benchmark (none is present)"
+    );
+    assert!(
+        r.reasons.contains(&ReasonCode::AllCandidatesFragile),
+        "AllCandidatesFragile must be in reasons; got: {:?}",
+        r.reasons
+    );
+}

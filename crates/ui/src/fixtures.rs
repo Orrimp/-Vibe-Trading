@@ -1389,6 +1389,149 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
     }
 }
 
+/// The HONEST real-crypto `BenchmarkWins` field (B1 / ADR-0066) — the full
+/// 7-arm advisor field as it actually lands on a single volatile asset where no
+/// active strategy clears the robustness bar:
+///
+/// - **every ACTIVE arm is Fragile** (the honest "measured robustness, not
+///   asserted alpha" truth on real crypto) — so none is crown-eligible;
+/// - the **buy-and-hold benchmark is the top-Sharpe arm and is CROWNED**
+///   (`BenchmarkWins`, reason `BenchmarkUndefeated`) — the baseline won because
+///   nothing active was robust, NOT because everything is broken;
+/// - the benchmark is *itself* Fragile (p5-Sharpe < 0 under resampling on a
+///   60-70%-vol single asset — the near-certain binding signal, ADR-0066 § D3)
+///   yet still crowned — exercising the **informational** benchmark-robustness
+///   note (the quiet "baseline is path-dependent" word), NOT the disqualifying
+///   badge an active arm gets;
+/// - the `v0.8.vote.unanimous` ensemble has **ZERO trades** (4-of-4 agreement
+///   never reached on a single asset) — exercising the U3 "sat in cash —
+///   consensus never reached" note instead of a bare Sharpe-0 row.
+///
+/// This is the fixture the `benchmark_wins_render` guard drives: it paints the
+/// honest copy, the crowned baseline row, the informational benchmark-Fragile
+/// note, and the "sat in cash" ensemble note together. Built directly as the
+/// mirror type — fixtures NEVER stand up the engine.
+#[must_use]
+pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{
+        BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
+        RobustnessLabel,
+    };
+
+    // Rows in INSERTION order (field order: 4 singles, 2 ensembles, benchmark).
+    // EVERY active arm is Fragile; buy-and-hold has the top Sharpe (0.69) and is
+    // crowned. The unanimous ensemble trades 0 times (consensus never reached).
+    let rows = vec![
+        LeaderRow {
+            strategy: SmolStr::new("v0.sma"),
+            is_benchmark: false,
+            sharpe: 0.34,
+            sortino: 0.41,
+            calmar: 0.22,
+            total_return_pct: dec!(0.0218),
+            max_drawdown: dec!(0.1731),
+            trade_count: 44,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.macd"),
+            is_benchmark: false,
+            sharpe: 0.12,
+            sortino: 0.15,
+            calmar: 0.08,
+            total_return_pct: dec!(0.0094),
+            max_drawdown: dec!(0.1442),
+            trade_count: 71,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.rsi"),
+            is_benchmark: false,
+            sharpe: -0.27,
+            sortino: -0.36,
+            calmar: -0.19,
+            total_return_pct: dec!(-0.0381),
+            max_drawdown: dec!(0.1903),
+            trade_count: 118,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.bbands"),
+            is_benchmark: false,
+            sharpe: 0.19,
+            sortino: 0.24,
+            calmar: 0.13,
+            total_return_pct: dec!(0.0152),
+            max_drawdown: dec!(0.1288),
+            trade_count: 52,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.majority"),
+            is_benchmark: false,
+            sharpe: 0.41,
+            sortino: 0.52,
+            calmar: 0.29,
+            total_return_pct: dec!(0.0307),
+            max_drawdown: dec!(0.1104),
+            trade_count: 23,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.unanimous"),
+            is_benchmark: false,
+            // ZERO trades — 4-of-4 agreement never reached on a single asset, so
+            // it sat in cash the whole window (the U3 "sat in cash" note). A flat
+            // Sharpe-0 / 0-return / 0-drawdown row that is NOT a failure.
+            sharpe: 0.0,
+            sortino: 0.0,
+            calmar: 0.0,
+            total_return_pct: dec!(0.0),
+            max_drawdown: dec!(0.0),
+            trade_count: 0,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.buyhold"),
+            is_benchmark: true,
+            // The top Sharpe in the field → crowned. Itself Fragile (the baseline
+            // is path-dependent on a single volatile asset) — exercises the
+            // INFORMATIONAL benchmark-robustness note, not the disqualifying badge.
+            sharpe: 0.69,
+            sortino: 0.85,
+            calmar: 0.84,
+            total_return_pct: dec!(0.1124),
+            max_drawdown: dec!(0.1338),
+            trade_count: 2,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+    ];
+
+    // Best-first by Sharpe: buyhold(0.69) > majority(0.41) > sma(0.34) >
+    // bbands(0.19) > macd(0.12) > unanimous(0.0) > rsi(-0.27). The benchmark
+    // (index 6) is crown-eligible per ADR-0066 § D2 and tops the field.
+    //   0=sma, 1=macd, 2=rsi, 3=bbands, 4=majority, 5=unanimous, 6=buyhold.
+    let ranked = vec![6, 4, 0, 3, 1, 5, 2];
+
+    BakeoffReportMirror {
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        rows,
+        ranked,
+        crowned: Some(6),
+        recommendation: RecommendationMirror {
+            outcome: OutcomeKind::BenchmarkWins,
+            winner: SmolStr::new("v0.buyhold"),
+            // The benchmark's own flag is shown on its row but the recommendation
+            // does NOT echo a winner-robustness clause for the baseline (it is
+            // exempt from the candidate verdict — ADR-0066 § D3); leave it None so
+            // no "but it looked fragile" clause fires for the crowned baseline.
+            winner_robustness: None,
+            reasons: vec![ReasonLabel::BenchmarkUndefeated],
+        },
+    }
+}
+
 /// A populated 7-arm `BakeoffReportMirror` WITH the two F8 ensemble candidates
 /// (ADR-0063) — the full advisor field: 4 singles + 2 vote ensembles +
 /// buy-and-hold, with the robustness gate LIVE so flags are populated.

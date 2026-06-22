@@ -14,7 +14,7 @@
 //! ├─────────────────────────────────────────────────────────────────┤
 //! │  #  Strategy            Return   Sharpe   Max DD   Trades        │
 //! │  1  v0.sma  ★ best      +7.38%   1.20     -4.20%   441           │  ← ACCENT row
-//! │  2  v0.buyhold benchmark +3.60%  0.41     -8.10%   2             │
+//! │  2  v0.buyhold baseline +3.60%   0.41     -8.10%   2             │
 //! │  …                                                               │
 //! ├─────────────────────────────────────────────────────────────────┤
 //! │ Not financial advice. Results are simulated…  (persistent)       │
@@ -28,8 +28,13 @@
 //! - **The crowned row** reuses the `ACCENT` "best" treatment (a `★ best` tag
 //!   + accent text + accent left-rule via `frame::active_row`), the same
 //!   discipline the Reports "● curve" / active-row marker uses.
-//! - **The benchmark row** is labelled `benchmark` so the passive baseline is
-//!   always plain.
+//! - **The benchmark row** is labelled `baseline (buy & hold)` so buy-and-hold
+//!   always reads as the reference line the active strategies are measured
+//!   against (ADR-0066) — never a failed candidate. When `BenchmarkWins` fires
+//!   (the honest modal crypto outcome) the crowned baseline row is the answer:
+//!   nothing active cleared the robustness bar, so holding is the least-bad
+//!   choice. Its own robustness flag (if Fragile) renders as a quiet
+//!   informational note, not the disqualifying badge an active arm gets.
 //! - **Numbers are scannable** — the Return / Sharpe / Max DD / Trades columns
 //!   are right-aligned; colour is used only for `pos` / `neg` sentiment.
 //! - **The recommendation headline** is rendered FROM the structured
@@ -60,11 +65,12 @@ use crate::leaderboard::state::{
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_BUDGET_CONTEXT_FMT, LEADERBOARD_CAPTION,
-    LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN, LEADERBOARD_COL_SHARPE,
-    LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES, LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
-    LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT,
-    LEADERBOARD_ENSEMBLE_MAJORITY_LABEL, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
+    LEADERBOARD_BENCHMARK_FRAGILE_NOTE, LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_BUDGET_CONTEXT_FMT,
+    LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN,
+    LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES,
+    LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER,
+    LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
+    LEADERBOARD_ENSEMBLE_SAT_IN_CASH, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
     LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_EXPLAIN_BUTTON,
     LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
     LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
@@ -738,7 +744,8 @@ fn data_row(
     }
     // The `vote` tag marks an ensemble candidate (so the kind is legible beyond
     // the friendly label, the way `benchmark` marks the passive baseline).
-    if is_ensemble_id(leader.strategy.as_str()) {
+    let is_ensemble = is_ensemble_id(leader.strategy.as_str());
+    if is_ensemble {
         strat = strat.push(tag(
             LEADERBOARD_ENSEMBLE_VOTE_TAG,
             color::FG_3.current(mode),
@@ -752,7 +759,19 @@ fn data_row(
             mode,
         ));
     }
-    if let Some(rob_tag) = robustness_tag(leader.robustness, mode) {
+    // The "sat in cash — consensus never reached" note for a ZERO-trade ensemble
+    // (B1 / U3): a 4-of-4 unanimous vote whose quorum was never reached stays
+    // flat the whole window. Without this the row is a bare Sharpe-0 line
+    // indistinguishable from a strategy that traded and lost — honest-but-
+    // mis-presented (analyst § 1.4). The note makes the "why it's flat" explicit.
+    if is_ensemble && leader.trade_count == 0 {
+        strat = strat.push(sat_in_cash_note(mode));
+    }
+    // The robustness marker. The BENCHMARK (ADR-0066 § D3) is the baseline — its
+    // flag is still shown, but informationally (it is exempt from the candidate
+    // verdict), so it never paints the prominent "cannot be crowned" Fragile
+    // badge an ACTIVE arm gets.
+    if let Some(rob_tag) = robustness_tag(leader.robustness, leader.is_benchmark, mode) {
         strat = strat.push(rob_tag);
     }
     let strat_cell = Container::new(strat).width(Length::Fill);
@@ -817,17 +836,35 @@ fn is_ensemble_id(strategy: &str) -> bool {
 
 /// The robustness marker for a row, or `None` when the gate did not run.
 ///
-/// **Fragile is rendered as a prominent BADGE** (soft `DOWN_50` backdrop +
+/// **For ACTIVE arms, Fragile is a prominent BADGE** (soft `DOWN_50` backdrop +
 /// saturated `DOWN_500` label + `PILL` radius — the status-pill pattern from
-/// the design principles) because a Fragile candidate is *ineligible to crown*:
-/// it must be unmistakable, not a faint word. Now that the F8 gate is live this
-/// is the first time the Fragile state actually paints, so it earns the visual
-/// weight. Robust / marginal stay plain muted text (a quiet reassurance, not a
-/// sentiment signal — the table would be a wall of pills otherwise).
+/// the design principles) because a Fragile *active* candidate is *ineligible to
+/// crown*: it must be unmistakable, not a faint word. Robust / marginal stay
+/// plain muted text (a quiet reassurance, not a sentiment signal — the table
+/// would be a wall of pills otherwise).
+///
+/// **The BENCHMARK is the baseline (ADR-0066 § D3), not a candidate** — its own
+/// robustness flag is still computed + shown, but it is *exempt from the
+/// candidate verdict*, so a Fragile benchmark must NOT wear the prominent
+/// "cannot be crowned" badge (that would read as disqualifying, the nihilist
+/// framing B1 exists to remove). Instead it renders the quiet, informational
+/// "baseline is path-dependent" note — honest that buy-and-hold is itself
+/// path-dependent on a single volatile asset, without implying it lost the bar.
+/// Robust / marginal on the benchmark stay silent (the `baseline` tag already
+/// frames the row; no extra reassurance needed).
 fn robustness_tag(
     robustness: Option<RobustnessLabel>,
+    is_benchmark: bool,
     mode: ThemeMode,
 ) -> Option<crate::Element<'static>> {
+    if is_benchmark {
+        // Baseline: only the Fragile case gets a quiet informational note; the
+        // robust/marginal/none cases stay silent (the `baseline` tag suffices).
+        return match robustness {
+            Some(RobustnessLabel::Fragile) => Some(benchmark_fragile_note(mode)),
+            _ => None,
+        };
+    }
     match robustness {
         Some(RobustnessLabel::Fragile) => Some(fragile_badge(mode)),
         Some(RobustnessLabel::Robust) => {
@@ -841,6 +878,33 @@ fn robustness_tag(
         // NotChecked / None → no tag (the gate was skipped; the row is silent).
         _ => None,
     }
+}
+
+/// The quiet, informational "sat in cash — consensus never reached" note for a
+/// zero-trade ensemble (U3). Muted `FG_3` `SMALL` text — it explains *why* the
+/// row is flat (the vote never reached its quorum), so a 0-trade unanimous
+/// ensemble never reads as a strategy that traded and lost. Plain text, NOT a
+/// warn/negative pill: not trading when there's no consensus is correct
+/// behaviour, not a failure.
+fn sat_in_cash_note(mode: ThemeMode) -> crate::Element<'static> {
+    tag(
+        LEADERBOARD_ENSEMBLE_SAT_IN_CASH,
+        color::FG_3.current(mode),
+        mode,
+    )
+}
+
+/// The informational robustness note on the BENCHMARK row (ADR-0066 § D3) — a
+/// quiet muted `FG_3` `SMALL` word, deliberately NOT the saturated `DOWN_500`
+/// Fragile badge an active arm gets. The benchmark is the baseline (exempt from
+/// the candidate verdict), so this reads as context ("the baseline itself is
+/// path-dependent on a single volatile asset"), never as "disqualified".
+fn benchmark_fragile_note(mode: ThemeMode) -> crate::Element<'static> {
+    tag(
+        LEADERBOARD_BENCHMARK_FRAGILE_NOTE,
+        color::FG_3.current(mode),
+        mode,
+    )
 }
 
 /// The Fragile badge — a soft `DOWN_50`-tinted pill with a saturated
