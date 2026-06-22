@@ -1496,4 +1496,116 @@ mod tests {
         let tokens = extract_numeric_tokens("Max drawdown was -5.00%.");
         assert!(tokens.contains(&"-5.00%".to_string()));
     }
+
+    // ── F9 Sortino/Calmar round-trip (the previously-barred metrics) ──────────
+
+    /// Prove that `allowed_numbers()` includes non-empty Sortino and Calmar
+    /// strings when the `CandidateKpiStrings` are properly populated (the fix
+    /// for the gap where the mirror builder emitted empty strings → those
+    /// metrics were excluded from the P3 allowed-set → any LLM Sortino/Calmar
+    /// citation read as fabricated → `FellBack`).
+    #[test]
+    fn allowed_numbers_includes_sortino_and_calmar() {
+        let facts = make_facts_active_wins();
+        let allowed = facts.allowed_numbers();
+
+        // The fixture has sortino "0.6789" and calmar "0.7890" for v0.5.macd (the winner).
+        assert!(
+            allowed.contains(&"0.6789".to_string()),
+            "sortino for v0.5.macd must be in the allowed set (got: {allowed:?})"
+        );
+        assert!(
+            allowed.contains(&"0.7890".to_string()),
+            "calmar for v0.5.macd must be in the allowed set (got: {allowed:?})"
+        );
+        // No empty strings — the gap that caused FellBack.
+        assert!(
+            !allowed.contains(&String::new()),
+            "the allowed set must NOT contain empty strings (each was a sortino/calmar gap)"
+        );
+    }
+
+    /// A faithful narration that cites the winner's SORTINO (a real value from
+    /// the allowed set) PASSES `check_faithful`.  Before the fix this path was
+    /// structurally barred: sortino was always an empty string → not in the
+    /// allowed set → P3 read it as FABRICATED → `FellBack`.
+    #[test]
+    fn faithful_sortino_citation_passes_check() {
+        let facts = make_facts_active_wins();
+        // The fixture winner is v0.5.macd; its sortino is "0.6789".
+        let sortino_str = &facts
+            .candidate_kpi_strings
+            .iter()
+            .find(|k| k.strategy_id == "v0.5.macd")
+            .expect("winner kpi must be present")
+            .sortino;
+        assert!(
+            !sortino_str.is_empty(),
+            "sortino must be non-empty (the structural gap being fixed)"
+        );
+
+        // Build a faithful narration that cites the winner + the sortino value.
+        let text = format!(
+            "The strategy v0.5.macd was crowned the winner of this bake-off. \
+             It had a Sortino ratio of {sortino_str}, which was the best risk-adjusted \
+             performance among the field. This is a summary of a simulated paper-trading \
+             bake-off. No real money was used."
+        );
+
+        assert_eq!(
+            check_faithful(&text, &facts),
+            FaithfulnessVerdict::Pass,
+            "a faithful sortino citation must PASS check_faithful — \
+             before the fix this was structurally barred (always FellBack)"
+        );
+    }
+
+    /// An UNFAITHFUL sortino (a fabricated number not in the allowed set) STILL
+    /// rejects — the fix must not weaken P3, only un-block the valid values.
+    #[test]
+    fn unfaithful_sortino_still_rejects() {
+        let facts = make_facts_active_wins();
+        // Use a number guaranteed absent from all KPIs.
+        let text = format!(
+            "The strategy {} was crowned the winner. \
+             It had a Sortino ratio of 9999.9999, which was extraordinary.",
+            facts.winner_id
+        );
+        assert_eq!(
+            check_faithful(&text, &facts),
+            FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber),
+            "an unfaithful sortino (fabricated) must STILL be rejected by P3"
+        );
+    }
+
+    /// A faithful narration that cites the winner's CALMAR (a real value from
+    /// the allowed set) PASSES `check_faithful` — symmetric with the sortino test.
+    #[test]
+    fn faithful_calmar_citation_passes_check() {
+        let facts = make_facts_active_wins();
+        // The fixture winner is v0.5.macd; its calmar is "0.7890".
+        let calmar_str = &facts
+            .candidate_kpi_strings
+            .iter()
+            .find(|k| k.strategy_id == "v0.5.macd")
+            .expect("winner kpi must be present")
+            .calmar;
+        assert!(
+            !calmar_str.is_empty(),
+            "calmar must be non-empty (the structural gap being fixed)"
+        );
+
+        let text = format!(
+            "The strategy v0.5.macd was crowned the winner of this bake-off. \
+             Its Calmar ratio was {calmar_str}, reflecting strong return-to-drawdown \
+             efficiency. This is a summary of a simulated paper-trading bake-off. \
+             No real money was used."
+        );
+
+        assert_eq!(
+            check_faithful(&text, &facts),
+            FaithfulnessVerdict::Pass,
+            "a faithful calmar citation must PASS check_faithful"
+        );
+    }
 }

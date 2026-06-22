@@ -272,3 +272,62 @@ async fn explain_action_enqueues_request_with_faithful_facts() {
         "the fixture mirror's ActiveWins outcome is carried"
     );
 }
+
+/// **F9 Sortino/Calmar non-empty proof.** The `narration_request_from_mirror`
+/// builder must populate non-empty sortino and calmar strings in every
+/// `CandidateKpiStrings` (from the new `LeaderRow.sortino`/`.calmar` mirror
+/// fields). Before the fix these were always `String::new()` — absent from the
+/// P3 allowed-set — so any LLM Sortino/Calmar citation read as FABRICATED and
+/// the narration fell back. This test pins that the strings are now non-empty
+/// and in the canonical 4-dp form the post-check accepts.
+#[tokio::test]
+async fn explain_request_carries_non_empty_sortino_and_calmar() {
+    let mirror = ui::fixtures::fake_bakeoff_report_mirror();
+    let request = ui::live::narration_request_from_mirror(&mirror);
+    let facts = &request.facts;
+
+    // Every row must have non-empty sortino and calmar strings.
+    for (i, kpi) in facts.candidate_kpi_strings.iter().enumerate() {
+        assert!(
+            !kpi.sortino.is_empty(),
+            "candidate[{i}] sortino must be non-empty — was always empty before the fix \
+             (caused FellBack for any LLM Sortino citation)"
+        );
+        assert!(
+            !kpi.calmar.is_empty(),
+            "candidate[{i}] calmar must be non-empty — was always empty before the fix \
+             (caused FellBack for any LLM Calmar citation)"
+        );
+        // The strings must be in the canonical 4-dp form (the P3 exact-match contract).
+        assert!(
+            kpi.sortino.contains('.') && kpi.sortino.split('.').nth(1).unwrap().len() == 4,
+            "candidate[{i}] sortino must be canonical 4-dp (got {:?})",
+            kpi.sortino
+        );
+        assert!(
+            kpi.calmar.contains('.') && kpi.calmar.split('.').nth(1).unwrap().len() == 4,
+            "candidate[{i}] calmar must be canonical 4-dp (got {:?})",
+            kpi.calmar
+        );
+    }
+
+    // The allowed-number set must include the winner's sortino and calmar —
+    // the load-bearing check that those values are now accepted by P3.
+    let allowed = facts.allowed_numbers();
+    let winner_kpi = facts
+        .candidate_kpi_strings
+        .iter()
+        .find(|k| k.strategy_id == facts.winner_id)
+        .expect("winner KPI must be present");
+    assert!(
+        allowed.contains(&winner_kpi.sortino),
+        "winner sortino {:?} must be in the P3 allowed set — before the fix it was \
+         always empty and therefore always absent",
+        winner_kpi.sortino
+    );
+    assert!(
+        allowed.contains(&winner_kpi.calmar),
+        "winner calmar {:?} must be in the P3 allowed set",
+        winner_kpi.calmar
+    );
+}

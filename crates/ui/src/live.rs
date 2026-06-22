@@ -1124,17 +1124,12 @@ pub fn bakeoff_progress_stream_impl(
 /// ids, outcome, robustness, reason codes — are mirrored faithfully from the
 /// mirror's `RecommendationMirror` + `LeaderRow`s.
 ///
-/// ## Sortino / Calmar fidelity (documented gap)
+/// ## Sortino / Calmar fidelity
 ///
-/// `LeaderRow` carries only Sharpe / total-return / max-drawdown / trade-count
-/// (the leaderboard table's scalars); Sortino and Calmar are NOT mirrored. The
-/// P3 allowed-number set therefore omits them — which is the SAFE direction: a
-/// Sortino/Calmar the LLM emits would read as fabricated and the post-check
-/// falls back to the templated floor, never over-permitting. The MVP narration
-/// task runs with no provider (`llm_provider = None` → always `FellBack`), so this
-/// has no functional effect today; richer facts (built from the raw
-/// `backtest::BakeoffReport` via `NarrationFacts::from_report`) are the v0.3
-/// hardening point noted in `runtime.rs`.
+/// `LeaderRow` now carries `sortino` and `calmar` (mirrored from
+/// `CandidateKpis` in `BakeoffReportMirror::from_report`) so the P3
+/// allowed-number set includes all 6 KPIs. The LLM can faithfully cite
+/// Sortino/Calmar and the post-check will accept them.
 #[must_use]
 pub fn narration_request_from_mirror(
     mirror: &crate::leaderboard::BakeoffReportMirror,
@@ -1172,8 +1167,8 @@ pub fn narration_request_from_mirror(
         .map(|r| CandidateKpiStrings {
             strategy_id: r.strategy.clone(),
             sharpe: fmt_ratio4(r.sharpe),
-            sortino: String::new(),
-            calmar: String::new(),
+            sortino: fmt_ratio4(r.sortino),
+            calmar: fmt_ratio4(r.calmar),
             total_return_pct: fmt_pct2(r.total_return_pct),
             max_drawdown: fmt_pct2(r.max_drawdown),
             trade_count: r.trade_count.to_string(),

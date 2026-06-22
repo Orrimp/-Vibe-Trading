@@ -45,6 +45,12 @@ pub struct LeaderRow {
     pub is_benchmark: bool,
     /// Annualised Sharpe (hourly). The primary ranking metric.
     pub sharpe: f64,
+    /// Annualised Sortino (hourly). Mirrored from `CandidateKpis.sortino` for
+    /// the F9 narration facts; NOT displayed in the leaderboard table columns.
+    pub sortino: f64,
+    /// Calmar ratio. Mirrored from `CandidateKpis.calmar` for the F9 narration
+    /// facts; NOT displayed in the leaderboard table columns.
+    pub calmar: f64,
     /// Total return fraction (`0.1` = +10 %). Rendered as a sentiment-coloured
     /// percentage.
     pub total_return_pct: Decimal,
@@ -222,6 +228,8 @@ impl BakeoffReportMirror {
                 strategy: SmolStr::new(c.strategy.0.as_str()),
                 is_benchmark: c.is_benchmark,
                 sharpe: c.kpis.sharpe,
+                sortino: c.kpis.sortino,
+                calmar: c.kpis.calmar,
                 total_return_pct: c.kpis.total_return_pct,
                 max_drawdown: c.kpis.max_drawdown,
                 trade_count: c.kpis.trade_count,
@@ -602,6 +610,8 @@ mod tests {
             strategy: SmolStr::new(strategy),
             is_benchmark,
             sharpe,
+            sortino: 0.0,
+            calmar: 0.0,
             total_return_pct: dec!(0.05),
             max_drawdown: dec!(0.10),
             trade_count: 12,
