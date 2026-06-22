@@ -1768,6 +1768,26 @@ pub fn fake_cockpit_forward_plan(
     cockpit
 }
 
+/// F7 EUR-FX — A `Cockpit` routed to `Screen::Leaderboard` with an explicit
+/// `advisor_eur_usd_rate` and `budget_input`, so the bakeoff-input budget hint
+/// renders the honest "€{eur} ≈ ${usdt} (at {rate} EUR/USD, config)" label.
+///
+/// Used by the `eur_fx_budget_render.rs` render guard to prove the FX
+/// conversion label actually paints in the FORM band. Synthetic — no engine.
+#[must_use]
+pub fn fake_cockpit_leaderboard_with_fx_rate(budget_input: &str, eur_usd_rate: Decimal) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Leaderboard;
+    cockpit.advisor_eur_usd_rate = eur_usd_rate;
+    cockpit.leaderboard_screen_state = crate::leaderboard::LeaderboardScreenState {
+        result: PanelState::Empty,
+        running: false,
+        budget_input: budget_input.to_string(),
+        ..Default::default()
+    };
+    cockpit
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

@@ -761,6 +761,32 @@ impl std::fmt::Display for Mode {
     }
 }
 
+// ── F7 advisor config ─────────────────────────────────────────────────────────
+
+/// F7 — advisor EUR→USDT budget-conversion config (ADR-0065 § D1).
+///
+/// This is a **UI-input config** — it is never read by `run_scenario`, any
+/// sweep, or any anchored CLI path. It lives here so the cockpit binary
+/// can resolve `eur_usd_rate` at the budget-conversion boundary
+/// (`cockpit_live.rs`) without a separate config surface.
+///
+/// `#[serde(default)]` makes both fields additive — existing `agent.toml`
+/// files that omit `[advisor]` continue to work, inheriting the
+/// `DEFAULT_EUR_USD_RATE = dec!(1.08)` fallback. No golden config
+/// regeneration required.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct AdvisorConfig {
+    /// EUR/USD rate (USDT per 1 EUR). When `None`, the cockpit falls back to
+    /// `trading_core::DEFAULT_EUR_USD_RATE` (`dec!(1.08)`).
+    /// The operator sets this via `[advisor] eur_usd_rate = 1.09` in `agent.toml`.
+    #[serde(default)]
+    pub eur_usd_rate: Option<rust_decimal::Decimal>,
+    /// As-of label for the rate (e.g. `"2026-06-22"`). Shown in the display
+    /// alongside the rate ("at 1.08 EUR/USD, config 2026-06-22"). Optional.
+    #[serde(default)]
+    pub eur_usd_rate_as_of: Option<String>,
+}
+
 /// Root configuration struct for the trading agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -810,6 +836,10 @@ pub struct Config {
     /// constructed and no `.local` overlay is required.
     #[serde(default)]
     pub llm: LlmConfig,
+    /// F7 — advisor EUR→USDT budget-conversion config (ADR-0065).
+    /// A UI-input config — never read by `run_scenario` / sweep / anchored CLI.
+    #[serde(default)]
+    pub advisor: AdvisorConfig,
 }
 
 impl Default for Config {
@@ -830,6 +860,7 @@ impl Default for Config {
             reflection: ReflectionConfig::default(),
             signal_log: SignalLogConfig::default(),
             llm: LlmConfig::default(),
+            advisor: AdvisorConfig::default(),
         }
     }
 }

@@ -68,12 +68,14 @@ use iced::widget::{Column, Container, Row, Scrollable, Space, Text};
 use iced::{Border, Length};
 use smol_str::SmolStr;
 
+use trading_core::FxNote;
+
 use crate::forward_plan::state::{
     ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
 };
 use crate::state::{Cockpit, PanelState};
 use crate::strings::{
-    FORWARD_PLAN_AS_OF_FMT, FORWARD_PLAN_BUDGET_LINE, FORWARD_PLAN_CADENCE_FMT,
+    FORWARD_PLAN_AS_OF_FMT, FORWARD_PLAN_BUDGET_LINE_FMT, FORWARD_PLAN_CADENCE_FMT,
     FORWARD_PLAN_CAPTION, FORWARD_PLAN_DISCLAIMER, FORWARD_PLAN_EMPTY_PROMPT,
     FORWARD_PLAN_ERROR_PREFIX, FORWARD_PLAN_HEADLINE, FORWARD_PLAN_HORIZON_FMT,
     FORWARD_PLAN_HORIZON_TITLE, FORWARD_PLAN_LATEST_SIGNAL_FMT, FORWARD_PLAN_LOADING,
@@ -97,7 +99,7 @@ use crate::strings::{
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
-use crate::widgets::num::{fmt_price, fmt_qty};
+use crate::widgets::num::{fmt_eur_plain, fmt_price, fmt_qty, fmt_rate, fmt_usdt_plain};
 
 /// Render the Forward-plan screen body.
 ///
@@ -107,12 +109,14 @@ use crate::widgets::num::{fmt_price, fmt_qty};
 #[must_use]
 pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let st = &model.forward_plan_screen_state;
+    // F7 — thread the FX note from the Cockpit model into the sizing block.
+    let fx_note: Option<&FxNote> = model.forward_fx.as_ref();
 
     Column::new()
         .padding(space::L as u16)
         .spacing(space::L)
         .push(header_text(mode))
-        .push(result_body(&st.plan, mode))
+        .push(result_body(&st.plan, fx_note, mode))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -139,7 +143,11 @@ fn header_text(mode: ThemeMode) -> crate::Element<'static> {
 
 /// Dispatch on the plan `PanelState` — every arm renders something (no blank
 /// screen).
-fn result_body(plan: &PanelState<ForwardPlanView>, mode: ThemeMode) -> crate::Element<'_> {
+fn result_body<'a>(
+    plan: &'a PanelState<ForwardPlanView>,
+    fx_note: Option<&'a FxNote>,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
     match plan {
         // The agent is resolving the plan from the crowned selection.
         PanelState::Loading => Container::new(
@@ -155,7 +163,7 @@ fn result_body(plan: &PanelState<ForwardPlanView>, mode: ThemeMode) -> crate::El
         // The plan could not be produced — prefix + the detail.
         PanelState::Error(detail) => error_pane(detail, mode),
         // The conditional plan.
-        PanelState::Ready(plan) => ready_pane(plan, mode),
+        PanelState::Ready(plan) => ready_pane(plan, fx_note, mode),
     }
 }
 
@@ -202,14 +210,18 @@ fn error_pane(detail: &str, mode: ThemeMode) -> crate::Element<'_> {
 /// The happy path — the not-a-prediction framing banner (leads), the stance
 /// block, the standing-rules block, the projected-sizing block, the horizon
 /// block, and the persistent disclaimer, in a scrollable column.
-fn ready_pane(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
+fn ready_pane<'a>(
+    plan: &'a ForwardPlanView,
+    fx_note: Option<&'a FxNote>,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
     let stack = Column::new()
         .spacing(space::L)
         // The not-a-prediction framing LEADS (OQ-D — integral, not a footnote).
         .push(framing_banner(mode))
         .push(stance_block(plan, mode))
         .push(rules_block(plan, mode))
-        .push(sizing_block(plan, mode))
+        .push(sizing_block(plan, fx_note, mode))
         .push(horizon_block(plan, mode))
         .push(disclaimer(mode))
         .width(Length::Fill);
@@ -630,9 +642,14 @@ fn rule_clauses(
 // ── Sizing block (R3 — budget-aware €200 next-BUY, "at the last close") ────────
 
 /// The projected-sizing block — a titled panel holding the next-BUY sizing line
-/// (labelled "at the last close", never "you will buy at"), the €200 ≈ 200 USDT
-/// budget + hard-cap line, and the capped note when the F4 cap bound the units.
-fn sizing_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
+/// (labelled "at the last close", never "you will buy at"), the honest EUR→USDT
+/// budget + hard-cap line (F7 / ADR-0065), and the capped note when the F4 cap
+/// bound the units.
+fn sizing_block<'a>(
+    plan: &'a ForwardPlanView,
+    fx_note: Option<&'a FxNote>,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
     let units = fmt_qty(plan.projected_units);
     let close = fmt_price(plan.last_close);
 
@@ -656,9 +673,28 @@ fn sizing_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
             .width(Length::Fill),
     );
 
-    // The €200 ≈ 200 USDT + hard-cap line — always present (the budget framing).
+    // F7 (ADR-0065) — the honest EUR→USDT budget + hard-cap line.
+    // Uses the FxNote from the forward run when present; falls back to a
+    // legacy-format line (preserving pre-F7 display for the soak / research path).
+    let budget_line: String = if let Some(note) = fx_note {
+        FORWARD_PLAN_BUDGET_LINE_FMT
+            .replace("{eur}", &fmt_eur_plain(note.eur))
+            .replace("{usdt}", &fmt_usdt_plain(note.usdt))
+            .replace("{rate}", &fmt_rate(note.rate))
+            .replace("{source}", note.source.as_str())
+    } else {
+        // Fallback: build from the plan's budget + default rate.
+        use trading_core::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxRate};
+        let fx = FxRate::config(DEFAULT_EUR_USD_RATE);
+        let conv = BudgetConversion::new(plan.budget, fx);
+        FORWARD_PLAN_BUDGET_LINE_FMT
+            .replace("{eur}", &fmt_eur_plain(conv.eur()))
+            .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
+            .replace("{rate}", &fmt_rate(conv.rate().rate()))
+            .replace("{source}", conv.rate().source())
+    };
     col = col.push(
-        Text::new(FORWARD_PLAN_BUDGET_LINE)
+        Text::new(budget_line)
             .size(text::SMALL)
             .color(color::FG_3.current(mode))
             .width(Length::Fill),

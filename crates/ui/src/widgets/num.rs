@@ -221,6 +221,38 @@ pub fn fmt_usdt_signed(d: Decimal) -> String {
     }
 }
 
+/// Format a EUR/USD exchange rate — two decimal places, no thousands separators.
+/// Used for the "at 1.08 EUR/USD" display in the honest FX note (F7 / ADR-0065).
+/// Example: `dec!(1.08)` → `"1.08"`.
+#[must_use]
+pub fn fmt_rate(d: Decimal) -> String {
+    let rounded = d.round_dp(2);
+    pad_fractional(&rounded.to_string(), 2)
+}
+
+/// Format a USDT amount without the " USDT" suffix — used in the FX note where
+/// the dollar sign is already prepended by the format string.
+/// Example: `dec!(216)` → `"216.00"`.
+#[must_use]
+pub fn fmt_usdt_plain(d: Decimal) -> String {
+    let rounded = d.round_dp(2);
+    let padded = pad_fractional(&rounded.to_string(), 2);
+    with_thousands_sep(&padded)
+}
+
+/// Format a euro amount without the "€" prefix — used in the FX note where
+/// the € is already in the format string.
+/// Example: `dec!(200)` → `"200"`.
+#[must_use]
+pub fn fmt_eur_plain(d: Decimal) -> String {
+    let rounded = d.round_dp(2);
+    if rounded.fract().is_zero() {
+        with_thousands_sep(&rounded.trunc().to_string())
+    } else {
+        with_thousands_sep(&pad_fractional(&rounded.to_string(), 2))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

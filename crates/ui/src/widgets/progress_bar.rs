@@ -203,7 +203,8 @@ mod tests {
     #[test]
     fn view_block_has_label_and_bar() {
         use iced::advanced::widget::Tree;
-        let el: iced::Element<'static, ()> = view_block(Some(0.5), "Running x — 4 of 7", ThemeMode::Dark);
+        let el: iced::Element<'static, ()> =
+            view_block(Some(0.5), "Running x — 4 of 7", ThemeMode::Dark);
         let tree = Tree::new(el.as_widget());
         assert_eq!(
             tree.children.len(),

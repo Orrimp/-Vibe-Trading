@@ -442,7 +442,14 @@ Tracked here until the operator answers; then they migrate into the body.
 - [ ] **D4 — EUR-on-USD handling (2026-06-19):** recommend MVP treats €200 as
   200 quote-units with an honest "≈ 200 USDT, FX not modelled" label; fixed
   EUR→USD rate as the v0.2 refinement; first-class `Eur` currency rejected for
-  a paper tool. _Operator to confirm._
+  a paper tool. _Operator to confirm._ — **The MVP "FX not modelled" label is now
+  being replaced by a real EUR/USD rate**: the v0.2 fixed-rate refinement is scoped
+  as **F7** ([`advisor-eur-fx/feature.md`](advisor-eur-fx/feature.md), trace
+  `REQ-ADVISOR-EUR-FX-001`) — a one-time `€200 × rate = ~$216 USDT` conversion at
+  the budget-input boundary (into F4 sizing + the "€200 ≈ $X (at R EUR/USD)"
+  display), ranking still FX-invariant, first-class `Eur` still rejected; the one
+  open operator fork is the rate **source** (configurable static default
+  [recommended — deterministic, no network] vs live-fetched [v0.3]).
 - [ ] **D5 — confirm paper-only (2026-06-19):** recommend re-affirming
   paper/sim-only with not-advice + simulated-budget disclaimers on every
   recommendation/Live surface. _Operator to confirm._
@@ -463,6 +470,31 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-22 (analyst, F7 EUR-FX scoping): annotated **§ Open decisions D4**
+  (EUR-on-USD handling) to record that the MVP **"€200 ≈ 200 USDT — FX not
+  modelled"** simplification is now being replaced by a **real EUR/USD rate** —
+  scoped as the v0.2 fixed-rate refinement D4 itself named, in the new **F7**
+  feature ([`advisor-eur-fx/feature.md`](advisor-eur-fx/feature.md), trace
+  `REQ-ADVISOR-EUR-FX-001`). F7 is a **one-time budget-unit conversion** (`€200 ×
+  rate = ~$216 USDT`) at the single budget-input boundary (verified seam:
+  `crates/ui/src/bin/cockpit_live.rs:1431-1437`, where `budget_eur()` →
+  `Money::<Usdt>::from_decimal` stamps euros as USDT 1:1 today), flowing into F4
+  `FixedFractionSizer.budget_cap` + F5 forward-paper capital + the honest "€200 ≈
+  $X (at R EUR/USD, ⟨source/as-of⟩)" display (replacing the three "FX not
+  modelled" literals in `crates/ui/src/strings.rs`). The honest framing is
+  load-bearing: NON-goals are NOT FX trading / NOT an FX prediction / NOT a
+  first-class `Eur` currency + ledger FX-PnL (D4 option (c) still rejected); the
+  bake-off **ranking stays FX-invariant + untouched** (a scalar on the budget
+  cannot change which strategy wins); paper-only stays paper-only; 119/119 anchors
+  untouched (F7 reads no anchored scenario). Verified against code that **no
+  FX/forex source exists** (crypto-only fetchers; no `Eur` type —
+  `crates/core/src/asset.rs`), so F7 adds a small new rate source. The one open
+  operator fork is the rate **source**: configurable static default (recommended —
+  durable, deterministic, zero new network/failure surface, and the cheapest path)
+  vs live-fetched (a clean v0.3 upgrade layered on the static value as its
+  fallback) vs derived (rejected — no corpus FX series). Does NOT change D1-D3/D5
+  or the 2026-06-08 ship-passive verdict — it scopes D4's deferred refinement. No
+  engine code; no anchored content touched.
 - 2026-06-21 (analyst, F8 ensemble scoping): annotated **journey step 3** to
   point the "mix of strategies / LLM-ML ensemble" the operator named in the
   2026-06-19 pivot at the new F8 feature

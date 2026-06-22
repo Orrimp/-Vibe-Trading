@@ -2,7 +2,7 @@
 slug: architecture
 status: shipped
 owner: architect
-updated: 2026-05-16
+updated: 2026-06-22
 ---
 
 # Architecture — Crypto Trading Agent
@@ -156,6 +156,46 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-22 (architect): **ADR-0065 — EUR→USDT budget-conversion seam
+  (configurable static FX rate)** (feature `advisor-eur-fx`, single-coin-advisor
+  pivot F7 — the LAST v0.2 item; resolves product § D4's deferred fixed EUR→USD
+  rate). Recorded in the canonical ADR registry
+  ([architecture/adr/README.md](architecture/adr/README.md) +
+  `architecture/adr/0065-eur-usdt-budget-conversion-seam.md`). The operator
+  enters a budget in euros but the engine is USDT-denominated end-to-end and **no
+  `Eur` type exists**, so today the parsed euro `Decimal` is stamped **1:1** into
+  `Money<Usdt>` at `cockpit_live.rs:1431-1437` ("€200 ≈ 200 USDT — FX not
+  modelled"). F7 applies `usdt = eur × rate` at that single budget-conversion
+  boundary via a new `FxRate {rate, source, as_of}` value object homed in
+  **`crates/core::fx`** (the ADR-0058 § D2 home-the-primitive-in-`core`
+  precedent — zero new dependency, and because `ui` already imports
+  `trading_core` the conversion reaches the UI seam as a `core` type with **no new
+  `ui` edge** — `cargo tree -p ui` unchanged by construction). The rate VALUE
+  comes from advisor config (`eur_usd_rate: Option<Decimal>`, `#[serde(default)]`)
+  defaulting to `DEFAULT_EUR_USD_RATE = 1.08` — **operator-LOCKED to a
+  configurable static rate**; a live-fetched rate is an explicit **v0.3 upgrade**
+  (a `RateSource` trait + a `crates/data` fetcher behind a fake seam, NOTED-not-
+  built) that reuses this constant as its fallback (a strict superset → zero
+  rework). One pure `FxRate::convert_eur_to_usdt(eur: Decimal) -> Money<Usdt>` fn
+  + a `BudgetConversion {eur, rate, usdt}` carrier computed **once** so the ENGINE
+  (`ForwardRunConfig.budget`) and the DISPLAY read the **same** converted value
+  (the ADR-0062 one-boundary/two-readers anti-drift discipline — the "$216" the
+  operator reads is definitionally the `Money<Usdt>` F4 caps against). EUR stays a
+  **labelled `Decimal` at input** (no `core::Eur` marker — a first-class EUR
+  currency + ledger FX-PnL is REJECTED) so F4/F5/bake-off stay **unit-agnostic and
+  byte-unchanged**. **Anchor-safe by construction (119/119):** the anchored
+  CLI/headless path (bake-off, `run_scenario`, sweeps) is USDT-denominated and
+  **never reads the rate** — the conversion lives only at the cockpit UI input
+  boundary; no `anchors.toml` SHA or report body is touched. Ships with the
+  **day-1 conversion-applied e2e gate** (`crates/core/tests/eur_fx_conversion_
+  applied.rs`, FAIL-before/PASS-after against a 1:1 stub: converted ≠ 1:1 AND the
+  converted value is the one F4 caps against AND display == engine) per the
+  CLAUDE.md non-negotiable + the `v3-volatility-forecaster-noop` precedent. The
+  three "FX not modelled" literals (`LEADERBOARD_BUDGET_HINT`,
+  `FORWARD_PLAN_BUDGET_LINE`, `LIVE_FORWARD_FX_NOTE`) become the honest "€X ≈ $Y
+  (at R EUR/USD, source as-of)", driven by the same carrier; hard-cap +
+  not-advice copy preserved verbatim. Leans on ADR-0058 § D2, ADR-0060 § D1/D3,
+  ADR-0061 § D1, ADR-0062, ADR-0003, ADR-0023/0041.
 - 2026-06-21 (architect): **ADR-0063 — ensemble signal-vote seam +
   robustness-gate activation** (feature `advisor-ensemble`, single-coin-advisor
   pivot F8). Recorded in the canonical ADR registry

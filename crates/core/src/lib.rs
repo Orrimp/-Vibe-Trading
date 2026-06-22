@@ -12,6 +12,7 @@ pub mod error;
 pub mod fill;
 pub mod forecast;
 pub mod funding;
+pub mod fx;
 pub mod money;
 pub mod order;
 pub mod pair;
@@ -41,6 +42,7 @@ pub use forecast::{
     SamplingParams,
 };
 pub use funding::FundingObs;
+pub use fx::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxNote, FxRate, FxRateError};
 pub use money::Money;
 pub use money::{Price, Quantity};
 pub use order::{Order, OrderId, OrderKind, ProposedOrder, RiskLimits, TimeInForce};

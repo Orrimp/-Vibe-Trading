@@ -39,12 +39,13 @@
 
 use iced::widget::{Column, Container, Row, Text, button, container, text_input};
 use iced::{Border, Length};
-use trading_core::Symbol;
+use rust_decimal::Decimal;
+use trading_core::{BudgetConversion, FxRate, Symbol};
 
 use crate::leaderboard::LeaderboardLookback;
 use crate::state::Message;
 use crate::strings::{
-    LEADERBOARD_BUDGET_HINT, LEADERBOARD_BUDGET_LABEL, LEADERBOARD_BUDGET_PLACEHOLDER,
+    LEADERBOARD_BUDGET_HINT_FMT, LEADERBOARD_BUDGET_LABEL, LEADERBOARD_BUDGET_PLACEHOLDER,
     LEADERBOARD_COIN_LABEL, LEADERBOARD_LOOKBACK_LABEL,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
@@ -62,6 +63,9 @@ const BUDGET_FIELD_WIDTH: f32 = 120.0;
 /// - `budget_input` — the raw budget text (round-trips the operator's
 ///   keystrokes; rendered verbatim into the field).
 /// - `lookback` — the currently-selected lookback (drives the active chip).
+/// - `eur_usd_rate` — the EUR/USD rate to use for the honest FX hint
+///   (F7 / ADR-0065). Pass `trading_core::DEFAULT_EUR_USD_RATE` when no
+///   operator override is configured.
 /// - `mode` — active theme mode.
 ///
 /// Returns the form as a titled `frame::panel` so it reads as one coherent
@@ -71,6 +75,7 @@ pub fn view<'a>(
     coin: &Symbol,
     budget_input: &str,
     lookback: LeaderboardLookback,
+    eur_usd_rate: Decimal,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     // ── Coin row ──────────────────────────────────────────────────────────────
@@ -99,8 +104,24 @@ pub fn view<'a>(
         .push(lookback_block)
         .width(Length::Fill);
 
-    // ── Budget hint (product § D4 — FX-not-modelled) ──────────────────────────
-    let hint = Text::new(LEADERBOARD_BUDGET_HINT)
+    // ── Budget hint (F7 / ADR-0065 — honest EUR→USDT FX note) ────────────────
+    // Parse the budget_input to build a BudgetConversion; fall back to 200
+    // when blank / unparseable. The conversion is used only for display here —
+    // the engine uses the same BudgetConversion built at the seam in cockpit_live.rs.
+    let hint_text: String = {
+        use crate::widgets::num::{fmt_eur_plain, fmt_rate, fmt_usdt_plain};
+        use rust_decimal_macros::dec;
+        let eur: Decimal =
+            crate::leaderboard::state::parse_budget(budget_input).unwrap_or(dec!(200));
+        let fx = FxRate::config(eur_usd_rate);
+        let conv = BudgetConversion::new(eur, fx);
+        LEADERBOARD_BUDGET_HINT_FMT
+            .replace("{eur}", &fmt_eur_plain(conv.eur()))
+            .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
+            .replace("{rate}", &fmt_rate(conv.rate().rate()))
+            .replace("{source}", conv.rate().source())
+    };
+    let hint = Text::new(hint_text)
         .size(text::MICRO)
         .color(color::FG_3.current(mode));
 
@@ -328,6 +349,7 @@ mod tests {
                 &Symbol::new("XRPUSDT"),
                 "200",
                 LeaderboardLookback::OneMonth,
+                trading_core::DEFAULT_EUR_USD_RATE,
                 mode,
             );
         }

@@ -599,7 +599,14 @@ fn render_bakeoff_input(_model: &Cockpit) -> iced::Element<'_, Message> {
     // Leak the Symbol so the borrow satisfies the gallery `'static` contract
     // (test-only binary path — bounded leak, no production code follows this).
     let coin: &'static Symbol = Box::leak(Box::new(Symbol::new("XRPUSDT")));
-    bakeoff_input::view(coin, "200", LeaderboardLookback::OneMonth, ThemeMode::Dark)
+    // F7: pass DEFAULT_EUR_USD_RATE for the honest FX hint in the gallery.
+    bakeoff_input::view(
+        coin,
+        "200",
+        LeaderboardLookback::OneMonth,
+        trading_core::DEFAULT_EUR_USD_RATE,
+        ThemeMode::Dark,
+    )
 }
 
 fn render_strategy_chip(_model: &Cockpit) -> iced::Element<'_, Message> {

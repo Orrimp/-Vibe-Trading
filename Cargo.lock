@@ -7949,6 +7949,7 @@ name = "trading_core"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "risk",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",

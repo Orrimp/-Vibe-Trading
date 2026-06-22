@@ -12,9 +12,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use trading_core::{
-    BacktestMetrics, Bar, EquitySeries, FillView, JournalEntry, MarketHealth, Money, PnlSnapshot,
-    PositionView, Side, Signal, SignalView, StrategyEventKind, StrategyEventView, StrategyId,
-    StrategyLoadError, StrategyLoaded, StrategySwapped, Symbol, Tick, Timestamp, Usdt, Venue,
+    BacktestMetrics, Bar, DEFAULT_EUR_USD_RATE, EquitySeries, FillView, FxNote, JournalEntry,
+    MarketHealth, Money, PnlSnapshot, PositionView, Side, Signal, SignalView, StrategyEventKind,
+    StrategyEventView, StrategyId, StrategyLoadError, StrategyLoaded, StrategySwapped, Symbol,
+    Tick, Timestamp, Usdt, Venue,
 };
 
 use agent::ActivityEvent;
@@ -1172,6 +1173,27 @@ pub struct Cockpit {
     /// `None` on a new paper run without a budget (or on cockpit restart).
     /// ADR-0060 § D5 / F5 Live P/L framing.
     pub forward_budget: Option<Money<Usdt>>,
+
+    /// F7 — FX note for the forward run (ADR-0065).
+    ///
+    /// `Some(note)` when the forward run was launched with a euro budget that
+    /// was converted via a non-trivial `FxRate`. The Live screen and
+    /// Forward-plan render "€X ≈ $Y (at R EUR/USD, source as-of)" from this.
+    /// `None` → fall back to the old "FX not modelled" static label.
+    ///
+    /// Set alongside `forward_budget` by `Message::ForwardPaperTradeStarted`.
+    /// A `core`-typed [`FxNote`] so `cargo tree -p ui` is unchanged.
+    pub forward_fx: Option<FxNote>,
+
+    /// F7 — the resolved EUR/USD rate (ADR-0065 § D1).
+    ///
+    /// Captured from `AdvisorConfig::eur_usd_rate` at app-state construction (before
+    /// the config is moved into `RunHandles`) and stored here so all display surfaces
+    /// (leaderboard hint, forward-plan, live screen) use the same rate as the
+    /// budget-conversion seam. Defaults to `DEFAULT_EUR_USD_RATE` (`dec!(1.08)`).
+    ///
+    /// A UI-display constant — never read by the anchored CLI / scenario runner.
+    pub advisor_eur_usd_rate: Decimal,
 }
 
 impl std::fmt::Debug for Cockpit {
@@ -1241,7 +1263,9 @@ impl std::fmt::Debug for Cockpit {
             .field("activity_tape", &"<ActivityTape>")
             .field("equity_cache", &"<EquityCache>")
             .field("settings_active_tab", &self.settings_active_tab)
-            .field("forward_budget", &self.forward_budget);
+            .field("forward_budget", &self.forward_budget)
+            .field("forward_fx", &self.forward_fx)
+            .field("advisor_eur_usd_rate", &self.advisor_eur_usd_rate);
         dbg.finish()
     }
 }
@@ -1310,6 +1334,8 @@ impl Default for Cockpit {
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
             forward_budget: None,
+            forward_fx: None,
+            advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
         }
     }
 }
@@ -1430,6 +1456,8 @@ impl Cockpit {
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
             forward_budget: None,
+            forward_fx: None,
+            advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
         }
     }
 
@@ -2148,8 +2176,11 @@ pub enum Message {
     /// `budget=None`/`forward=None` paper runs (the legacy research/soak
     /// path) never emit this message, keeping those paths byte-identical.
     ///
+    /// The `Option<FxNote>` carries the EUR→USDT conversion provenance (F7 /
+    /// ADR-0065) — `None` for any path that does not go through the FX seam.
+    ///
     /// ADR-0060 § D5 / F5 Live P/L framing.
-    ForwardPaperTradeStarted(Money<Usdt>),
+    ForwardPaperTradeStarted(Money<Usdt>, Option<FxNote>),
 }
 
 /// lab-polish-round-2 R2 — parse SMA window text input.
@@ -3129,12 +3160,14 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Called by the 1 Hz purge tick subscription.
             model.activity_tape.purge(std::time::Instant::now());
         }
-        Message::ForwardPaperTradeStarted(budget) => {
+        Message::ForwardPaperTradeStarted(budget, fx_note) => {
             // F5 — store the forward-run budget so the Live screen can render
             // P/L = equity − budget.  Budget=None / forward=None paths never
             // emit this message; those runs leave forward_budget = None and
             // the Live screen falls back to raw equity display (pre-F5 behaviour).
+            // F7 (ADR-0065) — also store the FX note for the honest EUR display.
             model.forward_budget = Some(budget);
+            model.forward_fx = fx_note;
         }
     }
 }

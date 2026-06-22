@@ -452,6 +452,15 @@ fn main() -> Result<()> {
     #[cfg(feature = "live")]
     let boot_mode: agent::config::Mode = cfg.mode.clone();
 
+    // F7 — capture the advisor EUR/USD rate before cfg is moved into RunHandles.
+    // A UI-input config — never read by the anchored CLI / run_scenario.
+    // ADR-0065 § D1.
+    let advisor_eur_usd_rate: rust_decimal::Decimal = cfg
+        .advisor
+        .eur_usd_rate
+        .unwrap_or(trading_core::DEFAULT_EUR_USD_RATE);
+    let advisor_eur_usd_as_of: String = cfg.advisor.eur_usd_rate_as_of.clone().unwrap_or_default();
+
     // ── cockpit-activity-audit-ledger-producer v0.1.0 — aggregator sender ───────
     // Clone the tick-bus sender for the aggregator. The original `_tick_bus_sender`
     // stays alive so the broadcast channel remains open for the full process
@@ -697,6 +706,9 @@ fn main() -> Result<()> {
     cockpit.kill_switch = Some(trip);
     cockpit.current_screen = Screen::Live;
     cockpit.universe = universe_pairs.clone();
+    // F7 — seed the advisor EUR/USD rate into the Cockpit so display surfaces
+    // (leaderboard hint, forward-plan, live screen) use the same rate as the seam.
+    cockpit.advisor_eur_usd_rate = advisor_eur_usd_rate;
     if let Some(first) = universe_pairs.first() {
         cockpit.selected_symbol = Some(first.clone());
     }
@@ -807,6 +819,10 @@ fn main() -> Result<()> {
         narration_outcome_rx: Some(std::sync::Arc::new(std::sync::Mutex::new(Some(
             narration_outcome_rx_live,
         )))),
+        // F7 — advisor EUR/USD rate (ADR-0065). Captured from config before cfg was
+        // moved into RunHandles.
+        advisor_eur_usd_rate,
+        advisor_eur_usd_as_of,
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -1219,6 +1235,13 @@ struct AppState {
             std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>,
         >,
     >,
+
+    // F7 — advisor EUR/USD rate (ADR-0065). Captured from config before cfg is
+    // moved into RunHandles. Used at the ForwardPaperTradeStarted seam to build
+    // the BudgetConversion that hands the converted USDT budget to F4 and the
+    // FxNote to the display. A UI-input constant — never read by the anchored CLI.
+    advisor_eur_usd_rate: rust_decimal::Decimal,
+    advisor_eur_usd_as_of: String,
 }
 
 // ── Manual Clone for AppState ─────────────────────────────────────────────────
@@ -1279,6 +1302,9 @@ impl Clone for AppState {
             narration_request_tx: self.narration_request_tx.clone(),
             #[cfg(feature = "live")]
             narration_outcome_rx: self.narration_outcome_rx.clone(),
+            // F7 — advisor FX rate: plain-value copy.
+            advisor_eur_usd_rate: self.advisor_eur_usd_rate,
+            advisor_eur_usd_as_of: self.advisor_eur_usd_as_of.clone(),
         }
     }
 }
@@ -1424,17 +1450,41 @@ impl AppState {
         // comes from the SWAPPED loop (selected strategy / €200 capital), NOT the
         // default loop. The fake "No runtime re-launch is needed" comment is GONE.
         // ADR-0060 § D6 (launch-lifecycle amendment).
+        // F7 (ADR-0065) — EUR→USDT conversion seam. The 1:1 stamp
+        // `Money::<Usdt>::from_decimal(budget_decimal)` is replaced by a single
+        // `BudgetConversion` that the engine and the display share. The engine reads
+        // `conversion.usdt()`; the display reads the FxNote. One converted value,
+        // no drift (the ADR-0062 anti-drift discipline).
         #[cfg(feature = "live")]
-        let forward_paper_budget: Option<trading_core::Money<trading_core::Usdt>> = match &msg {
+        let forward_paper_budget: Option<(
+            trading_core::Money<trading_core::Usdt>,
+            Option<trading_core::FxNote>,
+        )> = match &msg {
             Message::BakeoffRunCompleted(Ok(mirror)) if mirror.crowned_row().is_some() => {
                 use rust_decimal_macros::dec;
-                let budget_decimal = self
+                let budget_eur = self
                     .cockpit
                     .leaderboard_screen_state
                     .budget_eur()
                     .unwrap_or(dec!(200));
-                let budget =
-                    trading_core::Money::<trading_core::Usdt>::from_decimal(budget_decimal);
+
+                // F7 seam: build FxRate from config-resolved rate, then BudgetConversion.
+                // The ONLY EUR→USDT multiply in the codebase (grep guard in T7 / core tests).
+                let fx = trading_core::FxRate::config(self.advisor_eur_usd_rate);
+                // If the operator supplied an as_of label, replace the empty one.
+                let fx = if self.advisor_eur_usd_as_of.is_empty() {
+                    fx
+                } else {
+                    trading_core::FxRate::new(
+                        self.advisor_eur_usd_rate,
+                        "config",
+                        self.advisor_eur_usd_as_of.as_str(),
+                    )
+                    .unwrap_or(fx)
+                };
+                let conversion = trading_core::BudgetConversion::new(budget_eur, fx);
+                let budget: trading_core::Money<trading_core::Usdt> = conversion.usdt();
+                let fx_note = Some(conversion.fx_note());
 
                 // Build ForwardRunConfig from core types only (StrategyId/Symbol/Money)
                 // so cargo tree -p ui stays unchanged — no ui → strategy edge.
@@ -1453,8 +1503,10 @@ impl AppState {
                                 info!(
                                     strategy = %row.strategy,
                                     coin = %mirror.coin,
-                                    budget = %budget_decimal,
-                                    "F5-LAUNCH: ForwardCommand::Launch sent to supervisor"
+                                    budget_eur = %budget_eur,
+                                    budget_usdt = %budget.amount(),
+                                    rate = %self.advisor_eur_usd_rate,
+                                    "F7/F5-LAUNCH: ForwardCommand::Launch sent (EUR→USDT converted)"
                                 );
                             }
                             Err(e) => {
@@ -1469,7 +1521,7 @@ impl AppState {
                     }
                 }
 
-                Some(budget)
+                Some((budget, fx_note))
             }
             _ => None,
         };
@@ -1675,14 +1727,17 @@ impl AppState {
             self.bakeoff_progress_rx = None;
         }
 
-        // F5 — emit ForwardPaperTradeStarted after bakeoff completes with a
-        // crowned row. This sets `cockpit.forward_budget` so the Live P/L block
-        // activates. `Task::done` re-enters `AppState::update` with the message,
-        // where `ui::state::update` handles `ForwardPaperTradeStarted` by setting
-        // `forward_budget = Some(budget)`. ADR-0060 § D5 / boot-config mechanism.
+        // F5/F7 — emit ForwardPaperTradeStarted after bakeoff completes with a
+        // crowned row. This sets `cockpit.forward_budget` (the USDT budget F4 caps
+        // against) and `cockpit.forward_fx` (the FX note for honest display) so the
+        // Live P/L block activates with the honest "€X ≈ $Y" label.
+        // `Task::done` re-enters `AppState::update` with the message, where
+        // `ui::state::update` handles `ForwardPaperTradeStarted` by setting
+        // `forward_budget = Some(budget)` and `forward_fx = fx_note`.
+        // ADR-0060 § D5 / ADR-0065 § D2 / boot-config mechanism.
         #[cfg(feature = "live")]
-        if let Some(budget) = forward_paper_budget {
-            return iced::Task::done(Message::ForwardPaperTradeStarted(budget));
+        if let Some((budget, fx_note)) = forward_paper_budget {
+            return iced::Task::done(Message::ForwardPaperTradeStarted(budget, fx_note));
         }
 
         // ── cockpit-activity-status-bar T-D-N8 — Lab Run activity handle ───────

@@ -33,14 +33,17 @@ use iced::widget::{Column, Container, Row, Text};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
+use trading_core::FxNote;
+
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    LIVE_FORWARD_BUDGET_LABEL, LIVE_FORWARD_DISCLAIMER, LIVE_FORWARD_FX_NOTE,
+    LIVE_FORWARD_BUDGET_LABEL, LIVE_FORWARD_DISCLAIMER, LIVE_FORWARD_FX_NOTE_FMT,
     LIVE_FORWARD_PNL_LABEL, LIVE_FORWARD_RUNNING_FMT, LIVE_HEADLINE, LIVE_LLM_SPEND_LABEL,
     LIVE_LLM_SPEND_PLACEHOLDER, LIVE_SESSION_RETURN_CAPTION, LIVE_SINCE_INCEPTION_CAPTION,
     LIVE_SYSTEM_HEALTH_LABEL,
 };
 use crate::theme::{ThemeMode, color, layout, space, text};
+use crate::widgets::num::{fmt_eur_plain, fmt_rate, fmt_usdt_plain};
 use crate::widgets::{agent_feed, equity_curve, kpi_strip, latency, positions};
 
 /// Render the Live screen body (R2.1 / R2.2).
@@ -126,10 +129,11 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     //
     // When `forward_budget` is `None` (legacy research / soak path), the
     // block is not rendered — pre-F5 byte-identical behaviour preserved.
+    // F7: thread the FX note from the Cockpit model into the P/L block.
     let forward_pnl_block: Option<crate::Element<'_>> = model
         .forward_budget
         .as_ref()
-        .map(|budget| build_forward_pnl_block(model, budget, mode));
+        .map(|budget| build_forward_pnl_block(model, budget, model.forward_fx.as_ref(), mode));
 
     // ── 2-column positions / activity row ───────────────────────────────────
     let bottom_row = Row::new()
@@ -166,11 +170,13 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 /// 1. Running-caption row (strategy id + "simulated budget" label).
 /// 2. P/L row: label "P/L" + value (coloured green / red + sign).
 ///    Budget row: label "Budget" + formatted budget amount.
-/// 3. FX note: "€200 ≈ 200 USDT — FX not modelled." (`LIVE_FORWARD_FX_NOTE`).
+/// 3. FX note (F7 / ADR-0065): "€X ≈ $Y (at R EUR/USD, source)" when `fx_note`
+///    is `Some`; otherwise a fallback from `DEFAULT_EUR_USD_RATE`.
 /// 4. Disclaimer (`LIVE_FORWARD_DISCLAIMER`).
 fn build_forward_pnl_block<'a>(
     model: &'a Cockpit,
     budget: &trading_core::Money<trading_core::Usdt>,
+    fx_note: Option<&FxNote>,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     use iced::widget::{Column, Row, Text};
@@ -255,7 +261,26 @@ fn build_forward_pnl_block<'a>(
         .push(budget_col);
 
     // ── FX note + disclaimer ──────────────────────────────────────────────────
-    let fx_note = Text::new(LIVE_FORWARD_FX_NOTE)
+    // F7 (ADR-0065) — the honest EUR→USDT note. Uses the FxNote from the forward
+    // run when present; falls back to a default from DEFAULT_EUR_USD_RATE when the
+    // run was launched without an FX note (legacy research / soak path).
+    let fx_note_text: String = if let Some(note) = fx_note {
+        LIVE_FORWARD_FX_NOTE_FMT
+            .replace("{eur}", &fmt_eur_plain(note.eur))
+            .replace("{usdt}", &fmt_usdt_plain(note.usdt))
+            .replace("{rate}", &fmt_rate(note.rate))
+            .replace("{source}", note.source.as_str())
+    } else {
+        use trading_core::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxRate};
+        let fx = FxRate::config(DEFAULT_EUR_USD_RATE);
+        let conv = BudgetConversion::new(budget.amount(), fx);
+        LIVE_FORWARD_FX_NOTE_FMT
+            .replace("{eur}", &fmt_eur_plain(conv.eur()))
+            .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
+            .replace("{rate}", &fmt_rate(conv.rate().rate()))
+            .replace("{source}", conv.rate().source())
+    };
+    let fx_note_widget = Text::new(fx_note_text)
         .size(text::SMALL)
         .color(color::FG_3.current(mode));
     let disclaimer = Text::new(LIVE_FORWARD_DISCLAIMER)
@@ -266,7 +291,7 @@ fn build_forward_pnl_block<'a>(
         .spacing(space::XS)
         .push(running_caption)
         .push(metric_row)
-        .push(fx_note)
+        .push(fx_note_widget)
         .push(disclaimer)
         .into()
 }

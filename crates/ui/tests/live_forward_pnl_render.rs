@@ -117,7 +117,8 @@ fn forward_paper_trade_started_sets_budget() {
         c.forward_budget.is_none(),
         "budget must be None on cold boot"
     );
-    update(&mut c, Message::ForwardPaperTradeStarted(budget));
+    // F7: pass None for the fx_note (legacy path — no FX note available).
+    update(&mut c, Message::ForwardPaperTradeStarted(budget, None));
     assert_eq!(
         c.forward_budget,
         Some(budget),

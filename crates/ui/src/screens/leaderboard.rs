@@ -115,8 +115,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // F3 guided input — the entry point to the whole journey: pick coin +
     // budget + lookback. Drives the next bake-off (the binary reads this state
     // to build the `BakeoffConfig`).
-    let guided_input =
-        crate::widgets::bakeoff_input::view(&st.coin, &st.budget_input, st.lookback, mode);
+    // F7: pass the advisor EUR/USD rate so the FX hint is honest.
+    let guided_input = crate::widgets::bakeoff_input::view(
+        &st.coin,
+        &st.budget_input,
+        st.lookback,
+        model.advisor_eur_usd_rate,
+        mode,
+    );
 
     // Budget-context line — carries the budget forward visually (the ranking
     // itself is budget-independent; this is shown for context per F3).

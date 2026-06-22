@@ -1617,7 +1617,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_BUDGET_PLACEHOLDER",
             LEADERBOARD_BUDGET_PLACEHOLDER,
         ),
-        ("LEADERBOARD_BUDGET_HINT", LEADERBOARD_BUDGET_HINT),
+        ("LEADERBOARD_BUDGET_HINT_FMT", LEADERBOARD_BUDGET_HINT_FMT),
         (
             "LEADERBOARD_BUDGET_CONTEXT_FMT",
             LEADERBOARD_BUDGET_CONTEXT_FMT,
@@ -1762,7 +1762,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT",
             FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT,
         ),
-        ("FORWARD_PLAN_BUDGET_LINE", FORWARD_PLAN_BUDGET_LINE),
+        ("FORWARD_PLAN_BUDGET_LINE_FMT", FORWARD_PLAN_BUDGET_LINE_FMT),
         (
             "FORWARD_PLAN_SIZING_CAPPED_NOTE",
             FORWARD_PLAN_SIZING_CAPPED_NOTE,
@@ -2115,7 +2115,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         // F5 — Forward paper-trade P/L framing (ADR-0060 § D5)
         ("LIVE_FORWARD_PNL_LABEL", LIVE_FORWARD_PNL_LABEL),
         ("LIVE_FORWARD_BUDGET_LABEL", LIVE_FORWARD_BUDGET_LABEL),
-        ("LIVE_FORWARD_FX_NOTE", LIVE_FORWARD_FX_NOTE),
+        ("LIVE_FORWARD_FX_NOTE_FMT", LIVE_FORWARD_FX_NOTE_FMT),
         ("LIVE_FORWARD_DISCLAIMER", LIVE_FORWARD_DISCLAIMER),
         ("LIVE_FORWARD_RUNNING_FMT", LIVE_FORWARD_RUNNING_FMT),
     ]
@@ -2437,9 +2437,13 @@ pub const LEADERBOARD_LOOKBACK_LABEL: &str = "Lookback";
 /// Placeholder in the empty budget field — shows the default the run uses.
 pub const LEADERBOARD_BUDGET_PLACEHOLDER: &str = "200";
 
-/// Helper under the budget field (product § D4): the €/USDT 1:1 modelling
-/// assumption, stated so the operator isn't misled about FX.
-pub const LEADERBOARD_BUDGET_HINT: &str = "\u{20ac}200 \u{2248} 200 USDT \u{2014} FX not modelled.";
+/// Helper under the budget field (F7 / ADR-0065): the honest EUR→USDT FX note.
+/// Placeholders: `{eur}` = euro amount (e.g. "200"), `{usdt}` = converted USDT
+/// amount (e.g. "216.00"), `{rate}` = EUR/USD rate (e.g. "1.08"),
+/// `{source}` = provenance label (e.g. "config").
+/// Example: "€200 ≈ $216.00 (at 1.08 EUR/USD, config)"
+pub const LEADERBOARD_BUDGET_HINT_FMT: &str =
+    "\u{20ac}{eur} \u{2248} ${usdt} (at {rate} EUR/USD, {source})";
 
 /// Budget-context header shown above the leaderboard once a budget is set
 /// (R: "ranking strategies for €200 in XRPUSDT"). `{budget}` / `{coin}` are
@@ -2711,9 +2715,13 @@ pub const FORWARD_PLAN_SIZING_LONG_FMT: &str = "It is already holding about {uni
 pub const FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT: &str = "Deploy the full \u{20ac}200 now \u{2014} about {units} units at the last close {close} \u{2014} \
      and hold for the horizon.";
 
-/// Budget line — the €200 ≈ 200 USDT modelling assumption + the hard cap (D4).
+/// Budget line — the honest EUR→USDT conversion + the hard cap (F7 / ADR-0065).
 /// Always shown so the operator sees the budget framing and the cap.
-pub const FORWARD_PLAN_BUDGET_LINE: &str = "\u{20ac}200 \u{2248} 200 USDT (FX not modelled). It never deploys more than \u{20ac}200 \u{2014} a hard cap.";
+/// Placeholders: `{eur}` = euro amount, `{usdt}` = converted USDT,
+/// `{rate}` = rate, `{source}` = provenance.
+/// The hard-cap clause ("It never deploys more than …") is preserved verbatim (R3).
+/// Example: "€200 ≈ $216.00 (at 1.08 EUR/USD, config). It never deploys more than €200 — a hard cap."
+pub const FORWARD_PLAN_BUDGET_LINE_FMT: &str = "\u{20ac}{eur} \u{2248} ${usdt} (at {rate} EUR/USD, {source}). It never deploys more than \u{20ac}{eur} \u{2014} a hard cap.";
 
 /// Appended when the F4 budget cap actually bound the projected units — so the
 /// operator knows the cap bit (shown only when `sizing_capped`).
@@ -2823,9 +2831,13 @@ pub const LIVE_FORWARD_PNL_LABEL: &str = "P/L";
 /// Label for the budget card — the starting capital of the forward run.
 pub const LIVE_FORWARD_BUDGET_LABEL: &str = "Budget";
 
-/// FX-gap disclaimer (product § D4) under the budget card.
-/// Unicode: € = U+20AC, ≈ = U+2248, — = U+2014
-pub const LIVE_FORWARD_FX_NOTE: &str = "\u{20ac}200 \u{2248} 200 USDT \u{2014} FX not modelled.";
+/// FX note under the budget card — the honest EUR→USDT conversion (F7 / ADR-0065).
+/// Unicode: € = U+20AC, ≈ = U+2248.
+/// Placeholders: `{eur}` = euro amount, `{usdt}` = converted USDT,
+/// `{rate}` = EUR/USD rate, `{source}` = provenance label.
+/// Example: "€200 ≈ $216.00 (at 1.08 EUR/USD, config)"
+pub const LIVE_FORWARD_FX_NOTE_FMT: &str =
+    "\u{20ac}{eur} \u{2248} ${usdt} (at {rate} EUR/USD, {source})";
 
 /// Persistent not-advice + simulated-budget disclaimer (product § D5).
 pub const LIVE_FORWARD_DISCLAIMER: &str = "Simulated paper budget. Not financial advice. \
