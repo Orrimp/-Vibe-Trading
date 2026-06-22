@@ -46,6 +46,29 @@ pub type BakeoffRunResult = Result<BakeoffReportMirror, SmolStr>;
 /// fallback. Binance-style symbol, resolved against the pinned hourly corpus.
 pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
 
+/// The advisor bake-off field: the 4 rule engines + the 2 F8 vote ensembles
+/// (ADR-0063). Buy-and-hold is appended by `run_bakeoff`. The cockpit opts into
+/// the ensembles HERE — `default_field()` stays unchanged so anchored paths are
+/// unaffected (the anchor-additive contract).
+fn advisor_field() -> Vec<trading_core::StrategyId> {
+    let mut field = backtest::BakeoffConfig::default_field();
+    field.extend(backtest::BakeoffConfig::default_ensemble_field());
+    field
+}
+
+/// The advisor robustness mode: the real moving-block bootstrap gate (ADR-0063
+/// § D4), seeded deterministically from the Lab seed's low 8 bytes. This opt-in
+/// ACTIVATES the gate on the advisor path — which has `write_report = false`, so
+/// it stays anchor-safe (`verify_anchors` 119/119). `default()` elsewhere stays
+/// `Skip`, so anchored CLI paths are byte-unchanged.
+fn advisor_robustness() -> backtest::RobustnessMode {
+    let s = crate::lab::defaults::LAB_DEFAULT_SEED;
+    backtest::RobustnessMode::Bootstrap {
+        paths: 1000,
+        seed: u64::from_le_bytes([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]]),
+    }
+}
+
 /// Build the default `BakeoffConfig` for the v0.1.0 trigger.
 ///
 /// Default coin (`BTCUSDT`) + lookback (`H1_2024`), the default strategy field
@@ -65,10 +88,10 @@ pub fn default_bakeoff_config() -> backtest::BakeoffConfig {
             symbol: Symbol::new(DEFAULT_BAKEOFF_COIN),
             range: backtest::engine::DateRange::H1_2024,
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
-            field: backtest::BakeoffConfig::default_field(),
+            field: advisor_field(),
         },
         data_source: backtest::engine::ScenarioDataSource::BinanceCache,
-        robustness: backtest::RobustnessMode::Skip,
+        robustness: advisor_robustness(),
     }
 }
 
@@ -98,10 +121,10 @@ pub fn bakeoff_config_from_state(
             symbol: st.coin.clone(),
             range: st.lookback.to_date_range(now_ms),
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
-            field: backtest::BakeoffConfig::default_field(),
+            field: advisor_field(),
         },
         data_source: backtest::engine::ScenarioDataSource::BinanceCache,
-        robustness: backtest::RobustnessMode::Skip,
+        robustness: advisor_robustness(),
     }
 }
 
@@ -182,10 +205,11 @@ mod tests {
     use super::*;
 
     /// The default config targets the default coin + H1 2024 over the four
-    /// rule engines, real Binance data, gate skipped (the v0.1.0 trigger
-    /// contract). Buy-and-hold is NOT in the field — `run_bakeoff` appends it.
+    /// rule engines + the two F8 vote ensembles, real Binance data, and the
+    /// real bootstrap robustness gate (ADR-0063 — the advisor opts in).
+    /// Buy-and-hold is NOT in the field — `run_bakeoff` appends it.
     #[test]
-    fn default_config_targets_default_coin_h1_binance_skip() {
+    fn default_config_targets_default_coin_h1_binance_bootstrap() {
         let cfg = default_bakeoff_config();
         assert_eq!(cfg.request.symbol.0.as_str(), DEFAULT_BAKEOFF_COIN);
         assert!(matches!(
@@ -196,13 +220,25 @@ mod tests {
             cfg.data_source,
             backtest::engine::ScenarioDataSource::BinanceCache
         ));
-        assert!(matches!(cfg.robustness, backtest::RobustnessMode::Skip));
-        assert_eq!(cfg.request.field.len(), 4, "the 4 rule engines");
         assert!(
-            !cfg.request
-                .field
-                .iter()
-                .any(|s| s.0.as_str() == "v0.buyhold"),
+            matches!(
+                cfg.robustness,
+                backtest::RobustnessMode::Bootstrap { paths: 1000, .. }
+            ),
+            "the advisor opts into the real bootstrap gate (ADR-0063)"
+        );
+        assert_eq!(
+            cfg.request.field.len(),
+            6,
+            "the 4 rule engines + the 2 F8 vote ensembles"
+        );
+        let ids: Vec<&str> = cfg.request.field.iter().map(|s| s.0.as_str()).collect();
+        assert!(
+            ids.contains(&"v0.8.vote.majority") && ids.contains(&"v0.8.vote.unanimous"),
+            "both vote ensembles must be in the live field; got {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"v0.buyhold"),
             "buy-and-hold must NOT be in the field — run_bakeoff appends it"
         );
     }
@@ -236,12 +272,19 @@ mod tests {
             }
             other => panic!("OneMonth must map to a Custom window, got {other:?}"),
         }
-        // Field / seed / source / gate are unchanged from the default contract.
-        assert_eq!(cfg.request.field.len(), 4);
+        // Field / seed / source / gate match the default advisor contract.
+        assert_eq!(
+            cfg.request.field.len(),
+            6,
+            "the 4 rule engines + the 2 F8 vote ensembles"
+        );
         assert!(matches!(
             cfg.data_source,
             backtest::engine::ScenarioDataSource::BinanceCache
         ));
-        assert!(matches!(cfg.robustness, backtest::RobustnessMode::Skip));
+        assert!(matches!(
+            cfg.robustness,
+            backtest::RobustnessMode::Bootstrap { paths: 1000, .. }
+        ));
     }
 }

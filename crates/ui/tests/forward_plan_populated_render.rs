@@ -339,3 +339,110 @@ fn forward_plan_rsi_reversion_paints_faithful_rules() {
          PNG: /tmp/forward_plan_rsi_render.png"
     );
 }
+
+// ── F8 ensemble forward-plan render guard (advisor-ensemble, ADR-0063) ────────
+//
+// When the crowned pick is an ensemble (signal vote), the forward plan must
+// describe the VOTE faithfully — the vote-method headline rule (an IF/THEN
+// line, so it paints the conditional ACCENT like the singles) + the live tally
+// + the honest caveat — NOT a fabricated single-indicator rule. The buy-and-hold
+// degenerate plan is the negative control (same harness, no IF/THEN accent).
+
+/// **The F8 ensemble-plan render guard.** A populated ENSEMBLE `ForwardPlanView`
+/// (the `v0.8.vote.majority` 2-of-3 vote, currently LONG) MUST paint, in the
+/// cockpit Forward-plan screen:
+/// - `ACCENT` teal in the RULES band (the vote rule's IF/THEN keywords — the
+///   conditional structure of the vote rendered, NOT a single-indicator rule);
+/// - a healthy amount of foreground text (the framing + the stance + the vote
+///   rule + tally + caveat + sizing + horizon + disclaimers drew).
+///
+/// Writes the operator-facing PNG to `/tmp/forward_f8_ensemble_plan_render.png`.
+#[test]
+fn forward_plan_f8_ensemble_paints_vote_rule_and_tally() {
+    let view = ui::fixtures::fake_forward_plan_ensemble();
+    assert!(view.is_ensemble(), "the fixture must be an ensemble plan");
+    assert!(
+        !view.is_buy_and_hold(),
+        "an ensemble is not the buy-and-hold degenerate plan"
+    );
+
+    let cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(view));
+    let (w, h, rgba) = render_forward_plan_rgba(cockpit);
+
+    // Operator-facing deliverable (memory: verify UI at the render layer).
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/forward_f8_ensemble_plan_render.png");
+    }
+
+    let rules_accent = rules_band_accent(w, &rgba);
+    let fg = foreground_pixels(w, h, &rgba);
+
+    // The vote rule's IF/THEN keywords paint ACCENT teal in the RULES band —
+    // proof the ensemble's conditional vote structure rendered (faithful, not a
+    // fabricated single rule).
+    assert!(
+        rules_accent > 60,
+        "the ensemble vote rule's IF/THEN keywords must paint ACCENT teal in the \
+         RULES band (expected >60 teal px, got {rules_accent}). If this fails the \
+         ensemble plan did not render the conditional vote structure. \
+         PNG: /tmp/forward_f8_ensemble_plan_render.png"
+    );
+    // The full ensemble plan (framing + stance + vote rule + tally + caveat +
+    // sizing + horizon + disclaimers) is a lot of text.
+    assert!(
+        fg > 7000,
+        "the ensemble plan must paint a lot of foreground text (expected >7000 \
+         px, got {fg}). If this is low the screen rendered a blank/empty pane \
+         despite Ready data. PNG: /tmp/forward_f8_ensemble_plan_render.png"
+    );
+}
+
+/// **F8 negative control — the buy-and-hold degenerate plan.** The SAME harness
+/// with `fake_forward_plan_buy_and_hold()` paints a substantial plan (it IS the
+/// same KIND of object) but STRICTLY LESS `ACCENT` teal in the RULES band than
+/// the ensemble plan (no IF/THEN vote rule — buy-and-hold has no consensus / no
+/// re-evaluation). Proves the ensemble guard genuinely discriminates the
+/// conditional vote plan from the degenerate one (it is not satisfied by chrome
+/// / the framing banner / the disclaimer). Writes the buy-and-hold negative
+/// control PNG to `/tmp/forward_f8_ensemble_plan_buyhold_control.png`.
+#[test]
+fn forward_plan_f8_buy_and_hold_is_the_negative_control() {
+    let bh = ui::fixtures::fake_forward_plan_buy_and_hold();
+    assert!(
+        bh.is_buy_and_hold(),
+        "the negative-control fixture is buy-and-hold"
+    );
+    let ensemble = ui::fixtures::fake_forward_plan_ensemble();
+
+    let bh_cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(bh));
+    let ens_cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(ensemble));
+
+    let (wb, hb, rb) = render_forward_plan_rgba(bh_cockpit);
+    let (we, _he, re) = render_forward_plan_rgba(ens_cockpit);
+
+    if let Some(img) = image::RgbaImage::from_raw(wb, hb, rb.clone()) {
+        let _ = img.save("/tmp/forward_f8_ensemble_plan_buyhold_control.png");
+    }
+
+    // It IS the same kind of object — it paints a substantial plan.
+    let fg_bh = foreground_pixels(wb, hb, &rb);
+    assert!(
+        fg_bh > 4000,
+        "the buy-and-hold plan must still paint a substantial plan (expected \
+         >4000 foreground px, got {fg_bh}) — it is the same KIND of object. \
+         PNG: /tmp/forward_f8_ensemble_plan_buyhold_control.png"
+    );
+
+    // But it has NO IF/THEN vote rule — strictly less RULES-band accent than the
+    // ensemble plan. This is the anti-tautology discriminator.
+    let rules_accent_bh = rules_band_accent(wb, &rb);
+    let rules_accent_ens = rules_band_accent(we, &re);
+    assert!(
+        rules_accent_ens > rules_accent_bh + 40,
+        "the ensemble plan must paint strictly more IF/THEN accent in the RULES \
+         band than the buy-and-hold plan (ensemble {rules_accent_ens} vs \
+         buy-and-hold {rules_accent_bh}). If they are equal the ensemble guard \
+         is a tautology (the vote rule is not discriminating). \
+         PNG: /tmp/forward_f8_ensemble_plan_buyhold_control.png"
+    );
+}

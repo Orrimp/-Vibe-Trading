@@ -134,6 +134,41 @@ pub enum PlanRuleKind {
     },
     /// Buy-and-hold — buy once, hold forever, no sell trigger.
     BuyAndHold,
+    /// F8 signal-vote ensemble (ADR-0063 § D2).
+    ///
+    /// A multi-member vote ensemble: N member strategies + a vote arbitration
+    /// method.  The `ui` renders this as "N-of-M consensus" copy.
+    ///
+    /// Note: members are NOT recursively embedded here (that would break `Copy`).
+    /// The `ui` receives `method` + `member_count` to generate concise copy.
+    /// Full member detail is available from `strategy::EnsembleStrategy::describe_plan`
+    /// on the agent side if needed for richer rendering (v0.2 extension point).
+    Ensemble {
+        /// Vote arbitration method.
+        method: PlanVoteMethod,
+        /// Number of member strategies.
+        member_count: u32,
+    },
+}
+
+/// F8 — vote method for the `PlanRuleKind::Ensemble` variant (ADR-0063 § D2).
+///
+/// Mirrors `strategy::PlanVoteMethod` but is redefined here so `ui` never gains
+/// a direct `strategy` dependency (same mirror discipline as `PlanStance`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanVoteMethod {
+    /// Long iff ≥ k of n warmed members agree Long.
+    Majority {
+        /// Minimum number of Long votes required.
+        k: u32,
+        /// Total number of members.
+        n: u32,
+    },
+    /// Long iff all n warmed members agree Long.
+    Unanimous {
+        /// Total number of members.
+        n: u32,
+    },
 }
 
 /// F6 — the `core`-typed plan emitted by the agent supervisor after a

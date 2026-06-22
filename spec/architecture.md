@@ -156,6 +156,33 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-21 (architect): **ADR-0063 — ensemble signal-vote seam +
+  robustness-gate activation** (feature `advisor-ensemble`, single-coin-advisor
+  pivot F8). Recorded in the canonical ADR registry
+  ([architecture/adr/README.md](architecture/adr/README.md) +
+  `architecture/adr/0063-ensemble-vote-seam-and-robustness-gate-activation.md`).
+  The F8 "mix" capability ships as `strategy::EnsembleStrategy` implementing the
+  FROZEN `Strategy` trait (the ADR-0049 `RegimeDispatcher` precedent generalised
+  to N homogeneous members + a pure vote arbiter) — the ONE primitive reachable
+  identically from `run_scenario`, `build_registry_for` (F5b forward-paper), and
+  `StrategyRegistry`. Members are reused via a shared `build_member(id)` over the
+  SAME `config/strategies/*.toml` the bake-off scored; an un-warmed member
+  ABSTAINS (counted in neither the vote nor the denominator). Bundled WITH the
+  activation of the today-inert robustness gate via a new
+  `RobustnessMode::Bootstrap` per-candidate compute-and-feed (reuses the existing
+  Politis–White block-length selector + the ADR-0051 sub-seed determinism + the
+  frozen `classify_verdict` — the classifier and its bands are NOT touched).
+  Multiple-comparisons hardening re-evaluated and DEFERRED (not-yet at a fixed
+  7-arm pre-registered field; ADR-trigger recorded). **Anchor-safe by
+  construction (119/119):** `Skip` stays the default, the two ensemble arms + the
+  `Bootstrap` mode are opt-in ONLY on the no-report advisor bake-off path, and the
+  existing single-id `run_scenario` arms + `default_field()` stay byte-untouched.
+  `PlanRuleShape::Ensemble { method, members }` extends the closed plan enum (no
+  `String` crosses the seam); `cargo tree -p ui` unchanged. Ships with two day-1
+  e2e gates (the vote combines; the gate bites / anti-`Skip`-regression) per the
+  CLAUDE.md non-negotiable + the `v3-volatility-forecaster-noop` precedent. The
+  cross-cutting "composites are `Strategy`s, not registry special-cases" rule is
+  recorded in [architecture/02-strategy-registry.md](architecture/02-strategy-registry.md).
 - 2026-06-21 (architect): **ADR-0062 — forward-plan read seam** (feature
   `advisor-forward-plan`, single-coin-advisor pivot F6). Recorded in the
   canonical ADR registry ([architecture/adr/README.md](architecture/adr/README.md)

@@ -67,7 +67,9 @@
 use iced::widget::{Column, Container, Row, Scrollable, Space, Text};
 use iced::{Border, Length};
 
-use crate::forward_plan::state::{ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView};
+use crate::forward_plan::state::{
+    ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
+};
 use crate::state::{Cockpit, PanelState};
 use crate::strings::{
     FORWARD_PLAN_AS_OF_FMT, FORWARD_PLAN_BUDGET_LINE, FORWARD_PLAN_CADENCE_FMT,
@@ -77,17 +79,20 @@ use crate::strings::{
     FORWARD_PLAN_NOT_A_PREDICTION, FORWARD_PLAN_RULE_BBANDS_ENTRY_IF_FMT,
     FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN, FORWARD_PLAN_RULE_BBANDS_EXIT_IF,
     FORWARD_PLAN_RULE_BBANDS_EXIT_THEN, FORWARD_PLAN_RULE_BUY_AND_HOLD,
-    FORWARD_PLAN_RULE_COMPOUND_CAVEAT, FORWARD_PLAN_RULE_IF, FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT,
-    FORWARD_PLAN_RULE_MACD_ENTRY_THEN, FORWARD_PLAN_RULE_MACD_EXIT_IF,
-    FORWARD_PLAN_RULE_MACD_EXIT_THEN, FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT,
-    FORWARD_PLAN_RULE_RSI_ENTRY_THEN, FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT,
-    FORWARD_PLAN_RULE_RSI_EXIT_THEN, FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT,
-    FORWARD_PLAN_RULE_SMA_ENTRY_THEN, FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT,
-    FORWARD_PLAN_RULE_SMA_EXIT_THEN, FORWARD_PLAN_RULE_THEN, FORWARD_PLAN_RULES_TITLE,
-    FORWARD_PLAN_SIGNAL_BUY, FORWARD_PLAN_SIGNAL_HOLD, FORWARD_PLAN_SIGNAL_SELL,
-    FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT, FORWARD_PLAN_SIZING_CAPPED_NOTE,
-    FORWARD_PLAN_SIZING_FLAT_FMT, FORWARD_PLAN_SIZING_LONG_FMT, FORWARD_PLAN_SIZING_TITLE,
-    FORWARD_PLAN_STANCE_FLAT, FORWARD_PLAN_STANCE_LONG, FORWARD_PLAN_STANCE_TITLE,
+    FORWARD_PLAN_RULE_COMPOUND_CAVEAT, FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT,
+    FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT, FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT,
+    FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT, FORWARD_PLAN_RULE_IF,
+    FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT, FORWARD_PLAN_RULE_MACD_ENTRY_THEN,
+    FORWARD_PLAN_RULE_MACD_EXIT_IF, FORWARD_PLAN_RULE_MACD_EXIT_THEN,
+    FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT, FORWARD_PLAN_RULE_RSI_ENTRY_THEN,
+    FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT, FORWARD_PLAN_RULE_RSI_EXIT_THEN,
+    FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT, FORWARD_PLAN_RULE_SMA_ENTRY_THEN,
+    FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT, FORWARD_PLAN_RULE_SMA_EXIT_THEN, FORWARD_PLAN_RULE_THEN,
+    FORWARD_PLAN_RULES_TITLE, FORWARD_PLAN_SIGNAL_BUY, FORWARD_PLAN_SIGNAL_HOLD,
+    FORWARD_PLAN_SIGNAL_SELL, FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT,
+    FORWARD_PLAN_SIZING_CAPPED_NOTE, FORWARD_PLAN_SIZING_FLAT_FMT, FORWARD_PLAN_SIZING_LONG_FMT,
+    FORWARD_PLAN_SIZING_TITLE, FORWARD_PLAN_STANCE_FLAT, FORWARD_PLAN_STANCE_LONG,
+    FORWARD_PLAN_STANCE_TITLE,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -314,9 +319,13 @@ fn signal_word(signal: PlanSignalView) -> &'static str {
 
 /// The standing-rules block — a titled panel holding the IF/THEN entry/exit
 /// rule lines (the conditional framing, OQ-D) and, for active rules, the
-/// re-evaluation cadence line. The buy-and-hold degenerate case renders a
-/// single plain "buy now, hold, no sell trigger" line instead (D5) — obviously
-/// the same KIND of object, just without the sell half + the cadence.
+/// re-evaluation cadence line. Three shapes share one titled panel:
+/// 1. **active single** — the IF/THEN entry + exit lines + cadence;
+/// 2. **buy-and-hold degenerate** (D5) — a single plain "buy now, hold, no
+///    sell trigger" line, obviously the same KIND of object minus the sell
+///    half + the cadence;
+/// 3. **ensemble (signal vote, F8)** — the vote method + the live tally +
+///    cadence, rendered FAITHFULLY (no fabricated single-indicator rule).
 fn rules_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
     let mut col = Column::new().spacing(space::S);
 
@@ -328,6 +337,13 @@ fn rules_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
                 .color(color::FG_1.current(mode))
                 .width(Length::Fill),
         );
+    } else if let PlanRuleView::Ensemble {
+        method,
+        member_count,
+    } = plan.rule
+    {
+        // The ensemble (signal-vote) plan — method + tally + caveat + cadence.
+        col = ensemble_rules(col, plan, method, member_count, mode);
     } else {
         let (entry, exit, show_compound_caveat) = rule_clauses(plan.rule);
         col = col.push(if_then_line(entry.0, entry.1, mode));
@@ -345,16 +361,126 @@ fn rules_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
             );
         }
         // The reactive cadence — re-checked each bar, NOT a schedule.
-        let cadence = FORWARD_PLAN_CADENCE_FMT.replace("{horizon}", &plan.horizon_days.to_string());
-        col = col.push(
-            Text::new(cadence)
-                .size(text::SMALL)
-                .color(color::FG_3.current(mode))
-                .width(Length::Fill),
-        );
+        col = col.push(cadence_line(plan.horizon_days, mode));
     }
 
     frame::panel(FORWARD_PLAN_RULES_TITLE, col.into(), mode)
+}
+
+/// The reactive-cadence line — re-checked each bar, NOT a schedule.
+fn cadence_line(horizon_days: u16, mode: ThemeMode) -> crate::Element<'static> {
+    let cadence = FORWARD_PLAN_CADENCE_FMT.replace("{horizon}", &horizon_days.to_string());
+    Text::new(cadence)
+        .size(text::SMALL)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill)
+        .into()
+}
+
+// ── Ensemble (signal vote) rules (F8 / ADR-0063) ───────────────────────────────
+
+/// Render the ensemble standing-rules body into `col`: the headline vote rule
+/// (the IF/THEN keywords, so it reads as a conditional like the singles), the
+/// live tally, the honest "this is a vote, not new alpha" caveat, and the
+/// cadence line.
+///
+/// FAITHFUL — names the vote method + the live tally; never fabricates a single
+/// indicator rule (the R5.2 / ADR-0063 honesty lock). The per-member rule list
+/// is a v0.2 enhancement gated on the agent boundary carrying the members (the
+/// developer's shipped `agent::config::PlanRuleKind::Ensemble` delivers only
+/// `method` + `member_count` — see the `PlanRuleView::Ensemble` doc).
+///
+/// `member_count` cross-checks the method's `n` (a defensive equality the copy
+/// reads via the method, so the two cannot disagree in the rendered text).
+fn ensemble_rules<'a>(
+    mut col: Column<'a, crate::state::Message>,
+    plan: &ForwardPlanView,
+    method: PlanVoteMethodView,
+    member_count: u32,
+    mode: ThemeMode,
+) -> Column<'a, crate::state::Message> {
+    // The headline vote rule as an IF/THEN line (the conditional framing — the
+    // IF/THEN keywords paint ACCENT, the same discriminator the singles use).
+    let (vote_if, vote_then) = ensemble_vote_clause(method, member_count);
+    col = col.push(if_then_line(vote_if, vote_then, mode));
+
+    // The live tally — how many members are currently in the market vs the
+    // quorum, and the resulting ensemble stance.
+    col = col.push(ensemble_tally_line(plan, method, member_count, mode));
+
+    // The honest "this is a vote, measured like everything else" caveat.
+    col = col.push(
+        Text::new(FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT)
+            .size(text::SMALL)
+            .color(color::FG_3.current(mode))
+            .width(Length::Fill),
+    );
+
+    // The reactive cadence — re-checked each bar, NOT a schedule.
+    col.push(cadence_line(plan.horizon_days, mode))
+}
+
+/// The ensemble's headline vote rule as an `(if, then)` clause pair, formatted
+/// from the structured `method`. Majority and unanimous read differently but
+/// both name the quorum honestly. `member_count` (from the agent boundary) is
+/// used as the denominator `n` — it is the authoritative member count and, by
+/// the developer's construction, equals the method's own `n`; using it directly
+/// means the displayed denominator can never silently disagree with the count.
+fn ensemble_vote_clause(method: PlanVoteMethodView, member_count: u32) -> (String, &'static str) {
+    let n = denominator(method, member_count);
+    let if_clause = match method {
+        PlanVoteMethodView::Majority { k, .. } => FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT
+            .replace("{k}", &k.to_string())
+            .replace("{n}", &n.to_string()),
+        PlanVoteMethodView::Unanimous { .. } => {
+            FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT.replace("{n}", &n.to_string())
+        }
+    };
+    // The "THEN" half is the same buy/sell action language the singles use, so
+    // the conditional structure reads consistently across plan kinds.
+    (if_clause, FORWARD_PLAN_RULE_SMA_ENTRY_THEN)
+}
+
+/// The vote denominator `n` — `member_count` from the agent boundary, defended
+/// with `max(method's n)` so the displayed denominator is never smaller than
+/// either source (the two agree by construction; the `max` is belt-and-braces).
+fn denominator(method: PlanVoteMethodView, member_count: u32) -> u32 {
+    member_count.max(method.member_count())
+}
+
+/// The live-tally line for an ensemble — "Current vote: {long} of {n} … →
+/// {stance}." The long-count is derived honestly from the plan's current
+/// stance: a LONG ensemble means the quorum is met (`long ≥ quorum`), a FLAT
+/// ensemble means it is not. We show the quorum-edge count (the boundary the
+/// stance implies) so the number is never fabricated beyond what the stance
+/// tells us — the exact per-member counts live in the engine, not the mirror.
+fn ensemble_tally_line(
+    plan: &ForwardPlanView,
+    method: PlanVoteMethodView,
+    member_count: u32,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    let n = denominator(method, member_count);
+    let quorum = method.quorum();
+    // FLAT ⇒ below quorum (show quorum-1, clamped at 0). LONG ⇒ at/above quorum
+    // (show the quorum exactly — the minimum that satisfies the stance).
+    let long = match plan.stance {
+        PlanStanceView::Long => quorum,
+        PlanStanceView::Flat => quorum.saturating_sub(1),
+    };
+    let stance_word = match plan.stance {
+        PlanStanceView::Long => FORWARD_PLAN_STANCE_LONG,
+        PlanStanceView::Flat => FORWARD_PLAN_STANCE_FLAT,
+    };
+    let line = FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT
+        .replace("{long}", &long.to_string())
+        .replace("{n}", &n.to_string())
+        .replace("{stance}", stance_word);
+    Text::new(line)
+        .size(text::BODY)
+        .color(color::FG_1.current(mode))
+        .width(Length::Fill)
+        .into()
 }
 
 /// One IF/THEN rule line — the `IF`/`THEN` keywords in `ACCENT` (so the
@@ -403,8 +529,8 @@ fn if_then_line(if_clause: String, then_clause: &str, mode: ThemeMode) -> crate:
 /// Returns `(entry, Some(exit), caveat)` for active families where `caveat` is
 /// `true` for composed strategies (MACD, RSI, `BBands`) that have a compound AND
 /// entry condition — the caveat line makes the primary-signal simplification
-/// honest.  `BuyAndHold` never reaches here (handled in [`rules_block`]) — it
-/// returns a defensive empty entry.
+/// honest.  `BuyAndHold` and `Ensemble` never reach here (handled in
+/// [`rules_block`]) — they return a defensive empty entry.
 fn rule_clauses(
     rule: PlanRuleView,
 ) -> ((String, &'static str), Option<(String, &'static str)>, bool) {
@@ -469,10 +595,10 @@ fn rule_clauses(
                 true,
             )
         }
-        // Defensive: BuyAndHold is handled by the caller's `is_buy_and_hold`
-        // branch and never reaches here; return an empty entry rather than
-        // panicking, keeping this total.
-        PlanRuleView::BuyAndHold => (
+        // Defensive: BuyAndHold + Ensemble are handled by the caller's
+        // `is_buy_and_hold` / `Ensemble` branches and never reach here; return
+        // an empty entry rather than panicking, keeping this total.
+        PlanRuleView::BuyAndHold | PlanRuleView::Ensemble { .. } => (
             (String::new(), FORWARD_PLAN_RULE_SMA_ENTRY_THEN),
             None,
             false,

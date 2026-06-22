@@ -72,6 +72,59 @@ pub enum PlanSignalView {
     Hold,
 }
 
+/// The vote method of an ensemble candidate — mirrored from
+/// `agent::config::PlanVoteMethod` (itself a mirror of the closed
+/// `strategy::PlanVoteMethod`, ADR-0063 § D3) into a closed `ui` enum.
+///
+/// **Reconciliation note (developer ‖ ui-designer parallel) — RECONCILED:**
+/// the developer's canonical `strategy::PlanVoteMethod` (`crates/strategy/
+/// src/plan.rs:82`) uses **`u32`** for `k`/`n` (NOT `usize` as the ADR § D1
+/// prose said) — their doc rationale: "Field types use `u32` (not `usize`)
+/// so the type stays `Copy + Eq` and crosses the `agent`→`ui` boundary
+/// without `Decimal` or lifetime issues." This `ui` mirror matches the
+/// **shipped `u32`**, the same way the existing `PlanRuleView` length fields
+/// are `u32` while the engine carries `usize` (the `agent` boundary narrows
+/// `usize` → `u32`). If a name drifts at integration, the single
+/// [`super::adapter`] `vote_method_view` mapping is the only edit site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanVoteMethodView {
+    /// Majority vote — the ensemble holds LONG when at least `k` of `n` warmed
+    /// members are LONG (e.g. ≥ 2 of 3). `k < n`.
+    Majority {
+        /// The quorum threshold — how many members must agree LONG.
+        k: u32,
+        /// The membership count — the total number of voting members.
+        n: u32,
+    },
+    /// Unanimous vote — the ensemble holds LONG only when ALL `n` warmed
+    /// members agree LONG (the maximally-conservative consensus).
+    Unanimous {
+        /// The membership count — all `n` must agree.
+        n: u32,
+    },
+}
+
+impl PlanVoteMethodView {
+    /// The membership count `n` — used by the copy ("…of {n}…") and to render
+    /// the live-tally denominator.
+    #[must_use]
+    pub fn member_count(self) -> u32 {
+        match self {
+            PlanVoteMethodView::Majority { n, .. } | PlanVoteMethodView::Unanimous { n } => n,
+        }
+    }
+
+    /// The quorum threshold — how many members must agree LONG for the ensemble
+    /// to hold. For `Unanimous` this is `n` (all members).
+    #[must_use]
+    pub fn quorum(self) -> u32 {
+        match self {
+            PlanVoteMethodView::Majority { k, .. } => k,
+            PlanVoteMethodView::Unanimous { n } => n,
+        }
+    }
+}
+
 /// The standing entry/exit RULE FAMILY — mirrored from
 /// `agent::config::PlanRuleKind` (itself a mirror of the
 /// `strategy::PlanRuleShape` the engine emits, ADR-0062 § D1) into a closed
@@ -86,6 +139,11 @@ pub enum PlanSignalView {
 /// by `build_registry_for` from `config/strategies/*.toml`. The exit
 /// semantics for RSI and Bollinger are flip-to-false (the entry condition
 /// clearing), NOT a reverse-threshold cross.
+///
+/// The enum stays `Copy` — `Ensemble` carries only `method` + a `member_count`
+/// scalar (NOT a `Vec` of member rules), mirroring the developer's shipped
+/// `agent::config::PlanRuleKind::Ensemble` shape (see [`Ensemble`] for the
+/// reconciliation note).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlanRuleView {
     /// SMA crossover — buys when the fast SMA crosses above the slow SMA,
@@ -130,6 +188,32 @@ pub enum PlanRuleView {
     /// Buy-and-hold — buy once and hold the whole horizon; there is no sell
     /// trigger and no re-evaluation (the degenerate plan, D5).
     BuyAndHold,
+    /// Ensemble (signal vote, F8 / ADR-0063) — the candidate is a deterministic
+    /// combination of its members' BUY/SELL signals. Holds LONG when the
+    /// `method`'s quorum of `member_count` warmed members agree LONG; goes flat
+    /// when the consensus flips. The screen renders the method + member count +
+    /// the live tally as FAITHFUL copy — NOT a fabricated single rule.
+    ///
+    /// **Reconciliation note (developer ‖ ui-designer parallel) — RECONCILED to
+    /// the shipped agent shape:** ADR-0063 § D3 originally specified
+    /// `members: Vec<PlanRuleShape>` at the agent boundary, but the developer's
+    /// shipped `agent::config::PlanRuleKind::Ensemble`
+    /// (`crates/agent/src/config.rs:146`) carries `{ method: PlanVoteMethod,
+    /// member_count: u32 }` instead — they chose a `Copy`-preserving scalar
+    /// `member_count` over a recursive `Vec` (their doc: "members are NOT
+    /// recursively embedded here (that would break `Copy`) … full member detail
+    /// is available from `strategy::EnsembleStrategy::describe_plan` on the
+    /// agent side if needed for richer rendering (v0.2 extension point)"). This
+    /// `ui` mirror matches the **shipped agent shape** field-for-field, so the
+    /// plan renders the vote faithfully (method + count + tally) without
+    /// enumerating each member's own rule — the per-member rule list is a
+    /// v0.2 enhancement gated on the agent boundary carrying the members.
+    Ensemble {
+        /// The vote method (majority `k`-of-`n` / unanimous `n`-of-`n`).
+        method: PlanVoteMethodView,
+        /// The number of member strategies participating in the vote.
+        member_count: u32,
+    },
 }
 
 impl PlanRuleView {
@@ -139,6 +223,13 @@ impl PlanRuleView {
     #[must_use]
     pub fn is_buy_and_hold(self) -> bool {
         matches!(self, PlanRuleView::BuyAndHold)
+    }
+
+    /// `true` for an ensemble (signal-vote) rule — the screen renders the
+    /// method + member count + live tally instead of a single IF/THEN family.
+    #[must_use]
+    pub fn is_ensemble(self) -> bool {
+        matches!(self, PlanRuleView::Ensemble { .. })
     }
 }
 
@@ -202,6 +293,14 @@ impl ForwardPlanView {
     #[must_use]
     pub fn is_buy_and_hold(&self) -> bool {
         self.rule.is_buy_and_hold()
+    }
+
+    /// `true` when the crowned pick is an ensemble (signal vote) — convenience
+    /// for the screen (renders the vote method + members + live tally instead
+    /// of a single IF/THEN family).
+    #[must_use]
+    pub fn is_ensemble(&self) -> bool {
+        self.rule.is_ensemble()
     }
 }
 
@@ -333,5 +432,32 @@ mod tests {
             .is_buy_and_hold(),
             "an active rule is not buy-and-hold"
         );
+    }
+
+    #[test]
+    fn ensemble_view_is_flagged_and_not_buy_and_hold() {
+        let rule = PlanRuleView::Ensemble {
+            method: PlanVoteMethodView::Majority { k: 2, n: 3 },
+            member_count: 3,
+        };
+        assert!(rule.is_ensemble(), "Ensemble rule → ensemble plan");
+        assert!(
+            !rule.is_buy_and_hold(),
+            "an ensemble is not the buy-and-hold degenerate plan"
+        );
+        let mut v = active_view();
+        v.rule = rule;
+        assert!(v.is_ensemble(), "ForwardPlanView delegates is_ensemble");
+        assert!(!v.is_buy_and_hold());
+    }
+
+    #[test]
+    fn vote_method_view_quorum_and_member_count() {
+        let maj = PlanVoteMethodView::Majority { k: 2, n: 3 };
+        assert_eq!(maj.quorum(), 2);
+        assert_eq!(maj.member_count(), 3);
+        let unan = PlanVoteMethodView::Unanimous { n: 4 };
+        assert_eq!(unan.quorum(), 4, "unanimous quorum is n (all members)");
+        assert_eq!(unan.member_count(), 4);
     }
 }

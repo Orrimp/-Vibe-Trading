@@ -63,8 +63,9 @@ use crate::strings::{
     LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN, LEADERBOARD_COL_SHARPE,
     LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES, LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
     LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT,
-    LEADERBOARD_ERROR_PREFIX, LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE,
-    LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
+    LEADERBOARD_ENSEMBLE_MAJORITY_LABEL, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
+    LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_FRAGILE_TAG,
+    LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
     LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
     LEADERBOARD_REASON_ALL_FRAGILE, LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE,
     LEADERBOARD_REASON_BENCHMARK_UNDEFEATED, LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE,
@@ -487,7 +488,9 @@ fn data_row(
         .color(color::FG_3.current(mode))
         .width(Length::Fixed(W_RANK));
 
-    // Strategy cell — id + inline tags (crown / benchmark / robustness).
+    // Strategy cell — display label + inline tags (crown / vote / benchmark /
+    // robustness). Ensemble arms render their FRIENDLY label ("Majority vote
+    // (2-of-3)") instead of the opaque id so the row reads AS an ensemble.
     let id_color = if is_crowned {
         color::ACCENT.current(mode)
     } else {
@@ -497,7 +500,7 @@ fn data_row(
         .spacing(space::XS)
         .align_y(iced::alignment::Vertical::Center)
         .push(
-            Text::new(leader.strategy.as_str())
+            Text::new(display_label(leader.strategy.as_str()))
                 .size(text::BODY)
                 .color(id_color),
         );
@@ -505,6 +508,15 @@ fn data_row(
         strat = strat.push(tag(
             LEADERBOARD_CROWN_TAG,
             color::ACCENT.current(mode),
+            mode,
+        ));
+    }
+    // The `vote` tag marks an ensemble candidate (so the kind is legible beyond
+    // the friendly label, the way `benchmark` marks the passive baseline).
+    if is_ensemble_id(leader.strategy.as_str()) {
+        strat = strat.push(tag(
+            LEADERBOARD_ENSEMBLE_VOTE_TAG,
+            color::FG_3.current(mode),
             mode,
         ));
     }
@@ -551,8 +563,9 @@ fn data_row(
     frame::active_row(row.into(), is_crowned, mode)
 }
 
-/// A compact inline tag (`SMALL`, coloured). Used for the crown / benchmark /
-/// robustness markers — each carries a word so colour is never the only signal.
+/// A compact inline tag (`SMALL`, coloured). Used for the crown / vote /
+/// benchmark / robust / marginal markers — each carries a word so colour is
+/// never the only signal.
 fn tag(label: &str, fg: iced::Color, _mode: ThemeMode) -> crate::Element<'static> {
     Text::new(label.to_string())
         .size(text::SMALL)
@@ -560,18 +573,38 @@ fn tag(label: &str, fg: iced::Color, _mode: ThemeMode) -> crate::Element<'static
         .into()
 }
 
-/// The robustness tag for a row, or `None` when the gate did not run. Fragile →
-/// `warn`; robust/marginal → muted (a reassurance, not a sentiment signal).
+/// The friendly display label for a strategy id. Ensemble arms (F8) carry
+/// opaque ids; map the two frozen ids to their plain-language vote labels so
+/// the row reads AS an ensemble. Every other id renders verbatim. Closed
+/// `ui`-side match (no engine string crosses the seam).
+fn display_label(strategy: &str) -> &str {
+    match strategy {
+        "v0.8.vote.majority" => LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
+        "v0.8.vote.unanimous" => LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
+        other => other,
+    }
+}
+
+/// `true` for one of the two frozen F8 ensemble ids — drives the `vote` tag.
+fn is_ensemble_id(strategy: &str) -> bool {
+    matches!(strategy, "v0.8.vote.majority" | "v0.8.vote.unanimous")
+}
+
+/// The robustness marker for a row, or `None` when the gate did not run.
+///
+/// **Fragile is rendered as a prominent BADGE** (soft `DOWN_50` backdrop +
+/// saturated `DOWN_500` label + `PILL` radius — the status-pill pattern from
+/// the design principles) because a Fragile candidate is *ineligible to crown*:
+/// it must be unmistakable, not a faint word. Now that the F8 gate is live this
+/// is the first time the Fragile state actually paints, so it earns the visual
+/// weight. Robust / marginal stay plain muted text (a quiet reassurance, not a
+/// sentiment signal — the table would be a wall of pills otherwise).
 fn robustness_tag(
     robustness: Option<RobustnessLabel>,
     mode: ThemeMode,
 ) -> Option<crate::Element<'static>> {
     match robustness {
-        Some(RobustnessLabel::Fragile) => Some(tag(
-            LEADERBOARD_FRAGILE_TAG,
-            color::WARN_500.current(mode),
-            mode,
-        )),
+        Some(RobustnessLabel::Fragile) => Some(fragile_badge(mode)),
         Some(RobustnessLabel::Robust) => {
             Some(tag(LEADERBOARD_ROBUST_TAG, color::FG_3.current(mode), mode))
         }
@@ -583,6 +616,32 @@ fn robustness_tag(
         // NotChecked / None → no tag (the gate was skipped; the row is silent).
         _ => None,
     }
+}
+
+/// The Fragile badge — a soft `DOWN_50`-tinted pill with a saturated
+/// `DOWN_500` "fragile" label (the `Negative` status-pill intent from the
+/// design principles: soft-tint backdrop carries the visual edge, the label
+/// keeps the high-contrast signal). `PILL` radius marks it a category tag, not
+/// a button. The word is always present so colour is never the only signal
+/// (accessibility). This is the visible "cannot be crowned" marker.
+fn fragile_badge(mode: ThemeMode) -> crate::Element<'static> {
+    Container::new(
+        Text::new(LEADERBOARD_FRAGILE_TAG)
+            .size(text::SMALL)
+            .color(color::DOWN_500.current(mode)),
+    )
+    .padding([space::XXS as u16, space::XS as u16])
+    .style(move |_t: &iced::Theme| iced::widget::container::Style {
+        background: Some(color::DOWN_50.current(mode).into()),
+        border: Border {
+            color: iced::Color::TRANSPARENT,
+            width: 0.0,
+            radius: radius::PILL.into(),
+        },
+        text_color: Some(color::DOWN_500.current(mode)),
+        ..Default::default()
+    })
+    .into()
 }
 
 /// A right-aligned numeric cell at the fixed numeric width.

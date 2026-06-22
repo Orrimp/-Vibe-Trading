@@ -17,7 +17,7 @@
 use strategy::{PlanContext, PlanDescribe, PlanRuleShape};
 use trading_core::{Money, Price, Quantity, Timestamp, Usdt};
 
-use crate::config::{ForwardPlan, ForwardRunConfig, PlanRuleKind, PlanSignal, PlanStance};
+use crate::config::{ForwardPlan, ForwardRunConfig, PlanRuleKind, PlanSignal, PlanStance, PlanVoteMethod};
 
 /// Map a `strategy::PlanStance` to the `agent`-owned closed `PlanStance` enum.
 fn map_stance(s: strategy::PlanStance) -> PlanStance {
@@ -71,6 +71,23 @@ fn map_rule_shape(rule: PlanRuleShape) -> PlanRuleKind {
             }
         }
         PlanRuleShape::BuyAndHold => PlanRuleKind::BuyAndHold,
+        PlanRuleShape::Ensemble { method, members } => {
+            // Map strategy::PlanVoteMethod → agent::config::PlanVoteMethod.
+            // Members are NOT recursively embedded — we surface `member_count`
+            // so the ui can generate "N-of-M consensus" copy without a Vec.
+            let agent_method = match method {
+                strategy::PlanVoteMethod::Majority { k, n } => {
+                    PlanVoteMethod::Majority { k, n }
+                }
+                strategy::PlanVoteMethod::Unanimous { n } => {
+                    PlanVoteMethod::Unanimous { n }
+                }
+            };
+            PlanRuleKind::Ensemble {
+                method: agent_method,
+                member_count: members.len() as u32,
+            }
+        }
     }
 }
 
@@ -197,6 +214,31 @@ pub fn build_forward_plan_from_registry(
             .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
         "v0.5.bbands" => load_composed_describer("btc_bbands_mean_revert")
             .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
+        // ── F8: EnsembleStrategy (ADR-0063 § D2) ─────────────────────────────
+        //
+        // Build a fresh EnsembleStrategy (same factory as `build_registry_for`
+        // and the bake-off engine arm).  Un-warmed at Launch time → honest
+        // Flat stance + Ensemble rule kind with member_count.
+        "v0.8.vote.majority" | "v0.8.vote.unanimous" => {
+            match strategy::build_ensemble(id) {
+                Ok(ensemble) => Some(build_forward_plan(
+                    &ensemble,
+                    fwd,
+                    last_close,
+                    last_bar_ts,
+                    horizon_days,
+                )),
+                Err(e) => {
+                    tracing::warn!(
+                        strategy = id,
+                        error = %e,
+                        "build_forward_plan_from_registry: EnsembleStrategy load failed \
+                         — no plan emitted"
+                    );
+                    None
+                }
+            }
+        }
         unknown => {
             tracing::warn!(
                 strategy = unknown,

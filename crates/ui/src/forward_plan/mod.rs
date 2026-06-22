@@ -43,4 +43,5 @@ pub mod adapter;
 
 pub use state::{
     ForwardPlanScreenState, ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    PlanVoteMethodView,
 };

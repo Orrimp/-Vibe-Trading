@@ -24,8 +24,12 @@ The user journey — the product, end to end:
    LLM-as-analyst overlay, and any ML overlay — each backtested on the same
    `(coin, window)`.
 3. **Rank & select** the best strategy for that coin from the bake-off
-   results (and, later, a *mix* of strategies or a strategy + LLM/ML ensemble),
-   with a plain-language **"why this one."**
+   results (and, later, a *mix* of strategies or a strategy + LLM/ML ensemble —
+   scoped as F8 [`advisor-ensemble/feature.md`](advisor-ensemble/feature.md): a
+   **bounded, pre-registered** set of deterministic signal-vote mixes that earn
+   their crown through the **same robustness gate + same buy-and-hold benchmark**
+   as every single strategy — never assumed-better, never a weight search; LLM/ML
+   stay narration-only in v1), with a plain-language **"why this one."**
 4. **Plan**: generate a budget-aware **buy/sell plan for the coming N days**
    (configurable horizon) — the current signal + entry/exit rules + projected
    €200 sizing. This is a **conditional, rule-driven plan, not a price
@@ -450,6 +454,26 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-21 (analyst, F8 ensemble scoping): annotated **journey step 3** to
+  point the "mix of strategies / LLM-ML ensemble" the operator named in the
+  2026-06-19 pivot at the new F8 feature
+  ([`advisor-ensemble/feature.md`](advisor-ensemble/feature.md), trace
+  `REQ-ADVISOR-ENSEMBLE-001`), with the honest framing inline: ensembles are a
+  **bounded, pre-registered** set of deterministic **signal-vote** mixes
+  (v1 = two votes: ≥2-of-3 majority + 4-of-4 unanimous over the existing rule
+  engines) that EARN their crown through the **same `rank_candidates` comparator
+  + same Fragile robustness gate + same buy-and-hold benchmark** as every single
+  strategy — never assumed-better, never a weight/threshold/membership search,
+  with `BenchmarkWins`/`AllFragile` staying reachable. **LLM/ML are narration-only
+  in v1**, ratified against code (not spec prose): `crates/llm` is imported by
+  neither `strategy` nor `backtest` and emits no `Signal`/`Direction` (the
+  bake-off "LLM-as-analyst arm" in § LLM role is **aspirational, not built**), and
+  the only `ForecastProvider` impls are the **retired** TCN/PatchTST/GARCH/
+  LLM-forecaster chains (concluded not-beating-passive) — so no ML is resurrected
+  as asserted alpha. This does NOT change § Open decisions D3 (ensemble = v0.2,
+  single strategy first) — it scopes the v0.2 work honestly. No engine code; no
+  anchored content touched; D1–D5 and the 2026-06-08 ship-passive verdict
+  unchanged.
 - 2026-06-22 (analyst, F6 forward-plan scoping): clarified **journey step 4
   (Plan)** to state the honest semantics the operator's "buy/sell plan for the
   coming days" requires — a **conditional, rule-driven plan, NOT a price

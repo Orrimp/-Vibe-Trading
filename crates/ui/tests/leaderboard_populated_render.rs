@@ -380,6 +380,154 @@ fn leaderboard_populated_strictly_exceeds_empty() {
     );
 }
 
+// ── F8 ensemble + Fragile-badge render guard (advisor-ensemble, ADR-0063) ─────
+//
+// The 7-arm field (4 singles + 2 vote ensembles + buy-and-hold) with the
+// robustness gate LIVE must paint, in the cockpit Leaderboard:
+//   - the ensemble rows legibly (friendly "Majority vote (2-of-3)" /
+//     "Unanimous vote (4-of-4)" labels + a `vote` tag) — measured as extra
+//     foreground vs the 5-arm field;
+//   - a visible Fragile BADGE (a `DOWN_50`-tinted pill with a `DOWN_500`
+//     "fragile" label) on the flagged candidates, IN THE STRATEGY COLUMN (left
+//     half) — distinct from the always-negative Max-DD column (right half).
+//
+// The Fragile badge is the load-bearing F8 pixel: the first time the Fragile
+// state is non-inert, it must actually paint. We scope the clay scan to the
+// LEFT half of the table so the Max-DD column (right) never confounds it.
+
+/// Right edge of the STRATEGY column scan band — the friendly ensemble labels +
+/// the Fragile badge live left of here; the numeric columns (Return / Sharpe /
+/// Max-DD / Trades) are all right of here. Calibrated to the 1920-wide slot
+/// (the strategy column is the `Length::Fill` left column; the four 110px
+/// numeric columns + gaps occupy roughly the right ~560px).
+const STRAT_COL_RIGHT: u32 = 760;
+
+/// Count `DOWN_500`-clay pixels in the STRATEGY-column band (x < `STRAT_COL_RIGHT`,
+/// y ≥ `TABLE_TOP`). On the F8 fixture this is the Fragile badges' clay label
+/// (rsi + the majority ensemble); the Max-DD clay column is excluded by the x
+/// bound. On a field with no fragile rows (or no table) this is ~0.
+fn fragile_badge_clay(w: u32, h: u32, rgba: &[u8]) -> u64 {
+    let mut hits = 0u64;
+    let x_max = STRAT_COL_RIGHT.min(w);
+    for y in TABLE_TOP..h {
+        for x in 0..x_max {
+            let idx = ((y as usize * w as usize) + x as usize) * 4;
+            let (r, g, b) = (
+                i32::from(rgba[idx]),
+                i32::from(rgba[idx + 1]),
+                i32::from(rgba[idx + 2]),
+            );
+            if is_down_clay(r, g, b) {
+                hits += 1;
+            }
+        }
+    }
+    hits
+}
+
+/// **The F8 render-layer guard.** The 7-arm ensemble fixture MUST paint, in the
+/// cockpit Leaderboard:
+/// - the crowned-row `ACCENT` highlight (v0.sma is crowned + robust);
+/// - a Fragile BADGE in the STRATEGY column (the `DOWN_500` "fragile" label of
+///   the flagged rsi + majority-ensemble rows) — the first non-inert Fragile
+///   pixel;
+/// - strictly MORE foreground than the 5-arm field (the two extra ensemble rows
+///   + their friendly labels + `vote` tags drew).
+///
+/// Writes the operator-facing PNG to `/tmp/forward_f8_leaderboard_render.png`.
+#[test]
+fn leaderboard_f8_ensembles_and_fragile_badge_paint() {
+    let mirror = ui::fixtures::fake_bakeoff_report_mirror_with_ensembles();
+    assert_eq!(mirror.rows.len(), 7, "the F8 fixture is a 7-arm field");
+    assert_eq!(mirror.crowned, Some(0), "v0.sma is crowned (robust)");
+    // The majority ensemble is Fragile → must be ranked but NOT crowned.
+    let majority_idx = mirror
+        .rows
+        .iter()
+        .position(|r| r.strategy.as_str() == "v0.8.vote.majority")
+        .expect("majority ensemble present");
+    assert_ne!(
+        mirror.crowned,
+        Some(majority_idx),
+        "a Fragile ensemble must NOT be crowned (the credibility lock)"
+    );
+
+    let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
+    let (w, h, rgba) = render_leaderboard_rgba(cockpit);
+
+    // Operator-facing deliverable (memory: verify UI at the render layer).
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/forward_f8_leaderboard_render.png");
+    }
+
+    // The crowned row still paints its ACCENT highlight.
+    let teal = crowned_teal_pixels(w, h, &rgba);
+    assert!(
+        teal > 200,
+        "the crowned row's ACCENT highlight must paint (expected >200 teal px in \
+         the TABLE band, got {teal}). PNG: /tmp/forward_f8_leaderboard_render.png"
+    );
+
+    // The Fragile badge paints clay IN THE STRATEGY COLUMN (the load-bearing F8
+    // pixel — the first time Fragile is non-inert). Two fragile rows (rsi +
+    // majority ensemble), each a `DOWN_500` "fragile" label.
+    let fragile_clay = fragile_badge_clay(w, h, &rgba);
+    assert!(
+        fragile_clay > 60,
+        "the Fragile badge must paint its DOWN_500 label in the STRATEGY column \
+         (expected >60 clay px left of x={STRAT_COL_RIGHT}, got {fragile_clay}). \
+         If this fails the Fragile flag did not render — but F8 makes it \
+         non-inert, so it MUST appear. PNG: /tmp/forward_f8_leaderboard_render.png"
+    );
+
+    // The full 7-arm table + recommendation is a lot of text.
+    let fg = foreground_pixels(w, h, &rgba);
+    assert!(
+        fg > 8000,
+        "the 7-arm table + recommendation must paint a lot of foreground \
+         (expected >8000 px, got {fg}). PNG: /tmp/forward_f8_leaderboard_render.png"
+    );
+}
+
+/// **F8 anti-tautology discriminator.** The 7-arm ensemble field paints
+/// strictly MORE strategy-column Fragile clay than the original 5-arm field
+/// fixture (which has one fragile single, rsi) — proving the ensemble field
+/// adds a *second* fragile row's badge (the majority ensemble) AND that the
+/// strategy-column clay scan genuinely tracks Fragile badges (not chrome). Also
+/// asserts the 7-arm field paints more total foreground (the two extra rows).
+#[test]
+fn leaderboard_f8_strictly_exceeds_five_arm_field() {
+    let seven = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
+        ui::fixtures::fake_bakeoff_report_mirror_with_ensembles(),
+    ));
+    let five = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
+        ui::fixtures::fake_bakeoff_report_mirror(),
+    ));
+
+    let (w7, h7, r7) = render_leaderboard_rgba(seven);
+    let (w5, h5, r5) = render_leaderboard_rgba(five);
+
+    // The 7-arm field has TWO fragile rows (rsi + majority ensemble); the 5-arm
+    // field has ONE (rsi). So the 7-arm strategy-column clay strictly exceeds.
+    let clay7 = fragile_badge_clay(w7, h7, &r7);
+    let clay5 = fragile_badge_clay(w5, h5, &r5);
+    assert!(
+        clay7 > clay5,
+        "the 7-arm field (2 fragile rows) must paint strictly more strategy-column \
+         Fragile clay than the 5-arm field (1 fragile row) (7-arm {clay7} vs \
+         5-arm {clay5}). If equal, the second Fragile badge is not rendering."
+    );
+
+    // And the two extra ensemble rows paint more total foreground.
+    let fg7 = foreground_pixels(w7, h7, &r7);
+    let fg5 = foreground_pixels(w5, h5, &r5);
+    assert!(
+        fg7 > fg5,
+        "the 7-arm field must paint more foreground than the 5-arm field (the two \
+         extra ensemble rows drew) (7-arm {fg7} vs 5-arm {fg5})"
+    );
+}
+
 /// The `BenchmarkWins` recommendation branch renders. Renders the
 /// buy-and-hold-wins fixture and asserts the recommendation block paints (a lot
 /// of foreground — the headline "Nothing beat simply holding BTCUSDT…" is

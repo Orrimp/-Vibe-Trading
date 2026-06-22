@@ -112,6 +112,11 @@ name = "run_yahoo_sma_ticker_flag"
 path = "tests/run_yahoo_sma_ticker_flag.rs"
 required-features = ["yahoo"]
 
+# F8 robustness-bootstrap e2e test (ADR-0063 § D-T5.2).
+[[test]]
+name = "robustness_bootstrap_bites"
+path = "tests/robustness_bootstrap_bites.rs"
+
 [dev-dependencies]
 criterion.workspace = true
 cost = { path = "../cost" }

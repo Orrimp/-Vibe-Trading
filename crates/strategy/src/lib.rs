@@ -24,6 +24,8 @@ pub mod always_long;
 pub mod cash_hold;
 pub mod composed;
 pub mod cross_sectional;
+/// F8 signal-vote ensemble (ADR-0063): `EnsembleStrategy` + `VoteMethod` + `build_ensemble`.
+pub mod ensemble;
 pub mod pairs;
 pub mod patchtst_overlay_momentum;
 pub mod patchtst_sync;
@@ -41,6 +43,10 @@ pub mod vol_targeting_overlay;
 pub use always_long::AlwaysLongStrategy;
 pub use cash_hold::CashHoldStrategy;
 pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, StrategyLoadError};
+pub use ensemble::{
+    EnsembleBuildError, EnsembleStrategy, MemberStance, VoteMethod, arbitrate, build_ensemble,
+    build_member,
+};
 pub use cross_sectional::{
     CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy,
     ScoreSource, SelectionMode, select_above_threshold, top_k_long,
@@ -52,7 +58,8 @@ pub use patchtst_overlay_momentum::{
     PatchTstOverlayMomentumConfig, PatchTstOverlayMomentumStrategy,
 };
 pub use plan::{
-    PlanContext, PlanDescribe, PlanRuleShape, PlanSignal, PlanStance, ProjectedSizing, StrategyPlan,
+    PlanContext, PlanDescribe, PlanRuleShape, PlanSignal, PlanStance, PlanVoteMethod,
+    ProjectedSizing, StrategyPlan,
 };
 pub use regime_dispatcher::{
     DispatchedRegime, PendingRegimeTag, RegimeDispatcher, RegimeDispatcherConfig,

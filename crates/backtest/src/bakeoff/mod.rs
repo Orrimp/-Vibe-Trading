@@ -20,6 +20,7 @@
 // Allow float arithmetic in the metric derivation helper (same exemption as stats/).
 #![allow(clippy::float_arithmetic)]
 
+pub mod bootstrap;
 pub mod buyhold;
 pub mod rank;
 pub mod robustness;
@@ -28,6 +29,7 @@ use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};
 
+pub use bootstrap::{compute_robustness_flag, derive_master_seed};
 pub use rank::{Ranking, rank_candidates};
 pub use robustness::RobustnessFlag;
 
@@ -306,6 +308,19 @@ pub enum RobustnessMode {
     /// Ranking is purely Sharpe-primary (correct; fast).
     #[default]
     Skip,
+    /// Moving-block bootstrap on realized equity (ADR-0063 § D4).
+    ///
+    /// - `paths`: number of bootstrap resamples (default 1000).
+    /// - `seed`: master bake-off seed as `u64` (low 8 bytes of `[u8; 32]`).
+    ///
+    /// Per-candidate master seeds are derived via `derive_master_seed(seed, idx)`
+    /// (ADR-0063 § D4 + ADR-0051 D1 `GOLDEN_GAMMA` rule).
+    Bootstrap {
+        /// Number of bootstrap resamples per candidate.
+        paths: usize,
+        /// Bake-off seed (u64 derived from `[u8; 32]` seed via little-endian low 8 bytes).
+        seed: u64,
+    },
 }
 
 impl BakeoffConfig {
@@ -320,6 +335,22 @@ impl BakeoffConfig {
             StrategyId(SmolStr::new_static("v0.5.macd")),
             StrategyId(SmolStr::new_static("v0.5.rsi")),
             StrategyId(SmolStr::new_static("v0.5.bbands")),
+        ]
+    }
+
+    /// Returns the two F8 ensemble strategy ids (ADR-0063 § D4).
+    ///
+    /// - `"v0.8.vote.majority"` — 2-of-3 majority vote (MACD / RSI / `BBands`).
+    /// - `"v0.8.vote.unanimous"` — 4-of-4 unanimous vote (SMA / MACD / RSI / `BBands`).
+    ///
+    /// These are ADDITIVE — callers can extend `default_field()` with this list
+    /// to include ensemble strategies.  `default_field()` is left UNCHANGED so
+    /// existing advisor paths are not affected without explicit opt-in.
+    #[must_use]
+    pub fn default_ensemble_field() -> Vec<StrategyId> {
+        vec![
+            StrategyId(SmolStr::new_static("v0.8.vote.majority")),
+            StrategyId(SmolStr::new_static("v0.8.vote.unanimous")),
         ]
     }
 }
@@ -519,7 +550,7 @@ pub async fn run_bakeoff(
 
     let mut candidates: Vec<CandidateResult> = Vec::with_capacity(strategy_ids.len());
 
-    for (strategy, is_benchmark) in strategy_ids {
+    for (candidate_index, (strategy, is_benchmark)) in strategy_ids.into_iter().enumerate() {
         // Check cancellation before each arm.
         if cancel_rx.is_cancelled() {
             return Err(crate::engine::RunError::Cancelled);
@@ -547,8 +578,28 @@ pub async fn run_bakeoff(
 
         let kpis = derive_candidate_kpis(&report);
 
+        // Robustness gate (ADR-0063 § D4).
         let robustness = match cfg.robustness {
             RobustnessMode::Skip => None,
+            RobustnessMode::Bootstrap { paths, seed } => {
+                // Derive per-candidate master seed (ADR-0063 § D4 + ADR-0051 D1).
+                let master_seed = derive_master_seed(seed, candidate_index);
+                let equity_decimals: Vec<Decimal> = report
+                    .equity_series
+                    .iter()
+                    .map(|(_, m)| m.amount())
+                    .collect();
+                let flag = compute_robustness_flag(&equity_decimals, paths, master_seed);
+                tracing::debug!(
+                    target: "bakeoff.robustness",
+                    strategy = %strategy,
+                    candidate_index,
+                    ?flag,
+                    paths,
+                    "Bootstrap robustness flag"
+                );
+                Some(flag)
+            }
         };
 
         candidates.push(CandidateResult {

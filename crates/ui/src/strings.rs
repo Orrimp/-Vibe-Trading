@@ -1537,6 +1537,19 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LEADERBOARD_FRAGILE_TAG", LEADERBOARD_FRAGILE_TAG),
         ("LEADERBOARD_ROBUST_TAG", LEADERBOARD_ROBUST_TAG),
         ("LEADERBOARD_MARGINAL_TAG", LEADERBOARD_MARGINAL_TAG),
+        // advisor-ensemble F8 (ADR-0063) — ensemble row labelling
+        (
+            "LEADERBOARD_ENSEMBLE_MAJORITY_LABEL",
+            LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL",
+            LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_VOTE_TAG",
+            LEADERBOARD_ENSEMBLE_VOTE_TAG,
+        ),
         (
             "LEADERBOARD_HEADLINE_BENCHMARK_WINS",
             LEADERBOARD_HEADLINE_BENCHMARK_WINS,
@@ -1707,6 +1720,23 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             FORWARD_PLAN_RULE_COMPOUND_CAVEAT,
         ),
         ("FORWARD_PLAN_CADENCE_FMT", FORWARD_PLAN_CADENCE_FMT),
+        // advisor-ensemble F8 (ADR-0063) — ensemble (signal-vote) plan copy
+        (
+            "FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT",
+            FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT",
+            FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT",
+            FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT",
+            FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT,
+        ),
         ("FORWARD_PLAN_SIZING_TITLE", FORWARD_PLAN_SIZING_TITLE),
         ("FORWARD_PLAN_SIZING_FLAT_FMT", FORWARD_PLAN_SIZING_FLAT_FMT),
         ("FORWARD_PLAN_SIZING_LONG_FMT", FORWARD_PLAN_SIZING_LONG_FMT),
@@ -2270,6 +2300,28 @@ pub const LEADERBOARD_ROBUST_TAG: &str = "robust";
 /// Robustness tag — borderline under resampling.
 pub const LEADERBOARD_MARGINAL_TAG: &str = "marginal";
 
+// ── Ensemble (signal-vote) row labelling (F8 / ADR-0063) ──────────────────────
+//
+// The two frozen ensemble candidates carry opaque ids (`v0.8.vote.majority` /
+// `v0.8.vote.unanimous`). The leaderboard renders a friendly, legible display
+// label so the row reads AS an ensemble (a vote), not as a single indicator,
+// plus a `vote` tag so the kind is unmistakable beyond the id. The `ui` owns
+// the words; the id→label mapping is a closed `ui`-side match (no engine string
+// crosses the seam).
+
+/// Friendly display label for the majority-vote ensemble row — names the method
+/// and the `k`-of-`n` quorum so the row is self-explanatory. Replaces the opaque
+/// `v0.8.vote.majority` id in the strategy column.
+pub const LEADERBOARD_ENSEMBLE_MAJORITY_LABEL: &str = "Majority vote (2-of-3)";
+
+/// Friendly display label for the unanimous-vote ensemble row.
+pub const LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL: &str = "Unanimous vote (4-of-4)";
+
+/// Row tag marking an ensemble candidate as a vote (so the kind is legible
+/// beyond the friendly label — pairs with the label the way `benchmark` pairs
+/// with the buy-and-hold row).
+pub const LEADERBOARD_ENSEMBLE_VOTE_TAG: &str = "vote";
+
 /// Recommendation headline — buy-and-hold won. `{coin}` is filled at the call
 /// site. The operator's honesty rule made literal: "if holding wins, say so".
 pub const LEADERBOARD_HEADLINE_BENCHMARK_WINS: &str =
@@ -2529,6 +2581,42 @@ pub const FORWARD_PLAN_RULE_BUY_AND_HOLD: &str = "Buy once now and hold the whol
 /// only (buy-and-hold has no re-evaluation). `{horizon}` filled at the call site.
 pub const FORWARD_PLAN_CADENCE_FMT: &str = "These rules stay in force and are re-checked on every new bar for the next {horizon} days \u{2014} \
      this is not a day-by-day schedule.";
+
+// ── Ensemble (signal-vote) plan copy (F8 / ADR-0063 § D3) ─────────────────────
+//
+// The ensemble plan describes the VOTE faithfully — method + members + live
+// tally — NOT a fabricated single-indicator rule. The `ui` owns every word; the
+// engine crosses only the structured `method` + `member_count` (no `String`).
+//
+// **v0.2 extension point (member-rule list):** the developer's shipped
+// `agent::config::PlanRuleKind::Ensemble` carries only `method` + a scalar
+// `member_count` (NOT each member's own `PlanRuleShape`), so this plan
+// describes the vote at the consensus level. A per-member rule list ("MACD
+// trend — buys when …") becomes possible once the agent boundary carries the
+// members; its copy (a members-title + per-member summaries) would be added
+// here at that point.
+
+/// Ensemble headline rule line — MAJORITY vote. Reads the structured method as
+/// "Holds while at least {k} of {n} agree; goes flat when the majority flips."
+/// `{k}`/`{n}` filled at the call site from the structured `PlanVoteMethodView`.
+pub const FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT: &str = "Holds a position while at least {k} of {n} member strategies agree to be in the \
+     market; goes flat when the agreement drops below {k}.";
+
+/// Ensemble headline rule line — UNANIMOUS vote. `{n}` filled at the call site.
+pub const FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT: &str = "Holds a position only while ALL {n} member strategies agree to be in the \
+     market; goes flat the moment any one of them disagrees.";
+
+/// The live-tally line under an ensemble's rule — shows how many members are
+/// currently in the market against the quorum, and the resulting stance.
+/// `{long}`/`{n}`/`{stance}` filled at the call site (the `ui` owns the words).
+pub const FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT: &str =
+    "Current vote: {long} of {n} member strategies are in the market \u{2192} {stance}.";
+
+/// Honest caveat under the ensemble rule — names the vote as a combination, not
+/// a new signal source, and restates the not-better framing (R4 non-goal).
+pub const FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT: &str = "This is a vote over the member strategies \u{2014} it is measured against \
+     buy-and-hold like every other candidate, with no assumption that combining \
+     them does better.";
 
 // ── Projected sizing (R3 — budget-aware €200 next-BUY, "at the last close") ────
 

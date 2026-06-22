@@ -397,6 +397,24 @@ pub fn build_registry_for(
                 "build_registry_for: AlwaysLongStrategy (buy-and-hold) registered"
             );
         }
+        // ── F8: EnsembleStrategy (ADR-0063 § D5) ─────────────────────────────
+        //
+        // `build_ensemble` builds the two pre-registered F8 ensembles using
+        // the same TOML-loaded members as the bake-off arms (build_member).
+        // The same anti-fake gate as F5b: no silent fallback on unknown ids.
+        "v0.8.vote.majority" | "v0.8.vote.unanimous" => {
+            let ensemble = strategy::build_ensemble(id).with_context(|| {
+                format!(
+                    "build_registry_for: failed to build EnsembleStrategy for id '{id}' \
+                     (F8 anti-fake gate)"
+                )
+            })?;
+            registry.register(Box::new(ensemble));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: EnsembleStrategy registered"
+            );
+        }
         unknown => {
             // Unknown id — return a typed error so the supervisor can log and
             // surface it to the UI error path. NO silent SMA fallback.

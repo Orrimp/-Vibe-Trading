@@ -79,6 +79,11 @@ path = "tests/regime_dispatcher_end_to_end.rs"
 name = "latency_slippage_sim_e2e"
 path = "tests/latency_slippage_sim_e2e.rs"
 
+# F8 ensemble vote divergence e2e test (CLAUDE.md non-negotiable, ADR-0063 § D-T5.1).
+[[test]]
+name = "ensemble_vote_divergence_end_to_end"
+path = "tests/ensemble_vote_divergence_end_to_end.rs"
+
 [[bench]]
 name = "composed_strategies"
 harness = false

@@ -68,6 +68,34 @@ pub enum PlanSignal {
 
 // ── PlanRuleShape ─────────────────────────────────────────────────────────────
 
+// ── PlanVoteMethod ────────────────────────────────────────────────────────────
+
+/// Vote method for an ensemble plan — closed enum (no free-text string).
+///
+/// ADR-0063 § D3: the `ui` exhaustively matches on this to generate the
+/// honest vote description ("≥ k of n" / "all n agree"). The enum is closed
+/// so the compiler enforces exhaustiveness when new methods are added.
+///
+/// Field types use `u32` (not `usize`) so the type stays `Copy + Eq` and
+/// crosses the `agent`→`ui` boundary without `Decimal` or lifetime issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanVoteMethod {
+    /// Long iff `long_count >= k` (minimum k of n members agree).
+    Majority {
+        /// Minimum long count required.
+        k: u32,
+        /// Total number of members.
+        n: u32,
+    },
+    /// Long iff ALL n members agree Long.
+    Unanimous {
+        /// Total number of members (must all be Long).
+        n: u32,
+    },
+}
+
+// ── PlanRuleShape ─────────────────────────────────────────────────────────────
+
 /// The engine's rule family — structured data the `ui` maps to plain-language copy.
 ///
 /// A **closed enum** — the `ui` exhaustively matches on this to generate
@@ -85,6 +113,8 @@ pub enum PlanSignal {
 ///   Bollinger band AND volume surge; exits when price closes back inside the
 ///   band (flip-to-false exit).
 /// - `BuyAndHold` — the `AlwaysLongStrategy` degenerate plan.
+/// - `Ensemble` — a signal-vote ensemble (ADR-0063 § D3): carries the vote
+///   method + each member's own rule shape.  No free-text string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanRuleShape {
     /// SMA crossover — buys when fast > slow, sells on reverse.
@@ -128,6 +158,21 @@ pub enum PlanRuleShape {
     /// The degenerate case: the `ui` renders "buy now, hold the whole horizon,
     /// no sell trigger, deploy the full €200".
     BuyAndHold,
+    /// Signal-vote ensemble (ADR-0063 § D3).
+    ///
+    /// Carries structured data only — NO copy string.  The `ui` exhaustively
+    /// matches on `method` to generate the honest vote description, and on each
+    /// element of `members` to list each member's own rule.
+    ///
+    /// The `members` field carries the real per-member `PlanRuleShape` so the
+    /// UI can render e.g. "Holds when ≥ 2 of {MACD trend, RSI reversion,
+    /// Bollinger reversion} agree" with the live tally.
+    Ensemble {
+        /// The vote arbitration method (closed enum — no free-text).
+        method: PlanVoteMethod,
+        /// Each member strategy's own rule shape (in member order).
+        members: Vec<PlanRuleShape>,
+    },
 }
 
 // ── ProjectedSizing ───────────────────────────────────────────────────────────

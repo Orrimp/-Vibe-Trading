@@ -28,7 +28,9 @@
 
 use smol_str::SmolStr;
 
-use super::state::{ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView};
+use super::state::{
+    ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
+};
 
 impl ForwardPlanView {
     /// Mirror the `core`-typed `agent::config::ForwardPlan` into the
@@ -104,6 +106,33 @@ fn rule_view(rule: &agent::config::PlanRuleKind) -> PlanRuleView {
             }
         }
         agent::config::PlanRuleKind::BuyAndHold => PlanRuleView::BuyAndHold,
+        // F8 / ADR-0063 — the ensemble (signal-vote) rule shape.
+        // RECONCILED to the developer's SHIPPED `agent::config::PlanRuleKind::
+        // Ensemble { method: PlanVoteMethod, member_count: u32 }` (NOT the ADR's
+        // original `members: Vec<PlanRuleShape>` — the developer chose a
+        // `Copy`-preserving scalar `member_count`; full member rules stay on
+        // the strategy side as a v0.2 extension point). If a field/variant name
+        // drifts, THIS is the only `ui` edit site (the mirror discipline keeps
+        // the blast radius to one function).
+        agent::config::PlanRuleKind::Ensemble {
+            method,
+            member_count,
+        } => PlanRuleView::Ensemble {
+            method: vote_method_view(method),
+            member_count: *member_count,
+        },
+    }
+}
+
+/// Map the closed `agent::config::PlanVoteMethod` to the closed `ui` vote
+/// method, field-for-field. Exhaustive — a new `agent` method fails to compile
+/// here until it is mapped.
+fn vote_method_view(method: &agent::config::PlanVoteMethod) -> PlanVoteMethodView {
+    match method {
+        agent::config::PlanVoteMethod::Majority { k, n } => {
+            PlanVoteMethodView::Majority { k: *k, n: *n }
+        }
+        agent::config::PlanVoteMethod::Unanimous { n } => PlanVoteMethodView::Unanimous { n: *n },
     }
 }
 

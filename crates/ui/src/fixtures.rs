@@ -1375,6 +1375,134 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
     }
 }
 
+/// A populated 7-arm `BakeoffReportMirror` WITH the two F8 ensemble candidates
+/// (ADR-0063) — the full advisor field: 4 singles + 2 vote ensembles +
+/// buy-and-hold, with the robustness gate LIVE so flags are populated.
+///
+/// The arm set + outcome:
+/// - `v0.sma` — crowned (`ActiveWins`), robust.
+/// - `v0.8.vote.majority` — a 2-of-3 majority-vote ensemble; **FRAGILE** under
+///   resampling, so it is shown ranked among the field but **cannot be
+///   crowned** (the credibility lock — the first time the Fragile state is
+///   non-inert). This is the render guard's load-bearing case: an ensemble row
+///   AND a visible Fragile badge.
+/// - `v0.8.vote.unanimous` — a 4-of-4 unanimous-vote ensemble; robust but
+///   lower Sharpe (trades rarely).
+/// - `v0.5.macd` / `v0.5.bbands` — robust singles.
+/// - `v0.5.rsi` — a fragile single loser (also exercises the warn tag).
+/// - `v0.buyhold` — the benchmark.
+///
+/// Built directly as the mirror type — fixtures NEVER stand up the engine.
+#[must_use]
+pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{
+        BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
+        RobustnessLabel,
+    };
+
+    // Rows in INSERTION order (= field order: the 4 singles, the 2 ensembles,
+    // then the buy-and-hold benchmark — `default_field() ∪
+    // default_ensemble_field()` ∪ buyhold, ADR-0063 § D5).
+    let rows = vec![
+        LeaderRow {
+            strategy: SmolStr::new("v0.sma"),
+            is_benchmark: false,
+            sharpe: 1.42,
+            total_return_pct: dec!(0.1837),
+            max_drawdown: dec!(0.0612),
+            trade_count: 38,
+            // The crowned arm — robust under resampling (the gate is LIVE).
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.macd"),
+            is_benchmark: false,
+            sharpe: 0.88,
+            total_return_pct: dec!(0.0921),
+            max_drawdown: dec!(0.1043),
+            trade_count: 64,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.rsi"),
+            is_benchmark: false,
+            sharpe: -0.31,
+            total_return_pct: dec!(-0.0457),
+            max_drawdown: dec!(0.1872),
+            trade_count: 112,
+            // A fragile single loser.
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.bbands"),
+            is_benchmark: false,
+            sharpe: 0.54,
+            total_return_pct: dec!(0.0388),
+            max_drawdown: dec!(0.0921),
+            trade_count: 47,
+            robustness: Some(RobustnessLabel::Marginal),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.majority"),
+            is_benchmark: false,
+            // A high realized Sharpe — but FRAGILE under resampling, so it
+            // CANNOT be crowned (it would out-Sharpe v0.sma on the realized
+            // path, which is exactly why the Fragile gate must bite + be
+            // visible). This is the easiest-to-overfit candidate; the gate
+            // rejecting it is the whole point of F8.
+            sharpe: 1.61,
+            total_return_pct: dec!(0.2104),
+            max_drawdown: dec!(0.0788),
+            trade_count: 29,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.unanimous"),
+            is_benchmark: false,
+            sharpe: 0.67,
+            total_return_pct: dec!(0.0573),
+            max_drawdown: dec!(0.0534),
+            // Trades rarely (4-of-4 agreement is rare).
+            trade_count: 9,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.buyhold"),
+            is_benchmark: true,
+            sharpe: 0.73,
+            total_return_pct: dec!(0.1124),
+            max_drawdown: dec!(0.1338),
+            trade_count: 2,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+    ];
+
+    // Best-first ranked order among ELIGIBLE (non-fragile) arms first, then the
+    // fragile arms ranked after (shown but ineligible-to-crown). Eligible by
+    // Sharpe: sma(1.42) > macd(0.88) > buyhold(0.73) > unanimous(0.67) >
+    // bbands(0.54). Fragile (ranked last, cannot be crowned): majority(1.61),
+    // rsi(-0.31). Indices into `rows`:
+    //   0=sma, 1=macd, 2=rsi, 3=bbands, 4=majority, 5=unanimous, 6=buyhold.
+    let ranked = vec![0, 1, 6, 5, 3, 4, 2];
+
+    BakeoffReportMirror {
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        rows,
+        ranked,
+        crowned: Some(0),
+        recommendation: RecommendationMirror {
+            outcome: OutcomeKind::ActiveWins,
+            winner: SmolStr::new("v0.sma"),
+            winner_robustness: Some(RobustnessLabel::Robust),
+            reasons: vec![
+                ReasonLabel::HighestRobustSharpe,
+                ReasonLabel::BeatBenchmarkSharpe,
+            ],
+        },
+    }
+}
+
 /// A `Cockpit` routed to `Screen::Leaderboard` with the supplied result state
 /// installed. Synthetic — no engine, no I/O; the render guard drives this.
 #[must_use]
@@ -1508,6 +1636,45 @@ pub fn fake_forward_plan_buy_and_hold() -> crate::forward_plan::ForwardPlanView 
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 26"),
+    }
+}
+
+/// An ENSEMBLE (signal-vote) [`ForwardPlanView`] fixture (F8 / ADR-0063 § D3) —
+/// the `v0.8.vote.majority` candidate: a 2-of-3 majority vote over the MACD /
+/// RSI / Bollinger member rules, currently LONG (the quorum is met). This is
+/// the render guard's POSITIVE ensemble case: the plan must describe the VOTE
+/// faithfully (method + members + live tally), NOT fabricate a single rule.
+///
+/// Built directly as the view type — fixtures NEVER stand up the engine; the
+/// mirror is the whole point of the `ui`-pure seam. The `members` carry each
+/// member's OWN rule shape so the per-member list renders honestly.
+#[must_use]
+pub fn fake_forward_plan_ensemble() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
+    };
+    ForwardPlanView {
+        strategy: SmolStr::new("v0.8.vote.majority"),
+        symbol: SmolStr::new("BTCUSDT"),
+        // LONG — the majority quorum (≥ 2 of 3) is currently met, so the
+        // ensemble holds. Exercises the LONG-stance tally branch.
+        stance: PlanStanceView::Long,
+        latest_signal: Some(PlanSignalView::Hold),
+        // 2-of-3 majority vote. Carries `method` + `member_count` (the
+        // developer's shipped `agent::config::PlanRuleKind::Ensemble` shape —
+        // NOT a member-rule Vec).
+        rule: PlanRuleView::Ensemble {
+            method: PlanVoteMethodView::Majority { k: 2, n: 3 },
+            member_count: 3,
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 21 14:00"),
+        budget: dec!(200),
+        // 200 / 64000 = 0.003125 units.
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 28"),
     }
 }
 

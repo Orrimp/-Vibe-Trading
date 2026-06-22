@@ -2,7 +2,7 @@
 slug: architecture-02-strategy-registry
 status: shipped
 owner: architect
-updated: 2026-05-13
+updated: 2026-06-21
 ---
 
 # Strategy registry and hot-loading
@@ -89,12 +89,33 @@ extractions:
 - **Strategy-side filtering for symbol universes.** The
   `StrategyRegistry::on_bar` fan-out stays minimal; strategies
   filter `bar.symbol` internally. See ADR-0013 Q5.
+- **Composites are `Strategy`s, not registry special-cases.** A
+  strategy that combines others (regime dispatch, ensemble vote)
+  implements the FROZEN `Strategy` trait by holding its members +
+  arbitrating their per-bar signals in its own `on_bar` — so it is a
+  first-class registry citizen reachable from one id→members mapping,
+  never special-cased at the `run_scenario` / `build_registry_for` /
+  `StrategyRegistry` seams. See ADR-0049 (`RegimeDispatcher`) and
+  ADR-0063 (`EnsembleStrategy` signal-vote — the F8 advisor
+  ensemble; un-warmed members ABSTAIN rather than vote FLAT). The
+  ensemble's robustness flag is computed on its OWN realized
+  equity curve through the now-active `RobustnessMode::Bootstrap`
+  gate (ADR-0063 § D4), reusing the Politis–White block-length
+  selector + the ADR-0051 sub-seed determinism + the frozen
+  `classify_verdict`.
 - **Open-set `TEXT` columns for event-type taxonomy.** The
   `strategy_events.kind` column absorbs new event types without
   schema migrations. See ADR-0008 (precedent) and the eight-plus
   `kind` values accumulated across the strategy ADRs above.
 
 ## Changelog
+- 2026-06-21 (architect): added the "composites are `Strategy`s, not
+  registry special-cases" cross-cutting rule (ADR-0063 F8 ensemble
+  signal-vote seam — `EnsembleStrategy` implements the frozen
+  `Strategy` trait; the abstention-quorum warmup rule; the
+  now-active `RobustnessMode::Bootstrap` gate on the ensemble's own
+  equity curve). Generalises the ADR-0049 `RegimeDispatcher`
+  precedent.
 - 2026-05-16 (architect): added ADR-0027 (v2.5 Kronos overlay)
   reference + cross-link to the new
   [12-forecast-overlay.md](12-forecast-overlay.md) cross-cutting
