@@ -1,7 +1,7 @@
 ---
 slug: advisor-eur-fx
-status: done
-owner: developer
+status: shipped
+owner: tester
 updated: 2026-06-22
 ---
 
