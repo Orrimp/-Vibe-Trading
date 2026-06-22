@@ -180,7 +180,33 @@ def is_external(link: str) -> bool:
 # Check: dead intra-spec links
 # ---------------------------------------------------------------------------
 
+# Byte-immutable anchored reports whose internal links cannot be raw-edited
+# without breaking the verify_anchors body-SHA gate (ADR-0038 anchor-additive
+# contract). Keyed by (repo-relative report path, exact link string). Keep this
+# list SHORT and each entry justified; remove an entry once its link is fixed.
+KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
+    # v3-volatility-forecaster is RETIRED (research-line closure 2026-05-22 —
+    # "anchors stay locked, no further effort"). This BS-1 report (anchored
+    # scenario `vol-verdict-bs1-realdata` in anchors.toml) froze an off-by-one
+    # relative link at emission: `../architecture/...` should be
+    # `../../architecture/...` (the report sits two dirs deep; the ADR-0038
+    # target exists at spec/architecture/adr/). A raw `../`→`../../` edit breaks
+    # the body-SHA; the proper fix is the ADR-0038 §D6.c documentation-link-fix
+    # re-emission protocol (NOT YET CODIFIED — see CLAUDE.md). Exempted here
+    # rather than re-emitting a retired line.
+    (
+        "spec/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
+        "../architecture/adr/0038-vol-forecast-verdict-shape.md"
+        "#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension",
+    ),
+}
+
+
 def check_dead_links(md_path: Path, text: str, report: Report) -> None:
+    try:
+        rel = md_path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        rel = None
     for raw in extract_links(text):
         if is_external(raw):
             continue
@@ -190,6 +216,8 @@ def check_dead_links(md_path: Path, text: str, report: Report) -> None:
             continue  # pure anchor link
         target = (md_path.parent / target_str).resolve()
         if not target.exists():
+            if rel is not None and (rel, raw) in KNOWN_FROZEN_DEAD_LINKS:
+                continue  # documented byte-immutable frozen link (see above)
             report.add("dead-link", md_path, f"link target missing: {raw}")
 
 

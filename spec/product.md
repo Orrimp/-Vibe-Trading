@@ -154,9 +154,13 @@ the MVP. Each carries a recommended default and the reasoning.
 - **(a) Risk-adjusted with a robustness gate (Recommended).** Primary sort by
   **Sharpe** over the lookback (already computed by `compute_sharpe_hourly`),
   with a hard **fragility gate**: any strategy the Monte-Carlo harness flags
-  FRAGILE (p5 Sharpe < 0) is shown but cannot be crowned #1 unless *everything*
-  is fragile (in which case the surface says "nothing here is robust — consider
-  just holding"). Tie-break by total return, then by lower max-drawdown.
+  FRAGILE (p5 Sharpe < 0) is shown but cannot be crowned #1. When *every active*
+  strategy is fragile — the **modal outcome on real crypto** — the buy-and-hold
+  benchmark is crowned #1 instead (`BenchmarkWins`: "nothing active cleared the
+  robustness bar; simply holding is the least-bad choice on this window") and the
+  €200 paper-trades as a hold. The benchmark is exempt from the fragility gate —
+  it is the null hypothesis the candidates are scored *against*, not a candidate
+  (ADR-0066). Tie-break by total return, then by lower max-drawdown.
   Durable: it is the metric the whole codebase's robustness thesis is built on,
   it won't need re-deriving when ensembles arrive, and it protects a naive user
   from a lucky-path leaderboard.
@@ -265,8 +269,10 @@ polish, EUR-FX refinement) is post-MVP. The roadmap orders them.
   recommendation and a one-line rationale within one interaction, then start a
   forward paper-run of that selection and watch €200-scaled P/L move on real
   data — all reproducible from the recorded seed + window.
-- **Honesty gate:** when buy-and-hold wins the bake-off, the recommendation
-  says so; when everything is FRAGILE, the surface says "nothing here is robust."
+- **Honesty gate:** when buy-and-hold wins the bake-off — including the modal
+  real-crypto case where *every active* strategy is FRAGILE — the recommendation
+  says so plainly ("simply holding is the least-bad choice on this window";
+  `BenchmarkWins`, ADR-0066), and the €200 paper-trades as a hold.
 - **No-regression gate:** the existing 119/119 anchored backtest body-SHAs stay
   byte-identical (the bake-off *reads* the engine; it must not perturb anchored
   scenarios), and the full lib/integration/UI-snapshot suite stays green.
@@ -470,6 +476,16 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-22 (orchestrator, B1 robustness-honesty reconcile): sharpened **§ D1**
+  (ranking metric) + the **Honesty gate** success metric to match the shipped B1
+  behaviour ([ADR-0066](architecture/adr/0066-benchmark-exempt-from-allfragile.md)):
+  when *every active* strategy is FRAGILE — the **modal outcome on real crypto** —
+  the buy-and-hold benchmark is crowned **#1** (`BenchmarkWins`, "simply holding is
+  the least-bad choice on this window") and the €200 paper-trades as a hold, rather
+  than the old soft "consider just holding" note. The benchmark is exempt from the
+  fragility gate (it is the null hypothesis the candidates are scored *against*, not
+  a candidate). No requirement change — product.md already promised this outcome;
+  B1 made the code reach it.
 - 2026-06-22 (analyst, F7 EUR-FX scoping): annotated **§ Open decisions D4**
   (EUR-on-USD handling) to record that the MVP **"€200 ≈ 200 USDT — FX not
   modelled"** simplification is now being replaced by a **real EUR/USD rate** —
