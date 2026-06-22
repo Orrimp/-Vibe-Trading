@@ -257,6 +257,230 @@ mod bakeoff_progress {
     }
 }
 
+/// T7.1 — full wired advisor bake-off on real BTCUSDT H1_2024 data.
+///
+/// Runs `run_bakeoff` with the EXACT config the live cockpit uses — 7 arms
+/// (4 rule engines + 2 vote ensembles + buy-and-hold appended), the real
+/// Bootstrap robustness gate (1000 paths), `H1_2024` from the pinned corpus,
+/// `BinanceCache`. Prints the full ranked leaderboard with `--nocapture` for
+/// orchestrator sanity-checking against reality.
+///
+/// Run with:
+/// ```
+/// cargo test -p backtest --features realdata --test bakeoff_e2e t7_1 -- --ignored --nocapture
+/// ```
+#[cfg(feature = "realdata")]
+#[cfg(test)]
+mod bakeoff_full_wired_advisor {
+    use backtest::{
+        BakeoffConfig as BakeoffCfg, BakeoffRequest, DateRange, RobustnessFlag, RobustnessMode,
+        cancel::cancellation_pair, engine::ScenarioDataSource, progress::ProgressSender,
+        run_bakeoff,
+    };
+    use trading_core::Symbol;
+
+    /// Workspace root: `CARGO_MANIFEST_DIR` = `crates/backtest`; two levels up.
+    fn workspace_root() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("crate has parent")
+            .parent()
+            .expect("crates/ has parent (workspace root)")
+            .to_path_buf()
+    }
+
+    /// T7.1 — full 7-arm advisor bake-off on real BTCUSDT H1_2024 data.
+    ///
+    /// Replicates `ui::leaderboard::runner::default_bakeoff_config` exactly:
+    /// - field = `default_field()` ∪ `default_ensemble_field()` (6 arms before buyhold).
+    /// - seed  = `LAB_DEFAULT_SEED` = `[0xC0, 0xFF, 0xEE, 0, …]`.
+    /// - robustness = Bootstrap { paths: 1000, seed: u64_from_le_bytes(seed[0..8]) }.
+    /// - data_source = BinanceCache.
+    /// - range = H1_2024 (2024-01-01 .. 2024-07-01 UTC).
+    ///
+    /// Prints the full ranked leaderboard and asserts:
+    /// 1. buy-and-hold total_return > +20% (proves real data, not synthetic GBM).
+    /// 2. All 7 arms produce results (no missing candidate).
+    /// 3. Ensembles (`v0.8.vote.*`) are present and distinct from the members.
+    #[ignore]
+    #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
+    #[tokio::test]
+    async fn t7_1_full_wired_advisor_bakeoff_real_data() {
+        use rust_decimal_macros::dec;
+
+        let ws_root = workspace_root();
+        std::env::set_current_dir(&ws_root).expect("set_current_dir to workspace root");
+
+        // Skip gracefully when corpus is absent (CI without data/ mounted).
+        if !ws_root
+            .join("data/binance/BTCUSDT/2024/01.parquet")
+            .is_file()
+        {
+            eprintln!("T7.1 SKIP: data/binance corpus absent");
+            return;
+        }
+
+        // Exact seed from `ui::leaderboard::runner::LAB_DEFAULT_SEED`
+        // (= `ui::lab::defaults::LAB_DEFAULT_SEED = [0xC0, 0xFF, 0xEE, 0, …]`).
+        // Cannot import `ui` from `backtest` tests — hard-code the constant.
+        let seed: [u8; 32] = {
+            let mut s = [0u8; 32];
+            s[0] = 0xC0;
+            s[1] = 0xFF;
+            s[2] = 0xEE;
+            s
+        };
+
+        // Bootstrap seed = u64::from_le_bytes(seed[0..8]) — exact formula used
+        // by `advisor_robustness()` in runner.rs.
+        let bootstrap_seed = u64::from_le_bytes([
+            seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
+        ]);
+
+        // Field = default_field() ∪ default_ensemble_field() — exact advisor field.
+        let mut field = BakeoffCfg::default_field();
+        field.extend(BakeoffCfg::default_ensemble_field());
+
+        let cfg = BakeoffCfg {
+            request: BakeoffRequest {
+                symbol: Symbol::new("BTCUSDT"),
+                range: DateRange::H1_2024,
+                seed,
+                field,
+            },
+            data_source: ScenarioDataSource::BinanceCache,
+            robustness: RobustnessMode::Bootstrap {
+                paths: 1000,
+                seed: bootstrap_seed,
+            },
+        };
+
+        let (_handle, cancel_rx) = cancellation_pair();
+        let progress_tx = ProgressSender::disabled();
+
+        eprintln!("\n=== T7.1 FULL WIRED ADVISOR BAKE-OFF — BTCUSDT H1_2024 (Bootstrap 1000) ===");
+        eprintln!("  Seed: [0xC0, 0xFF, 0xEE, 0, …]  Bootstrap seed: {bootstrap_seed:#018x}");
+        eprintln!("  Field: 4 rule engines + 2 vote ensembles + buy-and-hold (appended)");
+
+        let report = run_bakeoff(
+            cfg,
+            cancel_rx,
+            progress_tx,
+            backtest::progress::BakeoffProgressSender::disabled(),
+        )
+        .await
+        .expect("T7.1: run_bakeoff should succeed on real BTCUSDT H1_2024");
+
+        // ── Print full ranked leaderboard ─────────────────────────────────────
+        eprintln!(
+            "\n  {:.<22}  {:>7}  {:>9}  {:>9}  {:>7}  RobustnessFlag",
+            "Strategy", "Sharpe", "Return%", "MaxDD%", "Trades"
+        );
+        eprintln!("  {:->80}", "");
+
+        for &i in &report.ranked {
+            let c = &report.candidates[i];
+            let crown = if report.crowned == Some(i) {
+                " <== CROWN"
+            } else {
+                ""
+            };
+            let flag_str = match c.robustness {
+                Some(RobustnessFlag::Robust) => "Robust",
+                Some(RobustnessFlag::Marginal) => "Marginal",
+                Some(RobustnessFlag::Fragile) => "Fragile",
+                Some(RobustnessFlag::Skipped) => "Skipped",
+                None => "Skipped",
+            };
+            let return_pct =
+                (c.kpis.total_return_pct * rust_decimal::Decimal::from(100)).round_dp(2);
+            let maxdd_pct = (c.kpis.max_drawdown * rust_decimal::Decimal::from(100)).round_dp(2);
+            eprintln!(
+                "  {:<22}  {:>7.3}  {:>+9}  {:>9}  {:>7}  {:<10}{}",
+                c.strategy.0.as_str(),
+                c.kpis.sharpe,
+                return_pct,
+                maxdd_pct,
+                c.kpis.trade_count,
+                flag_str,
+                crown,
+            );
+        }
+
+        eprintln!("  {:->80}", "");
+        eprintln!(
+            "  Crowned:     {}",
+            report
+                .crowned
+                .map(|i| report.candidates[i].strategy.0.as_str())
+                .unwrap_or("(none)")
+        );
+        eprintln!("  Outcome:     {:?}", report.rationale.outcome);
+        eprintln!("  Reasons:     {:?}", report.rationale.reasons);
+        eprintln!(
+            "  Recommendation winner: {}",
+            report.rationale.winner.0.as_str()
+        );
+        eprintln!();
+
+        // ── Sanity assertions ─────────────────────────────────────────────────
+
+        // 1. All 7 arms present: 6 field entries + 1 buy-and-hold.
+        assert_eq!(
+            report.candidates.len(),
+            7,
+            "T7.1: expected 7 candidates (6 field + 1 buyhold), got {}",
+            report.candidates.len()
+        );
+
+        // 2. buy-and-hold total_return > +20% on the known-bull H1_2024 window.
+        let buyhold = report
+            .candidates
+            .iter()
+            .find(|c| c.is_benchmark)
+            .expect("T7.1: bake-off must include a buy-and-hold arm");
+
+        eprintln!(
+            "  buy-and-hold total_return = {:.2}%  (sanity guard: must be > +20%)",
+            (buyhold.kpis.total_return_pct * rust_decimal::Decimal::from(100)).round_dp(2),
+        );
+        assert!(
+            buyhold.kpis.total_return_pct > dec!(0.20),
+            "T7.1 FAIL: buy-and-hold total_return_pct = {:.4}% is not > +20%; \
+             synthetic-fallback bug may have regressed (BTC H1_2024 was a bull market ~+40-65%)",
+            (buyhold.kpis.total_return_pct * rust_decimal::Decimal::from(100)).round_dp(4),
+        );
+
+        // 3. Both vote ensembles are present in the candidate list.
+        let ids: Vec<&str> = report
+            .candidates
+            .iter()
+            .map(|c| c.strategy.0.as_str())
+            .collect();
+        assert!(
+            ids.contains(&"v0.8.vote.majority"),
+            "T7.1: v0.8.vote.majority must be in candidates; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.8.vote.unanimous"),
+            "T7.1: v0.8.vote.unanimous must be in candidates; got {ids:?}"
+        );
+
+        // 4. The crowned winner is identified.
+        assert!(
+            report.crowned.is_some(),
+            "T7.1: crowned must be Some (non-empty field always crowns)"
+        );
+
+        // 5. Bootstrap gate ran: at least one candidate has a non-None robustness flag.
+        let any_flagged = report.candidates.iter().any(|c| c.robustness.is_some());
+        assert!(
+            any_flagged,
+            "T7.1: Bootstrap robustness gate ran — at least one candidate must have a robustness flag"
+        );
+    }
+}
+
 /// T6.1 — deterministic bake-off on real Binance data.
 ///
 /// Run with:
