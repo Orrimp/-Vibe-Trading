@@ -25,6 +25,69 @@ pub struct Progress {
     pub elapsed_ms: u64,
 }
 
+/// Candidate-granularity bake-off progress event.
+///
+/// Emitted by `run_bakeoff` immediately BEFORE each `run_scenario` call so
+/// the UI can display "running X of N: <strategy-id>".
+///
+/// - `done` — number of candidates **fully completed** so far (0 before the
+///   first candidate starts, 1 after the first finishes, …).
+/// - `total` — total candidate count, including the buy-and-hold benchmark.
+/// - `current_id` — the strategy id **about to start** (not yet complete).
+///
+/// The ui-designer consumes this directly; `backtest` is already a dep of `ui`.
+/// `SmolStr` keeps the type `Clone` and heap-allocation-free for short ids.
+#[derive(Debug, Clone)]
+pub struct BakeoffProgress {
+    /// Candidates fully completed so far (0-based: 0 means "first one starting").
+    pub done: u16,
+    /// Total number of candidates (field size + 1 for buy-and-hold benchmark).
+    pub total: u16,
+    /// Strategy id of the candidate now starting (e.g. `"v0.sma"`, `"v0.5.macd"`).
+    pub current_id: smol_str::SmolStr,
+}
+
+/// Optional lossy sender for candidate-level bake-off progress.
+///
+/// `None` inner variant ⇒ no-op / disabled (headless / test path).  The channel
+/// is separate from the per-bar `ProgressSender` — two orthogonal concerns.
+#[derive(Debug, Clone)]
+pub struct BakeoffProgressSender(pub Option<tokio::sync::mpsc::Sender<BakeoffProgress>>);
+
+impl BakeoffProgressSender {
+    /// Build a sender backed by the provided `tokio::sync::mpsc::Sender`.
+    #[must_use]
+    pub fn new(tx: tokio::sync::mpsc::Sender<BakeoffProgress>) -> Self {
+        Self(Some(tx))
+    }
+
+    /// Build a no-op sender.  No channel allocation occurs.
+    #[must_use]
+    pub fn disabled() -> Self {
+        Self(None)
+    }
+
+    /// Send a progress event, dropping it if the channel is full or closed.
+    /// Never blocks.
+    pub fn try_send(&self, progress: BakeoffProgress) {
+        if let Some(tx) = &self.0 {
+            let _ = tx.try_send(progress);
+        }
+    }
+}
+
+/// Build a `(BakeoffProgressSender, tokio::sync::mpsc::Receiver<BakeoffProgress>)` pair.
+///
+/// Capacity 8 — lossy (same convention as `progress_pair`).
+#[must_use]
+pub fn bakeoff_progress_pair() -> (
+    BakeoffProgressSender,
+    tokio::sync::mpsc::Receiver<BakeoffProgress>,
+) {
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    (BakeoffProgressSender::new(tx), rx)
+}
+
 /// Lossy sender — wraps `tokio::sync::mpsc::Sender<Progress>`.
 ///
 /// `None` inner variant is the no-op / disabled path used by the CLI and

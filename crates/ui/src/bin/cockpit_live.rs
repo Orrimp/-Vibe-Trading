@@ -785,6 +785,11 @@ fn main() -> Result<()> {
         // advisor-leaderboard-screen v0.1.0 — no bake-off in flight at boot.
         #[cfg(feature = "live")]
         bakeoff_cancel: None,
+        // advisor-bakeoff-progress — no progress channel until a run starts.
+        #[cfg(feature = "live")]
+        bakeoff_progress_rx: None,
+        #[cfg(feature = "live")]
+        bakeoff_progress_recipe_salt: 0,
         // F5-LAUNCH: hold the Sender in AppState so the BakeoffRunCompleted arm
         // can send ForwardCommand::Launch(cfg) to the paper_loop_supervisor.
         #[cfg(feature = "live")]
@@ -1142,6 +1147,30 @@ struct AppState {
     #[cfg(feature = "live")]
     bakeoff_cancel: Option<ui::lab::runner::RunCancelHandle>,
 
+    /// advisor-bakeoff-progress — in-flight bake-off candidate-progress receiver.
+    ///
+    /// Held in an `Arc<Mutex<Option<_>>>` so `BakeoffProgressRecipe` can `take()`
+    /// the receiver in its `stream()` without moving `AppState` into the
+    /// subscription (the `lab_progress_rx` ownership pattern). `Some` while a
+    /// bake-off is in flight; the recipe drains `backtest::BakeoffProgress` →
+    /// `Message::BakeoffProgress`, driving the determinate progress bar. THIS is
+    /// the "last mile" that makes the bar advance (without it the channel would
+    /// be built but never consumed — the recurring gap).
+    #[cfg(feature = "live")]
+    bakeoff_progress_rx: Option<
+        std::sync::Arc<
+            std::sync::Mutex<
+                Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>,
+            >,
+        >,
+    >,
+
+    /// Salt bumped on every `BakeoffRunRequested` so `BakeoffProgressRecipe::hash`
+    /// returns a fresh identity per run (iced de-duplicates subscriptions by hash;
+    /// the `lab_progress_recipe_salt` pattern).
+    #[cfg(feature = "live")]
+    bakeoff_progress_recipe_salt: u64,
+
     /// F5-LAUNCH — sender side of the forward-command channel (ADR-0060 § D6).
     ///
     /// Held on the iced side. When the bake-off completes with a crowned row
@@ -1228,6 +1257,14 @@ impl Clone for AppState {
             // None at cold-boot (the only clone site).
             #[cfg(feature = "live")]
             bakeoff_cancel: None,
+            // Bake-off progress receiver is held behind Arc<Mutex<…>>; the clone
+            // shares the SAME cell (like `lab_progress_rx`), so the app_state that
+            // drives the subscription `take()`s the receiver once. The salt is a
+            // plain copy.
+            #[cfg(feature = "live")]
+            bakeoff_progress_rx: self.bakeoff_progress_rx.clone(),
+            #[cfg(feature = "live")]
+            bakeoff_progress_recipe_salt: self.bakeoff_progress_recipe_salt,
             // Forward-tx sender is cloned by Arc-cloning the underlying channel;
             // mpsc::Sender derives Clone so this is a cheap refcount bump.
             #[cfg(feature = "live")]
@@ -1630,6 +1667,12 @@ impl AppState {
         #[cfg(feature = "live")]
         if bakeoff_run_completed_any {
             self.bakeoff_cancel = None;
+            // Drop the candidate-progress receiver too — the run is over, the
+            // recipe's stream has ended (sender dropped), and the pure-state
+            // `finish_run` already cleared `progress`. Holding a dead Arc would
+            // only keep `BakeoffProgressRecipe` batched on a closed channel until
+            // the next run's salt bump replaces it; dropping it now is tidy.
+            self.bakeoff_progress_rx = None;
         }
 
         // F5 — emit ForwardPaperTradeStarted after bakeoff completes with a
@@ -1964,10 +2007,24 @@ impl AppState {
             // keeps the receiver live for the whole run.
             let (cancel_handle, cancel_recv) = ui::lab::runner::cancellation_pair();
             self.bakeoff_cancel = Some(cancel_handle);
-            // Progress is not surfaced on the leaderboard yet (the screen shows
-            // an indeterminate spinner); a disabled sender keeps run_bakeoff's
-            // progress calls cheap no-ops without standing up a recipe.
+            // The per-BAR progress channel is not surfaced on the leaderboard
+            // (the determinate bar tracks CANDIDATES, not bars); a disabled
+            // per-bar sender keeps run_bakeoff's per-bar progress calls cheap
+            // no-ops.
             let progress_tx = backtest::progress::ProgressSender::disabled();
+            // advisor-bakeoff-progress — THE LAST-MILE WIRING. Build the
+            // candidate-level progress channel, hand the Sender to run_bakeoff,
+            // and hold the Receiver here so `BakeoffProgressRecipe` (batched in
+            // `subscription()`) drains it → `Message::BakeoffProgress` → the
+            // determinate progress bar. Bump the salt so iced sees a fresh recipe
+            // identity for this run (the `lab_progress_recipe_salt` discipline;
+            // otherwise iced reuses the prior, now-closed stream).
+            let (bakeoff_progress_tx, bakeoff_progress_rx) =
+                backtest::progress::bakeoff_progress_pair();
+            self.bakeoff_progress_recipe_salt = self.bakeoff_progress_recipe_salt.wrapping_add(1);
+            self.bakeoff_progress_rx = Some(std::sync::Arc::new(std::sync::Mutex::new(Some(
+                bakeoff_progress_rx,
+            ))));
             // F3 — the config built from the operator's chosen coin + lookback
             // (captured pre-update above). `bakeoff_run_requested` ⇒
             // `bakeoff_cfg` is `Some`; fall back to the default defensively.
@@ -1977,6 +2034,7 @@ impl AppState {
                 cfg,
                 cancel_recv,
                 progress_tx,
+                bakeoff_progress_tx,
             )
         } else {
             iced::Task::none()
@@ -2120,6 +2178,23 @@ impl AppState {
                 ui::live::NarrationOutcomeRecipe {
                     rt_handle: self.rt_handle.clone(),
                     rx: std::sync::Arc::clone(rx),
+                },
+            ));
+        }
+
+        // advisor-bakeoff-progress — the bake-off candidate-progress recipe (the
+        // headline ask's "last mile"). Active whenever a run holds the progress
+        // receiver; the recipe drains `backtest::BakeoffProgress` →
+        // `Message::BakeoffProgress`, advancing the determinate progress bar.
+        // Salt-bumped per `BakeoffRunRequested` so iced rebuilds the stream each
+        // run (the `LabProgressRecipe` discipline). THIS is the wiring whose
+        // absence would leave the bar stuck on the indeterminate spinner.
+        if let Some(rx) = self.bakeoff_progress_rx.as_ref() {
+            subs.push(iced::advanced::subscription::from_recipe(
+                ui::live::BakeoffProgressRecipe {
+                    rt_handle: self.rt_handle.clone(),
+                    rx: std::sync::Arc::clone(rx),
+                    salt: self.bakeoff_progress_recipe_salt,
                 },
             ));
         }

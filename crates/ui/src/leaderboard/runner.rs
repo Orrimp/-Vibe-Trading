@@ -146,8 +146,13 @@ pub fn bakeoff_config_from_state(
 /// **inside the spawned task** — the engine type never crosses into iced
 /// state.
 ///
-/// `cancel` / `progress_tx` are threaded into `run_bakeoff` for cancellation +
-/// progress, matching `run_scenario`'s contract.
+/// `cancel` / `progress_tx` / `bakeoff_progress_tx` are threaded into
+/// `run_bakeoff` for cancellation + per-bar progress + candidate-level progress.
+/// `bakeoff_progress_tx` is the candidate-granularity sender feeding the
+/// leaderboard's DETERMINATE progress bar (the `BakeoffProgress` channel): the
+/// binary builds it from `bakeoff_progress_pair()` and holds the matching
+/// `Receiver` for `BakeoffProgressRecipe`. Pass
+/// `BakeoffProgressSender::disabled()` when no bar is wired (headless / tests).
 #[allow(clippy::needless_pass_by_value)]
 pub fn spawn_bakeoff(
     #[cfg(feature = "live")] rt_handle: Option<&tokio::runtime::Handle>,
@@ -155,6 +160,7 @@ pub fn spawn_bakeoff(
     cfg: backtest::BakeoffConfig,
     cancel: backtest::cancel::RunCancelReceiver,
     progress_tx: backtest::progress::ProgressSender,
+    bakeoff_progress_tx: backtest::progress::BakeoffProgressSender,
 ) -> iced::Task<crate::state::Message> {
     use crate::state::Message;
 
@@ -162,7 +168,7 @@ pub fn spawn_bakeoff(
     // Resolve immediately with a friendly error (never hang).
     #[cfg(not(feature = "live"))]
     {
-        let _ = (cfg, cancel, progress_tx);
+        let _ = (cfg, cancel, progress_tx, bakeoff_progress_tx);
         return iced::Task::done(Message::BakeoffRunCompleted(Err(SmolStr::new(
             crate::strings::LEADERBOARD_RUN_NEEDS_LIVE,
         ))));
@@ -171,7 +177,7 @@ pub fn spawn_bakeoff(
     #[cfg(feature = "live")]
     {
         let Some(handle) = rt_handle else {
-            let _ = (cfg, cancel, progress_tx);
+            let _ = (cfg, cancel, progress_tx, bakeoff_progress_tx);
             return iced::Task::done(Message::BakeoffRunCompleted(Err(SmolStr::new(
                 crate::strings::LEADERBOARD_RUN_NEEDS_LIVE,
             ))));
@@ -183,9 +189,11 @@ pub fn spawn_bakeoff(
                 // Run the bake-off on the side-thread tokio runtime (the iced
                 // thread is never blocked). Mirror the engine report into the
                 // ui-side mirror INSIDE the task — the engine type never
-                // crosses into iced state.
+                // crosses into iced state. `bakeoff_progress_tx` carries the
+                // candidate-level progress to the leaderboard's progress bar.
                 let join = rt.spawn(async move {
-                    match backtest::run_bakeoff(cfg, cancel, progress_tx).await {
+                    match backtest::run_bakeoff(cfg, cancel, progress_tx, bakeoff_progress_tx).await
+                    {
                         Ok(report) => Ok(BakeoffReportMirror::from_report(&report)),
                         Err(e) => Err(SmolStr::new(format!("{e}"))),
                     }

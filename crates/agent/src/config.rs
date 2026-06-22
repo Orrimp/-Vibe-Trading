@@ -88,11 +88,16 @@ pub enum PlanSignal {
 /// ## Field types
 ///
 /// All integer window lengths use `u32` (not `usize`) and RSI thresholds use
-/// `u32` (integer percent) to keep the enum `Copy + Eq` without any `Decimal`
+/// `u32` (integer percent) to keep the enum `Clone + Eq` without any `Decimal`
 /// or `f64` (consistent with the `ui`-side `PlanRuleView` mirror).
 /// The Bollinger k is encoded as tenths: `k_tenths = 20` → 2.0σ (avoids a
-/// `Decimal` field while staying `Copy + Eq`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `Decimal` field while staying `Clone + Eq`).
+///
+/// Note: `Copy` is intentionally dropped — `PlanRuleKind::Ensemble` carries a
+/// `Vec<smol_str::SmolStr>` of member display labels so the `ui` can render
+/// "≥2 of {MACD, RSI, Bollinger}" rather than a bare count.  Callers that
+/// previously relied on `Copy` should `.clone()` explicitly.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanRuleKind {
     /// SMA crossover — buys when fast SMA > slow SMA, sells on reverse.
     SmaCross {
@@ -127,9 +132,9 @@ pub enum PlanRuleKind {
         len: u32,
         /// Band width in standard deviations ×10 (e.g. `k_tenths = 20` → 2.0σ).
         ///
-        /// Encoded as tenths to keep the enum `Copy + Eq` without a `Decimal`
-        /// field (consistent with the `ui`-side `PlanRuleView::BollingerReversion`
-        /// mirror).
+        /// Encoded as tenths (e.g. `Decimal(2)` → `k_tenths = 20`) to avoid a
+        /// `Decimal` field while keeping the enum `Clone + Eq` and matching the
+        /// `ui`-side `PlanRuleView::BollingerReversion` mirror.
         k_tenths: u32,
     },
     /// Buy-and-hold — buy once, hold forever, no sell trigger.
@@ -137,17 +142,24 @@ pub enum PlanRuleKind {
     /// F8 signal-vote ensemble (ADR-0063 § D2).
     ///
     /// A multi-member vote ensemble: N member strategies + a vote arbitration
-    /// method.  The `ui` renders this as "N-of-M consensus" copy.
+    /// method.  The `ui` renders this as "≥k of {MACD, RSI, Bollinger}" copy
+    /// using `method` (the arbitration logic) and `members` (the identity list).
     ///
-    /// Note: members are NOT recursively embedded here (that would break `Copy`).
-    /// The `ui` receives `method` + `member_count` to generate concise copy.
-    /// Full member detail is available from `strategy::EnsembleStrategy::describe_plan`
-    /// on the agent side if needed for richer rendering (v0.2 extension point).
+    /// `members` carries the human-readable display label for each member
+    /// strategy, e.g. `["MACD trend", "RSI reversion", "Bollinger reversion"]`.
+    /// The labels are sourced from `strategy::EnsembleStrategy::describe_plan`
+    /// via the `agent::plan::map_rule_shape` seam (ADR-0062 § D3).
+    ///
+    /// `Copy` is intentionally absent on `PlanRuleKind`; callers `.clone()`.
     Ensemble {
-        /// Vote arbitration method.
+        /// Vote arbitration method (closed enum — determines the threshold copy).
         method: PlanVoteMethod,
-        /// Number of member strategies.
-        member_count: u32,
+        /// Display labels for each member strategy, in member order.
+        ///
+        /// `smol_str::SmolStr` is heap-free for labels ≤ 22 bytes (most fit).
+        /// The `ui` zips this with the member count from `method` to render the
+        /// full "≥k of {label₁, label₂, …}" headline.
+        members: Vec<smol_str::SmolStr>,
     },
 }
 

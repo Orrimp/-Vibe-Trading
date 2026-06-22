@@ -2071,6 +2071,16 @@ pub enum Message {
     /// `Ready(mirror)` / `Empty` (zero rows) / `Error(msg)` in the result
     /// `PanelState` and clears `running`.
     BakeoffRunCompleted(crate::leaderboard::runner::BakeoffRunResult),
+    /// A candidate-level bake-off progress event — emitted by `run_bakeoff`
+    /// immediately BEFORE each candidate's `run_scenario` call, relayed by the
+    /// `BakeoffProgressRecipe` (the binary-side "last mile", mirroring
+    /// `LabProgressRecipe`). Carries `backtest::BakeoffProgress { done, total,
+    /// current_id }`; lands it on the leaderboard state so the DETERMINATE
+    /// progress bar shows "Running `{current_id}` — `{done+1}` of `{total}`" filled
+    /// `done / total`. `backtest` is a hard `ui` dep (the same seam the Lab's
+    /// `LabRunProgress(Progress)` uses) so the engine progress type is allowed
+    /// in iced state directly — there is no deeper engine type to leak.
+    BakeoffProgress(backtest::progress::BakeoffProgress),
 
     // ── advisor-llm-narration F9 — the opt-in "why this one" narration ───────
     /// Operator pressed "Explain" on the crowned recommendation block (the
@@ -3045,10 +3055,17 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             }
         }
         Message::BakeoffRunCompleted(outcome) => {
-            // Land the mirrored result (Ready / Empty / Error) + clear running.
-            // The engine `BakeoffReport` was already mirrored into the pure-`ui`
-            // `BakeoffReportMirror` at the dispatch boundary in `spawn_bakeoff`.
+            // Land the mirrored result (Ready / Empty / Error) + clear running
+            // (and any lingering progress). The engine `BakeoffReport` was
+            // already mirrored into the pure-`ui` `BakeoffReportMirror` at the
+            // dispatch boundary in `spawn_bakeoff`.
             model.leaderboard_screen_state.finish_run(outcome);
+        }
+        Message::BakeoffProgress(progress) => {
+            // Candidate-level progress from the in-flight bake-off → drives the
+            // determinate progress bar ("Running {id} — {n} of {total}"). Pure:
+            // just store the latest event on the leaderboard state.
+            model.leaderboard_screen_state.set_progress(progress);
         }
 
         // ── advisor-llm-narration F9 — the opt-in "why this one" narration ───

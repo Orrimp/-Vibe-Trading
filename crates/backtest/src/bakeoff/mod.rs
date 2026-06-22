@@ -37,7 +37,7 @@ use crate::{
     DateRange, RunReport, ScenarioConfig,
     cancel::RunCancelReceiver,
     engine::{ScenarioDataSource, run_scenario},
-    progress::ProgressSender,
+    progress::{BakeoffProgressSender, ProgressSender},
     stats::{compute_calmar, compute_sharpe_hourly, compute_sortino_hourly},
 };
 
@@ -514,6 +514,16 @@ const BUYHOLD_ID: &str = "v0.buyhold";
 /// cancels mid-bake-off the first arm to notice returns `Cancelled`; this
 /// function propagates it.
 ///
+/// # Candidate-level progress
+///
+/// When `bakeoff_progress_tx` is `Some`, one [`crate::progress::BakeoffProgress`]
+/// event is emitted immediately BEFORE each `run_scenario` call with:
+/// - `done`  = candidates fully completed so far (0 at the start of the first).
+/// - `total` = total candidate count (`field.len()` + 1 for buy-and-hold).
+/// - `current_id` = the strategy id about to start.
+///
+/// `None` ⇒ byte-identical headless/test path (no emission, no channel allocation).
+///
 /// # Errors
 ///
 /// Propagates `RunError` from any `run_scenario` call (including
@@ -522,6 +532,7 @@ pub async fn run_bakeoff(
     cfg: BakeoffConfig,
     cancel_rx: RunCancelReceiver,
     progress_tx: ProgressSender,
+    bakeoff_progress_tx: BakeoffProgressSender,
 ) -> Result<BakeoffReport, crate::engine::RunError> {
     let req = &cfg.request;
 
@@ -550,11 +561,26 @@ pub async fn run_bakeoff(
 
     let mut candidates: Vec<CandidateResult> = Vec::with_capacity(strategy_ids.len());
 
+    // The bake-off field is always small (≤ a few dozen strategies) so
+    // usize → u16 will never actually overflow.  `try_from` with a
+    // saturating fallback keeps clippy happy without panicking on the
+    // unreachable overflow path.
+    let total_candidates: u16 = u16::try_from(strategy_ids.len()).unwrap_or(u16::MAX);
+
     for (candidate_index, (strategy, is_benchmark)) in strategy_ids.into_iter().enumerate() {
         // Check cancellation before each arm.
         if cancel_rx.is_cancelled() {
             return Err(crate::engine::RunError::Cancelled);
         }
+
+        // Emit candidate-level progress BEFORE starting this arm.
+        // `done` = completed so far (0 at the very start).
+        let done: u16 = u16::try_from(candidate_index).unwrap_or(u16::MAX);
+        bakeoff_progress_tx.try_send(crate::progress::BakeoffProgress {
+            done,
+            total: total_candidates,
+            current_id: strategy.0.clone(),
+        });
 
         let scenario_cfg = ScenarioConfig {
             strategy: strategy.clone(),

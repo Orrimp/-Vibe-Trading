@@ -1548,6 +1548,36 @@ pub fn fake_cockpit_leaderboard_with_input(
     cockpit
 }
 
+/// advisor-bakeoff-progress — a `Cockpit` routed to `Screen::Leaderboard` with a
+/// bake-off IN FLIGHT and a candidate-level `BakeoffProgress` set, so the
+/// DETERMINATE progress bar beneath the input panel renders "Running {id} —
+/// {done+1} of {total}" filled `done / total`.
+///
+/// `result` is `Loading` (the in-flight result state) + `running = true` (the
+/// bar's gate) + the supplied progress event. Drives the bake-off progress
+/// render guard. Synthetic — no engine, no I/O, no channel (the progress is set
+/// directly; the channel→state path is proved by `bakeoff_progress_relay.rs`).
+#[must_use]
+pub fn fake_cockpit_leaderboard_running_progress(
+    done: u16,
+    total: u16,
+    current_id: &str,
+) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Leaderboard;
+    cockpit.leaderboard_screen_state = crate::leaderboard::LeaderboardScreenState {
+        result: PanelState::Loading,
+        running: true,
+        progress: Some(backtest::progress::BakeoffProgress {
+            done,
+            total,
+            current_id: SmolStr::new(current_id),
+        }),
+        ..Default::default()
+    };
+    cockpit
+}
+
 // ── advisor-llm-narration F9 (ADR-0064) — the opt-in "why this one" narration ──
 
 /// A FAITHFUL fixture narration prose for the `Ready` render state — a
@@ -1705,12 +1735,15 @@ pub fn fake_forward_plan_ensemble() -> crate::forward_plan::ForwardPlanView {
         // ensemble holds. Exercises the LONG-stance tally branch.
         stance: PlanStanceView::Long,
         latest_signal: Some(PlanSignalView::Hold),
-        // 2-of-3 majority vote. Carries `method` + `member_count` (the
-        // developer's shipped `agent::config::PlanRuleKind::Ensemble` shape —
-        // NOT a member-rule Vec).
+        // 2-of-3 majority vote. Carries `method` + `members` display labels
+        // (Task 3: agent::config::PlanRuleKind::Ensemble now carries Vec<SmolStr>).
         rule: PlanRuleView::Ensemble {
             method: PlanVoteMethodView::Majority { k: 2, n: 3 },
-            member_count: 3,
+            members: vec![
+                SmolStr::new_static("MACD trend"),
+                SmolStr::new_static("RSI reversion"),
+                SmolStr::new_static("Bollinger reversion"),
+            ],
         },
         last_close: dec!(64000.00),
         as_of_label: SmolStr::new("Jun 21 14:00"),

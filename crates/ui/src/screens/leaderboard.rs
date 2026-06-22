@@ -69,7 +69,7 @@ use crate::strings::{
     LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
     LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
     LEADERBOARD_HEADLINE_ALL_FRAGILE, LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING,
-    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_REASON_ALL_FRAGILE,
+    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
     LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
     LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
@@ -124,16 +124,75 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 
     let body = result_body(st, mode);
 
-    Column::new()
+    let mut column = Column::new()
         .padding(space::L as u16)
         .spacing(space::L)
         .push(header)
-        .push(guided_input)
+        .push(guided_input);
+
+    // advisor-bakeoff-progress — the DETERMINATE progress bar, BENEATH the
+    // "Plan your bake-off" panel + the SAME width (`Length::Fill`, matching the
+    // panel's fill width). Shown only while a run is in flight; once the first
+    // `BakeoffProgress` event arrives it fills `done / total` and names the
+    // running candidate. (The operator's headline ask — real "running X of N".)
+    if let Some(bar) = progress_strip(st, mode) {
+        column = column.push(bar);
+    }
+
+    column
         .push(budget_context)
         .push(body)
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+/// The determinate bake-off progress bar shown beneath the input panel while a
+/// run is in flight — `None` when no run is running (so the strip vanishes
+/// between runs). Once the first `BakeoffProgress` event lands it shows
+/// "Running `{current_id}` — `{done+1}` of `{total}`" filled `done / total`;
+/// before any event arrives (the brief pre-first-candidate window) it shows the
+/// indeterminate sentinel with the loading copy, so the bar is never blank
+/// during a run.
+fn progress_strip(
+    st: &crate::leaderboard::LeaderboardScreenState,
+    mode: ThemeMode,
+) -> Option<crate::Element<'static>> {
+    if !st.running {
+        return None;
+    }
+    match &st.progress {
+        Some(p) if p.total > 0 => {
+            // 1-based position: `done` = completed so far, so the running one is
+            // `done + 1`. Fill is `done / total` (the fraction COMPLETED).
+            let n = u32::from(p.done) + 1;
+            let label = LEADERBOARD_PROGRESS_FMT
+                .replace("{current}", display_label(p.current_id.as_str()))
+                .replace("{n}", &n.to_string())
+                .replace("{total}", &p.total.to_string());
+            let fill = f32::from(p.done) / f32::from(p.total);
+            Some(crate::widgets::progress_bar::view_block::<Message>(
+                Some(fill),
+                &label,
+                mode,
+            ))
+        }
+        // Running but no event yet (`done == 0 && total == 0`) — the indeterminate
+        // sentinel with the loading copy, so the strip is never empty mid-run.
+        _ => Some(crate::widgets::progress_bar::view_block::<Message>(
+            None,
+            LEADERBOARD_LOADING,
+            mode,
+        )),
+    }
+}
+
+/// `true` when a real candidate-level progress event has arrived (`total > 0`)
+/// — the determinate bar beneath the input panel is then showing real progress,
+/// so the result body suppresses its fallback spinner. Mirrors the
+/// `progress_strip` `total > 0` gate.
+fn has_live_progress(st: &crate::leaderboard::LeaderboardScreenState) -> bool {
+    matches!(&st.progress, Some(p) if p.total > 0)
 }
 
 /// The budget-context line shown under the guided input — "Ranking strategies
@@ -222,15 +281,31 @@ fn result_body(
     mode: ThemeMode,
 ) -> crate::Element<'_> {
     match &st.result {
-        // In-flight bake-off — spinner + "running…" copy.
-        PanelState::Loading => Container::new(
-            Column::new()
-                .push(Space::new().height(Length::Fixed(space::XL as f32)))
-                .push(frame::loading_with_spinner(LEADERBOARD_LOADING, mode)),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into(),
+        // In-flight bake-off. The DETERMINATE progress bar beneath the input
+        // panel (see `progress_strip`) is the real "running X of N" signal once
+        // the first `BakeoffProgress` event lands, so the body here falls back to
+        // the indeterminate spinner ONLY in the brief pre-first-event window
+        // (`progress` still `None` / `total == 0`); after that the body stays
+        // quiet (a second spinner/bar would be redundant with the strip above).
+        PanelState::Loading => {
+            let body: crate::Element<'_> = if has_live_progress(st) {
+                // The strip above is showing real progress — keep the result area
+                // calm (no duplicate spinner). A short padding holds the layout.
+                Space::new()
+                    .width(Length::Shrink)
+                    .height(Length::Fixed(space::XL as f32))
+                    .into()
+            } else {
+                Column::new()
+                    .push(Space::new().height(Length::Fixed(space::XL as f32)))
+                    .push(frame::loading_with_spinner(LEADERBOARD_LOADING, mode))
+                    .into()
+            };
+            Container::new(body)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        }
         // Cold start — the "press Run bake-off" prompt (honest Empty). The copy
         // reflects the CURRENT selection so the operator sees exactly what the
         // next Run will do (F3): "…rank every strategy on {coin} over {lookback}".

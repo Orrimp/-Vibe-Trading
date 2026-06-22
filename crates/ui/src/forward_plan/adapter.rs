@@ -106,20 +106,17 @@ fn rule_view(rule: &agent::config::PlanRuleKind) -> PlanRuleView {
             }
         }
         agent::config::PlanRuleKind::BuyAndHold => PlanRuleView::BuyAndHold,
-        // F8 / ADR-0063 — the ensemble (signal-vote) rule shape.
-        // RECONCILED to the developer's SHIPPED `agent::config::PlanRuleKind::
-        // Ensemble { method: PlanVoteMethod, member_count: u32 }` (NOT the ADR's
-        // original `members: Vec<PlanRuleShape>` — the developer chose a
-        // `Copy`-preserving scalar `member_count`; full member rules stay on
-        // the strategy side as a v0.2 extension point). If a field/variant name
-        // drifts, THIS is the only `ui` edit site (the mirror discipline keeps
-        // the blast radius to one function).
-        agent::config::PlanRuleKind::Ensemble {
-            method,
-            member_count,
-        } => PlanRuleView::Ensemble {
+        // F8 / ADR-0063 + F6 member-name enrichment — the ensemble (signal-vote)
+        // rule shape. RECONCILED to the shipped `agent::config::PlanRuleKind::
+        // Ensemble { method, members: Vec<SmolStr> }` (the developer enriched it
+        // from the old scalar `member_count: u32` to carry each member's display
+        // label). The `ui` mirror carries the SAME `members: Vec<SmolStr>`
+        // field-for-field, so the plan can NAME the members ("≥ k of {MACD trend,
+        // RSI reversion, Bollinger reversion} agree…"); `members.len()` is the
+        // authoritative member count.
+        agent::config::PlanRuleKind::Ensemble { method, members } => PlanRuleView::Ensemble {
             method: vote_method_view(method),
-            member_count: *member_count,
+            members: members.iter().map(|m| SmolStr::new(m.as_str())).collect(),
         },
     }
 }

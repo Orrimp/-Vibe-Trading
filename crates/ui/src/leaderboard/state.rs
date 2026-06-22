@@ -463,6 +463,16 @@ pub struct LeaderboardScreenState {
     /// `lab_run_inflight` token). Guards against double-dispatch — the Run
     /// button is disabled while `true`.
     pub running: bool,
+    /// The latest candidate-level bake-off progress (mirrors the Lab
+    /// `LabState::run_progress`). `Some` once the first `BakeoffProgress` event
+    /// arrives over the channel; drives the DETERMINATE progress bar ("Running
+    /// {id} — {n} of {total}", filled `done / total`). `None` before the first
+    /// event (the bar falls back to the indeterminate spinner) and after the run
+    /// completes (cleared in `finish_run`). Stored as the raw `backtest`
+    /// candidate-progress type — `backtest` is a hard `ui` dep (the same seam
+    /// the Lab uses for `progress::Progress`), and the type is `Clone` so
+    /// `LeaderboardScreenState` stays `Clone` for the render-test harness.
+    pub progress: Option<backtest::progress::BakeoffProgress>,
 
     // ── F3 guided input ──────────────────────────────────────────────────────
     /// The coin the operator chose to rank strategies on (default `BTCUSDT`).
@@ -498,6 +508,8 @@ impl Default for LeaderboardScreenState {
             // shows when work is actually happening.
             result: PanelState::Empty,
             running: false,
+            // No bake-off in flight at cold start → no progress yet.
+            progress: None,
             // F3 guided-input defaults — the most-used starting point (product
             // § journey step 1: BTCUSDT / €200 / a corpus-covered window).
             coin: Symbol::new(DEFAULT_BAKEOFF_COIN),
@@ -518,6 +530,18 @@ impl LeaderboardScreenState {
         self.result = PanelState::Loading;
         self.running = true;
         self.narration = NarrationState::NotRequested;
+        // Clear any prior run's progress so the new run starts from the
+        // indeterminate spinner until its first `BakeoffProgress` event arrives
+        // (a stale "7 of 7" from the last run must never show on the new one).
+        self.progress = None;
+    }
+
+    /// Land a candidate-level progress update (mirrors `LabState::run_progress`
+    /// being set on `LabRunProgress`). Called from the `Message::BakeoffProgress`
+    /// update arm. Drives the determinate progress bar; ignored after the run
+    /// completes (the binary stops the recipe + clears `progress` in `finish_run`).
+    pub fn set_progress(&mut self, progress: backtest::progress::BakeoffProgress) {
+        self.progress = Some(progress);
     }
 
     /// Land a completed bake-off result. `Ok(mirror)` → `Ready`; `Err(msg)` →
@@ -527,6 +551,9 @@ impl LeaderboardScreenState {
     /// complete and honest on its own; the operator opts into the narration.
     pub fn finish_run(&mut self, outcome: Result<BakeoffReportMirror, SmolStr>) {
         self.running = false;
+        // The run is over — clear progress so a stale "{n} of {total}" never
+        // lingers under the (now Ready/Error) result.
+        self.progress = None;
         self.result = match outcome {
             Ok(mirror) if mirror.rows.is_empty() => PanelState::Empty,
             Ok(mirror) => PanelState::Ready(mirror),

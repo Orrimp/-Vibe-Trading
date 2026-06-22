@@ -78,6 +78,9 @@ pub use bakeoff::{
     run_bakeoff,
 };
 
+// Candidate-level bake-off progress (Task 1 — ui mirrors this type directly).
+pub use progress::{BakeoffProgress, BakeoffProgressSender, bakeoff_progress_pair};
+
 /// Annualised Sharpe ratio from a minute-resolution equity curve.
 ///
 /// Re-exported from `scenarios::sma_composed` per ADR-0035 § Decision 8 (T-D-N12).

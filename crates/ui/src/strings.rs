@@ -1260,7 +1260,7 @@ pub const PLACEHOLDER_NONE: &str = "—";
 /// `too_many_lines` lint disagrees, we disagree back. Splitting this into
 /// per-section helpers would obscure the single-source-of-truth shape
 /// and force tests to call multiple accessors.
-#[allow(clippy::too_many_lines, deprecated)]
+#[allow(clippy::too_many_lines, clippy::large_stack_arrays, deprecated)]
 #[must_use]
 pub fn all() -> &'static [(&'static str, &'static str)] {
     &[
@@ -1510,6 +1510,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ),
         ("LEADERBOARD_EMPTY_PROMPT", LEADERBOARD_EMPTY_PROMPT),
         ("LEADERBOARD_LOADING", LEADERBOARD_LOADING),
+        ("LEADERBOARD_PROGRESS_FMT", LEADERBOARD_PROGRESS_FMT),
         ("LEADERBOARD_ERROR_PREFIX", LEADERBOARD_ERROR_PREFIX),
         ("LEADERBOARD_RUN_NEEDS_LIVE", LEADERBOARD_RUN_NEEDS_LIVE),
         // advisor-dynamic-data fetch-error copy (ADR-0061 Wave C)
@@ -1744,6 +1745,15 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         (
             "FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT",
             FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT,
+        ),
+        // F6 ensemble member-name enrichment — named-member rule copy
+        (
+            "FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT",
+            FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT,
+        ),
+        (
+            "FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT",
+            FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT,
         ),
         ("FORWARD_PLAN_SIZING_TITLE", FORWARD_PLAN_SIZING_TITLE),
         ("FORWARD_PLAN_SIZING_FLAT_FMT", FORWARD_PLAN_SIZING_FLAT_FMT),
@@ -2244,6 +2254,13 @@ pub const LEADERBOARD_EMPTY_PROMPT: &str = "No bake-off yet. Press \u{201c}Run b
 pub const LEADERBOARD_LOADING: &str =
     "Backtesting every strategy on the same window\u{2026} this takes a few seconds.";
 
+/// Determinate progress label — shown above the bake-off progress bar once the
+/// first candidate-level `BakeoffProgress` event arrives. Names the strategy now
+/// running and the 1-based position in the field. `{current}` = the id about to
+/// run; `{n}` = `done + 1` (1-based); `{total}` = the field size. Filled at the
+/// call site (the runtime values stay values; the copy stays here).
+pub const LEADERBOARD_PROGRESS_FMT: &str = "Running {current} \u{2014} {n} of {total}";
+
 /// Error-state prefix — paired with the engine's failure detail (R: never a
 /// bare "no data"; says what to check).
 pub const LEADERBOARD_ERROR_PREFIX: &str = "The bake-off could not run";
@@ -2648,6 +2665,31 @@ pub const FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT: &str =
 pub const FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT: &str = "This is a vote over the member strategies \u{2014} it is measured against \
      buy-and-hold like every other candidate, with no assumption that combining \
      them does better.";
+
+// ── Ensemble MEMBER NAMING (F6 member-name enrichment) ────────────────────────
+//
+// The agent boundary now carries each ensemble member's human-readable DISPLAY
+// LABEL (`members: Vec<SmolStr>`, e.g. ["MACD trend", "RSI reversion", "Bollinger
+// reversion"]), so the plan can NAME the members instead of saying "3 member
+// strategies" abstractly. The headline vote rule becomes "Holds while ≥ 2 of
+// {MACD trend, RSI reversion, Bollinger reversion} agree…", with the member set
+// rendered as a brace-list from the structured labels. The labels themselves come
+// from the agent (sourced from `strategy::EnsembleStrategy::describe_plan`); only
+// the SURROUNDING rule prose lives here (the `ui` owns the connective words).
+
+/// Ensemble headline rule line — MAJORITY vote, with the members NAMED. Reads
+/// "Holds while at least {k} of {members} agree to be in the market; goes flat
+/// when the agreement drops below {k}." `{k}` + `{members}` (a brace-list like
+/// "{MACD trend, RSI reversion, Bollinger reversion}", built from the structured
+/// member labels) are filled at the call site.
+pub const FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT: &str = "Holds a position while at least {k} of {members} agree to be in the market; \
+     goes flat when the agreement drops below {k}.";
+
+/// Ensemble headline rule line — UNANIMOUS vote, with the members NAMED. Reads
+/// "Holds while ALL of {members} agree…; goes flat the moment any one of them
+/// disagrees." `{members}` filled at the call site from the member labels.
+pub const FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT: &str = "Holds a position only while ALL of {members} agree to be in the market; \
+     goes flat the moment any one of them disagrees.";
 
 // ── Projected sizing (R3 — budget-aware €200 next-BUY, "at the last close") ────
 

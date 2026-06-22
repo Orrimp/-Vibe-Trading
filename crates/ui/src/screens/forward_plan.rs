@@ -66,6 +66,7 @@
 
 use iced::widget::{Column, Container, Row, Scrollable, Space, Text};
 use iced::{Border, Length};
+use smol_str::SmolStr;
 
 use crate::forward_plan::state::{
     ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
@@ -80,8 +81,8 @@ use crate::strings::{
     FORWARD_PLAN_RULE_BBANDS_ENTRY_THEN, FORWARD_PLAN_RULE_BBANDS_EXIT_IF,
     FORWARD_PLAN_RULE_BBANDS_EXIT_THEN, FORWARD_PLAN_RULE_BUY_AND_HOLD,
     FORWARD_PLAN_RULE_COMPOUND_CAVEAT, FORWARD_PLAN_RULE_ENSEMBLE_CAVEAT,
-    FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT, FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT,
-    FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT, FORWARD_PLAN_RULE_IF,
+    FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT, FORWARD_PLAN_RULE_ENSEMBLE_TALLY_FMT,
+    FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT, FORWARD_PLAN_RULE_IF,
     FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT, FORWARD_PLAN_RULE_MACD_ENTRY_THEN,
     FORWARD_PLAN_RULE_MACD_EXIT_IF, FORWARD_PLAN_RULE_MACD_EXIT_THEN,
     FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT, FORWARD_PLAN_RULE_RSI_ENTRY_THEN,
@@ -337,15 +338,18 @@ fn rules_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
                 .color(color::FG_1.current(mode))
                 .width(Length::Fill),
         );
-    } else if let PlanRuleView::Ensemble {
-        method,
-        member_count,
-    } = plan.rule
-    {
-        // The ensemble (signal-vote) plan — method + tally + caveat + cadence.
-        col = ensemble_rules(col, plan, method, member_count, mode);
+    } else if let PlanRuleView::Ensemble { method, members } = &plan.rule {
+        // The ensemble (signal-vote) plan — NAMED members + method + tally +
+        // caveat + cadence. `members` (the agent's display labels) lets the
+        // headline rule name them ("≥ 2 of {MACD trend, RSI reversion, Bollinger
+        // reversion} agree"); `members.len()` is the authoritative member count.
+        col = ensemble_rules(col, plan, *method, members, mode);
     } else {
-        let (entry, exit, show_compound_caveat) = rule_clauses(plan.rule);
+        // `PlanRuleView` is no longer `Copy` (the `Ensemble` arm carries a `Vec`),
+        // so clone for the by-value `rule_clauses` match. The single-rule arms
+        // this reaches are cheap (a few `u32`s) — Ensemble/BuyAndHold are handled
+        // above and never reach `rule_clauses`.
+        let (entry, exit, show_compound_caveat) = rule_clauses(plan.rule.clone());
         col = col.push(if_then_line(entry.0, entry.1, mode));
         if let Some((exit_if, exit_then)) = exit {
             col = col.push(if_then_line(exit_if, exit_then, mode));
@@ -380,28 +384,29 @@ fn cadence_line(horizon_days: u16, mode: ThemeMode) -> crate::Element<'static> {
 // ── Ensemble (signal vote) rules (F8 / ADR-0063) ───────────────────────────────
 
 /// Render the ensemble standing-rules body into `col`: the headline vote rule
-/// (the IF/THEN keywords, so it reads as a conditional like the singles), the
-/// live tally, the honest "this is a vote, not new alpha" caveat, and the
-/// cadence line.
+/// (the IF/THEN keywords, so it reads as a conditional like the singles) NAMING
+/// its members, the live tally, the honest "this is a vote, not new alpha"
+/// caveat, and the cadence line.
 ///
-/// FAITHFUL — names the vote method + the live tally; never fabricates a single
-/// indicator rule (the R5.2 / ADR-0063 honesty lock). The per-member rule list
-/// is a v0.2 enhancement gated on the agent boundary carrying the members (the
-/// developer's shipped `agent::config::PlanRuleKind::Ensemble` delivers only
-/// `method` + `member_count` — see the `PlanRuleView::Ensemble` doc).
-///
-/// `member_count` cross-checks the method's `n` (a defensive equality the copy
-/// reads via the method, so the two cannot disagree in the rendered text).
+/// FAITHFUL — names the vote method, the member strategies, and the live tally;
+/// never fabricates a single indicator rule (the R5.2 / ADR-0063 honesty lock).
+/// `members` is the agent boundary's display-label list (F6 member-name
+/// enrichment), rendered as a brace-list in the headline rule. `members.len()`
+/// is the authoritative member count (the method's `n` is a belt-and-braces
+/// cross-check, so the displayed denominator never silently disagrees).
 fn ensemble_rules<'a>(
     mut col: Column<'a, crate::state::Message>,
     plan: &ForwardPlanView,
     method: PlanVoteMethodView,
-    member_count: u32,
+    members: &[SmolStr],
     mode: ThemeMode,
 ) -> Column<'a, crate::state::Message> {
+    let member_count = members.len() as u32;
+
     // The headline vote rule as an IF/THEN line (the conditional framing — the
-    // IF/THEN keywords paint ACCENT, the same discriminator the singles use).
-    let (vote_if, vote_then) = ensemble_vote_clause(method, member_count);
+    // IF/THEN keywords paint ACCENT, the same discriminator the singles use),
+    // NAMING the members from the structured label list.
+    let (vote_if, vote_then) = ensemble_vote_clause(method, members);
     col = col.push(if_then_line(vote_if, vote_then, mode));
 
     // The live tally — how many members are currently in the market vs the
@@ -420,20 +425,36 @@ fn ensemble_rules<'a>(
     col.push(cadence_line(plan.horizon_days, mode))
 }
 
+/// Render a member-label list as a brace-list ("{MACD trend, RSI reversion,
+/// Bollinger reversion}") for the named ensemble rule copy. Defensive: an empty
+/// member list (never expected from the agent) yields `"the member strategies"`
+/// so the copy never reads "of {}".
+fn member_brace_list(members: &[SmolStr]) -> String {
+    if members.is_empty() {
+        return "the member strategies".to_string();
+    }
+    let joined = members
+        .iter()
+        .map(SmolStr::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{{{joined}}}")
+}
+
 /// The ensemble's headline vote rule as an `(if, then)` clause pair, formatted
-/// from the structured `method`. Majority and unanimous read differently but
-/// both name the quorum honestly. `member_count` (from the agent boundary) is
-/// used as the denominator `n` — it is the authoritative member count and, by
-/// the developer's construction, equals the method's own `n`; using it directly
-/// means the displayed denominator can never silently disagree with the count.
-fn ensemble_vote_clause(method: PlanVoteMethodView, member_count: u32) -> (String, &'static str) {
-    let n = denominator(method, member_count);
+/// from the structured `method` + the member label list. Majority and unanimous
+/// read differently but both NAME the members honestly (the F6 enrichment): the
+/// `{members}` brace-list replaces the abstract "{n} member strategies" count.
+/// `members.len()` is the authoritative member count; for Majority the `k` quorum
+/// is read straight from the method.
+fn ensemble_vote_clause(method: PlanVoteMethodView, members: &[SmolStr]) -> (String, &'static str) {
+    let names = member_brace_list(members);
     let if_clause = match method {
-        PlanVoteMethodView::Majority { k, .. } => FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_FMT
+        PlanVoteMethodView::Majority { k, .. } => FORWARD_PLAN_RULE_ENSEMBLE_MAJORITY_NAMED_FMT
             .replace("{k}", &k.to_string())
-            .replace("{n}", &n.to_string()),
+            .replace("{members}", &names),
         PlanVoteMethodView::Unanimous { .. } => {
-            FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_FMT.replace("{n}", &n.to_string())
+            FORWARD_PLAN_RULE_ENSEMBLE_UNANIMOUS_NAMED_FMT.replace("{members}", &names)
         }
     };
     // The "THEN" half is the same buy/sell action language the singles use, so
@@ -441,7 +462,7 @@ fn ensemble_vote_clause(method: PlanVoteMethodView, member_count: u32) -> (Strin
     (if_clause, FORWARD_PLAN_RULE_SMA_ENTRY_THEN)
 }
 
-/// The vote denominator `n` — `member_count` from the agent boundary, defended
+/// The vote denominator `n` — `member_count` (from `members.len()`), defended
 /// with `max(method's n)` so the displayed denominator is never smaller than
 /// either source (the two agree by construction; the `max` is belt-and-braces).
 fn denominator(method: PlanVoteMethodView, member_count: u32) -> u32 {

@@ -1051,10 +1051,46 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                         "paper_loop_supervisor: Launch received — hot-swapping loop"
                                     );
 
-                                    // Step (a): cancel the current loop's child token.
+                                    // ── F5b REORDER (Task 2): build FIRST, tear down AFTER. ──
+                                    //
+                                    // OLD order: cancel → drain → build → if Err skip (stranded).
+                                    // NEW order: build → if Ok: cancel + drain + spawn;
+                                    //            if Err: keep old loop + error-log + continue.
+                                    //
+                                    // This prevents the Live view from going dead when the TOML
+                                    // load fails — the old loop keeps running, so the operator
+                                    // sees fills/equity until they retry with a valid strategy.
+                                    //
+                                    // No-double-equity-writer guarantee is preserved: the new
+                                    // loop is spawned ONLY AFTER the old loop has been fully
+                                    // drained (same timing as before; only the Err path changed).
+
+                                    // Step (a): build registry for the selected strategy.
+                                    // NO silent SMA fallback — that is the F5b anti-fake gate.
+                                    let new_registry = match build_registry_for(
+                                        &supervisor_config,
+                                        Some(&cfg),
+                                    ) {
+                                        Ok(r) => r,
+                                        Err(e) => {
+                                            error!(
+                                                strategy = %cfg.strategy.0,
+                                                error = %e,
+                                                "paper_loop_supervisor: strategy load FAILED — \
+                                                 keeping OLD loop running (F5b anti-fake gate: no SMA proxy, \
+                                                 no teardown on build failure)"
+                                            );
+                                            // The old loop is still alive — do NOT cancel it.
+                                            // Continue waiting for the next Launch command.
+                                            continue;
+                                        }
+                                    };
+
+                                    // Step (b): cancel the current loop's child token AFTER
+                                    // the build succeeded (no-teardown-on-failure guarantee).
                                     loop_cancel.cancel();
 
-                                    // Step (b): abort + await old loop drain
+                                    // Step (c): abort + await old loop drain
                                     // (no-double-equity-writer serialisation — the loop
                                     // is the sole per-bar equity writer in paper mode).
                                     loop_abort.abort();
@@ -1078,40 +1114,13 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                          spawning selected-strategy loop"
                                     );
 
-                                    // Step (c): fresh per-loop cancel token under the
+                                    // Step (d): fresh per-loop cancel token under the
                                     // run-level cancel (so the next abort is scoped to
                                     // this new loop, not the whole runtime).
                                     loop_cancel = supervisor_cancel.child_token();
                                     inner_set = JoinSet::new();
 
-                                    // Step (d): build registry for the selected strategy.
-                                    //
-                                    // F5b: build_registry_for returns a Result — if the
-                                    // TOML can't be loaded we log the error and skip the
-                                    // swap (the old loop is already cancelled/drained, so
-                                    // the supervisor continues waiting for the next Launch).
-                                    // NO silent SMA fallback — that is the F5b anti-fake gate.
-                                    let new_registry = match build_registry_for(
-                                        &supervisor_config,
-                                        Some(&cfg),
-                                    ) {
-                                        Ok(r) => r,
-                                        Err(e) => {
-                                            error!(
-                                                strategy = %cfg.strategy.0,
-                                                error = %e,
-                                                "paper_loop_supervisor: strategy load FAILED — \
-                                                 NOT swapping loop (F5b anti-fake gate: no SMA proxy)"
-                                            );
-                                            // Re-use the old cancelled token; inner_set is
-                                            // already drained. Continue to the next select
-                                            // iteration so a fresh Launch can retry.
-                                            loop_cancel = supervisor_cancel.child_token();
-                                            continue;
-                                        }
-                                    };
-
-                                    // Step (d.5): F6-PLAN — produce and send ForwardPlan.
+                                    // Step (d.5 → now e.5): F6-PLAN — produce and send ForwardPlan.
                                     //
                                     // We read the PlanDescribe from the NEW registry
                                     // (same resolved engine the loop will run — R7 by
@@ -1172,7 +1181,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                         }
                                     }
 
-                                    // Step (e): fresh feed on the selected coin.
+                                    // Step (f): fresh feed on the selected coin.
                                     let new_feed: Arc<dyn MarketDataSource> = Arc::new(
                                         data::BinanceFeed::new(
                                             &supervisor_binance_ws_url,

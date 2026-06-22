@@ -1023,6 +1023,96 @@ pub fn narration_outcome_to_ui(
     }
 }
 
+// ── Bake-off progress recipe (advisor-bakeoff-progress — the headline ask) ───
+//
+// The candidate-granularity sibling of `lab::progress::LabProgressRecipe`. The
+// bake-off runs on the side-thread runtime (`leaderboard::runner::spawn_bakeoff`
+// → `rt.spawn(run_bakeoff(...))`); `run_bakeoff` emits one
+// `backtest::progress::BakeoffProgress { done, total, current_id }` over a
+// `BakeoffProgressSender` immediately BEFORE each candidate's `run_scenario`.
+// THIS recipe is the "last mile": the iced thread holds the matching
+// `mpsc::Receiver<BakeoffProgress>` (in an `Arc<Mutex<Option<_>>>`), this recipe
+// `take()`s it in `stream()`, drains it, and emits
+// `Message::BakeoffProgress(progress)` → the leaderboard's determinate progress
+// bar. Without it the channel is built but never consumed and the bar would stay
+// on the indeterminate spinner — the exact "channel built but no recipe consumes
+// it" gap that has bitten this project repeatedly. The relay test
+// (`bakeoff_progress_relay.rs`) is the verification the fixture render can't give.
+//
+// Salt-bumped per `BakeoffRunRequested` (the `LabProgressRecipe` pattern) so iced
+// sees a fresh identity each run and calls `stream()` again rather than reusing
+// the prior (now-closed) stream.
+
+/// iced `Recipe` that drains the bake-off candidate-progress return channel and
+/// emits `Message::BakeoffProgress` per `backtest::progress::BakeoffProgress`.
+///
+/// Constructed by `cockpit_live::subscription()` when `bakeoff_progress_rx` is
+/// `Some`. Same tokio-mpsc-in-`Mutex` ownership + per-run salt as
+/// [`crate::lab::progress::LabProgressRecipe`].
+pub struct BakeoffProgressRecipe {
+    /// Agent-runtime handle — entered before `take()` so the `!Send` guard never
+    /// leaks into the returned `BoxStream` (K8).
+    pub rt_handle: tokio::runtime::Handle,
+    /// The receiver, taken once in `stream()`.
+    pub rx: Arc<
+        std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>>,
+    >,
+    /// Per-run salt (incremented on `BakeoffRunRequested`) so iced treats each
+    /// run as a distinct subscription.
+    pub salt: u64,
+}
+
+impl Recipe for BakeoffProgressRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+        // Per-run salt (NOT a static discriminant) — a fresh identity each run.
+        self.salt.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        // K8 — enter the tokio runtime context to safely take the receiver, then
+        // drop the guard before `Box::pin` so the `BoxStream` stays `Send + 'static`.
+        let rx_opt = {
+            let _guard = self.rt_handle.enter();
+            self.rx
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+        };
+        bakeoff_progress_stream_impl(rx_opt)
+    }
+}
+
+/// Inner stream logic for [`BakeoffProgressRecipe`], extracted so the relay
+/// integration test can drive it directly without a running iced application or
+/// an `EventStream`. THIS is the function the relay test exercises — proving the
+/// channel→`Message` "last mile" the fixture render tests bypass.
+///
+/// - `Some(rx)`: maps each received `BakeoffProgress` to
+///   `Message::BakeoffProgress(progress)` until the sender drops (channel
+///   closed → stream ends cleanly; the binary clears `progress` on
+///   `BakeoffRunCompleted`, so no terminal "Done" message is needed).
+/// - `None` (double-`stream()` after the receiver was already taken): yields
+///   nothing (the `lab_progress_recipe_stream.rs` silent-empty guard).
+#[must_use]
+pub fn bakeoff_progress_stream_impl(
+    rx_opt: Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        if let Some(mut rx) = rx_opt {
+            while let Some(progress) = rx.recv().await {
+                yield Message::BakeoffProgress(progress);
+            }
+            debug!(channel = "bakeoff_progress", "progress channel closed — stopping recipe");
+        }
+        // If rx_opt was None: yields nothing (double-stream() after .take()).
+    })
+}
+
 /// Build the F9 [`agent::narration::NarrationRequest`] for the "Explain" action
 /// from the on-screen `BakeoffReportMirror` — the iced→agent send the cockpit
 /// dispatches over `narration_request_tx` (the F5 `forward_tx` build-from-mirror

@@ -14,6 +14,7 @@
 //! not the Lab-time AST or a cached id.  Drift is structurally impossible
 //! (ADR-0062 § D3).
 
+use smol_str::SmolStr;
 use strategy::{PlanContext, PlanDescribe, PlanRuleShape};
 use trading_core::{Money, Price, Quantity, Timestamp, Usdt};
 
@@ -35,6 +36,25 @@ fn map_signal(s: strategy::PlanSignal) -> PlanSignal {
         strategy::PlanSignal::Buy => PlanSignal::Buy,
         strategy::PlanSignal::Sell => PlanSignal::Sell,
         strategy::PlanSignal::Hold => PlanSignal::Hold,
+    }
+}
+
+/// Map a member `PlanRuleShape` to a short display label for the ensemble ui copy.
+///
+/// Returns a `SmolStr` that fits within the "≥k of {label₁, label₂, …}" ensemble
+/// headline.  Labels are intentionally short (≤ 22 bytes for inline SmolStr storage).
+/// The mapping is exhaustive over the five rule families; `Ensemble` is not expected
+/// as a member shape (no recursive ensembles in the pre-registered field).
+fn member_shape_to_display_label(shape: &PlanRuleShape) -> SmolStr {
+    match shape {
+        PlanRuleShape::SmaCross { .. } => SmolStr::new_static("SMA crossover"),
+        PlanRuleShape::MacdCross { .. } => SmolStr::new_static("MACD trend"),
+        PlanRuleShape::RsiReversion { .. } => SmolStr::new_static("RSI reversion"),
+        PlanRuleShape::BollingerReversion { .. } => SmolStr::new_static("Bollinger reversion"),
+        PlanRuleShape::BuyAndHold => SmolStr::new_static("Buy-and-hold"),
+        // Recursive ensembles are not supported in the pre-registered field.
+        // Fall back to a stable label rather than panic.
+        PlanRuleShape::Ensemble { .. } => SmolStr::new_static("ensemble"),
     }
 }
 
@@ -75,15 +95,17 @@ fn map_rule_shape(rule: PlanRuleShape) -> PlanRuleKind {
         PlanRuleShape::BuyAndHold => PlanRuleKind::BuyAndHold,
         PlanRuleShape::Ensemble { method, members } => {
             // Map strategy::PlanVoteMethod → agent::config::PlanVoteMethod.
-            // Members are NOT recursively embedded — we surface `member_count`
-            // so the ui can generate "N-of-M consensus" copy without a Vec.
             let agent_method = match method {
                 strategy::PlanVoteMethod::Majority { k, n } => PlanVoteMethod::Majority { k, n },
                 strategy::PlanVoteMethod::Unanimous { n } => PlanVoteMethod::Unanimous { n },
             };
+            // Map each member's PlanRuleShape to a display label for the ui.
+            // The ui renders "≥k of {label₁, label₂, …}" from these.
+            let member_labels: Vec<smol_str::SmolStr> =
+                members.iter().map(member_shape_to_display_label).collect();
             PlanRuleKind::Ensemble {
                 method: agent_method,
-                member_count: members.len() as u32,
+                members: member_labels,
             }
         }
     }

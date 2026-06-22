@@ -273,9 +273,14 @@ async fn bootstrap_flags_populate_in_bakeoff() {
     let (_handle, cancel_rx) = cancellation_pair();
     let progress_tx = ProgressSender::disabled();
 
-    let report = run_bakeoff(cfg, cancel_rx, progress_tx)
-        .await
-        .expect("run_bakeoff with Bootstrap must succeed");
+    let report = run_bakeoff(
+        cfg,
+        cancel_rx,
+        progress_tx,
+        backtest::progress::BakeoffProgressSender::disabled(),
+    )
+    .await
+    .expect("run_bakeoff with Bootstrap must succeed");
 
     // Every candidate must have a non-None robustness flag (Bootstrap was activated).
     for candidate in &report.candidates {
@@ -315,9 +320,14 @@ async fn bootstrap_skip_mode_all_none() {
     let (_handle, cancel_rx) = cancellation_pair();
     let progress_tx = ProgressSender::disabled();
 
-    let report = run_bakeoff(cfg, cancel_rx, progress_tx)
-        .await
-        .expect("run_bakeoff with Skip must succeed");
+    let report = run_bakeoff(
+        cfg,
+        cancel_rx,
+        progress_tx,
+        backtest::progress::BakeoffProgressSender::disabled(),
+    )
+    .await
+    .expect("run_bakeoff with Skip must succeed");
 
     // Skip mode: all robustness fields are None.
     for candidate in &report.candidates {
@@ -373,9 +383,14 @@ async fn bakeoff_with_ensemble_field_runs_and_flags_them() {
 
     let (_handle, cancel_rx) = cancellation_pair();
     let progress_tx = ProgressSender::disabled();
-    let report = run_bakeoff(cfg, cancel_rx, progress_tx)
-        .await
-        .expect("run_bakeoff with the ensemble field + Bootstrap must succeed");
+    let report = run_bakeoff(
+        cfg,
+        cancel_rx,
+        progress_tx,
+        backtest::progress::BakeoffProgressSender::disabled(),
+    )
+    .await
+    .expect("run_bakeoff with the ensemble field + Bootstrap must succeed");
 
     let ids: Vec<&str> = report
         .candidates

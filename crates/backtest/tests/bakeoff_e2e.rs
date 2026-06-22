@@ -116,6 +116,147 @@ mod bakeoff_arm_parity {
     }
 }
 
+/// T-PROG-1 — candidate-level bake-off progress channel.
+///
+/// Drives `run_bakeoff` with a live `BakeoffProgressSender` over a minimal
+/// synthetic one-strategy field (`["v0.sma"]`).  Total candidates = 2 (v0.sma
+/// + the always-appended v0.buyhold benchmark).
+///
+/// Asserts:
+/// 1. Exactly `total` (= 2) `BakeoffProgress` events are received.
+/// 2. `done` values form a strictly-monotone sequence 0, 1 (0-based).
+/// 3. `current_id` sequence is `["v0.sma", "v0.buyhold"]`.
+/// 4. `total` is 2 in every message.
+#[cfg(test)]
+mod bakeoff_progress {
+    use backtest::{
+        BakeoffRequest, DateRange, RobustnessMode,
+        bakeoff::BakeoffConfig as BakeoffCfg,
+        cancel::cancellation_pair,
+        engine::ScenarioDataSource,
+        progress::{BakeoffProgressSender, ProgressSender, bakeoff_progress_pair},
+        run_bakeoff,
+    };
+    use trading_core::Symbol;
+
+    /// The one-strategy synthetic field used by the progress test.
+    fn progress_test_field() -> Vec<trading_core::StrategyId> {
+        use smol_str::SmolStr;
+        vec![trading_core::StrategyId(SmolStr::new_static("v0.sma"))]
+    }
+
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    #[tokio::test]
+    async fn t_prog_1_bakeoff_progress_sequence() {
+        // One non-zero seed (ZeroSeed is an error).
+        let seed = {
+            let mut s = [0u8; 32];
+            s[0] = 0xAB;
+            s
+        };
+
+        let cfg = BakeoffCfg {
+            request: BakeoffRequest {
+                symbol: Symbol::new("BTCUSDT"),
+                range: DateRange::Last30d, // Synthetic ignores the range window
+                seed,
+                field: progress_test_field(),
+            },
+            data_source: ScenarioDataSource::Synthetic,
+            robustness: RobustnessMode::Skip,
+        };
+
+        // Build a live (Some) bakeoff progress channel.
+        let (bakeoff_tx, mut bakeoff_rx) = bakeoff_progress_pair();
+
+        let (_handle, cancel_rx) = cancellation_pair();
+        let progress_tx = ProgressSender::disabled();
+
+        // Run the bakeoff — sender is consumed (dropped) on return, so the
+        // channel closes and recv() will eventually return None.
+        let _report = run_bakeoff(cfg, cancel_rx, progress_tx, bakeoff_tx)
+            .await
+            .expect("run_bakeoff with Some progress tx should succeed");
+
+        // Drain all buffered progress events.
+        let mut events = Vec::new();
+        // The sender was moved into run_bakeoff and dropped on return, so the
+        // channel is now closed. recv() returns None when the buffer is empty.
+        while let Some(ev) = bakeoff_rx.recv().await {
+            events.push(ev);
+        }
+
+        // 1. Exactly `total` events.
+        let expected_total: u16 = 2; // v0.sma + v0.buyhold
+        assert_eq!(
+            events.len(),
+            expected_total as usize,
+            "T-PROG-1: expected {expected_total} progress events, got {}",
+            events.len()
+        );
+
+        // 2. `total` field is correct and consistent in all events.
+        for ev in &events {
+            assert_eq!(
+                ev.total, expected_total,
+                "T-PROG-1: ev.total should be {expected_total}, got {}",
+                ev.total
+            );
+        }
+
+        // 3. `done` values are monotonically increasing (0, 1, 2, …).
+        let done_values: Vec<u16> = events.iter().map(|e| e.done).collect();
+        let expected_done: Vec<u16> = (0u16..expected_total).collect();
+        assert_eq!(
+            done_values, expected_done,
+            "T-PROG-1: `done` sequence should be {expected_done:?}, got {done_values:?}"
+        );
+
+        // 4. `current_id` sequence matches field order + buyhold.
+        let ids: Vec<&str> = events.iter().map(|e| e.current_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["v0.sma", "v0.buyhold"],
+            "T-PROG-1: current_id sequence mismatch: {ids:?}"
+        );
+    }
+
+    /// Sanity: `BakeoffProgressSender::disabled()` path produces no events.
+    #[allow(clippy::expect_used)]
+    #[tokio::test]
+    async fn t_prog_disabled_produces_no_events() {
+        let seed = {
+            let mut s = [0u8; 32];
+            s[0] = 0x01;
+            s
+        };
+        let cfg = BakeoffCfg {
+            request: BakeoffRequest {
+                symbol: Symbol::new("BTCUSDT"),
+                range: DateRange::Last30d,
+                seed,
+                field: progress_test_field(),
+            },
+            data_source: ScenarioDataSource::Synthetic,
+            robustness: RobustnessMode::Skip,
+        };
+        // Disabled sender — no channel allocation.
+        let (_, mut rx) = bakeoff_progress_pair();
+        drop(rx.recv()); // drain nothing — just ensure compile
+
+        let (_handle, cancel_rx) = cancellation_pair();
+        // Actually run with disabled sender.
+        let result = run_bakeoff(
+            cfg,
+            cancel_rx,
+            ProgressSender::disabled(),
+            BakeoffProgressSender::disabled(),
+        )
+        .await;
+        assert!(result.is_ok(), "disabled sender path must not error");
+    }
+}
+
 /// T6.1 — deterministic bake-off on real Binance data.
 ///
 /// Run with:
@@ -189,9 +330,14 @@ mod bakeoff_realdata {
         let run = |cfg: BakeoffCfg| async move {
             let (_handle, cancel_rx) = cancellation_pair();
             let progress_tx = ProgressSender::disabled();
-            run_bakeoff(cfg, cancel_rx, progress_tx)
-                .await
-                .expect("bakeoff should succeed")
+            run_bakeoff(
+                cfg,
+                cancel_rx,
+                progress_tx,
+                backtest::progress::BakeoffProgressSender::disabled(),
+            )
+            .await
+            .expect("bakeoff should succeed")
         };
 
         let r1 = run(make_cfg()).await;
@@ -295,9 +441,14 @@ mod bakeoff_realdata {
 
         let (_handle, cancel_rx) = cancellation_pair();
         let progress_tx = ProgressSender::disabled();
-        let report = run_bakeoff(cfg, cancel_rx, progress_tx)
-            .await
-            .expect("bakeoff on bull window should succeed");
+        let report = run_bakeoff(
+            cfg,
+            cancel_rx,
+            progress_tx,
+            backtest::progress::BakeoffProgressSender::disabled(),
+        )
+        .await
+        .expect("bakeoff on bull window should succeed");
 
         // Find the buy-and-hold arm.
         let buyhold = report

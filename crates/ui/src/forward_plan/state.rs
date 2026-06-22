@@ -140,11 +140,12 @@ impl PlanVoteMethodView {
 /// semantics for RSI and Bollinger are flip-to-false (the entry condition
 /// clearing), NOT a reverse-threshold cross.
 ///
-/// The enum stays `Copy` — `Ensemble` carries only `method` + a `member_count`
-/// scalar (NOT a `Vec` of member rules), mirroring the developer's shipped
-/// `agent::config::PlanRuleKind::Ensemble` shape (see [`Ensemble`] for the
-/// reconciliation note).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// **Not `Copy`** (it was, before the F6 member-name enrichment): `Ensemble` now
+/// carries a `Vec<PlanMemberFamilyView>` so the plan can NAME its members, which
+/// makes the enum `Clone`-not-`Copy`. The two by-value `self` helpers
+/// (`is_buy_and_hold` / `is_ensemble`) take `&self` accordingly; the owning
+/// [`ForwardPlanView`] was already `Clone`-not-`Copy`, so no caller regresses.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanRuleView {
     /// SMA crossover — buys when the fast SMA crosses above the slow SMA,
     /// sells on the reverse cross.
@@ -195,24 +196,28 @@ pub enum PlanRuleView {
     /// the live tally as FAITHFUL copy — NOT a fabricated single rule.
     ///
     /// **Reconciliation note (developer ‖ ui-designer parallel) — RECONCILED to
-    /// the shipped agent shape:** ADR-0063 § D3 originally specified
-    /// `members: Vec<PlanRuleShape>` at the agent boundary, but the developer's
-    /// shipped `agent::config::PlanRuleKind::Ensemble`
-    /// (`crates/agent/src/config.rs:146`) carries `{ method: PlanVoteMethod,
-    /// member_count: u32 }` instead — they chose a `Copy`-preserving scalar
-    /// `member_count` over a recursive `Vec` (their doc: "members are NOT
-    /// recursively embedded here (that would break `Copy`) … full member detail
-    /// is available from `strategy::EnsembleStrategy::describe_plan` on the
-    /// agent side if needed for richer rendering (v0.2 extension point)"). This
-    /// `ui` mirror matches the **shipped agent shape** field-for-field, so the
-    /// plan renders the vote faithfully (method + count + tally) without
-    /// enumerating each member's own rule — the per-member rule list is a
-    /// v0.2 enhancement gated on the agent boundary carrying the members.
+    /// the shipped agent shape (F6 member-name enrichment):** the developer
+    /// enriched `agent::config::PlanRuleKind::Ensemble` (`crates/agent/src/
+    /// config.rs`) to carry `members: Vec<smol_str::SmolStr>` — the human-readable
+    /// DISPLAY LABEL of each member strategy, in member order (e.g.
+    /// `["MACD trend", "RSI reversion", "Bollinger reversion"]`), sourced from
+    /// `strategy::EnsembleStrategy::describe_plan`. `PlanRuleKind` dropped `Copy`
+    /// for this. The old shape carried only a scalar `member_count: u32`. This
+    /// `ui` mirror carries the same `members: Vec<SmolStr>` field-for-field, so
+    /// the plan NAMES the members ("≥ 2 of {MACD trend, RSI reversion, Bollinger
+    /// reversion} agree…") rather than counting them abstractly. The
+    /// authoritative member count is `members.len()` (the method's `n` is a
+    /// belt-and-braces cross-check). If a field name drifts at integration, the
+    /// single [`super::adapter`] `rule_view` mapping is the only `ui` edit site.
     Ensemble {
         /// The vote method (majority `k`-of-`n` / unanimous `n`-of-`n`).
         method: PlanVoteMethodView,
-        /// The number of member strategies participating in the vote.
-        member_count: u32,
+        /// The member strategies' display labels, in member order — so the plan
+        /// can NAME them ("{MACD trend, RSI reversion, Bollinger reversion}") in
+        /// the headline vote rule. `members.len()` is the authoritative member
+        /// count. Empty only in the defensive/degenerate case (the copy then
+        /// falls back to the method's `n` count-based phrasing — never blank).
+        members: Vec<SmolStr>,
     },
 }
 
@@ -220,15 +225,17 @@ impl PlanRuleView {
     /// `true` for the buy-and-hold degenerate rule — the screen drops the
     /// "sell" half of the IF/THEN copy and the re-evaluation cadence for
     /// this case (there is no sell trigger).
+    ///
+    /// Takes `&self` (the enum is no longer `Copy` — `Ensemble` carries a `Vec`).
     #[must_use]
-    pub fn is_buy_and_hold(self) -> bool {
+    pub fn is_buy_and_hold(&self) -> bool {
         matches!(self, PlanRuleView::BuyAndHold)
     }
 
     /// `true` for an ensemble (signal-vote) rule — the screen renders the
-    /// method + member count + live tally instead of a single IF/THEN family.
+    /// method + named members + live tally instead of a single IF/THEN family.
     #[must_use]
-    pub fn is_ensemble(self) -> bool {
+    pub fn is_ensemble(&self) -> bool {
         matches!(self, PlanRuleView::Ensemble { .. })
     }
 }
@@ -438,7 +445,11 @@ mod tests {
     fn ensemble_view_is_flagged_and_not_buy_and_hold() {
         let rule = PlanRuleView::Ensemble {
             method: PlanVoteMethodView::Majority { k: 2, n: 3 },
-            member_count: 3,
+            members: vec![
+                SmolStr::new("MACD trend"),
+                SmolStr::new("RSI reversion"),
+                SmolStr::new("Bollinger reversion"),
+            ],
         };
         assert!(rule.is_ensemble(), "Ensemble rule → ensemble plan");
         assert!(
