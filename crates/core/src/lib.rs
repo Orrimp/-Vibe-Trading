@@ -12,6 +12,8 @@ pub mod error;
 pub mod fill;
 pub mod forecast;
 pub mod funding;
+/// Per-bar funding-rate constant for single-coin directional shorts (ADR-0068 D4).
+pub mod funding_rate;
 pub mod fx;
 pub mod money;
 pub mod order;
@@ -42,6 +44,7 @@ pub use forecast::{
     SamplingParams,
 };
 pub use funding::FundingObs;
+pub use funding_rate::{DEFAULT_PERP_FUNDING_RATE, FundingRate, FundingRateError};
 pub use fx::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxNote, FxRate, FxRateError};
 pub use money::Money;
 pub use money::{Price, Quantity};

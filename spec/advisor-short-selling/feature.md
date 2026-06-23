@@ -616,7 +616,40 @@ feature (the tester confirms 119/119 post-PASS; `anchors = []` stays empty in th
 trace row).
 
 ## Implementation
-_developer fills this_
+
+Developer track completed 2026-06-23. The following tasks were implemented (developer-owned rows only; T-D1/T-D2/T-D3/T-D6 were implemented in a prior developer session):
+
+**T-D4 — Audit reader: signed OpenPosition (reader-only relaxation).**
+- `crates/audit/src/query.rs`: In `open_positions_at`, the `Side::Sell` branch no longer raises `LedgerError::Database` when `running_qty < 0`. Instead it emits a signed `OpenPosition` with `qty = running_qty` (negative for shorts). The `Side::Buy` matching path now also handles cases where the prior session left `running_qty < 0` (short covered to flat). The `== 0` flat skip is unchanged.
+- `crates/core/src/position.rs`: `OpenPosition.qty` doc-invariant relaxed from "`qty > 0`" to "Signed open quantity. Positive = long position; negative = short position." 
+- `post_fill_with_signal` (writer) and reconciler are byte-unchanged. `audit` still depends only on `trading_core`.
+- Tests: `crates/audit/tests/open_positions.rs:t1002_net_negative_emits_signed_position` (8 PASS), `crates/audit/tests/open_positions_at.rs:t1005_d7_sell_to_open_materializes_as_signed_position` + `t1005_d7_long_position_byte_identical_after_relaxation` (5 PASS).
+
+**T-D5 — Forward paper-loop parity (the fourth clamp site).**
+- `crates/agent/src/runtime.rs`: `spawn_trading_loop` accepts a `short_enabled: bool` parameter. The `desired_side` match block is gated on `short_enabled`; when false, the function falls back to the original long-only path. When true, Sell-when-`qty<=0` routes through `backtest::short_exec::try_open_short`, Buy-when-`qty<0` routes through `backtest::short_exec::try_cover_short`. The `.max(Decimal::ZERO)` equity clamp is also gated on `!short_enabled`. Per-bar funding accrual and maintenance-margin liquidation (via `short_exec`) are called after fills when `short_enabled`. All four call sites updated: research=false, initial_default=false, forward_launch=`BakeoffConfig::is_short_enabled(strategy_id)`, headless=false.
+
+**T-D7 — Day-1 baseline-equity-divergence e2e (CLAUDE.md non-negotiable).**
+- Created `crates/backtest/tests/short_selling_divergence_e2e.rs` with 4 test functions:
+  1. `t_d7_ls_arm_diverges_from_long_only_and_buyhold` (assertions 1+2): SMA(1,2) short-enabled arm diverges ≥1bp from long-only and from buyhold on a 200-bar downtrend.
+  2. `t_d7_always_short_profits_on_downtrend_signed_inequality` (assertion 3): terminal equity > initial on a monotone downtrend with SMA(1,2)+short_enabled. SIGNED inequality — the load-bearing assertion.
+  3. `t_d7_funding_is_non_no_op_on_open_short` (assertion 4): `short_exec::accrue_funding` at rate>0 debits cash vs rate=0 no-op. Direct `short_exec` call — no bar loop.
+  4. `t_d7_always_short_loses_on_uptrend_unbounded_loss` (assertion 5): Direct `short_exec::try_open_short` with max-sized short (fee_bps=0, equity_hint=initial*10 so full cash committed → qty=-0.2 BTC). At adverse_price=350,000 (7×), `equity = cash + qty*mark = -50,000 << 0`. Proves no `.max(0)` clamp.
+- Note: The spec referenced `crates/strategy/tests/` but the correct home is `crates/backtest/tests/` because `sma_composed_run::run` and `short_exec` live in `crates/backtest`.
+
+**T-D8 — Long-only byte-identity re-proof (load-bearing safety gate).**
+- Created `crates/backtest/tests/short_enabled_byte_identity.rs` with 4 tests:
+  1. `t_d8_long_only_deterministic_across_two_runs`: two identical long-only runs produce bit-identical equity curves.
+  2. `t_d8_short_enabled_diverges_from_long_only_on_downtrend`: short_enabled=true diverges ≥1bp from false on a downtrend.
+  3. `t_d8_long_only_flat_price_no_trades`: flat price → 0 trades, equity stays at initial.
+  4. `t_d8_short_enabled_false_never_enters_short_on_downtrend`: gate-leak check — position_curve is always ≥0 when short_enabled=false.
+- Uses `downtrend_bars_200()` (0.5%/bar drop, 200 bars, start=50,000) and `flat_bars_200()` (constant 30,000).
+
+**T-D9 — Anchor gate re-confirmed post-change.**
+- `bash scripts/verify_anchors.sh` output: `ANCHORS PASS  (119 / 119)` — all 119 anchors pass, no anchored body was mutated.
+
+**Clippy gate:** `cargo clippy --workspace -- -D warnings` passes after fixing one `unnested-or-patterns` lint in `crates/backtest/src/scenarios/sma_composed_run.rs:554` (nested to `(Side::Sell, std::cmp::Ordering::Equal | std::cmp::Ordering::Less)`).
+
+**Frozen files (git-diff empty):** `crates/audit/src/journal.rs`, `crates/backtest/src/scenarios/bootstrap.rs`, `crates/backtest/src/bakeoff/rank.rs` — all byte-unchanged.
 
 ## Verification
 _tester links to reports here — expect FAMILY-Fragile is a valid PASS; the gate decides._

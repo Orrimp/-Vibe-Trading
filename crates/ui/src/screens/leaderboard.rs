@@ -82,8 +82,11 @@ use crate::strings::{
     LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
     LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
-    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
-    LEADERBOARD_WINNER_ROBUST_CLAUSE,
+    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
+    LEADERBOARD_SHORT_BBANDS_LS_LABEL, LEADERBOARD_SHORT_FIELD_NOTE, LEADERBOARD_SHORT_MACD_LS_LABEL,
+    LEADERBOARD_SHORT_RSI_LS_LABEL, LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG,
+    LEADERBOARD_WINNER_FRAGILE_CLAUSE, LEADERBOARD_WINNER_ROBUST_CLAUSE,
+    SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -411,16 +414,58 @@ fn ready_pane<'a>(
     let recommendation = recommendation_block(report, narration, mode);
     let table = leaderboard_table(report, mode);
 
-    let stack = Column::new()
+    let mut stack = Column::new()
         .spacing(space::L)
         .push(recommendation)
-        .push(table)
-        .push(disclaimer(mode))
-        .width(Length::Fill);
+        .push(table);
+
+    // advisor-short-selling (T-U2 / T-U4) — when the field contains one or more
+    // short-capable arms, carry the short field-note + the load-bearing
+    // unbounded-loss disclaimer ABOVE the persistent not-advice disclaimer.
+    if field_has_short_arm(report) {
+        stack = stack.push(short_field_block(mode));
+    }
+
+    let stack = stack.push(disclaimer(mode)).width(Length::Fill);
 
     Scrollable::new(stack)
         .width(Length::Fill)
         .height(Length::Fill)
+        .into()
+}
+
+/// `true` when the bake-off field contains at least one short-capable arm
+/// (advisor-short-selling, ADR-0068 § D9). Gates the short field-note + the
+/// unbounded-loss disclaimer so a long-only field is byte-identical to pre-feature.
+fn field_has_short_arm(report: &BakeoffReportMirror) -> bool {
+    report
+        .rows
+        .iter()
+        .any(|r| is_short_capable_id(r.strategy.as_str()))
+}
+
+/// The short-field block (advisor-short-selling, T-U2 / T-U4) — the
+/// "short-capable arms can bet on a decline; the drawdown can be brutal" note
+/// over the load-bearing "a short can lose MORE than your €200" unbounded-loss
+/// disclaimer. The unbounded-loss line is `WARN_500`-tinted (paired with the
+/// word, so colour is never the only signal) so it reads as a real risk note;
+/// the field-note is muted `FG_3`. Rendered only when the field has a short arm.
+fn short_field_block(mode: ThemeMode) -> crate::Element<'static> {
+    Column::new()
+        .spacing(space::XS)
+        .push(
+            Text::new(LEADERBOARD_SHORT_FIELD_NOTE)
+                .size(text::SMALL)
+                .color(color::FG_3.current(mode))
+                .width(Length::Fill),
+        )
+        .push(
+            Text::new(SHORT_UNBOUNDED_LOSS_DISCLAIMER)
+                .size(text::SMALL)
+                .color(color::WARN_500.current(mode))
+                .width(Length::Fill),
+        )
+        .width(Length::Fill)
         .into()
 }
 
@@ -772,6 +817,19 @@ fn data_row(
             mode,
         ));
     }
+    // The `short` tag marks a short-capable arm (advisor-short-selling, T-U2 /
+    // ADR-0068 § D9) so the user sees the short field — pairs with the friendly
+    // directional label the way `vote` pairs with an ensemble. Rendered with the
+    // `DOWN_500` clay hue (the down-half treatment) so the short field reads as
+    // the notable, asymmetric-risk case, with the WORD always present
+    // (accessibility — colour is never the only signal).
+    if is_short_capable_id(leader.strategy.as_str()) {
+        strat = strat.push(tag(
+            LEADERBOARD_SHORT_TAG,
+            color::DOWN_500.current(mode),
+            mode,
+        ));
+    }
     if leader.is_benchmark {
         strat = strat.push(tag(
             LEADERBOARD_BENCHMARK_TAG,
@@ -856,8 +914,27 @@ fn display_label(strategy: &str) -> &str {
         "v0.8.vote.any1of4" => LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL,
         "v0.8.vote.k2of4" => LEADERBOARD_ENSEMBLE_K2OF4_LABEL,
         "v0.8.vote.k3of4" => LEADERBOARD_ENSEMBLE_K3OF4_LABEL,
+        // The FIXED 5-arm short slate (advisor-short-selling, ADR-0068 § D9):
+        // the 4 symmetric long/short `_ls` variants + the always-short control.
+        // Map each opaque id to its friendly directional label so the row reads
+        // AS a long/short strategy (NOT a raw `sma_cross_ls` id) — own this
+        // ui-side, the lesson from advisor-combination-search.
+        "sma_cross_ls" => LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL,
+        "macd_ls" => LEADERBOARD_SHORT_MACD_LS_LABEL,
+        "rsi_ls" => LEADERBOARD_SHORT_RSI_LS_LABEL,
+        "bbands_ls" => LEADERBOARD_SHORT_BBANDS_LS_LABEL,
+        "always_short" => LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
         other => other,
     }
+}
+
+/// `true` for one of the FIXED 5-arm short slate ids (advisor-short-selling,
+/// ADR-0068 § D9) — drives the `short` row tag + the short field-note. A closed
+/// `ui`-side match keyed on the pre-registered ids (no engine string crosses the
+/// seam), the same discipline `is_ensemble_id` uses. The `_ls` suffix covers the
+/// four symmetric variants; `always_short` is the explicit control.
+fn is_short_capable_id(strategy: &str) -> bool {
+    strategy.ends_with("_ls") || strategy == "always_short"
 }
 
 /// `true` for one of the 8 pre-registered vote-ensemble ids (the 2 F8 arms + the
@@ -1019,4 +1096,62 @@ fn dec_100() -> rust_decimal::Decimal {
 /// the f64→Decimal conversion precision is far beyond the rendered resolution.
 fn sharpe_to_decimal(sharpe: f64) -> rust_decimal::Decimal {
     rust_decimal::Decimal::try_from(sharpe).unwrap_or(rust_decimal::Decimal::ZERO)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// advisor-short-selling (T-U2) — the LOAD-BEARING anti-raw-id guard. The 5
+    /// short-slate ids MUST each map to a FRIENDLY directional label, never fall
+    /// through to the raw id. This is the exact regression advisor-combination-
+    /// search hit: the engine adds the ids but the leaderboard mapping must be
+    /// extended ui-side or the rows show raw `sma_cross_ls` etc. A failure here
+    /// is "the short arm renders its raw id".
+    #[test]
+    fn short_arm_ids_map_to_friendly_labels_not_raw_ids() {
+        let cases = [
+            ("sma_cross_ls", LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL),
+            ("macd_ls", LEADERBOARD_SHORT_MACD_LS_LABEL),
+            ("rsi_ls", LEADERBOARD_SHORT_RSI_LS_LABEL),
+            ("bbands_ls", LEADERBOARD_SHORT_BBANDS_LS_LABEL),
+            ("always_short", LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL),
+        ];
+        for (id, expected_label) in cases {
+            let label = display_label(id);
+            assert_ne!(
+                label, id,
+                "short arm `{id}` rendered its RAW id — the display_label mapping \
+                 is missing (the advisor-combination-search regression)"
+            );
+            assert_eq!(
+                label, expected_label,
+                "short arm `{id}` must map to its friendly directional label"
+            );
+        }
+    }
+
+    /// The `short` row tag fires for every short-slate id (the `_ls` suffix + the
+    /// `always_short` control) and NOT for the long-only / ensemble / benchmark
+    /// ids — so the short field is marked, and only the short field.
+    #[test]
+    fn is_short_capable_id_marks_only_the_short_slate() {
+        for id in ["sma_cross_ls", "macd_ls", "rsi_ls", "bbands_ls", "always_short"] {
+            assert!(is_short_capable_id(id), "`{id}` is a short-slate arm");
+        }
+        for id in [
+            "v0.sma",
+            "v0.5.macd",
+            "v0.5.rsi",
+            "v0.5.bbands",
+            "v0.buyhold",
+            "v0.8.vote.majority",
+            "v0.8.vote.tr_mr_macd_rsi",
+        ] {
+            assert!(
+                !is_short_capable_id(id),
+                "`{id}` is NOT a short arm — the `short` tag must not fire"
+            );
+        }
+    }
 }

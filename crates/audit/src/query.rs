@@ -1854,14 +1854,27 @@ pub async fn open_positions_at(
                     strategy_id: strategy_id_str.as_deref().map(StrategyId::new),
                 });
                 if entry.running_qty > Decimal::ZERO {
-                    // Proportional release of the running cost basis (Q7).
+                    // Closing (fully or partially) a long position: proportional
+                    // release of the running cost basis (Q7).
                     let released = (entry.running_notional / entry.running_qty) * qty_d;
                     entry.running_notional -= released;
+                } else {
+                    // ADR-0068 D7: Sell when flat-or-short → opening/extending a
+                    // short position. Accumulate the proceeds basis (weighted-average
+                    // open price of the short lot, mirrored from the long Q7 logic).
+                    // `running_notional` tracks the absolute notional at which the
+                    // short was opened; `running_qty` is negative.
+                    if entry.running_qty == Decimal::ZERO {
+                        // First fill of this short lot: refresh opened_at / strategy_id
+                        // exactly as the long path does on re-open.
+                        entry.opened_at = row_ts;
+                        entry.strategy_id = strategy_id_str.as_deref().map(StrategyId::new);
+                        entry.running_notional = Decimal::ZERO;
+                    }
+                    entry.running_notional += qty_d * price_d;
                 }
                 entry.running_qty -= qty_d;
-                // Snap to zero if numerically equal, to keep the long-only
-                // close detection clean (Decimal subtraction can leave
-                // trailing zeros but is exact for integer-style quantities).
+                // Snap to zero to keep close detection clean.
                 if entry.running_qty == Decimal::ZERO {
                     entry.running_notional = Decimal::ZERO;
                 }
@@ -1869,20 +1882,24 @@ pub async fn open_positions_at(
         }
     }
 
-    // Materialize surviving open lots, raising on net-negative groups (Q8).
+    // Materialize surviving open lots.
+    // ADR-0068 D7: net-negative qty (open short) is now VALID — emit a signed
+    // OpenPosition (`qty < 0`). Zero qty = flat → skip (unchanged). The old
+    // "net-negative raises LedgerError::Database" guard is REMOVED per D7.
     let mut out: Vec<OpenPosition> = Vec::new();
     for ((symbol, _sid_str), entry) in acc {
-        if entry.running_qty < Decimal::ZERO {
-            return Err(LedgerError::Database(format!(
-                "open_positions_at: net-negative qty for group ({symbol}, {sid:?}) — \
-                 short positions out of scope at v1+; check ledger integrity",
-                sid = entry.strategy_id.as_ref().map(|s| s.0.as_str()),
-            )));
-        }
         if entry.running_qty == Decimal::ZERO {
             continue;
         }
-        let avg_cost_basis_d = entry.running_notional / entry.running_qty;
+        // For both long (qty > 0) and short (qty < 0): avg_cost_basis is the
+        // weighted-average open price of the position (proceeds basis for shorts).
+        // The denominator is the absolute magnitude.
+        let abs_qty = entry.running_qty.abs();
+        let avg_cost_basis_d = if abs_qty > Decimal::ZERO {
+            entry.running_notional / abs_qty
+        } else {
+            Decimal::ZERO
+        };
         out.push(OpenPosition {
             symbol,
             qty: entry.running_qty,

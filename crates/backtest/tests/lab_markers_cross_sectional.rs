@@ -63,6 +63,7 @@ fn momentum_config() -> ScenarioConfig {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     }
 }
 

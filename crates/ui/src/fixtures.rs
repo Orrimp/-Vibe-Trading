@@ -163,6 +163,39 @@ pub fn fake_positions() -> Vec<PositionView> {
     vec![fake_position_btc()]
 }
 
+/// A SHORT BTC position with a NEGATIVE (honest, not-clamped) mark-to-market
+/// P&L (advisor-short-selling, ADR-0068 § D8 — T-U1). `base_qty < 0` is the
+/// signed sell-to-open short the audit reader now emits; the position is under
+/// water (price rose against the short), so `pnl` / `pnl_pct` are NEGATIVE and
+/// render as `DOWN_500` clay — the down/clay treatment R-SS.4 mandates,
+/// NEVER hidden or clamped at 0. The mirror image of [`fake_position_btc`] (a
+/// long), which is the render guard's negative control.
+#[must_use]
+pub fn fake_position_short_btc() -> PositionView {
+    PositionView {
+        symbol: Symbol::new("BTCUSDT"),
+        // Negative qty = SHORT (sold-to-open ~0.30 BTC of notional).
+        base_qty: dec!(-0.30),
+        // The weighted-average OPEN (proceeds) price of the short.
+        cost_basis: Money::from_decimal(dec!(12_000.00)),
+        // Mark rose ABOVE the open → the short is losing.
+        last_mark: Price::new(dec!(41_200.00)).unwrap_or_else(|_| unreachable!()),
+        // Honest NEGATIVE P&L (price moved against the short). NOT clamped.
+        pnl: Money::from_decimal(dec!(-360.00)),
+        pnl_pct: dec!(-3.00),
+        exposure_pct: dec!(13.40),
+    }
+}
+
+/// A two-row position list mixing a LONG and a SHORT (advisor-short-selling
+/// T-U1). The render guard asserts the SHORT badge + negative-P&L clay paint
+/// AND that the long still renders correctly (the negative control held inside
+/// one frame).
+#[must_use]
+pub fn fake_positions_with_short() -> Vec<PositionView> {
+    vec![fake_position_btc(), fake_position_short_btc()]
+}
+
 /// Build the fixture market-health map: all three canonical venues are
 /// `Fresh`. The fixtures bin has no watchdog running, so health never
 /// updates — this is the "everything is fine" static demo state.
@@ -195,6 +228,59 @@ pub fn fake_cockpit_ready() -> Cockpit {
 pub fn fake_cockpit_ready_with_three_fills() -> Cockpit {
     let mut c = Cockpit::ready(fake_fill_feed(3), fake_positions(), fake_pnl_positive());
     c.mode = AgentMode::Paper;
+    c
+}
+
+/// A `Cockpit` routed to `Screen::Live` running a SHORT forward paper-trade
+/// (advisor-short-selling, ADR-0068 § D8 — T-U1 / T-U4). Carries:
+///   - a positions panel holding a LONG **and** a SHORT (so the SHORT badge +
+///     the honest NEGATIVE-P&L clay paint, with the long as the in-frame
+///     negative control — `fake_positions_with_short`);
+///   - `forward_budget = Some(€200)` so the forward P/L block renders, which is
+///     where the load-bearing "a short can lose more than your €200"
+///     unbounded-loss disclaimer is carried on the Live surface.
+///
+/// The `pnl` snapshot is UNDER WATER (equity < budget) — the honest losing
+/// short, so the forward P/L prints NEGATIVE (never clamped). Synthetic — no
+/// engine, no I/O.
+#[must_use]
+pub fn fake_cockpit_live_short() -> Cockpit {
+    // Equity below the €200 budget — the short is losing (price rose against
+    // it). The forward P/L block prints a negative figure, honestly.
+    let pnl = PnlSnapshot {
+        cash: Money::from_decimal(dec!(200.00)),
+        unrealized: Money::from_decimal(dec!(-40.00)),
+        realized: Money::from_decimal(dec!(0.00)),
+        total_equity: Money::from_decimal(dec!(160.00)),
+        daily_return: Money::from_decimal(dec!(-40.00)),
+        as_of: fixed_ts(0),
+        bar_ts: None,
+    };
+    let mut c = Cockpit::ready(fake_fill_feed(6), fake_positions_with_short(), pnl);
+    c.mode = AgentMode::Paper;
+    c.current_screen = crate::state::Screen::Live;
+    c.market_health = fake_market_health();
+    c.account_label = smol_str::SmolStr::new(FIXTURE_ACCOUNT_LABEL);
+    // The forward paper-trade budget — gates the forward P/L block (+ the
+    // unbounded-loss disclaimer) on the Live screen.
+    c.forward_budget = Some(Money::<Usdt>::from_decimal(dec!(200)));
+    c
+}
+
+/// The negative control for [`fake_cockpit_live_short`] — the SAME Live screen
+/// with a LONG-ONLY position list (`fake_positions`) and a forward budget. Used
+/// by the render guard to prove the SHORT badge is ABSENT on a long-only frame
+/// (so the positive guard is not a tautology). Still carries the forward P/L
+/// block; a long-only forward run does NOT carry the short unbounded-loss
+/// disclaimer.
+#[must_use]
+pub fn fake_cockpit_live_long_only() -> Cockpit {
+    let mut c = Cockpit::ready(fake_fill_feed(6), fake_positions(), fake_pnl_positive());
+    c.mode = AgentMode::Paper;
+    c.current_screen = crate::state::Screen::Live;
+    c.market_health = fake_market_health();
+    c.account_label = smol_str::SmolStr::new(FIXTURE_ACCOUNT_LABEL);
+    c.forward_budget = Some(Money::<Usdt>::from_decimal(dec!(200)));
     c
 }
 
@@ -1476,6 +1562,180 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
     }
 }
 
+/// A SHORT-AUGMENTED advisor field (advisor-short-selling, ADR-0068 § D9 —
+/// T-U2): the 4 long-only single rule engines + buy-and-hold, PLUS the FIXED
+/// 5-arm short slate (`sma_cross_ls`, `macd_ls`, `rsi_ls`, `bbands_ls`,
+/// `always_short`). Drives the leaderboard render guard that proves the short
+/// arms render with FRIENDLY directional labels (NOT raw `*_ls` ids) + the
+/// `short` tag + a (likely) Fragile flag, plus the short field-note + the
+/// unbounded-loss disclaimer.
+///
+/// The shorts are mostly FRAGILE (the honest null — the MN long/short precedent
+/// was FAMILY-UNIFORM-FRAGILE; single-coin directional shorts inherit full
+/// inverse beta + a funding cost), and `always_short` carries a BRUTAL drawdown
+/// (a continuous short on an up-trending window — the honest signal). `v0.sma`
+/// stays the crowned robust long single, so the short arms are an additive,
+/// honestly-rendered field, never a crowned alpha claim. Built directly as the
+/// mirror type — fixtures NEVER stand up the engine.
+#[must_use]
+#[allow(clippy::too_many_lines)] // a 10-row literal data table — splitting it hurts readability
+pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{
+        BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
+        RobustnessLabel,
+    };
+
+    // Rows in INSERTION order: the 4 long-only singles, the 5 short arms, then
+    // buy-and-hold. `v0.sma` is the crowned robust long single; the short arms
+    // carry an honest mix (mostly Fragile; always_short brutally so).
+    let rows = vec![
+        // ── 4 long-only single rule engines (UNTOUCHED long-only arms) ────────
+        LeaderRow {
+            strategy: SmolStr::new("v0.sma"),
+            is_benchmark: false,
+            sharpe: 1.42,
+            sortino: 1.95,
+            calmar: 2.32,
+            total_return_pct: dec!(0.1837),
+            max_drawdown: dec!(0.0612),
+            trade_count: 38,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.macd"),
+            is_benchmark: false,
+            sharpe: 0.88,
+            sortino: 1.11,
+            calmar: 0.84,
+            total_return_pct: dec!(0.0921),
+            max_drawdown: dec!(0.1043),
+            trade_count: 64,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.rsi"),
+            is_benchmark: false,
+            sharpe: -0.31,
+            sortino: -0.43,
+            calmar: -0.24,
+            total_return_pct: dec!(-0.0457),
+            max_drawdown: dec!(0.1872),
+            trade_count: 112,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.bbands"),
+            is_benchmark: false,
+            sharpe: 0.54,
+            sortino: 0.71,
+            calmar: 0.42,
+            total_return_pct: dec!(0.0388),
+            max_drawdown: dec!(0.0921),
+            trade_count: 47,
+            robustness: Some(RobustnessLabel::Marginal),
+        },
+        // ── the FIXED 5-arm short slate (ADR-0068 § D9) ──────────────────────
+        LeaderRow {
+            strategy: SmolStr::new("sma_cross_ls"),
+            is_benchmark: false,
+            // A directional short variant — modest realized edge but FRAGILE
+            // under resampling (the honest null).
+            sharpe: 0.36,
+            sortino: 0.45,
+            calmar: 0.28,
+            total_return_pct: dec!(0.0241),
+            max_drawdown: dec!(0.1418),
+            trade_count: 52,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("macd_ls"),
+            is_benchmark: false,
+            sharpe: 0.22,
+            sortino: 0.28,
+            calmar: 0.16,
+            total_return_pct: dec!(0.0153),
+            max_drawdown: dec!(0.1622),
+            trade_count: 78,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("rsi_ls"),
+            is_benchmark: false,
+            // A losing directional short on this window.
+            sharpe: -0.48,
+            sortino: -0.62,
+            calmar: -0.34,
+            total_return_pct: dec!(-0.0712),
+            max_drawdown: dec!(0.2238),
+            trade_count: 134,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("bbands_ls"),
+            is_benchmark: false,
+            sharpe: 0.18,
+            sortino: 0.23,
+            calmar: 0.12,
+            total_return_pct: dec!(0.0108),
+            max_drawdown: dec!(0.1534),
+            trade_count: 61,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("always_short"),
+            is_benchmark: false,
+            // The always-short control — loses on this up-trending window by
+            // construction, with a BRUTAL drawdown (the honest signal). A
+            // continuous short on a rising asset is a guaranteed loser; the
+            // leaderboard says so.
+            sharpe: -1.12,
+            sortino: -1.38,
+            calmar: -0.71,
+            total_return_pct: dec!(-0.2884),
+            max_drawdown: dec!(0.4173),
+            trade_count: 1,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        // ── buy-and-hold benchmark (appended by run_bakeoff) ─────────────────
+        LeaderRow {
+            strategy: SmolStr::new("v0.buyhold"),
+            is_benchmark: true,
+            sharpe: 0.73,
+            sortino: 0.89,
+            calmar: 0.84,
+            total_return_pct: dec!(0.1124),
+            max_drawdown: dec!(0.1338),
+            trade_count: 2,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+    ];
+
+    // Best-first ranked order. Crown-eligible (non-Fragile) first by Sharpe:
+    //   0=sma(1.42) 1=macd(0.88) 9=buyhold(0.73) 3=bbands(0.54-marginal).
+    // Fragile (ranked last, cannot be crowned), by Sharpe:
+    //   4=sma_cross_ls(0.36) 5=macd_ls(0.22) 7=bbands_ls(0.18)
+    //   2=rsi(-0.31) 6=rsi_ls(-0.48) 8=always_short(-1.12).
+    let ranked = vec![0, 1, 9, 3, 4, 5, 7, 2, 6, 8];
+
+    BakeoffReportMirror {
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        rows,
+        ranked,
+        crowned: Some(0),
+        recommendation: RecommendationMirror {
+            outcome: OutcomeKind::ActiveWins,
+            winner: SmolStr::new("v0.sma"),
+            winner_robustness: Some(RobustnessLabel::Robust),
+            reasons: vec![
+                ReasonLabel::HighestRobustSharpe,
+                ReasonLabel::BeatBenchmarkSharpe,
+            ],
+        },
+    }
+}
+
 /// The original **5-arm** advisor field (4 rule engines + buy-and-hold, ONE
 /// Fragile single `v0.5.rsi`) — kept as the smaller baseline for the F8
 /// anti-tautology discriminator (`leaderboard_f8_strictly_exceeds_five_arm_field`)
@@ -2198,6 +2458,76 @@ pub fn fake_forward_plan_combination() -> crate::forward_plan::ForwardPlanView {
         as_of_label: SmolStr::new("Jun 21 14:00"),
         budget: dec!(200),
         // 200 / 64000 = 0.003125 units.
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 28"),
+    }
+}
+
+/// A SHORT-CAPABLE [`ForwardPlanView`] fixture (advisor-short-selling, ADR-0068
+/// § D8 — T-U3) — the `sma_cross_ls` symmetric long/short arm. The plan renders
+/// the LONG rules (the existing SMA IF/THEN path) PLUS the appended down-half:
+/// sell-to-open on the bearish flip, buy-to-cover on the bullish flip, and the
+/// maintenance-margin liquidation floor — with the unbounded-loss disclaimer at
+/// the foot. The render guard asserts the short-rule copy + the disclaimer
+/// paint; the long-only `fake_forward_plan` is the negative control.
+///
+/// Built directly as the view type — fixtures NEVER stand up the engine; the
+/// short-capability is keyed on the `strategy` id (`is_short_capable`), so no
+/// new engine field crosses the seam.
+#[must_use]
+pub fn fake_forward_plan_short() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    };
+    ForwardPlanView {
+        // The `_ls` id is what `is_short_capable()` keys on (closed ui-side).
+        strategy: SmolStr::new("sma_cross_ls"),
+        symbol: SmolStr::new("BTCUSDT"),
+        // FLAT — between flips; the plan shows both the long entry and the short
+        // sell-to-open as standing rules.
+        stance: PlanStanceView::Flat,
+        latest_signal: Some(PlanSignalView::Hold),
+        rule: PlanRuleView::SmaCross {
+            fast_len: 12,
+            slow_len: 26,
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 21 14:00"),
+        budget: dec!(200),
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 28"),
+    }
+}
+
+/// The ALWAYS-SHORT benchmark control [`ForwardPlanView`] (advisor-short-selling,
+/// ADR-0068 § D9) — the down-side mirror of buy-and-hold. The plan renders the
+/// single standing short rule ("open a short now and hold it the whole horizon …
+/// loses on any up-trend by construction") + the liquidation floor + the
+/// unbounded-loss disclaimer. Built directly as the view type.
+#[must_use]
+pub fn fake_forward_plan_always_short() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    };
+    ForwardPlanView {
+        strategy: SmolStr::new("always_short"),
+        symbol: SmolStr::new("BTCUSDT"),
+        stance: PlanStanceView::Flat,
+        latest_signal: Some(PlanSignalView::Hold),
+        // The rule family is immaterial for always_short (the screen renders its
+        // degenerate standing short rule keyed on the id); SmaCross is a benign
+        // placeholder that never reaches the long IF/THEN path for this arm.
+        rule: PlanRuleView::SmaCross {
+            fast_len: 12,
+            slow_len: 26,
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 21 14:00"),
+        budget: dec!(200),
         projected_units: dec!(0.003125),
         sizing_capped: false,
         horizon_days: 7,

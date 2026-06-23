@@ -204,6 +204,7 @@ async fn main() -> Result<()> {
         sma_slow_len: None,
         // v5-latency-slippage-sim: noop for Yahoo SMA runs (not part of v5 re-emission).
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        short_enabled: false,
     };
 
     let run_start = std::time::Instant::now();

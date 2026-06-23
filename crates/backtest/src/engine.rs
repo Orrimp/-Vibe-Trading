@@ -257,6 +257,17 @@ pub struct ScenarioConfig {
     /// `reports_dir: None` so the existing anchor-generating call sites stay
     /// byte-identical. The field is never read when `write_report = false`.
     pub reports_dir: Option<PathBuf>,
+
+    /// ADR-0068 D1/D2 — enable the single-coin directional short-selling path.
+    ///
+    /// `false` (the default via `#[serde(default)]` / struct literal) → the
+    /// long-only clamps are ACTIVE and the path is byte-for-byte HEAD's code.
+    /// `true` → the four long-only clamps are gated off; `Sell`-when-flat opens
+    /// a short via `backtest::short_exec`; `Buy`-when-short covers.
+    ///
+    /// Set `true` ONLY for the 5 new `_ls` / `always_short` arms (D9).
+    /// Every existing long-only arm leaves this `false` → byte-identical.
+    pub short_enabled: bool,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -1106,6 +1117,9 @@ pub async fn run_scenario(
                 sma_slow_len: cfg.sma_slow_len,
                 // engine dispatch: noop sim (Lab UI does not expose sim flags).
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // ADR-0068 D1: thread short_enabled from ScenarioConfig.
+                // Long-only arms have short_enabled=false (default); _ls arms set true.
+                short_enabled: cfg.short_enabled,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1184,6 +1198,8 @@ pub async fn run_scenario(
                 sma_slow_len: None,
                 // engine dispatch: noop sim (Lab UI does not expose sim flags).
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // ADR-0068 D1: thread short_enabled from ScenarioConfig.
+                short_enabled: cfg.short_enabled,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1256,6 +1272,8 @@ pub async fn run_scenario(
                 sma_slow_len: None,
                 // engine dispatch: noop sim (Lab UI does not expose sim flags).
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // ADR-0068 D1: thread short_enabled from ScenarioConfig.
+                short_enabled: cfg.short_enabled,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1331,6 +1349,8 @@ pub async fn run_scenario(
                 sma_slow_len: None,
                 // engine dispatch: noop sim (Lab UI does not expose sim flags).
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // ADR-0068 D1: thread short_enabled from ScenarioConfig.
+                short_enabled: cfg.short_enabled,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1629,11 +1649,20 @@ pub async fn run_scenario(
                 let mut orders: Vec<Order> = Vec::new();
 
                 for sig in &signals {
+                    // ADR-0068 D3 / Q-SS-1: same position-aware interpretation gate as
+                    // sma_composed_run.rs. When short_enabled=false (all existing arms):
+                    // long-only clamp #1, byte-identical to HEAD.
                     let desired_side: Option<Side> = match sig.kind {
                         trading_core::SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
                             Some(Side::Buy)
                         }
                         trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                            Some(Side::Sell)
+                        }
+                        // ADR-0068 clamp #1 GATE: Sell-when-flat → open short (short_enabled only).
+                        trading_core::SignalKind::Sell
+                            if position.base_qty <= Decimal::ZERO && cfg.short_enabled =>
+                        {
                             Some(Side::Sell)
                         }
                         _ => None,
@@ -1703,14 +1732,19 @@ pub async fn run_scenario(
                                 position.cost_basis = Money::from_decimal(state.position_cost);
                             }
                             Side::Sell => {
+                                // ADR-0068 D1/D3: pass short_enabled to gate clamp #3.
                                 state.apply_sell(
                                     fill.qty.get(),
                                     fill.price.get(),
                                     fill.fee.amount(),
+                                    cfg.short_enabled,
                                 );
                                 state.cash -= sim_cost;
                                 position.base_qty -= fill.qty.get();
-                                if position.base_qty < Decimal::ZERO {
+                                // ADR-0068 D1 clamp #2: gate the base_qty < 0 clamp.
+                                // When short_enabled=false: clamp to zero (long-only, byte-identical).
+                                // When short_enabled=true: allow negative (open short).
+                                if !cfg.short_enabled && position.base_qty < Decimal::ZERO {
                                     position.base_qty = Decimal::ZERO;
                                 }
                             }
@@ -1851,6 +1885,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: None,
+            short_enabled: false,
         }
     }
 
@@ -2093,6 +2128,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: Some(tmp.path().to_path_buf()),
+            short_enabled: false,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |_path| Ok(()));
         assert!(
@@ -2127,6 +2163,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: Some(tmp.path().to_path_buf()),
+            short_enabled: false,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |path| {
             // Write minimal content so the file exists.

@@ -67,15 +67,18 @@ impl Position {
 /// (T1002) and consumed by the `crates/reports` orchestrator (T1003) and the
 /// `crates/ui` positions widget.
 ///
-/// Long-only at v1+ (Q8): `qty > 0` is invariant; net-negative qty raises
-/// `LedgerError::Database` at the reader (per
-/// `spec/features/real-mtm-unrealized-pnl.md` Design § Q8) and never
-/// materializes as an `OpenPosition`.
+/// **Signed qty (ADR-0068 D7):** `qty` is positive for a long position and
+/// negative for a short position. Previously (v1+) only long positions
+/// materialized here (`qty > 0` was the invariant); with ADR-0068 the reader
+/// now emits short positions as negative-qty rows. Consumers must be prepared
+/// for `qty < 0`.
 ///
 /// `avg_cost_basis` is **per-unit** (USDT per unit of `symbol`), NOT
-/// notional. The orchestrator computes notional contribution as
-/// `qty * avg_cost_basis` at mark time. Cost basis is weighted-average
-/// across all open Buy fills with proportional release on Sells (Q7).
+/// notional. For a long: weighted-average open price across un-closed Buy
+/// fills with proportional release on Sells (Q7). For a short: the
+/// weighted-average open (sell) price of the short lot (the proceeds basis).
+/// The orchestrator computes notional contribution as `|qty| * avg_cost_basis`
+/// at mark time.
 ///
 /// No `unrealized_pnl` field — by design (Q2): that is a function of
 /// `MarkSource` and belongs in the orchestrator, not the reader (the
@@ -88,7 +91,8 @@ impl Position {
 pub struct OpenPosition {
     /// Trading symbol, e.g. `BTCUSDT`.
     pub symbol: Symbol,
-    /// Open quantity. Long-only invariant: `qty > 0`.
+    /// Signed open quantity. Positive = long position; negative = short position.
+    /// The absolute magnitude is the number of units of `symbol` held.
     pub qty: Decimal,
     /// Per-unit cost basis (USDT per unit of `symbol`), weighted across all
     /// un-closed Buy fills in the open lot. NOT notional — multiply by `qty`

@@ -62,6 +62,7 @@ mod inner {
             // ADR-0055 § D6: write-root == read-root — engine writes to tmp_dir,
             // test reads from tmp_dir; equality is structural, not incidental.
             reports_dir: Some(tmp_dir.to_path_buf()),
+            short_enabled: false,
         }
     }
 

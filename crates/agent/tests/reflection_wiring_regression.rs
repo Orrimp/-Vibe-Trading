@@ -209,6 +209,7 @@ async fn lesson_card_is_written_on_position_close() {
         Some(writer), // ← the wiring under test
         btc_seed,     // ← seeded closes for accurate regime tags
         None,         // no budget override (legacy capital path)
+        false,        // ADR-0068 D6: short_enabled — long-only for this reflection test
     );
 
     // Wait for the trading loop to finish replaying all 120 bars.
@@ -322,6 +323,7 @@ async fn no_lesson_card_without_writer() {
         None, // ← no writer: the wiring is absent
         btc_seed,
         None, // no budget override (legacy capital path)
+        false, // ADR-0068 D6: short_enabled — long-only
     );
 
     tokio::time::timeout(Duration::from_secs(10), async {

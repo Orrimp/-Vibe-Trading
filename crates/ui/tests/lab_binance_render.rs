@@ -250,6 +250,7 @@ fn binance_sourced_run() -> Option<(Vec<trading_core::Bar>, Vec<(i64, Decimal)>)
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
     let (_cancel, recv) = ui::lab::runner::cancellation_pair();
     let report = rt

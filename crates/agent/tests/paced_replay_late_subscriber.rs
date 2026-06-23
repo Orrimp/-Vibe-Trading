@@ -178,6 +178,7 @@ async fn paced_replay_late_subscriber_receives_fills_positions_pnl() {
         None,   // research: no lesson cards
         vec![], // research: no btc_closes seed needed
         None,   // no budget override (legacy capital path)
+        false,  // ADR-0068 D6: short_enabled — long-only test
     );
 
     // ── Simulate iced boot delay (late subscriber) ────────────────────────────

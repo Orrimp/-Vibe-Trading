@@ -777,6 +777,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 None,   // research: no lesson cards
                 vec![], // research: no btc_closes seed needed
                 None,   // research: no budget override
+                false,  // ADR-0068 D6: research mode is always long-only (no short arms launched here)
             );
             info!("agent subsystems initialized — research trading loop + replay feed running");
         }
@@ -1006,7 +1007,8 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                             Some(Arc::clone(&supervisor_ledger)),
                             supervisor_reflection_writer.clone(),
                             supervisor_btc_closes_seed.clone(),
-                            None, // initial loop: no budget (pre-F5 default)
+                            None,  // initial loop: no budget (pre-F5 default)
+                            false, // ADR-0068 D6: initial default loop is always long-only
                         );
                         info!("paper_loop_supervisor: initial default loop spawned");
 
@@ -1198,6 +1200,11 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                     // Reuses the same bus / ledger / equity_store /
                                     // boot_id so all downstream consumers (Live tape,
                                     // durable store, audit trail) carry forward.
+                                    // ADR-0068 D6 T-D5: derive short_enabled from the
+                                    // selected strategy id (the SAME predicate as bakeoff).
+                                    let fwd_short_enabled = backtest::BakeoffConfig::is_short_enabled(
+                                        cfg.strategy.0.as_str(),
+                                    );
                                     loop_abort = spawn_trading_loop(
                                         new_feed,
                                         Arc::clone(&supervisor_bus),
@@ -1216,11 +1223,13 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                                         fwd_reflection,
                                         supervisor_btc_closes_seed.clone(),
                                         Some(cfg.budget), // F5: budget cap + starting capital
+                                        fwd_short_enabled, // ADR-0068 D6: parity with bake-off
                                     );
                                     info!(
                                         strategy = %cfg.strategy.0,
                                         symbol = %cfg.symbol,
                                         budget = %cfg.budget.amount(),
+                                        short_enabled = fwd_short_enabled,
                                         "paper_loop_supervisor: forward loop spawned (real launch)"
                                     );
                                 }
@@ -1251,6 +1260,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                         reflection_writer,         // paper: enqueue lesson cards on close
                         btc_closes_seed,           // paper: seed for regime classification
                         None,                      // no budget override (legacy default)
+                        false, // ADR-0068 D6: headless paper mode is long-only by default
                     );
                     info!("paper trading loop spawned (live feed → paper engine → equity store)");
                 }
@@ -1685,9 +1695,17 @@ pub fn spawn_trading_loop(
     // FixedFractionSizer::with_budget_cap(fraction, b). None → pre-F5 byte-
     // identical path (initial_capital_usdt + FixedFractionSizer::new).
     budget: Option<trading_core::Money<trading_core::Usdt>>,
+    // ADR-0068 D6 — forward paper loop parity: T-D5.
+    // `false` (default for all existing arms) → long-only clamps active, path
+    // is byte-identical to pre-ADR-0068. `true` → gates off the two long-only
+    // clamps in this loop and routes Sell-when-flat → open short, Buy-when-short
+    // → cover, via `backtest::short_exec` (the SAME helper the bake-off uses).
+    // The equity formula `cash + base_qty·mark` is already short-correct.
+    short_enabled: bool,
 ) -> tokio::task::AbortHandle {
     use backtest::MatchingEngine as _;
     use backtest::paper::{FillPriceMode, MatchConfig, PaperEngine};
+    use backtest::short_exec; // ADR-0068 D6: shared short-execution helper
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use trading_core::{
@@ -1695,10 +1713,14 @@ pub fn spawn_trading_loop(
         TimeInForce, Timestamp, Usdt,
     };
 
+    // ADR-0068 D6: extract fields from backtest_cfg so the async move block
+    // captures only owned values, not the reference (which is not `'static`).
+    let taker_fee_bps_owned: u32 = backtest_cfg.taker_fee_bps;
+
     // Build the paper engine config from the agent config.
     let match_config = MatchConfig {
         slippage_bps: backtest_cfg.slippage_bps,
-        taker_fee_bps: backtest_cfg.taker_fee_bps,
+        taker_fee_bps: taker_fee_bps_owned,
         maker_fee_bps: backtest_cfg.maker_fee_bps,
         fill_price_mode: FillPriceMode::BarClose,
     };
@@ -1805,17 +1827,132 @@ pub fn spawn_trading_loop(
                     let mut orders: Vec<Order> = Vec::new();
 
                     for sig in &signals {
-                        let desired_side: Option<Side> = match sig.kind {
-                            SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
-                                Some(Side::Buy)
+                        // ADR-0068 D6 T-D5: position-aware interpretation gate.
+                        // When short_enabled=false (all existing arms): long-only clamp #4.
+                        // Byte-identical to HEAD for all pre-ADR-0068 callers.
+                        // When short_enabled=true (_ls / always_short arms only):
+                        //   - Sell-when-flat-or-short → handled by short_exec (below)
+                        //   - Buy-when-short → handled by short_exec cover (below)
+                        let desired_side: Option<Side> = if short_enabled {
+                            match sig.kind {
+                                SignalKind::Buy if position.base_qty < Decimal::ZERO => {
+                                    // Cover: Buy when short.
+                                    Some(Side::Buy)
+                                }
+                                SignalKind::Buy if position.base_qty >= Decimal::ZERO => {
+                                    // Open/extend long: Buy when flat or long.
+                                    Some(Side::Buy)
+                                }
+                                SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                                    // Close long: Sell when long.
+                                    Some(Side::Sell)
+                                }
+                                SignalKind::Sell if position.base_qty <= Decimal::ZERO => {
+                                    // Open/extend short: Sell when flat or already short.
+                                    Some(Side::Sell)
+                                }
+                                _ => None,
                             }
-                            SignalKind::Sell if position.base_qty > Decimal::ZERO => {
-                                Some(Side::Sell)
+                        } else {
+                            // Long-only clamp #4 (GATED on !short_enabled).
+                            // Byte-identical to pre-ADR-0068 HEAD.
+                            match sig.kind {
+                                SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
+                                    Some(Side::Buy)
+                                }
+                                SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                                    Some(Side::Sell)
+                                }
+                                _ => None,
                             }
-                            _ => None,
                         };
 
                         if let Some(side) = desired_side {
+                            // ADR-0068 D6: for short operations, call short_exec helpers
+                            // directly (same as sma_composed_run.rs and bake-off) rather
+                            // than routing through the matching engine (which assumes long).
+                            if short_enabled {
+                                match (side, position.base_qty.cmp(&Decimal::ZERO)) {
+                                    // Cover short: Buy when currently short.
+                                    (Side::Buy, std::cmp::Ordering::Less) => {
+                                        let res = short_exec::try_cover_short(
+                                            cash,
+                                            position.base_qty,
+                                            mark,
+                                            taker_fee_bps_owned,
+                                        );
+                                        if res.executed {
+                                            let covered_qty = position.base_qty - res.position_qty; // positive
+                                            let notional = covered_qty.abs() * mark;
+                                            cash = res.cash;
+                                            position.base_qty = res.position_qty;
+                                            let fee_amount = notional * Decimal::new(i64::from(taker_fee_bps_owned), 4);
+                                            if let Ok(fq) = Quantity::new(covered_qty.abs()) {
+                                                let cover_fill = trading_core::Fill {
+                                                    id: trading_core::FillId::new(),
+                                                    order_id: trading_core::OrderId::new(),
+                                                    symbol: sig.symbol.clone(),
+                                                    side: Side::Buy,
+                                                    qty: fq,
+                                                    price: bar.close,
+                                                    fee: Money::<Usdt>::from_decimal(fee_amount),
+                                                    fee_tier: trading_core::FeeTier::Taker,
+                                                    venue_ts: bar.close_ts,
+                                                    local_ts: bar.close_ts,
+                                                    liquidity: trading_core::Liquidity::Taker,
+                                                    transaction_id: None,
+                                                };
+                                                publisher.on_fill(&cover_fill, &position);
+                                                fill_count += 1;
+                                            }
+                                            // P&L: cover at lower price = profit (positive delta on downtrend)
+                                            realized_pnl += -notional - fee_amount;
+                                        }
+                                        continue; // handled; skip matching-engine path
+                                    }
+                                    // Open/extend short: Sell when flat or already short.
+                                    (Side::Sell, std::cmp::Ordering::Equal)
+                                    | (Side::Sell, std::cmp::Ordering::Less) => {
+                                        let res = short_exec::try_open_short(
+                                            cash,
+                                            position.base_qty,
+                                            mark,
+                                            taker_fee_bps_owned,
+                                            equity,
+                                        );
+                                        if res.executed {
+                                            let delta_qty = position.base_qty - res.position_qty; // positive: shares sold short
+                                            let notional = delta_qty * mark;
+                                            let fee_amount = notional * Decimal::new(i64::from(taker_fee_bps_owned), 4);
+                                            cash = res.cash;
+                                            position.base_qty = res.position_qty;
+                                            if let Ok(fq) = Quantity::new(delta_qty) {
+                                                let open_short_fill = trading_core::Fill {
+                                                    id: trading_core::FillId::new(),
+                                                    order_id: trading_core::OrderId::new(),
+                                                    symbol: sig.symbol.clone(),
+                                                    side: Side::Sell,
+                                                    qty: fq,
+                                                    price: bar.close,
+                                                    fee: Money::<Usdt>::from_decimal(fee_amount),
+                                                    fee_tier: trading_core::FeeTier::Taker,
+                                                    venue_ts: bar.close_ts,
+                                                    local_ts: bar.close_ts,
+                                                    liquidity: trading_core::Liquidity::Taker,
+                                                    transaction_id: None,
+                                                };
+                                                publisher.on_fill(&open_short_fill, &position);
+                                                fill_count += 1;
+                                            }
+                                        }
+                                        continue; // handled; skip matching-engine path
+                                    }
+                                    // All other combinations (Buy-long, Sell-long) fall through
+                                    // to the matching-engine path below.
+                                    _ => {}
+                                }
+                            }
+
                             let order_opt = match side {
                                 Side::Buy => risk::size_and_validate(
                                     &sizer,
@@ -1881,8 +2018,17 @@ pub fn spawn_trading_loop(
                                     cash += proceeds - fill.fee.amount();
                                     let closed =
                                         fill.qty.get().min(position.base_qty);
-                                    position.base_qty =
-                                        (position.base_qty - closed).max(Decimal::ZERO);
+                                    // ADR-0068 D6 T-D5: long-only clamp #4 gated.
+                                    // When short_enabled=false: clamp to zero (long-only, byte-identical).
+                                    // When short_enabled=true: allow negative base_qty (the
+                                    // short-exec handler already `continue`d past this for
+                                    // actual short ops; this path only fires for long closes).
+                                    if short_enabled {
+                                        position.base_qty -= closed;
+                                    } else {
+                                        position.base_qty =
+                                            (position.base_qty - closed).max(Decimal::ZERO);
+                                    }
                                     // Proportional cost-basis reduction.
                                     let avg_cost = if position.base_qty == Decimal::ZERO {
                                         cost_basis
@@ -2018,6 +2164,38 @@ pub fn spawn_trading_loop(
                                 open_capital = None;
                                 open_strategy_id = None;
                             }
+                        }
+                    }
+
+                    // ADR-0068 D6 T-D5: per-bar funding accrual + maintenance-margin
+                    // liquidation check for the short path. Gated on short_enabled
+                    // → inert (no-op) for all long-only arms; byte-identical to HEAD.
+                    if short_enabled && position.base_qty != Decimal::ZERO {
+                        let funding_rate = trading_core::FundingRate::default();
+                        cash = short_exec::accrue_funding(
+                            cash,
+                            position.base_qty,
+                            mark,
+                            funding_rate,
+                            dec!(1), // 1-bar = 1 hour on hourly data
+                        );
+                        // Maintenance-margin liquidation check (honest unbounded-loss).
+                        let cur_equity = cash + position.base_qty * mark;
+                        let liq = short_exec::check_and_liquidate(
+                            cash,
+                            position.base_qty,
+                            mark,
+                            cur_equity,
+                            taker_fee_bps_owned,
+                        );
+                        if liq.liquidated {
+                            cash = liq.cash;
+                            position.base_qty = liq.position_qty;
+                            tracing::warn!(
+                                mode = mode_label,
+                                %cash,
+                                "trading_loop: short liquidated (ADR-0068 D5 — cash may be negative)"
+                            );
                         }
                     }
 

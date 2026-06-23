@@ -83,6 +83,40 @@ pub const POS_LOADING: &str = "Loading positions from the ledger…";
 pub const POS_EMPTY: &str = "No open positions. Strategy is armed and watching.";
 pub const POS_ERROR_PREFIX: &str = "Ledger error while reading positions: ";
 
+// ── Short-selling direction badge (advisor-short-selling, ADR-0068 § D8) ──────
+//
+// A single-coin position is SIGNED: `base_qty > 0` is a long, `base_qty < 0`
+// is a SHORT (a sell-to-open simulated short, paper/sim only). The Direction
+// column carries a word badge so a short reads AS a short — never a malformed
+// long — and colour is never the only signal (accessibility). The `ui` owns
+// the words; the sign comes from the signed `PositionView.base_qty` the audit
+// reader now emits (no engine string crosses the seam).
+
+/// Position-panel Direction column header.
+pub const POS_COL_DIRECTION: &str = "Direction";
+
+/// Direction badge — a long position (`base_qty > 0`).
+pub const POS_DIRECTION_LONG: &str = "LONG";
+
+/// Direction badge — a SHORT position (`base_qty < 0`, sell-to-open). The
+/// down-half lever: profits when price falls, loses without bound as it rises.
+pub const POS_DIRECTION_SHORT: &str = "SHORT";
+
+// ── The unbounded-loss disclaimer (advisor-short-selling, R-SS.4 LOAD-BEARING) ─
+//
+// MANDATORY on EVERY short surface (Live view + leaderboard + forward plan,
+// ADR-0068 § D5/D8). A 1x perp short loses WITHOUT BOUND as price rises: a 2×
+// price move wipes the €200 and then some (cash can go negative at the
+// maintenance-margin liquidation floor). This is the honest behaviour R-SS.4
+// mandates — the displayed P/L is allowed to print negative; it is NEVER
+// clamped at 0. The copy is plain-language and non-euphemistic by design.
+
+/// The load-bearing "a short can lose more than your €200" disclaimer. Rendered
+/// on every surface where a short is in play. Honest + plain — names the
+/// unbounded loss and the 2× wipe-out explicitly; no euphemism.
+pub const SHORT_UNBOUNDED_LOSS_DISCLAIMER: &str = "A short can lose MORE than your \u{20ac}200 \u{2014} an unbounded loss. A 2\u{00d7} price move \
+     wipes you out and then some. Simulated paper budget, not financial advice.";
+
 // ── P&L card ─────────────────────────────────────────────────────────────────
 
 pub const PNL_LABEL_CASH: &str = "Cash";
@@ -1306,6 +1340,13 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("POS_LOADING", POS_LOADING),
         ("POS_EMPTY", POS_EMPTY),
         ("POS_ERROR_PREFIX", POS_ERROR_PREFIX),
+        ("POS_COL_DIRECTION", POS_COL_DIRECTION),
+        ("POS_DIRECTION_LONG", POS_DIRECTION_LONG),
+        ("POS_DIRECTION_SHORT", POS_DIRECTION_SHORT),
+        (
+            "SHORT_UNBOUNDED_LOSS_DISCLAIMER",
+            SHORT_UNBOUNDED_LOSS_DISCLAIMER,
+        ),
         ("PNL_LABEL_CASH", PNL_LABEL_CASH),
         ("PNL_LABEL_UNREALIZED", PNL_LABEL_UNREALIZED),
         ("PNL_LABEL_REALIZED", PNL_LABEL_REALIZED),
@@ -1581,6 +1622,22 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_ENSEMBLE_VOTE_TAG,
         ),
         (
+            "LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL",
+            LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL,
+        ),
+        ("LEADERBOARD_SHORT_MACD_LS_LABEL", LEADERBOARD_SHORT_MACD_LS_LABEL),
+        ("LEADERBOARD_SHORT_RSI_LS_LABEL", LEADERBOARD_SHORT_RSI_LS_LABEL),
+        (
+            "LEADERBOARD_SHORT_BBANDS_LS_LABEL",
+            LEADERBOARD_SHORT_BBANDS_LS_LABEL,
+        ),
+        (
+            "LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL",
+            LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
+        ),
+        ("LEADERBOARD_SHORT_TAG", LEADERBOARD_SHORT_TAG),
+        ("LEADERBOARD_SHORT_FIELD_NOTE", LEADERBOARD_SHORT_FIELD_NOTE),
+        (
             "LEADERBOARD_ENSEMBLE_SAT_IN_CASH",
             LEADERBOARD_ENSEMBLE_SAT_IN_CASH,
         ),
@@ -1708,6 +1765,34 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         (
             "FORWARD_PLAN_RULE_SMA_EXIT_THEN",
             FORWARD_PLAN_RULE_SMA_EXIT_THEN,
+        ),
+        (
+            "FORWARD_PLAN_SHORT_RULES_HEADING",
+            FORWARD_PLAN_SHORT_RULES_HEADING,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SHORT_OPEN_THEN",
+            FORWARD_PLAN_RULE_SHORT_OPEN_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC",
+            FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SHORT_COVER_IF",
+            FORWARD_PLAN_RULE_SHORT_COVER_IF,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SHORT_COVER_THEN",
+            FORWARD_PLAN_RULE_SHORT_COVER_THEN,
+        ),
+        (
+            "FORWARD_PLAN_RULE_SHORT_LIQUIDATION",
+            FORWARD_PLAN_RULE_SHORT_LIQUIDATION,
+        ),
+        (
+            "FORWARD_PLAN_RULE_ALWAYS_SHORT",
+            FORWARD_PLAN_RULE_ALWAYS_SHORT,
         ),
         (
             "FORWARD_PLAN_RULE_MACD_ENTRY_IF_FMT",
@@ -2432,6 +2517,56 @@ pub const LEADERBOARD_ENSEMBLE_K3OF4_LABEL: &str = "Majority vote (3-of-4)";
 /// with the buy-and-hold row).
 pub const LEADERBOARD_ENSEMBLE_VOTE_TAG: &str = "vote";
 
+// ── Short-capable arm row labelling (advisor-short-selling, ADR-0068 § D9) ─────
+//
+// The FIXED pre-registered 5-arm short slate carries opaque `*_ls` /
+// `always_short` ids. The leaderboard renders a friendly, legible display label
+// so the row reads AS a long/short (directional) strategy — never a raw
+// `sma_cross_ls` id — plus a `short` tag so the kind is unmistakable beyond the
+// id (mirrors the `vote` ensemble tag). The `ui` owns the words; the id→label
+// mapping is a closed `ui`-side match (no engine string crosses the seam) —
+// learned from advisor-combination-search, where the engine adds the ids but
+// the leaderboard mapping must be extended ui-side or they show raw ids.
+//
+// The four `_ls` arms are symmetric long/short variants of the existing rule
+// engines (long on the bullish flip, SHORT instead of flat on the bearish
+// flip); `always_short` is the always-short benchmark control (the down-side
+// mirror of buy-and-hold — loses on any up-trend by construction).
+
+/// `sma_cross_ls` — SMA crossover, symmetric long/short (long on the golden
+/// cross, short on the death cross).
+pub const LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL: &str = "SMA crossover (long/short)";
+
+/// `macd_ls` — MACD trend, symmetric long/short (long on the bullish flip,
+/// short on the bearish flip).
+pub const LEADERBOARD_SHORT_MACD_LS_LABEL: &str = "MACD trend (long/short)";
+
+/// `rsi_ls` — RSI reversion, symmetric long/short (long oversold, short
+/// overbought).
+pub const LEADERBOARD_SHORT_RSI_LS_LABEL: &str = "RSI reversion (long/short)";
+
+/// `bbands_ls` — Bollinger reversion, symmetric long/short (long on the lower
+/// band, short on the upper band).
+pub const LEADERBOARD_SHORT_BBANDS_LS_LABEL: &str = "Bollinger reversion (long/short)";
+
+/// `always_short` — the always-short benchmark control (the down-side mirror of
+/// buy-and-hold). Loses on any up-trending window by construction; anchors the
+/// "what un-timed continuous shorting does" honest framing.
+pub const LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL: &str = "Always short (benchmark)";
+
+/// Row tag marking a short-capable arm so the user sees the short field (pairs
+/// with the friendly label the way `vote` pairs with an ensemble and `baseline`
+/// pairs with buy-and-hold). The kind is legible beyond colour (accessibility).
+pub const LEADERBOARD_SHORT_TAG: &str = "short";
+
+/// The short-field disclaimer carried on the leaderboard when one or more
+/// short-capable arms are in the field (R-SS.9 / ADR-0068 § D8). Frames the
+/// honest "a short's drawdown can be brutal" signal + the unbounded-loss
+/// caution. Distinct from (and additional to) the persistent not-advice
+/// disclaimer every result surface already carries.
+pub const LEADERBOARD_SHORT_FIELD_NOTE: &str = "Short-capable arms (tagged \u{201c}short\u{201d}) can bet on a decline. A short's drawdown can \
+     be brutal \u{2014} it loses without bound as price rises.";
+
 /// Row note for an ensemble that executed ZERO trades — its quorum
 /// (e.g. 4-of-4 unanimous agreement on a single volatile asset) was never
 /// reached, so it stayed in cash the whole window. Renders the honest "why it's
@@ -2678,6 +2813,48 @@ pub const FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT: &str =
     "the {fast}-bar average crosses back below the {slow}-bar average";
 /// SMA exit rule — THEN action.
 pub const FORWARD_PLAN_RULE_SMA_EXIT_THEN: &str = "sell (close the position)";
+
+// ── Short-capable forward-plan rules (advisor-short-selling, ADR-0068 § D8) ────
+//
+// For a crowned SHORT-CAPABLE arm (`*_ls` / `always_short`), the forward plan
+// describes the down-half rules honestly via the existing IF/THEN plan-render
+// path: it SELLS-TO-OPEN a short on the bearish flip (instead of sitting flat),
+// COVERS (buys to close) on the bullish flip, and is FORCE-LIQUIDATED if the
+// loss reaches the maintenance-margin floor. Plain-language, not-a-prediction /
+// not-advice framing already leads the surface; these add the short half +
+// the unbounded-loss caution. Paper/sim only — no real orders, no real margin.
+
+/// Short-rules section sub-heading — frames the down-half rules as the
+/// directional (long/short) extension, so the operator sees they can bet on a
+/// decline, not just go flat.
+pub const FORWARD_PLAN_SHORT_RULES_HEADING: &str = "This strategy can also bet on a decline:";
+
+/// Short entry rule — THEN action. The bearish-flip "open a short" half (the
+/// IF condition reuses the rule family's own exit/bearish copy).
+pub const FORWARD_PLAN_RULE_SHORT_OPEN_THEN: &str = "sell-to-open a short (bet on a decline)";
+
+/// Short entry rule — generic IF condition (the bearish flip), used for rule
+/// families without a parameterised bearish clause of their own (MACD / RSI /
+/// Bollinger). SMA reuses its own parameterised exit copy instead.
+pub const FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC: &str = "the trend turns bearish (the entry condition reverses to the downside)";
+
+/// Cover rule — IF condition. The bullish flip that closes an open short.
+pub const FORWARD_PLAN_RULE_SHORT_COVER_IF: &str = "the trend flips back up (the entry condition reverses)";
+/// Cover rule — THEN action.
+pub const FORWARD_PLAN_RULE_SHORT_COVER_THEN: &str = "buy-to-cover (close the short)";
+
+/// Liquidation rule line — the honest maintenance-margin force-cover. Not an
+/// IF/THEN choice the strategy makes; a risk floor that closes the short for
+/// you when the loss is severe. Names the unbounded loss plainly.
+pub const FORWARD_PLAN_RULE_SHORT_LIQUIDATION: &str = "If the loss reaches the maintenance-margin floor the short is force-liquidated \u{2014} the loss \
+     is not capped at your \u{20ac}200.";
+
+/// The always-short benchmark's standing rule — the down-side mirror of
+/// buy-and-hold. It opens a short and holds it the whole horizon (no cover
+/// trigger), so it loses on any up-trending window by construction. The honest
+/// control, rendered as obviously the same KIND of object as buy-and-hold.
+pub const FORWARD_PLAN_RULE_ALWAYS_SHORT: &str = "Open a short now and hold it the whole horizon \u{2014} the down-side mirror of buy-and-hold. \
+     There is no cover trigger; it loses on any up-trend by construction.";
 
 /// MACD trend entry rule — IF condition. `{fast}`/`{slow}`/`{signal}`.
 ///

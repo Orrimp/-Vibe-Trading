@@ -32,8 +32,11 @@ use trading_core::{
     TimeInForce, Timeframe, Timestamp, Usdt, Venue,
 };
 
+use trading_core::FundingRate;
+
 use crate::cli_types::{BacktestState, SmaComposedRunInput, StrategyMeta};
 use crate::scenarios::sim::sim_slippage_cost;
+use crate::short_exec;
 
 // ── Error type ────────────────────────────────────────────────────────────────
 
@@ -461,18 +464,130 @@ pub async fn run(
         let mut orders: Vec<Order> = Vec::new();
 
         for sig in &signals {
-            let desired_side: Option<Side> = match sig.kind {
-                trading_core::SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
-                    Some(Side::Buy)
+            // ADR-0068 D3 / Q-SS-1: position-aware interpretation of Buy/Sell.
+            // When short_enabled=true: Sell-when-flat-or-short → open/extend short;
+            // Buy-when-short → cover. Sell-when-long → close long (unchanged).
+            // Buy-when-flat-or-long → open/extend long (unchanged).
+            // When short_enabled=false (default): long-only clamp #1 — only
+            // Buy-when-flat and Sell-when-long produce Side. Byte-identical to HEAD.
+            let desired_side: Option<Side> = if input.short_enabled {
+                match sig.kind {
+                    // Cover: Buy when currently short → cover the position.
+                    trading_core::SignalKind::Buy if position.base_qty < Decimal::ZERO => {
+                        Some(Side::Buy) // cover-short path (handled below)
+                    }
+                    // Open long: Buy when flat or long.
+                    trading_core::SignalKind::Buy if position.base_qty >= Decimal::ZERO => {
+                        Some(Side::Buy)
+                    }
+                    // Close long: Sell when long.
+                    trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                        Some(Side::Sell)
+                    }
+                    // Open/extend short: Sell when flat or already short.
+                    // Long-only clamp #1 — GATED: when short_enabled=true, allow Sell-when-flat.
+                    trading_core::SignalKind::Sell if position.base_qty <= Decimal::ZERO => {
+                        Some(Side::Sell) // open-short path (handled below)
+                    }
+                    _ => None,
                 }
-                trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
-                    Some(Side::Sell)
+            } else {
+                // Long-only path: clamp #1 active. Byte-identical to HEAD.
+                match sig.kind {
+                    trading_core::SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
+                        Some(Side::Buy)
+                    }
+                    trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                        Some(Side::Sell)
+                    }
+                    _ => None,
                 }
-                _ => None,
             };
 
             if let Some(side) = desired_side {
                 total_signals_with_side += 1;
+
+                // ADR-0068 D6 (Q-SS-6): for short operations, call short_exec helpers
+                // directly (same logic as montecarlo.rs) rather than routing through
+                // risk::size_and_validate (which assumes a long position).
+                if input.short_enabled {
+                    match (side, position.base_qty.cmp(&Decimal::ZERO)) {
+                        // Cover short: Buy when currently short.
+                        (Side::Buy, std::cmp::Ordering::Less) => {
+                            let res = short_exec::try_cover_short(
+                                state.cash,
+                                state.position_qty,
+                                mark,
+                                input.taker_fee_bps,
+                            );
+                            if res.executed {
+                                let covered_qty = state.position_qty - res.position_qty; // positive
+                                let notional = covered_qty.abs() * mark;
+                                state.cash = res.cash;
+                                state.position_qty = res.position_qty;
+                                position.base_qty = res.position_qty;
+                                // position_cost: clear on full cover, proportional on partial.
+                                if res.position_qty == Decimal::ZERO {
+                                    state.position_cost = Decimal::ZERO;
+                                }
+                                state.total_fees += notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
+                                state.trades += 1;
+                                state.sells += 1; // cover is a "sell" in terms of direction reversed
+                                // Record as FillView for the result.
+                                // We synthesize a fill at mark price.
+                                if let (Ok(fq), Ok(fp)) = (Quantity::new(covered_qty.abs()), Price::new(mark)) {
+                                    all_fills.push(FillView {
+                                        symbol: sig.symbol.clone(),
+                                        side: Side::Buy,
+                                        price: fp,
+                                        qty: fq,
+                                        fee: Money::from_decimal(notional * Decimal::new(i64::from(input.taker_fee_bps), 4)),
+                                        fee_tier: trading_core::FeeTier::Taker,
+                                        venue_ts: bar.close_ts,
+                                        transaction_id: smol_str::SmolStr::default(),
+                                    });
+                                }
+                            }
+                            continue; // handled; skip the matching-engine path
+                        }
+                        // Open/extend short: Sell when flat or already short.
+                        (Side::Sell, std::cmp::Ordering::Equal | std::cmp::Ordering::Less) => {
+                            let res = short_exec::try_open_short(
+                                state.cash,
+                                state.position_qty,
+                                mark,
+                                input.taker_fee_bps,
+                                equity,
+                            );
+                            if res.executed {
+                                let opened_qty = state.position_qty - res.position_qty; // negative delta (more short)
+                                let notional = opened_qty.abs() * mark;
+                                state.cash = res.cash;
+                                state.position_qty = res.position_qty;
+                                position.base_qty = res.position_qty;
+                                state.total_fees += notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
+                                state.trades += 1;
+                                state.sells += 1;
+                                if let (Ok(fq), Ok(fp)) = (Quantity::new(opened_qty.abs()), Price::new(mark)) {
+                                    all_fills.push(FillView {
+                                        symbol: sig.symbol.clone(),
+                                        side: Side::Sell,
+                                        price: fp,
+                                        qty: fq,
+                                        fee: Money::from_decimal(notional * Decimal::new(i64::from(input.taker_fee_bps), 4)),
+                                        fee_tier: trading_core::FeeTier::Taker,
+                                        venue_ts: bar.close_ts,
+                                        transaction_id: smol_str::SmolStr::default(),
+                                    });
+                                }
+                            }
+                            continue; // handled; skip the matching-engine path
+                        }
+                        // Long open or long close: fall through to the normal matching-engine path.
+                        _ => {}
+                    }
+                }
+
                 let order_opt = match side {
                     Side::Buy => {
                         let eq_money: Money<Usdt> = Money::from_decimal(equity);
@@ -547,11 +662,15 @@ pub async fn run(
                         position.cost_basis = Money::from_decimal(state.position_cost);
                     }
                     Side::Sell => {
-                        state.apply_sell(fill.qty.get(), fill.price.get(), fill.fee.amount());
+                        // ADR-0068 D1/D3: pass short_enabled to gate clamp #3.
+                        state.apply_sell(fill.qty.get(), fill.price.get(), fill.fee.amount(), input.short_enabled);
                         // Deduct sim slippage from cash (reduced proceeds on sell).
                         state.cash -= sim_slip_cost;
                         position.base_qty -= fill.qty.get();
-                        if position.base_qty < Decimal::ZERO {
+                        // ADR-0068 D1 clamp #4: gate the base_qty < 0 clamp.
+                        // When short_enabled=false: clamp to zero (long-only, byte-identical to HEAD).
+                        // When short_enabled=true: allow negative base_qty (open short position).
+                        if !input.short_enabled && position.base_qty < Decimal::ZERO {
                             position.base_qty = Decimal::ZERO;
                         }
                     }
@@ -568,6 +687,45 @@ pub async fn run(
                     venue_ts: fill.venue_ts,
                     transaction_id: smol_str::SmolStr::default(),
                 });
+            }
+        }
+
+        // ADR-0068 D4/D5 — per-bar funding accrual + maintenance-margin liquidation.
+        // Gated on short_enabled → inert (no-op) for all long-only runs.
+        // When short_enabled=true: accrue funding for any open short/long position,
+        // then check the maintenance-margin condition and force-cover if triggered.
+        if input.short_enabled && state.position_qty != Decimal::ZERO {
+            // Per-bar funding accrual (ADR-0068 D4): cash += notional × (−rate_per_bar).
+            // For a 1-hour bar: bar_hours = 1.
+            // FundingRate::default() = DEFAULT_PERP_FUNDING_RATE (0.01%/8h).
+            let funding_rate = FundingRate::default();
+            state.cash = short_exec::accrue_funding(
+                state.cash,
+                state.position_qty,
+                mark,
+                funding_rate,
+                dec!(1), // 1-hour bar
+            );
+            // Sync position.base_qty from state (state is the source of truth).
+            position.base_qty = state.position_qty;
+
+            // Maintenance-margin liquidation (ADR-0068 D5).
+            // Gated: only runs when there is a short position (position_qty < 0).
+            if state.position_qty < Decimal::ZERO {
+                let current_equity = state.equity(mark);
+                let liq = short_exec::check_and_liquidate(
+                    state.cash,
+                    state.position_qty,
+                    mark,
+                    current_equity,
+                    input.taker_fee_bps,
+                );
+                if liq.liquidated {
+                    state.cash = liq.cash;
+                    state.position_qty = liq.position_qty;
+                    position.base_qty = liq.position_qty;
+                    state.trades += 1;
+                }
             }
         }
 
@@ -720,6 +878,7 @@ mod tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            short_enabled: false,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -767,6 +926,7 @@ mod tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            short_enabled: false,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -805,6 +965,7 @@ mod tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            short_enabled: false,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -843,6 +1004,7 @@ mod tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            short_enabled: false,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();

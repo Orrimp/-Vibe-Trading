@@ -2395,6 +2395,7 @@ async fn main() -> Result<()> {
             slippage_model: sma_slippage_model,
             volume_usd_per_symbol: None,
         },
+        short_enabled: false,
     };
     // CLI path: use no-op cancel + progress so the anchor bytes are unchanged.
     let (_cancel_handle, cancel_rx) = backtest::cancel::cancellation_pair();

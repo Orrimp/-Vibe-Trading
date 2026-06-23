@@ -20,10 +20,11 @@
 //!   `open_positions_at(&ledger, period_end)` calls on the same opened
 //!   ledger return `Vec<OpenPosition>` slices that compare equal
 //!   byte-for-byte.
-//! - **Q8 short-position branch.** A tiny in-tempfile fixture with one
-//!   `Sell` against zero `Buy`s raises
-//!   `LedgerError::Database("open_positions_at: net-negative qty …")`
-//!   (architect Design § Q8 — long-only at v1+).
+//! - **ADR-0068 D7 — signed reader.** A tiny in-tempfile fixture with one
+//!   `Sell` against zero `Buy`s (a sell-to-open short) now materializes
+//!   as a signed `OpenPosition` with `qty < 0` — NOT a `LedgerError::Database`.
+//!   The old Q8 long-only invariant is superseded by ADR-0068 D7 (reader-only
+//!   relaxation; writer + reconciler unchanged).
 //!
 //! The fixture file
 //! (`crates/reports/tests/fixtures/build_ledger_with_open_positions_7d.rs`)
@@ -38,16 +39,16 @@
 //! T1002's `crates/audit/tests/open_positions.rs` already covers the
 //! algorithmic surface of the reader (8 unit-style integration tests
 //! across empty / single / closed / weighted-avg / partial-close /
-//! multi-symbol-sort / strategy_id / net-negative branches).  This
-//! file is strictly additive — V1 / V4 / V7 against the shared T1004
-//! fixture, plus the `t1005_q8_short_position_raises` named branch
-//! the architect's acceptance criteria pin.
+//! multi-symbol-sort / strategy_id branches).  This file is strictly
+//! additive — V1 / V4 / V7 against the shared T1004 fixture, plus
+//! the ADR-0068 D7 signed-position tests.
 
 use audit::{Ledger, journal, query};
+use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tempfile::tempdir;
 use trading_core::{
-    FeeTier, Fill, FillId, LedgerError, Liquidity, Money, OrderId, Price, Quantity, Side,
+    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side,
     StrategyId, Symbol, Timestamp, Venue,
 };
 
@@ -269,34 +270,36 @@ async fn t1005_v7_two_reads_byte_identical() {
     );
 }
 
-/// Q8 — net-negative qty raises `LedgerError::Database`.
+/// ADR-0068 D7 — a journaled sell-to-open materializes as a signed `OpenPosition`
+/// (`qty < 0`), NOT a `LedgerError::Database` error.
 ///
-/// Architect Design § Q8: v1+ is long-only; one Sell against zero Buys is
-/// a malformed long-only ledger and the reader must surface it loudly.
-/// Builds a tiny in-tempfile fixture (independent of the T1004
-/// `build_ledger_with_open_positions_7d` activity plan) with exactly one
-/// Sell of `qty=1` against zero Buys, then asserts the returned error.
+/// This test is the acceptance criterion for the reader-only relaxation
+/// from ADR-0068 D7. The writer (`post_fill_with_signal`) is unchanged —
+/// only the reader's materializer changes.
+///
+/// Previously the Q8 test expected a `LedgerError::Database` for
+/// net-negative qty. After ADR-0068 D7, the reader emits a signed row.
 #[tokio::test]
-async fn t1005_q8_short_position_raises() {
+async fn t1005_d7_sell_to_open_materializes_as_signed_position() {
     let dir = tempdir().expect("tempdir");
-    let db_path = dir.path().join("t1005-q8.sqlite");
+    let db_path = dir.path().join("t1005-d7-signed.sqlite");
     let url = db_path.to_str().expect("utf-8 db path");
 
-    // Open + bootstrap a clean ledger; no fixture-builder needed.
+    // Open + bootstrap a clean ledger.
     let ledger = Ledger::open(url).await.expect("open ledger");
     audit::bootstrap::chart_of_accounts(&ledger)
         .await
         .expect("bootstrap chart of accounts");
 
-    // Single Sell, no prior Buy — `running_qty` walks `0 → -1` for the
-    // (BTCUSDT, strat_alpha) group, which the reader rejects.
+    // Sell-to-open (short): one Sell of qty=0.5 at price=70_000 against zero Buys.
+    // After D7 the reader must emit qty=-0.5, avg_cost_basis=70_000.
     let venue_ts = parse_rfc3339("2026-04-27T20:00:00Z");
     let sell = Fill {
         id: FillId::new(),
         order_id: OrderId::new(),
         symbol: Symbol::new("BTCUSDT"),
         side: Side::Sell,
-        qty: Quantity::new(dec!(1)).expect("qty"),
+        qty: Quantity::new(dec!(0.5)).expect("qty"),
         price: Price::new(dec!(70_000)).expect("price"),
         fee: Money::from_decimal(dec!(0)),
         fee_tier: FeeTier::Taker,
@@ -307,24 +310,85 @@ async fn t1005_q8_short_position_raises() {
     };
     journal::post_fill(&ledger, &sell, Venue::Binance, Some("strat_alpha"))
         .await
-        .expect("post_fill");
+        .expect("post_fill sell-to-open");
 
-    let result = query::open_positions_at(&ledger, fixture_period_end()).await;
+    let positions = query::open_positions_at(&ledger, fixture_period_end())
+        .await
+        .expect("open_positions_at must not raise on a short position (ADR-0068 D7)");
 
-    match result {
-        Err(LedgerError::Database(msg)) => {
-            assert!(
-                msg.contains("net-negative qty"),
-                "error message should mention 'net-negative qty' (architect Q8); got: {msg}"
-            );
-            assert!(
-                msg.contains("open_positions_at"),
-                "error message should be tagged with the function name; got: {msg}"
-            );
-        }
-        Err(other) => panic!("expected LedgerError::Database, got {other:?}"),
-        Ok(positions) => {
-            panic!("expected Err for net-negative qty (Q8 long-only), got Ok({positions:?})")
-        }
-    }
+    assert_eq!(
+        positions.len(),
+        1,
+        "a single sell-to-open should materialize as 1 open position (short); got: {positions:?}"
+    );
+    let pos = &positions[0];
+    assert_eq!(pos.symbol, Symbol::new("BTCUSDT"), "symbol");
+    assert!(
+        pos.qty < Decimal::ZERO,
+        "short position qty must be negative (ADR-0068 D7); got qty={}", pos.qty
+    );
+    assert_eq!(
+        pos.qty,
+        dec!(-0.5),
+        "qty must equal -(fill qty); got: {}", pos.qty
+    );
+    assert_eq!(
+        pos.avg_cost_basis,
+        Money::from_decimal(dec!(70_000)),
+        "avg_cost_basis must be the open (sell) price for a short lot; got: {:?}",
+        pos.avg_cost_basis
+    );
+    assert_eq!(
+        pos.strategy_id,
+        Some(StrategyId::new("strat_alpha")),
+        "strategy_id must be preserved"
+    );
+}
+
+/// ADR-0068 D7 regression — a long ledger reads back byte-identical after the
+/// reader relaxation. The existing V1/V4/V7 tests cover the full fixture; this
+/// targeted test proves an existing long position is unaffected.
+#[tokio::test]
+async fn t1005_d7_long_position_byte_identical_after_relaxation() {
+    let dir = tempdir().expect("tempdir");
+    let db_path = dir.path().join("t1005-d7-long-regression.sqlite");
+    let url = db_path.to_str().expect("utf-8 db path");
+
+    let ledger = Ledger::open(url).await.expect("open ledger");
+    audit::bootstrap::chart_of_accounts(&ledger)
+        .await
+        .expect("bootstrap chart of accounts");
+
+    // Buy-to-open a long position.
+    let venue_ts = parse_rfc3339("2026-04-27T20:00:00Z");
+    let buy = Fill {
+        id: FillId::new(),
+        order_id: OrderId::new(),
+        symbol: Symbol::new("BTCUSDT"),
+        side: Side::Buy,
+        qty: Quantity::new(dec!(0.01)).expect("qty"),
+        price: Price::new(dec!(60_000)).expect("price"),
+        fee: Money::from_decimal(dec!(0)),
+        fee_tier: FeeTier::Taker,
+        venue_ts,
+        local_ts: venue_ts,
+        liquidity: Liquidity::Taker,
+        transaction_id: None,
+    };
+    journal::post_fill(&ledger, &buy, Venue::Binance, Some("strat_alpha"))
+        .await
+        .expect("post_fill buy");
+
+    let positions = query::open_positions_at(&ledger, fixture_period_end())
+        .await
+        .expect("long position must materialize");
+
+    assert_eq!(positions.len(), 1, "one open position");
+    let pos = &positions[0];
+    assert!(
+        pos.qty > Decimal::ZERO,
+        "long position qty must be positive; got: {}", pos.qty
+    );
+    assert_eq!(pos.qty, dec!(0.01), "long qty");
+    assert_eq!(pos.avg_cost_basis, Money::from_decimal(dec!(60_000)), "long avg_cost_basis");
 }

@@ -309,6 +309,34 @@ impl ForwardPlanView {
     pub fn is_ensemble(&self) -> bool {
         self.rule.is_ensemble()
     }
+
+    /// `true` when the crowned pick is one of the FIXED 5-arm short slate
+    /// (advisor-short-selling, ADR-0068 § D9) — keyed on the `strategy` id, a
+    /// closed `ui`-side predicate (the same discipline the leaderboard's
+    /// `is_short_capable_id` uses). No new `agent::config::ForwardPlan` field
+    /// crosses the seam — `from_plan` stays byte-identical, so the mirror
+    /// discipline (ADR-0062 § D4) and `cargo tree -p ui` are undisturbed. When
+    /// true, the forward plan appends the honest sell-to-open / cover /
+    /// liquidation short-rule copy + the unbounded-loss disclaimer.
+    ///
+    /// The `_ls` suffix covers the four symmetric long/short variants
+    /// (`sma_cross_ls` / `macd_ls` / `rsi_ls` / `bbands_ls`); `always_short` is
+    /// the explicit always-short benchmark control.
+    #[must_use]
+    pub fn is_short_capable(&self) -> bool {
+        let id = self.strategy.as_str();
+        id.ends_with("_ls") || id == "always_short"
+    }
+
+    /// `true` for the always-short benchmark control specifically — its standing
+    /// rule is the degenerate "open a short and hold it" (the down-side mirror of
+    /// buy-and-hold), with NO cover trigger. The screen renders a single standing
+    /// short rule for it, the way `is_buy_and_hold` collapses the buy-and-hold
+    /// degenerate plan.
+    #[must_use]
+    pub fn is_always_short(&self) -> bool {
+        self.strategy.as_str() == "always_short"
+    }
 }
 
 /// Per-session Forward-plan screen state. Sibling of
@@ -470,5 +498,31 @@ mod tests {
         let unan = PlanVoteMethodView::Unanimous { n: 4 };
         assert_eq!(unan.quorum(), 4, "unanimous quorum is n (all members)");
         assert_eq!(unan.member_count(), 4);
+    }
+
+    /// advisor-short-selling (T-U3) — `is_short_capable` keys on the strategy id
+    /// (the closed ui-side predicate, no engine field crosses the seam) and fires
+    /// for every short-slate arm, NOT for the long-only / ensemble / benchmark
+    /// arms. `is_always_short` is the strict always-short control predicate.
+    #[test]
+    fn short_capability_keys_on_strategy_id() {
+        let mut v = active_view();
+        for id in ["sma_cross_ls", "macd_ls", "rsi_ls", "bbands_ls", "always_short"] {
+            v.strategy = SmolStr::new(id);
+            assert!(v.is_short_capable(), "`{id}` is short-capable");
+        }
+        // always_short is the strict control; the `_ls` arms are not.
+        v.strategy = SmolStr::new("always_short");
+        assert!(v.is_always_short(), "always_short is the always-short control");
+        v.strategy = SmolStr::new("sma_cross_ls");
+        assert!(
+            !v.is_always_short(),
+            "an `_ls` symmetric variant is not the always-short control"
+        );
+        // Long-only / ensemble / benchmark arms are NOT short-capable.
+        for id in ["v0.sma", "v0.5.macd", "v0.buyhold", "v0.8.vote.majority"] {
+            v.strategy = SmolStr::new(id);
+            assert!(!v.is_short_capable(), "`{id}` is not short-capable");
+        }
     }
 }

@@ -194,6 +194,7 @@ async fn run_one_path(sym: &Symbol, strat: &str, path_bars: Vec<Bar>) -> Option<
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
     let (_h, cancel_rx) = cancellation_pair();
     match backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled()).await {

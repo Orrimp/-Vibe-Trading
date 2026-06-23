@@ -338,6 +338,45 @@ impl BakeoffConfig {
         ]
     }
 
+    /// Returns the 5 pre-registered short-capable arm ids (ADR-0068 D9, FROZEN slate).
+    ///
+    /// These are the ONLY arms that run with `short_enabled = true`. All existing
+    /// long-only arms are UNTOUCHED. This list is FIXED before any results are read
+    /// (the overfit-safe pre-registration discipline, mirroring `default_ensemble_field`).
+    ///
+    /// Arms:
+    /// - `"v0.sma_cross_ls"` — SMA crossover long/short (short on death cross).
+    /// - `"v0.macd_ls"` — MACD long/short (short on bearish flip).
+    /// - `"v0.rsi_ls"` — RSI long/short (short on overbought).
+    /// - `"v0.bbands_ls"` — Bollinger long/short (short on upper-band touch).
+    /// - `"v0.always_short"` — always-short benchmark control.
+    #[must_use]
+    pub fn default_short_field() -> Vec<StrategyId> {
+        vec![
+            StrategyId(SmolStr::new_static("v0.sma_cross_ls")),
+            StrategyId(SmolStr::new_static("v0.macd_ls")),
+            StrategyId(SmolStr::new_static("v0.rsi_ls")),
+            StrategyId(SmolStr::new_static("v0.bbands_ls")),
+            StrategyId(SmolStr::new_static("v0.always_short")),
+        ]
+    }
+
+    /// Returns `true` if the given strategy id is a short-capable arm (ADR-0068 D9).
+    ///
+    /// Used by the bakeoff loop to set `short_enabled` on the per-arm `ScenarioConfig`.
+    /// Long-only arms (and the buy-and-hold benchmark) return `false`.
+    #[must_use]
+    pub fn is_short_enabled(strategy_id: &str) -> bool {
+        matches!(
+            strategy_id,
+            "v0.sma_cross_ls"
+                | "v0.macd_ls"
+                | "v0.rsi_ls"
+                | "v0.bbands_ls"
+                | "v0.always_short"
+        )
+    }
+
     /// Returns all 8 pre-registered vote-ensemble strategy ids (ADR-0063 § D4 + ADR-0067).
     ///
     /// **F8 original arms:**
@@ -608,6 +647,10 @@ pub async fn run_bakeoff(
             current_id: strategy.0.clone(),
         });
 
+        // ADR-0068 D9: set short_enabled=true for the 5 new _ls / always_short arms.
+        // All other arms default to false → byte-identical long-only path.
+        let short_enabled = BakeoffConfig::is_short_enabled(strategy.0.as_str());
+
         let scenario_cfg = ScenarioConfig {
             strategy: strategy.clone(),
             pair: (trading_core::Venue::Binance, req.symbol.clone()),
@@ -624,6 +667,7 @@ pub async fn run_bakeoff(
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: None,
             params: None,
+            short_enabled,
         };
 
         let report = run_scenario(scenario_cfg, cancel_rx.sibling(), progress_tx.clone()).await?;

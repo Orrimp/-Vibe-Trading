@@ -89,13 +89,17 @@ use crate::strings::{
     FORWARD_PLAN_RULE_MACD_EXIT_IF, FORWARD_PLAN_RULE_MACD_EXIT_THEN,
     FORWARD_PLAN_RULE_RSI_ENTRY_IF_FMT, FORWARD_PLAN_RULE_RSI_ENTRY_THEN,
     FORWARD_PLAN_RULE_RSI_EXIT_IF_FMT, FORWARD_PLAN_RULE_RSI_EXIT_THEN,
-    FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT, FORWARD_PLAN_RULE_SMA_ENTRY_THEN,
-    FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT, FORWARD_PLAN_RULE_SMA_EXIT_THEN, FORWARD_PLAN_RULE_THEN,
-    FORWARD_PLAN_RULES_TITLE, FORWARD_PLAN_SIGNAL_BUY, FORWARD_PLAN_SIGNAL_HOLD,
+    FORWARD_PLAN_RULE_ALWAYS_SHORT, FORWARD_PLAN_RULE_SHORT_COVER_IF,
+    FORWARD_PLAN_RULE_SHORT_COVER_THEN, FORWARD_PLAN_RULE_SHORT_LIQUIDATION,
+    FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC, FORWARD_PLAN_RULE_SHORT_OPEN_THEN,
+    FORWARD_PLAN_RULE_SMA_ENTRY_IF_FMT,
+    FORWARD_PLAN_RULE_SMA_ENTRY_THEN, FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT,
+    FORWARD_PLAN_RULE_SMA_EXIT_THEN, FORWARD_PLAN_RULE_THEN, FORWARD_PLAN_RULES_TITLE,
+    FORWARD_PLAN_SHORT_RULES_HEADING, FORWARD_PLAN_SIGNAL_BUY, FORWARD_PLAN_SIGNAL_HOLD,
     FORWARD_PLAN_SIGNAL_SELL, FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT,
     FORWARD_PLAN_SIZING_CAPPED_NOTE, FORWARD_PLAN_SIZING_FLAT_FMT, FORWARD_PLAN_SIZING_LONG_FMT,
     FORWARD_PLAN_SIZING_TITLE, FORWARD_PLAN_STANCE_FLAT, FORWARD_PLAN_STANCE_LONG,
-    FORWARD_PLAN_STANCE_TITLE,
+    FORWARD_PLAN_STANCE_TITLE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -215,16 +219,29 @@ fn ready_pane<'a>(
     fx_note: Option<&'a FxNote>,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
-    let stack = Column::new()
+    let mut stack = Column::new()
         .spacing(space::L)
         // The not-a-prediction framing LEADS (OQ-D — integral, not a footnote).
         .push(framing_banner(mode))
         .push(stance_block(plan, mode))
         .push(rules_block(plan, mode))
         .push(sizing_block(plan, fx_note, mode))
-        .push(horizon_block(plan, mode))
-        .push(disclaimer(mode))
-        .width(Length::Fill);
+        .push(horizon_block(plan, mode));
+
+    // advisor-short-selling (T-U4, LOAD-BEARING) — for a short-capable plan,
+    // carry the unbounded-loss disclaimer above the persistent not-advice
+    // disclaimer. WARN_500-tinted (paired with the word) so the "can lose more
+    // than your €200" caution reads as a real risk note.
+    if plan.is_short_capable() {
+        stack = stack.push(
+            Text::new(SHORT_UNBOUNDED_LOSS_DISCLAIMER)
+                .size(text::SMALL)
+                .color(color::WARN_500.current(mode))
+                .width(Length::Fill),
+        );
+    }
+
+    let stack = stack.push(disclaimer(mode)).width(Length::Fill);
 
     Scrollable::new(stack)
         .width(Length::Fill)
@@ -342,7 +359,13 @@ fn signal_word(signal: PlanSignalView) -> &'static str {
 fn rules_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
     let mut col = Column::new().spacing(space::S);
 
-    if plan.is_buy_and_hold() {
+    if plan.is_always_short() {
+        // The always-short benchmark control (advisor-short-selling) — a
+        // degenerate plan like buy-and-hold, but the down-side mirror: it has NO
+        // long-entry rule. Render ONLY its standing short rule (added by
+        // `short_rules` below); skip the long IF/THEN path entirely so the plan
+        // never shows a fabricated long-entry it never takes.
+    } else if plan.is_buy_and_hold() {
         // The degenerate plan — one standing rule, no IF/THEN, no cadence.
         col = col.push(
             Text::new(FORWARD_PLAN_RULE_BUY_AND_HOLD)
@@ -380,7 +403,97 @@ fn rules_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> {
         col = col.push(cadence_line(plan.horizon_days, mode));
     }
 
+    // advisor-short-selling (T-U3 / ADR-0068 § D8) — for a crowned short-capable
+    // arm, append the honest down-half rules (sell-to-open / cover / liquidation)
+    // to the SAME standing-rules panel, so a short reads AS a directional
+    // strategy. Keyed on the `strategy` id (no engine field crosses the seam).
+    // `always_short` is the degenerate "open a short and hold it" control; the
+    // `_ls` arms add the sell-to-open + cover + liquidation IF/THEN lines.
+    if plan.is_short_capable() {
+        col = short_rules(col, plan, mode);
+    }
+
     frame::panel(FORWARD_PLAN_RULES_TITLE, col.into(), mode)
+}
+
+/// Append the short-capable down-half rules to the standing-rules column
+/// (advisor-short-selling, T-U3). Two shapes:
+/// 1. **`always_short`** — a single standing rule ("open a short now and hold it
+///    the whole horizon … the down-side mirror of buy-and-hold") + the
+///    liquidation floor line. No cover trigger (it holds the short).
+/// 2. **`_ls` symmetric variants** — a short-rules sub-heading, the sell-to-open
+///    THEN line (the bearish-flip "open a short" half), the buy-to-cover IF/THEN
+///    line, and the liquidation floor line.
+///
+/// The liquidation line names the unbounded loss plainly (the loss is NOT capped
+/// at your €200) — the honest R-SS.4 framing, reinforced by the
+/// unbounded-loss disclaimer at the foot of the surface.
+fn short_rules<'a>(
+    mut col: Column<'a, crate::state::Message>,
+    plan: &ForwardPlanView,
+    mode: ThemeMode,
+) -> Column<'a, crate::state::Message> {
+    // A visual separator + the short-rules sub-heading so the down-half reads as
+    // a distinct, clearly-labelled section.
+    col = col.push(
+        Text::new(FORWARD_PLAN_SHORT_RULES_HEADING)
+            .size(text::SMALL)
+            .color(color::FG_2.current(mode))
+            .width(Length::Fill),
+    );
+
+    if plan.is_always_short() {
+        // The always-short benchmark control — a single standing short rule
+        // (the down-side mirror of buy-and-hold; no cover trigger).
+        col = col.push(
+            Text::new(FORWARD_PLAN_RULE_ALWAYS_SHORT)
+                .size(text::BODY)
+                .color(color::FG_1.current(mode))
+                .width(Length::Fill),
+        );
+    } else {
+        // The `_ls` symmetric variants — sell-to-open on the bearish flip +
+        // buy-to-cover on the bullish flip, as IF/THEN lines (the same
+        // conditional framing the long rules use). The sell-to-open IF reuses
+        // the rule family's own exit/bearish condition copy (the bearish flip);
+        // the THEN is the "open a short" action.
+        let bearish_if = bearish_flip_clause(plan);
+        col = col.push(if_then_line(bearish_if, FORWARD_PLAN_RULE_SHORT_OPEN_THEN, mode));
+        col = col.push(if_then_line(
+            FORWARD_PLAN_RULE_SHORT_COVER_IF.to_string(),
+            FORWARD_PLAN_RULE_SHORT_COVER_THEN,
+            mode,
+        ));
+    }
+
+    // The honest maintenance-margin liquidation floor — names the unbounded loss
+    // plainly. WARN_500-tinted (paired with the word) so it reads as a real risk
+    // note, not muted fine print.
+    col.push(
+        Text::new(FORWARD_PLAN_RULE_SHORT_LIQUIDATION)
+            .size(text::SMALL)
+            .color(color::WARN_500.current(mode))
+            .width(Length::Fill),
+    )
+}
+
+/// The bearish-flip IF clause for a short-capable `_ls` arm — the condition that
+/// opens a short. Reuses the rule family's own EXIT/bearish copy (the same words
+/// the long plan uses for its exit), so a `sma_cross_ls` reads "IF the fast
+/// average crosses back below the slow average THEN sell-to-open a short". For
+/// rule families without a parameterised bearish clause it falls back to a plain
+/// "the trend turns bearish" phrasing — never blank.
+fn bearish_flip_clause(plan: &ForwardPlanView) -> String {
+    match &plan.rule {
+        PlanRuleView::SmaCross { fast_len, slow_len } => FORWARD_PLAN_RULE_SMA_EXIT_IF_FMT
+            .replace("{fast}", &fast_len.to_string())
+            .replace("{slow}", &slow_len.to_string()),
+        // MACD / RSI / Bollinger / others: the bearish flip is the entry
+        // condition reversing — use the generic bearish-flip string (in
+        // `strings.rs`) so the short half always reads cleanly without a
+        // parameterised bearish clause of its own.
+        _ => FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC.to_string(),
+    }
 }
 
 /// The reactive-cadence line — re-checked each bar, NOT a schedule.

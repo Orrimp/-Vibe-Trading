@@ -324,6 +324,7 @@ mod latency_slippage_config_tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: LatencySlippageSimConfig::default(),
+            short_enabled: false,
         };
         assert!(
             input.latency_slippage_sim.is_noop(),
@@ -409,6 +410,7 @@ mod latency_slippage_config_tests {
             sma_fast_len: None,
             sma_slow_len: None,
             latency_slippage_sim: cfg.clone(),
+            short_enabled: false,
         };
         assert!(!input.latency_slippage_sim.is_noop());
         assert_eq!(
@@ -620,16 +622,28 @@ impl BacktestState {
         self.buys += 1;
     }
 
+    /// Apply a sell fill to the state.
+    ///
+    /// When `short_enabled = false` (the long-only default), the position is
+    /// clamped to zero — byte-identical to HEAD's code.
+    ///
+    /// When `short_enabled = true` (ADR-0068 D1/D3), the position is allowed to
+    /// go negative (a short position). The `position_cost` tracking carries the
+    /// signed open-proceeds basis rather than zeroing it.
     pub fn apply_sell(
         &mut self,
         qty: rust_decimal::Decimal,
         fill_price: rust_decimal::Decimal,
         fee: rust_decimal::Decimal,
+        short_enabled: bool,
     ) {
         let notional = qty * fill_price;
         self.cash += notional - fee;
         self.position_qty -= qty;
-        if self.position_qty < rust_decimal::Decimal::ZERO {
+        if !short_enabled && self.position_qty < rust_decimal::Decimal::ZERO {
+            // Long-only clamp #3 (ADR-0068 D1 site list):
+            // `cli_types.rs:632-635` `apply_sell` clamp-to-zero.
+            // GATED: active only when short_enabled=false → byte-identical to HEAD.
             self.position_qty = rust_decimal::Decimal::ZERO;
             self.position_cost = rust_decimal::Decimal::ZERO;
         }
@@ -682,6 +696,14 @@ pub struct SmaComposedRunInput {
     /// v5-latency-slippage-sim R1 / ADR-0047 D2 — optional deterministic
     /// latency + slippage simulation. Default is noop (all zeros).
     pub latency_slippage_sim: LatencySlippageSimConfig,
+
+    /// ADR-0068 D1/D2 — enable the single-coin directional short-selling path.
+    ///
+    /// `false` (default) → long-only clamps active; path is byte-identical to HEAD.
+    /// `true` → gates off the four long-only clamps; `Sell`-when-flat-or-short
+    /// opens/extends a short via `backtest::short_exec`; `Buy`-when-short covers.
+    /// Set `true` ONLY for the new `_ls` / `always_short` arms (ADR-0068 D9).
+    pub short_enabled: bool,
 }
 
 // ── Strategy metadata (SMA / Composed report) ─────────────────────────────────

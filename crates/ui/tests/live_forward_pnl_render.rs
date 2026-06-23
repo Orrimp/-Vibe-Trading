@@ -448,6 +448,7 @@ async fn forward_pnl_traces_to_real_budget_loop() {
         None,         // no reflection writer
         vec![],       // no btc_closes seed
         Some(budget), // THE REAL BUDGET ARG — cash starts at 200
+        false,        // ADR-0068 D6: short_enabled — long-only render test
     );
 
     // Capture the first PnL snapshot published by the budget-capitalised loop.

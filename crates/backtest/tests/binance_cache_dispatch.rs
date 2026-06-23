@@ -87,6 +87,7 @@ fn base_binance_sma_config(bars: Vec<trading_core::Bar>) -> ScenarioConfig {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     }
 }
 
@@ -221,6 +222,7 @@ fn cross_sectional_binance_config(strategy: &str) -> ScenarioConfig {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     }
 }
 
@@ -346,6 +348,7 @@ async fn composed_strategy_macd_trades_on_ethusdt_not_zero() {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -384,6 +387,7 @@ async fn composed_strategy_rsi_trades_on_ethusdt_not_zero() {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -422,6 +426,7 @@ async fn composed_strategy_bbands_trades_on_ethusdt_not_zero() {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -532,6 +537,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -556,6 +562,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         sma_slow_len: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
+        short_enabled: false,
     };
 
     let (_handle2, cancel_rx2) = cancellation_pair();

@@ -53,6 +53,12 @@ pub mod scenarios;
 #[cfg(feature = "realdata")]
 pub mod realdata;
 
+/// Pure, sync, deterministic single-coin short-execution helper (ADR-0068 D6).
+///
+/// Both `run_scenario` / `sma_composed_run` AND the agent forward loop call this
+/// helper — consistent-by-construction parity (Q-SS-6 / F5b discipline).
+pub mod short_exec;
+
 /// Carry-funding parquet loader and as-of forward-fill (M-DEV-1 + M-DEV-2).
 /// Compiled only when `--features realdata` (funding data requires real parquets).
 #[cfg(feature = "realdata")]

@@ -92,6 +92,7 @@ mod bakeoff_arm_parity {
             sma_slow_len: None,
             latency_slippage_sim: LatencySlippageSimConfig::default(),
             reports_dir: None,
+            short_enabled: false,
         };
 
         let report = run_scenario(cfg, cancel_rx, progress_tx)

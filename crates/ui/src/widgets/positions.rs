@@ -35,16 +35,17 @@
 //! and the table-level `.width(Length::Fill)` handles outer fit.
 
 use iced::alignment::Horizontal;
-use iced::widget::{Text, table};
-use iced::{Element, Length};
+use iced::widget::{Container, Text, table};
+use iced::{Border, Element, Length};
 use rust_decimal::Decimal;
 
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    PANEL_POSITIONS_TITLE, POS_COL_COST, POS_COL_EXPOSURE, POS_COL_MARK, POS_COL_PNL,
-    POS_COL_PNL_PCT, POS_COL_QTY, POS_COL_SYMBOL, POS_EMPTY, POS_ERROR_PREFIX, POS_LOADING,
+    PANEL_POSITIONS_TITLE, POS_COL_COST, POS_COL_DIRECTION, POS_COL_EXPOSURE, POS_COL_MARK,
+    POS_COL_PNL, POS_COL_PNL_PCT, POS_COL_QTY, POS_COL_SYMBOL, POS_DIRECTION_LONG,
+    POS_DIRECTION_SHORT, POS_EMPTY, POS_ERROR_PREFIX, POS_LOADING,
 };
-use crate::theme::{ThemeMode, color, color_for_delta, text};
+use crate::theme::{ThemeMode, color, color_for_delta, radius, space, text};
 
 use super::frame::{col_header, error_body, loading_with_spinner, muted_body, panel};
 use super::num::{fmt_pct, fmt_price, fmt_qty, fmt_usdt_signed};
@@ -73,13 +74,24 @@ fn ready_body(positions: &[trading_core::PositionView]) -> Element<'_, Message> 
     // `Vec` is required.
     let visible_iter = positions.iter().filter(|p| !p.base_qty.is_zero()).cloned();
 
-    // T1.1 / T1.2 — 7 columns, alignment per pre-migration layout.
+    // advisor-short-selling (T-U1 / ADR-0068 § D8) — 8 columns: a DIRECTION
+    // badge column is inserted after SYMBOL so a SHORT (signed `base_qty < 0`)
+    // reads AS a short, never a malformed long. The signed qty + the
+    // (possibly negative) P&L render HONESTLY through the existing `fmt_qty` /
+    // `color_for_delta` path — they are NOT clamped.
     let columns = [
         // SYMBOL — left aligned. Becomes the implicit Fill column per
         // `table.rs:129-133` (no other column declares Fill).
         table::column(
             col_header(POS_COL_SYMBOL),
             |p: trading_core::PositionView| cell(p.symbol.0.to_string()),
+        ),
+        // DIRECTION — LONG / SHORT badge keyed on the sign of `base_qty`
+        // (advisor-short-selling, R-SS.9). Left-aligned next to the symbol so
+        // the direction is the first thing read after the ticker.
+        table::column(
+            col_header(POS_COL_DIRECTION),
+            |p: trading_core::PositionView| direction_badge(p.base_qty),
         ),
         // QTY — right aligned numeric.
         table::column(col_header(POS_COL_QTY), |p: trading_core::PositionView| {
@@ -128,6 +140,48 @@ fn cell<'a>(s: String) -> Element<'a, Message> {
     Text::new(s)
         .size(text::BODY)
         .color(color::FG_1.current(ThemeMode::Dark))
+        .into()
+}
+
+/// LONG / SHORT direction badge keyed on the SIGN of `base_qty`
+/// (advisor-short-selling, ADR-0068 § D8). A `base_qty < 0` is a SHORT (a
+/// sell-to-open simulated short); anything else is a LONG. The badge is a
+/// `PILL`-radius soft-tinted pill carrying the WORD (LONG / SHORT) so colour is
+/// never the only signal (accessibility), the same pattern the strategies
+/// `status_badge_cell` + the leaderboard `fragile_badge` use. SHORT wears the
+/// `DOWN_50` clay backdrop + `DOWN_500` label (the down-half treatment); LONG
+/// wears a quiet `ACCENT_SOFT` backdrop + `FG_2` label so the short pops as the
+/// notable case without making every long row shout.
+// The `space::* as u16` padding casts are bounded design tokens (4/6) — safe;
+// the same fn-level allow the strategies `status_badge_cell` uses.
+#[allow(clippy::cast_possible_truncation)]
+fn direction_badge<'a>(base_qty: Decimal) -> Element<'a, Message> {
+    let mode = ThemeMode::Dark;
+    let (label, background, fg) = if base_qty.is_sign_negative() {
+        (
+            POS_DIRECTION_SHORT,
+            color::DOWN_50.current(mode),
+            color::DOWN_500.current(mode),
+        )
+    } else {
+        (
+            POS_DIRECTION_LONG,
+            color::ACCENT_SOFT.current(mode),
+            color::FG_2.current(mode),
+        )
+    };
+    Container::new(Text::new(label).size(text::SMALL).color(fg))
+        .padding([space::XXS as u16, space::XS as u16])
+        .style(move |_theme: &iced::Theme| iced::widget::container::Style {
+            background: Some(background.into()),
+            border: Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: radius::PILL.into(),
+            },
+            text_color: Some(fg),
+            ..Default::default()
+        })
         .into()
 }
 

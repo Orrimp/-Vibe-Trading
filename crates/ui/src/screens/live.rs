@@ -40,7 +40,7 @@ use crate::strings::{
     LIVE_FORWARD_BUDGET_LABEL, LIVE_FORWARD_DISCLAIMER, LIVE_FORWARD_FX_NOTE_FMT,
     LIVE_FORWARD_PNL_LABEL, LIVE_FORWARD_RUNNING_FMT, LIVE_HEADLINE, LIVE_LLM_SPEND_LABEL,
     LIVE_LLM_SPEND_PLACEHOLDER, LIVE_SESSION_RETURN_CAPTION, LIVE_SINCE_INCEPTION_CAPTION,
-    LIVE_SYSTEM_HEALTH_LABEL,
+    LIVE_SYSTEM_HEALTH_LABEL, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, layout, space, text};
 use crate::widgets::num::{fmt_eur_plain, fmt_rate, fmt_usdt_plain};
@@ -130,10 +130,22 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // When `forward_budget` is `None` (legacy research / soak path), the
     // block is not rendered — pre-F5 byte-identical behaviour preserved.
     // F7: thread the FX note from the Cockpit model into the P/L block.
-    let forward_pnl_block: Option<crate::Element<'_>> = model
-        .forward_budget
-        .as_ref()
-        .map(|budget| build_forward_pnl_block(model, budget, model.forward_fx.as_ref(), mode));
+    // advisor-short-selling (T-U4 / ADR-0068 § D5/D8) — the load-bearing
+    // "a short can lose more than your €200" unbounded-loss disclaimer is
+    // carried in the forward P/L block whenever the forward run is currently
+    // holding a SHORT (a signed `base_qty < 0` in the positions panel). A
+    // long-only forward run does not carry it (the disclaimer is short-specific).
+    let holding_short = holding_short(model);
+    let forward_pnl_block: Option<crate::Element<'_>> =
+        model.forward_budget.as_ref().map(|budget| {
+            build_forward_pnl_block(
+                model,
+                budget,
+                model.forward_fx.as_ref(),
+                holding_short,
+                mode,
+            )
+        });
 
     // ── 2-column positions / activity row ───────────────────────────────────
     let bottom_row = Row::new()
@@ -161,6 +173,17 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .into()
 }
 
+/// `true` when the forward paper-trade is currently holding a SHORT — any open
+/// position with a signed `base_qty < 0` (advisor-short-selling, ADR-0068 § D8).
+/// Drives the unbounded-loss disclaimer in the forward P/L block. Read-only on
+/// `&Cockpit`; degrades to `false` for any non-`Ready` positions state.
+fn holding_short(model: &Cockpit) -> bool {
+    match &model.positions {
+        PanelState::Ready(positions) => positions.iter().any(|p| p.base_qty.is_sign_negative()),
+        _ => false,
+    }
+}
+
 /// Build the F5 forward P/L card for `budget`.
 ///
 /// Computes P/L = `total_equity` − `budget` from the latest `PnlSnapshot` in
@@ -173,10 +196,17 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 /// 3. FX note (F7 / ADR-0065): "€X ≈ $Y (at R EUR/USD, source)" when `fx_note`
 ///    is `Some`; otherwise a fallback from `DEFAULT_EUR_USD_RATE`.
 /// 4. Disclaimer (`LIVE_FORWARD_DISCLAIMER`).
+/// 5. Unbounded-loss disclaimer (`SHORT_UNBOUNDED_LOSS_DISCLAIMER`) when
+///    `holding_short` (advisor-short-selling, T-U4).
+// A cohesive card-builder (P/L + budget + FX note + disclaimers); splitting the
+// rows into sub-helpers would scatter the one card across the module. The
+// advisor-short-selling T-U4 disclaimer push nudged it past the 100-line lint.
+#[allow(clippy::too_many_lines)]
 fn build_forward_pnl_block<'a>(
     model: &'a Cockpit,
     budget: &trading_core::Money<trading_core::Usdt>,
     fx_note: Option<&FxNote>,
+    holding_short: bool,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     use iced::widget::{Column, Row, Text};
@@ -287,11 +317,25 @@ fn build_forward_pnl_block<'a>(
         .size(text::SMALL)
         .color(color::FG_3.current(mode));
 
-    Column::new()
+    let mut col = Column::new()
         .spacing(space::XS)
         .push(running_caption)
         .push(metric_row)
         .push(fx_note_widget)
-        .push(disclaimer)
-        .into()
+        .push(disclaimer);
+
+    // advisor-short-selling (T-U4, LOAD-BEARING) — when a short is open, carry
+    // the unbounded-loss disclaimer on the Live surface. WARN_500-tinted (paired
+    // with the word, so colour is never the only signal) so the "can lose more
+    // than your €200" caution reads as a real risk note, not muted fine print.
+    if holding_short {
+        col = col.push(
+            Text::new(SHORT_UNBOUNDED_LOSS_DISCLAIMER)
+                .size(text::SMALL)
+                .color(color::WARN_500.current(mode))
+                .width(iced::Length::Fill),
+        );
+    }
+
+    col.into()
 }

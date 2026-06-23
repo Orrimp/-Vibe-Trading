@@ -7,8 +7,9 @@
 //! - Q1 — snapshot-vec signature `open_positions_at(ledger, ts)
 //!   -> Result<Vec<OpenPosition>, LedgerError>`.
 //! - Q7 — weighted-average cost basis with proportional release on Sells.
-//! - Q8 — long-only at v1+; net-negative qty raises
-//!   `LedgerError::Database`.
+//! - ADR-0068 D7 — net-negative qty (sell-to-open short) now emits a signed
+//!   `OpenPosition` with `qty < 0` instead of raising `LedgerError::Database`.
+//!   Reader-only relaxation; writer + reconciler unchanged.
 //! - R10 — symbol parsed from the description (every row writes the
 //!   literal `"assets:position:BTC"` account, see `journal.rs:82,135`),
 //!   so the reader must NOT consume the account_id.
@@ -26,7 +27,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
-    FeeTier, Fill, FillId, LedgerError, Liquidity, Money, OrderId, Price, Quantity, Side,
+    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side,
     StrategyId, Symbol, Timestamp, Venue,
 };
 
@@ -268,9 +269,13 @@ async fn t1002_strategy_id_preserved() {
     );
 }
 
-/// One Sell with no prior Buy → net-negative qty → LedgerError::Database (Q8).
+/// ADR-0068 D7: sell-to-open (no prior Buy) → signed OpenPosition with qty < 0.
+///
+/// Previously (Q8, v1+ long-only) this raised `LedgerError::Database`. After
+/// ADR-0068 D7 the reader now emits a signed row; the writer + reconciler are
+/// UNCHANGED (reader-only relaxation).
 #[tokio::test]
-async fn t1002_net_negative_returns_err() {
+async fn t1002_net_negative_emits_signed_position() {
     let ledger = open_ledger().await;
     post(
         &ledger,
@@ -279,16 +284,20 @@ async fn t1002_net_negative_returns_err() {
     )
     .await;
 
-    let result = open_positions_at(&ledger, ts_far_future()).await;
+    let positions = open_positions_at(&ledger, ts_far_future())
+        .await
+        .expect("sell-to-open must produce a signed OpenPosition (ADR-0068 D7), not an error");
 
-    match result {
-        Err(LedgerError::Database(msg)) => {
-            assert!(
-                msg.contains("net-negative qty"),
-                "error message should mention net-negative qty, got: {msg}"
-            );
-        }
-        Err(other) => panic!("expected LedgerError::Database, got {other:?}"),
-        Ok(positions) => panic!("expected Err for net-negative qty, got Ok({positions:?})"),
-    }
+    assert_eq!(positions.len(), 1, "one open short position expected");
+    let pos = &positions[0];
+    assert!(
+        pos.qty < Decimal::ZERO,
+        "short qty must be negative (ADR-0068 D7); got: {}", pos.qty
+    );
+    assert_eq!(pos.qty, dec!(-1), "qty must equal -(sell qty)");
+    assert_eq!(
+        pos.avg_cost_basis,
+        Money::from_decimal(dec!(70_000)),
+        "avg_cost_basis for short = open price"
+    );
 }
