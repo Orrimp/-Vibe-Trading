@@ -69,11 +69,47 @@ paper-only, not-advice on every recommendation.
   inverse-vol / conditional-regime blends (need a new `VoteMethod` variant + a continuous knob = overfit
   risk → defer to a v0.2 of this feature).
 
-#### Sibling strategy directions (operator-raised 2026-06-23 — one-liners only, NOT scoped yet)
-- **Short-selling single-coin strategies** (L, future) — the signal model is `Buy|Sell|Hold` with
-  Sell = exit-to-flat; **shorting is deferred to "v2"** (`PixelShortObservation`/`PairShortObservation`
-  are observation-only today). Needs real engine work: negative positions + borrow/funding cost.
-  Same robustness-gate discipline would apply. A separate analyst spawn, not part of combination-search.
+### Single-coin directional short-selling (proposed 2026-06-23 — operator directive "do the expensive short selling")
+- **advisor-short-selling** (L, NEW, `proposed` — [feature.md](advisor-short-selling/feature.md),
+  trace `REQ-ADVISOR-SHORT-SELLING-001`) — **give the long-or-flat single-coin advisor the down-half
+  lever.** A bounded, **pre-registered** set of short-capable single-coin strategies (v1 slate:
+  `sma_cross_ls` / `macd_ls` / `rsi_ls` / `bbands_ls` symmetric long/short variants of the existing
+  rule engines + an `always_short` benchmark control) that sell-to-open a **simulated** short on the
+  bearish flip + buy-to-cover on the bullish flip, with correct signed short P&L, judged by the
+  **same frozen robustness gate + same buy-and-hold benchmark** (ADR-0066) as every long arm. **KEY
+  de-risking finding:** a complete, tested, *shipped* short-side engine (open / cover /
+  maintenance-margin liquidation with honest cash-can-go-negative / per-bar funding) ALREADY EXISTS
+  in `montecarlo.rs::run_path` from the market-neutral perp-basis feature
+  (`REQ-PERP-BASIS-MARKET-NEUTRAL-001`, science verdict FAMILY-UNIFORM-FRAGILE) — but only in the
+  **multi-symbol cross-sectional** path; the single-coin `run_scenario`/`sma_composed_run` path is
+  hard long-only by 3 explicit clamps (`engine.rs:1632-1640`/`:1713-1715`, `cli_types.rs:632-635`,
+  `sma_composed_run.rs:554`) while its equity formula `cash + qty·mark` is **already short-correct**.
+  So the feature is **port-and-adapt the proven signed-position model into the single-coin path, NOT
+  invent it.** 5 forks resolved: perp-funding instrument; **1x leverage** (already `MAX_LEVERAGE=ONE`);
+  configurable constant **`FxRate`-style per-bar funding cost** (no live feed); **honest unbounded-loss**
+  via the shipped maintenance-margin liquidation (cash may go negative — does NOT cap losses at 0) + a
+  "a short can lose more than your €200" disclaimer; the bounded **symmetric long/short + always_short**
+  arm slate (long-only arms untouched). **Honest framing load-bearing:** shorts are **very likely ALSO
+  Fragile** (the MN long/short basis spread was FAMILY-UNIFORM-FRAGILE; single-coin directional shorts
+  inherit full inverse market beta + a real funding cost) — a **null result ("all short arms also
+  Fragile, hold stands") is the expected, valid, shippable outcome**; the goal is an honest test of
+  whether directional shorts add robust value where long-only can't, NOT to manufacture a winner.
+  **HARD non-goals + anchor safety:** gate/bands/benchmark FROZEN (NOT a band proposal); new arms run
+  `write_report=false` → anchor-safe by construction (119/119, run before AND after); the single-coin
+  long-only path re-proven byte-identical (mirror the MN `run_path` re-proof); **NO live trading / NO
+  real orders / NO real margin** (the €200 is SIMULATED — standing constraint); >1x leverage + a live
+  funding feed + a short-capable *combination* slate are explicit follow-ons. **Engine-surface
+  estimate (candid):** ~5-8 dev-days for the short-side engine + the long-only byte-identity re-proof
+  (the MN estimate — the financial core is a *port*) PLUS the single-coin **audit-ledger sign-handling**
+  (`OpenPosition` asserts `qty>0` + raises `LedgerError::Database` on net-negative qty,
+  `core/position.rs:71-73` — the dominant NEW, isolation-sensitive, non-ported risk) PLUS the
+  honest-negative-P&L UI short surfaces. Touches: backtest P&L core, `core::signal`, `crates/strategy`,
+  the funding constant, `crates/audit` + `core::position`, `crates/agent` + `crates/exec/paper.rs`
+  (paper-sim parity), `crates/ui` (render-layer-verified). 6 OQs (`Q-SS-1..6`) for the architect M-T1;
+  an ADR-0051-style anchor-additive amendment owed (2nd feature to touch the single-coin engine's short
+  clamps after the MN feature touched `run_path`). A separate analyst spawn from combination-search.
+
+#### Remaining sibling strategy direction (operator-raised 2026-06-23 — one-liner only, NOT scoped yet)
 - **Expand the single-coin strategy library with new signal types** (M, future) — add new base signals
   beyond the current 4 (SMA / MACD / RSI / Bollinger). Each new signal would be a new bake-off arm scored
   by the frozen gate; would also enlarge the decorrelation menu the combination feature draws from.

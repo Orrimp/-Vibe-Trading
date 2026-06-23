@@ -476,6 +476,42 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-23 (analyst, short-selling scoping): scoped the operator-directed (2026-06-23
+  *"do the expensive short selling"*) **single-coin DIRECTIONAL short-selling** capability
+  as a new feature ([`advisor-short-selling/feature.md`](advisor-short-selling/feature.md),
+  trace `REQ-ADVISOR-SHORT-SELLING-001`). It gives the **long-or-flat** single-coin advisor
+  the **down-half lever** it never had — today a bearish signal can only park the €200 in
+  cash; this adds a bounded, **pre-registered** set of short-capable single-coin strategies
+  (v1 slate: `sma_cross_ls` / `macd_ls` / `rsi_ls` / `bbands_ls` symmetric long/short variants
+  + an `always_short` benchmark control) that sell-to-open a **simulated** short on the bearish
+  flip + buy-to-cover on the bullish flip, with correct signed short P&L, judged by the **same
+  frozen robustness gate + same buy-and-hold benchmark** (ADR-0066) as every long arm. **This
+  does NOT change § What this product IS / IS NOT, the journey, D1–D5, or the 2026-06-08
+  ship-passive verdict** — it is a new strategy-class arm scored by the existing credibility
+  layer. It **re-affirms § Open decisions D5** (paper-only): the €200 is SIMULATED, shorts are
+  simulated short positions, **NO live trading / NO real orders / NO real margin** (standing
+  constraint). **Key code-audit finding (load-bearing for the estimate):** a complete, tested,
+  *shipped* short-side engine (open / cover / maintenance-margin liquidation with honest
+  cash-can-go-negative / per-bar funding) ALREADY EXISTS in `montecarlo.rs::run_path` from the
+  market-neutral perp-basis feature (`REQ-PERP-BASIS-MARKET-NEUTRAL-001`, science verdict
+  FAMILY-UNIFORM-FRAGILE) — but only in the **multi-symbol cross-sectional** path; the
+  single-coin `run_scenario`/`sma_composed_run` path is hard long-only by three explicit clamps
+  while its equity formula `cash + qty·mark` is **already short-correct**. So the feature is
+  **port-and-adapt the proven model into the single-coin path, NOT invent it.** The **honest
+  framing is load-bearing and inline in the brief**: shorts are **very likely ALSO Fragile**
+  under the frozen gate (the MN long/short basis spread came back FAMILY-UNIFORM-FRAGILE; single-coin
+  directional shorts inherit full inverse market beta + a real funding cost — no prior reason to
+  clear a bar long-only could not), so a **null result ("all short arms also Fragile, hold still
+  stands") is the expected, valid, shippable outcome** — the deliverable is an honest *test* of
+  whether directional shorts add robust value where long-only can't, NOT a winner; the gate
+  decides, `BenchmarkWins`/`AllFragile` reachability is UNCHANGED, and not-advice + paper-only +
+  **"a short can lose more than your budget"** disclaimers are mandatory. The robustness
+  **bands stay FROZEN** (explicitly NOT a B2/B3 band proposal — operator-rejected); new short arms
+  run `write_report=false` → anchor-safe by construction (119/119 held). **Out of v1** (recorded
+  as guarded follow-ons): >1x leverage + a faithful liquidation ladder; a live/historical funding
+  feed (the `FundingObs` corpus exists); both perp- and spot-short instrument models; a
+  short-capable *combination* slate (after the single-arm short loop is proven, mirroring
+  F8→combination-search). Verified against code; no engine code written; no anchored content touched.
 - 2026-06-23 (analyst, combination-space scoping): scoped the operator-requested
   (2026-06-23 *"combinations of the strategies could yield good result — we need
   to calculate the combination of multiple strategies"*) **expansion of the
