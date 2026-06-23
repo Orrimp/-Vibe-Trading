@@ -1,7 +1,7 @@
 ---
 slug: advisor-combination-search
-status: in-progress
-owner: developer
+status: shipped
+owner: tester
 updated: 2026-06-23
 ---
 
@@ -125,7 +125,7 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
       - `cargo test -p strategy -p backtest -p ui` → all `ok` (20 test binaries, 0 failures)
       - `scripts/verify_anchors.sh` → **119/119 PASS** (after all changes)
 
-- [ ] **T5 — Tester: real-data 13-arm bake-off.** Run the advisor bake-off on
+- [x] **T5 — Tester: real-data 13-arm bake-off.** Run the advisor bake-off on
       BTCUSDT H1-2024 (`BinanceCache`, `RobustnessMode::Bootstrap{paths:1000}`,
       `LAB_DEFAULT_SEED`) over the live `advisor_field()` (now 13 arms incl.
       buy-and-hold). Produce a tester report under
@@ -141,7 +141,7 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
       the outcome + a held/refuted verdict; `verify_anchors.sh` unaffected (the
       advisor path wrote no anchored body)._
 
-- [ ] **T6 — ui-designer: leaderboard 13-row render-snapshot (OQ-6, pixel proof).**
+- [x] **T6 — ui-designer: leaderboard 13-row render-snapshot (OQ-6, pixel proof).**
       Extend `ui::fixtures::fake_bakeoff_report_mirror()` (`crates/ui/src/fixtures.rs:1256`)
       to **13 `LeaderRow`s** (4 singles + 8 ensembles + buy-and-hold), keeping a
       crowned `★ best` row + ≥1 Fragile ensemble row + the correct `ranked`/`crowned`
@@ -154,7 +154,7 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
       `/tmp/leaderboard_populated_render.png`), the empty negative control still
       paints no table, and the existing render guards stay green._
 
-- [ ] **T7 — ui-designer: ensemble-rule honest description + arm-count note.**
+- [x] **T7 — ui-designer: ensemble-rule honest description + arm-count note.**
       (a) Add one crowned-combination forward-plan fixture (e.g. `tr_mr_macd_rsi`
       or `k2of4`) and a guard (extend `crates/ui/tests/forward_f6_ensemble_named_render.rs`
       or a sibling) asserting its RULES band paints the honest named-member

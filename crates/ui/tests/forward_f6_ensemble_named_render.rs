@@ -217,3 +217,121 @@ fn named_ensemble_rules_band_exceeds_single_strategy() {
          PNG: /tmp/forward_f6_ensemble_named_render.png"
     );
 }
+
+// ── advisor-combination-search crowned-combination plan (T7a / ADR-0067) ──────
+//
+// A NEW combination arm (`v0.8.vote.tr_mr_macd_rsi`, a Unanimous{n:2} over
+// MACD-trend + RSI-reversion), when crowned/forward-planned, must draw its rule
+// HONESTLY through the EXISTING `PlanRuleView::Ensemble` path — naming its members
+// as a brace-list ("Holds only while ALL of {MACD trend, RSI reversion} agree…")
+// with NO new render code. This proves the new arms' plan-rule renders truthfully
+// (the strict 2-of-2 consensus, telegraphing the rare-trade reality of OQ-3),
+// reusing the F6 member-naming surface verbatim.
+
+/// **The combination-arm forward-plan render guard (T7a).** The crowned
+/// `tr_mr_macd_rsi` Unanimous{n:2} plan MUST paint, in the cockpit Forward-plan
+/// screen, the honest NAMED-member vote rule via the existing `Ensemble` path:
+/// - `ACCENT` teal in the RULES band (the vote rule's IF/THEN keywords drew);
+/// - a healthy RULES-band foreground floor (the named "{MACD trend, RSI
+///   reversion}" brace-list + tally + caveat — the member names are the dominant
+///   extra text), AND strictly MORE than the single-strategy SMA negative control
+///   (which names no member set);
+/// - a healthy whole-frame foreground (the full plan drew, not a blank pane).
+///
+/// Writes the operator-facing PNG to `/tmp/forward_combination_named_render.png`.
+#[test]
+fn forward_combination_arm_names_its_members() {
+    let view = ui::fixtures::fake_forward_plan_combination();
+    assert!(
+        view.is_ensemble(),
+        "the combination fixture must be an ensemble plan"
+    );
+    // The fixture carries the two member labels (the trend ∧ mean-revert pair).
+    if let ui::forward_plan::PlanRuleView::Ensemble { method, members } = &view.rule {
+        assert_eq!(
+            members.len(),
+            2,
+            "the Unanimous{{n:2}} pair names 2 members"
+        );
+        assert!(
+            members.iter().any(|m| m.contains("MACD")) && members.iter().any(|m| m.contains("RSI")),
+            "the member labels are the MACD-trend + RSI-reversion pair (got {members:?})"
+        );
+        // Honest method: a strict 2-of-2 unanimous consensus (NOT a majority).
+        assert!(
+            matches!(
+                method,
+                ui::forward_plan::PlanVoteMethodView::Unanimous { n: 2 }
+            ),
+            "the combination arm is a Unanimous{{n:2}} vote (got {method:?})"
+        );
+    } else {
+        panic!("the combination fixture must carry PlanRuleView::Ensemble");
+    }
+
+    let cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(view));
+    let (w, h, rgba) = render_forward_plan_rgba(cockpit);
+
+    // Operator-facing deliverable (memory: verify UI at the render layer).
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/forward_combination_named_render.png");
+    }
+
+    let rules_accent = rules_band_accent(w, &rgba);
+    let rules_fg = rules_band_foreground(w, &rgba);
+    let fg = foreground_pixels(w, h, &rgba);
+
+    // The vote rule's IF/THEN keywords paint ACCENT teal in the RULES band.
+    assert!(
+        rules_accent > 60,
+        "the combination arm's vote rule IF/THEN keywords must paint ACCENT teal \
+         in the RULES band (expected >60 teal px, got {rules_accent}). \
+         PNG: /tmp/forward_combination_named_render.png"
+    );
+    // The named rule ("{MACD trend, RSI reversion}" brace-list) + tally + caveat
+    // is a lot of text in the RULES band.
+    assert!(
+        rules_fg > 2200,
+        "the NAMED combination rule + tally + caveat must paint substantial \
+         foreground in the RULES band (expected >2200 px, got {rules_fg}). If low, \
+         the member names did not render. PNG: /tmp/forward_combination_named_render.png"
+    );
+    // The full plan is a lot of text.
+    assert!(
+        fg > 7000,
+        "the combination plan must paint a lot of foreground text (expected >7000 \
+         px, got {fg}). PNG: /tmp/forward_combination_named_render.png"
+    );
+}
+
+/// **Combination-arm anti-tautology — the named pair names MORE than a single.**
+/// The crowned `tr_mr_macd_rsi` plan paints STRICTLY MORE RULES-band foreground
+/// than the single-strategy SMA plan (whose rule names no member set). The
+/// member-name brace-list "{MACD trend, RSI reversion}" is the dominant extra
+/// text, so this strict exceedance is a faithful proxy for "the member names
+/// rendered" (the single plan cannot produce that text). Pins that the new
+/// combination arm reuses the honest F6 naming surface — a regression that drops
+/// the names (reverting to an abstract "{n} member strategies" count) shrinks the
+/// gap and fails.
+#[test]
+fn combination_rules_band_exceeds_single_strategy() {
+    let combo = ui::fixtures::fake_forward_plan_combination();
+    let single = ui::fixtures::fake_forward_plan(); // SMA single — names no members
+
+    let combo_cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(combo));
+    let sma_cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(single));
+
+    let (wc, _hc, rc) = render_forward_plan_rgba(combo_cockpit);
+    let (ws, _hs, rs) = render_forward_plan_rgba(sma_cockpit);
+
+    let fg_combo = rules_band_foreground(wc, &rc);
+    let fg_sma = rules_band_foreground(ws, &rs);
+    assert!(
+        fg_combo > fg_sma + 600,
+        "the NAMED combination rule must paint strictly more RULES-band foreground \
+         than the single SMA plan (the {{MACD trend, RSI reversion}} member-name \
+         list is the extra text) — combination {fg_combo} vs SMA {fg_sma}. If the \
+         gap is small the member names are not rendering. \
+         PNG: /tmp/forward_combination_named_render.png"
+    );
+}

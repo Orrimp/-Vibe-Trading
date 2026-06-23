@@ -56,6 +56,17 @@ fn advisor_field() -> Vec<trading_core::StrategyId> {
     field
 }
 
+/// The total number of arms the advisor bake-off puts head-to-head — the
+/// `advisor_field()` size **plus the buy-and-hold benchmark** that `run_bakeoff`
+/// always appends. Post-ADR-0067 this is 13 (4 single rule engines + 8 vote
+/// ensembles + buy-and-hold). Single-sourced from `advisor_field()` so it can
+/// never drift from the real field; surfaced in the leaderboard header context
+/// (OQ-2) so a wider field is self-explanatory. `+ 1` is the appended benchmark.
+#[must_use]
+pub fn advisor_field_arm_count() -> usize {
+    advisor_field().len() + 1
+}
+
 /// The advisor robustness mode: the real moving-block bootstrap gate (ADR-0063
 /// § D4), seeded deterministically from the Lab seed's low 8 bytes. This opt-in
 /// ACTIVATES the gate on the advisor path — which has `write_report = false`, so

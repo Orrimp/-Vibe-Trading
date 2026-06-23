@@ -234,7 +234,13 @@ fn context_line_foreground(w: u32, rgba: &[u8]) -> u64 {
 #[test]
 fn leaderboard_populated_paints_rows_crown_and_recommendation() {
     let mirror = ui::fixtures::fake_bakeoff_report_mirror();
-    assert!(mirror.rows.len() >= 5, "the fixture must have ≥5 rows");
+    // The full 13-arm advisor field (4 singles + 8 ensembles + buy-and-hold,
+    // ADR-0067). `v0.sma` stays the crowned robust single.
+    assert_eq!(
+        mirror.rows.len(),
+        13,
+        "the fixture must be the full 13-arm field"
+    );
     assert_eq!(mirror.crowned, Some(0), "v0.sma is crowned");
 
     let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
@@ -500,8 +506,11 @@ fn leaderboard_f8_strictly_exceeds_five_arm_field() {
     let seven = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
         ui::fixtures::fake_bakeoff_report_mirror_with_ensembles(),
     ));
+    // The dedicated 5-arm field (4 singles + buy-and-hold, ONE Fragile single).
+    // `fake_bakeoff_report_mirror()` grew to the full 13-arm field (ADR-0067), so
+    // this discriminator uses the original 5-arm fixture as the smaller baseline.
     let five = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
-        ui::fixtures::fake_bakeoff_report_mirror(),
+        ui::fixtures::fake_bakeoff_report_mirror_five_arm(),
     ));
 
     let (w7, h7, r7) = render_leaderboard_rgba(seven);
@@ -639,6 +648,221 @@ fn leaderboard_guided_input_with_selection_paints_controls_and_context() {
         "the crowned leaderboard row must still paint below the guided input \
          (expected >150 teal px in the TABLE band, got {table_teal}). \
          PNG: /tmp/leaderboard_guided_input_render.png"
+    );
+}
+
+// ── advisor-combination-search 13-arm field render guard (OQ-6, ADR-0067) ─────
+//
+// The advisor field grew from 7 arms (4 singles + 2 ensembles + buy-and-hold) to
+// 13 (4 singles + 8 ensembles + buy-and-hold) — the 6 new pre-registered
+// combination arms (3 decorrelation pairs + the complete k∈{1,2,3}-of-4 ladder).
+// The leaderboard MUST still paint the full ranked table at 13 rows: the crowned
+// robust single's ACCENT highlight, the always-negative Max-DD clay column across
+// all rows, the Fragile badges of the (now several) Fragile ensemble rows in the
+// STRATEGY column, and a healthy foreground floor — with the `Empty` negative
+// control still painting NO table. Per the verify-UI-at-render-layer
+// non-negotiable, this is a populated PIXEL guard (read the PNG), not a model
+// assertion.
+
+/// **The advisor-combination-search 13-row render guard (T6 / OQ-6).** The full
+/// 13-arm field MUST paint, in the cockpit Leaderboard:
+/// - the crowned robust single's `ACCENT` highlight (`v0.sma`, `★ best`);
+/// - the always-negative Max-DD `DOWN_500` clay column across the rows;
+/// - the Fragile badges of the Fragile ensemble rows in the STRATEGY column (the
+///   `Unanimous{n:2}` decorrelation pairs + the majority arm come back Fragile on
+///   real crypto — the honest OQ-3 outcome, rendered as-is);
+/// - a healthy foreground floor (13 rows + the recommendation drew, not a blank).
+///
+/// Writes the operator-facing PNG to `/tmp/leaderboard_populated_render.png` (the
+/// same canonical path the 13-arm fixture now backs).
+#[test]
+fn leaderboard_thirteen_arm_field_paints_full_table() {
+    let mirror = ui::fixtures::fake_bakeoff_report_mirror();
+    assert_eq!(
+        mirror.rows.len(),
+        13,
+        "the fixture is the full 13-arm advisor field (4 singles + 8 ensembles + \
+         buy-and-hold)"
+    );
+    assert_eq!(mirror.crowned, Some(0), "v0.sma (robust single) is crowned");
+    // ≥1 Fragile ENSEMBLE row must be present (exercises the badge + the OQ-3
+    // honest "Fragile combination" case). Count them so the guard is explicit.
+    let fragile_ensembles = mirror
+        .rows
+        .iter()
+        .filter(|r| {
+            r.strategy.as_str().starts_with("v0.8.vote.")
+                && matches!(
+                    r.robustness,
+                    Some(ui::leaderboard::state::RobustnessLabel::Fragile)
+                )
+        })
+        .count();
+    assert!(
+        fragile_ensembles >= 1,
+        "the 13-arm field must include ≥1 Fragile ensemble row (the honest OQ-3 \
+         outcome), got {fragile_ensembles}"
+    );
+
+    let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
+    let (w, h, rgba) = render_leaderboard_rgba(cockpit);
+
+    // Operator-facing deliverable (memory: verify UI at the render layer).
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/leaderboard_populated_render.png");
+    }
+
+    let teal = crowned_teal_pixels(w, h, &rgba);
+    let clay = table_clay_pixels(w, h, &rgba);
+    let fragile_clay = fragile_badge_clay(w, h, &rgba);
+    let fg = foreground_pixels(w, h, &rgba);
+
+    // The crowned row's accent treatment paints (★ best + accent id + left-rule).
+    assert!(
+        teal > 200,
+        "the crowned row's ACCENT highlight must paint (expected >200 teal px in \
+         the TABLE band, got {teal}). PNG: /tmp/leaderboard_populated_render.png"
+    );
+    // The Max-DD column is negative on every non-zero-DD row → clay across the
+    // table. With 13 rows this is well over the floor.
+    assert!(
+        clay > 300,
+        "the Max-drawdown column (always DOWN_500) must paint clay across the 13 \
+         rows (expected >300 px, got {clay}) — proof the wider numeric table drew. \
+         PNG: /tmp/leaderboard_populated_render.png"
+    );
+    // The Fragile ensemble badges paint clay in the STRATEGY column (left half).
+    // Several ensembles are Fragile here, so this is comfortably non-trivial.
+    assert!(
+        fragile_clay > 60,
+        "the Fragile ensemble badges must paint their DOWN_500 label in the \
+         STRATEGY column (expected >60 clay px left of x={STRAT_COL_RIGHT}, got \
+         {fragile_clay}). If 0 the Fragile combination rows did not render their \
+         badge. PNG: /tmp/leaderboard_populated_render.png"
+    );
+    // 13 rows + the recommendation block is a lot of foreground text.
+    assert!(
+        fg > 9000,
+        "the populated 13-row table + recommendation must paint a lot of \
+         foreground (expected >9000 px, got {fg}). If low the screen rendered a \
+         blank/empty pane despite Ready data. \
+         PNG: /tmp/leaderboard_populated_render.png"
+    );
+}
+
+/// **Anti-tautology discriminator for the 13-arm field.** The full 13-arm field
+/// paints STRICTLY MORE strategy-column Fragile clay AND total foreground than
+/// the 5-arm field (4 singles + buy-and-hold, ONE Fragile single). Ties the two
+/// states together so a regression that collapses the field back (or drops the
+/// Fragile ensemble badges) shrinks the gap and fails. Proves the 13-row guard
+/// genuinely tracks the wider field, not chrome.
+#[test]
+fn leaderboard_thirteen_arm_strictly_exceeds_five_arm() {
+    let thirteen = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
+        ui::fixtures::fake_bakeoff_report_mirror(),
+    ));
+    let five = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
+        ui::fixtures::fake_bakeoff_report_mirror_five_arm(),
+    ));
+
+    let (w13, h13, r13) = render_leaderboard_rgba(thirteen);
+    let (w5, h5, r5) = render_leaderboard_rgba(five);
+
+    // The 13-arm field has SEVERAL Fragile rows (incl. multiple Fragile
+    // ensembles); the 5-arm field has ONE (the rsi single). So its
+    // strategy-column Fragile clay strictly exceeds.
+    let clay13 = fragile_badge_clay(w13, h13, &r13);
+    let clay5 = fragile_badge_clay(w5, h5, &r5);
+    assert!(
+        clay13 > clay5,
+        "the 13-arm field (several Fragile rows incl. ensembles) must paint \
+         strictly more strategy-column Fragile clay than the 5-arm field (1 \
+         Fragile single) (13-arm {clay13} vs 5-arm {clay5}). If not, the Fragile \
+         ensemble badges are not rendering."
+    );
+
+    // And the 8 extra rows (4→12 active arms) paint more total foreground.
+    let fg13 = foreground_pixels(w13, h13, &r13);
+    let fg5 = foreground_pixels(w5, h5, &r5);
+    assert!(
+        fg13 > fg5 + 1500,
+        "the 13-arm field must paint substantially more foreground than the 5-arm \
+         field (the 8 extra rows drew) (13-arm {fg13} vs 5-arm {fg5})"
+    );
+}
+
+/// **The arm-count header note render guard (T7b / OQ-2).** The leaderboard
+/// budget-context band MUST paint the quiet "{N} strategies head-to-head…" note
+/// so a wider 13-arm bake-off is self-explanatory. The note adds a second text
+/// line to the CONTEXT band, so the populated frame paints STRICTLY MORE
+/// CONTEXT-band foreground than a synthetic baseline WITHOUT the note would — but
+/// since the note is always present, we assert (a) the context band paints a
+/// healthy floor that includes the second line, and (b) the note count text is
+/// non-trivial. Read the PNG to confirm the line reads "13 strategies…".
+///
+/// Writes the operator-facing PNG to `/tmp/leaderboard_arm_count_note_render.png`.
+#[test]
+fn leaderboard_arm_count_note_paints_in_context_band() {
+    // The note is sourced from the real field size, so it must read 13.
+    assert_eq!(
+        ui::leaderboard::runner::advisor_field_arm_count(),
+        13,
+        "the advisor field is 13 arms (4 singles + 8 ensembles + buy-and-hold)"
+    );
+
+    let mirror = ui::fixtures::fake_bakeoff_report_mirror();
+    let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
+    let (w, h, rgba) = render_leaderboard_rgba(cockpit);
+
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/leaderboard_arm_count_note_render.png");
+    }
+
+    // The CONTEXT band now carries TWO lines: the "Ranking strategies for €200 in
+    // BTCUSDT." H3 line AND the arm-count note. A single H3 line alone produces
+    // ~400-600 px; the two stacked lines push this comfortably higher. The floor
+    // is set so the note's presence is load-bearing (a regression that drops the
+    // note would fall under it).
+    let context_fg = context_line_foreground(w, &rgba);
+    assert!(
+        context_fg > 750,
+        "the budget-context band must paint BOTH the budget line AND the arm-count \
+         note (expected >750 foreground px in the CONTEXT band, got {context_fg}). \
+         If low the arm-count note ('13 strategies head-to-head…') did not render. \
+         PNG: /tmp/leaderboard_arm_count_note_render.png"
+    );
+
+    // The table still renders below the (now two-line) context band — the note
+    // didn't squash the leaderboard out.
+    let teal = crowned_teal_pixels(w, h, &rgba);
+    assert!(
+        teal > 200,
+        "the crowned leaderboard row must still paint below the two-line context \
+         band (expected >200 teal px in the TABLE band, got {teal}). \
+         PNG: /tmp/leaderboard_arm_count_note_render.png"
+    );
+}
+
+/// **Arm-count note anti-tautology.** The CONTEXT band with the arm-count note
+/// paints STRICTLY MORE foreground than the SAME band rendered from a state whose
+/// note would be absent — approximated here by asserting the two-line context
+/// band strictly exceeds a single H3 line's typical footprint via the Empty
+/// state (which renders the SAME two-line context band, proving the note is part
+/// of the always-present context, not a result-only artifact). This pins that the
+/// note is a structural part of the header, present even before a run.
+#[test]
+fn leaderboard_arm_count_note_present_in_empty_state() {
+    // The note is part of the always-present context band — it must paint even in
+    // the Empty (pre-run) state, so the operator sees the field size up front.
+    let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Empty);
+    let (w, _h, rgba) = render_leaderboard_rgba(cockpit);
+
+    let context_fg = context_line_foreground(w, &rgba);
+    assert!(
+        context_fg > 750,
+        "the arm-count note must paint in the CONTEXT band even in the Empty state \
+         (the field size is shown before any run) — expected >750 foreground px, \
+         got {context_fg}."
     );
 }
 

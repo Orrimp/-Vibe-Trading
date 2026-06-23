@@ -1551,6 +1551,31 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL",
             LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
         ),
+        // advisor-combination-search (ADR-0067) — the 6 combination-arm labels
+        (
+            "LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL",
+            LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL",
+            LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL",
+            LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL",
+            LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_K2OF4_LABEL",
+            LEADERBOARD_ENSEMBLE_K2OF4_LABEL,
+        ),
+        (
+            "LEADERBOARD_ENSEMBLE_K3OF4_LABEL",
+            LEADERBOARD_ENSEMBLE_K3OF4_LABEL,
+        ),
         (
             "LEADERBOARD_ENSEMBLE_VOTE_TAG",
             LEADERBOARD_ENSEMBLE_VOTE_TAG,
@@ -1633,6 +1658,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         (
             "LEADERBOARD_CONTEXT_NO_BUDGET_FMT",
             LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
+        ),
+        (
+            "LEADERBOARD_FIELD_ARM_COUNT_FMT",
+            LEADERBOARD_FIELD_ARM_COUNT_FMT,
         ),
         ("LEADERBOARD_LOOKBACK_2W", LEADERBOARD_LOOKBACK_2W),
         ("LEADERBOARD_LOOKBACK_1M", LEADERBOARD_LOOKBACK_1M),
@@ -2362,6 +2391,42 @@ pub const LEADERBOARD_ENSEMBLE_MAJORITY_LABEL: &str = "Majority vote (2-of-3)";
 /// Friendly display label for the unanimous-vote ensemble row.
 pub const LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL: &str = "Unanimous vote (4-of-4)";
 
+// ── Combination-slate ensemble labels (advisor-combination-search, ADR-0067) ──
+//
+// The 6 pre-registered combination arms (3 decorrelation pairs + the complete
+// k∈{1,2,3}-of-4 ladder) carry opaque `v0.8.vote.*` ids. Each gets a friendly,
+// legible display label so the leaderboard row reads AS the specific vote (the
+// method + the named members or the k-of-n quorum), never a raw id. The `ui`
+// owns the words; the id→label mapping stays a closed `ui`-side match (no engine
+// string crosses the seam). The pair labels NAME the members so the operator can
+// see WHICH strategies the consensus combines (the decorrelation thesis is the
+// whole point); the k-ladder labels show the quorum so the ladder reads as a
+// ladder. They are intentionally consistent in voice with the two F8 labels.
+
+/// `v0.8.vote.trend_pair` — `Unanimous{n:2}` over MACD + SMA (the predicted-null
+/// control: both members trend-following, so little decorrelation lift expected).
+pub const LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL: &str = "Unanimous vote (MACD + SMA trend)";
+
+/// `v0.8.vote.tr_mr_macd_rsi` — `Unanimous{n:2}` over MACD trend + RSI reversion
+/// (the trend ∧ mean-revert decorrelation lever).
+pub const LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL: &str = "Unanimous vote (MACD + RSI)";
+
+/// `v0.8.vote.tr_mr_sma_bb` — `Unanimous{n:2}` over SMA trend + Bollinger
+/// reversion (the second trend ∧ band-reversion decorrelation pair).
+pub const LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL: &str = "Unanimous vote (SMA + Bollinger)";
+
+/// `v0.8.vote.any1of4` — `Majority{k:1,n:4}` over all 4 base signals (the loosest
+/// k-ladder rung: long if ANY member fires).
+pub const LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL: &str = "Majority vote (1-of-4)";
+
+/// `v0.8.vote.k2of4` — `Majority{k:2,n:4}` over all 4 base signals (the balanced
+/// quorum rung of the k-ladder).
+pub const LEADERBOARD_ENSEMBLE_K2OF4_LABEL: &str = "Majority vote (2-of-4)";
+
+/// `v0.8.vote.k3of4` — `Majority{k:3,n:4}` over all 4 base signals (the strict
+/// rung: long only on broad agreement).
+pub const LEADERBOARD_ENSEMBLE_K3OF4_LABEL: &str = "Majority vote (3-of-4)";
+
 /// Row tag marking an ensemble candidate as a vote (so the kind is legible
 /// beyond the friendly label — pairs with the label the way `benchmark` pairs
 /// with the buy-and-hold row).
@@ -2497,6 +2562,16 @@ pub const LEADERBOARD_BUDGET_CONTEXT_FMT: &str = "Ranking strategies for {budget
 /// is still named so the header never goes empty. `{coin}` filled at the call
 /// site.
 pub const LEADERBOARD_CONTEXT_NO_BUDGET_FMT: &str = "Ranking strategies in {coin}.";
+
+/// Field arm-count note shown under the budget-context line
+/// (advisor-combination-search OQ-2). Surfaces HOW MANY strategies the bake-off
+/// puts head-to-head, so a wider field (now 13 arms: 4 single rule engines + 8
+/// vote ensembles + the buy-and-hold benchmark) is self-explanatory — and an
+/// operator understands a longer field takes proportionally longer to run.
+/// `{count}` is filled at the call site from the real field size (the closed
+/// `ui`-side field count — no engine string crosses the seam).
+pub const LEADERBOARD_FIELD_ARM_COUNT_FMT: &str =
+    "{count} strategies head-to-head: rule engines, vote ensembles, and buy-and-hold.";
 
 // ── Lookback chip labels (F3) — one per `LeaderboardLookback` ──────────────────
 

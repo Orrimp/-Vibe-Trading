@@ -1244,16 +1244,249 @@ pub fn fake_run_report_mirror_pair() -> (
 
 /// A populated, deterministic `BakeoffReportMirror` for the Leaderboard screen.
 ///
-/// Five candidates (the 4 rule engines + buy-and-hold benchmark) over BTCUSDT /
-/// 2024 H1, ranked best-first. `v0.sma` is crowned (`ActiveWins`); `v0.buyhold`
-/// is the benchmark; `v0.5.rsi` is a fragile loser (to exercise the warn tag).
-/// Realistic-ish numbers so the rendered table reads like a real bake-off, but
-/// fixed (no RNG) so the render guard is stable.
+/// The **full 13-arm advisor field** post-ADR-0067 (advisor-combination-search):
+/// 4 single rule engines + 8 vote ensembles (the 2 F8 arms + the 6 new
+/// combination arms) + the buy-and-hold benchmark, over BTCUSDT / 2024 H1, ranked
+/// best-first. `v0.sma` is crowned (`ActiveWins`, robust); `v0.buyhold` is the
+/// benchmark; several arms are Fragile (incl. multiple ensembles — exercising the
+/// warn/badge tag), and the `tr_mr_sma_bb` `Unanimous{n:2}` decorrelation pair
+/// traded ZERO times (its strict trend ∧ band-reversion consensus was never
+/// reached — the OQ-3 "sat in cash" honesty case, rendered truthfully, NOT masked).
+/// Realistic-ish numbers so the rendered table reads like a real 13-arm bake-off,
+/// but fixed (no RNG) so the render guard is stable.
+///
+/// Insertion order = field order: the 4 singles, then `default_ensemble_field()`
+/// (`majority`, `unanimous`, `trend_pair`, `tr_mr_macd_rsi`, `tr_mr_sma_bb`,
+/// `any1of4`, `k2of4`, `k3of4`), then buy-and-hold appended by `run_bakeoff`.
 ///
 /// Built directly as the mirror type — fixtures NEVER stand up the engine; the
 /// mirror is the whole point of the `ui`-pure seam.
 #[must_use]
+#[allow(clippy::too_many_lines)] // a 13-row literal data table — splitting it hurts readability
 pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{
+        BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
+        RobustnessLabel,
+    };
+
+    // Rows in INSERTION order (= field order). 13 arms: 4 singles, 8 ensembles,
+    // benchmark. `v0.sma` is the crowned robust single; the ensembles carry an
+    // honest mix of flags (most Fragile on real crypto — OQ-3), one trades 0×.
+    let rows = vec![
+        // ── 4 single rule engines ────────────────────────────────────────────
+        LeaderRow {
+            strategy: SmolStr::new("v0.sma"),
+            is_benchmark: false,
+            sharpe: 1.42,
+            sortino: 1.95,
+            calmar: 2.32,
+            total_return_pct: dec!(0.1837),
+            max_drawdown: dec!(0.0612),
+            trade_count: 38,
+            // The crowned arm — robust under resampling.
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.macd"),
+            is_benchmark: false,
+            sharpe: 0.88,
+            sortino: 1.11,
+            calmar: 0.84,
+            total_return_pct: dec!(0.0921),
+            max_drawdown: dec!(0.1043),
+            trade_count: 64,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.rsi"),
+            is_benchmark: false,
+            sharpe: -0.31,
+            sortino: -0.43,
+            calmar: -0.24,
+            total_return_pct: dec!(-0.0457),
+            max_drawdown: dec!(0.1872),
+            trade_count: 112,
+            // A fragile single loser — exercises the warn tag in the table.
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.5.bbands"),
+            is_benchmark: false,
+            sharpe: 0.54,
+            sortino: 0.71,
+            calmar: 0.42,
+            total_return_pct: dec!(0.0388),
+            max_drawdown: dec!(0.0921),
+            trade_count: 47,
+            robustness: Some(RobustnessLabel::Marginal),
+        },
+        // ── 8 vote ensembles (2 F8 + 6 combination-search, ADR-0067) ─────────
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.majority"),
+            is_benchmark: false,
+            // A high realized Sharpe but FRAGILE under resampling → ranked but
+            // NOT crown-eligible (the F8 credibility lock; a Fragile ensemble
+            // badge in the strategy column).
+            sharpe: 1.61,
+            sortino: 2.14,
+            calmar: 2.04,
+            total_return_pct: dec!(0.2104),
+            max_drawdown: dec!(0.0788),
+            trade_count: 29,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.unanimous"),
+            is_benchmark: false,
+            sharpe: 0.67,
+            sortino: 0.83,
+            calmar: 1.07,
+            total_return_pct: dec!(0.0573),
+            max_drawdown: dec!(0.0534),
+            // Trades rarely (4-of-4 agreement is rare) but robust.
+            trade_count: 9,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.trend_pair"),
+            is_benchmark: false,
+            // The predicted-null control (both members trend) — little
+            // decorrelation lift, Fragile under resampling (OQ-3 / the experiment
+            // prediction). An honest near-zero edge.
+            sharpe: 0.31,
+            sortino: 0.39,
+            calmar: 0.21,
+            total_return_pct: dec!(0.0188),
+            max_drawdown: dec!(0.0892),
+            trade_count: 21,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.tr_mr_macd_rsi"),
+            is_benchmark: false,
+            // Trend ∧ mean-revert: simultaneous-Long is rare → sits MOSTLY FLAT,
+            // low trade count, near-zero return, Fragile. HONEST (OQ-3), not a bug
+            // — rendered as-is (the B1 "sat in cash" copy fires only at 0 trades;
+            // this one traded a handful of times, so it's a bare low row).
+            sharpe: 0.08,
+            sortino: 0.10,
+            calmar: 0.05,
+            total_return_pct: dec!(0.0041),
+            max_drawdown: dec!(0.0413),
+            trade_count: 4,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.tr_mr_sma_bb"),
+            is_benchmark: false,
+            // The second trend ∧ band-reversion pair — its strict consensus was
+            // NEVER reached on this window → ZERO trades, sat in cash the whole
+            // time (the OQ-3 / U3 "sat in cash — consensus never reached" note).
+            // A flat Sharpe-0 / 0-return / 0-DD row that is NOT a failure.
+            sharpe: 0.0,
+            sortino: 0.0,
+            calmar: 0.0,
+            total_return_pct: dec!(0.0),
+            max_drawdown: dec!(0.0),
+            trade_count: 0,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.any1of4"),
+            is_benchmark: false,
+            // The loosest k-ladder rung (long if ANY of 4 fires) — most exposure,
+            // most trades, lowest decorrelation benefit → Fragile.
+            sharpe: 0.44,
+            sortino: 0.56,
+            calmar: 0.33,
+            total_return_pct: dec!(0.0312),
+            max_drawdown: dec!(0.1207),
+            trade_count: 88,
+            robustness: Some(RobustnessLabel::Fragile),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.k2of4"),
+            is_benchmark: false,
+            // The balanced quorum rung — a moderate edge, marginal under
+            // resampling (not Fragile, not clearly Robust).
+            sharpe: 0.61,
+            sortino: 0.78,
+            calmar: 0.49,
+            total_return_pct: dec!(0.0466),
+            max_drawdown: dec!(0.0954),
+            trade_count: 33,
+            robustness: Some(RobustnessLabel::Marginal),
+        },
+        LeaderRow {
+            strategy: SmolStr::new("v0.8.vote.k3of4"),
+            is_benchmark: false,
+            // The strict rung (broad agreement) — tightest spread, fewest trades;
+            // here it clears the gate (robust) but with a modest Sharpe.
+            sharpe: 0.58,
+            sortino: 0.72,
+            calmar: 0.86,
+            total_return_pct: dec!(0.0421),
+            max_drawdown: dec!(0.0489),
+            trade_count: 14,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+        // ── buy-and-hold benchmark (appended by run_bakeoff) ─────────────────
+        LeaderRow {
+            strategy: SmolStr::new("v0.buyhold"),
+            is_benchmark: true,
+            sharpe: 0.73,
+            sortino: 0.89,
+            calmar: 0.84,
+            total_return_pct: dec!(0.1124),
+            max_drawdown: dec!(0.1338),
+            trade_count: 2,
+            robustness: Some(RobustnessLabel::Robust),
+        },
+    ];
+
+    // Best-first ranked order: CROWN-ELIGIBLE (non-Fragile) arms first by Sharpe,
+    // then the Fragile arms ranked after (shown but ineligible-to-crown — they
+    // cannot jump the crown even with a higher realized Sharpe, the F8 lock).
+    //   indices: 0=sma 1=macd 2=rsi 3=bbands 4=majority 5=unanimous
+    //            6=trend_pair 7=tr_mr_macd_rsi 8=tr_mr_sma_bb 9=any1of4
+    //            10=k2of4 11=k3of4 12=buyhold
+    // Eligible by Sharpe: sma(1.42) > buyhold(0.73) > macd(0.88?)… — order the
+    // eligible set strictly by Sharpe: sma(1.42) > macd(0.88) > buyhold(0.73) >
+    // unanimous(0.67) > k2of4(0.61) > k3of4(0.58) > bbands(0.54).
+    // Fragile (ranked last, cannot be crowned), by Sharpe: majority(1.61) >
+    // any1of4(0.44) > trend_pair(0.31) > tr_mr_macd_rsi(0.08) > tr_mr_sma_bb(0.0)
+    // > rsi(-0.31).
+    let ranked = vec![0, 1, 12, 5, 10, 11, 3, 4, 9, 6, 7, 8, 2];
+
+    BakeoffReportMirror {
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        rows,
+        ranked,
+        crowned: Some(0),
+        recommendation: RecommendationMirror {
+            outcome: OutcomeKind::ActiveWins,
+            winner: SmolStr::new("v0.sma"),
+            winner_robustness: Some(RobustnessLabel::Robust),
+            reasons: vec![
+                ReasonLabel::HighestRobustSharpe,
+                ReasonLabel::BeatBenchmarkSharpe,
+            ],
+        },
+    }
+}
+
+/// The original **5-arm** advisor field (4 rule engines + buy-and-hold, ONE
+/// Fragile single `v0.5.rsi`) — kept as the smaller baseline for the F8
+/// anti-tautology discriminator (`leaderboard_f8_strictly_exceeds_five_arm_field`)
+/// now that [`fake_bakeoff_report_mirror`] grew to the full 13-arm field
+/// (ADR-0067). It carries no ensembles, so the F8 7-arm field (which adds two
+/// ensemble rows incl. a second Fragile badge) provably paints strictly more
+/// strategy-column Fragile clay + foreground than this. `v0.sma` crowned,
+/// `ActiveWins`. Built directly as the mirror type — fixtures NEVER stand up the
+/// engine.
+#[must_use]
+pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffReportMirror {
     use crate::leaderboard::state::{
         BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
         RobustnessLabel,
@@ -1914,6 +2147,51 @@ pub fn fake_forward_plan_ensemble() -> crate::forward_plan::ForwardPlanView {
                 SmolStr::new_static("MACD trend"),
                 SmolStr::new_static("RSI reversion"),
                 SmolStr::new_static("Bollinger reversion"),
+            ],
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 21 14:00"),
+        budget: dec!(200),
+        // 200 / 64000 = 0.003125 units.
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 28"),
+    }
+}
+
+/// A crowned-COMBINATION (advisor-combination-search, ADR-0067) ensemble
+/// [`ForwardPlanView`] — the `v0.8.vote.tr_mr_macd_rsi` arm: a `Unanimous{n:2}`
+/// vote over the MACD-trend + RSI-reversion member rules, currently LONG (the
+/// strict 2-of-2 consensus is met). This is the forward-plan render proof that a
+/// NEW combination arm, when crowned/forward-planned, draws its rule HONESTLY via
+/// the EXISTING `PlanRuleView::Ensemble` path — naming its members as a brace-list
+/// ("Holds only while ALL of {MACD trend, RSI reversion} agree…") with NO new
+/// render code (the same `ensemble_vote_clause` the F8 majority arm uses, just the
+/// Unanimous branch + the new member pair).
+///
+/// Built directly as the view type — fixtures NEVER stand up the engine; the
+/// `members` carry the two member display labels (the F6 enrichment) so the
+/// per-member naming renders truthfully.
+#[must_use]
+pub fn fake_forward_plan_combination() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
+    };
+    ForwardPlanView {
+        strategy: SmolStr::new("v0.8.vote.tr_mr_macd_rsi"),
+        symbol: SmolStr::new("BTCUSDT"),
+        // LONG — the strict 2-of-2 unanimous consensus is currently met (a trend-up
+        // AND an oversold-bounce agree). Exercises the LONG-stance tally branch.
+        stance: PlanStanceView::Long,
+        latest_signal: Some(PlanSignalView::Hold),
+        // 2-of-2 UNANIMOUS vote (the trend ∧ mean-revert decorrelation pair).
+        // Carries the two member display labels so the named brace-list renders.
+        rule: PlanRuleView::Ensemble {
+            method: PlanVoteMethodView::Unanimous { n: 2 },
+            members: vec![
+                SmolStr::new_static("MACD trend"),
+                SmolStr::new_static("RSI reversion"),
             ],
         },
         last_close: dec!(64000.00),

@@ -69,13 +69,16 @@ use crate::strings::{
     LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN,
     LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES,
     LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER,
-    LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
-    LEADERBOARD_ENSEMBLE_SAT_IN_CASH, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
-    LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_EXPLAIN_BUTTON,
-    LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
-    LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
-    LEADERBOARD_HEADLINE_ALL_FRAGILE, LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING,
-    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
+    LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL, LEADERBOARD_ENSEMBLE_K2OF4_LABEL,
+    LEADERBOARD_ENSEMBLE_K3OF4_LABEL, LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
+    LEADERBOARD_ENSEMBLE_SAT_IN_CASH, LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL,
+    LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL, LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL,
+    LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL, LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX,
+    LEADERBOARD_EXPLAIN_BUTTON, LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT,
+    LEADERBOARD_EXPLAIN_LLM_LABEL, LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FRAGILE_TAG,
+    LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
+    LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
+    LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
     LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
     LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
@@ -207,11 +210,14 @@ fn has_live_progress(st: &crate::leaderboard::LeaderboardScreenState) -> bool {
     matches!(&st.progress, Some(p) if p.total > 0)
 }
 
-/// The budget-context line shown under the guided input — "Ranking strategies
-/// for €200 in XRPUSDT." When the budget field is blank/unparseable the budget
-/// clause drops but the coin is still named, so the line never goes empty
-/// (no-blank-screen rule). Built from the structured selection (the UI owns the
-/// copy; the runtime values stay values).
+/// The budget-context block shown under the guided input — the "Ranking
+/// strategies for €200 in XRPUSDT." line plus a quiet arm-count note ("13
+/// strategies head-to-head…", OQ-2) so the size of the field is self-explanatory
+/// (a wider field takes proportionally longer). When the budget field is
+/// blank/unparseable the budget clause drops but the coin is still named, so the
+/// line never goes empty (no-blank-screen rule). Built from the structured
+/// selection + the closed `ui`-side field count (the UI owns the copy; the
+/// runtime values stay values).
 fn budget_context_line(
     st: &crate::leaderboard::LeaderboardScreenState,
     mode: ThemeMode,
@@ -222,9 +228,23 @@ fn budget_context_line(
             .replace("{coin}", st.coin.0.as_str()),
         None => LEADERBOARD_CONTEXT_NO_BUDGET_FMT.replace("{coin}", st.coin.0.as_str()),
     };
-    Text::new(copy)
-        .size(text::H3)
-        .color(color::FG_2.current(mode))
+    // The arm-count note — how many strategies the bake-off ranks head-to-head.
+    // Sourced from the real `advisor_field()` size (+1 for the appended
+    // buy-and-hold benchmark) so it can never drift from the field that runs.
+    let arm_count = crate::leaderboard::runner::advisor_field_arm_count();
+    let arm_note = LEADERBOARD_FIELD_ARM_COUNT_FMT.replace("{count}", &arm_count.to_string());
+    Column::new()
+        .spacing(space::XXS)
+        .push(
+            Text::new(copy)
+                .size(text::H3)
+                .color(color::FG_2.current(mode)),
+        )
+        .push(
+            Text::new(arm_note)
+                .size(text::SMALL)
+                .color(color::FG_3.current(mode)),
+        )
         .into()
 }
 
@@ -817,21 +837,36 @@ fn tag(label: &str, fg: iced::Color, _mode: ThemeMode) -> crate::Element<'static
         .into()
 }
 
-/// The friendly display label for a strategy id. Ensemble arms (F8) carry
-/// opaque ids; map the two frozen ids to their plain-language vote labels so
-/// the row reads AS an ensemble. Every other id renders verbatim. Closed
-/// `ui`-side match (no engine string crosses the seam).
+/// The friendly display label for a strategy id. Ensemble arms (F8 + the
+/// advisor-combination-search slate, ADR-0067) carry opaque `v0.8.vote.*` ids;
+/// map each of the 8 pre-registered ids to its plain-language vote label so the
+/// row reads AS the specific ensemble (method + named members or k-of-n quorum).
+/// Every other id renders verbatim. Closed `ui`-side match (no engine string
+/// crosses the seam).
 fn display_label(strategy: &str) -> &str {
     match strategy {
+        // The two F8 arms (ADR-0063).
         "v0.8.vote.majority" => LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
         "v0.8.vote.unanimous" => LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
+        // The 6 combination-search arms (ADR-0067): the 3 decorrelation pairs +
+        // the complete k∈{1,2,3}-of-4 ladder.
+        "v0.8.vote.trend_pair" => LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL,
+        "v0.8.vote.tr_mr_macd_rsi" => LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL,
+        "v0.8.vote.tr_mr_sma_bb" => LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL,
+        "v0.8.vote.any1of4" => LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL,
+        "v0.8.vote.k2of4" => LEADERBOARD_ENSEMBLE_K2OF4_LABEL,
+        "v0.8.vote.k3of4" => LEADERBOARD_ENSEMBLE_K3OF4_LABEL,
         other => other,
     }
 }
 
-/// `true` for one of the two frozen F8 ensemble ids — drives the `vote` tag.
+/// `true` for one of the 8 pre-registered vote-ensemble ids (the 2 F8 arms + the
+/// 6 combination-search arms) — drives the `vote` tag. Every `v0.8.vote.*` id is
+/// a vote ensemble by construction, so a prefix match is the honest predicate
+/// (it also future-proofs against a new slate arm being added to the field
+/// without its `vote` tag silently dropping).
 fn is_ensemble_id(strategy: &str) -> bool {
-    matches!(strategy, "v0.8.vote.majority" | "v0.8.vote.unanimous")
+    strategy.starts_with("v0.8.vote.")
 }
 
 /// The robustness marker for a row, or `None` when the gate did not run.
