@@ -52,11 +52,12 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
 
 ## Tasks
 
-- [ ] **T0 — Anchor baseline.** Run `scripts/verify_anchors.sh` and confirm
+- [x] **T0 — Anchor baseline.** Run `scripts/verify_anchors.sh` and confirm
       **119/119** BEFORE any edit. Record the number.
       _acceptance: `verify_anchors.sh` prints 119/119; if not, STOP and route back._
+      **Result: 119/119 PASS** (`scripts/verify_anchors.sh` ran before first edit — 2026-06-23).
 
-- [ ] **T1 — Register the 6 arms in `build_ensemble`** (`crates/strategy/src/ensemble.rs`).
+- [x] **T1 — Register the 6 arms in `build_ensemble`** (`crates/strategy/src/ensemble.rs`).
       Add 6 literal `match` arms mirroring the existing `v0.8.vote.majority` /
       `v0.8.vote.unanimous` arms — each builds its members via `build_member` and
       constructs `EnsembleStrategy::new(id, <VoteMethod from the table>, member_ids, members)`.
@@ -66,8 +67,9 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
       _acceptance: `build_ensemble("v0.8.vote.<arm>")` returns `Ok` for all 6 new
       ids and `Err(UnknownId)` for an unregistered id; `cargo build -p strategy`
       clean; `arbitrate`/`VoteMethod`/`bootstrap.rs`/`robustness.rs` git-diff EMPTY._
+      **file:line** `crates/strategy/src/ensemble.rs:479–690`; `cargo build -p strategy` → `Finished`; frozen surfaces git-diff EMPTY.
 
-- [ ] **T2 — Widen the engine dispatch + the field list.**
+- [x] **T2 — Widen the engine dispatch + the field list.**
       (a) `crates/backtest/src/engine.rs` (~line 1527): widen the `run_scenario`
       match pattern `"v0.8.vote.majority" | "v0.8.vote.unanimous"` to alternate the
       6 new ids (the arm BODY is unchanged — it already calls
@@ -85,8 +87,10 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
       _acceptance: `cargo build -p backtest -p ui` clean; `advisor_field().len() == 12`;
       a unit test confirms all 8 ensemble ids are in `default_ensemble_field()`;
       the moved runner test passes; `default_field()` is UNCHANGED (still 4 singles)._
+      **file:line** `engine.rs:1527–1543`, `bakeoff/mod.rs:350–382`, `runner.rs:238–275`;
+      test cmd `cargo test -p ui`; output: `test result: ok. 515 passed; 0 failed`.
 
-- [ ] **T3 — Day-1 divergence e2e** — new file
+- [x] **T3 — Day-1 divergence e2e** — new file
       `crates/strategy/tests/combination_slate_divergence_end_to_end.rs`, modelled
       on `crates/strategy/tests/ensemble_vote_divergence_end_to_end.rs`. Reuse its
       `run_strategy_equity` + `sine_bars` harness. For **each of the 6 new arms**:
@@ -103,14 +107,23 @@ Member id → builder mapping already exists in `build_member` (`v0.sma`,
       _acceptance: the test FAILS if any new arm's `match` arm is deleted or
       aliased to an existing arm's `(method, members)`; PASSES on the real wiring;
       `cargo test -p strategy --test combination_slate_divergence_end_to_end` green._
+      **file:line** `crates/strategy/tests/combination_slate_divergence_end_to_end.rs:1–437`;
+      test cmd `cargo test -p strategy --test combination_slate_divergence_end_to_end`;
+      output: `test result: ok. 16 passed; 0 failed; 0 ignored; finished in 0.01s`.
 
-- [ ] **T4 — Build + validate + RE-VERIFY ANCHORS.** `cargo build --workspace`,
+- [x] **T4 — Build + validate + RE-VERIFY ANCHORS.** `cargo build --workspace`,
       `cargo clippy --workspace -- -D warnings`, `cargo test -p strategy -p backtest -p ui`
       (the existing F8 + ensemble + rank tests must stay green — they assert
       `BenchmarkWins`/`AllFragile` reachability), then run
       `scripts/verify_anchors.sh` again.
       _acceptance: clippy clean; all named test suites green; `verify_anchors.sh`
       still **119/119 byte-identical** (any non-119 = STOP-and-route-back)._
+      **Result:**
+      - `cargo build --workspace` → `Finished` (clean)
+      - `cargo clippy --workspace --all-targets -- -D warnings` → `Finished` (0 warnings)
+      - `cargo fmt --check` → clean
+      - `cargo test -p strategy -p backtest -p ui` → all `ok` (20 test binaries, 0 failures)
+      - `scripts/verify_anchors.sh` → **119/119 PASS** (after all changes)
 
 - [ ] **T5 — Tester: real-data 13-arm bake-off.** Run the advisor bake-off on
       BTCUSDT H1-2024 (`BinanceCache`, `RobustnessMode::Bootstrap{paths:1000}`,

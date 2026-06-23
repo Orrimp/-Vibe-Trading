@@ -338,19 +338,45 @@ impl BakeoffConfig {
         ]
     }
 
-    /// Returns the two F8 ensemble strategy ids (ADR-0063 § D4).
+    /// Returns all 8 pre-registered vote-ensemble strategy ids (ADR-0063 § D4 + ADR-0067).
     ///
+    /// **F8 original arms:**
     /// - `"v0.8.vote.majority"` — 2-of-3 majority vote (MACD / RSI / `BBands`).
     /// - `"v0.8.vote.unanimous"` — 4-of-4 unanimous vote (SMA / MACD / RSI / `BBands`).
+    ///
+    /// **advisor-combination-search new arms (ADR-0067, FROZEN v1 slate):**
+    ///
+    /// Decorrelation pairings:
+    /// - `"v0.8.vote.trend_pair"` — `Unanimous{n:2}` [MACD, SMA] (predicted-null control).
+    /// - `"v0.8.vote.tr_mr_macd_rsi"` — `Unanimous{n:2}` [MACD, RSI] (trend ∧ mean-revert).
+    /// - `"v0.8.vote.tr_mr_sma_bb"` — `Unanimous{n:2}` [SMA, `BBands`] (trend ∧ band-reversion).
+    ///
+    /// k-of-4 ladder (complete k∈{1,2,3}; k=4 = unanimous above):
+    /// - `"v0.8.vote.any1of4"` — `Majority{k:1,n:4}` over all 4.
+    /// - `"v0.8.vote.k2of4"` — `Majority{k:2,n:4}` over all 4.
+    /// - `"v0.8.vote.k3of4"` — `Majority{k:3,n:4}` over all 4.
     ///
     /// These are ADDITIVE — callers can extend `default_field()` with this list
     /// to include ensemble strategies.  `default_field()` is left UNCHANGED so
     /// existing advisor paths are not affected without explicit opt-in.
+    ///
+    /// This is the SINGLE source of truth for the ensemble arm list.
+    /// `advisor_field()` in `crates/ui/src/leaderboard/runner.rs` concatenates
+    /// `default_field()` + `default_ensemble_field()` automatically.
     #[must_use]
     pub fn default_ensemble_field() -> Vec<StrategyId> {
         vec![
+            // F8 original arms.
             StrategyId(SmolStr::new_static("v0.8.vote.majority")),
             StrategyId(SmolStr::new_static("v0.8.vote.unanimous")),
+            // advisor-combination-search decorrelation pairings (ADR-0067).
+            StrategyId(SmolStr::new_static("v0.8.vote.trend_pair")),
+            StrategyId(SmolStr::new_static("v0.8.vote.tr_mr_macd_rsi")),
+            StrategyId(SmolStr::new_static("v0.8.vote.tr_mr_sma_bb")),
+            // advisor-combination-search k-of-4 ladder (ADR-0067).
+            StrategyId(SmolStr::new_static("v0.8.vote.any1of4")),
+            StrategyId(SmolStr::new_static("v0.8.vote.k2of4")),
+            StrategyId(SmolStr::new_static("v0.8.vote.k3of4")),
         ]
     }
 }

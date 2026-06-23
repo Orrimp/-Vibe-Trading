@@ -237,13 +237,39 @@ mod tests {
         );
         assert_eq!(
             cfg.request.field.len(),
-            6,
-            "the 4 rule engines + the 2 F8 vote ensembles"
+            12,
+            "the 4 rule engines + 8 vote ensembles (F8 + advisor-combination-search ADR-0067)"
         );
         let ids: Vec<&str> = cfg.request.field.iter().map(|s| s.0.as_str()).collect();
+        // F8 original arms must be present.
         assert!(
             ids.contains(&"v0.8.vote.majority") && ids.contains(&"v0.8.vote.unanimous"),
-            "both vote ensembles must be in the live field; got {ids:?}"
+            "both F8 vote ensembles must be in the live field; got {ids:?}"
+        );
+        // advisor-combination-search new arms (ADR-0067) must be present.
+        assert!(
+            ids.contains(&"v0.8.vote.trend_pair"),
+            "trend_pair arm must be in the live field; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.8.vote.tr_mr_macd_rsi"),
+            "tr_mr_macd_rsi arm must be in the live field; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.8.vote.tr_mr_sma_bb"),
+            "tr_mr_sma_bb arm must be in the live field; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.8.vote.any1of4"),
+            "any1of4 arm must be in the live field; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.8.vote.k2of4"),
+            "k2of4 arm must be in the live field; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.8.vote.k3of4"),
+            "k3of4 arm must be in the live field; got {ids:?}"
         );
         assert!(
             !ids.contains(&"v0.buyhold"),
@@ -283,8 +309,8 @@ mod tests {
         // Field / seed / source / gate match the default advisor contract.
         assert_eq!(
             cfg.request.field.len(),
-            6,
-            "the 4 rule engines + the 2 F8 vote ensembles"
+            12,
+            "the 4 rule engines + 8 vote ensembles (F8 + advisor-combination-search ADR-0067)"
         );
         assert!(matches!(
             cfg.data_source,

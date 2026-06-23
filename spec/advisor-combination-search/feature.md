@@ -449,7 +449,26 @@ as honestly as a win. The tester's report records the prediction, the realized
 13-arm table, and whether the prediction held.
 
 ## Implementation
-_developer fills this._
+
+_Developer, 2026-06-23. T0–T4 complete (backend). T5/T6/T7 left for tester + ui-designer._
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `crates/strategy/src/ensemble.rs` | Added 6 literal `match` arms in `build_ensemble` for the FROZEN v1 slate (ADR-0067). Updated doc comment to list all 8 pre-registered ids. Zero changes to `arbitrate`, `VoteMethod`, or `member_id_to_rule_shape`. |
+| `crates/backtest/src/engine.rs` | Widened the `run_scenario` match pattern at ~line 1527 to alternate the 6 new ids. Arm body unchanged — still calls `build_ensemble(strategy_str)` generically. |
+| `crates/backtest/src/bakeoff/mod.rs` | Extended `default_ensemble_field()` from 2 → 8 ids (single source of truth). Updated doc comment. `default_field()` byte-unchanged. |
+| `crates/ui/src/leaderboard/runner.rs` | Moved field-count test from `6 → 12`, extended `ids.contains` assertions to all 6 new ids, updated message to "4 rule engines + 8 vote ensembles". Fixed a second `field.len() == 6` assertion in `config_from_state_uses_chosen_coin_and_lookback`. |
+| `crates/strategy/tests/combination_slate_divergence_end_to_end.rs` | New file — 16 tests. Day-1 divergence e2e (CLAUDE.md non-negotiable). Modelled on `ensemble_vote_divergence_end_to_end.rs`. |
+
+### Verification results
+
+- **T0 anchor baseline:** `scripts/verify_anchors.sh` → **119/119** before any edit.
+- **T1:** `cargo build -p strategy` clean; `arbitrate`/`VoteMethod`/`robustness.rs`/`bootstrap.rs`/`rank.rs` git-diff empty.
+- **T3 PASS-after:** `cargo test -p strategy --test combination_slate_divergence_end_to_end` → `16 passed; 0 failed`.
+- **T4 full suite:** `cargo build --workspace` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean (0 warnings); `cargo fmt --check` clean; `cargo test -p strategy -p backtest -p ui` → all 20 binaries ok (0 failures); `scripts/verify_anchors.sh` → **119/119**.
+- **Frozen surfaces confirmed unchanged:** `robustness.rs`, `bootstrap.rs`, `rank.rs` — empty git diff. `arbitrate`/`VoteMethod` not in ensemble.rs diff. `default_field()` body unchanged (still 4 singles).
 
 ## Verification
 _tester links to reports here._

@@ -475,22 +475,39 @@ fn load_composed_member(
     Ok(crate::ComposedStrategy::from_config(cfg, source_path))
 }
 
-// ── Ensemble factory (the two pre-registered ensembles) ──────────────────────
+// ── Ensemble factory (pre-registered ensembles — F8 + advisor-combination-search) ────
 
-/// Build one of the two pre-registered ensemble strategies by id.
+/// Build one of the eight pre-registered ensemble strategies by id.
 ///
-/// Pre-registered ids (frozen in code, ADR-0063 § D1):
+/// Pre-registered ids (frozen in code, ADR-0063 § D1 + ADR-0067):
 ///
+/// **F8 original arms:**
 /// - `"v0.8.vote.majority"` → `Majority { k:2, n:3 }` over
 ///   `[v0.5.macd, v0.5.rsi, v0.5.bbands]`.
 /// - `"v0.8.vote.unanimous"` → `Unanimous { n:4 }` over
 ///   `[v0.sma, v0.5.macd, v0.5.rsi, v0.5.bbands]`.
+///
+/// **advisor-combination-search new arms (ADR-0067, the FROZEN v1 slate):**
+///
+/// Decorrelation pairings:
+/// - `"v0.8.vote.trend_pair"` → `Unanimous { n:2 }` over
+///   `[v0.5.macd, v0.sma]` (predicted-null control — both trend).
+/// - `"v0.8.vote.tr_mr_macd_rsi"` → `Unanimous { n:2 }` over
+///   `[v0.5.macd, v0.5.rsi]` (trend ∧ mean-revert).
+/// - `"v0.8.vote.tr_mr_sma_bb"` → `Unanimous { n:2 }` over
+///   `[v0.sma, v0.5.bbands]` (trend ∧ band-reversion).
+///
+/// k-of-4 ladder (complete ladder k∈{1,2,3}; k=4 = unanimous above):
+/// - `"v0.8.vote.any1of4"` → `Majority { k:1, n:4 }` over all 4.
+/// - `"v0.8.vote.k2of4"` → `Majority { k:2, n:4 }` over all 4.
+/// - `"v0.8.vote.k3of4"` → `Majority { k:3, n:4 }` over all 4.
 ///
 /// # Errors
 ///
 /// Returns `Err` on unknown id or member construction failure.
 pub fn build_ensemble(id: &str) -> Result<EnsembleStrategy, EnsembleBuildError> {
     match id {
+        // ── F8 original arms ──────────────────────────────────────────────────
         "v0.8.vote.majority" => {
             let member_ids = vec![
                 SmolStr::new_static("v0.5.macd"),
@@ -542,6 +559,180 @@ pub fn build_ensemble(id: &str) -> Result<EnsembleStrategy, EnsembleBuildError> 
                 members,
             ))
         }
+
+        // ── advisor-combination-search: decorrelation pairings (ADR-0067) ─────
+        //
+        // These arms run write_report=false on the Bootstrap advisor path —
+        // anchor-safe by construction (no anchored body collision).
+
+        // Both-trend control — predicted little p5 lift (sanity check: correlated members).
+        "v0.8.vote.trend_pair" => {
+            let member_ids = vec![
+                SmolStr::new_static("v0.5.macd"),
+                SmolStr::new_static("v0.sma"),
+            ];
+            let members: Vec<Box<dyn Strategy>> = member_ids
+                .iter()
+                .map(|mid| {
+                    build_member(mid.as_str()).map_err(|cause| {
+                        EnsembleBuildError::MemberBuildFailure {
+                            ensemble_id: id.to_string(),
+                            member_id: mid.to_string(),
+                            cause: Box::new(cause),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(EnsembleStrategy::new(
+                id,
+                VoteMethod::Unanimous { n: 2 },
+                member_ids,
+                members,
+            ))
+        }
+
+        // Trend ∧ mean-revert: real decorrelation lever.
+        "v0.8.vote.tr_mr_macd_rsi" => {
+            let member_ids = vec![
+                SmolStr::new_static("v0.5.macd"),
+                SmolStr::new_static("v0.5.rsi"),
+            ];
+            let members: Vec<Box<dyn Strategy>> = member_ids
+                .iter()
+                .map(|mid| {
+                    build_member(mid.as_str()).map_err(|cause| {
+                        EnsembleBuildError::MemberBuildFailure {
+                            ensemble_id: id.to_string(),
+                            member_id: mid.to_string(),
+                            cause: Box::new(cause),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(EnsembleStrategy::new(
+                id,
+                VoteMethod::Unanimous { n: 2 },
+                member_ids,
+                members,
+            ))
+        }
+
+        // Trend ∧ band-reversion: second decorrelated pairing.
+        "v0.8.vote.tr_mr_sma_bb" => {
+            let member_ids = vec![
+                SmolStr::new_static("v0.sma"),
+                SmolStr::new_static("v0.5.bbands"),
+            ];
+            let members: Vec<Box<dyn Strategy>> = member_ids
+                .iter()
+                .map(|mid| {
+                    build_member(mid.as_str()).map_err(|cause| {
+                        EnsembleBuildError::MemberBuildFailure {
+                            ensemble_id: id.to_string(),
+                            member_id: mid.to_string(),
+                            cause: Box::new(cause),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(EnsembleStrategy::new(
+                id,
+                VoteMethod::Unanimous { n: 2 },
+                member_ids,
+                members,
+            ))
+        }
+
+        // ── advisor-combination-search: k-of-4 ladder (ADR-0067) ─────────────
+        //
+        // Complete ladder k∈{1,2,3} over all 4 base signals.
+        // k=4 is the existing `v0.8.vote.unanimous` arm above.
+        // Reporting the WHOLE ladder ensures no per-arm k-selection cherry-picking.
+
+        // k=1: loosest — long if ANY of the 4 fires.
+        "v0.8.vote.any1of4" => {
+            let member_ids = vec![
+                SmolStr::new_static("v0.sma"),
+                SmolStr::new_static("v0.5.macd"),
+                SmolStr::new_static("v0.5.rsi"),
+                SmolStr::new_static("v0.5.bbands"),
+            ];
+            let members: Vec<Box<dyn Strategy>> = member_ids
+                .iter()
+                .map(|mid| {
+                    build_member(mid.as_str()).map_err(|cause| {
+                        EnsembleBuildError::MemberBuildFailure {
+                            ensemble_id: id.to_string(),
+                            member_id: mid.to_string(),
+                            cause: Box::new(cause),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(EnsembleStrategy::new(
+                id,
+                VoteMethod::Majority { k: 1, n: 4 },
+                member_ids,
+                members,
+            ))
+        }
+
+        // k=2: balanced quorum.
+        "v0.8.vote.k2of4" => {
+            let member_ids = vec![
+                SmolStr::new_static("v0.sma"),
+                SmolStr::new_static("v0.5.macd"),
+                SmolStr::new_static("v0.5.rsi"),
+                SmolStr::new_static("v0.5.bbands"),
+            ];
+            let members: Vec<Box<dyn Strategy>> = member_ids
+                .iter()
+                .map(|mid| {
+                    build_member(mid.as_str()).map_err(|cause| {
+                        EnsembleBuildError::MemberBuildFailure {
+                            ensemble_id: id.to_string(),
+                            member_id: mid.to_string(),
+                            cause: Box::new(cause),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(EnsembleStrategy::new(
+                id,
+                VoteMethod::Majority { k: 2, n: 4 },
+                member_ids,
+                members,
+            ))
+        }
+
+        // k=3: strict — long only on broad agreement.
+        "v0.8.vote.k3of4" => {
+            let member_ids = vec![
+                SmolStr::new_static("v0.sma"),
+                SmolStr::new_static("v0.5.macd"),
+                SmolStr::new_static("v0.5.rsi"),
+                SmolStr::new_static("v0.5.bbands"),
+            ];
+            let members: Vec<Box<dyn Strategy>> = member_ids
+                .iter()
+                .map(|mid| {
+                    build_member(mid.as_str()).map_err(|cause| {
+                        EnsembleBuildError::MemberBuildFailure {
+                            ensemble_id: id.to_string(),
+                            member_id: mid.to_string(),
+                            cause: Box::new(cause),
+                        }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(EnsembleStrategy::new(
+                id,
+                VoteMethod::Majority { k: 3, n: 4 },
+                member_ids,
+                members,
+            ))
+        }
+
         unknown => Err(EnsembleBuildError::UnknownId(unknown.to_string())),
     }
 }

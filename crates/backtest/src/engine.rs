@@ -1518,13 +1518,25 @@ pub async fn run_scenario(
             })
         }
 
-        // ── F8 ensemble arms (ADR-0063 § D5 + anchor-additive contract) ────────
+        // ── Vote-ensemble arms (ADR-0063 § D5 + ADR-0067 + anchor-additive contract) ──
         //
-        // - New ids "v0.8.vote.majority" / "v0.8.vote.unanimous".
+        // F8 original ids: "v0.8.vote.majority" / "v0.8.vote.unanimous".
+        // advisor-combination-search new ids (ADR-0067, FROZEN v1 slate):
+        //   Decorrelation pairings: "v0.8.vote.trend_pair" /
+        //     "v0.8.vote.tr_mr_macd_rsi" / "v0.8.vote.tr_mr_sma_bb".
+        //   k-of-4 ladder: "v0.8.vote.any1of4" / "v0.8.vote.k2of4" /
+        //     "v0.8.vote.k3of4".
         // - write_report = false in bake-off calls → no anchored report body.
         // - These ids cannot collide with any existing anchored report id.
         // - `scripts/verify_anchors.sh` → 119/119 byte-identical (anchor-safe).
-        "v0.8.vote.majority" | "v0.8.vote.unanimous" => {
+        "v0.8.vote.majority"
+        | "v0.8.vote.unanimous"
+        | "v0.8.vote.trend_pair"
+        | "v0.8.vote.tr_mr_macd_rsi"
+        | "v0.8.vote.tr_mr_sma_bb"
+        | "v0.8.vote.any1of4"
+        | "v0.8.vote.k2of4"
+        | "v0.8.vote.k3of4" => {
             // All `use` imports must come before any `let` statements
             // to satisfy the `clippy::items_after_statements` lint.
             use crate::cli_types::BacktestState;
