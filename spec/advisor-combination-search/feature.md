@@ -1,7 +1,7 @@
 ---
 slug: advisor-combination-search
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-23
 ---
 
@@ -202,18 +202,251 @@ questions OQ-4.)
   the widened `engine.rs` dispatch arm, and the extended `advisor_field()`.
 
 ## Design
-_architect fills this (ADR). Seam pointers + the load-bearing locks are listed
-in § Open architecture questions below._
+
+_Architect, 2026-06-23. Full rationale + alternatives in
+[ADR-0067](../architecture/adr/0067-pre-registered-combination-slate-expansion.md).
+This feature is an **expansion of F8** (ADR-0063), not a new mechanism: it adds
+**6 new pre-registered vote-ensemble arms** to the live advisor field, each
+scored through the **identical byte-frozen** `RobustnessMode::Bootstrap` gate +
+the **identical** buy-and-hold benchmark (ADR-0066). Zero new arbitration math,
+zero band changes, anchor-safe by construction. The crux is **pre-registration
+as an overfit defense**: a FIXED, code-declared falsifier slate (chosen before
+results), reported WHOLE — win or lose. A null all-Fragile result
+("hold stands") is an expected, valid, shippable outcome._
+
+### The v1 arm-set (FROZEN, pre-registered, declared-in-code)
+
+Membership is **ratified as the analyst's recommended slate** — it satisfies all
+four load-bearing constraints (FIXED + declared; members carry the existing
+warmup/abstention semantics; ≥1 predicted-null control; the k-ladder reported
+whole). All 6 are vote ensembles over the existing 4 base signals
+`{v0.sma, v0.5.macd, v0.5.rsi, v0.5.bbands}` ⇒ **zero new arbitration code**
+(`VoteMethod::{Majority{k,n}, Unanimous{n}}` already express every one).
+
+| New id | Method | Members | Role |
+|---|---|---|---|
+| `v0.8.vote.trend_pair` | `Unanimous{n:2}` | `[v0.5.macd, v0.sma]` | **predicted-null control** (both trend → expect little p5 lift; if it lifts as much as the mixed pairs, the decorrelation thesis is FALSE) |
+| `v0.8.vote.tr_mr_macd_rsi` | `Unanimous{n:2}` | `[v0.5.macd, v0.5.rsi]` | trend ∧ mean-revert (the real decorrelation lever) |
+| `v0.8.vote.tr_mr_sma_bb` | `Unanimous{n:2}` | `[v0.sma, v0.5.bbands]` | trend ∧ band-reversion (second decorrelated pairing) |
+| `v0.8.vote.any1of4` | `Majority{k:1, n:4}` | all 4 | k-ladder rung 1 (loosest — long if ANY fires) |
+| `v0.8.vote.k2of4` | `Majority{k:2, n:4}` | all 4 | k-ladder rung 2 (balanced quorum) |
+| `v0.8.vote.k3of4` | `Majority{k:3, n:4}` | all 4 | k-ladder rung 3 (strict — broad agreement) |
+
+The k-ladder over the 4 base signals is reported **complete**: k∈{1,2,3} here +
+k=4 is the existing `v0.8.vote.unanimous` arm → no per-arm "best k" is ever
+cherry-picked. Existing F8 arms kept unchanged: `v0.8.vote.majority`
+(`Majority{k:2,n:3}` over macd/rsi/bbands) and `v0.8.vote.unanimous`
+(`Unanimous{n:4}` over all 4). **Total live field: 4 singles + 8 ensembles +
+buy-and-hold = 13 arms** (the field `Vec` carries 12 ids; `run_bakeoff` appends
+buy-and-hold).
+
+### OQ-1 — DECISION: literal `build_ensemble` ids (NOT a generalized parser)
+
+Add the 6 ids as **literal `match` arms** in `strategy::build_ensemble`
+(`crates/strategy/src/ensemble.rs`), mirroring the existing two. The engine
+dispatch (`crates/backtest/src/engine.rs:1527`) already calls
+`build_ensemble(strategy_str)` **generically** — the only literal thing there is
+the `match` *pattern* `"v0.8.vote.majority" | "v0.8.vote.unanimous"`, which is
+widened to alternate the 6 new ids. **No id grammar / no runtime parser.** A
+`vote.k{K}of{N}`-style parser is REJECTED: an id grammar is a parameterized space
+that edges toward search and breaks the pre-registration lock ("pre-registered =
+a finite enum you can read in the diff"). Each arm's `(id, VoteMethod, members)`
+tuple is visible in the `build_ensemble` source and in this table — that
+auditability IS the overfit defense. Net new seam surface (all reuse-only):
+
+```
+crates/strategy/src/ensemble.rs   build_ensemble: +6 literal match arms
+                                  member_id_to_rule_shape: already covers all 4 base ids (no edit)
+crates/backtest/src/engine.rs     run_scenario "v0.8.vote.*" pattern: widen the | alternation (body unchanged — already calls build_ensemble(strategy_str))
+crates/backtest/src/bakeoff/mod.rs  default_ensemble_field(): +6 StrategyIds
+```
+
+`advisor_field()` in `crates/ui/src/leaderboard/runner.rs:53` is
+`default_field() ∪ default_ensemble_field()` — the 6 new ids flow into the live
+cockpit field **automatically**, no UI edit. Confirmed pickup.
+
+### OQ-2 — DECISION: `default_ensemble_field()` is the single source of truth; latency within budget
+
+`default_ensemble_field()` is the **single arm-list source of truth** — no
+duplicated list exists (`advisor_field()` concatenates it onto `default_field()`;
+the runner's own config test reads it back). Adding the 6 ids there is the only
+field edit. **One field-count test must move in lockstep**
+(`runner.rs:238-242`): the `cfg.request.field.len()` assertion goes `6 → 12`, and
+its `ids.contains(...)` set extends to the 6 new ids (this is a *test* update, not
+a contract loosening — the assertion exists to pin the field, so it tracks the
+field). This is a developer task (T4), not an afterthought.
+
+**Latency.** 13 arms × 1000 bootstrap paths vs 7 today ≈ **+86% bake-off
+wall-clock** (12 active field arms vs 6, + buy-and-hold both runs; the bootstrap
+resample dominates and scales ~linearly in arm count). This is **within budget
+and needs no new UX**: (a) the bake-off already shows a **determinate progress
+bar** driven by `Progress{current_bar, total_bars}` per arm (the
+`bakeoff_progress_render.rs` harness proves it paints), so a longer run is a
+longer-but-bounded bar, not a frozen screen; (b) the advisor bake-off is an
+**explicitly on-demand, operator-triggered** action (press "Run bake-off"), not a
+per-frame or latency-critical path — there is no real-time SLA to breach. **No
+progress-UX change required.** One honest copy note is added to the leaderboard
+header context (developer task T7): the arm count is surfaced so the operator
+understands a wider field takes proportionally longer. (If a future field grows
+past ~20 arms, revisit parallelizing the per-arm bootstrap — explicitly out of
+scope here.)
+
+### OQ-3 — DECISION: `Unanimous{n:2}` mostly-Flat is HONEST, rendered truthfully
+
+The `Unanimous{n:2}` trend∧mean-revert pairs (`tr_mr_macd_rsi`, `tr_mr_sma_bb`)
+require **both** members simultaneously warmed AND Long to go Long. A trend
+follower and a mean-reverter fire in **different regimes**, so simultaneous-Long
+is genuinely rare → these arms may sit **mostly Flat → near-zero return → their
+own Fragile / `p50 Sharpe < 0.5` flag**. This is **HONEST, not a bug**: it is the
+literal, correct property of a strict-consensus combo of decorrelated members
+(strict-consensus trades the cost of fewer trades for the benefit of a tighter
+path-spread; whether that net-lifts p5 Sharpe is exactly the experiment). It is
+**not** engineered around. It is rendered truthfully by the **existing surfaces**,
+reusing the B1 "sat in cash" honesty copy:
+- The leaderboard row shows the real (low) `trade_count` + the computed
+  robustness flag (`Fragile`) verbatim — same path as today's Fragile single
+  (`v0.5.rsi` in the fixture already exercises the Fragile warn tag).
+- The recommendation surface keeps the `BenchmarkWins` / `AllFragile` framing
+  (ADR-0066): an arm that rarely trades and stays Fragile is **shown but not
+  crowned**, and "Nothing beat simply holding…" (the B1 modal copy) stands.
+- The forward-plan `PlanRuleShape::Ensemble` honestly reads "Holds while **2 of
+  {MACD trend, SMA cross}** agree…", which truthfully telegraphs the strict gate.
+
+No new flag, no new state, no special-case. The honesty is that a low-trade
+Fragile combo is reported as honestly as a win (R4).
+
+### OQ-4 — DECISION: DEFER weighted / inverse-vol / regime blends to v0.2 of this feature
+
+v1 ships **vote-threshold combinations only** (zero new arbitration code).
+Weighted / inverse-vol / conditional-regime blends are **explicitly out of scope
+for v1** and recorded as a v0.2 follow-on. Rationale (confirming the analyst
+lean): each needs a **new `VoteMethod` variant + a new `arbitrate` branch + a new
+`PlanVoteMethod` mirror + a new `ui` exhaustive-match arm** — a real cross-crate
+surface — AND a **continuous weight parameter is a free knob = overfit risk**
+unless pre-registered to a fixed/rule-derived value. The one defensible v0.2 case
+is **inverse-vol weighting** (rule-derived from realized vol, not fitted); if/when
+built it MUST ship with the CLAUDE.md **day-1 baseline-equity-divergence e2e**
+(it is a sizing-modifier-adjacent overlay — the `vol_targeting_overlay` precedent
+applies). **None of these enters v1.** This keeps v1's blast radius to 6 ids, all
+expressible by the frozen arbiter.
+
+### OQ-5 — DECISION: day-1 divergence e2e — `combination_slate_divergence_end_to_end.rs`
+
+Per the CLAUDE.md non-negotiable, each new arm ships a **day-1
+baseline-equity-divergence e2e** from day 1, modelled on the F8
+[`ensemble_vote_divergence_end_to_end.rs`](../../crates/strategy/tests/ensemble_vote_divergence_end_to_end.rs).
+A new test file `crates/strategy/tests/combination_slate_divergence_end_to_end.rs`
+asserts, for **each of the 6 new arms**, two properties on a shared
+deterministic bar series + position sim (the F8 harness's `run_strategy_equity`):
+1. **Diverges from its members.** The arm's final equity differs from **at least
+   one** of its own member curves by **≥ 1 bp** of initial capital — proves the
+   vote actually gates trades and the arm is **not a silent passthrough/no-op**
+   (the `v3-vol-overlay-noop` analogue).
+2. **Not a duplicate / not buy-and-hold.** The arm's equity differs from
+   buy-and-hold (always-long) by ≥ 1 bp, AND no two new arms produce identical
+   curves on the same series — proves no arm is an accidental duplicate of an
+   existing arm or of BH.
+
+**Construction note (load-bearing, from the F8 precedent):** the TOML base
+members (MACD/RSI/BBands) do **not** reliably fire on arbitrary synthetic bars
+(their thresholds may never trip), so the **vote-mechanics** divergence is proven
+with `SmaCrossover` members at distinct parameter pairs (guaranteed signals) —
+exactly as F8 does — and a **factory smoke test** asserts each real
+`build_ensemble("v0.8.vote.<arm>")` constructs over the real 4 base TOMLs without
+error. The **end-to-end divergence of the real base-signal arms on real data** is
+then proven by the T6 bake-off (each arm's realized equity curve is distinct in
+the 13-arm report). Together these satisfy the non-negotiable's intent: no arm is
+a computed-but-unapplied no-op, and no arm is a hidden duplicate. FAIL-before /
+PASS-after: deleting any new `match` arm (or aliasing it to an existing id) makes
+the test fail.
+
+### OQ-6 — DECISION: leaderboard 13-row + ensemble-rule render-snapshots (pixel proof)
+
+Per the verify-UI-at-render-layer non-negotiable, the proof is a **populated
+render-snapshot**, not a unit test. Two surfaces, both with existing harnesses to
+extend:
+1. **Leaderboard scales to 13 rows.** Extend the populated fixture
+   `ui::fixtures::fake_bakeoff_report_mirror()` (`crates/ui/src/fixtures.rs:1256`)
+   to **13 `LeaderRow`s** (4 singles + 8 ensembles + buy-and-hold), including ≥1
+   Fragile ensemble row (exercises the warn tag) and the crowned `★ best` accent.
+   Add a guard in
+   [`leaderboard_populated_render.rs`](../../crates/ui/tests/leaderboard_populated_render.rs)
+   asserting the 13-row table paints (crowned ACCENT teal + the always-negative
+   Max-DD clay across all rows + a healthy foreground-text floor) with the
+   `Empty` negative control still painting no table. If 13 rows exceed the
+   viewport, the existing scroll container carries them — the guard asserts the
+   table band rendered, not that all 13 are simultaneously on-screen.
+2. **The new ensemble rows render `PlanRuleShape::Ensemble` honestly.** The
+   forward-plan member-naming surface is **already render-proven** by
+   [`forward_f6_ensemble_named_render.rs`](../../crates/ui/tests/forward_f6_ensemble_named_render.rs)
+   ("Holds while at least k of {…} agree…"); because the new arms reuse
+   `PlanRuleShape::Ensemble` + the same `member_id_to_rule_shape` mapping (which
+   already covers all 4 base ids), the honest "≥ k of {members} agree" description
+   is produced for them with **no new code**. The render task adds one
+   crowned-`tr_mr_macd_rsi` (or `k2of4`) plan fixture + asserts its RULES band
+   paints the named-member brace-list (strict-exceedance vs the single-strategy
+   SMA negative control), confirming a NEW combination arm draws its rule
+   truthfully when crowned/forward-planned.
+
+### Frozen surfaces honoured (the hard constraints)
+
+- **Robustness bands FROZEN** — `classify_verdict` / `compute_robustness_flag` /
+  `verdict_bands` (`crates/backtest/src/bakeoff/robustness.rs`) + `bootstrap.rs`
+  are **byte-UNCHANGED**. This is NOT a B2/B3 band proposal (operator-rejected).
+  Framed strictly as "more candidates face the same bar," never "we moved the
+  bar." Every new arm is scored by the identical frozen gate on its OWN realized
+  equity, crown-eligible only if `robustness != Some(Fragile)`.
+- **Reuse-only arbitration** — `strategy::EnsembleStrategy` + `VoteMethod` +
+  `arbitrate` (`crates/strategy/src/ensemble.rs`) express generic k-of-n today →
+  ZERO new arbitration math. `rank_candidates` + the ADR-0066 benchmark exemption
+  (`crates/backtest/src/bakeoff/rank.rs`) UNCHANGED — a combination is just
+  another `CandidateResult`.
+- **Anchor-safe by construction** — the new `v0.8.vote.*` ids run with
+  `write_report=false` on the `RobustnessMode::Bootstrap` advisor path (the F8
+  contract, ADR-0063 § D5); a new id cannot collide with any anchored report
+  body. `scripts/verify_anchors.sh` must stay **119/119 byte-identical**, run
+  **before the first seam AND after the last** (any non-119 = STOP-and-route-back;
+  anchors are keyed by NAME not filename). No `anchors.toml` SHA /
+  `REVISION.toml` / `spec/*/reports/` body is touched.
+- **`BenchmarkWins` / `AllFragile` reachability UNCHANGED** (ADR-0066). A null
+  all-Fragile field ⇒ `BenchmarkWins` (the modal real-crypto outcome) remains
+  reachable WITH the 6 new arms present; the T6 bake-off records this as a
+  pre-registered prediction and reports the WHOLE slate regardless.
 
 ## Backtest Scenarios
-_architect + tester fill this. The decisive validation is a real-data bake-off
-on the standard advisor corpus (BTCUSDT H1-2024, `BinanceCache`,
-`RobustnessMode::Bootstrap{paths:1000}`) reporting, for all 13 arms, the
-robustness flag + p5/p50 Sharpe + `RecommendationOutcome`. The pre-registered
-prediction to record up front: **most or all combinations come back Fragile →
-`BenchmarkWins`**; the experiment is whether ANY combination's decorrelation
-lifts p5 Sharpe above 0 and clears the rest of the gate. Report the WHOLE slate,
-win or lose._
+
+_Architect, 2026-06-23._ The decisive validation is **one real-data bake-off** on
+the standard advisor corpus — no new anchored scenario (the advisor path runs
+`write_report=false`, so this produces NO anchored body and touches NO
+`anchors.toml` SHA).
+
+| Field | Value |
+|---|---|
+| Corpus | BTCUSDT, H1-2024 (`DateRange::H1_2024`), `ScenarioDataSource::BinanceCache` (the real hourly corpus) |
+| Field | the live `advisor_field()` = 4 singles + 8 ensembles (the 6 new + the 2 F8) + buy-and-hold appended by `run_bakeoff` = **13 arms** |
+| Gate | `RobustnessMode::Bootstrap { paths: 1000, seed: <LAB_DEFAULT_SEED low-8> }` — the frozen Politis–White block bootstrap, byte-unchanged |
+| Seed | `LAB_DEFAULT_SEED` (same-seed-every-arm — the apples-to-apples invariant) |
+| Report (per arm) | robustness flag, p5 Sharpe, p50 Sharpe, total-return, max-drawdown, trade_count, plus the run-level `RecommendationOutcome` + crowned arm |
+
+**Pre-registered prediction (record BEFORE running — this is what makes it an
+experiment, not a hunt):**
+1. Most or all combinations come back **Fragile** → run-level **`BenchmarkWins`**
+   (the modal real-crypto outcome; the live 7-arm field already does this,
+   ADR-0066). This is the **expected** result.
+2. The **`trend_pair` control** (`Unanimous{n:2}` [macd,sma], both trend) shows
+   **little-to-no p5-Sharpe lift** vs its members — if it lifts as much as the
+   trend∧mean-revert pairs, the decorrelation thesis is **falsified** (a real,
+   recordable finding either way).
+3. The `Unanimous{n:2}` trend∧mean-revert pairs likely sit **mostly Flat**
+   (low `trade_count`, near-zero return → Fragile) — honest, per OQ-3.
+
+**The actual question:** does ANY pre-registered combination's decorrelation lift
+its **p5 Sharpe above 0** (the binding `classify_verdict` constraint) AND clear
+the rest of the frozen gate → a non-Fragile, crown-eligible combination? **Report
+the WHOLE 13-arm slate, win or lose.** A null result ("every combination also
+Fragile, hold stands") is a valid + expected + shippable finding and is reported
+as honestly as a win. The tester's report records the prediction, the realized
+13-arm table, and whether the prediction held.
 
 ## Implementation
 _developer fills this._
@@ -283,3 +516,21 @@ _tester links to reports here._
   by construction); robustness bands FROZEN; anchor-safe; reuse-only. Search engine
   quarantined to a guarded follow-on (R5/OQ-4). Trace `REQ-ADVISOR-COMBINATION-SEARCH-001`.
   HANDOFF → architect.
+- 2026-06-23 (architect): Design + ADR-0067 + the developer task list. → `designed`.
+  Ratified the analyst's recommended 6-arm slate verbatim (3 `Unanimous{n:2}`
+  decorrelation pairs incl. the `trend_pair` predicted-null control + the complete
+  k∈{1,2,3}-of-4 ladder). OQ resolutions: **OQ-1** LITERAL `build_ensemble` ids
+  (no parser — engine already dispatches generically; widen the `match` pattern
+  only); **OQ-2** `default_ensemble_field()` is the single source of truth (+6
+  ids → field len 6→12; one runner field-count test moves in lockstep), ~+86%
+  wall-clock is within budget on the determinate-progress on-demand path (no UX
+  change); **OQ-3** `Unanimous{n:2}` mostly-Flat is HONEST, rendered truthfully via
+  the existing Fragile/trade_count + B1 "sat in cash" copy (no special-case);
+  **OQ-4** DEFER weighted/inverse-vol/regime to v0.2 (new VoteMethod surface + free
+  knob); **OQ-5** day-1 `combination_slate_divergence_end_to_end.rs` (each new arm
+  diverges ≥1bp from a member AND from buy-and-hold + no-duplicate, SMA-member
+  vote-mechanics per the F8 precedent + factory smoke over the real TOMLs);
+  **OQ-6** populated render-snapshots — leaderboard 13-row guard + the ensemble-rule
+  description (reuses F6's already-proven `PlanRuleShape::Ensemble` naming).
+  Frozen: bands byte-unchanged (NOT B2/B3), `rank_candidates`/ADR-0066 unchanged,
+  anchor-safe 119/119 by construction (`write_report=false`). HANDOFF → developer.
