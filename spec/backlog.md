@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-06-19
+updated: 2026-06-23
 ---
 
 # Backlog
@@ -48,8 +48,36 @@ paper-only, not-advice on every recommendation.
 ### v0.2 enhancements
 - **F6 — forward buy/sell plan detail** (M) — today's stance + entry/exit rules + projected sizing.
 - **F7 — EUR→USD fixed-rate** (S) — convert €200 at a config rate before sizing.
-- **F8 — strategy mix / LLM-ML ensemble** (L) — capital split across top-K; LLM-as-analyst confirm.
+- **F8 — strategy mix / LLM-ML ensemble** (L) — _shipped_ (the 2-arm pre-registered vote-ensemble
+  proof-of-seam + robustness-gate activation; `EnsembleStrategy`, ADR-0063). See CHANGELOG.
 - **F9 — guided UX polish + LLM-narrated "why"** (M).
+
+### Combination-space expansion (proposed 2026-06-23 — operator request)
+- **advisor-combination-search** (M, NEW, `proposed` — [feature.md](advisor-combination-search/feature.md),
+  trace `REQ-ADVISOR-COMBINATION-SEARCH-001`) — **expand the strategy-COMBINATION space, overfit-safely.**
+  Widen F8's bounded, **pre-registered** vote-ensemble slate from 2 → 8 arms (3 decorrelation pairings +
+  the complete k-of-4 ladder over the 4 base signals) → advisor field 4 singles + 8 ensembles +
+  buy-and-hold = 13 arms. **Crux = pre-registration** (a FIXED, code-declared falsifier slate; no search =
+  overfit-safe by construction), each arm scored through the **frozen** `RobustnessMode::Bootstrap` gate +
+  the buy-and-hold benchmark. Reuses `EnsembleStrategy`/`arbitrate`/`build_ensemble`/`run_bakeoff`/
+  `rank_candidates` VERBATIM (vote arms need ZERO new arbitration math). **Robustness bands FROZEN**
+  (NOT a B2/B3 band proposal); BenchmarkWins/AllFragile reachability UNCHANGED; anchor-safe by construction
+  (new `v0.8.vote.*` ids, `write_report=false`). Honest goal: discover whether ANY decorrelated combination
+  *survives the gate* — **not** manufacture a winner; a null all-Fragile result ("hold stands") is valid +
+  expected. **Out of v1 (recorded here):** a combination-**search** engine (overfit-prone — only with
+  walk-forward/OOS split + complexity penalty + pre-registered procedure + loud risk call-out); weighted /
+  inverse-vol / conditional-regime blends (need a new `VoteMethod` variant + a continuous knob = overfit
+  risk → defer to a v0.2 of this feature).
+
+#### Sibling strategy directions (operator-raised 2026-06-23 — one-liners only, NOT scoped yet)
+- **Short-selling single-coin strategies** (L, future) — the signal model is `Buy|Sell|Hold` with
+  Sell = exit-to-flat; **shorting is deferred to "v2"** (`PixelShortObservation`/`PairShortObservation`
+  are observation-only today). Needs real engine work: negative positions + borrow/funding cost.
+  Same robustness-gate discipline would apply. A separate analyst spawn, not part of combination-search.
+- **Expand the single-coin strategy library with new signal types** (M, future) — add new base signals
+  beyond the current 4 (SMA / MACD / RSI / Bollinger). Each new signal would be a new bake-off arm scored
+  by the frozen gate; would also enlarge the decorrelation menu the combination feature draws from.
+  A separate analyst spawn.
 
 Full rationale + reuse-vs-new mapping + the ranked product decisions: [`product.md`](product.md).
 

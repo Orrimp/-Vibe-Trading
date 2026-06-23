@@ -2,7 +2,7 @@
 slug: product
 status: shipped
 owner: analyst
-updated: 2026-06-22
+updated: 2026-06-23
 ---
 
 # Product Requirements — Single-Coin Investment Advisor (paper)
@@ -476,6 +476,39 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-06-23 (analyst, combination-space scoping): scoped the operator-requested
+  (2026-06-23 *"combinations of the strategies could yield good result — we need
+  to calculate the combination of multiple strategies"*) **expansion of the
+  strategy-combination space** as a new feature
+  ([`advisor-combination-search/feature.md`](advisor-combination-search/feature.md),
+  trace `REQ-ADVISOR-COMBINATION-SEARCH-001`). It **widens** — does not change —
+  **§ Open decisions D3** (Ensemble/LLM-mix = v0.2, bounded + pre-registered): F8
+  shipped the 2-arm vote-ensemble proof-of-seam; this adds **6 more pre-registered
+  vote-threshold arms** (3 decorrelation pairings + the complete k-of-4 ladder over
+  the existing 4 base signals) → a 13-arm advisor field. The **honest framing is
+  load-bearing and inline in the brief**: combinations are a **bounded,
+  pre-registered falsifier slate** (a FIXED, code-declared set chosen *before*
+  results — no search = overfit-safe by construction) scored through the **same
+  frozen `RobustnessMode::Bootstrap` gate + same buy-and-hold benchmark** as every
+  single strategy; **decorrelation is the legitimate Fragile→Robust lever** (it
+  lifts the binding p5-Sharpe signal) but **only when members carry real, even weak,
+  edge** — and the concluded 2026-06-08 ship-passive verdict + the live all-Fragile
+  field make a **null result ("all combinations also Fragile, hold stands") the
+  expected, valid, shippable outcome.** The goal is to discover whether ANY
+  decorrelated combination *survives the gate*, **NOT** to manufacture a winner. The
+  robustness **bands stay FROZEN** (this is explicitly NOT a B2/B3 band proposal —
+  those were operator-rejected); `BenchmarkWins`/`AllFragile` reachability is
+  UNCHANGED; anchor-safe by construction. **Out of v1** (recorded as guarded
+  follow-ons): a combination-**search** engine (only with walk-forward/OOS +
+  complexity penalty + pre-registered procedure + loud risk call-out) and
+  weighted/inverse-vol/regime blends (a continuous knob = overfit risk → a v0.2 of
+  this feature). Two **sibling directions** the operator raised are backlog
+  one-liners only (NOT scoped here): **short-selling** single-coin strategies
+  (deferred to v2 — needs engine work for negative positions + borrow/funding;
+  the signal model is `Buy|Sell|Hold` with Sell = exit-to-flat today) and
+  **expanding the single-coin signal library** with new signal types. Does NOT
+  change § journey, § What this product IS / IS NOT, D1–D5, or the 2026-06-08
+  ship-passive verdict. No engine code; no anchored content touched.
 - 2026-06-22 (orchestrator, B1 robustness-honesty reconcile): sharpened **§ D1**
   (ranking metric) + the **Honesty gate** success metric to match the shipped B1
   behaviour ([ADR-0066](architecture/adr/0066-benchmark-exempt-from-allfragile.md)):
