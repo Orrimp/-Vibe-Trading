@@ -1,7 +1,7 @@
 ---
 slug: advisor-short-selling
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-23
 ---
 
@@ -409,11 +409,211 @@ the developer fills `crates` + `tests`; the tester fills `anchors` after a PASS 
 still 119/119 — no new anchored report, `write_report=false`).
 
 ## Design
-_architect fills this_
+
+> Architect M-T1 lock, 2026-06-23. **ADR-0068** is the binding decision record;
+> this section is the feature-local restatement. The six open questions Q-SS-1..6
+> are resolved below. Verified against code 2026-06-23: the clamp sites, the
+> `montecarlo.rs` short engine, the audit reader/writer seam, and the strategy
+> library all match the brief, with **one correction** — there is a FOURTH
+> long-only clamp the brief did not enumerate (see § Engine surfaces).
+
+### One verified correction to the audit (de-risks Q-SS-3 substantially)
+
+The brief frames Q-SS-3 (the audit-ledger seam) as the dominant new risk. Reading
+the code narrows it sharply:
+
+- **The bake-off path never touches the audit ledger.** `run_bakeoff` →
+  `run_scenario` → `sma_composed_run` runs entirely on in-memory `BacktestState`
+  (`cli_types.rs`); no `audit::journal::*` call is on that path. So the
+  `open_positions_at` `qty > 0` reject is **NOT on the bake-off critical path at
+  all** — the ranking, the equity curves, and the robustness gate never read it.
+- **The double-entry WRITER is already sign-agnostic.** `post_fill_with_signal`
+  (`journal.rs:64-237`) writes the same balanced `Dr assets:cash:USDT` /
+  `Cr assets:position:<SYM>` legs for a Sell whether it closes a long or opens a
+  short — the reconciler invariant (Σ debits == Σ credits) holds unchanged. The
+  reject lives **only** in the *reader* `open_positions_at` (`query.rs:1872-1881`),
+  consumed by exactly two callers: `crates/reports::lib` and (transitively) the
+  cockpit positions widget. Never the equity curve.
+
+Net: Q-SS-3 is a **reader-only relaxation** (emit a signed `OpenPosition` instead
+of raising), with the writer + reconciler + `audit`'s no-sibling-imports rule all
+untouched. This is the crux, and it is far narrower than feared.
+
+### Engine surfaces (the FOUR long-only clamps — gate, don't delete)
+
+The single-coin path is long-only by **four** explicit clamps (the brief named
+three; the fourth is the forward paper loop). The equity formula `cash + qty·mark`
+is already short-correct at every one of them. Each clamp becomes *gated* on
+`short_enabled` so it is byte-for-byte HEAD's code when shorting is off:
+
+| # | Site | Today | Gated change |
+|---|------|-------|--------------|
+| 1 | `engine.rs:1632-1640` `desired_side` | Buy-only-when-flat / Sell-only-when-long | when `short_enabled`: `Sell` when `qty ≤ 0` → open/extend short; `Buy` when `qty < 0` → cover (the `montecarlo.rs` fork) |
+| 2 | `engine.rs:1713-1715` sell-fill | clamp `base_qty` to 0 | when `short_enabled`: allow negative `base_qty` |
+| 3 | `cli_types.rs:632-635` `apply_sell` | clamp `position_qty` to 0 + zero cost | when `short_enabled`: allow negative `position_qty`, carry signed cost |
+| 4 | `sma_composed_run.rs:554` sell-fill | clamp `base_qty` to 0 | when `short_enabled`: allow negative `base_qty` |
+| **+** | **`runtime.rs:1809-1813` + `:1884-1885`** (forward paper loop) | **same `desired_side` clamp + `.max(0)`** | **when `short_enabled`: same as #1/#2 — this is the F5b parity site (Q-SS-6)** |
+
+The gate value `short_enabled` is set `true` only for the new `_ls` / `always_short`
+arms; every existing long-only arm leaves it `false` and is byte-identical.
+
+### Q-SS-1 — Signal model: position-aware INTERPRETATION of `Buy`/`Sell` (no new variant)
+
+**Decision: reuse `Buy | Sell | Hold`, interpret on the sign of the current
+position — Sell-when-flat-or-short opens/extends a short, Buy-when-short covers —
+exactly as `montecarlo.rs:249-455` forks on `current_qty < 0`.** No new
+`SignalKind` variant.
+
+- **Why:** (a) it is the proven MN route; (b) it keeps every exhaustive
+  `match sig.kind` across the workspace total with **zero churn** — no `_ => {}`
+  audit, no serde-rename, no `signal_kind_to_side_str` / `PlanRuleShape` /
+  forecast / ensemble-vote edit. The single-coin `desired_side` block (clamp #1)
+  becomes a clean four-arm match on `(kind, sign(qty))`.
+- **Rejected:** explicit `OpenShort` / `CoverShort` variants — they read marginally
+  cleaner in isolation but force edits in every signal consumer for no behavioural
+  gain, multiplying exactly the blast radius the freeze contains.
+
+### Q-SS-2 — Short engine home: in-place-gated (not a sibling scenario)
+
+**Decision: in-place in `run_scenario` / `sma_composed_run` (and the forward loop),
+gated on `short_enabled`,** mirroring the MN `k_short` precedent. A sibling
+`*_short` scenario is rejected — it would duplicate the solvency/fill/equity loop
+and split the byte-identity re-proof into two gates. One engine → one
+`*_byte_identical_to_head` safety surface.
+
+### Q-SS-3 — Audit-ledger seam: relax the READER to emit signed positions (writer + reconciler unchanged)
+
+**Decision (the crux): change only the reader `open_positions_at`.**
+
+- Replace the `running_qty < 0` → `LedgerError::Database` raise (`query.rs:1875`)
+  with emission of a **signed** `OpenPosition` (`qty` may be `< 0`). The field type
+  already holds a signed `Decimal`; only the doc-invariant relaxes from "`qty > 0`"
+  to "signed: positive = long, negative = short."
+- The `running_qty == 0` (flat) skip stays. A short lot's `avg_cost_basis` is the
+  weighted-average **open (proceeds) price**, computed by the same
+  proportional-release arithmetic the long path uses, mirrored for the sign.
+- `post_fill_with_signal` (writer) and the double-entry reconciler are
+  **byte-unchanged**. `audit` still depends only on `trading_core` — the
+  no-sibling-imports rule is intact (the change is internal to `query.rs`).
+- The two consumers (`crates/reports::lib`, cockpit positions widget) render the
+  signed qty (see § UI). A **signed-position reader unit test** (a journaled
+  sell-to-open materializes as `qty < 0`, not an error) is the regression guard.
+- **Rejected:** a separate `open_positions_signed_at` reader (forks the reader,
+  forces both consumers to choose); keeping shorts out of the audited table (the
+  cockpit positions panel would silently lie on a short — a fidelity lie the
+  honest-framing mandate forbids).
+
+### Q-SS-4 — Funding constant home + cadence: `core::funding::FundingRate`, per-bar
+
+**Decision: a new honest-constant type `core::funding::FundingRate`** (private
+`Decimal` field + checked constructor rejecting non-finite/absurd values, modelled
+exactly on `core::fx::FxRate` from ADR-0065), with a `DEFAULT_PERP_FUNDING_RATE`
+≈ 0.01%/8h (the historical BTC-perp average, operator-tunable). It lives in `core`
+next to `fx.rs` so the bake-off, the forward loop, and any future live feed read
+one type — **not** a scenario-config primitive.
+
+- **Cadence: per-bar accrual.** The real-data single-coin loop shares no synthetic
+  8h epoch with the MN grid (whose 8h detection keys off `EPOCH_2023_NS`), so per-bar
+  is both correct and simpler. `cash += notional·(−rate_per_bar)` where
+  `rate_per_bar` scales the configured 8h rate to the bar timeframe; for an open
+  short `notional = qty·mark < 0`, so a positive rate is a **cost**. It flows
+  through `equity = cash + qty·mark` automatically → it bites the divergence test
+  and the realized-P&L.
+- A live/historical funding feed (the `FundingObs` corpus) is a **v0.2** upgrade,
+  layered on this constant as its fallback.
+
+### Q-SS-5 — Liquidation floor + negative-P&L policy: inherit 0.5; €200 P/L MAY print negative
+
+**Decision: inherit `maintenance_margin_frac = 0.5` verbatim** from
+`montecarlo.rs`. Mark-to-market the short every bar (loss grows without bound);
+force-cover **all** shorts when
+`equity < maintenance_margin_frac × gross_short_notional`, which **may drive cash
+negative** in an extreme gap. Losses are **NOT** clamped at 0. The displayed €200
+P/L is **allowed to print negative**; the UI does not clamp it. Every short surface
+carries the disclaimer *"a short can lose MORE than your €200 — an unbounded loss;
+a 2× price move wipes you out and then some."* + not-advice + paper/simulated-only.
+
+### Q-SS-6 — Paper-sim parity: ONE shared `backtest::short_exec` helper
+
+**Decision: extract the signed open/cover/fund/liquidate state transition into a
+pure, sync, deterministic helper** in `crates/backtest` (e.g. a `short_exec`
+module) operating on the shared in-memory shape (cash, signed `position_qty`, mark,
+fee, `FundingRate`, the liquidation predicate). **Both** the bake-off
+(`run_scenario` / `sma_composed_run`) **and** the agent forward loop
+(`spawn_trading_loop`, `runtime.rs:1758+` — the fourth clamp site) call the same
+helper, so the forward paper run is consistent-by-construction with the ranked
+bake-off (the F5/F5b discipline). `crates/agent` already depends on
+`crates/backtest`, so no new crate edge. The helper has no I/O → unit- and
+property-testable in isolation.
+
+### The FIXED pre-registered 5-arm slate
+
+Code-declared, no search (overfit-safe — the combination-slate discipline). The
+long-only arms are UNTOUCHED; the `_ls` arms are strictly additive new bake-off arms
+run with `write_report = false`.
+
+| Arm | Rule | Short branch |
+|-----|------|--------------|
+| `sma_cross_ls` | SMA crossover | long on golden cross, **short on death cross** (was flat) |
+| `macd_ls` | MACD | long on bullish flip, short on bearish flip |
+| `rsi_ls` | RSI reversion | long on oversold, short on overbought |
+| `bbands_ls` | Bollinger | long on lower-band touch, short on upper-band touch |
+| `always_short` | always-short benchmark control | the down-side mirror of buy-and-hold — loses on any up-trend by construction; anchors the day-1 downtrend-profit sign assertion |
+
+The `_ls` arms reuse the existing indicator computation verbatim — only the
+**flat → short** branch is new (via the Q-SS-1 interpretation route). The slate is
+FIXED before any results are read; the operator ratifies it as a pre-registration.
+
+### Anchor-safety + the freeze (both load-bearing, both BY CONSTRUCTION)
+
+- New short arms run on the bake-off path with **`write_report = false`** → they
+  touch no anchored report body → `verify_anchors.sh` stays **119/119** (run before
+  the first clamp edit AND after the last; anchors keyed by NAME not filename).
+- The single-coin long-only path is re-proven byte-identical with a
+  `*_byte_identical_to_head` test mirroring the MN `run_path` k_short=0 re-proof.
+- `classify_verdict` / `compute_robustness_flag` / `verdict_bands` / `bootstrap.rs`
+  + `rank_candidates` + the ADR-0066 benchmark exemption are **FROZEN** — this is
+  NOT a band proposal; the gate judges the short arms' equity as-is and buy-and-hold
+  stays the benchmark. `BenchmarkWins` / `AllFragile` reachability is UNCHANGED.
+- **No anchor SHA mutates** → no `spec/anchors.toml` amendment, no ADR-0038 §D6
+  re-emission. This is the second feature to touch the single-coin short clamps
+  after the MN feature touched `run_path`, but unlike the MN θ-surface work it
+  writes **no new anchored report**.
+
+### Honest framing (load-bearing)
+
+No alpha claim. Shorts are very likely **also Fragile** under the frozen gate (the
+MN long/short basis spread came back FAMILY-UNIFORM-FRAGILE on all 12 surfaces;
+single-coin directional shorts inherit full inverse market beta + a real funding
+cost, with no prior reason to clear a bar long-only could not). A **null result**
+("all short arms also Fragile; hold still stands") is the EXPECTED, valid, shippable
+outcome. The gate decides, not the author.
 
 ## Backtest Scenarios
-_analyst + architect fill this using the backtest/scenario template — note the bear
-corpus `4f390622` for the day-1 sign assertions and the resampled-path robustness read._
+
+Two distinct scenario classes — keep them separate (the brief's bear-window note):
+
+1. **Deterministic day-1 sign assertions (the e2e gate).** Use the pinned 2021-22
+   bear corpus `4f390622` (2022 BTC ≈ −57%). On a falling-price window the
+   `always_short` arm's terminal equity must be **> initial** (it profits) while a
+   long/flat arm sits flat or loses — asserted as a *signed* inequality. This is the
+   load-bearing "short is real and points the right way" proof. A synthetic
+   monotone-down fixture is also acceptable for the unit-level divergence/no-op
+   checks (the `combination_slate_divergence_end_to_end.rs` pattern uses synthetic
+   `SmaCrossover` bars for guaranteed signals); the bear corpus is for the headline
+   sign assertion.
+
+2. **The robustness read (the gate's verdict).** The frozen
+   `RobustnessMode::Bootstrap` gate judges each `_ls` / `always_short` arm across
+   resampled paths exactly like every long arm — buy-and-hold (ADR-0066) stays the
+   benchmark. Expected: the short arms come back **Fragile** (the honest null). The
+   bear corpus is **not** cherry-picked for a favorable headline — robustness is read
+   across resampled paths regardless of the chosen window.
+
+Anchor note: every short-arm run is `write_report = false` → no anchored report body
+is created → `verify_anchors.sh` stays 119/119. No new anchor is added by this
+feature (the tester confirms 119/119 post-PASS; `anchors = []` stays empty in the
+trace row).
 
 ## Implementation
 _developer fills this_
@@ -423,6 +623,23 @@ _tester links to reports here — expect FAMILY-Fragile is a valid PASS; the gat
 
 ## Changelog
 
+- 2026-06-23 (architect, M-T1 lock): authored the Design + **ADR-0068** (registered
+  atomically in `spec/architecture/adr/README.md`; `adr_registry_check.py --pre-commit`
+  green). Resolved Q-SS-1..6: (1) signal = position-aware INTERPRETATION of `Buy`/`Sell`,
+  no new `SignalKind`; (2) short engine = in-place-gated on a single `short_enabled` flag,
+  not a sibling scenario; (3) audit seam = **reader-only** relaxation of `open_positions_at`
+  to emit signed `OpenPosition` (the writer `post_fill_with_signal` is already sign-agnostic
+  → reconciler UNAFFECTED; the bake-off never journals → the reject is off the bake-off
+  path entirely; `audit` no-sibling-imports INTACT); (4) funding = a `core::funding::FundingRate`
+  `FxRate`-style constant, per-bar accrual; (5) inherit the 0.5-floor liquidation, €200 P/L
+  may print NEGATIVE; (6) one shared `backtest::short_exec` helper for bake-off ‖ forward-loop
+  parity. **Verified correction:** there is a FOURTH long-only clamp the brief did not
+  enumerate — the forward paper loop `runtime.rs:1809-1813`/`:1884-1885` (it is also the F5b
+  parity site). Slate FIXED: `{sma_cross_ls, macd_ls, rsi_ls, bbands_ls, always_short}`,
+  long-only arms UNTOUCHED. Gate/bands/benchmark FROZEN, `write_report=false` → 119/119 BY
+  CONSTRUCTION, no anchor SHA mutates (no ADR-0038 §D6 re-emission). Set status `arch-done`;
+  rewrote `tasks.md` with the ordered developer ‖ ui-designer build. No engine code, no
+  anchored content touched.
 - 2026-06-23 (analyst, scoping): authored the brief. Operator directed the "expensive
   short selling" 2026-06-23 — promoted from the `backlog.md` one-liner to a full proposal.
   **Key audit finding that de-risks the estimate:** a complete, tested, shipped short-side
