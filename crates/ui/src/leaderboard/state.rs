@@ -428,6 +428,51 @@ impl LeaderboardLookback {
             },
         }
     }
+
+    /// Map this lookback to the **Lab screen's** `crate::lab::state::DateRange`,
+    /// so clicking a leaderboard row to inspect a strategy in the Lab carries the
+    /// SAME window the bake-off ranked it on (advisor-leaderboard-inspect-in-lab).
+    ///
+    /// The two fixed presets map to the Lab's named `Preset`s (so the Lab's
+    /// date-range picker shows the matching chip); the relative windows map to a
+    /// `Custom` ISO-date pair (`now - N days` → `now`, `YYYY-MM-DD`). The Lab run
+    /// path (`cockpit_live.rs` → `lab_config_to_scenario`) accepts date-only
+    /// `Custom:<start>:<end>` labels, so a `Custom` window runs faithfully — the
+    /// byte-identical window the leaderboard scored.
+    ///
+    /// `now_ms` is wall-clock UTC epoch-millis, passed in (like `to_date_range`)
+    /// so the mapping stays pure + testable. A non-representable `now_ms`
+    /// (out of `OffsetDateTime`'s range — never reached for real clocks) falls
+    /// back to the `H1_2024` corpus preset so the Lab always opens runnable.
+    #[must_use]
+    pub fn to_lab_date_range(self, now_ms: i64) -> crate::lab::state::DateRange {
+        use crate::lab::state::{DateRange as LabRange, Preset};
+        match self.relative_days() {
+            Some(days) => {
+                // `YYYY-MM-DD` ISO date for `now` and `now - N days`. The Lab's
+                // `lab_config_to_scenario` parser accepts the date-only form.
+                let fmt = time::macros::format_description!("[year]-[month]-[day]");
+                let to_iso = |epoch_ms: i64| -> Option<SmolStr> {
+                    let secs = epoch_ms.div_euclid(1_000);
+                    time::OffsetDateTime::from_unix_timestamp(secs)
+                        .ok()
+                        .and_then(|dt| dt.format(&fmt).ok())
+                        .map(SmolStr::new)
+                };
+                match (to_iso(now_ms - days * MS_PER_DAY), to_iso(now_ms)) {
+                    (Some(start_raw), Some(end_raw)) => LabRange::Custom { start_raw, end_raw },
+                    // Unreachable for real clocks; keep the Lab runnable rather
+                    // than threading a fallible result through the click handler.
+                    _ => LabRange::Preset(Preset::H1_2024),
+                }
+            }
+            // Fixed presets → the Lab's matching named preset.
+            None => match self {
+                LeaderboardLookback::H2_2024 => LabRange::Preset(Preset::H2_2024),
+                _ => LabRange::Preset(Preset::H1_2024),
+            },
+        }
+    }
 }
 
 /// Parse a budget input string into a non-negative `Decimal` of euros.

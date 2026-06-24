@@ -1822,6 +1822,31 @@ pub enum Message {
     ///   pair is preserved.
     OpenStrategyInLab(StrategyId),
 
+    /// Inspect a leaderboard row's strategy in the Lab, PRESEEDED with the
+    /// leaderboard's currently-chosen coin + lookback window
+    /// (advisor-leaderboard-inspect-in-lab — clicking any leaderboard data row).
+    ///
+    /// Same navigation + preselect as [`Message::OpenStrategyInLab`] (factored
+    /// into `open_strategy_in_lab` so the two arms can never drift), PLUS:
+    /// - Sets `lab_state.pair = (Binance, coin)` — the leaderboard universe is
+    ///   single-venue (default Binance); the operator's chosen coin OVERRIDES
+    ///   any prior Lab pair (unlike the cold-start-only seed of
+    ///   `OpenStrategyInLab`) so the Lab inspects the coin that was just ranked.
+    /// - Sets `lab_state.range` from `lookback.to_lab_date_range(now)` — the
+    ///   byte-identical window the bake-off scored, so the Lab run is faithful.
+    ///
+    /// Pure (navigate + preseed) per the `OpenLabFromCompare` precedent — no
+    /// bin-layer `Task` chain required to land in a runnable Lab. The operator
+    /// presses Run to execute the inspected strategy on that coin/window.
+    InspectStrategyFromLeaderboard {
+        /// The clicked row's strategy id (e.g. `"v0.5.macd"`).
+        strategy: StrategyId,
+        /// The leaderboard's currently-chosen coin (loaded as the Lab pair).
+        coin: Symbol,
+        /// The leaderboard's currently-chosen lookback (loaded as the Lab range).
+        lookback: crate::leaderboard::LeaderboardLookback,
+    },
+
     /// Risk telemetry refresh from the new agent-runtime channel
     /// (Q3 ratification). Pure assignment; `risk_state = Ready(state)`.
     /// `Subscription::batch` recipe in `crates/ui/src/live.rs` maps
@@ -2242,6 +2267,34 @@ fn enqueue_toast(model: &mut Cockpit, message: SmolStr, severity: ToastSeverity)
     });
 }
 
+/// Shared navigate-to-Lab + preselect core for the two "open this strategy in
+/// the Lab" entry points (`OpenStrategyInLab` from the registry card, and
+/// `InspectStrategyFromLeaderboard` from a leaderboard row click).
+///
+/// Pure: navigate + preselect, no bin-layer `Task` chain (the `OpenLabFromCompare`
+/// precedent). It (a) switches to `Screen::Lab`, (b) preselects the strategy in
+/// both `selected_strategy` and `lab_state.strategy`, (c) clears the stale
+/// run-report mirrors (the tuple changed — parity with `LabSelectPrimaryStrategy`
+/// / `OpenLabFromCompare`, so the Lab never paints a previous pick's curve), and
+/// (d) seeds the cold-start default pair ONLY when none is selected so the Lab
+/// opens runnable. Callers that carry an authoritative pair/range (the
+/// leaderboard) override after this returns.
+fn open_strategy_in_lab(model: &mut Cockpit, id: StrategyId) {
+    model.current_screen = Screen::Lab;
+    model.selected_strategy = Some(id.clone());
+    model.lab_state.strategy = Some(id);
+    model.lab_state.last_run_report = None;
+    model.lab_state.prev_run_report = None;
+    if model.lab_state.pair.is_none() {
+        let pair = (
+            crate::lab::defaults::LAB_COLD_START_VENUE,
+            crate::lab::defaults::cold_start_symbol(),
+        );
+        model.selected_symbol = Some(pair.clone());
+        model.lab_state.pair = Some(pair);
+    }
+}
+
 /// Pure state-transition function. Never spawns async work directly —
 /// that's the `Subscription`'s job in the binary.
 ///
@@ -2619,28 +2672,37 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::OpenStrategyInLab(id) => {
             // "Open in Lab" — compound dispatch (the OpenLabFromCompare
             // precedent). Pure: navigate + preselect, no bin-layer Task chain.
-            // Order mirrors OpenLabFromCompare: screen + strategy first
-            // (tuple change clears the run-report mirrors), then ensure a pair
-            // so the Lab opens runnable.
-            model.current_screen = Screen::Lab;
-            model.selected_strategy = Some(id.clone());
-            model.lab_state.strategy = Some(id);
-            // Tuple changed — clear stale run-report mirrors so the Lab does
-            // not render a previous pick's equity curve against the new one
-            // (parity with LabSelectPrimaryStrategy / OpenLabFromCompare).
-            model.lab_state.last_run_report = None;
-            model.lab_state.prev_run_report = None;
-            // Seed the cold-start default pair ONLY when none is selected, so
-            // the Lab's Run gate (strategy AND pair) is satisfiable straight
-            // away. An operator-selected pair is preserved.
-            if model.lab_state.pair.is_none() {
-                let pair = (
-                    crate::lab::defaults::LAB_COLD_START_VENUE,
-                    crate::lab::defaults::cold_start_symbol(),
-                );
-                model.selected_symbol = Some(pair.clone());
-                model.lab_state.pair = Some(pair);
-            }
+            // Shared with InspectStrategyFromLeaderboard so the nav/preselect/
+            // clear-stale-reports core can never drift between the two entry
+            // points; the cold-start default pair seed lives here.
+            open_strategy_in_lab(model, id);
+        }
+        Message::InspectStrategyFromLeaderboard {
+            strategy,
+            coin,
+            lookback,
+        } => {
+            // advisor-leaderboard-inspect-in-lab — clicking a leaderboard data
+            // row jumps to the Lab PRESEEDED with that row's strategy + the
+            // leaderboard's chosen coin + lookback. Same navigation/preselect
+            // core as OpenStrategyInLab (shared helper), but the coin + window
+            // are AUTHORITATIVE here (the operator just chose them on the
+            // leaderboard), so they override any prior Lab pair/range.
+            open_strategy_in_lab(model, strategy);
+            // Override the pair with the leaderboard's coin. The leaderboard
+            // universe is single-venue (default Binance per F3); map the coin
+            // Symbol to the Lab's (Venue, Symbol) pair. This deliberately
+            // STOMPS the cold-start default the helper may have seeded — the
+            // ranked coin is what we want to inspect, not BTCUSDT-by-default.
+            let pair = (crate::lab::defaults::LAB_COLD_START_VENUE, coin);
+            model.selected_symbol = Some(pair.clone());
+            model.lab_state.pair = Some(pair);
+            // Load the leaderboard's chosen lookback as the Lab date range —
+            // the byte-identical window the bake-off scored this strategy on,
+            // so the subsequent Lab run is faithful (relative windows resolve
+            // against wall-clock `now` HERE, at the message boundary).
+            let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+            model.lab_state.range = lookback.to_lab_date_range(now_ms);
         }
         Message::RiskStateRefreshed(state) => {
             model.risk_state = PanelState::Ready(state);

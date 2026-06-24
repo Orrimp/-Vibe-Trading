@@ -58,10 +58,11 @@
 
 use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text, button};
 use iced::{Border, Length};
+use trading_core::{StrategyId, Symbol};
 
 use crate::leaderboard::state::{
-    BakeoffReportMirror, LeaderRow, NarrationState, OutcomeKind, ReasonLabel, RecommendationMirror,
-    RobustnessLabel,
+    BakeoffReportMirror, LeaderRow, LeaderboardLookback, NarrationState, OutcomeKind, ReasonLabel,
+    RecommendationMirror, RobustnessLabel,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
@@ -348,7 +349,10 @@ fn result_body(
         // The run failed — prefix + the engine's detail (never a bare "no data").
         PanelState::Error(detail) => error_pane(detail, mode),
         // The ranked leaderboard + recommendation (+ the F9 narration state).
-        PanelState::Ready(report) => ready_pane(report, &st.narration, mode),
+        // `coin` + `lookback` are threaded down so each data row can build the
+        // `InspectStrategyFromLeaderboard` message (click → inspect in the Lab
+        // on the SAME coin/window the bake-off ranked).
+        PanelState::Ready(report) => ready_pane(report, &st.narration, &st.coin, st.lookback, mode),
     }
 }
 
@@ -409,10 +413,12 @@ fn error_pane(detail: &str, mode: ThemeMode) -> crate::Element<'_> {
 fn ready_pane<'a>(
     report: &'a BakeoffReportMirror,
     narration: &'a NarrationState,
+    coin: &Symbol,
+    lookback: LeaderboardLookback,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     let recommendation = recommendation_block(report, narration, mode);
-    let table = leaderboard_table(report, mode);
+    let table = leaderboard_table(report, coin, lookback, mode);
 
     let mut stack = Column::new()
         .spacing(space::L)
@@ -694,7 +700,12 @@ fn reason_copy(reason: ReasonLabel) -> &'static str {
 /// The leaderboard table — a header row + one row per candidate, in `ranked`
 /// (best-first) order. The crowned row gets the `ACCENT` treatment; the
 /// benchmark row gets the `benchmark` tag.
-fn leaderboard_table(report: &BakeoffReportMirror, mode: ThemeMode) -> crate::Element<'_> {
+fn leaderboard_table<'a>(
+    report: &'a BakeoffReportMirror,
+    coin: &Symbol,
+    lookback: LeaderboardLookback,
+    mode: ThemeMode,
+) -> crate::Element<'a> {
     let mut col = Column::new().spacing(space::XXS).push(header_row(mode));
 
     // Iterate in ranked (best-first) order. `rank` is the 1-based display
@@ -704,7 +715,7 @@ fn leaderboard_table(report: &BakeoffReportMirror, mode: ThemeMode) -> crate::El
             continue; // defensive: ranked indices are always in-range
         };
         let is_crowned = report.crowned == Some(row_idx);
-        col = col.push(data_row(rank + 1, leader, is_crowned, mode));
+        col = col.push(data_row(rank + 1, leader, is_crowned, coin, lookback, mode));
     }
 
     // The table needs no titled frame header (it has its own column-header
@@ -772,12 +783,14 @@ fn col_head_fill(label: &'static str, mode: ThemeMode) -> crate::Element<'static
 /// `ACCENT` left rule) + `ACCENT` strategy text + a `★ best` tag; non-crowned
 /// rows are neutral. The benchmark row carries a `benchmark` tag. Numbers are
 /// right-aligned with `pos`/`neg`/`warn`-only colour.
-fn data_row(
+fn data_row<'a>(
     rank: usize,
-    leader: &LeaderRow,
+    leader: &'a LeaderRow,
     is_crowned: bool,
+    coin: &Symbol,
+    lookback: LeaderboardLookback,
     mode: ThemeMode,
-) -> crate::Element<'_> {
+) -> crate::Element<'a> {
     // Rank cell.
     let rank_cell = Text::new(format!("{rank}"))
         .size(text::BODY)
@@ -882,7 +895,44 @@ fn data_row(
     // Crowned rows get the 2 px ACCENT left rule (the active-row pattern);
     // non-crowned rows pass `active = false` (transparent rule, identical
     // layout) so the table stays aligned.
-    frame::active_row(row.into(), is_crowned, mode)
+    let styled_row = frame::active_row(row.into(), is_crowned, mode);
+
+    // advisor-leaderboard-inspect-in-lab — make the whole row clickable: a
+    // jump to the Lab preseeded with THIS row's strategy + the leaderboard's
+    // chosen coin + lookback. Wrap the already-styled row in a TRANSPARENT,
+    // zero-padding button so the table still reads as a table (no button
+    // chrome) — the ACCENT left-rule, tags, and column alignment all survive
+    // inside. A subtle `ACCENT_SOFT` hover backdrop is the only affordance, so
+    // the rows are discoverable as interactive without looking like a row of
+    // buttons. The message content is owned (`StrategyId` from the row id +
+    // the cloned coin + Copy lookback) so it satisfies the button's `Clone`
+    // bound regardless of the borrowed row content.
+    let inspect_msg = Message::InspectStrategyFromLeaderboard {
+        strategy: StrategyId::new(leader.strategy.as_str()),
+        coin: coin.clone(),
+        lookback,
+    };
+    Button::new(styled_row)
+        .width(Length::Fill)
+        .padding(0)
+        .on_press(inspect_msg)
+        .style(move |_t: &iced::Theme, status: button::Status| {
+            // Default: fully transparent (the row paints its own treatment).
+            // Hovered/pressed: a faint ACCENT_SOFT wash signals the row is a
+            // click target. No border/radius — keep the table grid intact.
+            let background = match status {
+                button::Status::Hovered | button::Status::Pressed => {
+                    Some(color::ACCENT_SOFT.current(mode).into())
+                }
+                button::Status::Active | button::Status::Disabled => None,
+            };
+            button::Style {
+                background,
+                text_color: color::FG_1.current(mode),
+                ..Default::default()
+            }
+        })
+        .into()
 }
 
 /// A compact inline tag (`SMALL`, coloured). Used for the crown / vote /
