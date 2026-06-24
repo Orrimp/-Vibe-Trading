@@ -642,6 +642,14 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         last_run_report_present = model.lab_state.last_run_report.is_some(),
         "lab::view chart inputs"
     );
+    // lab-buy-sell-overlay-align — the chart reserves a WIDE right gutter for
+    // the equity Y-axis when an equity overlay is present (`compare` is always
+    // empty at Phase A, so this equals `equity_overlay.is_some()`). The volume
+    // histogram below must mirror that choice so its plot area stays
+    // horizontally aligned with the chart's — i.e. each per-bar volume bar sits
+    // directly beneath its buy/sell triangle. Captured here BEFORE
+    // `equity_overlay` is moved into `chart::view`.
+    let chart_has_equity_axis = equity_overlay.is_some();
     let chart_body = if let Some((_, _)) = active {
         chart::view(
             bars,
@@ -660,9 +668,13 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let histogram_label = Text::new(CHART_VOLUME_HISTOGRAM_LABEL)
         .size(text::MICRO)
         .color(color::FG_3.current(mode));
-    let histogram_canvas = Container::new(volume_histogram::view(bins, mode))
-        .width(Length::Fill)
-        .height(Length::Fixed(HISTOGRAM_HEIGHT_PX));
+    let histogram_canvas = Container::new(volume_histogram::view_aligned(
+        bins,
+        chart_has_equity_axis,
+        mode,
+    ))
+    .width(Length::Fill)
+    .height(Length::Fixed(HISTOGRAM_HEIGHT_PX));
     let histogram = Column::new()
         .spacing(space::XXS)
         .push(histogram_label)

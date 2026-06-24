@@ -13,8 +13,10 @@
 //! 4. Last-run line: `STRATEGY_REGISTRY_LAST_RUN_PREFIX` + RFC-3339 timestamp,
 //!    or `PLACEHOLDER_NONE` when `last_run_ts` is `None`.
 //! 5. Footer button: `STRATEGY_REGISTRY_OPEN_IN_LAB_LABEL` →
-//!    `Message::SelectStrategy(row.id.clone())` (bin layer chains
-//!    `SwitchScreen(Screen::Lab)` via `Task::done` per Design § A3).
+//!    `Message::OpenStrategyInLab(row.id.clone())` — a compound dispatch
+//!    handled in `ui::state::update` (the `OpenLabFromCompare` precedent):
+//!    switch to `Screen::Lab` + preselect the strategy in `lab_state`
+//!    (seeding a default pair when none is set so the Lab opens runnable).
 //!
 //! **No new Lumen tokens.** Status pill reuses `frame::active_chip` (T1609
 //! bottom-edge accent pattern). Card chrome reuses `frame::panel`.
@@ -116,14 +118,18 @@ pub fn view<'a>(
         .color(color::FG_2.current(mode));
 
     // ── "Open in Lab" button ─────────────────────────────────────────────────
-    // Emits `Message::SelectStrategy(id)`. Bin layer chains
-    // `SwitchScreen(Screen::Lab)` via `Task::done` (Design § A3).
+    // Emits `Message::OpenStrategyInLab(id)` — a compound dispatch handled
+    // entirely in `ui::state::update`: switch to `Screen::Lab` + preselect the
+    // strategy in `lab_state` (seeding a default pair when unset so the Lab
+    // opens runnable). Previously fired `SelectStrategy`, whose cross-link guard
+    // (`current_screen != Screen::Strategies`) is false on the registry screen
+    // — so the button was a no-op.
     let open_btn = Button::new(
         Text::new(STRATEGY_REGISTRY_OPEN_IN_LAB_LABEL)
             .size(text::SMALL)
             .color(color::FG_1.current(mode)),
     )
-    .on_press(Message::SelectStrategy(row.id.clone()))
+    .on_press(Message::OpenStrategyInLab(row.id.clone()))
     .padding([space::XS as u16, space::M as u16])
     .style(
         move |_theme: &iced::Theme, _status: button::Status| button::Style {

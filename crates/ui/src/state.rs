@@ -1804,6 +1804,24 @@ pub enum Message {
     /// compound dispatch — no new `OpenStrategy` variant).
     SelectStrategy(StrategyId),
 
+    /// "Open in Lab" — the Strategy-registry card's footer button
+    /// (`widgets::strategy_card`). Compound dispatch handled ENTIRELY in
+    /// `update` (mirrors `OpenLabFromCompare`), so the navigation +
+    /// preselection is pure and fully testable — NOT split across a
+    /// bin-layer `Task` chain (the F5/F8 "emitted-but-not-wired" trap; the
+    /// registry IS `Screen::Strategies`, so the `SelectStrategy` cross-link
+    /// guard refused to navigate and the button was a no-op).
+    ///
+    /// The arm:
+    /// - Sets `current_screen = Screen::Lab`.
+    /// - Sets `lab_state.strategy = Some(id)` and `selected_strategy = Some(id)`.
+    /// - Clears `lab_state.last_run_report` / `prev_run_report` (tuple changed).
+    /// - Seeds the cold-start default pair into `lab_state.pair` when no pair
+    ///   is selected, so the Lab opens in a runnable state (the Run gate at
+    ///   `screens::lab` requires BOTH strategy AND pair). An already-selected
+    ///   pair is preserved.
+    OpenStrategyInLab(StrategyId),
+
     /// Risk telemetry refresh from the new agent-runtime channel
     /// (Q3 ratification). Pure assignment; `risk_state = Ready(state)`.
     /// `Subscription::batch` recipe in `crates/ui/src/live.rs` maps
@@ -2597,6 +2615,32 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         // ── Phase 3 — Detail screens ────────────────────────────────────
         Message::SelectStrategy(id) => {
             model.selected_strategy = Some(id);
+        }
+        Message::OpenStrategyInLab(id) => {
+            // "Open in Lab" — compound dispatch (the OpenLabFromCompare
+            // precedent). Pure: navigate + preselect, no bin-layer Task chain.
+            // Order mirrors OpenLabFromCompare: screen + strategy first
+            // (tuple change clears the run-report mirrors), then ensure a pair
+            // so the Lab opens runnable.
+            model.current_screen = Screen::Lab;
+            model.selected_strategy = Some(id.clone());
+            model.lab_state.strategy = Some(id);
+            // Tuple changed — clear stale run-report mirrors so the Lab does
+            // not render a previous pick's equity curve against the new one
+            // (parity with LabSelectPrimaryStrategy / OpenLabFromCompare).
+            model.lab_state.last_run_report = None;
+            model.lab_state.prev_run_report = None;
+            // Seed the cold-start default pair ONLY when none is selected, so
+            // the Lab's Run gate (strategy AND pair) is satisfiable straight
+            // away. An operator-selected pair is preserved.
+            if model.lab_state.pair.is_none() {
+                let pair = (
+                    crate::lab::defaults::LAB_COLD_START_VENUE,
+                    crate::lab::defaults::cold_start_symbol(),
+                );
+                model.selected_symbol = Some(pair.clone());
+                model.lab_state.pair = Some(pair);
+            }
         }
         Message::RiskStateRefreshed(state) => {
             model.risk_state = PanelState::Ready(state);
