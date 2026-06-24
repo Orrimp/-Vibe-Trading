@@ -104,6 +104,16 @@ Agents use these via the Skill tool; humans reference them by name:
 - [`backtest`](.claude/skills/backtest/SKILL.md)
 - [`spec-update`](.claude/skills/spec-update/SKILL.md)
 
+## Code navigation (optional)
+
+For fast navigation of this 715-crate-file Rust tree — "who calls `X`", "blast radius
+of changing `Y`", "relevant symbols + source for area `Z`" in one call instead of
+grepping — the repo is indexable with [CodeGraph](spec/dev-notes/codegraph.md)
+(`codegraph callers|impact|explore <symbol>`). It is a **dev/agent aid only**: not a
+Cargo dependency, not part of the product/runtime, **zero** effect on builds, tests,
+or the `verify_anchors` gate. The `.codegraph/` index is gitignored. Setup + the
+**opt-in** MCP wiring are in [`spec/dev-notes/codegraph.md`](spec/dev-notes/codegraph.md).
+
 ## Vendored dependencies
 
 - `vendor/iced_tiny_skia/` is a **long-term local fork** of

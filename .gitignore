@@ -87,3 +87,7 @@ crates/forecast/checkpoints/*.metadata.json
 # run as part of the verify-anchors gate per ADR-0045 § D7.1).
 __pycache__/
 *.pyc
+
+# CodeGraph code-knowledge-graph index — local per-machine artifact (46MB SQLite DB),
+# rebuilt with `codegraph init` / auto-synced. Never committed. See spec/dev-notes/codegraph.md.
+.codegraph/
