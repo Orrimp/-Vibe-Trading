@@ -644,6 +644,15 @@ Developer track completed 2026-06-23. The following tasks were implemented (deve
   4. `t_d8_short_enabled_false_never_enters_short_on_downtrend`: gate-leak check — position_curve is always ≥0 when short_enabled=false.
 - Uses `downtrend_bars_200()` (0.5%/bar drop, 200 bars, start=50,000) and `flat_bars_200()` (constant 30,000).
 
+**T-D6 — The fixed 5-arm slate (engine dispatch wired, 2026-06-24).**
+- `crates/backtest/src/engine.rs`: Added `"v0.sma_cross_ls"` to the `v0.sma` match arm; `"v0.macd_ls"` to `v0.5.macd`; `"v0.rsi_ls"` to `v0.5.rsi`; `"v0.bbands_ls"` to `v0.5.bbands`. Each `_ls` ID inherits `short_enabled` from `ScenarioConfig` (already threaded via `cfg.short_enabled`). All four long-only ID paths are byte-identical (no change to existing arms). Also added `strategy_dir_slug` mappings for all 5 new IDs.
+- `crates/backtest/src/engine.rs`: Added `"v0.always_short"` arm (mirrors `v0.buyhold` structure) calling `run_alwaysshort_path`. Equity formula `initial_capital * (2 - price/price0)`. Loss is unbounded and NOT clamped at 0. `write_report=false` in bake-off → anchor-safe.
+- `crates/backtest/src/bakeoff/buyhold.rs`: Added `run_alwaysshort_path` (the exact inverse of `run_buyhold_path` for a single-coin 1× short). 4 unit tests: `alwaysshort_empty_bars_returns_capital`, `alwaysshort_price_halves_equity_plus_50pct`, `alwaysshort_price_doubles_equity_zero`, `alwaysshort_price_triples_equity_negative`, `alwaysshort_deterministic`. All 9 buyhold tests pass.
+- `crates/agent/src/runtime.rs`: `build_registry_for` wired for `"v0.sma_cross_ls"` → SmaCrossover, `"v0.macd_ls"` → ComposedStrategy(btc_macd_trend), `"v0.rsi_ls"` → ComposedStrategy(btc_rsi_reversion), `"v0.bbands_ls"` → ComposedStrategy(btc_bbands_mean_revert), `"v0.always_short"` → AlwaysLongStrategy (paper loop gates short_enabled=true via `BakeoffConfig::is_short_enabled`).
+- `crates/backtest/tests/short_bakeoff_bear_bull.rs`: Updated to use REAL frozen IDs (no proxy mapping). `v0.always_short` uses the proper `run_alwaysshort_path` (not SMA(1,2) hack). Bear window result (2022-Q2, BTC −56.2%): **v0.always_short profits** — initial=100,000 → final=156,210.90 (+56.2%), Robust. All 4 _ls arms FRAGILE (null finding, expected). Bull window (H1-2024, BTC +47.7%): always_short loses (−47%), all FRAGILE. T-D6 SANITY PASS confirmed.
+- Anchors: 119/119 before and after (no anchored report body written — `write_report=false` for all short arms).
+- Clippy: `cargo clippy -p backtest --all-targets -- -D warnings` PASS; `cargo clippy -p agent --all-targets -- -D warnings` PASS.
+
 **T-D9 — Anchor gate re-confirmed post-change.**
 - `bash scripts/verify_anchors.sh` output: `ANCHORS PASS  (119 / 119)` — all 119 anchors pass, no anchored body was mutated.
 

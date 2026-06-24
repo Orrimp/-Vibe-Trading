@@ -633,19 +633,28 @@ fn default_lab_runs_root() -> PathBuf {
 fn strategy_dir_slug(strategy_id: &str) -> &str {
     match strategy_id {
         "v1.momentum" | "top10_momentum_h1" => "v1-cross-sectional-momentum",
-        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" => "v0-paper-sma",
+        // ADR-0068 T-D6: _ls aliases map to the same dir slug as their base arm.
+        // `write_report=false` in bake-off, so this branch is unreachable there;
+        // but it must be correct for any future caller that sets write_report=true.
+        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" | "v0.sma_cross_ls" => {
+            "v0-paper-sma"
+        }
         "v0.5.macd"
         | "macd_trend"
         | "btc_macd_trend"
         | "macd_trend_h1"
+        | "v0.macd_ls"
         | "v0.5.rsi"
         | "rsi_reversion"
         | "btc_rsi_reversion"
         | "rsi_reversion_h1"
+        | "v0.rsi_ls"
         | "v0.5.bbands"
         | "bbands_mean_revert"
         | "btc_bbands_mean_revert"
-        | "bbands_mean_revert_h1" => "v05-composed-strategies",
+        | "bbands_mean_revert_h1"
+        | "v0.bbands_ls"
+        | "v0.always_short" => "v05-composed-strategies",
         "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => "v15a-mean-reversion-pairs",
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => "v2.5.tcn_overlay_weights",
@@ -1100,7 +1109,11 @@ pub async fn run_scenario(
         // `cfg.bars_override` is threaded through verbatim (T-AR1).
         // When `Some`, the scenario uses real Yahoo bars instead of synthetic GBM.
         // When `None` (all CLI/anchor paths), synthetic GBM is used unchanged.
-        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" => {
+        //
+        // ADR-0068 T-D6: `"v0.sma_cross_ls"` is the long/short alias for this arm.
+        // It routes here with `short_enabled=true` (set by `BakeoffConfig::is_short_enabled`).
+        // Long-only ids are byte-identical to HEAD (short_enabled=false default).
+        "v0.sma" | "sma_cross" | "sma_crossover" | "sma_cross_h1" | "v0.sma_cross_ls" => {
             let input = crate::cli_types::SmaComposedRunInput {
                 strategy_id: "sma_crossover".to_string(),
                 symbol: cfg.pair.1.clone(),
@@ -1183,7 +1196,9 @@ pub async fn run_scenario(
         }
 
         // ── v0.5 MACD trend ──────────────────────────────────────────────────
-        "v0.5.macd" | "macd_trend" | "btc_macd_trend" | "macd_trend_h1" => {
+        // ADR-0068 T-D6: `"v0.macd_ls"` is the long/short alias. Routes here
+        // with `short_enabled=true`; long-only ids untouched (byte-identical).
+        "v0.5.macd" | "macd_trend" | "btc_macd_trend" | "macd_trend_h1" | "v0.macd_ls" => {
             let input = crate::cli_types::SmaComposedRunInput {
                 strategy_id: "btc_macd_trend".to_string(),
                 symbol: cfg.pair.1.clone(),
@@ -1257,7 +1272,9 @@ pub async fn run_scenario(
         }
 
         // ── v0.5 RSI reversion ───────────────────────────────────────────────
-        "v0.5.rsi" | "rsi_reversion" | "btc_rsi_reversion" | "rsi_reversion_h1" => {
+        // ADR-0068 T-D6: `"v0.rsi_ls"` is the long/short alias. Routes here
+        // with `short_enabled=true`; long-only ids untouched (byte-identical).
+        "v0.5.rsi" | "rsi_reversion" | "btc_rsi_reversion" | "rsi_reversion_h1" | "v0.rsi_ls" => {
             let input = crate::cli_types::SmaComposedRunInput {
                 strategy_id: "btc_rsi_reversion".to_string(),
                 symbol: cfg.pair.1.clone(),
@@ -1331,10 +1348,13 @@ pub async fn run_scenario(
         }
 
         // ── v0.5 BBands mean-revert ──────────────────────────────────────────
+        // ADR-0068 T-D6: `"v0.bbands_ls"` is the long/short alias. Routes here
+        // with `short_enabled=true`; long-only ids untouched (byte-identical).
         "v0.5.bbands"
         | "bbands_mean_revert"
         | "btc_bbands_mean_revert"
-        | "bbands_mean_revert_h1" => {
+        | "bbands_mean_revert_h1"
+        | "v0.bbands_ls" => {
             let input = crate::cli_types::SmaComposedRunInput {
                 strategy_id: "btc_bbands_mean_revert".to_string(),
                 symbol: cfg.pair.1.clone(),
@@ -1526,6 +1546,128 @@ pub async fn run_scenario(
                 "v0.buyhold",
                 &equity_series,
                 |_path| Ok(()), // No-op writer: no anchored report format exists for BH yet.
+            )?;
+
+            Ok(RunReport {
+                equity_series,
+                fills: vec![],
+                kpis,
+                report_path,
+                bars: std::sync::Arc::new(bars),
+                position_curve_raw: vec![],
+            })
+        }
+
+        // ── v0.always_short — always-short benchmark control (ADR-0068 T-D6) ─────
+        //
+        // The clean inverse of v0.buyhold: a 1× fully-collateralized short
+        // opened at bar-0 close and marked to market every bar.
+        //
+        // Formula: equity[i] = initial_capital × (2 − price[i] / price0)
+        // - Profits proportionally as price falls below open price.
+        // - Loss is UNBOUNDED and NEGATIVE — no `.max(0)` clamp (honest).
+        //   A 2× price move wipes out the position; a 3× move drives equity to
+        //   `−initial_capital`.
+        //
+        // PAPER / SIM ONLY — no real orders, no real margin, no real money.
+        //
+        // Anchor-additive contract:
+        // - New id "v0.always_short" — all existing arms are byte-untouched.
+        // - write_report = false in bake-off calls → no anchored report body.
+        // - `scripts/verify_anchors.sh` → 119/119 (T-D9).
+        "v0.always_short" => {
+            use crate::bakeoff::buyhold::run_alwaysshort_path;
+
+            const INITIAL_CAPITAL: rust_decimal::Decimal = dec!(100_000);
+
+            // ── Resolve bars (same path as v0.buyhold) ───────────────────────
+            let bars: Vec<trading_core::Bar> = if let Some(b) = cfg.bars_override.clone() {
+                b
+            } else {
+                // Synthetic path — same GBM bars as the buyhold arm for
+                // apples-to-apples comparison on the same seed.
+                let start_price =
+                    crate::scenarios::sma_composed_run::default_start_price(&cfg.pair.1);
+                crate::scenarios::sma_composed_run::synthetic_bars_minute(
+                    &cfg.pair.1,
+                    bar_count,
+                    seed_u64,
+                    start_price,
+                    start_year,
+                )
+            };
+
+            // ── Run always-short on the bars ─────────────────────────────────
+            let (eq_curve, _final_eq_decimal) = run_alwaysshort_path(&bars, INITIAL_CAPITAL);
+
+            // ── Build equity_series with per-bar timestamps ───────────────────
+            // Mirror the v0.buyhold timestamp logic exactly.
+            let equity_series: Vec<(Timestamp, Money<Usdt>)> = if bars.is_empty() {
+                vec![(
+                    synthetic_timestamps(start_year, 1)
+                        .into_iter()
+                        .next()
+                        .unwrap_or_else(|| Timestamp::new(OffsetDateTime::UNIX_EPOCH)),
+                    Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                )]
+            } else {
+                let ts_iter = {
+                    let mut seen: std::collections::BTreeSet<i128> =
+                        std::collections::BTreeSet::new();
+                    let mut sorted_ts: Vec<Timestamp> = Vec::new();
+                    for bar in &bars {
+                        let ns = bar.open_ts.inner().unix_timestamp_nanos();
+                        if seen.insert(ns) {
+                            sorted_ts.push(bar.open_ts);
+                        }
+                    }
+                    sorted_ts
+                };
+
+                let first_ts = ts_iter.first().copied().map_or_else(
+                    || Timestamp::new(OffsetDateTime::UNIX_EPOCH),
+                    |t| Timestamp::new(t.inner() - time::Duration::hours(1)),
+                );
+
+                let mut series: Vec<(Timestamp, Money<Usdt>)> = Vec::with_capacity(eq_curve.len());
+                series.push((
+                    first_ts,
+                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&INITIAL_CAPITAL)),
+                ));
+                for (ts, &eq) in ts_iter.iter().zip(eq_curve.iter().skip(1)) {
+                    // NOTE: equity can be negative (unbounded loss). Money::from_decimal
+                    // accepts negative Decimal — no clamp here.
+                    series.push((*ts, Money::<Usdt>::from_decimal(eq)));
+                }
+                series
+            };
+
+            // ── Build KPIs ────────────────────────────────────────────────────
+            let final_eq = *eq_curve.last().unwrap_or(&INITIAL_CAPITAL);
+            let eq_dec_only: Vec<rust_decimal::Decimal> =
+                equity_series.iter().map(|(_, m)| m.amount()).collect();
+
+            let max_dd = crate::stats::compute_max_drawdown_f64(&eq_dec_only);
+
+            let kpis = BacktestKpis {
+                final_equity: Money::<Usdt>::from_decimal(final_eq),
+                initial_equity: Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                max_drawdown: rust_decimal::Decimal::try_from(max_dd)
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                // trade_count: 0 — like buyhold, it's a single open at t=0 (no active trades).
+                trade_count: 0,
+                total_fees: Money::<Usdt>::zero(),
+                buys: 0,
+                sells: 1, // one sell-to-open at t=0
+                total_return_pct: total_return_pct(INITIAL_CAPITAL, final_eq),
+            };
+
+            let report_path = maybe_write_report(
+                &cfg,
+                "v0.always_short",
+                "v0.always_short",
+                &equity_series,
+                |_path| Ok(()), // No-op writer: write_report=false in bake-off.
             )?;
 
             Ok(RunReport {
@@ -2268,6 +2410,15 @@ mod tests {
         assert_eq!(strategy_dir_slug("v0.5.bbands"), "v05-composed-strategies");
         assert_eq!(strategy_dir_slug("v1.5a.mr"), "v15a-mean-reversion-pairs");
         assert_eq!(strategy_dir_slug("v2.5.tcn_overlay"), "v2.5.tcn_overlay");
+        // ADR-0068 T-D6: _ls aliases and always_short map to the same slugs.
+        assert_eq!(strategy_dir_slug("v0.sma_cross_ls"), "v0-paper-sma");
+        assert_eq!(strategy_dir_slug("v0.macd_ls"), "v05-composed-strategies");
+        assert_eq!(strategy_dir_slug("v0.rsi_ls"), "v05-composed-strategies");
+        assert_eq!(strategy_dir_slug("v0.bbands_ls"), "v05-composed-strategies");
+        assert_eq!(
+            strategy_dir_slug("v0.always_short"),
+            "v05-composed-strategies"
+        );
         // Unknown falls back to verbatim id.
         assert_eq!(strategy_dir_slug("some_unknown_id"), "some_unknown_id");
     }

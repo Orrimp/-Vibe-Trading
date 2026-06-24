@@ -322,7 +322,7 @@ async fn no_lesson_card_without_writer() {
         None,
         None, // ← no writer: the wiring is absent
         btc_seed,
-        None, // no budget override (legacy capital path)
+        None,  // no budget override (legacy capital path)
         false, // ADR-0068 D6: short_enabled — long-only
     );
 

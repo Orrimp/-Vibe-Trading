@@ -113,6 +113,84 @@ pub fn run_buyhold_path(
     (equity_curve, final_eq)
 }
 
+/// Run the always-short equity path on the given bars (ADR-0068 T-D6).
+///
+/// This is the **exact inverse** of `run_buyhold_path` for a single-coin, 1×
+/// fully-collateralized short:
+///
+/// ```text
+///   equity[i] = initial_capital × (2 − price[i] / price0)
+/// ```
+///
+/// - `price0` is the close price of the first bar (bar-0).
+/// - A short opened at `price0` profits as `price[i] < price0` and loses as
+///   `price[i] > price0`.
+/// - Loss is **UNBOUNDED and NEGATIVE** — do NOT clamp at 0.  A 2× price move
+///   (price doubles) wipes out the whole position and then some.
+///
+/// # Returns
+///
+/// `(equity_curve, final_equity)` where:
+/// - `equity_curve` has `n_bars + 1` entries; `curve[0] = initial_capital`.
+/// - Empty bars → `(vec![initial_capital], initial_capital)`.
+///
+/// # Sign contract
+///
+/// | Price move    | Equity at final bar               |
+/// |---------------|-----------------------------------|
+/// | halved (−50%) | `initial_capital × 1.5` (+50%)    |
+/// | doubled (+100%) | `0` (−100%, wipe)              |
+/// | tripled (+200%) | `−initial_capital` (−200%)     |
+/// | unchanged      | `initial_capital` (0%)           |
+///
+/// This function is **paper/sim only** — it models a simulated short position
+/// with no real margin, no real orders, and no real money at risk.
+#[must_use]
+pub fn run_alwaysshort_path(bars: &[Bar], initial_capital: Decimal) -> (Vec<Decimal>, Decimal) {
+    if bars.is_empty() {
+        return (vec![initial_capital], initial_capital);
+    }
+
+    // Collect distinct bar timestamps in order (same dedup as run_buyhold_path).
+    let mut seen: std::collections::BTreeSet<i128> = std::collections::BTreeSet::new();
+    let mut prices_ordered: Vec<Decimal> = Vec::new();
+
+    for bar in bars {
+        let ts = bar.open_ts.inner().unix_timestamp_nanos();
+        if seen.insert(ts) {
+            prices_ordered.push(bar.close.get());
+        }
+    }
+
+    if prices_ordered.is_empty() {
+        return (vec![initial_capital], initial_capital);
+    }
+
+    let price0 = prices_ordered[0];
+    if price0 == Decimal::ZERO {
+        // Edge: zero open price — no meaningful short; return flat.
+        return (
+            vec![initial_capital; prices_ordered.len() + 1],
+            initial_capital,
+        );
+    }
+
+    // Build the curve: entry[0] = initial_capital; entry[i+1] = formula applied to bar i.
+    let mut equity_curve: Vec<Decimal> = Vec::with_capacity(prices_ordered.len() + 1);
+    equity_curve.push(initial_capital);
+
+    for &price in &prices_ordered {
+        // equity = initial_capital × (2 − price / price0)
+        // Rearranged to minimise precision loss: initial_capital × 2 − initial_capital × (price / price0)
+        let ratio = price / price0;
+        let eq = initial_capital * (dec!(2) - ratio);
+        equity_curve.push(eq);
+    }
+
+    let final_eq = *equity_curve.last().unwrap_or(&initial_capital);
+    (equity_curve, final_eq)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -191,5 +269,84 @@ mod tests {
         let (curve2, final2) = run_buyhold_path(&bars, dec!(100_000), 1);
         assert_eq!(curve1, curve2);
         assert_eq!(final1, final2);
+    }
+
+    // ── Tests for run_alwaysshort_path ────────────────────────────────────────
+
+    /// Empty bars → returns (vec![initial], initial).
+    #[test]
+    fn alwaysshort_empty_bars_returns_capital() {
+        let (curve, final_eq) = run_alwaysshort_path(&[], dec!(1000));
+        assert_eq!(curve, vec![dec!(1000)]);
+        assert_eq!(final_eq, dec!(1000));
+    }
+
+    /// Price halves (−50%) → equity +50% (1.5× initial). Short profits on down-move.
+    #[test]
+    fn alwaysshort_price_halves_equity_plus_50pct() {
+        // price0 = 100; price1 = 50 (halved).
+        // equity[1] = 1000 × (2 − 50/100) = 1000 × 1.5 = 1500.
+        let bars = vec![
+            make_bar(0, "BTCUSDT", dec!(100)),
+            make_bar(1, "BTCUSDT", dec!(50)),
+        ];
+        let (curve, final_eq) = run_alwaysshort_path(&bars, dec!(1000));
+        assert_eq!(curve.len(), 3); // initial + 2 timesteps
+        assert_eq!(curve[0], dec!(1000));
+        assert_eq!(curve[1], dec!(1000)); // bar-0 = price0 → equity unchanged
+        assert_eq!(curve[2], dec!(1500)); // bar-1: price halved → +50%
+        assert_eq!(final_eq, dec!(1500));
+    }
+
+    /// Price doubles (+100%) → equity 0 (full wipe). Short loses on up-move.
+    #[test]
+    fn alwaysshort_price_doubles_equity_zero() {
+        // price0 = 100; price1 = 200 (doubled).
+        // equity[1] = 1000 × (2 − 200/100) = 1000 × 0 = 0.
+        let bars = vec![
+            make_bar(0, "BTCUSDT", dec!(100)),
+            make_bar(1, "BTCUSDT", dec!(200)),
+        ];
+        let (curve, final_eq) = run_alwaysshort_path(&bars, dec!(1000));
+        assert_eq!(curve[0], dec!(1000));
+        assert_eq!(curve[2], dec!(0));
+        assert_eq!(final_eq, dec!(0));
+    }
+
+    /// Price triples (+200%) → equity NEGATIVE (−initial). Unbounded loss — no clamp.
+    #[test]
+    fn alwaysshort_price_triples_equity_negative() {
+        // price0 = 100; price1 = 300 (tripled).
+        // equity[1] = 1000 × (2 − 300/100) = 1000 × (2 − 3) = 1000 × −1 = −1000.
+        let bars = vec![
+            make_bar(0, "BTCUSDT", dec!(100)),
+            make_bar(1, "BTCUSDT", dec!(300)),
+        ];
+        let (curve, final_eq) = run_alwaysshort_path(&bars, dec!(1000));
+        assert_eq!(curve[0], dec!(1000));
+        assert_eq!(curve[2], dec!(-1000));
+        assert!(
+            final_eq < dec!(0),
+            "equity must be NEGATIVE on a 3× up-move (no clamp)"
+        );
+    }
+
+    /// Determinism: two calls on the same bars produce identical results.
+    #[test]
+    fn alwaysshort_deterministic() {
+        let bars = vec![
+            make_bar(0, "BTCUSDT", dec!(50000)),
+            make_bar(1, "BTCUSDT", dec!(45000)),
+            make_bar(2, "BTCUSDT", dec!(40000)),
+        ];
+        let (curve1, final1) = run_alwaysshort_path(&bars, dec!(100_000));
+        let (curve2, final2) = run_alwaysshort_path(&bars, dec!(100_000));
+        assert_eq!(curve1, curve2);
+        assert_eq!(final1, final2);
+        // Sanity: bear trend → short profits.
+        assert!(
+            final1 > dec!(100_000),
+            "always_short must profit on a bear trend"
+        );
     }
 }

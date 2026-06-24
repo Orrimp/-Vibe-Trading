@@ -159,7 +159,8 @@ async fn t_d8_long_only_deterministic_across_two_runs() {
     .expect("second long-only run");
 
     assert_eq!(
-        r1.equity_curve, r2.equity_curve,
+        r1.equity_curve,
+        r2.equity_curve,
         "T-D8a FAIL: two long-only runs on the same inputs must produce identical equity curves. \
          First run={} bars, Second run={} bars.",
         r1.equity_curve.len(),
@@ -171,8 +172,7 @@ async fn t_d8_long_only_deterministic_across_two_runs() {
         "T-D8a FAIL: fill counts must be identical across two runs"
     );
     assert_eq!(
-        r1.final_equity,
-        r2.final_equity,
+        r1.final_equity, r2.final_equity,
         "T-D8a FAIL: final equity must be identical across two runs"
     );
 }
@@ -256,8 +256,7 @@ async fn t_d8_long_only_flat_price_no_trades() {
     );
     // Equity must remain at initial capital (no fills → no fees).
     assert_eq!(
-        result.final_equity,
-        initial_capital,
+        result.final_equity, initial_capital,
         "T-D8c FAIL: long-only equity on flat price must equal initial_capital={initial_capital}; \
          got final_equity={}",
         result.final_equity,

@@ -95,12 +95,19 @@ pub fn try_open_short(
     taker_fee_bps: u32,
     equity: Decimal,
 ) -> OpenShortResult {
-    debug_assert!(position_qty <= Decimal::ZERO, "try_open_short: position_qty must be ≤ 0");
+    debug_assert!(
+        position_qty <= Decimal::ZERO,
+        "try_open_short: position_qty must be ≤ 0"
+    );
     debug_assert!(mark > Decimal::ZERO, "try_open_short: mark must be > 0");
 
     let fraction = dec!(0.10);
     let target_notional = equity * fraction;
-    let notional = if target_notional > cash { cash } else { target_notional };
+    let notional = if target_notional > cash {
+        cash
+    } else {
+        target_notional
+    };
     let margin = notional / MAX_LEVERAGE;
     let fee_bps_decimal = Decimal::new(i64::from(taker_fee_bps), 4); // bps → fraction
     let fee_estimate = notional * fee_bps_decimal;
@@ -174,7 +181,10 @@ pub fn try_cover_short(
     mark: Decimal,
     taker_fee_bps: u32,
 ) -> CoverShortResult {
-    debug_assert!(position_qty < Decimal::ZERO, "try_cover_short: position_qty must be < 0");
+    debug_assert!(
+        position_qty < Decimal::ZERO,
+        "try_cover_short: position_qty must be < 0"
+    );
     debug_assert!(mark > Decimal::ZERO, "try_cover_short: mark must be > 0");
 
     let cover_qty = (-position_qty).max(Decimal::ZERO);
@@ -359,15 +369,12 @@ mod tests {
         // qty_raw = 10/50 = 0.2
         // new_cash = 100 + 10 - 0.004 = 109.996
         // new_qty = 0 - 0.2 = -0.2
-        let res = try_open_short(
-            dec!(100),
-            Decimal::ZERO,
-            dec!(50),
-            FEE_BPS,
-            dec!(100),
-        );
+        let res = try_open_short(dec!(100), Decimal::ZERO, dec!(50), FEE_BPS, dec!(100));
         assert!(res.executed);
-        assert!(res.position_qty < Decimal::ZERO, "short must have negative qty");
+        assert!(
+            res.position_qty < Decimal::ZERO,
+            "short must have negative qty"
+        );
         assert!(res.cash > dec!(100), "proceeds must increase cash");
     }
 
@@ -414,7 +421,10 @@ mod tests {
         // cash after cover > initial (profit)
         // open_at_100: cash was 100, then +10-fee = 109.9996≈110 after open.
         // cover_at_80: cash goes from ~110 to 110-8-fee = ~101.99 (profit of ~2)
-        assert!(res.cash > dec!(100), "covering at 80 after open at 100 should profit");
+        assert!(
+            res.cash > dec!(100),
+            "covering at 80 after open at 100 should profit"
+        );
     }
 
     #[test]
@@ -425,7 +435,10 @@ mod tests {
         let res = try_cover_short(dec!(110), dec!(-0.1), dec!(120), FEE_BPS);
         assert!(res.executed);
         assert_eq!(res.position_qty, Decimal::ZERO);
-        assert!(res.cash < dec!(100), "covering at 120 after open at 100 should lose");
+        assert!(
+            res.cash < dec!(100),
+            "covering at 120 after open at 100 should lose"
+        );
     }
 
     #[test]
@@ -477,7 +490,11 @@ mod tests {
         assert!(res.liquidated);
         assert_eq!(res.position_qty, Decimal::ZERO);
         // Cash goes negative (honest unbounded loss)
-        assert!(res.cash < Decimal::ZERO, "liquidation should drive cash negative: {}", res.cash);
+        assert!(
+            res.cash < Decimal::ZERO,
+            "liquidation should drive cash negative: {}",
+            res.cash
+        );
     }
 
     #[test]
@@ -512,23 +529,12 @@ mod tests {
         let cover_price = dec!(80);
         let equity = initial_cash; // flat at start
 
-        let open_res = try_open_short(
-            initial_cash,
-            Decimal::ZERO,
-            open_price,
-            FEE_BPS,
-            equity,
-        );
+        let open_res = try_open_short(initial_cash, Decimal::ZERO, open_price, FEE_BPS, equity);
         assert!(open_res.executed);
         let short_qty = open_res.position_qty; // negative
         let cash_after_open = open_res.cash;
 
-        let cover_res = try_cover_short(
-            cash_after_open,
-            short_qty,
-            cover_price,
-            FEE_BPS,
-        );
+        let cover_res = try_cover_short(cash_after_open, short_qty, cover_price, FEE_BPS);
         assert!(cover_res.executed);
         assert_eq!(cover_res.position_qty, Decimal::ZERO);
 
@@ -550,8 +556,7 @@ mod tests {
 
         let open_res = try_open_short(initial_cash, Decimal::ZERO, open_price, FEE_BPS, equity);
         assert!(open_res.executed);
-        let cover_res =
-            try_cover_short(open_res.cash, open_res.position_qty, cover_price, FEE_BPS);
+        let cover_res = try_cover_short(open_res.cash, open_res.position_qty, cover_price, FEE_BPS);
         assert!(cover_res.executed);
 
         let final_equity = cover_res.cash;

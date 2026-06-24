@@ -122,12 +122,22 @@ updated: 2026-06-23
 
 ### T-D6 — The FIXED 5-arm slate (ADR-0068 D9)
 
-- [ ] Declare `sma_cross_ls` / `macd_ls` / `rsi_ls` / `bbands_ls` (symmetric long/short
+- [x] Declare `sma_cross_ls` / `macd_ls` / `rsi_ls` / `bbands_ls` (symmetric long/short
   variants — short instead of flat on the bearish flip, reusing the existing indicators)
   + `always_short` (the always-short benchmark control). Wire them into the bake-off
   field declaration AND `build_registry_for` (`runtime.rs:331+`) so the forward run
   resolves them — set `short_enabled=true` for these arms only; long-only arms UNTOUCHED.
   No parameter/threshold search.
+  - **file:line:**
+    - `crates/backtest/src/engine.rs:1103` (`v0.sma_cross_ls` added to SMA arm)
+    - `crates/backtest/src/engine.rs:1187` (`v0.macd_ls` added to MACD arm)
+    - `crates/backtest/src/engine.rs:1261` (`v0.rsi_ls` added to RSI arm)
+    - `crates/backtest/src/engine.rs:1338` (`v0.bbands_ls` added to BBands arm)
+    - `crates/backtest/src/engine.rs:1559` (`"v0.always_short"` new arm using `run_alwaysshort_path`)
+    - `crates/backtest/src/bakeoff/buyhold.rs:149` (`run_alwaysshort_path` implementation)
+    - `crates/agent/src/runtime.rs:343` (`build_registry_for` wired for all 5 new IDs)
+  - **test cmd:** `cargo test -p backtest --features realdata --test short_bakeoff_bear_bull -- --ignored --nocapture`
+  - **output:** `test result: ok. 2 passed; 0 failed` — bear: [T-D6 PASS] v0.always_short profits on bear: 100000.00 -> 156210.90 (+56.2%); SANITY PASS; bull: all FRAGILE null finding.
 - **Acceptance:** the bake-off enumerates the 5 new arms; `build_registry_for` resolves
   each (no silent fallback — the F5b anti-fake gate); long-only arm count + behaviour
   unchanged.

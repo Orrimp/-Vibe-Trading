@@ -340,7 +340,10 @@ pub fn build_registry_for(
     let id = fwd.strategy.0.as_str();
 
     match id {
-        "v0.sma" | "v0.5.sma" => {
+        // ADR-0068 T-D6: `v0.sma_cross_ls` is the long/short alias for the SMA
+        // crossover arm. It maps to the same SmaCrossover strategy; the paper
+        // loop gates `short_enabled=true` for this arm ID.
+        "v0.sma" | "v0.5.sma" | "v0.sma_cross_ls" => {
             registry.register(Box::new(strategy::SmaCrossover::new(
                 cfg.strategies.sma_crossover.fast_len,
                 cfg.strategies.sma_crossover.slow_len,
@@ -359,7 +362,11 @@ pub fn build_registry_for(
         // resolver walks up from CWD to find the workspace root — identical
         // to the pattern in `crates/backtest/src/scenarios/sma_composed_run.rs`
         // (Bug #56 fix).
-        "v0.5.macd" => {
+        //
+        // ADR-0068 T-D6: `v0.macd_ls` / `v0.rsi_ls` / `v0.bbands_ls` are the
+        // long/short aliases; they load the same TOML and the paper loop gates
+        // `short_enabled=true` for these IDs.
+        "v0.5.macd" | "v0.macd_ls" => {
             let toml_name = "btc_macd_trend";
             let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
                 format!(
@@ -374,7 +381,7 @@ pub fn build_registry_for(
                 "build_registry_for: ComposedStrategy (btc_macd_trend) registered"
             );
         }
-        "v0.5.rsi" => {
+        "v0.5.rsi" | "v0.rsi_ls" => {
             let toml_name = "btc_rsi_reversion";
             let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
                 format!(
@@ -389,7 +396,7 @@ pub fn build_registry_for(
                 "build_registry_for: ComposedStrategy (btc_rsi_reversion) registered"
             );
         }
-        "v0.5.bbands" => {
+        "v0.5.bbands" | "v0.bbands_ls" => {
             let toml_name = "btc_bbands_mean_revert";
             let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
                 format!(
@@ -416,6 +423,23 @@ pub fn build_registry_for(
             tracing::info!(
                 strategy = id,
                 "build_registry_for: AlwaysLongStrategy (buy-and-hold) registered"
+            );
+        }
+        // ADR-0068 T-D6: `v0.always_short` — always-short benchmark control.
+        //
+        // In the bakeoff, this arm uses `run_alwaysshort_path` (a standalone
+        // equity-curve function, no Strategy impl). In the paper loop it uses
+        // `AlwaysLongStrategy` with `short_enabled=true` — the paper loop's
+        // clamp gate inverts every signal so the arm stays short perpetually.
+        //
+        // PAPER / SIM ONLY. This arm is NOT crown-eligible — it is a benchmark
+        // control, never selected as the "best arm" for a forward run.
+        "v0.always_short" => {
+            registry.register(Box::new(strategy::AlwaysLongStrategy::new()));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: AlwaysLongStrategy registered for always_short \
+                 (paper loop gates short_enabled=true)"
             );
         }
         // ── F8: EnsembleStrategy (ADR-0063 § D5) ─────────────────────────────
@@ -777,7 +801,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                 None,   // research: no lesson cards
                 vec![], // research: no btc_closes seed needed
                 None,   // research: no budget override
-                false,  // ADR-0068 D6: research mode is always long-only (no short arms launched here)
+                false, // ADR-0068 D6: research mode is always long-only (no short arms launched here)
             );
             info!("agent subsystems initialized — research trading loop + replay feed running");
         }

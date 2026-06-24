@@ -369,11 +369,7 @@ impl BakeoffConfig {
     pub fn is_short_enabled(strategy_id: &str) -> bool {
         matches!(
             strategy_id,
-            "v0.sma_cross_ls"
-                | "v0.macd_ls"
-                | "v0.rsi_ls"
-                | "v0.bbands_ls"
-                | "v0.always_short"
+            "v0.sma_cross_ls" | "v0.macd_ls" | "v0.rsi_ls" | "v0.bbands_ls" | "v0.always_short"
         )
     }
 

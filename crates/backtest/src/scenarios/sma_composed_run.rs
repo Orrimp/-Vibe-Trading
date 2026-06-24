@@ -530,18 +530,24 @@ pub async fn run(
                                 if res.position_qty == Decimal::ZERO {
                                     state.position_cost = Decimal::ZERO;
                                 }
-                                state.total_fees += notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
+                                state.total_fees +=
+                                    notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
                                 state.trades += 1;
                                 state.sells += 1; // cover is a "sell" in terms of direction reversed
                                 // Record as FillView for the result.
                                 // We synthesize a fill at mark price.
-                                if let (Ok(fq), Ok(fp)) = (Quantity::new(covered_qty.abs()), Price::new(mark)) {
+                                if let (Ok(fq), Ok(fp)) =
+                                    (Quantity::new(covered_qty.abs()), Price::new(mark))
+                                {
                                     all_fills.push(FillView {
                                         symbol: sig.symbol.clone(),
                                         side: Side::Buy,
                                         price: fp,
                                         qty: fq,
-                                        fee: Money::from_decimal(notional * Decimal::new(i64::from(input.taker_fee_bps), 4)),
+                                        fee: Money::from_decimal(
+                                            notional
+                                                * Decimal::new(i64::from(input.taker_fee_bps), 4),
+                                        ),
                                         fee_tier: trading_core::FeeTier::Taker,
                                         venue_ts: bar.close_ts,
                                         transaction_id: smol_str::SmolStr::default(),
@@ -565,16 +571,22 @@ pub async fn run(
                                 state.cash = res.cash;
                                 state.position_qty = res.position_qty;
                                 position.base_qty = res.position_qty;
-                                state.total_fees += notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
+                                state.total_fees +=
+                                    notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
                                 state.trades += 1;
                                 state.sells += 1;
-                                if let (Ok(fq), Ok(fp)) = (Quantity::new(opened_qty.abs()), Price::new(mark)) {
+                                if let (Ok(fq), Ok(fp)) =
+                                    (Quantity::new(opened_qty.abs()), Price::new(mark))
+                                {
                                     all_fills.push(FillView {
                                         symbol: sig.symbol.clone(),
                                         side: Side::Sell,
                                         price: fp,
                                         qty: fq,
-                                        fee: Money::from_decimal(notional * Decimal::new(i64::from(input.taker_fee_bps), 4)),
+                                        fee: Money::from_decimal(
+                                            notional
+                                                * Decimal::new(i64::from(input.taker_fee_bps), 4),
+                                        ),
                                         fee_tier: trading_core::FeeTier::Taker,
                                         venue_ts: bar.close_ts,
                                         transaction_id: smol_str::SmolStr::default(),
@@ -663,7 +675,12 @@ pub async fn run(
                     }
                     Side::Sell => {
                         // ADR-0068 D1/D3: pass short_enabled to gate clamp #3.
-                        state.apply_sell(fill.qty.get(), fill.price.get(), fill.fee.amount(), input.short_enabled);
+                        state.apply_sell(
+                            fill.qty.get(),
+                            fill.price.get(),
+                            fill.fee.amount(),
+                            input.short_enabled,
+                        );
                         // Deduct sim slippage from cash (reduced proceeds on sell).
                         state.cash -= sim_slip_cost;
                         position.base_qty -= fill.qty.get();

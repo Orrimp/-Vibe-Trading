@@ -435,7 +435,10 @@ async fn t_d7_always_short_loses_on_uptrend_unbounded_loss() {
 
     let cash_after_open = open_res.cash;
     let qty_short = open_res.position_qty;
-    assert!(qty_short < Decimal::ZERO, "short position must have negative qty; got {qty_short}");
+    assert!(
+        qty_short < Decimal::ZERO,
+        "short position must have negative qty; got {qty_short}"
+    );
 
     // qty = -10,000/50,000 = -0.2 BTC
     // cash_after_open = 10,000 + 10,000 - 0 = 20,000 (proceeds of short sale; fee=0)
