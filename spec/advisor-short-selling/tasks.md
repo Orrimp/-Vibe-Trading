@@ -1,7 +1,7 @@
 ---
 slug: advisor-short-selling
-status: arch-done
-owner: architect
+status: shipped
+owner: tester
 updated: 2026-06-23
 ---
 
