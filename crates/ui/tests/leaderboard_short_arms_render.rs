@@ -153,7 +153,11 @@ fn leaderboard_short_arms_paint_labels_tag_and_disclaimer() {
     let mirror = ui::fixtures::fake_bakeoff_report_mirror_with_shorts();
     // The 4 long-only singles + the 5 short arms + buy-and-hold = 10 rows; 5 are
     // the short slate.
-    assert_eq!(mirror.rows.len(), 10, "4 long singles + 5 shorts + benchmark");
+    assert_eq!(
+        mirror.rows.len(),
+        10,
+        "4 long singles + 5 shorts + benchmark"
+    );
     let short_rows = mirror
         .rows
         .iter()
@@ -162,7 +166,10 @@ fn leaderboard_short_arms_paint_labels_tag_and_disclaimer() {
             id.ends_with("_ls") || id == "always_short"
         })
         .count();
-    assert_eq!(short_rows, 5, "the FIXED 5-arm short slate must be in the field");
+    assert_eq!(
+        short_rows, 5,
+        "the FIXED 5-arm short slate must be in the field"
+    );
 
     let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
     let (w, h, rgba) = render_leaderboard_rgba(cockpit);

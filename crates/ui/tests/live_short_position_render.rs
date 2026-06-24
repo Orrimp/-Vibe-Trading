@@ -100,7 +100,14 @@ fn is_warn_amber(r: i32, g: i32, b: i32) -> bool {
 /// equity curve shifts the positions panel + the forward block vertically, so a
 /// whole-height scan (not a fragile y-band) keeps the discriminator robust; the
 /// `x` bounds exclude the always-clay agent-activity tape where needed.
-fn count_cols(w: u32, h: u32, rgba: &[u8], x0: u32, x1: u32, pred: impl Fn(i32, i32, i32) -> bool) -> u64 {
+fn count_cols(
+    w: u32,
+    h: u32,
+    rgba: &[u8],
+    x0: u32,
+    x1: u32,
+    pred: impl Fn(i32, i32, i32) -> bool,
+) -> u64 {
     let x_end = x1.min(w);
     let mut hits = 0u64;
     for y in 0..h {
@@ -136,7 +143,9 @@ fn content_warn_amber(w: u32, h: u32, rgba: &[u8]) -> u64 {
 
 /// General foreground (text) across the content area (right of the sidebar).
 fn foreground_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
-    count_cols(w, h, rgba, CONTENT_X0, w, |r, g, b| (r * 2 + g * 3 + b) / 6 > 80)
+    count_cols(w, h, rgba, CONTENT_X0, w, |r, g, b| {
+        (r * 2 + g * 3 + b) / 6 > 80
+    })
 }
 
 /// **The render-layer guard.** A POPULATED short position MUST paint, in the

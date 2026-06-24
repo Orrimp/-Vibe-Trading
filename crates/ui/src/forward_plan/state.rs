@@ -507,13 +507,22 @@ mod tests {
     #[test]
     fn short_capability_keys_on_strategy_id() {
         let mut v = active_view();
-        for id in ["sma_cross_ls", "macd_ls", "rsi_ls", "bbands_ls", "always_short"] {
+        for id in [
+            "sma_cross_ls",
+            "macd_ls",
+            "rsi_ls",
+            "bbands_ls",
+            "always_short",
+        ] {
             v.strategy = SmolStr::new(id);
             assert!(v.is_short_capable(), "`{id}` is short-capable");
         }
         // always_short is the strict control; the `_ls` arms are not.
         v.strategy = SmolStr::new("always_short");
-        assert!(v.is_always_short(), "always_short is the always-short control");
+        assert!(
+            v.is_always_short(),
+            "always_short is the always-short control"
+        );
         v.strategy = SmolStr::new("sma_cross_ls");
         assert!(
             !v.is_always_short(),

@@ -1625,8 +1625,14 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL",
             LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL,
         ),
-        ("LEADERBOARD_SHORT_MACD_LS_LABEL", LEADERBOARD_SHORT_MACD_LS_LABEL),
-        ("LEADERBOARD_SHORT_RSI_LS_LABEL", LEADERBOARD_SHORT_RSI_LS_LABEL),
+        (
+            "LEADERBOARD_SHORT_MACD_LS_LABEL",
+            LEADERBOARD_SHORT_MACD_LS_LABEL,
+        ),
+        (
+            "LEADERBOARD_SHORT_RSI_LS_LABEL",
+            LEADERBOARD_SHORT_RSI_LS_LABEL,
+        ),
         (
             "LEADERBOARD_SHORT_BBANDS_LS_LABEL",
             LEADERBOARD_SHORT_BBANDS_LS_LABEL,
@@ -2836,10 +2842,12 @@ pub const FORWARD_PLAN_RULE_SHORT_OPEN_THEN: &str = "sell-to-open a short (bet o
 /// Short entry rule — generic IF condition (the bearish flip), used for rule
 /// families without a parameterised bearish clause of their own (MACD / RSI /
 /// Bollinger). SMA reuses its own parameterised exit copy instead.
-pub const FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC: &str = "the trend turns bearish (the entry condition reverses to the downside)";
+pub const FORWARD_PLAN_RULE_SHORT_OPEN_IF_GENERIC: &str =
+    "the trend turns bearish (the entry condition reverses to the downside)";
 
 /// Cover rule — IF condition. The bullish flip that closes an open short.
-pub const FORWARD_PLAN_RULE_SHORT_COVER_IF: &str = "the trend flips back up (the entry condition reverses)";
+pub const FORWARD_PLAN_RULE_SHORT_COVER_IF: &str =
+    "the trend flips back up (the entry condition reverses)";
 /// Cover rule — THEN action.
 pub const FORWARD_PLAN_RULE_SHORT_COVER_THEN: &str = "buy-to-cover (close the short)";
 

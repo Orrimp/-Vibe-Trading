@@ -139,8 +139,14 @@ fn foreground_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
 #[test]
 fn forward_plan_short_ls_paints_short_rules_and_disclaimer() {
     let view = ui::fixtures::fake_forward_plan_short();
-    assert!(view.is_short_capable(), "the fixture must be a short-capable arm");
-    assert!(!view.is_always_short(), "the `_ls` fixture is not always_short");
+    assert!(
+        view.is_short_capable(),
+        "the fixture must be a short-capable arm"
+    );
+    assert!(
+        !view.is_always_short(),
+        "the `_ls` fixture is not always_short"
+    );
 
     let cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(view));
     let (w, h, rgba) = render_forward_plan_rgba(cockpit);
@@ -187,7 +193,10 @@ fn forward_plan_short_ls_paints_short_rules_and_disclaimer() {
 #[test]
 fn forward_plan_always_short_paints_standing_short_rule() {
     let view = ui::fixtures::fake_forward_plan_always_short();
-    assert!(view.is_always_short(), "the fixture must be the always_short control");
+    assert!(
+        view.is_always_short(),
+        "the fixture must be the always_short control"
+    );
     assert!(view.is_short_capable(), "always_short is short-capable");
 
     let cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(view));
@@ -223,7 +232,10 @@ fn forward_plan_always_short_paints_standing_short_rule() {
 fn forward_plan_long_only_is_the_negative_control_for_shorts() {
     let short = ui::fixtures::fake_forward_plan_short();
     let long_only = ui::fixtures::fake_forward_plan();
-    assert!(!long_only.is_short_capable(), "the control is a long-only plan");
+    assert!(
+        !long_only.is_short_capable(),
+        "the control is a long-only plan"
+    );
 
     let short_cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(short));
     let long_cockpit = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(long_only));

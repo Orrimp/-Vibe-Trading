@@ -83,10 +83,10 @@ use crate::strings::{
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
     LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
     LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
-    LEADERBOARD_SHORT_BBANDS_LS_LABEL, LEADERBOARD_SHORT_FIELD_NOTE, LEADERBOARD_SHORT_MACD_LS_LABEL,
-    LEADERBOARD_SHORT_RSI_LS_LABEL, LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG,
-    LEADERBOARD_WINNER_FRAGILE_CLAUSE, LEADERBOARD_WINNER_ROBUST_CLAUSE,
-    SHORT_UNBOUNDED_LOSS_DISCLAIMER,
+    LEADERBOARD_SHORT_BBANDS_LS_LABEL, LEADERBOARD_SHORT_FIELD_NOTE,
+    LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
+    LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
+    LEADERBOARD_WINNER_ROBUST_CLAUSE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -1136,7 +1136,13 @@ mod tests {
     /// ids — so the short field is marked, and only the short field.
     #[test]
     fn is_short_capable_id_marks_only_the_short_slate() {
-        for id in ["sma_cross_ls", "macd_ls", "rsi_ls", "bbands_ls", "always_short"] {
+        for id in [
+            "sma_cross_ls",
+            "macd_ls",
+            "rsi_ls",
+            "bbands_ls",
+            "always_short",
+        ] {
             assert!(is_short_capable_id(id), "`{id}` is a short-slate arm");
         }
         for id in [
