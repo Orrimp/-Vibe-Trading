@@ -156,6 +156,50 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-25 (architect): **ADR-0070 — promotion wiring: carry a robust Tune
+  config into the forward €200 paper-trade** (feature `advisor-param-promotion`,
+  the ADR-0069 § D5 deferred v0.2 carry-forward). Recorded in the canonical ADR
+  registry ([architecture/adr/README.md](architecture/adr/README.md) +
+  `architecture/adr/0070-promote-tuned-config-into-forward-paper-run.md`). Wires
+  the "Use this config" affordance — today a **visual pill with no message**
+  (`crates/ui/src/screens/tune.rs:967-970`) — so a **promotable** (non-FRAGILE)
+  Tune config carries the **tuned** strategy into the existing F5 paper loop + F6
+  forward plan. **Forward-run seam:** `ForwardRunConfig`
+  (`crates/agent/src/config.rs:32-42`) gains a single optional
+  `param_override: Option<ForwardParamOverride>` field — an **agent-owned closed
+  enum** (one variant per sweep family; `k` as `k_tenths` to stay `Eq` with no
+  `Decimal`) — honored by BOTH forward resolvers (`build_registry_for`
+  `runtime.rs:331`; `build_forward_plan_from_registry` `plan.rs:190`), each taking
+  the `ForwardRunConfig` already, so one field reaches both. `None` runs the
+  existing match arms **byte-identically** → the crowned-pick forward path is
+  preserved, `forward_run_engine_fidelity.rs` passes unchanged, anchors stay
+  **119/119**. **Fidelity:** composed-family overrides reuse the sweep's
+  `macd_toml/rsi_toml/bbands_toml` generators (promoted to `pub`; `agent` already
+  deps `backtest`) + the SAME `ComposedStrategyConfig::from_str(&toml, stem)`
+  identity guard the sweep scored with — in-memory string (no disk file),
+  synthetic `source_path = "tuned:<stem>"`; what paper-trades == what the gate
+  scored == what the F6 plan describes (the `PlanRuleKind` → `PlanRuleView` mirror
+  renders the tuned rules automatically). **UI seam:** a `PromoteSweptConfig(
+  PromoteParams)` message; a UI-owned `PromoteParams` enum added to `SweepCellRow`
+  and populated at the ONE engine→UI boundary `SweepReportMirror::from_report` /
+  `cell_to_row` (so `from_report` stays the only place `backtest::SweptParams` is
+  read); the pure handler preseeds a `pending_forward_promotion` target + navigates
+  to `Screen::ForwardPlan` (the `open_strategy_in_lab` precedent); the binary layer
+  (`cockpit_live.rs`, the `BakeoffRunCompleted` crowned-launch precedent) maps
+  `PromoteParams → agent::ForwardParamOverride`, builds `ForwardRunConfig` with the
+  override, reuses the F7/ADR-0065 €→USDT conversion, and `try_send`s
+  `ForwardCommand::Launch`. Two boundaries, each crossed once; `cargo tree -p ui`
+  unchanged. **Honesty:** only `promotable` (non-FRAGILE) configs promote — the
+  FRAGILE lock and the frozen gate are untouched, Marginal stays promotable,
+  promotion reads the verdict and never recomputes it; a "you tuned this, not a
+  bake-off winner; robust-on-THIS-window ≠ a guarantee, not advice" header frames
+  the promoted forward plan (distinct from the crowned "best of the bake-off"
+  provenance), and the not-advice footer stays. **Gates:** the CLAUDE.md day-1
+  divergence + fidelity + plan-reflects-tuned e2e (`forward_promotion_divergence.rs`,
+  FAIL-before) + render-pixel proofs (the enabled accent button vs the FRAGILE
+  greyed-locked-label negative control; the preseeded tuned forward plan). No new
+  dependency. PAPER/SIM ONLY. Leans on ADR-0069, ADR-0060, ADR-0062, ADR-0065,
+  ADR-0059, ADR-0057.
 - 2026-06-24 (architect): **ADR-0069 — gate-tied hyperparameter sweep seam**
   (feature `advisor-param-tuning`, leaderboard-epic item #3 — the operator-chosen
   gate-tied option, NOT a naive single-config editor). Recorded in the canonical ADR
