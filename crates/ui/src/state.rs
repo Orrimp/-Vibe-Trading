@@ -2264,25 +2264,30 @@ pub enum Message {
     /// Operator picked a strategy family in the Tune form. Stores the closed
     /// `TuneFamily`; does NOT clear an existing result. Typed enum payload.
     SweepSelectFamily(crate::tune::TuneFamily),
-    /// Operator edited one `{min, max, step}` field of one SMA axis in the Tune
-    /// form. The raw text round-trips verbatim (parse is a render/dispatch-time
-    /// concern). Typed payload — never a stringly-typed blob.
+    /// Operator edited one `{min, max, step}` field of one axis in the Tune form
+    /// (any family — the `TuneAxisKind` names the axis, the state routes it to the
+    /// owning family's sub-form). The raw text round-trips verbatim (parse is a
+    /// render/dispatch-time concern). Typed payload — never a stringly-typed blob.
     SweepAxisEdit {
-        /// Which axis (fast / slow window).
-        axis: crate::tune::SmaAxisKind,
+        /// Which axis (SMA fast/slow, MACD fast/slow/signal, RSI period/oversold,
+        /// or Bollinger period).
+        axis: crate::tune::TuneAxisKind,
         /// Which field (min / max / step).
         field: crate::tune::AxisField,
         /// The raw field text the operator typed.
         value: String,
     },
-    /// Operator clicked a narrow/shipped/wide preset chip for one SMA axis.
-    /// Typed payload.
+    /// Operator clicked a narrow/shipped/wide preset chip for one axis (any
+    /// family — routed by `TuneAxisKind`). Typed payload.
     SweepAxisPreset {
         /// Which axis the preset seeds.
-        axis: crate::tune::SmaAxisKind,
+        axis: crate::tune::TuneAxisKind,
         /// The preset (narrow / shipped / wide).
         preset: crate::tune::AxisPreset,
     },
+    /// Operator toggled the i-th Bollinger `k`-preset checkbox (the multi-select).
+    /// Typed payload (the preset index into `crate::tune::BOLLINGER_K_PRESETS`).
+    SweepBollingerKToggled(usize),
     /// Operator pressed "Run sweep". Pure-state half: flips `result` to
     /// `Loading` and sets `running` (the Run button disables). The async
     /// dispatch (`spawn_sweep` with a cancel/progress pair) is wired BINARY-side
@@ -3393,11 +3398,16 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::SweepAxisEdit { axis, field, value } => {
             // Store the keystrokes verbatim (parse is a render/dispatch concern).
-            model.tune_screen_state.edit_sma_axis(axis, field, value);
+            // The state routes the axis to the owning family's sub-form.
+            model.tune_screen_state.edit_axis(axis, field, value);
         }
         Message::SweepAxisPreset { axis, preset } => {
-            // One-click narrow/shipped/wide range seed.
-            model.tune_screen_state.apply_sma_preset(axis, preset);
+            // One-click narrow/shipped/wide range seed (routed by family).
+            model.tune_screen_state.apply_preset(axis, preset);
+        }
+        Message::SweepBollingerKToggled(index) => {
+            // Toggle the i-th Bollinger k-preset (the multi-select). Pure.
+            model.tune_screen_state.toggle_bollinger_k(index);
         }
         Message::SweepRunRequested => {
             // Pure-state half: flip to Loading + set the in-flight token so Run

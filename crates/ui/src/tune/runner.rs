@@ -33,7 +33,9 @@
 
 use smol_str::SmolStr;
 
-use crate::tune::screen_state::{SmaGridForm, TuneFamily};
+use crate::tune::screen_state::{
+    BollingerGridForm, MacdGridForm, RsiGridForm, SmaGridForm, TuneFamily,
+};
 use crate::tune::state::SweepReportMirror;
 
 /// Result posted back to the cockpit via `Message::SweepRunCompleted`.
@@ -82,6 +84,53 @@ fn sma_grid_from_form(form: &SmaGridForm) -> backtest::SweepGrid {
     })
 }
 
+/// Build the engine [`SweepGrid::Macd`](backtest::SweepGrid) from the MACD form.
+/// Threads the operator's three `{min, max, step}` axes; the `fast < slow` guard
+/// and the cap are applied inside `run_param_sweep`. Fallbacks mirror the
+/// engine's `MacdGrid::default` per-axis (8..16/4, 20..32/6, 7..11/2).
+fn macd_grid_from_form(form: &MacdGridForm) -> backtest::SweepGrid {
+    let (fmin, fmax, fstep) = form.fast.parsed();
+    let (smin, smax, sstep) = form.slow.parsed();
+    let (gmin, gmax, gstep) = form.signal.parsed();
+    backtest::SweepGrid::Macd(backtest::MacdGrid {
+        fast: axis_from_input(fmin, fmax, fstep, 8, 16, 4),
+        slow: axis_from_input(smin, smax, sstep, 20, 32, 6),
+        signal: axis_from_input(gmin, gmax, gstep, 7, 11, 2),
+    })
+}
+
+/// Build the engine [`SweepGrid::Rsi`](backtest::SweepGrid) from the RSI form.
+/// Threads the period axis + the oversold-threshold axis; the `period >= 2`,
+/// `1 ≤ oversold ≤ 49` guards + the cap are applied inside `run_param_sweep`.
+/// Fallbacks mirror `RsiGrid::default` (10..18/4, 25..35/5).
+fn rsi_grid_from_form(form: &RsiGridForm) -> backtest::SweepGrid {
+    let (pmin, pmax, pstep) = form.period.parsed();
+    let (omin, omax, ostep) = form.oversold.parsed();
+    backtest::SweepGrid::Rsi(backtest::RsiGrid {
+        period: axis_from_input(pmin, pmax, pstep, 10, 18, 4),
+        oversold: axis_from_input(omin, omax, ostep, 25, 35, 5),
+    })
+}
+
+/// Build the engine [`SweepGrid::Bollinger`](backtest::SweepGrid) from the
+/// Bollinger form. Threads the period axis + the SELECTED `k` presets (the
+/// multi-select). An empty selection falls back to the shipped `k = 2.0` so the
+/// config is always well-typed (the form's `can_run` gate blocks dispatching an
+/// empty selection in practice). Fallback period mirrors `BollingerGrid::default`
+/// (14..26/6).
+fn bollinger_grid_from_form(form: &BollingerGridForm) -> backtest::SweepGrid {
+    use rust_decimal_macros::dec;
+    let (pmin, pmax, pstep) = form.period.parsed();
+    let mut k_presets = form.selected_k_decimals();
+    if k_presets.is_empty() {
+        k_presets.push(dec!(2.0));
+    }
+    backtest::SweepGrid::Bollinger(backtest::BollingerGrid {
+        period: axis_from_input(pmin, pmax, pstep, 14, 26, 6),
+        k_presets,
+    })
+}
+
 /// Build a [`SweepConfig`](backtest::SweepConfig) from the Tune form state — the
 /// operator's CHOSEN family + coin + lookback + SMA ranges.
 ///
@@ -92,10 +141,9 @@ fn sma_grid_from_form(form: &SmaGridForm) -> backtest::SweepGrid {
 /// `seed = LAB_DEFAULT_SEED` (shared with the bake-off — apples-to-apples),
 /// `paths = 1000` (the same gate). Pure; no I/O.
 ///
-/// Only SMA is wired in v0.1; a non-SMA family still produces a config (with an
-/// SMA grid placeholder) but the form's `can_run` gate prevents dispatching it,
-/// and `run_param_sweep` returns an empty grid for the composed families until
-/// the engine's T7 builder lands.
+/// All four families are wired (T7b): each family's FORM maps to its real
+/// `SweepGrid` variant (the operator's `{min, max, step}` axes + the Bollinger
+/// `k` multi-select), which `run_param_sweep` sweeps faithfully.
 #[must_use]
 pub fn sweep_config_from_state(
     st: &crate::tune::screen_state::TuneScreenState,
@@ -105,19 +153,9 @@ pub fn sweep_config_from_state(
 ) -> backtest::SweepConfig {
     let grid = match st.family {
         TuneFamily::Sma => sma_grid_from_form(&st.sma_grid),
-        // The composed families have no Tune FORM in this UI slice (SMA-first per
-        // ADR-0069 § D3 sequencing), so the UI's `can_run` gate blocks dispatching
-        // them. The engine's T7 grid structs exist, so the placeholder uses their
-        // shipped-default grids — a defensive, well-typed config the UI never
-        // actually dispatches. (Wiring a real MACD/RSI/Bollinger form is T7's UI
-        // follow-on; this keeps the match total + compiling against the engine API.)
-        TuneFamily::Macd => {
-            backtest::SweepGrid::Macd(backtest::bakeoff::sweep::MacdGrid::default())
-        }
-        TuneFamily::Rsi => backtest::SweepGrid::Rsi(backtest::bakeoff::sweep::RsiGrid::default()),
-        TuneFamily::Bollinger => {
-            backtest::SweepGrid::Bollinger(backtest::bakeoff::sweep::BollingerGrid::default())
-        }
+        TuneFamily::Macd => macd_grid_from_form(&st.macd_grid),
+        TuneFamily::Rsi => rsi_grid_from_form(&st.rsi_grid),
+        TuneFamily::Bollinger => bollinger_grid_from_form(&st.bollinger_grid),
     };
     backtest::SweepConfig {
         family: st.family.to_engine(),
@@ -262,6 +300,121 @@ mod tests {
                 assert_eq!(g.slow_len.step, 10);
             }
             other => panic!("SMA family must build an SMA grid, got {other:?}"),
+        }
+    }
+
+    /// T7b — a MACD family builds a real `SweepGrid::Macd` from the form's three
+    /// axes (the operator's values, NOT the engine default).
+    #[test]
+    fn config_from_state_macd_maps_form_to_real_grid() {
+        const NOW: i64 = 1_900_000_000_000;
+        let mut st = TuneScreenState {
+            family: TuneFamily::Macd,
+            ..Default::default()
+        };
+        st.macd_grid.fast = AxisInput::from_values(6, 12, 3);
+        st.macd_grid.slow = AxisInput::from_values(20, 30, 5);
+        st.macd_grid.signal = AxisInput::from_values(8, 10, 2);
+        let coin = trading_core::Symbol::new("BTCUSDT");
+        let cfg = sweep_config_from_state(
+            &st,
+            &coin,
+            crate::leaderboard::LeaderboardLookback::H1_2024,
+            NOW,
+        );
+        assert!(matches!(cfg.family, backtest::SweepFamily::Macd));
+        match cfg.grid {
+            backtest::SweepGrid::Macd(g) => {
+                assert_eq!((g.fast.min, g.fast.max, g.fast.step), (6, 12, 3));
+                assert_eq!((g.slow.min, g.slow.max, g.slow.step), (20, 30, 5));
+                assert_eq!((g.signal.min, g.signal.max, g.signal.step), (8, 10, 2));
+            }
+            other => panic!("MACD family must build a MACD grid, got {other:?}"),
+        }
+    }
+
+    /// T7b — an RSI family builds a real `SweepGrid::Rsi` from the period +
+    /// oversold axes.
+    #[test]
+    fn config_from_state_rsi_maps_form_to_real_grid() {
+        const NOW: i64 = 1_900_000_000_000;
+        let mut st = TuneScreenState {
+            family: TuneFamily::Rsi,
+            ..Default::default()
+        };
+        st.rsi_grid.period = AxisInput::from_values(8, 16, 4);
+        st.rsi_grid.oversold = AxisInput::from_values(20, 30, 5);
+        let coin = trading_core::Symbol::new("BTCUSDT");
+        let cfg = sweep_config_from_state(
+            &st,
+            &coin,
+            crate::leaderboard::LeaderboardLookback::H1_2024,
+            NOW,
+        );
+        assert!(matches!(cfg.family, backtest::SweepFamily::Rsi));
+        match cfg.grid {
+            backtest::SweepGrid::Rsi(g) => {
+                assert_eq!((g.period.min, g.period.max, g.period.step), (8, 16, 4));
+                assert_eq!(
+                    (g.oversold.min, g.oversold.max, g.oversold.step),
+                    (20, 30, 5)
+                );
+            }
+            other => panic!("RSI family must build an RSI grid, got {other:?}"),
+        }
+    }
+
+    /// T7b — a Bollinger family builds a real `SweepGrid::Bollinger`: the period
+    /// axis + the SELECTED `k` presets (the multi-select → `k_presets`).
+    #[test]
+    fn config_from_state_bollinger_maps_form_to_real_grid() {
+        use rust_decimal_macros::dec;
+        const NOW: i64 = 1_900_000_000_000;
+        let mut st = TuneScreenState {
+            family: TuneFamily::Bollinger,
+            ..Default::default()
+        };
+        st.bollinger_grid.period = AxisInput::from_values(12, 24, 6);
+        st.bollinger_grid.k_selected = [true, false, true, true]; // 1.5, 2.5, 3.0
+        let coin = trading_core::Symbol::new("BTCUSDT");
+        let cfg = sweep_config_from_state(
+            &st,
+            &coin,
+            crate::leaderboard::LeaderboardLookback::H1_2024,
+            NOW,
+        );
+        assert!(matches!(cfg.family, backtest::SweepFamily::Bollinger));
+        match cfg.grid {
+            backtest::SweepGrid::Bollinger(g) => {
+                assert_eq!((g.period.min, g.period.max, g.period.step), (12, 24, 6));
+                assert_eq!(g.k_presets, vec![dec!(1.5), dec!(2.5), dec!(3.0)]);
+            }
+            other => panic!("Bollinger family must build a Bollinger grid, got {other:?}"),
+        }
+    }
+
+    /// T7b — an empty `k` selection falls back to the shipped `k = 2.0` so the
+    /// config is always well-typed (the form's `can_run` gate blocks dispatch).
+    #[test]
+    fn config_from_state_bollinger_empty_k_falls_back_to_shipped() {
+        use rust_decimal_macros::dec;
+        let mut st = TuneScreenState {
+            family: TuneFamily::Bollinger,
+            ..Default::default()
+        };
+        st.bollinger_grid.k_selected = [false; 4];
+        let coin = trading_core::Symbol::new("BTCUSDT");
+        let cfg = sweep_config_from_state(
+            &st,
+            &coin,
+            crate::leaderboard::LeaderboardLookback::H1_2024,
+            0,
+        );
+        match cfg.grid {
+            backtest::SweepGrid::Bollinger(g) => {
+                assert_eq!(g.k_presets, vec![dec!(2.0)], "empty k → shipped fallback");
+            }
+            other => panic!("expected Bollinger grid, got {other:?}"),
         }
     }
 

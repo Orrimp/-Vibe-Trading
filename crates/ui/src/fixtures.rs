@@ -2610,6 +2610,41 @@ fn fake_sweep_cell(
     }
 }
 
+/// A synthetic MACD sweep cell — the `macd(fast,slow,signal)` params-label shape
+/// the engine's `SweptParams::Macd::label` produces. Same FRAGILE distribution
+/// shape as [`fake_sweep_cell`] (negative p5 Sharpe + high P(loss) when fragile).
+fn fake_macd_cell(
+    fast: u32,
+    slow: u32,
+    signal: u32,
+    verdict: crate::tune::SweepVerdictLabel,
+    in_sample_return: Decimal,
+    sharpe_p50: f64,
+) -> crate::tune::SweepCellRow {
+    use crate::tune::SweepVerdictLabel;
+    let fragile = matches!(verdict, SweepVerdictLabel::Fragile);
+    let promotable = !fragile;
+    let distribution = crate::tune::SweepDistributionMirror {
+        sharpe_p5: if fragile { -0.50 } else { 0.58 },
+        sharpe_p50,
+        sharpe_p95: sharpe_p50 + 0.55,
+        prob_loss: if fragile { 0.50 } else { 0.15 },
+        prob_sharpe_gt1: if fragile { 0.24 } else { 0.62 },
+        maxdd_p95: if fragile { 0.60 } else { 0.30 },
+    };
+    crate::tune::SweepCellRow {
+        // Mirrors `SweptParams::Macd::label` → "macd(8,20,7)".
+        params_label: SmolStr::new(format!("macd({fast},{slow},{signal})")),
+        verdict,
+        promotable,
+        in_sample_sharpe: sharpe_p50,
+        in_sample_return,
+        in_sample_maxdd: dec!(0.15),
+        trade_count: 31,
+        distribution,
+    }
+}
+
 /// A populated `SweepReportMirror` — an SMA grid with a mix of Robust / Marginal
 /// / FRAGILE cells, the shipped-config baseline row, and a buy-and-hold strip.
 ///
@@ -2630,6 +2665,43 @@ pub fn fake_sweep_report_mirror() -> crate::tune::SweepReportMirror {
     let baseline = fake_sweep_cell(20, 50, SweepVerdictLabel::Marginal, dec!(0.0510), 0.90);
     crate::tune::SweepReportMirror {
         family_label: SmolStr::new("SMA crossover"),
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        grid_size: cells.len(),
+        truncated: false,
+        requested_count: cells.len(),
+        cells,
+        baseline,
+        benchmark_kpis: crate::tune::SweepBenchmarkKpis {
+            sharpe: 0.41,
+            total_return_pct: dec!(0.0360),
+            max_drawdown: dec!(0.0810),
+        },
+    }
+}
+
+/// A populated MACD `SweepReportMirror` — a MACD grid with `macd(f,s,sig)` param
+/// labels, a mix of Robust / Marginal / FRAGILE cells, the shipped-config
+/// baseline row (`macd(12,26,9)`), and a buy-and-hold strip.
+///
+/// Proves a COMPOSED family renders its result grid (the params labels are the
+/// engine's `SweptParams::Macd` label shape) WITH a FRAGILE cell flagged — the
+/// render guard's composed-family proof. The FRAGILE cell has a gaudy in-sample
+/// return (+8.8%) but a negative p5 Sharpe (the anti-overfit case). Pure;
+/// engine-free; deterministic.
+#[must_use]
+pub fn fake_sweep_report_mirror_macd() -> crate::tune::SweepReportMirror {
+    use crate::tune::SweepVerdictLabel;
+    let cells = vec![
+        fake_macd_cell(8, 26, 9, SweepVerdictLabel::Robust, dec!(0.0702), 1.15),
+        fake_macd_cell(12, 20, 9, SweepVerdictLabel::Marginal, dec!(0.0398), 0.78),
+        fake_macd_cell(8, 20, 7, SweepVerdictLabel::Fragile, dec!(0.0880), 2.40),
+        fake_macd_cell(16, 32, 11, SweepVerdictLabel::Robust, dec!(0.0590), 1.02),
+        fake_macd_cell(12, 32, 7, SweepVerdictLabel::Marginal, dec!(0.0365), 0.70),
+    ];
+    let baseline = fake_macd_cell(12, 26, 9, SweepVerdictLabel::Marginal, dec!(0.0488), 0.88);
+    crate::tune::SweepReportMirror {
+        family_label: SmolStr::new("MACD"),
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         grid_size: cells.len(),
@@ -2670,6 +2742,21 @@ pub fn fake_cockpit_tune(result: PanelState<crate::tune::SweepReportMirror>) -> 
         running: false,
         ..Default::default()
     };
+    cockpit
+}
+
+/// A `Cockpit` routed to `Screen::Tune` with the supplied FAMILY selected in the
+/// picker + the supplied result state. Used by the render guard to prove a
+/// COMPOSED family (MACD / RSI / Bollinger) renders ITS axis form (not the SMA
+/// axes). The selected family's sub-form stays at its default (shipped-centred)
+/// so the axes paint with real values.
+#[must_use]
+pub fn fake_cockpit_tune_family(
+    family: crate::tune::TuneFamily,
+    result: PanelState<crate::tune::SweepReportMirror>,
+) -> Cockpit {
+    let mut cockpit = fake_cockpit_tune(result);
+    cockpit.tune_screen_state.family = family;
     cockpit
 }
 

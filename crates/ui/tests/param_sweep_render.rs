@@ -36,6 +36,15 @@
 //! 5. [`sweep_progress_determinate_paints`] — mid-sweep `BakeoffProgress
 //!    {done:3, total:12}` paints the determinate bar's `ACCENT_2` fill (model the
 //!    leaderboard's `bakeoff_progress_render.rs`). Writes the PNG.
+//! 6. [`sweep_macd_form_paints_third_axis`] + [`sweep_sma_form_has_no_third_axis`]
+//!    (T7b) — selecting MACD renders the MACD axis form with a THIRD axis (Signal
+//!    period) in a band where the SMA form (2 axes) paints ~nothing. Together
+//!    they prove the picker swaps in the composed family's OWN axes (NOT the SMA
+//!    axes, NOT the retired pending note). One screenshot per test (macOS font-
+//!    mutex hazard). Writes both PNGs.
+//! 7. [`sweep_macd_populated_paints_grid_and_fragile_badge`] (T7b) — a populated
+//!    MACD `SweepReportMirror` (composed `macd(...)` labels + a FRAGILE cell)
+//!    paints the gate-tied FRAGILE clay + the result grid. Writes the PNG.
 //!
 //! ## macOS gate (ADR-0057 D2)
 //!
@@ -82,6 +91,22 @@ fn render_tune_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 
 /// Top of the RESULT-GRID band — below the form panel + the benchmark strip.
 const GRID_TOP: u32 = 430;
+
+// The MACD form has a THIRD axis row (Signal period) that the SMA form (two
+// axes) does not. Measured from the saved PNGs at the 1920×1080 / scale-1.0 slot:
+// the SMA form's last content is its grid readout at y≈369, so SMA paints ~nothing
+// below y≈378; the MACD form's third "Signal period" axis (label + min/max/step
+// inputs + preset chips) sits at y≈367-420 and its readout at y≈443. So a band
+// JUST BELOW the SMA form, `[MACD_AXIS3_TOP, MACD_AXIS3_BOTTOM)`, captures MACD's
+// THIRD axis but is blank for SMA — the clean discriminator that the MACD picker
+// swapped in the MACD axes (NOT the 2-axis SMA form, NOT the retired pending
+// note, which painted a single muted line WAY above this band).
+
+/// Top of the MACD-third-axis band — below the SMA form's readout (y≈369).
+const MACD_AXIS3_TOP: u32 = 385;
+
+/// Bottom of the MACD-third-axis band — above the result-grid band.
+const MACD_AXIS3_BOTTOM: u32 = 428;
 
 /// `true` for a `DOWN_500`-clay (#C97B5E — R201 G123 B94) pixel — red dominant
 /// over green, green over blue, red high. (The exact predicate the leaderboard
@@ -174,6 +199,16 @@ fn grid_accent_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
 /// General foreground in the GRID band (the grid rows + distribution numbers).
 fn grid_foreground_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
     foreground_in_band(w, rgba, GRID_TOP, h)
+}
+
+/// Foreground in the MACD-third-axis band — the region just below the SMA form's
+/// readout. The MACD form's THIRD axis (Signal period: label + min/max/step
+/// inputs + preset chips) paints here; the SMA form (two axes) paints ~nothing
+/// (its content ends at the readout, above this band). So a high count here ==
+/// "a third axis row rendered" == the MACD form (not SMA, not the retired
+/// pending note) drew.
+fn macd_third_axis_foreground(w: u32, rgba: &[u8]) -> u64 {
+    foreground_in_band(w, rgba, MACD_AXIS3_TOP, MACD_AXIS3_BOTTOM)
 }
 
 /// **The render-layer guard.** A populated `SweepReportMirror` MUST paint, in the
@@ -334,6 +369,139 @@ fn sweep_fragile_promote_disabled_accent_discriminator() {
          than the all-fragile grid ({fragile_accent}) — proof the FRAGILE rows' \
          promotion affordance is DISABLED+greyed (no accent), the 'Fragile cannot \
          be crowned' lock. PNGs: /tmp/param_sweep_{{mixed,allfragile}}_promote_render.png"
+    );
+}
+
+// ── Composed-family form + result grid (T7b) ──────────────────────────────────
+//
+// The T7b flip makes MACD / RSI / Bollinger runnable: selecting a composed
+// family renders ITS axis form (MACD = 3 axes; RSI = 2; Bollinger = 1 axis + a
+// `k` multi-select) — NOT the SMA axes, and NOT the (retired) "not sweepable
+// yet" pending note. These guards prove, at the pixel layer:
+//   (a) selecting MACD paints MORE form-band foreground than SMA (3 axes > 2) —
+//       the chosen family's OWN, more-numerous axes drew (the pending note would
+//       have drawn FAR LESS than even SMA's 2 axes: this is the fail-before
+//       discriminator, the old behaviour is strictly below SMA, the new strictly
+//       above);
+//   (b) a populated MACD result grid paints the FRAGILE clay + heavy foreground
+//       (the result grid + the gate-tied FRAGILE treatment are family-agnostic).
+
+// NOTE (macOS render-harness hazard): each test below renders EXACTLY ONE
+// screenshot. Rendering two screenshots inside one `#[test]` reliably wedges the
+// cosmic-text/CoreText font mutex on macOS (spec/dev-notes/iced-ui-render-
+// verification.md). So the MACD-vs-SMA discriminator is split into two
+// single-screenshot tests that share the `MACD_AXIS3_*` band: MACD paints a real
+// third-axis row there; SMA (two axes) paints ~nothing there.
+
+/// **Composed-family form proof (T7b), MACD half.** Selecting MACD renders the
+/// MACD axis form — three `{min, max, step}` axis rows (fast / slow / signal) +
+/// preset chips. The THIRD axis (Signal period) sits in the `MACD_AXIS3_*` band
+/// (just below where the SMA form ends), so a healthy foreground count there
+/// proves the MACD form rendered a third axis (NOT the SMA 2-axis form, NOT the
+/// retired one-line pending note which painted far above this band).
+///
+/// Writes `/tmp/param_sweep_macd_form_render.png`.
+#[test]
+fn sweep_macd_form_paints_third_axis() {
+    use ui::tune::TuneFamily;
+
+    let macd = ui::fixtures::fake_cockpit_tune_family(TuneFamily::Macd, PanelState::Empty);
+    let (mw, mh, mrgba) = render_tune_rgba(macd);
+
+    if let Some(img) = image::RgbaImage::from_raw(mw, mh, mrgba.clone()) {
+        let _ = img.save("/tmp/param_sweep_macd_form_render.png");
+    }
+
+    let macd_axis3 = macd_third_axis_foreground(mw, &mrgba);
+    assert!(
+        macd_axis3 > 500,
+        "the MACD form must paint its THIRD axis row (Signal period: label + 3 \
+         inputs + preset chips) in the third-axis band (expected >500 fg px, got \
+         {macd_axis3}). If low, the MACD picker did not swap in the MACD axes. \
+         PNG: /tmp/param_sweep_macd_form_render.png"
+    );
+}
+
+/// **Composed-family form proof (T7b), SMA control half / negative control.** The
+/// SMA form (two axes) ends at its grid readout, ABOVE the `MACD_AXIS3_*` band —
+/// so SMA paints ~nothing there. Paired with [`sweep_macd_form_paints_third_axis`]
+/// this proves the band genuinely discriminates "has a third axis" (MACD) from
+/// "has only two axes" (SMA) — the picker swaps the form, it is not a tautology.
+///
+/// Writes `/tmp/param_sweep_sma_form_render.png`.
+#[test]
+fn sweep_sma_form_has_no_third_axis() {
+    use ui::tune::TuneFamily;
+
+    let sma = ui::fixtures::fake_cockpit_tune_family(TuneFamily::Sma, PanelState::Empty);
+    let (sw, sh, srgba) = render_tune_rgba(sma);
+
+    if let Some(img) = image::RgbaImage::from_raw(sw, sh, srgba.clone()) {
+        let _ = img.save("/tmp/param_sweep_sma_form_render.png");
+    }
+
+    let sma_axis3 = macd_third_axis_foreground(sw, &srgba);
+    assert!(
+        sma_axis3 < 200,
+        "the SMA form (two axes) must paint ~nothing in the third-axis band \
+         (expected <200 stray fg px, got {sma_axis3}) — its content ends at the \
+         readout above the band. If high, the band is not a clean MACD-vs-SMA \
+         discriminator. PNG: /tmp/param_sweep_sma_form_render.png"
+    );
+}
+
+/// **Composed-family result-grid proof (T7b).** A populated MACD
+/// `SweepReportMirror` (with `macd(f,s,sig)` param labels and a FRAGILE cell)
+/// paints, in the cockpit Tune screen with MACD selected:
+/// - the `DOWN_500` clay of the FRAGILE verdict badge + the Max-DD-p95 column
+///   (the gate-tied honesty treatment is family-agnostic — a composed config
+///   that overfits still renders FRAGILE + promotion-locked);
+/// - a healthy amount of grid-band foreground (the rows + distribution columns).
+///
+/// Writes `/tmp/param_sweep_macd_populated_render.png`.
+#[test]
+fn sweep_macd_populated_paints_grid_and_fragile_badge() {
+    use ui::tune::{SweepVerdictLabel, TuneFamily};
+
+    let mirror = ui::fixtures::fake_sweep_report_mirror_macd();
+    // The MACD fixture must carry a FRAGILE cell (the anti-overfit case) and the
+    // composed `macd(...)` label shape.
+    assert!(
+        mirror
+            .cells
+            .iter()
+            .any(|c| matches!(c.verdict, SweepVerdictLabel::Fragile)),
+        "the MACD fixture must contain a FRAGILE cell"
+    );
+    assert!(
+        mirror
+            .cells
+            .iter()
+            .any(|c| c.params_label.contains("macd(")),
+        "the MACD fixture must carry the composed `macd(...)` param labels"
+    );
+
+    let cockpit =
+        ui::fixtures::fake_cockpit_tune_family(TuneFamily::Macd, PanelState::Ready(mirror));
+    let (w, h, rgba) = render_tune_rgba(cockpit);
+
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/param_sweep_macd_populated_render.png");
+    }
+
+    let clay = grid_clay_pixels(w, h, &rgba);
+    let fg = grid_foreground_pixels(w, h, &rgba);
+
+    assert!(
+        clay > 80,
+        "the MACD FRAGILE badge + Max-DD column must paint DOWN_500 clay in the \
+         grid band (expected >80 px, got {clay}). The gate-tied FRAGILE treatment \
+         must cover composed cells. PNG: /tmp/param_sweep_macd_populated_render.png"
+    );
+    assert!(
+        fg > 4000,
+        "the populated MACD result grid must paint a lot of grid-band foreground \
+         (expected >4000 px, got {fg}). PNG: /tmp/param_sweep_macd_populated_render.png"
     );
 }
 

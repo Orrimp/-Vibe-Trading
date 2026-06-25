@@ -171,15 +171,15 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
 
 ## Remaining tail (post-T10, tracked)
 
-- [ ] **T7b [ui] — flip the composed families ON in the Tune form.** The T7 ENGINE
+- [x] **T7b [ui] — flip the composed families ON in the Tune form.** The T7 ENGINE
   landed (MACD/RSI/Bollinger sweep + identity guards + divergence all green), but the
   ui-designer gated the non-SMA families OFF in the picker (`TuneFamily::is_runnable()
   == false` → `TUNE_FAMILY_PENDING_NOTE`) because T7 landed mid-flight. T7b adds the
   per-family range form (MACD fast/slow/signal, RSI period/oversold, Bollinger period/k),
   flips `is_runnable()` true, and extends the render guards to a composed family.
-- [ ] **T11 [dev] — close the loop.** Anchors stay 119/119 (✓ done) + trace row filled
-  (✓ done at T3); REMAINS: the CHANGELOG.md entry + the spec close (stub-down) once T7b
-  lands and the feature is operator-approved.
+- [x] **T11 [dev] — close the loop.** Anchors 119/119 (✓) + trace row filled (✓ T3) +
+  CHANGELOG.md `advisor-param-tuning` entry (✓). The feature.md stub-down (per the
+  CHANGELOG-indexed-stub convention) is deferred until operator approval (presenter step).
 
 ## Notes
 

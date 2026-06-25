@@ -16,13 +16,14 @@
 //! `spawn_bakeoff`. The form holds *strings* the operator typed (round-tripped
 //! verbatim) and parses them at render/dispatch time — never an engine type.
 //!
-//! ## The grid is SMA-first
+//! ## All four families are runnable (T7b)
 //!
 //! The family picker presents all four families (SMA / MACD / RSI / Bollinger)
-//! because the picker IS the affordance; but only SMA is *runnable* until the
-//! engine's T7 string-generation builder lands. The non-SMA families render as
-//! present-but-pending chips (the picker shows them, Run is disabled with an
-//! honest "coming soon" note) so the UI is honest about what works today.
+//! and every one is *runnable*: the engine's `run_param_sweep` enumerates the
+//! `MacdGrid` / `RsiGrid` / `BollingerGrid` faithfully (proven by the engine's
+//! identity guards), so each family carries its own `{min, max, step}` axis form
+//! here, centred on the shipped params. Selecting a composed family renders ITS
+//! axes (not the SMA ones); [`TuneFamily::is_runnable`] returns `true` for all.
 
 use smol_str::SmolStr;
 
@@ -32,20 +33,20 @@ use crate::tune::state::SweepReportMirror;
 /// The strategy family the operator is tuning. UI-side closed enum mirroring
 /// `backtest::SweepFamily` — the picker never matches on the engine type.
 ///
-/// All four variants are present so the picker shows the full menu; only
-/// [`TuneFamily::Sma`] is *runnable* in v0.1 (the others are the engine's T7
-/// string-generation gap). [`TuneFamily::is_runnable`] is the honest gate.
+/// All four variants are present so the picker shows the full menu; every one is
+/// *runnable* (T7b) — the engine's `run_param_sweep` sweeps each family's grid
+/// faithfully. [`TuneFamily::is_runnable`] returns `true` for all four.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TuneFamily {
-    /// SMA crossover (`fast_len` / `slow_len`). Runnable now — the existing
-    /// `ScenarioConfig` override seam.
+    /// SMA crossover (`fast_len` / `slow_len`). The existing `ScenarioConfig`
+    /// override seam.
     #[default]
     Sma,
-    /// MACD (fast / slow / signal). Pending the engine's T7 builder.
+    /// MACD (fast / slow / signal).
     Macd,
-    /// RSI (period / oversold). Pending the engine's T7 builder.
+    /// RSI (period / oversold).
     Rsi,
-    /// Bollinger bands (period / k). Pending the engine's T7 builder.
+    /// Bollinger bands (period / k).
     Bollinger,
 }
 
@@ -58,13 +59,16 @@ impl TuneFamily {
         TuneFamily::Bollinger,
     ];
 
-    /// `true` when this family can actually be swept today. Only SMA is runnable
-    /// in v0.1 — the composed families need the engine's T7 string-generation
-    /// builder (`build_swept_strategy`), which is not yet wired. The Run button
-    /// reads this; a non-runnable family disables Run with an honest note.
+    /// `true` when this family can actually be swept. All four families are
+    /// runnable (T7b) — the engine's `run_param_sweep` enumerates each family's
+    /// grid faithfully. The Run button reads this (alongside the grid estimate);
+    /// the form is what actually gates a malformed/empty grid.
     #[must_use]
     pub fn is_runnable(self) -> bool {
-        matches!(self, TuneFamily::Sma)
+        matches!(
+            self,
+            TuneFamily::Sma | TuneFamily::Macd | TuneFamily::Rsi | TuneFamily::Bollinger
+        )
     }
 
     /// Map to the engine `backtest::SweepFamily`. Used only by the runner glue
@@ -80,13 +84,49 @@ impl TuneFamily {
     }
 }
 
-/// Which axis of an SMA grid an edit targets.
+/// Which `{min, max, step}` axis an edit/preset targets — one closed enum across
+/// EVERY family's integer axes (SMA fast/slow, MACD fast/slow/signal, RSI
+/// period/oversold, Bollinger period). The Bollinger `k` multi-select is NOT a
+/// `{min, max, step}` axis, so it is addressed by its own message, not here.
+///
+/// A single closed enum (rather than per-family sibling enums) keeps the message
+/// payloads + the `update` arms uniform: one `SweepAxisEdit { axis, field, value }`
+/// shape handles all 8 axes, and the form dispatches on the axis to the right
+/// sub-form. Each variant knows its [`TuneFamily`] via [`TuneAxisKind::family`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SmaAxisKind {
-    /// The fast-window axis (shipped default 20).
-    Fast,
-    /// The slow-window axis (shipped default 50).
-    Slow,
+pub enum TuneAxisKind {
+    /// SMA fast-window axis (shipped default 20).
+    SmaFast,
+    /// SMA slow-window axis (shipped default 50).
+    SmaSlow,
+    /// MACD fast-EMA-period axis (shipped default 12).
+    MacdFast,
+    /// MACD slow-EMA-period axis (shipped default 26).
+    MacdSlow,
+    /// MACD signal-period axis (shipped default 9).
+    MacdSignal,
+    /// RSI lookback-period axis (shipped default 14).
+    RsiPeriod,
+    /// RSI oversold-threshold axis (shipped default 30).
+    RsiOversold,
+    /// Bollinger lookback-period axis (shipped default 20).
+    BollingerPeriod,
+}
+
+impl TuneAxisKind {
+    /// The family this axis belongs to — lets the form route an edit to the
+    /// correct sub-form without the caller knowing the mapping.
+    #[must_use]
+    pub fn family(self) -> TuneFamily {
+        match self {
+            TuneAxisKind::SmaFast | TuneAxisKind::SmaSlow => TuneFamily::Sma,
+            TuneAxisKind::MacdFast | TuneAxisKind::MacdSlow | TuneAxisKind::MacdSignal => {
+                TuneFamily::Macd
+            }
+            TuneAxisKind::RsiPeriod | TuneAxisKind::RsiOversold => TuneFamily::Rsi,
+            TuneAxisKind::BollingerPeriod => TuneFamily::Bollinger,
+        }
+    }
 }
 
 /// Which `{min, max, step}` field of an axis an edit targets.
@@ -191,29 +231,35 @@ impl Default for SmaGridForm {
 impl SmaGridForm {
     /// Apply a preset to one axis. The presets are deliberately conservative —
     /// even `Wide` stays inside the engine's `1 ≤ fast < slow ≤ 400` guard and
-    /// keeps the cell count near the cap.
-    pub fn apply_preset(&mut self, axis: SmaAxisKind, preset: AxisPreset) {
+    /// keeps the cell count near the cap. A non-SMA axis is a no-op (the caller
+    /// routes by [`TuneAxisKind::family`], so this never fires off-family).
+    pub fn apply_preset(&mut self, axis: TuneAxisKind, preset: AxisPreset) {
         let input = match (axis, preset) {
             // Fast axis presets — centred on the shipped 20.
-            (SmaAxisKind::Fast, AxisPreset::Narrow) => AxisInput::from_values(15, 25, 5),
-            (SmaAxisKind::Fast, AxisPreset::Shipped) => AxisInput::from_values(10, 30, 5),
-            (SmaAxisKind::Fast, AxisPreset::Wide) => AxisInput::from_values(5, 40, 5),
+            (TuneAxisKind::SmaFast, AxisPreset::Narrow) => AxisInput::from_values(15, 25, 5),
+            (TuneAxisKind::SmaFast, AxisPreset::Shipped) => AxisInput::from_values(10, 30, 5),
+            (TuneAxisKind::SmaFast, AxisPreset::Wide) => AxisInput::from_values(5, 40, 5),
             // Slow axis presets — centred on the shipped 50.
-            (SmaAxisKind::Slow, AxisPreset::Narrow) => AxisInput::from_values(40, 60, 10),
-            (SmaAxisKind::Slow, AxisPreset::Shipped) => AxisInput::from_values(30, 70, 10),
-            (SmaAxisKind::Slow, AxisPreset::Wide) => AxisInput::from_values(30, 100, 10),
+            (TuneAxisKind::SmaSlow, AxisPreset::Narrow) => AxisInput::from_values(40, 60, 10),
+            (TuneAxisKind::SmaSlow, AxisPreset::Shipped) => AxisInput::from_values(30, 70, 10),
+            (TuneAxisKind::SmaSlow, AxisPreset::Wide) => AxisInput::from_values(30, 100, 10),
+            // Off-family axis — no-op (defensive; the router never sends these here).
+            _ => return,
         };
         match axis {
-            SmaAxisKind::Fast => self.fast = input,
-            SmaAxisKind::Slow => self.slow = input,
+            TuneAxisKind::SmaFast => self.fast = input,
+            TuneAxisKind::SmaSlow => self.slow = input,
+            _ => {}
         }
     }
 
-    /// Edit one field of one axis (round-tripped verbatim).
-    pub fn edit(&mut self, axis: SmaAxisKind, field: AxisField, value: String) {
+    /// Edit one field of one axis (round-tripped verbatim). A non-SMA axis is a
+    /// no-op (the caller routes by family).
+    pub fn edit(&mut self, axis: TuneAxisKind, field: AxisField, value: String) {
         match axis {
-            SmaAxisKind::Fast => self.fast.set(field, value),
-            SmaAxisKind::Slow => self.slow.set(field, value),
+            TuneAxisKind::SmaFast => self.fast.set(field, value),
+            TuneAxisKind::SmaSlow => self.slow.set(field, value),
+            _ => {}
         }
     }
 }
@@ -281,17 +327,7 @@ pub fn estimate_sma_grid(form: &SmaGridForm, cap: usize) -> GridEstimate {
             }
         }
     }
-    let invalid = cartesian.saturating_sub(valid_total);
-    let runnable = valid_total.min(cap);
-    let truncated = valid_total > cap;
-
-    GridEstimate {
-        runnable,
-        valid_total,
-        invalid,
-        truncated,
-        has_blank_field,
-    }
+    grid_estimate(cartesian, valid_total, cap, has_blank_field)
 }
 
 /// Enumerate one axis `min, min+step, … ≤ max`. Empty when any field is blank
@@ -310,6 +346,327 @@ fn axis_values(min: Option<u32>, max: Option<u32>, step: Option<u32>) -> Vec<u32
         x = x.saturating_add(step);
     }
     v
+}
+
+// ── MACD form ─────────────────────────────────────────────────────────────────
+
+/// The MACD grid form — three `{min, max, step}` axes (fast / slow / signal).
+///
+/// Centred on the shipped MACD config (fast=12, slow=26, signal=9), mirroring
+/// the engine's [`backtest::MacdGrid::default`] grid so the form's default is the
+/// engine's default. Manual edits round-trip through [`AxisInput`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacdGridForm {
+    /// Fast EMA period axis.
+    pub fast: AxisInput,
+    /// Slow EMA period axis.
+    pub slow: AxisInput,
+    /// Signal smoothing period axis.
+    pub signal: AxisInput,
+}
+
+impl Default for MacdGridForm {
+    /// The shipped default grid — `fast 8..16 step 4`, `slow 20..32 step 6`,
+    /// `signal 7..11 step 2` (matching `backtest::MacdGrid::default`).
+    fn default() -> Self {
+        Self {
+            fast: AxisInput::from_values(8, 16, 4),
+            slow: AxisInput::from_values(20, 32, 6),
+            signal: AxisInput::from_values(7, 11, 2),
+        }
+    }
+}
+
+impl MacdGridForm {
+    /// Edit one field of one axis (round-tripped verbatim). A non-MACD axis is a
+    /// no-op (the caller routes by family).
+    pub fn edit(&mut self, axis: TuneAxisKind, field: AxisField, value: String) {
+        match axis {
+            TuneAxisKind::MacdFast => self.fast.set(field, value),
+            TuneAxisKind::MacdSlow => self.slow.set(field, value),
+            TuneAxisKind::MacdSignal => self.signal.set(field, value),
+            _ => {}
+        }
+    }
+
+    /// Apply a narrow/shipped/wide preset to one axis (centred on the shipped
+    /// fast=12 / slow=26 / signal=9). A non-MACD axis is a no-op.
+    pub fn apply_preset(&mut self, axis: TuneAxisKind, preset: AxisPreset) {
+        let input = match (axis, preset) {
+            (TuneAxisKind::MacdFast, AxisPreset::Narrow) => AxisInput::from_values(10, 14, 2),
+            (TuneAxisKind::MacdFast, AxisPreset::Shipped) => AxisInput::from_values(8, 16, 4),
+            (TuneAxisKind::MacdFast, AxisPreset::Wide) => AxisInput::from_values(6, 18, 3),
+            (TuneAxisKind::MacdSlow, AxisPreset::Narrow) => AxisInput::from_values(22, 30, 4),
+            (TuneAxisKind::MacdSlow, AxisPreset::Shipped) => AxisInput::from_values(20, 32, 6),
+            (TuneAxisKind::MacdSlow, AxisPreset::Wide) => AxisInput::from_values(18, 40, 4),
+            (TuneAxisKind::MacdSignal, AxisPreset::Narrow) => AxisInput::from_values(8, 10, 2),
+            (TuneAxisKind::MacdSignal, AxisPreset::Shipped) => AxisInput::from_values(7, 11, 2),
+            (TuneAxisKind::MacdSignal, AxisPreset::Wide) => AxisInput::from_values(5, 13, 2),
+            _ => return,
+        };
+        match axis {
+            TuneAxisKind::MacdFast => self.fast = input,
+            TuneAxisKind::MacdSlow => self.slow = input,
+            TuneAxisKind::MacdSignal => self.signal = input,
+            _ => {}
+        }
+    }
+}
+
+/// Compute the [`GridEstimate`] for a MACD form. Pure; total; no engine call.
+///
+/// Mirrors `backtest::MacdGrid::enumerate_valid` exactly: the cartesian product
+/// of the three axes, dropping triples where NOT (`fast >= 1 && fast < slow &&
+/// slow <= 400 && signal >= 1`), capped at `cap`.
+#[must_use]
+pub fn estimate_macd_grid(form: &MacdGridForm, cap: usize) -> GridEstimate {
+    let (fmin, fmax, fstep) = form.fast.parsed();
+    let (smin, smax, sstep) = form.slow.parsed();
+    let (gmin, gmax, gstep) = form.signal.parsed();
+
+    let has_blank_field = [fmin, fmax, fstep, smin, smax, sstep, gmin, gmax, gstep]
+        .iter()
+        .any(Option::is_none);
+
+    let fast_vals = axis_values(fmin, fmax, fstep);
+    let slow_vals = axis_values(smin, smax, sstep);
+    let sig_vals = axis_values(gmin, gmax, gstep);
+
+    let cartesian = fast_vals
+        .len()
+        .saturating_mul(slow_vals.len())
+        .saturating_mul(sig_vals.len());
+    let mut valid_total = 0usize;
+    for &f in &fast_vals {
+        for &s in &slow_vals {
+            for &g in &sig_vals {
+                if f >= 1 && f < s && s <= 400 && g >= 1 {
+                    valid_total += 1;
+                }
+            }
+        }
+    }
+    grid_estimate(cartesian, valid_total, cap, has_blank_field)
+}
+
+// ── RSI form ──────────────────────────────────────────────────────────────────
+
+/// The RSI grid form — a `{min, max, step}` period axis × an oversold-threshold
+/// axis. Mirrors the engine's [`backtest::RsiGrid`] (oversold is swept as a
+/// discrete integer threshold, NOT a single value), centred on the shipped
+/// config (period=14, oversold=30).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RsiGridForm {
+    /// RSI lookback period axis.
+    pub period: AxisInput,
+    /// Oversold threshold axis (integer; `rsi < oversold` fires entry).
+    pub oversold: AxisInput,
+}
+
+impl Default for RsiGridForm {
+    /// The shipped default grid — `period 10..18 step 4`, `oversold 25..35 step 5`
+    /// (matching `backtest::RsiGrid::default`).
+    fn default() -> Self {
+        Self {
+            period: AxisInput::from_values(10, 18, 4),
+            oversold: AxisInput::from_values(25, 35, 5),
+        }
+    }
+}
+
+impl RsiGridForm {
+    /// Edit one field of one axis (round-tripped). A non-RSI axis is a no-op.
+    pub fn edit(&mut self, axis: TuneAxisKind, field: AxisField, value: String) {
+        match axis {
+            TuneAxisKind::RsiPeriod => self.period.set(field, value),
+            TuneAxisKind::RsiOversold => self.oversold.set(field, value),
+            _ => {}
+        }
+    }
+
+    /// Apply a narrow/shipped/wide preset to one axis. A non-RSI axis is a no-op.
+    pub fn apply_preset(&mut self, axis: TuneAxisKind, preset: AxisPreset) {
+        let input = match (axis, preset) {
+            (TuneAxisKind::RsiPeriod, AxisPreset::Narrow) => AxisInput::from_values(12, 16, 2),
+            (TuneAxisKind::RsiPeriod, AxisPreset::Shipped) => AxisInput::from_values(10, 18, 4),
+            (TuneAxisKind::RsiPeriod, AxisPreset::Wide) => AxisInput::from_values(6, 22, 4),
+            (TuneAxisKind::RsiOversold, AxisPreset::Narrow) => AxisInput::from_values(28, 32, 2),
+            (TuneAxisKind::RsiOversold, AxisPreset::Shipped) => AxisInput::from_values(25, 35, 5),
+            (TuneAxisKind::RsiOversold, AxisPreset::Wide) => AxisInput::from_values(20, 40, 5),
+            _ => return,
+        };
+        match axis {
+            TuneAxisKind::RsiPeriod => self.period = input,
+            TuneAxisKind::RsiOversold => self.oversold = input,
+            _ => {}
+        }
+    }
+}
+
+/// Compute the [`GridEstimate`] for an RSI form. Pure; total; no engine call.
+///
+/// Mirrors `backtest::RsiGrid::enumerate_valid`: the cartesian product of the
+/// period × oversold axes, dropping pairs where NOT (`period >= 2 && 1 <=
+/// oversold <= 49`), capped at `cap`.
+#[must_use]
+pub fn estimate_rsi_grid(form: &RsiGridForm, cap: usize) -> GridEstimate {
+    let (pmin, pmax, pstep) = form.period.parsed();
+    let (omin, omax, ostep) = form.oversold.parsed();
+
+    let has_blank_field = [pmin, pmax, pstep, omin, omax, ostep]
+        .iter()
+        .any(Option::is_none);
+
+    let period_vals = axis_values(pmin, pmax, pstep);
+    let os_vals = axis_values(omin, omax, ostep);
+
+    let cartesian = period_vals.len().saturating_mul(os_vals.len());
+    let mut valid_total = 0usize;
+    for &p in &period_vals {
+        for &os in &os_vals {
+            if p >= 2 && (1..=49).contains(&os) {
+                valid_total += 1;
+            }
+        }
+    }
+    grid_estimate(cartesian, valid_total, cap, has_blank_field)
+}
+
+// ── Bollinger form ────────────────────────────────────────────────────────────
+
+/// The four discrete `k` band-multiplier presets the Bollinger grid sweeps —
+/// MIRRORS `backtest::BollingerGrid::default().k_presets` (`{1.5, 2.0, 2.5, 3.0}`,
+/// Decimal-exact, no float-step drift). Indexed by [`BollingerGridForm.k_selected`].
+pub const BOLLINGER_K_PRESETS: [&str; 4] = ["1.5", "2.0", "2.5", "3.0"];
+
+/// The index of the shipped `k = 2.0` preset (selected by default).
+const SHIPPED_BBANDS_K_INDEX: usize = 1;
+
+/// The Bollinger grid form — a `{min, max, step}` period axis × a MULTI-SELECT
+/// over the four `k` presets (the engine's `k_presets` list, not a `{min, max,
+/// step}` axis — `k` is a Decimal preset list to avoid float-step drift).
+///
+/// Centred on the shipped config (period=20, k=2.0). `k_selected[i]` toggles the
+/// i-th [`BOLLINGER_K_PRESETS`] entry; at least one must stay selected to run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BollingerGridForm {
+    /// Lookback period axis.
+    pub period: AxisInput,
+    /// Which of the four `k` presets are selected (parallel to
+    /// [`BOLLINGER_K_PRESETS`]). Default: only the shipped `k = 2.0`.
+    pub k_selected: [bool; 4],
+}
+
+impl Default for BollingerGridForm {
+    /// The shipped default grid — `period 14..26 step 6` (matching
+    /// `backtest::BollingerGrid::default`) and only the shipped `k = 2.0` preset
+    /// checked (a one-cell-per-period default the operator widens by ticking more
+    /// `k` presets).
+    fn default() -> Self {
+        let mut k_selected = [false; 4];
+        k_selected[SHIPPED_BBANDS_K_INDEX] = true;
+        Self {
+            period: AxisInput::from_values(14, 26, 6),
+            k_selected,
+        }
+    }
+}
+
+impl BollingerGridForm {
+    /// Edit one field of the period axis (round-tripped). Only the period axis
+    /// exists for Bollinger; a non-Bollinger axis is a no-op.
+    pub fn edit(&mut self, axis: TuneAxisKind, field: AxisField, value: String) {
+        if matches!(axis, TuneAxisKind::BollingerPeriod) {
+            self.period.set(field, value);
+        }
+    }
+
+    /// Apply a narrow/shipped/wide preset to the period axis. A non-Bollinger
+    /// axis is a no-op.
+    pub fn apply_preset(&mut self, axis: TuneAxisKind, preset: AxisPreset) {
+        if !matches!(axis, TuneAxisKind::BollingerPeriod) {
+            return;
+        }
+        self.period = match preset {
+            AxisPreset::Narrow => AxisInput::from_values(16, 24, 4),
+            AxisPreset::Shipped => AxisInput::from_values(14, 26, 6),
+            AxisPreset::Wide => AxisInput::from_values(10, 30, 4),
+        };
+    }
+
+    /// Toggle the i-th `k` preset. Out-of-range indices are ignored (defensive).
+    pub fn toggle_k(&mut self, index: usize) {
+        if let Some(slot) = self.k_selected.get_mut(index) {
+            *slot = !*slot;
+        }
+    }
+
+    /// The selected `k` presets as Decimals (the engine's `k_presets` list).
+    #[must_use]
+    pub fn selected_k_decimals(&self) -> Vec<rust_decimal::Decimal> {
+        use std::str::FromStr;
+        self.k_selected
+            .iter()
+            .enumerate()
+            .filter(|&(_, &on)| on)
+            .filter_map(|(i, _)| rust_decimal::Decimal::from_str(BOLLINGER_K_PRESETS[i]).ok())
+            .collect()
+    }
+
+    /// How many `k` presets are currently selected.
+    #[must_use]
+    pub fn k_count(&self) -> usize {
+        self.k_selected.iter().filter(|&&on| on).count()
+    }
+}
+
+/// Compute the [`GridEstimate`] for a Bollinger form. Pure; total; no engine call.
+///
+/// Mirrors `backtest::BollingerGrid::enumerate_valid`: the cartesian product of
+/// the period axis times the SELECTED `k` presets, dropping pairs that fail the
+/// `period >= 2` guard (every preset `k` is already `> 0`), capped at `cap`.
+/// Zero selected `k` presets yields zero cells (Run disables).
+#[must_use]
+pub fn estimate_bollinger_grid(form: &BollingerGridForm, cap: usize) -> GridEstimate {
+    let (pmin, pmax, pstep) = form.period.parsed();
+
+    // A blank period field OR zero selected k presets blocks the run (the latter
+    // is treated as "has_blank_field" so the readout prompts to pick a k).
+    let has_blank_field =
+        pmin.is_none() || pmax.is_none() || pstep.is_none() || form.k_count() == 0;
+
+    let period_vals = axis_values(pmin, pmax, pstep);
+    let k_count = form.k_count();
+
+    let cartesian = period_vals.len().saturating_mul(k_count);
+    let mut valid_total = 0usize;
+    for &p in &period_vals {
+        if p >= 2 {
+            valid_total += k_count;
+        }
+    }
+    grid_estimate(cartesian, valid_total, cap, has_blank_field)
+}
+
+/// Assemble a [`GridEstimate`] from the raw cartesian + valid counts (the common
+/// tail of every per-family estimate: invalid = cartesian − valid, cap the
+/// runnable, set the truncation flag). Pure.
+fn grid_estimate(
+    cartesian: usize,
+    valid_total: usize,
+    cap: usize,
+    has_blank_field: bool,
+) -> GridEstimate {
+    let invalid = cartesian.saturating_sub(valid_total);
+    let runnable = valid_total.min(cap);
+    let truncated = valid_total > cap;
+    GridEstimate {
+        runnable,
+        valid_total,
+        invalid,
+        truncated,
+        has_blank_field,
+    }
 }
 
 /// The Tune screen state — the form selection + the run lifecycle.
@@ -338,10 +695,16 @@ pub struct TuneScreenState {
     pub progress: Option<backtest::progress::BakeoffProgress>,
 
     // ── The range form ───────────────────────────────────────────────────────
-    /// The family being tuned (default SMA — the runnable one).
+    /// The family being tuned (default SMA).
     pub family: TuneFamily,
-    /// The SMA `{min, max, step}` axis form (the only runnable family in v0.1).
+    /// The SMA `{min, max, step}` axis form.
     pub sma_grid: SmaGridForm,
+    /// The MACD `{fast, slow, signal}` axis form.
+    pub macd_grid: MacdGridForm,
+    /// The RSI `{period, oversold}` axis form.
+    pub rsi_grid: RsiGridForm,
+    /// The Bollinger `{period}` axis + `k`-preset multi-select form.
+    pub bollinger_grid: BollingerGridForm,
 }
 
 impl Default for TuneScreenState {
@@ -353,16 +716,25 @@ impl Default for TuneScreenState {
             progress: None,
             family: TuneFamily::default(),
             sma_grid: SmaGridForm::default(),
+            macd_grid: MacdGridForm::default(),
+            rsi_grid: RsiGridForm::default(),
+            bollinger_grid: BollingerGridForm::default(),
         }
     }
 }
 
 impl TuneScreenState {
-    /// The grid estimate for the current form (SMA only in v0.1). Drives the
-    /// live readout + the Run-enabled gate. Pure.
+    /// The grid estimate for the CURRENTLY-SELECTED family's form. Drives the
+    /// live readout + the Run-enabled gate. Pure; dispatches on `self.family`.
     #[must_use]
     pub fn grid_estimate(&self) -> GridEstimate {
-        estimate_sma_grid(&self.sma_grid, backtest::MAX_SWEEP_CONFIGS)
+        let cap = backtest::MAX_SWEEP_CONFIGS;
+        match self.family {
+            TuneFamily::Sma => estimate_sma_grid(&self.sma_grid, cap),
+            TuneFamily::Macd => estimate_macd_grid(&self.macd_grid, cap),
+            TuneFamily::Rsi => estimate_rsi_grid(&self.rsi_grid, cap),
+            TuneFamily::Bollinger => estimate_bollinger_grid(&self.bollinger_grid, cap),
+        }
     }
 
     /// `true` when Run should be enabled: the family is runnable, the grid has
@@ -373,19 +745,36 @@ impl TuneScreenState {
     }
 
     /// Select a family (the picker). Does NOT clear the existing result — the
-    /// operator may inspect a prior SMA result while eyeing another family.
+    /// operator may inspect a prior result while eyeing another family.
     pub fn select_family(&mut self, family: TuneFamily) {
         self.family = family;
     }
 
-    /// Edit one `{min, max, step}` field of one SMA axis (round-tripped).
-    pub fn edit_sma_axis(&mut self, axis: SmaAxisKind, field: AxisField, value: String) {
-        self.sma_grid.edit(axis, field, value);
+    /// Edit one `{min, max, step}` field of one axis — ROUTED to the owning
+    /// family's sub-form via [`TuneAxisKind::family`] (round-tripped verbatim).
+    pub fn edit_axis(&mut self, axis: TuneAxisKind, field: AxisField, value: String) {
+        match axis.family() {
+            TuneFamily::Sma => self.sma_grid.edit(axis, field, value),
+            TuneFamily::Macd => self.macd_grid.edit(axis, field, value),
+            TuneFamily::Rsi => self.rsi_grid.edit(axis, field, value),
+            TuneFamily::Bollinger => self.bollinger_grid.edit(axis, field, value),
+        }
     }
 
-    /// Apply a narrow/shipped/wide preset to one SMA axis.
-    pub fn apply_sma_preset(&mut self, axis: SmaAxisKind, preset: AxisPreset) {
-        self.sma_grid.apply_preset(axis, preset);
+    /// Apply a narrow/shipped/wide preset to one axis — ROUTED to the owning
+    /// family's sub-form via [`TuneAxisKind::family`].
+    pub fn apply_preset(&mut self, axis: TuneAxisKind, preset: AxisPreset) {
+        match axis.family() {
+            TuneFamily::Sma => self.sma_grid.apply_preset(axis, preset),
+            TuneFamily::Macd => self.macd_grid.apply_preset(axis, preset),
+            TuneFamily::Rsi => self.rsi_grid.apply_preset(axis, preset),
+            TuneFamily::Bollinger => self.bollinger_grid.apply_preset(axis, preset),
+        }
+    }
+
+    /// Toggle the i-th Bollinger `k`-preset (the multi-select). Pure.
+    pub fn toggle_bollinger_k(&mut self, index: usize) {
+        self.bollinger_grid.toggle_k(index);
     }
 
     /// Mark a sweep as started — `result` → `Loading`, `running` → `true`,
@@ -433,10 +822,28 @@ mod tests {
     }
 
     #[test]
-    fn non_sma_families_are_not_runnable_yet() {
-        for f in [TuneFamily::Macd, TuneFamily::Rsi, TuneFamily::Bollinger] {
-            assert!(!f.is_runnable(), "{f:?} is the T7 gap — not runnable yet");
+    fn all_families_are_runnable() {
+        for f in TuneFamily::ALL {
+            assert!(
+                f.is_runnable(),
+                "{f:?} must be runnable (T7b flipped them on)"
+            );
         }
+    }
+
+    #[test]
+    fn axis_kind_maps_to_owning_family() {
+        assert_eq!(TuneAxisKind::SmaFast.family(), TuneFamily::Sma);
+        assert_eq!(TuneAxisKind::SmaSlow.family(), TuneFamily::Sma);
+        assert_eq!(TuneAxisKind::MacdFast.family(), TuneFamily::Macd);
+        assert_eq!(TuneAxisKind::MacdSlow.family(), TuneFamily::Macd);
+        assert_eq!(TuneAxisKind::MacdSignal.family(), TuneFamily::Macd);
+        assert_eq!(TuneAxisKind::RsiPeriod.family(), TuneFamily::Rsi);
+        assert_eq!(TuneAxisKind::RsiOversold.family(), TuneFamily::Rsi);
+        assert_eq!(
+            TuneAxisKind::BollingerPeriod.family(),
+            TuneFamily::Bollinger
+        );
     }
 
     #[test]
@@ -505,7 +912,7 @@ mod tests {
     #[test]
     fn preset_apply_seeds_axis() {
         let mut form = SmaGridForm::default();
-        form.apply_preset(SmaAxisKind::Fast, AxisPreset::Wide);
+        form.apply_preset(TuneAxisKind::SmaFast, AxisPreset::Wide);
         assert_eq!(form.fast.min, "5");
         assert_eq!(form.fast.max, "40");
         // Wide fast + shipped slow stays runnable.
@@ -516,10 +923,144 @@ mod tests {
     #[test]
     fn edit_round_trips_verbatim() {
         let mut form = SmaGridForm::default();
-        form.edit(SmaAxisKind::Slow, AxisField::Max, "123".to_string());
+        form.edit(TuneAxisKind::SmaSlow, AxisField::Max, "123".to_string());
         assert_eq!(form.slow.max, "123");
         let (_, smax, _) = form.slow.parsed();
         assert_eq!(smax, Some(123));
+    }
+
+    // ── Per-family form estimates (T7b) ─────────────────────────────────────
+
+    #[test]
+    fn macd_default_form_matches_engine_default_and_runs() {
+        // The form default must enumerate the SAME valid-triple count as the
+        // engine's `MacdGrid::default` (the form mirrors the engine grid).
+        let est = estimate_macd_grid(&MacdGridForm::default(), CAP);
+        let (_, engine_valid) = backtest::MacdGrid::default().enumerate_valid();
+        assert_eq!(
+            est.valid_total,
+            engine_valid.len(),
+            "MACD form default must match the engine default grid's valid count"
+        );
+        assert!(est.is_runnable(), "default MACD grid must run something");
+        assert!(!est.has_blank_field);
+    }
+
+    #[test]
+    fn macd_drops_fast_ge_slow_like_engine() {
+        // fast [20,30] × slow [20] × signal [9]: both (20,20),(30,20) invalid.
+        let form = MacdGridForm {
+            fast: AxisInput::from_values(20, 30, 10),
+            slow: AxisInput::from_values(20, 20, 1),
+            signal: AxisInput::from_values(9, 9, 1),
+        };
+        let est = estimate_macd_grid(&form, CAP);
+        assert_eq!(est.valid_total, 0, "no fast<slow triple is valid");
+        assert!(!est.is_runnable());
+    }
+
+    #[test]
+    fn macd_selecting_family_drives_estimate() {
+        let mut st = TuneScreenState::default();
+        st.select_family(TuneFamily::Macd);
+        // The state estimate must now reflect the MACD form, not SMA.
+        let est = st.grid_estimate();
+        let direct = estimate_macd_grid(&MacdGridForm::default(), CAP);
+        assert_eq!(est, direct, "state estimate must dispatch to the MACD form");
+        assert!(st.can_run(), "default MACD form must be runnable");
+    }
+
+    #[test]
+    fn macd_edit_routes_by_family_via_state() {
+        let mut st = TuneScreenState::default();
+        st.select_family(TuneFamily::Macd);
+        st.edit_axis(TuneAxisKind::MacdSignal, AxisField::Max, "13".to_string());
+        assert_eq!(st.macd_grid.signal.max, "13");
+        // The SMA form is untouched (the router addressed MACD only).
+        assert_eq!(st.sma_grid, SmaGridForm::default());
+    }
+
+    #[test]
+    fn rsi_default_form_matches_engine_default() {
+        let est = estimate_rsi_grid(&RsiGridForm::default(), CAP);
+        let (_, engine_valid) = backtest::RsiGrid::default().enumerate_valid();
+        assert_eq!(est.valid_total, engine_valid.len());
+        assert!(est.is_runnable());
+    }
+
+    #[test]
+    fn rsi_drops_oversold_ge_50() {
+        // oversold 48..52 step 2 → {48,50,52}: only 48 is <= 49.
+        let form = RsiGridForm {
+            period: AxisInput::from_values(14, 14, 1),
+            oversold: AxisInput::from_values(48, 52, 2),
+        };
+        let est = estimate_rsi_grid(&form, CAP);
+        assert_eq!(est.valid_total, 1, "only oversold=48 is valid");
+    }
+
+    #[test]
+    fn bollinger_default_form_matches_engine_default() {
+        // Engine default uses ALL FOUR k presets; the form default selects only
+        // the shipped k=2.0, so the form's valid count is the engine's / 4. Match
+        // the form against a single-k engine grid to prove the period axis is right.
+        let form = BollingerGridForm::default();
+        let est = estimate_bollinger_grid(&form, CAP);
+        // period {14,20,26} = 3 valid periods × 1 selected k = 3 cells.
+        assert_eq!(
+            est.valid_total, 3,
+            "default form: 3 periods × 1 k = 3 cells"
+        );
+        assert!(est.is_runnable());
+        // Ticking all four k presets quadruples to the engine default's 12 cells.
+        let wide = BollingerGridForm {
+            k_selected: [true; 4],
+            ..BollingerGridForm::default()
+        };
+        let (_, engine_valid) = backtest::BollingerGrid::default().enumerate_valid();
+        assert_eq!(
+            estimate_bollinger_grid(&wide, CAP).valid_total,
+            engine_valid.len(),
+            "all-k form must match the engine default grid"
+        );
+    }
+
+    #[test]
+    fn bollinger_zero_k_blocks_run() {
+        let form = BollingerGridForm {
+            k_selected: [false; 4],
+            ..BollingerGridForm::default()
+        };
+        let est = estimate_bollinger_grid(&form, CAP);
+        assert!(est.has_blank_field, "zero k presets must block run");
+        assert!(!est.is_runnable());
+    }
+
+    #[test]
+    fn bollinger_selected_k_decimals_match_presets() {
+        let form = BollingerGridForm {
+            k_selected: [true, false, true, false], // 1.5 + 2.5
+            ..BollingerGridForm::default()
+        };
+        let ks = form.selected_k_decimals();
+        assert_eq!(ks.len(), 2);
+        assert_eq!(ks[0], rust_decimal_macros::dec!(1.5));
+        assert_eq!(ks[1], rust_decimal_macros::dec!(2.5));
+    }
+
+    #[test]
+    fn bollinger_toggle_k_via_state() {
+        let mut st = TuneScreenState::default();
+        st.select_family(TuneFamily::Bollinger);
+        assert_eq!(
+            st.bollinger_grid.k_count(),
+            1,
+            "default: shipped k=2.0 only"
+        );
+        st.toggle_bollinger_k(3); // add 3.0
+        assert_eq!(st.bollinger_grid.k_count(), 2);
+        st.toggle_bollinger_k(1); // remove the shipped 2.0
+        assert_eq!(st.bollinger_grid.k_count(), 1);
     }
 
     #[test]
@@ -569,11 +1110,12 @@ mod tests {
         st.finish_run(Ok(mirror));
         st.select_family(TuneFamily::Macd);
         assert_eq!(st.family, TuneFamily::Macd);
-        // A non-runnable family must disable Run even with a prior result on screen.
-        assert!(!st.can_run());
+        // Switching family must NOT clear a prior result on screen.
         assert!(
             matches!(st.result, PanelState::Ready(_)),
             "switching family must NOT clear a prior result"
         );
+        // MACD is now runnable (T7b) with its default form — Run is enabled.
+        assert!(st.can_run(), "MACD default form is runnable");
     }
 }

@@ -1760,9 +1760,18 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TUNE_FAMILY_MACD", TUNE_FAMILY_MACD),
         ("TUNE_FAMILY_RSI", TUNE_FAMILY_RSI),
         ("TUNE_FAMILY_BOLLINGER", TUNE_FAMILY_BOLLINGER),
-        ("TUNE_FAMILY_PENDING_NOTE", TUNE_FAMILY_PENDING_NOTE),
         ("TUNE_AXIS_FAST_LABEL", TUNE_AXIS_FAST_LABEL),
         ("TUNE_AXIS_SLOW_LABEL", TUNE_AXIS_SLOW_LABEL),
+        ("TUNE_AXIS_MACD_FAST_LABEL", TUNE_AXIS_MACD_FAST_LABEL),
+        ("TUNE_AXIS_MACD_SLOW_LABEL", TUNE_AXIS_MACD_SLOW_LABEL),
+        ("TUNE_AXIS_MACD_SIGNAL_LABEL", TUNE_AXIS_MACD_SIGNAL_LABEL),
+        ("TUNE_AXIS_RSI_PERIOD_LABEL", TUNE_AXIS_RSI_PERIOD_LABEL),
+        ("TUNE_AXIS_RSI_OVERSOLD_LABEL", TUNE_AXIS_RSI_OVERSOLD_LABEL),
+        (
+            "TUNE_AXIS_BBANDS_PERIOD_LABEL",
+            TUNE_AXIS_BBANDS_PERIOD_LABEL,
+        ),
+        ("TUNE_AXIS_BBANDS_K_LABEL", TUNE_AXIS_BBANDS_K_LABEL),
         ("TUNE_AXIS_MIN", TUNE_AXIS_MIN),
         ("TUNE_AXIS_MAX", TUNE_AXIS_MAX),
         ("TUNE_AXIS_STEP", TUNE_AXIS_STEP),
@@ -2874,15 +2883,28 @@ pub const TUNE_FAMILY_RSI: &str = "RSI";
 /// Bollinger family chip label.
 pub const TUNE_FAMILY_BOLLINGER: &str = "Bollinger bands";
 
-/// Honest note shown when a not-yet-runnable family is picked — the composed
-/// families need the engine's parameter-injection builder, which is in progress.
-pub const TUNE_FAMILY_PENDING_NOTE: &str = "This family isn\u{2019}t sweepable yet — only SMA crossover can be tuned today. \
-     The others are coming once their parameter wiring lands.";
-
 /// Axis labels (SMA fast / slow window).
 pub const TUNE_AXIS_FAST_LABEL: &str = "Fast window (shipped 20)";
 /// SMA slow-window axis label.
 pub const TUNE_AXIS_SLOW_LABEL: &str = "Slow window (shipped 50)";
+
+/// MACD axis labels (fast / slow / signal period) — shipped 12 / 26 / 9.
+pub const TUNE_AXIS_MACD_FAST_LABEL: &str = "Fast period (shipped 12)";
+/// MACD slow-period axis label.
+pub const TUNE_AXIS_MACD_SLOW_LABEL: &str = "Slow period (shipped 26)";
+/// MACD signal-period axis label.
+pub const TUNE_AXIS_MACD_SIGNAL_LABEL: &str = "Signal period (shipped 9)";
+
+/// RSI axis labels (lookback period / oversold threshold) — shipped 14 / 30.
+pub const TUNE_AXIS_RSI_PERIOD_LABEL: &str = "Period (shipped 14)";
+/// RSI oversold-threshold axis label.
+pub const TUNE_AXIS_RSI_OVERSOLD_LABEL: &str = "Oversold threshold (shipped 30)";
+
+/// Bollinger lookback-period axis label — shipped 20.
+pub const TUNE_AXIS_BBANDS_PERIOD_LABEL: &str = "Period (shipped 20)";
+/// Bollinger `k` band-multiplier multi-select label — shipped 2.0. Plain
+/// language: "Band width (k)" so the operator isn't left guessing what k is.
+pub const TUNE_AXIS_BBANDS_K_LABEL: &str = "Band width \u{00d7} (k, shipped 2.0)";
 
 /// `{min, max, step}` field captions.
 pub const TUNE_AXIS_MIN: &str = "min";

@@ -62,12 +62,14 @@ use iced::{Border, Length};
 
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
-    TUNE_AXIS_FAST_LABEL, TUNE_AXIS_MAX, TUNE_AXIS_MIN, TUNE_AXIS_SLOW_LABEL, TUNE_AXIS_STEP,
-    TUNE_BASELINE_TAG, TUNE_BENCHMARK_STRIP_FMT, TUNE_CAPTION, TUNE_COL_CONFIG, TUNE_COL_MAXDD_P95,
-    TUNE_COL_PROB_LOSS, TUNE_COL_PROB_SHARPE, TUNE_COL_RETURN, TUNE_COL_SHARPE_SPREAD,
-    TUNE_COL_USE, TUNE_COL_VERDICT, TUNE_DISCLAIMER, TUNE_DISTRIBUTION_CAPTION, TUNE_EMPTY_PROMPT,
-    TUNE_ERROR_PREFIX, TUNE_FAMILY_BOLLINGER, TUNE_FAMILY_LABEL, TUNE_FAMILY_MACD,
-    TUNE_FAMILY_PENDING_NOTE, TUNE_FAMILY_RSI, TUNE_FAMILY_SMA, TUNE_FORM_TITLE,
+    TUNE_AXIS_BBANDS_K_LABEL, TUNE_AXIS_BBANDS_PERIOD_LABEL, TUNE_AXIS_FAST_LABEL,
+    TUNE_AXIS_MACD_FAST_LABEL, TUNE_AXIS_MACD_SIGNAL_LABEL, TUNE_AXIS_MACD_SLOW_LABEL,
+    TUNE_AXIS_MAX, TUNE_AXIS_MIN, TUNE_AXIS_RSI_OVERSOLD_LABEL, TUNE_AXIS_RSI_PERIOD_LABEL,
+    TUNE_AXIS_SLOW_LABEL, TUNE_AXIS_STEP, TUNE_BASELINE_TAG, TUNE_BENCHMARK_STRIP_FMT,
+    TUNE_CAPTION, TUNE_COL_CONFIG, TUNE_COL_MAXDD_P95, TUNE_COL_PROB_LOSS, TUNE_COL_PROB_SHARPE,
+    TUNE_COL_RETURN, TUNE_COL_SHARPE_SPREAD, TUNE_COL_USE, TUNE_COL_VERDICT, TUNE_DISCLAIMER,
+    TUNE_DISTRIBUTION_CAPTION, TUNE_EMPTY_PROMPT, TUNE_ERROR_PREFIX, TUNE_FAMILY_BOLLINGER,
+    TUNE_FAMILY_LABEL, TUNE_FAMILY_MACD, TUNE_FAMILY_RSI, TUNE_FAMILY_SMA, TUNE_FORM_TITLE,
     TUNE_FRAGILE_PROMOTE_NOTE, TUNE_GRID_READOUT_BLANK, TUNE_GRID_READOUT_EMPTY,
     TUNE_GRID_READOUT_FMT, TUNE_HEADLINE, TUNE_LOADING, TUNE_PRESET_NARROW, TUNE_PRESET_SHIPPED,
     TUNE_PRESET_WIDE, TUNE_PROGRESS_FMT, TUNE_RUN_BUTTON, TUNE_RUN_BUTTON_RUNNING,
@@ -76,7 +78,8 @@ use crate::strings::{
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::tune::screen_state::{
-    AxisField, AxisInput, AxisPreset, SmaAxisKind, TuneFamily, TuneScreenState,
+    AxisField, AxisInput, AxisPreset, BOLLINGER_K_PRESETS, BollingerGridForm, MacdGridForm,
+    RsiGridForm, TuneAxisKind, TuneFamily, TuneScreenState,
 };
 use crate::tune::state::{SweepCellRow, SweepReportMirror, SweepVerdictLabel};
 use crate::widgets::frame;
@@ -213,43 +216,174 @@ fn run_button(st: &TuneScreenState, mode: ThemeMode) -> crate::Element<'static> 
 // ── The range form ────────────────────────────────────────────────────────────
 
 /// The range-form panel — a titled `frame::panel` holding the family picker, the
-/// SMA axes (+ presets), the live grid readout, and (for a not-yet-runnable
-/// family) the honest "coming soon" note.
+/// SELECTED family's axes (+ presets), and the live grid readout.
+///
+/// Every family is runnable (T7b): the picker dispatches to the chosen family's
+/// axis form (`family_axes`), so MACD shows three axes, RSI two, Bollinger a
+/// period axis + the `k` multi-select. The result grid + honesty footer are
+/// family-agnostic (unchanged).
 fn form_panel(st: &TuneScreenState, mode: ThemeMode) -> crate::Element<'_> {
     let family_block = Column::new()
         .spacing(space::XS)
         .push(field_label(TUNE_FAMILY_LABEL, mode))
         .push(family_row(st.family, mode));
 
-    let mut body = Column::new().spacing(space::M).push(family_block);
+    let body = Column::new()
+        .spacing(space::M)
+        .push(family_block)
+        .push(family_axes(st, mode))
+        .push(grid_readout(st, mode));
 
-    if st.family.is_runnable() {
-        // SMA axes (the only runnable family in v0.1).
-        body = body
+    frame::panel(TUNE_FORM_TITLE, body.into(), mode)
+}
+
+/// The axis inputs for the CURRENTLY-SELECTED family. Dispatches on `st.family`
+/// to render that family's `{min, max, step}` axes (and, for Bollinger, the `k`
+/// multi-select) — never the SMA axes for a composed family.
+fn family_axes(st: &TuneScreenState, mode: ThemeMode) -> crate::Element<'_> {
+    match st.family {
+        TuneFamily::Sma => Column::new()
+            .spacing(space::M)
             .push(axis_block(
                 TUNE_AXIS_FAST_LABEL,
-                SmaAxisKind::Fast,
+                TuneAxisKind::SmaFast,
                 &st.sma_grid.fast,
                 mode,
             ))
             .push(axis_block(
                 TUNE_AXIS_SLOW_LABEL,
-                SmaAxisKind::Slow,
+                TuneAxisKind::SmaSlow,
                 &st.sma_grid.slow,
                 mode,
             ))
-            .push(grid_readout(st, mode));
-    } else {
-        // Pending family — the honest "not sweepable yet" note (no axes).
-        body = body.push(
-            Text::new(TUNE_FAMILY_PENDING_NOTE)
-                .size(text::SMALL)
-                .color(color::WARN_500.current(mode))
-                .width(Length::Fill),
-        );
+            .into(),
+        TuneFamily::Macd => macd_axes(&st.macd_grid, mode),
+        TuneFamily::Rsi => rsi_axes(&st.rsi_grid, mode),
+        TuneFamily::Bollinger => bollinger_axes(&st.bollinger_grid, mode),
     }
+}
 
-    frame::panel(TUNE_FORM_TITLE, body.into(), mode)
+/// The MACD axis form — fast / slow / signal `{min, max, step}` rows.
+fn macd_axes(form: &MacdGridForm, mode: ThemeMode) -> crate::Element<'_> {
+    Column::new()
+        .spacing(space::M)
+        .push(axis_block(
+            TUNE_AXIS_MACD_FAST_LABEL,
+            TuneAxisKind::MacdFast,
+            &form.fast,
+            mode,
+        ))
+        .push(axis_block(
+            TUNE_AXIS_MACD_SLOW_LABEL,
+            TuneAxisKind::MacdSlow,
+            &form.slow,
+            mode,
+        ))
+        .push(axis_block(
+            TUNE_AXIS_MACD_SIGNAL_LABEL,
+            TuneAxisKind::MacdSignal,
+            &form.signal,
+            mode,
+        ))
+        .into()
+}
+
+/// The RSI axis form — period + oversold-threshold `{min, max, step}` rows.
+fn rsi_axes(form: &RsiGridForm, mode: ThemeMode) -> crate::Element<'_> {
+    Column::new()
+        .spacing(space::M)
+        .push(axis_block(
+            TUNE_AXIS_RSI_PERIOD_LABEL,
+            TuneAxisKind::RsiPeriod,
+            &form.period,
+            mode,
+        ))
+        .push(axis_block(
+            TUNE_AXIS_RSI_OVERSOLD_LABEL,
+            TuneAxisKind::RsiOversold,
+            &form.oversold,
+            mode,
+        ))
+        .into()
+}
+
+/// The Bollinger axis form — a period `{min, max, step}` row + the `k`-preset
+/// multi-select (a row of toggle chips matching the engine's `k_presets`).
+fn bollinger_axes(form: &BollingerGridForm, mode: ThemeMode) -> crate::Element<'_> {
+    Column::new()
+        .spacing(space::M)
+        .push(axis_block(
+            TUNE_AXIS_BBANDS_PERIOD_LABEL,
+            TuneAxisKind::BollingerPeriod,
+            &form.period,
+            mode,
+        ))
+        .push(k_multiselect(form, mode))
+        .into()
+}
+
+/// The Bollinger `k` band-multiplier multi-select — a labelled row of toggle
+/// chips over [`BOLLINGER_K_PRESETS`]. A selected preset gets the `ACCENT` chip
+/// treatment; toggling dispatches `Message::SweepBollingerKToggled(i)`.
+fn k_multiselect(form: &BollingerGridForm, mode: ThemeMode) -> crate::Element<'_> {
+    let mut chips = Row::new().spacing(space::S);
+    for (i, &label) in BOLLINGER_K_PRESETS.iter().enumerate() {
+        let selected = form.k_selected.get(i).copied().unwrap_or(false);
+        chips = chips.push(k_chip(i, label, selected, mode));
+    }
+    Column::new()
+        .spacing(space::XS)
+        .push(field_label(TUNE_AXIS_BBANDS_K_LABEL, mode))
+        .push(chips)
+        .into()
+}
+
+/// A single `k`-preset toggle chip — `ACCENT`-filled when selected, the quiet
+/// `PANEL` + `BORDER_1` ghost when not (the family-chip treatment). Dispatches
+/// `Message::SweepBollingerKToggled`.
+fn k_chip(
+    index: usize,
+    label: &'static str,
+    selected: bool,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    let fg = if selected {
+        color::FG_ON_ACCENT.current(mode)
+    } else {
+        color::FG_2.current(mode)
+    };
+    let border_color = if selected {
+        color::ACCENT.current(mode)
+    } else {
+        color::BORDER_1.current(mode)
+    };
+    let bg_color = if selected {
+        color::ACCENT.current(mode)
+    } else {
+        color::PANEL.current(mode)
+    };
+
+    let chip = Container::new(Text::new(label).size(text::SMALL).color(fg))
+        .padding([space::XS as u16, space::S as u16])
+        .style(move |_t: &iced::Theme| iced::widget::container::Style {
+            background: Some(bg_color.into()),
+            border: Border {
+                color: border_color,
+                width: if selected { 1.5 } else { 1.0 },
+                radius: radius::R4.into(),
+            },
+            ..Default::default()
+        });
+
+    Button::new(chip)
+        .on_press(Message::SweepBollingerKToggled(index))
+        .padding(0)
+        .style(|_t: &iced::Theme, _s: button::Status| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .width(Length::Shrink)
+        .into()
 }
 
 /// A field label — `MICRO` muted (the column-header convention).
@@ -328,7 +462,7 @@ fn family_label(fam: TuneFamily) -> &'static str {
 /// One axis row: a label + the {min, max, step} fields + the preset chips.
 fn axis_block<'a>(
     label: &'static str,
-    axis: SmaAxisKind,
+    axis: TuneAxisKind,
     input: &'a AxisInput,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
@@ -371,7 +505,7 @@ fn axis_block<'a>(
 fn axis_field<'a>(
     caption: &'static str,
     value: &'a str,
-    axis: SmaAxisKind,
+    axis: TuneAxisKind,
     field: AxisField,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
@@ -411,7 +545,7 @@ fn axis_field<'a>(
 }
 
 /// The narrow / shipped / wide preset chips for one axis.
-fn preset_chips(axis: SmaAxisKind, mode: ThemeMode) -> crate::Element<'static> {
+fn preset_chips(axis: TuneAxisKind, mode: ThemeMode) -> crate::Element<'static> {
     let mut row = Row::new().spacing(space::XS);
     for &preset in AxisPreset::ALL {
         row = row.push(preset_chip(axis, preset, mode));
@@ -422,7 +556,7 @@ fn preset_chips(axis: SmaAxisKind, mode: ThemeMode) -> crate::Element<'static> {
 /// A single preset chip — a quiet GHOST chip (`PANEL` fill + `BORDER_1`) so it
 /// reads as a secondary one-click affordance next to the fields. Dispatches
 /// `Message::SweepAxisPreset`.
-fn preset_chip(axis: SmaAxisKind, preset: AxisPreset, mode: ThemeMode) -> crate::Element<'static> {
+fn preset_chip(axis: TuneAxisKind, preset: AxisPreset, mode: ThemeMode) -> crate::Element<'static> {
     let label = match preset {
         AxisPreset::Narrow => TUNE_PRESET_NARROW,
         AxisPreset::Shipped => TUNE_PRESET_SHIPPED,

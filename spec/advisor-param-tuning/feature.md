@@ -1,10 +1,12 @@
 ---
 slug: advisor-param-tuning
-status: in-progress
+status: dev-done
 owner: developer
 updated: 2026-06-25
 version: 0.1.0
-phase-1-shipped: 2026-06-25   # T1–T5 (engine + mirror); T6–T11 remain
+phase-1-shipped: 2026-06-25   # T1–T5 (engine + mirror)
+phase-2-shipped: 2026-06-25   # T6–T10 (Tune UI) + T7 (composed engine)
+t7b-shipped: 2026-06-25       # composed families ON in the form; T11 CHANGELOG closed
 ---
 
 # Gate-tied hyperparameter sweep editor
@@ -571,6 +573,20 @@ runtime → `SweepReportMirror::from_report` INSIDE the task → `Message::Sweep
 `live.rs::SweepProgressRecipe` drains the `BakeoffProgress` wire type → determinate bar;
 cancellation handle held on `self.sweep_cancel` (the F4 lifetime fix), cleared on completion.
 The engine `SweepReport` never crosses into iced state (the ONE mirror boundary).
+
+**T7b — composed families ON in the Tune form**
+- Generalised `SmaAxisKind` → `TuneAxisKind` (one closed 8-axis enum + `.family()`); added
+  `MacdGridForm` (fast/slow/signal), `RsiGridForm` (period + oversold), `BollingerGridForm`
+  (period + a `k` multi-select over `BOLLINGER_K_PRESETS`), each centred on the shipped params
+  with a live cap-aware estimate mirroring the engine's `enumerate_valid()`. `is_runnable()` →
+  true for all four families; the pending-note branch retired.
+- `screens/tune.rs` renders the SELECTED family's axes (MACD=3 rows, RSI=2, Bollinger=1 row +
+  `k` chips); `sweep_config_from_state` maps each form → the real `SweepGrid::{Macd,Rsi,Bollinger}`.
+  New `SweepBollingerKToggled` message; `SweepAxisEdit/Preset` now carry `TuneAxisKind`.
+- 3 new render-pixel guards (MACD populated grid + FRAGILE cell; MACD 3-axis form; SMA-has-no-3rd-axis
+  negative control) — all pass, PNGs read. 42 `tune::*` lib tests (per-family estimate + form→grid
+  mapping asserted == engine grid). The gate-tied FRAGILE treatment covers composed cells automatically
+  (via the mirror). Engine untouched.
 
 **Clippy / fmt:** `cargo clippy --workspace --all-targets -- -D warnings` passes cleanly (exit 0).
 **Format:** `cargo fmt -p backtest --check` passes (exit 0). Pre-existing diffs in `crates/audit/tests/` and `crates/core/` are not T7-owned.
