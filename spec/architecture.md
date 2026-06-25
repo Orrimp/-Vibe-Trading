@@ -156,6 +156,37 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-24 (architect): **ADR-0069 — gate-tied hyperparameter sweep seam**
+  (feature `advisor-param-tuning`, leaderboard-epic item #3 — the operator-chosen
+  gate-tied option, NOT a naive single-config editor). Recorded in the canonical ADR
+  registry ([architecture/adr/README.md](architecture/adr/README.md) +
+  `architecture/adr/0069-gate-tied-parameter-sweep-seam.md`). A parameter-grid
+  **sibling of the bake-off**: a new library entry point
+  `backtest::bakeoff::sweep::run_param_sweep` loops N parameterised configs of ONE
+  family (SMA / MACD / RSI / Bollinger), runs each via the existing `run_scenario`,
+  and scores each through the **byte-frozen** robustness gate
+  (`compute_robustness_flag` → `classify_verdict`) so overfit configs read FRAGILE by
+  construction. The `crates/backtest/src/bin/param_robustness_sweep.rs` bin is **NOT
+  reused** — it is bin-only AND in the wrong universe (a 10-symbol cross-sectional
+  momentum `ThetaCell` grid, unrelated to the single-coin rule-engine params); the
+  reuse is the already-extracted *library* primitives + the `run_bakeoff`
+  orchestration / `from_report`-mirror / `BakeoffProgress` template, homed in
+  `backtest` per ADR-0059 § D1 → **zero new `ui` dep edge**. The bootstrap
+  **distribution** (p5/p50/p95) is surfaced — not just the flag — via an additive,
+  behaviour-preserving `compute_robustness_distribution` sibling (the spread IS the
+  anti-overfit affordance); the gate bands + seed rule stay byte-frozen. The real
+  **engine gap** closed: MACD/RSI/Bollinger params are literals inside the `signal`
+  DSL string with no runtime override, so the sweep parameterises them by generating
+  the `signal` string in memory + `ComposedStrategyConfig::from_str` (SMA already has
+  the typed `sma_fast_len/slow_len` seam) — ship SMA-first, then the composed
+  families behind a round-trip test. New library API: see the engine-seam note in
+  [advisor-param-tuning/feature.md](advisor-param-tuning/feature.md) § 2. Grid capped
+  at `MAX_SWEEP_CONFIGS = 24` with honest truncation. FRAGILE is prominent +
+  promotion-blocking; the editor is a **Lab sub-view** reached by a "Tune…"
+  drill-down (the `InspectStrategyFromLeaderboard` precedent), NOT a 13th nav screen.
+  Anchor-safe by construction (every cell `write_report = false` → 119/119, no anchor
+  SHA mutates) + the CLAUDE.md day-1 divergence e2e + render-pixel guards. PAPER/SIM
+  ONLY. Leans on ADR-0059, ADR-0063, ADR-0066, ADR-0057, ADR-0003.
 - 2026-06-22 (orchestrator): **ADR-0066 — benchmark exemption from the
   `AllFragile` outcome** (feature `advisor-benchmark-robustness`, the B1
   robustness-honesty fix). Logged here because it **spans two ADRs**: it amends
