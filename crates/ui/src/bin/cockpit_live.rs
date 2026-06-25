@@ -802,6 +802,13 @@ fn main() -> Result<()> {
         bakeoff_progress_rx: None,
         #[cfg(feature = "live")]
         bakeoff_progress_recipe_salt: 0,
+        // advisor-param-tuning (ADR-0069) — no sweep in flight at boot.
+        #[cfg(feature = "live")]
+        sweep_cancel: None,
+        #[cfg(feature = "live")]
+        sweep_progress_rx: None,
+        #[cfg(feature = "live")]
+        sweep_progress_recipe_salt: 0,
         // F5-LAUNCH: hold the Sender in AppState so the BakeoffRunCompleted arm
         // can send ForwardCommand::Launch(cfg) to the paper_loop_supervisor.
         #[cfg(feature = "live")]
@@ -1187,6 +1194,34 @@ struct AppState {
     #[cfg(feature = "live")]
     bakeoff_progress_recipe_salt: u64,
 
+    /// advisor-param-tuning (ADR-0069) — in-flight sweep cancel handle. Same F4
+    /// lifetime fix as `bakeoff_cancel`: held so it OUTLIVES the dispatched
+    /// `run_param_sweep` future (dropping it cancels the token, and the sweep
+    /// checks `is_cancelled()` before its first cell). `Some` while a sweep is in
+    /// flight; cleared on `SweepRunCompleted`.
+    #[cfg(feature = "live")]
+    sweep_cancel: Option<ui::lab::runner::RunCancelHandle>,
+
+    /// advisor-param-tuning (ADR-0069) — in-flight sweep cell-progress receiver.
+    /// Same `Arc<Mutex<Option<_>>>` ownership as `bakeoff_progress_rx` so
+    /// `SweepProgressRecipe` can `take()` it in `stream()`. `Some` while a sweep
+    /// is in flight; the recipe drains `backtest::BakeoffProgress` →
+    /// `Message::SweepProgress`, driving the Tune determinate progress bar.
+    #[cfg(feature = "live")]
+    sweep_progress_rx: Option<
+        std::sync::Arc<
+            std::sync::Mutex<
+                Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>,
+            >,
+        >,
+    >,
+
+    /// Salt bumped on every `SweepRunRequested` so `SweepProgressRecipe::hash`
+    /// returns a fresh identity per run (the `bakeoff_progress_recipe_salt`
+    /// pattern).
+    #[cfg(feature = "live")]
+    sweep_progress_recipe_salt: u64,
+
     /// F5-LAUNCH — sender side of the forward-command channel (ADR-0060 § D6).
     ///
     /// Held on the iced side. When the bake-off completes with a crowned row
@@ -1288,6 +1323,14 @@ impl Clone for AppState {
             bakeoff_progress_rx: self.bakeoff_progress_rx.clone(),
             #[cfg(feature = "live")]
             bakeoff_progress_recipe_salt: self.bakeoff_progress_recipe_salt,
+            // advisor-param-tuning (ADR-0069) — sweep cancel handle is unique per
+            // run (never cloned); the progress receiver shares the SAME Arc cell.
+            #[cfg(feature = "live")]
+            sweep_cancel: None,
+            #[cfg(feature = "live")]
+            sweep_progress_rx: self.sweep_progress_rx.clone(),
+            #[cfg(feature = "live")]
+            sweep_progress_recipe_salt: self.sweep_progress_recipe_salt,
             // Forward-tx sender is cloned by Arc-cloning the underlying channel;
             // mpsc::Sender derives Clone so this is a cheap refcount bump.
             #[cfg(feature = "live")]
@@ -1425,6 +1468,27 @@ impl AppState {
             None
         };
 
+        // advisor-param-tuning (ADR-0069) — capture SweepRunRequested BEFORE
+        // state::update flips `running`, and only dispatch when the form is
+        // runnable (the can_run gate, mirrored from the leaderboard double-
+        // dispatch guard). Build the SweepConfig from the operator's CHOSEN
+        // family + coin + lookback + SMA ranges, captured from the pre-update
+        // state (the `bakeoff_cfg` pattern). Relative lookback windows resolve
+        // against wall-clock `now_ms` HERE, at the dispatch boundary.
+        let sweep_run_requested =
+            matches!(msg, Message::SweepRunRequested) && self.cockpit.tune_screen_state.can_run();
+        let sweep_cfg = if sweep_run_requested {
+            let now_ms = time::OffsetDateTime::now_utc().unix_timestamp() * 1_000;
+            Some(ui::tune::runner::sweep_config_from_state(
+                &self.cockpit.tune_screen_state,
+                &self.cockpit.tune_coin,
+                self.cockpit.tune_lookback,
+                now_ms,
+            ))
+        } else {
+            None
+        };
+
         // T-D1.3 (lab-end-to-end-v2 T-AR-1) — capture LabRunCompleted BEFORE
         // state::update so we still see the pre-forward LabState (operator MAY
         // have clicked away during the run; the pre-forward snapshot is what
@@ -1440,6 +1504,10 @@ impl AppState {
         // we can drop the bake-off cancel handle on completion (mirrors
         // `lab_run_completed_any`).
         let bakeoff_run_completed_any = matches!(&msg, Message::BakeoffRunCompleted(_));
+        // advisor-param-tuning (ADR-0069) — detect any SweepRunCompleted so we can
+        // drop the sweep cancel handle + progress receiver on completion (mirrors
+        // `bakeoff_run_completed_any`).
+        let sweep_run_completed_any = matches!(&msg, Message::SweepRunCompleted(_));
 
         // F5-LAUNCH (ADR-0060 § D6) — when a bake-off completes with a crowned
         // row, build a ForwardRunConfig from the crowned/picked strategy + bake-off
@@ -1725,6 +1793,15 @@ impl AppState {
             // only keep `BakeoffProgressRecipe` batched on a closed channel until
             // the next run's salt bump replaces it; dropping it now is tidy.
             self.bakeoff_progress_rx = None;
+        }
+
+        // advisor-param-tuning (ADR-0069) — drop the sweep cancel handle + the
+        // cell-progress receiver on completion (mirrors the bake-off clearing).
+        // The pure-state `finish_run` already cleared `progress`.
+        #[cfg(feature = "live")]
+        if sweep_run_completed_any {
+            self.sweep_cancel = None;
+            self.sweep_progress_rx = None;
         }
 
         // F5/F7 — emit ForwardPaperTradeStarted after bakeoff completes with a
@@ -2091,6 +2168,43 @@ impl AppState {
                 progress_tx,
                 bakeoff_progress_tx,
             )
+        } else if let Some(cfg) = sweep_cfg {
+            // advisor-param-tuning (ADR-0069) — dispatch the sweep on the side-
+            // thread runtime (mirrors the bake-off dispatch above). The pure-
+            // state half (Loading + running) already ran inside ui::state::update;
+            // here we do the I/O half. The `backtest::SweepReport` is mirrored
+            // into the pure-`ui` SweepReportMirror INSIDE spawn_sweep, so no engine
+            // type crosses into iced state.
+            //
+            // F4 LIFETIME FIX (mirrors `bakeoff_cancel`): STORE the cancel handle
+            // on the app state so it OUTLIVES the dispatched future. Dropping the
+            // handle cancels the token, and `run_param_sweep` checks
+            // `is_cancelled()` before its FIRST cell — so dropping it here would
+            // make every sweep return `Cancelled` on the first poll.
+            let (cancel_handle, cancel_recv) = ui::lab::runner::cancellation_pair();
+            self.sweep_cancel = Some(cancel_handle);
+            // Per-bar progress is not surfaced on the Tune screen (the determinate
+            // bar tracks CELLS, not bars); a disabled per-bar sender keeps the
+            // per-bar progress calls cheap no-ops.
+            let progress_tx = backtest::progress::ProgressSender::disabled();
+            // THE LAST-MILE WIRING — build the cell-level progress channel, hand
+            // the Sender to run_param_sweep, and hold the Receiver here so
+            // `SweepProgressRecipe` (batched in `subscription()`) drains it →
+            // `Message::SweepProgress` → the Tune determinate bar. Bump the salt
+            // so iced sees a fresh recipe identity for this run.
+            let (sweep_progress_tx, sweep_progress_rx) =
+                backtest::progress::bakeoff_progress_pair();
+            self.sweep_progress_recipe_salt = self.sweep_progress_recipe_salt.wrapping_add(1);
+            self.sweep_progress_rx = Some(std::sync::Arc::new(std::sync::Mutex::new(Some(
+                sweep_progress_rx,
+            ))));
+            ui::tune::runner::spawn_sweep(
+                Some(&self.rt_handle),
+                cfg,
+                cancel_recv,
+                progress_tx,
+                backtest::SweepProgressSender(sweep_progress_tx),
+            )
         } else {
             iced::Task::none()
         }
@@ -2250,6 +2364,21 @@ impl AppState {
                     rt_handle: self.rt_handle.clone(),
                     rx: std::sync::Arc::clone(rx),
                     salt: self.bakeoff_progress_recipe_salt,
+                },
+            ));
+        }
+
+        // advisor-param-tuning (ADR-0069) — the sweep cell-progress recipe (the
+        // Tune determinate bar's "last mile"). Active whenever a sweep holds the
+        // progress receiver; the recipe drains `backtest::BakeoffProgress` →
+        // `Message::SweepProgress`, advancing the Tune progress bar. Salt-bumped
+        // per `SweepRunRequested` so iced rebuilds the stream each run.
+        if let Some(rx) = self.sweep_progress_rx.as_ref() {
+            subs.push(iced::advanced::subscription::from_recipe(
+                ui::live::SweepProgressRecipe {
+                    rt_handle: self.rt_handle.clone(),
+                    rx: std::sync::Arc::clone(rx),
+                    salt: self.sweep_progress_recipe_salt,
                 },
             ));
         }

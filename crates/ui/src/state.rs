@@ -166,6 +166,19 @@ pub enum Screen {
     /// plus the mandatory not-a-prediction + not-advice disclaimers.
     ForwardPlan,
 
+    // ── advisor-param-tuning (ADR-0069) — the gate-tied sweep editor ──
+    /// The gate-tied hyperparameter sweep editor ("Tune"). A power-user
+    /// drill-down off a Leaderboard row's "Tune…" affordance (the
+    /// `InspectStrategyFromLeaderboard` precedent) where the operator picks a
+    /// strategy family and a parameter grid, sweeps it, and sees each config
+    /// scored through the SAME frozen robustness gate the bake-off uses — so an
+    /// overfit config that looks great in-sample but falls apart under
+    /// resampling renders FRAGILE and is promotion-blocked. Navigable, NOT
+    /// sidebar-default-routed (reached only by drill-down, like the inspect
+    /// overlay), so it does not proliferate the sidebar for a tool most journeys
+    /// never touch. Renders a `SweepReportMirror` (the ONE engine→ui boundary).
+    Tune,
+
     // ── cockpit-reports-viewer v0.1.0 ─────────────────────────────────
     /// Browse + render any committed `spec/*/reports/backtest-*.md`
     /// (cockpit-reports-viewer R6 / D4). Navigable from the **Library**
@@ -1048,6 +1061,29 @@ pub struct Cockpit {
     /// prompt).
     pub forward_plan_screen_state: crate::forward_plan::ForwardPlanScreenState,
 
+    /// advisor-param-tuning (ADR-0069) — Tune-screen per-session state. Sibling
+    /// of `leaderboard_screen_state`. Holds the parameter range form (family +
+    /// SMA `{min,max,step}` axes) + the sweep result behind a `PanelState`
+    /// (Loading / Empty / Error / Ready) — the `backtest::SweepReport` mirrored
+    /// into a pure-`ui` `SweepReportMirror` at the dispatch boundary (the
+    /// INVARIANT seam; `ui` never holds an engine type). Cold-start:
+    /// `result: Empty` (the "set ranges and press Run sweep" prompt),
+    /// `running: false`.
+    pub tune_screen_state: crate::tune::TuneScreenState,
+
+    /// advisor-param-tuning (ADR-0069) — the coin the Tune sweep targets,
+    /// preseeded from the Leaderboard's chosen coin via `OpenTuneEditor` (so
+    /// the sweep runs on the coin that was just ranked). Held on the cockpit
+    /// (not the form state) because it is the leaderboard's authoritative
+    /// selection, not a Tune-form field. Cold-start: `BTCUSDT` (the bake-off
+    /// default coin).
+    pub tune_coin: Symbol,
+    /// advisor-param-tuning (ADR-0069) — the lookback window the Tune sweep runs
+    /// over, preseeded from the Leaderboard's chosen lookback via
+    /// `OpenTuneEditor`. Mapped to a `backtest::engine::DateRange` at dispatch
+    /// time (runner glue). Cold-start: `H1_2024` (full corpus coverage).
+    pub tune_lookback: crate::leaderboard::LeaderboardLookback,
+
     /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
     /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
     /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
@@ -1242,6 +1278,9 @@ impl std::fmt::Debug for Cockpit {
             .field("reports_screen_state", &self.reports_screen_state)
             .field("leaderboard_screen_state", &self.leaderboard_screen_state)
             .field("forward_plan_screen_state", &self.forward_plan_screen_state)
+            .field("tune_screen_state", &self.tune_screen_state)
+            .field("tune_coin", &self.tune_coin)
+            .field("tune_lookback", &self.tune_lookback)
             .field("memory_screen_state", &self.memory_screen_state)
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
@@ -1311,6 +1350,9 @@ impl Default for Cockpit {
             reports_screen_state: crate::reports::ReportsScreenState::default(),
             leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState::default(),
             forward_plan_screen_state: crate::forward_plan::ForwardPlanScreenState::default(),
+            tune_screen_state: crate::tune::TuneScreenState::default(),
+            tune_coin: Symbol::new(crate::leaderboard::runner::DEFAULT_BAKEOFF_COIN),
+            tune_lookback: crate::leaderboard::LeaderboardLookback::H1_2024,
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1431,6 +1473,9 @@ impl Cockpit {
             reports_screen_state: crate::reports::ReportsScreenState::default(),
             leaderboard_screen_state: crate::leaderboard::LeaderboardScreenState::default(),
             forward_plan_screen_state: crate::forward_plan::ForwardPlanScreenState::default(),
+            tune_screen_state: crate::tune::TuneScreenState::default(),
+            tune_coin: Symbol::new(crate::leaderboard::runner::DEFAULT_BAKEOFF_COIN),
+            tune_lookback: crate::leaderboard::LeaderboardLookback::H1_2024,
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -2200,6 +2245,60 @@ pub enum Message {
     /// risk-adjusted KPIs are unchanged); it scales the absolute equity curve
     /// and the forward sizing estimate.
     BakeoffSetStartCapital(String),
+
+    // ── advisor-param-tuning (ADR-0069) — the gate-tied sweep editor ─────────
+    /// Open the Tune editor for a strategy family (the per-row "Tune…" drill-down
+    /// off the Leaderboard, mirroring `InspectStrategyFromLeaderboard`, or a Lab
+    /// entry point). Navigates to `Screen::Tune` PRESEEDED with the family +
+    /// the leaderboard's chosen coin + lookback (so the sweep targets the coin
+    /// that was just ranked). Pure (navigate + preseed) — the operator presses
+    /// Run to execute the sweep. Typed payload (no stringly-typed blob).
+    OpenTuneEditor {
+        /// The strategy family to tune (preselects the family picker).
+        family: crate::tune::TuneFamily,
+        /// The coin the sweep runs on (preseeds the Tune coin).
+        coin: Symbol,
+        /// The lookback window the sweep runs over (preseeds the Tune lookback).
+        lookback: crate::leaderboard::LeaderboardLookback,
+    },
+    /// Operator picked a strategy family in the Tune form. Stores the closed
+    /// `TuneFamily`; does NOT clear an existing result. Typed enum payload.
+    SweepSelectFamily(crate::tune::TuneFamily),
+    /// Operator edited one `{min, max, step}` field of one SMA axis in the Tune
+    /// form. The raw text round-trips verbatim (parse is a render/dispatch-time
+    /// concern). Typed payload — never a stringly-typed blob.
+    SweepAxisEdit {
+        /// Which axis (fast / slow window).
+        axis: crate::tune::SmaAxisKind,
+        /// Which field (min / max / step).
+        field: crate::tune::AxisField,
+        /// The raw field text the operator typed.
+        value: String,
+    },
+    /// Operator clicked a narrow/shipped/wide preset chip for one SMA axis.
+    /// Typed payload.
+    SweepAxisPreset {
+        /// Which axis the preset seeds.
+        axis: crate::tune::SmaAxisKind,
+        /// The preset (narrow / shipped / wide).
+        preset: crate::tune::AxisPreset,
+    },
+    /// Operator pressed "Run sweep". Pure-state half: flips `result` to
+    /// `Loading` and sets `running` (the Run button disables). The async
+    /// dispatch (`spawn_sweep` with a cancel/progress pair) is wired BINARY-side
+    /// in `cockpit_live.rs` (the `BakeoffRunRequested` precedent) — `update`
+    /// stays pure.
+    SweepRunRequested,
+    /// A sweep completed (or failed). Carries the `backtest::SweepReport` already
+    /// mirrored into the pure-`ui` `SweepReportMirror` at the dispatch boundary
+    /// (the engine type never crosses into iced state — the INVARIANT seam, like
+    /// `BakeoffRunCompleted`). Lands `Ready` / `Empty` / `Error`.
+    SweepRunCompleted(crate::tune::runner::SweepRunResult),
+    /// Cell-level sweep progress from the in-flight sweep — drives the
+    /// determinate progress bar ("Scoring {id} — {n} of {total}"). Reuses the
+    /// `backtest::BakeoffProgress` wire type (same `{done, total, current_id}`
+    /// shape). Pure: stores the latest event on the Tune state.
+    SweepProgress(backtest::progress::BakeoffProgress),
 
     // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────────
     /// A forward plan arrived from the agent's plan-return channel
@@ -3267,6 +3366,60 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Start capital does NOT invalidate the ranking (all arms use the
             // same capital, so Sharpe / Sortino / return % are unchanged).
             model.leaderboard_screen_state.start_capital_input = raw;
+        }
+
+        // ── advisor-param-tuning (ADR-0069) — the gate-tied sweep editor ─────
+        Message::OpenTuneEditor {
+            family,
+            coin,
+            lookback,
+        } => {
+            // The "Tune…" drill-down (mirrors InspectStrategyFromLeaderboard):
+            // navigate to the Tune screen PRESEEDED with the family + the
+            // leaderboard's chosen coin + lookback, so the sweep targets the coin
+            // that was just ranked. Pure (navigate + preseed) — the operator
+            // presses Run to execute. The coin/lookback are AUTHORITATIVE (the
+            // operator just chose them on the leaderboard).
+            model.tune_screen_state.select_family(family);
+            model.tune_coin = coin;
+            model.tune_lookback = lookback;
+            model.current_screen = Screen::Tune;
+        }
+        Message::SweepSelectFamily(family) => {
+            // The chosen family drives the NEXT sweep. We do NOT clear the
+            // existing result — the operator may inspect a prior SMA grid while
+            // eyeing another family; pressing Run re-sweeps for the new family.
+            model.tune_screen_state.select_family(family);
+        }
+        Message::SweepAxisEdit { axis, field, value } => {
+            // Store the keystrokes verbatim (parse is a render/dispatch concern).
+            model.tune_screen_state.edit_sma_axis(axis, field, value);
+        }
+        Message::SweepAxisPreset { axis, preset } => {
+            // One-click narrow/shipped/wide range seed.
+            model.tune_screen_state.apply_sma_preset(axis, preset);
+        }
+        Message::SweepRunRequested => {
+            // Pure-state half: flip to Loading + set the in-flight token so Run
+            // disables and the determinate bar shows. The async dispatch
+            // (cancel/progress pair + `spawn_sweep`) is wired BINARY-side in
+            // `cockpit_live.rs` (the `BakeoffRunRequested` precedent) — `update`
+            // stays pure. Guard against double-dispatch + a non-runnable form.
+            if model.tune_screen_state.can_run() {
+                model.tune_screen_state.begin_run();
+            }
+        }
+        Message::SweepRunCompleted(outcome) => {
+            // Land the mirrored result (Ready / Empty / Error) + clear running
+            // (and any lingering progress). The engine `SweepReport` was already
+            // mirrored into the pure-`ui` `SweepReportMirror` at the dispatch
+            // boundary in `spawn_sweep`.
+            model.tune_screen_state.finish_run(outcome);
+        }
+        Message::SweepProgress(progress) => {
+            // Cell-level progress from the in-flight sweep → drives the
+            // determinate progress bar. Pure: store the latest event.
+            model.tune_screen_state.set_progress(progress);
         }
 
         // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────

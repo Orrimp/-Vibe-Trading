@@ -64,6 +64,7 @@ mod inner {
             reports_dir: Some(tmp_dir.to_path_buf()),
             short_enabled: false,
             initial_capital: None,
+            composed_toml_override: None,
         }
     }
 

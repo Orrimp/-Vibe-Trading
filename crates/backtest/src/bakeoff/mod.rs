@@ -710,6 +710,8 @@ pub async fn run_bakeoff(
             // Leaderboard-timeframe-capital knob: thread operator-chosen capital.
             // None → 100_000 default; Some(capital) → operator value.
             initial_capital: Some(bakeoff_initial_capital),
+            // Bake-off arms always load from disk — no in-memory TOML override.
+            composed_toml_override: None,
         };
 
         let report = run_scenario(scenario_cfg, cancel_rx.sibling(), progress_tx.clone()).await?;

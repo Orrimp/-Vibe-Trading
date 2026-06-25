@@ -1743,6 +1743,55 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_CAPITAL_PLACEHOLDER,
         ),
         ("LEADERBOARD_CAPITAL_HINT", LEADERBOARD_CAPITAL_HINT),
+        // advisor-param-tuning (ADR-0069) — the gate-tied sweep editor
+        ("TUNE_SIDEBAR_LABEL", TUNE_SIDEBAR_LABEL),
+        ("TUNE_HEADLINE", TUNE_HEADLINE),
+        ("TUNE_CAPTION", TUNE_CAPTION),
+        ("TUNE_RUN_BUTTON", TUNE_RUN_BUTTON),
+        ("TUNE_RUN_BUTTON_RUNNING", TUNE_RUN_BUTTON_RUNNING),
+        ("TUNE_RUN_NEEDS_LIVE", TUNE_RUN_NEEDS_LIVE),
+        ("TUNE_OPEN_AFFORDANCE", TUNE_OPEN_AFFORDANCE),
+        ("TUNE_EMPTY_PROMPT", TUNE_EMPTY_PROMPT),
+        ("TUNE_LOADING", TUNE_LOADING),
+        ("TUNE_ERROR_PREFIX", TUNE_ERROR_PREFIX),
+        ("TUNE_FORM_TITLE", TUNE_FORM_TITLE),
+        ("TUNE_FAMILY_LABEL", TUNE_FAMILY_LABEL),
+        ("TUNE_FAMILY_SMA", TUNE_FAMILY_SMA),
+        ("TUNE_FAMILY_MACD", TUNE_FAMILY_MACD),
+        ("TUNE_FAMILY_RSI", TUNE_FAMILY_RSI),
+        ("TUNE_FAMILY_BOLLINGER", TUNE_FAMILY_BOLLINGER),
+        ("TUNE_FAMILY_PENDING_NOTE", TUNE_FAMILY_PENDING_NOTE),
+        ("TUNE_AXIS_FAST_LABEL", TUNE_AXIS_FAST_LABEL),
+        ("TUNE_AXIS_SLOW_LABEL", TUNE_AXIS_SLOW_LABEL),
+        ("TUNE_AXIS_MIN", TUNE_AXIS_MIN),
+        ("TUNE_AXIS_MAX", TUNE_AXIS_MAX),
+        ("TUNE_AXIS_STEP", TUNE_AXIS_STEP),
+        ("TUNE_PRESET_NARROW", TUNE_PRESET_NARROW),
+        ("TUNE_PRESET_SHIPPED", TUNE_PRESET_SHIPPED),
+        ("TUNE_PRESET_WIDE", TUNE_PRESET_WIDE),
+        ("TUNE_GRID_READOUT_FMT", TUNE_GRID_READOUT_FMT),
+        ("TUNE_GRID_READOUT_EMPTY", TUNE_GRID_READOUT_EMPTY),
+        ("TUNE_GRID_READOUT_BLANK", TUNE_GRID_READOUT_BLANK),
+        ("TUNE_TRUNCATION_FMT", TUNE_TRUNCATION_FMT),
+        ("TUNE_PROGRESS_FMT", TUNE_PROGRESS_FMT),
+        ("TUNE_COL_CONFIG", TUNE_COL_CONFIG),
+        ("TUNE_COL_VERDICT", TUNE_COL_VERDICT),
+        ("TUNE_COL_RETURN", TUNE_COL_RETURN),
+        ("TUNE_COL_SHARPE_SPREAD", TUNE_COL_SHARPE_SPREAD),
+        ("TUNE_COL_PROB_LOSS", TUNE_COL_PROB_LOSS),
+        ("TUNE_COL_PROB_SHARPE", TUNE_COL_PROB_SHARPE),
+        ("TUNE_COL_MAXDD_P95", TUNE_COL_MAXDD_P95),
+        ("TUNE_COL_USE", TUNE_COL_USE),
+        ("TUNE_VERDICT_ROBUST", TUNE_VERDICT_ROBUST),
+        ("TUNE_VERDICT_MARGINAL", TUNE_VERDICT_MARGINAL),
+        ("TUNE_VERDICT_FRAGILE", TUNE_VERDICT_FRAGILE),
+        ("TUNE_BASELINE_TAG", TUNE_BASELINE_TAG),
+        ("TUNE_USE_CONFIG", TUNE_USE_CONFIG),
+        ("TUNE_USE_CONFIG_FRAGILE", TUNE_USE_CONFIG_FRAGILE),
+        ("TUNE_FRAGILE_PROMOTE_NOTE", TUNE_FRAGILE_PROMOTE_NOTE),
+        ("TUNE_DISTRIBUTION_CAPTION", TUNE_DISTRIBUTION_CAPTION),
+        ("TUNE_BENCHMARK_STRIP_FMT", TUNE_BENCHMARK_STRIP_FMT),
+        ("TUNE_DISCLAIMER", TUNE_DISCLAIMER),
         // advisor-forward-plan v0.1.0 (roadmap F6)
         ("FORWARD_PLAN_SIDEBAR_LABEL", FORWARD_PLAN_SIDEBAR_LABEL),
         ("FORWARD_PLAN_HEADLINE", FORWARD_PLAN_HEADLINE),
@@ -2766,6 +2815,161 @@ pub const LEADERBOARD_CAPITAL_PLACEHOLDER: &str = "100000";
 /// is not affected so the operator understands what the knob actually does.
 pub const LEADERBOARD_CAPITAL_HINT: &str = "Does not affect ranking — all arms use the same capital. \
      Scales absolute equity values and forward sizing.";
+
+// ── advisor-param-tuning (ADR-0069) — the gate-tied hyperparameter sweep ──────
+//
+// The Tune editor lets the operator sweep a strategy family's parameter grid and
+// see each config's ROBUSTNESS VERDICT through the same frozen gate the bake-off
+// uses. The honest framing is load-bearing: a FRAGILE config is OVERFIT (it won
+// fit to noise that resampling dissolves) and cannot be promoted. Every line
+// below is written so the anti-overfitting point is unmissable.
+
+/// Sidebar/route label for the Tune editor (navigable, not sidebar-default).
+pub const TUNE_SIDEBAR_LABEL: &str = "Tune";
+
+/// Screen headline — plain language for "what this is".
+pub const TUNE_HEADLINE: &str = "Tune parameters";
+
+/// Caption under the headline — frames the gate-tied sweep + the honest point.
+pub const TUNE_CAPTION: &str = "Sweep a strategy's parameters and see how each config holds up under \
+     resampling. A config that wins in-sample but is flagged fragile is overfit — it cannot be \
+     promoted.";
+
+/// The "Run sweep" action button — the right default action.
+pub const TUNE_RUN_BUTTON: &str = "Run sweep";
+
+/// Run button label while a sweep is in flight (legible beyond colour).
+pub const TUNE_RUN_BUTTON_RUNNING: &str = "Running\u{2026}";
+
+/// Fixtures / no-`live` build: the friendly "needs the live build" error.
+pub const TUNE_RUN_NEEDS_LIVE: &str = "Running a sweep needs the live build. Launch the cockpit with \
+     `cargo run -p ui --bin cockpit_live` to sweep parameters on real data.";
+
+/// The "Tune…" drill-down affordance on a leaderboard row (opens the editor for
+/// that row's family). `{family}` is filled at the call site.
+pub const TUNE_OPEN_AFFORDANCE: &str = "Tune\u{2026}";
+
+/// Cold-start Empty prompt — what the operator should do next (no blank screen).
+pub const TUNE_EMPTY_PROMPT: &str = "Set the parameter ranges above and press \u{201c}Run sweep\u{201d} to score each config \
+     through the robustness gate.";
+
+/// Loading copy while a sweep runs.
+pub const TUNE_LOADING: &str = "Running the sweep\u{2026}";
+
+/// Error-pane prefix — followed by the engine's detail (never a bare "no data").
+pub const TUNE_ERROR_PREFIX: &str = "The sweep could not run.";
+
+/// Title of the range-form panel.
+pub const TUNE_FORM_TITLE: &str = "Choose a parameter grid";
+
+/// Label above the family picker.
+pub const TUNE_FAMILY_LABEL: &str = "Strategy family";
+
+/// Family chip labels.
+pub const TUNE_FAMILY_SMA: &str = "SMA crossover";
+/// MACD family chip label.
+pub const TUNE_FAMILY_MACD: &str = "MACD";
+/// RSI family chip label.
+pub const TUNE_FAMILY_RSI: &str = "RSI";
+/// Bollinger family chip label.
+pub const TUNE_FAMILY_BOLLINGER: &str = "Bollinger bands";
+
+/// Honest note shown when a not-yet-runnable family is picked — the composed
+/// families need the engine's parameter-injection builder, which is in progress.
+pub const TUNE_FAMILY_PENDING_NOTE: &str = "This family isn\u{2019}t sweepable yet — only SMA crossover can be tuned today. \
+     The others are coming once their parameter wiring lands.";
+
+/// Axis labels (SMA fast / slow window).
+pub const TUNE_AXIS_FAST_LABEL: &str = "Fast window (shipped 20)";
+/// SMA slow-window axis label.
+pub const TUNE_AXIS_SLOW_LABEL: &str = "Slow window (shipped 50)";
+
+/// `{min, max, step}` field captions.
+pub const TUNE_AXIS_MIN: &str = "min";
+/// Axis max-field caption.
+pub const TUNE_AXIS_MAX: &str = "max";
+/// Axis step-field caption.
+pub const TUNE_AXIS_STEP: &str = "step";
+
+/// Preset chip labels (narrow / shipped / wide one-click ranges).
+pub const TUNE_PRESET_NARROW: &str = "narrow";
+/// Shipped-default preset chip label.
+pub const TUNE_PRESET_SHIPPED: &str = "shipped";
+/// Wide preset chip label.
+pub const TUNE_PRESET_WIDE: &str = "wide";
+
+/// Live grid-size readout — "{n} configs → ~{runs} bootstrap runs". `{n}` is the
+/// runnable cell count; `{runs}` ≈ n × 1000 paths. Filled at the call site.
+pub const TUNE_GRID_READOUT_FMT: &str = "{n} configs \u{2192} ~{runs} bootstrap runs";
+
+/// Grid readout when the grid is empty (min>max / fast≥slow everywhere).
+pub const TUNE_GRID_READOUT_EMPTY: &str =
+    "No valid configs — widen the ranges (fast must be less than slow).";
+
+/// Grid readout when a field is blank — prompt to fill it rather than run.
+pub const TUNE_GRID_READOUT_BLANK: &str = "Fill every min / max / step field to run the sweep.";
+
+/// Honest truncation banner — the grid exceeded the cap. `{shown}` = the cap
+/// (configs run), `{requested}` = the full valid count. Filled at the call site.
+pub const TUNE_TRUNCATION_FMT: &str = "Showing {shown} of {requested} configs — narrow your \
+     ranges or increase the step to see the rest. Sweeps are capped to keep each run interactive.";
+
+/// Determinate progress copy — "Scoring {current} — {n} of {total}".
+pub const TUNE_PROGRESS_FMT: &str = "Scoring {current} \u{2014} {n} of {total}";
+
+/// Result-grid column headers.
+pub const TUNE_COL_CONFIG: &str = "Config";
+/// Verdict column header.
+pub const TUNE_COL_VERDICT: &str = "Verdict";
+/// In-sample return column header.
+pub const TUNE_COL_RETURN: &str = "Return";
+/// Sharpe-spread column header (p5 / p50 / p95).
+pub const TUNE_COL_SHARPE_SPREAD: &str = "Sharpe p5\u{2009}/\u{2009}p50\u{2009}/\u{2009}p95";
+/// P(loss) column header.
+pub const TUNE_COL_PROB_LOSS: &str = "P(loss)";
+/// P(Sharpe>1) column header.
+pub const TUNE_COL_PROB_SHARPE: &str = "P(Sharpe>1)";
+/// Max-DD p95 column header.
+pub const TUNE_COL_MAXDD_P95: &str = "Max-DD p95";
+/// "Use this config" action column header.
+pub const TUNE_COL_USE: &str = "Promote";
+
+/// Verdict pill labels (word always present — colour is never the only signal).
+pub const TUNE_VERDICT_ROBUST: &str = "robust";
+/// Marginal verdict pill label.
+pub const TUNE_VERDICT_MARGINAL: &str = "marginal";
+/// Fragile verdict pill label (the promotion-blocking state).
+pub const TUNE_VERDICT_FRAGILE: &str = "fragile";
+
+/// Tag on the shipped-config baseline row.
+pub const TUNE_BASELINE_TAG: &str = "shipped";
+
+/// The enabled "Use this config" affordance label (non-fragile rows).
+pub const TUNE_USE_CONFIG: &str = "Use this config";
+
+/// The disabled "Use this config" affordance label (fragile rows — greyed).
+pub const TUNE_USE_CONFIG_FRAGILE: &str = "Fragile — locked";
+
+/// Inline note on a fragile row explaining why promotion is disabled.
+pub const TUNE_FRAGILE_PROMOTE_NOTE: &str =
+    "Fragile under resampling — promoting it would be overfitting.";
+
+/// Caption under the result grid — the distribution is what the gate judges.
+pub const TUNE_DISTRIBUTION_CAPTION: &str = "Return and Sharpe p50 are in-sample point estimates. \
+     The p5\u{2013}p95 spread is what the gate judges — a config with a gaudy return but a \
+     negative p5 Sharpe loses money in the tail, so it is fragile.";
+
+/// Buy-and-hold benchmark header strip — "vs just holding {coin}: {return} return, \
+/// Sharpe {sharpe}". Filled at the call site.
+pub const TUNE_BENCHMARK_STRIP_FMT: &str =
+    "vs just holding {coin}: {return} return, Sharpe {sharpe}.";
+
+/// The persistent, non-dismissible honesty footer (ADR-0069 § 7). `{coin}` is
+/// filled at the call site.
+pub const TUNE_DISCLAIMER: &str = "Tuning is paper/sim research, not advice. A config that looks \
+     great in-sample but is flagged fragile is overfit — it won fit to noise that resampling \
+     dissolves. The bake-off already searches sensible defaults; a tuned config is only worth \
+     carrying forward if it is robust AND beats just holding {coin}.";
 
 // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward buy/sell plan ───────
 //

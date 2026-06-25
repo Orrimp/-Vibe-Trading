@@ -94,6 +94,7 @@ mod bakeoff_arm_parity {
             reports_dir: None,
             short_enabled: false,
             initial_capital: None,
+            composed_toml_override: None,
         };
 
         let report = run_scenario(cfg, cancel_rx, progress_tx)
@@ -1029,6 +1030,7 @@ mod leaderboard_tuning_divergence {
                 reports_dir: None,
                 short_enabled: false,
                 initial_capital: Some(dec!(100_000)),
+                composed_toml_override: None,
             };
             run_scenario(cfg, cancel, ProgressSender::disabled())
                 .await

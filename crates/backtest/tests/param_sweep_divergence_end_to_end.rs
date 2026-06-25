@@ -32,8 +32,8 @@
 #![allow(clippy::unwrap_used, clippy::float_arithmetic, clippy::expect_used)]
 
 use backtest::{
-    DateRange, SmaGrid, SweepAxis, SweepCellResult, SweepConfig, SweepFamily, SweepGrid,
-    SweptParams,
+    BollingerGrid, DateRange, MacdGrid, RsiGrid, SmaGrid, SweepAxis, SweepCellResult, SweepConfig,
+    SweepFamily, SweepGrid, SweptParams,
     bakeoff::sweep::{MAX_SWEEP_CONFIGS, SweepProgressSender},
     cancel::cancellation_pair,
     engine::ScenarioDataSource,
@@ -642,4 +642,259 @@ fn t3_benchmark_is_populated() {
     // It may also be > 0 in synthetic mode — just check it runs without panicking.
     let _ = report.benchmark.sharpe; // verify field is accessible
     let _ = report.benchmark.total_return_pct; // Decimal, verify accessible
+}
+
+// ── T7 — MACD / RSI / Bollinger divergence e2e (ADR-0069 D8 extension) ─────
+//
+// Each test proves the composed-family sweep is NOT a no-op:
+//   (a) At least one cell's equity differs from the shipped-default baseline by ≥ 1 bp.
+//   (b) Cells are not all identical to each other.
+//
+// Runs on Synthetic data (no corpus needed) with a small grid for CI speed.
+// CWD must be the workspace root so `config/strategies/*.toml` resolves for
+// the baseline (shipped-params) cell; the sweep cells use `composed_toml_override`.
+//
+// Note: the per-family baseline is the shipped TOML's params (MACD 12/26/9,
+// RSI 14/30, BBands 20/2.0), not the SMA baseline.
+
+fn set_cwd_to_workspace_root() {
+    // Derive workspace root from CARGO_MANIFEST_DIR (crates/backtest → root is ../../).
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("workspace root must be two levels up");
+    std::env::set_current_dir(root).expect("failed to set CWD to workspace root");
+}
+
+/// T7-MACD.1 — A small MACD sweep returns non-empty cells on Synthetic data.
+///
+/// The shipped baseline is (12, 26, 9). The grid shifts fast slightly.
+/// Cells are loaded via in-memory TOML (composed_toml_override).
+///
+/// Requires `config/strategies/btc_macd_trend.toml` for the baseline cell.
+/// Skipped cleanly if CWD cannot be set to workspace root.
+#[test]
+fn t7_macd_sweep_cells_diverge_from_baseline() {
+    set_cwd_to_workspace_root();
+
+    // 2-cell grid: (fast=8, slow=26, signal=9) and (fast=16, slow=26, signal=9).
+    // Shipped baseline: (12, 26, 9).
+    let grid = SweepGrid::Macd(MacdGrid {
+        fast: SweepAxis {
+            min: 8,
+            max: 16,
+            step: 8,
+        }, // [8, 16]
+        slow: SweepAxis {
+            min: 26,
+            max: 26,
+            step: 1,
+        }, // [26]
+        signal: SweepAxis {
+            min: 9,
+            max: 9,
+            step: 1,
+        }, // [9]
+    });
+    let cfg = SweepConfig {
+        family: SweepFamily::Macd,
+        grid,
+        symbol: trading_core::Symbol::new("BTCUSDT"),
+        range: DateRange::Last90d,
+        seed: test_seed(),
+        data_source: ScenarioDataSource::Synthetic,
+        paths: 10, // low for CI speed
+    };
+
+    let rt = runtime();
+    let report = rt.block_on(async {
+        let (_handle, cancel_rx) = cancellation_pair();
+        run_param_sweep(
+            cfg,
+            cancel_rx,
+            ProgressSender::disabled(),
+            SweepProgressSender::disabled(),
+        )
+        .await
+        .expect("MACD sweep must succeed on Synthetic data")
+    });
+
+    assert_eq!(
+        report.cells.len(),
+        2,
+        "expected 2 MACD cells (fast=8,16), got {}",
+        report.cells.len()
+    );
+
+    // Baseline must have MACD label.
+    assert!(
+        matches!(
+            report.baseline.params,
+            SweptParams::Macd {
+                fast: 12,
+                slow: 26,
+                signal: 9
+            }
+        ),
+        "MACD baseline must be the shipped params (12,26,9); got {:?}",
+        report.baseline.params
+    );
+
+    let baseline_equity = equity_from_cell(&report.baseline);
+
+    // At least one cell diverges from baseline by ≥ 1 bp.
+    let any_diverges = report.cells.iter().any(|cell| {
+        let cell_equity = equity_from_cell(cell);
+        max_equity_diff(&cell_equity, &baseline_equity).is_some_and(|d| d >= ONE_BP_EQUITY)
+    });
+    assert!(
+        any_diverges,
+        "T7-MACD FAIL: no cell diverged from MACD baseline by ≥ 1 bp. \
+         Check that `composed_toml_override` is being applied in sma_composed_run::run."
+    );
+}
+
+/// T7-RSI.1 — A small RSI sweep diverges from its shipped-default baseline.
+///
+/// Shipped baseline: (period=14, oversold=30).
+#[test]
+fn t7_rsi_sweep_cells_diverge_from_baseline() {
+    set_cwd_to_workspace_root();
+
+    // 2-cell grid: (period=10, oversold=30) and (period=18, oversold=30).
+    let grid = SweepGrid::Rsi(RsiGrid {
+        period: SweepAxis {
+            min: 10,
+            max: 18,
+            step: 8,
+        }, // [10, 18]
+        oversold: SweepAxis {
+            min: 30,
+            max: 30,
+            step: 1,
+        }, // [30]
+    });
+    let cfg = SweepConfig {
+        family: SweepFamily::Rsi,
+        grid,
+        symbol: trading_core::Symbol::new("BTCUSDT"),
+        range: DateRange::Last90d,
+        seed: test_seed(),
+        data_source: ScenarioDataSource::Synthetic,
+        paths: 10,
+    };
+
+    let rt = runtime();
+    let report = rt.block_on(async {
+        let (_handle, cancel_rx) = cancellation_pair();
+        run_param_sweep(
+            cfg,
+            cancel_rx,
+            ProgressSender::disabled(),
+            SweepProgressSender::disabled(),
+        )
+        .await
+        .expect("RSI sweep must succeed on Synthetic data")
+    });
+
+    assert_eq!(
+        report.cells.len(),
+        2,
+        "expected 2 RSI cells, got {}",
+        report.cells.len()
+    );
+    assert!(
+        matches!(
+            report.baseline.params,
+            SweptParams::Rsi {
+                period: 14,
+                oversold: 30
+            }
+        ),
+        "RSI baseline must be the shipped params (14,30); got {:?}",
+        report.baseline.params
+    );
+
+    let baseline_equity = equity_from_cell(&report.baseline);
+    let any_diverges = report.cells.iter().any(|cell| {
+        let cell_equity = equity_from_cell(cell);
+        max_equity_diff(&cell_equity, &baseline_equity).is_some_and(|d| d >= ONE_BP_EQUITY)
+    });
+    assert!(
+        any_diverges,
+        "T7-RSI FAIL: no cell diverged from RSI baseline by ≥ 1 bp. \
+         Check that `composed_toml_override` is being applied in sma_composed_run::run."
+    );
+}
+
+/// T7-BBands.1 — A small Bollinger sweep diverges from its shipped-default baseline.
+///
+/// Shipped baseline: (period=20, k=2.0).
+#[test]
+fn t7_bbands_sweep_cells_diverge_from_baseline() {
+    use rust_decimal_macros::dec;
+    set_cwd_to_workspace_root();
+
+    // 2-cell grid: (period=14, k=2.0) and (period=26, k=2.0).
+    let grid = SweepGrid::Bollinger(BollingerGrid {
+        period: SweepAxis {
+            min: 14,
+            max: 26,
+            step: 12,
+        }, // [14, 26]
+        k_presets: vec![dec!(2.0)],
+    });
+    let cfg = SweepConfig {
+        family: SweepFamily::Bollinger,
+        grid,
+        symbol: trading_core::Symbol::new("BTCUSDT"),
+        range: DateRange::Last90d,
+        seed: test_seed(),
+        data_source: ScenarioDataSource::Synthetic,
+        paths: 10,
+    };
+
+    let rt = runtime();
+    let report = rt.block_on(async {
+        let (_handle, cancel_rx) = cancellation_pair();
+        run_param_sweep(
+            cfg,
+            cancel_rx,
+            ProgressSender::disabled(),
+            SweepProgressSender::disabled(),
+        )
+        .await
+        .expect("BBands sweep must succeed on Synthetic data")
+    });
+
+    assert_eq!(
+        report.cells.len(),
+        2,
+        "expected 2 BBands cells, got {}",
+        report.cells.len()
+    );
+    assert!(
+        matches!(
+            report.baseline.params,
+            SweptParams::Bollinger { period: 20, k: _ }
+        ),
+        "BBands baseline must be period=20; got {:?}",
+        report.baseline.params
+    );
+    // Verify k=2.0 exactly.
+    if let SweptParams::Bollinger { k, .. } = &report.baseline.params {
+        assert_eq!(*k, dec!(2.0), "BBands baseline k must be exactly 2.0");
+    }
+
+    let baseline_equity = equity_from_cell(&report.baseline);
+    let any_diverges = report.cells.iter().any(|cell| {
+        let cell_equity = equity_from_cell(cell);
+        max_equity_diff(&cell_equity, &baseline_equity).is_some_and(|d| d >= ONE_BP_EQUITY)
+    });
+    assert!(
+        any_diverges,
+        "T7-BBands FAIL: no cell diverged from BBands baseline by ≥ 1 bp. \
+         Check that `composed_toml_override` is being applied in sma_composed_run::run."
+    );
 }

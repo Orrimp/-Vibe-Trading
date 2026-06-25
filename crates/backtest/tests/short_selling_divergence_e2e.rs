@@ -147,6 +147,7 @@ fn base_input(short_enabled: bool) -> SmaComposedRunInput {
         sma_slow_len: Some(2),
         latency_slippage_sim: LatencySlippageSimConfig::default(),
         short_enabled,
+        composed_toml_override: None,
     }
 }
 
@@ -204,6 +205,7 @@ async fn t_d7_ls_arm_diverges_from_long_only_and_buyhold() {
         sma_slow_len: None, // default 50
         latency_slippage_sim: LatencySlippageSimConfig::default(),
         short_enabled: false,
+        composed_toml_override: None,
     };
     let (_h, cancel_rx) = cancellation_pair();
     let buyhold_result = run(

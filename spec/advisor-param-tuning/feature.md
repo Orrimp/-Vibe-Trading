@@ -522,9 +522,59 @@ Phase 1 (T1–T5, engine foundation) shipped 2026-06-25.
 - `cargo tree -p ui` unchanged (no new crate edge — `backtest` was already a dep).
 - 8 unit tests in `tune::state::tests` all pass.
 
-**Clippy / fmt:** `cargo clippy --workspace --all-targets -- -D warnings` passes cleanly.
-**Format:** `cargo fmt -p backtest --check` + `cargo fmt -p ui --check` both pass.
-**Anchors:** 119/119 (scripts/verify_anchors.sh verified after T4).
+**T7 — `build_swept_config` for MACD / RSI / Bollinger (the string-generation gap)**
+- `MacdGrid`, `RsiGrid`, `BollingerGrid` structs with `Default` and `enumerate_valid()` at `sweep.rs:204-343`.
+- `SweepGrid` enum upgraded from unit stubs to data-carrying variants at `sweep.rs:348-370`.
+- `SweptParams` enum extended with `Macd`, `Rsi`, `Bollinger` variants at `sweep.rs:378-441`.
+- TOML generation functions `macd_toml`, `rsi_toml`, `bbands_toml` at `sweep.rs:549-618`.
+- `build_swept_config` extended with Macd/Rsi/Bollinger arms at `sweep.rs:620-783` (validates params, generates TOML, round-trip validates via `from_str`, sets `composed_toml_override: Some(toml_str)` in `ScenarioConfig`).
+- `sma_composed_run::run` extended with `else if let Some(toml_str) = &input.composed_toml_override` branch at `sma_composed_run.rs:~124` (in-memory TOML load, bypasses disk).
+- Identity guard tests (`macd/rsi/bbands_toml_shipped_params_round_trip`) at `sweep.rs:1429-1514`, `#[ignore]` (require CWD=workspace root + committed TOML).
+- T7 divergence e2e extended: `t7_macd_sweep_cells_diverge_from_baseline`, `t7_rsi_sweep_cells_diverge_from_baseline`, `t7_bbands_sweep_cells_diverge_from_baseline` all pass (12/12 total in `param_sweep_divergence_end_to_end.rs`).
+- 26 unit tests pass (3 ignored identity guards) in `bakeoff::sweep::tests`.
+
+**T6 — Tune screen + guided range form + `Screen::Tune` + `OpenTuneEditor`**
+- New routed `Screen::Tune` (navigable, NOT sidebar-default-routed — added to neither
+  `SIDEBAR_ENTRIES_PHASE_A` nor `SIDEBAR_GROUPS_PHASE_C`; the flatten-invariant test is
+  untouched). Reached via a "Tune…" drill-down off the Lab run-row (`Message::OpenTuneEditor
+  {family,coin,lookback}`, mirroring `InspectStrategyFromLeaderboard`).
+- `crates/ui/src/screens/tune.rs` — header + Run, range form (family chips, SMA fast/slow
+  `{min,max,step}` inputs + narrow/shipped/wide presets, live cap-aware grid readout reading
+  `MAX_SWEEP_CONFIGS`), result grid (params·verdict·return·Sharpe p5/p50/p95·P(loss)·
+  P(Sharpe>1)·Max-DD p95·Promote), FRAGILE pill + `DOWN_500` row-wash + LOCKED promote
+  affordance ("Fragile cannot be crowned"), shipped-baseline row, buy-and-hold strip,
+  truncation banner, persistent honesty footer; `PanelState` loading/empty/error.
+- `crates/ui/src/tune/screen_state.rs` — `TuneScreenState` (pure form + run lifecycle,
+  mirroring `LeaderboardScreenState`). 7 new `Message` variants (`OpenTuneEditor`,
+  `SweepSelectFamily`, `SweepAxisEdit`, `SweepAxisPreset`, `SweepRunRequested`,
+  `SweepRunCompleted`, `SweepProgress`) + pure `update` arms in `state.rs`.
+- ~50 `TUNE_*` strings (honesty copy per ADR-0069 §7). Zero new theme tokens. Dark + Light
+  view-construction verified.
+- Composed families (MACD/RSI/Bollinger) appear in the picker but `is_runnable()==false`
+  (honest `TUNE_FAMILY_PENDING_NOTE`); flipping them ON is T7b (the engine already supports them).
+
+**T8 — fixtures** — `fixtures.rs::fake_sweep_report_mirror` (Robust/Marginal/**Fragile** mix
++ baseline + buy-and-hold), `_truncated`, `fake_cockpit_tune`, `fake_cockpit_tune_running_progress`;
+`test_support.rs::tune_screen_program` bare-body harness. Deterministic + engine-free.
+
+**T9 — render-pixel guards** — `crates/ui/tests/param_sweep_render.rs` (5 guards,
+`#![cfg(target_os="macos")]`, serialized). `sweep_populated_paints_grid_and_fragile_badge`
+(the grid + clay FRAGILE badge + distribution columns), `sweep_empty_paints_no_grid`
+(negative control — FAIL-before proven by stubbing the grid → got 0 clay px),
+`sweep_fragile_promote_disabled_paints`, `sweep_allfragile_*`, `sweep_progress_determinate_paints`.
+5/5 pass; PNGs written to /tmp + read (the populated grid, the locked FRAGILE row).
+
+**T10 — runner glue** — `crates/ui/src/tune/runner.rs::spawn_sweep` (mirrors `spawn_bakeoff`:
+no-`live` → immediate `Err(TUNE_RUN_NEEDS_LIVE)`; `live` → `run_param_sweep` on the side-thread
+runtime → `SweepReportMirror::from_report` INSIDE the task → `Message::SweepRunCompleted`).
+`sweep_config_from_state` (form → `SweepConfig`, `BinanceCache`/`LAB_DEFAULT_SEED`/`paths=1000`).
+`live.rs::SweepProgressRecipe` drains the `BakeoffProgress` wire type → determinate bar;
+cancellation handle held on `self.sweep_cancel` (the F4 lifetime fix), cleared on completion.
+The engine `SweepReport` never crosses into iced state (the ONE mirror boundary).
+
+**Clippy / fmt:** `cargo clippy --workspace --all-targets -- -D warnings` passes cleanly (exit 0).
+**Format:** `cargo fmt -p backtest --check` passes (exit 0). Pre-existing diffs in `crates/audit/tests/` and `crates/core/` are not T7-owned.
+**Anchors:** 119/119 (scripts/verify_anchors.sh verified after T7).
 
 ## Verification
 _tester links to reports here._

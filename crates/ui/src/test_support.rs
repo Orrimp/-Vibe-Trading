@@ -430,6 +430,88 @@ impl LeaderboardScreenApp {
     }
 }
 
+// ── Tune render harness (advisor-param-tuning, ADR-0069 T9) ───────────────────
+
+/// Render-layer harness for the **real Tune screen body**
+/// (`screens::tune::view`) — the gate-tied hyperparameter sweep editor: the
+/// range form (family picker + SMA axes + presets + grid readout) + the result
+/// grid (one row per swept config: params · verdict · return · Sharpe p5/p50/p95
+/// · P(loss) · P(Sharpe>1) · Max-DD p95) with FRAGILE prominently flagged +
+/// promotion-blocked.
+///
+/// Renders the BARE screen body (no shell sidebar) so the screenshot frames the
+/// form + grid without the sidebar's `ACCENT` active-item highlight leaking into
+/// the pixel classifiers — exactly the rationale `leaderboard_screen_program`
+/// documents. The caller seeds the `Cockpit`'s `tune_screen_state` (e.g. via
+/// `fixtures::fake_cockpit_tune`).
+#[must_use]
+pub fn tune_screen_program(
+    cockpit: Cockpit,
+) -> iced::Application<
+    impl iced::Program<State = TuneScreenApp, Message = Message, Theme = iced::Theme>,
+> {
+    let boot = move || {
+        (
+            TuneScreenApp {
+                cockpit: cockpit.clone(),
+            },
+            iced::Task::none(),
+        )
+    };
+    iced::application(boot, TuneScreenApp::update, TuneScreenApp::view)
+        .title(TuneScreenApp::title)
+        .theme(TuneScreenApp::theme)
+}
+
+/// Test app whose `view` is the bare Tune screen body (no shell chrome) so the
+/// screenshot frames the form + result grid directly.
+pub struct TuneScreenApp {
+    cockpit: Cockpit,
+}
+
+impl Default for TuneScreenApp {
+    fn default() -> Self {
+        Self {
+            cockpit: Cockpit::new(),
+        }
+    }
+}
+
+impl TuneScreenApp {
+    #[must_use]
+    pub fn title(&self) -> String {
+        crate::strings::APP_TITLE.to_string()
+    }
+
+    #[must_use]
+    pub fn theme(&self) -> iced::Theme {
+        iced::Theme::Dark
+    }
+
+    pub fn update(&mut self, msg: Message) -> iced::Task<Message> {
+        update(&mut self.cockpit, msg);
+        iced::Task::none()
+    }
+
+    /// View — the real Tune screen body, full-bleed on a `CANVAS` background (the
+    /// shell's outer background) so the form + grid's `PANEL` surfaces read
+    /// against the same chrome the operator sees.
+    #[must_use]
+    pub fn view(&self) -> iced::Element<'_, Message> {
+        use iced::Length;
+        use iced::widget::{Container, container};
+        let body = crate::screens::tune::view(&self.cockpit, ThemeMode::Dark);
+        Container::new(body)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_theme: &iced::Theme| container::Style {
+                background: Some(crate::theme::color::CANVAS.current(ThemeMode::Dark).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+}
+
 // ── forward-plan render harness (advisor-forward-plan v0.1.0, F6) ─────────────
 
 /// Render-layer harness for the **real Forward-plan screen body**

@@ -325,6 +325,7 @@ mod latency_slippage_config_tests {
             sma_slow_len: None,
             latency_slippage_sim: LatencySlippageSimConfig::default(),
             short_enabled: false,
+            composed_toml_override: None,
         };
         assert!(
             input.latency_slippage_sim.is_noop(),
@@ -411,6 +412,7 @@ mod latency_slippage_config_tests {
             sma_slow_len: None,
             latency_slippage_sim: cfg.clone(),
             short_enabled: false,
+            composed_toml_override: None,
         };
         assert!(!input.latency_slippage_sim.is_noop());
         assert_eq!(
@@ -704,6 +706,21 @@ pub struct SmaComposedRunInput {
     /// opens/extends a short via `backtest::short_exec`; `Buy`-when-short covers.
     /// Set `true` ONLY for the new `_ls` / `always_short` arms (ADR-0068 D9).
     pub short_enabled: bool,
+
+    // ── ADR-0069 T7 — in-memory composed TOML override ───────────────────
+    //
+    // When `Some(toml_str)`, the strategy is loaded from this string via
+    // `ComposedStrategyConfig::from_str` instead of from disk. The `strategy_id`
+    // field still identifies the strategy id/stem used for parsing.
+    //
+    // Only populated by `backtest::bakeoff::sweep::build_swept_config` for
+    // the MACD / RSI / Bollinger sweep families. All anchored CLI paths set
+    // this to `None` → byte-identical behaviour preserved.
+    //
+    // ANCHOR-PRESERVING CONTRACT: the `None` branch is the only code path
+    // that runs during anchored scenarios. `Some(...)` is sweep-only and
+    // `write_report = false` for every sweep cell (ADR-0069 D9).
+    pub composed_toml_override: Option<String>,
 }
 
 // ── Strategy metadata (SMA / Composed report) ─────────────────────────────────

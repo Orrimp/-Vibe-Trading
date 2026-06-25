@@ -2396,6 +2396,8 @@ async fn main() -> Result<()> {
             volume_usd_per_symbol: None,
         },
         short_enabled: false,
+        // CLI anchor path — always loads strategy from disk, never from in-memory TOML.
+        composed_toml_override: None,
     };
     // CLI path: use no-op cancel + progress so the anchor bytes are unchanged.
     let (_cancel_handle, cancel_rx) = backtest::cancel::cancellation_pair();

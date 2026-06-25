@@ -114,6 +114,7 @@ fn long_only_input() -> SmaComposedRunInput {
         sma_slow_len: Some(20),
         latency_slippage_sim: LatencySlippageSimConfig::default(),
         short_enabled: false,
+        composed_toml_override: None,
     }
 }
 

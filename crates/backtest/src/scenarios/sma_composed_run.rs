@@ -337,6 +337,47 @@ pub async fn run(
             signal: format!("sma_crossover(fast={fast_len}, slow={slow_len})"),
             notes: format!("v0 SMA crossover: fast={fast_len}, slow={slow_len}"),
         }
+    } else if let Some(toml_str) = &input.composed_toml_override {
+        // ADR-0069 T7 — in-memory TOML override for the param sweep.
+        //
+        // When `Some(toml_str)` the strategy is parsed from the generated string
+        // instead of from disk.  The `stem` is the strategy_id so the id-check
+        // in `from_str` validates correctly.  `write_report = false` is enforced
+        // by the sweep engine (ADR-0069 D9) so the source_path is never written
+        // into an anchored Markdown body — anchor-safe.
+        //
+        // ANCHOR-PRESERVING CONTRACT: all CLI/Lab paths leave `composed_toml_override`
+        // `None`; only the sweep engine sets `Some(...)`.
+        let cfg = strategy::ComposedStrategyConfig::from_str(toml_str, &input.strategy_id)
+            .with_context(|| {
+                format!(
+                    "load strategy config from in-memory TOML (strategy_id={})",
+                    input.strategy_id
+                )
+            })?;
+        let hash_hex = {
+            use std::fmt::Write as _;
+            cfg.hash.iter().fold(String::new(), |mut s, b| {
+                let _ = write!(s, "{b:02x}");
+                s
+            })
+        };
+        let signal = cfg.signal_raw.to_string();
+        let meta = StrategyMeta {
+            id: input.strategy_id.clone(),
+            kind: "composed-sweep".to_string(),
+            hash_hex,
+            // source_path is "in-memory" — never written to an anchored body
+            source_path: "in-memory-toml-override".to_string(),
+            signal,
+            notes: format!("Composed sweep cell: {}", input.strategy_id),
+        };
+        let composed = strategy::ComposedStrategy::from_config(
+            cfg,
+            smol_str::SmolStr::new_static("in-memory-toml-override"),
+        );
+        registry.register(Box::new(composed));
+        meta
     } else {
         // Bug #56 — resolve workspace-relative so the Lab cockpit launched
         // from any CWD can still load the config. The relative path is
@@ -896,6 +937,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             short_enabled: false,
+            composed_toml_override: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -944,6 +986,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             short_enabled: false,
+            composed_toml_override: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -983,6 +1026,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             short_enabled: false,
+            composed_toml_override: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();
@@ -1022,6 +1066,7 @@ mod tests {
             sma_slow_len: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             short_enabled: false,
+            composed_toml_override: None,
         };
         let (_handle1, cancel_rx) = crate::cancel::cancellation_pair();
         let progress_tx = crate::progress::ProgressSender::disabled();

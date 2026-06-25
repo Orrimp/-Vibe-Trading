@@ -92,6 +92,7 @@ async fn engine_returns_cancelled_when_handle_dropped() {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let result = backtest::engine::run_scenario(cfg, cancel_rx, progress_tx).await;

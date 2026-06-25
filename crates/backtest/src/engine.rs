@@ -280,6 +280,18 @@ pub struct ScenarioConfig {
     /// used as before. The `run_bakeoff` bakeoff path (`write_report = false`) may
     /// pass `Some(capital)` — safe because no report body is written.
     pub initial_capital: Option<rust_decimal::Decimal>,
+
+    // ── ADR-0069 T7 — in-memory composed TOML override ────────────────────
+    //
+    // When `Some(toml_str)`, the composed strategy (MACD / RSI / Bollinger)
+    // is loaded from this in-memory TOML string via
+    // `ComposedStrategyConfig::from_str` instead of from disk.
+    //
+    // ANCHOR-PRESERVING CONTRACT: all CLI/Lab/anchored paths leave this `None`.
+    // Only `backtest::bakeoff::sweep::build_swept_config` (T7 sweep families)
+    // sets `Some(...)`. Sweep cells always use `write_report = false` (ADR-0069
+    // D9) so no anchored report body is ever written when this is `Some`.
+    pub composed_toml_override: Option<String>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -1152,6 +1164,8 @@ pub async fn run_scenario(
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 // Long-only arms have short_enabled=false (default); _ls arms set true.
                 short_enabled: cfg.short_enabled,
+                // SMA arm never uses in-memory TOML override (SMA has a typed seam).
+                composed_toml_override: None,
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1234,6 +1248,10 @@ pub async fn run_scenario(
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 short_enabled: cfg.short_enabled,
+                // ADR-0069 T7 — forward in-memory TOML override if set by the sweep.
+                // Normal (non-sweep) paths always leave ScenarioConfig::composed_toml_override
+                // as None → byte-identical to HEAD (anchor-safe).
+                composed_toml_override: cfg.composed_toml_override.clone(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1310,6 +1328,8 @@ pub async fn run_scenario(
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 short_enabled: cfg.short_enabled,
+                // ADR-0069 T7 — forward in-memory TOML override if set by the sweep.
+                composed_toml_override: cfg.composed_toml_override.clone(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -1390,6 +1410,8 @@ pub async fn run_scenario(
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 short_enabled: cfg.short_enabled,
+                // ADR-0069 T7 — forward in-memory TOML override if set by the sweep.
+                composed_toml_override: cfg.composed_toml_override.clone(),
             };
             let result = crate::scenarios::sma_composed_run::run(
                 &input,
@@ -2048,6 +2070,7 @@ mod tests {
             reports_dir: None,
             short_enabled: false,
             initial_capital: None, // None → legacy 100_000 default
+            composed_toml_override: None,
         }
     }
 
@@ -2292,6 +2315,7 @@ mod tests {
             reports_dir: Some(tmp.path().to_path_buf()),
             short_enabled: false,
             initial_capital: None,
+            composed_toml_override: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |_path| Ok(()));
         assert!(
@@ -2328,6 +2352,7 @@ mod tests {
             reports_dir: Some(tmp.path().to_path_buf()),
             short_enabled: false,
             initial_capital: None,
+            composed_toml_override: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |path| {
             // Write minimal content so the file exists.

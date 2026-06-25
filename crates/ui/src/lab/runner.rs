@@ -944,6 +944,8 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         short_enabled: false,
         // leaderboard-timeframe-capital knobs: Lab path always uses 100_000 default.
         initial_capital: None,
+        // Lab UI path always loads strategy from disk — no in-memory TOML override.
+        composed_toml_override: None,
     })
 }
 

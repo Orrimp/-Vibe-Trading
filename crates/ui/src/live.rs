@@ -1113,6 +1113,75 @@ pub fn bakeoff_progress_stream_impl(
     })
 }
 
+// ── advisor-param-tuning (ADR-0069 T10) — the sweep cell-progress recipe ───────
+
+/// iced `Recipe` that drains the sweep cell-progress return channel and emits
+/// `Message::SweepProgress` per `backtest::progress::BakeoffProgress` (the sweep
+/// reuses the bake-off progress wire type). A 1:1 sibling of
+/// [`BakeoffProgressRecipe`] — same tokio-mpsc-in-`Mutex` ownership + per-run
+/// salt — but its stream yields `Message::SweepProgress`, driving the Tune
+/// screen's DETERMINATE progress bar.
+///
+/// Constructed by `cockpit_live::subscription()` when `sweep_progress_rx` is
+/// `Some`. THIS is the wiring whose absence would leave the Tune bar stuck on
+/// the indeterminate spinner.
+pub struct SweepProgressRecipe {
+    /// Agent-runtime handle — entered before `take()` so the `!Send` guard never
+    /// leaks into the returned `BoxStream` (K8).
+    pub rt_handle: tokio::runtime::Handle,
+    /// The receiver, taken once in `stream()`.
+    pub rx: Arc<
+        std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>>,
+    >,
+    /// Per-run salt (incremented on `SweepRunRequested`) so iced treats each run
+    /// as a distinct subscription.
+    pub salt: u64,
+}
+
+impl Recipe for SweepProgressRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+        self.salt.hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        // K8 — enter the tokio runtime context to safely take the receiver, then
+        // drop the guard before `Box::pin` so the `BoxStream` stays `Send + 'static`.
+        let rx_opt = {
+            let _guard = self.rt_handle.enter();
+            self.rx
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+        };
+        sweep_progress_stream_impl(rx_opt)
+    }
+}
+
+/// Inner stream logic for [`SweepProgressRecipe`], extracted so a relay test can
+/// drive it directly without a running iced application. Maps each received
+/// `BakeoffProgress` to `Message::SweepProgress(progress)` until the sender
+/// drops (channel closed → stream ends cleanly; the binary clears `progress` on
+/// `SweepRunCompleted`). `None` (double-`stream()`) yields nothing.
+#[must_use]
+pub fn sweep_progress_stream_impl(
+    rx_opt: Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>,
+) -> BoxStream<'static, Message> {
+    Box::pin(async_stream::stream! {
+        if let Some(mut rx) = rx_opt {
+            while let Some(progress) = rx.recv().await {
+                yield Message::SweepProgress(progress);
+            }
+            debug!(channel = "sweep_progress", "sweep progress channel closed — stopping recipe");
+        }
+        // If rx_opt was None: yields nothing (double-stream() after .take()).
+    })
+}
+
 /// Build the F9 [`agent::narration::NarrationRequest`] for the "Explain" action
 /// from the on-screen `BakeoffReportMirror` — the iced→agent send the cockpit
 /// dispatches over `narration_request_tx` (the F5 `forward_tx` build-from-mirror

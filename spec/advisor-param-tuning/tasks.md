@@ -93,7 +93,7 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
 
 ## Phase 2 — UI (Lab sub-view), can parallelise once T5 lands
 
-- [ ] **T6 [ui] — the Tune screen body + guided range form + `Screen::Tune` route +
+- [x] **T6 [ui] — the Tune screen body + guided range form + `Screen::Tune` route +
   `OpenTuneEditor` drill-down.** `crates/ui/src/screens/tune.rs`: the range form (per
   axis: min/max/step typed fields via `Message::SweepAxisEdit` + narrow/shipped/wide
   preset chips), the live "N configs → ~M runs (~T)" readout (reads
@@ -110,7 +110,7 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   ranges and press Run sweep" prompt; the modal-overlay alternative is acceptable._
   _Verify: covered by T9 (render) — no text-snapshot/no-panic-boot is sufficient._
 
-- [ ] **T7 [dev] — `build_swept_strategy` for MACD / RSI / Bollinger (the
+- [x] **T7 [dev] — `build_swept_strategy` for MACD / RSI / Bollinger (the
   string-generation gap).** Extend `build_swept_strategy` to generate the `signal`
   DSL string per family from the swept params (`macd_hist(f,s,sig) > 0 AND close >
   ema(200)`, `rsi(p) < t AND close > min(low,20)`, `close < bollinger_lower(p,k) AND
@@ -127,13 +127,13 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
 
 ## Phase 3 — render-pixel verification (the CLAUDE.md UI gate)
 
-- [ ] **T8 [ui] — Tune-screen fixtures.** In `crates/ui/src/fixtures.rs`: a populated
+- [x] **T8 [ui] — Tune-screen fixtures.** In `crates/ui/src/fixtures.rs`: a populated
   `SweepReportMirror` (a mix of Robust + Marginal + ≥1 FRAGILE cell, a shipped-baseline
   row, a buy-and-hold strip), a `Cockpit` routed to `Screen::Tune` with `Ready` /
   `Empty` / mid-`SweepProgress` states, and a non-default range-form selection.
   _Acceptance: the fixtures are deterministic + engine-free._ _Verify: consumed by T9._
 
-- [ ] **T9 [ui] — render-pixel guards.** `crates/ui/tests/param_sweep_render.rs`,
+- [x] **T9 [ui] — render-pixel guards.** `crates/ui/tests/param_sweep_render.rs`,
   `#![cfg(target_os = "macos")]` (ADR-0057 § D2), serialising the screenshot harnesses
   to avoid the macOS cosmic-text font-mutex deadlock
   (`spec/dev-notes/iced-ui-render-verification.md`). Guards: (1)
@@ -150,7 +150,7 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
 
 ## Phase 4 — close the loop
 
-- [ ] **T10 [dev] — runner glue + cancellation + the no-`live` fixtures-Err path.**
+- [x] **T10 [dev] — runner glue + cancellation + the no-`live` fixtures-Err path.**
   `crates/ui/src/tune/runner.rs` (mirror `leaderboard/runner.rs`): `spawn_sweep(rt,
   cfg, cancel, progress_tx, sweep_progress_tx) -> iced::Task<Message>` resolving to
   `Message::SweepRunCompleted(Result<SweepReportMirror, SmolStr>)`, plus
@@ -168,6 +168,18 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   `["spec/architecture/adr/0069-gate-tied-parameter-sweep-seam.md", "spec/architecture.md"]`).
   _Acceptance: 119/119; trace row resolves; `scripts/adr_registry_check.py
   --pre-commit` passes (ADR-0069 registered)._ _Verify: the two scripts._
+
+## Remaining tail (post-T10, tracked)
+
+- [ ] **T7b [ui] — flip the composed families ON in the Tune form.** The T7 ENGINE
+  landed (MACD/RSI/Bollinger sweep + identity guards + divergence all green), but the
+  ui-designer gated the non-SMA families OFF in the picker (`TuneFamily::is_runnable()
+  == false` → `TUNE_FAMILY_PENDING_NOTE`) because T7 landed mid-flight. T7b adds the
+  per-family range form (MACD fast/slow/signal, RSI period/oversold, Bollinger period/k),
+  flips `is_runnable()` true, and extends the render guards to a composed family.
+- [ ] **T11 [dev] — close the loop.** Anchors stay 119/119 (✓ done) + trace row filled
+  (✓ done at T3); REMAINS: the CHANGELOG.md entry + the spec close (stub-down) once T7b
+  lands and the feature is operator-approved.
 
 ## Notes
 

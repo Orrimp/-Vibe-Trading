@@ -90,8 +90,9 @@ pub use progress::{BakeoffProgress, BakeoffProgressSender, bakeoff_progress_pair
 
 // Gate-tied hyperparameter sweep (ADR-0069, T1–T5).
 pub use bakeoff::sweep::{
-    MAX_SWEEP_CONFIGS, SmaGrid, SweepAxis, SweepCellResult, SweepConfig, SweepFamily, SweepGrid,
-    SweepProgressSender, SweepReport, SweepRequestEcho, SweptParams, run_param_sweep,
+    BollingerGrid, MAX_SWEEP_CONFIGS, MacdGrid, RsiGrid, SmaGrid, SweepAxis, SweepCellResult,
+    SweepConfig, SweepFamily, SweepGrid, SweepProgressSender, SweepReport, SweepRequestEcho,
+    SweptParams, run_param_sweep,
 };
 
 /// Annualised Sharpe ratio from a minute-resolution equity curve.

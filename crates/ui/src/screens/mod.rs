@@ -71,3 +71,12 @@ pub mod strategy_registry;
 /// List mode delegates verbatim to `screens::audit::view` (R10.1 byte-identity gate).
 /// Trail mode renders the upstream node stack + side-drawer.
 pub mod trail;
+/// advisor-param-tuning (ADR-0069) — the gate-tied hyperparameter sweep editor
+/// ("Tune"). The range form (family picker + per-axis {min,max,step} inputs +
+/// presets) + the live grid-size readout + the result grid (one row per swept
+/// config: params · verdict · return · Sharpe p5/p50/p95 · P(loss) ·
+/// P(Sharpe>1) · Max-DD p95) with FRAGILE prominently flagged + promotion-
+/// blocked, the shipped-baseline row, the buy-and-hold strip, the truncation
+/// banner, and the persistent honesty footer. Navigable via the "Tune…" row
+/// drill-down off the Leaderboard; not sidebar-default-routed.
+pub mod tune;

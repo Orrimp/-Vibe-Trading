@@ -28,7 +28,7 @@ use iced::widget::{Column, Container, Row, Stack};
 use crate::assistant;
 use crate::screens::{
     baseline, compare, forward_plan, lab, leaderboard, live, memory, models, reports, settings,
-    strategy_registry, trail,
+    strategy_registry, trail, tune,
 };
 use crate::state::{Cockpit, Screen};
 use crate::theme::layout::{
@@ -155,6 +155,10 @@ pub fn screen_body(screen: Screen, model: &Cockpit, mode: ThemeMode) -> crate::E
         // (single-coin advisor journey step 4 — navigable via the Work group,
         // between the crowned Leaderboard pick and the Live view).
         Screen::ForwardPlan => forward_plan::view(model, mode),
+        // advisor-param-tuning (ADR-0069): the gate-tied hyperparameter sweep
+        // editor ("Tune") — a power-user drill-down off a Leaderboard row's
+        // "Tune…" affordance (navigable, NOT sidebar-default-routed).
+        Screen::Tune => tune::view(model, mode),
         // Phase F: Memory routes to the full memory screen (replaces Phase A placeholder).
         Screen::Memory => memory::view(model, mode),
         // Phase F: Models routes to the full models screen (replaces Phase A placeholder).

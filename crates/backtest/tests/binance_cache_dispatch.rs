@@ -89,6 +89,7 @@ fn base_binance_sma_config(bars: Vec<trading_core::Bar>) -> ScenarioConfig {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     }
 }
 
@@ -225,6 +226,7 @@ fn cross_sectional_binance_config(strategy: &str) -> ScenarioConfig {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     }
 }
 
@@ -352,6 +354,7 @@ async fn composed_strategy_macd_trades_on_ethusdt_not_zero() {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -392,6 +395,7 @@ async fn composed_strategy_rsi_trades_on_ethusdt_not_zero() {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -432,6 +436,7 @@ async fn composed_strategy_bbands_trades_on_ethusdt_not_zero() {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -544,6 +549,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -570,6 +576,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let (_handle2, cancel_rx2) = cancellation_pair();

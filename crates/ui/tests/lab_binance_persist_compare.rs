@@ -96,6 +96,7 @@ fn binance_run_persists_and_round_trips_through_compare() {
         reports_dir: Some(reports_dir.clone()),
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let rt = tokio::runtime::Builder::new_current_thread()

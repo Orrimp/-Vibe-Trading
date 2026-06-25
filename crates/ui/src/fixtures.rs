@@ -2567,6 +2567,135 @@ pub fn fake_cockpit_leaderboard_with_fx_rate(budget_input: &str, eur_usd_rate: D
     cockpit
 }
 
+// ── advisor-param-tuning (ADR-0069) — Tune screen fixtures (T8) ───────────────
+//
+// A populated `SweepReportMirror` (a mix of Robust + Marginal + ≥1 FRAGILE cell,
+// a shipped-baseline row, a buy-and-hold strip) for the render tests + the
+// gallery. The mirror is a PURE `ui` type — built here WITHOUT the engine
+// (`backtest::SweepReport` is never constructed), exactly the T8 contract: the
+// fixtures are deterministic + engine-free + unit-constructible.
+
+/// Build one swept-cell row from concrete params + a verdict + an in-sample
+/// return + a Sharpe-spread, with the distribution shaped to match the verdict
+/// (a FRAGILE cell has a NEGATIVE p5 Sharpe + a high P(loss) — the tail loses
+/// money, the anti-overfit signal). Pure; deterministic.
+fn fake_sweep_cell(
+    fast: u32,
+    slow: u32,
+    verdict: crate::tune::SweepVerdictLabel,
+    in_sample_return: Decimal,
+    sharpe_p50: f64,
+) -> crate::tune::SweepCellRow {
+    use crate::tune::SweepVerdictLabel;
+    let fragile = matches!(verdict, SweepVerdictLabel::Fragile);
+    let promotable = !fragile;
+    let distribution = crate::tune::SweepDistributionMirror {
+        // FRAGILE: the tail loses money → negative p5 Sharpe + high P(loss).
+        sharpe_p5: if fragile { -0.55 } else { 0.60 },
+        sharpe_p50,
+        sharpe_p95: sharpe_p50 + 0.55,
+        prob_loss: if fragile { 0.52 } else { 0.14 },
+        prob_sharpe_gt1: if fragile { 0.22 } else { 0.64 },
+        maxdd_p95: if fragile { 0.62 } else { 0.31 },
+    };
+    crate::tune::SweepCellRow {
+        params_label: SmolStr::new(format!("fast={fast}, slow={slow}")),
+        verdict,
+        promotable,
+        in_sample_sharpe: sharpe_p50,
+        in_sample_return,
+        in_sample_maxdd: dec!(0.15),
+        trade_count: 24,
+        distribution,
+    }
+}
+
+/// A populated `SweepReportMirror` — an SMA grid with a mix of Robust / Marginal
+/// / FRAGILE cells, the shipped-config baseline row, and a buy-and-hold strip.
+///
+/// Deliberately includes a FRAGILE cell with a GAUDY in-sample return (+9.1%)
+/// but a NEGATIVE p5 Sharpe — the load-bearing anti-overfit case the render
+/// guard checks (the verdict badge + the locked promotion affordance + the row
+/// wash). Pure; engine-free; deterministic.
+#[must_use]
+pub fn fake_sweep_report_mirror() -> crate::tune::SweepReportMirror {
+    use crate::tune::SweepVerdictLabel;
+    let cells = vec![
+        fake_sweep_cell(10, 20, SweepVerdictLabel::Robust, dec!(0.0738), 1.20),
+        fake_sweep_cell(10, 30, SweepVerdictLabel::Marginal, dec!(0.0410), 0.80),
+        fake_sweep_cell(15, 30, SweepVerdictLabel::Fragile, dec!(0.0910), 2.50),
+        fake_sweep_cell(15, 40, SweepVerdictLabel::Robust, dec!(0.0612), 1.05),
+        fake_sweep_cell(25, 60, SweepVerdictLabel::Marginal, dec!(0.0388), 0.72),
+    ];
+    let baseline = fake_sweep_cell(20, 50, SweepVerdictLabel::Marginal, dec!(0.0510), 0.90);
+    crate::tune::SweepReportMirror {
+        family_label: SmolStr::new("SMA crossover"),
+        coin: SmolStr::new("BTCUSDT"),
+        range_label: SmolStr::new("2024 H1"),
+        grid_size: cells.len(),
+        truncated: false,
+        requested_count: cells.len(),
+        cells,
+        baseline,
+        benchmark_kpis: crate::tune::SweepBenchmarkKpis {
+            sharpe: 0.41,
+            total_return_pct: dec!(0.0360),
+            max_drawdown: dec!(0.0810),
+        },
+    }
+}
+
+/// A TRUNCATED `SweepReportMirror` — the same populated grid but with
+/// `truncated = true` + a `requested_count` above the cap, so the render guard
+/// can prove the honest truncation banner paints.
+#[must_use]
+pub fn fake_sweep_report_mirror_truncated() -> crate::tune::SweepReportMirror {
+    let mut mirror = fake_sweep_report_mirror();
+    mirror.truncated = true;
+    mirror.grid_size = mirror.cells.len();
+    mirror.requested_count = 30;
+    mirror
+}
+
+/// A `Cockpit` routed to `Screen::Tune` with the supplied result state installed.
+/// Synthetic — no engine, no I/O; the render guard drives this. The form fields
+/// stay at their defaults (SMA family, the shipped grid) so the form paints.
+#[must_use]
+pub fn fake_cockpit_tune(result: PanelState<crate::tune::SweepReportMirror>) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Tune;
+    cockpit.tune_coin = Symbol::new("BTCUSDT");
+    cockpit.tune_screen_state = crate::tune::TuneScreenState {
+        result,
+        running: false,
+        ..Default::default()
+    };
+    cockpit
+}
+
+/// A `Cockpit` routed to `Screen::Tune` with a sweep IN FLIGHT and a cell-level
+/// `BakeoffProgress` set, so the DETERMINATE progress bar renders "Scoring {id}
+/// — {done+1} of {total}" filled `done / total`. Drives the progress render
+/// guard. Synthetic — no engine, no I/O, no channel (the progress is set
+/// directly).
+#[must_use]
+pub fn fake_cockpit_tune_running_progress(done: u16, total: u16, current_id: &str) -> Cockpit {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = crate::state::Screen::Tune;
+    cockpit.tune_coin = Symbol::new("BTCUSDT");
+    cockpit.tune_screen_state = crate::tune::TuneScreenState {
+        result: PanelState::Loading,
+        running: true,
+        progress: Some(backtest::progress::BakeoffProgress {
+            done,
+            total,
+            current_id: SmolStr::new(current_id),
+        }),
+        ..Default::default()
+    };
+    cockpit
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

@@ -29,6 +29,7 @@
 #![allow(clippy::float_arithmetic)] // statistical metric computations in KPI derivation
 
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};
 
@@ -195,17 +196,190 @@ impl SmaGrid {
     }
 }
 
+/// MACD-family grid: `fast_period` × `slow_period` × `signal_period` axes.
+///
+/// Grid constraint: `fast < slow` (same as SMA family's ordering rule).
+/// Signal axis is independent.
+#[derive(Debug, Clone)]
+pub struct MacdGrid {
+    /// Fast EMA period axis. Shipped default: centred on 12.
+    pub fast: SweepAxis,
+    /// Slow EMA period axis. Shipped default: centred on 26.
+    pub slow: SweepAxis,
+    /// Signal (smoothing) period axis. Shipped default: centred on 9.
+    pub signal: SweepAxis,
+}
+
+impl Default for MacdGrid {
+    /// Narrow grid centred on the shipped MACD config (12, 26, 9).
+    fn default() -> Self {
+        Self {
+            fast: SweepAxis {
+                min: 8,
+                max: 16,
+                step: 4,
+            }, // [8, 12, 16]
+            slow: SweepAxis {
+                min: 20,
+                max: 32,
+                step: 6,
+            }, // [20, 26, 32]
+            signal: SweepAxis {
+                min: 7,
+                max: 11,
+                step: 2,
+            }, // [7, 9, 11]
+        }
+    }
+}
+
+impl MacdGrid {
+    /// Enumerate valid `(fast, slow, signal)` triples: `fast < slow`, all ≥ 1.
+    ///
+    /// Returns `(unconstrained_count, valid_triples)`.
+    #[must_use]
+    pub fn enumerate_valid(&self) -> (usize, Vec<(u32, u32, u32)>) {
+        let fast_vals = self.fast.values();
+        let slow_vals = self.slow.values();
+        let sig_vals = self.signal.values();
+        let unconstrained = fast_vals.len() * slow_vals.len() * sig_vals.len();
+        // Use a direct triple loop to avoid the borrow/move clash in nested closures.
+        let mut valid: Vec<(u32, u32, u32)> = Vec::new();
+        for &f in &fast_vals {
+            for &s in &slow_vals {
+                for &sg in &sig_vals {
+                    if f >= 1 && f < s && s <= 400 && sg >= 1 {
+                        valid.push((f, s, sg));
+                    }
+                }
+            }
+        }
+        (unconstrained, valid)
+    }
+}
+
+/// RSI-family grid: `period` × `oversold_threshold` axes.
+///
+/// `oversold` is swept as a discrete integer threshold (e.g. 25, 30, 35).
+#[derive(Debug, Clone)]
+pub struct RsiGrid {
+    /// RSI lookback period axis. Shipped default: centred on 14.
+    pub period: SweepAxis,
+    /// Oversold threshold axis (integer, compared as `rsi < oversold`).
+    /// Shipped default: centred on 30.
+    pub oversold: SweepAxis,
+}
+
+impl Default for RsiGrid {
+    /// Narrow grid centred on the shipped RSI config (14, 30).
+    fn default() -> Self {
+        Self {
+            period: SweepAxis {
+                min: 10,
+                max: 18,
+                step: 4,
+            }, // [10, 14, 18]
+            oversold: SweepAxis {
+                min: 25,
+                max: 35,
+                step: 5,
+            }, // [25, 30, 35]
+        }
+    }
+}
+
+impl RsiGrid {
+    /// Enumerate all valid `(period, oversold)` pairs.
+    ///
+    /// Constraint: `period ≥ 2`, `1 ≤ oversold ≤ 49` (oversold never ≥ 50).
+    /// Returns `(unconstrained_count, valid_pairs)`.
+    #[must_use]
+    pub fn enumerate_valid(&self) -> (usize, Vec<(u32, u32)>) {
+        let period_vals = self.period.values();
+        let os_vals = self.oversold.values();
+        let unconstrained = period_vals.len() * os_vals.len();
+        let valid: Vec<(u32, u32)> = period_vals
+            .iter()
+            .flat_map(|&p| {
+                os_vals.iter().filter_map(move |&os| {
+                    if p >= 2 && (1..=49).contains(&os) {
+                        Some((p, os))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        (unconstrained, valid)
+    }
+}
+
+/// Bollinger-family grid: `period` × discrete `k` presets.
+///
+/// `k` is NOT a `SweepAxis` because floating-point step arithmetic on Decimal
+/// would introduce drift. Instead we use a preset list:
+/// `{1.5, 2.0, 2.5, 3.0}` — Decimal-exact, no rounding.
+#[derive(Debug, Clone)]
+pub struct BollingerGrid {
+    /// Lookback period axis. Shipped default: centred on 20.
+    pub period: SweepAxis,
+    /// Discrete band-multiplier presets (`k` in `bollinger_lower(period, k)`).
+    ///
+    /// Preset list avoids float-step drift. Default: `{1.5, 2.0, 2.5, 3.0}`.
+    pub k_presets: Vec<rust_decimal::Decimal>,
+}
+
+impl Default for BollingerGrid {
+    /// Grid centred on the shipped `BBands` config (`period=20`, `k=2.0`).
+    fn default() -> Self {
+        use rust_decimal_macros::dec;
+        Self {
+            period: SweepAxis {
+                min: 14,
+                max: 26,
+                step: 6,
+            }, // [14, 20, 26]
+            k_presets: vec![dec!(1.5), dec!(2.0), dec!(2.5), dec!(3.0)],
+        }
+    }
+}
+
+impl BollingerGrid {
+    /// Enumerate all valid `(period, k)` pairs.
+    ///
+    /// Constraint: `period ≥ 2`, `k > 0`.
+    /// Returns `(unconstrained_count, valid_pairs)`.
+    #[must_use]
+    pub fn enumerate_valid(&self) -> (usize, Vec<(u32, rust_decimal::Decimal)>) {
+        let period_vals = self.period.values();
+        let unconstrained = period_vals.len() * self.k_presets.len();
+        let valid: Vec<(u32, rust_decimal::Decimal)> = period_vals
+            .iter()
+            .flat_map(|&p| {
+                self.k_presets.iter().filter_map(move |&k| {
+                    if p >= 2 && k > rust_decimal::Decimal::ZERO {
+                        Some((p, k))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        (unconstrained, valid)
+    }
+}
+
 /// Family-specific grid specification (closed enum, one variant per family).
 #[derive(Debug, Clone)]
 pub enum SweepGrid {
     /// SMA crossover grid.
     Sma(SmaGrid),
-    /// MACD grid (T7 — not yet implemented).
-    Macd, // T7
-    /// RSI grid (T7 — not yet implemented).
-    Rsi, // T7
-    /// Bollinger grid (T7 — not yet implemented).
-    Bollinger, // T7
+    /// MACD grid.
+    Macd(MacdGrid),
+    /// RSI grid.
+    Rsi(RsiGrid),
+    /// Bollinger bands grid.
+    Bollinger(BollingerGrid),
 }
 
 impl SweepGrid {
@@ -214,9 +388,9 @@ impl SweepGrid {
     pub fn family(&self) -> SweepFamily {
         match self {
             Self::Sma(_) => SweepFamily::Sma,
-            Self::Macd => SweepFamily::Macd,
-            Self::Rsi => SweepFamily::Rsi,
-            Self::Bollinger => SweepFamily::Bollinger,
+            Self::Macd(_) => SweepFamily::Macd,
+            Self::Rsi(_) => SweepFamily::Rsi,
+            Self::Bollinger(_) => SweepFamily::Bollinger,
         }
     }
 }
@@ -235,7 +409,29 @@ pub enum SweptParams {
         /// Slow window (periods).
         slow_len: u32,
     },
-    // T7: MACD, RSI, Bollinger stubs.
+    /// MACD: fast EMA period / slow EMA period / signal smoothing period.
+    Macd {
+        /// Fast EMA period.
+        fast: u32,
+        /// Slow EMA period.
+        slow: u32,
+        /// Signal line smoothing period.
+        signal: u32,
+    },
+    /// RSI: lookback period / oversold threshold.
+    Rsi {
+        /// RSI lookback period.
+        period: u32,
+        /// Oversold threshold (entry fires when `rsi < oversold`).
+        oversold: u32,
+    },
+    /// Bollinger bands: lookback period / band-multiplier k.
+    Bollinger {
+        /// Bollinger lookback period.
+        period: u32,
+        /// Band multiplier (k in `bollinger_lower(period, k)`).
+        k: Decimal,
+    },
 }
 
 impl SweptParams {
@@ -246,6 +442,11 @@ impl SweptParams {
             Self::Sma { fast_len, slow_len } => {
                 SmolStr::new(format!("fast={fast_len}, slow={slow_len}"))
             }
+            Self::Macd { fast, slow, signal } => {
+                SmolStr::new(format!("macd({fast},{slow},{signal})"))
+            }
+            Self::Rsi { period, oversold } => SmolStr::new(format!("rsi({period})<{oversold}")),
+            Self::Bollinger { period, k } => SmolStr::new(format!("bb({period},{k})")),
         }
     }
 
@@ -340,15 +541,73 @@ pub struct SweepReport {
 
 // ── per-family strategy construction ─────────────────────────────────────────
 
-/// An error from `build_swept_strategy` — parameterisation failure.
+/// An error from `build_swept_config` — parameterisation failure.
 #[derive(Debug, thiserror::Error)]
 pub enum SweepBuildError {
-    /// The family is not yet implemented (T7 families: MACD, RSI, Bollinger).
-    #[error("family {family} is not yet implemented (T7)")]
-    NotYetImplemented { family: &'static str },
     /// The SMA params are invalid (fast >= slow or out of range).
     #[error("invalid SMA params: fast={fast} must be < slow={slow} and both in [1,400]")]
     InvalidSmaParams { fast: u32, slow: u32 },
+    /// The MACD params are invalid (fast >= slow or period < 1).
+    #[error("invalid MACD params: fast={fast} must be < slow={slow} and signal={signal} >= 1")]
+    InvalidMacdParams { fast: u32, slow: u32, signal: u32 },
+    /// The RSI params are invalid.
+    #[error("invalid RSI params: period={period} >= 2 and oversold={oversold} in [1,49]")]
+    InvalidRsiParams { period: u32, oversold: u32 },
+    /// The Bollinger params are invalid.
+    #[error("invalid Bollinger params: period={period} >= 2 and k={k} > 0")]
+    InvalidBollingerParams { period: u32, k: Decimal },
+    /// TOML generation produced a string that failed round-trip parse.
+    #[error("generated TOML failed to parse: {0}")]
+    TomlParseFailure(String),
+}
+
+// ── TOML generation helpers (ADR-0069 D3) ────────────────────────────────────
+
+/// Generate the TOML string for a swept MACD cell.
+///
+/// The signal DSL is parameterized: `"macd_hist(fast,slow,signal) > 0 AND close > ema(200)"`.
+/// The `id` field matches the `strategy_id` used in engine dispatch (e.g. `"btc_macd_trend"`).
+fn macd_toml(fast: u32, slow: u32, signal: u32) -> String {
+    format!(
+        "id     = \"btc_macd_trend\"\n\
+         kind   = \"composed\"\n\
+         symbol = \"BTCUSDT\"\n\
+         stage  = \"research\"\n\
+         signal = \"macd_hist({fast},{slow},{signal}) > 0 AND close > ema(200)\"\n\
+         size   = \"fixed_fraction(0.1)\"\n"
+    )
+}
+
+/// Generate the TOML string for a swept RSI cell.
+///
+/// Signal DSL: `"rsi(period) < oversold AND close > min(low, 20)"`.
+/// The `oversold` integer is the threshold, mirroring the shipped DSL.
+fn rsi_toml(period: u32, oversold: u32) -> String {
+    format!(
+        "id     = \"btc_rsi_reversion\"\n\
+         kind   = \"composed\"\n\
+         symbol = \"BTCUSDT\"\n\
+         stage  = \"research\"\n\
+         signal = \"rsi({period}) < {oversold} AND close > min(low, 20)\"\n\
+         size   = \"fixed_fraction(0.1)\"\n"
+    )
+}
+
+/// Generate the TOML string for a swept Bollinger cell.
+///
+/// Signal DSL: `"close < bollinger_lower(period,k) AND volume > 1.5 * avg(volume, 20)"`.
+/// `k` is `Decimal` — formatted without trailing zeros for DSL cleanliness.
+fn bbands_toml(period: u32, k: Decimal) -> String {
+    // Normalize k: strip trailing zeros (e.g. "2.0" not "2.00") for DSL compat.
+    let k_str = k.normalize().to_string();
+    format!(
+        "id     = \"btc_bbands_mean_revert\"\n\
+         kind   = \"composed\"\n\
+         symbol = \"BTCUSDT\"\n\
+         stage  = \"research\"\n\
+         signal = \"close < bollinger_lower({period},{k_str}) AND volume > 1.5 * avg(volume, 20)\"\n\
+         size   = \"fixed_fraction(0.1)\"\n"
+    )
 }
 
 /// Build a `ScenarioConfig` for the given `(params, base_cfg)`, parameterised
@@ -358,14 +617,16 @@ pub enum SweepBuildError {
 /// existing typed override — `runtime.rs:347`). The strategy id is always
 /// `"v0.sma"`.
 ///
-/// For MACD / RSI / Bollinger: `Err(SweepBuildError::NotYetImplemented)` —
-/// the string-generation builder (T7) is not yet built. Callers MUST NOT
-/// pass a non-SMA family until T7 lands.
+/// For MACD / RSI / Bollinger: generates an in-memory TOML string from the
+/// swept params, validated via `ComposedStrategyConfig::from_str`, and
+/// injects it via `composed_toml_override`. The dispatch strategy id is
+/// the family's canonical composed id (e.g. `"btc_macd_trend"` for MACD).
 ///
 /// # Errors
 ///
-/// Returns `SweepBuildError` if the family is not implemented or the params
-/// are invalid (e.g. SMA fast >= slow).
+/// Returns `SweepBuildError` if the params are invalid or if the generated
+/// TOML fails to round-trip through `from_str` (the identity guard).
+#[allow(clippy::too_many_lines)] // 4 match arms × required validation + ScenarioConfig fields
 pub fn build_swept_config(
     params: &SweptParams,
     symbol: &Symbol,
@@ -401,10 +662,104 @@ pub fn build_swept_config(
                 params: None,
                 short_enabled: false,
                 initial_capital,
+                // SMA uses typed override path — no in-memory TOML string needed.
+                composed_toml_override: None,
             })
-        } // T7: MACD / RSI / Bollinger string-generation builder — not yet implemented.
-          // The composed families need `ComposedStrategyConfig::from_str` with a
-          // generated signal DSL string. This is T7 work.
+        }
+
+        SweptParams::Macd { fast, slow, signal } => {
+            // Validate: fast < slow, both ≥ 1, signal ≥ 1.
+            if *fast < 1 || *fast >= *slow || *slow > 400 || *signal < 1 {
+                return Err(SweepBuildError::InvalidMacdParams {
+                    fast: *fast,
+                    slow: *slow,
+                    signal: *signal,
+                });
+            }
+            let toml_str = macd_toml(*fast, *slow, *signal);
+            // Round-trip validate (identity guard).
+            strategy::ComposedStrategyConfig::from_str(&toml_str, "btc_macd_trend")
+                .map_err(|e| SweepBuildError::TomlParseFailure(e.to_string()))?;
+            Ok(ScenarioConfig {
+                strategy: StrategyId(SmolStr::new_static("v0.5.macd")),
+                pair: (trading_core::Venue::Binance, symbol.clone()),
+                range: range.clone(),
+                seed: *seed,
+                write_report: false, // anchor-safe (ADR-0069 D9)
+                data_source,
+                bars_override,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                reports_dir: None,
+                params: None,
+                short_enabled: false,
+                initial_capital,
+                composed_toml_override: Some(toml_str),
+            })
+        }
+
+        SweptParams::Rsi { period, oversold } => {
+            // Validate: period ≥ 2, oversold in [1,49].
+            if *period < 2 || *oversold < 1 || *oversold > 49 {
+                return Err(SweepBuildError::InvalidRsiParams {
+                    period: *period,
+                    oversold: *oversold,
+                });
+            }
+            let toml_str = rsi_toml(*period, *oversold);
+            // Round-trip validate (identity guard).
+            strategy::ComposedStrategyConfig::from_str(&toml_str, "btc_rsi_reversion")
+                .map_err(|e| SweepBuildError::TomlParseFailure(e.to_string()))?;
+            Ok(ScenarioConfig {
+                strategy: StrategyId(SmolStr::new_static("v0.5.rsi")),
+                pair: (trading_core::Venue::Binance, symbol.clone()),
+                range: range.clone(),
+                seed: *seed,
+                write_report: false, // anchor-safe (ADR-0069 D9)
+                data_source,
+                bars_override,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                reports_dir: None,
+                params: None,
+                short_enabled: false,
+                initial_capital,
+                composed_toml_override: Some(toml_str),
+            })
+        }
+
+        SweptParams::Bollinger { period, k } => {
+            // Validate: period ≥ 2, k > 0.
+            if *period < 2 || *k <= Decimal::ZERO {
+                return Err(SweepBuildError::InvalidBollingerParams {
+                    period: *period,
+                    k: *k,
+                });
+            }
+            let toml_str = bbands_toml(*period, *k);
+            // Round-trip validate (identity guard).
+            strategy::ComposedStrategyConfig::from_str(&toml_str, "btc_bbands_mean_revert")
+                .map_err(|e| SweepBuildError::TomlParseFailure(e.to_string()))?;
+            Ok(ScenarioConfig {
+                strategy: StrategyId(SmolStr::new_static("v0.5.bbands")),
+                pair: (trading_core::Venue::Binance, symbol.clone()),
+                range: range.clone(),
+                seed: *seed,
+                write_report: false, // anchor-safe (ADR-0069 D9)
+                data_source,
+                bars_override,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                reports_dir: None,
+                params: None,
+                short_enabled: false,
+                initial_capital,
+                composed_toml_override: Some(toml_str),
+            })
+        }
     }
 }
 
@@ -452,14 +807,57 @@ fn range_label_for(range: &DateRange) -> &'static str {
 // ── The shipped-config baseline params ───────────────────────────────────────
 
 /// The shipped (default) SMA params: fast=20, slow=50.
-/// These are the centre of the grid and the divergence anchor (D8).
 const SHIPPED_SMA_FAST: u32 = 20;
 const SHIPPED_SMA_SLOW: u32 = 50;
+
+/// The shipped (default) MACD params: fast=12, slow=26, signal=9.
+const SHIPPED_MACD_FAST: u32 = 12;
+const SHIPPED_MACD_SLOW: u32 = 26;
+const SHIPPED_MACD_SIGNAL: u32 = 9;
+
+/// The shipped (default) RSI params: period=14, oversold=30.
+const SHIPPED_RSI_PERIOD: u32 = 14;
+const SHIPPED_RSI_OVERSOLD: u32 = 30;
+
+/// The shipped (default) Bollinger params: period=20, k=2.0.
+const SHIPPED_BBANDS_PERIOD: u32 = 20;
 
 fn shipped_sma_params() -> SweptParams {
     SweptParams::Sma {
         fast_len: SHIPPED_SMA_FAST,
         slow_len: SHIPPED_SMA_SLOW,
+    }
+}
+
+fn shipped_macd_params() -> SweptParams {
+    SweptParams::Macd {
+        fast: SHIPPED_MACD_FAST,
+        slow: SHIPPED_MACD_SLOW,
+        signal: SHIPPED_MACD_SIGNAL,
+    }
+}
+
+fn shipped_rsi_params() -> SweptParams {
+    SweptParams::Rsi {
+        period: SHIPPED_RSI_PERIOD,
+        oversold: SHIPPED_RSI_OVERSOLD,
+    }
+}
+
+fn shipped_bbands_params() -> SweptParams {
+    SweptParams::Bollinger {
+        period: SHIPPED_BBANDS_PERIOD,
+        k: dec!(2.0),
+    }
+}
+
+/// Select the shipped baseline params for the given family (the divergence anchor).
+fn shipped_params_for_family(family: SweepFamily) -> SweptParams {
+    match family {
+        SweepFamily::Sma => shipped_sma_params(),
+        SweepFamily::Macd => shipped_macd_params(),
+        SweepFamily::Rsi => shipped_rsi_params(),
+        SweepFamily::Bollinger => shipped_bbands_params(),
     }
 }
 
@@ -529,7 +927,7 @@ pub async fn run_param_sweep(
     if cancel_rx.is_cancelled() {
         return Err(RunError::Cancelled);
     }
-    let baseline_params = shipped_sma_params();
+    let baseline_params = shipped_params_for_family(cfg.family);
     let baseline = run_one_cell(
         &baseline_params,
         &cfg.symbol,
@@ -605,6 +1003,7 @@ pub async fn run_param_sweep(
         params: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let buyhold_report = run_scenario(buyhold_cfg, cancel_rx.sibling(), progress_tx).await?;
@@ -651,8 +1050,40 @@ fn enumerate_and_validate(grid: &SweepGrid) -> (Vec<SweptParams>, usize, usize) 
                 .collect();
             (params, invalid_count, unconstrained_count)
         }
-        // T7: MACD / RSI / Bollinger — not yet implemented.
-        SweepGrid::Macd | SweepGrid::Rsi | SweepGrid::Bollinger => (vec![], 0, 0),
+        SweepGrid::Macd(macd) => {
+            let (unconstrained_count, valid_triples) = macd.enumerate_valid();
+            let invalid_count = unconstrained_count - valid_triples.len();
+            let params: Vec<SweptParams> = valid_triples
+                .into_iter()
+                .map(|(f, s, sg)| SweptParams::Macd {
+                    fast: f,
+                    slow: s,
+                    signal: sg,
+                })
+                .collect();
+            (params, invalid_count, unconstrained_count)
+        }
+        SweepGrid::Rsi(rsi) => {
+            let (unconstrained_count, valid_pairs) = rsi.enumerate_valid();
+            let invalid_count = unconstrained_count - valid_pairs.len();
+            let params: Vec<SweptParams> = valid_pairs
+                .into_iter()
+                .map(|(p, os)| SweptParams::Rsi {
+                    period: p,
+                    oversold: os,
+                })
+                .collect();
+            (params, invalid_count, unconstrained_count)
+        }
+        SweepGrid::Bollinger(bb) => {
+            let (unconstrained_count, valid_pairs) = bb.enumerate_valid();
+            let invalid_count = unconstrained_count - valid_pairs.len();
+            let params: Vec<SweptParams> = valid_pairs
+                .into_iter()
+                .map(|(p, k)| SweptParams::Bollinger { period: p, k })
+                .collect();
+            (params, invalid_count, unconstrained_count)
+        }
     }
 }
 
@@ -925,6 +1356,7 @@ mod tests {
                 SweptParams::Sma { fast_len, slow_len } => {
                     assert!(fast_len < slow_len, "fast must be < slow");
                 }
+                _ => panic!("unexpected non-SMA variant in SMA grid test"),
             }
         }
     }
@@ -1005,5 +1437,391 @@ mod tests {
             None,
         );
         assert!(result.is_err(), "fast >= slow must return Err");
+    }
+
+    // ── TOML generation identity guard tests (ADR-0069 D3) ──────────────────
+    //
+    // Each test asserts: macd_toml/rsi_toml/bbands_toml with the SHIPPED params
+    // generates a TOML string that round-trips through ComposedStrategyConfig::from_str
+    // and produces the SAME hash as loading the committed TOML file from disk.
+    //
+    // This is the architect's required identity guard: generated-with-shipped-params
+    // == committed-TOML-file strategy (same AST → same hash).
+    //
+    // The tests are `#[ignore]` because they require `config/strategies/*.toml`
+    // on disk (relative CWD = workspace root). Run with:
+    // ```text
+    // cargo test -p backtest --lib bakeoff::sweep::tests::macd_toml_shipped_params_round_trip -- --ignored
+    // ```
+
+    /// Identity guard: `macd_toml(12,26,9)` round-trips AND matches the committed file.
+    #[test]
+    #[ignore = "requires config/strategies/btc_macd_trend.toml at CWD (workspace root) — run with --ignored"]
+    fn macd_toml_shipped_params_round_trip() {
+        let generated = macd_toml(SHIPPED_MACD_FAST, SHIPPED_MACD_SLOW, SHIPPED_MACD_SIGNAL);
+        // Must parse without error.
+        let cfg_gen = strategy::ComposedStrategyConfig::from_str(&generated, "btc_macd_trend")
+            .expect("generated MACD TOML must parse cleanly with shipped params");
+
+        // Load the committed TOML file from disk.
+        let disk_path = std::path::PathBuf::from("config/strategies/btc_macd_trend.toml");
+        let disk_path_abs = crate::paths::resolve_workspace_path(&disk_path);
+        let cfg_disk = strategy::ComposedStrategyConfig::from_file(&disk_path_abs)
+            .expect("committed btc_macd_trend.toml must load");
+
+        // The hash (AST fingerprint) must be identical — same strategy.
+        assert_eq!(
+            cfg_gen.hash, cfg_disk.hash,
+            "generated MACD TOML with shipped params must produce the same AST hash as the committed TOML file. \
+             If this fails, the signal DSL template does not match the committed file."
+        );
+        assert_eq!(
+            cfg_gen.signal_raw.as_str(),
+            cfg_disk.signal_raw.as_str(),
+            "generated signal string must match committed signal string"
+        );
+    }
+
+    /// Identity guard: `rsi_toml(14,30)` round-trips AND matches the committed file.
+    #[test]
+    #[ignore = "requires config/strategies/btc_rsi_reversion.toml at CWD (workspace root) — run with --ignored"]
+    fn rsi_toml_shipped_params_round_trip() {
+        let generated = rsi_toml(SHIPPED_RSI_PERIOD, SHIPPED_RSI_OVERSOLD);
+        let cfg_gen = strategy::ComposedStrategyConfig::from_str(&generated, "btc_rsi_reversion")
+            .expect("generated RSI TOML must parse cleanly with shipped params");
+
+        let disk_path = std::path::PathBuf::from("config/strategies/btc_rsi_reversion.toml");
+        let disk_path_abs = crate::paths::resolve_workspace_path(&disk_path);
+        let cfg_disk = strategy::ComposedStrategyConfig::from_file(&disk_path_abs)
+            .expect("committed btc_rsi_reversion.toml must load");
+
+        assert_eq!(
+            cfg_gen.hash, cfg_disk.hash,
+            "generated RSI TOML with shipped params must produce the same AST hash as the committed TOML file."
+        );
+        assert_eq!(
+            cfg_gen.signal_raw.as_str(),
+            cfg_disk.signal_raw.as_str(),
+            "generated signal string must match committed signal string"
+        );
+    }
+
+    /// Identity guard: `bbands_toml(20, 2.0)` round-trips AND matches the committed file.
+    #[test]
+    #[ignore = "requires config/strategies/btc_bbands_mean_revert.toml at CWD (workspace root) — run with --ignored"]
+    fn bbands_toml_shipped_params_round_trip() {
+        let generated = bbands_toml(SHIPPED_BBANDS_PERIOD, dec!(2.0));
+        let cfg_gen =
+            strategy::ComposedStrategyConfig::from_str(&generated, "btc_bbands_mean_revert")
+                .expect("generated BBands TOML must parse cleanly with shipped params");
+
+        let disk_path = std::path::PathBuf::from("config/strategies/btc_bbands_mean_revert.toml");
+        let disk_path_abs = crate::paths::resolve_workspace_path(&disk_path);
+        let cfg_disk = strategy::ComposedStrategyConfig::from_file(&disk_path_abs)
+            .expect("committed btc_bbands_mean_revert.toml must load");
+
+        assert_eq!(
+            cfg_gen.hash, cfg_disk.hash,
+            "generated BBands TOML with shipped params must produce the same AST hash as the committed TOML file."
+        );
+        assert_eq!(
+            cfg_gen.signal_raw.as_str(),
+            cfg_disk.signal_raw.as_str(),
+            "generated signal string must match committed signal string"
+        );
+    }
+
+    // ── MacdGrid / RsiGrid / BollingerGrid unit tests ────────────────────────
+
+    #[test]
+    fn macd_grid_default_enumerate_valid_all_pairs_have_fast_lt_slow() {
+        let grid = MacdGrid::default();
+        let (_, valid) = grid.enumerate_valid();
+        assert!(
+            !valid.is_empty(),
+            "default MACD grid must have valid triples"
+        );
+        for (f, s, sg) in &valid {
+            assert!(f < s, "fast({f}) must be < slow({s})");
+            assert!(*sg >= 1, "signal({sg}) must be >= 1");
+        }
+    }
+
+    #[test]
+    fn macd_grid_drops_fast_ge_slow() {
+        // fast=[20,30], slow=[20] — (30,20) and (20,20) are invalid.
+        let grid = MacdGrid {
+            fast: SweepAxis {
+                min: 20,
+                max: 30,
+                step: 10,
+            }, // [20, 30]
+            slow: SweepAxis {
+                min: 20,
+                max: 20,
+                step: 1,
+            }, // [20]
+            signal: SweepAxis {
+                min: 9,
+                max: 9,
+                step: 1,
+            }, // [9]
+        };
+        let (unconstrained, valid) = grid.enumerate_valid();
+        // Unconstrained = 2×1×1 = 2. Only (20, 20) would be invalid AND (30, 20) invalid.
+        // Wait — both are invalid (20<20 false, 30<20 false) so valid = [].
+        assert_eq!(unconstrained, 2);
+        assert_eq!(
+            valid.len(),
+            0,
+            "no valid triples when fast >= slow for all pairs"
+        );
+    }
+
+    #[test]
+    fn rsi_grid_default_enumerate_valid() {
+        let grid = RsiGrid::default();
+        let (unconstrained, valid) = grid.enumerate_valid();
+        assert!(unconstrained > 0);
+        assert!(!valid.is_empty());
+        for (p, os) in &valid {
+            assert!(*p >= 2, "period({p}) must be >= 2");
+            assert!(*os <= 49, "oversold({os}) must be <= 49");
+        }
+    }
+
+    #[test]
+    fn bollinger_grid_default_enumerate_valid() {
+        let grid = BollingerGrid::default();
+        let (unconstrained, valid) = grid.enumerate_valid();
+        assert!(unconstrained > 0);
+        assert!(!valid.is_empty());
+        for (p, k) in &valid {
+            assert!(*p >= 2, "period({p}) must be >= 2");
+            assert!(*k > Decimal::ZERO, "k({k}) must be > 0");
+        }
+    }
+
+    #[test]
+    fn macd_toml_generates_parseable_string() {
+        let s = macd_toml(10, 24, 8);
+        // Must contain the key DSL fragment.
+        assert!(
+            s.contains("macd_hist(10,24,8) > 0"),
+            "MACD DSL must appear in TOML"
+        );
+        assert!(
+            s.contains("btc_macd_trend"),
+            "MACD TOML must have correct id"
+        );
+        // Must parse via from_str without error (the identity guard).
+        let result = strategy::ComposedStrategyConfig::from_str(&s, "btc_macd_trend");
+        assert!(
+            result.is_ok(),
+            "macd_toml output must parse cleanly: {result:?}"
+        );
+    }
+
+    #[test]
+    fn rsi_toml_generates_parseable_string() {
+        let s = rsi_toml(10, 25);
+        assert!(s.contains("rsi(10) < 25"), "RSI DSL must appear in TOML");
+        assert!(
+            s.contains("btc_rsi_reversion"),
+            "RSI TOML must have correct id"
+        );
+        let result = strategy::ComposedStrategyConfig::from_str(&s, "btc_rsi_reversion");
+        assert!(
+            result.is_ok(),
+            "rsi_toml output must parse cleanly: {result:?}"
+        );
+    }
+
+    #[test]
+    fn bbands_toml_generates_parseable_string() {
+        let s = bbands_toml(18, dec!(1.5));
+        assert!(
+            s.contains("bollinger_lower(18,1.5)"),
+            "BBands DSL must appear in TOML"
+        );
+        assert!(
+            s.contains("btc_bbands_mean_revert"),
+            "BBands TOML must have correct id"
+        );
+        let result = strategy::ComposedStrategyConfig::from_str(&s, "btc_bbands_mean_revert");
+        assert!(
+            result.is_ok(),
+            "bbands_toml output must parse cleanly: {result:?}"
+        );
+    }
+
+    #[test]
+    fn bbands_toml_k_decimal_2_normalizes_to_2() {
+        // k=2.0 must appear as "2" (normalized, no trailing zero) in the DSL.
+        let s = bbands_toml(20, dec!(2.0));
+        assert!(
+            s.contains("bollinger_lower(20,2)"),
+            "k=2.0 must normalize to '2' in DSL, got: {s}"
+        );
+    }
+
+    #[test]
+    fn build_swept_config_macd_sets_composed_toml_override() {
+        use trading_core::Symbol;
+        let params = SweptParams::Macd {
+            fast: 8,
+            slow: 20,
+            signal: 7,
+        };
+        let symbol = Symbol(SmolStr::new_static("BTCUSDT"));
+        let range = crate::engine::DateRange::H1_2024;
+        let seed = [1u8; 32];
+        let cfg = build_swept_config(
+            &params,
+            &symbol,
+            &range,
+            &seed,
+            ScenarioDataSource::Synthetic,
+            None,
+            None,
+        )
+        .expect("MACD build_swept_config must succeed for valid params");
+        assert!(
+            cfg.composed_toml_override.is_some(),
+            "MACD sweep config must carry a composed_toml_override"
+        );
+        assert!(
+            !cfg.write_report,
+            "write_report must be false (anchor-safe)"
+        );
+        // Verify the override string contains the swept params.
+        let toml_str = cfg.composed_toml_override.as_deref().unwrap();
+        assert!(
+            toml_str.contains("macd_hist(8,20,7)"),
+            "TOML must contain swept MACD params"
+        );
+    }
+
+    #[test]
+    fn build_swept_config_rsi_sets_composed_toml_override() {
+        use trading_core::Symbol;
+        let params = SweptParams::Rsi {
+            period: 10,
+            oversold: 25,
+        };
+        let symbol = Symbol(SmolStr::new_static("BTCUSDT"));
+        let range = crate::engine::DateRange::H1_2024;
+        let seed = [1u8; 32];
+        let cfg = build_swept_config(
+            &params,
+            &symbol,
+            &range,
+            &seed,
+            ScenarioDataSource::Synthetic,
+            None,
+            None,
+        )
+        .expect("RSI build_swept_config must succeed for valid params");
+        assert!(cfg.composed_toml_override.is_some());
+        let toml_str = cfg.composed_toml_override.as_deref().unwrap();
+        assert!(
+            toml_str.contains("rsi(10) < 25"),
+            "TOML must contain swept RSI params"
+        );
+    }
+
+    #[test]
+    fn build_swept_config_bbands_sets_composed_toml_override() {
+        use trading_core::Symbol;
+        let params = SweptParams::Bollinger {
+            period: 14,
+            k: dec!(1.5),
+        };
+        let symbol = Symbol(SmolStr::new_static("BTCUSDT"));
+        let range = crate::engine::DateRange::H1_2024;
+        let seed = [1u8; 32];
+        let cfg = build_swept_config(
+            &params,
+            &symbol,
+            &range,
+            &seed,
+            ScenarioDataSource::Synthetic,
+            None,
+            None,
+        )
+        .expect("BBands build_swept_config must succeed for valid params");
+        assert!(cfg.composed_toml_override.is_some());
+        let toml_str = cfg.composed_toml_override.as_deref().unwrap();
+        assert!(
+            toml_str.contains("bollinger_lower(14,1.5)"),
+            "TOML must contain swept BBands params"
+        );
+    }
+
+    #[test]
+    fn build_swept_config_macd_rejects_fast_ge_slow() {
+        use trading_core::Symbol;
+        let params = SweptParams::Macd {
+            fast: 26,
+            slow: 12,
+            signal: 9,
+        }; // fast > slow
+        let symbol = Symbol(SmolStr::new_static("BTCUSDT"));
+        let range = crate::engine::DateRange::H1_2024;
+        let seed = [1u8; 32];
+        let result = build_swept_config(
+            &params,
+            &symbol,
+            &range,
+            &seed,
+            ScenarioDataSource::Synthetic,
+            None,
+            None,
+        );
+        assert!(result.is_err(), "fast >= slow must return Err for MACD");
+    }
+
+    #[test]
+    fn build_swept_config_rsi_rejects_oversold_above_49() {
+        use trading_core::Symbol;
+        let params = SweptParams::Rsi {
+            period: 14,
+            oversold: 55,
+        }; // oversold > 49
+        let symbol = Symbol(SmolStr::new_static("BTCUSDT"));
+        let range = crate::engine::DateRange::H1_2024;
+        let seed = [1u8; 32];
+        let result = build_swept_config(
+            &params,
+            &symbol,
+            &range,
+            &seed,
+            ScenarioDataSource::Synthetic,
+            None,
+            None,
+        );
+        assert!(result.is_err(), "oversold > 49 must return Err for RSI");
+    }
+
+    #[test]
+    fn build_swept_config_bbands_rejects_zero_k() {
+        use trading_core::Symbol;
+        let params = SweptParams::Bollinger {
+            period: 20,
+            k: Decimal::ZERO,
+        };
+        let symbol = Symbol(SmolStr::new_static("BTCUSDT"));
+        let range = crate::engine::DateRange::H1_2024;
+        let seed = [1u8; 32];
+        let result = build_swept_config(
+            &params,
+            &symbol,
+            &range,
+            &seed,
+            ScenarioDataSource::Synthetic,
+            None,
+            None,
+        );
+        assert!(result.is_err(), "k=0 must return Err for BBands");
     }
 }

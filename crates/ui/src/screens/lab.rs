@@ -425,6 +425,15 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .spacing(crate::theme::space::M)
         .push(run_button::view(&run_state, model.lab_run_inflight, mode));
 
+    // advisor-param-tuning (ADR-0069) — the Lab entry point into the Tune editor.
+    // The Lab is the natural home for SMA fast/slow A/B (it already exposes the
+    // sma_fast/slow inputs), so a quiet GHOST "Tune…" button opens the gate-tied
+    // sweep for the SMA family on the Lab's current coin (falling back to the
+    // bake-off default). Hidden while a Lab run is in flight to avoid a busy row.
+    if !model.lab_run_inflight {
+        run_button_row = run_button_row.push(tune_entry_button(model, mode));
+    }
+
     // Stop button — rendered when Running.
     if model.lab_run_inflight {
         use iced::widget::button;
@@ -766,6 +775,54 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+// ── advisor-param-tuning (ADR-0069) — the Lab entry point into the Tune editor ─
+
+/// A quiet GHOST "Tune…" button on the Lab run row that opens the gate-tied
+/// hyperparameter sweep editor for the SMA family on the Lab's current coin.
+///
+/// The Lab is the natural home for SMA fast/slow A/B (it already exposes the
+/// `sma_fast`/`sma_slow` inputs), so the Tune editor — which sweeps that exact
+/// grid — is one drill-down away. Dispatches `Message::OpenTuneEditor` preseeded
+/// with the family + the Lab's coin (the pair's `Symbol`, falling back to the
+/// bake-off default coin when no pair is selected) + the `H1_2024` lookback (the
+/// corpus-covered default the Tune state cold-starts with). A `GHOST`-style
+/// secondary affordance (soft `PANEL` fill + `BORDER_1`, an `FG_2` label) so it
+/// reads as optional next to the primary Run button — and so it never leaks
+/// `ACCENT` into the Lab's pixel guards.
+// The `space::* as u16` padding cast is bounded + safe (the same per-`view`
+// allow-pattern at line 172; this helper is a separate fn so it needs its own).
+#[allow(clippy::cast_possible_truncation)]
+fn tune_entry_button(model: &Cockpit, mode: ThemeMode) -> crate::Element<'static> {
+    use iced::widget::button;
+    // The Lab's coin (the pair's Symbol), or the bake-off default when none.
+    let coin = model.lab_state.pair.as_ref().map_or_else(
+        || Symbol::new(crate::leaderboard::runner::DEFAULT_BAKEOFF_COIN),
+        |(_, sym)| sym.clone(),
+    );
+    button(
+        Text::new(crate::strings::TUNE_OPEN_AFFORDANCE)
+            .size(text::SMALL)
+            .color(color::FG_2.current(mode)),
+    )
+    .padding([crate::theme::space::S as u16, crate::theme::space::L as u16])
+    .style(move |_t: &iced::Theme, _s| button::Style {
+        background: Some(color::PANEL.current(mode).into()),
+        border: iced::Border {
+            color: color::BORDER_1.current(mode),
+            width: 1.0,
+            radius: crate::theme::radius::R4.into(),
+        },
+        text_color: color::FG_2.current(mode),
+        ..Default::default()
+    })
+    .on_press(Message::OpenTuneEditor {
+        family: crate::tune::TuneFamily::Sma,
+        coin,
+        lookback: crate::leaderboard::LeaderboardLookback::H1_2024,
+    })
+    .into()
 }
 
 // ── lab-yahoo-realdata T-C3.4 — cadence badge helper ────────────────────────

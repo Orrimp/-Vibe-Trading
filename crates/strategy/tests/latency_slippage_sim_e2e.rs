@@ -80,6 +80,7 @@ async fn run_momentum_with_sim_config(sim_cfg: LatencySlippageSimConfig) -> rust
         reports_dir: None,
         short_enabled: false,
         initial_capital: None,
+        composed_toml_override: None,
     };
 
     let (_handle, cancel_rx) = cancel::cancellation_pair();
