@@ -286,6 +286,28 @@ pub struct BakeoffRequest {
     /// The active strategy field (excluding the benchmark arm — the loop
     /// always appends `"v0.buyhold"`).
     pub field: Vec<StrategyId>,
+
+    // ── Leaderboard-timeframe-capital knobs (leaderboard-timeframe-capital) ──
+    //
+    // These two fields are NEW additions to BakeoffRequest.  All existing
+    // callers that construct BakeoffRequest without these fields must add
+    // them explicitly (there is no Default impl).  For backwards-compatible
+    // behaviour, pass `Horizon::OneHour` and `dec!(100_000)`.
+    //
+    // **Anchor contract**: the advisor bake-off path sets `write_report = false`
+    // (ADR-0059), so these fields never affect anchored report bodies.
+    // The anchors remain 119/119 byte-identical.
+    /// Bar-size horizon for the bake-off. `OneHour` = current default
+    /// (identity pass-through, byte-identical to the pre-feature code).
+    /// `FourHours` / `OneDay` trigger `resample_ohlcv` on the preloaded
+    /// 1h bars before any arm is run (one resample, same bars to every arm).
+    /// Only `OneHour`-or-coarser horizons are supported — the corpus is 1h bars.
+    pub timeframe: crate::resample::Horizon,
+
+    /// Starting equity for every sim arm. `dec!(100_000)` = current default.
+    /// Changing this scales the absolute equity curve but does NOT change the
+    /// ranking (returns are percentage-based). Honest UI copy must say so.
+    pub initial_capital: rust_decimal::Decimal,
 }
 
 /// Configuration for `run_bakeoff`.
@@ -589,6 +611,12 @@ const BUYHOLD_ID: &str = "v0.buyhold";
 ///
 /// Propagates `RunError` from any `run_scenario` call (including
 /// `Cancelled`, `ZeroSeed`, `InvalidRange`, `Internal`).
+// The function is necessarily long: one sequential async block that preloads bars,
+// resamples, iterates candidates, runs robustness bootstrap, and assembles the
+// final report. Each step is a distinct logical phase; splitting further would
+// scatter the sequential state machine across multiple helpers without improving
+// readability.
+#[allow(clippy::too_many_lines)]
 pub async fn run_bakeoff(
     cfg: BakeoffConfig,
     cancel_rx: RunCancelReceiver,
@@ -612,8 +640,21 @@ pub async fn run_bakeoff(
     //     does not fully cover the requested range.  NEVER writes to data/binance/.
     //   - Synthetic/Yahoo: returns None (synthetic GBM or Yahoo bars are
     //     generated/loaded by run_scenario itself).
-    let preloaded_bars: Option<Vec<trading_core::Bar>> =
+    let preloaded_1h_bars: Option<Vec<trading_core::Bar>> =
         resolve_bakeoff_bars(&req.symbol, &req.range, cfg.data_source).await?;
+
+    // ── Timeframe resample (leaderboard-timeframe-capital knob) ──────────────
+    //
+    // The corpus is 1h bars.  When the operator selects a coarser horizon
+    // (H4/D1), we fold the preloaded 1h bars into coarser bars ONCE and pass
+    // the resampled slice to EVERY arm — apples-to-apples invariant preserved.
+    // `Horizon::OneHour` → identity pass-through (same Vec, no copy).
+    let preloaded_bars: Option<Vec<trading_core::Bar>> =
+        preloaded_1h_bars.map(|bars_1h| crate::resample::resample_ohlcv(&bars_1h, req.timeframe));
+
+    // ── Initial capital (leaderboard-timeframe-capital knob) ─────────────────
+    // Thread the operator-chosen capital through to each arm's ScenarioConfig.
+    let bakeoff_initial_capital = req.initial_capital;
 
     // Build the full candidate field: explicit strategies + benchmark.
     let mut strategy_ids: Vec<(StrategyId, bool)> =
@@ -657,6 +698,7 @@ pub async fn run_bakeoff(
             // Pass preloaded real bars to every arm — this is the fix for the
             // synthetic-fallback bug: without bars_override the engine silently
             // generates GBM bars for BinanceCache, producing garbage KPIs.
+            // When timeframe != H1, bars are already resampled (see above).
             bars_override: preloaded_bars.clone(),
             sma_fast_len: None,
             sma_slow_len: None,
@@ -664,6 +706,9 @@ pub async fn run_bakeoff(
             reports_dir: None,
             params: None,
             short_enabled,
+            // Leaderboard-timeframe-capital knob: thread operator-chosen capital.
+            // None → 100_000 default; Some(capital) → operator value.
+            initial_capital: Some(bakeoff_initial_capital),
         };
 
         let report = run_scenario(scenario_cfg, cancel_rx.sibling(), progress_tx.clone()).await?;

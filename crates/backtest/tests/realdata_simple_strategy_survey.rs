@@ -97,6 +97,7 @@ async fn run_strategy(sym: &Symbol, strat: &str, bars: Vec<Bar>) -> Option<Backt
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     };
     let (_h, cancel_rx) = cancellation_pair();
     backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled())

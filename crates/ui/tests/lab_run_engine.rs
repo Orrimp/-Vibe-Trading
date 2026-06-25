@@ -63,6 +63,7 @@ mod inner {
             // test reads from tmp_dir; equality is structural, not incidental.
             reports_dir: Some(tmp_dir.to_path_buf()),
             short_enabled: false,
+            initial_capital: None,
         }
     }
 

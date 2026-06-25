@@ -88,6 +88,7 @@ fn base_binance_sma_config(bars: Vec<trading_core::Bar>) -> ScenarioConfig {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     }
 }
 
@@ -223,6 +224,7 @@ fn cross_sectional_binance_config(strategy: &str) -> ScenarioConfig {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     }
 }
 
@@ -349,6 +351,7 @@ async fn composed_strategy_macd_trades_on_ethusdt_not_zero() {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -388,6 +391,7 @@ async fn composed_strategy_rsi_trades_on_ethusdt_not_zero() {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -427,6 +431,7 @@ async fn composed_strategy_bbands_trades_on_ethusdt_not_zero() {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -538,6 +543,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -563,6 +569,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     };
 
     let (_handle2, cancel_rx2) = cancellation_pair();

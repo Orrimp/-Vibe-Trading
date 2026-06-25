@@ -129,10 +129,13 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // budget + lookback. Drives the next bake-off (the binary reads this state
     // to build the `BakeoffConfig`).
     // F7: pass the advisor EUR/USD rate so the FX hint is honest.
+    // Tuning knobs: timeframe + start capital are wired in here.
     let guided_input = crate::widgets::bakeoff_input::view(
         &st.coin,
         &st.budget_input,
         st.lookback,
+        st.timeframe,
+        &st.start_capital_input,
         model.advisor_eur_usd_rate,
         mode,
     );
@@ -969,11 +972,16 @@ fn display_label(strategy: &str) -> &str {
         // Map each opaque id to its friendly directional label so the row reads
         // AS a long/short strategy (NOT a raw `sma_cross_ls` id) — own this
         // ui-side, the lesson from advisor-combination-search.
-        "sma_cross_ls" => LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL,
-        "macd_ls" => LEADERBOARD_SHORT_MACD_LS_LABEL,
-        "rsi_ls" => LEADERBOARD_SHORT_RSI_LS_LABEL,
-        "bbands_ls" => LEADERBOARD_SHORT_BBANDS_LS_LABEL,
-        "always_short" => LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
+        //
+        // The bakeoff engine emits `v0.`-prefixed ids (e.g. `"v0.sma_cross_ls"`,
+        // `"v0.macd_ls"`) but earlier UI code only mapped the bare short forms.
+        // Both forms are mapped here so the label survives either id shape —
+        // whichever the engine reports, the row reads as a human label.
+        "sma_cross_ls" | "v0.sma_cross_ls" => LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL,
+        "macd_ls" | "v0.macd_ls" => LEADERBOARD_SHORT_MACD_LS_LABEL,
+        "rsi_ls" | "v0.rsi_ls" => LEADERBOARD_SHORT_RSI_LS_LABEL,
+        "bbands_ls" | "v0.bbands_ls" => LEADERBOARD_SHORT_BBANDS_LS_LABEL,
+        "always_short" | "v0.always_short" => LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
         other => other,
     }
 }
@@ -983,8 +991,13 @@ fn display_label(strategy: &str) -> &str {
 /// `ui`-side match keyed on the pre-registered ids (no engine string crosses the
 /// seam), the same discipline `is_ensemble_id` uses. The `_ls` suffix covers the
 /// four symmetric variants; `always_short` is the explicit control.
+///
+/// Both the bare form (`"sma_cross_ls"`) and the `v0.`-prefixed form
+/// (`"v0.sma_cross_ls"`) are matched — the bakeoff engine emits the `v0.` form,
+/// so both must be accepted to prevent the `short` tag from silently dropping on
+/// advisor-path rows.
 fn is_short_capable_id(strategy: &str) -> bool {
-    strategy.ends_with("_ls") || strategy == "always_short"
+    strategy.ends_with("_ls") || strategy == "always_short" || strategy == "v0.always_short"
 }
 
 /// `true` for one of the 8 pre-registered vote-ensemble ids (the 2 F8 arms + the
@@ -1181,6 +1194,31 @@ mod tests {
         }
     }
 
+    /// The bakeoff engine emits `v0.`-prefixed short ids. These MUST also map to
+    /// friendly labels — the bare-form test above only verifies the fallback path.
+    #[test]
+    fn v0_prefixed_short_arm_ids_map_to_friendly_labels() {
+        let cases = [
+            ("v0.sma_cross_ls", LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL),
+            ("v0.macd_ls", LEADERBOARD_SHORT_MACD_LS_LABEL),
+            ("v0.rsi_ls", LEADERBOARD_SHORT_RSI_LS_LABEL),
+            ("v0.bbands_ls", LEADERBOARD_SHORT_BBANDS_LS_LABEL),
+            ("v0.always_short", LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL),
+        ];
+        for (id, expected_label) in cases {
+            let label = display_label(id);
+            assert_ne!(
+                label, id,
+                "v0-prefixed short arm `{id}` rendered its RAW id — \
+                 the display_label mapping for the v0. prefix is missing"
+            );
+            assert_eq!(
+                label, expected_label,
+                "v0-prefixed short arm `{id}` must map to its friendly directional label"
+            );
+        }
+    }
+
     /// The `short` row tag fires for every short-slate id (the `_ls` suffix + the
     /// `always_short` control) and NOT for the long-only / ensemble / benchmark
     /// ids — so the short field is marked, and only the short field.
@@ -1192,6 +1230,12 @@ mod tests {
             "rsi_ls",
             "bbands_ls",
             "always_short",
+            // v0.-prefixed forms (what the bakeoff engine actually emits):
+            "v0.sma_cross_ls",
+            "v0.macd_ls",
+            "v0.rsi_ls",
+            "v0.bbands_ls",
+            "v0.always_short",
         ] {
             assert!(is_short_capable_id(id), "`{id}` is a short-slate arm");
         }

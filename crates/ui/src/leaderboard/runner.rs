@@ -100,6 +100,9 @@ pub fn default_bakeoff_config() -> backtest::BakeoffConfig {
             range: backtest::engine::DateRange::H1_2024,
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             field: advisor_field(),
+            // Defaults: H1 identity pass-through + 100_000 USDT legacy capital.
+            timeframe: backtest::resample::Horizon::OneHour,
+            initial_capital: rust_decimal_macros::dec!(100_000),
         },
         data_source: backtest::engine::ScenarioDataSource::BinanceCache,
         robustness: advisor_robustness(),
@@ -133,6 +136,9 @@ pub fn bakeoff_config_from_state(
             range: st.lookback.to_date_range(now_ms),
             seed: crate::lab::defaults::LAB_DEFAULT_SEED,
             field: advisor_field(),
+            // Thread the operator-chosen timeframe + start capital.
+            timeframe: st.timeframe.to_horizon(),
+            initial_capital: st.start_capital(),
         },
         data_source: backtest::engine::ScenarioDataSource::BinanceCache,
         robustness: advisor_robustness(),

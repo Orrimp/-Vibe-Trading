@@ -268,6 +268,18 @@ pub struct ScenarioConfig {
     /// Set `true` ONLY for the 5 new `_ls` / `always_short` arms (D9).
     /// Every existing long-only arm leaves this `false` → byte-identical.
     pub short_enabled: bool,
+
+    /// Bakeoff timeframe + capital tuning (leaderboard-timeframe-capital knobs).
+    ///
+    /// `None` → use the legacy hardcoded `100_000` USDT (all existing call sites:
+    /// anchor-safe, byte-identical). `Some(capital)` overrides the starting equity
+    /// for the run. Used by `run_bakeoff` (`write_report=false` path) so this field
+    /// never affects anchored report bodies.
+    ///
+    /// **Anchor contract**: CLI/Lab paths always leave this `None` → `dec!(100_000)`
+    /// used as before. The `run_bakeoff` bakeoff path (`write_report = false`) may
+    /// pass `Some(capital)` — safe because no report body is written.
+    pub initial_capital: Option<rust_decimal::Decimal>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -900,6 +912,13 @@ pub async fn run_scenario(
     // ── 3. Seed → u64 ────────────────────────────────────────────────────────
     let seed_u64 = seed_to_u64(&cfg.seed);
 
+    // ── 3b. Resolve initial capital (leaderboard-timeframe-capital knobs) ────
+    // `None` → legacy 100_000 (all existing CLI/anchor paths: byte-identical).
+    // `Some(c)` → operator-chosen capital (bakeoff UI path only, write_report=false).
+    let initial_capital = cfg
+        .initial_capital
+        .unwrap_or(rust_decimal_macros::dec!(100_000));
+
     // ── 4. DateRange → scenario params ───────────────────────────────────────
     let (start_year, bar_count) = date_range_to_scenario_params(&cfg.range);
 
@@ -1119,7 +1138,7 @@ pub async fn run_scenario(
                 symbol: cfg.pair.1.clone(),
                 start_year,
                 bar_count,
-                initial_capital: dec!(100_000),
+                initial_capital,
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 // lab-polish-round-2 R2 — pass the operator-tuned overrides
@@ -1204,7 +1223,7 @@ pub async fn run_scenario(
                 symbol: cfg.pair.1.clone(),
                 start_year,
                 bar_count,
-                initial_capital: dec!(100_000),
+                initial_capital,
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
@@ -1280,7 +1299,7 @@ pub async fn run_scenario(
                 symbol: cfg.pair.1.clone(),
                 start_year,
                 bar_count,
-                initial_capital: dec!(100_000),
+                initial_capital,
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
@@ -1360,7 +1379,7 @@ pub async fn run_scenario(
                 symbol: cfg.pair.1.clone(),
                 start_year,
                 bar_count,
-                initial_capital: dec!(100_000),
+                initial_capital,
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 // lab-polish-round-2 R2 — CLI dispatch passes None to preserve
@@ -1441,7 +1460,8 @@ pub async fn run_scenario(
         "v0.buyhold" => {
             use crate::bakeoff::buyhold::run_buyhold_path;
 
-            const INITIAL_CAPITAL: rust_decimal::Decimal = dec!(100_000);
+            // Use `initial_capital` derived from ScenarioConfig (leaderboard knob;
+            // None → 100_000 for all existing/anchored paths).
             const N_SYMBOLS: usize = 1; // single-coin bake-off
 
             // ── Resolve bars (BinanceCache/YahooCache: use bars_override;
@@ -1463,7 +1483,7 @@ pub async fn run_scenario(
             };
 
             // ── Run buy-and-hold on the bars ──────────────────────────────────
-            let (eq_curve, _final_eq_decimal) = run_buyhold_path(&bars, INITIAL_CAPITAL, N_SYMBOLS);
+            let (eq_curve, _final_eq_decimal) = run_buyhold_path(&bars, initial_capital, N_SYMBOLS);
 
             // ── Build equity_series with per-bar timestamps ───────────────────
             //
@@ -1477,7 +1497,7 @@ pub async fn run_scenario(
                         .into_iter()
                         .next()
                         .unwrap_or_else(|| Timestamp::new(OffsetDateTime::UNIX_EPOCH)),
-                    Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                    Money::<Usdt>::from_decimal(initial_capital),
                 )]
             } else {
                 // Build a sorted, deduplicated list of bar timestamps (one entry
@@ -1509,7 +1529,7 @@ pub async fn run_scenario(
                 // Push the initial-capital entry.
                 series.push((
                     first_ts,
-                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&INITIAL_CAPITAL)),
+                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&initial_capital)),
                 ));
                 // Push one entry per bar timestamp.
                 for (ts, &eq) in ts_iter.iter().zip(eq_curve.iter().skip(1)) {
@@ -1519,7 +1539,7 @@ pub async fn run_scenario(
             };
 
             // ── Build KPIs ────────────────────────────────────────────────────
-            let final_eq = *eq_curve.last().unwrap_or(&INITIAL_CAPITAL);
+            let final_eq = *eq_curve.last().unwrap_or(&initial_capital);
             let eq_dec_only: Vec<rust_decimal::Decimal> =
                 equity_series.iter().map(|(_, m)| m.amount()).collect();
 
@@ -1527,14 +1547,14 @@ pub async fn run_scenario(
 
             let kpis = BacktestKpis {
                 final_equity: Money::<Usdt>::from_decimal(final_eq),
-                initial_equity: Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                initial_equity: Money::<Usdt>::from_decimal(initial_capital),
                 max_drawdown: rust_decimal::Decimal::try_from(max_dd)
                     .unwrap_or(rust_decimal::Decimal::ZERO),
                 trade_count: 0, // buy-and-hold: 1 buy at t=0, never sold → 0 "active" trades
                 total_fees: Money::<Usdt>::zero(),
                 buys: 1,
                 sells: 0,
-                total_return_pct: total_return_pct(INITIAL_CAPITAL, final_eq),
+                total_return_pct: total_return_pct(initial_capital, final_eq),
             };
 
             // write_report is always false for the bake-off arm (ADR-0059).
@@ -1578,7 +1598,7 @@ pub async fn run_scenario(
         "v0.always_short" => {
             use crate::bakeoff::buyhold::run_alwaysshort_path;
 
-            const INITIAL_CAPITAL: rust_decimal::Decimal = dec!(100_000);
+            // Use `initial_capital` derived from ScenarioConfig (same knob as buyhold).
 
             // ── Resolve bars (same path as v0.buyhold) ───────────────────────
             let bars: Vec<trading_core::Bar> = if let Some(b) = cfg.bars_override.clone() {
@@ -1598,7 +1618,7 @@ pub async fn run_scenario(
             };
 
             // ── Run always-short on the bars ─────────────────────────────────
-            let (eq_curve, _final_eq_decimal) = run_alwaysshort_path(&bars, INITIAL_CAPITAL);
+            let (eq_curve, _final_eq_decimal) = run_alwaysshort_path(&bars, initial_capital);
 
             // ── Build equity_series with per-bar timestamps ───────────────────
             // Mirror the v0.buyhold timestamp logic exactly.
@@ -1608,7 +1628,7 @@ pub async fn run_scenario(
                         .into_iter()
                         .next()
                         .unwrap_or_else(|| Timestamp::new(OffsetDateTime::UNIX_EPOCH)),
-                    Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                    Money::<Usdt>::from_decimal(initial_capital),
                 )]
             } else {
                 let ts_iter = {
@@ -1632,7 +1652,7 @@ pub async fn run_scenario(
                 let mut series: Vec<(Timestamp, Money<Usdt>)> = Vec::with_capacity(eq_curve.len());
                 series.push((
                     first_ts,
-                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&INITIAL_CAPITAL)),
+                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&initial_capital)),
                 ));
                 for (ts, &eq) in ts_iter.iter().zip(eq_curve.iter().skip(1)) {
                     // NOTE: equity can be negative (unbounded loss). Money::from_decimal
@@ -1643,7 +1663,7 @@ pub async fn run_scenario(
             };
 
             // ── Build KPIs ────────────────────────────────────────────────────
-            let final_eq = *eq_curve.last().unwrap_or(&INITIAL_CAPITAL);
+            let final_eq = *eq_curve.last().unwrap_or(&initial_capital);
             let eq_dec_only: Vec<rust_decimal::Decimal> =
                 equity_series.iter().map(|(_, m)| m.amount()).collect();
 
@@ -1651,7 +1671,7 @@ pub async fn run_scenario(
 
             let kpis = BacktestKpis {
                 final_equity: Money::<Usdt>::from_decimal(final_eq),
-                initial_equity: Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                initial_equity: Money::<Usdt>::from_decimal(initial_capital),
                 max_drawdown: rust_decimal::Decimal::try_from(max_dd)
                     .unwrap_or(rust_decimal::Decimal::ZERO),
                 // trade_count: 0 — like buyhold, it's a single open at t=0 (no active trades).
@@ -1659,7 +1679,7 @@ pub async fn run_scenario(
                 total_fees: Money::<Usdt>::zero(),
                 buys: 0,
                 sells: 1, // one sell-to-open at t=0
-                total_return_pct: total_return_pct(INITIAL_CAPITAL, final_eq),
+                total_return_pct: total_return_pct(initial_capital, final_eq),
             };
 
             let report_path = maybe_write_report(
@@ -1710,8 +1730,7 @@ pub async fn run_scenario(
                 FillView, Order, OrderKind, Position, Quantity, RiskLimits, Side, TimeInForce,
             };
 
-            const INITIAL_CAPITAL: Decimal = dec!(100_000);
-
+            // Use `initial_capital` derived from ScenarioConfig (leaderboard knob).
             // ── Build and register the ensemble strategy ──────────────────────────
             // (must happen before bars so a build failure exits early)
             let ensemble = strategy::build_ensemble(strategy_str).map_err(|e| {
@@ -1753,7 +1772,7 @@ pub async fn run_scenario(
             };
             let mut engine = crate::PaperEngine::new(match_cfg, seed_u64);
 
-            let mut state = BacktestState::new(INITIAL_CAPITAL);
+            let mut state = BacktestState::new(initial_capital);
             let mut position = Position::empty(cfg.pair.1.clone());
             let mut all_fills: Vec<FillView> = Vec::new();
             let mut position_curve: Vec<(i64, Decimal)> = Vec::with_capacity(bar_count_actual);
@@ -1935,19 +1954,19 @@ pub async fn run_scenario(
                 series
             };
 
-            let final_eq = *state.equity_curve.last().unwrap_or(&INITIAL_CAPITAL);
+            let final_eq = *state.equity_curve.last().unwrap_or(&initial_capital);
             let eq_decimals: Vec<Decimal> = equity_series.iter().map(|(_, m)| m.amount()).collect();
             let max_dd = crate::stats::compute_max_drawdown_f64(&eq_decimals);
 
             let kpis = BacktestKpis {
                 final_equity: Money::<Usdt>::from_decimal(final_eq),
-                initial_equity: Money::<Usdt>::from_decimal(INITIAL_CAPITAL),
+                initial_equity: Money::<Usdt>::from_decimal(initial_capital),
                 max_drawdown: Decimal::try_from(max_dd).unwrap_or(Decimal::ZERO),
                 trade_count: state.trades,
                 total_fees: Money::<Usdt>::from_decimal(state.total_fees),
                 buys: state.buys,
                 sells: state.sells,
-                total_return_pct: total_return_pct(INITIAL_CAPITAL, final_eq),
+                total_return_pct: total_return_pct(initial_capital, final_eq),
             };
 
             // write_report = false for bake-off arms (ADR-0063) — the
@@ -2028,6 +2047,7 @@ mod tests {
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: None,
             short_enabled: false,
+            initial_capital: None, // None → legacy 100_000 default
         }
     }
 
@@ -2271,6 +2291,7 @@ mod tests {
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: Some(tmp.path().to_path_buf()),
             short_enabled: false,
+            initial_capital: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |_path| Ok(()));
         assert!(
@@ -2306,6 +2327,7 @@ mod tests {
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             reports_dir: Some(tmp.path().to_path_buf()),
             short_enabled: false,
+            initial_capital: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |path| {
             // Write minimal content so the file exists.

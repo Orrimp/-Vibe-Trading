@@ -22,6 +22,7 @@
 use backtest::{
     BakeoffConfig, BakeoffRequest, DateRange, RobustnessFlag, RobustnessMode,
     bakeoff::bootstrap::{compute_robustness_flag, derive_master_seed},
+    resample::Horizon,
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -257,6 +258,8 @@ async fn bootstrap_flags_populate_in_bakeoff() {
             range: DateRange::Last90d, // overridden by bars_override
             seed: seed_bytes,
             field: vec![StrategyId("v0.sma".into())],
+            timeframe: Horizon::OneHour,
+            initial_capital: dec!(100_000),
         },
         data_source: ScenarioDataSource::Synthetic,
         robustness: RobustnessMode::Bootstrap {
@@ -312,6 +315,8 @@ async fn bootstrap_skip_mode_all_none() {
             range: DateRange::Last90d,
             seed: seed_bytes,
             field: vec![StrategyId("v0.sma".into())],
+            timeframe: Horizon::OneHour,
+            initial_capital: dec!(100_000),
         },
         data_source: ScenarioDataSource::Synthetic,
         robustness: RobustnessMode::Skip,
@@ -371,6 +376,8 @@ async fn bakeoff_with_ensemble_field_runs_and_flags_them() {
             range: DateRange::Last90d,
             seed: seed_bytes,
             field,
+            timeframe: Horizon::OneHour,
+            initial_capital: dec!(100_000),
         },
         data_source: ScenarioDataSource::Synthetic,
         // Small path count for test speed — only the populate-and-flag behaviour

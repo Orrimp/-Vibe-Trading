@@ -1735,6 +1735,14 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LEADERBOARD_LOOKBACK_4Y", LEADERBOARD_LOOKBACK_4Y),
         ("LEADERBOARD_LOOKBACK_H1_2024", LEADERBOARD_LOOKBACK_H1_2024),
         ("LEADERBOARD_LOOKBACK_H2_2024", LEADERBOARD_LOOKBACK_H2_2024),
+        // advisor-leaderboard-tuning — timeframe + start-capital knobs
+        ("LEADERBOARD_TIMEFRAME_LABEL", LEADERBOARD_TIMEFRAME_LABEL),
+        ("LEADERBOARD_CAPITAL_LABEL", LEADERBOARD_CAPITAL_LABEL),
+        (
+            "LEADERBOARD_CAPITAL_PLACEHOLDER",
+            LEADERBOARD_CAPITAL_PLACEHOLDER,
+        ),
+        ("LEADERBOARD_CAPITAL_HINT", LEADERBOARD_CAPITAL_HINT),
         // advisor-forward-plan v0.1.0 (roadmap F6)
         ("FORWARD_PLAN_SIDEBAR_LABEL", FORWARD_PLAN_SIDEBAR_LABEL),
         ("FORWARD_PLAN_HEADLINE", FORWARD_PLAN_HEADLINE),
@@ -2734,6 +2742,30 @@ pub const LEADERBOARD_LOOKBACK_4Y: &str = "4 years";
 pub const LEADERBOARD_LOOKBACK_H1_2024: &str = "2024 H1";
 /// Lookback chip — fixed preset, second half of 2024.
 pub const LEADERBOARD_LOOKBACK_H2_2024: &str = "2024 H2";
+
+// ── advisor-leaderboard-tuning — timeframe + start-capital knobs ─────────────
+//
+// These labels support the two new "Tune" knobs added to the leaderboard
+// guided-input panel. The timeframe knob DOES change ranking (H4/D1 fold
+// bars → different signal patterns → different Sharpe rankings). The
+// start-capital knob does NOT change ranking (all arms use the same capital,
+// so relative KPIs are unchanged); it only scales absolute equity values and
+// the forward sizing estimate. Honesty about which knob affects what is a
+// HARD requirement (CLAUDE.md — "UI must say so honestly").
+
+/// Field label for the timeframe chip row (bake-off bar size).
+pub const LEADERBOARD_TIMEFRAME_LABEL: &str = "Bar size (changes ranking)";
+
+/// Field label for the start-capital text field.
+pub const LEADERBOARD_CAPITAL_LABEL: &str = "Start capital (USDT)";
+
+/// Placeholder text for the start-capital field — the legacy default.
+pub const LEADERBOARD_CAPITAL_PLACEHOLDER: &str = "100000";
+
+/// Honest hint under the start-capital field — states clearly that ranking
+/// is not affected so the operator understands what the knob actually does.
+pub const LEADERBOARD_CAPITAL_HINT: &str = "Does not affect ranking — all arms use the same capital. \
+     Scales absolute equity values and forward sizing.";
 
 // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward buy/sell plan ───────
 //

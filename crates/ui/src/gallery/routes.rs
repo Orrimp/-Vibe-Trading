@@ -594,16 +594,19 @@ fn render_pair_chip(_model: &Cockpit) -> iced::Element<'_, Message> {
 /// lookback). Rendered with a representative selection (XRPUSDT / €200 /
 /// 1 month).
 fn render_bakeoff_input(_model: &Cockpit) -> iced::Element<'_, Message> {
-    use crate::leaderboard::LeaderboardLookback;
+    use crate::leaderboard::{BakeoffTimeframe, LeaderboardLookback};
     use trading_core::Symbol;
     // Leak the Symbol so the borrow satisfies the gallery `'static` contract
     // (test-only binary path — bounded leak, no production code follows this).
     let coin: &'static Symbol = Box::leak(Box::new(Symbol::new("XRPUSDT")));
     // F7: pass DEFAULT_EUR_USD_RATE for the honest FX hint in the gallery.
+    // Tuning knobs: show H1 (default) + 100000 start capital in the gallery.
     bakeoff_input::view(
         coin,
         "200",
         LeaderboardLookback::OneMonth,
+        BakeoffTimeframe::OneHour,
+        "100000",
         trading_core::DEFAULT_EUR_USD_RATE,
         ThemeMode::Dark,
     )

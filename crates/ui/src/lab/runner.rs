@@ -942,6 +942,8 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         // ADR-0068 D1: Lab UI does not expose short_enabled yet; always long-only.
         // The ui-designer will wire this in T-U* tasks.
         short_enabled: false,
+        // leaderboard-timeframe-capital knobs: Lab path always uses 100_000 default.
+        initial_capital: None,
     })
 }
 

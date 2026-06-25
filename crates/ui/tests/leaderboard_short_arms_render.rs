@@ -45,12 +45,27 @@ use std::time::Duration;
 use ui::state::{Cockpit, PanelState};
 use ui::test_support::leaderboard_screen_program;
 
-/// Render the bare Leaderboard screen body at 1920×1080 / scale-1.0.
+/// Render the bare Leaderboard screen body at 1920×1600 / scale-1.0.
+///
+/// ── advisor-bakeoff tuning-knobs re-calibration ─────────────────────────────
+/// The viewport is 1600px tall (not the 1080 the other leaderboard guards use)
+/// because the SHORT field is the LONGEST leaderboard state: 10 ranked rows +
+/// the recommendation block + the short field-note + the WARN_500 unbounded-loss
+/// disclaimer + the persistent not-advice disclaimer. When the "Plan your
+/// bake-off" form grew a tuning row (the H1/H4/D1 timeframe chips + the "Start
+/// capital" field + its honest hint), the whole stack shifted DOWN and the
+/// bottom-anchored unbounded-loss disclaimer fell BELOW y=1080. `iced_test::
+/// screenshot` CLIPS to the viewport rectangle (content beyond it is not
+/// captured — see `gallery_snapshots.rs` H-GAL-2), so at 1080 the WARN_500 amber
+/// scan saw 0 px even though the disclaimer renders correctly. Verified by
+/// reading `/tmp/leaderboard_short_arms_render.png`: at 1600px the always-short
+/// row (y≈1063), the short field-note, and the amber unbounded-loss disclaimer
+/// (y≈1140) are all captured with margin.
 fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1080), 1.0, Duration::ZERO);
+    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1600), 1.0, Duration::ZERO);
     (
         screenshot.size.width,
         screenshot.size.height,

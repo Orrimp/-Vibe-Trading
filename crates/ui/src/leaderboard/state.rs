@@ -334,6 +334,13 @@ pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
 /// numeric field round-trips the operator's keystrokes verbatim.
 pub const DEFAULT_BUDGET_INPUT: &str = "200";
 
+/// The default bake-off start capital input — 100,000 USDT, the legacy engine
+/// default. Stored as a raw input string so the numeric field round-trips the
+/// operator's keystrokes verbatim (same pattern as `DEFAULT_BUDGET_INPUT`).
+/// Parsed to a `Decimal` via [`parse_start_capital`]; an empty / non-numeric /
+/// non-positive input falls back to this default in the engine.
+pub const DEFAULT_START_CAPITAL_INPUT: &str = "100000";
+
 /// Milliseconds in one calendar day — the relative-lookback arithmetic unit.
 const MS_PER_DAY: i64 = 86_400_000;
 
@@ -475,6 +482,86 @@ impl LeaderboardLookback {
     }
 }
 
+/// The bar-size ("timeframe") the bake-off resamples to before ranking — the
+/// new "Tune" knob introduced by the leaderboard-tuning feature.
+///
+/// A closed UI-side enum (same mirror discipline as `LeaderboardLookback`):
+/// the screen never matches on an engine type; `to_horizon()` converts to the
+/// `backtest::resample::Horizon` at the dispatch boundary.
+///
+/// **`OneHour` is the default** — identity pass-through, byte-identical to the
+/// prior behaviour so existing tests + anchors are unaffected. `FourHours` and
+/// `OneDay` fold bars 4:1 / 24:1 before ranking; a different bar size CAN
+/// change the crowning result (the leaderboard chip is honest about this —
+/// "changes ranking").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BakeoffTimeframe {
+    /// 1-hour bars — the legacy default (identity pass-through, no fold).
+    #[default]
+    OneHour,
+    /// 4-hour bars — fold 4 × 1h bars into 1.
+    FourHours,
+    /// Daily bars — fold 24 × 1h bars into 1.
+    OneDay,
+}
+
+impl BakeoffTimeframe {
+    /// All three timeframe choices in the order the chip picker renders them.
+    pub const ALL: &'static [BakeoffTimeframe] = &[
+        BakeoffTimeframe::OneHour,
+        BakeoffTimeframe::FourHours,
+        BakeoffTimeframe::OneDay,
+    ];
+
+    /// Convert to the engine's `Horizon` enum at the dispatch boundary.
+    ///
+    /// Called by `bakeoff_config_from_state` — the only site where a
+    /// UI-side enum converts to an engine type (the mirror discipline).
+    #[must_use]
+    pub fn to_horizon(self) -> backtest::resample::Horizon {
+        match self {
+            BakeoffTimeframe::OneHour => backtest::resample::Horizon::OneHour,
+            BakeoffTimeframe::FourHours => backtest::resample::Horizon::FourHours,
+            BakeoffTimeframe::OneDay => backtest::resample::Horizon::OneDay,
+        }
+    }
+
+    /// Short display label for the chip: `"H1"` / `"H4"` / `"D1"`.
+    #[must_use]
+    pub fn chip_label(self) -> &'static str {
+        match self {
+            BakeoffTimeframe::OneHour => "H1",
+            BakeoffTimeframe::FourHours => "H4",
+            BakeoffTimeframe::OneDay => "D1",
+        }
+    }
+}
+
+/// Parse a start-capital input string into a positive `Decimal`.
+///
+/// Returns `Some(amount)` only when `s` parses to a finite `Decimal > 0`
+/// (capital must be strictly positive to run a bake-off). Empty / non-numeric /
+/// non-positive returns `None` → the engine uses the legacy default (`100_000`
+/// USDT). Pure; no I/O. Accepts leading/trailing whitespace and an optional
+/// leading `$` / `€` so paste-from-copy round-trips.
+#[must_use]
+pub fn parse_start_capital(s: &str) -> Option<Decimal> {
+    let trimmed = s
+        .trim()
+        .trim_start_matches('$')
+        .trim_start_matches('\u{20ac}')
+        .trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let amount = trimmed.parse::<Decimal>().ok()?;
+    if amount.is_sign_positive() && !amount.is_zero() {
+        Some(amount)
+    } else {
+        None
+    }
+}
+
 /// Parse a budget input string into a non-negative `Decimal` of euros.
 ///
 /// Returns `Some(amount)` only when `s` parses to a finite `Decimal ≥ 0`
@@ -542,6 +629,25 @@ pub struct LeaderboardScreenState {
     /// `backtest::engine::DateRange` at dispatch time via
     /// [`LeaderboardLookback::to_date_range`].
     pub lookback: LeaderboardLookback,
+    /// The bar-size the operator chose for the bake-off (default `H1` — the
+    /// legacy identity pass-through). Mapped to a `backtest::resample::Horizon`
+    /// at dispatch time via [`BakeoffTimeframe::to_horizon`].
+    ///
+    /// **Affects ranking**: a different bar size (H4 / D1) folds the 1h bars
+    /// before the strategies run, which CAN change which arm is crowned. The UI
+    /// is honest about this (the chip row says "changes ranking").
+    pub timeframe: BakeoffTimeframe,
+    /// The raw start-capital input string (round-trips the operator's keystrokes,
+    /// same pattern as `budget_input`). Parsed to a `Decimal` via
+    /// [`parse_start_capital`]; `None` parse → the engine uses the `100_000` USDT
+    /// legacy default.
+    ///
+    /// **Does NOT affect ranking** — all arms in the bake-off run with the SAME
+    /// start capital, so the relative ranking (Sharpe / Sortino / Calmar / return
+    /// %) is unchanged. It scales the ABSOLUTE equity curve values and the forward
+    /// sizing estimate. The UI is honest about this (the input note says "does not
+    /// affect ranking").
+    pub start_capital_input: String,
 
     // ── F9 LLM "why this one" narration (ADR-0064) ───────────────────────────
     /// The opt-in LLM-narration lifecycle on the recommendation block (F9).
@@ -568,6 +674,10 @@ impl Default for LeaderboardScreenState {
             coin: Symbol::new(DEFAULT_BAKEOFF_COIN),
             budget_input: DEFAULT_BUDGET_INPUT.to_string(),
             lookback: LeaderboardLookback::H1_2024,
+            // Tuning knobs — defaults preserve byte-identical prior behaviour:
+            // H1 = identity pass-through (no bar fold); 100_000 = legacy capital.
+            timeframe: BakeoffTimeframe::OneHour,
+            start_capital_input: DEFAULT_START_CAPITAL_INPUT.to_string(),
             // F9 — no narration requested until the operator presses "Explain".
             narration: NarrationState::NotRequested,
         }
@@ -641,6 +751,19 @@ impl LeaderboardScreenState {
     #[must_use]
     pub fn budget_eur(&self) -> Option<Decimal> {
         parse_budget(&self.budget_input)
+    }
+
+    /// The parsed bake-off start capital, or the legacy default (`100_000` USDT)
+    /// when the input is blank / unparseable / non-positive.
+    ///
+    /// Called by `bakeoff_config_from_state` to populate `BakeoffRequest::
+    /// initial_capital`. Does NOT affect ranking (all arms run with the same
+    /// capital, so risk-adjusted KPIs are unchanged); it scales absolute
+    /// equity-curve values + the forward sizing estimate.
+    #[must_use]
+    pub fn start_capital(&self) -> Decimal {
+        parse_start_capital(&self.start_capital_input)
+            .unwrap_or_else(|| rust_decimal_macros::dec!(100_000))
     }
 }
 
@@ -916,5 +1039,133 @@ mod tests {
             None,
             "no thousands sep in the raw field"
         );
+    }
+
+    // ── Tuning knobs: timeframe + start capital ──────────────────────────────
+
+    #[test]
+    fn default_timeframe_is_h1_and_capital_is_100k() {
+        let s = LeaderboardScreenState::default();
+        assert_eq!(
+            s.timeframe,
+            BakeoffTimeframe::OneHour,
+            "default timeframe is H1 (identity, preserves prior behaviour)"
+        );
+        assert_eq!(
+            s.start_capital_input, "100000",
+            "default start capital input is 100000"
+        );
+        assert_eq!(
+            s.start_capital(),
+            dec!(100_000),
+            "default start capital parses to 100_000"
+        );
+    }
+
+    #[test]
+    fn bakeoff_timeframe_chip_labels() {
+        assert_eq!(BakeoffTimeframe::OneHour.chip_label(), "H1");
+        assert_eq!(BakeoffTimeframe::FourHours.chip_label(), "H4");
+        assert_eq!(BakeoffTimeframe::OneDay.chip_label(), "D1");
+    }
+
+    #[test]
+    fn bakeoff_timeframe_to_horizon_roundtrips() {
+        assert!(matches!(
+            BakeoffTimeframe::OneHour.to_horizon(),
+            backtest::resample::Horizon::OneHour
+        ));
+        assert!(matches!(
+            BakeoffTimeframe::FourHours.to_horizon(),
+            backtest::resample::Horizon::FourHours
+        ));
+        assert!(matches!(
+            BakeoffTimeframe::OneDay.to_horizon(),
+            backtest::resample::Horizon::OneDay
+        ));
+    }
+
+    #[test]
+    fn bakeoff_timeframe_all_has_three_entries() {
+        assert_eq!(BakeoffTimeframe::ALL.len(), 3);
+        assert_eq!(BakeoffTimeframe::ALL[0], BakeoffTimeframe::OneHour);
+        assert_eq!(BakeoffTimeframe::ALL[1], BakeoffTimeframe::FourHours);
+        assert_eq!(BakeoffTimeframe::ALL[2], BakeoffTimeframe::OneDay);
+    }
+
+    #[test]
+    fn parse_start_capital_accepts_positive_values() {
+        assert_eq!(parse_start_capital("100000"), Some(dec!(100_000)));
+        assert_eq!(parse_start_capital("  50000  "), Some(dec!(50_000)));
+        assert_eq!(parse_start_capital("$100000"), Some(dec!(100_000)));
+        assert_eq!(parse_start_capital("\u{20ac}200"), Some(dec!(200)));
+        assert_eq!(parse_start_capital("1.50"), Some(dec!(1.50)));
+    }
+
+    #[test]
+    fn parse_start_capital_rejects_non_positive_blank_and_garbage() {
+        assert_eq!(parse_start_capital(""), None, "empty string → None");
+        assert_eq!(parse_start_capital("   "), None, "whitespace only → None");
+        assert_eq!(parse_start_capital("0"), None, "zero is not valid capital");
+        assert_eq!(
+            parse_start_capital("-100"),
+            None,
+            "negative is not valid capital"
+        );
+        assert_eq!(parse_start_capital("abc"), None, "non-numeric → None");
+        assert_eq!(
+            parse_start_capital("1,000"),
+            None,
+            "thousands-sep not supported"
+        );
+    }
+
+    #[test]
+    fn start_capital_falls_back_to_100k_on_bad_input() {
+        // Blank → fallback
+        let s = LeaderboardScreenState {
+            start_capital_input: String::new(),
+            ..LeaderboardScreenState::default()
+        };
+        assert_eq!(
+            s.start_capital(),
+            dec!(100_000),
+            "blank input falls back to 100_000 USDT"
+        );
+        // Garbage → fallback
+        let s2 = LeaderboardScreenState {
+            start_capital_input: "abc".to_string(),
+            ..LeaderboardScreenState::default()
+        };
+        assert_eq!(
+            s2.start_capital(),
+            dec!(100_000),
+            "garbage input falls back to 100_000 USDT"
+        );
+        // Negative → fallback
+        let s3 = LeaderboardScreenState {
+            start_capital_input: "-500".to_string(),
+            ..LeaderboardScreenState::default()
+        };
+        assert_eq!(
+            s3.start_capital(),
+            dec!(100_000),
+            "negative input falls back to 100_000 USDT"
+        );
+    }
+
+    #[test]
+    fn start_capital_uses_parsed_value_when_valid() {
+        let s = LeaderboardScreenState {
+            start_capital_input: "200000".to_string(),
+            ..LeaderboardScreenState::default()
+        };
+        assert_eq!(s.start_capital(), dec!(200_000));
+
+        let s2 = LeaderboardScreenState {
+            start_capital_input: "500".to_string(),
+            ..LeaderboardScreenState::default()
+        };
+        assert_eq!(s2.start_capital(), dec!(500));
     }
 }

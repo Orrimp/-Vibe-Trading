@@ -244,6 +244,7 @@ async fn run_arm(arm: &ArmDef, bars: Vec<Bar>, candidate_index: usize) -> Option
         latency_slippage_sim: LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: arm.short_enabled,
+        initial_capital: None,
     };
     let (_h, cancel_rx) = cancellation_pair();
     let run_result = run_scenario(cfg, cancel_rx, ProgressSender::disabled()).await;

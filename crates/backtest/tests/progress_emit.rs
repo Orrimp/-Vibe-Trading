@@ -30,6 +30,7 @@ fn sma_config() -> ScenarioConfig {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     }
 }
 
@@ -123,6 +124,7 @@ fn cross_sectional_config(strategy: &str) -> ScenarioConfig {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: None,
         short_enabled: false,
+        initial_capital: None,
     }
 }
 

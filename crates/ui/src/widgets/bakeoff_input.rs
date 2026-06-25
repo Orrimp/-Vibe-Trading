@@ -1,9 +1,9 @@
-//! Guided bake-off input widget — advisor-bakeoff-ranking F3.
+//! Guided bake-off input widget — advisor-bakeoff-ranking F3 + tuning knobs.
 //!
 //! The entry point to the single-coin investment-advisor journey (product §
 //! journey step 1: "pick a coin (e.g. XRPUSD) and a budget (e.g. €200)" over a
 //! configurable lookback "2 weeks → ~4 years"). Renders, above the leaderboard
-//! table, a compact three-field form:
+//! table, a compact form with five control groups:
 //!
 //! ```text
 //! ┌─ Plan your bake-off ─────────────────────────────────────────────┐
@@ -12,6 +12,9 @@
 //! │ Budget          Lookback                                          │
 //! │ [ 200 ]         [2 weeks] [1 month] [3 months] … [2024 H1*] …     │
 //! │ €200 ≈ 200 USDT — FX not modelled.                                │  ← hint
+//! │ Bar size (changes ranking)     Start capital (USDT)               │
+//! │ [H1*] [H4] [D1]               [ 100000 ]                          │  ← tuning
+//! │ Does not affect ranking …                                          │  ← honest note
 //! └───────────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -27,6 +30,12 @@
 //! - **Lookback picker** — Lumen chips over `LeaderboardLookback::ALL`
 //!   (2 weeks → 4 years + the 2024 presets); each dispatches
 //!   `Message::BakeoffSelectLookback`.
+//! - **Bar-size (timeframe) picker** — H1 / H4 / D1 chips; each dispatches
+//!   `Message::BakeoffSelectTimeframe`. **Affects ranking**: different bar size
+//!   can crown a different strategy.
+//! - **Start-capital field** — a numeric `text_input` defaulting to `100000`,
+//!   dispatching `Message::BakeoffSetStartCapital(String)`. Does NOT affect
+//!   ranking (all arms run with the same capital); scales absolute equity + sizing.
 //!
 //! Built from existing widgets + tokens only — NO new theme token, NO new
 //! widget primitive (the chip is a `Container` + `button`, exactly the
@@ -42,11 +51,12 @@ use iced::{Border, Length};
 use rust_decimal::Decimal;
 use trading_core::{BudgetConversion, FxRate, Symbol};
 
-use crate::leaderboard::LeaderboardLookback;
+use crate::leaderboard::{BakeoffTimeframe, LeaderboardLookback};
 use crate::state::Message;
 use crate::strings::{
     LEADERBOARD_BUDGET_HINT_FMT, LEADERBOARD_BUDGET_LABEL, LEADERBOARD_BUDGET_PLACEHOLDER,
-    LEADERBOARD_COIN_LABEL, LEADERBOARD_LOOKBACK_LABEL,
+    LEADERBOARD_CAPITAL_HINT, LEADERBOARD_CAPITAL_LABEL, LEADERBOARD_CAPITAL_PLACEHOLDER,
+    LEADERBOARD_COIN_LABEL, LEADERBOARD_LOOKBACK_LABEL, LEADERBOARD_TIMEFRAME_LABEL,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -57,12 +67,22 @@ use crate::widgets::frame;
 /// design token.
 const BUDGET_FIELD_WIDTH: f32 = 120.0;
 
+/// Fixed width of the start-capital text field — wide enough for "100000" /
+/// "50000.00" at `BODY` size. Same kind of local layout constant as
+/// `BUDGET_FIELD_WIDTH`.
+const CAPITAL_FIELD_WIDTH: f32 = 140.0;
+
 /// Render the guided bake-off input form.
 ///
 /// - `coin` — the currently-selected coin (drives the active-chip highlight).
 /// - `budget_input` — the raw budget text (round-trips the operator's
 ///   keystrokes; rendered verbatim into the field).
 /// - `lookback` — the currently-selected lookback (drives the active chip).
+/// - `timeframe` — the currently-selected bar size (H1 / H4 / D1); drives the
+///   active timeframe chip. **Affects ranking** — different bar size can crown
+///   a different strategy.
+/// - `start_capital_input` — the raw start-capital text (round-trips keystrokes).
+///   Does NOT affect ranking; scales absolute equity + forward sizing.
 /// - `eur_usd_rate` — the EUR/USD rate to use for the honest FX hint
 ///   (F7 / ADR-0065). Pass `trading_core::DEFAULT_EUR_USD_RATE` when no
 ///   operator override is configured.
@@ -71,10 +91,13 @@ const BUDGET_FIELD_WIDTH: f32 = 120.0;
 /// Returns the form as a titled `frame::panel` so it reads as one coherent
 /// "plan your run" surface above the table.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn view<'a>(
     coin: &Symbol,
     budget_input: &str,
     lookback: LeaderboardLookback,
+    timeframe: BakeoffTimeframe,
+    start_capital_input: &str,
     eur_usd_rate: Decimal,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
@@ -125,11 +148,38 @@ pub fn view<'a>(
         .size(text::MICRO)
         .color(color::FG_3.current(mode));
 
+    // ── Timeframe + start-capital row (side by side) ──────────────────────────
+    let timeframe_block = Column::new()
+        .spacing(space::XS)
+        .push(field_label(LEADERBOARD_TIMEFRAME_LABEL, mode))
+        .push(timeframe_row(timeframe, mode))
+        .width(Length::Shrink);
+
+    let capital_block = Column::new()
+        .spacing(space::XS)
+        .push(field_label(LEADERBOARD_CAPITAL_LABEL, mode))
+        .push(capital_field(start_capital_input, mode))
+        .width(Length::Shrink);
+
+    let timeframe_capital_row = Row::new()
+        .spacing(space::L)
+        .align_y(iced::alignment::Vertical::Top)
+        .push(timeframe_block)
+        .push(capital_block)
+        .width(Length::Fill);
+
+    // Honest note under the capital field (does not affect ranking).
+    let capital_hint = Text::new(LEADERBOARD_CAPITAL_HINT)
+        .size(text::MICRO)
+        .color(color::FG_3.current(mode));
+
     let body = Column::new()
         .spacing(space::M)
         .push(coin_block)
         .push(budget_lookback_row)
         .push(hint)
+        .push(timeframe_capital_row)
+        .push(capital_hint)
         .width(Length::Fill);
 
     frame::panel(crate::strings::LEADERBOARD_PLAN_TITLE, body.into(), mode)
@@ -325,9 +375,91 @@ pub fn lookback_copy(lookback: LeaderboardLookback) -> &'static str {
     lookback_label(lookback)
 }
 
+/// The timeframe-chip row over `BakeoffTimeframe::ALL` (H1 / H4 / D1). The
+/// active timeframe gets the `ACCENT` chip treatment.
+fn timeframe_row<'a>(selected: BakeoffTimeframe, mode: ThemeMode) -> crate::Element<'a> {
+    let mut row = Row::new().spacing(space::S);
+    for &tf in BakeoffTimeframe::ALL {
+        row = row.push(timeframe_chip(tf, tf == selected, mode));
+    }
+    row.width(Length::Shrink).into()
+}
+
+/// A single timeframe chip — same chip shape as coin / lookback chips.
+/// Dispatches `Message::BakeoffSelectTimeframe(BakeoffTimeframe)`.
+fn timeframe_chip<'a>(tf: BakeoffTimeframe, active: bool, mode: ThemeMode) -> crate::Element<'a> {
+    let fg = if active {
+        color::FG_ON_ACCENT.current(mode)
+    } else {
+        color::FG_2.current(mode)
+    };
+    let border_color = if active {
+        color::ACCENT.current(mode)
+    } else {
+        color::BORDER_1.current(mode)
+    };
+    let bg_color = if active {
+        color::ACCENT.current(mode)
+    } else {
+        color::PANEL.current(mode)
+    };
+
+    let label = Text::new(tf.chip_label()).size(text::SMALL).color(fg);
+
+    let chip = Container::new(label)
+        .padding([space::XS as u16, space::S as u16])
+        .style(move |_t: &iced::Theme| container::Style {
+            background: Some(bg_color.into()),
+            border: Border {
+                color: border_color,
+                width: if active { 1.5 } else { 1.0 },
+                radius: radius::R4.into(),
+            },
+            ..Default::default()
+        });
+
+    button(chip)
+        .on_press(Message::BakeoffSelectTimeframe(tf))
+        .padding(0)
+        .style(|_t: &iced::Theme, _s: button::Status| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .width(Length::Shrink)
+        .into()
+}
+
+/// The start-capital `text_input` — a fixed-width numeric field at `BODY` size,
+/// dispatching `Message::BakeoffSetStartCapital(String)` on every keystroke.
+/// The placeholder shows the legacy default (`100000`) so the field never
+/// looks broken when empty.
+fn capital_field<'a>(start_capital_input: &str, mode: ThemeMode) -> crate::Element<'a> {
+    text_input(LEADERBOARD_CAPITAL_PLACEHOLDER, start_capital_input)
+        .on_input(Message::BakeoffSetStartCapital)
+        .size(text::BODY)
+        .padding([space::XS as u16, space::S as u16])
+        .width(Length::Fixed(CAPITAL_FIELD_WIDTH))
+        .style(
+            move |_t: &iced::Theme, _s: text_input::Status| text_input::Style {
+                background: color::PANEL.current(mode).into(),
+                border: Border {
+                    color: color::BORDER_1.current(mode),
+                    width: 1.0,
+                    radius: radius::R4.into(),
+                },
+                icon: color::FG_3.current(mode),
+                placeholder: color::FG_3.current(mode),
+                value: color::FG_1.current(mode),
+                selection: color::ACCENT_SOFT.current(mode),
+            },
+        )
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::leaderboard::BakeoffTimeframe;
 
     /// Every lookback maps to a non-empty chip label (no panic, no blank chip).
     #[test]
@@ -336,6 +468,17 @@ mod tests {
             assert!(
                 !lookback_label(lb).is_empty(),
                 "lookback {lb:?} must have a chip label"
+            );
+        }
+    }
+
+    /// Every timeframe maps to a non-empty chip label (no panic, no blank chip).
+    #[test]
+    fn every_timeframe_has_a_chip_label() {
+        for &tf in BakeoffTimeframe::ALL {
+            assert!(
+                !tf.chip_label().is_empty(),
+                "timeframe {tf:?} must have a chip label"
             );
         }
     }
@@ -349,8 +492,26 @@ mod tests {
                 &Symbol::new("XRPUSDT"),
                 "200",
                 LeaderboardLookback::OneMonth,
+                BakeoffTimeframe::OneHour,
+                "100000",
                 trading_core::DEFAULT_EUR_USD_RATE,
                 mode,
+            );
+        }
+    }
+
+    /// `view` constructs with all three timeframe variants (smoke).
+    #[test]
+    fn view_constructs_all_timeframes() {
+        for &tf in BakeoffTimeframe::ALL {
+            let _ = view(
+                &Symbol::new("BTCUSDT"),
+                "200",
+                LeaderboardLookback::H1_2024,
+                tf,
+                "50000",
+                trading_core::DEFAULT_EUR_USD_RATE,
+                ThemeMode::Dark,
             );
         }
     }

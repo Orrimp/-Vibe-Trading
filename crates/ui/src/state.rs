@@ -2189,6 +2189,17 @@ pub enum Message {
     /// `LeaderboardLookback`; it is mapped to a `backtest::engine::DateRange`
     /// at dispatch time. Typed enum payload.
     BakeoffSelectLookback(crate::leaderboard::LeaderboardLookback),
+    /// Operator chose a bar-size (timeframe) in the tuning chip row. Stores
+    /// the `BakeoffTimeframe`; it is mapped to a `backtest::resample::Horizon`
+    /// at dispatch time via `BakeoffTimeframe::to_horizon`. **Affects ranking**:
+    /// a different bar size can change the crowning result.
+    BakeoffSelectTimeframe(crate::leaderboard::BakeoffTimeframe),
+    /// Operator typed in the start-capital field. Stores the raw input verbatim
+    /// (the parse happens at dispatch time via `parse_start_capital`). The
+    /// bake-off RANKING does not change (all arms use the same capital, so
+    /// risk-adjusted KPIs are unchanged); it scales the absolute equity curve
+    /// and the forward sizing estimate.
+    BakeoffSetStartCapital(String),
 
     // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────────
     /// A forward plan arrived from the agent's plan-return channel
@@ -3244,6 +3255,18 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         }
         Message::BakeoffSelectLookback(lookback) => {
             model.leaderboard_screen_state.lookback = lookback;
+        }
+        Message::BakeoffSelectTimeframe(timeframe) => {
+            // Store the chosen bar-size; mapped to a `Horizon` at dispatch time.
+            // Does NOT clear the existing result — the operator may inspect the
+            // prior result while switching the next run's timeframe.
+            model.leaderboard_screen_state.timeframe = timeframe;
+        }
+        Message::BakeoffSetStartCapital(raw) => {
+            // Store the keystrokes verbatim (parse is a dispatch-time concern).
+            // Start capital does NOT invalidate the ranking (all arms use the
+            // same capital, so Sharpe / Sortino / return % are unchanged).
+            model.leaderboard_screen_state.start_capital_input = raw;
         }
 
         // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────

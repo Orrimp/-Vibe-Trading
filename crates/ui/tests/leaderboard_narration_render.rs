@@ -62,11 +62,10 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 
 // ── Region bands ──────────────────────────────────────────────────────────────
 //
-// The screen stacks header (y0–90) / guided-input FORM (y110–305) / budget
-// context (y308–350) / result body (y355+). The result body's FIRST element is
-// the RECOMMENDATION block (the `frame::panel` titled "Recommendation" holding
-// the headline + clause + the F9 narration section), and the ranked TABLE is
-// BELOW it.
+// The screen stacks header / guided-input FORM / budget context / result body.
+// The result body's FIRST element is the RECOMMENDATION block (the `frame::panel`
+// titled "Recommendation" holding the headline + clause + the F9 narration
+// section), and the ranked TABLE is BELOW it.
 //
 // The F9 narration section lives INSIDE the recommendation block, near the top
 // of the result body. The `Ready` state paints the AI-summary card there (an
@@ -77,17 +76,26 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 // We scope the RECOMMENDATION band to the top slice of the result body. The
 // crowned-row table ACCENT + the Max-DD clay both live BELOW this band, so a
 // foreground/accent delta scoped here tracks the narration section, not the
-// table. The exact bottom of the band shifts a little with the prose length, so
-// it is scoped generously and the whole-screen foreground carries the coarse
-// Ready-vs-fallback discrimination as a second, independent check.
+// table.
+//
+// ── advisor-bakeoff tuning-knobs re-calibration ─────────────────────────────
+// The "Plan your bake-off" form grew a tuning row (the H1/H4/D1 timeframe chips
+// + the "Start capital" field + its honest hint), which pushed the whole result
+// body — and with it the recommendation block — DOWN. Re-measured from the saved
+// PNGs (`/tmp/forward_f9_narration_*_render.png`): the AI-summary card's ACCENT
+// top border now lands at y≈572, its ACCENT label at y≈589, and the table's
+// crowned-row accent does not begin until y≈718. The band below brackets the
+// recommendation card with margin and stops at 715 (above the table crown), so
+// `Ready` paints heavy ACCENT here while `FellBack` paints ~none — the
+// discriminator is preserved at the new position.
 
-/// Top of the RECOMMENDATION band — just below the budget-context line, where
-/// the recommendation `frame::panel` starts.
-const REC_TOP: u32 = 355;
-/// Bottom of the RECOMMENDATION band — generously below the headline + clause +
-/// the narration section, but above where the ranked table's crowned-row accent
-/// reliably begins (the table is pushed down by the prose card in `Ready`).
-const REC_BOTTOM: u32 = 560;
+/// Top of the RECOMMENDATION band — below the (now taller) form + budget-context
+/// line, where the recommendation `frame::panel` starts.
+const REC_TOP: u32 = 500;
+/// Bottom of the RECOMMENDATION band — generously below the AI-summary card
+/// (top border y≈572, bottom border y≈649) but above where the ranked table's
+/// crowned-row accent reliably begins (y≈718 in the no-card states).
+const REC_BOTTOM: u32 = 715;
 
 /// `true` for an `ACCENT`-teal (#6FB6AE — R111 G182 B174) pixel — green & blue
 /// high and close, red clearly lower (the exact predicate the leaderboard +

@@ -95,6 +95,7 @@ fn binance_run_persists_and_round_trips_through_compare() {
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         reports_dir: Some(reports_dir.clone()),
         short_enabled: false,
+        initial_capital: None,
     };
 
     let rt = tokio::runtime::Builder::new_current_thread()
