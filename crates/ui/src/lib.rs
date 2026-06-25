@@ -87,6 +87,12 @@ pub mod shell;
 pub mod state;
 pub mod strings;
 pub mod theme;
+/// Gate-tied hyperparameter sweep Tune sub-view (ADR-0069, T5).
+/// Houses `tune::state` (SweepReportMirror + SweepCellRow + the INVARIANT
+/// `from_report` seam — the ONE place a `backtest::SweepReport` is consumed).
+/// Pure-`ui` over `backtest`; NO new crate edge (backtest is already a dep).
+/// Screen body (T6/T8/T9) and runner glue (T10) are later phases.
+pub mod tune;
 pub mod viewer;
 pub mod widgets;
 pub mod window_icon;

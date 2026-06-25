@@ -24,12 +24,13 @@ pub mod bootstrap;
 pub mod buyhold;
 pub mod rank;
 pub mod robustness;
+pub mod sweep;
 
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};
 
-pub use bootstrap::{compute_robustness_flag, derive_master_seed};
+pub use bootstrap::{compute_robustness_distribution, compute_robustness_flag, derive_master_seed};
 pub use rank::{Ranking, rank_candidates};
 pub use robustness::RobustnessFlag;
 

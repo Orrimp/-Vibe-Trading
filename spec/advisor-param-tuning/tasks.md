@@ -2,7 +2,8 @@
 slug: advisor-param-tuning
 status: in-progress
 owner: developer
-updated: 2026-06-24
+updated: 2026-06-25
+phase-1-complete: true   # T1–T5 (engine + mirror) shipped; T6–T11 remain
 ---
 
 # Tasks — advisor-param-tuning (gate-tied hyperparameter sweep editor)
@@ -17,7 +18,7 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
 
 ## Phase 1 — engine seam (the gate-tied sweep core), SMA-first
 
-- [ ] **T1 [dev] — additive `compute_robustness_distribution` + refactor
+- [x] **T1 [dev] — additive `compute_robustness_distribution` + refactor
   `compute_robustness_flag` to delegate.** In `crates/backtest/src/bakeoff/bootstrap.rs`,
   add `compute_robustness_distribution(&[Decimal], paths, seed) ->
   Option<(DistributionSummary, ParamRobustnessVerdict)>` returning the SAME summary
@@ -27,8 +28,11 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   curves, the new fn's verdict is bit-identical to `compute_robustness_flag`'s output
   (proves behaviour-preserving + the gate frozen). FAIL-before is N/A (new fn); the
   bit-identity assertion is the gate._
+  - file:line: `crates/backtest/src/bakeoff/bootstrap.rs:119` (new `compute_robustness_distribution`) + `bootstrap.rs:177` (delegation in `compute_robustness_flag`)
+  - Test command: `cargo test -p backtest --test compute_robustness_distribution_matches_flag`
+  - Output: `test result: ok. 8 passed; 0 failed; 0 ignored` (8 bit-identity tests)
 
-- [ ] **T2 [dev] — `build_swept_strategy` (SMA arm only) + the `SweepFamily` /
+- [x] **T2 [dev] — `build_swept_strategy` (SMA arm only) + the `SweepFamily` /
   `SweptParams` / `SweepGrid` types.** New module `crates/backtest/src/bakeoff/sweep.rs`.
   `SweepFamily` (closed enum), `SweptParams` (the concrete per-cell params),
   `SweepGrid` (family {min,max,step} axes + the cap-aware `enumerate()` →
@@ -39,8 +43,11 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   those fast/slow overrides; the composed arms `todo!()`/`unimplemented` cleanly (T7)._
   _Verify: `sweep_grid_truncates_at_cap` (>24 cells → exactly 24 + truncated flag +
   requested_count) and `sweep_drops_invalid_sma_cells` (`fast ≥ slow` cells dropped)._
+  - file:line: `crates/backtest/src/bakeoff/sweep.rs:1` (new module, types at lines 74-310, `build_swept_config` at 355)
+  - Test command: `cargo test -p backtest 'sweep' --lib`
+  - Output: `test result: ok. 12 passed; 0 failed; 0 ignored` (12 unit tests)
 
-- [ ] **T3 [dev] — `run_param_sweep` orchestrator (SMA-only end-to-end).** In
+- [x] **T3 [dev] — `run_param_sweep` orchestrator (SMA-only end-to-end).** In
   `sweep.rs`: the `run_bakeoff`-shaped async fn — preload bars ONCE via
   `resolve_bakeoff_bars` (apples-to-apples), loop the enumerated grid, `run_scenario`
   per cell with `write_report = false`, score via `compute_robustness_distribution`,
@@ -52,8 +59,11 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   benchmark._ _Verify: an integration test on `ScenarioDataSource::Synthetic` asserts
   the cell count, that every cell has a populated distribution, and that a cancelled
   run returns `RunError::Cancelled`._
+  - file:line: `crates/backtest/src/bakeoff/sweep.rs:481` (`run_param_sweep` function)
+  - Test command: `cargo test -p backtest --test param_sweep_divergence_end_to_end`
+  - Output: `test result: ok. 9 passed; 0 failed; 0 ignored` (5 T3 tests + 4 T4 tests)
 
-- [ ] **T4 [dev] — THE day-1 divergence e2e (SMA).** `crates/backtest/tests/
+- [x] **T4 [dev] — THE day-1 divergence e2e (SMA).** `crates/backtest/tests/
   param_sweep_divergence_end_to_end.rs` — over a ≥2-cell SMA grid on a ≥1-fill
   fixture: (a) ≥1 swept cell's realized equity diverges from `report.baseline` by
   ≥1 bp at some bar; (b) cells are not all identical to each other; (c) the concrete
@@ -61,8 +71,11 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   if `build_swept_strategy` returns the shipped config for every cell; PASS-after._
   _Verify: the test itself (this IS the CLAUDE.md non-negotiable gate). Modelled on
   `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`._
+  - file:line: `crates/backtest/tests/param_sweep_divergence_end_to_end.rs:1` (new file, primary gate at line 228 `t4_swept_cells_diverge_from_baseline`, concrete pin at line 354 `t4_concrete_pin_fast10_slow20_differs_from_baseline`, FAIL-before control at line 395 `t4_identical_params_produce_identical_equity_the_positive_control`)
+  - Test command: `cargo test -p backtest --test param_sweep_divergence_end_to_end`
+  - Output: `test result: ok. 9 passed; 0 failed; 0 ignored`
 
-- [ ] **T5 [dev] — `SweepReportMirror` + `from_report` (the ONE boundary).** In
+- [x] **T5 [dev] — `SweepReportMirror` + `from_report` (the ONE boundary).** In
   `crates/ui/src/` (new `tune/state.rs` or alongside leaderboard state): the pure-`ui`
   mirror — `SweepReportMirror { family_label, coin, range_label, grid_size,
   truncated, requested_count, cells: Vec<SweepCellRow>, baseline: SweepCellRow,
@@ -74,6 +87,9 @@ render). Dev and ui can parallelise from T8 once the mirror shape (T5) is frozen
   in fixtures without the engine._ _Verify: a `from_report` unit test maps a
   hand-built `SweepReport` (mix of Robust/Marginal/Fragile, one truncated) to the
   expected mirror; `promotable == false` iff `verdict == Fragile`._
+  - file:line: `crates/ui/src/tune/state.rs:1` (new file); `from_report` at line 168; `promotable` gate at line 193 (`!matches!(verdict, RobustnessLabel::Fragile)`)
+  - Test command: `cargo test -p ui tune::state`
+  - Output: `test result: ok. 8 passed; 0 failed; 0 ignored`
 
 ## Phase 2 — UI (Lab sub-view), can parallelise once T5 lands
 

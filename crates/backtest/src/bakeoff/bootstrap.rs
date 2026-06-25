@@ -94,7 +94,7 @@ pub fn derive_master_seed(bakeoff_seed_u64: u64, candidate_index: usize) -> u64 
 
 // ── Core computation ─────────────────────────────────────────────────────────
 
-/// Compute the robustness flag for one candidate via moving-block bootstrap.
+/// Compute the full bootstrap distribution AND the verdict for one candidate.
 ///
 /// # Arguments
 ///
@@ -105,22 +105,34 @@ pub fn derive_master_seed(bakeoff_seed_u64: u64, candidate_index: usize) -> u64 
 ///
 /// # Returns
 ///
-/// `RobustnessFlag` — `Robust`, `Marginal`, or `Fragile`.
-/// Returns `RobustnessFlag::Skipped` if the curve is too short to compute returns.
+/// `Some((DistributionSummary, ParamRobustnessVerdict))` — the full bootstrap
+/// distribution (p5/p50/p95 + the 5 gate signals) plus the verdict.
+/// Returns `None` if the curve is too short to compute returns.
+///
+/// # Gate contract (ADR-0069 D2 — behaviour-preserving)
+///
+/// The gate bands (`verdict_bands`), the seed rule (ADR-0051 D1 `GOLDEN_GAMMA`),
+/// the block-length policy (Politis–White PWSD), and the path count are all
+/// UNCHANGED from `compute_robustness_flag`. This function is the additive
+/// sibling that surfaces the distribution; `compute_robustness_flag` delegates
+/// to it (bit-identical — proven by `compute_robustness_distribution_matches_flag`).
 #[must_use]
-pub fn compute_robustness_flag(
+pub fn compute_robustness_distribution(
     equity_decimals: &[Decimal],
     paths: usize,
     master_seed: u64,
-) -> RobustnessFlag {
+) -> Option<(
+    DistributionSummary,
+    crate::bakeoff::robustness::ParamRobustnessVerdict,
+)> {
     if equity_decimals.len() < 2 {
-        return RobustnessFlag::Skipped;
+        return None;
     }
 
     // Step 1: equity → f64 log-returns (same mapping as compute_sharpe_hourly).
     let log_returns = equity_to_log_returns_f64(equity_decimals);
     if log_returns.is_empty() {
-        return RobustnessFlag::Skipped;
+        return None;
     }
 
     // Step 2: block length via Politis–White PWSD selector.
@@ -130,6 +142,7 @@ pub fn compute_robustness_flag(
     let initial_equity = equity_decimals[0];
 
     // Step 3 + 4: draw `paths` resamples; compute PathMetrics per path.
+    // FROZEN: ADR-0051 D1 sub-seed rule — path_seed_j = master.wrapping_add(j * GOLDEN_GAMMA).
     let path_metrics: Vec<PathMetrics> = (0..paths)
         .map(|j| {
             // ADR-0051 D1 sub-seed rule (frozen).
@@ -168,14 +181,45 @@ pub fn compute_robustness_flag(
         Err(e) => {
             tracing::warn!(
                 error = %e,
-                "compute_robustness_flag: DistributionSummary::from_path_metrics failed \
-                 — returning Skipped"
+                "compute_robustness_distribution: DistributionSummary::from_path_metrics failed"
             );
-            return RobustnessFlag::Skipped;
+            return None;
         }
     };
 
-    RobustnessFlag::from(classify_verdict(&summary))
+    let verdict = classify_verdict(&summary);
+    Some((summary, verdict))
+}
+
+/// Compute the robustness flag for one candidate via moving-block bootstrap.
+///
+/// # Arguments
+///
+/// - `equity_decimals`: the candidate's realized equity curve as `Decimal` values
+///   in chronological order (same slice used by `compute_sharpe_hourly`).
+/// - `paths`: number of bootstrap resamples (default 1000 per ADR-0063 § D4).
+/// - `master_seed`: the candidate-specific master seed (from `derive_master_seed`).
+///
+/// # Returns
+///
+/// `RobustnessFlag` — `Robust`, `Marginal`, or `Fragile`.
+/// Returns `RobustnessFlag::Skipped` if the curve is too short to compute returns.
+///
+/// # Delegation (ADR-0069 D2)
+///
+/// Delegates to `compute_robustness_distribution` and discards the summary.
+/// The output is bit-identical to the pre-refactor implementation — proven by
+/// `compute_robustness_distribution_matches_flag` in `crates/backtest/tests/`.
+#[must_use]
+pub fn compute_robustness_flag(
+    equity_decimals: &[Decimal],
+    paths: usize,
+    master_seed: u64,
+) -> RobustnessFlag {
+    match compute_robustness_distribution(equity_decimals, paths, master_seed) {
+        None => RobustnessFlag::Skipped,
+        Some((_summary, verdict)) => RobustnessFlag::from(verdict),
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

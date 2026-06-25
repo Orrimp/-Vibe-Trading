@@ -1,9 +1,10 @@
 ---
 slug: advisor-param-tuning
-status: draft
-owner: architect
-updated: 2026-06-24
+status: in-progress
+owner: developer
+updated: 2026-06-25
 version: 0.1.0
+phase-1-shipped: 2026-06-25   # T1–T5 (engine + mirror); T6–T11 remain
 ---
 
 # Gate-tied hyperparameter sweep editor
@@ -482,7 +483,48 @@ the bake-off already uses (`resolve_bakeoff_bars`), so coin/lookback coverage is
 identical to the leaderboard.
 
 ## Implementation
-_developer fills this._
+
+Phase 1 (T1–T5, engine foundation) shipped 2026-06-25.
+
+**T1 — `compute_robustness_distribution` + delegation refactor**
+- Added `compute_robustness_distribution` at `crates/backtest/src/bakeoff/bootstrap.rs:119`.
+- Refactored `compute_robustness_flag` to delegate to it at `bootstrap.rs:177`.
+- 8 bit-identity tests in `crates/backtest/tests/compute_robustness_distribution_matches_flag.rs` all pass.
+- Gate bands and seed rule untouched (GOLDEN_GAMMA preserved, ChaCha20 seed derivation unchanged).
+
+**T2 — `SweepFamily` / `SweptParams` / `SweepGrid` / `SmaGrid` / `build_swept_config` (SMA arm)**
+- New module `crates/backtest/src/bakeoff/sweep.rs`.
+- `MAX_SWEEP_CONFIGS = 24` at line 60 (single source of truth).
+- `build_swept_config` at line 355 (SMA arm, threads `sma_fast_len/sma_slow_len` into `ScenarioConfig` with `write_report = false`).
+- MACD/RSI/Bollinger are T7 stubs (SweepGrid variants present, `enumerate_and_validate` returns empty for them).
+- 12 unit tests in `sweep.rs::tests` all pass.
+
+**T3 — `run_param_sweep` orchestrator**
+- At `crates/backtest/src/bakeoff/sweep.rs:481`.
+- Mirrors `run_bakeoff` shape: preload bars once, run baseline first, loop grid, run buy-and-hold benchmark.
+- Anchor-safe: all cells use `write_report = false` (ADR-0069 D9).
+- Cancellation via `RunCancelReceiver::sibling()` checked before each cell.
+- Verified via 9 integration tests (see T4).
+
+**T4 — Day-1 divergence end-to-end gate**
+- `crates/backtest/tests/param_sweep_divergence_end_to_end.rs` (9 tests).
+- Primary gate `t4_swept_cells_diverge_from_baseline` at line 228.
+- Concrete pin `t4_concrete_pin_fast10_slow20_differs_from_baseline` at line 354.
+- FAIL-before / PASS-after control `t4_identical_params_produce_identical_equity_the_positive_control` at line 395.
+- All 9 pass. Anchors: 119/119 (verified).
+
+**T5 — `SweepReportMirror::from_report` (the ONE boundary)**
+- New `crates/ui/src/tune/` module with `state.rs`.
+- `SweepVerdictLabel = RobustnessLabel` type alias (reuses existing UI enum).
+- `SweepDistributionMirror`, `SweepCellRow`, `SweepBenchmarkKpis`, `SweepReportMirror` at `state.rs:54-159`.
+- `from_report` at `state.rs:168` (ONLY place a `backtest::SweepReport` is read).
+- `promotable = !matches!(verdict, RobustnessLabel::Fragile)` at `state.rs:193`.
+- `cargo tree -p ui` unchanged (no new crate edge — `backtest` was already a dep).
+- 8 unit tests in `tune::state::tests` all pass.
+
+**Clippy / fmt:** `cargo clippy --workspace --all-targets -- -D warnings` passes cleanly.
+**Format:** `cargo fmt -p backtest --check` + `cargo fmt -p ui --check` both pass.
+**Anchors:** 119/119 (scripts/verify_anchors.sh verified after T4).
 
 ## Verification
 _tester links to reports here._
