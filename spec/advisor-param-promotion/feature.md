@@ -422,6 +422,32 @@ untouched. Edition 2024 — no new code patterns. No stdlib-shadowing crate name
   same forward loop; the framing copy is the ONLY signal of which one is live.
   The plan header must always reflect the active provenance (promote vs crown).
 
+## Implementation
+
+**Groups A, B, C — ENGINE SEAM (2026-06-25, developer)**
+
+**A — Generators promoted to `pub`:**
+- `crates/backtest/src/bakeoff/sweep.rs` lines 564–624: `macd_toml`, `rsi_toml`, `bbands_toml` promoted from `fn` to `pub fn` (bodies unchanged); `#[must_use]` added (clippy); doc comments updated to reference ADR-0070 D2.
+- `crates/backtest/src/lib.rs` lines 97–99: re-exports `macd_toml`, `rsi_toml`, `bbands_toml` as `pub use bakeoff::sweep::{bbands_toml, macd_toml, rsi_toml}`.
+- ADR-0069 identity guards (`macd/rsi/bbands_toml_shipped_params_round_trip`, `--include-ignored`) all pass.
+
+**B — `ForwardRunConfig.param_override` + both resolvers:**
+- `crates/agent/src/config.rs`: `ForwardParamOverride` enum added (Sma/Macd/Rsi/Bollinger, agent-owned, `Clone+Eq`); `param_override: Option<ForwardParamOverride>` field added to `ForwardRunConfig`; all existing constructors updated with `param_override: None`.
+- `crates/agent/src/runtime.rs`: `build_registry_for` gains an early `Some(override)` branch (calls `build_registry_for_override`); the `None` path is byte-identical; new private `build_registry_for_override(registry, id, override)` helper builds the strategy from the shared generator + `from_str` identity guard; synthetic `source_path = "tuned:<stem>"`.
+- `crates/agent/src/plan.rs`: `build_forward_plan_from_registry` gains an early `Some(override)` branch (calls `build_plan_from_override`); the `None` path is byte-identical; new private `build_plan_from_override` helper mirrors the registry override resolution for the plan describer.
+- `crates/agent/src/lib.rs`: re-exports `ForwardParamOverride` and `build_forward_plan_from_registry`.
+- `crates/ui/src/bin/cockpit_live.rs`: `param_override: None` added to the crowned-pick `ForwardRunConfig` literal (the ONLY `cockpit_live.rs` change — anchor-safe).
+
+**C — Day-1 gates:**
+- `crates/agent/tests/forward_promotion_divergence.rs` (NEW, 7 tests):
+  - `t6a_sma_param_override_produces_divergent_signals` — SMA(5,10) vs default(20,50) → different warmup → divergent signal counts (FAILS-before if override ignored).
+  - `t6a_macd_param_override_produces_divergent_signals` — MACD(8,20,5) vs default shipped → divergent trajectories.
+  - `t6b_macd/rsi/bbands_agent_toml_byte_equals_sweep_generator` — shared generator → round-trip via `from_str` → id == stem; registry loads correct id.
+  - `t6c_plan_reflects_tuned_sma_override` — SMA override(7,14) → plan emits SmaCross{7,14}, NOT {20,50}.
+  - `t6c_plan_none_path_emits_default_lens` — negative control: None path → Config defaults.
+
+All 7 pass; existing 8 fidelity tests unchanged; 119/119 anchors; clippy --workspace --all-targets -D warnings clean; `cargo fmt --check` exit 0; `crates/ui/src/screens/` UNTOUCHED.
+
 ## Verification
 
 _tester links to reports here_

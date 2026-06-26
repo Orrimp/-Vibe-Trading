@@ -187,6 +187,11 @@ pub fn build_forward_plan(
 ///
 /// ADR-0062 § D3: called after `build_registry_for(Some(&cfg))` succeeds so
 /// the plan and the loop share the same resolved strategy.
+///
+/// **ADR-0070 D1 — param override:** when `fwd.param_override` is `Some`, the
+/// plan describer is resolved from the override — the SAME generators and
+/// identity guard as `build_registry_for` — so plan and loop describe the SAME
+/// tuned strategy (structural fidelity guarantee, ADR-0070 § D3).
 pub fn build_forward_plan_from_registry(
     cfg: &crate::config::Config,
     fwd: &ForwardRunConfig,
@@ -195,6 +200,22 @@ pub fn build_forward_plan_from_registry(
     horizon_days: u16,
 ) -> Option<ForwardPlan> {
     let id = fwd.strategy.0.as_str();
+
+    // ── ADR-0070 D1/D3: tuned-param override path ────────────────────────────
+    //
+    // When an override is present, build the plan describer from the SAME
+    // shared generator + identity guard that `build_registry_for` used.
+    // The `None` path falls through to the existing match arms (unchanged).
+    if let Some(ref override_params) = fwd.param_override {
+        return build_plan_from_override(
+            override_params,
+            fwd,
+            last_close,
+            last_bar_ts,
+            horizon_days,
+        );
+    }
+
     match id {
         "v0.sma" | "v0.5.sma" => {
             let describer = strategy::SmaCrossover::new(
@@ -267,6 +288,118 @@ pub fn build_forward_plan_from_registry(
     }
 }
 
+/// ADR-0070 D3 — build a plan describer from a `ForwardParamOverride`.
+///
+/// Uses the SAME shared generators as `build_registry_for_override` so the
+/// plan describes the byte-identical strategy the paper loop runs (structural
+/// fidelity, ADR-0070 § D3 / ADR-0062 § D3).
+///
+/// Returns `None` and logs a warning if the override produces an invalid TOML.
+fn build_plan_from_override(
+    override_params: &crate::config::ForwardParamOverride,
+    fwd: &ForwardRunConfig,
+    last_close: trading_core::Price,
+    last_bar_ts: trading_core::Timestamp,
+    horizon_days: u16,
+) -> Option<ForwardPlan> {
+    use crate::config::ForwardParamOverride;
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    use smol_str::SmolStr;
+
+    match override_params {
+        ForwardParamOverride::Sma { fast_len, slow_len } => {
+            let describer = strategy::SmaCrossover::new(*fast_len as usize, *slow_len as usize);
+            Some(build_forward_plan(
+                &describer,
+                fwd,
+                last_close,
+                last_bar_ts,
+                horizon_days,
+            ))
+        }
+        ForwardParamOverride::Macd { fast, slow, signal } => {
+            let toml_str = backtest::macd_toml(*fast, *slow, *signal);
+            let stem = "btc_macd_trend";
+            match strategy::ComposedStrategyConfig::from_str(&toml_str, stem) {
+                Ok(cfg_parsed) => {
+                    let source_path = SmolStr::new(format!("tuned:{stem}"));
+                    let describer =
+                        strategy::ComposedStrategy::from_config(cfg_parsed, source_path);
+                    Some(build_forward_plan(
+                        &describer,
+                        fwd,
+                        last_close,
+                        last_bar_ts,
+                        horizon_days,
+                    ))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        fast, slow, signal,
+                        "build_plan_from_override: tuned MACD TOML failed identity guard — no plan"
+                    );
+                    None
+                }
+            }
+        }
+        ForwardParamOverride::Rsi { period, oversold } => {
+            let toml_str = backtest::rsi_toml(*period, *oversold);
+            let stem = "btc_rsi_reversion";
+            match strategy::ComposedStrategyConfig::from_str(&toml_str, stem) {
+                Ok(cfg_parsed) => {
+                    let source_path = SmolStr::new(format!("tuned:{stem}"));
+                    let describer =
+                        strategy::ComposedStrategy::from_config(cfg_parsed, source_path);
+                    Some(build_forward_plan(
+                        &describer,
+                        fwd,
+                        last_close,
+                        last_bar_ts,
+                        horizon_days,
+                    ))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        period, oversold,
+                        "build_plan_from_override: tuned RSI TOML failed identity guard — no plan"
+                    );
+                    None
+                }
+            }
+        }
+        ForwardParamOverride::Bollinger { period, k_tenths } => {
+            let k: Decimal = Decimal::from(*k_tenths) / dec!(10);
+            let toml_str = backtest::bbands_toml(*period, k);
+            let stem = "btc_bbands_mean_revert";
+            match strategy::ComposedStrategyConfig::from_str(&toml_str, stem) {
+                Ok(cfg_parsed) => {
+                    let source_path = SmolStr::new(format!("tuned:{stem}"));
+                    let describer =
+                        strategy::ComposedStrategy::from_config(cfg_parsed, source_path);
+                    Some(build_forward_plan(
+                        &describer,
+                        fwd,
+                        last_close,
+                        last_bar_ts,
+                        horizon_days,
+                    ))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        period, k_tenths,
+                        "build_plan_from_override: tuned BBands TOML failed identity guard — no plan"
+                    );
+                    None
+                }
+            }
+        }
+    }
+}
+
 /// Load a `ComposedStrategy` from `config/strategies/<toml_name>.toml` for plan description.
 fn load_composed_describer(toml_name: &str) -> Option<strategy::ComposedStrategy> {
     use std::path::PathBuf;
@@ -304,6 +437,7 @@ mod tests {
             symbol: Symbol::new("BTCUSDT"),
             budget: Money::<Usdt>::from_decimal(dec!(200)),
             lookback: None,
+            param_override: None,
         }
     }
 

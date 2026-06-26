@@ -561,13 +561,21 @@ pub enum SweepBuildError {
     TomlParseFailure(String),
 }
 
-// ── TOML generation helpers (ADR-0069 D3) ────────────────────────────────────
+// ── TOML generation helpers (ADR-0069 D3, ADR-0070 D2) ──────────────────────
+//
+// These helpers are `pub` so the agent crate can build the same in-memory TOML
+// the sweep uses to score a cell — the byte-identical fidelity guarantee for
+// promotion (ADR-0070 § D2). The sweep keeps calling them unchanged.
 
 /// Generate the TOML string for a swept MACD cell.
 ///
 /// The signal DSL is parameterized: `"macd_hist(fast,slow,signal) > 0 AND close > ema(200)"`.
 /// The `id` field matches the `strategy_id` used in engine dispatch (e.g. `"btc_macd_trend"`).
-fn macd_toml(fast: u32, slow: u32, signal: u32) -> String {
+///
+/// **ADR-0070 D2 — shared generator (promotion fidelity):** exposed as `pub` so the agent
+/// crate can build the same TOML the sweep used when scoring a cell — one source of truth.
+#[must_use]
+pub fn macd_toml(fast: u32, slow: u32, signal: u32) -> String {
     format!(
         "id     = \"btc_macd_trend\"\n\
          kind   = \"composed\"\n\
@@ -582,7 +590,10 @@ fn macd_toml(fast: u32, slow: u32, signal: u32) -> String {
 ///
 /// Signal DSL: `"rsi(period) < oversold AND close > min(low, 20)"`.
 /// The `oversold` integer is the threshold, mirroring the shipped DSL.
-fn rsi_toml(period: u32, oversold: u32) -> String {
+///
+/// **ADR-0070 D2 — shared generator (promotion fidelity):** exposed as `pub`.
+#[must_use]
+pub fn rsi_toml(period: u32, oversold: u32) -> String {
     format!(
         "id     = \"btc_rsi_reversion\"\n\
          kind   = \"composed\"\n\
@@ -597,7 +608,10 @@ fn rsi_toml(period: u32, oversold: u32) -> String {
 ///
 /// Signal DSL: `"close < bollinger_lower(period,k) AND volume > 1.5 * avg(volume, 20)"`.
 /// `k` is `Decimal` — formatted without trailing zeros for DSL cleanliness.
-fn bbands_toml(period: u32, k: Decimal) -> String {
+///
+/// **ADR-0070 D2 — shared generator (promotion fidelity):** exposed as `pub`.
+#[must_use]
+pub fn bbands_toml(period: u32, k: Decimal) -> String {
     // Normalize k: strip trailing zeros (e.g. "2.0" not "2.00") for DSL compat.
     let k_str = k.normalize().to_string();
     format!(

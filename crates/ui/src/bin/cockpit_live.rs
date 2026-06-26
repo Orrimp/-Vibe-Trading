@@ -1564,6 +1564,7 @@ impl AppState {
                         symbol,
                         budget,
                         lookback: None, // real-time-only (MVP; replay preview = v0.2)
+                        param_override: None, // crowned-pick path: params from Config/disk (anchor-safe)
                     };
                     if let Some(ref tx) = self.forward_tx {
                         match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {

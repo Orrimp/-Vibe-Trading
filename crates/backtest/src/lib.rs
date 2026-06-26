@@ -95,6 +95,11 @@ pub use bakeoff::sweep::{
     SweptParams, run_param_sweep,
 };
 
+// ADR-0070 D2 — shared composed-TOML generators (promotion fidelity).
+// The agent crate builds the same in-memory TOML the sweep used to score a
+// cell, so what paper-trades == what the gate scored (one source of truth).
+pub use bakeoff::sweep::{bbands_toml, macd_toml, rsi_toml};
+
 /// Annualised Sharpe ratio from a minute-resolution equity curve.
 ///
 /// Re-exported from `scenarios::sma_composed` per ADR-0035 § Decision 8 (T-D-N12).

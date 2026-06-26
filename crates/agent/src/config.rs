@@ -18,6 +18,31 @@ use trading_core::ConfigError;
 //
 // ADR-0060 § D3.
 
+/// ADR-0070 D1 — tuned-param override for the forward run (agent-owned closed enum).
+///
+/// Carried by `ForwardRunConfig.param_override` when a PROMOTABLE Tune config
+/// is selected ("Use this config"). `None` = existing crowned-pick path (params
+/// come from `Config` / disk TOML — byte-identical, anchor-safe).
+///
+/// **Agent-owned (not `backtest::SweptParams`)**: keeps the `core`-types-only
+/// invariant on the UI side. The UI constructs `ForwardRunConfig` via `agent`
+/// and must not gain a `backtest::SweptParams` field on a public type.
+///
+/// `k_tenths` follows the existing `PlanRuleKind::BollingerReversion` convention
+/// (`k_tenths = 20` → 2.0σ); the agent converts `k_tenths → Decimal` where it
+/// builds the in-memory TOML (`Decimal::from(k_tenths) / dec!(10)`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForwardParamOverride {
+    /// SMA crossover with tuned window lengths.
+    Sma { fast_len: u32, slow_len: u32 },
+    /// MACD trend with tuned EMA periods.
+    Macd { fast: u32, slow: u32, signal: u32 },
+    /// RSI reversion with tuned period and oversold threshold.
+    Rsi { period: u32, oversold: u32 },
+    /// Bollinger reversion with tuned period and k (encoded as tenths; 20 → 2.0σ).
+    Bollinger { period: u32, k_tenths: u32 },
+}
+
 /// F5 — the selection carried from the leaderboard into the forward paper run.
 ///
 /// Constructed UI-side from the crowned/picked [`LeaderRow`] + the F3 budget +
@@ -39,6 +64,13 @@ pub struct ForwardRunConfig {
     pub budget: trading_core::Money<trading_core::Usdt>,
     /// v0.2 replay-preview window (OQ-1 deferred). `None` = real-time-only MVP.
     pub lookback: Option<backtest::engine::DateRange>,
+    /// ADR-0070 D1 — tuned-param override from the Tune editor's "Use this config".
+    ///
+    /// `None` = the existing crowned-pick path (params come from `Config` / disk
+    /// TOML — byte-identical, anchor-safe). `Some(override)` = resolve the
+    /// strategy from the tuned params instead (the same identity-guard path the
+    /// sweep used to score the cell).
+    pub param_override: Option<ForwardParamOverride>,
 }
 
 // ── F6 forward-plan types (ADR-0062) ─────────────────────────────────────────

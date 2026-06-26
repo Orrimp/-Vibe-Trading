@@ -328,6 +328,10 @@ pub fn build_registry_with_ledger(
 ///
 /// When `forward` is `None`, delegates to `build_registry(cfg)` — byte-identical
 /// to the pre-F5b headless / soak path.
+///
+/// **ADR-0070 D1 — param override:** when `fwd.param_override` is `Some`, the
+/// tuned config is resolved from the override INSTEAD of `cfg.strategies` / disk
+/// TOML.  The `None` path is byte-identical to before (anchor-safe, 119/119).
 pub fn build_registry_for(
     cfg: &Config,
     forward: Option<&crate::config::ForwardRunConfig>,
@@ -338,6 +342,15 @@ pub fn build_registry_for(
 
     let registry = strategy::StrategyRegistry::new();
     let id = fwd.strategy.0.as_str();
+
+    // ── ADR-0070 D1/D2: tuned-param override path ────────────────────────────
+    //
+    // If a param override is present, resolve from it using the SAME identity-
+    // guard path the sweep used to score the cell. The `None` path falls through
+    // to the existing match arms below (byte-identical, anchor-safe).
+    if let Some(ref override_params) = fwd.param_override {
+        return build_registry_for_override(registry, id, override_params);
+    }
 
     match id {
         // ADR-0068 T-D6: `v0.sma_cross_ls` is the long/short alias for the SMA
@@ -467,6 +480,110 @@ pub fn build_registry_for(
                 "build_registry_for: unknown strategy id '{}' — \
                  refusing to silently fall back to SmaCrossover proxy (F5b anti-fake gate)",
                 unknown
+            );
+        }
+    }
+
+    Ok(Arc::new(registry))
+}
+
+/// ADR-0070 D1/D2 — resolve a tuned-param override into a strategy registry.
+///
+/// Reuses the SAME generators the sweep uses to score a cell, validated by the
+/// SAME `from_str` identity guard. The `source_path` is a synthetic label
+/// (`"tuned:<stem>"`) so audit identity reads "tuned, not the shipped TOML".
+///
+/// Takes `registry` by value (the caller created an empty one for the override
+/// path), registers the override strategy, and wraps in `Arc`.
+///
+/// This function is only called when `fwd.param_override` is `Some` — never on
+/// the `None` (crowned-pick / headless) path.
+fn build_registry_for_override(
+    registry: strategy::StrategyRegistry,
+    id: &str,
+    override_params: &crate::config::ForwardParamOverride,
+) -> anyhow::Result<Arc<strategy::StrategyRegistry>> {
+    use crate::config::ForwardParamOverride;
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    use smol_str::SmolStr;
+
+    match override_params {
+        ForwardParamOverride::Sma { fast_len, slow_len } => {
+            registry.register(Box::new(strategy::SmaCrossover::new(
+                *fast_len as usize,
+                *slow_len as usize,
+            )));
+            tracing::info!(
+                strategy = id,
+                fast = fast_len,
+                slow = slow_len,
+                "build_registry_for: SmaCrossover registered (tuned override)"
+            );
+        }
+        ForwardParamOverride::Macd { fast, slow, signal } => {
+            // Build the same in-memory TOML the sweep used to score this cell,
+            // then validate via the same from_str identity guard (ADR-0069 D3).
+            let toml_str = backtest::macd_toml(*fast, *slow, *signal);
+            let stem = "btc_macd_trend";
+            let cfg_parsed = strategy::ComposedStrategyConfig::from_str(&toml_str, stem)
+                .with_context(|| {
+                    format!(
+                        "build_registry_for_override: tuned MACD TOML failed identity guard \
+                         (fast={fast}, slow={slow}, signal={signal})"
+                    )
+                })?;
+            let source_path = SmolStr::new(format!("tuned:{stem}"));
+            let strat = strategy::ComposedStrategy::from_config(cfg_parsed, source_path);
+            registry.register(Box::new(strat));
+            tracing::info!(
+                strategy = id,
+                fast,
+                slow,
+                signal,
+                "build_registry_for: ComposedStrategy (tuned MACD) registered"
+            );
+        }
+        ForwardParamOverride::Rsi { period, oversold } => {
+            let toml_str = backtest::rsi_toml(*period, *oversold);
+            let stem = "btc_rsi_reversion";
+            let cfg_parsed = strategy::ComposedStrategyConfig::from_str(&toml_str, stem)
+                .with_context(|| {
+                    format!(
+                        "build_registry_for_override: tuned RSI TOML failed identity guard \
+                         (period={period}, oversold={oversold})"
+                    )
+                })?;
+            let source_path = SmolStr::new(format!("tuned:{stem}"));
+            let strat = strategy::ComposedStrategy::from_config(cfg_parsed, source_path);
+            registry.register(Box::new(strat));
+            tracing::info!(
+                strategy = id,
+                period,
+                oversold,
+                "build_registry_for: ComposedStrategy (tuned RSI) registered"
+            );
+        }
+        ForwardParamOverride::Bollinger { period, k_tenths } => {
+            // k_tenths → Decimal: e.g. 20 → 2.0σ.
+            let k: Decimal = Decimal::from(*k_tenths) / dec!(10);
+            let toml_str = backtest::bbands_toml(*period, k);
+            let stem = "btc_bbands_mean_revert";
+            let cfg_parsed = strategy::ComposedStrategyConfig::from_str(&toml_str, stem)
+                .with_context(|| {
+                    format!(
+                        "build_registry_for_override: tuned BBands TOML failed identity guard \
+                         (period={period}, k_tenths={k_tenths})"
+                    )
+                })?;
+            let source_path = SmolStr::new(format!("tuned:{stem}"));
+            let strat = strategy::ComposedStrategy::from_config(cfg_parsed, source_path);
+            registry.register(Box::new(strat));
+            tracing::info!(
+                strategy = id,
+                period,
+                k_tenths,
+                "build_registry_for: ComposedStrategy (tuned BBands) registered"
             );
         }
     }

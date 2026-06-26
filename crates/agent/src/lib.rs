@@ -24,7 +24,9 @@ pub use activity::{
 };
 pub use activity_audit_aggregator::spawn_aggregator;
 pub use bus::EventBus;
-pub use config::{ForwardPlan, ForwardRunConfig, PlanRuleKind, PlanSignal, PlanStance};
+pub use config::{
+    ForwardParamOverride, ForwardPlan, ForwardRunConfig, PlanRuleKind, PlanSignal, PlanStance,
+};
 pub use kill_switch::{
     AgentMode, CommandIncidentSpawner, HaltReason, IncidentSpawnArgs, IncidentSpawner, KillSwitch,
     MockIncidentSpawner,
@@ -35,6 +37,7 @@ pub use narration::{
     UnfaithfulFakeProvider, UnfaithfulViolation, build_faithful_text, check_faithful,
     generate_narration,
 };
+pub use plan::build_forward_plan_from_registry;
 pub use reconciler::ReconcilerTask;
 pub use runtime::{
     ForwardCommand, RunHandles, build_registry, build_registry_for, paper_engine_publisher, run,

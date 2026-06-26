@@ -39,6 +39,7 @@ fn fwd_cfg(strategy_id: &str) -> ForwardRunConfig {
         symbol: Symbol::new("BTCUSDT"),
         budget: Money::<Usdt>::from_decimal(dec!(200)),
         lookback: None,
+        param_override: None,
     }
 }
 
