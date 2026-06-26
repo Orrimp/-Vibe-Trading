@@ -2,7 +2,7 @@
 slug: architecture
 status: shipped
 owner: architect
-updated: 2026-06-22
+updated: 2026-06-26
 ---
 
 # Architecture — Crypto Trading Agent
@@ -156,6 +156,43 @@ that span multiple ADRs. Decision changelog entries live in each
 ADR's own `## Changelog` section. Current-state design changelog
 entries live in each section file.
 
+- 2026-06-26 (architect): **ADR-0071 — OBV DSL primitive + the pre-registered
+  5-arm signal-library expansion** (feature `advisor-signal-library-expansion`,
+  the 3rd + cheapest pre-registered arm-class expansion after combination-search
+  ADR-0067 + short-selling ADR-0068). Recorded in the canonical ADR registry
+  ([architecture/adr/README.md](architecture/adr/README.md) +
+  `architecture/adr/0071-obv-dsl-primitive-and-signal-arm-expansion.md`).
+  **The ComposedStrategy signal DSL** (`crates/strategy/src/composed/{node.rs,
+  parser.rs,ast.rs}` — self-contained, imports nothing from `crates/features`)
+  gains its first **new indicator primitive since the rolling family**:
+  `obv` (arity 0) + `obv_avg(N)` (arity 1), each a new `IndicatorState` variant
+  (`node.rs:26`) mirroring `Sma`/`RollingAvg` over the 6-site evaluator surface
+  (`indicator_arity`/`IndicatorState`/`latest`/`on_bar`/`eval_indicator_expr`+`find_*`/`add_indicator`).
+  Recurrence `OBV_t = OBV_{t-1} + sign(close_t−close_{t-1})·volume_t`, `OBV_0 =
+  Some(0)`, `rust_decimal::Decimal` only. **`avg(obv,N)` is REJECTED as impossible**
+  — the rolling family's `field_arg` accepts only `Expr::BarField` and `obv` is
+  not a bar field → `UnknownParam` (`parser.rs:357`); hence the dedicated
+  `obv_avg`. `obv` is the **first 0-arity indicator** (spelled `obv()`; a bare
+  `obv` errors), guarded by an OBV identity/round-trip test (textbook OBV vs a
+  hand-computed reference, all three `sign` branches — the `t505` + ADR-0069
+  discipline). **The arm seam** is the proven `v0.5.macd` → composed-TOML-from-disk
+  path (`engine.rs:1234` → `sma_composed_run.rs:386`): five new bake-off arms
+  (`v0.donchian_break`/`v0.donchian_floor`/`v0.vol_breakout`/`v0.roc_momentum`/`v0.obv`)
+  added to `BakeoffConfig::default_field()` (`bakeoff/mod.rs:355`) → `advisor_field()`
+  auto-picks them up; field 13→18; `advisor_field_arm_count` test bumps. The
+  robustness gate + buy-and-hold benchmark (ADR-0066) stay **byte-frozen** — more
+  candidates face the SAME bar; NOT a B2/B3 band proposal. Anchor-safe by
+  construction (`write_report=false` → `maybe_write_report` no-ops → **119/119**;
+  the existing 4 base TOMLs + their anchored reports byte-identical; the 9
+  `spec/anchors.toml` SHAs untouched) — **no anchor-additive amendment owed**. Gates:
+  the CLAUDE.md day-1 baseline-equity-divergence e2e on the REAL new TOMLs + a
+  leaderboard render-pixel guard at the ~18-row field. Honest framing LOAD-BEARING:
+  the new signals are very likely ALSO Fragile (modal `BenchmarkWins` per ADR-0066);
+  the deliverable is honest coverage + a richer decorrelation menu, NOT an alpha
+  claim; a null all-Fragile result is valid + expected + shippable. Follow-ons OUT
+  of v1: ATR/VWAP primitives, combination arms USING the new signals, short `_ls`
+  variants, any parameter sweep, per-arm forward-plan narration. PAPER/SIM ONLY.
+  Leans on ADR-0067, ADR-0068, ADR-0066, ADR-0069, ADR-0063, ADR-0010, ADR-0057.
 - 2026-06-25 (architect): **ADR-0070 — promotion wiring: carry a robust Tune
   config into the forward €200 paper-trade** (feature `advisor-param-promotion`,
   the ADR-0069 § D5 deferred v0.2 carry-forward). Recorded in the canonical ADR

@@ -2,7 +2,7 @@
 slug: product
 status: shipped
 owner: analyst
-updated: 2026-06-23
+updated: 2026-06-26
 ---
 
 # Product Requirements — Single-Coin Investment Advisor (paper)
@@ -545,6 +545,34 @@ Tracked here until the operator answers; then they migrate into the body.
   **expanding the single-coin signal library** with new signal types. Does NOT
   change § journey, § What this product IS / IS NOT, D1–D5, or the 2026-06-08
   ship-passive verdict. No engine code; no anchored content touched.
+- 2026-06-26 (analyst, signal-library-expansion scoping): scoped the
+  operator-approved (2026-06-26 *"item 1 sounds good"* — the backlog's one
+  product-aligned growth item) **expansion of the single-coin signal library with
+  new base signals** beyond the current 4 (SMA / MACD / RSI / Bollinger) as a new
+  feature ([`advisor-signal-library-expansion/feature.md`](advisor-signal-library-expansion/feature.md),
+  trace `REQ-ADVISOR-SIGNAL-LIBRARY-EXPANSION-001`). Each new base signal is a new
+  bake-off arm scored by the **identical** frozen `RobustnessMode::Bootstrap` gate
+  + the **identical** buy-and-hold benchmark; the recommended FIXED v1 slate is **4
+  DSL-only arms** (Donchian breakout/floor, volume-confirmed breakout, short-horizon
+  ROC) spanning the **breakout/channel + volume-flow** axes the existing 4
+  (all price-only, MA/band-family) do not cover — **zero new indicator code** (the
+  signal DSL already has `max`/`min`/`avg` over `high`/`low`/`volume` + arithmetic),
+  only new TOMLs + a shallow arm seam. The **honest framing is load-bearing and
+  inline in the brief**: the new signals are **very likely ALSO Fragile** under the
+  frozen gate (the concluded 2026-06-08 ship-passive verdict + the modal-`BenchmarkWins`
+  live field); the deliverable is **honest coverage + a richer decorrelation menu**
+  (the first structurally-decorrelated members for `advisor-combination-search` to
+  draw from), **NOT an alpha claim**; a **null result ("the new arms are also
+  Fragile, hold still stands") is the expected, valid, shippable outcome.**
+  Pre-registration (no search, no parameter hunt) is the overfit defense, mirroring
+  combination-search + short-selling. Bands **FROZEN** (NOT a B2/B3 proposal);
+  `BenchmarkWins`/`AllFragile` reachability UNCHANGED; anchor-safe by construction
+  (`write_report=false`, 119/119). New-primitive signals (ATR/OBV/VWAP), combination
+  arms *using* the new signals, and short-capable variants are recorded follow-ons.
+  Like combination-search + short-selling, this is a **new arm class scored by the
+  existing gate** — does NOT change § journey, § What this product IS / IS NOT,
+  D1–D5, or the 2026-06-08 ship-passive verdict. No engine code; no anchored content
+  touched.
 - 2026-06-22 (orchestrator, B1 robustness-honesty reconcile): sharpened **§ D1**
   (ranking metric) + the **Honesty gate** success metric to match the shipped B1
   behaviour ([ADR-0066](architecture/adr/0066-benchmark-exempt-from-allfragile.md)):
