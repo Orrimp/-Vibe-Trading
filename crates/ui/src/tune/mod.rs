@@ -34,5 +34,6 @@ pub use screen_state::{
     MacdGridForm, RsiGridForm, SmaGridForm, TuneAxisKind, TuneFamily, TuneScreenState,
 };
 pub use state::{
-    SweepBenchmarkKpis, SweepCellRow, SweepDistributionMirror, SweepReportMirror, SweepVerdictLabel,
+    PromoteParams, SweepBenchmarkKpis, SweepCellRow, SweepDistributionMirror, SweepReportMirror,
+    SweepVerdictLabel,
 };

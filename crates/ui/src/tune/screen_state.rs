@@ -744,6 +744,19 @@ impl TuneScreenState {
         self.family.is_runnable() && !self.running && self.grid_estimate().is_runnable()
     }
 
+    /// advisor-param-promotion (ADR-0070 § D6) — the window label the current
+    /// sweep result scored over, for the "robust on THIS window" promotion
+    /// honesty copy. Reads the `Ready` mirror's `range_label` (the exact window
+    /// the gate scored); falls back to a neutral phrase when no result is on
+    /// screen (defensive — promotion is only reachable from a `Ready` grid row).
+    #[must_use]
+    pub fn range_label_or_default(&self) -> SmolStr {
+        match &self.result {
+            PanelState::Ready(mirror) => mirror.range_label.clone(),
+            _ => SmolStr::new(crate::strings::TUNE_PROMOTE_WINDOW_FALLBACK),
+        }
+    }
+
     /// Select a family (the picker). Does NOT clear the existing result — the
     /// operator may inspect a prior result while eyeing another family.
     pub fn select_family(&mut self, family: TuneFamily) {

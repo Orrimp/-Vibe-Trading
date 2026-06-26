@@ -2547,6 +2547,48 @@ pub fn fake_cockpit_forward_plan(
     cockpit
 }
 
+/// advisor-param-promotion (ADR-0070 § D6) — a `Cockpit` routed to
+/// `Screen::ForwardPlan` AS IF a PROMOTED Tune config landed there: the
+/// `pending_forward_promotion` set (the
+/// "you tuned this" provenance header reads from it), with a TUNED SMA plan
+/// (`fast 10 / slow 20`, NOT the shipped 20/50). Drives the promoted-forward-plan
+/// render proof. Synthetic — no engine, no launch.
+#[must_use]
+pub fn fake_cockpit_forward_plan_promoted() -> Cockpit {
+    use crate::forward_plan::state::{
+        ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    };
+    let tuned = ForwardPlanView {
+        strategy: SmolStr::new("v0.5.sma"),
+        symbol: SmolStr::new("BTCUSDT"),
+        stance: PlanStanceView::Flat,
+        latest_signal: Some(PlanSignalView::Hold),
+        // The TUNED lens — distinct from the shipped 20/50 (the proof discriminator).
+        rule: PlanRuleView::SmaCross {
+            fast_len: 10,
+            slow_len: 20,
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 19 14:00"),
+        budget: dec!(200),
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 26"),
+    };
+    let mut cockpit = fake_cockpit_forward_plan(PanelState::Ready(tuned));
+    cockpit.pending_forward_promotion = Some(crate::state::ForwardPromotion {
+        strategy_id: StrategyId::new("v0.5.sma"),
+        coin: Symbol::new("BTCUSDT"),
+        params: crate::tune::PromoteParams::Sma {
+            fast_len: 10,
+            slow_len: 20,
+        },
+        window_label: SmolStr::new("2024 H1"),
+    });
+    cockpit
+}
+
 /// F7 EUR-FX — A `Cockpit` routed to `Screen::Leaderboard` with an explicit
 /// `advisor_eur_usd_rate` and `budget_input`, so the bakeoff-input budget hint
 /// renders the honest "€{eur} ≈ ${usdt} (at {rate} EUR/USD, config)" label.
@@ -2607,6 +2649,10 @@ fn fake_sweep_cell(
         in_sample_maxdd: dec!(0.15),
         trade_count: 24,
         distribution,
+        promote_params: crate::tune::PromoteParams::Sma {
+            fast_len: fast,
+            slow_len: slow,
+        },
     }
 }
 
@@ -2642,6 +2688,7 @@ fn fake_macd_cell(
         in_sample_maxdd: dec!(0.15),
         trade_count: 31,
         distribution,
+        promote_params: crate::tune::PromoteParams::Macd { fast, slow, signal },
     }
 }
 

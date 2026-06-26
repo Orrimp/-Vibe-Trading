@@ -836,6 +836,32 @@ pub struct TrailScreenState {
     pub pending_trail_audit_id: Option<SmolStr>,
 }
 
+/// advisor-param-promotion (ADR-0070 § D4) — a preseeded forward-launch target
+/// carried from the Tune editor's "Use this config".
+///
+/// This is the UI→binary handoff for promotion: the pure `update` arm
+/// ([`promote_swept_config`]) sets `pending_forward_promotion =
+/// Some(ForwardPromotion { .. })` + navigates to the forward plan; the binary
+/// layer (`cockpit_live.rs`) reads it the way the crowned-pick path reads
+/// `mirror.crowned_row()`, maps `PromoteParams → agent::ForwardParamOverride`,
+/// builds the `ForwardRunConfig`, fires `ForwardCommand::Launch`, then clears it.
+/// Carries ONLY `core` + UI types — no engine type crosses into `update`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardPromotion {
+    /// The strategy id the forward path dispatches on (e.g. `"v0.5.macd"`) — the
+    /// SAME id `build_registry_for` matches. Resolved from the family at preseed.
+    pub strategy_id: StrategyId,
+    /// The coin the tuned config runs on (the Tune sweep's coin).
+    pub coin: Symbol,
+    /// The structured tuned params (the UI carrier). Mapped to
+    /// `agent::ForwardParamOverride` binary-side.
+    pub params: crate::tune::PromoteParams,
+    /// The window label the sweep scored over (`mirror.range_label`), for the
+    /// "robust on THIS window" honesty copy. Display-only — the forward run is
+    /// real-time-only (`lookback: None`), like the crowned path.
+    pub window_label: SmolStr,
+}
+
 /// Root cockpit model. Owned by the iced `Application`.
 ///
 /// `Debug` and `Clone` are implemented manually so the optional
@@ -1084,6 +1110,21 @@ pub struct Cockpit {
     /// time (runner glue). Cold-start: `H1_2024` (full corpus coverage).
     pub tune_lookback: crate::leaderboard::LeaderboardLookback,
 
+    /// advisor-param-promotion (ADR-0070 § D4/D6) — the active PROMOTED
+    /// forward-launch target, set when the operator clicks "Use this config" on a
+    /// PROMOTABLE Tune row. Two jobs, both keyed on this ONE field (no extra
+    /// bool):
+    /// - **launch (binary):** `cockpit_live.rs` fires `ForwardCommand::Launch`
+    ///   with the tuned override when it sees a `PromoteSweptConfig` message (the
+    ///   crowned-pick precedent); it does NOT clear this field, so it persists.
+    /// - **provenance (view):** the forward-plan screen renders the "you tuned
+    ///   this" header while this is `Some` (the only live promote-vs-crown signal,
+    ///   distinct from the crowned "best of the bake-off" framing).
+    ///
+    /// `None` at cold-start. CLEARED when a crowned bake-off pick launches (so a
+    /// prior promotion's header never lingers over a crowned plan).
+    pub pending_forward_promotion: Option<ForwardPromotion>,
+
     /// Phase F — Memory-screen per-session state (ui-rethink-phase-f-memory-models-assistant
     /// R4.1 / T-D-N4). Sibling of `compare_screen_state` (Phase E). Cold-start:
     /// empty cache (R5.3 cold-boot-only); real screen body replaces Phase A placeholder.
@@ -1281,6 +1322,7 @@ impl std::fmt::Debug for Cockpit {
             .field("tune_screen_state", &self.tune_screen_state)
             .field("tune_coin", &self.tune_coin)
             .field("tune_lookback", &self.tune_lookback)
+            .field("pending_forward_promotion", &self.pending_forward_promotion)
             .field("memory_screen_state", &self.memory_screen_state)
             .field("models_screen_state", &self.models_screen_state)
             .field("assistant_state", &self.assistant_state)
@@ -1353,6 +1395,8 @@ impl Default for Cockpit {
             tune_screen_state: crate::tune::TuneScreenState::default(),
             tune_coin: Symbol::new(crate::leaderboard::runner::DEFAULT_BAKEOFF_COIN),
             tune_lookback: crate::leaderboard::LeaderboardLookback::H1_2024,
+            // advisor-param-promotion (ADR-0070) — no promotion active on boot.
+            pending_forward_promotion: None,
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -1476,6 +1520,8 @@ impl Cockpit {
             tune_screen_state: crate::tune::TuneScreenState::default(),
             tune_coin: Symbol::new(crate::leaderboard::runner::DEFAULT_BAKEOFF_COIN),
             tune_lookback: crate::leaderboard::LeaderboardLookback::H1_2024,
+            // advisor-param-promotion (ADR-0070) — no promotion active on boot.
+            pending_forward_promotion: None,
             memory_screen_state: crate::memory::state::MemoryScreenState::default(),
             models_screen_state: crate::models::state::ModelsScreenState::default(),
             assistant_state: crate::assistant::state::AssistantState::default(),
@@ -2304,6 +2350,16 @@ pub enum Message {
     /// `backtest::BakeoffProgress` wire type (same `{done, total, current_id}`
     /// shape). Pure: stores the latest event on the Tune state.
     SweepProgress(backtest::progress::BakeoffProgress),
+    /// advisor-param-promotion (ADR-0070 § D4) — "Use this config" on a PROMOTABLE
+    /// Tune row. Carries the structured tuned params (the family is implicit in
+    /// the variant). Pure state transition (preseed `pending_forward_promotion` +
+    /// navigate to `Screen::ForwardPlan`); the binary
+    /// layer (`cockpit_live.rs`) fires the `ForwardCommand::Launch` off the
+    /// preseeded target (the `BakeoffRunCompleted` crowned-launch precedent). Only
+    /// PROMOTABLE rows emit this — the view gates `on_press` behind `promotable`,
+    /// so the gate verdict is never re-read here. Carries the closed
+    /// `PromoteParams` (not a mirror index) so it is self-contained.
+    PromoteSweptConfig(crate::tune::PromoteParams),
 
     // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────────
     /// A forward plan arrived from the agent's plan-return channel
@@ -2408,6 +2464,53 @@ fn open_strategy_in_lab(model: &mut Cockpit, id: StrategyId) {
         model.selected_symbol = Some(pair.clone());
         model.lab_state.pair = Some(pair);
     }
+}
+
+/// advisor-param-promotion (ADR-0070 § D4) — preseed the forward-launch target
+/// from a PROMOTED Tune config + navigate to the forward plan.
+///
+/// Mirrors the [`open_strategy_in_lab`] navigate-and-preseed precedent: a PURE
+/// state transition (no async, no engine type). It (a) resolves the family →
+/// the `StrategyId` the forward path dispatches on, (b) stores the
+/// [`ForwardPromotion`] the binary launches from AND the view renders the
+/// "you tuned this" provenance header from (ONE field, no extra flag), and
+/// (c) navigates to `Screen::ForwardPlan`.
+///
+/// The plan flips to `Loading` so the operator sees the "reading the strategy's
+/// rules" spinner until the agent returns the tuned plan over the plan channel —
+/// never a stale crowned plan. Only PROMOTABLE rows reach here (the view gates
+/// the affordance), so the gate verdict is never re-read.
+fn promote_swept_config(model: &mut Cockpit, params: crate::tune::PromoteParams) {
+    use crate::tune::PromoteParams;
+
+    // (a) Family → the StrategyId the forward resolvers dispatch on (the SAME
+    // ids `build_registry_for` matches). The override carries the actual tuned
+    // params; this id is the registry label + the loop's selection key.
+    let strategy_id = match params {
+        PromoteParams::Sma { .. } => StrategyId::new("v0.5.sma"),
+        PromoteParams::Macd { .. } => StrategyId::new("v0.5.macd"),
+        PromoteParams::Rsi { .. } => StrategyId::new("v0.5.rsi"),
+        PromoteParams::Bollinger { .. } => StrategyId::new("v0.5.bbands"),
+    };
+
+    // The window label the sweep scored over (for the "robust on THIS window"
+    // honesty copy). The coin is the Tune sweep's authoritative coin.
+    let window_label = model.tune_screen_state.range_label_or_default();
+
+    // (b) Store the promotion — the binary launches from it (the crowned-pick
+    // precedent) AND the forward-plan view renders the provenance header from its
+    // Some-ness (one field is the launch target AND the provenance signal).
+    model.pending_forward_promotion = Some(ForwardPromotion {
+        strategy_id,
+        coin: model.tune_coin.clone(),
+        params,
+        window_label,
+    });
+
+    // (c) Navigate to the forward plan. The plan flips to Loading so the operator
+    // never sees a stale crowned plan while the agent resolves the tuned one.
+    model.forward_plan_screen_state.plan = PanelState::Loading;
+    model.current_screen = Screen::ForwardPlan;
 }
 
 /// Pure state-transition function. Never spawns async work directly —
@@ -3430,6 +3533,16 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // Cell-level progress from the in-flight sweep → drives the
             // determinate progress bar. Pure: store the latest event.
             model.tune_screen_state.set_progress(progress);
+        }
+        Message::PromoteSweptConfig(params) => {
+            // advisor-param-promotion (ADR-0070 § D4) — preseed the forward-launch
+            // target from this tuned config + navigate to the forward plan. Pure:
+            // the actual `ForwardCommand::Launch` is dispatched binary-side
+            // (`cockpit_live.rs`) off `pending_forward_promotion` — the
+            // `BakeoffRunCompleted` crowned-launch precedent. The gate verdict is
+            // NOT re-read here; only PROMOTABLE rows emit this message (the view
+            // gates `on_press`).
+            promote_swept_config(model, params);
         }
 
         // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward plan ──────

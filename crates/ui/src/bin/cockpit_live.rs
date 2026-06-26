@@ -1054,6 +1054,30 @@ fn join_with_deadline(handle: std::thread::JoinHandle<()>, deadline: Duration) -
     false
 }
 
+/// advisor-param-promotion (ADR-0070 § D4) — the single UI→agent map (binary
+/// side, where `agent` is already imported): the UI-owned `PromoteParams` →
+/// the agent-owned `ForwardParamOverride`. One boundary, crossed exactly once.
+/// `k_tenths` carries through verbatim (the agent converts tenths → `Decimal`
+/// where it builds the in-memory TOML).
+#[cfg(feature = "live")]
+fn promote_params_to_override(params: &ui::tune::PromoteParams) -> agent::ForwardParamOverride {
+    use ui::tune::PromoteParams;
+    match *params {
+        PromoteParams::Sma { fast_len, slow_len } => {
+            agent::ForwardParamOverride::Sma { fast_len, slow_len }
+        }
+        PromoteParams::Macd { fast, slow, signal } => {
+            agent::ForwardParamOverride::Macd { fast, slow, signal }
+        }
+        PromoteParams::Rsi { period, oversold } => {
+            agent::ForwardParamOverride::Rsi { period, oversold }
+        }
+        PromoteParams::Bollinger { period, k_tenths } => {
+            agent::ForwardParamOverride::Bollinger { period, k_tenths }
+        }
+    }
+}
+
 // ── iced Application state ────────────────────────────────────────────────────
 
 /// iced application state. Mirrors `cockpit.rs::App` but carries real
@@ -1508,6 +1532,13 @@ impl AppState {
         // drop the sweep cancel handle + progress receiver on completion (mirrors
         // `bakeoff_run_completed_any`).
         let sweep_run_completed_any = matches!(&msg, Message::SweepRunCompleted(_));
+        // advisor-param-promotion (ADR-0070) — detect "Use this config" BEFORE
+        // state::update so the one-shot launch fires exactly once on the press
+        // (the `BakeoffRunCompleted` crowned-launch keys on the message the same
+        // way). The pure arm sets `pending_forward_promotion`; the launch below
+        // READS (does not take) it, so it persists for the provenance header.
+        #[cfg(feature = "live")]
+        let promote_requested = matches!(&msg, Message::PromoteSweptConfig(_));
 
         // F5-LAUNCH (ADR-0060 § D6) — when a bake-off completes with a crowned
         // row, build a ForwardRunConfig from the crowned/picked strategy + bake-off
@@ -1805,6 +1836,79 @@ impl AppState {
             self.sweep_progress_rx = None;
         }
 
+        // advisor-param-promotion (ADR-0070 § D4/E) — PROMOTE launch dispatch.
+        //
+        // The pure `Message::PromoteSweptConfig` arm (in `ui::state::update`,
+        // already run above) set `cockpit.pending_forward_promotion` + navigated
+        // to the forward plan. Here — the binary layer, gated on the one-shot
+        // `promote_requested` (the press) — we fire the SAME `ForwardCommand::Launch`
+        // the crowned-pick path fires, the ONLY delta being `param_override:
+        // Some(promote_params_to_override(params))` (the tuned config) instead of
+        // `None`. We reuse the F7/ADR-0065 €200→USDT conversion verbatim, then
+        // emit `ForwardPaperTradeStarted` to paint the Live P/L frame — identical
+        // lifecycle to the crowned path. We READ (do NOT take) the promotion so it
+        // persists for the forward-plan provenance header (§ D6); the one-shot
+        // `promote_requested` gate makes a single press launch exactly once.
+        #[cfg(feature = "live")]
+        if promote_requested && let Some(promotion) = self.cockpit.pending_forward_promotion.clone()
+        {
+            use rust_decimal_macros::dec;
+
+            // The operator's budget — the SAME source the crowned path reads.
+            let budget_eur = self
+                .cockpit
+                .leaderboard_screen_state
+                .budget_eur()
+                .unwrap_or(dec!(200));
+
+            // F7 seam: the ONLY EUR→USDT multiply (the crowned-path FX block,
+            // verbatim — one converted value shared by engine + display).
+            let fx = trading_core::FxRate::config(self.advisor_eur_usd_rate);
+            let fx = if self.advisor_eur_usd_as_of.is_empty() {
+                fx
+            } else {
+                trading_core::FxRate::new(
+                    self.advisor_eur_usd_rate,
+                    "config",
+                    self.advisor_eur_usd_as_of.as_str(),
+                )
+                .unwrap_or(fx)
+            };
+            let conversion = trading_core::BudgetConversion::new(budget_eur, fx);
+            let budget: trading_core::Money<trading_core::Usdt> = conversion.usdt();
+            let fx_note = Some(conversion.fx_note());
+
+            // Build ForwardRunConfig from core types + the tuned override (the
+            // single UI→agent map, binary-side where `agent` is already imported).
+            let fwd_cfg = agent::ForwardRunConfig {
+                strategy: promotion.strategy_id.clone(),
+                symbol: promotion.coin.clone(),
+                budget,
+                lookback: None, // real-time-only (the crowned-pick MVP behaviour)
+                param_override: Some(promote_params_to_override(&promotion.params)),
+            };
+            if let Some(ref tx) = self.forward_tx {
+                match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
+                    Ok(()) => info!(
+                        strategy = %promotion.strategy_id.0,
+                        coin = %promotion.coin.0,
+                        budget_eur = %budget_eur,
+                        budget_usdt = %budget.amount(),
+                        "PROMOTE-LAUNCH: ForwardCommand::Launch sent (tuned override)"
+                    ),
+                    Err(e) => warn!(
+                        error = %e,
+                        "PROMOTE-LAUNCH: ForwardCommand channel full — launch deferred"
+                    ),
+                }
+            } else {
+                warn!("PROMOTE-LAUNCH: forward_tx is None — supervisor not wired (non-fatal)");
+            }
+
+            // Paint the Live P/L frame (identical lifecycle to the crowned path).
+            return iced::Task::done(Message::ForwardPaperTradeStarted(budget, fx_note));
+        }
+
         // F5/F7 — emit ForwardPaperTradeStarted after bakeoff completes with a
         // crowned row. This sets `cockpit.forward_budget` (the USDT budget F4 caps
         // against) and `cockpit.forward_fx` (the FX note for honest display) so the
@@ -1815,6 +1919,11 @@ impl AppState {
         // ADR-0060 § D5 / ADR-0065 § D2 / boot-config mechanism.
         #[cfg(feature = "live")]
         if let Some((budget, fx_note)) = forward_paper_budget {
+            // advisor-param-promotion (ADR-0070 § D6) — a crowned pick is now the
+            // active forward run; clear any prior promotion so its "you tuned this"
+            // provenance header never lingers over the crowned plan (the crowned
+            // header has its own "best of the bake-off" provenance).
+            self.cockpit.pending_forward_promotion = None;
             return iced::Task::done(Message::ForwardPaperTradeStarted(budget, fx_note));
         }
 

@@ -960,34 +960,40 @@ fn data_row(cell: &SweepCellRow, is_baseline: bool, mode: ThemeMode) -> crate::E
     }
 }
 
-/// The "Use this config" action cell — enabled `ACCENT` affordance on a
+/// The "Use this config" action cell — an enabled `ACCENT` BUTTON on a
 /// promotable row, disabled+greyed on a fragile row (the promotion lock). A
 /// fragile row additionally carries the inline "would be overfitting" note.
 ///
-/// Promotion WIRING is out of scope for v0.1 (the affordance carries no message
-/// yet); the disabled-on-fragile treatment is what ships now so the honesty is
-/// visible from day 1. The enabled affordance is a visual pill (a v0.2 wires the
-/// carry-forward) that still reads as the strictly-more-accent, eligible state.
+/// advisor-param-promotion (ADR-0070 § D4/E) — the promotable affordance is now
+/// WIRED: pressing it emits `Message::PromoteSweptConfig(cell.promote_params)`,
+/// which preseeds the forward €200 paper-trade of THIS tuned config + navigates
+/// to the forward plan (the binary layer fires the launch). The FRAGILE branch
+/// stays a greyed locked LABEL with NO `on_press` — a fragile config can NEVER be
+/// promoted (the anti-overfit lock; the gate's verdict is final).
 fn use_config_cell(cell: &SweepCellRow, mode: ThemeMode) -> crate::Element<'_> {
     if cell.promotable {
-        // Enabled accent affordance — a soft accent pill with an accent label.
-        let pill = Container::new(
+        // Enabled accent BUTTON — pressing it promotes THIS tuned config into the
+        // forward paper-trade. Carries the closed `PromoteParams` (self-contained;
+        // no mirror re-lookup). Styled as the soft-accent pill it always was.
+        Button::new(
             Text::new(TUNE_USE_CONFIG)
                 .size(text::SMALL)
                 .color(color::ACCENT.current(mode)),
         )
         .padding([space::XXS as u16, space::S as u16])
-        .style(move |_t: &iced::Theme| iced::widget::container::Style {
+        .width(Length::Fixed(W_USE))
+        .on_press(Message::PromoteSweptConfig(cell.promote_params.clone()))
+        .style(move |_t: &iced::Theme, _s: button::Status| button::Style {
             background: Some(color::ACCENT_SOFT.current(mode).into()),
             border: Border {
                 color: color::ACCENT.current(mode),
                 width: 1.0,
                 radius: radius::R3.into(),
             },
-            text_color: Some(color::ACCENT.current(mode)),
+            text_color: color::ACCENT.current(mode),
             ..Default::default()
-        });
-        Container::new(pill).width(Length::Fixed(W_USE)).into()
+        })
+        .into()
     } else {
         // Disabled greyed lock + the inline "overfitting" note (stacked).
         let locked = Container::new(

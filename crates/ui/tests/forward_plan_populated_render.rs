@@ -292,6 +292,125 @@ fn forward_plan_empty_paints_no_plan() {
     );
 }
 
+// ── advisor-param-promotion (ADR-0070 § D6/§ T12 Proof 2) — promoted plan ──────
+//
+// When the operator clicks "Use this config" on a PROMOTABLE Tune row, the
+// forward plan is preseeded from THAT tuned config + `pending_forward_promotion`
+// flips, so the plan leads with the "you tuned this … not a guarantee, not
+// advice" provenance strip (a WARN_500-bordered card just below the headline) —
+// distinct from the crowned "best of the bake-off" framing. The plan body shows
+// the TUNED rules (fast 10 / slow 20), not the shipped 20/50.
+//
+// The provenance strip sits in the HEADER band (below the H1 headline + caption,
+// above the not-a-prediction framing banner). The negative control is the SAME
+// active plan WITHOUT promotion (no strip): it paints strictly LESS foreground in
+// that header band.
+
+/// Top of the PROVENANCE-STRIP band — below the H1 headline + caption.
+const PROVENANCE_TOP: u32 = 92;
+/// Bottom of the PROVENANCE-STRIP band — above the not-a-prediction framing
+/// banner (the promoted plan adds ~one extra card here; the non-promoted plan
+/// has only the framing banner, which starts lower).
+const PROVENANCE_BOTTOM: u32 = 175;
+
+/// Foreground in the provenance-strip band — the "you tuned this …" copy. High on
+/// a promoted plan (the strip rendered); low on a non-promoted plan (no strip,
+/// just whitespace between caption and the framing banner).
+fn provenance_band_foreground(w: u32, rgba: &[u8]) -> u64 {
+    foreground_in_band(w, rgba, PROVENANCE_TOP, PROVENANCE_BOTTOM)
+}
+
+/// **Proof 2 — the promoted forward plan.** A `Cockpit` preseeded from a PROMOTION
+/// (a `pending_forward_promotion` with TUNED SMA
+/// params, fast 10 / slow 20) MUST paint, in the cockpit Forward-plan screen:
+/// - the "you tuned this … not a guarantee, not advice" PROVENANCE strip in the
+///   header band (the only live promote-vs-crown signal);
+/// - the TUNED IF/THEN rules in the rules band (ACCENT keywords — the conditional
+///   structure of the tuned config rendered);
+/// - a healthy amount of foreground overall.
+///
+/// Writes `/tmp/forward_plan_promoted_render.png`.
+#[test]
+fn forward_plan_promoted_paints_provenance_and_tuned_rules() {
+    let cockpit = ui::fixtures::fake_cockpit_forward_plan_promoted();
+    assert!(
+        cockpit.pending_forward_promotion.is_some(),
+        "the promoted fixture must carry a pending_forward_promotion (the provenance source)"
+    );
+
+    let (w, h, rgba) = render_forward_plan_rgba(cockpit);
+
+    // Operator-facing deliverable (memory: verify UI at the render layer).
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/forward_plan_promoted_render.png");
+    }
+
+    let provenance_fg = provenance_band_foreground(w, &rgba);
+    let rules_accent = rules_band_accent(w, &rgba);
+    let fg = foreground_pixels(w, h, &rgba);
+
+    // The "you tuned this …" provenance strip rendered in the header band.
+    assert!(
+        provenance_fg > 600,
+        "the promote-provenance strip ('You tuned this … not a guarantee, not \
+         advice') must paint in the header band (expected >600 fg px, got \
+         {provenance_fg}). If low, the provenance header did not render. \
+         PNG: /tmp/forward_plan_promoted_render.png"
+    );
+    // The TUNED rules rendered (IF/THEN accent — the conditional structure).
+    assert!(
+        rules_accent > 60,
+        "the tuned plan's IF/THEN keywords must paint ACCENT teal in the RULES \
+         band (expected >60 teal px, got {rules_accent}). \
+         PNG: /tmp/forward_plan_promoted_render.png"
+    );
+    // The full promoted plan (strip + framing + four blocks + disclaimers).
+    assert!(
+        fg > 7000,
+        "the promoted plan must paint a lot of foreground text (expected >7000 \
+         px, got {fg}). PNG: /tmp/forward_plan_promoted_render.png"
+    );
+}
+
+/// **Proof 2 negative control — no provenance strip without promotion.** The SAME
+/// active SMA plan WITHOUT a `pending_forward_promotion` (the crowned-pick path)
+/// paints STRICTLY LESS foreground in the provenance-strip band — there is no
+/// "you tuned this" header, just whitespace between the caption and the framing
+/// banner. Proves the promoted guard is not a tautology (the strip is the live
+/// promote-vs-crown signal, not chrome).
+#[test]
+fn forward_plan_crowned_has_no_provenance_strip() {
+    // Promoted: the strip is present.
+    let promoted = ui::fixtures::fake_cockpit_forward_plan_promoted();
+    // Crowned (no promotion): the same active SMA plan, no pending_forward_promotion.
+    let crowned = ui::fixtures::fake_cockpit_forward_plan(PanelState::Ready(
+        ui::fixtures::fake_forward_plan(),
+    ));
+    assert!(
+        crowned.pending_forward_promotion.is_none(),
+        "the crowned-pick control must NOT carry a pending_forward_promotion"
+    );
+
+    let (wp, _hp, rp) = render_forward_plan_rgba(promoted);
+    let (wc, hc, rc) = render_forward_plan_rgba(crowned);
+
+    if let Some(img) = image::RgbaImage::from_raw(wc, hc, rc.clone()) {
+        let _ = img.save("/tmp/forward_plan_crowned_control_render.png");
+    }
+
+    let promoted_strip = provenance_band_foreground(wp, &rp);
+    let crowned_strip = provenance_band_foreground(wc, &rc);
+
+    assert!(
+        promoted_strip > crowned_strip + 300,
+        "the promoted plan must paint clearly MORE foreground in the provenance \
+         band than the crowned-pick plan (promoted {promoted_strip} vs crowned \
+         {crowned_strip}) — proof the 'you tuned this' header is the live \
+         promote-vs-crown signal, not shared chrome. \
+         PNGs: /tmp/forward_plan_{{promoted,crowned_control}}_render.png"
+    );
+}
+
 /// **RSI-reversion render guard.** Verifies that the FAITHFUL RSI rule copy
 /// (flip-to-false exit at RSI > 30, NO overbought-70 claim, plus the
 /// compound-condition caveat) actually renders in the cockpit Forward-plan

@@ -1801,6 +1801,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("TUNE_DISTRIBUTION_CAPTION", TUNE_DISTRIBUTION_CAPTION),
         ("TUNE_BENCHMARK_STRIP_FMT", TUNE_BENCHMARK_STRIP_FMT),
         ("TUNE_DISCLAIMER", TUNE_DISCLAIMER),
+        // advisor-param-promotion (ADR-0070 § D6)
+        ("TUNE_PROMOTE_CONFIRM_FMT", TUNE_PROMOTE_CONFIRM_FMT),
+        ("TUNE_PROMOTE_WINDOW_FALLBACK", TUNE_PROMOTE_WINDOW_FALLBACK),
         // advisor-forward-plan v0.1.0 (roadmap F6)
         ("FORWARD_PLAN_SIDEBAR_LABEL", FORWARD_PLAN_SIDEBAR_LABEL),
         ("FORWARD_PLAN_HEADLINE", FORWARD_PLAN_HEADLINE),
@@ -2992,6 +2995,22 @@ pub const TUNE_DISCLAIMER: &str = "Tuning is paper/sim research, not advice. A c
      great in-sample but is flagged fragile is overfit — it won fit to noise that resampling \
      dissolves. The bake-off already searches sensible defaults; a tuned config is only worth \
      carrying forward if it is robust AND beats just holding {coin}.";
+
+// ── advisor-param-promotion (ADR-0070 § D6) — promotion provenance framing ─────
+
+/// The promote-provenance header on the forward-plan screen when the active plan
+/// came from a PROMOTION (vs a crowned bake-off pick). Distinct from the crowned
+/// "best of the bake-off" provenance — this is the ONLY live promote-vs-crown
+/// signal (ADR-0070 § R5). `{family}` / `{params}` / `{window}` are filled at the
+/// call site from `PromoteParams.label()` + the sweep window. Honest framing: a
+/// config robust on ONE window is NOT a guarantee, and not advice.
+pub const TUNE_PROMOTE_CONFIRM_FMT: &str = "You tuned this {family} config ({params}). It survived \
+     resampling on {window} — that is not a guarantee, and not advice. Paper-trading your \u{20ac}200.";
+
+/// Defensive fallback window label for the promotion honesty copy when no sweep
+/// result is on screen (promotion is only reachable from a `Ready` grid row, so
+/// this is never expected — but the copy must never read "on {window}" literally).
+pub const TUNE_PROMOTE_WINDOW_FALLBACK: &str = "the tuned window";
 
 // ── advisor-forward-plan v0.1.0 (roadmap F6) — the forward buy/sell plan ───────
 //

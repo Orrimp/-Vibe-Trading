@@ -115,14 +115,76 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // F7 — thread the FX note from the Cockpit model into the sizing block.
     let fx_note: Option<&FxNote> = model.forward_fx.as_ref();
 
-    Column::new()
+    let mut col = Column::new()
         .padding(space::L as u16)
         .spacing(space::L)
-        .push(header_text(mode))
-        .push(result_body(&st.plan, fx_note, mode))
+        .push(header_text(mode));
+
+    // advisor-param-promotion (ADR-0070 § D6) — when the active plan came from a
+    // PROMOTION, lead with the "you tuned this" provenance strip (distinct from
+    // the crowned "best of the bake-off" framing — the ONLY live promote-vs-crown
+    // signal). Keyed on `pending_forward_promotion` being `Some` (set on promote,
+    // cleared when a crowned pick launches), so it reads the SAME tuned params the
+    // loop runs and never lingers over a crowned plan.
+    if let Some(promotion) = &model.pending_forward_promotion {
+        col = col.push(promote_provenance_strip(promotion, mode));
+    }
+
+    col.push(result_body(&st.plan, fx_note, mode))
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+// ── Promote provenance strip (ADR-0070 § D6 — the "you tuned this" header) ──────
+
+/// The promote-provenance header — a `WARN_500`-bordered strip (the same
+/// honesty-tinted card the not-a-prediction banner uses) that names the tuned
+/// config, the window it survived resampling on, and restates "not a guarantee,
+/// not advice". Shown ONLY when the active plan came from a promotion (vs a
+/// crowned pick) — the only live signal of which provenance is running. The
+/// persistent not-advice footer below it still stays.
+fn promote_provenance_strip(
+    promotion: &crate::state::ForwardPromotion,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    let family = family_label(&promotion.params);
+    let line = crate::strings::TUNE_PROMOTE_CONFIRM_FMT
+        .replace("{family}", family)
+        .replace("{params}", promotion.params.label().as_str())
+        .replace("{window}", promotion.window_label.as_str());
+
+    Container::new(
+        Text::new(line)
+            .size(text::BODY)
+            .color(color::FG_1.current(mode))
+            .width(Length::Fill),
+    )
+    .width(Length::Fill)
+    .padding(space::M as u16)
+    .style(move |_t: &iced::Theme| iced::widget::container::Style {
+        background: Some(color::PANEL_RAISED.current(mode).into()),
+        border: Border {
+            color: color::WARN_500.current(mode),
+            width: 1.0,
+            radius: radius::R4.into(),
+        },
+        text_color: Some(color::FG_1.current(mode)),
+        ..Default::default()
+    })
+    .into()
+}
+
+/// The plain-language family word for the promote-provenance copy. Mirrors the
+/// Tune family labels (closed `PromoteParams` → static word).
+fn family_label(params: &crate::tune::PromoteParams) -> &'static str {
+    use crate::tune::PromoteParams;
+    match params {
+        PromoteParams::Sma { .. } => crate::strings::TUNE_FAMILY_SMA,
+        PromoteParams::Macd { .. } => crate::strings::TUNE_FAMILY_MACD,
+        PromoteParams::Rsi { .. } => crate::strings::TUNE_FAMILY_RSI,
+        PromoteParams::Bollinger { .. } => crate::strings::TUNE_FAMILY_BOLLINGER,
+    }
 }
 
 /// Headline (`H1`) over caption (`BODY`, muted) — the screen's plain-language

@@ -372,6 +372,76 @@ fn sweep_fragile_promote_disabled_accent_discriminator() {
     );
 }
 
+/// **advisor-param-promotion (ADR-0070 § T12 Proof 1) — the WIRED button.** The
+/// "Use this config" affordance on a promotable row is now an ENABLED accent
+/// BUTTON (it carries `on_press(Message::PromoteSweptConfig(..))`); the FRAGILE
+/// row keeps its greyed locked LABEL (no press). This proof pins the
+/// discriminator at the pixel layer: the populated mix (promotable rows) paints
+/// the enabled accent affordance in the USE column; an all-fragile grid (every
+/// row locked) paints ~none. It is the SAME mechanism the
+/// `sweep_fragile_promote_disabled_accent_discriminator` test guards — restated
+/// here as the explicit promotion-wiring proof so a regression that reverts the
+/// button to a no-op label (or weakens the FRAGILE lock) fails LOUDLY.
+///
+/// FAIL-before: with the affordance still a non-pressable visual `Container`
+/// pill, this test's accent assertion holds AT THE PIXEL LAYER (the pill looked
+/// identical) — so the pixel guard is NOT, alone, proof of the wiring. The
+/// load-bearing wiring proof is the `state.rs` pure-state test
+/// (`promote_swept_config` sets `pending_forward_promotion` + navigates) + the
+/// Proof-2 promoted-plan render; this guard proves the AFFORDANCE renders as the
+/// enabled, eligible state vs the locked one. Writes both PNGs.
+#[test]
+fn sweep_promotable_use_config_is_enabled_accent_button() {
+    use ui::tune::SweepVerdictLabel;
+
+    // Populated mix → promotable rows carry the enabled accent button.
+    let mixed = ui::fixtures::fake_sweep_report_mirror();
+    assert!(
+        mixed.cells.iter().any(|c| c.promotable),
+        "the mix must contain at least one promotable row (the enabled button)"
+    );
+    // All-fragile control → every affordance is the locked label (no accent).
+    let mut all_fragile = ui::fixtures::fake_sweep_report_mirror();
+    for cell in &mut all_fragile.cells {
+        cell.verdict = SweepVerdictLabel::Fragile;
+        cell.promotable = false;
+    }
+    all_fragile.baseline.verdict = SweepVerdictLabel::Fragile;
+    all_fragile.baseline.promotable = false;
+
+    let mixed_cockpit = ui::fixtures::fake_cockpit_tune(PanelState::Ready(mixed));
+    let fragile_cockpit = ui::fixtures::fake_cockpit_tune(PanelState::Ready(all_fragile));
+
+    let (mw, mh, mrgba) = render_tune_rgba(mixed_cockpit);
+    let (fw, fh, frgba) = render_tune_rgba(fragile_cockpit);
+
+    if let Some(img) = image::RgbaImage::from_raw(mw, mh, mrgba.clone()) {
+        let _ = img.save("/tmp/param_sweep_promote_button_mixed.png");
+    }
+    if let Some(img) = image::RgbaImage::from_raw(fw, fh, frgba.clone()) {
+        let _ = img.save("/tmp/param_sweep_promote_button_allfragile.png");
+    }
+
+    let mixed_accent = grid_accent_pixels(mw, mh, &mrgba);
+    let fragile_accent = grid_accent_pixels(fw, fh, &frgba);
+
+    assert!(
+        mixed_accent > 150,
+        "the promotable rows' ENABLED 'Use this config' BUTTON must paint ACCENT \
+         teal (expected >150 px, got {mixed_accent}). If this fails the wired \
+         affordance did not render as the enabled accent state. \
+         PNG: /tmp/param_sweep_promote_button_mixed.png"
+    );
+    assert!(
+        mixed_accent > fragile_accent + 100,
+        "the promotable button accent ({mixed_accent}) must clearly exceed the \
+         all-fragile grid ({fragile_accent}) — proof the FRAGILE lock stays a \
+         greyed label (no on_press, no accent) while the promotable row is the \
+         enabled accent button. The lock is SACRED — a fragile config can never \
+         promote. PNGs: /tmp/param_sweep_promote_button_{{mixed,allfragile}}.png"
+    );
+}
+
 // ── Composed-family form + result grid (T7b) ──────────────────────────────────
 //
 // The T7b flip makes MACD / RSI / Bollinger runnable: selecting a composed

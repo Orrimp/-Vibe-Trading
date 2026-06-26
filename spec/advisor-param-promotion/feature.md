@@ -1,9 +1,9 @@
 ---
 slug: advisor-param-promotion
-status: draft
-owner: architect
+status: dev-done
+owner: ui-designer
 version: 0.1.0
-updated: 2026-06-25
+updated: 2026-06-26
 ---
 
 # Promotion wiring — carry a Tune-editor ROBUST config into the forward €200 paper-trade
@@ -448,12 +448,148 @@ untouched. Edition 2024 — no new code patterns. No stdlib-shadowing crate name
 
 All 7 pass; existing 8 fidelity tests unchanged; 119/119 anchors; clippy --workspace --all-targets -D warnings clean; `cargo fmt --check` exit 0; `crates/ui/src/screens/` UNTOUCHED.
 
+**Groups D, E, F — UI WIRING (2026-06-26, ui-designer)**
+
+**D — the UI carrier + message + pure handler:**
+- `crates/ui/src/tune/state.rs`: new UI-side closed enum `PromoteParams`
+  (Sma/Macd/Rsi/Bollinger, `k` as `k_tenths: u32`, `Clone+Eq`) + a private
+  `PromoteParams::from_swept(&backtest::SweptParams)` mapper called from
+  `cell_to_row` (the ONE boundary — `from_report` stays the only place
+  `SweptParams` is read); `promote_params: PromoteParams` field added to
+  `SweepCellRow`; `PromoteParams::label()` for the honesty copy. Bollinger `k:
+  Decimal → k_tenths` via `(k × 10).round().to_u32()` (grid presets are
+  tenths-exact). Re-exported from `tune/mod.rs`.
+- `crates/ui/src/tune/screen_state.rs`: `TuneScreenState::range_label_or_default()`
+  reads the `Ready` mirror's `range_label` (the window the gate scored) for the
+  honesty copy.
+- `crates/ui/src/state.rs`: `Message::PromoteSweptConfig(PromoteParams)` +
+  `ForwardPromotion { strategy_id, coin, params, window_label }` (core+UI types
+  only) + two new `Cockpit` fields (`pending_forward_promotion:
+  Option<ForwardPromotion>`, `promote_framing: bool`) + the pure `update` arm →
+  `promote_swept_config(model, params)` helper (mirrors `open_strategy_in_lab`):
+  family → forward `StrategyId` (`v0.5.{sma,macd,rsi,bbands}`), preseed the
+  target, set `promote_framing`, flip the plan to `Loading`, navigate to
+  `Screen::ForwardPlan`. NO engine type in `update`.
+- Fixtures (`fixtures.rs`) + the `tune/state.rs` unit tests updated for the new
+  `SweepCellRow` field (R1).
+
+**E — the affordance + the binary launch:**
+- `crates/ui/src/screens/tune.rs`: `use_config_cell` promotable branch is now a
+  REAL `Button` with `on_press(Message::PromoteSweptConfig(cell.promote_params
+  .clone()))`; the FRAGILE branch is UNCHANGED (greyed locked label, NO press —
+  the anti-overfit lock). The "WIRING is out of scope" comment removed.
+- `crates/ui/src/bin/cockpit_live.rs`: free `promote_params_to_override(&PromoteParams)
+  → agent::ForwardParamOverride` (the single UI→agent map, binary-side); a
+  `#[cfg(feature = "live")]` dispatch block (mirroring the crowned-pick
+  `BakeoffRunCompleted` launch) that `take()`s `pending_forward_promotion`, reuses
+  the F7/ADR-0065 €200→USDT conversion verbatim, builds `ForwardRunConfig { …,
+  param_override: Some(..) }`, `try_send`s `ForwardCommand::Launch`, and emits
+  `ForwardPaperTradeStarted`. State stays pure; only the async launch is binary.
+
+**F — honesty copy + render-pixel proofs:**
+- `crates/ui/src/strings.rs`: `TUNE_PROMOTE_CONFIRM_FMT` ("You tuned this {family}
+  config ({params}). It survived resampling on {window} — that is not a
+  guarantee, and not advice. Paper-trading your €200.") + `TUNE_PROMOTE_WINDOW_FALLBACK`;
+  both registered in `all()`.
+- `crates/ui/src/screens/forward_plan.rs`: a `promote_provenance_strip` (WARN_500
+  -bordered card, the honesty-tinted treatment) rendered in the header band ONLY
+  when `promote_framing` is set — the only live promote-vs-crown signal. The
+  persistent not-advice footer stays.
+- Pure-state FAIL-before tests: `crates/ui/tests/promote_swept_config.rs` (preseed
+  + nav + family→id map + window-label carry — the load-bearing wiring proof) +
+  the new `tune/state.rs` `from_report_populates_promote_params_*` /
+  `promote_params_from_swept_*` tests.
+- Render-pixel proofs: `crates/ui/tests/param_sweep_render.rs`
+  `sweep_promotable_use_config_is_enabled_accent_button` (Proof 1 — enabled accent
+  button vs all-fragile locked control); `crates/ui/tests/forward_plan_populated_render.rs`
+  `forward_plan_promoted_paints_provenance_and_tuned_rules` +
+  `forward_plan_crowned_has_no_provenance_strip` (Proof 2 — promoted plan +
+  provenance strip + tuned rules, with the crowned-pick negative control). New
+  fixture `fake_cockpit_forward_plan_promoted` (tuned SMA 10/20, promote_framing).
+
+## UI
+
+The promotion-wiring surface is two existing screens (no new screen): the **Tune**
+result grid's "Use this config" affordance becomes a live button, and the
+**Forward-plan** screen grows a provenance header when the plan came from a
+promotion.
+
+### Wireframe — the wired Tune row + the promoted forward plan
+
+```text
+Tune result grid (the promotable row's action cell is now a BUTTON):
+  Config        Verdict  …  Max-DD p95   [ Use this config ]   ← ENABLED accent BUTTON
+  fast=15,sl=30 fragile  …  62%          [ Fragile — locked ]  ← greyed LABEL (unchanged)
+                                          Fragile under resampling…  (inline note, unchanged)
+
+Click "Use this config" on a promotable row → preseed + navigate ↓
+
+Forward plan (promote_framing = true):
+  ┌─ Forward plan ────────────────────────────────────────────────┐
+  │ Forward plan                                                   │  H1 headline (unchanged)
+  │ What the crowned strategy will do…                             │  caption (unchanged)
+  ├────────────────────────────────────────────────────────────────┤
+  │ You tuned this SMA crossover config (fast 10 / slow 20). It    │  ← NEW provenance strip
+  │ survived resampling on 2024 H1 — that is not a guarantee, and  │     (WARN_500-bordered,
+  │ not advice. Paper-trading your €200.                          │      only when promoted)
+  ├────────────────────────────────────────────────────────────────┤
+  │ ⚠ This is a conditional, rule-based plan — NOT a price        │  framing banner (unchanged)
+  │ … Right now / Standing rules (TUNED: fast 10 / slow 20) / …   │  plan body — TUNED rules
+  │ Not financial advice. Simulated €200 paper budget…            │  persistent footer (unchanged)
+  └────────────────────────────────────────────────────────────────┘
+```
+
+### New screens / panels / widgets
+
+- **No new screen, no new widget.** The Tune action cell reuses the existing
+  accent-pill style as a `Button`; the forward-plan provenance strip reuses the
+  not-a-prediction banner's `WARN_500`-bordered-card composition (existing tokens).
+
+### New strings (`ui::strings`)
+
+- `TUNE_PROMOTE_CONFIRM_FMT` — the "you tuned this … not a guarantee, not advice"
+  provenance header ({family}/{params}/{window} filled at the call site).
+- `TUNE_PROMOTE_WINDOW_FALLBACK` — defensive window label when no sweep result is
+  on screen (never expected; promotion is only reachable from a `Ready` row).
+
+### New theme tokens
+
+- **Zero.** All colour/spacing/radii come from existing tokens (`ACCENT`,
+  `ACCENT_SOFT`, `WARN_500`, `PANEL_RAISED`, `FG_1`, `space::*`, `radius::R3/R4`).
+
+### Accessibility notes
+
+- The promotable affordance is a keyboard-focusable `Button` (was an inert
+  `Container`) — it now participates in tab order and emits a typed `Message`.
+- The FRAGILE lock pairs colour (greyed `FG_3`) with the always-present word
+  ("Fragile — locked") + the inline overfitting note — colour is never the only
+  signal, and the lock is unchanged.
+- The provenance strip pairs the `WARN_500` border with the literal copy ("not a
+  guarantee, and not advice") — legible beyond colour; mirrors the framing
+  banner's accessibility treatment.
+- Contrast: the strip's `FG_1`-on-`PANEL_RAISED` body text and the button's
+  `ACCENT`-on-`ACCENT_SOFT` label reuse token pairs already verified ≥ 4.5:1 in
+  `theme`.
+- Both proofs render at `--theme dark`; the tokens are theme-aware
+  (`color::*.current(mode)`) so the light theme renders from the same call sites.
+
 ## Verification
 
 _tester links to reports here_
 
 ## Changelog
 
+- 2026-06-26 (ui-designer): groups D/E/F — wired "Use this config" on a
+  promotable Tune row to launch the forward €200 paper-trade of that tuned
+  config. `PromoteParams` UI carrier (the ONE boundary, no engine type in
+  `view`/`update`) + `Message::PromoteSweptConfig` + pure `promote_swept_config`
+  handler (preseed `pending_forward_promotion` + `promote_framing` + navigate);
+  `use_config_cell` promotable branch → real `Button` (FRAGILE lock UNCHANGED);
+  binary `promote_params_to_override` + `ForwardCommand::Launch` reusing the
+  crowned-pick path (only delta: `param_override: Some(..)`); `TUNE_PROMOTE_CONFIRM_FMT`
+  honesty header on the promoted forward plan; pure-state FAIL-before tests +
+  render-pixel proofs (enabled button vs fragile lock; promoted plan + provenance
+  strip + tuned rules vs crowned control). Engine crates UNTOUCHED.
 - 2026-06-25 (architect): initial design + ADR-0070 — wire promotable Tune
   configs into the forward €200 paper-trade. `ForwardRunConfig.param_override`
   (agent-owned `ForwardParamOverride` enum) honored by `build_registry_for` +

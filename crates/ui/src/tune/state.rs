@@ -20,6 +20,7 @@
 //! No new crate edge is introduced. `backtest` is already a dep of `ui`.
 
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use smol_str::SmolStr;
 
 use crate::leaderboard::state::RobustnessLabel;
@@ -81,6 +82,114 @@ impl SweepDistributionMirror {
     }
 }
 
+// ── Promote params (the UI-side structured carrier — ADR-0070 § D4) ───────────
+
+/// Structured tuned params for one swept cell — the **UI-side closed enum** that
+/// crosses into `Message::PromoteSweptConfig` when the operator clicks
+/// "Use this config" on a promotable row (advisor-param-promotion, ADR-0070).
+///
+/// Mirrors the four sweep families one-for-one, carrying ONLY plain scalars (no
+/// engine type) so it lives happily on `SweepCellRow` and in a `Message`. `k` is
+/// encoded as **tenths** (`k_tenths = 20` → 2.0σ) — the existing
+/// `PlanRuleKind::BollingerReversion` convention — so the enum stays `Clone + Eq`
+/// with no `Decimal` field, and the binary layer converts `k_tenths → Decimal`
+/// exactly where it builds the `agent::ForwardParamOverride`.
+///
+/// Populated at the ONE engine→UI boundary ([`cell_to_row`], from
+/// `backtest::SweptParams`) so `from_report` stays the ONLY place a
+/// `backtest::SweptParams` is read — no engine type ever reaches `view`/`update`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PromoteParams {
+    /// SMA crossover with tuned window lengths.
+    Sma {
+        /// Fast window (periods).
+        fast_len: u32,
+        /// Slow window (periods).
+        slow_len: u32,
+    },
+    /// MACD trend with tuned EMA periods.
+    Macd {
+        /// Fast EMA period.
+        fast: u32,
+        /// Slow EMA period.
+        slow: u32,
+        /// Signal-line smoothing period.
+        signal: u32,
+    },
+    /// RSI reversion with tuned period and oversold threshold.
+    Rsi {
+        /// RSI lookback period.
+        period: u32,
+        /// Oversold entry threshold.
+        oversold: u32,
+    },
+    /// Bollinger reversion with tuned period and k (encoded as tenths; 20 → 2.0σ).
+    Bollinger {
+        /// Bollinger lookback period.
+        period: u32,
+        /// Band multiplier × 10 (`k_tenths = 20` → 2.0σ).
+        k_tenths: u32,
+    },
+}
+
+impl PromoteParams {
+    /// Map a `backtest::SweptParams` to the UI-side carrier. The ONLY place a
+    /// `backtest::SweptParams` is read for promotion (called from [`cell_to_row`],
+    /// itself reachable only through `from_report` — the ONE boundary). Pure +
+    /// total: the Bollinger `k: Decimal` is quantised to tenths via `× 10` (the
+    /// sweep grid's `k` presets are tenths-exact — `{1.5, 2.0, 2.5, 3.0}` — so the
+    /// round is lossless for every config the gate scored).
+    #[must_use]
+    fn from_swept(params: &backtest::SweptParams) -> Self {
+        use backtest::SweptParams;
+        match params {
+            SweptParams::Sma { fast_len, slow_len } => Self::Sma {
+                fast_len: *fast_len,
+                slow_len: *slow_len,
+            },
+            SweptParams::Macd { fast, slow, signal } => Self::Macd {
+                fast: *fast,
+                slow: *slow,
+                signal: *signal,
+            },
+            SweptParams::Rsi { period, oversold } => Self::Rsi {
+                period: *period,
+                oversold: *oversold,
+            },
+            SweptParams::Bollinger { period, k } => Self::Bollinger {
+                period: *period,
+                // k → tenths (2.0 → 20). `to_u32` after the ×10 quantise; defends
+                // against an exotic non-finite k with a 0 fallback (never expected
+                // — the grid presets are tenths-exact).
+                k_tenths: (k * Decimal::from(10)).round().to_u32().unwrap_or(0),
+            },
+        }
+    }
+
+    /// A short human-readable label for the params, for the honesty copy
+    /// (e.g. `"fast 10 / slow 20"`, `"MACD 8 / 20 / 5"`). Distinct from the
+    /// grid's terse `params_label` — this reads in a sentence.
+    #[must_use]
+    pub fn label(&self) -> SmolStr {
+        match self {
+            Self::Sma { fast_len, slow_len } => {
+                SmolStr::new(format!("fast {fast_len} / slow {slow_len}"))
+            }
+            Self::Macd { fast, slow, signal } => {
+                SmolStr::new(format!("MACD {fast} / {slow} / {signal}"))
+            }
+            Self::Rsi { period, oversold } => {
+                SmolStr::new(format!("RSI {period}, oversold {oversold}"))
+            }
+            Self::Bollinger { period, k_tenths } => SmolStr::new(format!(
+                "Bollinger {period}, k {}.{}",
+                k_tenths / 10,
+                k_tenths % 10
+            )),
+        }
+    }
+}
+
 // ── Per-cell row ──────────────────────────────────────────────────────────────
 
 /// One swept cell — the sweep analogue of `LeaderRow`.
@@ -111,6 +220,12 @@ pub struct SweepCellRow {
     pub trade_count: usize,
     /// Bootstrap distribution summary (the ANTI-OVERFITTING affordance, R3).
     pub distribution: SweepDistributionMirror,
+    /// advisor-param-promotion (ADR-0070 § D4) — the structured tuned params,
+    /// carried so the "Use this config" affordance can reconstruct the promote
+    /// target without re-reading any engine type. Present on EVERY cell (incl.
+    /// fragile — the data is here; only the *affordance* is gated behind
+    /// `promotable` in the view). Populated at the ONE boundary ([`cell_to_row`]).
+    pub promote_params: PromoteParams,
 }
 
 // ── KPIs mirror ───────────────────────────────────────────────────────────────
@@ -200,6 +315,9 @@ fn cell_to_row(cell: &backtest::SweepCellResult) -> SweepCellRow {
         in_sample_maxdd: cell.kpis.max_drawdown,
         trade_count: cell.kpis.trade_count,
         distribution: SweepDistributionMirror::from_distribution(&cell.distribution),
+        // ADR-0070 § D4 — map the engine `SweptParams` to the UI carrier HERE (the
+        // ONE boundary). Every cell carries it; the view gates the affordance.
+        promote_params: PromoteParams::from_swept(&cell.params),
     }
 }
 
@@ -400,6 +518,99 @@ mod tests {
             mirror.baseline.params_label.as_str(),
             "fast=20, slow=50",
             "baseline must map from the shipped config (fast=20, slow=50)"
+        );
+    }
+
+    /// advisor-param-promotion (ADR-0070 § D4) — `from_report` populates a
+    /// structured `promote_params` for EVERY cell (incl. the fragile one — the
+    /// data is present; only the affordance is gated in the view). FAILS-before
+    /// (the field did not exist).
+    #[test]
+    fn from_report_populates_promote_params_for_every_cell() {
+        let report = make_report();
+        let mirror = SweepReportMirror::from_report(&report);
+
+        // make_cell builds SMA cells (10/20, 10/30, 15/30); the carrier must
+        // round-trip the exact tuned lens.
+        assert_eq!(
+            mirror.cells[0].promote_params,
+            PromoteParams::Sma {
+                fast_len: 10,
+                slow_len: 20
+            },
+            "cell 0 promote_params must carry the tuned SMA lens"
+        );
+        // The FRAGILE cell (15/30) STILL carries its params — the lock is on the
+        // affordance, not the data.
+        assert_eq!(
+            mirror.cells[2].promote_params,
+            PromoteParams::Sma {
+                fast_len: 15,
+                slow_len: 30
+            },
+            "the FRAGILE cell must still carry promote_params (data present, \
+             affordance gated)"
+        );
+        assert!(
+            !mirror.cells[2].promotable,
+            "sanity: cell 2 is the fragile one"
+        );
+        // The baseline carries the shipped lens.
+        assert_eq!(
+            mirror.baseline.promote_params,
+            PromoteParams::Sma {
+                fast_len: 20,
+                slow_len: 50
+            },
+        );
+    }
+
+    /// ADR-0070 § D4 — `PromoteParams::from_swept` maps each family one-for-one,
+    /// quantising the Bollinger `k: Decimal` to tenths (2.5 → 25) losslessly.
+    #[test]
+    fn promote_params_from_swept_maps_every_family() {
+        assert_eq!(
+            PromoteParams::from_swept(&SweptParams::Sma {
+                fast_len: 7,
+                slow_len: 14
+            }),
+            PromoteParams::Sma {
+                fast_len: 7,
+                slow_len: 14
+            }
+        );
+        assert_eq!(
+            PromoteParams::from_swept(&SweptParams::Macd {
+                fast: 8,
+                slow: 20,
+                signal: 5
+            }),
+            PromoteParams::Macd {
+                fast: 8,
+                slow: 20,
+                signal: 5
+            }
+        );
+        assert_eq!(
+            PromoteParams::from_swept(&SweptParams::Rsi {
+                period: 10,
+                oversold: 25
+            }),
+            PromoteParams::Rsi {
+                period: 10,
+                oversold: 25
+            }
+        );
+        // k = 2.5σ → tenths 25 (the grid presets {1.5,2.0,2.5,3.0} are tenths-exact).
+        assert_eq!(
+            PromoteParams::from_swept(&SweptParams::Bollinger {
+                period: 20,
+                k: dec!(2.5)
+            }),
+            PromoteParams::Bollinger {
+                period: 20,
+                k_tenths: 25
+            }
         );
     }
 
