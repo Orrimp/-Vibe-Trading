@@ -48,8 +48,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use tempfile::tempdir;
 use trading_core::{
-    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side,
-    StrategyId, Symbol, Timestamp, Venue,
+    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, StrategyId, Symbol,
+    Timestamp, Venue,
 };
 
 #[path = "../../reports/tests/fixtures/build_ledger_with_open_positions_7d.rs"]
@@ -325,12 +325,14 @@ async fn t1005_d7_sell_to_open_materializes_as_signed_position() {
     assert_eq!(pos.symbol, Symbol::new("BTCUSDT"), "symbol");
     assert!(
         pos.qty < Decimal::ZERO,
-        "short position qty must be negative (ADR-0068 D7); got qty={}", pos.qty
+        "short position qty must be negative (ADR-0068 D7); got qty={}",
+        pos.qty
     );
     assert_eq!(
         pos.qty,
         dec!(-0.5),
-        "qty must equal -(fill qty); got: {}", pos.qty
+        "qty must equal -(fill qty); got: {}",
+        pos.qty
     );
     assert_eq!(
         pos.avg_cost_basis,
@@ -387,8 +389,13 @@ async fn t1005_d7_long_position_byte_identical_after_relaxation() {
     let pos = &positions[0];
     assert!(
         pos.qty > Decimal::ZERO,
-        "long position qty must be positive; got: {}", pos.qty
+        "long position qty must be positive; got: {}",
+        pos.qty
     );
     assert_eq!(pos.qty, dec!(0.01), "long qty");
-    assert_eq!(pos.avg_cost_basis, Money::from_decimal(dec!(60_000)), "long avg_cost_basis");
+    assert_eq!(
+        pos.avg_cost_basis,
+        Money::from_decimal(dec!(60_000)),
+        "long avg_cost_basis"
+    );
 }

@@ -27,8 +27,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{
-    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side,
-    StrategyId, Symbol, Timestamp, Venue,
+    FeeTier, Fill, FillId, Liquidity, Money, OrderId, Price, Quantity, Side, StrategyId, Symbol,
+    Timestamp, Venue,
 };
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -292,7 +292,8 @@ async fn t1002_net_negative_emits_signed_position() {
     let pos = &positions[0];
     assert!(
         pos.qty < Decimal::ZERO,
-        "short qty must be negative (ADR-0068 D7); got: {}", pos.qty
+        "short qty must be negative (ADR-0068 D7); got: {}",
+        pos.qty
     );
     assert_eq!(pos.qty, dec!(-1), "qty must equal -(sell qty)");
     assert_eq!(

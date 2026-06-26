@@ -95,7 +95,9 @@ impl FundingRate {
     /// the accrual is broken.
     #[must_use]
     pub fn zero() -> Self {
-        Self { rate: Decimal::ZERO }
+        Self {
+            rate: Decimal::ZERO,
+        }
     }
 
     /// The raw 8-hour rate.
@@ -132,7 +134,12 @@ impl FundingRate {
     ///
     /// Returns `Decimal::ZERO` when `rate == 0` (negative control, no cost).
     #[must_use]
-    pub fn cashflow_for_position(&self, qty: Decimal, mark: Decimal, bar_hours: Decimal) -> Decimal {
+    pub fn cashflow_for_position(
+        &self,
+        qty: Decimal,
+        mark: Decimal,
+        bar_hours: Decimal,
+    ) -> Decimal {
         if self.rate == Decimal::ZERO {
             return Decimal::ZERO;
         }
