@@ -1,6 +1,6 @@
 ---
 slug: advisor-param-promotion
-status: dev-done
+status: presenter-done
 owner: ui-designer
 version: 0.1.0
 updated: 2026-06-26
