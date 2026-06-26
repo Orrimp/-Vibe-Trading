@@ -205,7 +205,7 @@ reachability is UNCHANGED. Not-financial-advice + paper-only disclaimers stand.
 ## References
 
 - Feature: [`advisor-signal-library-expansion/feature.md`](../../advisor-signal-library-expansion/feature.md)
-  (§ Design D0–D9), [`tasks.md`](../../advisor-signal-library-expansion/tasks.md).
+  (compressed to a CHANGELOG stub 2026-06-26; the full § Design D0–D9 + tasks are in `git log`).
 - Trace: `REQ-ADVISOR-SIGNAL-LIBRARY-EXPANSION-001`.
 - Leans on / relates to: ADR-0067 (pre-registered combination slate), ADR-0068
   (single-coin short-selling — sibling arm-class pattern), ADR-0066 (benchmark
