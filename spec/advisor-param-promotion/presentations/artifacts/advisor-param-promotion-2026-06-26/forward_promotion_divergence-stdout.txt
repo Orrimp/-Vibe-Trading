@@ -1,0 +1,9 @@
+running 7 tests
+test t6c_plan_none_path_emits_default_lens ... ok
+test t6c_plan_reflects_tuned_sma_override ... ok
+test t6a_sma_param_override_produces_divergent_signals ... ok
+test t6b_rsi_agent_toml_byte_equals_sweep_generator ... ok
+test t6b_macd_agent_toml_byte_equals_sweep_generator ... ok
+test t6b_bbands_agent_toml_byte_equals_sweep_generator ... ok
+test t6a_macd_param_override_produces_divergent_signals ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

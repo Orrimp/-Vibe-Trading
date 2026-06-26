@@ -1,0 +1,12 @@
+cockpit-smoke gate — advisor-param-promotion (orchestrator-run, per AGENT.md pre-tick gate)
+bin: target/debug/cockpit (--features fixtures) | window: 7s | RUST_BACKTRACE=1 RUST_LOG=info
+
+RESULT: PASS
+- process PID 62908 ALIVE at 3s AND at 7s (pgrep), then pkill -9 found-and-killed it (exit 0)
+  → the binary booted and ran the full event loop for the whole window; it did NOT exit early.
+- 0 panic signatures (grep "panicked at" / "non-unwinding panic" / "fatal runtime error").
+- stderr/stdout empty: the iced fixtures cockpit emits no tracing by default — an empty stream
+  with a demonstrably-alive 7s process is the clean state (no first-frame render panic).
+
+Covering proofs (stronger, exercise the actual promotion screens via the iced emulator):
+  param_sweep_render 9/9, forward_plan_populated_render 8/8, promote_swept_config 3/3.
