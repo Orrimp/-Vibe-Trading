@@ -1,10 +1,15 @@
 ---
 slug: advisor-options-impliedvol-probe
-version: 0.1.0
-status: proposed
-owner: analyst
+version: 0.2.0
+status: arch-done
+owner: architect
 priority: P2
 updated: 2026-06-26
+arch_refs:
+  - spec/architecture/adr/0072-dvol-implied-vol-exogenous-series-probe.md
+  - spec/architecture/adr/0058-pit-as-of-series-primitive.md
+  - spec/architecture/adr/0059-bakeoff-orchestrator-home-and-result-seam.md
+  - spec/architecture/adr/0071-obv-dsl-primitive-and-signal-arm-expansion.md
 related:
   - spec/dev-notes/onchain-netflow-spike-2026-06-08.md
   - spec/dev-notes/onchain-vs-conclude-fork-2026-06-08.md
@@ -480,3 +485,392 @@ signal (no grid, no PIT-relabeling guard to invent — DVOL is clean by construc
   lane available; durable=spike-first). NO product code, NO git, NO trace.toml/product.md
   touched (orchestrator reconciles; sibling analyst scoping in parallel). status=proposed,
   owner=analyst, v0.1.0.
+- 2026-06-26 (architect, FULL design + ADR-0072): authored § Design + tasks.md. **One
+  load-bearing correction to the analyst's seam read (§3.3), grounded in code:** the
+  analyst's proposed `ScoreSource::DvolRegime` + `SweepFamily` registration (feature.md
+  §3.2/§3.3) targets the **cross-sectional / param-sweep** machinery
+  (`crates/strategy/src/cross_sectional/config.rs:56`, `crates/backtest/src/bakeoff/sweep.rs:77`).
+  But the operator wants a **single-coin time-series long/flat arm benchmarked vs
+  buy-and-hold IN THE BAKE-OFF** — and the bake-off arm path is NOT the cross-sectional
+  one. Bake-off arms are `v0.*` strategy-id strings dispatched in `run_scenario`'s match
+  (`crates/backtest/src/engine.rs:945`+), built as `Box<dyn Strategy>` and run through the
+  single-coin bar-loop `crates/backtest/src/scenarios/sma_composed_run.rs` (`registry.on_bar(&bar)`).
+  The DVOL arm therefore registers as a NEW `v0.dvol_regime` arm in `default_field()` +
+  a NEW match-arm in `run_scenario`, NOT a `ScoreSource`/`SweepFamily` variant. Second
+  correction: the signal DSL `Expr` (`crates/strategy/src/composed/ast.rs:48`) reads ONLY
+  bar fields / indicators / static `[params]` scalars — it has NO per-bar exogenous-series
+  term, so the DVOL arm CANNOT be a DSL `ComposedStrategy` (confirming the analyst's NB).
+  It is a **hand-written `DvolRegimeStrategy: Strategy`** holding the pre-resolved as-of
+  DVOL `Vec<Option<Decimal>>`, emitting Buy/Sell from `on_bar`. The exogenous DVOL series
+  rides a NEW `ScenarioConfig.dvol_override` injection seam (mirrors the existing
+  `funding_override`/`basis_override` fields the cross-sectional paths already carry —
+  `crates/backtest/src/engine.rs:1057`) threaded by the bake-off loop. Everything ELSE in
+  the analyst brief stands: REUSE `basis_data.rs` as-of join + no-look-ahead falsifier +
+  REVISION loader (cloned to `dvol_data.rs`, both via ADR-0058 `PitSeries::as_of_value`);
+  `fetch_binance_premium.rs` fetcher template → `fetch_deribit_dvol`; `data/deribit-dvol/`
+  REVISION-pin; `dvol_diag.rs` spike (T1) cloned from `basis_diag.rs`; the two day-1
+  gates (divergence ≥1bp + leak-check); `write_report=false` → anchor-safe (119/119);
+  frozen `classify_verdict` gate + BH benchmark. status=in-progress, owner=architect, v0.2.0.
+
+---
+
+## Design (architect)
+
+> **Scope of this section.** Converts the analyst's FEASIBLE verdict into a buildable
+> single-coin bake-off arm. Every claim is grounded in code (file:line). The decision
+> record + alternatives live in [ADR-0072](../architecture/adr/0072-dvol-implied-vol-exogenous-series-probe.md);
+> this section is the developer-facing "what to build". Two analyst seam reads are
+> corrected here (the `ScoreSource`/`SweepFamily` registration target and the DSL-vs-hand-written
+> question) — see § D-DVOL.3 and the Changelog entry above.
+
+### D-DVOL.0 — Component map
+
+```mermaid
+flowchart TD
+    subgraph fetch["Fetch + pin (offline, one-shot)"]
+        A["fetch_deribit_dvol bin\n(clone of fetch_binance_premium)"] -->|"public/get_volatility_index_data\nBTC + ETH, daily"| B["data/deribit-dvol/&lt;SYM&gt;/&lt;YEAR&gt;.parquet\n(gitignored)"]
+        A --> C["data/deribit-dvol/REVISION.toml\n(tracked, per-file + aggregate SHA)"]
+    end
+    subgraph load["Load + as-of (in-process, per bake-off run)"]
+        C --> D["DvolDataSource::load\n(clone of BasisDataSource — SHA-verify or refuse)"]
+        B --> D
+        D -->|"Vec&lt;(day_close_ts_ms, dvol)&gt; per symbol"| E["dvol_as_of(series, bar_open_ts)\n→ Vec&lt;Option&lt;Decimal&gt;&gt;\n(ADR-0058 PitSeries::as_of_value)"]
+    end
+    subgraph arm["The arm (per-bar)"]
+        E -->|"as-of DVOL at each bar open"| F["DvolRegimeStrategy: Strategy\n(hand-written; holds the as-of Vec)"]
+        F -->|"on_bar → Buy/Sell"| G["single-coin bar-loop\nsma_composed_run::run"]
+    end
+    subgraph bakeoff["Bake-off integration"]
+        H["default_field() += v0.dvol_regime"] --> I["run_bakeoff loop\n(per-arm ScenarioConfig, same seed)"]
+        I -->|"dvol_override threaded\n(BTC/ETH only; None elsewhere → arm skipped)"| G
+        G --> J["classify_verdict\n(FROZEN 5-signal gate)\nbenchmarked vs v0.buyhold"]
+    end
+```
+
+New code (the only files touched): `crates/data/src/bin/fetch_deribit_dvol.rs`,
+`crates/data/examples/dvol_diag.rs` (T1 spike), `crates/backtest/src/dvol_data.rs`
+(clone of `basis_data.rs`), `crates/strategy/src/dvol_regime.rs` (the hand-written arm),
+a new `v0.dvol_regime` match-arm + `ScenarioConfig.dvol_override` field in `engine.rs`,
+one line in `default_field()` (`bakeoff/mod.rs:363`), the bake-off-loop thread of
+`dvol_override` (`bakeoff/mod.rs:707`), and two day-1 e2e test files. `data/deribit-dvol/`
+is a new corpus dir (parquets gitignored, `REVISION.toml` tracked).
+
+### D-DVOL.1 — The DVOL corpus + the fetcher
+
+**Corpus dir:** `data/deribit-dvol/` — new, mirrors `data/binance-basis/` layout exactly
+(per-symbol/per-year parquet subdirs + a tracked `REVISION.toml`; bulk parquets gitignored).
+The existing `.gitignore` rule that excludes `data/binance-basis/**/*.parquet` is extended
+to `data/deribit-dvol/**/*.parquet` (developer task T2).
+
+**Data shape (daily DVOL index OHLC, BTC + ETH):** one parquet per `(symbol, year)` at
+`data/deribit-dvol/<SYM>/<YEAR>.parquet` where `<SYM> ∈ {BTC, ETH}`. Schema, locked:
+
+| column | type | meaning |
+|---|---|---|
+| `day_open_ts_ms` | Int64 | UTC midnight of the DVOL day (the candle open, ms since epoch) |
+| `day_close_ts_ms` | Int64 | the candle's CLOSE timestamp = `day_open_ts_ms + 86_400_000 − 1` (the instant the close is FULLY observed — the as-of key, § D-DVOL.4) |
+| `dvol_open` | Float64 | DVOL index open (annualized vol points, e.g. `52.4`) |
+| `dvol_high` | Float64 | DVOL index high |
+| `dvol_low` | Float64 | DVOL index low |
+| `dvol_close` | Float64 | DVOL index daily close — **the only field the signal consumes** |
+
+The signal uses `dvol_close` ONLY; OHL are banked for provenance/audit and for the
+diag spike's robustness checks, never read by the arm. (Mirrors `basis_data.rs` banking
+`basis_close` and consuming only that.) NOTE — DVOL is annualized-vol *points* (a level
+~30–150), NOT a fraction; it is dimensionless w.r.t. price and never enters a money/P&L
+computation, so it stays Float64 on disk (parsed to `Decimal` at the seam, identical to
+how `basis_close` Float64 → `Decimal` in `basis_data.rs:load`). ADR-0003 money-math rule
+is untouched (DVOL is a signal input, not money).
+
+**The fetcher — `crates/data/src/bin/fetch_deribit_dvol.rs`** (template clone of
+`crates/data/src/bin/fetch_binance_premium.rs`). The reusable spine, verbatim from the
+premium fetcher:
+
+- A `DvolFetcher` trait (`async fn fetch(&self, url) -> Result<Vec<DvolCandle>>`) — every
+  external I/O behind a trait so tests fake it (CLAUDE.md). Mirrors `PremiumFetcher`
+  (`fetch_binance_premium.rs:263`).
+- `HttpDvolFetcher` (real reqwest impl) + a `MockDvolFetcher` (the unit-test double —
+  mirrors `MockFetcher` at `fetch_binance_premium.rs:661`).
+- A paginator `paginate_dvol(fetcher, currency, resolution, start_ms, end_ms, sleep_ms)`
+  mirroring `paginate_premium` (`fetch_binance_premium.rs:311`): advance the cursor past
+  the last returned candle, stop on empty page, keep only in-window candles. Deribit
+  `get_volatility_index_data` returns a `{ data: [[ts, open, high, low, close], …], continuation }`
+  envelope — the paginator follows `continuation` (or windows by timestamp) until the
+  requested span is covered.
+- `write_parquet` per `(symbol, year)` + `write_revision_manifest` (aggregate SHA-256 over
+  all parquets), mirroring `fetch_binance_premium.rs:367`/`:566`. Deterministic + idempotent:
+  re-running over the same span produces byte-identical parquets (same rows, same column
+  order, no wall-clock in the body — the only clock is the manifest's `fetched_at`
+  metadata label, exactly like `data/binance-basis/REVISION.toml`).
+
+**Endpoint contract (locked — Deribit API as primary, per § 7 OQ-3):**
+`GET https://www.deribit.com/api/v2/public/get_volatility_index_data` with
+`currency ∈ {BTC, ETH}`, `start_timestamp`/`end_timestamp` (ms), `resolution=43200`
+(12h candles, folded to a daily close on the daily grid) — under `/public/`, no auth.
+History reaches 2021-04, covering the program's 2023–2024 robustness window with margin.
+The free CryptoDataDownload CSV mirror is the **corroboration/fallback** (not the primary
+fetch path) — recorded in `REVISION.toml` metadata, not wired as a second loader.
+
+**`REVISION.toml` (tracked), the `data/binance-basis/REVISION.toml` template:**
+
+```toml
+[revision]
+sha256 = "<aggregate-sha-of-all-parquets>"
+
+[revision.metadata]
+fetched_at = "2026-06-XXT..Z"        # the ONLY clock; a label, not read by the loader
+source = "Deribit DVOL (get_volatility_index_data)"
+base_url = "https://www.deribit.com/api/v2"
+endpoint = "/public/get_volatility_index_data"
+fetch_tool = "crates/data/src/bin/fetch_deribit_dvol.rs"
+fetch_version = "0.1.0"
+resolution = "43200"                 # 12h candles → daily close
+currencies = "BTC, ETH"
+auth = "none (free public endpoint)"
+mirror = "CryptoDataDownload Deribit CSV (corroboration/fallback only)"
+
+[files]
+"BTC/2023.parquet" = "<sha>"
+"BTC/2024.parquet" = "<sha>"
+"ETH/2023.parquet" = "<sha>"
+"ETH/2024.parquet" = "<sha>"
+```
+
+### D-DVOL.2 — The exogenous-series seam (the load-bearing reuse) + the as-of/leak-free join
+
+**`crates/backtest/src/dvol_data.rs`** is a near-exact clone of
+[`crates/backtest/src/basis_data.rs`](../../crates/backtest/src/basis_data.rs):
+
+- `DvolDataSource { dvol_root: PathBuf, universe: Vec<Symbol> }` + `load(&self, span, name)`
+  — clone of `BasisDataSource` (`basis_data.rs:124`/`:162`). Same five steps: manifest
+  exists → `RevisionMissing`; per-parquet on-disk SHA vs manifest → `RevisionMismatch`;
+  aggregate SHA vs the locked `EXPECTED_DVOL_REVISION_SHA` const → mismatch; parse
+  `dvol_close` Float64 → `Decimal`; filter to span; sort `(day_close_ts_ms ASC, symbol ASC)`.
+  **Refuses to run on unverified data** — identical guard to `EXPECTED_BASIS_REVISION_SHA`
+  (`basis_data.rs:45`). `DvolDataError` mirrors `BasisDataError` (RevisionMissing /
+  RevisionMismatch / RevisionParse / parse errors).
+- `dvol_as_of(series: &[(i64, Decimal)], bar_open_ts_ms: &[i64]) -> Vec<Option<Decimal>>`
+  — a verbatim clone of `basis_as_of` (`basis_data.rs:403`), which is itself a thin wrapper
+  over **ADR-0058's `PitSeries::from_unsorted(...).as_of_value(TimestampMs(q))`**. The
+  rightmost-at-or-before partition-point semantics + `None` warm-up + `Decimal`-no-f64-roundtrip
+  all come free from `PitSeries`. **DVOL rides the existing exogenous-series seam unchanged
+  at the as-of-join layer** — this is the analyst's "~80% reuse", confirmed in code.
+
+**The LOCF as-of rule (strict no-look-ahead), spelled out:** the DVOL daily close for
+day `D` is FULLY observed only at `day_close_ts_ms[D]` (UTC midnight + 86_399_999 ms). An
+hourly bar opening at `t` may therefore see ONLY the most-recent DVOL close whose
+`day_close_ts_ms ≤ t`. Concretely, an hourly bar opening at 2023-05-02T00:00Z sees the
+DVOL close of **2023-05-01** (close_ts = 2023-05-01T23:59:59.999Z ≤ t), NOT the 05-02
+close (which closes 24h later). `as_of_value` does exactly this with the `day_close_ts_ms`
+key; values are forward-filled (LOCF) for every hourly bar until the next daily close
+lands. This matches `basis_diag.rs`'s "the close of bar `t` is known only at `t+1h`, so
+decision-time uses the prior fully-observed close" discipline (`basis_diag.rs:19-28`),
+lifted from 1h-basis to 1-day-DVOL cadence.
+
+**Where DVOL diverges from the existing seam (the small, deliberate extension):** the
+basis arm is **cross-sectional** — it injects its series via `MomentumStrategy::with_funding`
+(`momentum.rs:481`, the D-BR.3 sidecar-carrier) and is consumed by `basis_reversal_score`.
+The DVOL arm is **single-coin** and runs the `sma_composed_run` bar-loop, which today has
+**no** sidecar-injection seam — confirmed: `sma_composed_run::run` takes only `bars_override`
+(OHLCV) + `composed_toml_override` (a DSL recipe), and the bar-loop calls
+`registry.on_bar(&bar)` with only a `Bar` (`sma_composed_run.rs:506`). The extension
+(D-DVOL.3) threads the as-of DVOL `Vec<Option<Decimal>>` into the hand-written
+`DvolRegimeStrategy` at construction time — NOT through the DSL, NOT through the
+cross-sectional `with_funding` channel.
+
+### D-DVOL.3 — The pre-registered signal + the arm (LOCKED)
+
+**The arm id (LOCKED): `v0.dvol_regime`.** It joins `default_field()`
+(`bakeoff/mod.rs:363`) as the 10th active arm (the existing 9 + the always-appended
+`v0.buyhold` benchmark → 11-arm field). Additive: existing arm ids untouched.
+
+**The signal `v0.dvol_regime` (LOCKED, no search) — M-T1 resolved:**
+
+```
+Per coin s ∈ {BTC, ETH}, daily grid, strictly causal:
+  dvol_t   = dvol_as_of close for s at bar t's OPEN (most-recent daily close with close_ts ≤ open_ts(t))
+  med30_t  = trailing median of the last W=30 DAILY dvol closes STRICTLY BEFORE today's
+             (i.e. the 30 distinct daily closes available as-of t, excluding any same-day-future close)
+  weight_t = 1 (HOLD the coin)  if dvol_t <  med30_t      (calm regime)
+           = 0 (step to CASH)   if dvol_t >= med30_t      (stress regime)
+```
+
+**M-T1 lock decisions (the architect calls the analyst's § 7.2 open items):**
+
+1. **`W = 30 daily closes`** (LOCKED). Theory-motivated: DVOL *is* a 30-day forward-vol
+   gauge, so a 30-day trailing window is horizon-matched, not fit. Counted in DISTINCT
+   DAILY closes (not hourly bars) — the regime is a daily-cadence decision forward-filled
+   across the 24 intraday bars.
+2. **Cut = trailing MEDIAN (not a quantile)** (LOCKED). The median is self-normalizing and
+   parameter-light — there is no threshold knob to argmax over (the analyst's anti-cherry-pick
+   point). Median over an even W=30 = the mean of the 15th/16th order statistics, computed
+   in `Decimal` (exact, no f64). Reject the "33rd percentile" and "not rising sharply"
+   clauses: both add a tunable knob and a second comparison, voiding the "nothing to tune"
+   guarantee. The rule is EXACTLY `dvol_t < median` → hold, else cash. (The "not rising
+   sharply" idea from §2.2 is explicitly DROPPED — recorded in ADR-0072 Alternatives.)
+3. **Comparison boundary: `dvol_t < med30` = hold; `dvol_t >= med30` = cash** (LOCKED) —
+   exactly-at-median ties resolve to CASH (risk-off on the boundary; deterministic).
+4. **Warm-up:** until 30 distinct daily closes are available as-of `t`, `weight = 1` (HOLD).
+   Rationale: the benchmark is buy-and-hold; warm-up should default to the benchmark behavior
+   so the arm only ever *subtracts* exposure in a confirmed stress regime (never adds
+   look-ahead during warm-up, never diverges from BH before the signal is defined). This
+   also makes the divergence gate (D-DVOL.5) honest: any divergence is attributable to a
+   real post-warm-up regime flip.
+
+**The arm is a hand-written `Strategy`, NOT a DSL `ComposedStrategy`** (confirmed in code):
+the DSL `Expr` (`ast.rs:48`) reads only `Indicator` / `BarField` / static `Param` scalar /
+`Literal` / arithmetic — there is **no per-bar exogenous-series term**, and `Param` is a
+static `[params]` scalar, not a time-varying series. A per-bar DVOL regime weight is
+therefore inexpressible in the DSL. The arm is:
+
+**`crates/strategy/src/dvol_regime.rs` — `DvolRegimeStrategy`**, a hand-written
+`impl Strategy`:
+
+- Constructed with `DvolRegimeStrategy::new(symbol, as_of_dvol: Vec<Option<Decimal>>, w: usize)`
+  where `as_of_dvol[i]` is the as-of DVOL close at bar `i`'s open (pre-resolved by
+  `dvol_as_of` against the run's bar timestamps — so the strategy itself does NO joining,
+  keeping it pure + unit-testable with a synthetic vector; mirrors the day-1 vol-overlay
+  test pattern).
+- `on_bar(&mut self, bar) -> Vec<Signal>`: maintain a bar index (`self.idx`); read
+  `as_of_dvol[self.idx]`; maintain a small ring of the last-W DISTINCT daily closes (push
+  a new value only when the as-of close changes vs the prior bar — dedups the 24× intraday
+  forward-fill into one daily sample); compute the `Decimal` median when the ring holds W
+  distinct closes; emit `SignalKind::Buy` when `weight` transitions 0→1 (and currently flat)
+  and `SignalKind::Sell` when `weight` transitions 1→0 (and currently long). The long/flat
+  {0,1} mapping rides the EXISTING long-only clamp in `sma_composed_run` (`sma_composed_run.rs:534`,
+  Buy-when-flat / Sell-when-long), `short_enabled=false` → identical to every other long-only
+  arm. (Sizing = the bar-loop's `FixedFractionSizer::new(0.10)` — same as all `v0.*` arms;
+  "weight 1" = fully invested at the arm's fixed fraction, "weight 0" = flat, exactly like
+  buy-and-hold when always-1.)
+- `on_tick` is a no-op (`Vec::new()`) — bake-off is bar-driven. `config_schema` returns a
+  minimal JSON stub (the arm is compiled-in, not config-loaded).
+
+**The registration seam (LOCKED) — the bake-off `v0.*` path, NOT cross_sectional/sweep:**
+
+1. `default_field()` (`crates/backtest/src/bakeoff/mod.rs:363`) gains one line:
+   `StrategyId(SmolStr::new_static("v0.dvol_regime"))`. Additive — the analyst's
+   `ScoreSource::DvolRegime` + `SweepFamily` proposal is NOT used (those are the
+   cross-sectional / param-sweep machineries; the bake-off arm field is a `Vec<StrategyId>`
+   of `v0.*` strings).
+2. A new match-arm `"v0.dvol_regime" => { … }` in `run_scenario`
+   (`crates/backtest/src/engine.rs:945`+), structured like the `v0.obv` arm
+   (`engine.rs:1767`) but: instead of `composed_toml_override`, it builds a
+   `DvolRegimeStrategy` from `cfg.dvol_override` (the new field, D-DVOL below) resolved
+   against the run's bars, registers it into the `StrategyRegistry`, and runs the same
+   `sma_composed_run`-style bar-loop. `strategy_dir_slug("v0.dvol_regime") = "v0-dvol-probe"`
+   (a new dir-slug branch alongside `"v0-signal-library"`, `engine.rs:685`).
+3. **The exogenous-series injection seam (the small extension): a new
+   `ScenarioConfig.dvol_override: Option<Vec<Option<Decimal>>>` field**
+   (`crates/backtest/src/engine.rs:202`), defaulting `None`. It mirrors the existing
+   `funding_override`/`basis_override` `ScenarioConfig` fields (`engine.rs:1057`) that the
+   cross-sectional paths already carry — so the pattern (an `Option` exogenous override on
+   `ScenarioConfig`, `None` for every legacy path → byte-identical) is precedented, not
+   novel. ALL existing arms set `dvol_override: None` → no behavior change; the field is
+   read ONLY by the `v0.dvol_regime` match-arm. (The bake-off loop threads the as-of vector
+   into this field for BTC/ETH only — D-DVOL.6.)
+
+### D-DVOL.4 — Day-1 gates (CLAUDE.md non-negotiable, BOTH mandatory)
+
+**(a) Baseline-equity-divergence e2e** — pattern:
+[`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`](../../crates/strategy/tests/vol_targeting_overlay_end_to_end.rs),
+new file `crates/backtest/tests/dvol_regime_divergence_end_to_end.rs`. Construct a synthetic
+fixture: a deterministic bar stream + a hand-built DVOL series that crosses its 30-day
+median at least once (one stress→calm and one calm→stress transition, so `weight` flips
+0↔1). Run two arms on the SAME bars + seed: `v0.dvol_regime` (with the crossing DVOL
+series in `dvol_override`) and `v0.buyhold`. **Assert `|equity_dvol − equity_buyhold| ≥ 1 bp`
+at the final bar.** If the regime weight is computed but never applied (the v3 vol-overlay
+no-op class — `scale` computed, never multiplied), the two equities stay identical and the
+test FAILS, catching the no-op on day 1. This is the CLAUDE.md non-negotiable "every overlay
+or sizing-modifier ships with a baseline-equity-divergence e2e from day 1."
+
+**(b) No-look-ahead LEAK-CHECK** — pattern: clone of
+`basis_data.rs::no_look_ahead_falsifier` (`basis_data.rs:553`), lifted to the ARM/equity
+level in `crates/backtest/tests/dvol_regime_leak_check.rs`. Take the same fixture; build the
+arm twice — once with the causal as-of DVOL series, once with the SAME series future-shifted
+by +1 daily step (a deliberate leak: tomorrow's DVOL visible today). **Assert the two arms'
+decision sequences (and resulting equity) DIFFER.** If the as-of join leaked future DVOL,
+the causal and shifted runs would coincide; their required divergence proves the join is
+strictly past-only. Two layers are tested: the pure `dvol_as_of` falsifier (cloned verbatim
+into `dvol_data.rs` tests — the join layer) AND this arm-level leak-check (the wired layer),
+because the v3 precedent showed a clean join + a broken application both pass unit tests.
+
+### D-DVOL.5 — Anchor safety + the frozen gate
+
+- **`write_report = false` → anchor-safe.** The bake-off path sets `write_report = false`
+  for every arm (`bakeoff/mod.rs:712`, ADR-0059) → the `v0.dvol_regime` arm writes NO
+  `spec/*/reports/` body. **119/119 anchors stay green, before AND after** (verified PASS
+  at design time: `bash scripts/verify_anchors.sh` → `ANCHORS PASS (119 / 119)`). The probe
+  may ADD up to 2 anchored coverage surfaces (BTC, ETH) at the ship/build stage — additive,
+  never mutating an existing anchor (ADR-0038 § D6 anchor-additive contract). Whether to
+  bank 0, 1-pooled, or 2 surfaces is a ship-time call (§ 7 OQ-4); the DEFAULT for the
+  exploratory bake-off run is **0 new anchors** (`write_report=false`), and any surface added
+  later goes through the standard anchor-additive amendment, not this design.
+- **The gate + bands are FROZEN.** `classify_verdict` (the 5-signal weakest-link bootstrap),
+  the bootstrap seed rule, FRAGILE = ineligible to crown, and the `v0.buyhold` benchmark are
+  ALL unchanged. The DVOL arm is scored by the IDENTICAL machine + bar that scored
+  price/positioning/on-chain — that identity is what makes a FRAGILE verdict here decision-grade.
+- **Existing arms byte-identical.** The arm is purely additive: one new `default_field()`
+  entry, one new `run_scenario` match-arm, one new `Option`-defaulted `ScenarioConfig` field
+  (read only by the new arm). No existing serialized output changes. A `default_field`
+  additive-contract test already guards this (`bakeoff/tests` `default_field_unchanged_additive_contract`,
+  cited in the codegraph blast radius) — extend it to assert `v0.dvol_regime` is present and
+  the prior 9 ids are unchanged in order.
+
+### D-DVOL.6 — The BTC+ETH universe restriction (how a no-DVOL coin behaves)
+
+The bake-off runs on ONE operator-chosen coin. DVOL exists only for BTC + ETH (§ 1.4). The
+arm-presence rule (LOCKED, fail-safe):
+
+- The bake-off loop (`run_bakeoff`, `bakeoff/mod.rs:688`) resolves `dvol_override` per run:
+  if `req.symbol ∈ {BTCUSDT, ETHUSDT}` AND `DvolDataSource::load` succeeds for the span, it
+  computes the as-of vector against the preloaded bars and threads it into the arm's
+  `ScenarioConfig.dvol_override`. Otherwise (SOLUSDT, ADAUSDT, …, or DVOL load failure) the
+  loop **drops `v0.dvol_regime` from `field` for that run** — the arm is ABSENT from the
+  leaderboard, not crashed and not silently degenerate. (Mechanism: a `field`-filter step
+  before the per-arm loop, keyed on a `dvol_supported(symbol)` predicate = membership in the
+  2-name DVOL universe.)
+- This mirrors the cross-sectional arms' "unsupported data source → drop / error" discipline
+  (`engine.rs:951`, the `UnsupportedDataSource` guard). For DVOL we prefer ABSENT-from-field
+  over a per-arm error so a non-BTC/ETH bake-off still completes cleanly with the other 9 arms.
+- **Honest UI/report copy:** when the arm is absent, the leaderboard notes "DVOL-regime arm
+  available for BTC/ETH only" (a one-line caption — the orchestrator wires the UI string;
+  this design only guarantees the arm is absent, never a panic).
+
+### D-DVOL.7 — The spike-as-first-task (T1)
+
+Per the operator's full-build choice, the spike is RETAINED as task **T1** (a cheap early
+signal-check, not a gate that blocks the build). `crates/data/examples/dvol_diag.rs` — a
+read-only, throwaway diagnostic cloned from
+[`crates/data/examples/basis_diag.rs`](../../crates/data/examples/basis_diag.rs): fetch (or
+read banked) BTC+ETH daily DVOL, compute the regime signal's information content vs forward
+return — per-symbol time-series IC, cross-year sign-persistence, and a `--leak-check`
+falsifier (future-shifted DVOL must change the IC), exactly as `basis_diag.rs` does for basis
+(`basis_diag.rs:67-71`). NOT committed as a bin, NOT anchored, pure read-over-banked-data.
+**T1 informs the framing but does not block:** if DVOL has zero IC, the rest still ships as
+the honest null (a FRAGILE arm that closes the vol channel) — the coverage IS the deliverable.
+If T1 shows a non-zero, sign-stable daily IC, the full arm carries a (low-prior) live signal
+into the frozen gate. Either way the build proceeds; T1 is the de-risking read the basis +
+stablecoin spikes were.
+
+### D-DVOL.8 — Dependencies / crate-compat checklist
+
+No NEW external crate is introduced. The fetcher reuses `reqwest` + `serde` + `polars`
+(already workspace deps, used by `fetch_binance_premium`); the loader reuses `polars` +
+`data::revision`; the arm reuses `rust_decimal` + `trading_core`. So the library/crate
+compatibility checklist is satisfied by construction (single-binary-friendly, no new C deps,
+edition-2024, no stdlib-shadow, all maintained, license-clean) — nothing to lock. The DVOL
+endpoint is a free public HTTPS GET; the only new "dependency" is the `data/deribit-dvol/`
+corpus, pinned by SHA exactly like the existing corpora.
+
+### D-DVOL.9 — Determinism + report-format guardrails
+
+- The fetcher body is deterministic + idempotent; the only clock is the `REVISION.toml`
+  `fetched_at` METADATA label (not read by the loader, not hashed into any anchored body) —
+  identical to `data/binance-basis/REVISION.toml`.
+- DVOL is dimensionless (annualized-vol points), never enters a money/P&L computation — the
+  ADR-0003 `Decimal`/`Money<C>` rule is untouched. The arm's equity/P&L is computed by the
+  existing bar-loop in `Decimal` (no f64). The median is `Decimal`-exact.
+- Seeds: the bake-off threads the same `[u8;32]` ChaCha20 seed to every arm
+  (`BakeoffRequest.seed`, `bakeoff/mod.rs:286`); the DVOL arm adds no RNG. No new anchor SHA
+  in `spec/anchors.toml` is added or changed by this design (the 9 anchor SHAs are untouched;
+  any future banked DVOL surface is a separate anchor-additive amendment, not this feature).

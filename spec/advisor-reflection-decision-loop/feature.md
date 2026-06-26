@@ -1,7 +1,7 @@
 ---
 slug: advisor-reflection-decision-loop
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-06-26
 version: 0.1.0
 directive: "C4 — deterministic learning loop (product.md core pillar 3; backlog.md § Future fresh program); reflection-feedback decision seam"
@@ -334,7 +334,315 @@ is itself an honest answer.
   placeholder at the decision point (that would add noise to the Leaderboard).
   Recommended: silent absence. Operator to confirm.
 
+## Design
+
+> Architect, 2026-06-26. Grounded in code; every claim carries a `file:line`.
+> ADR: this feature **warrants ADR-0074** (`spec/architecture/adr/0074-reflection-decision-surface.md`)
+> — it introduces a NEW reusable pattern (read-only reflection at advisor
+> decision points: a trader-layer read helper + a `core`-typed UI summary
+> mirror + a per-screen hydrate seam). It is more than "just follows ADR-0041 +
+> F9": it pins the helper signature, the summary boundary contract, the
+> forward-only recording decision (Q3 = a), and the anchor/gate invariants as
+> durable design law. ADR-0074 **extends** ADR-0041 (helper home) and ADR-0064
+> (the narration-only / `core`-typed-ui-mirror seam).
+
+### Decisions locked (resolving the open questions)
+
+- **Q1 = (a)** — ship the decision-support memory surface (S1–S3). The
+  autonomous-loop variants (b/c) are rejected for v1 on integrity grounds
+  (analyst § The honest tension); recorded as out-of-scope gated follow-ons.
+- **Q2** — order S1 (Leaderboard) → S2 (Tune) → S3 (forward-plan). S3 is
+  deferrable to a v0.2 of this feature if budget tightens; the helper + S1/S2
+  stand alone.
+- **Q3 = (a)** — recording stays **forward-only** for v1 (no bake-off write
+  tap). See § Recording scope.
+- **Q4** — each surface uses `retrieve_top_k` (cosine relevance by
+  symbol + strategy + regime) for the matched lessons, with the latest-by-
+  `closed_at` lesson as the headline (the store's deterministic tie-break,
+  `crates/reflection/tests/store_top_k_determinism.rs`). No separate recency
+  read is needed at the decision points — `retrieve_top_k` already covers it.
+- **Q5 = silent absence** — the surface renders nothing (no chip, no note) when
+  there are no matching lessons. The empty case is the dominant fresh-workstation
+  path and a first-class honest state, NOT a placeholder at the decision point.
+
+### The reflection loop is built — what is net-new
+
+The WRITE side is wired (paper trade-close → `crates/exec/src/paper.rs:123` →
+`ReflectionWriterTask` `crates/reflection/src/writer/task.rs:38` →
+`store.upsert`); the READ side is wired for the standalone Memory browser
+(`crates/ui/src/bin/cockpit_live.rs:872` →
+`reflection::query::open_and_list_recent` → `LessonCardCard`
+(`crates/ui/src/memory/state.rs:44`) → `Message::MemoryHydrate`). The gap is
+that the three **decision** screens carry zero reflection reads. Net-new is
+small and additive: one trader-layer read helper + one `core`-typed summary +
+three thin UI surfaces.
+
+### 1. The trader-layer read helper — `crates/trader/src/decision_memory.rs`
+
+Homed in `crates/trader` per **ADR-0041** (`0041-trader-crate-split.md`): the
+analyst-layer `crates/strategy` is structurally forbidden from consuming
+reflection-retrieval, and the gate `crates/reflection/tests/no_strategy_caller.rs`
+enforces it — `t1809` fails CI on any `crates/strategy/src/**` reference to
+`reflection::retrieve_top_k` / `reflection::store::` / `reflection::ReflectionStore`;
+`t1810` asserts at least one `crates/trader/src/**` file keeps a
+`reflection::retrieve_top_k` consumer. The trader crate **already** consumes it
+(`ForecastContext::from_runtime`, `crates/trader/src/llm_forecaster/types.rs:496`,
+`retrieve_top_k` at `:516`), so the new helper is a *second* consumer alongside
+it — `t1810` is doubly satisfied, `t1809` is untouched (no `strategy` edit).
+
+Signature (async because `ReflectionStore::top_k` is async — the `from_runtime`
+precedent, `types.rs:496`):
+
+```rust
+// crates/trader/src/decision_memory.rs  (NEW)
+pub async fn recall_decision_lessons(
+    store: &dyn reflection::ReflectionStore,
+    query: &DecisionMemoryQuery,
+) -> Result<DecisionMemorySummary, reflection::RetrievalError>;
+
+pub struct DecisionMemoryQuery {
+    pub symbol: trading_core::Symbol,
+    pub strategy: Option<trading_core::StrategyId>, // None ⇒ coin-wide recall
+    pub current_regime: reflection::RegimeTag,
+    pub k: usize,                                    // default reflection::REPORT_TIME_TOP_K (=5)
+}
+```
+
+The helper builds a `reflection::RetrievalQuery` (`crates/reflection/src/types.rs:108`:
+`strategy_id` + `symbol_or_pair` + `current_regime`) from the input — supplying a
+sentinel `StrategyId::new("(unattributed)")` when `strategy == None` (the
+symbol-fallback discipline `build_retrieval_query` uses,
+`crates/reports/src/render/memory_highlights.rs:139`) — calls
+`reflection::retrieve_top_k(store, &q, k)` (`crates/reflection/src/retrieval.rs:22`)
+and reduces the returned `Vec<reflection::LessonCard>` into the `core`-typed
+summary (D2). It is the **only** place a `reflection::LessonCard` is read on the
+decision path. **Read-only**: never writes; never feeds back into signal
+generation, the bake-off ranking, or `rank_candidates` — which is precisely why
+it does not re-open the C4-as-alpha-loop footgun and keeps the frozen gate
+frozen. Fail-soft is inherited from the store (absent/empty →
+`DecisionMemorySummary::empty()`).
+
+### 2. The `core`-typed UI boundary — `DecisionMemorySummary` (no reflection type crosses into `ui`)
+
+The helper returns a summary built from `trading_core` + `std` types **only** —
+NO `reflection::LessonCard` / `OutcomeClass` / `RegimeTag` crosses into the
+carrier. This mirrors the proven Memory-screen boundary: `LessonCardCard` is
+deliberately distinct from `reflection::LessonCard` "to avoid leaking the
+reflection-crate type into the UI layer" (`crates/ui/src/memory/state.rs:39`),
+keeping `crates/ui` free of a reflection/sqlx dep edge. Shape:
+
+```rust
+pub struct DecisionMemorySummary {
+    pub symbol: trading_core::Symbol,
+    pub strategy: Option<trading_core::StrategyId>,
+    pub match_count: usize,
+    pub most_recent: Option<DecisionMemoryEntry>, // headline: latest by closed_at
+    pub entries: Vec<DecisionMemoryEntry>,        // top-k, ranked
+}
+pub struct DecisionMemoryEntry {
+    pub strategy: trading_core::StrategyId,
+    pub outcome: DecisionOutcome,                  // trader-owned: Win|Loss|Scratch
+    pub signed_pnl: trading_core::Money<trading_core::Usdt>,
+    pub regime: DecisionRegime,                    // trader-owned: Bull|Bear|Chop|Volatile|Calm
+    pub closed_at: trading_core::Timestamp,
+}
+```
+
+`DecisionOutcome` / `DecisionRegime` are trader-owned closed enums mapped
+one-for-one from `reflection::OutcomeClass` (`crates/reflection/src/outcome.rs:16`)
+/ `reflection::RegimeTag` (`crates/reflection/src/regime.rs:37`) inside the
+helper — the closed-enum-mirror discipline ADR-0064 § D4 uses for
+`RecommendationOutcome` (`crates/ui/src/leaderboard/state.rs:88`). `Money<Usdt>`
++ `Timestamp` are already `core` types and pass through. `is_empty()` ⇔
+`match_count == 0`; the empty case is a first-class honest state, not an error.
+
+### 3. The three decision-point surfaces (the gap) — Message/state seam
+
+Today: `crates/ui/src/screens/leaderboard.rs`, `tune.rs`, `forward_plan.rs`
+carry **zero** reflection reads. Each surface consumes an **already-mapped,
+`ui`-owned** render-model via a per-screen hydrate message — mirroring the
+Memory-screen boot-hydrate (`Message::MemoryHydrate`,
+`cockpit_live.rs:872-921`) and the F9 narration lifecycle (`NarrationState` /
+`BakeoffNarration{Requested,Completed}`, `crates/ui/src/leaderboard/state.rs:149`).
+The `ui`-owned render-model is a `SmolStr`-only `MemoryNote`:
+
+```rust
+// crate::<screen>::state  (ui-owned, SmolStr only — NO reflection / trader type)
+pub enum MemoryNoteState {   // the per-screen field; default Absent
+    Absent,                  // no matching lessons → renders NOTHING (Q5)
+    Present(MemoryNote),
+}
+pub struct MemoryNote {
+    pub headline: SmolStr,   // pre-formatted factual line (outcome, pnl, regime, strategy)
+    pub match_count: usize,
+}
+```
+
+The hydrate is a **pure sqlite read** (no provider, no network), so — unlike F9,
+which needs an agent channel for the LLM — the surfaces use the simpler
+`iced::Task::perform` + side-thread-tokio-`spawn` shape the Memory hydrate
+already uses (`cockpit_live.rs:877-920`), returning the mapped `MemoryNote` via
+the per-screen message:
+
+- **S1 — Leaderboard chip** (`Message::LeaderboardMemoryHydrate(MemoryNoteState)`):
+  `memory_note: MemoryNoteState` added to `LeaderboardScreenState`
+  (`crates/ui/src/leaderboard/state.rs:593`, the three-touchpoint field +
+  Debug + Default pattern). When a bake-off renders for `(coin, regime)`, the
+  binary fires a hydrate task → `recall_decision_lessons(store, {coin, None,
+  regime, k})` → `MemoryNote::from_summary` → message. Renders a small,
+  factual, "informational memory, not a recommendation"-labelled chip near the
+  recommendation block: *"You've paper-traded `macd_trend` on XRPUSDT before —
+  last forward run closed LOSS (−$X) in a bear regime."* `match_count == 0`
+  (`open_and_list_recent`/`top_k` returning `Ok(vec![])` — the dominant
+  fresh-workstation path) ⇒ the chip does NOT render. The chip **annotates**;
+  it never reorders the ranking or overrides the gate (strictly downstream of
+  `rank_candidates`, exactly like F9).
+- **S2 — Tune note** (`Message::TuneMemoryHydrate(MemoryNoteState)`):
+  `memory_note: MemoryNoteState` on `TuneScreenState`
+  (`crates/ui/src/tune/screen_state.rs`). When the Tune editor opens for a
+  `(coin, strategy-family)`, hydrate with `strategy = Some(family-id)` and
+  render a note: *"Last time you forward-ran a tuned `macd_trend` on XRPUSDT it
+  closed LOSS."* (the framing is derived from the lesson's `outcome` + the
+  family — past-only, NOT recomputed; the FRAGILE-arm wording, if used, comes
+  from the lesson, not a fresh gate run). Empty ⇒ no note.
+- **S3 — forward-plan context** (`Message::ForwardPlanMemoryHydrate(MemoryNoteState)`):
+  `memory_note: MemoryNoteState` on `ForwardPlanScreenState`
+  (`crates/ui/src/forward_plan/state.rs`). Past-outcome context for the
+  crowned/promoted strategy on this coin — the last time this exact stance ran
+  forward. Lowest priority; **deferrable to a v0.2** of this feature.
+
+All three: factual + past-only, the F9 narration-only treatment (never predicts,
+never re-ranks), carrying the same not-advice + past-performance-not-indicative
+disclaimer the rest of the advisor carries (`product.md § What this product IS
+NOT`) plus an explicit "informational memory, not a recommendation" label.
+
+**The summary → `MemoryNote` mapping lives at one `#[cfg(feature = "live")]`
+boundary per screen** — `MemoryNote::from_summary(&trader::DecisionMemorySummary)`,
+the `crates/ui/src/forward_plan/adapter.rs` precedent (ADR-0062 § D4 / ADR-0064
+§ D4). `trader` is an **optional** `ui` dep (only `cockpit_live`'s `live`
+feature pulls it, exactly as `agent` is for the forward-plan adapter), so the
+`ui` lib's default build never names `trader` and `cargo tree -p ui` gains NO
+new edge. Headless render tests construct `MemoryNote` directly via a
+`ui::fixtures` helper — no `trader`/`reflection` type involved. One field drift =
+one adapter edit (the mirror discipline).
+
+### Recording scope (the write side) — forward-only for v1 (Q3 = a)
+
+Lessons stay written ONLY from forward paper-trade closes
+(`crates/exec/src/paper.rs::on_trade_close:123`). The bake-off path
+(`crates/backtest/src/bakeoff`, `crates/agent/src/plan.rs`) writes no lessons
+(verified: zero reflection touch). So the surface honestly says "you've
+**paper-traded** this before," NEVER "you've **backtested** this before"; a
+fresh operator who has only run bake-offs sees no notes — correct, not a bug.
+Why forward-only for v1: (a) it keeps the anchor surface trivially clean — no
+new write path, no `OutcomeClass` semantics call for a never-realized backtest
+"trade," no ADR-0041 *write*-seam decision; (b) recording every backtest as a
+"lesson" conflates a hypothetical curve with a realized outcome and risks the
+surface implying backtest results are forward evidence — exactly the conflation
+the ship-passive / pre-registration discipline guards against. A bake-off →
+lesson write tap is a clean, separately-justified **v0.2** (own seam +
+outcome-semantics + anchor scoping); if pursued it MUST write only to the
+reflection sqlite store, never to a `spec/*/reports/` anchored file.
+
+### Anchor safety + the frozen gate
+
+v1 is READ-ONLY at the decision points → touches no `write_report` path. The
+bake-off / backtest scenario emitters that produce the 119 anchored reports are
+not modified (the helper sits strictly downstream; the surfaces are pure UI
+adds). `classify_verdict` / `compute_robustness_flag` / `verdict_bands` /
+`rank_candidates` + the ADR-0066 benchmark exemption are BYTE-UNCHANGED;
+`BenchmarkWins` / `AllFragile` reachability is UNCHANGED. `bash
+scripts/verify_anchors.sh` → **119/119** before and after (keyed by anchor NAME,
+not filename). No `anchors.toml` SHA / `REVISION.toml` / `spec/*/reports/` body
+touched → no anchor-mutation ADR triggered.
+
+### UI render verification (CLAUDE.md — verify at the rendered-PIXEL layer)
+
+The day-1 baseline-equity-divergence e2e is **N/A** — the surface narrates past
+lessons, produces NO equity / signal / fill (like F6 forward-plan + F9
+narration; UNLIKE F4 sizing + F8 ensemble, where the strategy decision variable
+bit the equity curve). The mandatory proof is at the rendered-PIXEL layer:
+
+- A new `leaderboard_memory_chip_render.rs` (`#![cfg(target_os = "macos")]`,
+  ADR-0057 § D2; cosmic-text font-mutex serialized per
+  `spec/dev-notes/iced-ui-render-verification.md`) modelled on
+  `crates/ui/tests/leaderboard_narration_render.rs`: a **populated-store
+  fixture** (`MemoryNoteState::Present`) paints the chip as foreground in a
+  scoped band near the recommendation block; an **empty-store NEGATIVE control**
+  (`MemoryNoteState::Absent`) asserts the chip band paints ~none of the chip
+  (silent absence — the rest of the leaderboard still draws, NOT a broken
+  panel); an **anti-tautology discriminator** (populated strictly exceeds empty
+  in the chip band). Operator-facing PNGs to `/tmp`.
+- S2 gets the sibling `tune_memory_note_render.rs` (same populated +
+  empty-control + discriminator shape). S3, if shipped in v1, gets
+  `forward_plan_memory_render.rs`; if deferred, S3's proof defers with it.
+
+### Risks
+
+- **Empty-store UX (the #1 product risk).** The dominant fresh-workstation path
+  is "no matching lessons." Q5 locks silent absence — but the render proof's
+  empty-store negative control is load-bearing: it must prove the chip's absence
+  does NOT leave a broken/empty panel (the Live-view / trail-0px-drawer /
+  Reports-empty-curve class of blind cockpit bug). The empty-control assertion
+  is mandatory, not optional.
+- **ADR-0041 `t1809` gate.** The helper MUST live in `crates/trader` and the UI
+  surfaces MUST receive a `core`-typed/`ui`-owned struct via a message — any
+  stray `reflection::` reference in `crates/strategy/src/**` (or a sqlite read
+  sneaking into `crates/ui`) trips `t1809` / the no-`reflection`-in-`view` grep.
+  The `#[cfg(feature = "live")]` adapter-per-screen keeps the only `trader`-type
+  read off the default `ui` build.
+- **`ui` dep-graph drift.** `MemoryNote` is `ui`-owned; the
+  `DecisionMemorySummary → MemoryNote` map is `#[cfg(feature = "live")]` only,
+  so `cargo tree -p ui` must stay unchanged. The check is in the task list.
+- **Headline determinism.** The "last forward run" headline keys on
+  latest-by-`closed_at`; rely on the store's deterministic tie-break
+  (`store_top_k_determinism.rs`) so the chip text is stable across runs.
+
+### Files touched (all additive; no anchored content)
+
+- NEW `crates/trader/src/decision_memory.rs` (helper + `DecisionMemoryQuery` +
+  `DecisionMemorySummary` + `DecisionMemoryEntry` + `DecisionOutcome` /
+  `DecisionRegime`); re-export from `crates/trader/src/lib.rs`.
+- `crates/ui/src/leaderboard/state.rs` (S1 `MemoryNoteState` field +
+  transitions), `crates/ui/src/screens/leaderboard.rs` (chip render +
+  strings), a `#[cfg(feature = "live")]` `MemoryNote::from_summary` adapter.
+- `crates/ui/src/tune/screen_state.rs` + `crates/ui/src/screens/tune.rs` (S2).
+- `crates/ui/src/forward_plan/state.rs` + `crates/ui/src/screens/forward_plan.rs`
+  (S3, optional v1).
+- `crates/ui/src/state.rs` (the three `…MemoryHydrate` `Message` arms + pure
+  `update` handlers), `crates/ui/src/strings.rs` (chip/note copy + the
+  informational-memory label), `crates/ui/src/fixtures.rs` +
+  `crates/ui/src/test_support.rs` (populated + empty `MemoryNote` fixtures).
+- `crates/ui/src/bin/cockpit_live.rs` (the per-screen hydrate `iced::Task`,
+  `#[cfg(feature = "live")]`, mirroring the Memory hydrate at `:872`).
+- NEW `crates/ui/tests/leaderboard_memory_chip_render.rs` (+ `tune_memory_note_render.rs`,
+  + `forward_plan_memory_render.rs` if S3 ships).
+
 ## Changelog
+
+- 2026-06-26 (architect, C4 design): designed the honest C4 as a **read-only
+  reflection decision-support surface**. Authored **ADR-0074**
+  (`spec/architecture/adr/0074-reflection-decision-surface.md`, extends ADR-0041
+  + ADR-0064). Locked: the trader-layer helper `recall_decision_lessons` in NEW
+  `crates/trader/src/decision_memory.rs` (ADR-0041 home, a *second*
+  `retrieve_top_k` consumer alongside `from_runtime` `types.rs:516` — `t1810`
+  doubly satisfied, `t1809` untouched); the `core`-typed `DecisionMemorySummary`
+  boundary (no `reflection` type crosses into `ui`, the `LessonCardCard`
+  discipline `memory/state.rs:39`); three decision-point surfaces (S1
+  Leaderboard chip, S2 Tune note, S3 forward-plan context — S3 deferrable) each
+  a `ui`-owned `MemoryNoteState` hydrated via a per-screen `…MemoryHydrate`
+  message (the Memory-hydrate `cockpit_live.rs:872` + F9-narration
+  `leaderboard/state.rs:149` seam, simplified to a pure sqlite read); the
+  summary→`MemoryNote` map at one `#[cfg(feature = "live")]` adapter per screen
+  (the `forward_plan/adapter.rs` precedent — `cargo tree -p ui` unchanged).
+  Recording stays **forward-only** (Q3 = a; bake-off write-tap deferred to v0.2).
+  Anchor-safe by construction (read-only → no `write_report` path → 119/119);
+  frozen gate + ranking + `BenchmarkWins`/`AllFragile` reachability UNCHANGED;
+  day-1 divergence e2e N/A (narration-only, no equity/signal/fill). Render-PIXEL
+  verified (populated fixture + empty-store NEGATIVE control + anti-tautology
+  discriminator, the `leaderboard_narration_render.rs` template). Tasks in
+  `tasks.md`. Did NOT touch `architecture.md` / `adr/README.md` / `trace.toml` /
+  `product.md` (orchestrator registers ADR-0074 + reconciles).
 
 - 2026-06-26 (analyst, C4 scoping): scoped **C4 — the deterministic learning
   loop** (`product.md` core pillar 3; `backlog.md § Future fresh program`,

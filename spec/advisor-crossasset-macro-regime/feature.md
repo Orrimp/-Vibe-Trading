@@ -1,7 +1,7 @@
 ---
 slug: advisor-crossasset-macro-regime
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 version: 0.1.0
 updated: 2026-06-26
 ---
@@ -365,13 +365,477 @@ Q-MACRO-1(a)+Q-MACRO-2(a) combination.
   through them as-is.
 
 ## Design
-_architect fills this — start at Q-MACRO-2 (the coverage blocker) and Q-MACRO-1
-(the seam), they dominate the size._
+
+> **Build decision: full-fat, INCLUDING the durable market-calendar layer**
+> (operator-chosen 2026-06-26, NOT the relaxed § "Minimum-viable carve-out"
+> bypass). Resolved open decisions: **Q-MACRO-2 = (a)** durable market-calendar
+> layer; **Q-MACRO-1 = (a)** hand-written arm (NO DSL change); **Q-MACRO-3** the
+> locked ticker set + rule below; **Q-MACRO-4 = single `v0.macro_riskon` arm**;
+> **Q-MACRO-5** LOCF holds across resampled coarser bars (cadence-agnostic),
+> the divergence test exercises the hourly path. ADR: **[ADR-0073](../architecture/adr/0073-market-calendar-and-macro-exogenous-regime.md)**.
+
+This design rests on two findings that make the build smaller and more durable
+than the analyst's "medium, not small" estimate feared:
+
+1. **The as-of join is ALREADY a shipped, look-ahead-impossible primitive.**
+   ADR-0058 landed `PitSeries<T>` + `AsOf<T>` in `crates/core::pit`
+   (`crates/core/src/pit.rs:108`/`:173`/`:192`). Its only query is
+   `as_of_value(TimestampMs) -> Option<T>` — the most-recent record with
+   `ts ≤ query`, `None` on warm-up; there is **no API that returns a record at
+   `ts > query`**. The LOCF daily→hourly join (R3) is therefore
+   `regime_series.as_of_value(bar_open_ts_ms)` — **no hand-rolled
+   `partition_point`, look-ahead is a compile-time impossibility, the
+   `trybuild` compile-fail fixture already guards it.** This is the durable seam
+   ADR-0058 was built for (its Consequences name "a fresh data channel" as the
+   exact future consumer).
+2. **The buy-and-hold arm is a PURE equity-path function, not a `Strategy`.**
+   `run_buyhold_path(bars, capital, n_symbols)` (`crates/backtest/src/bakeoff/buyhold.rs:38`)
+   iterates bars by timestamp and marks-to-market — it never goes through
+   `ComposedStrategy::on_bar`. So the `ComposedStrategy`-has-no-demux problem
+   (`node.rs:1395`, feature § Seam point 2) **never arises**: the macro arm is
+   `run_buyhold_path` with a per-timestamp regime mask, a sibling pure function.
+   Q-MACRO-1(a) (hand-written) is not just the smaller blast radius — it is
+   *strictly* the natural shape, because the benchmark it overlays is itself
+   hand-written.
+
+### Module map
+
+```mermaid
+flowchart TD
+    subgraph data["crates/data (the funded infra)"]
+        CAL["MarketCalendar (NEW)<br/>calendar.rs<br/>Crypto24x7 | UsEquity"]
+        CLASS["classify_ticker(&str)<br/>→ MarketCalendar"]
+        EXP["expected_bars_for_range<br/>(NOW calendar-aware)"]
+        LC["YahooBarSource::load_cached<br/>(signature UNCHANGED)"]
+        LC -->|"derives from ticker"| CLASS --> CAL --> EXP
+    end
+    subgraph corpus["data/yahoo/ (pinned, SHA-256)"]
+        MACRO["^GSPC/1d, DX-Y.NYB/1d,<br/>^TNX/1d  (+ REVISION rows)"]
+    end
+    subgraph backtest["crates/backtest"]
+        LOADER["macro_regime::load_macro_regime_series (NEW)<br/>Yahoo 1d → 3 PitSeries → daily regime bool"]
+        PIT["core::pit::PitSeries&lt;bool&gt;<br/>(ADR-0058, reused)"]
+        GATE["run_macro_gated_buyhold_path (NEW)<br/>buyhold ∘ as_of regime mask"]
+        ARM["engine.rs match arm<br/>\"v0.macro_riskon\""]
+        BAKE["run_bakeoff:<br/>preload macro series ONCE"]
+        SC["ScenarioConfig.macro_regime_series<br/>Option&lt;PitSeries&lt;bool&gt;&gt; (NEW field)"]
+        LOADER --> PIT --> GATE
+        BAKE --> SC --> ARM --> GATE
+    end
+    LC --> LOADER
+    MACRO --> LOADER
+    REG["BakeoffConfig::default_macro_field()<br/>→ advisor_field() (runner.rs:53)"] --> BAKE
+```
+
+---
+
+### D1 — The market-calendar layer (Q-MACRO-2 (a) — the funded unblock)
+
+**Home: `crates/data/src/calendar.rs` (new module), a `MarketCalendar` seam.**
+This is durable, reusable infra — the "v0.2.0 market-calendar layer" the code
+itself names at `yahoo.rs:982-984` — not a macro-only hack. `crates/data`
+already owns the Yahoo corpus + coverage gate, so the calendar lives beside the
+thing it serves (ADR-0041 layering).
+
+**The type.**
+```rust
+// crates/data/src/calendar.rs
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarketCalendar {
+    /// 24/7 — every wall-clock day is a trading day. Crypto. The DEFAULT.
+    Crypto24x7,
+    /// ~5/7 — Mon–Fri minus a US market-holiday set. Equities / index / FX / rates.
+    UsEquity,
+}
+
+impl MarketCalendar {
+    /// Trading days in `[start_ms, end_ms)` for THIS calendar.
+    /// Crypto24x7 → calendar-day count (byte-identical to today's wall-clock division).
+    /// UsEquity  → weekdays(Mon–Fri) in range minus holidays-in-range.
+    pub fn trading_days_in_range(self, start_ms: i64, end_ms: i64) -> usize;
+}
+
+/// Resolve a Yahoo ticker to its calendar. The ONLY classification seam.
+/// Crypto mirror pairs ("BTC-USD".."LINK-USD", the 12 in the corpus) → Crypto24x7.
+/// Index/FX/rate/futures tickers (leading '^', or '=F'/'=X', or the DX-Y.NYB dollar
+/// index) → UsEquity. UNKNOWN tickers default to Crypto24x7 (the conservative
+/// choice: it preserves today's behaviour exactly for anything not explicitly
+/// reclassified — see D1.anchor).
+pub fn classify_ticker(ticker: &str) -> MarketCalendar;
+```
+
+**How `load_cached` consults it — WITHOUT a public-signature change.** The
+critical anchor-safety move: `load_cached(ticker, interval, …)` already receives
+the ticker (`yahoo.rs:266`). It derives the calendar internally:
+`let cal = classify_ticker(ticker);` and calls a calendar-aware expected-count.
+`expected_bars_for_range` is **refactored** so the gate computes
+`expected = cal.trading_days_in_range(start, end)` for `Days1`, while `Hours1`
+and `Minutes1` keep the pure wall-clock division (crypto intraday is genuinely
+continuous; the macro arm only ever loads `Days1`). Concretely:
+
+- Keep `pub fn expected_bars_for_range(interval, start, end) -> usize`
+  **byte-identical** (it is pinned by `yahoo.rs:1187` `expected_bars_for_range_arithmetic`
+  and three other tests; touching its arithmetic would break them and is
+  unnecessary). It remains the `Crypto24x7` implementation.
+- Add `pub fn expected_bars_for_calendar(cal: MarketCalendar, interval, start, end) -> usize`
+  that, for `Days1`, returns `cal.trading_days_in_range(start, end)`, and for
+  `Hours1`/`Minutes1` delegates to `expected_bars_for_range`. For
+  `cal == Crypto24x7` it is **provably equal** to `expected_bars_for_range`
+  (Crypto24x7's `trading_days_in_range` IS the wall-clock day count) — this
+  equivalence is a unit test (D1.anchor).
+- `load_cached` step-6 (`yahoo.rs:339`) changes from
+  `expected_bars_for_range(interval, start_ms, end_ms)` to
+  `expected_bars_for_calendar(classify_ticker(ticker), interval, start_ms, end_ms)`.
+
+**The US-holiday set (data-driven-from-corpus, NOT a hand-maintained list).**
+Pre-registered decision: `UsEquity::trading_days_in_range` counts **weekdays
+(Mon–Fri) in range, minus a small static `const US_MARKET_HOLIDAYS: &[(month,
+day)]`-style set** covering the fixed + observed NYSE closures that fall on
+weekdays (New Year, MLK, Presidents', Good Friday, Memorial, Juneteenth, July 4,
+Labor, Thanksgiving, Christmas). Because the gate is a **≥95% floor, not an
+equality**, the holiday set does NOT need to be exhaustive or perfectly
+date-accurate: a ~250-trading-day year has ~9 weekday holidays (~3.6%); even if
+the set is off by a few days the 95% threshold absorbs it. The set is a
+conservative *lower bound on expected* — it can only make the gate *more*
+lenient, never reject valid data. This is the pragmatic, low-maintenance choice;
+a full data-driven "expected = distinct actual-bar dates" approach is rejected
+in Alternatives (it makes the gate tautological — coverage can never fail — and
+loses the gap-detection the gate exists for). **The set + the weekday rule are
+the pre-registered calendar; they are fixed before any macro result is read.**
+
+**D1.anchor — why crypto coverage is provably unperturbed (→ anchors hold).**
+- `classify_ticker` returns `Crypto24x7` for all 12 corpus crypto tickers and
+  for any unknown ticker. Every existing `load_cached` caller passes a crypto
+  ticker (`BTC-USD`, `XRPUSDT`-mapped, etc. — see the 14 call sites at
+  `yahoo.rs:444`, `lab/runner.rs:493/519`, `agent/runtime.rs:1577`,
+  `run_yahoo_sma.rs:176`, `yahoo_revision_verify.rs` ×6, `lab_yahoo_dispatch.rs`
+  ×3, `cockpit_live_lab_run_smoke.rs:440`).
+- For `Crypto24x7`, `expected_bars_for_calendar == expected_bars_for_range`
+  **by construction** (D1 bullet 3) — same expected count, same threshold, same
+  pass/fail, **same `LoadedBars`**. The crypto/Yahoo-crypto read path is
+  byte-identical; no parquet is touched; no anchored report is regenerated.
+- The Binance corpus + `merge_symbols` path (the bake-off coin loader,
+  `bakeoff/mod.rs:93`) **never calls the Yahoo coverage gate at all** — it has
+  its own `read_and_verify_revision_manifest`. Untouched.
+- **Re-proof gate (T-CAL):** a unit test asserting
+  `expected_bars_for_calendar(Crypto24x7, Days1, s, e) == expected_bars_for_range(Days1, s, e)`
+  over a range sweep, AND `scripts/verify_anchors.sh → 119/119` after the
+  calendar lands but BEFORE the macro arm exists (the calendar layer is proven
+  inert in its own commit).
+
+---
+
+### D2 — The macro corpus + fetch/pin (R1, Q-MACRO-3)
+
+**Locked ticker set (pre-registered, 3 series):**
+
+| Series | Yahoo ticker | Role in regime | Cache path |
+|--------|-------------|----------------|------------|
+| S&P 500 index | `^GSPC` | risk-ON trend leg | `data/yahoo/^GSPC/1d/<Y>/<M>.parquet` |
+| US Dollar index | **`DX-Y.NYB`** (primary) | dollar-bid leg | `data/yahoo/DX-Y.NYB/1d/<Y>/<M>.parquet` |
+| 10y Treasury yield | `^TNX` | rates-spike leg | `data/yahoo/^TNX/1d/<Y>/<M>.parquet` |
+
+Gold (`GC=F`) is **NOT** included (Q-MACRO-4 → single arm, minimal set). The
+pre-registered rule (D4) uses exactly these three.
+
+**DX-Y.NYB vs ^DXY resolution — REQUIRES a fetch dry-run (task M-FETCH-0).**
+`DX-Y.NYB` (ICE US Dollar Index on NYBOT) is the symbol Yahoo's chart API
+serves for the dollar index; `^DXY` is frequently NOT available on the free
+`query1.finance.yahoo.com/v8/finance/chart` endpoint (it returns an empty quote
+set or 404 on many days). **Pre-registered primary = `DX-Y.NYB`.** Task
+M-FETCH-0 runs the CLI `--dry-run` then a real fetch for BOTH on a short window
+and inspects which returns non-empty quotes; **`DX-Y.NYB` is locked unless the
+dry-run proves it empty**, in which case `^DXY` is the pre-registered fallback
+(the swap is recorded in the Changelog BEFORE any bake-off result is read —
+pre-registration discipline). The rule's *semantics* (dollar index < SMA(50))
+are identical for either symbol; only the cache directory name differs.
+
+**Filesystem-name note (M-FETCH-0 also confirms):** the fetch CLI writes to
+`cache_root.join(ticker)` verbatim (`yahoo.rs:589-595`), so the directory
+becomes literally `^GSPC`, `DX-Y.NYB`, `^TNX`. `^`, `-`, `.` are all legal
+POSIX path components (macOS/Linux); the dry-run confirms the parquet writes +
+REVISION rows materialize cleanly. The `^` does NOT need shell-escaping inside
+the Rust `PathBuf::join` (only when typing the ticker on a shell CLI — quote it:
+`--tickers '^GSPC'`).
+
+**Data shape + the pin.** Each series is fetched at `--interval 1d` over a
+window that **superset-covers** the advisor's default bake-off ranges
+(`H1_2024` and the rolling guided-input windows — D5 details the alignment),
+producing `data/yahoo/<TICKER>/1d/<Y>/<M>.parquet` daily OHLCV identical in
+schema to the 12 crypto `1d` series. Every new parquet gets a SHA-256 row in
+`data/yahoo/REVISION.toml`; `load_cached` re-verifies per-file on every read
+(`yahoo.rs:308-324`) and forces `local_recv_ts = close_ts` (`yahoo.rs:354`).
+**The fetch + pin is a one-time, human-run, out-of-band step** (it needs network
++ `--features yahoo-online`); the daily divergence/leak tests use **synthetic
+fixture series** (D6) so CI never touches the network.
+
+> **Human-run fetch recipe (M-FETCH-1, out-of-band — needs network):**
+> - **Command:** `cargo run -p data --features yahoo-online --bin fetch_yahoo_klines -- --tickers '^GSPC' --interval 1d --start 2023-06-01 --end 2026-06-30` (repeat for `'DX-Y.NYB'` and `'^TNX'`).
+> - **Steps:** 1) run the 3 commands; 2) `git status data/yahoo/` shows new `<TICKER>/1d/**` parquet + a modified `REVISION.toml`; 3) `bash scripts/verify_anchors.sh` → 119/119 (corpus add is anchor-additive); 4) re-run a `load_cached("^GSPC", Days1, …)` smoke (the M-LOAD test) → no `MissingData`.
+> - **Timing:** ~30–90 s per ticker (Yahoo rate-limit backoff dominates).
+> - **Expected:** 3 new ticker dirs, ~3 years × ~252 trading-day bars each; coverage gate PASSES (proves D1).
+> - **Failure diagnosis:** `MissingData` despite the calendar fix → calendar class mis-resolved (check `classify_ticker`); `NoDataForRange`/empty on `DX-Y.NYB` → switch to `^DXY` fallback (record in Changelog).
+> - **Cleanup:** none — the corpus is durable, pinned, committed.
+
+---
+
+### D3 — The exogenous-series seam + the daily→hourly LOCF join (R3, Q-MACRO-1 (a))
+
+**The loader (`crates/backtest/src/macro_regime.rs`, NEW module).**
+```rust
+/// Load the 3 macro daily series via YahooBarSource::load_cached (READ PATH
+/// UNCHANGED) and reduce them to a single forward-fillable daily regime series.
+/// Returns a PitSeries<bool> keyed by each macro bar's close_ts (ms): true =
+/// risk-ON at that daily close, false = risk-OFF. The arm queries it as-of.
+pub fn load_macro_regime_series(
+    yahoo_root: &Path,
+    range: &DateRange,          // the bake-off window
+) -> Result<PitSeries<bool>, MacroRegimeError>;
+```
+Internals, all look-ahead-free by construction:
+1. For each of `^GSPC` / `DX-Y.NYB` / `^TNX`, call
+   `YahooBarSource::new(yahoo_root).load_cached(ticker, Interval::Days1,
+   start_ms, end_ms_padded)` — `end_ms_padded` extends the load window backward
+   enough to warm the SMA(50) (≥ 50 trading days BEFORE the bake-off start, so
+   the regime is defined from the first coin bar; see D5).
+2. Compute, per ticker, a `PitSeries<Decimal>` of closes AND a `PitSeries<Decimal>`
+   of the trailing SMA (SMA(50) for `^GSPC`/`DX-Y.NYB`, SMA(20) for `^TNX`),
+   where **the SMA at daily bar `D` uses only closes with `close_ts ≤ D`** (the
+   SMA is itself a streaming trailing mean — past-only, no centering). Both are
+   stamped at the bar's `close_ts`.
+3. The **daily regime bool** at each macro close timestamp `D` is the AND of the
+   3 legs evaluated at `D` (D4). Emit `(TimestampMs(D_close_ms), bool)` for every
+   macro daily close; build `PitSeries::from_sorted(...)`. Because the 3 series
+   share the same `^GSPC`-driven daily grid is NOT assumed — the regime is
+   recomputed at the **union** of the 3 tickers' close timestamps, each leg read
+   as-of that timestamp (so a leg with a missing day carries its prior close
+   forward — LOCF across legs too).
+4. Warm-up: a regime timestamp earlier than any leg's SMA-warm point yields
+   `false` (risk-OFF / flat) — the conservative default (no position until the
+   regime is fully defined), and `as_of_value` returns `None` for coin bars
+   before the first regime timestamp → the arm treats `None` as flat.
+
+**The as-of daily→hourly join (R3) — `core::pit`, zero hand-rolling.** In the
+gated-buyhold path (D below), for each coin bar at `open_ts`:
+```rust
+let on = regime_series
+    .as_of_value(TimestampMs(bar.open_ts.unix_millis()))   // ADR-0058 primitive
+    .unwrap_or(false);                                      // warm-up → flat
+```
+`as_of_value` returns the most-recent macro daily regime with `close_ts ≤
+open_ts` — exactly the LOCF rule (R3): a macro daily bar dated `D` (UTC close)
+is visible only to coin bars at/after `D`'s close; weekend/holiday gaps carry
+Friday's close across Sat/Sun/holiday crypto bars. **Look-ahead is structurally
+impossible** (the primitive has no `ts > query` accessor; `trybuild` guards it).
+
+**Hand-written arm vs DSL exogenous-series extension — DECISION: hand-written
+(Q-MACRO-1 (a)).** Justification, grounded:
+- The arm is an **overlay on `run_buyhold_path`** — itself a pure hand-written
+  equity-path function (`buyhold.rs:38`), NOT a `ComposedStrategy`. So there is
+  no `on_bar` to extend and no demux to add; the "DSL auxiliary series" option
+  (Q-MACRO-1 (b)) would force the macro arm to become a `ComposedStrategy` it has
+  no reason to be, then teach the parser/typechecker/`node.rs:1395` a new
+  exogenous-input grammar — a large parser+typecheck+test change for an arm that
+  emits only long/flat over buy-and-hold.
+- **Future-arm note (the Q-MACRO-1 durable-vs-quick hinge):** the operator's
+  stated intent is a **one-shot honest-coverage probe** (feature § Why; the
+  null result is the expected ship). No second exogenous arm is foreseen
+  (Q-MACRO-4 = single arm; gold dropped). Per the Q-MACRO-1 rule "(a) is correct
+  iff this is one-shot", **(a) is correct and spawns NO v0.2.0 DSL-cleanup
+  commitment.** IF a future program wants ≥2 exogenous arms (options-IV, more
+  macro legs), the durable seam is then the DSL extension — and ADR-0073 § D3
+  records that fork explicitly so the future architect inherits the decision.
+- Blast radius of (a): one new module (`macro_regime.rs`), one new pure function
+  (`run_macro_gated_buyhold_path` in `buyhold.rs` beside its sibling), one new
+  `ScenarioConfig` field, one new `engine.rs` match arm, one new `default_macro_field()`
+  list. **Zero change to `node.rs`, the DSL parser, or any existing arm.**
+
+---
+
+### D4 — The pre-registered `v0.macro_riskon` arm (R4, LOCKED)
+
+**Arm id (locked):** `v0.macro_riskon`. **Registration seam:**
+`BakeoffConfig::default_macro_field() -> vec![StrategyId("v0.macro_riskon")]`
+(new, beside `default_field`/`default_ensemble_field` at `bakeoff/mod.rs:363`),
+extended into the advisor field at `runner.rs:53`:
+`field.extend(BakeoffConfig::default_macro_field());`. `advisor_field_arm_count()`
+(`runner.rs:67`) auto-tracks (+1). `is_short_enabled("v0.macro_riskon") = false`
+(long/flat only — never shorts; `bakeoff/mod.rs:407`).
+
+**The locked rule (pre-registered, FIXED before any result is read).** Risk-ON
+at a macro daily close `D` ≙ **ALL** of:
+1. `^GSPC.close(D)  >  SMA(^GSPC.close, 50)(D)`  — SPX trend up, AND
+2. `DX-Y.NYB.close(D)  <  SMA(DX-Y.NYB.close, 50)(D)`  — dollar not bid, AND
+3. `^TNX.close(D)  <  SMA(^TNX.close, 20)(D)`  — rates not spiking.
+
+When risk-ON → **hold the coin** (full budget long, buy-and-hold semantics);
+when risk-OFF (any leg false, or warm-up) → **flat / cash** (zero position). A
+pure long/flat overlay on buy-and-hold — never trades on the coin's own
+indicators. All thresholds SMA-relative; all lookbacks fixed literals (50/50/20).
+
+**The arm body — `run_macro_gated_buyhold_path` (NEW, in `buyhold.rs`).** A
+behaviour-faithful sibling of `run_buyhold_path`:
+```rust
+/// Buy-and-hold gated by an exogenous per-timestamp regime mask.
+/// At each distinct coin-bar timestamp: if regime as-of that ts is risk-ON,
+/// the position is held (marked to market exactly as run_buyhold_path);
+/// if risk-OFF, the position is FLAT (equity holds flat at the cash value
+/// carried from the last risk-ON exit — no coin exposure). Equal-weight,
+/// single-coin (n_symbols = 1). Decimal-only; deterministic.
+pub fn run_macro_gated_buyhold_path(
+    bars: &[Bar],
+    regime: &PitSeries<bool>,
+    initial_capital: Decimal,
+) -> (Vec<Decimal>, Decimal);
+```
+Mechanics (mirrors `run_buyhold_path`'s timestamp loop, `buyhold.rs:80-110`):
+- Maintain `cash` (Decimal) and `coin_qty` (Decimal, 0 when flat).
+- At each distinct timestamp `t` (BTreeMap-ordered, deterministic): read
+  `on = regime.as_of_value(TimestampMs(t_ms)).unwrap_or(false)`.
+- **Transition flat→ON:** buy `cash / price(t)` coin at `t`'s close, `cash = 0`.
+- **Transition ON→flat:** sell all coin at `t`'s close, `cash = coin_qty *
+  price(t)`, `coin_qty = 0`. (Realistic: the regime flip is observed at the
+  daily close ≤ `t`, the trade executes at the coin bar `t` — look-ahead-free.)
+- **Equity at `t`** = `cash + coin_qty * price(t)`. Push to the curve. The curve
+  has `n_distinct_ts + 1` entries (entry[0] = `initial_capital`), identical
+  shape to `run_buyhold_path` so downstream KPI/robustness code is unchanged.
+- Edge cases mirror `run_buyhold_path`: empty bars → `(vec![cap], cap)`;
+  zero/non-positive price → skip the buy (stay flat) that step.
+- **Cost:** v0 ships at the same fee/slippage model the other bake-off arms use
+  via the engine; the gated path applies a buy/sell at each regime transition.
+  Pre-registered: transition trades pay the standard taker fee (the same
+  `taker_fee_bps`/`slippage_bps` the bake-off applies) — the macro arm is NOT
+  cost-advantaged vs the always-long benchmark. (Implementation note for the
+  developer: thread the same cost constants the buyhold/sma arms use; the
+  divergence test asserts gross *behaviour*, the bake-off applies cost.)
+
+**The second arm-scoped config channel (R4 plumbing).** New field on
+`ScenarioConfig` (`engine.rs:202`):
+```rust
+/// ADR-0073 — exogenous macro regime series for the `v0.macro_riskon` arm ONLY.
+/// `None` for EVERY existing arm and EVERY CLI/Lab/anchor path → byte-identical.
+/// Set to `Some(series)` ONLY by `run_bakeoff` when building the macro arm's
+/// ScenarioConfig (write_report=false). The `engine.rs` dispatch reads it ONLY
+/// in the "v0.macro_riskon" match arm; all other arms ignore it.
+pub macro_regime_series: Option<core::pit::PitSeries<bool>>,
+```
+Anchor contract identical to `composed_toml_override` (`engine.rs:294`): all
+existing constructors set it `None` via struct-update; only the bake-off macro
+arm sets `Some`. The dispatch arm `"v0.macro_riskon"` (new, modelled on
+`"v0.buyhold"` at `engine.rs:1847`) reads `cfg.macro_regime_series`, resolves
+bars from `cfg.bars_override` (the same preloaded coin bars), calls
+`run_macro_gated_buyhold_path`, and builds the `RunReport` with
+`write_report = false` (no body written).
+
+**Bake-off threading (the insertion point).** In `run_bakeoff`
+(`bakeoff/mod.rs:659`-ish, beside the coin-bar preload), preload the macro
+regime series ONCE: `let macro_series = if field_contains_macro {
+Some(load_macro_regime_series(yahoo_root, &req.range)?) } else { None };`. In
+the per-arm `ScenarioConfig` build (`bakeoff/mod.rs:707`), set
+`macro_regime_series: if strategy.0 == "v0.macro_riskon" { macro_series.clone() }
+else { None }`. Every non-macro arm gets `None` → byte-identical.
+
+---
+
+### D5 — Window / warm-up / cadence alignment (R3, Q-MACRO-5)
+
+- **Coin = Binance hourly** (`bakeoff/mod.rs:93`), preloaded + clipped to
+  `[start_ms, end_ms)`. **Macro = Yahoo daily**, loaded over
+  `[start_ms − warmup, end_ms)` where `warmup ≥ 50 trading days` (~72 calendar
+  days) so SMA(50) is defined at the first coin bar; the macro corpus fetch
+  window (D2) MUST cover this pre-roll (hence the fetch starts 2023-06, well
+  before any 2024 bake-off window).
+- **LOCF is cadence-agnostic (Q-MACRO-5).** The as-of query
+  `regime.as_of_value(TimestampMs(bar.open_ts))` holds the daily regime constant
+  across however many coin bars fall between two macro closes — 24 hourly bars,
+  6 H4 bars, or 1 D1 bar. The resample knob (`bakeoff/mod.rs:668`) folds coin
+  bars BEFORE the gated path runs, so the path sees coarser coin bars and queries
+  the same daily regime — **identical LOCF logic, no special-casing.** The
+  divergence test (R5) exercises the **hourly** path (the strictest as-of case,
+  ~24 coin bars per daily regime).
+
+---
+
+### D6 — Day-1 divergence + no-op control + leak-check (R5 — CLAUDE.md non-negotiable)
+
+Pattern reference: `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`.
+New test file `crates/backtest/tests/macro_regime_overlay_end_to_end.rs`. All
+fixtures synthetic (no network, no corpus dependency). The macro arm IS an
+overlay (gates buy-and-hold long/flat on an exogenous signal) → the
+no-op-overlay failure class (`scale` computed but never applied; the
+`v3-volatility-forecaster-noop-fix` 2026-05-22 precedent) is exactly what this
+gate catches.
+
+1. **Divergence (mandatory).** Construct coin hourly bars with a **monotone
+   up-trend** AND a synthetic `PitSeries<bool>` regime that **flips to risk-OFF**
+   across a mid-window stretch where the coin keeps rising. Run
+   `run_macro_gated_buyhold_path` (gated) vs `run_buyhold_path` (un-gated) on the
+   SAME bars. **Assert** the gated final equity DIFFERS from the un-gated final
+   equity by **≥ 1 bp** (the gated arm sat flat through a rising stretch → it
+   must under-perform always-long → equity departs). Direction: gated < un-gated
+   on an up-trend OFF-stretch.
+2. **No-op control (mandatory).** Same coin bars, but a regime `PitSeries<bool>`
+   pinned **risk-ON for the whole window**. Run gated vs un-gated. **Assert** the
+   gated equity ≈ `run_buyhold_path` equity (exact-equal up to the transition
+   fee on the single initial buy, or bit-identical if the all-ON path opens at
+   bar-0 like buyhold). This proves the overlay correctly **no-ops when the
+   regime never gates** — the half the noop-precedent specifically requires.
+3. **Leak-check (no look-ahead on the as-of join).** A test that builds a regime
+   series whose risk-OFF day is dated `D`, and asserts a coin bar at `t < D`'s
+   close sees the PRIOR regime (not the future `D` value) — i.e. forward-shifting
+   the regime series by one day CHANGES the gated equity (`assert_ne!`), the same
+   self-proving falsifier shape ADR-0058 § D5 uses. This is belt-and-suspenders:
+   `core::pit`'s `trybuild` fixture already makes `ts > query` reads
+   *unrepresentable*, but the e2e leak-check pins that THIS arm routes through
+   the primitive (not a future hand-rolled bypass).
+
+---
+
+### Crate / dependency checklist (ADR-0073 records)
+
+- **No new dependency.** `crates/data` already carries `time`, `polars`,
+  `rust_decimal`, `thiserror` (the calendar needs only `time` for weekday/holiday
+  arithmetic). `crates/backtest` already depends on `crates/core` (for
+  `PitSeries`) and `crates/data` (for `YahooBarSource`). **Zero new edges, zero
+  new crates** — passes the library-compatibility checklist trivially (no
+  Postgres, no system-C dep, edition-2024 native, no stdlib-shadowing crate
+  name).
+- **Money math:** `run_macro_gated_buyhold_path` is `Decimal`-only (mirrors
+  `run_buyhold_path`'s `#![allow(clippy::float_arithmetic)]` Decimal contract).
+  No `f64`.
+- **Determinism:** no RNG in the arm or loader (the regime is a pure function of
+  the pinned macro closes); the bake-off's existing per-arm `ChaCha20` seed is
+  unchanged. The macro corpus is SHA-pinned (R1) — the determinism handle.
 
 ## Backtest Scenarios
-_analyst + architect fill this; the day-1 divergence + no-op-control scenarios
-(R5) are the gating fixtures — model them on
-`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`._
+
+The **gating fixtures** are the D6 e2e scenarios (R5), modelled on
+`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`. All are synthetic
+(no network, no corpus dependency) and live in
+`crates/backtest/tests/macro_regime_overlay_end_to_end.rs`.
+
+| # | Scenario | Setup | Assertion | Catches |
+|---|----------|-------|-----------|---------|
+| S1 | **Regime-flip divergence** | Up-trending coin hourly bars; synthetic `PitSeries<bool>` risk-OFF across a mid-window stretch | `run_macro_gated_buyhold_path` final equity differs from `run_buyhold_path` by **≥ 1 bp**; gated < un-gated | No-op overlay (regime computed, never applied) — the `v3-vol-noop` class |
+| S2 | **Always-ON no-op control** | Same coin bars; regime pinned risk-ON whole window | Gated equity ≈ `run_buyhold_path` (equal up to the single initial-buy fee) | Overlay incorrectly gating when it should pass through |
+| S3 | **Look-ahead leak-check** | Regime risk-OFF dated `D`; coin bar at `t < D.close` | Forward-shifting the regime series by 1 day CHANGES gated equity (`assert_ne!`); bar at `t < D.close` reads the PRIOR regime | A future hand-rolled as-of bypass leaking `D` into earlier bars |
+| S4 | **Warm-up flat** | Coin bars before the first regime timestamp | `as_of_value → None` → arm holds FLAT (no position) until the regime is defined | Treating warm-up `None` as risk-ON (spurious early exposure) |
+| S5 | **Calendar inertness (T-CAL)** | Crypto ticker through the new calendar path | `expected_bars_for_calendar(Crypto24x7, Days1, s, e) == expected_bars_for_range(Days1, s, e)` over a range sweep | The calendar layer perturbing crypto coverage → anchor drift |
+| S6 | **Equity-coverage live bake-off** (real corpus, human-run) | The pinned macro corpus + a real coin window; full `run_bakeoff` with the macro arm in the field | `v0.macro_riskon` produces a finite ranked candidate scored by the FROZEN gate; FRAGILE ⇒ ineligible (expected); `verify_anchors → 119/119` | The end-to-end honest-coverage deliverable (R7) |
+
+S6 is the **honest-coverage acceptance** (R7): the null result ("the macro arm
+is also Fragile, hold still stands") is the EXPECTED, valid, shippable outcome.
+It flows through the existing `BenchmarkWins`/`AllFragile` rationale branches
+with NO change. S1–S5 are CI fixtures (`cargo test -p backtest`); S6 is the
+human-run bake-off (recipe in tasks.md M-BAKE).
+
+> **Watch recipe (S6 + the calendar/anchor re-proof, >2 min runs):**
+> ```
+> # while the calendar layer + macro arm land, re-prove anchors + crypto coverage:
+> watch -n 30 'bash scripts/verify_anchors.sh 2>&1 | tail -1; \
+>   cargo test -p data calendar 2>&1 | tail -3; \
+>   cargo test -p backtest macro_regime 2>&1 | tail -3'
+> ```
 
 ## Implementation
 _developer fills this._
@@ -380,6 +844,22 @@ _developer fills this._
 _tester links to reports here._
 
 ## Changelog
+- 2026-06-26 (architect): § Design + § Backtest Scenarios authored; tasks.md
+  sequenced; **ADR-0073** written (market-calendar layer + macro-exogenous-regime
+  seam). FULL-FAT build (operator-chosen, durable calendar layer — NOT the
+  relaxed carve-out). Resolved Q-MACRO-2=(a) durable `MarketCalendar` in
+  `crates/data` (calendar derived from ticker → NO `load_cached` signature
+  change → crypto byte-identical); Q-MACRO-1=(a) hand-written arm (NO DSL change
+  — the buyhold arm is already a pure equity-path fn, so the `ComposedStrategy`
+  demux problem never arises); Q-MACRO-3 locked `^GSPC`+`DX-Y.NYB`(primary,
+  `^DXY` fallback pending M-FETCH-0 dry-run)+`^TNX`, rule SMA(50)/SMA(50)/SMA(20)
+  3-AND; Q-MACRO-4 single `v0.macro_riskon` arm; Q-MACRO-5 LOCF cadence-agnostic.
+  Two findings shrank the build: ADR-0058 `core::pit::PitSeries<bool>` IS the
+  look-ahead-impossible as-of join (no hand-roll), and `run_buyhold_path` is a
+  pure fn (the macro arm is `run_macro_gated_buyhold_path` beside it). Anchors
+  119/119 baseline confirmed; arm `write_report=false` → anchor-additive; gate
+  FROZEN. ADR registry-row + trace-arch refs reported to orchestrator (parallel
+  architects; README/architecture/trace NOT touched here).
 - 2026-06-26 (analyst): scoped fresh-channel probe #4 (cross-asset/macro
   regime). Data-feasibility verdict: Yahoo *fetch* path supplies DXY/SPX/rates
   free (any-ticker, PIT-pinned), but (F-2) the 95% coverage gate assumes 24/7
