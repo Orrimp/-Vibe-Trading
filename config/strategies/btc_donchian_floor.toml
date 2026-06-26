@@ -1,0 +1,14 @@
+# ADR-0071 — BTC Donchian floor (20-bar support low), pre-registered arm v0.donchian_floor.
+# Signal: long while close holds above the 20-bar minimum LOW (price above recent support trough).
+# `min(low, 20)` feasible in the DSL: low and close are distinct fields; min(low,N) < close
+# whenever any prior bar in the window had a trough below current close. This is the
+# btc_rsi_reversion idiom (same clause used there).
+# Rationale: channel-floor axis — long while price is above the rolling 20-bar support
+# (the support being the minimum LOW, not minimum close).
+
+id     = "btc_donchian_floor"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "close > min(low, 20)"
+size   = "fixed_fraction(0.1)"

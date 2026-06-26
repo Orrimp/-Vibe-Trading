@@ -46,10 +46,10 @@ pub type BakeoffRunResult = Result<BakeoffReportMirror, SmolStr>;
 /// fallback. Binance-style symbol, resolved against the pinned hourly corpus.
 pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
 
-/// The advisor bake-off field: the 4 rule engines + the 2 F8 vote ensembles
-/// (ADR-0063). Buy-and-hold is appended by `run_bakeoff`. The cockpit opts into
-/// the ensembles HERE — `default_field()` stays unchanged so anchored paths are
-/// unaffected (the anchor-additive contract).
+/// The advisor bake-off field: the 9 single rule engines (4 original + 5 ADR-0071
+/// signal-library arms) + the 8 F8/ADR-0067 vote ensembles. Buy-and-hold is appended
+/// by `run_bakeoff`. The cockpit opts into the ensembles HERE — anchored paths are
+/// unaffected (the anchor-additive contract; new arms run `write_report=false`).
 fn advisor_field() -> Vec<trading_core::StrategyId> {
     let mut field = backtest::BakeoffConfig::default_field();
     field.extend(backtest::BakeoffConfig::default_ensemble_field());
@@ -58,10 +58,11 @@ fn advisor_field() -> Vec<trading_core::StrategyId> {
 
 /// The total number of arms the advisor bake-off puts head-to-head — the
 /// `advisor_field()` size **plus the buy-and-hold benchmark** that `run_bakeoff`
-/// always appends. Post-ADR-0067 this is 13 (4 single rule engines + 8 vote
-/// ensembles + buy-and-hold). Single-sourced from `advisor_field()` so it can
-/// never drift from the real field; surfaced in the leaderboard header context
-/// (OQ-2) so a wider field is self-explanatory. `+ 1` is the appended benchmark.
+/// always appends. Post-ADR-0071 this is 18 (9 single rule engines + 8 vote
+/// ensembles + buy-and-hold; the 9 = 4 original + 5 ADR-0071 signal-library arms).
+/// Single-sourced from `advisor_field()` so it can never drift from the real field;
+/// surfaced in the leaderboard header context (OQ-2) so a wider field is self-explanatory.
+/// `+ 1` is the appended benchmark.
 #[must_use]
 pub fn advisor_field_arm_count() -> usize {
     advisor_field().len() + 1
@@ -252,10 +253,11 @@ mod tests {
             ),
             "the advisor opts into the real bootstrap gate (ADR-0063)"
         );
+        // ADR-0071: field grew from 12 (4+8) to 17 (9+8) with the 5 new signal-library arms.
         assert_eq!(
             cfg.request.field.len(),
-            12,
-            "the 4 rule engines + 8 vote ensembles (F8 + advisor-combination-search ADR-0067)"
+            17,
+            "9 single rule engines (4 original + 5 ADR-0071) + 8 vote ensembles"
         );
         let ids: Vec<&str> = cfg.request.field.iter().map(|s| s.0.as_str()).collect();
         // F8 original arms must be present.
@@ -324,10 +326,11 @@ mod tests {
             other => panic!("OneMonth must map to a Custom window, got {other:?}"),
         }
         // Field / seed / source / gate match the default advisor contract.
+        // ADR-0071: field grew from 12 (4+8) to 17 (9+8) with the 5 new arms.
         assert_eq!(
             cfg.request.field.len(),
-            12,
-            "the 4 rule engines + 8 vote ensembles (F8 + advisor-combination-search ADR-0067)"
+            17,
+            "9 single rule engines (4 original + 5 ADR-0071) + 8 vote ensembles"
         );
         assert!(matches!(
             cfg.data_source,

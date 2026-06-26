@@ -112,6 +112,27 @@ pub enum IndicatorState {
         sum: Decimal,
         latest: Option<Decimal>,
     },
+    /// ADR-0071 — On-Balance Volume (OBV).
+    ///
+    /// Recurrence: OBV_0 = 0 (seeded on bar 0, available immediately as `Some(0)`);
+    /// OBV_t = OBV_{t-1} + sign(close_t − close_{t-1}) · volume_t.
+    /// All math in `Decimal` (no f64). `prev_close` = `None` before bar 0.
+    Obv {
+        prev_close: Option<Decimal>,
+        acc: Decimal,
+        latest: Option<Decimal>,
+    },
+    /// ADR-0071 — N-bar simple moving average of the OBV series.
+    ///
+    /// Owns an inner `Obv` state (the `MacdLine`-owns-EMA pattern). Returns
+    /// `None` during warm-up (< N OBV values pushed).
+    ObvAvg {
+        period: u32,
+        obv: Box<IndicatorState>,
+        window: VecDeque<Decimal>,
+        sum: Decimal,
+        latest: Option<Decimal>,
+    },
 }
 
 impl IndicatorState {
@@ -129,7 +150,10 @@ impl IndicatorState {
             | Self::BollingerLower { latest, .. }
             | Self::RollingMin { latest, .. }
             | Self::RollingMax { latest, .. }
-            | Self::RollingAvg { latest, .. } => *latest,
+            | Self::RollingAvg { latest, .. }
+            // ADR-0071 OBV indicators.
+            | Self::Obv { latest, .. }
+            | Self::ObvAvg { latest, .. } => *latest,
         }
     }
 
@@ -383,6 +407,59 @@ impl IndicatorState {
                     *latest = Some(*sum / Decimal::from(*window_size));
                 }
             }
+            // ADR-0071 — OBV recurrence.
+            // Bar 0: seed prev_close, set acc = 0, emit Some(0).
+            // Bar t≥1: acc += sign(close − prev_close) · volume.
+            Self::Obv {
+                prev_close,
+                acc,
+                latest,
+            } => {
+                let close = bar.close.get();
+                let volume = bar.volume.get();
+                match *prev_close {
+                    None => {
+                        // Bar 0: seed, accumulator = 0, available immediately.
+                        *prev_close = Some(close);
+                        *acc = Decimal::ZERO;
+                        *latest = Some(Decimal::ZERO);
+                    }
+                    Some(prev) => {
+                        let delta = close - prev;
+                        let sign = if delta > Decimal::ZERO {
+                            Decimal::ONE
+                        } else if delta < Decimal::ZERO {
+                            Decimal::NEGATIVE_ONE
+                        } else {
+                            Decimal::ZERO
+                        };
+                        *acc += sign * volume;
+                        *prev_close = Some(close);
+                        *latest = Some(*acc);
+                    }
+                }
+            }
+            // ADR-0071 — OBV moving average: advance inner OBV, roll a window
+            // over its values (mirrors RollingAvg but over OBV not a bar field).
+            Self::ObvAvg {
+                period,
+                obv,
+                window,
+                sum,
+                latest,
+            } => {
+                obv.on_bar(bar);
+                if let Some(obv_val) = obv.latest() {
+                    if window.len() == *period as usize {
+                        *sum -= window.pop_front().unwrap_or(Decimal::ZERO);
+                    }
+                    window.push_back(obv_val);
+                    *sum += obv_val;
+                    if window.len() == *period as usize {
+                        *latest = Some(*sum / Decimal::from(*period));
+                    }
+                }
+            }
         }
     }
 }
@@ -624,6 +701,13 @@ fn eval_indicator_expr(call: &IndicatorCall, ctx: &EvalCtx<'_>) -> Option<Decima
             // These are state-dependent — return None here (handled via RuleAst level).
             None
         }
+        // ADR-0071 — OBV indicator lookup (0-arg call `obv()`).
+        "obv" => find_obv(ctx.indicators),
+        // ADR-0071 — OBV moving average lookup (`obv_avg(N)`).
+        "obv_avg" => {
+            let p = num_arg(0)?;
+            find_obv_avg(ctx.indicators, p)
+        }
         _ => None,
     }
 }
@@ -824,6 +908,30 @@ fn find_rolling(
         }),
         _ => None,
     }
+}
+
+/// ADR-0071 — find the top-level `Obv` state. Returns its latest value.
+fn find_obv(states: &[IndicatorState]) -> Option<Decimal> {
+    states.iter().find_map(|s| {
+        if let IndicatorState::Obv { latest, .. } = s {
+            return *latest;
+        }
+        None
+    })
+}
+
+/// ADR-0071 — find the `ObvAvg` state with the given period. Returns its latest value.
+fn find_obv_avg(states: &[IndicatorState], period: u32) -> Option<Decimal> {
+    states.iter().find_map(|s| {
+        if let IndicatorState::ObvAvg {
+            period: p, latest, ..
+        } = s
+            && *p == period
+        {
+            return *latest;
+        }
+        None
+    })
 }
 
 // ── Rule node state (for crossovers) ──────────────────────────────────────────
@@ -1041,6 +1149,53 @@ fn add_indicator(call: &IndicatorCall, states: &mut Vec<IndicatorState>) {
                     window_size: w,
                     window: VecDeque::with_capacity(w as usize),
                     sum: Decimal::ZERO,
+                    latest: None,
+                });
+            }
+        }
+        // ADR-0071 — `obv()` (0-arity): add at most one top-level Obv state.
+        "obv" => {
+            if !states
+                .iter()
+                .any(|s| matches!(s, IndicatorState::Obv { .. }))
+            {
+                states.push(IndicatorState::Obv {
+                    prev_close: None,
+                    acc: Decimal::ZERO,
+                    latest: None,
+                });
+            }
+        }
+        // ADR-0071 — `obv_avg(N)` (1-arity): owns its inner Obv state.
+        // Also ensure the top-level Obv is present so `obv()` comparisons in the
+        // same signal work without a separate `obv()` term (symmetry guarantee).
+        "obv_avg" => {
+            let period = num_arg(0);
+            if !states
+                .iter()
+                .any(|s| matches!(s, IndicatorState::ObvAvg { period: p, .. } if *p == period))
+            {
+                states.push(IndicatorState::ObvAvg {
+                    period,
+                    obv: Box::new(IndicatorState::Obv {
+                        prev_close: None,
+                        acc: Decimal::ZERO,
+                        latest: None,
+                    }),
+                    window: VecDeque::with_capacity(period as usize),
+                    sum: Decimal::ZERO,
+                    latest: None,
+                });
+            }
+            // Ensure the independent top-level Obv exists so a bare `obv()` in the
+            // same expression (e.g. `obv() > obv_avg(20)`) can be evaluated separately.
+            if !states
+                .iter()
+                .any(|s| matches!(s, IndicatorState::Obv { .. }))
+            {
+                states.push(IndicatorState::Obv {
+                    prev_close: None,
+                    acc: Decimal::ZERO,
                     latest: None,
                 });
             }
@@ -1675,5 +1830,283 @@ size   = "fixed_fraction(0.1)"
             venue: Venue::Binance,
         };
         assert!(strategy.on_tick(&tick).is_empty());
+    }
+}
+
+// ── ADR-0071 OBV identity / round-trip guard ──────────────────────────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod obv_identity_tests {
+    use super::*;
+    use crate::composed::config::ComposedStrategyConfig;
+    use rust_decimal_macros::dec;
+    use trading_core::{Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
+
+    /// Build a minimal bar with explicit close and volume (all other fields
+    /// are set to safe defaults). Used for the hand-computed OBV series.
+    fn make_bar(close: Decimal, volume: Decimal) -> Bar {
+        use time::OffsetDateTime;
+        let epoch = OffsetDateTime::new_utc(
+            time::Date::from_calendar_date(2024, time::Month::January, 1).unwrap(),
+            time::Time::MIDNIGHT,
+        );
+        let ts = Timestamp::new(epoch);
+        let mk_price = |v: Decimal| Price::new(v.max(dec!(0.001))).unwrap();
+        let mk_qty = |v: Decimal| Quantity::new(v.max(dec!(0.001))).unwrap();
+        Bar {
+            symbol: Symbol::new("BTCUSDT"),
+            tf: Timeframe::OneMinute,
+            open: mk_price(close),
+            high: mk_price(close),
+            low: mk_price(close),
+            close: mk_price(close),
+            volume: mk_qty(volume),
+            trade_count: 1,
+            local_recv_ts: ts,
+            open_ts: ts,
+            close_ts: ts,
+            venue: Venue::Binance,
+        }
+    }
+
+    /// ADR-0071 D2.2 — parser unit test for the novel 0-arity `obv()` call.
+    ///
+    /// Confirms the empty-arg parse path (which was logically correct but
+    /// previously unexercised — every existing indicator had arity ≥ 1).
+    #[test]
+    fn t_obv_parser_zero_arity_roundtrip() {
+        use crate::composed::parser::parse_signal;
+        use std::collections::BTreeMap;
+
+        let params: BTreeMap<smol_str::SmolStr, Decimal> = BTreeMap::new();
+
+        // `obv()` — 0-arity indicator call — must parse successfully.
+        let ast =
+            parse_signal("obv() > 0", &params).expect("obv() > 0 must parse (0-arity call path)");
+        assert!(
+            matches!(ast, RuleAst::Cmp { .. }),
+            "obv() > 0 should produce a Cmp node, got {:?}",
+            ast
+        );
+
+        // `obv_avg(20)` — 1-arity call — must also parse.
+        let ast2 = parse_signal("obv_avg(20) > 0", &params).expect("obv_avg(20) > 0 must parse");
+        assert!(matches!(ast2, RuleAst::Cmp { .. }));
+
+        // Full btc_obv signal must parse end-to-end.
+        let ast3 = parse_signal("obv() > obv_avg(20) AND close > sma(50)", &params)
+            .expect("btc_obv signal must parse");
+        assert!(matches!(ast3, RuleAst::And(_, _)));
+
+        // A bare `obv` (no parens) must error with UnknownParam — not an indicator call.
+        let err = parse_signal("obv > 0", &params)
+            .expect_err("bare `obv` without parens must fail (falls to UnknownParam)");
+        assert_eq!(
+            err.error_code(),
+            "unknown_param",
+            "bare `obv` should produce unknown_param, got: {:?}",
+            err
+        );
+    }
+
+    /// ADR-0071 D2.1 — OBV round-trip guard:
+    ///   (a) `btc_obv` TOML parses via `from_str`, id == stem, indicators set correct.
+    ///   (b) Textbook OBV on a hand-built series (exact Decimal, all 3 sign branches).
+    ///   (c) `ObvAvg{20}` == SMA of the reference OBV series.
+    ///   (d) Warm-up: `Obv.latest() == Some(0)` at bar 0, `ObvAvg{20}.latest() == None`
+    ///       until 20 OBV values have been pushed.
+    #[test]
+    fn t_obv_identity_guard() {
+        // ── (a) round-trip ───────────────────────────────────────────────────
+        let toml = r#"
+id     = "btc_obv"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "obv() > obv_avg(20) AND close > sma(50)"
+size   = "fixed_fraction(0.1)"
+"#;
+        let cfg = ComposedStrategyConfig::from_str(toml, "btc_obv")
+            .expect("btc_obv TOML must parse without error");
+        assert_eq!(cfg.id, "btc_obv", "parsed id must equal the stem");
+
+        // Build indicators and assert the required set is present.
+        let ast = crate::composed::parser::parse_signal(&cfg.signal_raw, &cfg.params)
+            .expect("signal must parse");
+        let indicators = build_indicators(&ast);
+        let has_obv = indicators
+            .iter()
+            .any(|s| matches!(s, IndicatorState::Obv { .. }));
+        let has_obv_avg_20 = indicators
+            .iter()
+            .any(|s| matches!(s, IndicatorState::ObvAvg { period: 20, .. }));
+        let has_sma_50 = indicators
+            .iter()
+            .any(|s| matches!(s, IndicatorState::Sma { period: 50, .. }));
+        assert!(has_obv, "build_indicators must yield an Obv state");
+        assert!(
+            has_obv_avg_20,
+            "build_indicators must yield an ObvAvg{{period:20}} state"
+        );
+        assert!(
+            has_sma_50,
+            "build_indicators must yield an Sma{{period:50}} state"
+        );
+
+        // ── (b) textbook OBV on a hand-built ~14-bar series ─────────────────
+        // Series design (close, volume):
+        //   bar 0: close=100, vol=10  → bar-0 seed, OBV=0  (warm-up)
+        //   bar 1: close=105, vol=20  → up   → OBV = 0 + 20 = 20
+        //   bar 2: close=100, vol=15  → down → OBV = 20 − 15 = 5
+        //   bar 3: close=100, vol=12  → flat → OBV = 5 + 0 = 5
+        //   bar 4: close=110, vol=25  → up   → OBV = 5 + 25 = 30
+        //   bar 5: close=108, vol=18  → down → OBV = 30 − 18 = 12
+        //   bar 6: close=112, vol=30  → up   → OBV = 12 + 30 = 42
+        //   bar 7: close=115, vol=22  → up   → OBV = 42 + 22 = 64
+        //   bar 8: close=112, vol=14  → down → OBV = 64 − 14 = 50
+        //   bar 9: close=112, vol=10  → flat → OBV = 50 + 0  = 50
+        //   bar10: close=118, vol=28  → up   → OBV = 50 + 28 = 78
+        //   bar11: close=116, vol=16  → down → OBV = 78 − 16 = 62
+        //   bar12: close=120, vol=35  → up   → OBV = 62 + 35 = 97
+        //   bar13: close=119, vol=11  → down → OBV = 97 − 11 = 86
+        let bars_raw: &[(i64, i64)] = &[
+            (100, 10),
+            (105, 20),
+            (100, 15),
+            (100, 12),
+            (110, 25),
+            (108, 18),
+            (112, 30),
+            (115, 22),
+            (112, 14),
+            (112, 10),
+            (118, 28),
+            (116, 16),
+            (120, 35),
+            (119, 11),
+        ];
+        let reference_obv: &[Decimal] = &[
+            dec!(0),
+            dec!(20),
+            dec!(5),
+            dec!(5),
+            dec!(30),
+            dec!(12),
+            dec!(42),
+            dec!(64),
+            dec!(50),
+            dec!(50),
+            dec!(78),
+            dec!(62),
+            dec!(97),
+            dec!(86),
+        ];
+
+        let bars: Vec<Bar> = bars_raw
+            .iter()
+            .map(|&(c, v)| make_bar(Decimal::from(c), Decimal::from(v)))
+            .collect();
+
+        // Stand-alone Obv state (as collected by build_indicators).
+        let mut obv_state = IndicatorState::Obv {
+            prev_close: None,
+            acc: Decimal::ZERO,
+            latest: None,
+        };
+
+        // ── (d) warm-up assertions ─────────────────────────────────────────
+        // Before bar 0: latest must be None.
+        assert_eq!(
+            obv_state.latest(),
+            None,
+            "Obv.latest() must be None before any bar"
+        );
+
+        // ── (b) advance bar-by-bar + check against reference ─────────────
+        for (i, bar) in bars.iter().enumerate() {
+            obv_state.on_bar(bar);
+            assert_eq!(
+                obv_state.latest(),
+                Some(reference_obv[i]),
+                "Obv.latest() at bar {i} must equal reference OBV = {}",
+                reference_obv[i]
+            );
+        }
+
+        // ── (d) warm-up for ObvAvg{20} ───────────────────────────────────
+        // ObvAvg{20} needs 20 OBV values → None until bar 19.
+        // Our series only has 14 bars → it must still be None after all bars.
+        let mut obv_avg_state = IndicatorState::ObvAvg {
+            period: 20,
+            obv: Box::new(IndicatorState::Obv {
+                prev_close: None,
+                acc: Decimal::ZERO,
+                latest: None,
+            }),
+            window: VecDeque::with_capacity(20),
+            sum: Decimal::ZERO,
+            latest: None,
+        };
+        for bar in &bars {
+            obv_avg_state.on_bar(bar);
+        }
+        assert_eq!(
+            obv_avg_state.latest(),
+            None,
+            "ObvAvg{{20}}.latest() must be None until 20 OBV values pushed (only 14 bars)"
+        );
+
+        // ── (c) ObvAvg == SMA of reference OBV (period=5, fully warm) ────
+        // Run ObvAvg{5} over the 14-bar series.
+        let mut obv_avg5 = IndicatorState::ObvAvg {
+            period: 5,
+            obv: Box::new(IndicatorState::Obv {
+                prev_close: None,
+                acc: Decimal::ZERO,
+                latest: None,
+            }),
+            window: VecDeque::with_capacity(5),
+            sum: Decimal::ZERO,
+            latest: None,
+        };
+        for bar in &bars {
+            obv_avg5.on_bar(bar);
+        }
+        // After 14 bars, ObvAvg{5} is warm (>= 5 values pushed).
+        // Expected: mean of the last 5 reference OBV values:
+        //   reference_obv[9..14] = [50, 78, 62, 97, 86]
+        //   mean = (50 + 78 + 62 + 97 + 86) / 5 = 373 / 5 = 74.6
+        let expected_avg5 =
+            (dec!(50) + dec!(78) + dec!(62) + dec!(97) + dec!(86)) / Decimal::from(5u32);
+        assert_eq!(
+            obv_avg5.latest(),
+            Some(expected_avg5),
+            "ObvAvg{{5}}.latest() must equal SMA of last 5 reference OBV values = {expected_avg5}"
+        );
+    }
+
+    /// ADR-0071 — the 3 sign branches (up / down / flat) are all covered
+    /// explicitly in `t_obv_identity_guard` (bars 1,5=up; bars 2,8=down;
+    /// bars 3,9=flat). This companion test isolates each branch in isolation.
+    #[test]
+    fn t_obv_sign_branches_isolated() {
+        // Up bar: close rises → OBV += volume.
+        let mut obv = IndicatorState::Obv {
+            prev_close: None,
+            acc: Decimal::ZERO,
+            latest: None,
+        };
+        obv.on_bar(&make_bar(dec!(100), dec!(10))); // bar 0 seed → OBV=0
+        obv.on_bar(&make_bar(dec!(105), dec!(20))); // up → OBV=20
+        assert_eq!(obv.latest(), Some(dec!(20)));
+
+        // Flat bar: close unchanged → OBV unchanged.
+        obv.on_bar(&make_bar(dec!(105), dec!(15))); // flat → OBV=20 (unchanged)
+        assert_eq!(obv.latest(), Some(dec!(20)));
+
+        // Down bar: close falls → OBV -= volume.
+        obv.on_bar(&make_bar(dec!(100), dec!(8))); // down → OBV=20-8=12
+        assert_eq!(obv.latest(), Some(dec!(12)));
     }
 }

@@ -1,0 +1,15 @@
+# ADR-0071 — BTC On-Balance-Volume accumulation, pre-registered arm v0.obv.
+# Signal: long when OBV > its 20-bar MA (accumulation regime) AND close > SMA(50) (trend filter).
+# NOTE: `obv()` requires empty parens — bare `obv` is not a valid DSL term.
+# Period 20 is the architect-ratified parameter (ADR-0071). `sma(50)` is the DSL call
+# (1-arg arity); it uses close internally (the SMA indicator is always close-based).
+# Rationale: pure volume-flow accumulation indicator; the cleanest orthogonality story
+# (cumulative signed volume, not a price or band statistic). The 20-bar window aligns
+# with the Donchian lookback, measuring medium-term OBV trend vs the 50-bar price trend.
+
+id     = "btc_obv"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "obv() > obv_avg(20) AND close > sma(50)"
+size   = "fixed_fraction(0.1)"

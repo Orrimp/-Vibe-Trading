@@ -86,7 +86,10 @@ use crate::strings::{
     LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
     LEADERBOARD_SHORT_BBANDS_LS_LABEL, LEADERBOARD_SHORT_FIELD_NOTE,
     LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
-    LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
+    LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG,
+    LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL, LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
+    LEADERBOARD_SIGNAL_OBV_LABEL, LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
+    LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
     LEADERBOARD_WINNER_ROBUST_CLAUSE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
@@ -982,6 +985,20 @@ fn display_label(strategy: &str) -> &str {
         "rsi_ls" | "v0.rsi_ls" => LEADERBOARD_SHORT_RSI_LS_LABEL,
         "bbands_ls" | "v0.bbands_ls" => LEADERBOARD_SHORT_BBANDS_LS_LABEL,
         "always_short" | "v0.always_short" => LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
+        // The FIXED 5-arm signal-library slate (advisor-signal-library-expansion,
+        // ADR-0071 § D6): 4 DSL-only breakout/volume/momentum arms + the OBV arm.
+        // Each opaque `v0.*` id maps to a friendly label naming the rule + its
+        // LOCKED parameterization so the row reads AS the strategy, not a raw id —
+        // the same anti-raw-id discipline the ensemble + short slates use.
+        //
+        // The bake-off emits the `v0.`-prefixed ids (e.g. `"v0.donchian_break"`),
+        // but the bare forms are mapped too (mirroring the short-arm handling) so
+        // the label survives whichever id shape reaches the row.
+        "donchian_break" | "v0.donchian_break" => LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL,
+        "donchian_floor" | "v0.donchian_floor" => LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
+        "vol_breakout" | "v0.vol_breakout" => LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL,
+        "roc_momentum" | "v0.roc_momentum" => LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
+        "obv" | "v0.obv" => LEADERBOARD_SIGNAL_OBV_LABEL,
         other => other,
     }
 }
@@ -1216,6 +1233,83 @@ mod tests {
                 label, expected_label,
                 "v0-prefixed short arm `{id}` must map to its friendly directional label"
             );
+        }
+    }
+
+    /// advisor-signal-library-expansion (T11, ADR-0071 § D6) — the LOAD-BEARING
+    /// anti-raw-id guard for the FIXED 5-arm signal-library slate. Each of the 5
+    /// new arm ids MUST map to a FRIENDLY label, never fall through to the raw id.
+    /// This is the exact regression advisor-combination-search hit (and the short
+    /// slate guards against): the engine adds the ids in `default_field()` but the
+    /// leaderboard mapping must be extended ui-side or the rows show raw
+    /// `v0.donchian_break` etc. A failure here is "the new arm renders its raw id".
+    ///
+    /// The bake-off emits the `v0.`-prefixed ids, but the bare forms are mapped
+    /// too (mirroring the short-arm handling), so both id shapes are asserted.
+    #[test]
+    fn signal_library_arm_ids_map_to_friendly_labels_not_raw_ids() {
+        let cases = [
+            // (bare form, v0.-prefixed form, expected friendly label)
+            (
+                "donchian_break",
+                "v0.donchian_break",
+                LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL,
+            ),
+            (
+                "donchian_floor",
+                "v0.donchian_floor",
+                LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
+            ),
+            (
+                "vol_breakout",
+                "v0.vol_breakout",
+                LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL,
+            ),
+            (
+                "roc_momentum",
+                "v0.roc_momentum",
+                LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
+            ),
+            ("obv", "v0.obv", LEADERBOARD_SIGNAL_OBV_LABEL),
+        ];
+        for (bare, prefixed, expected_label) in cases {
+            for id in [bare, prefixed] {
+                let label = display_label(id);
+                assert_ne!(
+                    label, id,
+                    "signal-library arm `{id}` rendered its RAW id — the \
+                     display_label mapping is missing (the \
+                     advisor-combination-search regression)"
+                );
+                assert_eq!(
+                    label, expected_label,
+                    "signal-library arm `{id}` must map to its friendly label"
+                );
+            }
+        }
+    }
+
+    /// The 5 new signal-library labels are DISTINCT from one another and from the
+    /// existing single-arm / ensemble / short labels — so no two rows collapse to
+    /// the same display string (the operator can tell the breakout, volume, and
+    /// momentum arms apart). Guards against a copy-paste constant mix-up.
+    #[test]
+    fn signal_library_labels_are_distinct() {
+        let new_labels = [
+            LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL,
+            LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
+            LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL,
+            LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
+            LEADERBOARD_SIGNAL_OBV_LABEL,
+        ];
+        for (i, a) in new_labels.iter().enumerate() {
+            for b in &new_labels[i + 1..] {
+                assert_ne!(a, b, "two signal-library labels collide: {a:?} == {b:?}");
+            }
+            // Also distinct from the crowned single + an ensemble + a short label,
+            // so a new row never reads as an existing arm.
+            assert_ne!(*a, LEADERBOARD_ENSEMBLE_MAJORITY_LABEL);
+            assert_ne!(*a, LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL);
         }
     }
 

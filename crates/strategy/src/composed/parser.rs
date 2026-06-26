@@ -47,6 +47,11 @@ fn indicator_arity(name: &str) -> Option<usize> {
         "avg" => Some(2), // avg(field, window)
         "cross_above" => Some(2),
         "cross_below" => Some(2),
+        // ADR-0071 — OBV primitive: 0-arity call `obv()` (empty parens required;
+        // a bare `obv` without `(` falls through to UnknownParam).
+        "obv" => Some(0),
+        // ADR-0071 — OBV moving average: `obv_avg(N)` (1-arg, mirrors RollingAvg).
+        "obv_avg" => Some(1),
         _ => None,
     }
 }

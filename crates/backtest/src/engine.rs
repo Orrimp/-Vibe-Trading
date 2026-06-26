@@ -679,6 +679,12 @@ fn strategy_dir_slug(strategy_id: &str) -> &str {
         | "bbands_mean_revert_h1"
         | "v0.bbands_ls"
         | "v0.always_short" => "v05-composed-strategies",
+        // ADR-0071 signal-library expansion arms. `write_report=false` on the
+        // bake-off path makes this branch unreachable there, but it is required
+        // for write-path correctness of any future caller that sets write_report=true.
+        "v0.donchian_break" | "btc_donchian_break" | "v0.donchian_floor" | "btc_donchian_floor"
+        | "v0.vol_breakout" | "btc_vol_breakout" | "v0.roc_momentum" | "btc_roc_momentum"
+        | "v0.obv" | "btc_obv" => "v0-signal-library",
         "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => "v15a-mean-reversion-pairs",
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => "v2.5.tcn_overlay_weights",
@@ -1437,6 +1443,365 @@ pub async fn run_scenario(
             let sma_input = crate::cli_types::SmaScenarioInput {
                 scenario_name: "btc-2023-1m-bbands-mean-revert".to_string(),
                 body_name: "btc-2023-1m-bbands-mean-revert".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
+        }
+
+        // ── ADR-0071 signal-library expansion: 5 new composed-strategy arms ─────────
+        //
+        // Pattern: copy of the "v0.5.macd" arm (engine.rs:1234) with only the
+        // match id, strategy_id, and scenario_name changed.  All 5 arms run with
+        // `write_report = false` on the bake-off path → NO anchored report body
+        // is created → `verify_anchors.sh` stays 119/119 by construction.
+        // The unique, non-anchored scenario_name per arm guarantees the
+        // (unreachable) write branch can never collide with an anchored body.
+
+        // ── v0.donchian_break — 20-bar high breakout ─────────────────────────────────
+        "v0.donchian_break" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_donchian_break".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital,
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                short_enabled: cfg.short_enabled,
+                composed_toml_override: None,
+            };
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override.clone(),
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-donchian-break".to_string(),
+                body_name: "btc-2023-1m-donchian-break".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
+        }
+
+        // ── v0.donchian_floor — 20-bar support floor ──────────────────────────────────
+        "v0.donchian_floor" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_donchian_floor".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital,
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                short_enabled: cfg.short_enabled,
+                composed_toml_override: None,
+            };
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override.clone(),
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-donchian-floor".to_string(),
+                body_name: "btc-2023-1m-donchian-floor".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
+        }
+
+        // ── v0.vol_breakout — volume-confirmed 20-bar breakout ────────────────────────
+        "v0.vol_breakout" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_vol_breakout".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital,
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                short_enabled: cfg.short_enabled,
+                composed_toml_override: None,
+            };
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override.clone(),
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-vol-breakout".to_string(),
+                body_name: "btc-2023-1m-vol-breakout".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
+        }
+
+        // ── v0.roc_momentum — 5% rate-of-change over 10 bars ─────────────────────────
+        "v0.roc_momentum" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_roc_momentum".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital,
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                short_enabled: cfg.short_enabled,
+                composed_toml_override: None,
+            };
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override.clone(),
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-roc-momentum".to_string(),
+                body_name: "btc-2023-1m-roc-momentum".to_string(),
+                body_elapsed_override: None,
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                initial_capital: dec!(100_000),
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                baseline_report: None,
+            };
+            report.report_path = maybe_write_report(
+                &cfg,
+                strategy_str,
+                &sma_input.scenario_name,
+                &report.equity_series,
+                |path| {
+                    crate::report::sma::write(
+                        &sma_input,
+                        &result.state,
+                        dec!(100_000),
+                        result.final_equity,
+                        seed_u64,
+                        data_source_str,
+                        0.0,
+                        path,
+                        &result.strategy_meta,
+                        None,
+                    )
+                },
+            )?;
+            Ok(report)
+        }
+
+        // ── v0.obv — On-Balance-Volume accumulation + trend filter ────────────────────
+        "v0.obv" => {
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "btc_obv".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital,
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                short_enabled: cfg.short_enabled,
+                composed_toml_override: None,
+            };
+            let result = crate::scenarios::sma_composed_run::run(
+                &input,
+                cfg.bars_override.clone(),
+                seed_u64,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            let data_source_str = match cfg.data_source {
+                ScenarioDataSource::YahooCache => "yahoo",
+                ScenarioDataSource::BinanceCache => "binance",
+                ScenarioDataSource::Synthetic => "synthetic",
+            };
+            let sma_input = crate::cli_types::SmaScenarioInput {
+                scenario_name: "btc-2023-1m-obv".to_string(),
+                body_name: "btc-2023-1m-obv".to_string(),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -2468,5 +2833,16 @@ mod tests {
         );
         // Unknown falls back to verbatim id.
         assert_eq!(strategy_dir_slug("some_unknown_id"), "some_unknown_id");
+        // ADR-0071 signal-library expansion arms map to "v0-signal-library".
+        assert_eq!(strategy_dir_slug("v0.donchian_break"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("btc_donchian_break"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("v0.donchian_floor"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("btc_donchian_floor"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("v0.vol_breakout"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("btc_vol_breakout"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("v0.roc_momentum"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("btc_roc_momentum"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("v0.obv"), "v0-signal-library");
+        assert_eq!(strategy_dir_slug("btc_obv"), "v0-signal-library");
     }
 }

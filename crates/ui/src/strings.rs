@@ -2634,6 +2634,45 @@ pub const LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL: &str = "Always short (benchmark)
 /// pairs with buy-and-hold). The kind is legible beyond colour (accessibility).
 pub const LEADERBOARD_SHORT_TAG: &str = "short";
 
+// ── Signal-library expansion arm labels (advisor-signal-library-expansion, ─────
+//    ADR-0071 § D6)
+//
+// The FIXED pre-registered 5-arm signal-library slate carries opaque `v0.*` ids
+// (the bake-off emits e.g. `"v0.donchian_break"`). The leaderboard renders a
+// friendly, legible display label so each row reads AS the strategy it is — a
+// breakout / volume / momentum rule — never a raw `v0.donchian_break` id. The
+// `ui` owns the words; the id→label mapping is a closed `ui`-side match (no
+// engine string crosses the seam) — the same discipline as the ensemble +
+// short labels, learned from advisor-combination-search where the engine adds
+// the ids but the leaderboard mapping must be extended ui-side or they show
+// raw ids.
+//
+// Each label names the rule AND its single pre-registered parameterization (the
+// LOCKED literal) in parentheses, so the operator can read what the arm does
+// without opening the plan — consistent in voice with the ensemble labels which
+// name the k-of-n quorum.
+
+/// `v0.donchian_break` — `close > max(high, 20)`: enter on a 20-bar-high
+/// breakout (price-extreme trend-follow, fires the bar a new high prints).
+pub const LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL: &str = "Donchian breakout (20-bar high)";
+
+/// `v0.donchian_floor` — `close > min(low, 20)`: long while price holds above
+/// the 20-bar support floor (the channel-floor / anti-breakdown rule).
+pub const LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL: &str = "Donchian floor (hold 20-bar support)";
+
+/// `v0.vol_breakout` — `close > max(high, 20) AND volume > 2 * avg(volume, 20)`:
+/// a 20-bar-high breakout CONFIRMED by a 2x volume surge (the volume-flow axis).
+pub const LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL: &str = "Volume-confirmed breakout (20-bar)";
+
+/// `v0.roc_momentum` — `close > avg(close, 10) * 1.05`: price 5% above its
+/// 10-bar mean (a short-horizon momentum burst).
+pub const LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL: &str = "Momentum burst (5% over 10 bars)";
+
+/// `v0.obv` — `obv() > obv_avg(20) AND close > sma(close, 50)`: on-balance
+/// volume above its own 20-bar average, gated by a 50-bar trend filter (the
+/// cumulative volume-flow / accumulation rule).
+pub const LEADERBOARD_SIGNAL_OBV_LABEL: &str = "On-balance-volume accumulation";
+
 /// The short-field disclaimer carried on the leaderboard when one or more
 /// short-capable arms are in the field (R-SS.9 / ADR-0068 § D8). Frames the
 /// honest "a short's drawdown can be brutal" signal + the unbounded-loss

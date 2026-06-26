@@ -91,3 +91,6 @@ __pycache__/
 # CodeGraph code-knowledge-graph index — local per-machine artifact (46MB SQLite DB),
 # rebuilt with `codegraph init` / auto-synced. Never committed. See spec/dev-notes/codegraph.md.
 .codegraph/
+
+# On-demand Binance dynamic-data cache when a -p backtest test resolves it crate-relative (ADR-0061; data, never committed)
+crates/backtest/data/

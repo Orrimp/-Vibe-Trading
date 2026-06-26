@@ -1,0 +1,11 @@
+# ADR-0071 — BTC short-horizon ROC momentum, pre-registered arm v0.roc_momentum.
+# Signal: long when close ≥ 5% above its 10-bar mean (short-horizon rate-of-change).
+# Rationale: overlaps SMA in family but at a much shorter horizon + explicit % threshold;
+# the predicted-partial-correlation control (included to falsify or confirm "volume is orthogonal").
+
+id     = "btc_roc_momentum"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "close > avg(close, 10) * 1.05"
+size   = "fixed_fraction(0.1)"

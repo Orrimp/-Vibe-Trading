@@ -347,17 +347,32 @@ pub enum RobustnessMode {
 }
 
 impl BakeoffConfig {
-    /// Returns the default field: the 4 single-symbol rule engines.
+    /// Returns the default field: the 4 original single-symbol rule engines
+    /// plus the 5 ADR-0071 pre-registered signal-library expansion arms.
     ///
     /// The `"v0.buyhold"` benchmark arm is NOT in this list — the bake-off
     /// loop always appends it so it cannot be omitted by a caller.
+    ///
+    /// ADR-0071 additions (FIXED pre-registered slate, locked literals):
+    /// - `v0.donchian_break` — `high >= max(high, 20)` (new 20-bar high breakout)
+    /// - `v0.donchian_floor` — `close > min(low, 20)` (above 20-bar support trough)
+    /// - `v0.vol_breakout`   — `high >= max(high, 20) AND volume > 2 * avg(volume, 20)`
+    /// - `v0.roc_momentum`   — `close > avg(close, 10) * 1.05`
+    /// - `v0.obv`            — `obv() > obv_avg(20) AND close > sma(50)`
     #[must_use]
     pub fn default_field() -> Vec<StrategyId> {
         vec![
+            // Original 4 base arms.
             StrategyId(SmolStr::new_static("v0.sma")),
             StrategyId(SmolStr::new_static("v0.5.macd")),
             StrategyId(SmolStr::new_static("v0.5.rsi")),
             StrategyId(SmolStr::new_static("v0.5.bbands")),
+            // ADR-0071 signal-library expansion: 5 new pre-registered arms.
+            StrategyId(SmolStr::new_static("v0.donchian_break")),
+            StrategyId(SmolStr::new_static("v0.donchian_floor")),
+            StrategyId(SmolStr::new_static("v0.vol_breakout")),
+            StrategyId(SmolStr::new_static("v0.roc_momentum")),
+            StrategyId(SmolStr::new_static("v0.obv")),
         ]
     }
 

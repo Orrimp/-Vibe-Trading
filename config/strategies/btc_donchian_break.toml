@@ -1,0 +1,15 @@
+# ADR-0071 — BTC Donchian breakout (new 20-bar high), pre-registered arm v0.donchian_break.
+# Signal: long when the current bar makes a new 20-bar high (breakout candle).
+# Implementation: `high >= max(high, 20)` — RollingMax is current-bar-inclusive, so
+# `high == max(high, 20)` iff the current bar's high equals the running window max,
+# i.e., the current bar IS a new 20-bar high. `>=` handles the equality case correctly.
+# Rationale: channel-breakout axis — fires only on new 20-bar highs; fully decorrelated
+# from the MA/momentum/band family (SMA, MACD, RSI, BBands, OBV). The breakout signal
+# has zero overlap in signal-generation logic with avg(close, N) (a mean-reversion anchor).
+
+id     = "btc_donchian_break"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "high >= max(high, 20)"
+size   = "fixed_fraction(0.1)"

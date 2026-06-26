@@ -1,0 +1,17 @@
+# ADR-0071 — BTC volume-confirmed breakout, pre-registered arm v0.vol_breakout.
+# Signal: long when the current bar makes a new 20-bar high AND volume is ≥ 2× its 20-bar mean.
+# Implementation: `high >= max(high, 20) AND volume > 2 * avg(volume, 20)`.
+# The breakout clause is `high >= max(high, 20)` (see btc_donchian_break for the
+# current-bar-inclusive RollingMax reasoning). The volume-surge clause gates on
+# extraordinary volume (2× the rolling 20-bar average), confirming institutional
+# participation on the breakout candle.
+# Rationale: combines the channel-breakout axis (btc_donchian_break) with a volume-
+# confirmation filter — the volume gate makes this strictly tighter than pure breakout
+# AND structurally distinct from all 4 existing base arms (price+volume vs price-only).
+
+id     = "btc_vol_breakout"
+kind   = "composed"
+symbol = "BTCUSDT"
+stage  = "research"
+signal = "high >= max(high, 20) AND volume > 2 * avg(volume, 20)"
+size   = "fixed_fraction(0.1)"

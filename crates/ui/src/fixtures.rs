@@ -1736,6 +1736,144 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
     }
 }
 
+/// A SIGNAL-LIBRARY-AUGMENTED advisor field (advisor-signal-library-expansion,
+/// ADR-0071 § D6 — T12): the full **13-arm** field
+/// ([`fake_bakeoff_report_mirror`]: 4 single rule engines + 8 vote ensembles +
+/// buy-and-hold) PLUS the FIXED 5-arm signal-library slate (`v0.donchian_break`,
+/// `v0.donchian_floor`, `v0.vol_breakout`, `v0.roc_momentum`, `v0.obv`) — the
+/// full **18-arm** field the leaderboard renders once the new arms land in
+/// `default_field()`.
+///
+/// Drives the leaderboard render guard that proves the 5 NEW arms render with
+/// FRIENDLY labels (NOT raw `v0.donchian_break` ids) at the ~18-row field, with
+/// the 13-arm field as the negative control.
+///
+/// The 5 new arms are mostly FRAGILE — the honest, pre-registered expectation
+/// (ADR-0071 § Honest framing: a breakout / volume / momentum rule on a single
+/// 60-70%-vol crypto inherits full market beta and has no prior reason to clear
+/// a bar the existing 4 could not; the robustness program concluded all families
+/// Fragile 2026-06-08). `v0.vol_breakout` is rendered ROBUST-but-not-crowned (a
+/// plausible "the volume axis cleared the bar but did not beat the crowned SMA"
+/// case) so the badge mix is exercised, NOT to assert it as a winner. `v0.sma`
+/// stays the crowned robust single (`ActiveWins`) — the new arms are an additive,
+/// honestly-rendered field, never a crowned alpha claim. Built directly as the
+/// mirror type — fixtures NEVER stand up the engine; the mirror is the whole
+/// point of the `ui`-pure seam.
+#[must_use]
+#[allow(clippy::too_many_lines)] // an 18-row literal data table — splitting it hurts readability
+pub fn fake_bakeoff_report_mirror_with_signal_library() -> crate::leaderboard::BakeoffReportMirror {
+    use crate::leaderboard::state::{LeaderRow, RobustnessLabel};
+
+    // Start from the full 13-arm field (same numbers as the canonical mirror) and
+    // SPLICE the 5 new arms in BEFORE the appended buy-and-hold benchmark, so the
+    // insertion order stays (singles, ensembles, NEW signal-library arms,
+    // benchmark) — exactly how `default_field()` ∪ `default_ensemble_field()` +
+    // the appended benchmark would order an 18-arm advisor field.
+    let mut base = fake_bakeoff_report_mirror();
+
+    // The benchmark is the last row of the 13-arm field (index 12). Pop it, push
+    // the 5 new arms, then push the benchmark back so it stays last.
+    // Using `Option::take` via pop + if-let to avoid `expect()` (ui deny lint).
+    let Some(benchmark) = base.rows.pop() else {
+        // Should never happen: `fake_bakeoff_report_mirror` always has rows.
+        return base;
+    };
+
+    // ── the FIXED 5-arm signal-library slate (ADR-0071 § D1) ──────────────────
+    // Honest values: mostly Fragile (the pre-registered expectation). The ids are
+    // the `v0.`-prefixed forms the bake-off emits.
+    base.rows.push(LeaderRow {
+        strategy: SmolStr::new("v0.donchian_break"),
+        is_benchmark: false,
+        // A 20-bar-high breakout — fires late on this window, modest realized
+        // edge but FRAGILE under resampling (the honest null).
+        sharpe: 0.41,
+        sortino: 0.52,
+        calmar: 0.31,
+        total_return_pct: dec!(0.0287),
+        max_drawdown: dec!(0.1361),
+        trade_count: 29,
+        robustness: Some(RobustnessLabel::Fragile),
+    });
+    base.rows.push(LeaderRow {
+        strategy: SmolStr::new("v0.donchian_floor"),
+        is_benchmark: false,
+        // Holds above the 20-bar floor — a losing trend-continuation on this
+        // window (exits late on floor breaks).
+        sharpe: -0.27,
+        sortino: -0.35,
+        calmar: -0.19,
+        total_return_pct: dec!(-0.0418),
+        max_drawdown: dec!(0.1747),
+        trade_count: 41,
+        robustness: Some(RobustnessLabel::Fragile),
+    });
+    base.rows.push(LeaderRow {
+        strategy: SmolStr::new("v0.vol_breakout"),
+        is_benchmark: false,
+        // The volume-confirmed breakout — the strongest decorrelation candidate;
+        // here it CLEARS the gate (robust) but with a modest Sharpe that does NOT
+        // beat the crowned SMA, so it ranks high but is not crowned. Exercises the
+        // robust-but-not-crowned badge; NOT an alpha claim.
+        sharpe: 0.69,
+        sortino: 0.88,
+        calmar: 0.74,
+        total_return_pct: dec!(0.0613),
+        max_drawdown: dec!(0.0828),
+        trade_count: 12,
+        robustness: Some(RobustnessLabel::Robust),
+    });
+    base.rows.push(LeaderRow {
+        strategy: SmolStr::new("v0.roc_momentum"),
+        is_benchmark: false,
+        // The short-horizon momentum burst (the predicted-partial-correlation
+        // control) — trades often, modest edge, FRAGILE.
+        sharpe: 0.33,
+        sortino: 0.42,
+        calmar: 0.24,
+        total_return_pct: dec!(0.0224),
+        max_drawdown: dec!(0.1492),
+        trade_count: 87,
+        robustness: Some(RobustnessLabel::Fragile),
+    });
+    base.rows.push(LeaderRow {
+        strategy: SmolStr::new("v0.obv"),
+        is_benchmark: false,
+        // On-balance-volume accumulation gated by a 50-bar trend filter — the
+        // cleanest orthogonality story; here a losing arm on this window, FRAGILE.
+        sharpe: -0.14,
+        sortino: -0.18,
+        calmar: -0.11,
+        total_return_pct: dec!(-0.0203),
+        max_drawdown: dec!(0.1605),
+        trade_count: 23,
+        robustness: Some(RobustnessLabel::Fragile),
+    });
+
+    // Restore the benchmark as the final row → 18 arms.
+    base.rows.push(benchmark);
+
+    // Re-rank best-first over the 18 arms. Row indices after the splice:
+    //   0=sma 1=macd 2=rsi 3=bbands 4=majority 5=unanimous 6=trend_pair
+    //   7=tr_mr_macd_rsi 8=tr_mr_sma_bb 9=any1of4 10=k2of4 11=k3of4
+    //   12=donchian_break 13=donchian_floor 14=vol_breakout 15=roc_momentum
+    //   16=obv 17=buyhold
+    // Crown-eligible (non-Fragile) by Sharpe:
+    //   sma(1.42) > macd(0.88) > buyhold(0.73) > vol_breakout(0.69) >
+    //   unanimous(0.67) > k2of4(0.61) > k3of4(0.58) > bbands(0.54).
+    // Fragile (ranked last, cannot be crowned) by Sharpe:
+    //   majority(1.61) > any1of4(0.44) > donchian_break(0.41) > roc_momentum(0.33) >
+    //   trend_pair(0.31) > obv(-0.14) > donchian_floor(-0.27) > rsi(-0.31) >
+    //   tr_mr_macd_rsi(0.08) … (order among Fragile does not affect the crown).
+    base.ranked = vec![
+        0, 1, 17, 14, 5, 10, 11, 3, // crown-eligible, by Sharpe
+        4, 9, 12, 15, 6, 7, 8, 16, 13, 2, // Fragile, ranked after
+    ];
+    // `crowned`, `recommendation`, `coin`, `range_label` are inherited unchanged
+    // from the 13-arm mirror — `v0.sma` stays crowned (`ActiveWins`, robust).
+    base
+}
+
 /// The original **5-arm** advisor field (4 rule engines + buy-and-hold, ONE
 /// Fragile single `v0.5.rsi`) — kept as the smaller baseline for the F8
 /// anti-tautology discriminator (`leaderboard_f8_strictly_exceeds_five_arm_field`)
