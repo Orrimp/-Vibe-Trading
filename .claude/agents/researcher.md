@@ -34,7 +34,10 @@ test-data discipline, and where ML/DL/LLM/evolution genuinely help vs. overfit.
    moving to the next paper so a crash loses ≤ 1 paper.
 5. **Aggregate periodically.** Every ~5 papers (and at the end) update
    `research/<topic>/knowledge.md` with organized, synthesized findings.
-6. Continue to your **target** (~20–25 papers). Then return a short summary.
+6. Continue toward your **target** (100 papers per topic, reached over multiple
+   resumable rounds). Add a batch this run — as many as you can before context
+   limits (~25–40 is typical), writing incrementally — then return a short summary
+   with your numbering range so the next round resumes cleanly.
 
 ## Ledger entry format (append to `research/<topic>/papers.md`)
 

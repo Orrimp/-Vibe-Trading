@@ -23,11 +23,20 @@ research/
 ├── PROGRESS.md        ← resume state: per-topic counts, targets, status (orchestrator-owned)
 ├── papers.md          ← MASTER index (links + aggregate count; orchestrator-owned)
 ├── strategies/        ← quant/algo strategies, factors, microstructure, execution
-├── backtesting/       ← backtest methodology, overfitting, test-data discipline, costs
+├── backtesting/       ← backtest METHODOLOGY (overfitting metrics, CV, data-snooping, costs)
 ├── ml-trading/        ← classical ML, feature engineering, forecasting, financial-ML pipelines
 ├── deep-learning/     ← deep learning + reinforcement learning for trading
-└── llm-and-evolution/ ← LLM trading agents + evolutionary/genetic strategy discovery
+├── data/              ← test/train data, splits & leakage, overfitting, Monte-Carlo / synthetic data, point-in-time, labeling
+├── evolution/         ← evolutionary/genetic algorithms, optimization, strategy-updating, alpha search
+├── llms/              ← LLMs (likelihood-computing neural nets) in finance; incl. LLMs-trained-on-financial-time-series
+├── risk-and-sizing/   ← Kelly, vol-targeting, drawdown control, risk parity, bet sizing
+└── crypto-market-structure/ ← funding/basis/perp, crypto volatility & liquidity, on-chain, crypto regimes
 ```
+
+> `llm-and-evolution/` (batch-1, 23 papers) was **SPLIT** (2026-06-27) into
+> `evolution/` + `llms/` — they are distinct fields (LLMs are likelihood-computing
+> neural nets; evolution is optimization / strategy-search). Its entries migrate
+> into the two; the old folder is then retired.
 
 Each topic folder contains (created + owned by its researcher agent):
 - **`papers.md`** — the LEDGER. One entry per paper. **This is the source of truth.**
@@ -64,9 +73,13 @@ The **ledgers ARE the state.** To resume in any fresh session:
 
 ## Targets
 
-- **Batch 1:** ≥ 100 papers total (~20–25 per topic). Later batches extend coverage.
+- **100 papers PER TOPIC** (9 topics → ~900 total), reached over multiple resumable
+  rounds. Batch 1 (~22 each for the original 5) is committed; the expansion to 100 +
+  the 4 new topics (`data`, `evolution`, `llms`, `risk-and-sizing`,
+  `crypto-market-structure`) run in rounds (resume + skip dupes; each run adds a batch).
 - Prefer **open access** (arXiv, ar5iv, papers-with-code, open journals). Paywalled →
-  abstract-only (25%) is acceptable **if noted**.
+  abstract-only (25%) is acceptable **if noted**. Never fabricate to hit the count —
+  an honest 60 beats 100 invented.
 
 ## Agent contract
 
