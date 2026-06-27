@@ -64,7 +64,11 @@ series?**
    run, so "beats B&H" is partly just exposure), and training-cutoff overlap.
    Their genuinely useful contribution is *feature ideas* (on-chain flows), not
    gate-credible alpha. Tellingly, [34]'s ablation shows the *market/price* agent
-   dwarfs the *news* agent — numbers > text, consistent with our thesis.
+   dwarfs the *news* agent — numbers > text, consistent with our thesis. **The
+   round-3 well-controlled crypto study confirms the verdict:** FS-ReasoningAgent
+   [68] — BTC/ETH/SOL, **post-cutoff, with fees, explicit B&H** — comes out
+   **≈ buy-and-hold** (tracks it in bulls, slightly below; mildly cushions bears).
+   The careful crypto test gives the thesis answer on our own coins.
 
 9. **"Profit mirage" — reported LLM-agent profits are largely memorization.**
    Profit Mirage [30] formalizes and quantifies it: impressive backtest returns
@@ -100,26 +104,76 @@ series?**
     tool library, never the decision rail. Contrast with the crypto *trading*-agent
     papers [31][32][34] that do claim returns and inherit the leakage/no-cost gaps.
 
+13. **When you control for leakage AND decompose returns, LLM trading "skill"
+    vanishes — it's passive factor harvesting.** The two landmark round-3 studies
+    settle it: **FINSABER** [86] (20 yrs, S&P 500, bias-controlled, costs) finds the
+    headline FinMem/FinAgent advantages **"vanish under broader cross-section and
+    longer-term evaluation"** with **no statistically significant alpha (all p >
+    0.34)**; and **KTD-Fin** [100] (4-level identifier masking + Barra attribution +
+    costs) shows **stock-selection alpha is *negative* for 9 of 10 models** — the big
+    cumulative returns are market/style exposure, and **CSI300 buy-and-hold (+36.9%)
+    matches/beats most agents risk-adjusted.** These independently rebuild *our two
+    gate pillars*: leakage control + benchmark-relative attribution (= "B&H is always
+    the benchmark"). LLM returns = knowing the story, not doing the analysis.
+
+14. **The LLM "language prior" ablates out of numeric forecasting — now shown three
+    ways.** Beyond [25] (NeurIPS-24 Spotlight: remove the LLM, accuracy is unchanged
+    or better), round 3 adds: [73] (three identical architectures — text-pretrained,
+    TS-pretrained, **random-init** — perform alike; a from-scratch transformer on
+    ~50M samples matches frozen GPT-2; small-data overfitting masked prior wins), [80]
+    (zero-shot LLM forecasters are noise-sensitive and underperform simple models),
+    and [78] (LLMs hover near *random* on time-series *reasoning*; context-aided
+    forecasting stays near/below a median baseline). The original "freeze a pretrained
+    LM" idea [61] (GPT4TS) and its successors (Time-LLM [23], TEMPO [74], UniTime
+    [62]) are the family these debunk. Even the pro-LLM datapoint [97] (LLMFew) wins
+    only on *structured-signal, non-financial* classification and lacks the
+    from-scratch control to prove the language prior matters.
+
+15. **Crypto-native, contamination-resistant benchmarks repeat the wall — retrieve
+    yes, predict no.** CryptoBench [98] (monthly-refreshed, on-chain/DeFi/DEX/MEV
+    tasks) finds leading models **excel at *retrieval* but show "near-complete failure
+    in *predictive* reasoning,"** functioning "better as search engines than
+    analysts" — and agentic wrapping makes it *worse*. FinSTaR [88] makes the split
+    explicit: deterministic **assessment** (compute drawdown/vol from prices) hits
+    >93%, but stochastic **prediction** plateaus at 65–80%, which the authors
+    attribute to **market efficiency** ("info not contained in price history alone")
+    — a reasoning-model-era restatement of our thesis.
+
 ---
 
 ## Methods / findings that hold up (and which don't)
 
 **Hold up:**
 - LLMs excel at financial *text* tasks (sentiment, NER, extraction, QA) — broad,
-  benchmark-grade evidence [5][7].
-- Properly contamination-controlled evaluation (post-cutoff test windows) is the
-  right way to test any LLM signal [9][13][6]; without it results are inflated.
+  benchmark-grade evidence [5][7]; and at *retrieval* over crypto data [98].
+- Properly contamination-controlled evaluation (post-cutoff windows / identifier
+  masking) is the right way to test any LLM signal [9][13][6][86][100]; without it
+  results are inflated.
+- Benchmark-relative attribution (strip passive market/style exposure) is essential
+  — LLM "returns" are largely factor harvesting [100]. = our "B&H is the benchmark."
 - News-sentiment carries *some* genuine signal, but fragile/decaying/illiquid-
-  concentrated [9].
-- Tool-augmentation + human-in-the-loop is the defensible architecture [4][12].
+  concentrated [9]; turnover-driven sentiment edge collapses under costs [89] (5 bps
+  cuts 13.8% → 3.7%).
+- Tool-augmentation + human-in-the-loop is the defensible architecture [4][12][52].
+- The LLM's lane on numbers is **assessment/explanation** (deterministic, >93% [88]),
+  not prediction.
 - Layered/decaying memory as an *input-construction* idea is interesting [2].
 
 **Do NOT hold up (for our purposes):**
 - "LLM agent beats buy-and-hold" claims on 3–6 assets, one window, no costs,
-  with cutoff overlap [2][3][4] — textbook of what our gate rejects.
-- LLMs as numeric *forecasters* — weak even in careful studies [7][8].
-- NLP accuracy as a proxy for tradeable edge — repeatedly shown insufficient
-  [5][7][8][10].
+  with cutoff overlap [2][3][4] — textbook of what our gate rejects; **refuted at
+  scale** by the long-run bias-controlled [86] and memory-controlled [100] studies
+  (no significant alpha; negative selection alpha; B&H matches/beats).
+- LLMs as numeric *forecasters* — weak even in careful studies [7][8]; the language
+  prior **ablates out** [25][73][80] and LLMs barely reason about series [78].
+- TSFMs as crypto *return* forecasters — barely beat random walk [28], don't
+  transfer off-the-shelf [27], shock-fragile [20], miscalibrated [83]; on crypto the
+  one peer-reviewed economic test [64] gives BTC Sharpe ~1.0 (≈ B&H).
+- NLP/classification accuracy or low forecasting RMSE as a proxy for tradeable edge —
+  repeatedly shown insufficient [5][7][8][10]; FinTSB [82] proves **error and profit
+  decouple** ("lower MSE ≠ more profit"); the ETH price-level result [63] is the trap.
+- Synthetic/generated paths as a stress-test substitute — statistical fidelity ≠
+  profitability [67]; resample real data instead.
 
 ---
 
@@ -141,15 +195,27 @@ series?**
    gated strategy library + explains results — not one that invents signals. [4][12]
 6. **Do NOT adopt a time-series foundation model to forecast crypto returns.** The
    finance-applied evidence is clear: off-the-shelf TSFMs don't transfer to finance
-   [27], barely beat a random walk on *returns* [28], degrade under shocks [20], and
-   lose to small specialized models on most tasks [43][26]. If any forecasting model
-   is ever bolted on, target **volatility for risk/sizing** (the one forecastable
-   financial quantity [19][43]) — and gate it. [27][28][20][19][43]
+   [27], barely beat a random walk on *returns* [28], degrade under shocks [20], lose
+   to small specialized models on most tasks [43][26][57], are **miscalibrated** [83],
+   and the *only* peer-reviewed crypto economic test gives BTC Sharpe ~1.0 ≈ B&H [64].
+   FinTSB [82] shows forecasting error and trading profit **decouple**. If any
+   forecasting model is ever bolted on, target **volatility for risk/sizing** (the one
+   forecastable financial quantity [19][43]) — prefer a *small* model ([56] TTM,
+   [53] PatchTST, [57] N-HiTS, [66] complexity-router), and gate it.
+   [27][28][20][19][43][82][64][83]
 7. **Treat any "crypto + LLM + big Sharpe" result as leakage/no-cost until proven
    otherwise.** Crypto-specific agents [31][32][34] and sentiment models [42] report
    3–5+ Sharpe via overlapping cutoffs, outcome-based labels, and zero costs — the
-   exact "profit mirage" [30]. Our post-cutoff, cost-aware, bootstrap-vs-B&H gate is
-   the necessary filter. [30][31][32][34][42]
+   exact "profit mirage" [30]. The careful crypto study comes out ≈ B&H [68]; the
+   long-run bias-controlled [86] and memory-controlled [100] equity studies find **no
+   significant / negative selection alpha** once leakage + factor exposure are removed.
+   Our post-cutoff, cost-aware, bootstrap-vs-B&H gate is the necessary filter.
+   [30][31][32][34][42][68][86][100]
+8. **Watch metric-overfitting in the gate-improvement work (Deflated-Sharpe/PBO).**
+   An LLM can help *design* robustness metrics [71], but searching over many candidate
+   metrics is itself a multiple-testing engine that inflates the winner — our
+   **frozen** (no per-run metric search) gate is the safer design; deflate any
+   selected-from-many statistic. [71]
 
 ---
 
@@ -195,11 +261,24 @@ returns.**
      **iTransformer** [54] (inverted "variate tokens" for multivariate). Both are
      among the deep baselines [28] showed TSFMs only sparsely beat on financial returns.
 
+   - **Sundial** [58] (Tsinghua): newest, *generative* (flow-matching, continuous,
+     no tokenization), ~1T points, probabilistic multi-future. Open. No finance eval.
+   - **N-HiTS** [57]: MLP-stack (no attention) deep baseline; ~50× faster than
+     transformers at comparable accuracy — among [28]'s financial baselines.
+
 2. **Text-LLM repurposing** — keep a *language* model and adapt the interface:
    - **LLMTime** [16]: encode the series as digit strings, zero-shot a frozen
      GPT-3 / LLaMA-2. (Notably GPT-4 is *worse* — RLHF hurts number calibration.)
    - **Time-LLM** [23]: "reprogram" a frozen Llama-7B/GPT-2/BERT via text
      prototypes + Prompt-as-Prefix.
+   - **GPT4TS / "One Fits All"** [61]: freeze GPT-2's attention+FFN, train only
+     embed/norm/output. The original "frozen-LM-for-TS" — debunked by [25] (the LM
+     ablates out).
+   - **UniTime** [62]: one cross-domain model using *domain-instruction* text + a
+     Language-TS Transformer. Partial wins (37/80), no finance.
+   - *Applied to crypto:* [63] freezes Llama-3/Llama-2/GPT-2 on **ETH** numeric
+     series (the GPT4TS recipe on our asset — but only beats LSTM/PatchTST on
+     price-*level* MSE, with no random-walk baseline; the price-level trap).
 
 ### The skeptical evidence (this is the load-bearing part)
 
@@ -224,6 +303,40 @@ returns.**
   FinSeer/StockLLM [8] = ~54% next-day up/down, no profit claim; FinBen [7] = LLMs
   "fundamentally constrained in quantitative prediction."
 
+### Now applied DIRECTLY to crypto (round-3 additions — the on-asset evidence)
+
+This round added the crypto-specific tests the earlier (mostly equity/economic)
+evidence was missing. The verdict is unchanged — and now shown on BTC/ETH/SOL:
+
+- **TSFMs on 21 cryptos, with an economic (Sharpe) metric** [64] (peer-reviewed,
+  MDPI): fine-tuned TimeGPT leads on *accuracy*; but the only big economic number
+  (Sharpe 4.29 on ETH) is a **long/short** strategy with **no transaction costs** —
+  and on **BTC** (most liquid, closest to our default) the best Sharpe is only
+  **~1.0**, i.e. ≈ buy-and-hold in a bull-tilted sample. Closed/SaaS anyway.
+- **A careful, cost-aware, post-cutoff crypto LLM agent comes out ≈ buy-and-hold**
+  [68] (FS-ReasoningAgent): on **BTC/ETH/SOL, Nov-2023→Jul-2024 (post-cutoff),
+  with fees and an explicit B&H baseline**, returns **track B&H in bulls (slightly
+  below: BTC 76.19% vs 79.63%)** and only mildly cushion bears (BTC −15.91% vs
+  −19.15%). This is our thesis, demonstrated correctly on our own coins.
+- **Frozen LLM on ETH numeric series** [63]: beats LSTM/PatchTST on price-*level*
+  MSE but **never benchmarks a random walk** and never measures return/PnL — the
+  price-level trap (level persistence is what B&H already captures).
+- **LLM breakout-detection on crypto fails on the metric that matters** [65]
+  (BreakGPT on Solana): uptrend **F1 ≈ 0.16**, beaten by a small ConvTransformer;
+  "0.95 accuracy" is just the majority (no-surge) class.
+- **The one rigorous-discipline crypto LLM result that *does* show alpha** [69]
+  (constrained LLM factor search, strict OOS, costs) gets **Sharpe 1.55 — but it's
+  cross-sectional long-short concentrated in *small illiquid tokens*** (cap-weighted
+  fails; no B&H baseline). Structurally inapplicable to a long-only single coin, and
+  the illiquidity-premium mirage [38] under realistic microcap costs.
+- **TSFM operational viability in finance is hedged** [66]: newer TSFMs are "closing
+  the gap" in finance but carry latency/drift/cost trade-offs; a "complexity router"
+  beats deploying one universal TSFM — i.e. small models usually win on cost.
+- **Synthetic-crypto generators: statistical fidelity ≠ profitability** [67]
+  (CTBench): high-quality synthetic crypto series still fail to support profitable
+  trading — supports our **bootstrap-from-real-data** design over generative paths
+  (cf. [44]: LLM-simulated markets are unrealistically calm).
+
 ### What this means for our advisor
 
 - **Returns/alpha:** no credible evidence any TSFM/LLM beats buy-and-hold on
@@ -244,13 +357,18 @@ returns.**
 
 ## Open questions / things worth testing in our app
 
-- **[Largely answered this round]** Does a purpose-built TSFM zero-shot-forecast
-  crypto returns better than naive/B&H? The literature's strong prior is **no**
-  (off-the-shelf doesn't transfer [27]; barely beats random walk on returns [28];
-  shock-fragile [20]). The only *open* sub-question worth a small experiment:
-  **can a TSFM (e.g. TimesFM/Chronos) forecast crypto *realized volatility* well
+- **[Answered — strongly negative now, on our own asset]** Does a purpose-built
+  TSFM/LLM zero-shot-forecast crypto returns better than naive/B&H? The prior was
+  already **no** (off-the-shelf doesn't transfer [27]; barely beats random walk on
+  returns [28]; shock-fragile [20]); round 3 closes it with **crypto-specific** tests:
+  peer-reviewed TSFMs give BTC Sharpe ~1.0 ≈ B&H [64]; a careful crypto LLM agent
+  comes out ≈ B&H [68]; LLM crypto breakout-detection fails [65]; the frozen-LLM-on-ETH
+  "win" is the price-level trap [63]; and contamination-clean crypto benchmarks show
+  retrieve-yes-predict-no [98]. The only *open* sub-question worth a small experiment:
+  **can a TSFM (e.g. TimesFM/Chronos/TTM) forecast crypto *realized volatility* well
   enough to drive a risk/sizing overlay that passes our gate?** — vol is the one
-  target with positive finance evidence [19][43].
+  target with positive finance evidence [19][43], **but** mind the calibration
+  warning [83] (a miscalibrated vol forecast on the risk rail can *increase* drawdown).
 - Could a constrained, grounded LLM narration layer measurably improve operator
   trust/decisions without ever touching the decision path? (UX experiment.)
 - Is there *any* regime (e.g. a sharp, news-driven crypto crash) where an LLM
@@ -298,9 +416,54 @@ returns.**
   not alpha engines") → [28]
 - **Crypto-specific LLM agents beat B&H only in no-cost / single-window / bull-run
   / cutoff-overlapping setups; on-chain features are the real contribution** →
-  CryptoTrade [31], [32], [34]
+  CryptoTrade [31], [32], [34]; a careful cost-aware post-cutoff crypto agent comes
+  out **≈ B&H** → [68]; live crypto BTC/ETH benchmark = mixed/short/fragile → [90];
+  live cost-aware crypto-futures agent shows no B&H baseline, modest Sharpe → [95]
 - **Reported LLM-agent profit is largely memorization ("profit mirage"),
   collapses post-cutoff** → [30]; field's own survey withholds a profitability
   claim → [33]
 - **In multi-agent crypto systems the price/market agent dominates the news
-  agent** (numbers > text) → [34]
+  agent** (numbers > text) → [34]; price-only multi-agent drops text because it
+  "lags price discovery" → [76]
+
+### Round-3 additions (claim → [N])
+
+- **At scale, with leakage control + costs, LLM-agent alpha is not significant** →
+  FINSABER [86] (20y S&P 500, all p > 0.34)
+- **With identifier-masking + Barra attribution, LLM stock-selection alpha is
+  *negative*; returns are passive factor harvesting; B&H matches/beats** →
+  KTD-Fin [100]
+- **The LLM language prior ablates out of numeric forecasting** → [25] (orig.);
+  random-init = pretrained [73]; noise-sensitive, loses to simple models [80];
+  near-random on TS *reasoning*, context doesn't help [78]
+- **Frozen-LM-for-TS family** (the methods those ablations target) → GPT4TS [61],
+  Time-LLM [23], TEMPO [74], UniTime [62], TS-Reasoner [94]; pro-LLM claim but
+  domain-mismatched + ablation-incomplete → LLMFew [97]
+- **Peer-reviewed TSFMs on crypto: BTC Sharpe ≈ 1.0 (≈ B&H); the ETH 4.29 is
+  long/short + no costs** → [64]; frozen LLM on ETH = price-level trap → [63];
+  LLM crypto breakout-detection fails (F1 ≈ 0.16) → [65]
+- **Forecasting error and trading profit DECOUPLE; small models (XGBoost/LGBM)
+  beat deep/foundation models on financial TS, costs included** → FinTSB [82];
+  finance-TS eval suites are proliferating because MSE misleads → [85]
+- **TSFMs are miscalibrated (confidently wrong) — bad for a risk/vol overlay** →
+  [83]; operationally a giant TSFM rarely pays vs a small/routed model → [66]
+- **Newest numeric-pretrained TSFMs** (catalog) → Chronos-2 [84], Sundial [58],
+  Time-MoE [55], TTM [56], N-HiTS [57], PatchTST [53], iTransformer [54]
+- **Crypto contamination-resistant benchmark: retrieve yes, predict no; agentic
+  wrapping makes it worse** → CryptoBench [98]
+- **Assessment (deterministic, >93%) vs prediction (stochastic, plateaus 65–80% by
+  market efficiency)** → FinSTaR [88]
+- **Turnover-driven sentiment edge collapses under costs (13.8%→3.7% at 5 bps);
+  one RL long-only variant marginally beats B&H on a single OOS year** → [89];
+  zero-cost sentiment "beats B&H" caveat stated by authors → [87]
+- **Multimodal text+numeric forecasting evidence is "genuinely mixed" / narrow /
+  contamination-plagued; safe use is Time2Text explanation** → [99]
+- **Synthetic crypto generators: statistical fidelity ≠ profitability** → CTBench
+  [67] (supports bootstrap-from-real-data over generated paths)
+- **LLM-discovered robustness *metrics* (Deflated-Sharpe-adjacent) — useful but
+  metric-search itself overfits; frozen gate is safer** → AlphaSharpe [71]
+- **Defensible LLM roles confirmed:** open finance *platform* (no PnL claim) →
+  FinRobot [79]; explainable self-reflective prediction → SEP [81]; LLM-as-pipeline
+  -engineer (reliable tooling, not alpha) → TS-Agent [70]; constrained
+  LLM-proposes-immutable-gate-disposes → [69][77]
+- **Every serious survey hedges on LLM trading alpha** → [11][33][38][91][93][96]

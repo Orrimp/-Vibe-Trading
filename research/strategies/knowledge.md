@@ -225,6 +225,63 @@ testing in our advisor, and which are known to overfit / not survive costs.
     so a TOM overlay is a data-mining candidate (though growing institutional flows
     [80] could *eventually* import some — unestablished). Don't ship without a
     mechanism + OOS survival.
+48. **The TA-efficacy literature is the through-line of our whole project, and it
+    is a 30-year arc from "TA works" to "no, it was data-snooping + costs."** The
+    canonical sequence: Brock–Lakonishok–LeBaron (1992, "MA & breakout rules beat
+    the nulls in-sample" [85]) → Sullivan–Timmermann–White (1999, "not after a
+    data-snooping correction, and the best rule dies out-of-sample" [82]) →
+    Bajgrowicz–Scaillet (2012, "and erased by transaction costs, and the future
+    best rule was never selectable ex ante" [83]). Park–Irwin's survey [84] is the
+    referee: of ~95 modern studies a majority report TA profits, but that majority
+    is an artifact of snooping, no-OOS, ignored-costs, and ex-post selection — the
+    exact four biases our gate neutralizes. Marshall et al. [89] confirm the null
+    holds across **49 country indices** simultaneously. This cluster ([82][83][84]
+    [85][89]) is the empirical wall behind ship-passive.
+49. **The "data-snooping correction" we are adding (Deflated-Sharpe / PBO) is a
+    named, mature methodology — and the literature gives us the exact recipe.**
+    Three complementary tools: **Harvey–Liu's Sharpe haircut** [97] (a 0.92 Sharpe
+    haircut to 0.08 after the trials behind it — choose BHY/Holm over Bonferroni for
+    correlated configs), the **Deflated Sharpe Ratio** [32] (deflate the magnitude
+    for selection bias + non-normality), and **Probability of Backtest Overfitting
+    via CSCV** [98] (estimate the *probability* the in-sample winner ranks below the
+    OOS median). Report DSR *and* PBO together. Our bake-off is literally the
+    configs-×-time matrix these methods consume; the crowned winner is exactly the
+    inflated best-of-N they warn about.
+50. **"More in-sample optimization → worse out-of-sample" is the deepest law in the
+    batch.** PBO/CSCV [98] shows IS performance is often *negatively* related to OOS
+    once overfitting dominates; McLean–Pontiff [92] quantify a ~26% OOS haircut
+    (overfitting) *plus* a further ~32% post-publication decay (crowding); Bajgrowicz
+    [83] shows the in-sample-best rule is not selectable ex ante. Corollary for us:
+    the highest-Sharpe bake-off config is the *most* suspect, our entire menu of
+    textbook rules (SMA/EMA/MACD/RSI/Bollinger) is maximally public and crowded, and
+    the forward paper-trade is non-negotiable.
+51. **Honest steel-men exist — not everything is snooping, and crypto in particular
+    is contested.** Two papers cut against a blanket "nothing works": Jensen–Kelly–
+    Pedersen [88] show ~75–85% of equity factors *do* replicate under proper Bayesian
+    multiple-testing (the survivors are cross-sectional themes — value/momentum/quality
+    /low-risk — none harvestable on one coin), and Deprez–Frömmel [95] find simple
+    TA rules **can** beat Bitcoin buy-and-hold out-of-sample on a *risk-adjusted*
+    basis after costs and data-mining correction. These raise our bar: the honest
+    claim is "TA *rarely robustly* beats hold net of costs, and we must TEST it,"
+    not "TA never works." Hudson–Urquhart [93] is the counterweight — on the most
+    liquid crypto, the in-sample-best rules go **negative out-of-sample for Bitcoin**.
+52. **Execution algorithms (VWAP/TWAP/IS) are one continuum indexed by risk aversion,
+    and all of it is background at €200.** Perold's implementation shortfall [87] is
+    the cost-accounting frame (charge fees + spread + delay + opportunity cost vs an
+    instant-costless "paper" fill — which our sim *is*); VWAP is the risk-neutral
+    optimum, front-loaded IS the risk-averse one [90]; the crypto wrinkle is that
+    volume is much harder to predict, so forecast-first execution is brittle [91].
+    At retail size impact is negligible [20], so our only execution cost that matters
+    is **spread crossed + fees + a delay term** — model that honestly, skip the rest.
+53. **The SMA market-timing family is one data-mineable family, not many rules.**
+    Faber's 10-month SMA timing [99] is the famous "pro" exhibit (it beats buy-and-hold
+    on *risk-adjusted* terms — lower drawdown/vol — across 5 diversified assets, NOT on
+    raw return). Zakamulin [100] is the rigorous rebuttal: *every* MA indicator (SMA,
+    EMA, MACD, momentum) is a weighted moving average of past price changes, so the
+    "zoo" collapses to one family with a tunable weighting shape — sweeping them is
+    *low-effective-N* multiple testing, the edge is lagging + regime-conditional (good
+    in strong trends, bad in chop), and the best lookback does not persist OOS. This
+    is a near-spec for how to deflate our own MA-based menu.
 
 ## Methods / findings that hold up (and which don't)
 
@@ -289,6 +346,35 @@ testing in our advisor, and which are known to overfit / not survive costs.
   widens during the volatility spike you are trying to fade [27].
 - **Calendar/seasonality effects on crypto are probable noise** — their equity
   causes (settlement, institutional flow cycles) don't exist on a 24/7 coin [26].
+- **Technical analysis does NOT survive data-snooping correction across the
+  broadest tests.** The best of ~7,800 rules on 100y of DJIA dies out-of-sample
+  [82]; the same null holds across 49 country indices [89]; the future-best rule
+  is unselectable ex ante and erased by costs [83]; the survey of ~95 studies says
+  the positive vote-count is a bias artifact [84]. This is the most-replicated
+  negative result in the literature and the core support for ship-passive.
+- **On the most-liquid crypto, the in-sample-best TA rules go NEGATIVE
+  out-of-sample.** Hudson–Urquhart [93] test ~15,000 rules on BTC/LTC/XRP/ETH with
+  a snooping correction; channel-breakout wins in-sample for BTC, then Bitcoin
+  shows negative annualized OOS returns — and the *best* rule family differing by
+  coin is itself a snooping tell.
+- **But two rigorous papers DO find surviving edges — engage them honestly.**
+  Jensen–Kelly–Pedersen [88]: ~75–85% of equity factors replicate under Bayesian
+  multiple testing (survivors are cross-sectional, not single-coin). Deprez–Frömmel
+  [95]: simple TA *can* beat Bitcoin buy-and-hold OOS on a risk-adjusted basis after
+  costs + data-mining correction. Neither overturns ship-passive (the survivors are
+  multi-asset or risk-adjusted-not-raw), but both forbid a lazy "TA never works."
+- **The in-sample → out-of-sample collapse is quantified and lawful.** ~26% OOS
+  haircut from overfitting + ~32% further from post-publication crowding [92]; a
+  0.92 reported Sharpe deflates to ~0.08 after the trials behind it [97]; PBO/CSCV
+  shows IS optimization is often *negatively* related to OOS performance [98].
+- **Faber-style SMA timing "beats hold" only on risk-adjusted terms, and rests on
+  diversification.** The 10-month SMA rule lowers drawdown/vol, not raw return, and
+  its smoothness comes from rotating 5 uncorrelated sleeves [99] — a single coin
+  loses that; Zakamulin [100] shows the apparent MA-timing edge is fragile,
+  lagging, regime-conditional, and non-persistent OOS.
+- **Execution scheduling is a non-issue at retail size.** VWAP/TWAP/IS differ only
+  by a risk-aversion knob [90][87]; impact is negligible at €200 [20]; the only
+  execution cost that matters is spread + fees + delay — model that, not schedules.
 
 ## Actionable takeaways for our advisor
 
@@ -462,6 +548,47 @@ testing in our advisor, and which are known to overfit / not survive costs.
     doesn't materialize, and M2 liquidity (not the halving) drove the last cycle —
     so a halving rule risks spuriously capturing the macro cycle and failing when
     they decouple.
+41. **Implement the selection-bias correction as DSR *and* PBO, reported together,
+    over the bake-off matrix** [97][32][98]. Concretely: (a) log the number of
+    configs tried N in every bake-off; (b) compute a **correlation-aware** Sharpe
+    haircut (BHY/Holm or an effective-N adjustment — our SMA-10 vs SMA-12 configs
+    are near-identical, so Bonferroni over-penalizes [88][100]); (c) run **CSCV** on
+    the configs-×-time return matrix to report a **Probability of Backtest
+    Overfitting**; (d) refuse to crown when DSR ≤ buy-and-hold's or PBO ≳ 50% →
+    output FRAGILE / recommend hold. This is the literature-grounded spec for the
+    "Deflated-Sharpe/PBO" step in our gate name.
+42. **Use the TA-efficacy arc as the presenter's spine for "why hold?"** [85→82→83]
+    [84][89]. The one-paragraph answer to "doesn't everyone say technical analysis
+    works?": the foundational pro-TA result (BLL [85]) looked strong in-sample, but
+    once corrected for data-snooping the best rule died out-of-sample [82], was
+    erased by costs and unselectable ex ante [83], and the same null holds across 49
+    markets [89] — which is exactly why our gate nets costs, holds out a forward
+    window, and deflates for configs tried.
+43. **Engage the counter-thesis honestly, then show why it doesn't change the
+    recommendation** [95][88]. Deprez–Frömmel found simple TA can beat BTC buy-hold
+    OOS *on a risk-adjusted basis after costs* [95] — so frame our output as "we
+    *test* whether a rule robustly beats hold on THIS coin/window, and usually it
+    doesn't," not "TA never works." If our bootstrap gate ever crowns a non-FRAGILE
+    rule, [95] is the paper that says that is not impossible — but note risk-adjusted
+    ≠ more terminal wealth, which a long-term holder may still prefer.
+44. **Cost = implementation shortfall vs the decision-bar (arrival) price; never
+    fill free at the close** [87][90]. Our paper-sim *is* Perold's "paper portfolio"
+    — debit every simulated fill the spread + a delay/slippage term + fees against
+    the arrival price, and treat the cost as a state-dependent draw [27]. Skip
+    market-impact and execution-scheduling models entirely at €200 [20][90]; they
+    don't matter at our size.
+45. **Bake off the Faber 10-month SMA rule as a named SMA-family baseline, and
+    expect "lower drawdown, not more money"** [99][100]. It is essentially one
+    parameterization of our SMA sweep; run it per coin, benchmark against hold, and
+    report that any "win" is risk-adjusted (drawdown/vol) — which a terminal-wealth
+    holder may not value — while noting its edge rests on diversification we don't
+    have and on a monthly cadence crypto will whipsaw [100].
+46. **Treat the MA-rule menu as ONE family for deflation, not many** [100][88].
+    Because SMA/EMA/MACD/momentum all reduce to a weighted average of price changes,
+    sweeping them is low-effective-N multiple testing — our deflation must use an
+    *effective* number of independent configs, and trying many near-identical rules
+    must NOT be mistaken for having found something. Expect the in-sample-best
+    lookback to not persist OOS [83][98].
 
 ## Open questions / things worth testing in our app
 
@@ -502,6 +629,24 @@ testing in our advisor, and which are known to overfit / not survive costs.
   the naive equity one.
 - If we ever ingest macro/on-chain regime variables, does a trend-on-fundamentals
   signal [61][40] beat a price-only trend signal through the gate?
+- What is the **Probability of Backtest Overfitting (PBO via CSCV)** of our actual
+  bake-off on BTC/ETH/SOL, and the **Deflated-Sharpe** of the crowned config? Does
+  PBO routinely come out ≳ 50% (i.e. the crown is noise) as the literature predicts
+  [98][32][97]?
+- Can we reproduce Deprez–Frömmel's result [95] — does *any* simple rule beat the
+  coin's buy-and-hold OOS on a risk-adjusted basis after costs + deflation on our
+  data, or does our gate refute it for our coins/windows?
+- Does the **Faber 10-month SMA** rule beat buy-and-hold on BTC/ETH net of costs —
+  on raw return (likely no) and on drawdown/risk-adjusted terms (maybe)? [99]
+- What is the **effective number of independent configs** in our SMA/EMA/MACD/RSI/
+  Bollinger sweep (they are highly correlated [100]), and how much does using
+  effective-N vs raw-N change the deflation verdict? [88][97]
+- Does adding a **delay/slippage term** (implementation shortfall vs arrival price
+  [87]) on top of spread+fees change which bake-off candidates survive, or is
+  spread+fees already the binding constraint at our cadence?
+- Replicating Hudson–Urquhart [93] on our pipeline: does the in-sample-best rule
+  family on each coin go negative (or sub-buy-hold) out-of-sample, and does the
+  best family differ by coin (a snooping tell)?
 
 ## Paper map (claim → supporting [N])
 
@@ -586,3 +731,22 @@ testing in our advisor, and which are known to overfit / not survive costs.
 - Crypto intraday: momentum AND reversal coexist, regime/jump/FOMC-conditional; timing beats B&H intraday but reversion turnover cost-prohibitive → [79]
 - Bitcoin spot ETFs (Jan 2024): improved liquidity, lasting cointegrated demand, BTC decoupling from alts (structural break) → [80]
 - Turn-of-month effect: Ariel [-1:+8] window captures most equity monthly return via payday/pension cash flows; absent in 24/7 crypto → [81]
+- Sullivan–Timmermann–White: ~7,800 TA rules on 100y DJIA via White's Reality Check; best rule survives snooping IN-sample but dies OUT-of-sample; no profitable simple rule on S&P after snooping → [82]
+- Bajgrowicz–Scaillet: FDR on the STW rule universe; future-best rule unselectable ex ante (no persistence); in-sample edge fully erased by transaction costs → [83]
+- Park–Irwin survey: ~95 modern studies, majority report TA profits, BUT that majority is a snooping/no-OOS/ignored-cost/ex-post-selection artifact (definitive "state of the question") → [84]
+- Brock–Lakonishok–LeBaron: MA-crossover + trading-range-breakout beat 4 nulls in-sample on DJIA (the foundational pro-TA result, gross, ex-post-selected — the "before" in the snooping arc) → [85]
+- Lo–Mamaysky–Wang: kernel-regression pattern recognition; some chart patterns (head-and-shoulders etc.) carry incremental info, but informativeness ≠ profitable net of costs → [86]
+- Perold implementation shortfall: paper-vs-real-portfolio gap = explicit + implicit (spread/impact) + delay + opportunity cost (the TCA frame for our cost model) → [87]
+- Jensen–Kelly–Pedersen: ~75–85% of equity factors REPLICATE under Bayesian multiple testing (steel-man vs the crisis); survivors are cross-sectional themes, not single-coin → [88]
+- Marshall–Cahan–Cahan: >5,000 TA rules across 49 country indices; profits vanish after data-snooping correction (the breadth confirmation of the null) → [89]
+- Kato: VWAP = optimal execution for a risk-neutral trader (trade with the volume curve); risk-averse → front-loaded (IS); execution algos are one risk-aversion continuum → [90]
+- Genet: deep-learning VWAP in crypto; optimize the slippage objective directly (skip volume forecast); crypto volume much harder to predict than equities → [91]
+- McLean–Pontiff: published predictors lose ~26% OOS (overfitting) + ~32% more post-publication (crowding); biggest in-sample winners decay most → [92]
+- Hudson–Urquhart: ~15,000 TA rules on BTC/LTC/XRP/ETH, snooping-corrected; channel-breakout best in-sample for BTC, then Bitcoin NEGATIVE out-of-sample (closest test to our product) → [93]
+- Rozario et al.: crypto trend-following ~255% walk-forward annualized — but cost-netting + buy-hold benchmark unstated (absolute return is meaningless vs early-BTC B&H) → [94]
+- Deprez–Frömmel: 75,360 simple rules on Bitcoin, cost-aware + multiple-testing-corrected; TA CAN beat buy-hold OOS on a RISK-ADJUSTED basis (the credible counter-thesis) → [95]
+- Falces Marin et al.: deep-RL tunes Avellaneda–Stoikov γ/skew on BTC; beats static AS on average ratios but with fat-tailed blow-up days (avg-win, worst-case-blowup) → [96]
+- Harvey–Liu: multiple-testing Sharpe HAIRCUT (Bonferroni/Holm/BHY); a 0.92 reported Sharpe → ~0.08 after the trials behind it; report N, use BHY, raise the bar → [97]
+- Bailey–Borwein–López de Prado–Zhu: Probability of Backtest Overfitting via CSCV — fraction of time the in-sample-best ranks below OOS median; more IS optimization → worse OOS → [98]
+- Faber: 10-month SMA timing (hold above MA, cash below); beats buy-hold on RISK-ADJUSTED terms (lower drawdown), not raw return; rests on multi-asset diversification → [99]
+- Zakamulin: every MA indicator = weighted average of price changes → the MA "zoo" is ONE data-mineable family; edge is lagging, regime-conditional, non-persistent OOS → [100]

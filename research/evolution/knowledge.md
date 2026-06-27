@@ -11,6 +11,22 @@ multiple-testing machine. The central question is whether any of it survives an
 honest, cost-aware, out-of-sample, regime-spanning test — or whether it is just
 industrialized overfitting our gate exists to reject.
 
+> **Status (2026-06-27): 100/100 papers reviewed.** After a full sweep of the GP/GA/
+> symbolic-regression/neuroevolution/swarm/MOEA/LCS/code-evolution literature, the
+> bottom line is unchanged and *strengthened*: **no paper exhibits a single-coin,
+> long-only, cost-net, regime-spanning, B&H-benchmarked, multiple-testing-corrected
+> edge.** Every "evolution beats the market" result, on inspection, rides a structural
+> advantage our product is scoped out of — **HFT latency / order-flow front-running**
+> ([93][94]), **cross-sectional breadth / long-short** ([49][63][88]), **carry/funding**
+> ([49]), **leverage** ([83]), or **index-reconstitution flows** ([88]) — or omits costs/
+> B&H/OOS/correction ([4][20][44][96]). The honest, careful papers repeatedly land on
+> our exact verdict (great in-sample → fails net of costs OOS: [1][5][48][86][95]; or
+> risk-reduction-not-alpha: [7][27][72][85]). The most *portable* outputs are
+> defensive: the **Deflated-Sharpe formula** [98] and **PBO/Reality-Check** [50][53]
+> for our planned gate addition, a **random-strategy null** [30][31], **event-driven
+> ("update-when-required") re-baking** [97], and anti-overfitting **fitness/training-set**
+> techniques ([68][92][99]).
+
 ## Key themes
 
 1. **The data-snooping core.** GP / GA / RL / MCTS / symbolic-regression alpha
@@ -84,14 +100,20 @@ industrialized overfitting our gate exists to reject.
     sub-test our gate currently lacks.
 13. **"Faster/fancier search" = MORE multiple testing, never less.** A consistent
     sub-theme across the optimizer/infra papers: every efficiency gain — Bayesian/TPE
-    [13], CMA-ME quality-diversity [33], surrogate-assisted MOEA [34], 500×-faster
-    TensorNEAT [38] — lets you evaluate *more configurations per unit compute*. On a
-    noisy backtest fitness that means reaching the *over-fit optimum faster* and
-    drawing *more* spurious winners ([29]), not finding real edge. Quality-diversity's
-    "diversity" is over a *behavior descriptor* (turnover, exposure), NOT over
-    robustness — illuminating a behavior space faster just industrializes diverse
-    overfitting. Corollary: if we ever adopt a faster search, the significance
-    correction must scale *with* the search budget.
+    [13], CMA-ME quality-diversity [33], surrogate-assisted MOEA [34][66], 500×-faster
+    TensorNEAT [38], warm-start GP [56], CMA-ES [59], grammar-/graph-/GFlowNet-guided
+    alpha search [57][58][62], distributional-RL alpha search [65] — lets you evaluate
+    *more configurations per unit compute*. On a noisy backtest fitness that means
+    reaching the *over-fit optimum faster* and drawing *more* spurious winners ([29]),
+    not finding real edge. Quality-diversity's "diversity" is over a *behavior
+    descriptor* (turnover, exposure), NOT over robustness — illuminating a behavior
+    space faster just industrializes diverse overfitting ([33][62][69]). Corollary: if
+    we ever adopt a faster search, the significance correction must scale *with* the
+    search budget. The LLM-driven code-evolution wave (FunSearch [18] → AlphaEvolve
+    [71] → CodeEvolve [70] → trading: MadEvolve [14], QuantEvolve [69]) is the apex of
+    this: it makes "evolve a whole strategy as code" cheap and accessible — which only
+    *raises* the importance of a hard cost-aware OOS-vs-B&H gate, because the evaluator
+    (a backtest) is the one part that does NOT improve with the search.
 14. **Coevolution / Red Queen explains WHY edges decay.** FinEvo [36] and the Red
     Queen's Trap [35] frame markets as adaptive ecosystems where other strategies
     *erode* any edge (Adaptive Markets Hypothesis). This is a deeper cause of "factor
@@ -165,17 +187,36 @@ industrialized overfitting our gate exists to reject.
   sectional long-short + funding carry**, none of which single-coin long-only retail
   can do. Confirms: edge is reachable through *diversification/relative-value/carry*,
   not single-coin timing; for our scope it still says "hold."
+- **Boundary cases (honest "beats B&H net of costs" that ISN'T our case):** eTrend
+  [89] (XCS-evolved trend rules beat B&H with high *Sortino* after costs) — but on a
+  *risk-adjusted* metric (likely downside protection, [77] says EC rules win in
+  downtrends/lose in uptrends), cross-sectional stocks, no regime-bootstrap; XCS-MSCI
+  [88] beats B&H+random but via *index-reconstitution flows*. Both are interpretable +
+  cost-aware, neither clears *our* single-coin total-equity-vs-B&H + regime-bootstrap bar.
+- **Holds up (legitimate evolution success OUTSIDE our scope):** GP fitting an
+  *implied-volatility surface* beats Black-Scholes on hedging error ([91]) — because the
+  target has near-ground-truth (option prices), unlike a noisy backtest. Sharpens the
+  rule: evolution is trustworthy when *fitting a model to a well-defined target*,
+  untrustworthy when *mining rules against a gameable backtest*. (We are spot single-coin
+  → no IV surface to fit.)
 - **Does NOT hold up:** headline PnL from cost-blind, single-window, no-benchmark,
-  re-optimized-on-the-same-stream optimizers ([4], +550% scalping). The "agent /
-  LLM" wrapper around a GA changes nothing statistically. Risk-*seeking* objectives
-  that chase best-case tails ([12]) overfit by construction (degrade past α>0.85).
+  re-optimized-on-the-same-stream optimizers ([4], +550% scalping; [96], 320%/yr on
+  5-min FX; [44], Sharpe-2.8 from ~2000 randomized alphas). The "agent / LLM" wrapper
+  around a GA changes nothing statistically. Risk-*seeking* objectives that chase
+  best-case tails ([12]) overfit by construction (degrade past α>0.85). The cleanest
+  *self-reported* failure: GA FX systems superb in-sample, **unprofitable OOS net of
+  costs** ([86][95]) — the authors themselves conclude "markets could be efficient."
 - **Recurrent blind spots even in "good" papers:** missing **buy-and-hold**
   benchmark ([2][8][11][12][14]) and missing/implicit **transaction costs**
   ([2][8][11][12]); IC/accuracy reported instead of cost-net PnL. Even MadEvolve
   [14] — the most self-aware — measures gains vs its *own pre-evolution baseline*,
   not vs holding the coin.
-- **Open:** whether *any* evolutionary search clears a cost-aware, regime-spanning,
-  B&H-benchmarked gate on a single liquid coin. No paper seen so far does.
+- **Resolved across 100 papers:** *no* evolutionary search in the reviewed literature
+  clears a cost-aware, regime-spanning, B&H-benchmarked, multiple-testing-corrected gate
+  on a **single liquid coin, long-only, unleveraged**. Every apparent counterexample
+  relies on a structural lever outside our scope (HFT speed [93][94], cross-sectional/
+  long-short breadth [49][63][88], carry [49], leverage [83], index-flow events [88]) or
+  drops a control (costs/B&H/OOS/correction). The careful papers converge on our thesis.
 
 ## Actionable takeaways for our advisor
 
@@ -192,7 +233,12 @@ industrialized overfitting our gate exists to reject.
    even a *few* configs inflate in-sample Sharpe; [32] shows **Holm correction** flips
    a >65%-return BTC strategy to "not significant vs B&H." Net: a crowned pick should
    ship with (a) bootstrap-vs-B&H verdict, (b) a PBO, (c) Reality-Check/Holm
-   correction over the N strategies tried.
+   correction over the N strategies tried. **The exact formula for our planned DSR
+   addition is in [98]** (Bailey & López de Prado, *Deflated Sharpe Ratio*): it deflates
+   the observed Sharpe using the **number of trials N (= our bake-off's strategy/param
+   count)**, the **backtest length**, and the **return skew/kurtosis** (fat-tailed crypto
+   "lucky" Sharpes get discounted). Feed our sweep's N as the trials count — a crowned
+   config must clear the *deflated* bar, not a raw Sharpe.
 2. **Add a RANDOM-strategy null as a gate sub-test (highest-value new idea).**
    Beyond "beat B&H," require a tuned/evolved pick to beat a **matched-activity
    random-trading / random-parameter null** ([5][30][31]). An optimized config that
@@ -204,9 +250,21 @@ industrialized overfitting our gate exists to reject.
    when the expected move exceeds a cost-tied threshold. It cut turnover enough to
    make an ML strategy gross-viable (though still not B&H-significant) — worth
    testing as a turnover-reducing strategy modifier, not as an alpha claim.
+4b. **The trinary "no-trade" signal + CVaR-based fitness are honest turnover/risk knobs**
+   ([99]): an evolved rule with an explicit *no-trade* action ([99] trinary buy/sell/hold)
+   abstains when the signal is weak — a cousin of the cost-aware execution filter [32] and
+   the breakeven-win-rate screen [35] — and a **coherent CVaR / conditional-Sharpe fitness**
+   ([85][99]) is more honest than mean-variance for fat-tailed crypto. Worth testing as
+   turnover-control + tail-aware ranking, not as an alpha claim.
 5. **Factor/strategy decay is real** ([6]): consider a periodic re-bake cadence for
    a crowned pick; combine with the [13] finding that the best optimizer/strategy is
-   per-(coin,window), so re-baking should re-select, not just re-fit.
+   per-(coin,window), so re-baking should re-select, not just re-fit. Make the re-bake
+   **event-driven, not calendar-driven** — the "**update when required**" principle [97]:
+   trigger a re-bake only when a monitored signal (realized-vs-expected divergence,
+   regime-change flag, edge-decay statistic) crosses a threshold. Calendar re-baking
+   churns costs *and* draws fresh overfit winners each cycle ([29]); coevolution [35][36]
+   says edges decay because *competitors erode them*, so a decay/divergence trigger
+   captures the right moment to re-evaluate (or to conclude "hold instead").
 6. **Don't import the cross-sectional alpha-factor paradigm** ([3]): single-coin
    retail can't diversify across weak short-horizon alphas; it just pays turnover.
 7. **If we ever run a search, copy MadEvolve's honesty kit** ([14]): cost-in-fitness,
@@ -221,10 +279,26 @@ industrialized overfitting our gate exists to reject.
    faster/bigger bake-off (more strategies, finer grids, Bayesian/surrogate search) is
    *more* multiple testing — the deflated-Sharpe/PBO bar must tighten as the config
    count grows, or efficiency gains just buy faster overfitting.
-10. **Quality-diversity is a presentation tool, not an overfitting cure** ([33]): an
-    archive of behaviorally-diverse strategies (by turnover/exposure) could be a nice
-    way to *show a user a menu*, but every archived elite must individually clear the
-    FROZEN gate; "diverse" ≠ "robust."
+10. **Quality-diversity is a presentation tool, not an overfitting cure** ([33][62][69]):
+    an archive of behaviorally-diverse strategies (by turnover/exposure/risk-profile)
+    could be a nice way to *show a user a menu* — QuantEvolve [69] realizes exactly this
+    MAP-Elites-feature-map-of-investor-preferences idea for trading — but every archived
+    elite must individually clear the FROZEN gate; "diverse" ≠ "robust."
+11. **Bake the overfitting penalty INTO the fitness/objective, not just the post-hoc
+    test, and report a generalization ratio** ([68]): GT-Score [68] composes
+    performance + significance + consistency + downside-risk into one objective and
+    cuts the generalization gap (it reports a 98% improvement in the *generalization
+    ratio* = validation-return ÷ training-return). Two cheap, portable imports: (a) a
+    multi-faceted objective that already penalizes fragility (close to our gate's
+    multi-faceted verdict), and (b) **the generalization ratio as a per-candidate
+    overfitting metric** — any bake-off pick whose validation÷train return is far below
+    1 is overfit. Caveat: GT-Score still omits costs + B&H, and even with it the effect
+    sizes are "modest" — a better objective *abates* overfitting ([21]), never cures it.
+12. **Prefer parsimonious (fewer-indicator) crowned picks** ([74]): MOEA/D selected
+    *fewer* indicators with better interpretability than AGE-MOEA; simpler strategies
+    overfit less ([21][29]) and are easier to narrate to a retail user. A complexity
+    penalty (the deflated-Sharpe spirit) should bias our bake-off toward the simplest
+    config that clears the gate.
 
 ## Open questions / things worth testing in our app
 
@@ -301,3 +375,37 @@ industrialized overfitting our gate exists to reject.
 - Foundational GP-FX: no excess returns net of costs → market efficiency → [48]
 - Quality-diversity (CMA-ME) as a strategy-menu presentation tool, not an overfitting cure → [33]
 - Coevolution as the *cause* of decay (other strategies compete edge away) → [35][36]
+- Code-evolution wave: FunSearch → AlphaEvolve → CodeEvolve → trading (MadEvolve/QuantEvolve) → [18][71][70][14][69]
+- Anti-overfitting penalty baked INTO the fitness/objective; generalization-ratio diagnostic → [68]
+- GFlowNets / grammar / graph-guided alpha search = fancier search, same gate gaps (no costs/B&H) → [57][58][62]
+- Distributional-RL / quantile alpha mining (model the return distribution to drive search) → [65]
+- Quality-diversity MAP-Elites of investor-preference behaviors as a strategy MENU → [69]
+- Parsimony: fewer-indicator strategies overfit less + more interpretable (MOEA/D vs AGE-MOEA) → [74]
+- Neuroevolution "beats index" only via long-short / cross-sectional breadth (not single-coin) → [63]
+- GA classification accuracy on emerging tokens ≠ cost-net edge (illiquid = huge effective costs) → [73]
+- EA improves a portfolio by risk-shaping via ALLOCATION (moot for single coin) → [67][75]
+- Better-disciplined GA (B&H + walk-forward + drawdown-fitness) still lands on risk-reduction, omits costs → [72]
+- Deep neuroevolution / CMA-ES: capability to evolve big policies exists; the evaluator decides edge → [59][64]
+- Surveys (EC+RL in finance; evolution+deepRL policy search; EC rule-discovery review; Darwinian-in-finance) — method-rich, validation-poor on B&H → [76][77][79][84]
+- Genetic Network Programming (graph individuals) + CVaR: regime-conditional RISK-shaping (max-Sharpe in bull, min-risk in bear), not single-coin alpha → [85]
+- Strongly-typed / gene-expression GP: better/parsimonious rule representations; "beats classical optimization" ≠ "beats B&H net of costs" → [82][83]
+- Evolutionary feature/alpha construction optimizes feature quality (diversity/information), not cost-net PnL → [81]
+- Learning Classifier Systems (XCS/eTrend): interpretable evolved rules; best honest "beats B&H net of costs" cases but Sortino-based / cross-sectional → [88][89][90]
+- GA-tuned params beat DEFAULT params, but realistic spreads+commissions ⇒ "markets could be efficient" → [86]
+- GA-for-LSTM-hyperparameters: price-level R²=0.87 is trivial-persistence, not edge → [87]
+- eTrend/eTrendRev: same evolutionary machinery evolves momentum OR reversion ⇒ it fits the regime it's shown → [89][90]
+- XCS "beats B&H+random" but via MSCI index-reconstitution flow (event-driven/cross-sectional, not single-coin) → [88]
+- DEFLATED SHARPE RATIO formula (deflate by #trials + backtest length + skew/kurtosis) = our planned DSR gate addition → [98]
+- GA trading system: superb in-sample, unprofitable OOS once costs imposed (canonical) → [95]
+- GA-tuned params beat defaults, but realistic spreads ⇒ "markets could be efficient" → [86]
+- Trinary buy/sell/NO-TRADE rule + CVaR/conditional-Sharpe fitness = honest turnover/tail knobs → [85][99]
+- "Update when required" (event-driven, not calendar-driven re-optimization) for re-bake cadence → [97]
+- Adaptive Markets Hypothesis via STGP: edges transient + speed-dependent (HFT) → decay + keep-testing → [93][94]
+- "Evolution beats the market" only via HFT front-running / order-flow (latency edge, not retail timing) → [93]
+- GP-for-options/volatility (IV surface fit) = legitimate evolution success WITH near-ground-truth target, out of our spot scope → [91]
+- Dynamic/rotating training-subset selection during search = portable anti-overfitting technique → [92]
+- Anti-pattern: GA 320%/yr on 5-min FX, no costs/B&H/OOS → industrialized overfitting → [96]
+- Capstone note: even the freshest 2025 GP (STGP-SATA) benchmarks vs ML models, not cost-net B&H → [100]
+- META-FINDING: EC-evolved rules work in DOWNTRENDS, poorly in UPTRENDS ⇒ B&H wins over a full cycle → [77]
+- Swarm/ACO trading = in-sample optimal-sequence fitting (hindsight artifact), not OOS edge → [80]
+- Directional-changes (event/intrinsic-time) representation + multi-threshold as a candidate feature family → [28][78]

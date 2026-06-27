@@ -1,9 +1,59 @@
 # Knowledge — Backtesting & Test Data
 
-_Synthesis of the `backtesting` ledger (77 papers; round-2 added [48–77]).
+_Synthesis of the `backtesting` ledger (100 papers; round-3 added [78–100]).
 Payoff focus: concrete ways to harden our FROZEN robustness gate (1000-path
 moving-block bootstrap vs buy-and-hold), our ranking, and our test-data pipeline —
 and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
+
+> **Round-3 addition — the DSR/PBO gate add is now FULLY SPECIFIABLE; plus the
+> bootstrap's provenance, calibration counter-weights, and forecast-test rigor
+> [78–100].** This round closes the loop on the gate upgrade — see the dedicated
+> **"DSR/PBO gate add — concrete spec"** section below. Five clusters:
+> (1) **Bootstrap provenance & internals.** Künsch [78] is the literal parent of
+> our moving-block bootstrap (consistency needs block length ℓ→∞, ℓ/n→0 — so a
+> FIXED length is a heuristic; use the data-driven Politis–White selector [20]). The
+> CIRCULAR block bootstrap [89] fixes our fixed-length MBB's edge bias (first/last
+> bars under-sampled → understated tail risk) via wrap-around equal weighting — a
+> cheap, self-contained gate fix. Bergmeir–Benítez [79] gives the formal license for
+> multi-fold/CV evaluation over single hold-out, with the diagnostic "k-fold is valid
+> iff residuals are white" (crypto residuals aren't → we MUST block + purge).
+> (2) **Effective-N is solved.** López de Prado–Lewis [86] (False Strategy Theorem +
+> ONC clustering) is the estimator for N: cluster the candidate return-correlation
+> matrix, count clusters = effective independent trials. Novy-Marx [80] is the
+> counter-pressure: COMPOSED multi-signal strategies inflate N toward (single)^k.
+> Harvey–Liu "Evaluating Trading Strategies" [87] is the practitioner blueprint
+> (haircut Sharpe via Bonferroni/Holm/BHY, real-time). Benjamini–Hochberg [85] is the
+> FDR core (use BHY dependence variant for our correlated configs).
+> (3) **Calibration counter-weights — don't over-deflate into nihilism.** Chen
+> [84] (p-hacking can't manufacture t≫4) and Chen–Zimmermann [81] (publication bias
+> explains only ~10–15%; FDR<10%) prove a high-deflated-t region survives → the gate
+> should report the DEFLATED statistic and leave room for the rare real winner, not a
+> blanket "assume noise." Kosowski–Timmermann–Wermers–White [100] is the capstone
+> bootstrap-skill-vs-luck method (a small right-tail minority is genuinely skilled).
+> Hsu–Hsu–Kuan [99] and Sermpinis et al. [88] find TA edges CAN survive snooping
+> correction in LESS-efficient markets (crypto is arguably one) → the gate must be
+> POWERFUL (SPA studentization), not just strict.
+> (4) **Forecast-comparison rigor for the forward leg.** Our crown-vs-hold is a
+> NESTED comparison → Clark–West [96] (active = hold + maybe-zero signal; naive OOS
+> test biased AGAINST active by the noise of estimating extra params). Giacomini–
+> White [94]: the honest question is CONDITIONAL ("which does better GOING FORWARD
+> given state?"), misspecification-robust. Inoue–Kilian [97]: OOS tests have LOWER
+> power than IS and are NOT automatically snoop-proof → a forward "loss" isn't proof
+> of no-edge (low power) and the bootstrap recovers the power a single hold-out throws
+> away. Hansen–Timmermann [98]: the WINDOW/split choice is itself data-mining → vary
+> it, pre-commit it. Gelman–Loken [90]: even ONE analysis carries hidden multiplicity
+> via data-contingent choices → pre-register the sweep grid (our FROZEN-gate ethos).
+> Varma–Simon [91]: select and score on the SAME data = biased → nest (our in-sample
+> crown vs untouched forward leg is the right architecture).
+> (5) **Cost realism & decay, on-asset.** Frazzini–Israel–Moskowitz [82] and
+> Patton–Weller [83]: costs are STRONGLY turnover-dependent and paper returns
+> overstate realized (value low / momentum ~zero net) → report turnover; high-turnover
+> crowns get extra skepticism; structurally favors hold. Donier–Bonart [95]: the
+> √-impact law holds on BITCOIN specifically → fixed fee+spread is the right retail
+> limit, impact only bites at size. Hansen–Lunde "does anything beat GARCH(1,1)?"
+> [93]: the canonical proof RC LACKS POWER and SPA is the upgrade — strongest single
+> citation for studentizing our gate; and a "nothing beats the simple baseline"
+> analogue of our thesis.
 
 > **Round-2 addition — tail-risk forecast validation (VaR/ES backtesting) [48–53].**
 > A whole sub-literature on validating a DOWNSIDE forecast that we had not yet
@@ -118,6 +168,101 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
 > the lone "winner" was one uncorrected grid-searched config on one bull-year window
 > — exactly what our DSR/PBO/bootstrap discounts). Timmermann–Granger [76]: the
 > conceptual WHY — discovered edges self-destruct, inducing non-stationarity.
+
+## DSR/PBO gate add — concrete spec (the headline deliverable)
+
+After 100 papers the selection-bias correction we are adding to the gate is now
+fully specified. The recipe below is buildable from artifacts our bake-off already
+produces (a per-config bar-return / equity matrix). Honesty-first, ship-passive:
+the goal is a CALIBRATED haircut that still leaves room to detect a rare genuine
+winner — not maximal pessimism. Citations are load-bearing.
+
+**Which estimator — Deflated Sharpe Ratio (DSR), the López de Prado / Bailey form.**
+- Compute, for the crowned config, the **Probabilistic Sharpe Ratio against the
+  selection-bias threshold**: `DSR = PSR(SR0) = Φ( (SR_obs − SR0)·√(T−1) /
+  √(1 − γ3·SR_obs + ((γ4−1)/4)·SR_obs²) )`, where `SR_obs` is the crown's
+  per-bar Sharpe, `T` the number of bars, `γ3,γ4` the skew/kurtosis of the crown's
+  returns (crypto fat tails make this term BITE) [1][4].
+- The threshold `SR0 = E[max SR]` is the false-strategy benchmark:
+  `SR0 ≈ √V_SR · [ (1−γ)·Z⁻¹(1−1/N) + γ·Z⁻¹(1−1/(N·e)) ]`, with `γ≈0.5772`
+  (Euler–Mascheroni), `V_SR` the variance of Sharpe across the N trials, and `Z⁻¹`
+  the Gaussian inverse-CDF [1][3][86]. Upper bound for sanity: `E[max SR] ≤
+  √(2 ln N)·σ_SR` [3].
+- **Crown only if `DSR > 0.95`** (true SR exceeds the selection-bias threshold at
+  95% confidence) AND the crown's net return clears buy-and-hold. Buy-and-hold is
+  EXEMPT (it is the benchmark, not a searched trial). This makes the FRAGILE-can't-
+  crown gate also a SELECTION-bias gate.
+
+**How many trials to deflate by — `N` = EFFECTIVE, not raw config count.** This is
+the single most important parameter and the one most often gotten wrong.
+- Our sweep's configs are MASSIVELY correlated (SMA-50 ≈ SMA-51 produce near-
+  identical equity), so the raw config count would WILDLY over-deflate (treat 200
+  near-duplicates as 200 independent shots) [86][39].
+- **Estimator [86]:** build the N×N correlation matrix of candidate return series
+  (we already have the returns), convert to a distance `d = √(½(1−ρ))`, hierarchically
+  cluster (ONC or any correlation-distance clustering), and set **`N_eff = number of
+  clusters`**. Feed `N_eff` (not raw N) into `E[max SR]`.
+- **Counter-pressure [80]:** for COMPOSED multi-signal strategies (our ComposedStrategy-
+  from-TOML), the effective search space inflates toward `(single-signal count)^k`
+  for a k-component blend — so composed crowns deserve a LARGER `N_eff`. The honest
+  number is the cluster count of the FULL realized population (captures redundancy
+  ↓ and combinatorial blends ↑ simultaneously). Practical rule: cluster everything
+  that was actually evaluated, including every composed variant.
+- Expectation for us: `N_eff` will be far smaller than the raw config count (most
+  configs are redundant) — so this makes the gate FAIR, not punitive; but composed
+  families pull it back up.
+
+**Add PBO (CSCV) as the model-free companion [2].** From the same per-config return
+matrix: split into S even time blocks (S=8–16 for our window lengths), form all
+C(S, S/2) IS/OOS half-splits **with purge+embargo at the split boundary** [9] (our
+indicators have lookback windows → embargo ~1–5% of bars), pick the IS-best config
+in each split, record its OOS rank, map to logit λ; **`PBO = fraction of splits with
+λ<0` (OOS-below-median)**. Report alongside DSR. Down-rank / refuse to crown when
+`PBO > 0.5` [2][21][11].
+
+**Report a haircut RANGE, not one number [87][29][81][84].** Show: (a) the raw
+crown Sharpe; (b) the DSR / `E[max SR]`-haircut Sharpe (conservative, FWER-flavored);
+(c) optionally a gentler empirical-Bayes / publication-bias shrink [81]. The nonlinear
+haircut [29] will gut any crown that only MARGINALLY beats hold (the expected case);
+a crown whose DEFLATED t-stat is still large (t≫3–4 after deflating by `N_eff`)
+is the rare genuine winner [84] and should be surfaced as such, not hidden behind a
+binary pass/fail.
+
+**FWER vs FDR — default FWER for a "nothing beats hold" advisor [85][5][8][87].**
+Use a Bonferroni/Holm/StepM (FWER) hurdle as the DEFAULT crown criterion (near-zero
+tolerance for a false crown fits our skeptical prior); offer FDR (BHY — the
+dependence variant, since our configs are correlated) as a secondary "here is the
+SET that would pass at a 10% false-discovery tolerance" view [8][99]. Do NOT use
+naive Bonferroni on raw N (over-penalizes correlated configs) — the `N_eff` clustering
+[86] or a dependence-aware bootstrap (StepM/SPA) [7][8] is the correct handling.
+
+**Power, not just strictness [93][99][7][8][97].** A White's-Reality-Check-style
+gate can be so conservative it misses a real edge — empirically demonstrated in
+[93]. STUDENTIZE the bootstrap statistic (divide each config's excess-return-vs-hold
+by its bootstrap std) and use a sample-dependent null (SPA [7] / stepwise-SPA [99])
+so the many obviously-bad configs we sweep don't bury a genuine winner. Crypto is
+arguably inefficient [88][99], so the gate must be able to DETECT an edge if one
+exists, while costs [82] and the B&H benchmark remain the deciding filters.
+
+**Bootstrap internals to harden in the same pass [78][89][20][10].** (a) Set block
+length from the correlogram via the corrected Politis–White selector [20] (grows ~n^(1/3)
+[78]); (b) switch to CIRCULAR (wrap-around) block selection [89] to kill the fixed-
+length edge bias (under-sampled boundary bars → understated tail risk); (c) optionally
+the random-length STATIONARY bootstrap [10] for boundary-free stationarity; (d) make
+block length a SENSITIVITY band — require the "beats hold?" verdict stable across a
+small grid [74][20].
+
+**Pre-registration / nesting discipline [90][91][98][62].** The sweep grid, window,
+split rule, and cost model must be FIXED BEFORE looking (our FROZEN-gate ethos is
+exactly this) — data-contingent choices are hidden multiplicity [90]. Select the crown
+and ESTIMATE its performance on DIFFERENT data (in-sample crown vs untouched forward
+leg) — never the same [91][62]. Treat the window/split as itself data-mined: vary it
+and require stability [98].
+
+**Minimum track-record / backtest length gate [1][3][4].** Refuse to crown / flag
+low-confidence when `window_years < ~2·ln(N_eff)/target²` (MinBTL [3]); for the forward
+window report MinTRL [4] — the bars needed for the observed Sharpe to be significant
+at 95% given `N_eff`. Both are cheap closed-forms from stored returns.
 
 ## Key themes
 
@@ -246,6 +391,26 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
   realistic fees/funding into the ranking metric directly.
 - **Seven-sins audit [17] + causal graph before backtest [19]** — cheap
   discipline checklists.
+- **(round-3) Effective-N via ONC clustering of the candidate return matrix [86]** —
+  the estimator for `N` in DSR/`E[max SR]`; cluster correlated configs, count
+  clusters. THE fix that makes DSR usable on our redundant sweep. Pair with the
+  composed-strategy `(single)^k` inflation [80].
+- **(round-3) Circular (wrap-around) block bootstrap [89]** — removes the fixed-
+  length MBB's edge bias (boundary bars under-sampled → understated tail risk);
+  one-change hardening of our gate. Parent method = Künsch MBB [78].
+- **(round-3) SPA / stepwise-SPA studentization [93][99][7]** — the canonical power
+  upgrade; [93] is the empirical proof RC is too conservative. Studentize the
+  bootstrap excess-return-vs-hold so bad configs don't bury a real winner.
+- **(round-3) Clark–West nested-model OOS adjustment [96]** — our crown-vs-hold is
+  nested (active = hold + maybe-zero signal); the CW-adjusted statistic removes the
+  estimation-noise bias against the active model when framing a formal OOS test.
+- **(round-3) Bootstrap skill-vs-luck of the cross-section [100]** — the classic
+  template: bootstrap the candidate field under a zero-edge null, report the crown's
+  performance as a PERCENTILE of the luck-only distribution. Non-normality is the
+  explicit reason to bootstrap not t-test.
+- **(round-3) Vary the window/split + pre-register the grid [98][90]** — the
+  split point is itself data-mined; require stability across windows and fix the
+  sweep grid before looking (FROZEN-gate ethos).
 
 **Don't / weaker:**
 - **Ranking by a gameable ratio (Sharpe/Sortino alone)** [28] — an
@@ -266,17 +431,34 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
   — both upward-biased; never report without correction/CI.
 - **Trusting the engine** [22][23] — verify cost model + intra-candle fills;
   prefer conservative assumptions.
+- **(round-3) Deflating by RAW config count** [86][80] — over-corrects correlated
+  configs; use `N_eff` = cluster count (with `(single)^k` for composed blends).
+- **(round-3) Over-deflating into nihilism** [84][81][100] — a high-deflated-t
+  region survives even brutal correction; report the deflated statistic and leave
+  room for the rare real winner, don't assume everything is noise.
+- **(round-3) Treating the forward "loss" as definitive proof of no-edge** [97] —
+  OOS tests have LOW power and aren't snoop-proof; the bootstrap recovers the power a
+  single hold-out throws away. Forward run = confidence check, not the verdict.
+- **(round-3) Naive (unadjusted) OOS test for our crown-vs-hold** [96] — the
+  comparison is nested; estimating extra params adds noise that biases the naive test
+  AGAINST the active model. Use the CW adjustment if framing a formal OOS test.
+- **(round-3) Cherry-picking the backtest window / split** [98] — the split is
+  itself data-mining; vary it and pre-commit it.
 
 ## Actionable takeaways for our advisor (ranked by leverage)
 
-1. **Surface N and add a Deflated-Sharpe / PBO scorecard to the ranking.** Use the
-   EFFECTIVE number of independent trials m_eff — cluster config return series by
-   angular distance and count clusters [46][39], NOT the raw config count (configs
-   are correlated; raw N over-deflates). Report the crowned Sharpe AND its
-   DSR / E[max SR] haircut [1][3][46] and a CSCV-PBO [2]. Prerequisite discipline:
-   RECORD every config's return series (not just the winner's) so m_eff, PBO, FDR
-   [30] are all computable. Optionally DISQUALIFY high-PBO crowns [21]. → Stops us
-   from crowning in-sample noise; highest-value import.
+1. **Surface N and add a Deflated-Sharpe / PBO scorecard to the ranking — now FULLY
+   SPECIFIED (see "DSR/PBO gate add — concrete spec" above).** Estimator = DSR =
+   PSR(E[max SR]) with the crown's skew/kurtosis [1][4]; threshold `E[max SR]` from
+   [1][3][86]; **crown only if DSR>0.95 AND beats hold**. Trial count `N` = EFFECTIVE
+   independent trials = number of CLUSTERS of the candidate return-correlation matrix
+   (ONC) [86][39], inflated toward `(single)^k` for composed blends [80] — NEVER the
+   raw config count (over-deflates correlated configs). Add CSCV-PBO from the same
+   return matrix with purge+embargo [2][9]; down-rank `PBO>0.5`. Report a haircut
+   RANGE [87][29][81] and the DEFLATED t-stat (don't over-deflate — a high-deflated-t
+   crown is the rare real winner [84][100]). Prerequisite: RECORD every config's
+   return series, not just the winner's, so `N_eff`/PBO/FDR [30] are computable. →
+   Stops us from crowning in-sample noise; highest-value import.
 2. **Set the bootstrap block length from the data, not a constant** [20]. Use the
    Politis–White (corrected) selector on each (coin,window)'s correlogram; log
    the chosen length in the report. Too-short blocks make strategies look more
@@ -357,6 +539,35 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
    likely self-destructed [76]) extra; penalize complexity + outlier-sensitivity
    [58]; and Bai–Perron/CUSUM-check the window for structural breaks before crowning
    on a regime-straddling window [71].
+20. **(round-3) Use the EFFECTIVE-N ONC clustering as THE trial count for DSR** [86]
+   [80]. Cluster the candidate return-correlation matrix, count clusters = `N_eff`;
+   inflate toward `(single-signal count)^k` for composed strategies. This is the
+   single decision that makes the DSR haircut correct rather than punitive — implement
+   it first within the gate add.
+21. **(round-3) Switch the bootstrap to CIRCULAR (wrap-around) blocks and set length
+   from the correlogram** [89][78][20]. Removes the fixed-length edge bias (boundary
+   bars under-sampled → understated tail risk) and makes block length principled;
+   keep a sensitivity band [74]. Low-risk, self-contained hardening of the FROZEN gate.
+22. **(round-3) STUDENTIZE the gate statistic (SPA/stepwise-SPA) for power** [93][99]
+   [7][8]. [93] is the empirical proof an RC-style gate can be too conservative to
+   detect a real edge; divide each config's excess-return-vs-hold by its bootstrap std
+   and use a sample-dependent null, so the many bad configs we sweep don't bury a
+   genuine winner. Crypto inefficiency [88][99] means the gate must be able to detect.
+23. **(round-3) Don't over-deflate; report the DEFLATED statistic, not a binary** [84]
+   [81][100]. A high-deflated-t crown (t≫3–4 after deflating by `N_eff`) is the rare
+   genuine winner; show the operator the deflated number so it is distinguishable from
+   the common marginal crown the gate correctly rejects. Calibrated skepticism, not
+   nihilism.
+24. **(round-3) Frame the forward leg honestly: low-power, nested, split-dependent**
+   [97][96][98][91]. A forward "loss" may be low power (the bootstrap recovers it);
+   the crown-vs-hold test is nested (use CW adjustment [96] if formal); vary the
+   window/split and pre-commit it [98]; select-and-score on different data [91]. Treat
+   the forward run as a confidence check, the bootstrap as the verdict.
+25. **(round-3) Report turnover and lean on cost-turnover asymmetry** [82][83][95].
+   Costs are strongly turnover-dependent and paper returns overstate realized; surface
+   each crown's turnover next to its net edge, give high-turnover crowns extra
+   skepticism. For a €200 BTC order, fixed fee+spread is the right model (√-impact ≈ 0
+   on Bitcoin [95]); impact only matters at size. Structurally favors hold.
 
 ## Open questions / things worth testing in our app
 
@@ -399,6 +610,22 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
   across the SEQUENCE of bake-off re-runs (decaying memory)? [73]
 - (round-2) Do we apply a heavier decay/"well-known signal" prior given that our
   indicators (SMA/RSI/MACD) are decades-public and likely self-destructed? [57][76]
+- (round-3, SPEC-READY) Implement DSR = PSR(E[max SR]) with `N_eff` = ONC cluster
+  count of the candidate return matrix (composed → `(single)^k`); crown iff DSR>0.95
+  AND beats hold. Everything needed is in the per-config return matrix. [1][86][80]
+- (round-3) Is our gate statistic STUDENTIZED (excess-return-vs-hold ÷ bootstrap std)
+  and is its null sample-dependent (SPA-style), or raw-RC-style and possibly too
+  conservative to detect a real crypto edge? [93][7][99]
+- (round-3) Does the bootstrap use CIRCULAR (wrap-around) blocks to avoid the fixed-
+  length edge bias, and is the block length from the correlogram (not a constant)?
+  [89][78][20]
+- (round-3) When we report forward performance, do we account for its LOW power (don't
+  read a forward "loss" as definitive) and is the crown-vs-hold OOS test nested-model-
+  adjusted (Clark–West) if framed formally? [97][96]
+- (round-3) Is the bake-off WINDOW / forward-split rule pre-committed and varied for
+  stability, rather than one cherry-pickable cutoff? [98][90]
+- (round-3) Do we surface each crown's TURNOVER next to its net edge so high-turnover
+  crowns (where costs bite [82]) get extra skepticism? [82][83]
 
 ## Paper map (claim → supporting [N])
 
@@ -485,3 +712,26 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
 - DL fails to beat hold/linear baselines risk-adjusted, multiple-seed, OOS → [75]
 - Discovered edges self-destruct → non-stationarity (EMH+forecasting) → [76]
 - BTC TA/ML vs hold: 3/4 lose net of cost; lone "winner" uncorrected/one-window → [77]
+- Moving-block bootstrap = our gate's parent; block length ℓ→∞, ℓ/n→0 → [78]
+- CV/multi-fold valid over hold-out; k-fold OK iff residuals white → block+purge → [79]
+- Composed multi-signal strategies inflate effective N toward (single)^k → [80]
+- Publication bias explains only ~10–15%; high-t signals are largely real → [81]
+- Costs are strongly turnover-dependent; high-turnover strategies crushed → [82]
+- Paper returns overstate realized (value low / momentum ~zero net of cost) → [83]
+- p-hacking CANNOT manufacture t≫4 → a real high-deflated-t region survives → [84]
+- False Discovery Rate definition + BH step-up; BHY for dependence → [85]
+- Effective N = clusters of candidate return matrix (ONC); False Strategy Thm → [86]
+- Haircut Sharpe via Bonferroni/Holm/BHY, real-time strategy evaluation → [87]
+- Discrete-FDR; TA edges CAN survive snooping in less-efficient markets → [88]
+- Circular (wrap-around) block bootstrap removes MBB edge/boundary bias → [89]
+- "Garden of forking paths": one analysis carries hidden multiplicity → [90]
+- Select + score on SAME data = biased; nested CV gives unbiased estimate → [91]
+- Robustness-aware composite objective (optimize-for-generalization) → [92]
+- RC LACKS POWER, SPA is the upgrade; "nothing beats GARCH(1,1)" → [93]
+- Conditional (not unconditional) predictive ability; misspecification-robust → [94]
+- √-impact law holds on BITCOIN; fixed fee+spread right at retail scale → [95]
+- Nested-model OOS: estimating zero-value params biases naive test (CW adj) → [96]
+- OOS tests have LOWER power than IS and aren't snoop-proof → [97]
+- Sample-split choice is itself data-mining; vary it / pre-commit → [98]
+- Stepwise-SPA: more powerful than StepM; full SET of gate-passers → [99]
+- Bootstrap skill-vs-luck of the cross-section; small right-tail is skilled → [100]

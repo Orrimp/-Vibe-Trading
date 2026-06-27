@@ -183,14 +183,28 @@ rules survive out-of-sample.*
 **Does NOT hold up / fragile:**
 - Vol-managed portfolios delivering a robust *Sharpe* improvement out-of-sample —
   the spanning-regression alpha is not implementable in real time and OOS
-  combination strategies underperform simple holding in ~72/103 cases [2].
-- Full Kelly as a deployable strategy (too aggressive; ruin risk) [3][6].
+  combination strategies underperform simple holding in ~72/103 cases [2]; on crypto
+  the leverage effect that would drive a Sharpe gain is absent/reversed [93][75].
+- Full Kelly as a deployable strategy (too aggressive; ruin risk) [3][6]; and Kelly's
+  asymptotic optimality [100] is unreachable in a few-year, few-trade single-coin window [55].
 - The lever-up half of vol-targeting for a long-only, no-leverage retail account —
   Moreira–Muir's own gains need 400–864% leverage at the 99th pct [2].
 - Stop-losses as a return enhancer — value-destroying under a random walk, and
   even optimized stops help in barely >50% of assets [8][9].
 - Floor/drawdown GUARANTEES on a gapping asset — broken by jumps between
-  rebalances [11][13].
+  rebalances [11][13][46]; Bitcoin's daily 99% ES ≈ −22%, realized MDD 76% [83][89].
+- Optimized / ML / RL sizing and elaborate vol models — beaten by simple rules OOS
+  ([18][32][50][51]); high backtested Sharpes (e.g. 2.4–5.7 in [91][99][94]) are the
+  multiple-testing illusion the Deflated Sharpe [69] + PBO [70] exist to deflate.
+- Implied volatility as a primary sizing input for crypto — distorted by thin options
+  liquidity [67]; useful only combined, at weekly+ horizons [95].
+
+**New (Round 3) — holds up:**
+- Selection-bias correction (Deflated Sharpe [69], PBO/CSCV [70]) as a rigorous overfit gate.
+- HAR-RV [66] / EWMA [85] as cheap, robust vol forecasts; GARCH-EVT for fat-tail risk [88].
+- Coherent tail measures (ES/CVaR/CDaR/EVaR/spectral) over VaR [82][34][41][64][98].
+- Drawdown modulation + restart, cost-aware, crypto-tested [13][96].
+- "Sizing carries celebrated strategies": strip vol-scaling from TSMOM ⇒ ≈ buy-and-hold [86][87].
 
 ## Actionable takeaways for our advisor
 
@@ -211,6 +225,33 @@ rules survive out-of-sample.*
 5. **Watch for regime breaks ("structural instability").** The OOS failure of
    vol-timing was driven by parameter breaks [2]; our crypto windows are regime-shifty,
    so any trained sizing parameter goes stale — argues for simple, slow-moving rules.
+6. **Add the selection-bias correction to the gate (Round 3 priority).** Compute the
+   Deflated Sharpe Ratio [69] of the crowned bake-off pick (deflate by effective #trials +
+   skew/kurtosis; require DSR ≥ 0.95) and estimate the Probability of Backtest Overfitting
+   via CSCV [70]. This is the Sharpe-side complement to our moving-block bootstrap and the
+   exact upgrade the research program flagged. Our many-strategy×parameter bake-off is the
+   textbook False Strategy Theorem setup — the crown is inflated without this.
+7. **Do NOT expect a Sharpe gain from the vol overlay on crypto — the leverage effect is
+   absent/reversed.** [93][75] show crypto vol rises after UP moves (or shows no asymmetry),
+   so the [16] Sharpe mechanism doesn't operate. Ship the overlay as a drawdown/tail tool,
+   measure the coin's return-vol correlation per-window, and frame honestly.
+8. **Use a parameter-light vol estimator.** EWMA λ≈0.94 [85] or a HAR-style multi-horizon
+   realized-vol blend [66]; don't over-engineer σ̂ (better point-vol ≠ better tail [51]);
+   implied vol only as a *combined* weekly-horizon signal [95], never the primary input.
+9. **Prototype drawdown control as modulation + restart.** The [13] cushion multiplier
+   M(k)=(d_max−d(k))/(1−d(k)) PLUS a high-water-mark restart [96] (shown to improve perf
+   net of costs on crypto) — de-risk toward the operator's floor but allow recovery. Offer
+   static (CPPI-like) vs ratcheting (TIPP-like [72]) floor; disclose the floor is probabilistic.
+10. **Make rebalancing cost-survivable.** Implement any vol-target/drawdown overlay with a
+    no-trade band [61] (width ∝ cost & vol) or a conditional/state-gated trigger [28], not
+    continuous re-sizing — the turnover bleed is what flips vol scaling net-negative [48][28].
+11. **Trigger de-risk on DOWNSIDE volatility, not total vol** [59][35] (Sortino-style
+    semi-deviation), a cleaner crash signal; and report Sortino/Calmar + CVaR/ES + skew +
+    median terminal wealth, not just Sharpe [54][55][84] — these surface the overlay's real
+    (risk-shaping) benefit and crypto's asymmetry.
+12. **If a stop is added, attach it only to a TREND pick, tune it to volatility (ATR-based),
+    pair it with a profit-take, and bootstrap-test significance** [8][9][44][57][94] — never
+    a fixed-% stop on buy-and-hold; expect drawdown reduction at a return cost.
 
 ## Open questions / things worth testing in our app
 
@@ -223,6 +264,21 @@ rules survive out-of-sample.*
   setting μ̂=0 (pure vol scaling)? (Estimation-error stress test, per [6].)
 - Is the exact log-normal Kelly fraction [4] (more conservative than μ/σ²) materially
   safer on crypto's high-σ regime than the μ/σ² approximation?
+- Wire the Deflated Sharpe Ratio [69] + PBO/CSCV [70] into the bake-off: what is the DSR /
+  PBO of a typical crowned single-coin pick? Hypothesis: many crowns fail DSR ≥ 0.95 (i.e.
+  the raw Sharpe edge over buy-and-hold doesn't survive deflation). This is the highest-value
+  next experiment.
+- Does triggering the vol overlay on DOWNSIDE deviation [59] (Sortino-style) cut drawdown
+  more than total-vol scaling on the same (coin,window), net of costs? (Direct test.)
+- Per-coin, is the realized leverage effect positive (equity-like) or inverse [93]? Does a
+  positive-leverage-effect coin/window actually get a Sharpe bump from the overlay while an
+  inverse one doesn't? (Confirm the [93] mechanism on our data before promising anything.)
+- Drawdown modulation + restart [13][96] vs a static CPPI-style floor vs buy-and-hold on real
+  coin windows with our cost model: does the restart actually improve net-of-cost terminal
+  wealth, and how often does the floor get breached by gaps (gap-risk frequency)?
+- Does a no-trade band [61] (width ∝ cost & vol) make our vol overlay cost-survivable where
+  continuous re-sizing is net-negative [48][28]? What band width is the break-even on a
+  high-cost crypto coin?
 
 ## Paper map (claim → supporting [N])
 
@@ -257,3 +313,144 @@ rules survive out-of-sample.*
 - Leverage-constrained investors overweight high-beta → high beta = low alpha (BAB) → [15]
 - Risk of ruin: general closed form for arbitrary (fat-tailed) payoff distributions → [17]
 - Risk of ruin shrinks ~exponentially with smaller per-bet fraction → [17]
+- Optimal vs naive (1/N): no optimized rule beats 1/N OOS; needs ~3000–6000 mo of data → [18]
+- Vol-managed (put-writing) Kelly×VIX hybrid = dynamic fractional Kelly; best drawdown control → [22]
+- ERC exists & unique, sits between min-var and 1/N, uses covariance only (no μ) → [23]
+- Max drawdown is a model-free, path-aware risk measure (permutation changes it) → [24]
+- Risk-averse optimal-f: shrink the growth fraction by the CURRENT drawdown → [25]
+- Low-volatility anomaly: low-vol/low-beta had HIGHER return + smaller drawdown (1968–2008) → [26]
+- Low-vol anomaly extends to crypto (cross-sectional) → [27]
+- CONDITIONAL vol targeting (only de-risk in extreme-vol states) = low-turnover, robust → [28]
+- More signals/horizons often add redundancy not diversification; simpler is better → [29]
+- Risk-constrained Kelly (convex drawdown-prob bound) DOMINATES plain fractional Kelly → [30]
+- Drawdown-constrained growth optimum = a transform of the unconstrained Kelly portfolio → [31]
+- HRP beats min-variance OOS by avoiding covariance inversion ("Markowitz's curse") → [32][33]
+- CVaR is coherent & LP-optimizable; VaR is non-convex & non-subadditive → [34]
+- Statistical-jump-model regime de-risk HALVED equity drawdowns net of costs → [35]
+- Deep-hedging minimizes CVaR with frictions (tail-risk objective is active research) → [36]
+- Leverage cycle / margin spirals → fundamental-free crashes; unlevered holder survives → [37][56]
+- Meta-labeling: decouple SIDE (signal) from SIZE (confidence); triple-barrier labels → [38]
+- E[max drawdown] grows log T / √T / linear-T for positive / zero / negative drift → [39]
+- Disposition effect present in Bitcoin → advisor value is partly debiasing → [40]
+- CDaR: coherent drawdown risk measure, mean of worst (1−β) drawdowns, LP-form → [41]
+- Distributionally-robust Kelly: size for the worst-case distribution in an ambiguity set → [42]
+- Knightian uncertainty + fat tails push the optimal Kelly fraction DOWN further → [43]
+- A trailing stop ALONE is suboptimal; pair it with a profit-take → [44]
+- Conservative sizing recipe: plug a LOWER-QUANTILE edge / UPPER-QUANTILE vol into the rule → [45]
+- Jump-aware CPPI keeps some exposure after a breach to dodge the "miss the rebound" trap → [46]
+- Multivariate optimal-f (Vince TWR) has a unique well-posed optimum → [47]
+- Vol scaling can LOWER net Sharpe (0.39 vs 0.59) once turnover costs count → [48]
+- Crypto vol-targeting works as a small cash-diluted sleeve (EWMA/GARCH σ̂) → [49]
+- Don't build RL sizing: ~2M steps ≈ 8000 yrs of daily data even on clean sim → [50]
+- Better point-vol forecast ≠ better TAIL (VaR/ES) forecast → measure tail directly → [51]
+- Crypto HRP is OOS-robust, esp. on tail-risk-adjusted return → [52]
+- Tail hedging: rolling puts BLEED (−0.61%/yr); trend is the better-value hedge → [53]
+- Sharpe rises ~linearly with NEGATIVE skew (most premia = insurance-selling); trend is +skew → [54]
+- Kelly: mean wealth ≫ median (Triple-Kelly 940× mean / 0.017× median); report medians → [55]
+- Stop-loss = trend rule; interior optimal threshold; tune to vol, evaluate at modest freq → [57]
+- Skewness term enters optimal allocation once returns are non-Gaussian → [58]
+- DOWNSIDE-vol scaling beats TOTAL-vol scaling (cleaner de-risk trigger) → [59]
+- LPPL/crash-prediction de-risk signals are tempting but overfit-prone → [60]
+- No-trade band (width ∝ cost & vol) cuts rebalancing turnover ~50% → [61]
+- Block-bootstrap test: CPPI/synthetic-put beat naive stop-loss; fancy variants add nothing → [62]
+- Mutual non-dominance: B&H doesn't stochastically dominate insurance, nor vice versa → [63]
+- EVaR ≥ CVaR ≥ VaR: most conservative coherent tail measure, KL-ball dual (robustness) → [64]
+- Liquidity/funding shocks forecast crypto vol (de-risk signal beyond realized vol) → [65]
+
+### Round 3 additions — vol-forecasting for sizing
+- HAR-RV (daily+weekly+monthly realized vol, OLS) is the parameter-light vol-forecast workhorse → [66]
+- EWMA (λ=0.94 daily) is the cheap one-parameter conditional-vol recipe (RiskMetrics) → [85]
+- GARCH/EGARCH beat HIST/EMA AND implied vol for crypto vol; crypto shows NO asymmetry (EGARCH) → [75]
+- Stochastic-vol + Student-t forecasts crypto vol best (density, fat tails) but heavier to fit → [68]
+- Crypto implied vol is distorted by thin options liquidity (unreliable in the tails) → [67]
+- Implied vol beats models at 7–15 day horizons, loses at 1 day; COMBINE, don't replace → [95]
+- GARCH-EVT/POT-GPD is the rigorous fat-tail-AND-vol-clustering risk estimator → [88]
+- Bitcoin tail is heavy & TIME-VARYING: daily 99% VaR ≈ −13%, ES ≈ −22% → [89]
+- Shrink the inputs: Ledoit–Wolf for covariance; single-asset analogue = shrink μ̂ → 0 → [77]
+
+### Round 3 additions — Kelly / sizing
+- Breiman (1961) rigorously proved Kelly's two optimality results — but they're ASYMPTOTIC & known-edge → [100]
+- Thorp: f* = μ/σ² for stocks; "bet LESS than the formula" (fractional, edge-first) → [80]
+- Crypto's INVERSE leverage effect (up-moves drive vol) ⇒ vol-targeting Sharpe gain absent/reversed → [93]
+- Bitcoin leverage effect is present-but-regime-dependent (tension [78] vs [75]) → [78]
+
+### Round 3 additions — drawdown control
+- Drawdown-modulation + RESTART (re-base high-water mark) improves perf NET of costs, on crypto → [96]
+- TIPP (ratcheting floor) = best downside protection but sacrifices upside capture vs CPPI → [72]
+
+### Round 3 additions — tail risk / measures
+- Coherent-measure axioms (Artzner): subadditivity fails for VaR → use ES → [82]
+- Spectral risk measures = risk-aversion-weighted blend of ES (encode operator preference) → [98]
+- Sortino ratio (downside deviation / MAR) rewards loss-asymmetry; better than Sharpe for crypto → [84]
+- Crypto tail risk is non-stationary & enormous (76.4% Terra/FTX drawdown); calibrate adaptively → [83]
+- Cash/stablecoin = volatility DAMPENER not hedge; crypto crashes together (BTC–ETH ρ>0.85) → [79]
+
+### Round 3 additions — selection-bias correction (THE gate upgrade)
+- Deflated Sharpe Ratio: deflate crowned Sharpe by #trials + skew/kurtosis; require DSR ≥ 0.95 → [69]
+- Probability of Backtest Overfitting (CSCV): estimate P(IS-best underperforms OOS-median) → [70]
+- NCO/MCOS: two instability sources (noise + signal-magnified inversion); Monte-Carlo the optimizer → [71]
+- Markowitz (1952): the in-sample-optimal frontier whose OOS fragility motivates our skepticism → [92]
+
+### Round 3 additions — sizing > signal evidence
+- Strip vol-scaling from TSMOM ⇒ performance ≈ buy-and-hold (sizing carries the load) → [86]
+- Crypto vol-scaled TSMOM beats B&H on risk-adjusted return + downside risk (but it's the SIZING) → [87]
+- Vol management mitigates crypto-momentum CRASHES (tail benefit, not edge) → [97]
+- Feedback-control vol targeting (single-asset) > open-loop forecast-and-divide (turnover/leverage) → [90]
+- Variance risk premium predicts equity returns; crypto VRP is 7× larger but non-standard → [74][76]
+- Risk-aware RL reward (penalize downside) avoids "reward hacking" → score drawdown, not just Sharpe → [81]
+- ATR-scaled asymmetric exits (1×ATR stop / 2×ATR target) — sensible, but overfit-prone in sweeps → [94]
+- Crypto trend-following with vol-regime-calibrated trailing stops (distrust the headline Sharpe) → [91][99]
+- Crypto Monte-Carlo / simulation-based tail metrics mirror our bootstrap gate → [79]
+- Regime-/tail-dependent CVaR strategies: no universal winner; drawdown reduction in stress is robust → [73]
+
+## Round 3 synthesis — what changed and what's portable
+
+**The single most important new finding for our overlay: crypto's leverage effect runs the
+WRONG way.** [16] established that volatility targeting lifts Sharpe ONLY through the
+leverage effect (negative return→volatility correlation, which injects implicit
+crash-avoidance). [93] (Brini–Lenz, high-frequency panel) finds crypto has an INVERSE
+leverage effect — *positive* returns drive volatility higher — and [75] (EGARCH) finds no
+asymmetry at all, while [78] finds a present-but-regime-dependent one. The honest synthesis:
+the equity mechanism that makes vol-targeting Sharpe-accretive is **absent, reversed, or
+unstable in crypto**. Therefore our vol overlay should be shipped as a **drawdown/tail/
+vol-of-vol reduction tool** (the benefit [16] found is universal regardless of the leverage
+effect) and we should **not promise a Sharpe gain** — if anything, de-risking after the
+up-moves that precede crypto vol spikes could slightly *cost* return. This is the strongest
+single-coin-crypto-specific confirmation of our whole "risk-shaping, not edge" thesis.
+
+**The gate upgrade is now fully specified.** [69] Deflated Sharpe Ratio + [70] PBO (CSCV) are
+exactly the selection-bias correction the research program flagged. Our bake-off crowns the
+best-Sharpe strategy across many strategy×parameter trials on one coin+window — the textbook
+False Strategy Theorem setup. The concrete plan: (a) compute SR₀ (expected max Sharpe under
+the multiple-testing null) from the *effective* number of independent strategy trials and
+require the crowned pick's **Deflated Sharpe ≥ 0.95**, with the skew/kurtosis terms naturally
+penalizing crypto's fat-tailed negative-skew strategies; (b) run **CSCV** across the
+strategy×time return matrix to estimate the **probability the crown is overfit** and surface
+it (or gate on it) — a real OOS check that needs no separate hold-out (precious given short
+crypto histories). Together with our moving-block bootstrap (path robustness) these attack
+selection bias + path fragility simultaneously.
+
+**Vol-input choice is settled toward simple.** HAR-RV [66] (daily+weekly+monthly realized vol,
+OLS) and EWMA/RiskMetrics λ=0.94 [85] are the parameter-light workhorses; GARCH/EGARCH [75]
+are fine if we want conditional vol; stochastic-vol/DL [68][51] forecast points slightly
+better but **don't reliably improve the TAIL numbers that govern de-risking** [51], and
+implied vol is **unreliable for crypto** (thin options) except as a *combined* signal at
+weekly+ horizons [95][67]. On daily bars we approximate realized variance with squared
+returns or a Garman–Klass/Parkinson range. Shrink the inputs [77]: with no robust edge, μ̂→0,
+so sizing defaults to vol-only.
+
+**Drawdown control has a crypto-tested, cost-aware recipe.** The drawdown-modulation
+controller [13] guarantees (idealized) a max-drawdown floor but locks out at the floor; the
+**restart mechanism** [96] re-bases the high-water mark so the position can recover, and is
+shown to improve performance **net of transaction costs on cryptocurrency** — the single most
+deployable drawdown-overlay upgrade found. Offer the operator a static floor (CPPI-like, more
+upside) vs a ratcheting floor (TIPP-like [72], protects profits, costs upside), disclose the
+trade, and treat the floor as **probabilistic, not guaranteed** (gap risk [46][89] is real:
+Bitcoin's daily 99% ES ≈ −22% and it has drawn down 76% [83]).
+
+**Sizing > signal got its cleanest proof.** [86] (Kim–Tse–Wald): strip the vol-scaling out of
+time-series momentum and its performance collapses to ≈ buy-and-hold — the apparent "edge" is
+the *sizing*, not the signal. [87] confirms the same for crypto TSMOM. But the honest
+flip-side for us: on a SINGLE coin there's no cross-asset diversification (the thing that made
+TSMOM's vol-scaling actually profitable across 58 instruments), so even the sizing benefit is
+mostly **risk-shaping, not return** — exactly our thesis.

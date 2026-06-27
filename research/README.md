@@ -4,6 +4,11 @@ A **durable, resumable** literature review on how to build a real-world trading
 system — **strategies, backtesting, test data, learning, evolution, and LLM
 applications**. Findings here will later feed concrete improvements to **our app**.
 
+> **Status: ✅ COMPLETE — 900/900 papers across 9 topics (2026-06-27).** Start at
+> [SYNTHESIS.md](SYNTHESIS.md) for the "what do we change in the app" distillation
+> (incl. the implementation-ready P0 gate spec); [PROGRESS.md](PROGRESS.md) for the
+> per-topic count table. The resume protocol below stays valid for any future extension.
+
 > **Our app (context for "relevance" notes):** a Rust single-coin crypto
 > investment **advisor** — *paper/sim only, not live, not financial advice*.
 > Flow: pick a coin + budget → **bake off** many strategies on `(coin, window)`

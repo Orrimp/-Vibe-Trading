@@ -1,16 +1,28 @@
 # Knowledge — Machine Learning for Trading (classical ML, feature eng., forecasting)
 
 _Synthesized from `papers.md` (source of truth)._
-_Progress: 55+ papers logged. Round 2 added [25]–[46]: conformal prediction &
-calibration, GARCH & quantile/probabilistic risk forecasting, feature selection & sample
-reweighting, concept drift / online learning, costed-backtest negative results, crypto-ML
+_Progress: **100 papers logged — topic target reached.** Round 2 added [25]–[46]: conformal
+prediction & calibration, GARCH & quantile/probabilistic risk forecasting, feature selection &
+sample reweighting, concept drift / online learning, costed-backtest negative results, crypto-ML
 overfitting, gradient-boosting volatility, and gate/objective-design papers._
-_Round 3 (in progress) added [47]–…: thin-seam fills — time-series classification
-(ROCKET/MiniROCKET [47][54], InceptionTime [55]); the HAR-RV volatility family [48];
-the MDA-vs-MDI feature-importance debate corrected (Sobol-MDA [49]); crypto information-
-driven bars + triple-barrier labeling [50]; isotonic-vs-Platt calibration choice [51];
-ensemble stacking with a leakage warning [52]; imbalanced rare-event handling — skip-SMOTE
-[53]._
+_Round 3 added [47]–[78]: thin-seam fills — time-series classification (ROCKET/MiniROCKET
+[47][54], InceptionTime [55]); the HAR-RV volatility family [48]; the MDA-vs-MDI feature-
+importance debate corrected (Sobol-MDA [49]); crypto information-driven bars + triple-barrier
+labeling [50]; isotonic-vs-Platt calibration choice [51]; ensemble stacking with a leakage
+warning [52]; imbalanced rare-event handling — skip-SMOTE [53]; plus the catch22/FRESH feature
+seams, MCS/forecast-combination [69][76], and the interpretation-stability capstone [78]._
+_Round 3-final added [79]–[100]: the **boosting/ensemble foundations** (XGBoost [79], LightGBM
+[80], CatBoost [81], Friedman GBM [82], Breiman Random Forests [85], Super Learner/stacking
+[88], SVM [86]) — the named classical learners, anchored from first principles; **regime
+detection breadth** (Wasserstein clustering [83], HMM factor-switching [84]); the **selection-
+bias root** (Pseudo-Mathematics + MinBTL [95]) and **clustered feature importance** [94] (the
+LdP fix for correlated-feature unreliability); **on-domain costed crypto negatives** (Bysik–
+Ślepaczuk hourly-BTC walk-forward, Holm-corrected → no strategy beats B&H [89]; 41-model
+Bitcoin survey with forward-test collapse [90]); **classical-baseline anchors** (M4 — pure ML
+loses to simple statistical methods [91]; Stronger-Baselines capstone [100]); **crypto
+efficiency** (daily=random-walk, weekly=weak mean-reversion [96]); **trend/factor reality**
+(Time-Series Momentum [97], crypto high-dim factor ML [98], crypto Lasso factor model [99]);
+and a financial concept-drift template [92]._
 
 ## Key themes
 
@@ -204,31 +216,105 @@ ensemble stacking with a leakage warning [52]; imbalanced rare-event handling �
     small curated technical set first; auto-extraction + FDR is a disciplined fallback, not
     a default.
 
+21. **Boosting/ensemble are *tools*; their regularizers — not their pedigree — decide
+    generalization, and even leak-hygiene only buys a more trustworthy (usually null) result.**
+    The named classical learners are now anchored from first principles: gradient boosting is
+    **steepest descent in function space** (Friedman [82]), so XGBoost's second-order objective
+    + L1/L2/γ leaf penalties [79], LightGBM's leaf-wise growth + GOSS/EFB [80], and CatBoost's
+    **ordered boosting** (which fixes a *target-leakage / prediction-shift* inside the boosting
+    loop [81]) are all refinements whose **regularizers (shrinkage ν, subsampling, num_leaves,
+    min_data_in_leaf, depth) are the real defense against memorizing single-coin noise** — to be
+    tuned under CPCV [14], never on test. Random forests generalize via Breiman's
+    **strength-vs-correlation bound** [85], but OOB error assumes IID and is *no substitute*
+    for purged CV on overlapping labels [2][42]. All three GBDTs natively accept **per-sample
+    weights** → the average-uniqueness non-IID fix [2][42] is free. Hard through-line: these
+    libraries dominate on data with *real* signal; on near-noise crypto direction labels [29][38]
+    they overfit as readily as anything, so the **gate, not the learner, governs** — and CatBoost's
+    leak-hygiene just makes the (likely "no edge") verdict more trustworthy.
+
+22. **Ensembling cannot beat a benchmark already in its library — a theorem-shaped echo of our
+    thesis.** Stacking / Super Learner [88] combines a model *library* via cross-validated
+    out-of-fold predictions and a meta-learner, with an **oracle inequality**: asymptotically it
+    performs **as well as the best single candidate — no better**. So if **buy-and-hold is in the
+    library** and no active strategy robustly beats it [13][19][89], the optimal stack *cannot*
+    beat B&H either — ensembling is a defense against picking the wrong model, **not** a source of
+    new alpha. The out-of-fold construction must be **purged/embargoed** [2][14] (naive stacking on
+    overlapping labels leaks [42]), and the meta-learner adds a selection layer the deflated-Sharpe
+    penalty must still cover [20]. The M4 competition [91] empirically agrees from the other side:
+    **pure ML lost to simple statistical methods on 100k series; only *combinations/hybrids* won**,
+    and only modestly — ensembling done right helps, but it doesn't manufacture edge.
+
+23. **Regime detection has three branches (HMM, change-point, clustering) that all share two
+    flaws: lag and "detection ≠ profit."** Beyond the HMM [6][67][84] and change-point [11][12]
+    branches, **distributional clustering** (Wasserstein/MMD k-means [83]) is the third — it
+    compares whole return distributions (mean/var/skew/tail) and is conceptually the right way to
+    label "what regime are we in," but [83] is explicit that it does **only identification, no
+    backtest**, and like all regime methods it is **backward-looking** (a window's distribution is
+    known only after observing it) → forward use inherits detection lag [11][12]. The HMM
+    factor-switching upside [84] (switch *which* strategy is active by regime) is a real design
+    idea, but its benchmark was other factor models (not B&H), its OOS window was short and
+    crash-dominated, and plain Gaussian HMMs are flip-prone [6]. Net for us: regime is a **risk
+    throttle / strategy-selector candidate**, prefer a *persistent* labeler (jump model [6]) over
+    flip-prone HMM/heavy Wasserstein, and gate every regime claim against B&H net of costs.
+
+24. **On-domain, cost-and-multiple-testing-correct crypto studies now directly validate the
+    product thesis.** The cleanest is Bysik–Ślepaczuk [89]: hourly BTC, **27-fold walk-forward**,
+    **10 bp/turn costs**, XGBoost/LSTM/iTransformer — frictionless looks great but **collapses net
+    of costs** (sign-based XGBoost **+73.5% → −64%/yr**); a **cost-aware filter** (act only when
+    expected move > cost hurdle) recovers it to ~65%/yr @ Sharpe ~1.09, but **after Holm correction
+    no cost-aware strategy significantly beats buy-and-hold**. This is our thesis on our asset with
+    our discipline. The 41-model Bitcoin survey [90] shows the failure mode by omission: PNL-tuned
+    over 41 models × many windows (textbook data-snooping [19][95]), it admits backtests **don't
+    translate forward**, and reports **no costs, no B&H**. Joins [13][38][91][100] as the honest-
+    testing set — and hands us a ready-made **cost-aware-filter** baseline overlay.
+
 ## Methods / findings that hold up (and which don't)
 
 **Hold up:**
 - **CPCV** (purged + embargoed + combinatorial) and walk-forward for honest OOS
-  evaluation [1][4][6][14].
+  evaluation [1][4][6][14][89]; **MinBTL** as a crown pre-condition [95].
 - Selection-overfitting gates: **Reality Check / SPA** [19], **PBO/CSCV** [7],
-  **Deflated/Probabilistic Sharpe** [20], deflated Sharpe [2].
-- **Triple-barrier labeling** [2][3]; **fractional differentiation** fit on train
+  **Deflated/Probabilistic Sharpe** [20], deflated Sharpe [2]; **Holm/multiple-testing
+  correction across the strategy set** confirmed on-domain [89]; **double-selection LASSO**
+  for "is this signal marginally useful?" [10][99].
+- **Triple-barrier labeling** [2][3][50]; **fractional differentiation** fit on train
   only [2][3].
-- **Meta-labeling** as a low-risk *filter to trade less* [2][15].
+- **Meta-labeling** as a low-risk *filter to trade less* [2][15]; the **cost-aware filter**
+  (act only when expected move > cost hurdle) is the implementable form [89].
 - **Tree ensembles > linear** on tabular features [1][4][17]; **feature engineering +
-  classical ≥ deep learning** for financial tabular tasks [23].
-- **Persistent regime timing (jump model)** can beat equity B&H net of costs [6].
+  classical ≥ deep learning** for financial tabular tasks [23]; **pure ML < simple
+  statistical methods; combinations/hybrids win** at scale [91].
+- Boosting **regularizers** (shrinkage ν, subsampling, leaf/depth limits) and the RF
+  **strength-vs-correlation** intuition as the source of generalization [79][80][82][85];
+  GBDT **per-sample weights** for non-IID labels [2][42][79][80].
+- **Stacking / Super Learner** as the principled aggregator — but only as good as its best
+  candidate (oracle inequality) [88].
+- **Persistent regime timing (jump model)** can beat equity B&H net of costs [6];
+  **distributional (Wasserstein) clustering** is the right regime *labeler* concept [83].
 - **Shrinkage/regularization** as the source of OOS robustness [18][24].
 - **Parsimonious technical-indicator features**; causal/selective beats kitchen-sink
-  [17][10].
+  [17][10]; **clustered feature importance / Clustered-MDA** is the substitution-robust,
+  leak-safe importance+selection tool [94].
+- **Strong, utility-aligned baselines** (a tuned baseline + a money-vs-B&H metric, not
+  accuracy/AUC) as the test that separates real ML value from illusion [100][13][91].
 
 **Do NOT hold up / red flags:**
 - Direction-accuracy from full-series smoothing + long-horizon sign labels [5].
-- Any metric with no B&H/random-walk baseline and no costed backtest [4][16][17].
+- Any metric with no B&H/random-walk baseline and no costed backtest [4][16][17][90];
+  a **weak/strawman baseline** is as misleading as none [100].
 - **R² on price levels** as success [16].
-- Plain **HMM** regime timing for *return* enhancement (flip-prone) [6].
-- Single-bull/low-vol-window evaluation [3][21]; under-powered evaluation [13].
-- Bolting on macro/social-media features expecting gains [17].
+- Plain **HMM** regime timing for *return* enhancement (flip-prone) [6]; regime
+  *identification* presented as a tradable signal (it's backward-looking + lagged) [83].
+- Single-bull/low-vol-window evaluation [3][21]; under-powered evaluation [13];
+  short, single-crash-dominated OOS windows for regime timing [84].
+- Bolting on macro/social-media features expecting gains [17][98].
 - Technical trading rules as alpha once data-snooping is corrected [19].
+- **Tuning the reported metric (PNL) across a large model/param grid without a
+  multiple-testing penalty** — manufactures an in-sample winner that fails forward [90][95][7].
+- **Frictionless** crypto strategy results — costs at sign-flip turnover can flip
+  +73% to −64% [89].
+- **Pure ML** expected to beat simple statistical baselines on its own [91].
+- Trusting OOB error / naive k-fold on overlapping financial labels [85][2][14].
 - **Unregularized** complexity [24]; assuming "smarter execution" rescues a marginal
   edge [22].
 
@@ -239,9 +325,16 @@ ensemble stacking with a leakage warning [52]; imbalanced rare-event handling �
    strategy's per-period returns. Add, alongside the 1000-path moving-block bootstrap:
    (a) a **Deflated Sharpe Ratio** + Probabilistic-Sharpe for the crowned strategy
    [20] (corrects N, sample length, skew, kurtosis — apt for crypto fat tails); (b)
-   optionally a **Hansen SPA p-value** [19] or **PBO via CSCV** [7]. Treat
-   DSR<benchmark / high PBO / weak SPA as a veto. This closes the *selection*-
-   robustness axis the bootstrap alone doesn't.
+   optionally a **Hansen SPA p-value** [19] or **PBO via CSCV** [7]; (c) a **MinBTL
+   pre-condition** [95] — given N, compute the minimum window length below which the
+   crowned Sharpe is expected to be a pure overfitting artifact, and **refuse to crown
+   if our window is shorter** (cheap, new, honest veto we lack). Treat DSR<benchmark /
+   high PBO / weak SPA / window<MinBTL as a veto. An independent on-domain study [89]
+   confirms the payoff: after **Holm correction across the strategy set**, no cost-aware
+   hourly-BTC strategy significantly beat B&H — so report N and a multiple-testing-
+   corrected significance, not a point estimate. This closes the *selection*-robustness
+   axis the bootstrap alone doesn't. (Memory/serial-correlation makes overfit crypto
+   picks not just zero- but *negative*-expected OOS [95] — another reason the veto matters.)
 
 2. **Hard test-data rules (codify in the engine).** (a) Fit every transform on the
    in-sample window ONLY, apply forward [5]. (b) Report R²/error on **returns, never
@@ -250,11 +343,17 @@ ensemble stacking with a leakage warning [52]; imbalanced rare-event handling �
    strategy must beat B&H *net of realistic costs* [21][22]. (e) Stress across
    regimes, not just calm/bull windows [3][21].
 
-3. **Meta-labeling is the top ML experiment — as a "do less" filter.** Keep our
-   simple strategy as the *side*; add a small interpretable classifier (tree/logit) to
-   decide *whether to act*, triple-barrier-labeled [2], CPCV-validated [14], gated vs
-   B&H net of costs [15]. Most plausible win: fewer, higher-confidence trades → less
-   cost drag. Cannot underperform "always act" if gated.
+3. **Meta-labeling is the top ML experiment — as a "do less" filter; start with the
+   cost-aware filter as the baseline.** Keep our simple strategy as the *side*; add a
+   small interpretable classifier (tree/logit) to decide *whether to act*, triple-
+   barrier-labeled [2], CPCV-validated [14], gated vs B&H net of costs [15]. The simplest
+   instance — proven to matter on hourly BTC — is the **cost-aware execution filter: act
+   only when the expected move exceeds the transaction-cost hurdle** [89] (the difference
+   between +73.5% and −64%/yr there). Most plausible win: fewer, higher-confidence trades
+   → less cost drag. Cannot underperform "always act" if gated. If we ship a GBDT meta-
+   labeler, use **CatBoost-style leak-safe encoding** for any categorical regime input
+   [81], **per-sample average-uniqueness weights** [2][42], and **Clustered-MDA** [94] for
+   the operator-facing "why it acted."
 
 4. **A persistent vol/regime feature is worth a gated experiment — as a risk
    throttle.** Prefer a jump-model-style persistent classifier (interpretable,
@@ -269,11 +368,15 @@ ensemble stacking with a leakage warning [52]; imbalanced rare-event handling �
    [24] (still linear-in-features, Rust-friendly) — but expect costs + the single-asset
    constraint to neutralize it.
 
-6. **Keep the feature set small and technical; regularize when combining.** Don't add
-   macro/social-media data — it tends to hurt and inflates overfitting surface
-   [17][10]. When blending signals, prefer shrinkage over lucky sparse selection [18].
-   Diagnose feature value with permutation/MDA + SHAP, mindful of the correlated-
-   feature substitution caveat [2][8].
+6. **Keep the feature set small and technical; regularize when combining; diagnose with
+   substitution-robust importance.** Don't add macro/social-media data — it tends to hurt
+   and inflates overfitting surface [17][10][98]. When blending signals, prefer shrinkage
+   over lucky sparse selection [18], or a **double-selection LASSO** to keep only marginally-
+   useful signals [10][99]. Diagnose feature value with **Clustered Feature Importance /
+   Clustered-MDA** [94] (group co-moving features, shuffle the group) rather than naive
+   MDA/MDI/SHAP, which lie under the correlated features that dominate finance [49][58][8][78];
+   pair with a bootstrap **interpretation-stability check** [78] and report a spread, not a
+   point. CFI doubles as **cluster-based selection** (one representative per cluster) [94].
 
 7. **Default to skepticism; report risk-adjusted vs absolute separately.** Many
    "winners" beat B&H only on Sharpe/vol, not total money [3][6-HMM]; a no-intelligence
@@ -355,7 +458,21 @@ ensemble stacking with a leakage warning [52]; imbalanced rare-event handling �
   input beat single-coin B&H net of costs, or only reduce drawdown without adding return?
   (Prior: drawdown-only, like [3][6-HMM].)
 - Is a **concept-drift detector** [26] on the forward stream a useful re-bake trigger, or
-  does its lag make it fire too late to help (and just add churn)? [11][12]
+  does its lag make it fire too late to help (and just add churn)? [11][12][92]
+- Does adding a **MinBTL pre-condition** [95] to the gate (refuse to crown when the window is
+  shorter than the trial-count-implied minimum) ever change a crowning on our coins/windows —
+  i.e. are we sometimes crowning on too-short a history given how many strategies we bake off?
+  (Prior: yes, occasionally — and the memory-effect negativity [95] makes those crowns
+  actively harmful, not just lucky.)
+- Does a **cost-aware execution filter** (act only when the expected move exceeds the
+  transaction-cost hurdle) [89] — the simplest "do less" overlay — beat single-coin B&H net of
+  costs through the gate, or (as on hourly BTC [89]) merely recover viability without
+  significantly beating holding after multiple-testing correction? (Prior: recovers viability,
+  doesn't beat B&H — but it's a strong default overlay regardless.)
+- If we ever ship a GBDT meta-labeler, does **Clustered-MDA** [94] give a *stable* (bootstrap-
+  checked [78]) operator-facing "why it acted" story on our co-moving technical features, where
+  naive MDA/SHAP [49][58] do not? (Prior: yes for stability of *groups*; individual-feature
+  attributions stay unstable.)
 
 ## Paper map (claim -> supporting [N])
 
@@ -436,3 +553,42 @@ ensemble stacking with a leakage warning [52]; imbalanced rare-event handling �
   coverage on dependent data → [45]
 - UQ-toolbox review: validate coverage, no method universally best, conformal recalibrates
   any base model post-hoc; GAMLSS models scale/shape → [46]
+- Boosting = steepest descent in function space; shrinkage/subsampling/robust losses are the
+  foundation → [82]
+- XGBoost = regularized GBDT (L1/L2/γ leaf penalty, sparsity-aware, weighted quantile sketch);
+  regularizers are the overfitting defense → [79]
+- LightGBM = fast GBDT (GOSS/EFB, leaf-wise growth); num_leaves/min_data_in_leaf are the
+  regularizers; speed buys more thorough validation → [80]
+- CatBoost = ordered boosting fixes target-leakage/prediction-shift *inside* the boosting loop;
+  ordered target stats for leak-safe categorical encoding → [81]
+- Random Forests = de-correlated trees; strength-vs-correlation generalization bound; OOB ≠
+  purged CV on overlapping labels → [85]
+- SVM ~60% weekly-direction on NIKKEI, beats LDA/QDA/NN — but no costs, no B&H benchmark → [86]
+- Stacking / Super Learner: oracle inequality → only as good as best candidate; can't beat B&H
+  if B&H is in the library; out-of-fold must be purged → [88]
+- Pure ML < simple statistical methods on 100k series (M4); combinations/hybrids win, modestly →
+  [91]
+- MinBTL: minimum window given N or the best in-sample Sharpe is spurious; memory effects →
+  *negative* OOS; report N or it's "pseudo-mathematics" → [95]
+- Clustered Feature Importance / Clustered-MDA: substitution-robust importance + selection (the
+  fix for correlated-feature unreliability) → [94]
+- Hourly-BTC walk-forward, 10bp costs: frictionless +73.5% → −64% net; cost-aware filter
+  recovers; Holm-corrected, no strategy beats B&H → [89]
+- 41-model Bitcoin survey: PNL-tuned across big grid (data-snooping), backtests don't translate
+  forward; no costs, no B&H → [90]
+- Crypto efficiency: daily returns ≈ random walk (efficient/unpredictable), weekly ≈ weak
+  mean-reversion (structural-break-robust tests) → [96]
+- Time-series momentum is real but a diversified cross-asset long/short vol-scaled effect; n=1
+  long-only can't harvest it; ~1yr then reversal → [97]
+- Crypto cross-sectional ML: OOS R²~4.9% (> equities), but cross-sectional + on-chain-
+  fundamentals-driven + long/short — doesn't transfer to one long-only coin → [98]
+- Most crypto anomalies don't survive OOS (size effect vanishes); double-selection LASSO → DS3;
+  left-tail-risk effect appears → [99]
+- Stronger baselines often match/beat complex ML; weak/absent baseline + accuracy-not-utility
+  metric manufactures false ML superiority (cross-domain capstone) → [100][13][91]
+- Distributional (Wasserstein/MMD) clustering = the right regime-*labeler* concept, but
+  identification-only, backward-looking, lagged → [83]
+- HMM factor-switching upside (switch which strategy by regime); but benched vs factors not B&H,
+  short crash-dominated OOS, flip-prone → [84]
+- Concept drift in financial series: detect-drift → re-fit (OS-ELM + explicit detector);
+  template for our re-bake trigger, but detection lags → [92]
