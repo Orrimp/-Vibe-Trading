@@ -4,6 +4,15 @@
 //! v1 adds `funding::FundingPoller` (T613).
 //! C1 adds `synth` — Monte-Carlo stationary-block-bootstrap path generator.
 
+/// Market-calendar layer — ADR-0073 D1.
+///
+/// Resolves a Yahoo ticker to its [`calendar::MarketCalendar`] and counts
+/// trading days for the `load_cached` 95% coverage gate.  This is the
+/// durable "v0.2.0 market-calendar layer" the `yahoo.rs` comment named.
+/// Available unconditionally (not gated behind `yahoo` feature) so tests
+/// and other callers can use `classify_ticker` without enabling parquet deps.
+pub mod calendar;
+
 pub mod bar_aggregator;
 pub mod bar_stream;
 pub mod binance;

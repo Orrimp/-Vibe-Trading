@@ -247,6 +247,7 @@ async fn run_arm(arm: &ArmDef, bars: Vec<Bar>, candidate_index: usize) -> Option
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
     let (_h, cancel_rx) = cancellation_pair();
     let run_result = run_scenario(cfg, cancel_rx, ProgressSender::disabled()).await;

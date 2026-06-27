@@ -47,22 +47,25 @@ pub type BakeoffRunResult = Result<BakeoffReportMirror, SmolStr>;
 pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
 
 /// The advisor bake-off field: the 9 single rule engines (4 original + 5 ADR-0071
-/// signal-library arms) + the 8 F8/ADR-0067 vote ensembles. Buy-and-hold is appended
-/// by `run_bakeoff`. The cockpit opts into the ensembles HERE — anchored paths are
-/// unaffected (the anchor-additive contract; new arms run `write_report=false`).
+/// signal-library arms) + the 8 F8/ADR-0067 vote ensembles + 1 ADR-0073 macro arm.
+/// Buy-and-hold is appended by `run_bakeoff`. The cockpit opts into the ensembles
+/// and the macro arm HERE — anchored paths are unaffected (anchor-additive contract;
+/// all new arms run `write_report=false`).
 fn advisor_field() -> Vec<trading_core::StrategyId> {
     let mut field = backtest::BakeoffConfig::default_field();
     field.extend(backtest::BakeoffConfig::default_ensemble_field());
+    // ADR-0073: cross-asset macro regime probe (requires data/yahoo-macro/ corpus).
+    field.extend(backtest::BakeoffConfig::default_macro_field());
     field
 }
 
 /// The total number of arms the advisor bake-off puts head-to-head — the
 /// `advisor_field()` size **plus the buy-and-hold benchmark** that `run_bakeoff`
-/// always appends. Post-ADR-0072 this is 19 for BTC/ETH (10 single rule engines +
-/// 8 vote ensembles + buy-and-hold; the 10 = 4 original + 5 ADR-0071 arms + 1
-/// ADR-0072 DVOL arm). For other symbols the DVOL arm is filtered → 18 arms.
-/// Single-sourced from `advisor_field()` so it can never drift from the real field;
-/// surfaced in the leaderboard header context (OQ-2) so a wider field is self-explanatory.
+/// always appends. Post-ADR-0073 this is 20 for BTC/ETH (10 single rule engines +
+/// 8 vote ensembles + 1 ADR-0073 macro arm + buy-and-hold; the 10 = 4 original +
+/// 5 ADR-0071 arms + 1 ADR-0072 DVOL arm). For other symbols the DVOL arm is
+/// filtered → 19 arms. Single-sourced from `advisor_field()` so it can never drift
+/// from the real field; surfaced in the leaderboard header context (OQ-2).
 /// `+ 1` is the appended benchmark.
 #[must_use]
 pub fn advisor_field_arm_count() -> usize {

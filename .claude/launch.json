@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cockpit-live",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "-p", "ui", "--release", "--bin", "cockpit_live", "--features", "live"],
+      "port": null
+    },
+    {
+      "name": "cockpit-fixtures",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "-p", "ui", "--bin", "cockpit_live", "--features", "fixtures"],
+      "port": null
+    },
+    {
+      "name": "backtest-sample",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "-p", "backtest", "--release", "--", "--scenario", "top10-2023-fy-momentum", "--seed", "0xC0FFEE"],
+      "port": null
+    }
+  ]
+}

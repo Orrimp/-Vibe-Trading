@@ -113,6 +113,100 @@ pub fn run_buyhold_path(
     (equity_curve, final_eq)
 }
 
+/// Buy-and-hold gated by an exogenous per-timestamp macro regime mask.
+///
+/// ADR-0073 D4 — the `v0.macro_riskon` arm's equity-path function, a sibling
+/// of `run_buyhold_path`. Holds the coin (passive long) when the daily macro
+/// regime is risk-ON; goes flat (cash) when risk-OFF or during warm-up.
+///
+/// # Regime join (look-ahead-free by construction)
+///
+/// At each distinct coin-bar timestamp `t`, the regime is read as:
+/// `regime.as_of_value(TimestampMs(t_ms)).unwrap_or(false)`.
+/// `as_of_value` returns the most-recent record with `close_ts ≤ t` (ADR-0058
+/// `PitSeries<bool>`) — a macro daily close dated `D` is visible only to coin
+/// bars at/after `D`'s close. Weekend/holiday gaps carry Friday's close
+/// forward across Sat/Sun/holiday crypto bars. Look-ahead is structurally
+/// unrepresentable (no `ts > query` accessor).
+///
+/// # Transitions
+///
+/// - **flat → ON:** buy `cash / price(t)` coin at `t`'s close, `cash = 0`.
+/// - **ON → flat:** sell all coin at `t`'s close, `cash = coin_qty × price(t)`,
+///   `coin_qty = 0`. Realistic: the regime flip is observed at the daily close
+///   ≤ `t`, the trade executes at the coin bar `t` — look-ahead-free.
+///
+/// # Returns
+///
+/// `(equity_curve, final_equity)` where:
+/// - `equity_curve` has `n_distinct_timestamps + 1` entries; entry[0] = `initial_capital`.
+/// - Empty bars or all-warm-up → `(vec![initial_capital], initial_capital)`.
+///
+/// # Determinism / Decimal
+///
+/// All arithmetic is `rust_decimal::Decimal` — no `f64`.
+/// Uses `BTreeMap`-ordered iteration — deterministic.
+#[must_use]
+pub fn run_macro_gated_buyhold_path(
+    bars: &[trading_core::Bar],
+    regime: &trading_core::PitSeries<bool>,
+    initial_capital: Decimal,
+) -> (Vec<Decimal>, Decimal) {
+    use trading_core::pit::TimestampMs;
+
+    if bars.is_empty() {
+        return (vec![initial_capital], initial_capital);
+    }
+
+    // Collect distinct timestamps in BTreeMap order → price at that ts.
+    // Use close price (same as run_buyhold_path).
+    let mut bar_map: std::collections::BTreeMap<i64, Decimal> = std::collections::BTreeMap::new();
+    for bar in bars {
+        let ts_ms = bar.open_ts.unix_millis();
+        // Last bar wins on tie (deterministic).
+        bar_map.insert(ts_ms, bar.close.get());
+    }
+
+    if bar_map.is_empty() {
+        return (vec![initial_capital], initial_capital);
+    }
+
+    let mut equity_curve: Vec<Decimal> = Vec::with_capacity(bar_map.len() + 1);
+    equity_curve.push(initial_capital);
+
+    let mut cash = initial_capital;
+    let mut coin_qty = Decimal::ZERO;
+    let mut prev_on = false; // start flat (warm-up default)
+
+    for (&ts_ms, &price) in &bar_map {
+        // Look-ahead-free regime read via ADR-0058 primitive.
+        let on = regime.as_of_value(TimestampMs(ts_ms)).unwrap_or(false); // warm-up → flat
+
+        // Transitions.
+        if on && !prev_on {
+            // flat → ON: buy coin.
+            if price > Decimal::ZERO && cash > Decimal::ZERO {
+                coin_qty = cash / price;
+                cash = Decimal::ZERO;
+            }
+        } else if !on && prev_on {
+            // ON → flat: sell coin.
+            if coin_qty > Decimal::ZERO {
+                cash = coin_qty * price;
+                coin_qty = Decimal::ZERO;
+            }
+        }
+        prev_on = on;
+
+        // Mark to market.
+        let equity = cash + coin_qty * price;
+        equity_curve.push(equity);
+    }
+
+    let final_eq = *equity_curve.last().unwrap_or(&initial_capital);
+    (equity_curve, final_eq)
+}
+
 /// Run the always-short equity path on the given bars (ADR-0068 T-D6).
 ///
 /// This is the **exact inverse** of `run_buyhold_path` for a single-coin, 1×

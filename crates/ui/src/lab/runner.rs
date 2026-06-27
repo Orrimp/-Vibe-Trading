@@ -948,6 +948,7 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         composed_toml_override: None,
         // Lab UI path does not supply DVOL data — DVOL arm not available via Lab.
         dvol_override: None,
+        macro_regime_series: None,
     })
 }
 

@@ -2680,6 +2680,13 @@ pub const LEADERBOARD_SIGNAL_OBV_LABEL: &str = "On-balance-volume accumulation";
 pub const LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL: &str =
     "Implied-vol regime (hold when DVOL < 30-day median)";
 
+/// ADR-0073 — cross-asset / macro regime probe arm label.
+/// `v0.macro_riskon`: hold the coin only when the macro regime is risk-ON
+/// (SPX trend up, dollar not bid, rates not spiking — the 3-AND rule, LOCKED).
+/// Displayed in the leaderboard as a friendly label.
+pub const LEADERBOARD_SIGNAL_MACRO_RISKON_LABEL: &str =
+    "Macro regime (hold when SPX up, DXY down, rates calm)";
+
 /// The short-field disclaimer carried on the leaderboard when one or more
 /// short-capable arms are in the field (R-SS.9 / ADR-0068 § D8). Frames the
 /// honest "a short's drawdown can be brutal" signal + the unbounded-loss

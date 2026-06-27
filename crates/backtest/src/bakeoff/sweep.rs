@@ -679,6 +679,7 @@ pub fn build_swept_config(
                 // SMA uses typed override path — no in-memory TOML string needed.
                 composed_toml_override: None,
                 dvol_override: None,
+                macro_regime_series: None,
             })
         }
 
@@ -712,6 +713,7 @@ pub fn build_swept_config(
                 initial_capital,
                 composed_toml_override: Some(toml_str),
                 dvol_override: None,
+                macro_regime_series: None,
             })
         }
 
@@ -744,6 +746,7 @@ pub fn build_swept_config(
                 initial_capital,
                 composed_toml_override: Some(toml_str),
                 dvol_override: None,
+                macro_regime_series: None,
             })
         }
 
@@ -776,6 +779,7 @@ pub fn build_swept_config(
                 initial_capital,
                 composed_toml_override: Some(toml_str),
                 dvol_override: None,
+                macro_regime_series: None,
             })
         }
     }
@@ -1023,6 +1027,7 @@ pub async fn run_param_sweep(
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let buyhold_report = run_scenario(buyhold_cfg, cancel_rx.sibling(), progress_tx).await?;

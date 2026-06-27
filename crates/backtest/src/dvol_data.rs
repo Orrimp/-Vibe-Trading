@@ -335,7 +335,7 @@ impl DvolDataSource {
 /// The as-of KEY is `day_close_ts_ms` (NOT `day_open_ts_ms`). The daily close
 /// is FULLY observed only when the day ends (`day_close_ts_ms = midnight + 86_400_000 - 1 ms`).
 /// An hourly bar opening at 2023-05-02T00:00Z therefore sees the 2023-05-01
-/// DVOL close (close_ts = 2023-05-01T23:59:59.999Z ≤ bar_open_ts), NOT the
+/// DVOL close (`close_ts` = 2023-05-01T23:59:59.999Z ≤ `bar_open_ts`), NOT the
 /// 05-02 close (which closes 24h later). This matches the `basis_as_of`
 /// discipline with the cadence lifted from 1h-basis to 1-day-DVOL.
 ///

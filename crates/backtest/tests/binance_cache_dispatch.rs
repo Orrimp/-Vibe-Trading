@@ -91,6 +91,7 @@ fn base_binance_sma_config(bars: Vec<trading_core::Bar>) -> ScenarioConfig {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     }
 }
 
@@ -229,6 +230,7 @@ fn cross_sectional_binance_config(strategy: &str) -> ScenarioConfig {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     }
 }
 
@@ -358,6 +360,7 @@ async fn composed_strategy_macd_trades_on_ethusdt_not_zero() {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -400,6 +403,7 @@ async fn composed_strategy_rsi_trades_on_ethusdt_not_zero() {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -442,6 +446,7 @@ async fn composed_strategy_bbands_trades_on_ethusdt_not_zero() {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -556,6 +561,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let (_handle, cancel_rx) = cancellation_pair();
@@ -584,6 +590,7 @@ async fn binance_cache_real_bars_diverge_from_synthetic_baseline() {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let (_handle2, cancel_rx2) = cancellation_pair();

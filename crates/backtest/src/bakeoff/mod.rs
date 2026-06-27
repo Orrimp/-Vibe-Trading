@@ -52,6 +52,13 @@ const BINANCE_CORPUS_ROOT: &str = "data/binance";
 #[cfg(feature = "realdata")]
 const DVOL_CORPUS_ROOT: &str = "data/deribit-dvol";
 
+/// Path to the Yahoo macro parquet corpus (ADR-0073 D2 — dedicated root,
+/// NOT `data/yahoo/` which has pre-existing operator drift).
+/// Relative to the workspace root.
+/// Compiled only when `--features yahoo` (macro loading requires the Yahoo reader).
+#[cfg(feature = "yahoo")]
+const YAHOO_MACRO_CORPUS_ROOT: &str = "data/yahoo-macro";
+
 // ── DVOL override resolver (ADR-0072 Task 2 core fix) ────────────────────────
 
 /// Map a bake-off `symbol` (e.g. `"BTCUSDT"`) to the DVOL corpus symbol
@@ -594,6 +601,23 @@ impl BakeoffConfig {
             StrategyId(SmolStr::new_static("v0.8.vote.k3of4")),
         ]
     }
+
+    /// Returns the single pre-registered cross-asset / macro-regime arm id
+    /// (ADR-0073, LOCKED — the `v0.macro_riskon` long/flat overlay).
+    ///
+    /// This is ADDITIVE — callers extend `advisor_field()` with this list
+    /// (see `crates/ui/src/leaderboard/runner.rs`). `default_field()` and
+    /// `default_ensemble_field()` stay UNCHANGED (anchor-safe).
+    ///
+    /// The arm needs the `data/yahoo-macro/` corpus preloaded by `run_bakeoff`
+    /// (graceful skip if absent). `write_report = false` → anchor-additive.
+    #[must_use]
+    pub fn default_macro_field() -> Vec<StrategyId> {
+        vec![
+            // ADR-0073: cross-asset macro regime probe (requires yahoo-macro corpus).
+            StrategyId(SmolStr::new_static("v0.macro_riskon")),
+        ]
+    }
 }
 
 // ── Result types (the public seam) ───────────────────────────────────────────
@@ -814,6 +838,53 @@ pub async fn run_bakeoff(
     // Thread the operator-chosen capital through to each arm's ScenarioConfig.
     let bakeoff_initial_capital = req.initial_capital;
 
+    // ── ADR-0073: macro regime series preload (ONE per bake-off run) ──────────
+    //
+    // If the field contains `v0.macro_riskon`, preload the macro daily regime
+    // series from `data/yahoo-macro/` ONCE. Graceful skip (warn + None) when the
+    // corpus is absent (e.g. CI without the fetched parquets). The arm still
+    // appears in the ranked field but runs warm-up-only (= buy-and-hold proxy,
+    // identical to the `v0.dvol_regime` graceful-degradation precedent).
+    //
+    // The macro corpus root is relative to the workspace root (NOT `data/yahoo/`
+    // — the two corpora must stay separated to avoid the pre-existing operator
+    // drift on `data/yahoo/REVISION.toml`; ADR-0073 D2 / orchestrator directive).
+    //
+    // Compiled only when `--features yahoo` is active (macro_regime requires the
+    // Yahoo parquet reader). Without the feature, the arm is absent → None always.
+    #[cfg(feature = "yahoo")]
+    let preloaded_macro_series: Option<trading_core::pit::PitSeries<bool>> = {
+        let field_has_macro = req
+            .field
+            .iter()
+            .any(|id| id.0.as_str() == "v0.macro_riskon");
+        if field_has_macro {
+            let yahoo_macro_root = std::path::PathBuf::from(YAHOO_MACRO_CORPUS_ROOT);
+            match crate::macro_regime::load_macro_regime_series(&yahoo_macro_root, &req.range) {
+                Ok(series) => {
+                    tracing::info!(
+                        target: "bakeoff.macro",
+                        "Macro regime series loaded for v0.macro_riskon arm"
+                    );
+                    Some(series)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: "bakeoff.macro",
+                        error = %e,
+                        "v0.macro_riskon: macro corpus load failed — arm will run warm-up-only (arm skipped gracefully)"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    };
+    // Fallback when `yahoo` feature is disabled: no macro corpus → always None.
+    #[cfg(not(feature = "yahoo"))]
+    let preloaded_macro_series: Option<trading_core::pit::PitSeries<bool>> = None;
+
     // Build the full candidate field: explicit strategies + benchmark.
     let mut strategy_ids: Vec<(StrategyId, bool)> =
         req.field.iter().cloned().map(|id| (id, false)).collect();
@@ -912,6 +983,15 @@ pub async fn run_bakeoff(
             // ADR-0072 Task 2 core fix: real DVOL series for BTC/ETH arm;
             // None for all other arms (ignored by the engine).
             dvol_override,
+            // ADR-0073: pre-loaded macro regime series for the macro arm ONLY.
+            // `None` for every other arm → byte-identical existing paths.
+            // `Some(series)` only when strategy == "v0.macro_riskon" and the
+            // corpus loaded successfully; graceful-skip (None) if corpus absent.
+            macro_regime_series: if strategy.0.as_str() == "v0.macro_riskon" {
+                preloaded_macro_series.clone()
+            } else {
+                None
+            },
         };
 
         let report = run_scenario(scenario_cfg, cancel_rx.sibling(), progress_tx.clone()).await?;

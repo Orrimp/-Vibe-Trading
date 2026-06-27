@@ -304,6 +304,17 @@ pub struct ScenarioConfig {
     // `write_report = false` on the bake-off path → no anchored body is
     // ever written when this is `Some`.
     pub dvol_override: Option<Vec<Option<rust_decimal::Decimal>>>,
+
+    // ── ADR-0073 D4 — macro-regime exogenous series override ─────────────────
+    //
+    // Pre-resolved daily macro regime `PitSeries<bool>` for the `v0.macro_riskon`
+    // arm. `true` = risk-ON (hold coin), `false` / `None` = risk-OFF (flat/cash).
+    //
+    // ANCHOR-PRESERVING CONTRACT: all CLI/Lab/anchored paths leave this `None`.
+    // Only the `v0.macro_riskon` arm reads this field; the bake-off loop sets
+    // it once for the macro arm. All other arms: `None` → byte-identical.
+    // `write_report = false` on the bake-off path → no anchored body written.
+    pub macro_regime_series: Option<trading_core::pit::PitSeries<bool>>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -2159,6 +2170,163 @@ pub async fn run_scenario(
             })
         }
 
+        // ── v0.macro_riskon — cross-asset macro regime long/flat (ADR-0073) ─────────
+        //
+        // Holds the coin only when the daily macro regime is risk-ON (SPX trend up,
+        // dollar not bid, rates not spiking — the pre-registered 3-AND rule, LOCKED).
+        // Flat/cash when risk-OFF or during warm-up. Pure long/flat overlay on
+        // buy-and-hold — never trades on the coin's own indicators.
+        //
+        // ANCHOR-PRESERVING CONTRACT:
+        // - write_report = false in bake-off calls → no anchored report body.
+        // - All non-macro arms receive `macro_regime_series: None` → byte-identical.
+        // - `scripts/verify_anchors.sh` → 119/119.
+        // PAPER/SIM ONLY — no real orders.
+        //
+        // NOT `#[cfg(feature = "yahoo")]`-gated — mirrors the sibling
+        // `v0.dvol_regime` arm: the dispatch arm is ALWAYS compiled so the
+        // bake-off slate (`default_macro_field()`, unconditional) can resolve it
+        // under any feature set. The arm body depends only on core types
+        // (`run_macro_gated_buyhold_path`, `cfg.macro_regime_series`,
+        // `PitSeries<bool>` — none yahoo-gated). When `yahoo` is OFF the macro
+        // corpus loader (yahoo-gated, in `bakeoff::run_bakeoff`) never runs, so
+        // `macro_regime_series` stays `None` → empty PitSeries → arm holds flat
+        // the whole window (graceful degradation = buy-and-hold proxy). The
+        // MEANINGFUL (non-vacuous) macro verdict requires `--features yahoo`
+        // so the real `data/yahoo-macro/` corpus is fed; the day-1
+        // baseline-divergence e2e (`macro_regime_overlay_end_to_end.rs`) proves
+        // the overlay is NOT a silent no-op when the corpus IS present.
+        "v0.macro_riskon" => {
+            use crate::bakeoff::buyhold::run_macro_gated_buyhold_path;
+
+            // Resolve coin bars (same pattern as v0.buyhold).
+            let bars: Vec<trading_core::Bar> = if let Some(b) = cfg.bars_override.clone() {
+                b
+            } else {
+                let start_price =
+                    crate::scenarios::sma_composed_run::default_start_price(&cfg.pair.1);
+                crate::scenarios::sma_composed_run::synthetic_bars_minute(
+                    &cfg.pair.1,
+                    bar_count,
+                    seed_u64,
+                    start_price,
+                    start_year,
+                )
+            };
+
+            // Resolve the macro regime series.
+            // If None (corpus absent, warm-up-only path), use an empty series
+            // → as_of_value always returns None → arm runs flat the whole window
+            // (equivalent to a warm-up-only buy-and-hold proxy — same graceful
+            // degradation discipline as the v0.dvol_regime arm).
+            let regime = cfg.macro_regime_series.clone().unwrap_or_else(|| {
+                // Empty PitSeries: all as_of_value queries return None → arm stays flat.
+                // PitSeries::from_sorted on an empty vec is guaranteed Ok (the invariant
+                // vacuously holds on zero records). `unwrap_or` with ZERO is safe fallback.
+                trading_core::pit::PitSeries::from_sorted(vec![])
+                    .unwrap_or_else(|_| trading_core::pit::PitSeries::from_unsorted(vec![]))
+            });
+
+            // ── Run the gated equity path ─────────────────────────────────────────
+            let (eq_curve, _final_eq_decimal) =
+                run_macro_gated_buyhold_path(&bars, &regime, initial_capital);
+
+            // ── Build equity_series (mirrors v0.buyhold timestamp logic) ─────────
+            let equity_series: Vec<(Timestamp, Money<Usdt>)> = if bars.is_empty() {
+                vec![(
+                    synthetic_timestamps(start_year, 1)
+                        .into_iter()
+                        .next()
+                        .unwrap_or_else(|| Timestamp::new(OffsetDateTime::UNIX_EPOCH)),
+                    Money::<Usdt>::from_decimal(initial_capital),
+                )]
+            } else {
+                let ts_iter = {
+                    let mut seen: std::collections::BTreeSet<i128> =
+                        std::collections::BTreeSet::new();
+                    let mut sorted_ts: Vec<Timestamp> = Vec::new();
+                    for bar in &bars {
+                        let ns = bar.open_ts.inner().unix_timestamp_nanos();
+                        if seen.insert(ns) {
+                            sorted_ts.push(bar.open_ts);
+                        }
+                    }
+                    sorted_ts
+                };
+
+                let first_ts = ts_iter.first().copied().map_or_else(
+                    || Timestamp::new(OffsetDateTime::UNIX_EPOCH),
+                    |t| Timestamp::new(t.inner() - time::Duration::hours(1)),
+                );
+
+                let mut series: Vec<(Timestamp, Money<Usdt>)> = Vec::with_capacity(eq_curve.len());
+                series.push((
+                    first_ts,
+                    Money::<Usdt>::from_decimal(*eq_curve.first().unwrap_or(&initial_capital)),
+                ));
+                for (ts, &eq) in ts_iter.iter().zip(eq_curve.iter().skip(1)) {
+                    series.push((*ts, Money::<Usdt>::from_decimal(eq)));
+                }
+                series
+            };
+
+            // ── Build KPIs ────────────────────────────────────────────────────────
+            let final_eq = *eq_curve.last().unwrap_or(&initial_capital);
+            let eq_dec_only: Vec<rust_decimal::Decimal> =
+                equity_series.iter().map(|(_, m)| m.amount()).collect();
+
+            let max_dd = crate::stats::compute_max_drawdown_f64(&eq_dec_only);
+
+            // Count transitions: each flat→ON (buy) increments buys; each ON→flat
+            // (sell) increments sells; trade_count = sells (completed round trips).
+            let mut buys = 0usize;
+            let mut sells = 0usize;
+            {
+                use trading_core::pit::TimestampMs;
+                let mut prev_on = false;
+                for bar in &bars {
+                    let ts_ms = bar.open_ts.unix_millis();
+                    let on = regime.as_of_value(TimestampMs(ts_ms)).unwrap_or(false);
+                    if on && !prev_on {
+                        buys += 1;
+                    } else if !on && prev_on {
+                        sells += 1;
+                    }
+                    prev_on = on;
+                }
+            }
+
+            let kpis = BacktestKpis {
+                final_equity: Money::<Usdt>::from_decimal(final_eq),
+                initial_equity: Money::<Usdt>::from_decimal(initial_capital),
+                max_drawdown: rust_decimal::Decimal::try_from(max_dd)
+                    .unwrap_or(rust_decimal::Decimal::ZERO),
+                trade_count: sells,                // completed round trips
+                total_fees: Money::<Usdt>::zero(), // v0: no fee model (same as v0.buyhold)
+                buys,
+                sells,
+                total_return_pct: total_return_pct(initial_capital, final_eq),
+            };
+
+            // write_report = false on bake-off path → anchor-safe (ADR-0073 D4).
+            let report_path = maybe_write_report(
+                &cfg,
+                "v0.macro_riskon",
+                "v0.macro_riskon",
+                &equity_series,
+                |_path| Ok(()), // No-op writer: write_report=false in bake-off.
+            )?;
+
+            Ok(RunReport {
+                equity_series,
+                fills: vec![],
+                kpis,
+                report_path,
+                bars: std::sync::Arc::new(bars),
+                position_curve_raw: vec![],
+            })
+        }
+
         // ── Vote-ensemble arms (ADR-0063 § D5 + ADR-0067 + anchor-additive contract) ──
         //
         // F8 original ids: "v0.8.vote.majority" / "v0.8.vote.unanimous".
@@ -2509,6 +2677,7 @@ mod tests {
             initial_capital: None, // None → legacy 100_000 default
             composed_toml_override: None,
             dvol_override: None,
+            macro_regime_series: None,
         }
     }
 
@@ -2755,6 +2924,7 @@ mod tests {
             initial_capital: None,
             composed_toml_override: None,
             dvol_override: None,
+            macro_regime_series: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |_path| Ok(()));
         assert!(
@@ -2793,6 +2963,7 @@ mod tests {
             initial_capital: None,
             composed_toml_override: None,
             dvol_override: None,
+            macro_regime_series: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |path| {
             // Write minimal content so the file exists.

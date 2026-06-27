@@ -205,6 +205,8 @@ async fn main() -> Result<()> {
         // v5-latency-slippage-sim: noop for Yahoo SMA runs (not part of v5 re-emission).
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         short_enabled: false,
+        // No composed-strategy TOML override for the plain Yahoo SMA runner.
+        composed_toml_override: None,
     };
 
     let run_start = std::time::Instant::now();

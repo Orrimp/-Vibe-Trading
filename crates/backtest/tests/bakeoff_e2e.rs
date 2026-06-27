@@ -96,6 +96,7 @@ mod bakeoff_arm_parity {
             initial_capital: None,
             composed_toml_override: None,
             dvol_override: None,
+            macro_regime_series: None,
         };
 
         let report = run_scenario(cfg, cancel_rx, progress_tx)
@@ -269,11 +270,11 @@ mod bakeoff_progress {
 
 /// T7.1 — full wired advisor bake-off on real BTCUSDT H1_2024 data.
 ///
-/// Runs `run_bakeoff` with the EXACT config the live cockpit uses — 19 arms
-/// (10 rule engines + 8 vote ensembles + buy-and-hold appended), the real
-/// Bootstrap robustness gate (1000 paths), `H1_2024` from the pinned corpus,
-/// `BinanceCache`. Prints the full ranked leaderboard with `--nocapture` for
-/// orchestrator sanity-checking against reality.
+/// Runs `run_bakeoff` with the EXACT config the live cockpit uses — 20 arms
+/// (10 rule engines + 8 vote ensembles + 1 ADR-0073 macro arm + buy-and-hold
+/// appended), the real Bootstrap robustness gate (1000 paths), `H1_2024` from
+/// the pinned corpus, `BinanceCache`. Prints the full ranked leaderboard with
+/// `--nocapture` for orchestrator sanity-checking against reality.
 ///
 /// Run with:
 /// ```
@@ -299,10 +300,11 @@ mod bakeoff_full_wired_advisor {
             .to_path_buf()
     }
 
-    /// T7.1 — full 19-arm advisor bake-off on real BTCUSDT H1_2024 data.
+    /// T7.1 — full 20-arm advisor bake-off on real BTCUSDT H1_2024 data.
     ///
     /// Replicates `ui::leaderboard::runner::default_bakeoff_config` exactly:
-    /// - field = `default_field()` ∪ `default_ensemble_field()` (18 arms before buyhold).
+    /// - field = `default_field()` ∪ `default_ensemble_field()` ∪ `default_macro_field()`
+    ///   (19 arms before buyhold; ADR-0073 adds v0.macro_riskon).
     /// - seed  = `LAB_DEFAULT_SEED` = `[0xC0, 0xFF, 0xEE, 0, …]`.
     /// - robustness = Bootstrap { paths: 1000, seed: u64_from_le_bytes(seed[0..8]) }.
     /// - data_source = BinanceCache.
@@ -310,7 +312,7 @@ mod bakeoff_full_wired_advisor {
     ///
     /// Prints the full ranked leaderboard and asserts:
     /// 1. buy-and-hold total_return > +20% (proves real data, not synthetic GBM).
-    /// 2. All 19 arms produce results (no missing candidate).
+    /// 2. All 20 arms produce results (no missing candidate).
     /// 3. Ensembles (`v0.8.vote.*`) are present and distinct from the members.
     #[ignore]
     #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
@@ -347,9 +349,11 @@ mod bakeoff_full_wired_advisor {
             seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
         ]);
 
-        // Field = default_field() ∪ default_ensemble_field() — exact advisor field.
+        // Field = default_field() ∪ default_ensemble_field() ∪ default_macro_field()
+        // — exact advisor field (ADR-0073 adds the macro arm).
         let mut field = BakeoffCfg::default_field();
         field.extend(BakeoffCfg::default_ensemble_field());
+        field.extend(BakeoffCfg::default_macro_field()); // ADR-0073
 
         let cfg = BakeoffCfg {
             request: BakeoffRequest {
@@ -437,12 +441,13 @@ mod bakeoff_full_wired_advisor {
 
         // ── Sanity assertions ─────────────────────────────────────────────────
 
-        // 1. All 19 arms present: 18 field entries + 1 buy-and-hold (BTC/ETH: includes
-        //    the ADR-0072 v0.dvol_regime arm; ADR-0071 added the 5 signal-library arms).
+        // 1. All 20 arms present: 19 field entries + 1 buy-and-hold (BTC/ETH: includes
+        //    the ADR-0072 v0.dvol_regime arm + ADR-0073 v0.macro_riskon macro arm;
+        //    ADR-0071 added the 5 signal-library arms).
         assert_eq!(
             report.candidates.len(),
-            19,
-            "T7.1: expected 19 candidates (18 field + 1 buyhold), got {}",
+            20,
+            "T7.1: expected 20 candidates (19 field + 1 buyhold), got {}",
             report.candidates.len()
         );
 
@@ -1034,6 +1039,7 @@ mod leaderboard_tuning_divergence {
                 initial_capital: Some(dec!(100_000)),
                 composed_toml_override: None,
                 dvol_override: None,
+                macro_regime_series: None,
             };
             run_scenario(cfg, cancel, ProgressSender::disabled())
                 .await

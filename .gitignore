@@ -75,6 +75,11 @@ config/*.local
 data/yahoo/**/*.parquet
 !data/yahoo/REVISION.toml
 
+# ADR-0073 macro corpus — dedicated root (not data/yahoo/ to avoid entangling
+# forbidden drift in that corpus).  Ignore parquets, TRACK REVISION.toml.
+data/yahoo-macro/**/*.parquet
+!data/yahoo-macro/REVISION.toml
+
 # TCN checkpoints — gitignored except LFS-tracked anchors.
 # Anchors live under crates/forecast/checkpoints/anchors/ (Wave C).
 crates/forecast/checkpoints/*.safetensors

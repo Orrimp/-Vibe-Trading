@@ -76,6 +76,17 @@ pub mod basis_data;
 #[cfg(feature = "realdata")]
 pub mod dvol_data;
 
+/// Macro-regime exogenous-series loader (ADR-0073 / advisor-crossasset-macro-regime).
+///
+/// `load_macro_regime_series(yahoo_root, range)` reads the 3 pre-registered
+/// macro daily series (`^GSPC` / `DX-Y.NYB` / `^TNX`) from the dedicated
+/// `data/yahoo-macro/` corpus and reduces them to a `PitSeries<bool>` —
+/// the daily risk-ON/risk-OFF regime flag for the `v0.macro_riskon` arm.
+///
+/// Compiled only when `--features yahoo` (which enables the Yahoo parquet reader).
+#[cfg(feature = "yahoo")]
+pub mod macro_regime;
+
 pub use engine::run_scenario;
 pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,

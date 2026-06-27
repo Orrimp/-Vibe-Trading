@@ -98,6 +98,7 @@ fn binance_run_persists_and_round_trips_through_compare() {
         initial_capital: None,
         composed_toml_override: None,
         dvol_override: None,
+        macro_regime_series: None,
     };
 
     let rt = tokio::runtime::Builder::new_current_thread()

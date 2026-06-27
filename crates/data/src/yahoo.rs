@@ -336,7 +336,12 @@ impl YahooBarSource {
         bars.sort_by_key(|b| b.open_ts);
 
         // Step 6: enforce Q9 = (b) 95% coverage threshold.
-        let expected_count = expected_bars_for_range(interval, start_ms, end_ms);
+        // ADR-0073 D1: derive the calendar from the ticker (Crypto24x7 for all
+        // existing crypto callers → expected_bars_for_calendar == expected_bars_for_range
+        // by construction; UsEquity for ^GSPC / DX-Y.NYB / ^TNX → weekday count).
+        // `load_cached`'s PUBLIC SIGNATURE is UNCHANGED.
+        let cal = crate::calendar::classify_ticker(ticker);
+        let expected_count = expected_bars_for_calendar(cal, interval, start_ms, end_ms);
         let threshold = (expected_count * MISSING_DATA_THRESHOLD_PCT as usize).div_ceil(100);
         if bars.len() < threshold {
             return Err(YahooError::MissingData {
@@ -989,6 +994,36 @@ pub fn expected_bars_for_range(interval: Interval, start_ms: i64, end_ms: i64) -
         Interval::Days1 => 86_400_000,
     };
     (range_ms / ms_per_bar) as usize
+}
+
+/// Calendar-aware expected bar count for an interval over `[start_ms, end_ms)`.
+///
+/// ADR-0073 D2 — the ADDITIVE calendar-aware companion to `expected_bars_for_range`.
+///
+/// - `Days1` + `Crypto24x7` → **identical** to `expected_bars_for_range(Days1, …)`
+///   (wall-clock day count). This is the anchor-safety invariant: every existing
+///   crypto `load_cached` caller gets byte-identical expected counts.
+/// - `Days1` + `UsEquity` → `cal.trading_days_in_range(start_ms, end_ms)` which
+///   counts Mon–Fri minus US NYSE holidays. This is the F-2 unblock for macro
+///   tickers (^GSPC / DX-Y.NYB / ^TNX).
+/// - `Hours1` / `Minutes1` → delegates to `expected_bars_for_range` unchanged
+///   (intraday is genuinely continuous for both calendars; the macro arm only
+///   ever loads `Days1`).
+///
+/// `expected_bars_for_range` is **NOT modified** — it remains the
+/// `Crypto24x7` implementation pinned by 4 existing tests.
+pub(crate) fn expected_bars_for_calendar(
+    cal: crate::calendar::MarketCalendar,
+    interval: Interval,
+    start_ms: i64,
+    end_ms: i64,
+) -> usize {
+    match interval {
+        Interval::Days1 => cal.trading_days_in_range(start_ms, end_ms),
+        Interval::Hours1 | Interval::Minutes1 => {
+            expected_bars_for_range(interval, start_ms, end_ms)
+        }
+    }
 }
 
 /// Return all `(year, month)` pairs covered by `[start_ms, end_ms)`.
