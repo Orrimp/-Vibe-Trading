@@ -99,6 +99,132 @@ testing in our advisor, and which are known to overfit / not survive costs.
     forecasting price.** VIX-futures NN times entry/exit of the roll-yield carry
     [37]; that is the defensible role for ML — overlay timing/risk control on a
     known structural premium — vs the overfit-prone role of pure price prediction.
+23. **The momentum turning point is the fragile moment — detect regime breaks.**
+    Time-series momentum's worst losses come right at trend reversals; adding a
+    changepoint detector to flip toward fast reversion improved Sharpe ~1/3
+    (~2/3 in 2015–2020) [56]. Short-horizon trend is the *convex/positive-skew*
+    diversifier (low corr to market), long-horizon trend ≈ just market beta
+    (82% correlated, redundant) [52][36]. De-risk fast on detected breaks.
+24. **Predictable, mechanical *flow* edges decay too.** The S&P 500 index-inclusion
+    pop shrank from ~7.4% (1990s) to <1% as arbitrageurs supplied the predictable
+    index-fund demand [54]. Even non-forecasting, structural/flow edges get
+    arbitraged away once crowded — crypto's analogues (listings, ETF inflows,
+    index-product rebalances) likely offered transient, decaying edges.
+25. **Crypto calendar effects are an aggregation artifact, not a signal.** The
+    "Monday effect" collapses into a single Sunday 23:00 UTC window (US retail
+    re-entry) and vanishes under intraday fixed effects; the BTC Monday effect
+    decayed to nothing post-2015 [55][26]. The only robust pattern is *lower
+    weekend volume/liquidity* — a cost-model input (wider weekend spreads), not
+    a return signal.
+26. **Crypto's risk structure is the *opposite* of equities in two ways.** Bitcoin
+    shows an **inverse leverage effect** (vol rises with rising price, not falling)
+    and its risk premium is **upside-driven** (large positive returns supply ~39%
+    of it) vs equities where ~80% of the premium is crash-insurance [58]. So
+    equity-calibrated vol-targeting/skew intuitions can mis-time crypto, and
+    holding BTC pays you largely for bearing *upside* jump/vol risk (~0.8 Sharpe).
+27. **Negative-skew carry/vol-risk-premium harvesting is a whole family — and
+    crypto has its own.** Dispersion (sell index vol / buy component vol) earns
+    ~15% p.a. but with a −43% crash drawdown [53]; the Bitcoin variance risk
+    premium is ~14%/yr [58]. All are insurance sales (smooth then tail loss),
+    the same profile as funding carry [9] and short-vol [23][46]. Rank on skew.
+28. **Nearness to the 52-week high is a single-asset-computable momentum signal.**
+    It subsumes past-return momentum and — unlike JT momentum — does NOT reverse
+    long-run; mechanism is behavioral anchoring to the high [60]. Computable on
+    one coin (price / 52w-high), so a directly testable long/flat candidate.
+29. **Rigorous mean-reversion = model the deviation as OU, trade an s-score.** The
+    Avellaneda–Lee s-score (residual deviation in σ units, enter ≈ ±1.25σ, exit
+    ≈ 0) [62] is the operational form of our Bollinger/z-score candidate and refines
+    [39]; require the residual to be OU-stationary first [33]. Like all such edges
+    it decayed post-2003 as it crowded [16][25].
+30. **Many big "gross" edges are payments for liquidity provision / illiquidity,
+    not alpha.** Weekly short-term reversal (~1.7%/week gross [66]), the crypto
+    illiquidity premium [33], and the low-vol/lottery anomaly [63] all pay you for
+    bearing immediacy or illiquidity risk — they survive ONLY on liquid names and
+    you *pay* them as spread on thin ones. Run reversion on BTC/ETH, net the spread.
+31. **More volatility ≠ more return (the low-vol anomaly).** Low-vol/low-beta assets
+    earn higher risk-adjusted returns than high-vol ones across 90 years and every
+    sector [63] — the empirical cousin of inverse-vol sizing [21][6][8]: cutting risk
+    costs little expected return. Don't assume a high-vol regime/coin pays more.
+32. **Riskless crypto arbitrage is gone net of costs/latency — so directional bar
+    edges certainly are.** Triangular arbitrage yields 0.1–0.5%/cycle, lasts
+    fractions of a second, needs 15–50 ms infra, and is arbitraged away / not
+    retail-exploitable [64]. If even a *riskless* edge can't beat fees, a
+    statistical bar-level directional edge beating buy-and-hold is even less likely.
+33. **Maker vs taker fees are a first-class cost lever.** The optimal crypto
+    execution policy is to post limit (maker) orders to dodge taker fees [65] — a
+    real, large difference our cost model could distinguish (at the cost of fill/
+    queue risk). Execution optimization shaves costs; it can't make a losing
+    strategy win.
+34. **The Bitcoin halving is an overfitting trap (n≈4), and may just be the macro
+    liquidity cycle.** Halving event-studies are mixed; the scarcity narrative
+    doesn't reliably materialize, and M2 money-supply growth (~0.78 corr, ~90-day
+    lag) drove 2020–2023 more than the halving [67]. With ~4 events it cannot clear
+    an honest gate; macro-liquidity trend is the more defensible regime variable.
+35. **Independent walk-forward replication of our exact design reaches our exact
+    thesis.** EMA-crossover on crypto with double-out-of-sample WFO beat buy-and-hold
+    in-sample but collapsed to ≈buy-and-hold out-of-sample (worse after 0.1% costs),
+    and beat *random* parameter picks only 8–13.7% of the time [68]. The robust win
+    was a 50% drawdown cut from blending the active sleeve with buy-and-hold.
+36. **Crypto coins move together; lead-lag is barely tradeable.** BTC-ETH causality
+    is bi-directional and mostly contemporaneous — no exploitable fixed lag beyond
+    1–2 days [69]. A multi-coin basket diversifies *less* than its count suggests
+    (high pairwise correlation, especially in stress [53]).
+37. **Momentum crashes are conditional, forecastable, and fixed by *risk* scaling.**
+    Momentum's worst losses cluster in high-vol post-bear rebounds (loser-leg beta
+    >3, winner <0.5 → conditional negative beta); dynamic vol-scaling ~doubles
+    Sharpe/alpha [70]. The fix is sizing, not signal — the strongest "sizing >
+    signal" datapoint. Crypto's V-shaped recoveries are exactly this danger state.
+38. **Liquidity is dynamic (resilience), so spread/depth should worsen transiently
+    after volatility.** Obizhaeva–Wang [71]: optimal execution depends on how fast
+    the book *recovers*, not static spread — formal backing for a state-dependent
+    cost model (wider spread / thinner depth right after big moves [27] and on
+    weekends [55]). Impact still negligible at €200; fees + dynamic spread dominate.
+39. **Costs destroy 55–90% of even peer-reviewed mean-reversion edges, and the
+    fanciest method is the most cost-exposed.** Distance/cointegration/copula pairs
+    go 91/85/43 bps gross → 38/33/5 bps net; copula (the "smartest") is gutted to
+    5 bps [72]. Simpler cointegration ≈ distance and wins in turbulence — complexity
+    rarely pays net (the combination-puzzle lesson [29] again).
+40. **Crypto has real, persistent bull/bear/calm regimes (n>>1) — unlike calendar
+    effects.** Bayesian HMMs find 3–4 persistent crypto regimes with distinct
+    return/vol signatures [73]; bull/bear are persistent, sideways is the switch-
+    prone buffer. A long-in-bull / flat-in-bear overlay operates on real structure
+    — but detection lags and must be gated net of switching costs [17].
+41. **The crypto carry trade — the most-hyped structural crypto edge — just decayed
+    into NEGATIVE.** Funding carry Sharpe 6.45 (2020–2025) → 4.06 (2024) → negative
+    (2025); only ~40% of top opportunities positive after costs [74]. Our entire
+    thesis playing out in real time on a crypto-native, non-directional edge. Show
+    the decay, never the headline Sharpe.
+42. **Trend-following only hedges *trending* crises, not V-shaped ones.** "Crisis
+    alpha" is real on average but intermittent — trend gets whipsawed by sudden
+    V-shaped crashes and choppy markets [75][70]. Crypto crashes are often fast/
+    V-shaped → a single-coin trend overlay gives inconsistent crash protection;
+    don't oversell it as insurance.
+43. **Crypto lacks a clean quality/value factor; its supported directional edges are
+    momentum + (structural) carry.** Quality (profitability/growth/safety/payout)
+    [76] has no clean crypto analogue; the crypto-factor literature [41][12] finds
+    value/quality weak and momentum + size the robust ones. On-chain "fundamentals"
+    are the only analogue and are thin [40][77].
+44. **On-chain / exchange flows are a real but weak, short-horizon, reverse-
+    causality-prone feature.** USDT inflows predict higher returns / lower vol at
+    1–2h with correlation <0.3 [77]; it's a *flow* signal not a regime signal, and
+    likely uneconomic at retail bar frequency. The second data-driven feature class
+    to gate honestly (after MVRV [40]).
+45. **PEAD is the rare anomaly that survived publication — because it's hard to
+    arbitrage.** Post-earnings drift persisted for decades (the "anomalous anomaly")
+    precisely because costs/limits-to-arbitrage protect it [78]. Flip side for us:
+    liquid-coin price edges have *no* such protection → they decay [25][68]. Crypto
+    event-drift would need an event feed + hard multiple-testing gate.
+46. **Bitcoin spot ETFs (Jan 2024) are a structural break: more liquidity, lasting
+    demand, BTC decoupling from alts.** ETF inflows improved BTC liquidity (tighter
+    spreads — good for our cost model) and have a cointegrated lasting price impact
+    [80], decoupling BTC from the alt market [69]. Treat pre/post-2024 as different
+    regimes in long windows; the launch itself is an un-backtestable n=1 event.
+47. **The turn-of-month effect is payday/pension cash flows — absent in 24/7 crypto.**
+    Ariel's [-1:+8] TOM window captures most equity monthly return via month-end
+    institutional cash deployment [81]; crypto lacks that payroll/rebalance cycle,
+    so a TOM overlay is a data-mining candidate (though growing institutional flows
+    [80] could *eventually* import some — unestablished). Don't ship without a
+    mechanism + OOS survival.
 
 ## Methods / findings that hold up (and which don't)
 
@@ -274,6 +400,68 @@ testing in our advisor, and which are known to overfit / not survive costs.
     "ML predicts crypto" papers never backtest with costs. Convert every signal
     to positions → net equity → robustness gate; weight external claims by
     whether they actually backtested net of costs.
+28. **Add a changepoint / turning-point filter to the trend candidate** [56]. The
+    most fragile moment for momentum is the trend reversal — a simple regime-break
+    or volatility-break filter that sizes down / flips right after a detected break
+    is the defensible (non-LSTM) version of the deep-momentum-network result.
+    Judge it on drawdown and net-vs-buy-hold, not relative-to-plain-momentum.
+29. **Test a short-horizon trend overlay separately for its convexity, not return**
+    [52][36]. Long-horizon trend ≈ buy-and-hold (redundant with market beta); the
+    short-horizon sleeve is the convex crisis-diversifier. Bake them off separately
+    and reward the short sleeve's positive-skew/drawdown profile, expecting the
+    long sleeve to roughly tie buy-and-hold.
+30. **Measure cost as implementation shortfall vs the decision-bar (arrival) price,
+    treated as a distribution** [57]. Account each simulated trade's cost against
+    the arrival price (spread + slippage + delay), and treat the cost itself as a
+    state-dependent random draw [27], not a constant — the same distributional
+    discipline our return-bootstrap already uses.
+31. **Bake off a "distance-from-52-week-high" long/flat rule** [60]. Price / 52w-high
+    is a single-coin-computable momentum signal that (in equities) subsumes
+    past-return momentum and doesn't reverse long-run; cheap to add, test whether
+    the time-series use holds on one coin vs buy-hold, expect momentum-style
+    turning-point fragility [56] and public-signal decay [25].
+32. **Respect crypto's inverse leverage effect in any vol overlay** [58]. Crypto
+    vol can spike in *rallies*, not just crashes, so an equity-calibrated
+    "de-risk when vol rises" overlay [21][22] may cut exposure during up-moves
+    and mis-time the coin. Calibrate vol behavior to crypto, and note holding BTC
+    is being paid (~0.8 Sharpe) largely for upside vol/jump risk — a high bar.
+33. **Treat predictable crypto *flow* events as transient, decaying edges** [54].
+    Exchange listings, ETF-driven inflows, and index-product rebalances are the
+    crypto analogues of the index-inclusion effect that decayed from ~7.4% to <1%;
+    any flow-front-running idea should be assumed to shrink as it becomes
+    anticipated, and gated accordingly.
+34. **Do NOT ship a calendar/time-of-day overlay; the one real pattern is a cost
+    input** [55]. Crypto day-of-week effects are aggregation artifacts (Sunday
+    23:00 UTC US re-entry) that vanish under intraday controls and decayed post-2015.
+    The only durable fact is lower weekend liquidity → wider weekend spreads in the
+    cost model, not a tradeable return.
+35. **Adopt double-out-of-sample / walk-forward evaluation and report the
+    beat-random-parameter bootstrap fraction** [68]. Optimize on a window, evaluate
+    ONCE on truly unseen data; report what fraction of bootstrap iterations the
+    crowned config beats *random* parameter picks (the crypto EMA study got only
+    8–13.7%). This is the operational form of the DSR/t>3 selection discipline [32][42].
+36. **Offer an active+buy-and-hold blend, not pure active** [68][47][21]. The one
+    robust win across the honest studies is that blending the active sleeve with a
+    buy-and-hold core cuts drawdown ~50% with little return give-up — a better
+    default product than an all-in active strategy.
+37. **Build the mean-reversion candidate as an OU s-score on a detrended residual**
+    [62][39]. Define the signal as deviation-in-σ of the residual after removing a
+    slow trend (or a BTC-beta for an alt), enter ≈ ±1.25σ / exit ≈ 0, and require
+    OU-stationarity before trusting it; restrict it to liquid coins [33][66] and net
+    a state-dependent spread [27].
+38. **Scope out HFT/latency arbitrage explicitly** [64]. Triangular and cross-rate
+    arbitrage need millisecond infrastructure and are gone net of fees — outside our
+    honest, retail, bar-frequency design. Use as a presenter point on why retail
+    bar-level edges don't survive.
+39. **Consider a maker/taker-aware cost model option** [65]. Posting limit (maker)
+    orders genuinely costs less than crossing (taker), so a strategy that can wait
+    pays less — but model the fill/queue risk; default to taker-style crossing for
+    conservatism.
+40. **Do NOT ship a halving-timing overlay; prefer macro-liquidity trend if
+    anything** [67]. n≈4 events cannot clear the gate, the scarcity narrative
+    doesn't materialize, and M2 liquidity (not the halving) drove the last cycle —
+    so a halving rule risks spuriously capturing the macro cycle and failing when
+    they decouple.
 
 ## Open questions / things worth testing in our app
 
@@ -301,6 +489,19 @@ testing in our advisor, and which are known to overfit / not survive costs.
   out-of-sample — or does it replicate the [22] in-sample-only mirage? [21][22]
 - Does a trend (wins in trends) + mean-reversion (wins in ranges) ensemble beat
   either standalone on one coin, exploiting their negative correlation? [7][13]
+- Does a changepoint/regime-break filter on the trend candidate reduce drawdown
+  at turning points enough to beat buy-hold net of costs, or just add turnover? [56]
+- Does a short-horizon trend overlay deliver measurable crisis-convexity (positive
+  skew / smaller drawdown) on one coin, while the long-horizon version just ties
+  buy-and-hold? [52][36]
+- Does a single-coin "distance-from-52-week-high" long/flat signal beat buy-hold
+  out-of-sample, or does the cross-sectional anchoring effect fail to transfer to
+  a pure time-series use? [60]
+- Does crypto's inverse leverage effect [58] break an equity-style vol-targeting
+  overlay (de-risking during rallies)? Compare a crypto-calibrated vol overlay vs
+  the naive equity one.
+- If we ever ingest macro/on-chain regime variables, does a trend-on-fundamentals
+  signal [61][40] beat a price-only trend signal through the gate?
 
 ## Paper map (claim → supporting [N])
 
@@ -355,3 +556,33 @@ testing in our advisor, and which are known to overfit / not survive costs.
 - Time-scale hierarchy: reversion at very-short + very-long horizons, trend in the middle (days–months) → [49]
 - Crypto Twitter-sentiment "prediction" reports MAPE only — NO backtest/costs (forecast ≠ profit) → [50]
 - Frequency-based log-optimal (Kelly) portfolio: too-frequent rebalancing under costs → bankruptcy → [51]
+- CTA replication: long-horizon trend ≈ market beta (82% corr, redundant), short-horizon trend = convex diversifier (24% corr); fees gut the benchmark (0.03 vs 0.49 Sharpe) → [52]
+- Dispersion trading: sell index vol / buy component vol; ~15% p.a. but −43% crash drawdown (negative-skew correlation-risk premium) → [53]
+- The S&P 500 index-inclusion effect decayed ~7.4% (1990s) → <1% (mechanical flow edge arbitraged away) → [54]
+- Crypto day-of-week effect is an aggregation artifact (Sunday 23:00 UTC US re-entry); vanishes intraday; decayed post-2015 → [55]
+- Slow Momentum with Fast Reversion: changepoint detection on a deep momentum net improves Sharpe ~1/3 (~2/3 in 2015–2020); turning points are the fragile moment → [56]
+- Bayesian TCA: rank execution by implementation shortfall (arrival-price slippage) as a noisy latent variable, not point estimates → [57]
+- Bitcoin risk premia: BP ~66%/yr, variance risk premium ~14%/yr; inverse leverage effect; upside-driven premium (vs equities' crash-driven) → [58]
+- Option-implied vol skew negatively predicts returns; structural sources = business cyclicality + default risk → [59]
+- 52-week-high momentum subsumes past-return momentum, doesn't reverse long-run; behavioral anchoring; single-coin-computable → [60]
+- Macro momentum: trend on macro fundamentals (growth/inflation/policy) across assets; crisis-diversifier; underreaction to slow info → [61]
+- Avellaneda–Lee stat-arb: PCA/ETF residuals as OU; s-score (deviation in σ) entry ±1.25 / exit 0; Sharpe ~1.44 (decayed post-2003) → [62]
+- Low-volatility anomaly: low-vol/low-beta earn higher risk-adjusted returns (contra CAPM); leverage constraints + lottery/skew preference → [63]
+- Crypto triangular arbitrage: 0.1–0.5%/cycle, sub-second, needs 15–50 ms; arbitraged away, not retail-exploitable net of fees → [64]
+- Crypto limit-order RL: PPO learns to post maker orders to dodge taker fees; queue imbalance predicts short-term moves → [65]
+- Short-term (weekly) reversal: ~1.7%/week gross (Lehmann) = liquidity-provision premium; survives only large-cap net of spread → [66]
+- Bitcoin halving event-study: mixed CARs, scarcity narrative unconfirmed; n≈4; M2 liquidity drove 2020–2023 more than halving → [67]
+- Walk-forward EMA on crypto: in-sample beats B&H, OOS ≈ B&H (worse after 0.1% cost); beats random params only 8–13.7%; blend cuts DD 50% → [68]
+- BTC-ETH lead-lag: bi-directional, mostly contemporaneous, barely tradeable; coins co-move (less diversification than count) → [69]
+- Momentum crashes: post-bear-rebound, high-vol, conditional negative beta (loser β>3); dynamic vol-scaling ~doubles Sharpe → [70]
+- Obizhaeva–Wang: optimal execution depends on book *resilience* (recovery speed), not static spread; transient impact; discrete trades → [71]
+- Pairs distance/cointegration/copula: 91/85/43 bps gross → 38/33/5 bps net; copula most cost-exposed; cointegration best in turbulence → [72]
+- Bayesian HMM crypto: 3–4 persistent bull/bear/calm regimes; sideways = switch-prone buffer; regime structure is real → [73]
+- Crypto carry trade: Sharpe 6.45 (2020–2025) → 4.06 (2024) → negative (2025); ~40% positive after costs (real-time decay) → [74]
+- CTA crisis alpha "myth or reality?": real on average but intermittent; trend hedges trending crises, whipsawed by V-shaped/choppy → [75]
+- Quality Minus Junk: long quality (profit/growth/safety/payout) / short junk; modest price impact → high risk-adj returns; no clean crypto analogue → [76]
+- On-chain flows: USDT inflows predict higher returns/lower vol at 1–2h, corr <0.3; flow not regime signal; reverse-causality debated → [77]
+- PEAD: drift after SUE-decile earnings surprises; underreaction; survived publication (hard to arbitrage = "anomalous anomaly") → [78]
+- Crypto intraday: momentum AND reversal coexist, regime/jump/FOMC-conditional; timing beats B&H intraday but reversion turnover cost-prohibitive → [79]
+- Bitcoin spot ETFs (Jan 2024): improved liquidity, lasting cointegrated demand, BTC decoupling from alts (structural break) → [80]
+- Turn-of-month effect: Ariel [-1:+8] window captures most equity monthly return via payday/pension cash flows; absent in 24/7 crypto → [81]

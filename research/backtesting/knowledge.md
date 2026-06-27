@@ -1,9 +1,123 @@
 # Knowledge — Backtesting & Test Data
 
-_Synthesis of the `backtesting` ledger (47 papers). Payoff focus: concrete ways
-to harden our FROZEN robustness gate (1000-path moving-block bootstrap vs
-buy-and-hold), our ranking, and our test-data pipeline — and to avoid
-overfitting. Numbers in [brackets] reference papers.md entries._
+_Synthesis of the `backtesting` ledger (77 papers; round-2 added [48–77]).
+Payoff focus: concrete ways to harden our FROZEN robustness gate (1000-path
+moving-block bootstrap vs buy-and-hold), our ranking, and our test-data pipeline —
+and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
+
+> **Round-2 addition — tail-risk forecast validation (VaR/ES backtesting) [48–53].**
+> A whole sub-literature on validating a DOWNSIDE forecast that we had not yet
+> catalogued. Our bootstrap already emits a full loss distribution per strategy and
+> for buy-and-hold, so these are cheap to bolt on as a forward-run calibration panel:
+> **Kupiec POF** (right breach RATE, χ²₁) [48]; **Christoffersen LR_cc** (right rate
+> AND breaches don't CLUSTER — vital for crypto vol-clustering) [49]; **duration /
+> runs**-based tests for more power in small samples [54]; **Acerbi–Székely** ES
+> tests (tail SEVERITY, not just frequency; ES IS backtestable despite non-
+> elicitability) [50]; **Berkowitz PIT + censored tail test** (validate the whole
+> predictive density / its tail with high-power Gaussian LR) [51]; **multinomial /
+> multi-level VaR** test (implicitly backtests ES; N≥4 levels far more powerful at
+> catching heavy-tail underestimation) [52]; and a **traffic-light green/amber/red**
+> reporting pattern for the verdict [53]. Caveat carried throughout: all VaR/ES
+> backtests are LOW-POWER in short samples — a "tail looks fine" pass on a short
+> forward window is weak evidence, the MinBTL/MinTRL power discipline [3][4][32]
+> restated for tail risk.
+
+> **Round-2 addition — live-vs-backtest DECAY is quantified and predictable
+> [57][58].** McLean–Pontiff [57]: published anomaly returns fall ~26% out-of-
+> sample (data-mining illusion, upper bound) and ~58% post-publication (the extra
+> ~32% = arbitrage as investors read the paper and trade it away). Falck–Rej–
+> Thesmar [58]: across factors, OVERFITTING proxies (signal COMPLEXITY, OUTLIER-
+> sensitivity) predict decay better than arbitrage-capital proxies — most decay is
+> "never as real as the backtest said," not "competed away." For us: (a) EXPECT
+> the forward paper-trade to underperform the in-sample crown by >=26% as the
+> NORMAL case; (b) the textbook indicators we use (SMA/RSI/MACD) have been public
+> for decades -> apply a heavy "well-known signal" decay discount; (c) measure and
+> PENALIZE complexity + outlier-sensitivity in ranking — they predict which crown
+> will rot.
+
+> **Round-2 addition — market-impact MODELS beyond the sqrt-law [55][56].** The cost
+> literature now has three layers: static sqrt-law (impact ~ Y*sigma*sqrt(Q/V))
+> [13][41]; Almgren–Chriss permanent+temporary linear schedule [27]; and
+> TRANSIENT-impact models — Obizhaeva–Wang LOB resilience [55] and the Bouchaud
+> propagator (decay kernel reconciling persistent order flow with diffusive prices)
+> [56]. All agree impact is DYNAMIC and DECAYING, and all vanish at EUR 200 retail
+> scale (participation ~ 0). Three INDEPENDENT confirmations [13][41][55] that a
+> fixed fee+spread is a defensible small-order limit. The only at-size import: if
+> capacity ever enters scope, charge a decay KERNEL (transient), not a static
+> per-trade or permanent impact — the former under-, the latter over-states cost.
+
+> **Round-2 addition — point-in-time / data-revision METHODOLOGY [59][60]** (we own
+> the evaluation discipline; the `data` topic owns the crypto data plumbing).
+> Croushore–Stark [59]: evaluating on FINAL/revised data overstates real-time skill
+> — out-of-sample comparisons must use the VINTAGE actually available at each date.
+> Practitioner checklist [60]: lag fundamentals to ANNOUNCEMENT date, retain
+> original-value + restated-value-with-date, use POINT-IN-TIME universe membership.
+> For our spot-price advisor the reporting-lag trap is dormant, but the as-of-
+> timestamp rule should be a TESTED INVARIANT of the data layer so future features
+> (on-chain, funding, sentiment) inherit "what was knowable at bar t" for free;
+> plus PIT listing/delisting gating ties to survivorship [14].
+
+> **Round-2 addition — "the SET of best models," and selection-bias-corrected
+> estimation we can actually run [61][62][63][64].** Beyond crowning one winner:
+> the MODEL CONFIDENCE SET [61] returns the bootstrap-determined SET of strategies
+> statistically indistinguishable from the best — and if BUY-AND-HOLD is in that
+> set, the crown does NOT robustly beat holding (our thesis, made into a test);
+> uninformative/short data correctly yields a LARGE set (built-in honesty).
+> Cawley–Talbot [62] name "over-fitting in model SELECTION" (the bake-off score is
+> selection-biased, never report it as the crown's performance) and prescribe
+> NESTED CV (inner = sweep, outer = forward/never-used-for-selection). Tsamardinos
+> BBC-CV [64] is the cheap win: bootstrap the POOLED per-config OOS returns
+> (block-bootstrap to preserve autocorrelation), RE-SELECT the winner in each
+> resample, measure its out-of-bag performance vs hold — a selection-bias-CORRECTED
+> expected-performance estimate using machinery we ALREADY run (our per-config
+> return matrix == its prediction matrix Π). Diebold–Mariano [63] = the arbitrary-
+> loss, HAC-robust pairwise "is A better than B?" test (our block bootstrap is its
+> resampling analogue), with the sharp caveat that significance on the SAME window
+> the crown was selected on is contaminated — it must come from the OUTER/forward
+> leg. Net: [64] is a strong candidate to BE our deflation engine; [61] a strong
+> candidate for the ranking OUTPUT (report the set, flag if hold is in it).
+
+> **Round-2 addition — timing-SKILL tests, attribution, permutation nulls, and a
+> fresh illusory-profitability proof [65][66][67][68][69][70].** A new angle: test
+> the directional CALL, not just the equity curve. Henriksson–Merton [65] non-
+> parametric 2x2 test — tabulate the crown's in-market/flat signal vs next-bar
+> market direction; skill requires P(correct|up)+P(correct|down) > 1; a crown can
+> beat hold by luck yet FAIL this (cheap "timing-skill" badge). Brinson–Hood–
+> Beebower [66]: active timing/selection add little on average and are often
+> negative net of costs (classic prior for our thesis; mind the variance-vs-level
+> misquote). Shapley attribution [67]: order-independent, fair decomposition of a
+> COMPOSED crown's edge into components (anti-storytelling). Masters permutation
+> tests [69]: a SHUFFLE-returns null (destroys time-structure, preserves margins) —
+> complements our block bootstrap (which PRESERVES structure); run BOTH to bracket
+> the claim; "permutation training" removes selection bias like RC/BBC-CV. BuildAlpha
+> [68]: PARAMETER NEIGHBORHOOD-STABILITY (reject lone spikes in the parameter
+> surface), beat-the-best-RANDOM second null, noise/shift perturbations, bagging-
+> hurts-means-overfit. Kuang–Schröder–Wang [70]: 25,988 TA rules in emerging FX,
+> "hundreds to thousands significant," best >30%/yr — almost ALL profit vanishes
+> under data-snooping correction = "illusory." The single most vivid validation of
+> our gate's skepticism in a market/rule-class close to ours.
+
+> **Round-2 addition — stationarity guard, DL-era evaluation frameworks, online
+> FDR, bootstrap-drawdown CIs, and fresh thesis confirmations [71][72][73][74][75]
+> [76][77].** Bai–Perron / fluctuation tests [71]: detect+date structural breaks —
+> a crypto window straddling a regime shift makes one in-sample crown a fit to a
+> MIXTURE; a missing STATIONARITY pre-check for the gate (the bootstrap assumes
+> approximate stationarity). AlphaEval [72]: score candidates on FIVE axes
+> (predictive power, temporal STABILITY, ROBUSTNESS-to-noise, financial logic,
+> DIVERSITY/redundancy), not one metric — composite beats single-metric selection;
+> three axes map to our stability [12], perturbation [68], and effective-N [46]
+> ideas. Online-FDR / alpha-investing [73]: control the false-"beats-hold" rate
+> ACROSS our whole SEQUENCE of re-runs (decaying memory fits non-stationarity), not
+> just within one run. Potter/PyBroker bootstrap [74]: a how-to for OUR exact gate —
+> report MAX-DRAWDOWN & Calmar DISTRIBUTIONS (observed worst-case is one lucky path;
+> 95th-pct can be 2x observed), use the STATIONARY bootstrap, and NEVER one block
+> length (test several; if the verdict flips it isn't robust = spec-curve [44][20]).
+> Two fresh thesis confirmations: a 2026 large-scale DL benchmark [75] (complex DL
+> fails to beat hold/linear baselines risk-adjusted, multiple-seed, OOS) and a 2025
+> BTC TA-vs-ML study [77] (3 of 4 active strategies LOSE to hold net of 0.1% fee;
+> the lone "winner" was one uncorrected grid-searched config on one bull-year window
+> — exactly what our DSR/PBO/bootstrap discounts). Timmermann–Granger [76]: the
+> conceptual WHY — discovered edges self-destruct, inducing non-stationarity.
 
 ## Key themes
 
@@ -211,6 +325,38 @@ overfitting. Numbers in [brackets] reference papers.md entries._
    "real no-edge" from "insufficient data/power"; pair with MinBTL [3]/MinTRL [34].
 13. **Add a one-bar-delay robustness check** [33]: re-run the crown with signal-at-t
    / trade-at-t+1; an edge that vanishes is a look-ahead artifact ([15][17]).
+14. **(round-2) Use BBC-CV as the deflation engine on machinery we already run**
+   [64]. Treat the per-config bar-return matrix as the OOS-prediction matrix Π;
+   BLOCK-bootstrap the bars [10][20], RE-SELECT the bake-off winner each resample,
+   record its out-of-bag performance vs hold. The center is a selection-bias-
+   CORRECTED expected performance; the spread is honest uncertainty. → A direct,
+   resampling alternative to closed-form DSR that captures our exact multiple-
+   testing optimism. Strong candidate to BE the deflation step.
+15. **(round-2) Output the Model Confidence Set, and flag when hold is in it** [61].
+   Report the bootstrap-determined SET of strategies statistically tied for best; if
+   buy-and-hold is in the MCS, the crown does NOT robustly beat holding — our thesis
+   as a test. Short/noisy windows correctly yield a LARGE set (built-in honesty).
+16. **(round-2) Add a forward-run TAIL-CALIBRATION panel** [48][49][50][52][74].
+   Our bootstrap already emits a loss distribution; check the crown's (and hold's)
+   predicted downside on the forward run with Kupiec POF (rate) + Christoffersen
+   LR_cc (no CLUSTERING — vital for crypto), ideally an ES/multinomial severity
+   test, and report MAX-DRAWDOWN/Calmar DISTRIBUTIONS not point values. Collapse to
+   a green/amber/red badge [53]. Caveat the LOW power on short windows [48][54].
+17. **(round-2) Make block-length a SENSITIVITY band, not a single value** [74][20]
+   [44]. Re-run the gate over a small grid of block lengths; require the "beats
+   hold?" verdict to be STABLE. A verdict that flips on block length isn't robust —
+   a concrete, cheap instance of the specification-curve discipline.
+18. **(round-2) Add a parameter-NEIGHBORHOOD-STABILITY check + a timing-SKILL test**
+   [68][72][65]. Require the crown's ±1-2-step parameter neighbors to also beat hold
+   (reject lone spikes in the parameter surface), and for timing strategies run the
+   Henriksson–Merton 2×2 test (signal vs next-bar direction; skill ⇔ p1+p2>1) as a
+   luck-vs-skill badge — a crown can beat hold by luck yet fail this.
+19. **(round-2) Apply a heavier decay / "well-known signal" discount, and run a
+   stationarity pre-check** [57][58][76][71]. Expect the forward run to underperform
+   the crown by ≥26% as NORMAL [57]; discount textbook indicators (decades-public,
+   likely self-destructed [76]) extra; penalize complexity + outlier-sensitivity
+   [58]; and Bai–Perron/CUSUM-check the window for structural breaks before crowning
+   on a regime-straddling window [71].
 
 ## Open questions / things worth testing in our app
 
@@ -234,6 +380,25 @@ overfitting. Numbers in [brackets] reference papers.md entries._
   mean reversion, vs merely zero excess return?
 - Are any crowned strategies' edges concentrated in 1–2 outlier days? [17]
 - Are dead/delisted coins absent from our universe, biasing cross-coin claims? [14]
+- (round-2) Do we report a tail-CALIBRATION check on the forward run — at minimum
+  Kupiec POF + Christoffersen CLUSTERING (LR_cc), ideally an ES/multinomial test —
+  for the crown's AND hold's predicted downside band? [48][49][50][52]
+- (round-2) Does the gate run a STATIONARITY / structural-break pre-check on the
+  (coin,window) so we don't crown on a window straddling a regime shift? [71][76]
+- (round-2) Do we test the crown's PARAMETER NEIGHBORHOOD (do ±1-2-step neighbors
+  also beat hold) to reject lone-spike overfits? [68][72]
+- (round-2) Does the gate vary the BLOCK LENGTH and require the "beats hold?"
+  verdict to be stable (spec-curve), rather than fixing one length? [74][44][20]
+- (round-2) Could we replace/augment the deflation with BBC-CV on our per-config
+  return matrix (bootstrap, re-select winner, measure out-of-bag vs hold)? [64]
+- (round-2) Should ranking output the MODEL CONFIDENCE SET and flag when
+  buy-and-hold is inside it (= crown not robustly better)? [61]
+- (round-2) For timing strategies, do we run the Henriksson–Merton 2×2 skill test
+  (signal vs next-bar direction; p1+p2>1) as a luck-vs-skill badge? [65]
+- (round-2) If the advisor becomes a standing service, do we control online-FDR
+  across the SEQUENCE of bake-off re-runs (decaying memory)? [73]
+- (round-2) Do we apply a heavier decay/"well-known signal" prior given that our
+  indicators (SMA/RSI/MACD) are decades-public and likely self-destructed? [57][76]
 
 ## Paper map (claim → supporting [N])
 
@@ -288,3 +453,35 @@ overfitting. Numbers in [brackets] reference papers.md entries._
 - Best-of-large-rule-universe RC bootstrap; in-sample pass decays OOS → [45]
 - Effective N = number of clusters of config return series (not raw N) → [46][39]
 - Crypto spreads tiny but blow out 2–3× in stress; model state-aware costs → [47]
+- VaR backtest: right breach RATE (Kupiec POF, χ²₁) → [48]
+- VaR backtest: right rate AND no clustering (Christoffersen LR_cc; Markov) → [49]
+- Duration/runs-based VaR backtest: more power in small samples → [54]
+- ES IS backtestable despite non-elicitability (tail SEVERITY) → [50]
+- PIT + censored-tail density test (whole predictive density) → [51]
+- Multinomial multi-level VaR test implicitly backtests ES (N≥4 powerful) → [52]
+- Traffic-light green/amber/red reporting for tail calibration → [53]
+- All VaR/ES backtests are LOW-POWER in short samples → [48][54]
+- Live-vs-backtest decay: ~26% OOS, ~58% post-publication → [57]
+- Overfitting (complexity, outlier-sensitivity) predicts decay > arbitrage → [58]
+- Expect forward run to underperform crown by ≥26% as the NORMAL case → [57][58]
+- Transient/resilient market impact (LOB replenishment) → [55]
+- Propagator model: decay kernel reconciles persistent flow + diffusive prices → [56]
+- Point-in-time / vintage data: final-data eval overstates real-time skill → [59]
+- Reporting-lag / restatement / PIT-universe look-ahead traps + fixes → [60]
+- Model Confidence Set: bootstrap SET of best models (is hold IN it?) → [61]
+- Over-fitting in model SELECTION; nested CV (inner=sweep, outer=forward) → [62]
+- BBC-CV: bootstrap pooled OOS returns, re-select, get bias-corrected estimate → [64]
+- Diebold–Mariano: arbitrary-loss HAC pairwise accuracy test; forecasts≠models → [63]
+- Market-timing SKILL test (Henriksson–Merton 2×2; p1+p2>1) → [65]
+- Allocation dominates; active timing/selection add little net of costs → [66]
+- Shapley value: fair order-independent attribution of a composed crown → [67]
+- Parameter neighborhood-stability; beat best-RANDOM; bagging-hurts=overfit → [68]
+- Permutation null (shuffle returns) complements block bootstrap → [69]
+- 25,988 TA rules; profit "illusory" after data-snooping correction → [70]
+- Structural-break (Bai–Perron/CUSUM) stationarity guard for the window → [71]
+- Multi-axis alpha evaluation (power/stability/robustness/diversity) > 1 metric → [72]
+- Online FDR / alpha-investing controls false-"beats-hold" across re-runs → [73]
+- Bootstrap drawdown/Calmar CIs; stationary bootstrap; never one block length → [74]
+- DL fails to beat hold/linear baselines risk-adjusted, multiple-seed, OOS → [75]
+- Discovered edges self-destruct → non-stationarity (EMH+forecasting) → [76]
+- BTC TA/ML vs hold: 3/4 lose net of cost; lone "winner" uncorrected/one-window → [77]

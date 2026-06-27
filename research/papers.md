@@ -4,7 +4,7 @@ Aggregate view. **The per-topic ledgers are the source of truth** — open them 
 full entries (Title, Authors, Year, Source, % read, Summary, Relevance).
 
 **Program: 100 papers per topic × 9 topics (~900), resumable over rounds.** Round 1
-complete: **367 papers** across the 9 topics (committed). Rounds 2–3 extend each to 100.
+**round 2 complete: 630 papers** across the 9 topics (committed). Round 3 (final) extends each to 100.
 
 - [strategies](strategies/papers.md) — quant/algo strategies, factors, microstructure, execution
 - [backtesting](backtesting/papers.md) — backtest methodology (overfitting metrics, CV, data-snooping, costs)

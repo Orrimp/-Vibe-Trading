@@ -82,6 +82,53 @@ industrialized overfitting our gate exists to reject.
     — and the apparent edge is noise. The crypto walk-forward bootstrap-vs-random
     [5] is the same idea quantified. A random-strategy null is a cheap, powerful
     sub-test our gate currently lacks.
+13. **"Faster/fancier search" = MORE multiple testing, never less.** A consistent
+    sub-theme across the optimizer/infra papers: every efficiency gain — Bayesian/TPE
+    [13], CMA-ME quality-diversity [33], surrogate-assisted MOEA [34], 500×-faster
+    TensorNEAT [38] — lets you evaluate *more configurations per unit compute*. On a
+    noisy backtest fitness that means reaching the *over-fit optimum faster* and
+    drawing *more* spurious winners ([29]), not finding real edge. Quality-diversity's
+    "diversity" is over a *behavior descriptor* (turnover, exposure), NOT over
+    robustness — illuminating a behavior space faster just industrializes diverse
+    overfitting. Corollary: if we ever adopt a faster search, the significance
+    correction must scale *with* the search budget.
+14. **Coevolution / Red Queen explains WHY edges decay.** FinEvo [36] and the Red
+    Queen's Trap [35] frame markets as adaptive ecosystems where other strategies
+    *erode* any edge (Adaptive Markets Hypothesis). This is a deeper cause of "factor
+    decay" [6] than overfitting alone: even a *genuine* edge is competed away. Strong
+    argument that B&H is the durable benchmark and any crowned active pick is
+    temporary — supports periodic re-baking, supports distrust of one-time backtests.
+15. **The breakeven-win-rate barrier (a quantitative kill-switch).** The Red Queen
+    autopsy [35] gives a clean closed form: for active high-frequency trading,
+    breakeven win rate W_BE = (1 + C_ratio)/(1 + R) where C_ratio is round-trip cost /
+    target-profit and R is reward-to-risk; at ~0.1% costs and 1% target, W_BE ≈ 55%.
+    A strategy whose *implied* win rate can't clear W_BE under our cost model is
+    structurally doomed — a cheap pre-screen *before* the bootstrap even runs. This is
+    the mechanism behind "cost-blind hallucination": optimizing directional accuracy
+    while ignoring magnitude harvests "Fool's Gold" (churning, volume not value).
+16. **Honest validation looks like reporting the null.** Multiple careful papers now
+    *deliberately* report insignificant aggregate results as the contribution:
+    Interpretable Hypothesis-Driven [39] (RL, 100 equities, 34 OOS periods, costs →
+    Sharpe 0.33, **p=0.34, not significant**) and the BTC ML-under-costs study [32]
+    (**Holm-corrected, does not reject vs B&H**). This is exactly our project's
+    posture — the deliverable is the disciplined protocol + the truthful verdict, not
+    a flashy curve.
+17. **The data-snooping trilogy (the topic's intellectual spine).** Brock-Lakonishok-
+    LeBaron 1992 [52] showed simple MA/range-break rules beat random-walk/GARCH nulls
+    on the Dow (1897-1986) — but with **no costs and a tiny pre-chosen rule set**.
+    Sullivan-Timmermann-White 1999 [50] applied **White's Reality Check** to the
+    ~7,846-rule *universe* and showed much of that significance is a *snooping
+    artifact* once you account for how many rules were tried. The lesson our gate
+    inherits: **significance must be conditioned on the size of the search** (the form
+    of "charge the search budget" [29] that our bake-off most directly needs).
+18. **MARKET-MATURITY NUANCE (the honest counter-weight).** Hsu-Kuan [51]:
+    Reality-Check-corrected, cost-net, OOS — technical rules **survive in YOUNG/less-
+    efficient markets (NASDAQ, Russell 2000) but NOT in mature ones (DJIA, S&P 500).**
+    Crypto is plausibly young/less-efficient, so we should NOT be dogmatic that the
+    null always holds — the disciplined posture is **"test honestly, don't assume."**
+    BUT: it's cross-sectional indices not single coins; the rules that add the most are
+    compound (bigger search → only safe *because* corrected); efficiency rises over
+    time. So this *raises the value of our gate*, not a license to trust active edges.
 
 ## Methods / findings that hold up (and which don't)
 
@@ -98,6 +145,26 @@ industrialized overfitting our gate exists to reject.
 - **Holds up (as a risk idea, not alpha):** "B&H + strategy" portfolios reduce
   drawdown even when the strategy alone doesn't beat B&H ([5]); dynamic re-weighting
   to combat **factor decay** ([6]) flags that edges are non-stationary.
+- **Holds up (new overfitting diagnostics worth importing):** (a) **PBO / CSCV**
+  (Probability of Backtest Overfitting via Combinatorially-Symmetric Cross-Validation)
+  — AutoQuant [53] applies it to *crypto perps* and finds **substantial residual
+  overfitting even after careful tuning**, framing its system as "validation
+  infrastructure, not proof of persistent alpha" (the closest external mirror of our
+  mission); [23][29] motivate the same. (b) **White's Reality Check** [50] — a
+  bootstrap that tests the best strategy against the *whole searched universe*. (c)
+  **Synthetic / resampled-path testing** [55] (GAN-generated paths) — same principle
+  as our moving-block bootstrap; we prefer the *model-free* bootstrap because a GAN
+  can hallucinate dynamics or miss tails. (d) **Parameter-plateau check** [49] —
+  prefer configs sitting on a *broad* performance plateau over sharp optima (a cheap
+  fragility screen). (e) **Multi-cost-scenario double screening** [53] — evaluate a
+  candidate under several cost assumptions, not one; fee-only crypto-perp backtests
+  *materially over-state* returns vs fully-costed (funding+slippage).
+- **Boundary case (a well-controlled crypto "beats B&H" that ISN'T our case):**
+  AdaptiveTrend [49] beats BTC B&H (Sharpe 2.41 vs 0.17, −12.7% vs −64.1% DD) WITH
+  costs + circular-block bootstrap + significance — but via a **150-asset cross-
+  sectional long-short + funding carry**, none of which single-coin long-only retail
+  can do. Confirms: edge is reachable through *diversification/relative-value/carry*,
+  not single-coin timing; for our scope it still says "hold."
 - **Does NOT hold up:** headline PnL from cost-blind, single-window, no-benchmark,
   re-optimized-on-the-same-stream optimizers ([4], +550% scalping). The "agent /
   LLM" wrapper around a GA changes nothing statistically. Risk-*seeking* objectives
@@ -112,12 +179,20 @@ industrialized overfitting our gate exists to reject.
 
 ## Actionable takeaways for our advisor
 
-1. **Treat our bake-off as a search that must be significance-charged.** Sweeping
-   many strategies/params on `(coin, window)` IS a multiple-testing exercise. Borrow
-   deflated-Sharpe / PBO ideas; the more configs we try, the higher the bar a winner
-   must clear vs B&H. Bailey [29] proves even a *few* configs inflate in-sample
-   Sharpe, and [32] shows **Holm correction** flips a >65%-return BTC strategy to
-   "not significant vs B&H" — exactly the posture our gate should keep.
+1. **Treat our bake-off as a search that must be significance-charged — and report a
+   PBO.** Sweeping many strategies/params on `(coin, window)` IS a multiple-testing
+   exercise. The most-reinforced finding this round: add a **PBO / CSCV** (Probability
+   of Backtest Overfitting via Combinatorially-Symmetric Cross-Validation) number
+   alongside the bootstrap verdict — AutoQuant [53] applies exactly this to *crypto
+   perps* and still finds **substantial residual overfitting after careful tuning**,
+   concluding its tool is "validation infrastructure, not proof of persistent alpha"
+   (our mission, externally re-derived). Also adopt **White's Reality Check** [50] —
+   a bootstrap that tests the best strategy against the *whole searched universe* (the
+   precise form of "the more configs we try, the higher the bar"). Bailey [29] proves
+   even a *few* configs inflate in-sample Sharpe; [32] shows **Holm correction** flips
+   a >65%-return BTC strategy to "not significant vs B&H." Net: a crowned pick should
+   ship with (a) bootstrap-vs-B&H verdict, (b) a PBO, (c) Reality-Check/Holm
+   correction over the N strategies tried.
 2. **Add a RANDOM-strategy null as a gate sub-test (highest-value new idea).**
    Beyond "beat B&H," require a tuned/evolved pick to beat a **matched-activity
    random-trading / random-parameter null** ([5][30][31]). An optimized config that
@@ -137,6 +212,19 @@ industrialized overfitting our gate exists to reject.
 7. **If we ever run a search, copy MadEvolve's honesty kit** ([14]): cost-in-fitness,
    scale-invariant metrics, and compare IS→OOS degradation against multiple-testing
    theory — but keep **buy-and-hold** as the benchmark it omitted.
+8. **Add a breakeven-win-rate pre-screen** ([35]): before bootstrapping a tuned/active
+   pick, reject any whose implied win rate can't clear W_BE = (1+cost/target)/(1+R)
+   at our cost model. Cheap, closed-form, kills high-turnover "Fool's Gold" candidates
+   before they consume the gate's budget. Complements (does not replace) the B&H
+   benchmark and the random-null sub-test.
+9. **Scale the significance correction WITH the search budget** ([29][33][34][38]): a
+   faster/bigger bake-off (more strategies, finer grids, Bayesian/surrogate search) is
+   *more* multiple testing — the deflated-Sharpe/PBO bar must tighten as the config
+   count grows, or efficiency gains just buy faster overfitting.
+10. **Quality-diversity is a presentation tool, not an overfitting cure** ([33]): an
+    archive of behaviorally-diverse strategies (by turnover/exposure) could be a nice
+    way to *show a user a menu*, but every archived elite must individually clear the
+    FROZEN gate; "diverse" ≠ "robust."
 
 ## Open questions / things worth testing in our app
 
@@ -148,6 +236,15 @@ industrialized overfitting our gate exists to reject.
 - Does adding evolutionary search to our bake-off ever produce a config that clears
   the FROZEN gate — or only ever in-sample winners? (Hypothesis: only in-sample;
   [29] predicts the winner is *negatively* predictive OOS.)
+- **Breakeven-win-rate pre-screen** ([35]): would adding W_BE=(1+cost/target)/(1+R)
+  as a cheap reject-before-bootstrap filter prune obviously-doomed high-turnover
+  candidates without discarding any pick the full gate would have crowned?
+- **Re-bake cadence under coevolution** ([35][36]): if edges decay because *other
+  strategies compete them away* (not just overfitting), is there a re-evaluation
+  cadence that captures decay early — or does the decay just confirm "hold instead"?
+- **Quality-diversity menu** ([33]): if we returned an archive of behaviorally-diverse
+  strategies (binned by turnover/exposure) instead of a single crowned pick, would
+  *any* cell contain a strategy that beats B&H net of costs under the gate?
 
 ## Paper map (claim → supporting [N])
 
@@ -169,7 +266,12 @@ industrialized overfitting our gate exists to reject.
 - Double-OOS + bootstrap-vs-random as overfitting detectors → [1][5]
 - IS→OOS degradation vs multiple-testing theory as a diagnostic → [14]
 - Cost as market-impact penalty inside fitness; scale-invariant metrics → [14][17]
-- "Optimization solver" ≠ "trading edge" (Markowitz frontier solvers) → [16][17]
+- "Optimization solver" ≠ "trading edge" (Markowitz frontier solvers) → [16][17][46][47]
+- Industrialized overfitting (generate ~2000 alphas, flashy Sharpe, no costs/B&H/correction) → [44]
+- IS→WFA→OOS cascade as the overfitting-mitigation standard → [5][45]
+- AutoML/NAS on financial data: seed-variance dominates, no convergence (AUC ~0.55) → [43]
+- "IC alone insufficient — also need stability/robustness/turnover" (meta-evaluation) → [42]
+- Honest-null reporting as the contribution (insignificant aggregate result) → [32][39]
 - Optimizer choice interacts with (strategy, asset); per-pair tuning → [13]
 - Evolutionary program search needs a sound evaluator (FunSearch) → [18]
 - Vectorial / strongly-typed GP as better rule representation → [10]
@@ -177,4 +279,25 @@ industrialized overfitting our gate exists to reject.
 - "Risk-seeking"/best-case objectives overfit on noisy data → [12][24]
 - Forecast-error/AUROC win ≠ cost-net edge vs B&H → [22][25]
 - Overfitting-probability test as a candidate filter (PBO-like) → [14][23]
-- "GP/ML beats B&H on BTC" claims that omit costs/regimes → [19][20]
+- "GP/ML beats B&H on BTC" claims that omit costs/regimes → [19][20][40]
+- Faster/fancier search = more multiple testing, not more edge → [13][29][33][34][38]
+- Quality-diversity (CMA-ME) industrializes *diverse* overfitting; diverse ≠ robust → [33]
+- Surrogate-assisted search speeds the route to over-fit Pareto corners → [34]
+- Coevolution / Red Queen / AMH: other strategies erode any edge → [35][36]
+- Breakeven-win-rate barrier W_BE=(1+cost/target)/(1+R) as a kill-switch → [35]
+- Cost-blind hallucination / churning ("Fool's Gold," optimize accuracy not magnitude) → [35]
+- Maximalist DL+evolution crypto system: +300% validation → −70% live (IS→OOS collapse) → [35]
+- Honest validation = deliberately reporting an insignificant null → [32][39]
+- GA/MOEA delivers risk reduction (lower drawdown), not alpha vs B&H → [5][7][27][28][37]
+- Data-snooping trilogy: rules beat nulls → corrected for universe → mostly artifact → [52]→[50]→[51]
+- White's Reality Check: significance must condition on the searched universe size → [50]
+- MARKET-MATURITY nuance: edge survives (corrected, cost-net, OOS) in YOUNG markets, not mature → [51]
+- PBO / CSCV finds substantial residual overfitting even after careful tuning (crypto perps) → [53]
+- AutoQuant ≈ our mission: auditable cost-aware validation infra, "not proof of persistent alpha" → [53]
+- Fee-only crypto-perp backtests materially over-state returns vs funding+slippage costed → [53]
+- Synthetic/resampled-path testing as overfitting defense (we prefer model-free bootstrap) → [55]
+- Parameter-plateau (broad optimum) preferred over sharp optima as a fragility screen → [49]
+- Well-controlled crypto BEATS B&H — but via cross-sectional long-short + carry, not single-coin → [49]
+- Foundational GP-FX: no excess returns net of costs → market efficiency → [48]
+- Quality-diversity (CMA-ME) as a strategy-menu presentation tool, not an overfitting cure → [33]
+- Coevolution as the *cause* of decay (other strategies compete edge away) → [35][36]

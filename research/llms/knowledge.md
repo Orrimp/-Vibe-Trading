@@ -72,6 +72,34 @@ series?**
    measured version of the leakage critique we apply to [2][3][4][31][32], and the
    methodological complement to StockBench's [13] post-cutoff design.
 
+10. **Every finance-LLM benchmark that adds a *prediction* task exposes the same
+    wall.** FinBen [7], PIXIU/FLARE [36], BizFinBench [49], and Golden Touchstone
+    [50] all show LLMs competent on language tasks (sentiment/extraction/QA) and
+    near-chance on the numeric *prediction/forecasting* task. Golden Touchstone is
+    the most quotable: **stock-movement weighted-F1 ≈ 0.42** even for GPT-4o, with
+    the authors stating it "falls short of practical utility" and that text
+    sentiment "may not reliably predict stock movements" — you'd need quantitative
+    data. Benchmark-grade, independent, repeated confirmation of "language ≠ alpha."
+
+11. **RAG for finance is a *document/extraction* tool, not a forecasting one.** The
+    RAG-for-finance literature ([45] agentic FinAgent-RAG, [46] metadata-driven RAG,
+    [8] FinSeer) is overwhelmingly about *answering questions over filings* (FinQA /
+    ConvFinQA / TAT-QA / FinanceBench), where the wins are real (76–78% execution
+    accuracy [45]) and the practical lessons concrete: financial docs need
+    **Program-of-Thought** (emit verifiable code for arithmetic, [45]) and
+    **metadata-enriched chunks + reranking** (plain semantic chunking fails on sparse,
+    cross-referenced filings, [46]). The one RAG-for-*forecasting* attempt [8] still
+    lands at ~54% directional accuracy with no profit claim. RAG = grounding/context
+    for narration, not a price predictor.
+
+12. **The most posture-aligned crypto LLM is an *analysis/narration* chatbot, not a
+    trader.** Coinvisor [52] is a crypto investment-*analysis* chatbot whose RL learns
+    *tool selection* (which vetted tool to surface) and is evaluated on orchestration
+    quality + user satisfaction — **it makes no PnL/B&H claim by design.** This is
+    exactly the LLM role our architecture reserves: research/UX layer over a gated
+    tool library, never the decision rail. Contrast with the crypto *trading*-agent
+    papers [31][32][34] that do claim returns and inherit the leakage/no-cost gaps.
+
 ---
 
 ## Methods / findings that hold up (and which don't)
@@ -155,6 +183,17 @@ returns.**
      anomaly detection + imputation), "Time Series Pile". Open.
    - **TimeGPT-1** [24] (Nixtla): first *commercial* TSFM, encoder-decoder, >100B
      points **explicitly including a finance domain.** Closed/SaaS.
+   - **Time-MoE** [55]: scale leader — **2.4B-param sparse MoE** decoder-only,
+     Time-300B corpus (300B points, 9 domains). Open (ICLR 2025 Spotlight). No
+     finance eval; the *opposite* of a lean local advisor.
+   - **TTM (Tiny Time Mixers)** [56] (IBM): the **anti-scale** model — ~1M params,
+     TSMixer/MLP-mixer, **CPU-runnable**, exogenous-signal-aware. The realistic
+     deployable choice; [43] applied it to finance (helps on vol/spread, not direction).
+   - *Architectural primaries / deep baselines* (not foundation models themselves
+     but the building blocks + the baselines TSFMs are measured against): **PatchTST**
+     [53] (patching + channel-independence, ancestor of patched-decoder TSFMs) and
+     **iTransformer** [54] (inverted "variate tokens" for multivariate). Both are
+     among the deep baselines [28] showed TSFMs only sparsely beat on financial returns.
 
 2. **Text-LLM repurposing** — keep a *language* model and adapt the interface:
    - **LLMTime** [16]: encode the series as digit strings, zero-shot a frozen

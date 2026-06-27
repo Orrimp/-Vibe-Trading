@@ -92,6 +92,139 @@ synthetic-test-data ideas.*
 29. **Even a careful 2025 GAN underestimates tails & misses structural breaks**
     on volatile/EM-like assets — i.e. exactly where crypto lives; synthetic test
     data would understate crash risk. [30]
+30. **LOB/tick data is out of scope for a bar-level advisor**, but it teaches a
+    portable lesson: a model can score well on a statistical metric (accuracy/F1,
+    R²/Sharpe) yet produce no tradable net edge — judge by net P&L vs B&H. [31]
+31. **Synthetic-data design space has two branches:** *learned* (GAN/diffusion/
+    **copula**/VAE — [4][5][11][32][33]) and *mechanistic* (**agent-based
+    simulators** ABIDES/ZI/Chiarella — [6][34]). Both need stylized-fact
+    validation and both are heavier + less reproducible than block-resampling
+    real returns. Copulas cleanly separate marginals (tails) from dependence. [32][33][34]
+32. **Validate any generator on known-ground-truth synthetic data BEFORE real
+    data**, scoring rolling-window moments, not just the unconditional
+    distribution. [32][4]
+33. **Missing-data imputation is a leakage surface.** Never impute with future
+    bars; an imputed bar is not a real observation (bootstrapping over fills
+    understates uncertainty). Crypto's 24/7 trading makes gaps rarer but outages/
+    delistings/feed glitches still occur — prefer flag/exclude or causal fill. [35]
+34. **The "Seven Sins" checklist** (survivorship, look-ahead, storytelling, data-
+    mining, costs, outliers, asymmetric-shorting) maps ~1:1 onto our gates; the
+    *outlier* sin is new emphasis — a config that wins only on one or two extreme
+    moves is fragile, and the bootstrap should expose it. [36]
+35. **Two opposite kinds of "outlier"**: data-error prints (clean/remove) vs real
+    extreme events (KEEP — they're the tail risk the gate exists to stress). Never
+    silently winsorize away real crash bars. [37][36]
+36. **The sampling unit is a data decision: time bars are statistically inferior**
+    (oversample noise, undersample information) vs information-driven (tick/volume/
+    dollar) bars. We use daily time bars — defensible for an operator-legible
+    retail advisor, and *safer* in crypto because volume/dollar bars inherit wash-
+    trade contamination [19]; but it explains why our daily returns are non-normal +
+    serially correlated (⇒ block bootstrap + non-normal metrics are right). [38]
+37. **Feature-store discipline names our consistency gates:** *point-in-time
+    correct retrieval* = our PIT/look-ahead rule [2][20]; *training–serving skew* =
+    our F5 forward-fidelity gap (bake-off ranks one impl, forward runs an SMA
+    proxy) — fix is "one strategy definition, used everywhere." [39]
+38. **Overlapping labels are even less independent than bars** (concurrency);
+    correct with uniqueness sample-weights + sequential bootstrap + purge/embargo —
+    ONLY if we add horizon labels; reinforces effective-N ≪ raw-N. [40][16]
+39. **Stationarity-vs-memory tradeoff:** integer differencing (returns) kills the
+    level memory; fractional differentiation keeps it at minimum d for
+    stationarity. Crypto's trends live in the non-stationary level — explains why
+    trend rules exist *and* why they're fragile (level ≈ random walk). [41]
+40. **Stylized facts are ASSET-SPECIFIC, not universal** (8/11 of Cont's hold in
+    modern equities, non-uniform across stocks). Our block bootstrap inherits
+    *this coin's* actual facts rather than imposing a generic template — a strength
+    vs any equity-tuned generator. [42]
+41. **Bitcoin's stylized facts are strong AND drifting:** q-Gaussian heavy tails,
+    power-law absolute-return ACF, multifractality; but **Hurst rose 0.42→0.49**
+    (efficiency increasing toward random walk) — independent support that
+    exploitable autocorrelation is *shrinking over time* (alpha decay). [43]
+42. **Crypto volatility differs from equities in 3 ways:** inverse leverage effect
+    (positive returns raise vol — sign-flipped vs equities), lower vol persistence,
+    and jumps that matter more. Jumps dominating is the strongest case AGAINST
+    synthetic generators (they under-model jumps) and FOR real-data block
+    bootstrap. [44]
+43. **Online (causal) change-point detection (BOCPD)** is the leakage-free way to
+    ask "are we in a new regime?" — but as a *diagnostic/monitor*, NOT a trading
+    rule (regime-switching rules are another overfit trap). The AR-with-time-
+    varying-variance variant fits financial data better. [45][46]
+44. **The stationary bootstrap (random/geometric block length)** is the canonical
+    alternative to our fixed-length moving-block — it hedges across block scales
+    and yields a strictly stationary resample; the natural block-scheme
+    sensitivity check for our gate. [47]
+45. **"Most ML funds fail for DATA reasons, not model reasons"** — de Prado's 10
+    pitfalls (sample uniqueness, stationarity/memory, overfitting, multiple
+    testing, chronology, CV, survivorship) are a super-checklist over this whole
+    folder. [48]
+46. **TSTR ("train on synthetic, test on real") is the honest acceptance test for
+    synthetic data** — behavioral/task-level, not distributional similarity; a
+    generator that lets a strategy look good but fail on real data fabricated
+    structure. [49]
+47. **Synthetic-data-for-RISK is especially dangerous:** even the best generator
+    (TimeGAN) is single-index + training-unstable, and VAEs *smooth away extreme
+    moves*, degrading risk/VaR estimation — the exact failure a crypto gate cannot
+    afford. Evaluate fidelity + utility + robustness, not just fidelity. [50]
+48. **Adversarial/stress robustness is REGIME-CONDITIONAL:** a model equally good
+    in calm and stress can be ~2× more fragile under stress; average-case
+    evaluation hides crisis fragility — judge by adverse-regime behavior. [51][24]
+49. **Leakage (not model choice) is the dominant reason ML fails to reproduce:**
+    8-type taxonomy, 329 papers across 17 fields; in conflict prediction, complex
+    models' "advantage" over logistic regression vanished once the leak was fixed —
+    a direct parallel to "no active strategy beats B&H once tested honestly." The
+    "model info sheet" = adaptable leakage-audit disclosure for our runs. [52]
+50. **Labeling is a data decision with a precision/recall split:** fixed-horizon
+    is volatility/path-blind; triple-barrier is path-aware; **meta-labeling**
+    (primary = direction/recall, secondary = act-or-not/precision) is an attractive
+    *architecture lens* even without ML — our robustness gate is a "should we act?"
+    filter in that spirit. [53][10]
+51. **PBO via CSCV is computable on our exact bake-off output** (strategies × time
+    matrix): "the in-sample winner lands below median OOS X% of the time" — a
+    single honest robustness number + an overfit-rejection gate + a realistic
+    performance-degradation haircut. Top implementable pick alongside DSR. [54]
+52. **CEX price data is higher-quality than DEX** (efficiency <5bps vs 10–50bps;
+    gas distorts DEX); small retail trades are cheapest on CEX. Source a reputable
+    CEX/CEX-aggregate feed, stamp provenance, and use CEX-realistic costs. [55][19]
+53. **Honest data cleaning = separate noise from signal with a NULL MODEL** (RMT/
+    Marčenko-Pastur band for covariance; our bootstrap's null for an equity curve).
+    Covariance denoising itself is out of scope (single coin). [56]
+54. **Even rigorous, interpretable, cost-aware daily-bar signals net ~0%** (Sharpe
+    0.33, p=0.34, honestly reported with ~12% power) and are strongly regime-
+    dependent — a model of honest-null reporting and direct thesis corroboration.
+    Many disjoint walk-forward folds catch the one-window fluke. [57]
+55. **Select parameters by a STABLE PLATEAU, not the single peak** (peaks are
+    overfit); double-OOS + smoothed grid + shuffled-block + bootstrap generalize
+    far better. **On CRYPTO (BTC/BNB/ETH): in-sample beats B&H, OOS only MATCHES
+    B&H (lower drawdown), and B&H+strategy BLENDS win** — a near-exact replica of
+    our thesis + a product idea (surface a blend). ~0.4% break-even cost. [58]
+56. **Augmentation is a small-data crutch** (400% gain on 30K samples → 40% on
+    255K); only causal/dependence-preserving transforms (Reverse/sign-flip HURT);
+    and it lifts financial metrics without lifting accuracy — for our large single-
+    coin history + evaluation use-case, of little value. [59][12]
+57. **GAN augmentation can help ML FORECASTING on scarce crypto data** (lower MSE,
+    Bitcoin>equities) — but lower MSE ≠ tradable edge, and augmenting *training*
+    data is a different job from our *evaluation* bootstrap (fabricating data is a
+    liability in the gate). [60]
+58. **The synthetic-data evaluation battery** = distributional + temporal +
+    stylized-fact + downstream-utility + (privacy); judge on utility & stylized
+    facts, not distributional fit alone. The **"trilemma"** (interpretability vs
+    temporal realism vs feasibility) is exactly why block bootstrap wins — it
+    sidesteps generation entirely. VAEs smooth extremes (again). [61][50]
+59. **"Derive rule parameters from the process, don't only search"** (OU optimal-
+    stopping for stop/take levels) avoids grid-search overfitting — but the OU/
+    stationary-mean-reversion assumption misfits trend/jump-heavy crypto; the
+    usable hybrid is vol-scaled (data-derived) thresholds à la triple-barrier. [62]
+60. **DFDR (discrete false-discovery-rate) is a more powerful multiple-testing
+    correction** than Reality Check; on MSCI indices some TA value survives
+    correction BUT only conditionally on regime + with frequent rebalancing (=
+    high turnover = cost-killed) — keeps us honest without overturning the thesis. [63]
+61. **Field-standard data cleaning = robust (median/MAD) loose outlier filter**
+    (>10 MAD from a rolling median) after deterministic checks (zero/neg prices,
+    single source, merge same-timestamp) — loose by design so it removes errors,
+    not real crash bars; make it trailing-only if it ever feeds a live decision. [64]
+62. **Diffusion (esp. interpretable trend/seasonal decomposition) is the least-bad
+    generator family** if forced off real data (more stable than GANs, steerable),
+    but general-benchmark fidelity ≠ crypto jump/tail preservation; block bootstrap
+    stays the default. [65][11]
 
 ## Methods / findings that hold up (and which don't)
 
@@ -177,6 +310,61 @@ synthetic-test-data ideas.*
 21. **Audit IS/WFA/OOS separation:** ensure param-tuning never sweeps the window
     the winner is later judged on; keep tuning / validation / forward data
     strictly disjoint. [29]
+22. **Judge any ML/predictive overlay by net P&L vs B&H, never by a statistical
+    score** (accuracy/F1/R²/raw Sharpe) — high metric ≠ tradable edge. [31][9]
+23. **If we ever build synthetic stress paths, validate on known-ground-truth
+    data first** and score rolling-window moments; prefer real-data block
+    bootstrap as default (no calibration/convergence burden vs GAN/diffusion/
+    copula/ABM). [32][34][4]
+24. **Set a causal, auditable gap-handling policy** for OHLCV: flag/exclude gappy
+    windows, never impute with future bars, and never bootstrap over imputed bars
+    as if they were real observations. [35]
+25. **Adopt the "Seven Sins" as an explicit data-bias audit checklist** in our
+    docs (we already address most); add an "outlier-dependence" check — does a
+    crowned config's edge survive if its one or two biggest winning bars are
+    resampled away? [36][37]
+26. **Make outlier cleaning conservative + auditable:** distinguish impossible
+    prints (instant-revert wicks, feed glitches → remove) from real violent moves
+    (→ keep); a silent winsorizer would flatter every strategy and break the
+    weakest-link verdict. [37]
+27. **Document "why daily time bars"** and what it costs: time bars are
+    statistically inferior, but operator-legible and wash-trade-safe vs volume/
+    dollar bars in crypto; it justifies block bootstrap + non-normal metrics over
+    a plain Sharpe + i.i.d. bootstrap. [38][19]
+28. **Close the training–serving skew (F5):** ensure the forward paper-trade runs
+    the *exact* strategy the bake-off ranked (reuse ComposedStrategy-from-TOML),
+    not a proxy — the feature served must equal the feature evaluated. [39]
+29. **Use THIS coin's empirical stylized facts as targets** (its tail index, ACF-
+    decay exponent, leverage sign, Hurst) — not textbook/equity constants — for
+    any synthetic-data validation or block-length justification; facts are asset-
+    specific and crypto's leverage sign is flipped. [42][43][44]
+30. **Track the Hurst / efficiency trend over the window**: if a coin's Hurst is
+    drifting toward 0.5, exploitable autocorrelation is shrinking — a quantitative
+    "is there even an edge to find?" pre-check that supports re-validation. [43][15]
+31. **Block length must hold a crypto volatility/jump cluster:** crypto jumps
+    dominate the tail and vol persistence is lower-but-spikier than equities, so
+    pick/justify block length empirically per coin ([18]) rather than porting an
+    equity default. [44][13][18]
+32. **Compute PBO via CSCV on the bake-off matrix** (top implementable pick with
+    DSR): report "in-sample winner falls below median OOS X% of the time" + a
+    performance-degradation haircut + use it as the overfit-rejection gate. [54][27]
+33. **Select the crowned config by a STABLE PARAMETER PLATEAU, not the single
+    grid peak** — a cheap, high-value change that crowns far fewer flukes; combine
+    with double-OOS and the existing block bootstrap. [58][26][14]
+34. **Source price data from a reputable CEX / CEX-aggregate and stamp provenance**
+    (CEX is more efficient than DEX, <5bps vs 10–50bps; volume is partly wash-
+    traded); use CEX-realistic taker-fee + spread costs (~0.4% break-even sanity
+    check). [55][19][58]
+35. **Write a data-cleaning runbook**: reject impossible bars (zero/neg, high<low),
+    fix duplicates/provenance, then a *loose* robust (median/MAD, ~10-MAD) outlier
+    flag for review — never auto-winsorize; trailing-only if it feeds live. [64][37]
+36. **Consider surfacing a B&H + strategy BLEND**, not only a single crowned active
+    strategy — the crypto evidence shows blends cut drawdown ~50% while matching
+    B&H, which fits an advisor's risk-aware framing. [58]
+37. **Keep synthetic generators research-only; if ever scoped, use the full
+    evaluation battery** (distributional + temporal + stylized-fact + downstream
+    utility + TSTR), and prefer interpretable diffusion over GAN/VAE — but expect
+    them to understate crypto jumps/tails. [61][49][65][50]
 
 ## Open questions / things worth testing in our app
 
@@ -189,6 +377,18 @@ synthetic-test-data ideas.*
   true trial count? Do any survive? [25][8]
 - Does our cost model silently mis-scale or zero out under any config? Is there a
   known-input regression test for it? [28][9]
+- What is the PBO (via CSCV) of our bake-off — how often does the in-sample winner
+  fall below median out-of-sample? Could it become an overfit-rejection gate? [54][27]
+- If we crown by a parameter-plateau instead of the single grid peak, does the
+  crowned config change, and does it generalize better forward? [58]
+- Which exchange/feed are we sourcing, and is its provenance stamped + its cost
+  spec CEX-realistic (vs DEX/gas economics)? [55][19]
+- Is the forward paper-trade running the EXACT crowned strategy (no SMA proxy)?
+  (training–serving skew / F5) [39]
+- Would surfacing a B&H+strategy blend (lower drawdown) be a better advisor output
+  than a single crowned active strategy? [58]
+- Does our outlier handling ever silently winsorize a real crash bar? Is cleaning
+  a documented, loose, robust (median/MAD) filter rather than mean/SD? [64][37]
 - Could a small bootstrap-derived (NOT GAN) "crash/jump" stress slice strengthen
   the robustness story without understating tails? [4][30]
 - Is there leakage between the param-tuning window and the ranking/forward window
@@ -228,10 +428,44 @@ synthetic-test-data ideas.*
 - Cost-model implementation is the dominant source of backtest divergence → [28]
 - IS/WFA/OOS must be strictly non-overlapping; true untouched holdout → [29]
 - Even careful GANs underestimate tails & miss breaks on volatile assets → [30]
+- LOB/tick out of scope; metric≠tradable-edge; judge by net P&L vs B&H → [31]
+- Deep generative models vs parametric; validate on known-truth first → [32]
+- Copulas separate marginals (tails) from serial+cross dependence → [33]
+- ABIDES agent-based simulator = mechanistic synthetic-data branch, out of scope → [34]
+- DL imputation survey; imputation is a leakage/uncertainty surface → [35]
+- Seven Sins of quant investing checklist (incl. outlier sin) → [36]
+- Two kinds of outlier: data-error (remove) vs real extreme (keep) → [37]
+- Time bars statistically inferior vs information-driven bars; we use daily → [38]
+- Feature stores: PIT-correct retrieval + training–serving skew (= our F5) → [39]
+- Overlapping-label concurrency; uniqueness weights + sequential bootstrap → [40]
+- Fractional differentiation: stationarity-vs-memory; crypto trend lives in level → [41]
+- Cont's stylized facts: 8/11 hold, asset-specific not universal → [42]
+- Bitcoin stylized facts strong but Hurst 0.42→0.49 (efficiency rising) → [43]
+- Crypto vol: inverse leverage, lower persistence, jumps dominate → [44]
+- BOCPD: online/causal regime detection as a leakage-free diagnostic → [45][46]
+- Stationary bootstrap (geometric block length) = our sensitivity-check cousin → [47]
+- de Prado's 10 reasons ML funds fail (mostly data discipline) → [48]
+- RCGAN + TSTR (train-on-synthetic-test-on-real) acceptance test → [49]
+- Synthetic-data-for-risk: VAE smooths extremes; evaluate utility+robustness → [50]
+- Adversarial/stress robustness is regime-conditional (calm≠stress) → [51]
+- Leakage drives the ML reproducibility crisis; model info sheets → [52]
+- Financial labeling: triple-barrier + meta-labeling (precision/recall split) → [53]
+- PBO via CSCV: computable on our bake-off matrix; overfit-rejection gate → [54]
+- CEX > DEX price-data quality; source/stamp a reputable CEX feed → [55]
+- RMT/Marčenko-Pastur denoising: noise-vs-signal null (covariance, out of scope) → [56]
+- Rigorous daily-bar signals net ~0%, regime-dependent; honest-null reporting → [57]
+- Parameter smoothing (stable plateau > single peak); double-OOS; ON CRYPTO OOS only matches B&H → [58]
+- Augmentation is a small-data crutch; causal transforms only; Reverse hurts → [59]
+- GAN augmentation helps ML forecasting on scarce crypto data (MSE≠edge) → [60]
+- Synthetic-data evaluation battery + generation "trilemma"; VAE smooths extremes → [61]
+- Derive rule params from process (OU optimal-stopping); misfits crypto → [62]
+- DFDR multiple-testing correction; some TA survives but regime/turnover-bound → [63]
+- Field-standard robust (median/MAD) loose outlier cleaning checklist → [64]
+- Diffusion-TS interpretable generator = least-bad if forced off real data → [65]
 
 ## Topic-level verdict (for our advisor)
 
-Across 30 papers the message is consistent and reinforces our product thesis:
+Across 65 papers the message is consistent and reinforces our product thesis:
 1. **Real-data moving-block bootstrap is the right default** for our robustness
    gate — it preserves the tails and volatility-cluster *positions* [13] that
    matter, can't fabricate dynamics [4][30], and is reproducible. Set its block

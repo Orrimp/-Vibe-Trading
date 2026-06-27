@@ -1,10 +1,16 @@
 # Knowledge — Machine Learning for Trading (classical ML, feature eng., forecasting)
 
 _Synthesized from `papers.md` (source of truth)._
-_Progress: 46 papers logged ([1]–[46]). Round 2 added [25]–[46]: conformal prediction &
+_Progress: 55+ papers logged. Round 2 added [25]–[46]: conformal prediction &
 calibration, GARCH & quantile/probabilistic risk forecasting, feature selection & sample
 reweighting, concept drift / online learning, costed-backtest negative results, crypto-ML
 overfitting, gradient-boosting volatility, and gate/objective-design papers._
+_Round 3 (in progress) added [47]–…: thin-seam fills — time-series classification
+(ROCKET/MiniROCKET [47][54], InceptionTime [55]); the HAR-RV volatility family [48];
+the MDA-vs-MDI feature-importance debate corrected (Sobol-MDA [49]); crypto information-
+driven bars + triple-barrier labeling [50]; isotonic-vs-Platt calibration choice [51];
+ensemble stacking with a leakage warning [52]; imbalanced rare-event handling — skip-SMOTE
+[53]._
 
 ## Key themes
 
@@ -135,6 +141,68 @@ overfitting, gradient-boosting volatility, and gate/objective-design papers._
     **average-uniqueness weighting + bagging `max_samples≈avg uniqueness`** [42][2]
     (weight by overlap) and **learning-trajectory reweighting** [32] (weight by
     learnability). Both reject the IID assumption that standard ML brings to finance.
+
+15. **Data leakage is the field-wide engine of false results — and it has a checklist.**
+    Kapoor & Narayanan [56] find leakage across 17 scientific fields / ~329 papers, with an
+    **eight-type taxonomy** (no clean split; pre-processing/feature-selection on combined
+    sets; illegitimate/future-encoding features; temporal leakage; non-independence) and a
+    **"model info sheet"** remedy. Several types ARE the financial-ML sins already in this
+    ledger: full-series smoothing/normalization [5], frac-diff-d/selector fit on all data
+    [2][5], look-ahead [4][5], overlapping-label non-independence [2][42]. Their marquee
+    result — in civil-war prediction, **every "complex ML beats logistic regression" claim
+    failed once leakage was fixed** — is our thesis in another field [13][38]. Bake an
+    eight-point leakage-audit into the engine for any learned component.
+
+16. **For time-series classification, random-convolution (ROCKET) is the pragmatic
+    sweet spot — and even the TSC field admits complexity ≠ progress.** The authoritative
+    TSC benchmark [54] ranks Hydra-MultiROCKET / HIVE-COTE v2 top, with **MiniROCKET
+    near-top at >10× the speed** and a linear-classifier head (Rust-friendly, overfitting-
+    resistant — random features + ridge, the sequence analogue of [24]). Its authors warn
+    the deep-TSC literature routinely does **model selection on test data** and that a flood
+    of new deep methods **didn't beat InceptionTime** [55] — a field-internal echo of our
+    skepticism [13][19]. Hard caveat: all this accuracy is on UCR datasets with *real* class
+    structure; financial direction/triple-barrier labels are near-noise [29][38], so TSC
+    accuracy says nothing about a tradable edge. If sequence features are ever wanted →
+    **MiniROCKET, gated**; shapelets [60][61] are heavier and background vs ROCKET.
+
+17. **Tree feature-importance is unreliable on BOTH axes — use retrain-without / TreeSHAP.**
+    The MDA-vs-MDI debate resolves *against trusting either default*: **MDI (gain) is
+    inconsistent** (can *lower* a feature's importance when its true impact rises) and biased
+    by collinearity/cardinality [58]; **MDA (permutation) is also unreliable under correlated
+    features** — it estimates a confounded quantity whose spurious term grows with dependence
+    [49]. Since financial features heavily co-move [17], the honest tools are the consistent
+    **TreeSHAP** (+ **SHAP interaction values** for regime-conditional vol×trend structure)
+    [58][8] and the expensive-but-correct **drop-column / Sobol-MDA** [49]. Interpretability
+    still ≠ edge [8][58]; feature interactions in markets are **regime-dependent** [59][30].
+
+18. **For rare-event / imbalanced labels, skip SMOTE; pick a robust calibrated model.**
+    Take-profit events are a rare imbalanced class. The benchmark [53] finds **explicit
+    rebalancing (SMOTE/over/under-sampling) is often unnecessary and can hurt** — synthetic
+    minority data distorts the distribution (acute in low-SNR finance), undersampling
+    discards signal. Better: a **robust probabilistic classifier (gradient-boosted trees),
+    threshold-tuning, PR-curve/G-mean metrics (not accuracy), then calibration**. And the
+    calibrator choice: **Platt scaling beats isotonic when calibration data is scarce**
+    [51] (our single-coin regime) — isotonic overfits small sets. Always verify calibration
+    on held-out data [36][51], the same "validate, don't assume" rule as conformal coverage [45].
+
+19. **The HAR-RV family is the simple, strong realized-volatility baseline.** HAR-RV
+    (regress RV on lagged **daily + weekly + monthly** RV) is a trivially-Rust-implementable
+    linear model that **beats GARCH/ARFIMA** at vol forecasting [48] — arguably a better
+    default vol feature than GARCH(1,1), or complementary (HAR=multi-scale persistence,
+    GARCH=clustering/leverage [27][28], the GBM study [44] also benchmarked HAR). Path-
+    dependent / semivariance extensions add marginal statistical gains [48] but carry the
+    field-standard **no-costed-trade / no-B&H** caveat — a better vol forecast still must
+    prove it beats holding net of costs (prior: drawdown-only [3][6-HMM]).
+
+20. **Feature search needs a multiple-testing gate too — the feature analogue of DSR.**
+    Mass-generating features (tsfresh/FRESH [63], ROCKET's 20k features [47]) creates the
+    same selection-bias as baking off many strategies: some look predictive by chance. The
+    honest control is an **FDR filter (Benjamini-Yekutieli)** on feature relevance [63] —
+    the feature-side twin of deflated-Sharpe/PBO/SPA on strategies [19][20][7]. But univariate
+    relevance tests miss interactions and keep correlated redundancy [49][58], and mass-
+    generation is itself the kitchen-sink trap parsimony warns against [17][23]: prefer a
+    small curated technical set first; auto-extraction + FDR is a disciplined fallback, not
+    a default.
 
 ## Methods / findings that hold up (and which don't)
 

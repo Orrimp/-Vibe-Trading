@@ -62,6 +62,107 @@ rules survive out-of-sample.*
 12. **Risk of ruin falls ~exponentially as you cut per-bet size** [17]; even a
     positive-edge strategy is ruined if bets are too large — the math behind
     fractional-Kelly + a hard position-size floor.
+13. **Drawdown-CONSTRAINED Kelly dominates plain fractional Kelly.** Instead of an
+    ad-hoc "½ Kelly," impose a convex bound on drawdown PROBABILITY and maximize
+    growth subject to it — one risk-aversion parameter, and it beats fractional Kelly
+    at equal drawdown risk OR equal growth [30]. The rigorous (model-independent)
+    constrained-growth optimum is literally a transform of the unconstrained Kelly
+    portfolio [31] — so "scale the Kelly position by a drawdown-state function"
+    ([10][12][13][25]) is the correct solution, not a hack.
+14. **CVaR (Expected Shortfall) is the right tail-risk OBJECTIVE/metric; VaR is not.**
+    VaR is non-convex and not sub-additive (diversification can raise it); CVaR is
+    coherent and minimizable by a convex/LP auxiliary function [34]. For us CVaR is a
+    trivial readout from the bootstrap loss distribution — report it instead of VaR.
+15. **Regime-gated de-risking is the most promising "active" risk tool — with the
+    usual caveat.** A persistence-penalized regime model (statistical jump model)
+    that goes to cash in detected bear regimes HALVED equity-index drawdowns
+    (S&P −55%→−27%) and even raised Sharpe, net of costs and delay [35]. But it was
+    on equity indices (persistent crash regimes), the penalty was CV-tuned (overfit
+    surface), and it still retimes the market — replicate under our gate, expect the
+    drawdown benefit to be more robust than the Sharpe benefit.
+16. **HRP / risk parity work BECAUSE they avoid covariance inversion and μ̂.**
+    "Markowitz's curse": inverting an ill-conditioned covariance matrix makes
+    MVO unstable and overfit; HRP's clustering + inverse-variance allocation beats
+    even min-variance OOS [32][33]. Multi-asset (N/A to one coin) but the strongest
+    cross-asset endorsement of estimation-light, variance-based, inversion-free sizing.
+17. **Robustness ↔ conservatism: size for the worst-case distribution, not the
+    point estimate.** Distributionally-robust Kelly maximizes worst-case growth over
+    an ambiguity set and is provably long-run optimal under uncertainty [42]; adding
+    Knightian uncertainty / fat tails on top of variance pushes the optimal fraction
+    DOWN further [43]. Both give a rigorous backing for our "shrink hard, the coin's
+    distribution is unknowable" instinct — and a wide ambiguity set on a no-edge coin
+    drives the bet toward zero (≈ just hold / don't actively size).
+18. **Coherent DRAWDOWN risk measures exist and are optimizable.** CDaR (mean of the
+    worst (1−β) drawdowns) is the drawdown analogue of CVaR, LP-formulable, with max-
+    and average-drawdown as limiting cases [41]. Expected max drawdown of a process
+    grows log T / √T / linear-T for positive / zero / negative drift [39] — so on a
+    near-zero-drift coin, drawdown GROWS with the holding horizon from randomness
+    alone; a large MDD is not by itself evidence of a bad strategy, and the horizon
+    must always be stated.
+19. **Crypto's fat left tail is partly a LEVERAGE-CYCLE artifact.** Deleveraging /
+    margin spirals [37] and crypto liquidation cascades produce fundamental-free
+    crashes and the gap/jump risk that breaks floor guarantees [11][13]. The
+    UNLEVERED holder is the structurally-advantaged "natural buyer" who survives the
+    spiral while levered holders are force-liquidated at the bottom — a deep
+    vindication of our no-leverage design. System-wide leverage/funding stress is a
+    candidate regime de-risk signal.
+20. **Retail value is partly DEBIASING, not just returns.** The disposition effect
+    (sell winners early, hold losers) is empirically present in Bitcoin [40]; a
+    rules-based sizing/exit plan beats the user's own biased behavior even if it does
+    not beat buy-and-hold on return — a legitimate reason to offer disciplined plans.
+21. **Be conservative on the INPUTS, not just the multiplier.** Concrete recipe:
+    feed a LOWER-QUANTILE (pessimistic) estimate of edge/probability AND an
+    UPPER-QUANTILE estimate of vol into any sizing rule [45][19]; the quantile level
+    is an interpretable conservatism dial. A chance-constraint ("only size up if
+    positive expected return at high confidence") is a significance gate before
+    sizing — aligned with our FROZEN gate.
+22. **Stops: pair, don't solo; and they're mostly cost.** A trailing stop ALONE is
+    provably suboptimal — pair it with a profit-take (an upper exit) [44]; the
+    triple-barrier (upper+lower+time) [38] is the disciplined form. But the value of
+    any stop still hinges on momentum/mean-reversion structure [8][44]; on a
+    near-random-walk coin expect drawdown reduction at a return cost.
+23. **Optimal-f = aggressive Kelly cousin; same verdict.** Vince's optimal-f / TWR
+    maximizes growth and has well-posed unique optima [47] but punishing drawdowns;
+    the deployable form is the drawdown-corrected fraction [25]. Don't expose raw
+    optimal-f to a retail user.
+24. **Vol scaling can LOWER net Sharpe, not just fail to raise it.** On futures
+    momentum, vol scaling raised raw return (15.3% vs 11.5%) but cut Sharpe
+    (0.39 vs ~0.59), and the extra turnover's costs make it worse net [48] — the
+    cost-aware twin of [2][28]. Only low-turnover / conditional vol targeting is
+    cost-survivable.
+25. **Report MEDIAN, not mean; we are never in Kelly's asymptotic regime.** Triple
+    Kelly's Monte-Carlo mean wealth was 940× but its MEDIAN was 0.017× (near-certain
+    wipeout) [55] — overbetting's average is a rare lottery path masking typical ruin.
+    And Kelly's superiority only shows up after ~10k–40k trades ("the long run had to
+    be really long") — a single coin over a few years has too few trades, so the
+    growth guarantee is unavailable and finite-sample ruin risk dominates → shrink
+    hard or don't size on μ. Our bootstrap already reports the distribution; size for
+    the median investor.
+26. **Vol targeting DOES control crypto risk — as a small, cash-diluted sleeve.**
+    A Boyd-group study folds crypto in as a 10% sleeve diluted with cash to a vol
+    target (EWMA/GARCH(1,1)) and gets good risk-adjusted results [49] — but the win
+    rests on DIVERSIFICATION + a SMALL allocation, neither of which a single 100%-crypto
+    coin has. Endorses dilute-with-cash-to-a-vol-target as our (no-leverage) risk lever;
+    does NOT promise beating buy-and-hold on one coin.
+27. **Don't build RL / heavy-ML sizing.** Learning a good Kelly-objective sizing
+    policy took ~2M steps ≈ 8,000 years of daily data even on clean simulation with a
+    KNOWN optimum [50]; on one noisy non-stationary coin it can only overfit. Prefer
+    closed-form, parameter-light sizing. Better vol POINT forecasts also don't
+    guarantee better TAIL (VaR/ES) forecasts [51] — measure the tail directly, don't
+    over-engineer σ̂.
+28. **Skew is a first-class risk metric; distrust smooth-Sharpe negative-skew.**
+    Most "risk premia" are paid for NEGATIVE skewness (insurance-selling: steady gains,
+    rare catastrophic loss); Sharpe rises ~linearly with negative skew [54]. A smooth
+    high-Sharpe backtest with negative skew is likely an unexploded tail bomb (martingale/
+    averaging-down/short-vol-like) — our gate must surface it; report SKEW. The
+    desirable exception is TREND/loss-cutting, which has POSITIVE skew [54] — aligning
+    with "trend beats puts as a tail hedge" [53].
+29. **Tail hedging: puts BLEED, trend is the better-value hedge.** Rolling OTM puts
+    earned −0.61%/yr (Sharpe −0.61) over 35 yrs from the volatility risk premium, while
+    multi-asset trend earned +8.7%/yr (Sharpe 0.84) with −0.08 equity correlation —
+    AQR prefers Trend over Put [53]. For our spot, no-options app the realistic "tail
+    hedge" is the defensive de-risking of a trend/regime rule, judged on LONG-RUN net
+    cost (the bleed dominates), not crash payoff alone.
 
 ## Methods / findings that hold up (and which don't)
 

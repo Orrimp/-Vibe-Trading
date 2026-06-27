@@ -10,16 +10,16 @@ Scaled up 2026-06-27 (operator: "increase to 100 per topic" + add `data`, split
 
 | Topic | Target | Read | Status | Ledger |
 |-------|-------:|-----:|--------|--------|
-| strategies              | 100 | 51 | 🟢 round 1 done | [ledger](strategies/papers.md) · [k](strategies/knowledge.md) |
-| backtesting             | 100 | 47 | 🟢 round 1 done | [ledger](backtesting/papers.md) · [k](backtesting/knowledge.md) |
-| ml-trading              | 100 | 46 | 🟢 round 1 done | [ledger](ml-trading/papers.md) · [k](ml-trading/knowledge.md) |
-| deep-learning           | 100 | 54 | 🟢 round 1 done | [ledger](deep-learning/papers.md) · [k](deep-learning/knowledge.md) |
-| data                    | 100 | 30 | 🟢 round 1 done | [ledger](data/papers.md) · [k](data/knowledge.md) |
-| evolution               | 100 | 32 | 🟢 round 1 done (9 migrated + 23) | [ledger](evolution/papers.md) · [k](evolution/knowledge.md) |
-| llms                    | 100 | 44 | 🟢 round 1 done (14 migrated + 30) | [ledger](llms/papers.md) · [k](llms/knowledge.md) |
-| risk-and-sizing         | 100 | 29 | 🟢 round 1 done | [ledger](risk-and-sizing/papers.md) · [k](risk-and-sizing/knowledge.md) |
-| crypto-market-structure | 100 | 34 | 🟢 round 1 done | [ledger](crypto-market-structure/papers.md) · [k](crypto-market-structure/knowledge.md) |
-| **TOTAL** | **900** | **367** | round 1 complete (~41%) | — |
+| strategies              | 100 | 81 | 🟢 round 2 done | [ledger](strategies/papers.md) · [k](strategies/knowledge.md) |
+| backtesting             | 100 | 77 | 🟢 round 2 done | [ledger](backtesting/papers.md) · [k](backtesting/knowledge.md) |
+| ml-trading              | 100 | 78 | 🟢 round 2 done | [ledger](ml-trading/papers.md) · [k](ml-trading/knowledge.md) |
+| deep-learning           | 100 | 84 | 🟢 round 2 done | [ledger](deep-learning/papers.md) · [k](deep-learning/knowledge.md) |
+| data                    | 100 | 65 | 🟢 round 2 done | [ledger](data/papers.md) · [k](data/knowledge.md) |
+| evolution               | 100 | 55 | 🟡 round 2 (clipped) | [ledger](evolution/papers.md) · [k](evolution/knowledge.md) |
+| llms                    | 100 | 60 | 🟡 round 2 (parse-err clipped) | [ledger](llms/papers.md) · [k](llms/knowledge.md) |
+| risk-and-sizing         | 100 | 65 | 🟢 round 2 done | [ledger](risk-and-sizing/papers.md) · [k](risk-and-sizing/knowledge.md) |
+| crypto-market-structure | 100 | 65 | 🟢 round 2 done | [ledger](crypto-market-structure/papers.md) · [k](crypto-market-structure/knowledge.md) |
+| **TOTAL** | **900** | **630** | round 2 complete (~70%) | — |
 
 _`llm-and-evolution/` (23, batch 1) was **split + retired** 2026-06-27 — its 9
 evolution-side entries migrated to `evolution/`, its 14 LLM-side to `llms/`.
@@ -61,6 +61,7 @@ listed**, and add a batch (~25–40) toward 100, writing incrementally. For `llm
 `research/llm-and-evolution/papers.md` (renumber from [1]) before extending. After
 each round: regenerate this file + `papers.md`, commit.
 
-_Last updated: 2026-06-27 — round 1 complete (367/900, ~41%); llm-and-evolution
-split+retired. Round 2 pending: every topic still < 100 — re-spawn a researcher per
-topic (read ledger, skip listed titles, +batch). ~2–3 more rounds reach 100 each._
+_Last updated: 2026-06-27 — round 2 complete (630/900, ~70%). Round 3 (final)
+pending: every topic still < 100 (evolution 55 + llms 60 were clipped by a
+parse-error / session limit — they need ~40 more; the rest need ~15–25). Re-spawn a
+researcher per topic (read ledger, skip listed titles, +batch). One round reaches 100 each._
