@@ -1,7 +1,10 @@
 # Knowledge — Machine Learning for Trading (classical ML, feature eng., forecasting)
 
-_Synthesized from `papers.md` (source of truth). Final update for this run._
-_Progress: 24 papers logged ([1]–[24])._
+_Synthesized from `papers.md` (source of truth)._
+_Progress: 46 papers logged ([1]–[46]). Round 2 added [25]–[46]: conformal prediction &
+calibration, GARCH & quantile/probabilistic risk forecasting, feature selection & sample
+reweighting, concept drift / online learning, costed-backtest negative results, crypto-ML
+overfitting, gradient-boosting volatility, and gate/objective-design papers._
 
 ## Key themes
 
@@ -64,7 +67,74 @@ _Progress: 24 papers logged ([1]–[24])._
    technical indicators on price/volume were the workhorse [17]. Most "new" factors
    are redundant given the zoo [10]; ~65% of published anomalies don't replicate
    conservatively [9]. Yet "Shrinking the Cross-Section" [18] warns the right frame is
-   **shrinkage toward stable/high-variance directions**, not naive sparsity.
+   **shrinkage toward stable/high-variance directions**, not naive sparsity. Concrete
+   selection methods: **permutation/shuffling importance** [32] (≈ MDA [2]), **FSA**
+   [33], **double-selection LASSO** [10] — and the *same multiple-testing penalty*
+   [19][20] applies to "best feature subset" as to "best strategy."
+
+8. **Forecast *distributions*, not point estimates — predictability hides in the tails.**
+   The center of the return distribution is near-unpredictable, but there is genuine
+   *distributional* structure: penalized quantile regression finds predictors whose
+   sign **reverses from the lower to the upper quantile** [30], and distribution-free
+   quantile methods beat GARCH for **VaR/Expected-Shortfall** tail forecasting [31].
+   This reframes the tiny mean-R² of [1][4]: a model can be useless for the mean yet
+   informative about *risk*. The honest output for a single coin is a **return
+   interval** (conformal [25]) or a **downside-risk number** (VaR/ES [31]), not a
+   point prediction — and a wide interval straddling zero is itself evidence of no edge.
+
+9. **Uncertainty must be *calibrated*, and finance breaks the easy assumptions.**
+   Conformal prediction gives distribution-free coverage — but only under
+   **exchangeability**, which temporal dependence and regime change violate [25];
+   adaptive/online conformal (state-aware, reweighted calibration) is required for
+   non-stationary series. Calibration is a first-class concern for any probability we
+   show or size on.
+
+10. **Concept drift / non-stationarity is the operational risk of the forward phase.**
+    A strategy ranked best on a past window goes stale when the input→target relation
+    shifts ("concept drift" [26], the ML name for regime change). Cheap drift detectors
+    [26] and online/regret-bounded learners [35] can *track* the shift — but detection
+    lags the move [11][12][26] and a regret bound is only *relative* ("close to the best
+    fixed rule"), so if no fixed rule beats B&H, low regret still means you don't beat
+    B&H [35]. Drift tooling is best as a **staleness monitor / re-bake trigger**, not
+    timing alpha.
+
+11. **For volatility, GARCH is still a strong, conservative baseline.** ML edges GARCH
+    on average vol-forecast error but by tiny, asset-specific margins, and **ML
+    systematically *under*-predicts vol while GARCH *over*-predicts** [28] — so for a
+    *risk* throttle GARCH's conservatism is safer (don't underestimate risk when
+    extremes loom). GARCH encodes real stylized facts (clustering, leverage) worth using
+    as an interpretable feature [27][28]. GARCH-X is a sensible Rust-implementable vol
+    estimator.
+
+12. **Independently-converged gate designs validate ours — and add concrete rules.**
+    Two 2026 frameworks reinvent our bake-off gate from scratch: AlgoXpert's **IS-WFA-OOS**
+    protocol [40] (stable parameter *plateaus* + cliff-sensitivity veto, walk-forward with
+    purge gap, **majority-pass 2/3 folds + catastrophic veto**, OOS parameter-lock with
+    pre-committed thresholds) and GT-Score [41] (rank on a **robustness-aware multiplicative
+    composite** μ·ln(z)·R²/σ_d, not raw return → +98% OOS-retention). Both are weakest-link
+    in spirit, like ours. The new actionable rules: (a) crown a *plateau*, not the single
+    peak; (b) rank on consistency + downside + significance, not raw return — but with a
+    **fat-tail-correct** significance term [20], since both papers' Z-scores assume
+    normal i.i.d. returns, which crypto violates.
+
+13. **Costed, B&H-benchmarked ML studies confirm the prior — directional accuracy is an
+    OOS mirage; famous crypto "wins" are survivorship artifacts.** The cleanest replication
+    [38]: 13 RF models on SPY minute data, train directional accuracy 80–87% → **test 48–50%
+    (worse than a coin flip)**, train R² ~0.78 → **test R² negative**, and **every model lost
+    money vs B&H +2.29%**. Price features beat technical indicators at that frequency. And the
+    most-cited crypto-ML "beats the market" paper [43] (1,681 coins, astronomical returns)
+    dissolves on inspection: **survivorship bias** (dead coins excluded), zero-market-impact /
+    unlimited-supply assumptions, unstable parameters, no walk-forward, no significance test —
+    the crypto analogue of the equity microcap anomaly [9][21]. Astronomical compounded
+    returns are a *red flag*, like R²≈1.0 on price levels [16]. Joins [13][19][34] as the
+    honest-testing set; reinforces single-coin, liquid, cost-aware, survivorship-clean.
+
+14. **Sample weighting for non-IID labels is mandatory if we ever train.** Financial
+    labels from overlapping windows are non-IID — far fewer *unique* observations than
+    rows — so naive training overfits [42][2]. Two complementary reweighting schemes:
+    **average-uniqueness weighting + bagging `max_samples≈avg uniqueness`** [42][2]
+    (weight by overlap) and **learning-trajectory reweighting** [32] (weight by
+    learnability). Both reject the IID assumption that standard ML brings to finance.
 
 ## Methods / findings that hold up (and which don't)
 
@@ -144,6 +214,49 @@ _Progress: 24 papers logged ([1]–[24])._
    costs** — survives the literature; hold the door only *slightly* open ([24][22]
    show edge is possible but in configurations we can't use).
 
+8. **Prefer distributional / risk outputs over point forecasts (an honesty win, even
+   without alpha) — and here are the concrete recipes.** Since the mean is near-unpredictable
+   but the tails carry structure [30][31], the most defensible thing our advisor can *add* is
+   not a return prediction but an **honest uncertainty band** and a **downside-risk number**.
+   Concrete, classical, Rust-friendly methods that came up: (a) for an interval, **Multi-step
+   Split Conformal Prediction (MSCP)** is the benchmarked winner on coverage+efficiency [45],
+   or the equally simple **Quantile Residual Simulation** (point forecast + empirical
+   error-quantile distribution) [44] — both avoid the **quantile-crossing** failure of naive
+   pinball-loss quantile regression [30][44]; (b) for downside risk, **quantile-based VaR/ES**
+   beats GARCH on the tails [31]. Always **validate coverage empirically** — several popular
+   conformal wrappers (EnbPI/SPCI/Nixtla) *fail* coverage on dependent data [45], and no UQ
+   method is universally best [46]. A wide interval straddling zero is the truthful "we don't
+   know — holding is fine" signal — a disclosure/decision-quality win independent of alpha;
+   the VaR/ES estimate is a natural sizing/throttle input to gate (lean GARCH-conservative
+   for the throttle [28]).
+
+9. **Add a staleness monitor to the forward phase, and a minimum-evidence period.**
+   A cheap concept-drift detector on the live stream [26] can trigger "re-run the
+   bake-off / re-evaluate the crowned pick" instead of letting a stale winner trade —
+   more honest than assuming the past window still holds. Pair with a **minimum
+   track-record / test-period requirement** [34][20] before any "it's beating B&H"
+   claim from forward paper-trading. Both are guardrails, not alpha; expect drift
+   detection to lag [11][12].
+
+10. **Harden the bake-off with plateau-selection + a robustness-aware ranking objective.**
+    Two concrete, implementable upgrades validated by independent 2026 frameworks: (a)
+    **crown a stable parameter *plateau*, not the single highest-Sharpe peak**, and apply a
+    **cliff-sensitivity veto** that rejects fragile peaks whose neighbors collapse [40] —
+    a precise formalization of robustness our bake-off currently lacks; (b) **rank
+    strategies on a robustness-aware composite** (return × significance × equity-curve
+    consistency ÷ downside deviation), not raw return/Sharpe [41], which demonstrably
+    doubles OOS retention — but swap their normal-i.i.d. Z-score for the skew/kurtosis-aware
+    **Deflated/Probabilistic Sharpe** [20] given crypto's fat tails. Combined with a
+    **majority-pass-across-folds + catastrophic-veto** verdict [40] (already our weakest-link
+    spirit), this fixes *selection* at ranking time, not just via post-hoc veto.
+
+11. **If we ever train a learned component, weight samples for non-IID labels.** Overlapping
+    triple-barrier labels are non-IID [42][2]: down-weight by **average uniqueness** and set
+    bagging `max_samples ≈ avg uniqueness`; optionally add **learning-trajectory reweighting**
+    [32]. Choose its inputs with **permutation/shuffling importance** [32] (≈ MDA [2]) or FSA
+    [33], and **calibrate** its output probability (reliability diagram + ECE + Brier →
+    isotonic/Platt) [36] before mapping confidence to bet size [15].
+
 ## Open questions / things worth testing in our app
 
 - Does a meta-labeling "whether-to-act" filter on an existing strategy beat single-coin
@@ -160,7 +273,21 @@ _Progress: 24 papers logged ([1]–[24])._
 - Would fractionally-differentiated price features change which bake-off strategy wins,
   or just add overfitting surface? [2][3]
 - Is out-of-sample directional accuracy on our coins ever materially >55% once leakage
-  is removed and measured on returns (not levels)? (Prior: no.) [4][5][16]
+  is removed and measured on returns (not levels)? (Prior: no.) [4][5][16][38]
+- Would a **conformal/QRS prediction interval** on next-window return (MSCP [45] or QRS
+  [44]) be a net honesty improvement for the operator — i.e. does its empirically-verified
+  coverage hold on our coins, and does a "lower-bound-acceptable → act, else hold" rule
+  (HR-LR [39]) ever clear the gate vs B&H net of costs? (Prior: intervals are honest and
+  useful; the act-rule rarely beats holding.)
+- Would adopting **plateau-selection + cliff-veto** [40] and a **robustness-aware ranking
+  composite** (consistency + downside + fat-tail-correct significance [41][20]) change
+  which strategy our bake-off crowns, and improve its forward (OOS) retention vs ranking on
+  raw return/Sharpe? (Prior: yes — fewer overfit crowns, more honest winners.)
+- Does a **GARCH(1,1)/GARCH-X or QRS-LGBM volatility estimate** [28][44] as a sizing/throttle
+  input beat single-coin B&H net of costs, or only reduce drawdown without adding return?
+  (Prior: drawdown-only, like [3][6-HMM].)
+- Is a **concept-drift detector** [26] on the forward stream a useful re-bake trigger, or
+  does its lag make it fire too late to help (and just add churn)? [11][12]
 
 ## Paper map (claim -> supporting [N])
 
@@ -197,3 +324,47 @@ _Progress: 24 papers logged ([1]–[24])._
 - Feature engineering + classical ML ≥ deep learning on financial tabular tasks → [23]
 - "Virtue of complexity": ridge-regularized overparameterized models predict returns
   better OOS, but need shrinkage and die under costs → [24]
+- Conformal prediction gives distribution-free intervals but needs exchangeability;
+  non-stationary/regime data requires adaptive/online conformal → [25]
+- Concept drift = regime change in ML terms; cheap detectors work but detecting ≠
+  profitably reacting (lag) → [26]
+- GARCH encodes useful vol stylized facts; a GARCH(1,1)/GARCH-X vol estimate is a strong
+  interpretable feature → [27][28]
+- GARCH vs ML for vol: ML edges on avg error but ML under-predicts / GARCH over-predicts;
+  GARCH safer for a risk throttle → [28]
+- Triple-barrier param grid for balanced labels; deep (LSTM) ≈ classical (XGBoost) on
+  F1, both barely above base rate → [29]
+- Predictability is tail-specific: quantile predictors reverse sign across the
+  distribution; forecast distributions not means → [30]
+- Distribution-free quantile VaR/ES beats GARCH on tails; good for crypto's fat tails →
+  [31]
+- Permutation/shuffling feature selection + learning-trajectory sample reweighting for
+  low-SNR financial data → [32]
+- Feature Selection with Annealing prunes 1,000→few; author caveat "accuracy ≠
+  reliability" → [33]
+- "Backtest looks great, live fails"; minimal test-period to tell edge from luck (time
+  analogue of MinTRL) → [34]
+- Online learning for stat-arb: distribution-free, regret-bounded — but regret is
+  relative to best fixed rule, not to B&H → [35]
+- Calibration (ECE/Brier/reliability diagrams; isotonic/Platt) is mandatory for any
+  probability we size on → [36][15]
+- Best-designed pro-deep result (futures, cost-breakeven, turnover-efficiency) still
+  needs a multi-asset cross-section we can't use → [37]
+- Costed RF on SPY minute: train acc 80%→test 48%, test R²<0, all models lose to B&H
+  +2.29% → [38]
+- Conformal-to-decision bridge: HR-LR rule (high lower-bound = act, else hold); beats
+  simple baselines but no costs/3 stocks → [39]
+- Independent gate design = ours: IS plateau + cliff veto + WFA majority-pass +
+  catastrophic veto + OOS lock → [40]
+- Rank on robustness composite (return × sig × consistency ÷ downside), not raw return;
+  +98% OOS retention → [41]
+- López de Prado's 10 failure modes; non-IID overlapping labels → weight by average
+  uniqueness → [42][2]
+- Most-cited crypto-ML "beats market" result is survivorship-biased + zero-impact
+  assumptions; astronomical returns = red flag → [43]
+- GBM (LightGBM) beats HAR/RF for BTC vol; QRS gives calibrated intervals (avoids quantile
+  crossing); volume change + lagged RV dominate → [44]
+- Conformal method horse-race: MSCP wins coverage+efficiency; EnbPI/SPCI/Nixtla fail
+  coverage on dependent data → [45]
+- UQ-toolbox review: validate coverage, no method universally best, conformal recalibrates
+  any base model post-hoc; GAMLSS models scale/shape → [46]

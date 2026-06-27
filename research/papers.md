@@ -3,8 +3,8 @@
 Aggregate view. **The per-topic ledgers are the source of truth** — open them for
 full entries (Title, Authors, Year, Source, % read, Summary, Relevance).
 
-**Program: 100 papers per topic × 9 topics (~900), resumable over rounds.** Batch 1
-(117 across the original 5) is committed; the expansion + 4 new topics run in rounds.
+**Program: 100 papers per topic × 9 topics (~900), resumable over rounds.** Round 1
+complete: **367 papers** across the 9 topics (committed). Rounds 2–3 extend each to 100.
 
 - [strategies](strategies/papers.md) — quant/algo strategies, factors, microstructure, execution
 - [backtesting](backtesting/papers.md) — backtest methodology (overfitting metrics, CV, data-snooping, costs)
@@ -17,7 +17,7 @@ full entries (Title, Authors, Year, Source, % read, Summary, Relevance).
 - [crypto-market-structure](crypto-market-structure/papers.md) — funding/basis/perp, crypto vol & liquidity, on-chain, regimes
 
 **Counts:** see [PROGRESS.md](PROGRESS.md); cross-topic roadmap in [SYNTHESIS.md](SYNTHESIS.md).
-(`llm-and-evolution/` is being split into `evolution/` + `llms/` and then retired.)
+(`llm-and-evolution/` was split into `evolution/` + `llms/` and retired 2026-06-27.)
 
 _This file is an index. The orchestrator regenerates the aggregate count here +
 in PROGRESS.md after each batch; agents never write to this file._
