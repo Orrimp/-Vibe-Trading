@@ -43,6 +43,13 @@
 !/data/defillama-stablecoins/
 /data/defillama-stablecoins/*
 !/data/defillama-stablecoins/REVISION.toml
+# Deribit DVOL implied-vol corpus (advisor-options-impliedvol-probe, ADR-0072,
+# 2026-06-26): daily BTC+ETH DVOL OHLC from Deribit get_volatility_index_data.
+# Bulk parquets stay gitignored (mirrors data/binance-basis); only the
+# REVISION.toml pin is tracked for reproducibility.
+!/data/deribit-dvol/
+/data/deribit-dvol/*
+!/data/deribit-dvol/REVISION.toml
 # Dynamic on-demand Binance klines cache (advisor-dynamic-data, ADR-0061).
 # git-ignored by the existing `/data/*` rule above — this comment documents the
 # intent. NO `!data/binance-dynamic/` exception is added: the dynamic cache is

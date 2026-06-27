@@ -70,6 +70,12 @@ pub mod funding_data;
 #[cfg(feature = "realdata")]
 pub mod basis_data;
 
+/// Deribit DVOL implied-vol parquet loader and as-of join (ADR-0072 / advisor-options-impliedvol-probe).
+/// Mirrors `basis_data` for `data/deribit-dvol/` (DVOL = daily implied-vol index, BTC+ETH only).
+/// Compiled only when `--features realdata` (DVOL data requires real parquets).
+#[cfg(feature = "realdata")]
+pub mod dvol_data;
+
 pub use engine::run_scenario;
 pub use engine::{
     BacktestKpis, DateRange, MatchingEngine, ParamSheet, RunError, RunReport, ScenarioConfig,

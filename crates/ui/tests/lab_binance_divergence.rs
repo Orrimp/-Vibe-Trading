@@ -87,6 +87,7 @@ fn scenario_cfg(
         short_enabled: false,
         initial_capital: None,
         composed_toml_override: None,
+        dvol_override: None,
     }
 }
 

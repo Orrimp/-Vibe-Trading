@@ -88,9 +88,10 @@ use crate::strings::{
     LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
     LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG,
     LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL, LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
-    LEADERBOARD_SIGNAL_OBV_LABEL, LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
-    LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
-    LEADERBOARD_WINNER_ROBUST_CLAUSE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
+    LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL, LEADERBOARD_SIGNAL_OBV_LABEL,
+    LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL, LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL,
+    LEADERBOARD_WINNER_FRAGILE_CLAUSE, LEADERBOARD_WINNER_ROBUST_CLAUSE,
+    SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -999,6 +1000,8 @@ fn display_label(strategy: &str) -> &str {
         "vol_breakout" | "v0.vol_breakout" => LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL,
         "roc_momentum" | "v0.roc_momentum" => LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
         "obv" | "v0.obv" => LEADERBOARD_SIGNAL_OBV_LABEL,
+        // ADR-0072 DVOL implied-vol regime probe (BTC+ETH only; filtered at runtime).
+        "dvol_regime" | "v0.dvol_regime" => LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL,
         other => other,
     }
 }
@@ -1271,6 +1274,11 @@ mod tests {
                 LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
             ),
             ("obv", "v0.obv", LEADERBOARD_SIGNAL_OBV_LABEL),
+            (
+                "dvol_regime",
+                "v0.dvol_regime",
+                LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL,
+            ),
         ];
         for (bare, prefixed, expected_label) in cases {
             for id in [bare, prefixed] {
@@ -1301,6 +1309,7 @@ mod tests {
             LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL,
             LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
             LEADERBOARD_SIGNAL_OBV_LABEL,
+            LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL,
         ];
         for (i, a) in new_labels.iter().enumerate() {
             for b in &new_labels[i + 1..] {

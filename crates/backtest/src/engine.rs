@@ -292,6 +292,18 @@ pub struct ScenarioConfig {
     // sets `Some(...)`. Sweep cells always use `write_report = false` (ADR-0069
     // D9) so no anchored report body is ever written when this is `Some`.
     pub composed_toml_override: Option<String>,
+
+    // ── ADR-0072 D5 — DVOL exogenous-series override ─────────────────────────
+    //
+    // Pre-resolved as-of DVOL daily closes, one entry per bar in chronological
+    // order. `None` entry = DVOL not yet started for that bar (warm-up).
+    //
+    // ANCHOR-PRESERVING CONTRACT: all CLI/Lab/anchored paths leave this `None`.
+    // Only the `v0.dvol_regime` arm reads this field; the bake-off loop sets
+    // it for BTC/ETH only. For all other arms / symbols: `None` → untouched.
+    // `write_report = false` on the bake-off path → no anchored body is
+    // ever written when this is `Some`.
+    pub dvol_override: Option<Vec<Option<rust_decimal::Decimal>>>,
 }
 
 /// In-memory result of a completed backtest run (ADR-0030).
@@ -685,6 +697,8 @@ fn strategy_dir_slug(strategy_id: &str) -> &str {
         "v0.donchian_break" | "btc_donchian_break" | "v0.donchian_floor" | "btc_donchian_floor"
         | "v0.vol_breakout" | "btc_vol_breakout" | "v0.roc_momentum" | "btc_roc_momentum"
         | "v0.obv" | "btc_obv" => "v0-signal-library",
+        // ADR-0072: DVOL implied-vol regime probe.
+        "v0.dvol_regime" => "v0-dvol-probe",
         "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => "v15a-mean-reversion-pairs",
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => "v2.5.tcn_overlay_weights",
@@ -1833,6 +1847,64 @@ pub async fn run_scenario(
             Ok(report)
         }
 
+        // ── v0.dvol_regime — Deribit DVOL implied-vol regime long/flat (ADR-0072) ──────
+        //
+        // Holds the coin when DVOL < trailing 30-day median (calm), steps to cash
+        // when DVOL >= median (stress). Signal LOCKED (no search). BTC+ETH only;
+        // other symbols → arm absent from field (D-DVOL.6), never panics.
+        //
+        // The arm reads `cfg.dvol_override` — the pre-resolved as-of DVOL series
+        // (one entry per bar) injected by the bake-off loop. If `dvol_override`
+        // is None (arm skipped for unsupported symbol), this arm is never dispatched.
+        "v0.dvol_regime" => {
+            use strategy::DvolRegimeStrategy;
+
+            let as_of_dvol = cfg.dvol_override.clone().unwrap_or_default();
+
+            let input = crate::cli_types::SmaComposedRunInput {
+                strategy_id: "v0.dvol_regime".to_string(),
+                symbol: cfg.pair.1.clone(),
+                start_year,
+                bar_count,
+                initial_capital,
+                slippage_bps: 2,
+                taker_fee_bps: 4,
+                sma_fast_len: None,
+                sma_slow_len: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                short_enabled: false, // long-only; no short path
+                composed_toml_override: None,
+            };
+
+            // Build the DvolRegimeStrategy with the pre-resolved as-of DVOL series.
+            // The strategy is pure (no I/O) and unit-testable with a synthetic vec.
+            let dvol_strategy = Box::new(DvolRegimeStrategy::new(
+                cfg.pair.1.clone(),
+                as_of_dvol,
+                strategy::DVOL_REGIME_WINDOW,
+            ));
+
+            let result = crate::scenarios::sma_composed_run::run_with_strategy(
+                &input,
+                cfg.bars_override.clone(),
+                seed_u64,
+                dvol_strategy,
+                cancel_rx,
+                progress_tx,
+            )
+            .await
+            .map_err(|e| match e {
+                crate::scenarios::sma_composed_run::SmaRunError::Cancelled => RunError::Cancelled,
+                crate::scenarios::sma_composed_run::SmaRunError::Other(e) => {
+                    RunError::Internal(e.to_string())
+                }
+            })?;
+            let mut report = sma_composed_result_to_report(&result, start_year);
+            // write_report=false on bake-off path → anchor-safe (D-DVOL.5).
+            report.report_path = None;
+            Ok(report)
+        }
+
         // ── v0.buyhold — passive buy-and-hold benchmark (anchor-additive, ADR-0059) ───
         //
         // Equal-weight buy-and-hold: buys the coin at bar-0 close (or bar-0
@@ -2436,6 +2508,7 @@ mod tests {
             short_enabled: false,
             initial_capital: None, // None → legacy 100_000 default
             composed_toml_override: None,
+            dvol_override: None,
         }
     }
 
@@ -2681,6 +2754,7 @@ mod tests {
             short_enabled: false,
             initial_capital: None,
             composed_toml_override: None,
+            dvol_override: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |_path| Ok(()));
         assert!(
@@ -2718,6 +2792,7 @@ mod tests {
             short_enabled: false,
             initial_capital: None,
             composed_toml_override: None,
+            dvol_override: None,
         };
         let result = maybe_write_report(&cfg, "v0.sma", "test-scenario", &[], |path| {
             // Write minimal content so the file exists.

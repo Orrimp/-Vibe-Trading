@@ -66,6 +66,7 @@ fn momentum_config() -> ScenarioConfig {
         short_enabled: false,
         initial_capital: None,
         composed_toml_override: None,
+        dvol_override: None,
     }
 }
 

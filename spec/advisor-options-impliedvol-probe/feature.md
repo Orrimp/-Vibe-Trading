@@ -1,10 +1,10 @@
 ---
 slug: advisor-options-impliedvol-probe
 version: 0.2.0
-status: arch-done
-owner: architect
+status: tester-done
+owner: tester
 priority: P2
-updated: 2026-06-26
+updated: 2026-06-27
 arch_refs:
   - spec/architecture/adr/0072-dvol-implied-vol-exogenous-series-probe.md
   - spec/architecture/adr/0058-pit-as-of-series-primitive.md
@@ -874,3 +874,65 @@ corpus, pinned by SHA exactly like the existing corpora.
   (`BakeoffRequest.seed`, `bakeoff/mod.rs:286`); the DVOL arm adds no RNG. No new anchor SHA
   in `spec/anchors.toml` is added or changed by this design (the 9 anchor SHAs are untouched;
   any future banked DVOL surface is a separate anchor-additive amendment, not this feature).
+
+## Implementation
+
+Developer: completed T2–T7 (2026-06-27). T1 (diagnostic) and T8–T9 (real data + bakeoff run) remain.
+
+**What was built:**
+
+- `data/deribit-dvol/REVISION.toml` — placeholder REVISION manifest (SHA all zeros; parquets not yet fetched). `.gitignore` extended to track only REVISION.toml.
+- `crates/data/src/bin/fetch_deribit_dvol.rs` — Deribit DVOL fetcher (DvolFetcher trait, HttpDvolFetcher, MockDvolFetcher, paginator, aggregate_to_daily, write_parquet, revision manifest). Registered in `crates/data/Cargo.toml` as `[[bin]] fetch_deribit_dvol`.
+- `crates/backtest/src/dvol_data.rs` — loader (DvolDataSource, DvolDataError, dvol_as_of via PitSeries). `#[cfg(feature = "realdata")]`. No-look-ahead falsifier cloned from basis_data.rs.
+- `crates/strategy/src/dvol_regime.rs` — `DvolRegimeStrategy: Strategy`, W=30 trailing median (Decimal-exact), LOCF dedup, Buy/Sell edge emission. 12 unit tests.
+- `crates/backtest/src/engine.rs` — `ScenarioConfig.dvol_override` field added; `"v0.dvol_regime"` match-arm; `strategy_dir_slug` branch.
+- `crates/backtest/src/scenarios/sma_composed_run.rs` — `run_with_strategy()` (pre-built strategy variant, bypasses TOML loading).
+- `crates/backtest/src/bakeoff/mod.rs` — `default_field()` += `v0.dvol_regime`; bakeoff loop filter (BTCUSDT/ETHUSDT only, else arm absent); `dvol_override: None` in ScenarioConfig literal.
+- `crates/backtest/src/bakeoff/sweep.rs` — `dvol_override: None` in all 5 ScenarioConfig literals.
+- `crates/backtest/tests/dvol_regime_divergence_end_to_end.rs` — T7a: mandatory divergence gate (≥1 bp from buyhold on falling-price STRESS fixture). **Passes.**
+- `crates/backtest/tests/dvol_regime_leak_check.rs` — T7b: mandatory leak-check (future-shifted DVOL changes equity). **Passes.**
+- `crates/backtest/tests/robustness_bootstrap_bites.rs` — `default_field_unchanged_additive_contract` extended to assert `v0.dvol_regime` present + prior 9 ids intact.
+- All existing `ScenarioConfig` literals in `crates/backtest/tests/`, `crates/ui/tests/`, `crates/strategy/tests/`, `crates/ui/src/`, `crates/backtest/src/` updated with `dvol_override: None`.
+
+**Gates verified:**
+- `cargo build --workspace` — clean.
+- `cargo clippy -p strategy -p backtest -p ui -p data -- -D warnings` — clean.
+- `cargo fmt` — clean workspace-wide.
+- `scripts/verify_anchors.sh` — 119/119 PASS.
+- T7a divergence e2e: `test dvol_regime_diverges_from_buyhold_by_at_least_1bp ... ok`.
+- T7b leak-check: `test future_shifted_dvol_changes_decisions ... ok`, `test warmup_no_dvol_matches_buyhold_on_flat_bars ... ok`.
+- DvolRegimeStrategy unit tests: 12/12 ok.
+- `default_field_unchanged_additive_contract`: ok (10 ids present, 9 prior unchanged).
+
+**Phase 2 (wired-and-fed, 2026-06-27 developer pass) — all operator-blocked items resolved:**
+
+- **Task 1 (SHA pin)**: `EXPECTED_DVOL_REVISION_SHA` updated from all-zeros placeholder to
+  `8e6b8000e87dde1c1af59a378a4e29a4e68367d24b9784e9817215e34d4c402f` in
+  `crates/backtest/src/dvol_data.rs:47`. Unit smoke test (`real_corpus_load_smoke`) confirms
+  182 rows loaded, SHA matches.
+
+- **Task 2 (core fix — wired-and-fed)**: `crates/backtest/src/bakeoff/mod.rs` received the key fix:
+  replaced `dvol_override: None` stub with real load+inject via new `pub fn resolve_dvol_override`
+  + `#[cfg(feature = "realdata")]` / `#[cfg(not(feature = "realdata"))]` pair. Maps `BTCUSDT → BTC`,
+  `ETHUSDT → ETH`; builds `TimeSpan` from `date_range_to_ms_pair`; calls `DvolDataSource::load`
+  (SHA-verified) + `dvol_as_of` aligned to preloaded bar timestamps. Graceful degradation: corpus
+  absent → `tracing::warn!` + skip arm (warm-up-only fallback). Both `cargo build -p backtest`
+  (default features) and `--features realdata` compile clean.
+
+- **Task 3 (bakeoff-path gate)**: Added `crates/backtest/tests/dvol_bakeoff_path_gate.rs`
+  with 4 `#[ignore]`d corpus-dependent tests:
+  1. `resolve_dvol_override_returns_some_with_real_corpus` — verifies loader returns Some+non-empty
+  2. `dvol_regime_bakeoff_differs_from_buyhold` (BTC H1_2024) — proves arm is not the None stub
+  3. `dvol_regime_bakeoff_eth_differs_from_buyhold` (ETH H1_2024) — same for ETH
+  4. `solusdt_bakeoff_runs_clean_without_dvol_arm` — proves non-BTC/ETH graceful skip
+
+- **Task 4 (T8 decisive verdict)**:
+  - BTC H1_2024: `v0.dvol_regime` sharpe=-0.190, total_return=-0.29%, trades=15 vs
+    `v0.buyhold` sharpe=1.486, total_return=+47.78%. Divergence=48,082 USDT (32.5%).
+    Recommendation: **BenchmarkWins** — the honest null (pre-registered expected outcome).
+  - ETH H1_2024: `v0.dvol_regime` sharpe=0.397, total_return=+0.75%, trades=17 vs
+    `v0.buyhold` sharpe=1.297, total_return=+49.77%. Divergence=49,022 USDT.
+    Note: `ActiveWins` without bootstrap; with frozen bootstrap gate the arm would be FRAGILE.
+  - SOLUSDT arm-absent: 10 candidates (v0.dvol_regime absent), clean.
+
+- **Verification**: `119/119 anchors PASS`; `cargo clippy --workspace --all-targets` EXIT 0.

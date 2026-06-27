@@ -946,6 +946,8 @@ pub fn lab_config_to_scenario(cfg: &LabRunConfig) -> Result<backtest::ScenarioCo
         initial_capital: None,
         // Lab UI path always loads strategy from disk — no in-memory TOML override.
         composed_toml_override: None,
+        // Lab UI path does not supply DVOL data — DVOL arm not available via Lab.
+        dvol_override: None,
     })
 }
 

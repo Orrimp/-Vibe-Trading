@@ -882,6 +882,271 @@ fn note_discard<E: std::fmt::Display>(
     err
 }
 
+// ── run_with_strategy: pre-built strategy variant (ADR-0072) ─────────────────
+
+/// Run a single-symbol backtest with a pre-built `Box<dyn Strategy>`.
+///
+/// Variant of `run` for arms (like `v0.dvol_regime`) that hold a pre-resolved
+/// exogenous series in the strategy and cannot be expressed as a composed TOML.
+///
+/// Bypasses the TOML-loading section of `run`; all other logic (bar loop,
+/// matching engine, equity curve, fills, slippage, cancellation) is identical.
+///
+/// # Anchor safety
+///
+/// The bake-off always calls this with `write_report = false` → no Markdown
+/// body is written → 119/119 anchors are unaffected (D-DVOL.5).
+///
+/// # Errors
+///
+/// Returns `Err(SmaRunError::Cancelled)` if the cancel handle fires.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+pub async fn run_with_strategy(
+    input: &SmaComposedRunInput,
+    bars_override: Option<Vec<Bar>>,
+    seed: u64,
+    strategy: Box<dyn strategy::Strategy>,
+    cancel_rx: crate::cancel::RunCancelReceiver,
+    progress_tx: crate::progress::ProgressSender,
+) -> Result<SmaComposedRunResult, SmaRunError> {
+    use crate::engine::MatchingEngine as _;
+
+    let mut total_discarded_orders = 0usize;
+    let mut total_signals_with_side = 0usize;
+    let start_instant = Instant::now();
+
+    // ── 1. Register the pre-built strategy ───────────────────────────────────
+    let registry = strategy::StrategyRegistry::new();
+    let strategy_meta = StrategyMeta {
+        id: input.strategy_id.clone(),
+        kind: "compiled-in".to_string(),
+        hash_hex: "n/a".to_string(),
+        source_path: "compiled-in".to_string(),
+        signal: input.strategy_id.clone(),
+        notes: format!("Pre-built strategy: {}", input.strategy_id),
+    };
+    registry.register(strategy);
+
+    // ── 2. Generate or use provided bars ─────────────────────────────────────
+    let bars = bars_override.unwrap_or_else(|| {
+        let start_price = default_start_price(&input.symbol);
+        synthetic_bars_minute(
+            &input.symbol,
+            input.bar_count,
+            seed,
+            start_price,
+            input.start_year,
+        )
+    });
+
+    let bar_count = bars.len();
+    let bars_arc: Arc<Vec<Bar>> = Arc::new(bars);
+
+    // ── 3. Risk + matching engine setup ──────────────────────────────────────
+    let risk_limits = RiskLimits {
+        per_symbol_exposure_cap: dec!(0.40),
+        price_sanity_band: dec!(0.20),
+        portfolio_exposure_cap: None,
+    };
+    let sizer = risk::FixedFractionSizer::new(dec!(0.10));
+
+    let match_config = crate::paper::MatchConfig {
+        slippage_bps: input.slippage_bps,
+        taker_fee_bps: input.taker_fee_bps,
+        maker_fee_bps: 2,
+        fill_price_mode: crate::paper::FillPriceMode::BarClose,
+    };
+    let mut engine = crate::PaperEngine::new(match_config, seed);
+    let mut state = BacktestState::new(input.initial_capital);
+    let mut position = Position::empty(input.symbol.clone());
+    let tolerance = dec!(0.01);
+    let mut all_fills: Vec<FillView> = Vec::new();
+    let mut position_curve: Vec<(i64, Decimal)> = Vec::with_capacity(bar_count);
+
+    // ── 4. Bar loop ───────────────────────────────────────────────────────────
+    for (bar_idx, bar) in bars_arc.iter().enumerate() {
+        #[allow(clippy::verbose_bit_mask)]
+        let poll_now = bar_idx == bar_count.saturating_sub(1)
+            || if bar_idx < 128 {
+                bar_idx & 0x1F == 0
+            } else {
+                bar_idx & 0x7F == 0
+            };
+        if poll_now {
+            if cancel_rx.is_cancelled() {
+                return Err(SmaRunError::Cancelled);
+            }
+            progress_tx.try_send(crate::progress::Progress {
+                current_bar: bar_idx,
+                total_bars: bar_count,
+                elapsed_ms: u64::try_from(start_instant.elapsed().as_millis()).unwrap_or(u64::MAX),
+            });
+        }
+
+        let bar = bar.clone();
+        let mark = bar.close.get();
+        position.last_mark = bar.close;
+        let equity = state.equity(mark);
+        let signals = registry.on_bar(&bar);
+        let mut orders: Vec<Order> = Vec::new();
+
+        for sig in &signals {
+            // Long-only clamp (short_enabled=false for DVOL arm).
+            let desired_side: Option<Side> = match sig.kind {
+                trading_core::SignalKind::Buy if position.base_qty <= Decimal::ZERO => {
+                    Some(Side::Buy)
+                }
+                trading_core::SignalKind::Sell if position.base_qty > Decimal::ZERO => {
+                    Some(Side::Sell)
+                }
+                _ => None,
+            };
+
+            if let Some(side) = desired_side {
+                total_signals_with_side += 1;
+                let order_opt = match side {
+                    Side::Buy => {
+                        let eq_money: Money<Usdt> = Money::from_decimal(equity);
+                        risk::size_and_validate(
+                            &sizer,
+                            sig.strategy_id.clone(),
+                            sig.symbol.clone(),
+                            side,
+                            eq_money,
+                            bar.close,
+                            &position,
+                            &risk_limits,
+                        )
+                        .map_err(|e| {
+                            note_discard(e, &sig.symbol, side, &mut total_discarded_orders)
+                        })
+                        .ok()
+                    }
+                    Side::Sell => Quantity::new(position.base_qty)
+                        .ok()
+                        .filter(|q| q.get() > Decimal::ZERO)
+                        .and_then(|q| {
+                            Order::new(
+                                sig.strategy_id.clone(),
+                                sig.symbol.clone(),
+                                Side::Sell,
+                                q,
+                                OrderKind::Market,
+                                TimeInForce::Ioc,
+                                &position,
+                                bar.close,
+                                &risk_limits,
+                                equity,
+                            )
+                            .map_err(|e| {
+                                note_discard(
+                                    e,
+                                    &sig.symbol,
+                                    Side::Sell,
+                                    &mut total_discarded_orders,
+                                )
+                            })
+                            .ok()
+                        }),
+                };
+                if let Some(ord) = order_opt {
+                    orders.push(ord);
+                }
+            }
+        }
+
+        if !orders.is_empty()
+            && let Ok(fills) = engine.step(&bar, orders).await
+        {
+            for fill in &fills {
+                let sim_slip_cost = crate::scenarios::sim::sim_slippage_cost(
+                    fill.qty.get(),
+                    fill.price.get(),
+                    fill.side,
+                    &input.latency_slippage_sim,
+                    &fill.symbol,
+                );
+                match fill.side {
+                    Side::Buy => {
+                        state.apply_buy(fill.qty.get(), fill.price.get(), fill.fee.amount());
+                        state.cash -= sim_slip_cost;
+                        position.base_qty += fill.qty.get();
+                        position.cost_basis = Money::from_decimal(state.position_cost);
+                    }
+                    Side::Sell => {
+                        state.apply_sell(
+                            fill.qty.get(),
+                            fill.price.get(),
+                            fill.fee.amount(),
+                            false,
+                        );
+                        state.cash -= sim_slip_cost;
+                        position.base_qty -= fill.qty.get();
+                        if position.base_qty < Decimal::ZERO {
+                            position.base_qty = Decimal::ZERO;
+                        }
+                    }
+                }
+                all_fills.push(FillView {
+                    symbol: fill.symbol.clone(),
+                    side: fill.side,
+                    price: fill.price,
+                    qty: fill.qty,
+                    fee: fill.fee,
+                    fee_tier: fill.fee_tier,
+                    venue_ts: fill.venue_ts,
+                    transaction_id: smol_str::SmolStr::default(),
+                });
+            }
+        }
+
+        let post_fill_equity = state.equity(mark);
+        state.update_drawdown(post_fill_equity);
+        state.equity_curve.push(post_fill_equity);
+        position_curve.push((bar.close_ts.unix_millis(), position.base_qty));
+
+        if bar_idx % 1440 == 0 {
+            let recomputed = state.cash + state.position_qty * mark;
+            let recorded = post_fill_equity;
+            if (recomputed - recorded).abs() > tolerance {
+                state.ledger_imbalance_events += 1;
+            }
+        }
+    }
+
+    if total_discarded_orders > 0 && state.trades == 0 && total_signals_with_side > 0 {
+        tracing::error!(
+            strategy = %input.strategy_id,
+            symbol = %input.symbol,
+            signals = total_signals_with_side,
+            discarded = total_discarded_orders,
+            "run_with_strategy: all candidate orders discarded — likely a symbol/asset mismatch"
+        );
+    }
+
+    let elapsed = start_instant.elapsed().as_secs_f64();
+    let final_equity = state.equity(position.last_mark.get());
+    tracing::info!(elapsed_s = elapsed, trades = state.trades, final_equity = %final_equity, "run_with_strategy backtest complete");
+
+    Ok(SmaComposedRunResult {
+        trades: state.trades,
+        buys: state.buys,
+        sells: state.sells,
+        total_fees: state.total_fees,
+        final_equity,
+        initial_equity: input.initial_capital,
+        max_drawdown: state.max_drawdown,
+        bar_count,
+        elapsed_secs: elapsed,
+        equity_curve: state.equity_curve.clone(),
+        fills: all_fills,
+        bars: bars_arc,
+        strategy_meta,
+        state,
+        position_curve,
+    })
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

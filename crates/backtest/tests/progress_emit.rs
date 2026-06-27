@@ -32,6 +32,7 @@ fn sma_config() -> ScenarioConfig {
         short_enabled: false,
         initial_capital: None,
         composed_toml_override: None,
+        dvol_override: None,
     }
 }
 
@@ -127,6 +128,7 @@ fn cross_sectional_config(strategy: &str) -> ScenarioConfig {
         short_enabled: false,
         initial_capital: None,
         composed_toml_override: None,
+        dvol_override: None,
     }
 }
 

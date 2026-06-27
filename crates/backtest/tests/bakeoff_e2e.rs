@@ -95,6 +95,7 @@ mod bakeoff_arm_parity {
             short_enabled: false,
             initial_capital: None,
             composed_toml_override: None,
+            dvol_override: None,
         };
 
         let report = run_scenario(cfg, cancel_rx, progress_tx)
@@ -268,8 +269,8 @@ mod bakeoff_progress {
 
 /// T7.1 — full wired advisor bake-off on real BTCUSDT H1_2024 data.
 ///
-/// Runs `run_bakeoff` with the EXACT config the live cockpit uses — 13 arms
-/// (4 rule engines + 8 vote ensembles + buy-and-hold appended), the real
+/// Runs `run_bakeoff` with the EXACT config the live cockpit uses — 19 arms
+/// (10 rule engines + 8 vote ensembles + buy-and-hold appended), the real
 /// Bootstrap robustness gate (1000 paths), `H1_2024` from the pinned corpus,
 /// `BinanceCache`. Prints the full ranked leaderboard with `--nocapture` for
 /// orchestrator sanity-checking against reality.
@@ -298,10 +299,10 @@ mod bakeoff_full_wired_advisor {
             .to_path_buf()
     }
 
-    /// T7.1 — full 13-arm advisor bake-off on real BTCUSDT H1_2024 data.
+    /// T7.1 — full 19-arm advisor bake-off on real BTCUSDT H1_2024 data.
     ///
     /// Replicates `ui::leaderboard::runner::default_bakeoff_config` exactly:
-    /// - field = `default_field()` ∪ `default_ensemble_field()` (12 arms before buyhold).
+    /// - field = `default_field()` ∪ `default_ensemble_field()` (18 arms before buyhold).
     /// - seed  = `LAB_DEFAULT_SEED` = `[0xC0, 0xFF, 0xEE, 0, …]`.
     /// - robustness = Bootstrap { paths: 1000, seed: u64_from_le_bytes(seed[0..8]) }.
     /// - data_source = BinanceCache.
@@ -309,7 +310,7 @@ mod bakeoff_full_wired_advisor {
     ///
     /// Prints the full ranked leaderboard and asserts:
     /// 1. buy-and-hold total_return > +20% (proves real data, not synthetic GBM).
-    /// 2. All 13 arms produce results (no missing candidate).
+    /// 2. All 19 arms produce results (no missing candidate).
     /// 3. Ensembles (`v0.8.vote.*`) are present and distinct from the members.
     #[ignore]
     #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
@@ -436,11 +437,12 @@ mod bakeoff_full_wired_advisor {
 
         // ── Sanity assertions ─────────────────────────────────────────────────
 
-        // 1. All 13 arms present: 12 field entries + 1 buy-and-hold.
+        // 1. All 19 arms present: 18 field entries + 1 buy-and-hold (BTC/ETH: includes
+        //    the ADR-0072 v0.dvol_regime arm; ADR-0071 added the 5 signal-library arms).
         assert_eq!(
             report.candidates.len(),
-            13,
-            "T7.1: expected 13 candidates (12 field + 1 buyhold), got {}",
+            19,
+            "T7.1: expected 19 candidates (18 field + 1 buyhold), got {}",
             report.candidates.len()
         );
 
@@ -1031,6 +1033,7 @@ mod leaderboard_tuning_divergence {
                 short_enabled: false,
                 initial_capital: Some(dec!(100_000)),
                 composed_toml_override: None,
+                dvol_override: None,
             };
             run_scenario(cfg, cancel, ProgressSender::disabled())
                 .await

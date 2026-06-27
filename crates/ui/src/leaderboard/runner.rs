@@ -58,8 +58,9 @@ fn advisor_field() -> Vec<trading_core::StrategyId> {
 
 /// The total number of arms the advisor bake-off puts head-to-head — the
 /// `advisor_field()` size **plus the buy-and-hold benchmark** that `run_bakeoff`
-/// always appends. Post-ADR-0071 this is 18 (9 single rule engines + 8 vote
-/// ensembles + buy-and-hold; the 9 = 4 original + 5 ADR-0071 signal-library arms).
+/// always appends. Post-ADR-0072 this is 19 for BTC/ETH (10 single rule engines +
+/// 8 vote ensembles + buy-and-hold; the 10 = 4 original + 5 ADR-0071 arms + 1
+/// ADR-0072 DVOL arm). For other symbols the DVOL arm is filtered → 18 arms.
 /// Single-sourced from `advisor_field()` so it can never drift from the real field;
 /// surfaced in the leaderboard header context (OQ-2) so a wider field is self-explanatory.
 /// `+ 1` is the appended benchmark.

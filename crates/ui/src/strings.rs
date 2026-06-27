@@ -2673,6 +2673,13 @@ pub const LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL: &str = "Momentum burst (5% over
 /// cumulative volume-flow / accumulation rule).
 pub const LEADERBOARD_SIGNAL_OBV_LABEL: &str = "On-balance-volume accumulation";
 
+/// `v0.dvol_regime` — hold the coin while Deribit DVOL (the BTC/ETH 30-day
+/// implied-vol index) sits BELOW its own trailing 30-day median (the calm
+/// regime), else step to cash (ADR-0072, the options/implied-vol fresh-channel
+/// probe; BTC+ETH only — the arm is absent for other coins).
+pub const LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL: &str =
+    "Implied-vol regime (hold when DVOL < 30-day median)";
+
 /// The short-field disclaimer carried on the leaderboard when one or more
 /// short-capable arms are in the field (R-SS.9 / ADR-0068 § D8). Frames the
 /// honest "a short's drawdown can be brutal" signal + the unbounded-loss

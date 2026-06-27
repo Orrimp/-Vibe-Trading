@@ -179,6 +179,30 @@ fn default_field_unchanged_additive_contract() {
         !base_ids.contains(&"v0.8.vote.unanimous"),
         "default_field must NOT include ensemble ids"
     );
+
+    // ADR-0072 additive-contract check: v0.dvol_regime MUST be present,
+    // and all 9 prior ids must still be in the field (nothing removed).
+    let prior_9 = [
+        "v0.sma",
+        "v0.5.macd",
+        "v0.5.rsi",
+        "v0.5.bbands",
+        "v0.donchian_break",
+        "v0.donchian_floor",
+        "v0.vol_breakout",
+        "v0.roc_momentum",
+        "v0.obv",
+    ];
+    for id in &prior_9 {
+        assert!(
+            base_ids.contains(id),
+            "default_field additive-contract: prior id {id} must still be present after ADR-0072 addition; got: {base_ids:?}"
+        );
+    }
+    assert!(
+        base_ids.contains(&"v0.dvol_regime"),
+        "default_field must include 'v0.dvol_regime' (ADR-0072); got: {base_ids:?}"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

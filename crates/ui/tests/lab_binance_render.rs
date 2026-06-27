@@ -256,6 +256,7 @@ fn binance_sourced_run() -> Option<(Vec<trading_core::Bar>, Vec<(i64, Decimal)>)
         // (the engine.rs:1252 contract). Added here to track the new
         // `ScenarioConfig` field the parallel T7 builder introduced.
         composed_toml_override: None,
+        dvol_override: None,
     };
     let (_cancel, recv) = ui::lab::runner::cancellation_pair();
     let report = rt

@@ -24,6 +24,8 @@ pub mod always_long;
 pub mod cash_hold;
 pub mod composed;
 pub mod cross_sectional;
+/// `v0.dvol_regime` — Deribit DVOL implied-vol regime long/flat filter (ADR-0072).
+pub mod dvol_regime;
 /// F8 signal-vote ensemble (ADR-0063): `EnsembleStrategy` + `VoteMethod` + `build_ensemble`.
 pub mod ensemble;
 pub mod pairs;
@@ -47,6 +49,7 @@ pub use cross_sectional::{
     CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy,
     ScoreSource, SelectionMode, select_above_threshold, top_k_long,
 };
+pub use dvol_regime::{DVOL_REGIME_WINDOW, DvolRegimeStrategy};
 pub use ensemble::{
     EnsembleBuildError, EnsembleStrategy, MemberStance, VoteMethod, arbitrate, build_ensemble,
     build_member,

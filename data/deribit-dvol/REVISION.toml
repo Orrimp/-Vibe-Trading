@@ -1,0 +1,15 @@
+[revision]
+sha256 = "8e6b8000e87dde1c1af59a378a4e29a4e68367d24b9784e9817215e34d4c402f"
+
+[revision.metadata]
+generated_at = "2026-06-27T00:05:25Z"
+binance_base = "https://www.deribit.com/api/v2"
+fetch_tool = "fetch_deribit_dvol"
+fetch_version = "0.1.0"
+interval = "43200"
+
+[files]
+"BTC/2023.parquet" = "a17daa2c062e813742a0a21cafe75ac2774eb1e2292ae2b1284ee31854f1d0e9"
+"BTC/2024.parquet" = "0833c00e9f47c693251b474c9a79af7d9906c959670784600b7a7036071a7583"
+"ETH/2023.parquet" = "ada6550a853288c4e17ddd4e7646d5c91e8c51d35e3466cfd25a2a571266ffc8"
+"ETH/2024.parquet" = "93f47290ded16fa360c545f338f2f85a5b93c8b93ec38937199c4d461e0acdcd"

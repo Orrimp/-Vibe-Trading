@@ -48,6 +48,142 @@ use crate::{
 /// Mirrors `BINANCE_CORPUS_ROOT` in `crates/ui/src/lab/runner.rs`.
 const BINANCE_CORPUS_ROOT: &str = "data/binance";
 
+/// Path to the Deribit DVOL parquet corpus, relative to the workspace root.
+#[cfg(feature = "realdata")]
+const DVOL_CORPUS_ROOT: &str = "data/deribit-dvol";
+
+// ── DVOL override resolver (ADR-0072 Task 2 core fix) ────────────────────────
+
+/// Map a bake-off `symbol` (e.g. `"BTCUSDT"`) to the DVOL corpus symbol
+/// (e.g. `"BTC"`). Returns `None` for unsupported symbols.
+#[cfg(feature = "realdata")]
+fn dvol_corpus_symbol(symbol_str: &str) -> Option<&'static str> {
+    match symbol_str {
+        "BTCUSDT" => Some("BTC"),
+        "ETHUSDT" => Some("ETH"),
+        _ => None,
+    }
+}
+
+/// Load the as-of DVOL series for a BTC/ETH bake-off arm and return it as
+/// `Some(Vec<Option<Decimal>>)` aligned to `bar_open_ts_ms`.
+///
+/// This is the **core fix** for the prior `dvol_override: None` stub that made
+/// the `v0.dvol_regime` arm vacuous (permanent warm-up → equals buy-and-hold).
+///
+/// # Algorithm
+///
+/// 1. Map `symbol` (`BTCUSDT`/`ETHUSDT`) → DVOL corpus symbol (`BTC`/`ETH`).
+/// 2. Build `TimeSpan` from `(start_ms, end_ms)` derived from `range`.
+/// 3. Load + SHA-verify the DVOL corpus via `DvolDataSource::load`.
+/// 4. Build `dvol: Vec<(i64, Decimal)>` from the rows filtered to the mapped symbol.
+/// 5. Run `dvol_as_of(&dvol, &bar_open_ts_ms)` → `Some(series)`.
+///
+/// # Graceful degradation (MANDATORY)
+///
+/// If the corpus is missing (`RevisionMissing`) or the load fails for any reason
+/// (e.g. a CI machine without the gitignored parquets), emits `tracing::warn!`
+/// and returns `None` — the engine falls back to an empty DVOL series (warm-up-only
+/// = buy-and-hold proxy). The bake-off NEVER crashes on a best-effort probe arm.
+///
+/// # Compile-time gate
+///
+/// This function exists ONLY when `--features realdata` is active (DVOL loading
+/// requires polars). The `#[cfg(not(feature = "realdata"))]` variant always
+/// returns `None` so `cargo build -p backtest` (default features) compiles clean.
+#[cfg(feature = "realdata")]
+#[must_use]
+pub fn resolve_dvol_override(
+    symbol_str: &str,
+    range: &DateRange,
+    bar_open_ts_ms: &[i64],
+    scenario_name: &str,
+) -> Option<Vec<Option<rust_decimal::Decimal>>> {
+    use crate::dvol_data::{DvolDataSource, dvol_as_of};
+    use crate::realdata::TimeSpan;
+
+    let corpus_sym_str = dvol_corpus_symbol(symbol_str)?;
+    let corpus_sym = trading_core::Symbol::new(corpus_sym_str);
+
+    let (start_ms, end_ms) = date_range_to_ms_pair(range);
+    let span = TimeSpan {
+        start_ms,
+        end_ms,
+        // Labels are only used for report output (write_report=false on bakeoff path).
+        start_label: Box::leak(format!("{start_ms}").into_boxed_str()),
+        end_label: Box::leak(format!("{end_ms}").into_boxed_str()),
+    };
+
+    let src = DvolDataSource::new(
+        std::path::PathBuf::from(DVOL_CORPUS_ROOT),
+        vec![corpus_sym.clone()],
+    );
+
+    let loaded = match src.load(&span, scenario_name) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!(
+                symbol = symbol_str,
+                corpus_sym = corpus_sym_str,
+                error = %e,
+                "v0.dvol_regime: DVOL corpus load failed — arm will run warm-up-only (arm skipped gracefully)"
+            );
+            return None;
+        }
+    };
+
+    if loaded.rows.is_empty() {
+        tracing::warn!(
+            symbol = symbol_str,
+            corpus_sym = corpus_sym_str,
+            "v0.dvol_regime: DVOL corpus returned 0 rows for the requested span — arm will run warm-up-only"
+        );
+        return None;
+    }
+
+    // Build sorted (day_close_ts_ms, dvol_close) pairs for the corpus symbol.
+    let mut dvol: Vec<(i64, rust_decimal::Decimal)> = loaded
+        .rows
+        .iter()
+        .filter(|r| r.symbol == corpus_sym)
+        .map(|r| (r.day_close_ts_ms, r.dvol_close))
+        .collect();
+    dvol.sort_unstable_by_key(|&(ts, _)| ts);
+
+    if dvol.is_empty() {
+        tracing::warn!(
+            symbol = symbol_str,
+            corpus_sym = corpus_sym_str,
+            "v0.dvol_regime: no DVOL rows found for corpus symbol — arm will run warm-up-only"
+        );
+        return None;
+    }
+
+    tracing::info!(
+        target: "bakeoff.dvol",
+        symbol = symbol_str,
+        corpus_sym = corpus_sym_str,
+        dvol_rows = dvol.len(),
+        bars = bar_open_ts_ms.len(),
+        "DVOL series resolved for v0.dvol_regime arm"
+    );
+
+    Some(dvol_as_of(&dvol, bar_open_ts_ms))
+}
+
+/// Fallback when `realdata` feature is disabled: DVOL loading requires polars.
+/// Returns `None` always; the engine arm runs warm-up-only (buy-and-hold proxy).
+#[cfg(not(feature = "realdata"))]
+#[must_use]
+pub fn resolve_dvol_override(
+    _symbol_str: &str,
+    _range: &DateRange,
+    _bar_open_ts_ms: &[i64],
+    _scenario_name: &str,
+) -> Option<Vec<Option<rust_decimal::Decimal>>> {
+    None
+}
+
 /// Map a `DateRange` to `(start_ms, end_ms)` UTC epoch-millis.
 ///
 /// Mirrors `binance_range_to_ms_pair` in `crates/ui/src/lab/runner.rs` EXACTLY
@@ -359,6 +495,10 @@ impl BakeoffConfig {
     /// - `v0.vol_breakout`   — `high >= max(high, 20) AND volume > 2 * avg(volume, 20)`
     /// - `v0.roc_momentum`   — `close > avg(close, 10) * 1.05`
     /// - `v0.obv`            — `obv() > obv_avg(20) AND close > sma(50)`
+    ///
+    /// ADR-0072 additions:
+    /// - `v0.dvol_regime`    — Deribit DVOL implied-vol regime long/flat filter (BTC+ETH only).
+    ///   Filtered out for symbols where `dvol_supported()` is false (arm ABSENT, no crash).
     #[must_use]
     pub fn default_field() -> Vec<StrategyId> {
         vec![
@@ -373,6 +513,8 @@ impl BakeoffConfig {
             StrategyId(SmolStr::new_static("v0.vol_breakout")),
             StrategyId(SmolStr::new_static("v0.roc_momentum")),
             StrategyId(SmolStr::new_static("v0.obv")),
+            // ADR-0072: DVOL implied-vol regime probe (BTC+ETH only; filtered at runtime).
+            StrategyId(SmolStr::new_static("v0.dvol_regime")),
         ]
     }
 
@@ -704,6 +846,46 @@ pub async fn run_bakeoff(
         // All other arms default to false → byte-identical long-only path.
         let short_enabled = BakeoffConfig::is_short_enabled(strategy.0.as_str());
 
+        // ADR-0072 D8: filter v0.dvol_regime for unsupported symbols.
+        // `dvol_supported` = {BTCUSDT, ETHUSDT}. For other symbols, the arm
+        // is removed from the field before dispatching (arm ABSENT, never crash).
+        let symbol_str = req.symbol.0.as_str();
+        let is_dvol_arm = strategy.0.as_str() == "v0.dvol_regime";
+        let dvol_sym_ok = matches!(symbol_str, "BTCUSDT" | "ETHUSDT");
+        if is_dvol_arm && !dvol_sym_ok {
+            tracing::debug!(symbol = %req.symbol, "v0.dvol_regime skipped — DVOL not available for this symbol");
+            continue;
+        }
+
+        // ADR-0072 Task 2 core fix: resolve the real DVOL as-of series for BTC/ETH.
+        //
+        // For the v0.dvol_regime arm on BTC/ETH, load + SHA-verify the DVOL corpus
+        // and run dvol_as_of() aligned to the preloaded bar timestamps.
+        //
+        // If the corpus is missing (e.g. a CI machine without the gitignored parquets)
+        // or the load fails for any reason, `resolve_dvol_override` emits a warn! and
+        // returns None — the arm gracefully runs warm-up-only (= buy-and-hold proxy).
+        // The bake-off NEVER crashes on this best-effort probe arm.
+        //
+        // For non-DVOL arms, dvol_override is always None (ignored by the engine).
+        let dvol_override = if is_dvol_arm {
+            // Build the bar_open_ts_ms slice from the preloaded bars.
+            // If preloaded_bars is None (synthetic / Yahoo path), we cannot resolve
+            // DVOL — skip gracefully (the engine arm will run warm-up-only).
+            if let Some(bars) = preloaded_bars.as_deref() {
+                let bar_ts: Vec<i64> = bars.iter().map(|b| b.open_ts.unix_millis()).collect();
+                resolve_dvol_override(symbol_str, &req.range, &bar_ts, strategy.0.as_str())
+            } else {
+                tracing::warn!(
+                    symbol = %req.symbol,
+                    "v0.dvol_regime: no preloaded bars available (synthetic/Yahoo path) — arm will run warm-up-only"
+                );
+                None
+            }
+        } else {
+            None
+        };
+
         let scenario_cfg = ScenarioConfig {
             strategy: strategy.clone(),
             pair: (trading_core::Venue::Binance, req.symbol.clone()),
@@ -727,6 +909,9 @@ pub async fn run_bakeoff(
             initial_capital: Some(bakeoff_initial_capital),
             // Bake-off arms always load from disk — no in-memory TOML override.
             composed_toml_override: None,
+            // ADR-0072 Task 2 core fix: real DVOL series for BTC/ETH arm;
+            // None for all other arms (ignored by the engine).
+            dvol_override,
         };
 
         let report = run_scenario(scenario_cfg, cancel_rx.sibling(), progress_tx.clone()).await?;

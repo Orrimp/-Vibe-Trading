@@ -197,6 +197,7 @@ async fn run_one_path(sym: &Symbol, strat: &str, path_bars: Vec<Bar>) -> Option<
         short_enabled: false,
         initial_capital: None,
         composed_toml_override: None,
+        dvol_override: None,
     };
     let (_h, cancel_rx) = cancellation_pair();
     match backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled()).await {

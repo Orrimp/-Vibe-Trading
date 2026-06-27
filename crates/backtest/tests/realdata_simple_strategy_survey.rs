@@ -99,6 +99,7 @@ async fn run_strategy(sym: &Symbol, strat: &str, bars: Vec<Bar>) -> Option<Backt
         short_enabled: false,
         initial_capital: None,
         composed_toml_override: None,
+        dvol_override: None,
     };
     let (_h, cancel_rx) = cancellation_pair();
     backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled())
