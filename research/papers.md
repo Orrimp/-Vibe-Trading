@@ -4,10 +4,12 @@ Aggregate view. **The per-topic ledgers are the source of truth** — open them 
 full entries (Title, Authors, Year, Source, % read, Summary, Relevance).
 
 **Program: 100 papers per topic × 9 topics = 900, resumable over rounds. ✅ COMPLETE
-(900/900, 2026-06-27).** Built over three rounds; every topic at exactly 100 (verified
-contiguous numbering, no duplicate arXiv IDs, honest per-entry `% read`). The "what do
-we change in the app" distillation — incl. the implementation-ready P0 gate spec — is in
-[SYNTHESIS.md](SYNTHESIS.md).
+(900/900, 2026-06-27) + DEEP-READ PASS (2026-06-28).** Built over three rounds; every
+topic at exactly 100 (verified contiguous numbering, no duplicate arXiv IDs, honest
+per-entry `% read`). A deep-read pass then upgraded ~100 highest-value entries from
+abstract-level to full-text reads (in place, no renumbering) and corrected four claims.
+The "what do we change in the app" distillation — incl. the now-EXACT P0 gate spec — is
+in [SYNTHESIS.md](SYNTHESIS.md).
 
 - [strategies](strategies/papers.md) — quant/algo strategies, factors, microstructure, execution
 - [backtesting](backtesting/papers.md) — backtest methodology (overfitting metrics, CV, data-snooping, costs)

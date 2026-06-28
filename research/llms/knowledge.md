@@ -105,16 +105,25 @@ series?**
     papers [31][32][34] that do claim returns and inherit the leakage/no-cost gaps.
 
 13. **When you control for leakage AND decompose returns, LLM trading "skill"
-    vanishes — it's passive factor harvesting.** The two landmark round-3 studies
-    settle it: **FINSABER** [86] (20 yrs, S&P 500, bias-controlled, costs) finds the
-    headline FinMem/FinAgent advantages **"vanish under broader cross-section and
-    longer-term evaluation"** with **no statistically significant alpha (all p >
-    0.34)**; and **KTD-Fin** [100] (4-level identifier masking + Barra attribution +
-    costs) shows **stock-selection alpha is *negative* for 9 of 10 models** — the big
-    cumulative returns are market/style exposure, and **CSI300 buy-and-hold (+36.9%)
-    matches/beats most agents risk-adjusted.** These independently rebuild *our two
-    gate pillars*: leakage control + benchmark-relative attribution (= "B&H is always
-    the benchmark"). LLM returns = knowing the story, not doing the analysis.
+    vanishes — it's passive factor harvesting.** The two landmark studies settle it,
+    now with full-text numbers (deep-read): **FINSABER** [86] (20 yrs, S&P 500,
+    bias-controlled, commission costs) finds the headline FinMem/FinAgent advantages
+    **"deteriorate significantly under broader cross-section and longer-term
+    evaluation"** — **buy-and-hold beats both agents on Sharpe on 3 of 4 stocks**
+    (TSLA B&H 0.63 vs FinAgent 0.21; NFLX B&H 0.62 vs FinAgent **−0.42**) **and on the
+    best composite (B&H 0.70 vs FinAgent 0.24, FinMem −0.23, even ARIMA 0.33)**, with
+    agents "overly conservative in bulls (FinAgent 0.12 vs B&H 0.61), overly
+    aggressive in bears." (Correction: the prior "all p > 0.34" line was unsupported —
+    FINSABER reports no per-strategy alpha p-values; the refutation is the Sharpe
+    tables.) **KTD-Fin** [100] (4-level identifier masking certified by a 10-attacker
+    probe at ≤3% recovery + Barra attribution + 5/15 bps costs) shows **stock-selection
+    alpha is *negative* for 9 of 10 models** (only Claude Opus 4.7 at +0.2%; worst
+    −77.8%) — the big cumulative returns decompose into market + style beta (e.g.
+    top-return Qwen3-Plus's +70.3% = +41.8% market + 29.2% style − 0.7% selection),
+    and **CSI300 buy-and-hold (+36.9%)** beats most agents once selection is isolated.
+    These independently rebuild *our two gate pillars*: leakage control +
+    benchmark-relative attribution (= "B&H is always the benchmark"). LLM returns =
+    knowing the story, not doing the analysis.
 
 14. **The LLM "language prior" ablates out of numeric forecasting — now shown three
     ways.** Beyond [25] (NeurIPS-24 Spotlight: remove the LLM, accuracy is unchanged
@@ -162,8 +171,9 @@ series?**
 **Do NOT hold up (for our purposes):**
 - "LLM agent beats buy-and-hold" claims on 3–6 assets, one window, no costs,
   with cutoff overlap [2][3][4] — textbook of what our gate rejects; **refuted at
-  scale** by the long-run bias-controlled [86] and memory-controlled [100] studies
-  (no significant alpha; negative selection alpha; B&H matches/beats).
+  scale** by the long-run bias-controlled [86] (B&H beats the agents on Sharpe on
+  3/4 stocks + best composite) and memory-controlled [100] studies (negative
+  selection alpha for 9/10; returns = market+style beta; B&H matches/beats).
 - LLMs as numeric *forecasters* — weak even in careful studies [7][8]; the language
   prior **ablates out** [25][73][80] and LLMs barely reason about series [78].
 - TSFMs as crypto *return* forecasters — barely beat random walk [28], don't
@@ -171,7 +181,11 @@ series?**
   one peer-reviewed economic test [64] gives BTC Sharpe ~1.0 (≈ B&H).
 - NLP/classification accuracy or low forecasting RMSE as a proxy for tradeable edge —
   repeatedly shown insufficient [5][7][8][10]; FinTSB [82] proves **error and profit
-  decouple** ("lower MSE ≠ more profit"); the ETH price-level result [63] is the trap.
+  decouple** ("lower MSE ≠ more profit"). The **price-level trap** is the recurring
+  on-crypto offender: ETH frozen-LLM [63], FinCast's crypto MSE [29], the FinBERT-
+  BiLSTM "98% accuracy / 0.019% MAPE" on BTC/ETH [72], and TimesFM's Bitcoin Monash
+  point [18] all post great *level* error vs no random-walk/B&H baseline — meaningless
+  for return direction (tomorrow's price ≈ today's, which B&H already captures).
 - Synthetic/generated paths as a stress-test substitute — statistical fidelity ≠
   profitability [67]; resample real data instead.
 
@@ -198,18 +212,26 @@ series?**
    [27], barely beat a random walk on *returns* [28], degrade under shocks [20], lose
    to small specialized models on most tasks [43][26][57], are **miscalibrated** [83],
    and the *only* peer-reviewed crypto economic test gives BTC Sharpe ~1.0 ≈ B&H [64].
-   FinTSB [82] shows forecasting error and trading profit **decouple**. If any
-   forecasting model is ever bolted on, target **volatility for risk/sizing** (the one
-   forecastable financial quantity [19][43]) — prefer a *small* model ([56] TTM,
-   [53] PatchTST, [57] N-HiTS, [66] complexity-router), and gate it.
-   [27][28][20][19][43][82][64][83]
+   Deep-read sharpening: the famous *generic* TSFMs aren't even finance-trained
+   (Chronos/TimesFM have **no finance** in-corpus; Moirai's LOTSA is **0.10%** finance;
+   Lag-Llama's is one daily FX set) — and Chronos is *architecturally* "infeasible for
+   strong-trend series" [15], the worst case for crypto. The one model genuinely
+   trained on crypto (FinCast [29], 8.69% crypto) only wins on **price-level MSE with
+   no PnL/Sharpe/B&H — the level trap.** FinTSB [82] shows forecasting error and
+   trading profit **decouple**, and [64] is a live example (the best-accuracy config ≠
+   the big-Sharpe config). If any forecasting model is ever bolted on, target
+   **volatility for risk/sizing** (the one forecastable financial quantity [19][43]) —
+   prefer a *small* model ([56] TTM, [53] PatchTST, [57] N-HiTS, [66] complexity-
+   router), and gate it. [27][28][20][19][43][82][64][83][15][29]
 7. **Treat any "crypto + LLM + big Sharpe" result as leakage/no-cost until proven
    otherwise.** Crypto-specific agents [31][32][34] and sentiment models [42] report
    3–5+ Sharpe via overlapping cutoffs, outcome-based labels, and zero costs — the
    exact "profit mirage" [30]. The careful crypto study comes out ≈ B&H [68]; the
-   long-run bias-controlled [86] and memory-controlled [100] equity studies find **no
-   significant / negative selection alpha** once leakage + factor exposure are removed.
-   Our post-cutoff, cost-aware, bootstrap-vs-B&H gate is the necessary filter.
+   long-run bias-controlled [86] (**B&H beats the agents on Sharpe**) and
+   memory-controlled [100] (**negative selection alpha for 9/10; returns are
+   market+style beta**) equity studies show the edge is artifact/factor-exposure once
+   leakage + factor exposure are removed. Our post-cutoff, cost-aware,
+   bootstrap-vs-B&H gate is the necessary filter.
    [30][31][32][34][42][68][86][100]
 8. **Watch metric-overfitting in the gate-improvement work (Deflated-Sharpe/PBO).**
    An LLM can help *design* robustness metrics [71], but searching over many candidate
@@ -225,28 +247,53 @@ series?**
 
 **Short answer: YES — purpose-built "time-series foundation models" (TSFMs) that
 train transformer / LLM-style architectures directly on NUMERIC series exist, are
-open-source and mature, and at least three were trained on corpora that explicitly
-include financial data. BUT the independent, skeptical evidence is that they are
-*competitive-not-dominant*, *domain-bound*, and *shock-fragile* — and crucially
-NONE has gate-credible evidence of beating buy-and-hold on crypto net of costs.
-For our advisor the honest verdict is: a real tool, plausibly useful as a
-*volatility / risk* input, but no basis to expect it beats holding on crypto
-returns.**
+open-source and mature. Deep-read refinement (this pass): the *famous generic* TSFMs
+are barely trained on finance — Chronos [15] and TimesFM [18] have NO finance/crypto
+in their corpora (web-traffic + synthetic), Moirai's [22] LOTSA is only 0.10%
+finance, Lag-Llama's [17] is one daily FX set. The genuine "trained on crypto numeric
+series" answer is the *purpose-built* finance model FinCast [29]: a 1B-param MoE with
+8.69% crypto (1.78B points) in pretraining, evaluated on crypto_1day/1hour/1min and
+beating TimesFM ~2× on crypto MSE (crypto_1day h=60: 0.2774 vs 0.5730). BUT FinCast's
+win is price-level point-MSE with NO return/PnL/Sharpe/B&H metric — the level-
+persistence trap — so even the strongest constructive case carries zero gate-credible
+evidence of crypto return-alpha. Across the board the independent evidence is that
+TSFMs are *competitive-not-dominant*, *domain-bound*, *shock-fragile*, and
+*miscalibrated*; NONE has gate-credible evidence of beating buy-and-hold on crypto
+net of costs. For our advisor the honest verdict is unchanged: a real tool, plausibly
+useful only as a *volatility / risk* input, with no basis to expect it beats holding
+on crypto returns.**
 
 ### Two distinct families (don't conflate them)
 
 1. **Numeric-pretrained TSFMs** — learn from *numbers*, transformer/LLM
-   architecture, trained from scratch on time-series corpora:
-   - **Chronos** [15] (Amazon): scales+**quantizes** values into a token
-     vocabulary, trains T5 LMs with cross-entropy. Open.
-   - **TimesFM** [18] (Google): patched **decoder-only**, ~200M params, ~100B
-     time-points. Open (Apache-2.0). Most deployable.
-   - **Lag-Llama** [17]: first open TSFM; **decoder-only**, uses *lags* as
-     covariates; probabilistic (Student-t). Lists finance among domains.
-   - **Moirai** [22] (Salesforce): **masked-encoder**, *any-variate*
-     multivariate; LOTSA corpus (27B obs, 9 domains incl. finance). Open.
+   architecture, trained from scratch on time-series corpora.
+   **Full-text deep-read finding: the famous *generic* TSFMs are barely trained on
+   finance at all** — so "trained on financial series" is overstated for them, and
+   the constructive case rests on the *purpose-built* finance models ([29][27]):
+   - **Chronos** [15] (Amazon): mean-scales + **quantizes into 4,094 bins over
+     [−15,+15]**, trains T5 LMs (20M–710M) with cross-entropy. Open. **Corpus has
+     NO finance/crypto** (finance named only aspirationally). Zero-shot only **~13%
+     better than Seasonal-Naive** (never vs a random walk). **Stated limitation:
+     "theoretically infeasible to model time series with a strong trend"** (fixed
+     bin range) — a direct architectural strike against trend-dominated crypto.
+   - **TimesFM** [18] (Google): patched **decoder-only**, 200M params, patch 32→128;
+     **corpus is ~100B Wikipedia pageviews + Google-Trends + 60% synthetic — NO
+     finance/crypto.** A lone **Bitcoin** point exists in the Monash table (MAE
+     1.97e18 vs naive 5.32e18) but it's *price-level* MAE vs last-value, not return/PnL.
+     Open (Apache-2.0). Most deployable; univariate point-forecast only, no covariates.
+   - **Lag-Llama** [17]: first open TSFM; **decoder-only (8 layers)**, uses *lags* +
+     date-time covariates; probabilistic (Student-t). **Its "finance" is ONE daily
+     FX set (8 currencies) — no crypto, no equities.** Full read: **zero-shot avg
+     rank 6.7 is WORSE than a supervised TFT (5.0)**; only fine-tuning makes it lead.
+   - **Moirai** [22] (Salesforce): **masked-encoder**, *any-variate* multivariate;
+     LOTSA = 27.6B obs / 9 domains — but **finance is only 0.10% (~24.9M obs)**;
+     "Bitcoin" appears in the Monash table with no separate result. Zero-shot
+     competitive-not-dominant (loses to PatchTST on retail). Open.
    - **MOMENT** [21] (CMU): general TS *analysis* (forecasting + classification +
-     anomaly detection + imputation), "Time Series Pile". Open.
+     anomaly detection + imputation), "Time Series Pile" (100K+ series; finance =
+     daily Exchange rates only). Open. Full read: **anomaly detection adj-F1 0.679**
+     (beats GPT4TS 0.444) but a **trivial k-NN ties/beats it on VUS-ROC**, and its
+     **zero-shot *forecasting* loses to ARIMA/ETS/Theta**.
    - **TimeGPT-1** [24] (Nixtla): first *commercial* TSFM, encoder-decoder, >100B
      points **explicitly including a finance domain.** Closed/SaaS.
    - **Time-MoE** [55]: scale leader — **2.4B-param sparse MoE** decoder-only,
@@ -266,14 +313,27 @@ returns.**
    - **N-HiTS** [57]: MLP-stack (no attention) deep baseline; ~50× faster than
      transformers at comparable accuracy — among [28]'s financial baselines.
 
-2. **Text-LLM repurposing** — keep a *language* model and adapt the interface:
-   - **LLMTime** [16]: encode the series as digit strings, zero-shot a frozen
-     GPT-3 / LLaMA-2. (Notably GPT-4 is *worse* — RLHF hurts number calibration.)
-   - **Time-LLM** [23]: "reprogram" a frozen Llama-7B/GPT-2/BERT via text
-     prototypes + Prompt-as-Prefix.
+2. **Text-LLM repurposing** — keep a *language* model and adapt the interface.
+   **Deep-read finding — the ablation conflict is the whole story:** the *method
+   papers' own* in-house ablations claim the language backbone helps (Time-LLM [23]:
+   Llama vs GPT-2 = 14.7% MSE win, "reprogramming-layer-alone = baseline"; GPT4TS [61]
+   Table 7: pretrained 0.427 vs random-init 1.326 on ETTh1) — but the **controlled
+   independent ablations [25][73] refute exactly this**, because the in-house
+   "random-init"/"no-LLM" baselines are left under-powered on small data (the
+   overfitting [73] diagnoses). When you train a from-scratch transformer of *equal
+   capacity*, the language prior ablates out.
+   - **LLMTime** [16]: encode the series as **per-digit strings**, zero-shot a frozen
+     GPT-3 / LLaMA-2-70B; beats ARIMA/TCN/N-HiTS on CRPS. Full read: the win
+     mechanism is an **Occam/repetition/seasonality bias** — *exactly what crypto
+     returns lack*. **GPT-4 is *worse* than GPT-3 (RLHF degrades number calibration;
+     chat < base)**; authors concede "text patterns don't connect to numeric
+     extrapolation." Validated on TSMC stock (post-cutoff), not crypto.
+   - **Time-LLM** [23]: "reprogram" a **frozen Llama-7B** (<6.6M trainable, ~0.2%)
+     via text prototypes + Prompt-as-Prefix. No finance data.
    - **GPT4TS / "One Fits All"** [61]: freeze GPT-2's attention+FFN, train only
-     embed/norm/output. The original "frozen-LM-for-TS" — debunked by [25] (the LM
-     ablates out).
+     embed/norm/output (~5%). Claims frozen attention "behaves like PCA" (Theorem 1)
+     — which itself implies a *cheap linear method* would capture it. Debunked by
+     [25][73] (the LM ablates out). No finance data.
    - **UniTime** [62]: one cross-domain model using *domain-instruction* text + a
      Language-TS Transformer. Partial wins (37/80), no finance.
    - *Applied to crypto:* [63] freezes Llama-3/Llama-2/GPT-2 on **ETH** numeric
@@ -287,6 +347,17 @@ returns.**
   or swapping it for a trivial attention layer, does not degrade — usually
   *improves* — accuracy**, at up to 3 orders of magnitude less compute. The
   text-LLM-repurposing branch (Time-LLM, LSTPrompt) is essentially debunked.
+- **The method papers' OWN ablations claim the opposite — and that's the tell**
+  (deep-read finding). Time-LLM [23] reports its frozen Llama backbone is worth
+  14.7% MSE (bigger backbone = better); GPT4TS [61] Table 7 shows pretrained 0.427
+  vs random-init 1.326 on ETTh1. But these in-house "random-init"/"no-LLM" baselines
+  are deliberately under-powered on small data — the exact small-dataset
+  encoder/decoder overfitting [73] diagnoses. The **controlled** ablations win:
+  [73] shows a from-scratch transformer on ~50M samples matches frozen GPT-2 and a
+  random-init model matches a text-pretrained one; [25] removes the LM with no loss.
+  Lesson that mirrors our gate: **small-data adaptation masquerades as capability**
+  unless the baseline is capacity-matched — the same trap our bootstrap + planned
+  Deflated-Sharpe/PBO exist to expose.
 - **TSFMs are domain-bound and not cost-justified.** [26] finds zero-shot ability
   is **tightly tied to pretraining domains**, and even *fine-tuned* TSFMs don't
   consistently beat small dedicated models given their size.
@@ -308,11 +379,23 @@ returns.**
 This round added the crypto-specific tests the earlier (mostly equity/economic)
 evidence was missing. The verdict is unchanged — and now shown on BTC/ETH/SOL:
 
+- **A purpose-built foundation model trained ON crypto numeric series — and it's the
+  level trap** [29] (FinCast, deep-read): a 1B-param MoE pretrained with **8.69%
+  crypto (1.78B points)**, evaluated on crypto_1day/1hour/1min, **beats generic
+  TimesFM ~2× on crypto MSE** (crypto_1day h=60: 0.2774 vs 0.5730). This is the
+  cleanest "yes, someone trained a foundation model on crypto numbers." BUT it is
+  **price-level point-MSE with NO return/PnL/Sharpe/B&H** — the level-persistence
+  trap, where a random walk scores similarly and 2×-lower MSE says nothing about
+  return direction. The strongest constructive answer still yields zero gate-credible
+  crypto return-alpha (and it's a GPU-trained 1B model, wrong for a lean advisor).
 - **TSFMs on 21 cryptos, with an economic (Sharpe) metric** [64] (peer-reviewed,
-  MDPI): fine-tuned TimeGPT leads on *accuracy*; but the only big economic number
-  (Sharpe 4.29 on ETH) is a **long/short** strategy with **no transaction costs** —
-  and on **BTC** (most liquid, closest to our default) the best Sharpe is only
-  **~1.0**, i.e. ≈ buy-and-hold in a bull-tilted sample. Closed/SaaS anyway.
+  MDPI; full text 403-blocked, cross-checked via two searches): fine-tuned TimeGPT
+  *without* variables leads on *accuracy* (DM-confirmed); but the big economic number
+  (**ETH Sharpe 4.29**) comes from a **different config** (TimeGPT *with* variables)
+  under a **long/short** strategy — a textbook **error/profit decoupling** (the best
+  forecaster is not the best trader, cf. [82]). On **BTC** (most liquid, closest to
+  our default) the best Sharpe is only **~1.03**, i.e. ≈ buy-and-hold in a bull-tilted
+  sample. Closed/SaaS anyway.
 - **A careful, cost-aware, post-cutoff crypto LLM agent comes out ≈ buy-and-hold**
   [68] (FS-ReasoningAgent): on **BTC/ETH/SOL, Nov-2023→Jul-2024 (post-cutoff),
   with fees and an explicit B&H baseline**, returns **track B&H in bulls (slightly
@@ -410,8 +493,10 @@ evidence was missing. The verdict is unchanged — and now shown on BTC/ETH/SOL:
 - **No gate-credible evidence any TSFM/LLM beats B&H on crypto returns net of
   costs**; forecastable edge (if any) is volatility not direction → [19][20][8][7]
 - **Off-the-shelf TSFMs don't transfer to finance; only from-scratch financial
-  pretraining helps** → [27]; finance-specific TSFMs exist (claim, unproven on
-  crypto PnL) → FinCast [29]
+  pretraining helps** → [27]; **a foundation model trained ON crypto numeric series
+  exists (FinCast [29]: 1B MoE, 8.69% crypto, beats TimesFM ~2× on crypto MSE) — but
+  the win is price-level MSE with NO return/PnL/Sharpe/B&H (the level trap), so still
+  unproven on crypto alpha** → FinCast [29]
 - **On financial *returns*, TSFMs barely beat a random walk** ("useful priors,
   not alpha engines") → [28]
 - **Crypto-specific LLM agents beat B&H only in no-cost / single-window / bull-run
@@ -428,11 +513,14 @@ evidence was missing. The verdict is unchanged — and now shown on BTC/ETH/SOL:
 
 ### Round-3 additions (claim → [N])
 
-- **At scale, with leakage control + costs, LLM-agent alpha is not significant** →
-  FINSABER [86] (20y S&P 500, all p > 0.34)
+- **At scale, with leakage control + costs, LLM agents fail to beat B&H on Sharpe**
+  → FINSABER [86] (20y S&P 500; B&H Sharpe beats FinMem/FinAgent on 3/4 stocks +
+  best composite 0.70 vs 0.24/−0.23). (No alpha p-values reported — prior "p>0.34"
+  was unsupported; refutation is the Sharpe tables.)
 - **With identifier-masking + Barra attribution, LLM stock-selection alpha is
-  *negative*; returns are passive factor harvesting; B&H matches/beats** →
-  KTD-Fin [100]
+  *negative* for 9/10 (worst −77.8%); returns = market+style beta (top model +70.3%
+  = +41.8% market + 29.2% style − 0.7% selection); CSI300 B&H (+36.9%) matches/beats**
+  → KTD-Fin [100]
 - **The LLM language prior ablates out of numeric forecasting** → [25] (orig.);
   random-init = pretrained [73]; noise-sensitive, loses to simple models [80];
   near-random on TS *reasoning*, context doesn't help [78]

@@ -61,10 +61,15 @@ listed**, and add a batch (~25–40) toward 100, writing incrementally. For `llm
 `research/llm-and-evolution/papers.md` (renumber from [1]) before extending. After
 each round: regenerate this file + `papers.md`, commit.
 
-_Last updated: 2026-06-27 — **PROGRAM COMPLETE: 900/900 (100%)**. Round 3 (final)
-brought all 9 topics to exactly 100 (verified: contiguous numbering, no duplicate
-arXiv IDs, honest per-entry `% read`). Cross-topic distillation + the implementation-
-ready P0 gate spec (N_eff via ONC · DSR>0.95 · PBO/CSCV · MinBTL · SPA) are in
-[SYNTHESIS.md](SYNTHESIS.md). To extend further, bump Target above 100 and re-spawn a
-`researcher` per topic (read ledger, skip listed titles, +batch) — the ledgers remain
-the resumable source of truth._
+_Last updated: 2026-06-28 — **PROGRAM COMPLETE: 900/900 (100%)** + **DEEP-READ PASS done.**
+Round 3 brought all 9 topics to exactly 100 (verified: contiguous numbering, no duplicate
+arXiv IDs, honest per-entry `% read`). The deep-read pass (2026-06-28) then upgraded the
+~highest-value shallow entries per topic (≈100 papers total) from abstract-level to
+full-text reads via `pdftotext`/ar5iv — bumping `% read` honestly, enriching Summary +
+Relevance in place (NO renumbering), and **correcting four claims** (McLean–Pontiff
+decay, FINSABER alpha basis, USDT-inflow horizon, GT-Score benchmark; all flagged in the
+ledgers + SYNTHESIS). Genuinely-paywalled entries were left honest (~15 across topics).
+Cross-topic distillation + the now-EXACT P0 gate spec (cluster-first N_eff · exact DSR ·
+nonlinear haircut · composed critical-t ladder · ORATIO threshold · MinBTL · PBO/CSCV ·
+SPA) are in [SYNTHESIS.md](SYNTHESIS.md). To extend further, bump Target above 100 and
+re-spawn a `researcher` per topic — the ledgers remain the resumable source of truth._

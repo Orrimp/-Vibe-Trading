@@ -225,28 +225,86 @@ testing in our advisor, and which are known to overfit / not survive costs.
     so a TOM overlay is a data-mining candidate (though growing institutional flows
     [80] could *eventually* import some — unestablished). Don't ship without a
     mechanism + OOS survival.
-48. **The TA-efficacy literature is the through-line of our whole project, and it
-    is a 30-year arc from "TA works" to "no, it was data-snooping + costs."** The
-    canonical sequence: Brock–Lakonishok–LeBaron (1992, "MA & breakout rules beat
-    the nulls in-sample" [85]) → Sullivan–Timmermann–White (1999, "not after a
-    data-snooping correction, and the best rule dies out-of-sample" [82]) →
-    Bajgrowicz–Scaillet (2012, "and erased by transaction costs, and the future
-    best rule was never selectable ex ante" [83]). Park–Irwin's survey [84] is the
-    referee: of ~95 modern studies a majority report TA profits, but that majority
-    is an artifact of snooping, no-OOS, ignored-costs, and ex-post selection — the
-    exact four biases our gate neutralizes. Marshall et al. [89] confirm the null
-    holds across **49 country indices** simultaneously. This cluster ([82][83][84]
-    [85][89]) is the empirical wall behind ship-passive.
+48. **The TA-efficacy literature is the through-line of our whole project, a 30-year
+    arc from "TA works" to "no, it was data-snooping + costs" — now quotable end-to-
+    end with full-text numbers.** The canonical sequence:
+    - **BLL 1992 [85]** ("TA works!"): 26 rules (10 VMA + 10 FMA + 6 TRB) on DJIA
+      1897–1986; VMA buy days **+0.042%/day (~12%/yr)** vs sell **−0.025%/day**,
+      **buy-sell spread +0.067%/day** (all 10 positive); the double-on-buy/cash-on-
+      sell rule beats holding by **~3.4%/yr gross**; returns inconsistent with all
+      four nulls (RW, AR(1), GARCH-M, EGARCH; 500–2000 bootstrap reps). **Gross,
+      ex-post-selected** — the two gaps the rest of the arc closes.
+    - **STW 1999 [82]** ("not after a snooping correction"): same rules expanded to
+      **7,846**; best full-universe rule (5-day MA) earns **17.2%/yr in-sample vs
+      4.3% B&H**, Reality-Check p<0.002 IN-sample — but the recursive **ex-ante**
+      best-rule-to-date trader earns only **14.9%** (can't pick the winner forward),
+      a **1-day execution delay** collapses it to **Sharpe 0.34 / p=0.26 (NOT
+      significant)**, the **OOS 1987–1996** best rule is insignificant (~12% prob it
+      doesn't outperform), and **S&P futures 1984–1996 show nothing.**
+    - **Bajgrowicz–Scaillet 2012 [83]** ("and costs erase it, and it's not
+      selectable"): same 7,846 rules, DJIA to 2011, FDR method. One-way costs of just
+      **16–70 bps** zero the edge in the only era it existed (1897–1962); **post-1962
+      nothing works even at ZERO cost**; the monthly-rebalanced FDR portfolio is
+      **negative OOS even free**, and **<5% of selected rules survive one rebalancing**
+      (after two the portfolio is all-new) — pure ranking noise. Uses the **Politis–
+      Romano stationary bootstrap, block 10, B=1000** — our exact design.
+    - **Park–Irwin [84]** (the referee): **92 modern studies, 58 positive / 24
+      negative / 10 mixed** (journal version 95: 56/20/19), but the positive majority
+      is an artifact of the **four biases — data-snooping, ex-post rule selection,
+      risk-estimation difficulty, transaction-cost-estimation difficulty** — the exact
+      four our gate neutralizes.
+    - **Marshall et al. [89]** (breadth): 5,806 rules on **49 MSCI markets**; nominal-
+      significant in **16 of 23 developed markets**, but **ZERO markets** survive the
+      STW snooping correction (closest: Colombia p=0.1001). Singapore best rule
+      **p=0.05 → 0.802**; Hong Kong significant→insignificant after just **6** added
+      rules.
+    - **Hudson–Urquhart [93]** (the crypto test, closest to our product): 14,919
+      rules on BTC/LTC/XRP/ETH 2010–2017; TA *survives* snooping in-sample (33.6% of
+      rules still significant on BTC) and clears realistic costs in-sample — but the
+      best in-sample **Bitcoin** rule goes **NEGATIVE** in the H1-2018 OOS window
+      (Sharpe −0.050), while alts stay positive, because BTC is the most liquid/most-
+      arbitraged.
+    This cluster ([82][83][84][85][89][93]) is the empirical wall behind ship-passive,
+    and the arc is now a single quotable paragraph for the presenter.
 49. **The "data-snooping correction" we are adding (Deflated-Sharpe / PBO) is a
-    named, mature methodology — and the literature gives us the exact recipe.**
-    Three complementary tools: **Harvey–Liu's Sharpe haircut** [97] (a 0.92 Sharpe
-    haircut to 0.08 after the trials behind it — choose BHY/Holm over Bonferroni for
-    correlated configs), the **Deflated Sharpe Ratio** [32] (deflate the magnitude
-    for selection bias + non-normality), and **Probability of Backtest Overfitting
-    via CSCV** [98] (estimate the *probability* the in-sample winner ranks below the
-    OOS median). Report DSR *and* PBO together. Our bake-off is literally the
-    configs-×-time matrix these methods consume; the crowned winner is exactly the
-    inflated best-of-N they warn about.
+    named, mature methodology — and full-text reads give us the EXACT formulas,
+    thresholds, and magnitudes to code.** Three complementary tools, now with the
+    detail from the primary PDFs:
+    - **Harvey–Liu Sharpe haircut** [97]: transform SR→t-ratio, adjust the p-value
+      for N tests via **Bonferroni / Holm / BHY**, back-transform to a haircut SR.
+      The haircut is **strongly NON-LINEAR** — for annualized SR < 0.4 it is almost
+      always **> 50%** (and near-total for marginal Sharpes), but for SR > 1.0 it is
+      **≤ 25%**; so the folk "halve the Sharpe" rule is wrong both ways. Worked
+      magnitudes: three real factors E/P (0.43), MOM (0.67), BAB (0.78) get haircut
+      at N=100 by **61.6% / 23.0% / 9.3%**; a SR=0.912 / N=100 / ρ=0.4 case gives
+      **BHY 52% (→0.438), Bonferroni 75%, average 67%**. They **recommend BHY (FDR)**
+      over the FWER methods (Bonferroni/Holm) for finance, and stress feeding in the
+      **average cross-strategy correlation** (it cuts the effective N). Multiplicity
+      bites fast: **N=10 → ~40% chance of a spurious t≥2.** Minimum-profitability
+      hurdle at 300 tests / 10% vol / BHY ≈ **7.4%/yr vs 4.4% single-test.**
+    - **Deflated Sharpe Ratio** [32]: **DSR = Z[ (SR̂−SR₀)·√(T−1) / √(1 − γ̂₃·SR̂ +
+      ((γ̂₄−1)/4)·SR̂²) ]**, where the benchmark **SR₀ = E[max{SR_n}] ≈ E[SR] +
+      √V[SR]·((1−γ)Z⁻¹[1−1/N] + γ·Z⁻¹[1−1/(Ne)])**, γ≈0.5772. It deflates for FIVE
+      extra inputs beyond mean/vol: **skew γ̂₃, kurtosis γ̂₄, track length T,
+      cross-config Sharpe variance V[SR], and N.** Worked example: SR=2.5 / 5y daily
+      / N=100 / skew −3 / kurt 10 → **DSR≈0.90 < 0.95 → REJECT**; with Normal returns
+      the same data would have passed at N=88, but the fat tails dropped the
+      survivable N to **46** (non-normality and selection bias compound).
+      **Effective-N for correlated trials: N̄ = ρ̂ + (1−ρ̂)·M** (M when ρ̂=0, →1 as
+      ρ̂→1). "When to stop": **1/e (~37%) secretary-problem rule.**
+    - **Probability of Backtest Overfitting via CSCV** [98]: build the **T×N
+      configs-×-time P&L matrix M**, split rows into **S even blocks**, form all
+      **C(S,S/2)** train/test combinations (S=16 → 12,780), find the best-IS config
+      per split, take its **relative OOS rank ω**, logit **λ=ln(ω/(1−ω))**, and
+      **PBO = ∫_{−∞}^0 f(λ)dλ** = fraction of splits where the IS-best fell below the
+      OOS median. **Reject if PBO > 0.05** (Neyman–Pearson). Same run yields
+      **performance-degradation (regress OOS-of-IS-best on IS; β<0 ⇒ overfit),
+      probability-of-loss, and stochastic-dominance-vs-random** — all for free.
+    Report **DSR *and* PBO together** (DSR deflates the *magnitude*, PBO estimates the
+    *probability of being fooled*). Our bake-off is literally the configs-×-time
+    matrix these methods consume; the crowned winner is exactly the inflated best-of-N
+    they warn about — and per the effective-N point, our near-identical SMA/EMA/MACD
+    configs mean raw-N over-deflates, so use N̄ or BHY-with-correlation, NOT Bonferroni.
 50. **"More in-sample optimization → worse out-of-sample" is the deepest law in the
     batch.** PBO/CSCV [98] shows IS performance is often *negatively* related to OOS
     once overfitting dominates; McLean–Pontiff [92] quantify a ~26% OOS haircut
@@ -346,12 +404,43 @@ testing in our advisor, and which are known to overfit / not survive costs.
   widens during the volatility spike you are trying to fade [27].
 - **Calendar/seasonality effects on crypto are probable noise** — their equity
   causes (settlement, institutional flow cycles) don't exist on a 24/7 coin [26].
+- **WHICH RULE FAMILIES, IF ANY, SURVIVE COSTS + OOS? (the central thread).** The
+  full-text reads converge on a sharp answer: **on liquid markets, essentially none
+  robustly survive both realistic costs AND out-of-sample, net.** Detail by family
+  and venue:
+  - *MA-crossover / VMA / FMA* (= our SMA/EMA): win big in-sample (BLL +0.067%/day
+    buy-sell spread, STW best 5-day-MA 17.2%/yr [85][82]) but the in-sample-best
+    **dies OOS** (STW 1987–96; the recursive ex-ante trader lags by 2pp [82]) and is
+    **erased by 16–70 bps costs**, with **nothing surviving post-1962 even free** on
+    DJIA [83]. Zakamulin [100]: every MA indicator is one weighted-average-of-price-
+    changes family, so the "zoo" is low-effective-N data-mining and the best lookback
+    does not persist OOS.
+  - *Channel-breakout / trading-range-breakout* (= our Bollinger/breakout): best
+    in-sample family for **Bitcoin** in Hudson–Urquhart, then **negative OOS** in
+    H1-2018 [93]; part of the STW/Marshall universes that die under snooping [82][89].
+  - *Support/resistance, filter, oscillator (RSI)*: in the Marshall 49-market and
+    H-U crypto universes; **zero survive snooping on developed equities** [89]; the
+    low-turnover S/R rules look best in-sample only because they barely trade.
+  - **The honest exceptions (do NOT overclaim "nothing works"):** (a) Hudson–Urquhart
+    [93] — TA *survives* multiple-testing IN-sample on crypto and clears realistic
+    costs in-sample; the failure is OOS-persistence on Bitcoin specifically (alts
+    stay positive). (b) Deprez–Frömmel [95] — MA rules beat BTC buy-hold **OOS on a
+    risk-adjusted (Sharpe/alpha) basis after costs + data-mining correction** (a
+    *portfolio* of selected rules, not one config; risk-adjusted ≠ more terminal
+    wealth). (c) Jensen–Kelly–Pedersen [88] — ~75–85% of *cross-sectional equity
+    factors* replicate, but none are single-coin TA. **Net synthesis:** the surviving
+    cases are (i) cross-sectional/multi-asset, or (ii) less-liquid alts, or (iii)
+    risk-adjusted-not-raw — none is "a single textbook rule beats buy-and-hold on
+    BTC/ETH on raw terminal wealth net of costs," which is the bar our advisor sets.
 - **Technical analysis does NOT survive data-snooping correction across the
-  broadest tests.** The best of ~7,800 rules on 100y of DJIA dies out-of-sample
-  [82]; the same null holds across 49 country indices [89]; the future-best rule
-  is unselectable ex ante and erased by costs [83]; the survey of ~95 studies says
-  the positive vote-count is a bias artifact [84]. This is the most-replicated
-  negative result in the literature and the core support for ship-passive.
+  broadest tests.** The best of 7,846 rules on 100y of DJIA dies out-of-sample and
+  collapses under a 1-day delay (Sharpe 17.2%/yr IS → 0.34 Sharpe / p=0.26) [82];
+  the same null holds across **49 country indices** (16/23 nominally significant →
+  ZERO survive snooping) [89]; the future-best rule is unselectable ex ante (<5% of
+  selected rules survive one rebalancing) and erased by 16–70 bps costs [83]; the
+  survey of 92 studies says the positive vote-count is an artifact of four biases
+  [84]. This is the most-replicated negative result in the literature and the core
+  support for ship-passive.
 - **On the most-liquid crypto, the in-sample-best TA rules go NEGATIVE
   out-of-sample.** Hudson–Urquhart [93] test ~15,000 rules on BTC/LTC/XRP/ETH with
   a snooping correction; channel-breakout wins in-sample for BTC, then Bitcoin
@@ -549,21 +638,39 @@ testing in our advisor, and which are known to overfit / not survive costs.
     so a halving rule risks spuriously capturing the macro cycle and failing when
     they decouple.
 41. **Implement the selection-bias correction as DSR *and* PBO, reported together,
-    over the bake-off matrix** [97][32][98]. Concretely: (a) log the number of
-    configs tried N in every bake-off; (b) compute a **correlation-aware** Sharpe
-    haircut (BHY/Holm or an effective-N adjustment — our SMA-10 vs SMA-12 configs
-    are near-identical, so Bonferroni over-penalizes [88][100]); (c) run **CSCV** on
-    the configs-×-time return matrix to report a **Probability of Backtest
-    Overfitting**; (d) refuse to crown when DSR ≤ buy-and-hold's or PBO ≳ 50% →
-    output FRAGILE / recommend hold. This is the literature-grounded spec for the
-    "Deflated-Sharpe/PBO" step in our gate name.
-42. **Use the TA-efficacy arc as the presenter's spine for "why hold?"** [85→82→83]
-    [84][89]. The one-paragraph answer to "doesn't everyone say technical analysis
-    works?": the foundational pro-TA result (BLL [85]) looked strong in-sample, but
-    once corrected for data-snooping the best rule died out-of-sample [82], was
-    erased by costs and unselectable ex ante [83], and the same null holds across 49
-    markets [89] — which is exactly why our gate nets costs, holds out a forward
-    window, and deflates for configs tried.
+    over the bake-off matrix — now a concrete coding spec** [97][32][98]. Steps:
+    (a) **Log N and the cross-config Sharpe variance V[SR]** in every bake-off (our
+    grid already produces both). (b) **Compute the effective number of independent
+    trials N̄ = ρ̂ + (1−ρ̂)·M** [32] from the average pairwise correlation ρ̂ of the
+    config return series — our SMA-10/SMA-12/EMA/MACD configs are near-identical so
+    raw M massively over-counts and Bonferroni over-deflates; **use N̄ (or BHY-with-
+    correlation), never Bonferroni** [97][88][100]. (c) **Compute DSR** = Z[ (SR̂−SR₀)
+    √(T−1) / √(1 − γ̂₃SR̂ + ((γ̂₄−1)/4)SR̂²) ] with SR₀ = E[max{SR_n}] from N̄ and
+    V[SR]; **feed crypto's actual skew γ̂₃ and kurtosis γ̂₄** — the DSR worked example
+    shows skew −3/kurt 10 cut the survivable N from 88 to 46, and crypto is that
+    fat-tailed [32][23]. (d) **Run CSCV** (S=16 → 12,780 splits) on the T×N P&L matrix
+    to report **PBO = ∫_{−∞}^0 f(λ)dλ**, plus the free extras (performance-degradation
+    β, probability-of-loss, stochastic-dominance-vs-random) [98]. (e) **Refuse to
+    crown when DSR < 0.95 (i.e. < 95% confidence true SR>0 against the inflated
+    benchmark) OR PBO > 0.05** — note the literature threshold is 5%, far stricter
+    than a "≳50%" rule, so most bake-off winners should come out FRAGILE → recommend
+    hold. (f) Remember the **non-linear haircut** [97]: for the small net Sharpes our
+    single-coin TA rules realistically produce (< 0.4), the correct haircut is **>50%
+    and often near-total**, so crowning should be rare by construction. This is the
+    literature-grounded spec for the "Deflated-Sharpe/PBO/MinBTL" step in our gate.
+42. **Use the TA-efficacy arc as the presenter's spine for "why hold?" — now with
+    quotable numbers** [85→82→83][84][89][93]. The one-paragraph answer to "doesn't
+    everyone say technical analysis works?": the foundational pro-TA result (BLL
+    1992: MA buy-sell spread +0.067%/day, beats holding by ~3.4%/yr **gross**, beats
+    4 nulls [85]) looked strong in-sample — but once corrected for data-snooping the
+    best of 7,846 rules earned 17.2%/yr in-sample yet **died out-of-sample and fell
+    to a 0.34 Sharpe (p=0.26) under a one-day execution delay** [82], was **erased by
+    16–70 bps costs with nothing surviving post-1962 even free, and <5% of selected
+    rules survived a single rebalancing** [83], and the same null holds across **49
+    country markets (16/23 nominally significant → ZERO after snooping)** [89]. Most
+    on-point for us: on crypto, the in-sample-best **Bitcoin** rule went **negative
+    out-of-sample** [93]. That is exactly why our gate nets costs, holds out a forward
+    window, and deflates for configs tried (DSR/PBO).
 43. **Engage the counter-thesis honestly, then show why it doesn't change the
     recommendation** [95][88]. Deprez–Frömmel found simple TA can beat BTC buy-hold
     OOS *on a risk-adjusted basis after costs* [95] — so frame our output as "we
@@ -629,10 +736,13 @@ testing in our advisor, and which are known to overfit / not survive costs.
   the naive equity one.
 - If we ever ingest macro/on-chain regime variables, does a trend-on-fundamentals
   signal [61][40] beat a price-only trend signal through the gate?
-- What is the **Probability of Backtest Overfitting (PBO via CSCV)** of our actual
-  bake-off on BTC/ETH/SOL, and the **Deflated-Sharpe** of the crowned config? Does
-  PBO routinely come out ≳ 50% (i.e. the crown is noise) as the literature predicts
-  [98][32][97]?
+- What is the **Probability of Backtest Overfitting (PBO via CSCV, S=16)** of our
+  actual bake-off on BTC/ETH/SOL, and the **Deflated-Sharpe** of the crowned config?
+  Does PBO routinely exceed the literature's **0.05 reject threshold** [98] (so the
+  crown is declared FRAGILE), and does the performance-degradation slope β come out
+  **negative** (overfit) as predicted? What is the **effective-N (N̄ = ρ̂+(1−ρ̂)M)**
+  of our highly-correlated SMA/EMA/MACD/RSI/Bollinger grid, and how much does using
+  N̄ vs raw M change the DSR verdict [32][97]?
 - Can we reproduce Deprez–Frömmel's result [95] — does *any* simple rule beat the
   coin's buy-and-hold OOS on a risk-adjusted basis after costs + deflation on our
   data, or does our gate refute it for our coins/windows?
@@ -681,7 +791,7 @@ testing in our advisor, and which are known to overfit / not survive costs.
 - Forecast-combination puzzle: equal weights beat estimated optimal weights (est. noise) → [29]
 - Technical MA/breakout rules (BLL): in-sample strong, data-snooping, fail OOS post-1986 → [30]
 - Market intraday momentum: first half-hour predicts last half-hour, stronger on vol/news days → [31]
-- Deflated Sharpe Ratio: deflate the best-of-N backtest winner for selection bias + non-normality → [32]
+- Deflated Sharpe Ratio: DSR=Z[(SR̂−SR₀)√(T−1)/√(1−γ̂₃SR̂+((γ̂₄−1)/4)SR̂²)], SR₀=E[max] grows with N; deflates for skew/kurt/T/V[SR]/N; reject if DSR<0.95; effective-N N̄=ρ̂+(1−ρ̂)M; worked ex. skew−3/kurt10 cut survivable N 88→46 → [32]
 - Crypto momentum exists ONLY in liquid coins; illiquid coins mean-revert; liquidity premium = spread → [33]
 - Opening-range-breakout day trading "profitable" only under zero-spread + 4× leverage assumptions → [34]
 - Diversification return / rebalancing premium ≈ ½[Σwᵢσᵢ²−σp²]; geometric ≈ arithmetic − ½σ² → [35]
@@ -731,22 +841,22 @@ testing in our advisor, and which are known to overfit / not survive costs.
 - Crypto intraday: momentum AND reversal coexist, regime/jump/FOMC-conditional; timing beats B&H intraday but reversion turnover cost-prohibitive → [79]
 - Bitcoin spot ETFs (Jan 2024): improved liquidity, lasting cointegrated demand, BTC decoupling from alts (structural break) → [80]
 - Turn-of-month effect: Ariel [-1:+8] window captures most equity monthly return via payday/pension cash flows; absent in 24/7 crypto → [81]
-- Sullivan–Timmermann–White: ~7,800 TA rules on 100y DJIA via White's Reality Check; best rule survives snooping IN-sample but dies OUT-of-sample; no profitable simple rule on S&P after snooping → [82]
-- Bajgrowicz–Scaillet: FDR on the STW rule universe; future-best rule unselectable ex ante (no persistence); in-sample edge fully erased by transaction costs → [83]
-- Park–Irwin survey: ~95 modern studies, majority report TA profits, BUT that majority is a snooping/no-OOS/ignored-cost/ex-post-selection artifact (definitive "state of the question") → [84]
-- Brock–Lakonishok–LeBaron: MA-crossover + trading-range-breakout beat 4 nulls in-sample on DJIA (the foundational pro-TA result, gross, ex-post-selected — the "before" in the snooping arc) → [85]
+- Sullivan–Timmermann–White: 7,846 TA rules on 100y DJIA, White's Reality Check; best (5-day MA) 17.2%/yr IS vs 4.3% B&H but ex-ante trader only 14.9%, 1-day delay → Sharpe 0.34/p=0.26, OOS insignificant, S&P futures nothing → [82]
+- Bajgrowicz–Scaillet: FDR on the 7,846-rule universe (DJIA→2011, stationary bootstrap B=1000 = our design); 16–70 bps costs zero it, post-1962 nothing works even free, <5% of selected rules survive one rebalancing (unselectable ex ante) → [83]
+- Park–Irwin survey: 92 modern studies, 58+/24−/10 mixed (journal 95: 56/20/19), majority report TA profits BUT that's an artifact of 4 biases (snooping, ex-post selection, risk-estimation, cost-estimation); definitive "state of the question" → [84]
+- Brock–Lakonishok–LeBaron: 26 rules (VMA/FMA/TRB) on DJIA 1897–1986; buy-sell spread +0.067%/day, beats holding ~3.4%/yr GROSS, inconsistent with 4 nulls (RW/AR(1)/GARCH-M/EGARCH); ex-post-selected, no costs — the "before" in the arc → [85]
 - Lo–Mamaysky–Wang: kernel-regression pattern recognition; some chart patterns (head-and-shoulders etc.) carry incremental info, but informativeness ≠ profitable net of costs → [86]
 - Perold implementation shortfall: paper-vs-real-portfolio gap = explicit + implicit (spread/impact) + delay + opportunity cost (the TCA frame for our cost model) → [87]
 - Jensen–Kelly–Pedersen: ~75–85% of equity factors REPLICATE under Bayesian multiple testing (steel-man vs the crisis); survivors are cross-sectional themes, not single-coin → [88]
-- Marshall–Cahan–Cahan: >5,000 TA rules across 49 country indices; profits vanish after data-snooping correction (the breadth confirmation of the null) → [89]
+- Marshall–Cahan–Cahan: 5,806 TA rules across 49 MSCI markets (BLL + STW bootstraps); nominal-significant in 16/23 developed markets → ZERO survive snooping (Singapore 0.05→0.802; HK insignificant after just 6 added rules); breadth confirmation of the null → [89]
 - Kato: VWAP = optimal execution for a risk-neutral trader (trade with the volume curve); risk-averse → front-loaded (IS); execution algos are one risk-aversion continuum → [90]
 - Genet: deep-learning VWAP in crypto; optimize the slippage objective directly (skip volume forecast); crypto volume much harder to predict than equities → [91]
 - McLean–Pontiff: published predictors lose ~26% OOS (overfitting) + ~32% more post-publication (crowding); biggest in-sample winners decay most → [92]
-- Hudson–Urquhart: ~15,000 TA rules on BTC/LTC/XRP/ETH, snooping-corrected; channel-breakout best in-sample for BTC, then Bitcoin NEGATIVE out-of-sample (closest test to our product) → [93]
+- Hudson–Urquhart: 14,919 TA rules on BTC(×2)/LTC/XRP/ETH 2010–17, OOS=H1-2018; TA survives snooping IN-sample (33.6% of BTC rules sig.) + clears costs IN-sample, but best in-sample Bitcoin rule (channel-breakout) goes NEGATIVE OOS (Sharpe −0.05) while alts stay positive (closest test to our product) → [93]
 - Rozario et al.: crypto trend-following ~255% walk-forward annualized — but cost-netting + buy-hold benchmark unstated (absolute return is meaningless vs early-BTC B&H) → [94]
 - Deprez–Frömmel: 75,360 simple rules on Bitcoin, cost-aware + multiple-testing-corrected; TA CAN beat buy-hold OOS on a RISK-ADJUSTED basis (the credible counter-thesis) → [95]
 - Falces Marin et al.: deep-RL tunes Avellaneda–Stoikov γ/skew on BTC; beats static AS on average ratios but with fat-tailed blow-up days (avg-win, worst-case-blowup) → [96]
-- Harvey–Liu: multiple-testing Sharpe HAIRCUT (Bonferroni/Holm/BHY); a 0.92 reported Sharpe → ~0.08 after the trials behind it; report N, use BHY, raise the bar → [97]
-- Bailey–Borwein–López de Prado–Zhu: Probability of Backtest Overfitting via CSCV — fraction of time the in-sample-best ranks below OOS median; more IS optimization → worse OOS → [98]
+- Harvey–Liu: multiple-testing Sharpe HAIRCUT (Bonferroni/Holm/BHY, recommend BHY+correlation); NON-LINEAR (SR<0.4 → >50% haircut, SR>1.0 → ≤25%); E/P/MOM/BAB haircut 62/23/9% at N=100; N=10 → 40% chance spurious t≥2; report N → [97]
+- Bailey–Borwein–López de Prado–Zhu: PBO via CSCV — T×N matrix, S even blocks, all C(S,S/2) splits (S=16→12,780), logit rank of IS-best, PBO=∫_{−∞}^0 f(λ); reject if PBO>0.05; β<0 ⇒ overfit; more IS optimization → worse OOS → [98]
 - Faber: 10-month SMA timing (hold above MA, cash below); beats buy-hold on RISK-ADJUSTED terms (lower drawdown), not raw return; rests on multi-asset diversification → [99]
 - Zakamulin: every MA indicator = weighted average of price changes → the MA "zoo" is ONE data-mineable family; edge is lagging, regime-conditional, non-persistent OOS → [100]

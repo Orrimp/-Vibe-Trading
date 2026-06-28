@@ -1,6 +1,14 @@
 # Knowledge — Machine Learning for Trading (classical ML, feature eng., forecasting)
 
 _Synthesized from `papers.md` (source of truth)._
+_Deep-read pass (depth, not breadth — corpus stays at 100): upgraded the highest-value shallow
+entries with full-text detail — **[95] MinBTL/False-Strategy formulas**, **[89] the exact cost-aware
+filter rule + numbers**, **[42] the LdP 7-reasons pipeline with constants**, **[88] the Super-Learner
+oracle condition**, **[91] M4 exact counts**, **[100] Stronger-Baselines case-study numbers**, **[94]
+cMDA empirical gains**, plus **[97][98][99][82][85][76]**. The three sharpened deliverables — the
+**MinBTL veto spec** (exact formula + how to compute from our N), the **cost-aware execution-filter
+baseline** (exact rule), and the **meta-labeling trade-less filter** — are written into the Actionable
+section below._
 _Progress: **100 papers logged — topic target reached.** Round 2 added [25]–[46]: conformal
 prediction & calibration, GARCH & quantile/probabilistic risk forecasting, feature selection &
 sample reweighting, concept drift / online learning, costed-backtest negative results, crypto-ML
@@ -258,21 +266,26 @@ and a financial concept-drift template [92]._
     flip-prone HMM/heavy Wasserstein, and gate every regime claim against B&H net of costs.
 
 24. **On-domain, cost-and-multiple-testing-correct crypto studies now directly validate the
-    product thesis.** The cleanest is Bysik–Ślepaczuk [89]: hourly BTC, **27-fold walk-forward**,
-    **10 bp/turn costs**, XGBoost/LSTM/iTransformer — frictionless looks great but **collapses net
-    of costs** (sign-based XGBoost **+73.5% → −64%/yr**); a **cost-aware filter** (act only when
-    expected move > cost hurdle) recovers it to ~65%/yr @ Sharpe ~1.09, but **after Holm correction
-    no cost-aware strategy significantly beats buy-and-hold**. This is our thesis on our asset with
-    our discipline. The 41-model Bitcoin survey [90] shows the failure mode by omission: PNL-tuned
+    product thesis.** The cleanest is Bysik–Ślepaczuk [89] (now read to the numbers): **70,872
+    hourly BTC bars (2017–2026)**, **27-fold walk-forward**, **10 bp/turn costs**, XGBoost/LSTM/
+    iTransformer — frictionless looks great but **collapses net of costs** (sign-based XGBoost
+    **+73.50% → −64.00%/yr**); the **cost-aware filter** `|r̂| > λ·c·|Δpos|` (λ=2.0) cuts trades
+    **10,619 → 251 (≈98%)** and recovers the best long-only XGBoost to **+65.40%/yr @ Sharpe 1.09**,
+    but **after Holm correction Holm-adjusted p = 0.89–1.00 — no cost-aware strategy significantly
+    beats buy-and-hold**. This is our thesis on our asset with our discipline, with an exact filter
+    rule to reuse. The 41-model Bitcoin survey [90] shows the failure mode by omission: PNL-tuned
     over 41 models × many windows (textbook data-snooping [19][95]), it admits backtests **don't
-    translate forward**, and reports **no costs, no B&H**. Joins [13][38][91][100] as the honest-
-    testing set — and hands us a ready-made **cost-aware-filter** baseline overlay.
+    translate forward**, and reports **no costs, no B&H**. The crypto cross-sectional-ML result [98]
+    sharpens the *why even the predictability we can measure doesn't help us*: its 4.855% OOS R² is
+    **dominated by a one-day reversal effect** → maximal daily turnover → exactly the cost-fragile
+    regime [89] flags. Joins [13][38][91][100] as the honest-testing set.
 
 ## Methods / findings that hold up (and which don't)
 
 **Hold up:**
 - **CPCV** (purged + embargoed + combinatorial) and walk-forward for honest OOS
-  evaluation [1][4][6][14][89]; **MinBTL** as a crown pre-condition [95].
+  evaluation [1][4][6][14][89]; **MinBTL** (`≈ 2·ln(N)/SR_target²` years) and the
+  **SR₀ expected-max-Sharpe threshold** as crown pre-conditions [95][20].
 - Selection-overfitting gates: **Reality Check / SPA** [19], **PBO/CSCV** [7],
   **Deflated/Probabilistic Sharpe** [20], deflated Sharpe [2]; **Holm/multiple-testing
   correction across the strategy set** confirmed on-domain [89]; **double-selection LASSO**
@@ -324,17 +337,43 @@ and a financial concept-drift template [92]._
    for free.** Our gate already knows **N** (strategies/params tried) and each
    strategy's per-period returns. Add, alongside the 1000-path moving-block bootstrap:
    (a) a **Deflated Sharpe Ratio** + Probabilistic-Sharpe for the crowned strategy
-   [20] (corrects N, sample length, skew, kurtosis — apt for crypto fat tails); (b)
-   optionally a **Hansen SPA p-value** [19] or **PBO via CSCV** [7]; (c) a **MinBTL
-   pre-condition** [95] — given N, compute the minimum window length below which the
-   crowned Sharpe is expected to be a pure overfitting artifact, and **refuse to crown
-   if our window is shorter** (cheap, new, honest veto we lack). Treat DSR<benchmark /
-   high PBO / weak SPA / window<MinBTL as a veto. An independent on-domain study [89]
-   confirms the payoff: after **Holm correction across the strategy set**, no cost-aware
-   hourly-BTC strategy significantly beat B&H — so report N and a multiple-testing-
-   corrected significance, not a point estimate. This closes the *selection*-robustness
-   axis the bootstrap alone doesn't. (Memory/serial-correlation makes overfit crypto
-   picks not just zero- but *negative*-expected OOS [95] — another reason the veto matters.)
+   [20]; (b) optionally a **Hansen SPA p-value** [19] or **PBO via CSCV** [7]; (c) a
+   **MinBTL pre-condition** [95]. An independent on-domain study [89] confirms the
+   payoff: after **Holm correction across the strategy set**, no cost-aware hourly-BTC
+   strategy significantly beat B&H (Holm-adjusted p = 0.89–1.00) — so report N and a
+   multiple-testing-corrected significance, not a point estimate. (Memory/serial-
+   correlation makes overfit crypto picks not just zero- but *negative*-expected OOS
+   [95] — another reason the veto matters.)
+
+   **MinBTL / False-Strategy veto — exact spec (now full-text, implementable from [95][20]).**
+   We bake off N configurations on a window of length T (in *years*, annualized). Two
+   cheap, closed-form vetoes, both computed from quantities we already have (N, T, the
+   crowned strategy's per-period mean/σ/skew/kurtosis):
+   - **(i) MinBTL window-length veto.** The minimum backtest length needed so the best-
+     of-N in-sample Sharpe is *not* a pure artifact has the simplified upper bound
+     **`MinBTL ≈ 2·ln(N) / SR_target²` (years)**, where `SR_target` is the annualized
+     Sharpe we'd actually act on (use 1.0 as the default operator threshold). **Refuse to
+     crown if `T < MinBTL`.** Worked numbers at `SR_target = 1`: N=10 → ln10≈2.30 →
+     **MinBTL ≈ 4.6 yr**; N=50 → **≈ 7.8 yr**; N=100 → **≈ 9.2 yr**; N=1000 → **≈ 13.8 yr**.
+     So baking off 100 strategies and crowning a Sharpe-1 winner on a 2–3-year crypto
+     window is *exactly* the artifact this forbids. The paper's own calibration point:
+     **5 years of data ⇒ at most ~45 independent configs**, else the winner is expected to
+     show in-sample Sharpe ≈ 1 but **OOS Sharpe = 0.** (Our `N` is the *number of
+     configs the bake-off actually tried* — if params are correlated, N is the *effective*
+     independent count, which is smaller; using raw N is conservative.)
+   - **(ii) Expected-maximum-Sharpe (SR₀) threshold veto — the sharper form.** Even if
+     `T ≥ MinBTL`, compute the Sharpe that pure luck over N trials is *expected* to
+     produce: **`SR₀ = √V[SR_n] · ( (1−γ)·Φ⁻¹[1 − 1/N] + γ·Φ⁻¹[1 − 1/(N·e)] )`**, where
+     γ = Euler-Mascheroni ≈ 0.5772, Φ⁻¹ is the inverse standard-normal CDF, e ≈ 2.718,
+     and `V[SR_n]` is the **variance of the Sharpe ratios across our N baked-off
+     strategies** (we have all N Sharpes, so this is a direct sample variance; per-period
+     it ≈ 1/T). **Veto any crowned strategy whose in-sample Sharpe ≤ SR₀** — it failed to
+     beat what N coin-flips deliver. This is the same SR₀ that feeds the **Deflated Sharpe
+     Ratio**: `DSR = Φ( (SR^ − SR₀)·√(T−1) / √(1 − γ̂₃·SR₀ + ((γ̂₄−1)/4)·SR₀²) )` (skew
+     γ̂₃, kurtosis γ̂₄) — **require DSR > 0.95** to crown. SR₀ rises like `√(2·ln N)`, so
+     both vetoes encode the same "more trials ⇒ higher bar." All of this is linear/
+     bootstrap-free arithmetic over numbers the bake-off already produces — a genuinely
+     *new, free* gate primitive, and the deepest justification for the corrections we add.
 
 2. **Hard test-data rules (codify in the engine).** (a) Fit every transform on the
    in-sample window ONLY, apply forward [5]. (b) Report R²/error on **returns, never
@@ -346,14 +385,43 @@ and a financial concept-drift template [92]._
 3. **Meta-labeling is the top ML experiment — as a "do less" filter; start with the
    cost-aware filter as the baseline.** Keep our simple strategy as the *side*; add a
    small interpretable classifier (tree/logit) to decide *whether to act*, triple-
-   barrier-labeled [2], CPCV-validated [14], gated vs B&H net of costs [15]. The simplest
-   instance — proven to matter on hourly BTC — is the **cost-aware execution filter: act
-   only when the expected move exceeds the transaction-cost hurdle** [89] (the difference
-   between +73.5% and −64%/yr there). Most plausible win: fewer, higher-confidence trades
-   → less cost drag. Cannot underperform "always act" if gated. If we ship a GBDT meta-
-   labeler, use **CatBoost-style leak-safe encoding** for any categorical regime input
-   [81], **per-sample average-uniqueness weights** [2][42], and **Clustered-MDA** [94] for
-   the operator-facing "why it acted."
+   barrier-labeled [2], CPCV-validated [14], gated vs B&H net of costs [15].
+
+   **Cost-aware execution filter — exact baseline rule (now full-text from [89]).** On
+   hourly BTC this single overlay was the difference between **+73.5%/yr frictionless and
+   −64%/yr net**, and after applying it the strongest long-only XGBoost recovered to
+   **+65.4%/yr at Sharpe 1.09** — by cutting trades **from 10,619 to 251 (≈98% turnover
+   reduction)**. The rule: **allow a position change only when the forecast magnitude
+   exceeds a multiple of the cost it would incur** —
+   `|expected_move| > λ · c · |position_change|`, where `c` = proportional round-trip cost
+   (they use 0.001 = 10 bp), `λ` = a single operator-tunable strictness knob (their main
+   spec **λ = 2.0**), and `position_change = |target_pos − current_pos|`. Intuition in
+   their words: with λ=2 and 10 bp, a **long-only entry/exit needs a forecast move > 0.20%**,
+   a **long-short reversal > 0.40%**. This is a one-parameter gate that sits on top of *any*
+   strategy's signal in our bake-off, **cannot underperform "always act" once costs are
+   charged**, and should be added as its own bake-off configuration (and combined with the
+   meta-labeler). Decisive caveat: even at Sharpe 1.09 it did **not** beat B&H after Holm
+   correction (p ≈ 0.89–1.00) — so it *restores viability*, it doesn't manufacture edge.
+
+   **Meta-labeling — the "trade-less" filter, full-text detail ([2][42][15]).** The
+   structure is two-stage: a **primary model decides the *side*** (our existing strategy's
+   long/flat signal) and a **secondary classifier decides *whether to act* (and the bet
+   *size*)** — it never flips the side, it only filters/sizes. Train the secondary model on
+   **triple-barrier labels** (1 if the primary signal's trade would have hit its
+   volatility-scaled profit-target before its stop/time barrier, else 0), so it learns to
+   suppress the primary's false positives → **higher precision/F1, fewer trades, less cost
+   drag** [2][42]. Hard requirements lifted from the López de Prado pipeline [42]:
+   (a) the labels are **non-IID (overlapping windows)** → weight each sample by its
+   **average uniqueness** and bag with `max_samples ≈ avg_uniqueness` (sequential
+   bootstrap); GBDTs accept per-sample weights, so this is free [79][80]; (b) validate with
+   **purged + embargoed CV / CPCV** [2][14] — purge any training label whose time-span
+   overlaps a test label, embargo the bars immediately after; (c) if any categorical regime
+   input is used, encode it with **CatBoost-style ordered target statistics** to avoid
+   target leakage [81]; (d) explain *why it acted* with **Clustered-MDA** [94] (our RSI/
+   MACD/momentum/vol features co-move, so naive MDA/SHAP lie [49][58]), bootstrap-checked
+   for stability [78]. Most plausible win: fewer, higher-confidence trades → a drawdown/
+   cost improvement; a *return* win over B&H remains unlikely (prior: it won't clear the
+   gate, same as the cost-filter).
 
 4. **A persistent vol/regime feature is worth a gated experiment — as a risk
    throttle.** Prefer a jump-model-style persistent classifier (interpretable,
@@ -564,28 +632,37 @@ and a financial concept-drift template [92]._
 - Random Forests = de-correlated trees; strength-vs-correlation generalization bound; OOB ≠
   purged CV on overlapping labels → [85]
 - SVM ~60% weekly-direction on NIKKEI, beats LDA/QDA/NN — but no costs, no B&H benchmark → [86]
-- Stacking / Super Learner: oracle inequality → only as good as best candidate; can't beat B&H
-  if B&H is in the library; out-of-fold must be purged → [88]
-- Pure ML < simple statistical methods on 100k series (M4); combinations/hybrids win, modestly →
-  [91]
-- MinBTL: minimum window given N or the best in-sample Sharpe is spurious; memory effects →
-  *negative* OOS; report N or it's "pseudo-mathematics" → [95]
-- Clustered Feature Importance / Clustered-MDA: substitution-robust importance + selection (the
-  fix for correlated-feature unreliability) → [94]
+- Stacking / Super Learner: oracle inequality (holds iff loss uniformly bounded) → CV-selected
+  stack is asymptotically as good as the *oracle/best combination in the library*, never better;
+  can't beat B&H if B&H is in the library; out-of-fold must be purged → [88]
+- Pure ML < simple statistical methods on 100k series (M4): 6 pure-ML entries all worse than Comb,
+  5 of 6 worse than Naïve2; 12 of top-17 were combinations; winner ES-RNN hybrid ~10% better than
+  Comb (vs 4% in M3); first methods to correctly hit 95% PIs → [91]
+- MinBTL = 2·ln(N)/SR_target² yr (N=100→9.2yr; 5yr⇒max 45 configs⇒IS Sharpe1/OOS 0); plus the
+  SR₀ = √V[SR_n]·((1−γ)Φ⁻¹[1−1/N]+γΦ⁻¹[1−1/(Ne)]) expected-max-Sharpe veto; memory effects →
+  *negative* OOS; report N or it's "pseudo-mathematics" → [95][20]
+- Clustered Feature Importance / Clustered-MDA (cluster via correlation/info-theory dependence +
+  ONC/hierarchical, then shuffle whole cluster): substitution-robust importance + selection;
+  empirically MDA→cMDA lifted S&P500 monthly acc 0.517→0.583 / AUC 0.716→0.779, a meta-labeler
+  acc 0.529→0.614 / AUC 0.537→0.672 → [94]
 - Hourly-BTC walk-forward, 10bp costs: frictionless +73.5% → −64% net; cost-aware filter
-  recovers; Holm-corrected, no strategy beats B&H → [89]
+  `|r̂|>λ·c·|Δpos|` (λ=2.0) cuts trades 10,619→251, recovers +65.4%/Sharpe 1.09; Holm-corrected
+  p=0.89–1.00, no strategy beats B&H → [89]
 - 41-model Bitcoin survey: PNL-tuned across big grid (data-snooping), backtests don't translate
   forward; no costs, no B&H → [90]
 - Crypto efficiency: daily returns ≈ random walk (efficient/unpredictable), weekly ≈ weak
   mean-reversion (structural-break-robust tests) → [96]
 - Time-series momentum is real but a diversified cross-asset long/short vol-scaled effect; n=1
   long-only can't harvest it; ~1yr then reversal → [97]
-- Crypto cross-sectional ML: OOS R²~4.9% (> equities), but cross-sectional + on-chain-
-  fundamentals-driven + long/short — doesn't transfer to one long-only coin → [98]
+- Crypto cross-sectional ML: OOS R²=4.855% (> equities) but **dominated by a one-day reversal
+  effect** (→ max turnover → cost-fragile [89]); tree/RF beat NN+linear; on-chain-fundamentals-driven
+  (mkt-to-realized-value, new/active addresses) + long/short — doesn't transfer to one long-only coin → [98]
 - Most crypto anomalies don't survive OOS (size effect vanishes); double-selection LASSO → DS3;
   left-tail-risk effect appears → [99]
-- Stronger baselines often match/beat complex ML; weak/absent baseline + accuracy-not-utility
-  metric manufactures false ML superiority (cross-domain capstone) → [100][13][91]
+- Stronger baselines often match/beat complex ML (logistic-reg beat a transformer on external
+  data 0.74 vs 0.70; GAM beat an autoencoder AU-ROC 0.83 vs 0.70); a strong baseline = interpretable
+  + properly tuned + utility-aligned-metric; weak/absent baseline + accuracy-not-utility metric
+  manufactures false ML superiority (cross-domain capstone) → [100][13][91]
 - Distributional (Wasserstein/MMD) clustering = the right regime-*labeler* concept, but
   identification-only, backward-looking, lagged → [83]
 - HMM factor-switching upside (switch which strategy by regime); but benched vs factors not B&H,

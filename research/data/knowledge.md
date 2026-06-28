@@ -233,41 +233,83 @@ The new papers deepen five sub-themes — they motivate our 1000-path moving-blo
 bootstrap and the planned Deflated-Sharpe / PBO add directly.*
 
 ### A. Splits, leakage & multiple testing (the core defense)
-- **The MBB our gate runs has a name and a proof.** Künsch (1989) [84] is the
-  foundational moving-block bootstrap — resample blocks of l consecutive obs, with
-  consistency requiring **l→∞ and l/n→0**. This *is* our gate's theoretical root:
-  it's *why* we resample blocks (not i.i.d. points) and the formal constraint on
-  our frozen block length. Block-length selectors converge *slowly* (n^-1/6 to
-  n^-1/3) [89] and the optimum differs for **quantile** targets (drawdown/CVaR)
-  vs variance targets [88] — so the honest posture is: pick a defensible length
-  (Politis-White [18]), document it, and **sensitivity-check the verdict** across
-  nearby lengths and MBB↔stationary [47]. A stationary bootstrap gives "reasonable
-  and stable estimation for *any* quantity from one single time series" [100] —
-  cross-disciplinary (statistical-physics) confirmation that resampling one
-  correlated path beats trusting a point estimate.
-- **Selection/tuning leakage is the *worst* kind** — it outweighs preprocessing
-  leakage across thousands of datasets [80]. Our bake-off IS a selection+tuning
-  machine, so the largest leakage risk is the **selection step**, not feature
-  normalization: the window used to crown a config must never be the window it's
-  later judged on [29][58].
+- **The MBB our gate runs has a name, a proof, AND a precise reason the block
+  length matters.** Künsch (1989) [84] is the foundational moving-block bootstrap —
+  resample blocks of l consecutive obs, with consistency requiring **l→∞ and
+  l/n→0**. *(Full-text deepening:)* what the MBB variance estimate actually computes
+  is the **spectral density of the returns at zero frequency = the long-run
+  variance** (the *sum of all autocovariances*, not the lag-0 variance). That is
+  exactly why the block length is load-bearing for *us*: volatility-clustered crypto
+  returns have non-trivial autocovariance out to long lags, so a block **too short
+  to span the coin's correlation length under-estimates the long-run variance →
+  over-narrow, over-optimistic confidence bands** (the gate would look more decisive
+  than the data warrant). This turns the abstract "l→∞, l/n→0" into a concrete
+  failure mode to guard. Block-length selectors converge *slowly* (n^-1/6 to n^-1/3)
+  [89] and the optimum differs for **quantile** targets (drawdown/CVaR) vs variance
+  targets [88] — so the honest posture is: pick a defensible length (Politis-White
+  [18]), document it, and **sensitivity-check the verdict** across nearby lengths
+  and MBB↔stationary [47]. A stationary bootstrap gives "reasonable and stable
+  estimation for *any* quantity from one single time series" [100] — cross-
+  disciplinary (statistical-physics) confirmation that resampling one correlated
+  path beats trusting a point estimate.
+- **Selection/tuning leakage is the *worst* kind — now quantified, and it IS the
+  data-side proof of why we need DSR/MinBTL.** *(Full-text deepening [80]:)* across
+  2,047 datasets × 6 algorithms, preprocessing leakage (normalization/PCA) is
+  **negligible (|ΔAUC| < 0.005)** while **selection leakage — peeking at the
+  best-of-K — is ~40× larger (ΔAUC ≈ +0.040)**. The decisive mechanism: selection
+  inflation **= σ·√(2·ln K) + genuine-diversity**, where K = number of trials, and
+  this noise term **decays only as O(1/√n)** — and at small n (~1,900) **~90% of the
+  inflation is pure noise exploitation, not skill.** Map to us: our bake-off is a
+  best-of-K selection machine with **large K (configs × params) and small n (one
+  coin's history)** — both factors push our crown toward maximal inflation. So the
+  σ√(2 ln K)/√n result is the *empirical, data-side* twin of the Deflated-Sharpe /
+  Minimum-Backtest-Length argument: deflate the crown by trial count, and expect the
+  deflation to be *large* precisely because our sample is small. Discipline: the
+  window used to crown a config must never be the window it's later judged on
+  [29][58], and the crown must be treated as a multiple-testing event.
 - **Multiple-testing deflation now has four interchangeable tools**, all consuming
   our existing bake-off output: Deflated/Probabilistic Sharpe + MTRL [25], **PBO
   via CSCV** [54], the **Harvey-Liu haircut** (non-linear in Sharpe magnitude;
   Bonferroni/Holm/BHY) [73][96], and a **complexity (covariance) penalty** [98].
   A controlled-environment comparison ranks **CPCV best, plain Walk-Forward worst**
-  by PBO and DSR [79] — independent support that *single-path* evaluation is the
-  weakest option and our *multi-path* bootstrap is the right philosophy.
+  by PBO and DSR [79] (Walk-Forward's diagnosed weakness: a single chronological
+  path has **weaker stationarity + higher temporal variability**) — independent
+  support that *single-path* evaluation is the weakest option and our *multi-path*
+  bootstrap is the right philosophy.
+- **A single hold-out — i.e. our forward paper-trade alone — is NOT a sufficient
+  overfitting check.** *(New, from the PBO full text [54]:)* Bailey et al. devote a
+  section to dismantling the hold-out method: (i) on public data the hold-out is
+  likely already in-sample; (ii) seasoned researchers *know* how the hold-out period
+  behaved and design to it; (iii) hold-out is inadequate for **small samples** —
+  shouldn't be used with < 1,000 obs (a weekly strategy needs > 20 years); (iv)
+  **high variance** — which hold-out you pick can refute a valid strategy or bless
+  an invalid one; (v) it **ignores the number of trials**. Reasons (iv)+(v) land
+  squarely on our forward-paper-trade-as-OOS: it is one high-variance path that
+  doesn't know how many configs we swept. The honest implication: the forward paper-
+  trade is *necessary* (genuine unseen data) but must be **paired** with a CSCV/PBO
+  on the bake-off matrix and a DSR/MinBTL on the crown — the multi-path/trial-aware
+  antidote to single-hold-out variance, the same "single path is weakest" message
+  as [79][84].
 - **Look-ahead can hide in a *model*, not just the pipeline.** A pretrained LLM
   leaks the future through what it memorized; removing it is an open problem
   [67][20]. The benchmark can also leak: constituent-reconstitution ("look-ahead
   benchmark bias") inflates Sharpe up to ~8%/yr [68] — we're immune (single-coin
   B&H) except at the universe/coin-selection level [7].
-- **Out-of-sample decay and non-replication are huge and quantified.** Published
-  predictors lose **~26% OOS (pure data-mining) and ~58% post-publication**
-  (crowding) [94]; **64–85% of equity anomalies don't survive** a disciplined,
-  microcap-robust, multiple-testing protocol [95]. If *refereed* edges decay this
-  much, an un-refereed bake-off winner should be expected to decay at least as
-  much — hard backing for "no active strategy robustly beats holding."
+- **Out-of-sample decay and non-replication are real and quantified — with a
+  correction.** *(Full-text fix:)* McLean-Pontiff [94] (82 predictors, 68 studies)
+  decompose decay into a **pure-statistical/data-mining component of only ~10% —
+  and statistically *insignificant*** (a 5% in-sample alpha → ~4.5% out-of-sample,
+  cannot reject zero bias) — plus a **post-publication decay of ~35%** (→ ~3.25%,
+  significant), implying a **~25% arbitrage/crowding effect**. (The ledger's
+  earlier "26% / 58%" was wrong and is now corrected against the source PDF.) The
+  ~10% floor is for *single, refereed* hypotheses; our bake-off crowns the max of
+  *many* configs, a far more aggressive selection setup, so our selection inflation
+  should be **larger** than 10% — see the §A σ√(2 ln K) result. Separately,
+  **64–85% of equity anomalies don't survive** a disciplined, microcap-robust,
+  multiple-testing protocol [95] (liquidity signals are the worst, 93% fail). Net:
+  refereed edges decay materially and most don't replicate; an un-refereed bake-off
+  winner should be expected to do at least as badly — hard backing for "no active
+  strategy robustly beats holding."
 
 ### B. Synthetic / Monte-Carlo data (why we resample reality)
 - **The whole generator zoo is now mapped**: GAN (TimeGAN [76], Quant-GAN [5],
@@ -275,19 +317,33 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
   feature-matching [91]), diffusion [65][11], **causally-constrained VAE** [86],
   copulas [69][33], and agent-based (RL-agent crypto ABM [71]). Every branch is
   heavier, harder to validate, and less reproducible than block-resampling.
-- **The decisive verdict for RISK is consistent and now stronger.** A VaR-focused
-  comparative review finds **Historical Simulation and GARCH tie or beat deep
-  generators** [87] — Historical Simulation is the non-block sibling of our
-  bootstrap, i.e. *resampling reality wins for risk*. VAEs repeatedly **smooth
-  away extremes** [50][61]; tail fidelity is a *separate, harder* problem needing
-  EVT-augmented, tail-biased generators evaluated on crisis-relevant metrics [72].
+- **The decisive verdict for RISK is consistent, now with a ROOT CAUSE and an
+  honest caveat.** A VaR-focused review (14 models) finds **Historical Simulation,
+  GARCH, and one CWGAN are the top performers** [87] — Historical Simulation is the
+  non-block sibling of our bootstrap, i.e. *resampling reality wins for risk*. VAEs
+  repeatedly **smooth away extremes** [50][61], and the rare-events survey [72]
+  *(full-text deepening)* gives the **structural reason: a Gaussian latent prior
+  fundamentally cannot generate heavy tails** — so the smoothing is architectural,
+  not a tuning miss, and fixing it needs dedicated EVT machinery (Tail-GAN bakes
+  VaR/ES into the loss; HTGAN swaps in a heavy-tailed prior) + tail-specific
+  evaluation (extreme-coverage, extreme-magnitude, extremal-dependence). **Honest
+  caveat that also bites our bootstrap:** plain HS (and our block resample) is
+  *capped by the worst historical scenario* — it can reshuffle the crashes the coin
+  actually had but **never invent a worse-severity one** [87]. That is the one real
+  edge our method lacks; the principled fill is a deliberately tail-stressed slice
+  or an EVT-augmented generator [72], not a generic GAN/VAE (which understate tails).
 - **Small-sample = generators overfit the one path you have** [91] — the
   generator-side echo of effective-N≪raw-N [16][75]. The bootstrap *can't* overfit
-  a path because it doesn't fit anything. Even principled generators (causal-
-  Wasserstein-bounded TC-VAE [86]) are still learned models validated on general
-  data. Net: **block bootstrap [84] stays the default**; generators remain
-  research-only, and if ever scoped, demand a causal constraint + utility/TSTR
-  validation + explicit tail check.
+  a path because it doesn't fit anything. Even the most *theoretically principled*
+  generator — the causal-Wasserstein-bounded TC-VAE [86] *(full-text deepening)* —
+  has a guarantee whose constant **C = 2(2^T − 1) blows up exponentially in path
+  length T**, so the bound is near-vacuous for a realistic multi-hundred-bar
+  backtest window: the guarantee degrades *exactly* where we'd use it. The block
+  bootstrap [84] needs no such bound because it never leaves the real-data manifold
+  (causal by construction: real blocks in real order). Net: **block bootstrap stays
+  the default**; generators remain research-only, and if ever scoped, demand a
+  causal constraint + utility/TSTR validation + explicit EVT-style tail check — and
+  note that **crypto-crash synthesis specifically is still an open problem** [72].
 
 ### C. Point-in-time / data quality / provenance
 - **Crypto price/volume integrity is a first-order risk** — pump-and-dump events
@@ -500,10 +556,14 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
     Pump-and-dump [82] + wash volume [19] concentrate in thin coins — the crypto
     microcap p-hacking trap [95]; an "edge" on a thin coin may be a manufactured-
     pump artifact the bootstrap should resample away ([36] outlier sin). [82][19][95]
-43. **Expect heavy decay on any crowned edge — budget for it.** Refereed predictors
-    lose 26% OOS / 58% post-publication [94] and 64–85% of anomalies don't replicate
-    [95]; report a realistic performance-degradation haircut (PBO gives one [54])
-    and keep re-validating the forward paper-trade vs B&H [15]. [94][95][54]
+43. **Expect decay on any crowned edge — budget for it.** Refereed predictors lose
+    **~10% OOS from data-mining (statistically insignificant) and a further ~35%
+    post-publication from crowding** [94] (corrected figures), and **64–85% of
+    anomalies don't replicate** [95]; report a realistic performance-degradation
+    haircut (PBO gives one [54]) and keep re-validating the forward paper-trade vs
+    B&H [15]. Note our bake-off selects the *max of many* configs (unlike a single
+    refereed hypothesis), so expect *more* than the 10% statistical floor — the
+    σ√(2 ln K) selection-inflation result [80] is the reason why. [94][95][54][80]
 44. **If we ever build labels/ML, prefer triple-barrier + fractional differentiation,
     avoid future-turning-point labels, and account for regime-dependent label noise.**
     Trend labels from full-period peaks/troughs leak [66]; label reliability drops in
@@ -550,7 +610,10 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
 - Is the advisor's coin-selection scope restricted to liquid coins, and do we warn
   when a chosen coin's history shows pump/wash artifacts? [82][19]
 - What performance-degradation haircut should we show the operator, given OOS-decay
-  evidence (26% / 58%) and our own PBO? [94][54]
+  evidence (~10% statistical / ~35% post-publication [94], corrected) and our own
+  PBO [54]? And is our forward-paper-trade-as-holdout sufficient *alone*, or must it
+  be paired with a CSCV/PBO on the bake-off matrix (single hold-out is high-variance
+  + trial-count-blind per [54])? [94][54]
 - If we add ML/labels: are we using triple-barrier (not future-turning-point trend
   labels), frac-diff features, and accounting for regime-dependent label noise? [74][66][70]
 
@@ -575,7 +638,7 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
 - Too-good sentiment backtest hides missing cost/leakage/MT controls → [17]
 - Optimal block length set from correlogram (Politis-White plug-in) → [18]
 - >70% of unregulated crypto volume is wash-traded; volume signals suspect → [19]
-- Look-ahead bias measurable; PIT discipline; data revisions are a subtle leak → [20]
+- Look-ahead bias measurable (LLMs −15 to −22pp alpha decay; classical MA/momentum decay far less); paired matched-B&H windows = a leakage test → [20]
 - CPCV = modern standard of evidence (multi-path OOS distribution, PBO/DSR) → [21][3]
 - Augmentation helps only when signal exists; encode priors not just data → [22]
 - 7,846 rules: in-sample winner fails OOS after snooping correction → [23]
@@ -608,7 +671,7 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
 - Adversarial/stress robustness is regime-conditional (calm≠stress) → [51]
 - Leakage drives the ML reproducibility crisis; model info sheets → [52]
 - Financial labeling: triple-barrier + meta-labeling (precision/recall split) → [53]
-- PBO via CSCV: computable on our bake-off matrix; overfit-rejection gate → [54]
+- PBO via CSCV: IS-best below OOS median; computable on our bake-off matrix; AND dismantles single hold-out (high-variance + trial-blind) ⇒ forward paper-trade alone insufficient → [54]
 - CEX > DEX price-data quality; source/stamp a reputable CEX feed → [55]
 - RMT/Marčenko-Pastur denoising: noise-vs-signal null (covariance, out of scope) → [56]
 - Rigorous daily-bar signals net ~0%, regime-dependent; honest-null reporting → [57]
@@ -626,7 +689,7 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
 - Crypto lower-tail dependence (co-crash) rising over time; copula tail asymmetry → [69]
 - Label noise is non-stationary — worst in volatile regimes → [70]
 - RL-agent crypto ABM (mechanistic generator, regime-spanning), out of scope → [71]
-- Tail/rare-event synthesis needs EVT-augmented, crisis-metric-evaluated generators → [72]
+- Tail/rare-event synthesis: Gaussian latent prior CAN'T make heavy tails (root cause); needs EVT-augmented, crisis-metric-evaluated generators; crypto-crash synthesis still open → [72]
 - Harvey-Liu Sharpe haircut: non-linear in magnitude, grows with trial count → [73]
 - Frac-diff + triple-barrier + SAE on crypto: good only at tuned sweet-spot → [74]
 - Finite-sample bias contaminates Bitcoin volatility/Hurst estimates → [75]
@@ -634,21 +697,21 @@ bootstrap and the planned Deflated-Sharpe / PBO add directly.*
 - Bitcoin LSTM beats B&H on ONE 2024 year, no snooping correction (counterpoint) → [77]
 - 7,000+ Chinese-market rules: SPA-corrected, regime/efficiency-dependent edge → [78]
 - CPCV best, Walk-Forward worst by PBO/DSR in controlled environment → [79]
-- Selection/tuning leakage > preprocessing leakage in severity → [80]
+- Selection/tuning leakage ~40× preprocessing; inflation = σ√(2 ln K), ~90% noise at small n → [80]
 - Backtest-engine correctness hinges on intra-bar fill assumptions → [81]
 - Crypto pump-and-dump frequent in thin coins; price-integrity risk → [82]
 - Crypto intraday/weekly seasonality (funding-clocked); daily bars aggregate it → [83]
-- Künsch (1989): THE moving-block bootstrap; l→∞, l/n→0 (our gate's root) → [84]
+- Künsch (1989): THE moving-block bootstrap; l→∞, l/n→0; MBB variance = spectral density at zero = long-run variance (⇒ too-short blocks under-estimate it → over-narrow CIs) → [84]
 - Conditional Sig-WGAN: signature path-summary generator branch → [85]
-- Time-Causal VAE: causal-Wasserstein bound = leakage-free generation framing → [86]
-- For VaR, Historical Simulation & GARCH tie/beat deep generators → [87]
+- Time-Causal VAE: causal-Wasserstein bound, but constant C=2(2^T−1) blows up in path length (near-vacuous for long windows) → [86]
+- For VaR, Historical Simulation, GARCH & CWGAN top; but HS/bootstrap capped by worst historical scenario (can't invent worse crash) → [87]
 - Optimal block scheme differs for QUANTILE (drawdown/CVaR) targets → [88]
 - Block-length selectors converge slowly; "optimal" can't be pinned precisely → [89]
 - Cont (2001): canonical stylized-fact checklist; why block bootstrap is right → [90]
 - SOCK feature-matching generator targets single-path/small-sample overfitting → [91]
 - Deep-Hedging market simulator: why people build generators (= why we don't) → [92]
 - Bitcoin ≥4 bubble/crash episodes vs Metcalfe fundamental; tails structural → [93]
-- Academic research destroys predictability: 26% OOS / 58% post-publication decay → [94]
+- Academic research destroys predictability: ~10% OOS (data-mining, insignificant) / ~35% post-publication decay [corrected] → [94]
 - Replicating Anomalies: 64–85% don't survive microcap-robust multiple testing → [95]
 - Evaluating Trading Strategies: real-time haircut (Bonferroni/Holm/BHY) → [96]
 - Oxford-Man DL benchmark: rigorous (CVaR/breakeven-cost/seed); edge thins net → [97]
@@ -679,13 +742,28 @@ Across 100 papers the message is consistent and reinforces our product thesis:
    intra-bar fill assumption [81]; a multiple-testing-adjusted number next to B&H
    via Deflated-Sharpe/MTRL [25], PBO-via-CSCV [54], or the Harvey-Liu haircut
    [73][96] (CPCV-best/Walk-Forward-worst [79]); strict IS/WFA/OOS separation [29];
-   and a protected forward paper-trade [23][26].
-4. **Any crowned active edge is fragile and time-decaying** [15][26], now with hard
-   decay numbers — **26% OOS / 58% post-publication** [94] and **64–85% of anomalies
-   don't replicate** [95]. Three recent crypto "beats-B&H" results [77][74][99] all
-   fail our standards (one window, no MT-correction, long-bias/selection). The
-   realistic, well-supported expectation remains: **no active strategy robustly
-   beats buy-and-hold net of costs** [9][23][58].
+   and a protected forward paper-trade [23][26]. **Corrective sharpening from the
+   full-text read of the PBO paper [54]:** the forward paper-trade is *necessary*
+   but **not sufficient on its own** — a single hold-out is high-variance and
+   *blind to the trial count* (Bailey et al.'s reasons (iv)+(v)); it must be
+   **paired** with a trial-aware multi-path number (CSCV/PBO on the bake-off matrix
+   + DSR/MinBTL on the crown). This is the same "single path is the weakest
+   evaluation" verdict that [79] (Walk-Forward worst) and [84] (resample, don't
+   trust one path) reach from other directions — and it is the one place the new
+   reading actually *amends* our design rather than just endorsing it.
+4. **Any crowned active edge is fragile and time-decaying** [15][26], now with
+   *corrected* decay numbers from full-text — McLean-Pontiff [94] is **~10% OOS
+   from data-mining (statistically insignificant) + ~35% post-publication from
+   crowding** (NOT the "26%/58%" previously logged), and **64–85% of anomalies
+   don't replicate** [95]. Critically, that ~10% statistical floor is for *single
+   refereed* hypotheses; our bake-off selects the *max of many* configs, and the
+   selection-inflation decomposition **σ√(2 ln K), of which ~90% is pure noise at
+   small n** [80], says our crown is inflated *more* — and *worse* on a small
+   single-coin sample (inflation ∝ √(ln K) but ↓ only as 1/√n). Three recent crypto
+   "beats-B&H" results [77][74][99] all fail our standards (one window, no
+   MT-correction, long-bias/selection). The realistic, well-supported expectation
+   remains: **no active strategy robustly beats buy-and-hold net of costs**
+   [9][23][58].
 
 *Round-3 (66–100) added no paper that overturns this; the strongest new "beats-
 B&H" claims are all single-window, selection-biased, or uncorrected for multiple
@@ -693,3 +771,23 @@ testing — i.e. exactly what the bootstrap + DSR/PBO gate exists to discount. T
 new methods papers (Künsch [84], Cont [90], PBO/CPCV comparison [79], the haircut
 family [73][96][98]) instead **strengthen the case for our gate and for adding
 Deflated-Sharpe/PBO to it.***
+
+*Deep-read pass (depth, not breadth — no new papers): full-text reads of 12 high-
+value entries [20][41][53][54][72][80][84][86][87][90][94][95] (plus a paywall-
+noted enrichment of [79]) sharpened the gate-data rationale and produced one
+correction and one design amendment.* **Correction:** McLean-Pontiff [94] decay is
+**~10% statistical (insignificant) + ~35% post-publication**, not the "26%/58%"
+previously logged (fixed throughout). **Amendment:** the PBO paper's [54] own
+hold-out critique shows our **forward paper-trade alone is insufficient** (single
+hold-out = high-variance + trial-count-blind) and must be paired with a CSCV/PBO +
+DSR/MinBTL on the bake-off matrix. **Three reinforcements with new full-text
+evidence:** (1) selection inflation is **~40× preprocessing leakage and decomposes
+as σ√(2 ln K) — ~90% pure noise at small n** [80], the direct data-side proof that
+our large-K-small-n bake-off needs trial-count deflation (DSR/MinBTL); (2) the MBB
+variance estimate *is* the **spectral density at zero = long-run variance** [84], so
+a too-short block under-estimates it and yields over-narrow CIs — turning "l→∞,
+l/n→0" into a concrete sensitivity-check imperative; (3) generators understate tails
+for a **structural** reason — a **Gaussian latent prior cannot produce heavy tails**
+[72] — while the one honest limit of *our* method (HS/bootstrap can't invent a
+worse-than-seen crash [87]) is real and best filled by a tail-stressed slice or EVT
+generator, not a generic GAN/VAE.*

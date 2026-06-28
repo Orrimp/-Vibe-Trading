@@ -7,45 +7,75 @@ robustness gate, with buy-and-hold as the permanent benchmark. Validated thesis:
 *no active strategy robustly beats holding, net of costs.* Read every takeaway
 through that lens.
 
-Coverage so far: [1]–[100]. (Round 3 complete; **target 100 reached**.)
+Coverage so far: [1]–[100]. (Round 3 complete; **target 100 reached**.) **Deep-read pass
+done:** full text pulled (pdftotext) for the highest-value candidate-arm + data-integrity
+entries — [30][36][66][68][83][91][100] upgraded in place with headline numbers, methods,
+and limitations; [40] sharpened via detailed secondary write-ups (body still paywalled).
+Net effect: the on-chain "exogenous signal" arms ([68] USDT-inflow, [66] funding-sign,
+[40] MVRV) were *demoted* on full reading; [83] confirmed as the near-exact external
+replication of our gate. ([52][59][65] remain genuinely paywalled — no fabrication.)
 
 ## TL;DR — candidate exogenous-signal arms vs dead ends (for the impatient)
 
-After 100 papers, the picture is consistent and our thesis survives. The few things
-worth a *probe* in our pipeline (all as **risk-sizing / regime overlays, tested
-through the bootstrap+cost gate vs buy-and-hold — none as standalone return-timing
-alpha**):
+After 100 papers — and a DEEP-READ pass that pulled the full text of the most
+relevant candidate-arm papers ([30][36][68][83][91][100] read via pdftotext; [40][52][59]
+[65][72] confirmed at abstract/secondary level) — the picture is consistent and our
+thesis survives. **The deep read mostly *demoted* the candidate arms: every "exogenous
+signal" that looked promising in abstract shrank, decayed out of our horizon, or carried
+no net-of-cost evidence when read in full.** The few things still worth a *probe* (all as
+**risk-sizing / regime overlays, tested through the bootstrap+cost gate vs buy-and-hold —
+none as standalone return-timing alpha**), now ranked by *post-full-text* promise:
 
-- **CANDIDATE — USDT exchange-inflow flows.** Stablecoin "dry powder" arriving at
-  exchanges positively predicts BTC/ETH returns and lowers vol [68]; Tether flows
-  arrive after downturns and (claimed) predict positive subsequent BTC returns [100/30].
-  The one genuinely *exogenous, demand-side* on-chain signal that isn't price-derived.
-  Caveats: intraday horizon, paid feed, no robustness gate yet.
-- **CANDIDATE — macro risk-on/off (Fed/CPI/recession) as a VOL overlay.** Macro
-  event-risk repricing forecasts crypto *volatility* [72]; hawkish policy + inflation
-  surprises are BTC headwinds [93][96]; BTC is risk-on, not a hedge [93][96]. Feeds our
-  macro-risk-on probe arm — but the strongest (monetary-policy) channel *fails OOS*
-  outside the rate-cut window [72], so expect regime instability.
-- **CANDIDATE — funding-rate sign/level as a froth/sentiment gauge.** Extreme positive
-  funding = crowded longs [4][66]; the one directional read of funding accessible to a
-  long-only holder (we can't harvest carry). Source from reconcilable CEX venues —
-  funding *and* open interest are misquoted on some exchanges [91].
-- **CANDIDATE (weak) — on-chain valuation (MVRV-Z/NUPL) + Metcalfe/CVALUE, and a
-  TDA/LPPLS froth detector.** Still the [40] hypothesis to falsify; TDA is a more
-  noise-robust crash-warning input than raw LPPLS [98] but unproven on false-positives.
-- **DEAD ENDS confirmed:** social-media sentiment & Fear&Greed (endogenous to price,
-  no Granger causality, no OOS [52][74]); cross-venue/cross-chain arbitrage (specialist-
+- **CANDIDATE — macro risk-on/off (Fed/CPI/recession) as a VOL overlay** *(now the least-
+  weak arm).* Macro event-risk repricing forecasts crypto *volatility* [72]; hawkish policy
+  + inflation surprises are BTC headwinds [93][96]; BTC is risk-on, not a hedge [93][96].
+  Feeds our existing macro-risk-on probe arm. It forecasts *vol, not returns*, and the
+  strongest (monetary-policy) channel *fails OOS* outside the 2024–25 rate-cut window [72]
+  — so it's a vol-sizing input with known regime instability, not a timing signal.
+- **CANDIDATE (DOWNGRADED) — USDT exchange-inflow flows.** Was billed as our *best* arm;
+  the FULL TEXT of [68] guts it for a daily long-only spot advisor: the effect is **tiny
+  and intraday (1–2h)** — **$100M USDT inflow → +0.065% BTC / +0.11% ETH next hour** (inside
+  any realistic round-trip cost), the daily/weekly horizon we trade is relegated to an
+  *appendix*, and the only "economic" validation is a **cost-free ETH options** trade, never
+  spot net of fees. Genuinely exogenous (not price-derived like FGI), but on its own numbers
+  it would almost certainly FAIL our daily gate. Keep only as a *vol-dampening* regime hint
+  (inflows → lower near-term vol [13][36][68]). The Tether-flow direction claim [30] is real
+  but *causal evidence of 2017 manipulation* (87 hours = 50% of the rally, RDD-identified),
+  not a forward-tradeable signal. Paid feed.
+- **CANDIDATE (WEAKENED) — funding-rate sign/level as a froth/sentiment gauge.** Extreme
+  positive funding = crowded longs [4]. But the only direct test [66] finds **BIDIRECTIONAL**
+  Granger causality (funding↔price, p≈1e-15 and 5e-8) — funding partly *reflects* price, like
+  the endogeneity trap in [52][74] — and reports **no net-of-cost strategy**. So funding is a
+  *froth read*, not a clean predictor. Source from reconcilable CEX venues, and note the **OI
+  half of a funding/OI overlay is the weakest link**: open interest is *provably fabricated*
+  on Bybit (unreconcilable every day, >70% of minutes) and OKX, and even Binance inverse perps
+  [91] — use Kraken/HTX OI only, or skip OI.
+- **CANDIDATE (weak) — on-chain valuation (MVRV-Z/NUPL/CVDD) + Metcalfe/CVALUE, and a
+  TDA/LPPLS froth detector.** [40]'s deeper read confirms it beats buy-and-hold AND random
+  entry (MVRV-Z best, CVDD bottoms at ~99% confidence) — **but with NO out-of-sample, NO
+  walk-forward, NO transaction costs, only 3 cycles**, exactly the overfit our gate catches.
+  The [40] hypothesis to falsify. TDA persistence-norm is a more noise-robust crash-warning
+  input than raw LPPLS [98] but has *no* false-positive rate / OOS test.
+- **DEAD ENDS confirmed:** social-media sentiment & Fear&Greed (endogenous to price, no
+  Granger causality, no OOS [52][74][95]); cross-venue/cross-chain arbitrage (specialist-
   captured, friction-bounded [85][86][91]); ML *return* prediction without cost-aware
   execution (collapses on costs; even cost-aware doesn't beat hold by bootstrap [83]);
   Bitcoin as inflation/crisis hedge (it's risk-on [93][96]); DeFi LP yield (loses to
-  holding [53][63]); calendar/intraday seasonality as alpha (arbitraged away [94]).
+  holding [53][63]); calendar/intraday seasonality as alpha (arbitraged away [94]); whale/
+  on-chain vol-overlay as a hold-beater ([36]'s own cost-free backtest doesn't beat hold
+  once you discount near-zero-exposure artifacts).
 
 **Headline:** the strongest, most current external replication of our entire project is
-[83] — same asset (BTC), same method (walk-forward + bootstrap vs buy-and-hold), same
-verdict: cost-aware ML restores returns but shows **no statistically significant Sharpe
-outperformance over buy-and-hold**. The whole topic converges on one rule:
-**volatility/regime is forecastable; direction is ~random-walk → build risk-sizing
-overlays, not return-timing bets.**
+**[83]** — now read in full. Same asset (BTC), same method (walk-forward + **block-bootstrap
+Sharpe test vs buy-and-hold**, mirroring our gate). Exact numbers: naive XGBoost long-only
++73.5% gross → **−64% at 10 bps**; a cost-aware trade-suppression filter cuts trades
+10,619→251 and restores **+65.4%, Sharpe 1.09 vs buy-and-hold's 0.82, shallower drawdown**
+— yet **Table 8: "None of the reported cost-aware strategies significantly outperforms
+buy-and-hold in Sharpe-ratio terms after Holm correction"** (10,000 reps, 24/72/168h blocks).
+A higher point-Sharpe that the bootstrap won't certify is *precisely* our weakest-link
+discipline in action. The whole topic converges on one rule: **volatility/regime is
+forecastable; direction is ~random-walk → build risk-sizing overlays, not return-timing
+bets — and even good risk-sizing rarely clears the bootstrap vs holding.**
 
 ## Key themes
 
@@ -306,22 +336,32 @@ overlays, not return-timing bets.**
    synchronize all coins [16][28][33][43]. Super-linear price impact → harsher size
    penalties on crypto, much harsher on small caps [6].
 4. **Candidate exogenous-signal arms to PROBE (all as risk-sizing/regime overlays through
-   OUR gate vs buy-and-hold, none as standalone alpha), ranked by promise:**
-   (a) **USDT exchange-inflow flows** [68][100] — the cleanest *exogenous, demand-side*
-   signal (stablecoin dry powder → buying); not price-derived like FGI. Test as a buy/hold
-   confirmation; caveats: intraday horizon, paid feed.
-   (b) **Macro risk-on/off (Fed/CPI/recession) as a VOL overlay** [72][93][96] — feeds our
-   existing macro-risk-on probe arm; cut size into high macro-uncertainty / hawkish episodes.
-   Caveat: the monetary channel *fails OOS* outside rate-cut regimes [72] — expect instability.
-   (c) **Funding-rate sign/level as a froth gauge** [4][66] — de-risk when 30-day-avg funding
-   is extreme positive (crowded longs). Source from reconcilable CEX venues (funding/OI are
-   misquoted [91]).
-   (d) **On-chain valuation (MVRV-Z / NUPL / CVALUE / NVT)** [40][67][70] — the [40] claim to
-   *falsify*; few cycles, high overfit risk.
+   OUR gate vs buy-and-hold, none as standalone alpha), RE-RANKED after the full-text deep
+   read (the deep read demoted the on-chain arms):**
+   (a) **Macro risk-on/off (Fed/CPI/recession) as a VOL overlay** [72][93][96] — now the
+   least-weak arm; feeds our existing macro-risk-on probe; cut size into high macro-uncertainty
+   / hawkish episodes. It forecasts *vol, not returns*; the monetary channel *fails OOS* outside
+   rate-cut regimes [72] — expect instability, treat as vol-sizing not timing.
+   (b) **USDT exchange-inflow flows — DOWNGRADED** [68] — full text shows a *tiny, intraday
+   (1–2h)* effect ($100M → +0.065% BTC / +0.11% ETH next hour), daily horizon banished to an
+   appendix, and economic value shown only via a *cost-free options* trade. Run ONE honest
+   daily-horizon probe to confirm decay, but expect it to FAIL the gate; better used as a
+   vol-dampening hint than a return arm. Paid feed. (The [30] Tether-flow claim is *2017
+   manipulation evidence*, not a forward signal.)
+   (c) **Funding-rate sign/level as a froth gauge — WEAKENED** [4][66] — de-risk when 30-day-avg
+   funding is extreme positive (crowded longs), BUT [66] finds funding↔price is *bidirectional*
+   (partly endogenous), with no net-of-cost test. Source funding from reconcilable CEX venues;
+   **do NOT build the OI half on Bybit/OKX/Binance-inverse — their OI is provably fabricated;
+   use Kraken/HTX OI only, or drop OI** [91].
+   (d) **On-chain valuation (MVRV-Z / NUPL / CVDD / CVALUE / NVT)** [40][67][70] — the [40] claim
+   to *falsify*: deeper read confirms it beats hold+random but with NO OOS / NO walk-forward /
+   NO costs / only 3 cycles. High overfit risk.
    (e) **TDA/LPPLS froth-crash detector** [12][58][98] — TDA persistence-norm is more
-   noise-robust than raw LPPLS; must prove it doesn't false-alarm.
+   noise-robust than raw LPPLS, but has no published false-positive rate; must prove it doesn't
+   false-alarm.
    Each needs a data feed; each must clear the frozen robustness+cost gate. Default
-   expectation given the other 95 papers: most won't survive net of costs — that's the point.
+   expectation given the other 95 papers AND the deep read: most won't survive net of costs at
+   our daily horizon — that's the point, and the full-text evidence makes it more, not less, likely.
 5. **Universe screening is a real risk control.** Restrict to large, liquid, regulated-
    venue coins: small caps are P&D/wash-trading targets with fictional volume
    [19][20][31][32], algorithmic-stablecoin-adjacent assets carry contagion fragility
@@ -361,8 +401,11 @@ overlays, not return-timing bets.**
   pair-stablecoin volatility/redemption-friction rises) a useful exogenous tail-risk
   circuit-breaker for a coin priced against that stablecoin? [61][62][81][82][100]
 - Does a **USDT-exchange-inflow overlay** (scale exposure up when stablecoin dry powder
-  flows to exchanges) survive our gate vs hold, or is it an intraday-only effect that
-  decays at our daily horizon? [68][100] (needs on-chain flow feed)
+  flows to exchanges) survive our gate vs hold? **Full-text [68] now predicts NO at our
+  horizon** — the effect is intraday (1–2h), ~$0.065–0.11% per $100M (sub-cost), and the
+  daily horizon is an appendix afterthought; the paper's only economic test is a cost-free
+  options trade. Worth ONE confirmatory daily probe to verify the decay, then likely retire
+  as a return arm (keep as a vol-dampening hint). [68][30] (needs on-chain flow feed)
 - Does a **macro risk-on/off overlay** (de-risk on hawkish-policy / inflation-surprise /
   high-macro-uncertainty states) reduce drawdown net of costs — and does it survive OUTSIDE
   the regime it was fit on (the monetary channel failed OOS in [72])? [72][93][96]
@@ -425,11 +468,12 @@ overlays, not return-timing bets.**
 - Crypto C-4 factor model (market/size/momentum/value=price-to-new-address; weakening post-2020): [67]
 - Momentum survives costs ONLY in liquid coins; illiquid coins mean-revert: [77]
 - ML cross-section: simplest methods win (OLS > trees/NN); edges in hard-to-trade coins: [67]
-- Funding rate as sentiment/positioning gauge (causal link, no robust net-of-cost timing): [66]
+- Funding rate as sentiment/positioning gauge (BIDIRECTIONAL Granger funding↔price, partly endogenous, no net-of-cost timing): [66]
 - Carry Sharpe falling post-2024, negative in 2025 (structural edge decaying): [67]
 - Open interest systematically misquoted (Bybit/OKX worst; Kraken/HTX reconcilable): [91]
-- USDT exchange-inflows predict +BTC/ETH returns & lower vol (exogenous demand signal): [68]
-- Tether flows arrive after downturns, predict +subsequent BTC returns; peg arb centralized: [100] [30]
+- USDT exchange-inflows predict +BTC/ETH returns & lower vol — but TINY & INTRADAY (1–2h, ~$0.065%/$100M BTC), daily horizon = appendix, only cost-free options backtest: [68]
+- Tether flows = CAUSAL 2017 manipulation (87 hrs = 50% of rally, RDD-identified; −6% EOM abnormal return); not a forward signal: [30]
+- Stablecoin peg arb centralized (USDT 6 redeemers vs USDC 521; efficient arb RAISES run risk): [100]
 - ~75% of BTC activity off-chain; on-chain DEMAND (not supply) carries price info: [78]
 - NVT ratio = on-chain "P/E" valuation/connectedness metric (to test, not trust): [70]
 - Vol forecastable R²~0.67; dominant features = lagged RV + volume + attention (HAR core): [73]
@@ -441,7 +485,8 @@ overlays, not return-timing bets.**
 - Crypto USD "risk-free" rate large/time-varying/venue-specific (~0–20%+ from Deribit): [92]
 - "Better inputs > deeper model"; simple ≈ deep at LOB scale; ceiling 42–71%, dies on costs: [79]
 - Order-flow (event) representations generalize across regimes better than LOB-level snapshots: [80]
-- Cost-aware ML on BTC restores returns but NO Sharpe outperformance vs hold (bootstrap): [83]
+- Cost-aware ML on BTC: +73.5% gross → −64% @10bps; filter restores +65.4%/SR 1.09 vs hold SR 0.82, but NO sig. Sharpe outperformance vs hold after Holm-corrected block-bootstrap (Table 8): [83]
+- OI provably fabricated on Bybit (unreconcilable >70% of minutes)/OKX/Binance-inverse; Kraken/HTX clean: [91]
 - Social-media sentiment: no Granger causality to returns (returns→sentiment), no net-of-cost: [74]
 - Causal Bayesian net: TA carries signal, external/social features can hurt (no OOS/cost): [95]
 - Herding = consensus co-movement; now propagated INTO crypto via ETF complex: [75] [76]

@@ -26,6 +26,25 @@ industrialized overfitting our gate exists to reject.
 > for our planned gate addition, a **random-strategy null** [30][31], **event-driven
 > ("update-when-required") re-baking** [97], and anti-overfitting **fitness/training-set**
 > techniques ([68][92][99]).
+>
+> **Deep-read pass (2026-06-28): 10 high-value entries upgraded to first-hand full reads**
+> — [98] DSR, [29] MinBTL, [50] STW Reality Check, [30]/[31] Chen-Navet random nulls,
+> [68] GT-Score, [92] dynamic-subset GP, [10] vectorial GP, [48] Neely-Weller. **The two
+> defensive formulas we are adding to the gate are now captured exactly** (DSR Eq.2 +
+> expected-max-SR Eq.1 from the [98] primary; MinBTL closed form + the years-vs-trials
+> table from [29]). Three things sharpened by full text: (a) **DSR's worked example proves
+> fat tails *shrink* the survivable trial budget** (Normal returns: 88 trials OK; skew−3/
+> kurt10: only 46) — heavy-tailed crypto should make us *more* suspicious of big sweeps,
+> not less; (b) the random-null must be **matched-activity** (same trade frequency *and*
+> time-in-market) to be cost-fair [31], and the search-vs-search comparison must be
+> **equal-intensity** (draw ~N random configs); (c) **even snooping-corrected, in-sample-
+> significant rules fail OOS** — STW's best DJIA rule survived the data-snooping correction
+> *in-sample 1897-1986* yet was insignificant OOS 1987-1996 (Reality-Check p≈0.12) and
+> earned nothing on S&P futures [50]. One **correction**: [68] GT-Score *does* use a B&H
+> benchmark (inside its significance Z-score) and *does* include a cost-sensitivity check —
+> my earlier "omits both" was wrong. Net effect on the thesis: **unchanged and better-
+> armed** — the honest full reads converge on "no robust single-coin edge," and we now hold
+> the exact closed forms to enforce it.
 
 ## Key themes
 
@@ -37,9 +56,18 @@ industrialized overfitting our gate exists to reject.
    — the statistics that doom it are unchanged. Even the careful miners admit it:
    TreEvo [11] states outright "increasing the number of evaluations may make the
    methods more prone to overfitting." This is not folklore — Bailey et al. [29]
-   *prove* that backtesting even a *small* number of configurations yields a high
-   in-sample Sharpe by chance, and that the in-sample winner is *negatively*
-   correlated with out-of-sample return.
+   *prove* (via Extreme Value Theory) that the expected *maximum* in-sample Sharpe
+   across N trials with **zero true skill** grows with N, and that the in-sample
+   winner is *negatively* correlated with out-of-sample return. **The quantitative
+   handle (now read first-hand) is the Minimum Backtest Length** [29]: MinBTL ≈
+   [(1−γ)·Z⁻¹(1−1/N) + γ·Z⁻¹(1−1/(N·e))]² / E[max SR]² (γ≈0.5772; Z⁻¹ = inverse
+   normal CDF). For a target annualized E[max SR]=1 it gives **N=10 trials → ~0.5 yr
+   needed, N=50 → ~1.5–2 yr, N=100 → ~2.5–3 yr, N=1000 → ~5–6 yr** — i.e. trying
+   more configs *demands* a proportionally longer backtest, and below MinBTL a
+   Sharpe-1 winner is achievable with no real edge. A short window + a big sweep is
+   *guaranteed* to surface a spurious champion. STW [50] is the century-of-DJIA
+   empirical proof of the same: even a rule that *survives the data-snooping
+   correction in-sample* (1897-1986) was insignificant OOS (1987-1996, p≈0.12).
 2. **Honest GP says our thesis.** The foundational GP-trading paper (Allen &
    Karjalainen 1999, [1]) — with a proper train/select/test split + costs — found
    evolved rules do **not** robustly beat buy-and-hold on the S&P out-of-sample.
@@ -139,10 +167,18 @@ industrialized overfitting our gate exists to reject.
     LeBaron 1992 [52] showed simple MA/range-break rules beat random-walk/GARCH nulls
     on the Dow (1897-1986) — but with **no costs and a tiny pre-chosen rule set**.
     Sullivan-Timmermann-White 1999 [50] applied **White's Reality Check** to the
-    ~7,846-rule *universe* and showed much of that significance is a *snooping
-    artifact* once you account for how many rules were tried. The lesson our gate
-    inherits: **significance must be conditioned on the size of the search** (the form
-    of "charge the search budget" [29] that our bake-off most directly needs).
+    ~7,846-rule *universe* (filter / MA / support-resistance / channel-breakout /
+    on-balance-volume families). **First-hand nuance now captured:** STW found certain
+    rules **DID survive the data-snooping correction *in-sample* 1897-1986** — but the
+    best rule was **insignificant out-of-sample 1987-1996 (Reality-Check p≈0.12)** and
+    earned **nothing on S&P 500 index futures** (the one market where costs + shorting
+    are clean). So the lesson is two-fold: (a) **significance must be conditioned on
+    the size of the search** ("charge the search budget" [29]), AND (b) **even an
+    in-sample-significant, snooping-corrected rule can be worthless OOS** — the verdict
+    must rest on held-out / resampled / cost-net performance, never the in-sample fit.
+    This is the century-of-data empirical proof of the Bailey [29] IS→OOS-degradation
+    theorem, and *why our gate keeps both the search-size correction (DSR/PBO/Reality-
+    Check) AND the regime bootstrap* — neither alone suffices.
 18. **MARKET-MATURITY NUANCE (the honest counter-weight).** Hsu-Kuan [51]:
     Reality-Check-corrected, cost-net, OOS — technical rules **survive in YOUNG/less-
     efficient markets (NASDAQ, Russell 2000) but NOT in mature ones (DJIA, S&P 500).**
@@ -164,6 +200,20 @@ industrialized overfitting our gate exists to reject.
   likely real. Also: **cost as a market-impact penalty inside the fitness function**
   (not an afterthought) and **scale-invariant metrics** (Sharpe/Calmar can't come
   from mere position-sizing) to rule out sizing artifacts.
+- **Holds up (a portable anti-overfitting *search* technique — confirmed by two
+  first-hand reads):** **difficulty-weighted training-subset rotation.** [92] (GP for
+  IV) rotates the training subset every g generations and *up-weights the subsets the
+  search currently fits worst* (Adaptive-Random "ARSS" wins on OOS MSE); [10]
+  (vectorial GP for trading) independently uses the same idea (random-buffer sampling
+  + segment the training set into 3 parts, evaluate on one per generation, all three
+  during "super generations"). The principle — never let the optimizer score a
+  candidate on one fixed slice; rotate across sub-windows and concentrate scrutiny on
+  the *hardest* ones — is a direct cousin of our **weakest-link** moving-block
+  bootstrap. Concrete import: pre-regularize any bake-off optimizer by rotating
+  candidates across our regime blocks and weighting toward the blocks where each does
+  worst. Caveat from [10]: even *with* this regularization, evolved strategies showed
+  **frequently negative OOS fitness despite positive training fitness** — it abates,
+  doesn't cure ([21]).
 - **Holds up (as a risk idea, not alpha):** "B&H + strategy" portfolios reduce
   drawdown even when the strategy alone doesn't beat B&H ([5]); dynamic re-weighting
   to combat **factor decay** ([6]) flags that edges are non-stationary.
@@ -220,30 +270,48 @@ industrialized overfitting our gate exists to reject.
 
 ## Actionable takeaways for our advisor
 
-1. **Treat our bake-off as a search that must be significance-charged — and report a
-   PBO.** Sweeping many strategies/params on `(coin, window)` IS a multiple-testing
-   exercise. The most-reinforced finding this round: add a **PBO / CSCV** (Probability
-   of Backtest Overfitting via Combinatorially-Symmetric Cross-Validation) number
-   alongside the bootstrap verdict — AutoQuant [53] applies exactly this to *crypto
-   perps* and still finds **substantial residual overfitting after careful tuning**,
-   concluding its tool is "validation infrastructure, not proof of persistent alpha"
-   (our mission, externally re-derived). Also adopt **White's Reality Check** [50] —
-   a bootstrap that tests the best strategy against the *whole searched universe* (the
-   precise form of "the more configs we try, the higher the bar"). Bailey [29] proves
-   even a *few* configs inflate in-sample Sharpe; [32] shows **Holm correction** flips
-   a >65%-return BTC strategy to "not significant vs B&H." Net: a crowned pick should
-   ship with (a) bootstrap-vs-B&H verdict, (b) a PBO, (c) Reality-Check/Holm
-   correction over the N strategies tried. **The exact formula for our planned DSR
-   addition is in [98]** (Bailey & López de Prado, *Deflated Sharpe Ratio*): it deflates
-   the observed Sharpe using the **number of trials N (= our bake-off's strategy/param
-   count)**, the **backtest length**, and the **return skew/kurtosis** (fat-tailed crypto
-   "lucky" Sharpes get discounted). Feed our sweep's N as the trials count — a crowned
-   config must clear the *deflated* bar, not a raw Sharpe.
-2. **Add a RANDOM-strategy null as a gate sub-test (highest-value new idea).**
-   Beyond "beat B&H," require a tuned/evolved pick to beat a **matched-activity
-   random-trading / random-parameter null** ([5][30][31]). An optimized config that
-   beats <~50% of random sets is overfit, not skilled — cheap and catches edges that
-   look good vs B&H purely from lucky timing.
+1. **Treat our bake-off as a search that must be significance-charged — DSR + MinBTL
+   are now the exact closed forms to enforce it.** Sweeping many strategies/params on
+   `(coin, window)` IS a multiple-testing exercise. **The Deflated Sharpe Ratio [98]
+   is the formula we add to the gate, captured first-hand:**
+   **DSR = Z[ (ŜR − SR₀)·√(T−1) / √(1 − γ̂₃·ŜR + ((γ̂₄−1)/4)·ŜR²) ]**, where the
+   rejection threshold is the *expected maximum* Sharpe under the null (Eq.1):
+   **SR₀ = √V[{ŜRₙ}] · ( (1−γ)·Z⁻¹[1−1/N] + γ·Z⁻¹[1−(1/N)·e⁻¹] )**, γ≈0.5772.
+   Direct implementation mapping for our pipeline (all five inputs are things we
+   already have): **N ← bake-off config count**; **V[{ŜRₙ}] ← variance of the Sharpe
+   ratios across all baked-off configs**; **T ← window length in periods**; **γ̂₃, γ̂₄
+   ← realized skew/kurtosis of the crowned strategy's returns**. Crown only if
+   **DSR ≥ 0.95**. **The worked example is the load-bearing crypto lesson:** a ŜR=2.5
+   over 5 years with N=100, skew−3, kurt10 → DSR≈0.90 < 0.95 (reject); with **Normal
+   returns the same ŜR clears at N=88 trials, but skew−3/kurt10 drops the survivable
+   trial count to 46** — so **fat-tailed crypto returns *shrink* the number of configs
+   a strategy can survive**, and our gate should be *more* suspicious of large sweeps
+   on heavy-tailed coins, the opposite of the naive intuition. Pair DSR with: (a) a
+   **MinBTL pre-flight check** [29] — assert window length T ≥ MinBTL(N) *before*
+   crowning (a one-line guard; the years-vs-trials table above is the lookup); (b) a
+   **PBO / CSCV** number [53] (AutoQuant applies it to crypto perps and still finds
+   substantial residual overfitting after careful tuning, concluding "validation
+   infrastructure, not proof of persistent alpha" — our mission re-derived); (c)
+   **White's Reality Check** [50] / **Holm** [32] over the N tried (Holm flipped a
+   >65%-return BTC strategy to "not significant vs B&H"). The three corrections are
+   complementary: DSR = closed-form parametric Sharpe deflation, PBO = non-parametric
+   CSCV, Reality Check = bootstrap-over-the-universe. Also adopt the **optimal-stopping
+   discipline** [98] to *bound* the sweep up front — sample ~1/e (37%) of justified
+   configs, then take the first that beats them — because every extra trial
+   irreversibly raises SR₀.
+2. **Add a RANDOM-strategy null as a gate sub-test (highest-value new idea) — and
+   construct it correctly.** Beyond "beat B&H," require a tuned/evolved pick to beat a
+   random-trading null ([5][30][31]). The first-hand read of Chen-Navet [31] pins down
+   the *fair* construction: the random null must be **matched-activity — same trade
+   frequency AND same time-in-market (intensity)** as the candidate — otherwise the
+   comparison is contaminated by differing transaction-cost exposure (a strategy
+   could "win" merely by trading less). And the *search-vs-search* comparison must be
+   **equal-intensity**: pit our bake-off (N configs) against a random search that
+   draws ~N random configs, the same "charge the search budget" logic as DSR/MinBTL.
+   The clean diagnostic [31]: if random search beats a lottery-null but our optimized
+   pick does *not*, the optimizer is **overfitting**, not finding edge. An optimized
+   config that beats <~50% of matched random sets is overfit, not skilled — cheap, and
+   catches edges that look good vs B&H purely from lucky timing.
 3. **Double-out-of-sample is the gold standard** ([5]): if we add param tuning,
    reserve a final unseen window evaluated exactly once; beware "OOS" data reuse.
 4. **A cost-aware execution filter is the one thing that helped** ([32]): only trade
@@ -285,15 +353,25 @@ industrialized overfitting our gate exists to reject.
     MAP-Elites-feature-map-of-investor-preferences idea for trading — but every archived
     elite must individually clear the FROZEN gate; "diverse" ≠ "robust."
 11. **Bake the overfitting penalty INTO the fitness/objective, not just the post-hoc
-    test, and report a generalization ratio** ([68]): GT-Score [68] composes
-    performance + significance + consistency + downside-risk into one objective and
-    cuts the generalization gap (it reports a 98% improvement in the *generalization
-    ratio* = validation-return ÷ training-return). Two cheap, portable imports: (a) a
-    multi-faceted objective that already penalizes fragility (close to our gate's
-    multi-faceted verdict), and (b) **the generalization ratio as a per-candidate
-    overfitting metric** — any bake-off pick whose validation÷train return is far below
-    1 is overfit. Caveat: GT-Score still omits costs + B&H, and even with it the effect
-    sizes are "modest" — a better objective *abates* overfitting ([21]), never cures it.
+    test, and report a generalization ratio** ([68]): GT-Score [68] = **(μ · ln(z) ·
+    r²) / σ_d** (μ=mean return, z=excess-return-over-B&H significance Z-score, r²=path
+    consistency, σ_d=downside deviation), implemented piecewise to *penalize* configs
+    that don't clear B&H beyond sampling noise. **Correction from the full read:** it
+    *does* use a buy-and-hold benchmark (μ_m, inside the Z-score) and *does* include a
+    cost-sensitivity check (0–10 bps/side) — my earlier "omits both" was wrong. Real
+    numbers: walk-forward generalization ratio **0.365 (GT-Score) vs 0.185 baseline =
+    the "98%"**, but GT-Score's *raw* OOS return is **lower** (43.6% vs 46–50%) — it
+    explicitly trades return for retention, and even the best objective retains only
+    **~37% of training return OOS** (a sobering anchor for how illusory in-sample
+    performance is). Three portable imports: (a) a **B&H-relative significance gate
+    baked into ranking** (penalize sub-B&H configs — close to our weakest-link
+    verdict); (b) the **generalization ratio (validation÷training return) as a
+    per-candidate overfitting metric** — any bake-off pick far below 1 is overfit; (c)
+    Monte-Carlo-over-seeds stability ([43]). Decisive caveat: effect sizes are small
+    (Cohen's d<0.2) and the **parametric Z-score breaks under fat tails** — so for
+    crypto the *non-parametric* version of the same idea (our bootstrap + DSR [98]) is
+    the honest implementation; a better objective *abates* overfitting ([21]), never
+    cures it.
 12. **Prefer parsimonious (fewer-indicator) crowned picks** ([74]): MOEA/D selected
     *fewer* indicators with better interpretability than AGE-MOEA; simpler strategies
     overfit less ([21][29]) and are easier to narrate to a retail user. A complexity
@@ -395,7 +473,14 @@ industrialized overfitting our gate exists to reject.
 - GA-for-LSTM-hyperparameters: price-level R²=0.87 is trivial-persistence, not edge → [87]
 - eTrend/eTrendRev: same evolutionary machinery evolves momentum OR reversion ⇒ it fits the regime it's shown → [89][90]
 - XCS "beats B&H+random" but via MSCI index-reconstitution flow (event-driven/cross-sectional, not single-coin) → [88]
-- DEFLATED SHARPE RATIO formula (deflate by #trials + backtest length + skew/kurtosis) = our planned DSR gate addition → [98]
+- DEFLATED SHARPE RATIO closed form (DSR=Z[(ŜR−SR₀)√(T−1)/√(1−γ̂₃ŜR+((γ̂₄−1)/4)ŜR²)], threshold SR₀=expected-max-SR via EVT) = our DSR gate addition; inputs N/V/T/skew/kurt all already in our bake-off → [98]
+- DSR worked example: fat tails SHRINK the survivable trial budget (Normal 88 trials vs skew−3/kurt10 only 46) ⇒ be MORE suspicious of big sweeps on heavy-tailed crypto → [98]
+- MINIMUM BACKTEST LENGTH closed form (MinBTL≈[(1−γ)Z⁻¹(1−1/N)+γZ⁻¹(1−1/(Ne))]²/E[maxSR]²; table N=10→0.5y,100→2.5–3y,1000→5–6y) = one-line pre-flight gate check → [29]
+- Matched-activity random null (same trade frequency AND time-in-market) + equal-search-intensity = the cost-fair way to build the random-null sub-test → [31]
+- STW: rule SURVIVES snooping-correction in-sample yet FAILS OOS (DJIA p≈0.12) + earns nothing on S&P futures ⇒ need both search-size correction AND regime bootstrap → [50]
+- Difficulty-weighted training-subset rotation (up-weight the hardest sub-windows during search) = portable anti-overfitting technique, cousin of weakest-link bootstrap → [92][10]
+- Vectorial/typed GP with serious regularization STILL shows negative OOS fitness despite positive training fitness ⇒ representation/regularization abates not cures → [10]
+- GT-Score=(μ·ln(z)·r²)/σ_d with B&H-relative significance z baked into the objective + cost-sensitivity check; generalization ratio as per-candidate overfitting metric → [68]
 - GA trading system: superb in-sample, unprofitable OOS once costs imposed (canonical) → [95]
 - GA-tuned params beat defaults, but realistic spreads ⇒ "markets could be efficient" → [86]
 - Trinary buy/sell/NO-TRADE rule + CVaR/conditional-Sharpe fitness = honest turnover/tail knobs → [85][99]

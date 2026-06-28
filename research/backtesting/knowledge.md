@@ -1,9 +1,33 @@
 # Knowledge — Backtesting & Test Data
 
-_Synthesis of the `backtesting` ledger (100 papers; round-3 added [78–100]).
+_Synthesis of the `backtesting` ledger (100 papers; round-3 added [78–100]; a
+round-4 DEEP-READ pass then took 12 highest-value entries to primary-source full-text
+depth — [1][2][3][8][18][25][29][40][62][64][80][87] read via pdftotext, not abstracts).
 Payoff focus: concrete ways to harden our FROZEN robustness gate (1000-path
 moving-block bootstrap vs buy-and-hold), our ranking, and our test-data pipeline —
 and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
+
+> **Round-4 (deep-read) addition — the DSR/PBO gate spec is now at FORMULA +
+> THRESHOLD + WORKED-NUMBER depth, and the "what is N_eff?" question is RESOLVED from
+> primary sources.** Reading [1] in full (incl. all 3 appendices) surfaced three things
+> the abstract hid: (a) `V_SR` in `E[max SR]` is the CROSS-TRIAL dispersion of config
+> Sharpes, not the sampling SE of one; (b) a LADDER of effective-N estimators —
+> closed-form average-correlation `N̂=ρ̄+(1−ρ̄)·M` ([1]-App.3), PCA ([3]), entropy
+> ([1]-App.3, the authors' preferred), ONC clustering ([86]); (c) the DECISIVE caveat
+> that when M>T (more configs than bars — our exact case) the correlation matrix is
+> ill-conditioned and we MUST dimension-reduce before estimating ρ̄. [3] gave the MinBTL
+> calibrations (5yr → max 45 configs; 7 configs → spurious 2yr Sharpe=1). [80] gave the
+> composed-strategy critical-t LOOKUP (3-of-10→t≈4, 3-of-20→t≈5, 7-of-100→t≈7; even
+> 1-of-1 needs 2.1). [29]/[87] gave the exact Bonferroni/Holm/BHY formulas + nonlinear-
+> haircut numbers (t=3→2; SR→0.32; 91% / 37%-100%-49% haircuts). [8] gave a 2nd block-
+> size selector (calibration-function/VAR(1)) + the studentized statistic z=w/σ̂. [40]
+> gave the ORATIO loss-function way to DERIVE the threshold instead of hard-coding 0.95.
+> [64] gave the exact BBC-CV bias formula + algorithm as a resampling deflation engine.
+> [62] confirmed the variance-of-selection-criterion thesis (validates our weakest-link
+> percentile as the ranking key). [2] gave the exact CSCV logit construction. All folded
+> into the "DSR/PBO gate add — concrete spec" section below. Two entries ([24][86]) were
+> re-attempted but remain paywall/JS-shell blocked; [86]'s estimator is nonetheless now
+> captured from [1]-App.3 (its original source).
 
 > **Round-3 addition — the DSR/PBO gate add is now FULLY SPECIFIABLE; plus the
 > bootstrap's provenance, calibration counter-weights, and forecast-test rigor
@@ -171,98 +195,175 @@ and to avoid overfitting. Numbers in [brackets] reference papers.md entries._
 
 ## DSR/PBO gate add — concrete spec (the headline deliverable)
 
-After 100 papers the selection-bias correction we are adding to the gate is now
-fully specified. The recipe below is buildable from artifacts our bake-off already
+After 100 papers + a deep-read pass on the primary sources ([1][2][3][8][25][29]
+[40][62][64][80][87] read in FULL via pdftotext, not abstracts), the selection-bias
+correction we are adding to the gate is now specified at formula + threshold +
+worked-number depth. The recipe is buildable from artifacts our bake-off already
 produces (a per-config bar-return / equity matrix). Honesty-first, ship-passive:
 the goal is a CALIBRATED haircut that still leaves room to detect a rare genuine
-winner — not maximal pessimism. Citations are load-bearing.
+winner — not maximal pessimism. Citations are load-bearing; numbers below are from
+the primary texts.
 
-**Which estimator — Deflated Sharpe Ratio (DSR), the López de Prado / Bailey form.**
-- Compute, for the crowned config, the **Probabilistic Sharpe Ratio against the
-  selection-bias threshold**: `DSR = PSR(SR0) = Φ( (SR_obs − SR0)·√(T−1) /
-  √(1 − γ3·SR_obs + ((γ4−1)/4)·SR_obs²) )`, where `SR_obs` is the crown's
-  per-bar Sharpe, `T` the number of bars, `γ3,γ4` the skew/kurtosis of the crown's
-  returns (crypto fat tails make this term BITE) [1][4].
-- The threshold `SR0 = E[max SR]` is the false-strategy benchmark:
-  `SR0 ≈ √V_SR · [ (1−γ)·Z⁻¹(1−1/N) + γ·Z⁻¹(1−1/(N·e)) ]`, with `γ≈0.5772`
-  (Euler–Mascheroni), `V_SR` the variance of Sharpe across the N trials, and `Z⁻¹`
-  the Gaussian inverse-CDF [1][3][86]. Upper bound for sanity: `E[max SR] ≤
-  √(2 ln N)·σ_SR` [3].
-- **Crown only if `DSR > 0.95`** (true SR exceeds the selection-bias threshold at
-  95% confidence) AND the crown's net return clears buy-and-hold. Buy-and-hold is
-  EXEMPT (it is the benchmark, not a searched trial). This makes the FRAGILE-can't-
-  crown gate also a SELECTION-bias gate.
+**Which estimator — Deflated Sharpe Ratio (DSR), the Bailey / López de Prado form
+[1, read in full incl. all 3 appendices].**
+- For the crowned config compute the **PSR against the selection-bias threshold**
+  (Eq.2 of [1]): `DSR = PSR(SR0) = Z[ (SR_obs − SR0)·√(T−1) /
+  √(1 − γ3·SR_obs + ((γ4−1)/4)·SR_obs²) ]`, `SR_obs` the crown's per-bar Sharpe, `T`
+  bars, `γ3,γ4` the crown's skew/kurtosis (crypto fat tails make this term BITE) [1][4].
+- Threshold `SR0 = E[max SR]` (Eq.1, via Extreme Value Theory):
+  `SR0 ≈ √V_SR · [ (1−γ)·Z⁻¹(1−1/N) + γ·Z⁻¹(1−1/(N·e)) ]`, `γ≈0.5772`. **`V_SR` is
+  the CROSS-TRIAL variance of the config Sharpes (the dispersion of Sharpes ACROSS
+  the swept configs) — NOT the sampling SE of one Sharpe** (the single most common
+  error; confirmed from [1] §"Expected Sharpe Ratios under Multiple Trials"). A tight
+  cluster of config-Sharpes near hold's ⇒ small V_SR ⇒ low SR0 (little to deflate,
+  consistent with no-edge); a wide spread raises the bar. Sanity bound `E[max SR] ≤
+  √(2 ln N)·√V_SR` [3]. Exact Python is in [1] App.2 (`(1-emc)*ppf(1-1/N)+emc*ppf(1-1/(N*e))`).
+- **Calibration from [1]'s worked example (memorize this):** SR_obs=2.5 annualized over
+  T=1250 daily bars (5y), with crypto-like γ3=−3, γ4=10, V_SR=1, **N=100** trials →
+  **DSR=0.90** (REJECTED at 95%). Had N been only 46 → DSR=0.9505 (PASS). Had returns
+  been Gaussian it would take N=88 to fall that far — **non-normality alone roughly
+  halves the tolerable trial count.** Lesson: even a spectacular 2.5-Sharpe is killed by
+  ~100 trials once fat tails enter; our SMA/MACD crowns rarely net near 2.5, so DSR will
+  almost always reject (our thesis).
+- **Crown only if `DSR > 0.95` AND net return beats buy-and-hold.** B&H is EXEMPT (it is
+  the benchmark, not a searched trial). This makes the FRAGILE-can't-crown gate also a
+  SELECTION-bias gate. (Optionally derive the 0.95 from an explicit loss function — see
+  the ORATIO note under FWER/FDR — rather than hard-coding it [40].)
 
-**How many trials to deflate by — `N` = EFFECTIVE, not raw config count.** This is
-the single most important parameter and the one most often gotten wrong.
-- Our sweep's configs are MASSIVELY correlated (SMA-50 ≈ SMA-51 produce near-
-  identical equity), so the raw config count would WILDLY over-deflate (treat 200
-  near-duplicates as 200 independent shots) [86][39].
-- **Estimator [86]:** build the N×N correlation matrix of candidate return series
-  (we already have the returns), convert to a distance `d = √(½(1−ρ))`, hierarchically
-  cluster (ONC or any correlation-distance clustering), and set **`N_eff = number of
-  clusters`**. Feed `N_eff` (not raw N) into `E[max SR]`.
-- **Counter-pressure [80]:** for COMPOSED multi-signal strategies (our ComposedStrategy-
-  from-TOML), the effective search space inflates toward `(single-signal count)^k`
-  for a k-component blend — so composed crowns deserve a LARGER `N_eff`. The honest
-  number is the cluster count of the FULL realized population (captures redundancy
-  ↓ and combinatorial blends ↑ simultaneously). Practical rule: cluster everything
-  that was actually evaluated, including every composed variant.
-- Expectation for us: `N_eff` will be far smaller than the raw config count (most
-  configs are redundant) — so this makes the gate FAIR, not punitive; but composed
-  families pull it back up.
+**How many trials to deflate by — `N` = EFFECTIVE, not raw config count.** The single
+most important parameter and the one most often gotten wrong. There is now a LADDER of
+estimators from the primary sources, in increasing rigor:
+- Our configs are MASSIVELY correlated (SMA-50 ≈ SMA-51 ⇒ near-identical equity), so raw
+  count would WILDLY over-deflate (treat 200 near-duplicates as 200 independent shots).
+- **(a) Closed-form average-correlation interpolation [1, App.3 — primary]:** `N̂ = ρ̄ +
+  (1−ρ̄)·M`, M = raw trial count, ρ̄ = weighted-average off-diagonal correlation of the
+  config return matrix (ρ̄→1 ⇒ N̂→1; ρ̄→0 ⇒ N̂→M); optionally Fisher-transform ρ̄. One line,
+  shippable immediately.
+- **(b) PCA dimension-reduction [3 — primary]:** count the principal components of the
+  config return matrix needed to explain the variance = N̂. (The MinBTL paper's own
+  recommended route for dependent trials.)
+- **(c) Entropy / total-correlation [1, App.3 — primary, the authors' PREFERRED route]:**
+  information-theoretic count of non-redundant sources — "a much deeper concept of
+  redundancy than correlation."
+- **(d) ONC clustering [86]:** correlation→angular distance `d=√(½(1−ρ))`, hierarchically
+  cluster, `N_eff = #clusters`. The later unsupervised-learning refinement of (a)/(c).
+- **CRITICAL CAVEAT [1, App.3 — primary]:** when **M > T** (more configs than bars — OUR
+  EXACT SITUATION: a 2-year daily window has T≈500 bars but our sweep can exceed that many
+  configs) the correlation matrix is ILL-CONDITIONED and ρ̄ is itself overfit. We MUST
+  dimension-reduce / cluster the matrix BEFORE estimating ρ̄ — so route (b)/(c)/(d) is
+  mandatory for us, not the bare closed form (a). This was previously an open question; it
+  is now resolved with a primary-source mandate.
+- **Counter-pressure for COMPOSED strategies [80 — read in full]:** selecting the best
+  k of n component signals is biased ALMOST AS BADLY as the single best of `n^k` candidates
+  (primary result), and signal-WEIGHTING (our tuning of component weights/thresholds)
+  inflates the bar MORE than equal-weighting. Empirical 5% critical-t LOOKUP we can use
+  directly: best-1-of-1 already needs **t≈2.1** (not 1.96, fat tails); best-**3-of-10**→
+  **t≈4**; best-**3-of-20**→**t≈5**; best-**7-of-100**→**t≈7**. A naive composed combo of k
+  signals each with individual t≈τ reaches combined t≈√k·τ — so two mild components (τ=1.5)
+  or five weak ones (τ=1) fake "5% significance" with zero edge. Practical rule: cluster the
+  FULL realized population (redundancy pulls N̂ ↓, composition pulls it ↑), and hold tuned
+  composed crowns to the highest hurdle.
+- Expectation: `N_eff` ≪ raw config count for our redundant single-signal sweeps (makes the
+  gate FAIR not punitive), but composed/tuned families pull it back up via `n^k`.
 
-**Add PBO (CSCV) as the model-free companion [2].** From the same per-config return
-matrix: split into S even time blocks (S=8–16 for our window lengths), form all
-C(S, S/2) IS/OOS half-splits **with purge+embargo at the split boundary** [9] (our
-indicators have lookback windows → embargo ~1–5% of bars), pick the IS-best config
-in each split, record its OOS rank, map to logit λ; **`PBO = fraction of splits with
-λ<0` (OOS-below-median)**. Report alongside DSR. Down-rank / refuse to crown when
-`PBO > 0.5` [2][21][11].
+**Add PBO (CSCV) as the model-free companion [2 — read in full, Algorithm 2.3].** From the
+same T×N per-config P&L matrix M (rows synchronous across configs): (1) split the T rows
+into **S disjoint equal time-blocks** (S=8–16 for our window lengths); (2) form all
+**C(S, S/2)** combinations choosing half as IS, complement as OOS — **with purge+embargo at
+block boundaries** [9] (our indicators have lookback windows → embargo ~1–5% of bars); (3)
+in each, find the IS-best config n*, compute its OOS **relative rank `ω̄ = r̄_{n*}/(N+1)`**,
+then **logit `λ = ln(ω̄/(1−ω̄))`**; (4) **`PBO = fraction of combinations with λ<0`**
+(IS-winner landed OOS-below-median). Report alongside DSR; down-rank / refuse to crown when
+`PBO > 0.5` [2][21][11]. Also emit PBO's free companion stat **"performance degradation"**
+(OOS-vs-IS slope — captures the pathology that selecting better IS gives WORSE OOS). NOTE
+from primary: IS/OOS block ORDER is irrelevant for Sharpe but MATTERS for path-dependent
+metrics (max-drawdown/Calmar) — preserve ordering if PBO-ing those.
 
-**Report a haircut RANGE, not one number [87][29][81][84].** Show: (a) the raw
-crown Sharpe; (b) the DSR / `E[max SR]`-haircut Sharpe (conservative, FWER-flavored);
-(c) optionally a gentler empirical-Bayes / publication-bias shrink [81]. The nonlinear
-haircut [29] will gut any crown that only MARGINALLY beats hold (the expected case);
-a crown whose DEFLATED t-stat is still large (t≫3–4 after deflating by `N_eff`)
-is the rare genuine winner [84] and should be surfaced as such, not hidden behind a
-binary pass/fail.
+**Report a haircut RANGE, not one number [87][29 — both read in full][81][84].** Show: (a)
+raw crown Sharpe; (b) the DSR / `E[max SR]`-haircut (conservative, FWER-flavored); (c)
+optionally a gentler empirical-Bayes / publication-bias shrink [81]. The haircut is
+strongly NONLINEAR [29, primary]: a single-test t=3.0 drops to adjusted t≈2.0; an annual
+Sharpe over T=240 obs is cut to **0.32**; with N=200 tests a p=0.08 strategy takes a **91%**
+haircut and a real top-3 (E/P, MOM, BAB) is cut **37% / 100% / 49%** (the middle one
+ENTIRELY wiped). So the "just halve the Sharpe" rule of thumb is WRONG (over-penalizes the
+best, under-penalizes the marginal). A crown whose DEFLATED t-stat is STILL large (t≫3–4
+after deflating by `N_eff`) is the rare genuine winner [84] — surface the deflated number,
+not a binary pass/fail.
 
-**FWER vs FDR — default FWER for a "nothing beats hold" advisor [85][5][8][87].**
-Use a Bonferroni/Holm/StepM (FWER) hurdle as the DEFAULT crown criterion (near-zero
-tolerance for a false crown fits our skeptical prior); offer FDR (BHY — the
-dependence variant, since our configs are correlated) as a secondary "here is the
-SET that would pass at a 10% false-discovery tolerance" view [8][99]. Do NOT use
-naive Bonferroni on raw N (over-penalizes correlated configs) — the `N_eff` clustering
-[86] or a dependence-aware bootstrap (StepM/SPA) [7][8] is the correct handling.
+**FWER vs FDR — default FWER for a "nothing beats hold" advisor [85][5][8][87][29].** The
+exact p-value-adjustment formulas (from [29][87], primary): **Bonferroni** `p^adj =
+min[M·p,1]`; **Holm** (step-down) `p_(i)^adj = min[max_{j≤i}{(M−j+1)·p_(j)},1]`; **BHY**
+(step-up, FDR) with normalizer `c(M)=Σ_{j=1}^M 1/j` (the Benjamini–Yekutieli dependence
+form, valid under arbitrary correlation). Their worked 6-strategy example: same p-values →
+**1 survives Bonferroni, 2 survive Holm, 4 survive BHY**. Use FWER (Holm/StepM) as the
+DEFAULT crown criterion (near-zero tolerance fits our skeptical prior); offer BHY-FDR as a
+secondary "set that would pass at 10% false-discovery tolerance" view [8][99]. Do NOT run
+naive Bonferroni on raw N — primary text of [29] confirms "correlation effectively reduces
+the number of independent tests," so use `N_eff` [1-App.3][86] or a dependence-aware
+bootstrap (StepM/SPA [7][8]). **Set the threshold via an explicit LOSS FUNCTION [40,
+primary]:** the ORATIO odds-ratio (false-discoveries : misses) is the honest knob — declare
+e.g. "a false 'beats hold' crown is N× costlier than a missed edge" and the [40]
+double-bootstrap DERIVES the implied t-hurdle for our N_eff, rather than us asserting 0.95;
+[40] explicitly warns t=3.0 was "never intended" as a universal cutoff.
 
-**Power, not just strictness [93][99][7][8][97].** A White's-Reality-Check-style
-gate can be so conservative it misses a real edge — empirically demonstrated in
-[93]. STUDENTIZE the bootstrap statistic (divide each config's excess-return-vs-hold
-by its bootstrap std) and use a sample-dependent null (SPA [7] / stepwise-SPA [99])
-so the many obviously-bad configs we sweep don't bury a genuine winner. Crypto is
-arguably inefficient [88][99], so the gate must be able to DETECT an edge if one
-exists, while costs [82] and the B&H benchmark remain the deciding filters.
+**Power, not just strictness [93][99][7][8 — StepM read in full][97].** A White's-Reality-
+Check-style gate can be so conservative it misses a real edge (empirically proven in [93]).
+**STUDENTIZE** the bootstrap statistic — `z = w/σ̂` per [8]'s explicit recommendation, i.e.
+divide each config's excess-return-vs-hold by its (prewhitened-kernel) bootstrap SE before
+taking the max — and use a sample-dependent null (SPA [7] / stepwise-SPA [99]) so the many
+obviously-bad configs we sweep don't bury a genuine winner. [8] warns block size is "even
+MORE crucial" once studentized → must pair with principled block sizing (below). Crypto is
+arguably inefficient [88][99], so the gate must be able to DETECT an edge if one exists,
+while costs [82] and the B&H benchmark remain the deciding filters.
 
-**Bootstrap internals to harden in the same pass [78][89][20][10].** (a) Set block
-length from the correlogram via the corrected Politis–White selector [20] (grows ~n^(1/3)
-[78]); (b) switch to CIRCULAR (wrap-around) block selection [89] to kill the fixed-
-length edge bias (under-sampled boundary bars → understated tail risk); (c) optionally
-the random-length STATIONARY bootstrap [10] for boundary-free stationarity; (d) make
-block length a SENSITIVITY band — require the "beats hold?" verdict stable across a
-small grid [74][20].
+**Bootstrap internals to harden in the same pass [78][89][20][10][8].** Block length is
+now over-determined by THREE primary-source selectors — pick one, log it, sensitivity-band
+it: (a) the corrected **Politis–White correlogram selector** [20] (optimal block grows ~n^(1/3)
+[78]); (b) the **Romano–Wolf calibration-function method** [8, Algorithm 7.1, read in full]
+— fit a semiparametric model (they use VAR(1), chosen because it has no block size of its
+own) to the (coin,window) series, simulate, and pick the block size whose empirical coverage
+best matches nominal (their concrete picks: b=20 basic / b=15 studentized on a circular
+bootstrap); (c) make block length a SENSITIVITY band and require the "beats hold?" verdict
+stable across a small grid [74][20]. Plus: (d) switch to **CIRCULAR (wrap-around) block
+selection** [89] to kill the fixed-length edge bias (boundary bars under-sampled →
+understated tail risk); (e) optionally the random-length STATIONARY bootstrap [10] for
+boundary-free stationarity. If we studentize the gate statistic (power upgrade above),
+block sizing is "even more crucial" [8] — so (a)/(b) become mandatory, not optional.
 
-**Pre-registration / nesting discipline [90][91][98][62].** The sweep grid, window,
-split rule, and cost model must be FIXED BEFORE looking (our FROZEN-gate ethos is
-exactly this) — data-contingent choices are hidden multiplicity [90]. Select the crown
-and ESTIMATE its performance on DIFFERENT data (in-sample crown vs untouched forward
-leg) — never the same [91][62]. Treat the window/split as itself data-mined: vary it
-and require stability [98].
+**Pre-registration / nesting discipline [90 — read in full][91][98][62 — read in full].**
+The sweep grid, window, split rule, and cost model must be FIXED BEFORE looking (our
+FROZEN-gate ethos is exactly this). [90]'s sharpened point: hidden multiplicity arises even
+from a SINGLE analysis via "researcher degrees of freedom WITHOUT fishing" (case #3 of its
+taxonomy) — the choices we'd have made on different data are themselves implicit tests, so
+N_eff is a FLOOR not a ceiling, and pre-registration is the only defence. Nesting [62][91]:
+the bake-off sweep is the INNER selection loop; the crown's performance must be ESTIMATED on
+DIFFERENT data (untouched forward leg / outer fold), never the sweep score that picked it —
+and [62, primary] adds that selection-overfit is "comparable in magnitude to the difference
+between algorithms," so report what the WHOLE select-then-trade PIPELINE nets ([64] BBC-CV
+estimates exactly this). Treat the window/split as itself data-mined: vary it, require
+stability, pre-commit it [98].
 
-**Minimum track-record / backtest length gate [1][3][4].** Refuse to crown / flag
-low-confidence when `window_years < ~2·ln(N_eff)/target²` (MinBTL [3]); for the forward
-window report MinTRL [4] — the bars needed for the observed Sharpe to be significant
-at 95% given `N_eff`. Both are cheap closed-forms from stored returns.
+**BBC-CV as a resampling alternative to closed-form DSR [64 — read in full].** The bias it
+corrects is exact (Jensen): `Bias = best-true − E[best-observed] = min{E(m_i)} − E(min{m_i})
+≥ 0`. Procedure on OUR per-config bar-return matrix Π: block-bootstrap the rows [10][20], in
+each resample RE-SELECT the bake-off winner by our ranking rule, score it on the out-of-bag
+rows; the average is a selection-bias-CORRECTED expected performance, the spread an honest CI
+(empirically slightly CONSERVATIVE — the safe direction). Beats the Tibshirani–Tibshirani
+rival, which can pathologically over-correct (return >100% loss in degenerate cases). This is
+a strong candidate to BE our deflation engine — it captures our exact multiple-testing
+optimism using machinery we already run, with no closed-form distributional assumption.
+
+**Minimum track-record / backtest length gate [1][3 — read in full][4].** Refuse to crown /
+flag low-confidence when the window is shorter than MinBTL. Exact (Theorem 3.1 of [3]):
+`MinBTL_years < 2·ln[N_eff] / E[maxN]²`. Concrete primary-source calibrations (E[maxN] fixed
+at 1): **only ~45 independent configs may be tried on 5 years of data** — beyond that you are
+"almost guaranteed" a skill-less strategy with IS Sharpe 1 but OOS Sharpe 0; and **just 7
+independent configs suffice to manufacture an IS Sharpe of 1 on a 2-year backtest** (OOS 0).
+MinBTL is NECESSARY-not-sufficient (a longer backtest can still be overfit). For the forward
+window also report MinTRL [4] — bars needed for the observed Sharpe to be significant at 95%
+given N_eff. Both are cheap closed-forms from stored returns. Combined with the haircut, the
+practical upshot for our short crypto windows + many configs: MinBTL will frequently NOT be
+met, which is itself the honest "can't crown" verdict.
 
 ## Key themes
 
@@ -447,18 +548,24 @@ at 95% given `N_eff`. Both are cheap closed-forms from stored returns.
 
 ## Actionable takeaways for our advisor (ranked by leverage)
 
-1. **Surface N and add a Deflated-Sharpe / PBO scorecard to the ranking — now FULLY
-   SPECIFIED (see "DSR/PBO gate add — concrete spec" above).** Estimator = DSR =
-   PSR(E[max SR]) with the crown's skew/kurtosis [1][4]; threshold `E[max SR]` from
-   [1][3][86]; **crown only if DSR>0.95 AND beats hold**. Trial count `N` = EFFECTIVE
-   independent trials = number of CLUSTERS of the candidate return-correlation matrix
-   (ONC) [86][39], inflated toward `(single)^k` for composed blends [80] — NEVER the
-   raw config count (over-deflates correlated configs). Add CSCV-PBO from the same
-   return matrix with purge+embargo [2][9]; down-rank `PBO>0.5`. Report a haircut
-   RANGE [87][29][81] and the DEFLATED t-stat (don't over-deflate — a high-deflated-t
-   crown is the rare real winner [84][100]). Prerequisite: RECORD every config's
-   return series, not just the winner's, so `N_eff`/PBO/FDR [30] are computable. →
-   Stops us from crowning in-sample noise; highest-value import.
+1. **Surface N and add a Deflated-Sharpe / PBO scorecard to the ranking — now SPECIFIED
+   AT FORMULA + THRESHOLD + WORKED-NUMBER depth (see "DSR/PBO gate add — concrete spec"
+   above).** Estimator = DSR = PSR(E[max SR]) with the crown's skew/kurtosis [1][4];
+   threshold `E[max SR] = √V_SR·[(1−γ)Z⁻¹(1−1/N)+γZ⁻¹(1−1/(N·e))]` where **V_SR is the
+   CROSS-TRIAL dispersion of config Sharpes, not the SE of one** [1, primary]; **crown
+   only if DSR>0.95 AND beats hold** (or derive the 0.95 from an ORATIO loss function
+   [40] rather than hard-coding). Trial count `N` = EFFECTIVE independent trials, via a
+   primary-source LADDER: closed-form `N̂=ρ̄+(1−ρ̄)·M` [1-App.3] → PCA [3] → entropy
+   [1-App.3] → ONC clustering [86]; inflated toward `(single)^k` for composed blends
+   [80] (use its critical-t lookup: 3-of-10→4, 3-of-20→5, 7-of-100→7) — NEVER the raw
+   config count. **DECISIVE for us: because M>T (more configs than bars), the correlation
+   matrix is ill-conditioned → MUST dimension-reduce/cluster BEFORE estimating N̂**
+   [1-App.3, primary]. Add CSCV-PBO from the same matrix (split T into S blocks, all
+   C(S,S/2) IS/OOS halves, logit λ=ln(ω̄/(1−ω̄)), PBO=frac(λ<0)) with purge+embargo
+   [2][9]; down-rank `PBO>0.5`. Report a haircut RANGE [87][29][81] (nonlinear: marginal
+   crowns gutted ~91%, the rare strong one barely trimmed) and the DEFLATED t-stat (a
+   high-deflated-t crown is the rare real winner [84][100]). Prerequisite: RECORD every
+   config's return series, not just the winner's. → Highest-value import.
 2. **Set the bootstrap block length from the data, not a constant** [20]. Use the
    Politis–White (corrected) selector on each (coin,window)'s correlogram; log
    the chosen length in the report. Too-short blocks make strategies look more
@@ -579,10 +686,14 @@ at 95% given `N_eff`. Both are cheap closed-forms from stored returns.
 - Do our IS/OOS / bootstrap blocks purge+embargo overlapping-label leakage at
   boundaries? Indicators with lookback windows (SMA-200, Bollinger) create
   feature overlap. [9]
-- (RESOLVED-in-method) The EFFECTIVE number of independent trials = number of
-  CLUSTERS of config return series (angular-distance clustering), not raw N
-  [46][39]. Open: implement it — cluster our sweep's return matrix and feed m_eff
-  to DSR. Likely m_eff ≪ raw config count, making the gate fair not punitive.
+- (RESOLVED-in-method, now from PRIMARY sources) The EFFECTIVE number of independent
+  trials has a LADDER of estimators: closed-form `N̂=ρ̄+(1−ρ̄)·M` [1-App.3], PCA [3],
+  entropy [1-App.3], ONC clustering [46][86]. **Newly-resolved mandate: since our sweep
+  has M>T (more configs than window bars), the raw correlation matrix is ill-conditioned
+  → we MUST dimension-reduce/cluster BEFORE estimating ρ̄** [1-App.3, read in full]. Open:
+  implement it — cluster the sweep's return matrix and feed N̂ (NOT raw N) to DSR/MinBTL.
+  N̂ ≪ raw count for single-signal families (fair, not punitive); `(single)^k`-inflated
+  for composed/tuned families [80].
 - Does our cost spec widen the spread in high-volatility regimes (2–3×), or is it
   a flat constant that understates costs exactly where churny crowns trade? [47]
 - Do we RECORD every config's return series in the bake-off output (needed for

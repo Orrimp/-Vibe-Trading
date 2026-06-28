@@ -206,6 +206,46 @@ rules survive out-of-sample.*
 - Drawdown modulation + restart, cost-aware, crypto-tested [13][96].
 - "Sizing carries celebrated strategies": strip vol-scaling from TSMOM ⇒ ≈ buy-and-hold [86][87].
 
+**Round 4 (deep-read pass) — what full-text reads CONFIRMED with hard numbers:**
+- **Drawdown control is the most deployable overlay, and the restart is what makes it cost-survivable.**
+  [96] BTC Jan-2020–Sep-2022 with 0.1% per-trade costs: drawdown-modulation + restart cut max
+  drawdown 72%→20% AND kept Sharpe 1.521 — while the SAME controller WITHOUT the restart collapsed
+  to Sharpe −0.043 (lock-out-then-churn bleeds). It still gave back ~40% of B&H's return (+101.82% vs
+  +170.43%) — the honest "protection costs return" number. (Single window; gate before trusting.)
+- **There are now THREE rigorously-derived drawdown-state sizing multipliers, all the same shape** —
+  scale the position UP with the cushion / distance-above-floor, DOWN toward zero at the limit:
+  [13] M(k)=(d_max−d(k))/(1−d(k)); [31] (model-independent, growth-optimal) π_α=(1−α)(X/X*)/[α+(1−α)(X/X*)];
+  [12] the convex risk-aversion ramp γ_t=γ_0·D^max/(D^max−D_t). [31] proves this family IS the
+  growth-optimal solution to a drawdown floor — not a hack.
+- **Tight vol-target TRACKING is not worth its turnover for us.** [90] (single-asset feedback control,
+  full read): closing the loop cut vol tracking error 2.3%→0.4% but pushed turnover 93%→**1105%/yr** —
+  the authors themselves say open-loop "may be preferable" for low-liquidity assets. For high-cost crypto,
+  accept LOOSE tracking: slow EWMA (they used a **126-day half-life**) + a no-trade band [61], de-risk only.
+- **A closed-form fractional-Kelly dial exists** [3]: f^Ri = μ/(σ²(1+2γ)) — full Kelly shrunk by 1/(1+2γ),
+  one risk-aversion knob γ (= the negative-power-utility map [6], η=−2γ). Their example: at γ=1 you give up
+  ~30% of growth for ~90% less path-variance — quantifies why fractional Kelly is the deployable form.
+- **Crypto's inverse leverage effect is now QUANTIFIED, not just asserted** [93]: daily leverage param
+  γ=−0.261*** (crypto) vs +0.115** (equity), opposite signs both significant; positive-return semivariance
+  (1.262***) drives crypto vol, negative does not. The [16] Sharpe mechanism is REVERSED for crypto → overlay
+  is risk-shaping, not edge, full stop.
+- **No sizing cleverness rescues a bad μ̂** [45]: standard Kelly on estimated probabilities loses 27–48% of
+  the oracle return; the best conservative-quantile / Monte-Carlo method recovers only ~1–3% of that gap
+  (though it does beat blind ½-Kelly by 15–30%). Decisive quantitative case for μ̂→0 / vol-only sizing on a no-edge coin.
+- **Skew imposes a hold-at-all hurdle** [58]: optimal single-asset weight = Markowitz term − skew term
+  −(κ²−1)/(√2κ); for the S&P's tiny skew (κ=1.042) the skew penalty (−0.06) is already ⅓ the size of the
+  MV term (+0.17), and crypto's skew is far larger → μ/σ² over-bets crypto. Long-only threshold: hold only if
+  μ > √2(κ−1)σ (essentially never met by a real single-coin edge).
+
+**Round 4 — what full-text reads WEAKENED or reframed:**
+- **Trailing stops on a drifting random-walk asset are value-destroying — primary-sourced.** [44] quotes
+  Glynn–Iglehart: it "would be optimal to NEVER use the trailing stop if the stock followed a GBM with a
+  positive drift"; the optimal stop region is non-trivial ONLY under mean reversion (OU). Crypto has huge
+  positive drift [76] + near-random-walk → do NOT ship a lone trailing stop; pair with a profit-take and
+  expect benefit only in (rare, unstable) mean-reverting regimes.
+- **Estimation-risk "cures" are asymptotic** [5]: the option-combination that eliminates Kelly estimation
+  risk does so only as n→∞ and UNDERPERFORMS at short horizons (n=5) — useless for our few-trade windows
+  (same finite-horizon wall as [55][100]); and the authors concede no real-market misspecification estimator exists.
+
 ## Actionable takeaways for our advisor
 
 1. **Treat the vol-targeting overlay as a drawdown/variance tool, not a Sharpe
@@ -214,9 +254,13 @@ rules survive out-of-sample.*
    can smuggle in future info [2]. Expect Sharpe gains to be fragile; expect
    variance/drawdown reduction to be real.
 2. **Never size at full Kelly from a single-coin μ̂.** If we ever offer Kelly-style
-   sizing, shrink hard (½ or ¼) and cap it; better, prefer vol-only sizing because
-   μ-errors cost ~20× more than σ-errors [6]. A principled dial: map fractional
-   Kelly to a negative-power-utility δ (½K ↔ δ=−1, ¼K ↔ δ=−3) [6].
+   sizing, shrink hard and cap it; better, prefer vol-only sizing because μ-errors cost
+   ~20× more than σ-errors [6] and no quantile/option trick recovers more than ~1–3% of a
+   bad-μ̂ loss [45]. Two principled dials that AGREE: the negative-power-utility δ (½K ↔ δ=−1,
+   ¼K ↔ δ=−3) [6], and the ridge-Kelly closed form **f^Ri = μ/(σ²(1+2γ))** [3] (full Kelly ÷
+   (1+2γ), η=−2γ) — at γ=1 you trade ~30% of growth for ~90% less path-variance [3]. On a skewed
+   coin even these over-bet: subtract the skew term [58] (hold only if μ > √2(κ−1)σ, ≈never for a
+   no-edge coin). Net: μ̂≈0 ⇒ f→0 ⇒ don't actively size on edge, just control risk by vol.
 3. **Honor the no-leverage reality.** A €200 spot advisor can de-risk (sell to cash)
    but cannot lever up; so only the *defensive* half of vol-targeting is available
    [2][4]. Frame the overlay accordingly.
@@ -238,13 +282,24 @@ rules survive out-of-sample.*
 8. **Use a parameter-light vol estimator.** EWMA λ≈0.94 [85] or a HAR-style multi-horizon
    realized-vol blend [66]; don't over-engineer σ̂ (better point-vol ≠ better tail [51]);
    implied vol only as a *combined* weekly-horizon signal [95], never the primary input.
-9. **Prototype drawdown control as modulation + restart.** The [13] cushion multiplier
-   M(k)=(d_max−d(k))/(1−d(k)) PLUS a high-water-mark restart [96] (shown to improve perf
-   net of costs on crypto) — de-risk toward the operator's floor but allow recovery. Offer
-   static (CPPI-like) vs ratcheting (TIPP-like [72]) floor; disclose the floor is probabilistic.
-10. **Make rebalancing cost-survivable.** Implement any vol-target/drawdown overlay with a
-    no-trade band [61] (width ∝ cost & vol) or a conditional/state-gated trigger [28], not
-    continuous re-sizing — the turnover bleed is what flips vol scaling net-negative [48][28].
+9. **Prototype drawdown control as modulation + restart — the single most deployable overlay (Round 4).**
+   The [13] cushion multiplier M(k)=(d_max−d(k))/(1−d(k)) PLUS the [96] high-water-mark RESTART
+   (when drawdown comes within ε≈d_max/10 of the floor, re-base the high-water mark and re-enter with a
+   shrunk gain). The restart is not optional: on BTC with 0.1% costs it held Sharpe at 1.521 while the
+   no-restart version collapsed to −0.043, and it cut max drawdown 72%→20% [96]. This rule is the
+   growth-optimal solution to a drawdown floor (model-independently proven [31], whose explicit fraction
+   π_α=(1−α)(X/X*)/[α+(1−α)(X/X*)] is the continuous-time twin). Needs only the de-risking direction (no
+   leverage). Offer static (CPPI-like) vs ratcheting (TIPP-like [72]) floor; disclose the floor is
+   probabilistic (gap risk [46][89]) and that it costs ~tens-of-% of upside (BTC: gave back ~40% of B&H
+   return for the drawdown cut). Validate vs B&H under the gate, with DSR/PBO on the chosen d_max/gain.
+10. **Make rebalancing cost-survivable — and do NOT chase tight vol-target tracking (Round 4).**
+    Implement any vol-target/drawdown overlay with a no-trade band [61] (width ∝ cost & vol) or a
+    conditional/state-gated trigger [28], not continuous re-sizing — the turnover bleed is what flips
+    vol scaling net-negative [48][28]. Concrete caution: closing the feedback loop to track the vol
+    target tightly cost 1105%/yr turnover (vs 93% open-loop) for a 5.75× tracking-error improvement
+    that is worthless to us [90] — even the paper's authors prefer open-loop for low-liquidity assets.
+    Use a SLOW vol estimator (EWMA ~126-day half-life [90], or λ slower than RiskMetrics' 0.94 [85]);
+    accept loose tracking; rebalance rarely.
 11. **Trigger de-risk on DOWNSIDE volatility, not total vol** [59][35] (Sortino-style
     semi-deviation), a cleaner crash signal; and report Sortino/Calmar + CVaR/ES + skew +
     median terminal wealth, not just Sharpe [54][55][84] — these surface the overlay's real
@@ -286,18 +341,22 @@ rules survive out-of-sample.*
 - ...but no robust OUT-OF-SAMPLE Sharpe gain for a real-time investor → [2]
 - Vol-timing's gains need extreme (400–864%) leverage / concentrated in momentum → [2]
 - Full Kelly maximizes long-run growth but is too aggressive (drawdowns, ruin) → [3][6]
+- Ridge-Kelly closed form f^Ri = μ/(σ²(1+2γ)): ~30% growth for ~90% less variance at γ=1 → [3]
 - Kelly fraction f ≈ μ/σ² (inverse-variance scaling ≈ crude vol targeting) → [4]
 - Exact log-normal Kelly is more conservative than μ/σ² as vol rises → [4]
 - Kelly is highly sensitive to estimation error in μ → [4][5][6]
 - Mean errors ~20× costlier than covariance errors, ~10× variance errors → [6]
 - Never bet more than full Kelly; 2× Kelly → risk-free growth → [6]
 - Fractional Kelly ↔ negative-power utility (½K=δ−1, ¼K=δ−3) → [6]
-- Options / convex payoffs add robustness to Kelly estimation risk → [5]
+- Options/convex payoffs add ASYMPTOTIC robustness to Kelly estimation risk (fails short-horizon) → [5]
+- No quantile/MC trick recovers >~1–3% of a bad-μ̂ loss (which is 27–48% of oracle) → [45]
+- Skew term −(κ²−1)/(√2κ) ~⅓ the MV term even for tiny skew; hold only if μ>√2(κ−1)σ → [58]
 - ERC/risk-parity sits between min-variance and equal-weight; multi-asset tool → [7]
 - Expected Shortfall + bootstrap for honest tail-aware risk on non-Gaussian data → [7]
 - Stop-losses lower expected return under random walk; help only under momentum → [8]
 - Even optimized (drawdown-distribution-fit) stops beat no-stop in barely >50% → [9]
 - Drawdown control: hold risky exposure ∝ cushion (equity − floor) → [10][12][13]
+- Growth-optimal drawdown fraction π_α=(1−α)(X/X*)/[α+(1−α)(X/X*)] (model-independent, Azéma–Yor) → [31]
 - Risk-aversion ramp γ_t = γ_0·D^max/(D^max−D_t) controls drawdown convexly → [12]
 - Modulator M(k)=(d_max−d(k))/(1−d(k)) guarantees max drawdown (idealized) → [13]
 - Drawdown control caps drawdown but costs return (TSLA: 5% DD/1.005× vs 22.5%/1.136×) → [13]
@@ -322,7 +381,7 @@ rules survive out-of-sample.*
 - Low-vol anomaly extends to crypto (cross-sectional) → [27]
 - CONDITIONAL vol targeting (only de-risk in extreme-vol states) = low-turnover, robust → [28]
 - More signals/horizons often add redundancy not diversification; simpler is better → [29]
-- Risk-constrained Kelly (convex drawdown-prob bound) DOMINATES plain fractional Kelly → [30]
+- Risk-constrained Kelly: one convex constraint E[(rᵀb)^−λ]≤1 ⇒ Prob(W_min<α)<α^λ; +34% growth vs frac-Kelly at equal risk → [30]
 - Drawdown-constrained growth optimum = a transform of the unconstrained Kelly portfolio → [31]
 - HRP beats min-variance OOS by avoiding covariance inversion ("Markowitz's curse") → [32][33]
 - CVaR is coherent & LP-optimizable; VaR is non-convex & non-subadditive → [34]
@@ -335,7 +394,7 @@ rules survive out-of-sample.*
 - CDaR: coherent drawdown risk measure, mean of worst (1−β) drawdowns, LP-form → [41]
 - Distributionally-robust Kelly: size for the worst-case distribution in an ambiguity set → [42]
 - Knightian uncertainty + fat tails push the optimal Kelly fraction DOWN further → [43]
-- A trailing stop ALONE is suboptimal; pair it with a profit-take → [44]
+- A trailing stop ALONE is suboptimal; pair it with a profit-take — AND "never use it" under GBM+drift (needs mean reversion) → [44]
 - Conservative sizing recipe: plug a LOWER-QUANTILE edge / UPPER-QUANTILE vol into the rule → [45]
 - Jump-aware CPPI keeps some exposure after a breach to dodge the "miss the rebound" trap → [46]
 - Multivariate optimal-f (Vince TWR) has a unique well-posed optimum → [47]
@@ -371,11 +430,11 @@ rules survive out-of-sample.*
 ### Round 3 additions — Kelly / sizing
 - Breiman (1961) rigorously proved Kelly's two optimality results — but they're ASYMPTOTIC & known-edge → [100]
 - Thorp: f* = μ/σ² for stocks; "bet LESS than the formula" (fractional, edge-first) → [80]
-- Crypto's INVERSE leverage effect (up-moves drive vol) ⇒ vol-targeting Sharpe gain absent/reversed → [93]
+- Crypto's INVERSE leverage effect quantified: daily γ=−0.261*** vs equity +0.115** ⇒ vol-targeting Sharpe gain reversed → [93]
 - Bitcoin leverage effect is present-but-regime-dependent (tension [78] vs [75]) → [78]
 
 ### Round 3 additions — drawdown control
-- Drawdown-modulation + RESTART (re-base high-water mark) improves perf NET of costs, on crypto → [96]
+- Drawdown-modulation + RESTART (re-base HWM): BTC w/0.1% costs Sharpe 1.521 (vs −0.043 no-restart), DD 72%→20% → [96]
 - TIPP (ratcheting floor) = best downside protection but sacrifices upside capture vs CPPI → [72]
 
 ### Round 3 additions — tail risk / measures
@@ -395,7 +454,7 @@ rules survive out-of-sample.*
 - Strip vol-scaling from TSMOM ⇒ performance ≈ buy-and-hold (sizing carries the load) → [86]
 - Crypto vol-scaled TSMOM beats B&H on risk-adjusted return + downside risk (but it's the SIZING) → [87]
 - Vol management mitigates crypto-momentum CRASHES (tail benefit, not edge) → [97]
-- Feedback-control vol targeting (single-asset) > open-loop forecast-and-divide (turnover/leverage) → [90]
+- Feedback vol-control tracks 5.75× tighter BUT at 1105% vs 93% turnover — open-loop preferable for low-liquidity (crypto) → [90]
 - Variance risk premium predicts equity returns; crypto VRP is 7× larger but non-standard → [74][76]
 - Risk-aware RL reward (penalize downside) avoids "reward hacking" → score drawdown, not just Sharpe → [81]
 - ATR-scaled asymmetric exits (1×ATR stop / 2×ATR target) — sensible, but overfit-prone in sweeps → [94]
@@ -454,3 +513,43 @@ the *sizing*, not the signal. [87] confirms the same for crypto TSMOM. But the h
 flip-side for us: on a SINGLE coin there's no cross-asset diversification (the thing that made
 TSMOM's vol-scaling actually profitable across 58 instruments), so even the sizing benefit is
 mostly **risk-shaping, not return** — exactly our thesis.
+
+## Round 4 synthesis — what the deep-read pass sharpened (depth, not breadth)
+
+This pass read ~10 high-value entries in full (no new papers). Three things got materially sharper,
+all portable to the sizing/vol-targeting overlay:
+
+**1. The drawdown overlay is now a copyable spec, not a theme — and the RESTART is load-bearing.**
+Three independent derivations give the SAME drawdown-state position multiplier (scale up with the
+cushion, to zero at the floor): the discrete modulator M(k)=(d_max−d(k))/(1−d(k)) [13]; the
+model-independent, *provably growth-optimal* fraction π_α=(1−α)(X/X*)/[α+(1−α)(X/X*)] [31]; and the
+convex risk-aversion ramp [12]. [31] settles that this is the correct solution to a drawdown floor,
+not a hack. The decisive new EMPIRICAL fact is from [96]'s full read: on BTC with 0.1% per-trade
+costs, drawdown-modulation **with** a high-water-mark restart held Sharpe at 1.521 and cut max
+drawdown 72%→20%, while the SAME controller **without** restart collapsed to Sharpe −0.043 — i.e.
+the restart is not a refinement, it is the difference between cost-survivable and not. The honest
+cost shown in the same run: ~40% of buy-and-hold's upside was given up for that drawdown cut. Ship
+this (modulator + restart, de-risk-only, operator-set d_max), gate it with DSR/PBO, and frame the
+upside-give-up explicitly. **This is the highest-confidence build recommendation in the topic.**
+
+**2. The vol-targeting overlay should be LOOSE and SLOW, and must not chase the target.** [90]'s
+full read (single-asset feedback control) quantified the trap: closing the loop to track the vol
+target tightly improved tracking 5.75× but at **1105%/yr turnover vs 93% open-loop** — the authors
+themselves prefer open-loop for low-liquidity assets, which is exactly crypto. Combined with [48]
+(constant vol scaling cut Sharpe 0.59→0.39, edge vanishes in crises) and [28]/[61], the settled
+implementation is: a SLOW vol estimate (EWMA ~126-day half-life [90], or λ slower than RiskMetrics'
+0.94 [85]), a no-trade band, de-risk-only, rebalanced rarely. And per [93]'s now-quantified inverse
+leverage effect (γ=−0.261*** crypto vs +0.115** equity), expect NO Sharpe gain — risk-shaping only.
+
+**3. μ-driven sizing is quantitatively hopeless on a no-edge coin — the case is now numeric.** [45]:
+standard Kelly on an estimated win-probability loses 27–48% of the oracle return, and the best
+conservative-quantile/Monte-Carlo correction recovers only ~1–3% of that — you cannot out-clever a
+bad μ̂. [58]: the skewness penalty on the optimal weight is ~⅓ the size of the mean-variance term
+even for the S&P's tiny skew (far larger for crypto), with a hold-at-all threshold μ>√2(κ−1)σ that a
+real single-coin edge essentially never clears. [3]: the deployable fraction is f^Ri=μ/(σ²(1+2γ)), a
+clean one-knob shrink that at γ=1 trades ~30% growth for ~90% less path-variance. Together with [44]'s
+primary-sourced "never use a trailing stop under GBM-with-drift," the converging verdict is: with
+μ̂≈0, every edge-driven sizing/exit rule collapses toward "hold, and only control risk via (slow) vol
++ drawdown." The two paywall-blocked entries that would have added here — [42] distributionally-robust
+Kelly and [59] downside-vs-total-vol scaling — point the same way (size for the worst-case
+distribution; trigger on downside deviation) but could not be deepened (no open-access full text).
