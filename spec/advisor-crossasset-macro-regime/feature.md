@@ -1,9 +1,9 @@
 ---
 slug: advisor-crossasset-macro-regime
-status: arch-done
-owner: architect
+status: tested
+owner: tester
 version: 0.1.0
-updated: 2026-06-26
+updated: 2026-06-28
 ---
 
 # Cross-Asset / Macro Regime Probe — fresh untested channel into the bake-off
