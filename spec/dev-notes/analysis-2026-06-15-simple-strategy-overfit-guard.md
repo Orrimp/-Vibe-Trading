@@ -21,9 +21,9 @@ updated: 2026-06-15
 > on this evidence*.
 
 This dev-note records the confirmed numbers from the tester's PASS
-([`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md),
+([`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../v1/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md),
 verdict PASS, commit `3d843fa`) and closes the loop on feature
-[`simple-strategy-overfit-guard`](../simple-strategy-overfit-guard/feature.md) (AC-OG.5,
+[`simple-strategy-overfit-guard`](../v1/simple-strategy-overfit-guard/feature.md) (AC-OG.5,
 task T-OG.13). It is the `findings`-status companion to the un-anchored `#[ignore]`
 harness — there is no anchored `spec/*/reports/backtest-*.md` (UN-ANCHORED per feature
 § 3 / D-OG.4).
@@ -73,7 +73,7 @@ discriminates and is not blessing no-edge churn.
 ## 3. The full ensemble table (confirmed — from the tester report)
 
 N=500 per cell. Numbers copied verbatim from
-[`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md)
+[`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../v1/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md)
 § 5 (Run A, byte-identical to Run B).
 
 | Cell | Strategy | sharpe p5 / p25 / p50 / p75 / p95 | prob_loss | P(sharpe>0) | dd_p50 | dd_p95 | VERDICT |
@@ -167,9 +167,9 @@ follow-on the feature § 7 names, not a conclusion of this ship.
   down-market hedge qualifier is downgraded to *path-fragile*; a one-line pointer to this
   note was added there.
 - **Decision rule (frozen, applied AS-IS):** [`robustness-decision-rule-2026-05-30.md`](robustness-decision-rule-2026-05-30.md) § 0.
-- **Feature + pre-registration:** [`simple-strategy-overfit-guard/feature.md`](../simple-strategy-overfit-guard/feature.md)
+- **Feature + pre-registration:** [`simple-strategy-overfit-guard/feature.md`](../v1/simple-strategy-overfit-guard/feature.md)
   (§ 0 method, § 2 deliverable, D-OG.5 scope cap).
-- **Confirmed numbers:** [`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md)
+- **Confirmed numbers:** [`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../v1/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md)
   (tester PASS, commit `3d843fa`).
 - **Baseline thesis:** [`passive-baseline.md`](../runbooks/passive-baseline.md).
 

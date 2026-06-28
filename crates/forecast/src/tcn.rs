@@ -69,12 +69,12 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-overlay/feature.md § D1` — block layout spec
-//! - `spec/v25-tcn-overlay/feature.md § R1` — topology
-//! - `spec/v25-tcn-overlay/feature.md § R2` — model size
-//! - `spec/v25-tcn-overlay/feature.md § R10` — strict-replay determinism
-//! - `spec/v25-tcn-overlay/feature.md § R11` — audit emission
-//! - `spec/v25-tcn-overlay/feature.md § R12` — cost telemetry
+//! - `spec/v1/v25-tcn-overlay/feature.md § D1` — block layout spec
+//! - `spec/v1/v25-tcn-overlay/feature.md § R1` — topology
+//! - `spec/v1/v25-tcn-overlay/feature.md § R2` — model size
+//! - `spec/v1/v25-tcn-overlay/feature.md § R10` — strict-replay determinism
+//! - `spec/v1/v25-tcn-overlay/feature.md § R11` — audit emission
+//! - `spec/v1/v25-tcn-overlay/feature.md § R12` — cost telemetry
 //! - `ADR-0029` — checkpoint provenance contract
 
 use candle_core::{DType, Device, Module, Result as CResult, Tensor};

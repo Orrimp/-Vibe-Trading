@@ -70,7 +70,7 @@ and exists for one explicit reason:
   `[dependencies]` (existing edge — used by the
   `ReflectionWriter` mpsc tap path). The audit-tick consumer
   envelope (see
-  [`spec/audit-tick-consumer-envelope/decomp.md`](../audit-tick-consumer-envelope/decomp.md))
+  [`spec/audit-tick-consumer-envelope/decomp.md`](../v1/audit-tick-consumer-envelope/decomp.md))
   re-uses this edge symmetrically: `reflection` subscribes to a
   `broadcast::Receiver<AuditTick<AuditEvent>>` exposed by
   `audit::tick::AuditTickStream`. The new
@@ -86,7 +86,7 @@ and exists for one explicit reason:
   and post-inference. Training bins (`train_tcn`,
   `forecast_distribution`) do NOT enable this feature — they
   have no `Ledger`. See
-  [`spec/audit-tick-consumer-envelope/decomp.md §5A`](../audit-tick-consumer-envelope/decomp.md).
+  [`spec/audit-tick-consumer-envelope/decomp.md §5A`](../v1/audit-tick-consumer-envelope/decomp.md).
   No reverse edge.
 - `ui → {trading_core, audit}` — read-only consumer of
   `audit::query` for the cockpit's live-view widgets; no reverse
@@ -199,7 +199,7 @@ side gained call sites.
 ## Public API surface — open-positions reader (real-mtm-unrealized-pnl)
 
 Added 2026-05-02 as part of the
-[real-mtm-unrealized-pnl](../real-mtm-unrealized-pnl/feature.md)
+[real-mtm-unrealized-pnl](../v1/real-mtm-unrealized-pnl/feature.md)
 plumbing feature. Closes the
 `crates/reports/src/lib.rs:135–150` `let unrealized: Decimal =
 Decimal::ZERO;` placeholder.
@@ -254,7 +254,7 @@ into a future v2+ wave).
 The real-mtm R10 follow-up (the hardcoded `assets:position:BTC`
 account-id at `crates/audit/src/journal.rs:82,135` — every fill
 regardless of symbol writing to the BTC bucket) is **resolved**
-by [per-symbol-position-accounts → Design](../per-symbol-position-accounts/feature.md#design)
+by [per-symbol-position-accounts → Design](../v1/per-symbol-position-accounts/feature.md#design)
 (architect 2026-05-03): migration `006` seeds per-pair
 `assets:position:<SYMBOL>` rows; T1102 flips the `post_fill` writer
 to `format!("assets:position:{}", fill.symbol)`. Description-parse
@@ -268,7 +268,7 @@ budget unchanged (11 / 11 byte-identical, Q7 re-verified).
 ## Backtest real-Binance-data path (v2.6.0-realdata)
 
 Added 2026-05-18 as part of the
-[backtest-real-binance-data](../backtest-real-binance-data/feature.md)
+[backtest-real-binance-data](../v1/backtest-real-binance-data/feature.md)
 feature. Full design in
 [ADR-0032](adr/0032-backtest-realdata-path-and-revision-pin.md).
 

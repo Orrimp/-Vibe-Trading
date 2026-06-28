@@ -219,8 +219,8 @@ suites (T-CAL); `crates/backtest` `macro_regime` loader unit suite +
 `macro_regime_overlay_end_to_end.rs` (S1–S4); `crates/core` `pit_compile_fail.rs`
 (reused leak guard); `scripts/verify_anchors.sh` (119/119 at M-CAL-4, M-FETCH-1,
 M-CLOSE-1). Full design + the sequenced plan:
-[`spec/advisor-crossasset-macro-regime/feature.md` § Design](../../advisor-crossasset-macro-regime/feature.md#design)
-and [`tasks.md`](../../advisor-crossasset-macro-regime/tasks.md).
+[`spec/advisor-crossasset-macro-regime/feature.md` § Design](../../v1/advisor-crossasset-macro-regime/feature.md#design)
+and [`tasks.md`](../../v1/advisor-crossasset-macro-regime/tasks.md).
 
 ## Changelog
 - 2026-06-26 (architect): initial accept. D1 `MarketCalendar` in `crates/data`,

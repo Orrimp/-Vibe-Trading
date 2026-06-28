@@ -1371,7 +1371,7 @@ data_source: synthetic
             .join("reports")
             .is_dir()
         {
-            eprintln!("skipped: spec/v1-cross-sectional-momentum/reports not found");
+            eprintln!("skipped: spec/v1/v1-cross-sectional-momentum/reports not found");
             return;
         }
 

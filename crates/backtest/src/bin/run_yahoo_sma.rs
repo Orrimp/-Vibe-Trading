@@ -15,7 +15,7 @@
 //! cargo run -p backtest --features yahoo \
 //!   --bin run_yahoo_sma -- \
 //!   --cache-root data/yahoo \
-//!   --reports-dir spec/lab-yahoo-realdata/reports
+//!   --reports-dir spec/v1/lab-yahoo-realdata/reports
 //! ```
 //!
 //! ETH-USD anchor (v0.1.2):
@@ -23,7 +23,7 @@
 //! cargo run -p backtest --features yahoo \
 //!   --bin run_yahoo_sma -- \
 //!   --ticker ETH-USD \
-//!   --reports-dir spec/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports
+//!   --reports-dir spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports
 //! ```
 //!
 //! # Anchor discipline
@@ -89,8 +89,8 @@ struct Args {
     cache_root: PathBuf,
 
     /// Directory to write the backtest report into.
-    /// Default: spec/lab-yahoo-realdata/reports
-    #[arg(long, default_value = "spec/lab-yahoo-realdata/reports")]
+    /// Default: spec/v1/lab-yahoo-realdata/reports
+    #[arg(long, default_value = "spec/v1/lab-yahoo-realdata/reports")]
     reports_dir: PathBuf,
 
     /// Full-year start in epoch-millis (default: 2024-01-01T00:00:00Z).

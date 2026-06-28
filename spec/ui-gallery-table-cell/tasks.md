@@ -13,7 +13,7 @@ updated: 2026-05-16
 > ([`feature.md ## Open questions for architect`](feature.md#open-questions-for-architect))
 > plus an H-TC-1 / H-TC-2 falsifier spike before T1 lands. Tasks
 > below are seeded from the
-> [`ui-gallery-bin/tasks.md`](../ui-gallery-bin/tasks.md) V5+
+> [`ui-gallery-bin/tasks.md`](../v1/ui-gallery-bin/tasks.md) V5+
 > migration; re-keyed `T1`..`T9` to the new slug, with verbatim
 > acceptance lines preserved where applicable.
 
@@ -46,7 +46,7 @@ updated: 2026-05-16
 - [ ] **T4** *(developer)* — Implement the Q-FIX-STRATEGY path
   chosen in T1. Touch only `crates/ui/` (per R-TC-2 anchor-risk
   mitigation). Verbatim acceptance migrated from
-  [`ui-gallery-bin/tasks.md T17`](../ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
+  [`ui-gallery-bin/tasks.md T17`](../v1/ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
   _V6 — `cargo test -p ui --features fixtures --test
   gallery_snapshots` exits 0; three baseline PNGs land under
   `tests/visual-baselines/`._
@@ -54,31 +54,31 @@ updated: 2026-05-16
   `gallery_snapshots` tests
   ([`crates/ui/tests/gallery_snapshots.rs`](../../crates/ui/tests/gallery_snapshots.rs)).
   Verbatim from
-  [`ui-gallery-bin/tasks.md T18`](../ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
+  [`ui-gallery-bin/tasks.md T18`](../v1/ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
   _V10 — two hash runs match; `git status tests/visual-baselines/`
   shows zero modifications between runs._
 - [ ] **T6** *(developer)* — Operator-slot PNG size check.
   Verbatim from
-  [`ui-gallery-bin/tasks.md T19`](../ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
+  [`ui-gallery-bin/tasks.md T19`](../v1/ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
   _If > 10 MB, escalate to architect for the gallery-split
   design (six baselines instead of three). If ≤ 10 MB, proceed._
 
 ## M2 — Quality gates + workspace green
 
 - [ ] **T7** *(developer)* — Anchors PASS gate. Verbatim from
-  [`ui-gallery-bin/tasks.md T20`](../ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
+  [`ui-gallery-bin/tasks.md T20`](../v1/ui-gallery-bin/tasks.md#m4--exhaustiveness--snapshot-tests-075d):
   _V8 — `bash scripts/verify_anchors.sh` prints
   `ANCHORS PASS (11/11)`._
 - [ ] **T8** *(developer)* — Workspace-test green gate. Verbatim
   from
-  [`ui-gallery-bin/tasks.md T23`](../ui-gallery-bin/tasks.md#m5--readme--presenter-deck-artifact-05d):
+  [`ui-gallery-bin/tasks.md T23`](../v1/ui-gallery-bin/tasks.md#m5--readme--presenter-deck-artifact-05d):
   _V7 — `cargo test --workspace --features fixtures` zero
   failures and ≥ (prior pass count + V3 + V4 + V6 sub-tests)
   green._
 - [ ] **T9** *(developer)* — `cargo fmt` + `cargo clippy
   --workspace --features fixtures -- -D warnings` clean.
   Verbatim from
-  [`ui-gallery-bin/tasks.md T24`](../ui-gallery-bin/tasks.md#m5--readme--presenter-deck-artifact-05d).
+  [`ui-gallery-bin/tasks.md T24`](../v1/ui-gallery-bin/tasks.md#m5--readme--presenter-deck-artifact-05d).
 
 ## M_FINAL_TEST_RUN — test-runner pass
 
@@ -87,14 +87,14 @@ Test-runner spawn (per
 
 - [ ] **T-FINAL-TEST-1** — V5 / V6 / V10 (snapshot tests +
   determinism). Migrated from
-  [`ui-gallery-bin/tasks.md T-FINAL-TEST-1`](../ui-gallery-bin/tasks.md#m_final_test_run--test-runner-pass):
+  [`ui-gallery-bin/tasks.md T-FINAL-TEST-1`](../v1/ui-gallery-bin/tasks.md#m_final_test_run--test-runner-pass):
   two consecutive `cargo test ... --test gallery_snapshots`
   runs; SHA-compare baselines between runs.
 - [ ] **T-FINAL-TEST-2** — V7 (workspace green) + V8 (anchors
   11/11). Migrated verbatim from
-  [`ui-gallery-bin/tasks.md T-FINAL-TEST-4`](../ui-gallery-bin/tasks.md#m_final_test_run--test-runner-pass).
+  [`ui-gallery-bin/tasks.md T-FINAL-TEST-4`](../v1/ui-gallery-bin/tasks.md#m_final_test_run--test-runner-pass).
 - [ ] **T-FINAL-TEST-3** — V9 (file-list gate). Migrated from
-  [`ui-gallery-bin/tasks.md T-FINAL-TEST-5`](../ui-gallery-bin/tasks.md#m_final_test_run--test-runner-pass):
+  [`ui-gallery-bin/tasks.md T-FINAL-TEST-5`](../v1/ui-gallery-bin/tasks.md#m_final_test_run--test-runner-pass):
   `git diff --name-only` against the pre-feature commit; verify
   only in-scope paths changed.
 
@@ -109,7 +109,7 @@ Test-runner spawn (per
 ## Notes
 
 - **Migration is partial.** The predecessor
-  [`ui-gallery-bin/tasks.md`](../ui-gallery-bin/tasks.md) had
+  [`ui-gallery-bin/tasks.md`](../v1/ui-gallery-bin/tasks.md) had
   ~39 open boxes spanning M0..M5 + M_FINAL. The V1–V4 work
   (build / smoke / widget exhaustiveness / mod-rs parity) is
   **done green in v0.1-partial** and is NOT re-tasked here.
@@ -142,7 +142,7 @@ Test-runner spawn (per
   [`feature.md`](feature.md) per
   [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
   row A4. V5+ tasks migrated from
-  [`spec/ui-gallery-bin/tasks.md`](../ui-gallery-bin/tasks.md)
+  [`spec/ui-gallery-bin/tasks.md`](../v1/ui-gallery-bin/tasks.md)
   with re-keyed identifiers `T1..T9` + `T-FINAL-*` and verbatim
   acceptance lines. M0 architect block re-spawned for
   Q-FIX-STRATEGY. HANDOFF → architect.

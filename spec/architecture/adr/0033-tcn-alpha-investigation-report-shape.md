@@ -19,7 +19,7 @@ on 2026-05-18 with `dampened=0`, the same finding M3 reported on synthetic
 GBM, falsifying the M3 "out-of-distribution silence" hypothesis since the
 training distribution **is** the real Binance hourly OHLCV.
 
-[`spec/v25-tcn-alpha-investigation/feature.md`](../../v25-tcn-alpha-investigation/feature.md)
+[`spec/v25-tcn-alpha-investigation/feature.md`](../../v1/v25-tcn-alpha-investigation/feature.md)
 (analyst-locked 2026-05-18, operator picked MINIMAL scope) asks for a
 read-only investigation across two milestones:
 
@@ -298,8 +298,8 @@ verdict: F1                                      # OR F2 / F3 / F4 — mirror of
 ## Notes
 
 - Read-only against `crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d…safetensors`.
-- ε = 0.0005 per [v25-tcn-overlay/feature.md § R6](../../v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6).
-- τ = 0.6 per [v25-tcn-overlay/feature.md § D5](../../v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds).
+- ε = 0.0005 per [v25-tcn-overlay/feature.md § R6](../../v1/v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6).
+- τ = 0.6 per [v25-tcn-overlay/feature.md § D5](../../v1/v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds).
 - Histogram representation: 100 fixed bins over [-3·σ_train, +3·σ_train],
   ASCII-only, LF-only line endings, integer counts, fixed-precision
   floats (%.6f for stats, %.6f for gate fractions, %d for counts).
@@ -808,9 +808,9 @@ Anchor count progression:
 - [ADR-0032](0032-backtest-realdata-path-and-revision-pin.md) —
   `-realdata` path + frontmatter-vs-body discipline (the precedent
   this ADR's D2 follows).
-- [`spec/v25-tcn-alpha-investigation/feature.md`](../../v25-tcn-alpha-investigation/feature.md)
+- [`spec/v25-tcn-alpha-investigation/feature.md`](../../v1/v25-tcn-alpha-investigation/feature.md)
   — analyst R1-R6 + F1-F4 + operator-locked minimal scope.
-- [`spec/v25-tcn-overlay/feature.md`](../../v25-tcn-overlay/feature.md)
+- [`spec/v25-tcn-overlay/feature.md`](../../v1/v25-tcn-overlay/feature.md)
   § R6, § D5 — ε / τ constants this ADR pins into the report body.
 - `crates/forecast/src/tcn.rs:472` — `TcnForecaster::load_anchor`.
 - `crates/forecast/src/tcn.rs:572`, `:322` — `forward()` public API.

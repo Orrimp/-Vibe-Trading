@@ -33,7 +33,7 @@
 //!
 //! - CLAUDE.md non-negotiable: "Every strategy overlay or sizing-modifier ships
 //!   with a baseline-equity-divergence end-to-end test from day 1."
-//! - K6 risk register entry in `spec/v3-regime-classifier/feature.md`.
+//! - K6 risk register entry in `spec/v1/v3-regime-classifier/feature.md`.
 //! - ADR-0049 § D3 dispatcher contract.
 //! - Pattern reference: `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`.
 

@@ -1,7 +1,7 @@
 //! T1907 acceptance — `CostBudget` atomic-cents refactor.
 //!
 //! Verifies the four T1907 acceptance criteria from
-//! `spec/v2-llm-strategy/tasks.md`:
+//! `spec/v1/v2-llm-strategy/tasks.md`:
 //!
 //! - (a) seed budget at $179.99 / $200, `try_reserve(0.01)` returns Ok.
 //! - (b) seed at $200.01, `try_reserve(any)` returns BudgetExceeded.

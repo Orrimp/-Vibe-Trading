@@ -639,7 +639,7 @@ mod tests {
     #[test]
     fn load_equity_companion_real_demo_report_is_ready() {
         let demo = workspace_root()
-            .join("spec/v0-paper-sma/reports")
+            .join("spec/v1/v0-paper-sma/reports")
             .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
         if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
             // Demo artifact pruned from this checkout — skip.
@@ -754,7 +754,7 @@ mod tests {
     #[test]
     fn report_has_companion_agrees_with_loader_on_real_demo() {
         let demo = workspace_root()
-            .join("spec/v0-paper-sma/reports")
+            .join("spec/v1/v0-paper-sma/reports")
             .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
         if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
             return; // demo artifact pruned — skip

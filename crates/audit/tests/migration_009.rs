@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T2013 — `009_strategy_signals.sql` migration acceptance.
 //!
-//! Per `spec/chart-buy-sell-emphasis/feature.md` Design § Q1.
+//! Per `spec/v1/chart-buy-sell-emphasis/feature.md` Design § Q1.
 //!
 //! Verifies:
 //! - A fresh in-memory ledger applies the migration as part of

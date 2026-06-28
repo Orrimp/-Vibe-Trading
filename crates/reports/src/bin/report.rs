@@ -38,7 +38,7 @@ struct Cli {
     /// be writable.
     #[arg(
         long,
-        default_value = "spec/operator-success-reports/reports/report.md"
+        default_value = "spec/v1/operator-success-reports/reports/report.md"
     )]
     output: PathBuf,
 

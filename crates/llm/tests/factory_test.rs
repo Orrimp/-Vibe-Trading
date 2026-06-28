@@ -1,6 +1,6 @@
 //! T1913 acceptance — `LlmProviderFactory::build`.
 //!
-//! Four acceptance criteria from `spec/v2-llm-strategy/tasks.md`:
+//! Four acceptance criteria from `spec/v1/v2-llm-strategy/tasks.md`:
 //!
 //! - (a) build with valid `agent.toml.local` succeeds in paper mode.
 //! - (b) build with missing key returns `LlmError::Auth` whose

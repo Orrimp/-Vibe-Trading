@@ -1,6 +1,6 @@
 //! T1911 acceptance — `pricing.rs` integration test.
 //!
-//! Acceptance criteria from `spec/v2-llm-strategy/tasks.md`:
+//! Acceptance criteria from `spec/v1/v2-llm-strategy/tasks.md`:
 //!
 //! - (a) every `(provider, model)` named in the v2 default TOML
 //!   resolves to a `Some` rate.

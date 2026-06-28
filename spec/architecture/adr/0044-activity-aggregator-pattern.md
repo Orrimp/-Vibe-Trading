@@ -45,7 +45,7 @@ audit writers are short-lived (`start → commit → drop`), each spawning
 a fresh handle.
 
 The feature brief at
-[`spec/cockpit-activity-audit-ledger-producer/feature.md`](../../cockpit-activity-audit-ledger-producer/feature.md)
+[`spec/cockpit-activity-audit-ledger-producer/feature.md`](../../v1/cockpit-activity-audit-ledger-producer/feature.md)
 introduces a new producer pattern — an **aggregator** between the
 existing `crates/audit::Ledger::tick_bus` broadcast (ADR-0031) and the
 `EventBus::activity()` channel (ADR-0042). The aggregator absorbs
@@ -334,13 +334,13 @@ Requires cross-crate coupling between `crates/audit` and
   is one new subscriber on the existing `tick_bus` (capacity 1024,
   drop-on-lag). Zero changes to `crates/audit/`.
 - **Feature brief**:
-  [`spec/cockpit-activity-audit-ledger-producer/feature.md`](../../cockpit-activity-audit-ledger-producer/feature.md)
+  [`spec/cockpit-activity-audit-ledger-producer/feature.md`](../../v1/cockpit-activity-audit-ledger-producer/feature.md)
   — R1 (aggregation policy) / R2 (label format) / R3 (lifecycle) /
   R4 (failure handling) / R5 (performance budget) / R6 (placement) /
   R-NR (non-regression) / K1-K6 (risks) / H1-H3 (hypotheses) /
   Q1-Q3 (open Qs) / D1-D4 (design sketch).
 - **Tasks**:
-  [`spec/cockpit-activity-audit-ledger-producer/tasks.md`](../../cockpit-activity-audit-ledger-producer/tasks.md)
+  [`spec/cockpit-activity-audit-ledger-producer/tasks.md`](../../v1/cockpit-activity-audit-ledger-producer/tasks.md)
   — M-T1 (this ADR) → M-DEV Waves A-D → M-FINAL (R5.2 K3-discharge
   gate) → M-PRESENTER.
 - **Trace row**: `REQ-COCKPIT-ACTIVITY-AUDIT-LEDGER-001` in

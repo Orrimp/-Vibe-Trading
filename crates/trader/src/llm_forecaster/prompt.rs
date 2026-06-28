@@ -19,7 +19,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — prompt structure + cache breakpoints.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — prompt structure + cache breakpoints.
 //! - `spec/dev-notes/v3-llm-forecaster-prompt-spike-2026-05-22.md § v3` — final template.
 //! - `crates/llm/src/prompt_cache.rs` — `CachedSystemPromptBuilder`.
 //! - `spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md § D1.b` — L4 trace gate.

@@ -18,7 +18,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-7 Wave A` — test literals.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-7 Wave A` — test literals.
 //! - `crates/strategy/src/llm_forecaster/types.rs` — implementation.
 //! - `crates/strategy/src/llm_forecaster/canonicalize.rs` — helpers.
 

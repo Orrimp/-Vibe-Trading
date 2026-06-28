@@ -57,7 +57,7 @@ pub(crate) fn inner_rect(size: Size) -> Rectangle {
 /// The price-line widgets (`chart`, `equity_curve`, `drawdown_band`)
 /// migrate to this helper to make room for the left price-axis and
 /// bottom time-axis gutters introduced under R4 of
-/// [`spec/chart-canvas-overhaul/feature.md`](../../../../../spec/chart-canvas-overhaul/feature.md).
+/// [`spec/v1/chart-canvas-overhaul/feature.md`](../../../../../spec/v1/chart-canvas-overhaul/feature.md).
 pub(crate) fn inner_rect_with_gutters(
     size: Size,
     left: f32,

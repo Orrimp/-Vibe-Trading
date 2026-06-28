@@ -21,7 +21,7 @@ produce — checkpoint format, provenance hashing rules, anchor-storage
 policy, determinism caveats.
 
 The v2.5 TCN analyst pass (2026-05-17,
-[`spec/v25-tcn-overlay/feature.md`](../../v25-tcn-overlay/feature.md))
+[`spec/v25-tcn-overlay/feature.md`](../../v1/v25-tcn-overlay/feature.md))
 authored a checkpoint-provenance schema (R8) and surfaced two operator-
 decide questions on anchor storage (LFS-track vs regenerate-from-seed,
 T-OP-1) and backtest split (one-checkpoint vs two-checkpoint, T-OP-2).
@@ -251,8 +251,8 @@ v2.6 bake-off fairness comparison.
   cited by `training.seed`.
 - [`spec/architecture/12-forecast-overlay.md`](../12-forecast-overlay.md)
   — cross-cutting overlay design pattern.
-- [`spec/v25-tcn-overlay/feature.md`](../../v25-tcn-overlay/feature.md)
+- [`spec/v25-tcn-overlay/feature.md`](../../v1/v25-tcn-overlay/feature.md)
   — v2.5 TCN feature spec; this ADR locks the schema referenced
   there as R8 / D4.
-- [`spec/v25-dl-forecast-overlay/feature.md`](../../v25-dl-forecast-overlay/feature.md)
+- [`spec/v25-dl-forecast-overlay/feature.md`](../../v1/v25-dl-forecast-overlay/feature.md)
   — 4-phase roadmap umbrella.

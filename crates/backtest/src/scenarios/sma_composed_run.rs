@@ -152,7 +152,7 @@ pub fn synthetic_bars_minute(
     //
     // Anchor-preserving contract: BTCUSDT returns offset = 0 so legacy fixed-
     // symbol anchored reports (4 single-symbol body-SHA-256s under
-    // spec/v0-paper-sma/reports etc.) remain byte-identical. Other symbols get
+    // spec/v1/v0-paper-sma/reports etc.) remain byte-identical. Other symbols get
     // a deterministic FNV-1a-64 hash of the symbol bytes XORed in.
     //
     // ADR-0038 § D6 compliance: this is behavior-preserving for BTCUSDT (the
@@ -239,7 +239,7 @@ pub fn synthetic_bars_minute(
 ///
 /// **Anchor-preservation contract**: returns 0 for `BTCUSDT` so the legacy
 /// fixed-symbol anchored reports (4 single-symbol body-SHA-256s under
-/// `spec/v0-paper-sma/reports/` etc.) stay byte-identical. All other symbols
+/// `spec/v1/v0-paper-sma/reports/` etc.) stay byte-identical. All other symbols
 /// receive an FNV-1a-64 hash of the symbol bytes.
 ///
 /// ADR-0038 § D6 compliance: behavior-preserving for the only anchored

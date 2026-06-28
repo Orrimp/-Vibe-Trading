@@ -23,7 +23,7 @@
 //! BTCUSDT halts the whole basket (BTCUSDT + ETHUSDT + …).
 //! Caveat (K2): this overlay is designed for `MomentumStrategy` (cross-sectional);
 //! wrapping a single-symbol inner strategy with this overlay would over-suppress
-//! signals on unrelated symbols.  See `spec/vol-killswitch-overlay-noop-fix/feature.md`.
+//! signals on unrelated symbols.  See `spec/v1/vol-killswitch-overlay-noop-fix/feature.md`.
 //!
 //! ## Determinism
 //!

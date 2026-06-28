@@ -7,7 +7,7 @@
 //! prompt-cache builder + budget gate + record/replay + a smoke binary,
 //! with zero v2.0.0 consumers. Each consumer (reflection-memory LLM
 //! enrichment, news-sentiment overlay, trader-debate, …) becomes its
-//! own follow-up brief — Q12 in [`spec/v2-llm-strategy/feature.md`]
+//! own follow-up brief — Q12 in [`spec/v1/v2-llm-strategy/feature.md`]
 //! sketches the prior ordering.
 //!
 //! The crate is wired into the agent at boot via
@@ -141,7 +141,7 @@
 //! crate depends on `cost` (additive — see architecture.md line ~2870
 //! for the rationale).
 //!
-//! [`spec/v2-llm-strategy/feature.md`]: ../../../spec/v2-llm-strategy/feature.md
+//! [`spec/v1/v2-llm-strategy/feature.md`]: ../../../spec/v1/v2-llm-strategy/feature.md
 //! [`spec/runbooks/llm-cost.md`]: ../../../spec/runbooks/llm-cost.md
 //! [`spec/runbooks/llm-replay.md`]: ../../../spec/runbooks/llm-replay.md
 //! [llm-smoke]: ../../../crates/llm/src/bin/llm-smoke.rs

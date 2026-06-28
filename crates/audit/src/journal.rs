@@ -9,7 +9,7 @@
 //! single-shot row) and represents an event a consumer might care about MUST
 //! grow a `crate::tick::emit(ledger, AuditEvent::…)` call **after** the
 //! commit. The in-scope writers at v0.1.0 are enumerated in
-//! `spec/audit-tick-consumer-envelope/decomp.md §3`. Adding a new variant
+//! `spec/v1/audit-tick-consumer-envelope/decomp.md §3`. Adding a new variant
 //! requires an ADR amendment.
 //!
 //! ## chart-buy-sell-emphasis v1.9 — strategy-signal writers (T2014)

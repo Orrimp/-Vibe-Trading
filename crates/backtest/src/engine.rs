@@ -161,7 +161,7 @@ impl Default for BacktestKpis {
 /// CLI anchor-generating paths construct `ScenarioConfig` without this field;
 /// the `#[serde(default)]` default (`Synthetic`) preserves byte-identical
 /// behaviour for all 34 anchored reports (anchor neutrality proof in
-/// `spec/lab-yahoo-realdata/decomp.md § T-AR9`).
+/// `spec/v1/lab-yahoo-realdata/decomp.md § T-AR9`).
 ///
 /// `YahooCache` is Lab-only at v0.1.0; the 4 cross-sectional arms reject it
 /// with `RunError::UnsupportedDataSource`.
@@ -220,7 +220,7 @@ pub struct ScenarioConfig {
     /// in Rust code without this field use the struct-update syntax or
     /// explicit `ScenarioDataSource::default()`, preserving byte-identical
     /// behaviour for all 34 anchored reports (anchor neutrality proof in
-    /// `spec/lab-yahoo-realdata/decomp.md § T-AR9`).
+    /// `spec/v1/lab-yahoo-realdata/decomp.md § T-AR9`).
     pub data_source: ScenarioDataSource,
     /// Pre-loaded bars passed verbatim to the 4 single-symbol scenario arms
     /// instead of generating synthetic GBM bars (T-AR1 / ADR-0040 § D4).

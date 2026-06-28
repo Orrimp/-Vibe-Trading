@@ -14,7 +14,7 @@ superseded-by: none
 Operator decision 2026-05-24 (verbatim): **"Replace Binance for Lab —
 multi-asset pivot."** Promoted Idea → Active in
 [`spec/backlog.md`](../../backlog.md) the same day. The brief at
-[`spec/lab-yahoo-realdata/feature.md`](../../lab-yahoo-realdata/feature.md)
+[`spec/lab-yahoo-realdata/feature.md`](../../v1/lab-yahoo-realdata/feature.md)
 resolves 10 operator-decide questions (Q1-Q10, all closed 2026-05-24)
 and depends on this ADR locking the cross-cutting decisions.
 
@@ -472,11 +472,11 @@ Binance / Coinbase / Kraken rows are untouched.
 
 - [ADR-0032](0032-backtest-realdata-path-and-revision-pin.md) —
   Binance precedent; revision-pin protocol generalisation source.
-- [`spec/lab-yahoo-realdata/feature.md`](../../lab-yahoo-realdata/feature.md)
+- [`spec/lab-yahoo-realdata/feature.md`](../../v1/lab-yahoo-realdata/feature.md)
   — analyst brief; R1-R7 + R-UI-1 + R-NR mapping.
-- [`spec/lab-yahoo-realdata/decomp.md`](../../lab-yahoo-realdata/decomp.md)
+- [`spec/lab-yahoo-realdata/decomp.md`](../../v1/lab-yahoo-realdata/decomp.md)
   — architect decomp (this ADR's implementation file:line citations).
-- [`spec/lab-end-to-end-v2/feature.md`](../../lab-end-to-end-v2/feature.md)
+- [`spec/lab-end-to-end-v2/feature.md`](../../v1/lab-end-to-end-v2/feature.md)
   — predecessor that extracted single-symbol scenario dispatch arms
   with `bars_override`; D-2c "Binance Lab wiring" SUPERSEDED by this
   feature.

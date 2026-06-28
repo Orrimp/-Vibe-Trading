@@ -153,13 +153,13 @@ mod tests {
         // Construct a parsed Args from a one-arg vector.
         let args = Args::try_parse_from([
             "viewer",
-            "spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md",
+            "spec/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md",
         ])
         .expect("parser must accept positional report path");
         assert_eq!(
             args.report_path,
             PathBuf::from(
-                "spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md"
+                "spec/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md"
             )
         );
     }

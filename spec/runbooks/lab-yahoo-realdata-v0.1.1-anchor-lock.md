@@ -35,7 +35,7 @@ step; v0.1.2 is the body-SHA promotion.
 
 Closes [H1] (Yahoo vs Binance equity divergence < 30%) and [H2]
 (fetch success rate > 95%) from
-[`spec/lab-yahoo-realdata/feature.md`](../lab-yahoo-realdata/feature.md).
+[`spec/lab-yahoo-realdata/feature.md`](../v1/lab-yahoo-realdata/feature.md).
 
 ---
 

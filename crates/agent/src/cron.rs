@@ -26,7 +26,7 @@ use tracing::{info, warn};
 /// Configuration for the in-process cron scheduler.
 ///
 /// Default: Mondays 09:00 (`"0 0 9 * * Mon"`), output under
-/// `spec/operator-success-reports/reports/`.  All fields are operator-tunable.
+/// `spec/v1/operator-success-reports/reports/`.  All fields are operator-tunable.
 #[derive(Debug, Clone)]
 pub struct CronConfig {
     /// Cron expression in tokio-cron-scheduler 6-field form
@@ -48,7 +48,7 @@ impl Default for CronConfig {
             expression: "0 0 9 * * Mon".to_string(),
             ledger_db_path: PathBuf::from("data/audit/ledger.db"),
             parquet_root: PathBuf::from("data/binance"),
-            output_dir: PathBuf::from("spec/operator-success-reports/reports"),
+            output_dir: PathBuf::from("spec/v1/operator-success-reports/reports"),
         }
     }
 }

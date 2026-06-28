@@ -50,7 +50,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25a-patchtst-overlay/feature.md § R1`
+//! - `spec/v1/v25a-patchtst-overlay/feature.md § R1`
 //! - `spec/architecture/adr/0036-patchtst-training-contract.md § D1`
 //! - `spec/architecture/adr/0035-tcn-sigma-train-recalibration.md § D1` (σ_train post-training)
 //! - Nie et al 2022 (arXiv:2211.14730) — reference architecture

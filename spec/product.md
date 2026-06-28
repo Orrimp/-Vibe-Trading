@@ -25,13 +25,13 @@ The user journey — the product, end to end:
    `(coin, window)`.
 3. **Rank & select** the best strategy for that coin from the bake-off
    results (and, later, a *mix* of strategies or a strategy + LLM/ML ensemble —
-   scoped as F8 [`advisor-ensemble/feature.md`](advisor-ensemble/feature.md): a
+   scoped as F8 [`advisor-ensemble/feature.md`](v1/advisor-ensemble/feature.md): a
    **bounded, pre-registered** set of deterministic signal-vote mixes that earn
    their crown through the **same robustness gate + same buy-and-hold benchmark**
    as every single strategy — never assumed-better, never a weight search; LLM/ML
    stay narration-only in v1), with a plain-language **"why this one"** — today
    rendered as structured templated copy, and from F9
-   ([`advisor-llm-narration/feature.md`](advisor-llm-narration/feature.md), trace
+   ([`advisor-llm-narration/feature.md`](v1/advisor-llm-narration/feature.md), trace
    `REQ-ADVISOR-LLM-NARRATION-001`) **also** as an LLM-generated plain-language
    narration that FAITHFULLY renders the *actual* structured bake-off result (the
    `Recommendation` reason codes + the real KPIs + the robustness flags) and
@@ -45,7 +45,7 @@ The user journey — the product, end to end:
    forecast** (the crowned strategy is a deterministic rule engine with no
    ability to predict prices): current stance + standing entry/exit conditions +
    projected sizing, re-evaluated each bar — *not* a dated trade calendar.
-   Scoped as F6 ([`advisor-forward-plan/feature.md`](advisor-forward-plan/feature.md)).
+   Scoped as F6 ([`advisor-forward-plan/feature.md`](v1/advisor-forward-plan/feature.md)).
 5. **Watch**: in the **Live view**, the selected strategy (or mix/LLM)
    **paper-trades forward** on real incoming data and the user sees running
    profit/loss on their simulated €200.
@@ -450,7 +450,7 @@ Tracked here until the operator answers; then they migrate into the body.
   EUR→USD rate as the v0.2 refinement; first-class `Eur` currency rejected for
   a paper tool. _Operator to confirm._ — **The MVP "FX not modelled" label is now
   being replaced by a real EUR/USD rate**: the v0.2 fixed-rate refinement is scoped
-  as **F7** ([`advisor-eur-fx/feature.md`](advisor-eur-fx/feature.md), trace
+  as **F7** ([`advisor-eur-fx/feature.md`](v1/advisor-eur-fx/feature.md), trace
   `REQ-ADVISOR-EUR-FX-001`) — a one-time `€200 × rate = ~$216 USDT` conversion at
   the budget-input boundary (into F4 sizing + the "€200 ≈ $X (at R EUR/USD)"
   display), ranking still FX-invariant, first-class `Eur` still rejected; the one
@@ -478,7 +478,7 @@ Tracked here until the operator answers; then they migrate into the body.
 
 - 2026-06-23 (analyst, short-selling scoping): scoped the operator-directed (2026-06-23
   *"do the expensive short selling"*) **single-coin DIRECTIONAL short-selling** capability
-  as a new feature ([`advisor-short-selling/feature.md`](advisor-short-selling/feature.md),
+  as a new feature ([`advisor-short-selling/feature.md`](v1/advisor-short-selling/feature.md),
   trace `REQ-ADVISOR-SHORT-SELLING-001`). It gives the **long-or-flat** single-coin advisor
   the **down-half lever** it never had — today a bearish signal can only park the €200 in
   cash; this adds a bounded, **pre-registered** set of short-capable single-coin strategies
@@ -516,7 +516,7 @@ Tracked here until the operator answers; then they migrate into the body.
   (2026-06-23 *"combinations of the strategies could yield good result — we need
   to calculate the combination of multiple strategies"*) **expansion of the
   strategy-combination space** as a new feature
-  ([`advisor-combination-search/feature.md`](advisor-combination-search/feature.md),
+  ([`advisor-combination-search/feature.md`](v1/advisor-combination-search/feature.md),
   trace `REQ-ADVISOR-COMBINATION-SEARCH-001`). It **widens** — does not change —
   **§ Open decisions D3** (Ensemble/LLM-mix = v0.2, bounded + pre-registered): F8
   shipped the 2-arm vote-ensemble proof-of-seam; this adds **6 more pre-registered
@@ -549,7 +549,7 @@ Tracked here until the operator answers; then they migrate into the body.
   operator-approved (2026-06-26 *"item 1 sounds good"* — the backlog's one
   product-aligned growth item) **expansion of the single-coin signal library with
   new base signals** beyond the current 4 (SMA / MACD / RSI / Bollinger) as a new
-  feature ([`advisor-signal-library-expansion/feature.md`](advisor-signal-library-expansion/feature.md),
+  feature ([`advisor-signal-library-expansion/feature.md`](v1/advisor-signal-library-expansion/feature.md),
   trace `REQ-ADVISOR-SIGNAL-LIBRARY-EXPANSION-001`). Each new base signal is a new
   bake-off arm scored by the **identical** frozen `RobustnessMode::Bootstrap` gate
   + the **identical** buy-and-hold benchmark; the recommended FIXED v1 slate is **4
@@ -587,7 +587,7 @@ Tracked here until the operator answers; then they migrate into the body.
   (EUR-on-USD handling) to record that the MVP **"€200 ≈ 200 USDT — FX not
   modelled"** simplification is now being replaced by a **real EUR/USD rate** —
   scoped as the v0.2 fixed-rate refinement D4 itself named, in the new **F7**
-  feature ([`advisor-eur-fx/feature.md`](advisor-eur-fx/feature.md), trace
+  feature ([`advisor-eur-fx/feature.md`](v1/advisor-eur-fx/feature.md), trace
   `REQ-ADVISOR-EUR-FX-001`). F7 is a **one-time budget-unit conversion** (`€200 ×
   rate = ~$216 USDT`) at the single budget-input boundary (verified seam:
   `crates/ui/src/bin/cockpit_live.rs:1431-1437`, where `budget_eur()` →
@@ -611,7 +611,7 @@ Tracked here until the operator answers; then they migrate into the body.
 - 2026-06-21 (analyst, F8 ensemble scoping): annotated **journey step 3** to
   point the "mix of strategies / LLM-ML ensemble" the operator named in the
   2026-06-19 pivot at the new F8 feature
-  ([`advisor-ensemble/feature.md`](advisor-ensemble/feature.md), trace
+  ([`advisor-ensemble/feature.md`](v1/advisor-ensemble/feature.md), trace
   `REQ-ADVISOR-ENSEMBLE-001`), with the honest framing inline: ensembles are a
   **bounded, pre-registered** set of deterministic **signal-vote** mixes
   (v1 = two votes: ≥2-of-3 majority + 4-of-4 unanimous over the existing rule
@@ -633,7 +633,7 @@ Tracked here until the operator answers; then they migrate into the body.
   coming days" requires — a **conditional, rule-driven plan, NOT a price
   forecast** (current stance + standing entry/exit conditions + projected €200
   sizing, re-evaluated each bar; not a dated trade calendar), and pointed it at
-  the new F6 feature ([`advisor-forward-plan/feature.md`](advisor-forward-plan/feature.md),
+  the new F6 feature ([`advisor-forward-plan/feature.md`](v1/advisor-forward-plan/feature.md),
   trace `REQ-ADVISOR-FORWARD-PLAN-001`). F6 fills the gap where the journey
   jumps from the crowned pick straight into the F5 forward paper-trade with no
   legible plan shown; it is consistent-by-construction with F5 (the plan
@@ -643,7 +643,7 @@ Tracked here until the operator answers; then they migrate into the body.
   forecast would violate all three. No engine code; no anchored content touched.
 - 2026-06-22 (analyst, F9 LLM-narration scoping): annotated **journey step 3**
   ("why this one") to point at the new F9 feature
-  ([`advisor-llm-narration/feature.md`](advisor-llm-narration/feature.md), trace
+  ([`advisor-llm-narration/feature.md`](v1/advisor-llm-narration/feature.md), trace
   `REQ-ADVISOR-LLM-NARRATION-001`) — the v0.2 step that finally delivers the
   2026-06-19 pivot's "...even **together with LLMs**" part, as **NARRATION** (the
   LLM's genuine strength), never as a trading signal. The LLM turns the *actual*

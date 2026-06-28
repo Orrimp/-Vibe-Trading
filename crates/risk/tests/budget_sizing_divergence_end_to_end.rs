@@ -44,7 +44,7 @@
 //!
 //! # Cross-references
 //!
-//! - `spec/advisor-forward-paper/feature.md` § 3 — the gate contract.
+//! - `spec/v1/advisor-forward-paper/feature.md` § 3 — the gate contract.
 //! - `spec/architecture/adr/0060-budget-aware-sizing-and-forward-paper-run-seam.md` D2.
 //! - `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` — the precedent.
 

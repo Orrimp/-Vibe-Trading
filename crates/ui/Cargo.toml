@@ -21,7 +21,7 @@ required-features = ["fixtures"]
 
 # ui-gallery-bin v0.1 (T01) — widget gallery binary for visual
 # regression testing and operator review. Fixtures-only: no `live`
-# dep, no window required in --smoke mode. See spec/ui-gallery-bin/.
+# dep, no window required in --smoke mode. See spec/v1/ui-gallery-bin/.
 [[bin]]
 name = "ui-gallery"
 path = "src/bin/ui_gallery.rs"
@@ -123,7 +123,7 @@ iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia",
 # widgets/strategies.rs::status_badge_cell; (c) date_picker — was
 # smoke-test demo only per viewer bin docstring, removed without
 # replacement (v1.11 chart-x-axis-local-time may roll a real date
-# input later). See spec/ui-drop-iced-aw/feature.md.
+# input later). See spec/v1/ui-drop-iced-aw/feature.md.
 
 # `live` feature deps — Week 2 (T32). Only enabled when wiring the cockpit
 # against the real `agent::EventBus`. Pinned like iced to keep the live
@@ -200,7 +200,7 @@ tempfile = { workspace = true }
 # the workspace-pinned iced 0.14.0; no version skew risk. `image-compare`
 # (MIT/Apache, NOT AGPL `dssim-core`) provides the perceptual-diff PNG
 # under R6 (Q8 operator-lock). Both are dev-only — never reachable from
-# production. See `spec/ui-test-harness-bootstrap/feature.md` Design §.
+# production. See `spec/v1/ui-test-harness-bootstrap/feature.md` Design §.
 iced_test = "=0.14.0"
 image-compare = "=0.4"
 image = { version = "=0.25.6", default-features = false, features = ["png"] }
@@ -208,7 +208,7 @@ image = { version = "=0.25.6", default-features = false, features = ["png"] }
 # at `tests/layout_invariants.rs`. Workspace pin already at
 # `Cargo.toml:77` (`proptest = { version = "1.6" }`); dev-only on the
 # `ui` crate per architect's H-A3 falsifier resolution
-# (`spec/ui-quality-gate-overhaul/feature.md ## H-A3`).
+# (`spec/v1/ui-quality-gate-overhaul/feature.md ## H-A3`).
 proptest = { workspace = true }
 # visual-fail-html-reporter v0.1.0 (T-VFH-D1) — base64 encodes PNG bytes
 # into data URIs for the self-contained visual-fail HTML artifact.
@@ -272,7 +272,7 @@ binance = ["dep:data"]
 
 # `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
 # two surfaces under one flag per architect Q7 resolution
-# (`spec/ui-quality-gate-overhaul/feature.md ## Q7`):
+# (`spec/v1/ui-quality-gate-overhaul/feature.md ## Q7`):
 #
 #   - **M2-A:** `#[cfg(feature = "render-debug")]`-gated
 #     `tracing::trace_span!` instrumentation on widget `panel(...)`,
@@ -356,7 +356,7 @@ in_process_cron = ["live", "agent/in_process_cron"]
 # pull `iced_tester` (verify with `cargo tree -p ui --features live |
 # grep iced_tester`). Pulls iced's own `tester` + `selector` +
 # `strict-assertions` features to align renderer invariants.
-# See `spec/ui-session-journal-iced-tester/feature.md ## Design`.
+# See `spec/v1/ui-session-journal-iced-tester/feature.md ## Design`.
 record-tests = [
     "iced/tester",
     "iced/selector",

@@ -30,7 +30,7 @@ strip (`cockpit-training-control v0.2.0` R3.5) are both screen-local —
 an operator on the Live screen got zero feedback that a Run was underway.
 
 The feature brief at
-[`spec/cockpit-activity-status-bar/feature.md`](../../cockpit-activity-status-bar/feature.md)
+[`spec/cockpit-activity-status-bar/feature.md`](../../v1/cockpit-activity-status-bar/feature.md)
 landed v0.1.0 in three Waves (A — agent bus extension; B — UI tape state
 + recipe + widget; C — producer wiring at Yahoo preload / Lab Run /
 Training subprocess; D — perf gates). Shipped 2026-05-26. The
@@ -353,10 +353,10 @@ approach because:
 - **ADR-0012** ([0012-v05-broadcast-bus-extensions.md](0012-v05-broadcast-bus-extensions.md))
   — broadcast-types-in-trading_core pattern; established the
   "add a channel per ADR" cadence this ADR extends.
-- **Feature brief**: [`spec/cockpit-activity-status-bar/feature.md`](../../cockpit-activity-status-bar/feature.md)
+- **Feature brief**: [`spec/cockpit-activity-status-bar/feature.md`](../../v1/cockpit-activity-status-bar/feature.md)
   — R1 (event source) / R2 (status-bar widget) / R3 (UI tape state) /
   R4 (producer wiring) / R-NR (non-regression contract) / Q1-Q8 / D1-D6.
-- **Tasks**: [`spec/cockpit-activity-status-bar/tasks.md`](../../cockpit-activity-status-bar/tasks.md)
+- **Tasks**: [`spec/cockpit-activity-status-bar/tasks.md`](../../v1/cockpit-activity-status-bar/tasks.md)
   — Wave A (T-D-N1..N3) + Wave B (T-D-N4..N6) + Wave C (T-D-N7..N9) +
   Wave D (T-D-N10..N11) execution log.
 - **Trace row**: `REQ-COCKPIT-ACTIVITY-001` in
@@ -379,9 +379,9 @@ approach because:
   - [`crates/agent/src/bus.rs:301`](../../../crates/agent/src/bus.rs)
     — `pub fn activity(&self) -> ActivitySender` accessor.
 - **Cross-feature precedents**:
-  - [`spec/cockpit-training-control/feature.md`](../../cockpit-training-control/feature.md)
+  - [`spec/cockpit-training-control/feature.md`](../../v1/cockpit-training-control/feature.md)
     R3.5 — status-strip + training_events poll (R4.3 producer-wiring site).
-  - [`spec/lab-end-to-end-v2/feature.md`](../../lab-end-to-end-v2/feature.md)
+  - [`spec/lab-end-to-end-v2/feature.md`](../../v1/lab-end-to-end-v2/feature.md)
     Wave D-4 — Progress channel (R4.2 producer-wiring site).
 
 ## Changelog

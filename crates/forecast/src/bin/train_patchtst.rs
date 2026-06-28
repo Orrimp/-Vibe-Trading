@@ -59,7 +59,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25a-patchtst-overlay/feature.md § R2` — CLI spec
+//! - `spec/v1/v25a-patchtst-overlay/feature.md § R2` — CLI spec
 //! - `spec/architecture/adr/0036-patchtst-training-contract.md § D3,D4,D5`
 //! - `spec/architecture/adr/0035-tcn-sigma-train-recalibration.md § D1`
 //! - `crates/forecast/src/patchtst.rs` — model definition

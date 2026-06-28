@@ -65,7 +65,7 @@ impossibility, not a debug-assert. A runtime-guarded free function
 (`as_of_join` + `debug_assert!`) was rejected (see Alternatives): the guarantee
 would be debug-time-only and a hand-rolled `partition_point` could still bypass
 it. The full signatures are fixed in
-[`spec/point-in-time-data-discipline/feature.md` § The API surface](../../point-in-time-data-discipline/feature.md#the-api-surface-exact-signatures--cratescoresrcpitrs).
+[`spec/point-in-time-data-discipline/feature.md` § The API surface](../../v1/point-in-time-data-discipline/feature.md#the-api-surface-exact-signatures--cratescoresrcpitrs).
 
 ### D2. Home crate is `crates/core` (new `pit` module); no new dependency edge
 
@@ -180,8 +180,8 @@ contaminate any anchored surface it feeds. Enforcement and mechanical checks:
 
 Migration scope and the exact per-site plan (all four copies, the tests touched,
 and the bootstrap-input invariance) live in
-[`spec/point-in-time-data-discipline/feature.md` § Design](../../point-in-time-data-discipline/feature.md#design)
-and [`tasks.md`](../../point-in-time-data-discipline/tasks.md) (5 M-DEV + 5 M-TEST).
+[`spec/point-in-time-data-discipline/feature.md` § Design](../../v1/point-in-time-data-discipline/feature.md#design)
+and [`tasks.md`](../../v1/point-in-time-data-discipline/tasks.md) (5 M-DEV + 5 M-TEST).
 
 ## Changelog
 - 2026-06-18 (architect): initial accept. Locked D1 type-level `PitSeries`/`AsOf`

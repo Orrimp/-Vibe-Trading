@@ -27,8 +27,8 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — signal-pipeline shape.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + cache key.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-1` — signal-pipeline shape.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + cache key.
 //! - `spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md` — L0-L4.
 
 use rust_decimal::Decimal;

@@ -2,7 +2,7 @@
 //!
 //! Reads an anchored TCN checkpoint (BS-1 or BS-2), runs a forward pass over
 //! all 10 USDT symbols for the checkpoint's evaluation span, and emits a
-//! deterministic markdown report under `spec/v25-tcn-alpha-investigation/reports/`.
+//! deterministic markdown report under `spec/v1/v25-tcn-alpha-investigation/reports/`.
 //!
 //! ## Usage
 //!
@@ -116,7 +116,7 @@ struct Args {
     data_root: PathBuf,
 
     /// Output directory for the report.
-    #[arg(long, default_value = "spec/v25-tcn-alpha-investigation/reports/")]
+    #[arg(long, default_value = "spec/v1/v25-tcn-alpha-investigation/reports/")]
     out_dir: PathBuf,
 
     /// Evaluation span lower bound (UTC inclusive). Defaults to scenario default.

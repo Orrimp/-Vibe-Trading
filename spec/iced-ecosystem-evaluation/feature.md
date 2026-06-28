@@ -64,7 +64,7 @@ research thread; see Section "Out of scope" for why this is not re-surveyed).
 - `iced = "=0.14.0"` with features `tiny-skia, thread-pool, advanced, canvas`
   ([`crates/ui/Cargo.toml:69`](../../crates/ui/Cargo.toml))
 - `iced_test = "=0.14.0"` (dev-dep, dev-only — landed in
-  [`ui-test-harness-bootstrap` v0.1](../ui-test-harness-bootstrap/feature.md))
+  [`ui-test-harness-bootstrap` v0.1](../v1/ui-test-harness-bootstrap/feature.md))
 
 The lockfile carries **34 crates transitively**:
 
@@ -109,7 +109,7 @@ hand-rolled widget. Verdict legend: **ADOPT** (recommend in next 1–2
 features); **EVALUATE** (architect should consider; non-obvious tradeoff);
 **SKIP** (lag, license, or fit problem). License column: MIT/Apache/MPL =
 fine; AGPL = no-go per
-[`ui-test-harness-bootstrap` feature.md`](../ui-test-harness-bootstrap/feature.md)
+[`ui-test-harness-bootstrap` feature.md`](../v1/ui-test-harness-bootstrap/feature.md)
 precedent on `dssim-core`.
 
 | Crate | Latest | License | iced 0.14? | Maps to (file:line OR roadmap) | Verdict | Rationale |
@@ -151,7 +151,7 @@ SKIP, with the precise reason:
 2. **`iced_plot`** — looks like a modern alternative ("millions of points,
    GPU-accelerated"), but **hard-requires wgpu** — exactly the renderer we
    stripped to ship tiny-skia byte determinism for snapshot tests
-   ([`ui-test-harness-bootstrap` v0.1](../ui-test-harness-bootstrap/feature.md)).
+   ([`ui-test-harness-bootstrap` v0.1](../v1/ui-test-harness-bootstrap/feature.md)).
    Adopting would invalidate the entire snapshot harness investment.
 3. **`iced-anim` / `Cosmic Time` / `anim-rs`** — animation crates are
    attractive because animations look polished, but
@@ -192,7 +192,7 @@ land. The operator may need to ratify some of these.
   [`journal_transaction_modal.rs`](../../crates/ui/src/widgets/journal_transaction_modal.rs)
   (571 LOC)? This is the highest-ROI native-widget candidate by LOC
   potentially retired. The chart-canvas-overhaul retrospective specifically
-  called out tooltip-overlay-clamp behaviour ([`spec/chart-canvas-overhaul/feature.md`](../chart-canvas-overhaul/feature.md));
+  called out tooltip-overlay-clamp behaviour ([`spec/chart-canvas-overhaul/feature.md`](../v1/chart-canvas-overhaul/feature.md));
   understand whether native `float` exposes equivalent clamp/anchor APIs.
 - **Q4.** Adopt iced 0.14's **built-in `Animation` API** for the bounded
   motion tokens in [`ui-design-principles.md`](../ui-design-principles.md)
@@ -217,7 +217,7 @@ land. The operator may need to ratify some of these.
   committed backtest reports (currently rendered as text only)? Adoption
   cost: one feature flag (`markdown` + optional `highlighter`); zero new
   deps. Roadmap fit: matches the
-  [`v2-llm-strategy`](../v2-llm-strategy/feature.md) follow-up brief and
+  [`v2-llm-strategy`](../v1/v2-llm-strategy/feature.md) follow-up brief and
   potential Phase 6 Assistant chat surface. **This is the most operator-
   visible candidate.**
 - **Q8.** **`plotters-iced2`** as a chart-stack consolidation: would it let
@@ -705,7 +705,7 @@ read) for snapshot determinism.**
   the spinner module. If present → falsified, B2 SKIP, fall back to
   static "Loading…" text. Also covered by
   `scripts/check_no_clocks_in_ui_tests.sh` from
-  [`ui-test-harness-bootstrap` v0.1](../ui-test-harness-bootstrap/feature.md).
+  [`ui-test-harness-bootstrap` v0.1](../v1/ui-test-harness-bootstrap/feature.md).
 - *Status:* unresolved.
 
 **H-arch-10 (architect, 2026-05-13) — `iced_aw::badge` renders with our
@@ -806,7 +806,7 @@ Explicit non-goals for this survey:
   [`ui-testing-direction-2026-05-12.md`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   dev-note covered that territory. This brief is iced-ecosystem-only.
 - **The wgpu vs tiny-skia decision.** Locked to tiny-skia per chart-canvas-
-  overhaul retrospective and [`ui-test-harness-bootstrap` v0.1](../ui-test-harness-bootstrap/feature.md);
+  overhaul retrospective and [`ui-test-harness-bootstrap` v0.1](../v1/ui-test-harness-bootstrap/feature.md);
   any candidate that hard-requires wgpu is SKIP by construction (see
   `iced_plot` row).
 - **Cross-platform (Windows/Linux).** The cockpit is macOS-only per

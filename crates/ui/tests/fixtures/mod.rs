@@ -4,7 +4,7 @@
 //! ## Why a tests-tree module?
 //!
 //! Operator-locked Q9 (see
-//! `spec/ui-test-harness-bootstrap/feature.md`) requires a richer
+//! `spec/v1/ui-test-harness-bootstrap/feature.md`) requires a richer
 //! Charts-screen scene that includes a hovered marker
 //! (`Cockpit.chart_tooltip = Some(ChartTooltipView{...})`). The
 //! existing production `ui::fixtures` builders don't carry that state

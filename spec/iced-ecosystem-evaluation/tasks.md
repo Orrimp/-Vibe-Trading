@@ -110,13 +110,13 @@ Opens after Brief A ships (operator approval recorded).
     v1.11), B2 spinner (panel_state::Loading replacement), B3 badge
     (status chips).
   - **Closed 2026-05-13 (architect):** analyst brief landed at
-    [`spec/iced-aw-cherry-pick/feature.md`](../iced-aw-cherry-pick/feature.md)
+    [`spec/iced-aw-cherry-pick/feature.md`](../v1/iced-aw-cherry-pick/feature.md)
     on 2026-05-13 (v0.1.0). Architect synthesis pass same-day
     elevated status `draft → design`, resolved all 7 analyst open
     questions inline, ran H-arch-4 / H-arch-9 / H-arch-10 falsifiers
     (all RESOLVED-PASS — H-arch-9 with a workspace-clocks-grep
     scope caveat ticked at T-M2-4), and published
-    [`spec/iced-aw-cherry-pick/tasks.md`](../iced-aw-cherry-pick/tasks.md)
+    [`spec/iced-aw-cherry-pick/tasks.md`](../v1/iced-aw-cherry-pick/tasks.md)
     (3 lanes M1/M2/M3 + M_FINAL). HANDOFF → developer + ui-designer
     (parallel).
   - Files touched (architect-revised): viewer-bin (B1) + frame.rs +
@@ -128,7 +128,7 @@ Opens after Brief A ships (operator approval recorded).
   - Falsifier link: [H-arch-4](feature.md#hypothesis-register-architect-2026-05-13)
     (date_picker), H-arch-9 (spinner determinism), H-arch-10 (badge
     styling) — all RESOLVED-PASS in
-    [`iced-aw-cherry-pick/feature.md ## Design — architect synthesis`](../iced-aw-cherry-pick/feature.md#design--architect-synthesis).
+    [`iced-aw-cherry-pick/feature.md ## Design — architect synthesis`](../v1/iced-aw-cherry-pick/feature.md#design--architect-synthesis).
 
 ## M3 — Brief C: `iced_dialog` chrome (stub, gated)
 
@@ -186,7 +186,7 @@ Opens IF operator answers Q-O2 = ADOPT.
   B / C / D / markdown-viewer.
 - **PNG baseline impact: zero across all 4 briefs.** None of the briefs
   touches the Charts screen (the only surface backed by PNG baselines
-  per [`ui-test-harness-bootstrap` v0.1](../ui-test-harness-bootstrap/feature.md)).
+  per [`ui-test-harness-bootstrap` v0.1](../v1/ui-test-harness-bootstrap/feature.md)).
   All visual deltas land on the 65 non-Charts `.snap` baselines and are
   refreshed via `cargo insta review`.
 - **Capability boundary enforcement:** Per [`AGENT.md ## Architect =
@@ -202,11 +202,11 @@ Opens IF operator answers Q-O2 = ADOPT.
 ## Changelog
 
 - 2026-05-13 (architect): Brief B tasks.md published at
-  [`spec/iced-aw-cherry-pick/tasks.md`](../iced-aw-cherry-pick/tasks.md);
+  [`spec/iced-aw-cherry-pick/tasks.md`](../v1/iced-aw-cherry-pick/tasks.md);
   T-B-spawn closed (architect synthesis pass landed same-day —
   status `design`, all 7 analyst open questions resolved,
   H-arch-4 / H-arch-9 / H-arch-10 RESOLVED-PASS inline at
-  [`iced-aw-cherry-pick/feature.md ## Design — architect synthesis`](../iced-aw-cherry-pick/feature.md#design--architect-synthesis));
+  [`iced-aw-cherry-pick/feature.md ## Design — architect synthesis`](../v1/iced-aw-cherry-pick/feature.md#design--architect-synthesis));
   HANDOFF → developer + ui-designer (parallel).
 - 2026-05-13 (M0 falsifier sub-agent — orchestrator-routed, read-only
   sandbox): Ticked T-M0-1, T-M0-2, T-M0-3 with cite back to

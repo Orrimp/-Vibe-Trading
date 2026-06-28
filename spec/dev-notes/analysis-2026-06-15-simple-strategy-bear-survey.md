@@ -26,9 +26,9 @@ updated: 2026-06-15
 > verdict stands, now on the strongest available bear evidence.
 
 This dev-note records the confirmed numbers from the tester's PASS
-([`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md),
+([`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../v1/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md),
 verdict PASS, commit `4585cf9`) and closes the loop on feature
-[`simple-strategy-bear-survey`](../simple-strategy-bear-survey/feature.md) (AC-BS.7,
+[`simple-strategy-bear-survey`](../v1/simple-strategy-bear-survey/feature.md) (AC-BS.7,
 task T-BS.14). It is the `findings`-status companion to the un-anchored `#[ignore]`
 harness -- there is no anchored `spec/*/reports/backtest-*.md` (UN-ANCHORED per
 feature section Anchoring / D-BS.4). It is the direct successor to the 2026-06-15
@@ -289,11 +289,11 @@ winner is path-robust.**" That is a far stronger statement than the overfit-guar
 - **Decision rule (frozen, applied AS-IS):** [`robustness-decision-rule-2026-05-30.md`](robustness-decision-rule-2026-05-30.md) section 0
   (`sharpe.p5 < 0 => FRAGILE` -- the ruler; the 2021-22 numbers are scored against
   it, not the reverse).
-- **Feature + pre-registration:** [`simple-strategy-bear-survey/feature.md`](../simple-strategy-bear-survey/feature.md)
+- **Feature + pre-registration:** [`simple-strategy-bear-survey/feature.md`](../v1/simple-strategy-bear-survey/feature.md)
   (section Design D-BS.2 frozen predicate + cap, section Scope cap).
-- **Confirmed numbers:** [`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)
+- **Confirmed numbers:** [`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../v1/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)
   (tester PASS, commit `4585cf9`).
-- **Corpus consumed:** [`binance-corpus-expansion/feature.md`](../binance-corpus-expansion/feature.md)
+- **Corpus consumed:** [`binance-corpus-expansion/feature.md`](../v1/binance-corpus-expansion/feature.md)
   (`data/binance-2122/`, pin `4f390622`).
 - **Baseline thesis:** [`passive-baseline.md`](../runbooks/passive-baseline.md).
 

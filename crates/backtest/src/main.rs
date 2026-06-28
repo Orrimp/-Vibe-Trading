@@ -984,7 +984,7 @@ impl Scenario {
                 // T-D-17: pinned 2026-05-18 after revision-roundtrip fix.
                 // SHA = aggregate over all 240 Binance hourly parquets (10 symbols × 24 months,
                 // 2023-01-01 through 2024-12-31, fetched 2026-05-18 16:33 UTC).
-                // See spec/backtest-real-binance-data/reports/ for the M5 capture log.
+                // See spec/v1/backtest-real-binance-data/reports/ for the M5 capture log.
                 expected_revision_sha: Some(
                     "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
                 ),

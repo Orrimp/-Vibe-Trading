@@ -22,7 +22,7 @@ version: 0.1.0
   decides macOS-native packaging is worth the build-system + CI
   complexity.
 - **Surfaced by:**
-  [`spec/chart-buy-sell-emphasis/tasks.md`](../chart-buy-sell-emphasis/tasks.md)
+  [`spec/chart-buy-sell-emphasis/tasks.md`](../v1/chart-buy-sell-emphasis/tasks.md)
   §  M6.2 / T2031 — operator visual-verification pass on commit
   `9bb5786` confirmed the dock + cmd-tab + Spotlight + Finder icons
   still show the generic iced/Cargo placeholder despite the title-bar
@@ -118,7 +118,7 @@ app packaging" (this candidate).
 - [`crates/ui/src/window_icon.rs`](../../crates/ui/src/window_icon.rs)
   — module-level note (T2031) documents the limitation in-source so
   the next reader hits the breadcrumb without reading this stub.
-- [`spec/chart-buy-sell-emphasis/tasks.md`](../chart-buy-sell-emphasis/tasks.md)
+- [`spec/chart-buy-sell-emphasis/tasks.md`](../v1/chart-buy-sell-emphasis/tasks.md)
   § M6.2 / T2031 — the operator-feedback breadcrumb that surfaced
   this candidate.
 - [`spec/design/project/assets/brand/lumen-mark.svg`](../design/project/assets/brand/lumen-mark.svg)
@@ -127,7 +127,7 @@ app packaging" (this candidate).
   — the pre-rasterised 64×64 RGBA blob already shipped for the
   iced-side icon path (precedent for "pre-rasterise once, ship in
   repo").
-- [`spec/v25-dl-forecast-overlay/feature.md`](../v25-dl-forecast-overlay/feature.md)
+- [`spec/v25-dl-forecast-overlay/feature.md`](../v1/v25-dl-forecast-overlay/feature.md)
   — sibling `status: draft` stub (v2.5 DL forecaster brief).
 
 ## Changelog

@@ -1,6 +1,6 @@
 //! Retry helper — full-jitter exponential backoff per Design Q9.
 //!
-//! Q9 resolution (`spec/v2-llm-strategy/feature.md:1791`) places the
+//! Q9 resolution (`spec/v1/v2-llm-strategy/feature.md:1791`) places the
 //! retry policy in **leaf provider impls** (not a generic decorator),
 //! sharing one helper to avoid 3× duplicated logic. Backoff is base
 //! 500ms, cap 8s, **full jitter** (AWS-recommended):

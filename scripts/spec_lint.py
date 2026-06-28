@@ -69,7 +69,7 @@ VALID_STATUSES = {
     # 2026-05-22 additions:
     "shipped-partial",  # first-of-kind precedent from v3-llm-forecaster v0.1.0 — code gates clean,
                         # one wave deferred due to external-dependency resolution (API key, vendor
-                        # account, third-party data, etc.). See spec/v3-llm-forecaster/reports/
+                        # account, third-party data, etc.). See spec/v1/v3-llm-forecaster/reports/
                         # test-final-2026-05-22.md § 14 for the protocol.
     "retired",          # research-line closure (not deletion). Used by v3-volatility-forecaster +
                         # v3-volatility-forecaster-rebaseline after the noop-fix retire decision
@@ -195,7 +195,7 @@ KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
     # re-emission protocol (NOT YET CODIFIED — see CLAUDE.md). Exempted here
     # rather than re-emitting a retired line.
     (
-        "spec/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
+        "spec/v1/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
         "../architecture/adr/0038-vol-forecast-verdict-shape.md"
         "#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension",
     ),
@@ -264,7 +264,8 @@ def check_frontmatter(md_path: Path, text: str, report: Report) -> None:
 # ---------------------------------------------------------------------------
 
 # Folder names that are not features (cross-cutting siblings of feature folders).
-NON_FEATURE_FOLDERS = {"design", "dev-notes", "runbooks", "archive", "architecture"}
+NON_FEATURE_FOLDERS = {"design", "dev-notes", "runbooks", "archive", "architecture",
+                       "v1", "v2"}  # v1/v2 are containers for feature folders (2026-06-28 reorg)
 
 
 def is_feature_folder(p: Path) -> bool:
@@ -278,7 +279,14 @@ def is_feature_folder(p: Path) -> bool:
 
 
 def check_orphan_features(spec_dir: Path, report: Report) -> None:
-    for child in sorted(spec_dir.iterdir()):
+    # Feature folders live at spec/ root AND under spec/v1/ + spec/v2/
+    # (the 2026-06-28 v1/v2 reorg). Lint feature folders in all three.
+    children = list(spec_dir.iterdir())
+    for container in ("v1", "v2"):
+        sub = spec_dir / container
+        if sub.is_dir():
+            children.extend(sub.iterdir())
+    for child in sorted(children):
         if not is_feature_folder(child):
             continue
         feature = child / "feature.md"
@@ -374,12 +382,14 @@ def check_trace(
         feats = [feat] if isinstance(feat, str) else (feat or [])
         for slug in feats:
             cited_features.add(slug)
-            target = SPEC_DIR / slug
-            if not target.exists():
+            # Feature folders may live at spec/<slug>, spec/v1/<slug>, or
+            # spec/v2/<slug> (the 2026-06-28 v1/v2 reorg).
+            if not any((SPEC_DIR / prefix / slug).exists()
+                       for prefix in ("", "v1", "v2")):
                 report.add(
                     "trace-broken-path",
                     trace_path,
-                    f"row {rid} field feature: missing folder spec/{slug}",
+                    f"row {rid} field feature: missing folder spec/[v1|v2/]{slug}",
                 )
         # Anchor citations.
         # `anchors` may be a list of scenario-name strings (the normal case),
@@ -582,8 +592,16 @@ def iter_spec_md(roots: Iterable[Path]) -> Iterable[Path]:
             yield root
         elif root.is_dir():
             for p in sorted(root.rglob("*.md")):
+                rel = p.relative_to(REPO_ROOT).as_posix()
                 # Skip archived content — it's frozen by design.
-                if "archive/" in p.relative_to(REPO_ROOT).as_posix():
+                if "archive/" in rel:
+                    continue
+                # Skip byte-immutable anchored report bodies under the v1 archive.
+                # The 2026-06-28 v1/v2 reorg moved them one level deeper, so their
+                # internal relative links are off-by-one — but they CANNOT be
+                # repaired without changing the body bytes and breaking the
+                # body-SHA-256 anchors (CLAUDE.md non-negotiable). Frozen evidence.
+                if rel.startswith("spec/v1/") and "/reports/" in rel:
                     continue
                 yield p
 

@@ -1,6 +1,6 @@
 //! T1914 acceptance — TOML-local key reader.
 //!
-//! Three acceptance criteria from `spec/v2-llm-strategy/tasks.md`:
+//! Three acceptance criteria from `spec/v1/v2-llm-strategy/tasks.md`:
 //!
 //! - (a) missing `.local` → `LlmError::Auth` whose message names the
 //!   config path.

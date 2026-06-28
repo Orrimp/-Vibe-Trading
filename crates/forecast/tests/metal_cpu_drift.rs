@@ -21,7 +21,7 @@
 //! always-passing test so the test suite stays green in CI.
 //!
 //! Cross-references:
-//! - `spec/v25-tcn-overlay/feature.md § D2`
+//! - `spec/v1/v25-tcn-overlay/feature.md § D2`
 //! - `ADR-0029 § Metal-vs-CPU determinism caveat`
 
 // Only compile the real test on metal + Apple Silicon targets.
@@ -94,7 +94,7 @@ mod metal_tests {
         assert!(
             max_diff < MAX_ABS_TOL,
             "Metal-vs-CPU max-abs drift {max_diff:.2e} ≥ 1e-4 — T-D-7 EXIT GATE FAILED. \
-             Stop and report to architect. See spec/v25-tcn-overlay/feature.md § D2 and ADR-0029."
+             Stop and report to architect. See spec/v1/v25-tcn-overlay/feature.md § D2 and ADR-0029."
         );
 
         // 7. Direction flip check.

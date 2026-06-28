@@ -42,7 +42,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-overlay/feature.md § D3`
+//! - `spec/v1/v25-tcn-overlay/feature.md § D3`
 //! - `crates/data/src/replay_feed.rs` — parquet schema origin
 //! - `ADR-0029` — provenance contract (μ/σ pinned in metadata)
 

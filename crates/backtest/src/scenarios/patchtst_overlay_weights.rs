@@ -18,7 +18,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25a-patchtst-overlay/decomp.md § Wave D D.4`
+//! - `spec/v1/v25a-patchtst-overlay/decomp.md § Wave D D.4`
 //! - `crates/backtest/src/scenarios/tcn_overlay_weights.rs` — mirror source
 //! - `crates/strategy/src/patchtst_overlay_momentum.rs` — strategy impl
 //! - ADR-0036 § D7 — Wave D strategy integration

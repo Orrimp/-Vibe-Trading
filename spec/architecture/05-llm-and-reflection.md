@@ -45,7 +45,7 @@ canonical first consumer; see the cross-link below.
 ### First in-app LLM consumer — the advisor "why this one" narration (F9)
 
 The single-coin-advisor "why this one" **narration** (feature
-[`advisor-llm-narration`](../advisor-llm-narration/feature.md), pivot F9,
+[`advisor-llm-narration`](../v1/advisor-llm-narration/feature.md), pivot F9,
 [ADR-0064](adr/0064-advisor-llm-narration-seam.md)) is the **first place an
 `Arc<dyn LlmProvider>` is actually called in-app**. It is a **READ-ONLY**
 plain-language rendering of the ALREADY-DECIDED structured bake-off
@@ -78,7 +78,7 @@ trait" rule.
 
 Reflection-memory (LLM lessons persisted across runs and re-injected into
 prompts on the next session) is documented under
-[`spec/reflection-memory/feature.md`](../reflection-memory/feature.md) —
+[`spec/reflection-memory/feature.md`](../v1/reflection-memory/feature.md) —
 it's a feature, not an architectural invariant. Cross-reference here so
 new architects know to look there before re-debating "should we
 re-inject prior session learnings".

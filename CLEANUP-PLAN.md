@@ -44,7 +44,7 @@
 1. `target/` — 20 GB local build cache (not in git).
 2. `crates/ui` — 67.5k raw Rust lines (30 % of all Rust).
 3. Feature-folder markdown (`spec/<slug>/feature.md|tasks.md|…`) — 225 files / 158,516 lines (55 % of all markdown).
-4. Tracked PNGs — 29.5 MB (15.3 MB load-bearing visual baselines + 14.3 MB spec screenshots, of which 5 retina screenshots in `spec/chart-canvas-overhaul/` = 11.6 MB).
+4. Tracked PNGs — 29.5 MB (15.3 MB load-bearing visual baselines + 14.3 MB spec screenshots, of which 5 retina screenshots in `spec/v1/chart-canvas-overhaul/` = 11.6 MB).
 5. `crates/backtest` — 37.5k raw Rust lines (incl. the 4,382-line `param_robustness_sweep.rs` research binary).
 
 **The 5 biggest cleanup levers**
@@ -115,7 +115,7 @@ Raw line counts (`wc -l`, includes comments/blank; `loc` code-only total is 150,
 
 ### (a) Vendored fork — KEEP-LOCKED
 
-`vendor/iced_tiny_skia/`: 3,366 lines / 176 KB. Operator-locked 2026-05-20, carries the upstream canvas-clip fix (`76b32d4906`). **Cannot be deleted while iced 0.14 is in use.** Retirement path: a future iced upgrade that includes the clip fix, with the mandatory `Transformation::scale(...) * group.transformation()` ordering audit per `spec/chart-fixture-line-clipping/feature.md`. One nit inside it: `vendor/iced_tiny_skia/Cargo.toml.orig` is patch debris, not upstream source — 1-file removal, but vendor/* changes are contractually out of scope, so NEEDS-OPERATOR-DECISION (trivial).
+`vendor/iced_tiny_skia/`: 3,366 lines / 176 KB. Operator-locked 2026-05-20, carries the upstream canvas-clip fix (`76b32d4906`). **Cannot be deleted while iced 0.14 is in use.** Retirement path: a future iced upgrade that includes the clip fix, with the mandatory `Transformation::scale(...) * group.transformation()` ordering audit per `spec/v1/chart-fixture-line-clipping/feature.md`. One nit inside it: `vendor/iced_tiny_skia/Cargo.toml.orig` is patch debris, not upstream source — 1-file removal, but vendor/* changes are contractually out of scope, so NEEDS-OPERATOR-DECISION (trivial).
 
 ### (b) Research-era code — the program is CONCLUDED, the code is the evidence
 
@@ -176,7 +176,7 @@ The active-vs-passive program was closed 2026-06-08: backlog `## Active` carries
 | Asset | Size | Verdict |
 |---|---|---|
 | `crates/ui/tests/visual-baselines/**` PNGs (56 of 70 PNGs) | 15.3 MB | **KEEP — load-bearing.** They gate rendering (the Live-view saga precedent: verify UI at the render layer). Marked `binary` in `.gitattributes` |
-| `spec/chart-canvas-overhaul/reports/screenshots/` | **11.6 MB in 5 retina PNGs** (2.2–2.4 MB each, 3360×1890) + ~2.7 MB more | ARCHIVE/OPTIMIZE — diagnostic/presentation artifacts. **No anchored backtest report references any screenshot** (grep-verified); only an un-anchored `test-*.md` links them. Options: move into a `tar.gz` in `spec/archive/`, or downscale/oxipng in place (lossless ~30–60 %) |
+| `spec/v1/chart-canvas-overhaul/reports/screenshots/` | **11.6 MB in 5 retina PNGs** (2.2–2.4 MB each, 3360×1890) + ~2.7 MB more | ARCHIVE/OPTIMIZE — diagnostic/presentation artifacts. **No anchored backtest report references any screenshot** (grep-verified); only an un-anchored `test-*.md` links them. Options: move into a `tar.gz` in `spec/archive/`, or downscale/oxipng in place (lossless ~30–60 %) |
 | `spec/design/project/` PNGs | ~1 MB | goes with design archive |
 | `crates/forecast/checkpoints/anchors/*.safetensors` | 5 MB (3 files, **LFS-tracked**) | **KEEP** — TCN/PatchTST anchor checkpoints; anchored reports re-run against them |
 | 138 `.snap` files | 552 KB | KEEP — test goldens |
@@ -222,7 +222,7 @@ Gates that must pass after **every** phase:
 
 | # | Action | Scope | Savings | The decision |
 |---|---|---|---|---|
-| P3-1 | ARCHIVE/REMOVE | `spec/chart-canvas-overhaul/reports/screenshots/` 5 retina PNGs (11.6 MB) + remaining ~2.7 MB | **-12–14 MB tree** (history keeps them) | Visual evidence of a shipped UI feature, linked from an un-anchored tester report. Tar-archive vs lossless-optimize vs keep |
+| P3-1 | ARCHIVE/REMOVE | `spec/v1/chart-canvas-overhaul/reports/screenshots/` 5 retina PNGs (11.6 MB) + remaining ~2.7 MB | **-12–14 MB tree** (history keeps them) | Visual evidence of a shipped UI feature, linked from an un-anchored tester report. Tar-archive vs lossless-optimize vs keep |
 | P3-2 | ARCHIVE (code) | Research-era Rust: robustness sweep bin (4,382), montecarlo cluster (4,234), cross-sectional (3,802), pairs/MN-spread (3,000), carry/funding/basis (4,425) + retired forecaster surfaces (13,889, overlapping) | **~30–35k LOC (~15 % of Rust)** | **Size vs reproducibility of 119 anchored, operator-ratified research conclusions.** Options: (a) keep as-is — recommended default; (b) feature-gate out of default build — middle path, keeps anchors re-runnable; (c) delete + anchor re-baseline ADR — max savings, history-only reproducibility. Never SAFE-NOW per CLAUDE.md |
 | P3-3 | ARCHIVE | Narrative md of the 9 deprecated/retired feature folders (NOT their `reports/`) | ~10–15k lines | Retired ≠ worthless: they document why lines of research closed. Cheap to keep; archive only if §4 sweep feels insufficient |
 | P3-4 | OPTIMIZE (DESTRUCTIVE) | `git-filter-repo` purge of superseded visual-baseline + screenshot blob revisions | .git → ~15–20 MB | History rewrite breaks all clones; at 56 MB, likely **not worth it yet** — size the trigger at .git > 150 MB |

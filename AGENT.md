@@ -425,10 +425,10 @@ priority    = "P1"
 
 [inputs]
 brief       = "/tmp/brief-chart-canvas-overhaul.md"
-artifacts   = ["spec/chart-canvas-overhaul/feature.md", "spec/architecture.md"]
+artifacts   = ["spec/v1/chart-canvas-overhaul/feature.md", "spec/architecture.md"]
 
 [outputs]
-spec_files  = ["spec/chart-canvas-overhaul/tasks.md"]
+spec_files  = ["spec/v1/chart-canvas-overhaul/tasks.md"]
 adrs_added  = []
 
 [open_questions]
@@ -501,7 +501,7 @@ FAILED rows older than 7 days escalate (exit 1); FAILED rows within the
 window emit a soft carry-over line for the session header. Every FAILED
 row MUST cite a follow-up `spec/dev-notes/*.md` investigation in its
 Notes cell (Q-LED-NOTE). See
-[`spec/operator-ledger-schema-lint/feature.md`](spec/operator-ledger-schema-lint/feature.md).
+[`spec/v1/operator-ledger-schema-lint/feature.md`](spec/v1/operator-ledger-schema-lint/feature.md).
 
 ## The vibe-coding loop
 
@@ -707,7 +707,7 @@ incident and a concrete tooling gate:
    first-frame `fill_quad`/`unreachable!()` panic shipped past the
    267-test panel-snapshot suite because no harness exercised the
    iced render path against a live tiny-skia surface
-   (see `spec/cockpit-render-regression/feature.md` for the
+   (see `spec/v1/cockpit-render-regression/feature.md` for the
    incident). This rule closes that gap.
 
 7. **Spec-shape pre-tick gate — `spec-lint`.** Every feature's tester run

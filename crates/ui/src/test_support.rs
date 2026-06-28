@@ -5,7 +5,7 @@
 //! sibling module (rather than expanding the production-reachable
 //! `crate::fixtures` surface) isolates the hovered-marker fixture
 //! (operator-locked Q9) from any future production-fixture refactor —
-//! see [feature.md Design § Q6 resolution](../../../../spec/ui-test-harness-bootstrap/feature.md#q1-q7-resolutions-architect-decide).
+//! see [feature.md Design § Q6 resolution](../../../../spec/v1/ui-test-harness-bootstrap/feature.md#q1-q7-resolutions-architect-decide).
 //!
 //! ## Why always-compiled?
 //!
@@ -675,7 +675,7 @@ impl SourceToggleApp {
 /// reach these accessors (they live in `test_support`, the same
 /// always-compiled tests-only module that already houses
 /// `program_from_cockpit`). See
-/// `spec/ui-quality-gate-overhaul/feature.md ## Q4` for the 6-widget
+/// `spec/v1/ui-quality-gate-overhaul/feature.md ## Q4` for the 6-widget
 /// scope.
 pub mod widgets_for_test {
     use trading_core::StrategyId;

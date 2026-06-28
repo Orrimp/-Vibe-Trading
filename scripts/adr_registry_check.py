@@ -597,7 +597,7 @@ def main(argv: list[str]) -> int:
     if args.ci:
         print(
             "adr-registry-check: error: --ci not implemented at v0.1.0; see Q-ADR-WHEN in "
-            "spec/adr-registry-atomic-lint/feature.md",
+            "spec/v1/adr-registry-atomic-lint/feature.md",
             file=sys.stderr,
         )
         return 2

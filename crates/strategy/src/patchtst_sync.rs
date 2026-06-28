@@ -12,7 +12,7 @@
 //! ## Cross-references
 //!
 //! - `crates/strategy/src/patchtst_overlay_momentum.rs` — inline implementation
-//! - `spec/v25a-patchtst-overlay/decomp.md § T-AR-4` — design decision
+//! - `spec/v1/v25a-patchtst-overlay/decomp.md § T-AR-4` — design decision
 //! - `spec/architecture/adr/0036-patchtst-training-contract.md § D7`
 
 /// Re-export `PatchTstSyncForecaster` from its Wave A implementation home.

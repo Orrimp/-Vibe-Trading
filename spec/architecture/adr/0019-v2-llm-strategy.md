@@ -140,5 +140,5 @@ the two `report-sample-*` anchors re-lock **once** at
   the redactor. Anchor contract zero delta — 75/75 byte-identical
   pre/post per R-NR.3 hard gate. NO new ADR; this Changelog row
   is the architectural record. See
-  [`spec/v2-1-tracing-layer-redactor/feature.md ## Design`](../../v2-1-tracing-layer-redactor/feature.md#design)
+  [`spec/v2-1-tracing-layer-redactor/feature.md ## Design`](../../v1/v2-1-tracing-layer-redactor/feature.md#design)
   for D-RED-1..D-RED-9.

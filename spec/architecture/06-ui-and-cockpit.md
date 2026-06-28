@@ -336,7 +336,7 @@ border radii, and latency thresholds is `ui::theme`. The four sub-
 modules are closed sets:
 
 - `theme::color` — 12 shipped semantic tokens (9 v0–v1.5a +
-  3 added by [tape-row-audit-modal](../tape-row-audit-modal/feature.md):
+  3 added by [tape-row-audit-modal](../v1/tape-row-audit-modal/feature.md):
   `bg_overlay = #0B0D12`, `info = #7BC2FF`,
   `border_strong = #3A4456` — first concrete consumer is the
   journal-transaction modal). `Color::from_rgb(…)` outside
@@ -1439,7 +1439,7 @@ gate.
 ## Changelog
 - 2026-06-22 (architect): recorded the F9 LLM-narration leaderboard surface
   ([ADR-0064](adr/0064-advisor-llm-narration-seam.md), feature
-  [`advisor-llm-narration`](../advisor-llm-narration/feature.md)). The narration
+  [`advisor-llm-narration`](../v1/advisor-llm-narration/feature.md)). The narration
   extends the § App layout `ui`-never-imports-`llm`-through-`view` isolation rule:
   the LLM prose reaches the leaderboard recommendation block as a **plain
   `ui`-owned `NarrationState { NotRequested | InFlight | Ready(SmolStr) | FellBack }`**

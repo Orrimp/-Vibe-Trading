@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T2015 — `audit::query::recent_signals` acceptance.
 //!
-//! Per `spec/chart-buy-sell-emphasis/feature.md` Design § Q1 + V11.
+//! Per `spec/v1/chart-buy-sell-emphasis/feature.md` Design § Q1 + V11.
 //!
 //! Verifies:
 //! - V11a — correct rows in correct order on a seeded ledger.

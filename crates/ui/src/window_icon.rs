@@ -95,7 +95,7 @@ pub const MIN_WINDOW_HEIGHT_PX: f32 = 720.0;
 /// users who expect the OS-window-manager's standard launch geometry.
 /// 1920×1080 sits comfortably inside any laptop display while still
 /// surfacing the chart canvas at a non-floor allocation.  See
-/// [`spec/chart-canvas-overhaul/feature.md ## Resolved Qs / Q8`](../../../../spec/chart-canvas-overhaul/feature.md).
+/// [`spec/v1/chart-canvas-overhaul/feature.md ## Resolved Qs / Q8`](../../../../spec/v1/chart-canvas-overhaul/feature.md).
 pub const DEFAULT_WINDOW_WIDTH_PX: f32 = 1920.0;
 
 /// Cold-launch height — paired with [`DEFAULT_WINDOW_WIDTH_PX`].  See
@@ -169,7 +169,7 @@ mod tests {
     /// T3022 acceptance — chart-canvas-overhaul v1.10.0 (Q8) bumps
     /// the cold-launch size to 1920×1080.  Guards against a future
     /// regression that re-pins `size = min_size`.  See
-    /// [`feature.md ## Resolved Qs / Q8`](../../../../spec/chart-canvas-overhaul/feature.md).
+    /// [`feature.md ## Resolved Qs / Q8`](../../../../spec/v1/chart-canvas-overhaul/feature.md).
     #[test]
     fn default_size_at_least_1920x1080() {
         let s = standard_window_settings();

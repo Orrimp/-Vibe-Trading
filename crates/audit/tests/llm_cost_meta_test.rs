@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T1917 — LLM cost-event token-tag plumbing acceptance (audit half).
 //!
-//! Acceptance criterion from `spec/v2-llm-strategy/tasks.md` (M5 T1917):
+//! Acceptance criterion from `spec/v1/v2-llm-strategy/tasks.md` (M5 T1917):
 //! > fires one LLM cost event through `LedgerCostSink` with tokens
 //! > (1000, 200, 500); reads back the journal entry meta and asserts
 //! > the token fields round-trip. \[R9.1, R9.4\]

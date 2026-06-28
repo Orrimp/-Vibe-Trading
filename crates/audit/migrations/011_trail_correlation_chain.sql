@@ -15,7 +15,7 @@
 -- And the readers at:
 --   - audit::query::trail_for_fill_id        (R6.3; new — 4-way correlated lookup)
 --
--- See spec/ui-rethink-phase-d-trail/decomp.md §2 for the column-by-
+-- See spec/v1/ui-rethink-phase-d-trail/decomp.md §2 for the column-by-
 -- column rationale.
 
 -- R1.1 — journal_transactions.fill_id (the source-of-truth Fill.id)

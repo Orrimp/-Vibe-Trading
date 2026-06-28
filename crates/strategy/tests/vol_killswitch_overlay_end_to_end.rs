@@ -42,7 +42,7 @@
 //! - `crates/strategy/src/vol_killswitch_overlay.rs` — strategy under test.
 //! - `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` — reference shape.
 //! - CLAUDE.md § Non-negotiables — baseline-equity-divergence gate.
-//! - `spec/vol-killswitch-overlay-noop-fix/feature.md` — Bug #65 fix narrative.
+//! - `spec/v1/vol-killswitch-overlay-noop-fix/feature.md` — Bug #65 fix narrative.
 
 use std::collections::BTreeMap;
 

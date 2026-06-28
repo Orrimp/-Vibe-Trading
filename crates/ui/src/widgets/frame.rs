@@ -188,7 +188,7 @@ pub fn muted_body<'a, Message: 'a>(t: &'a str) -> Element<'a, Message> {
 /// The 1 Hz `rate` is preserved from the upstream Spinner default; the
 /// frame increment is driven by `RedrawRequested` (NOT wall-clock) per
 /// the architect's H-arch-9 RESOLVED-PASS verdict in
-/// [iced-aw-cherry-pick/feature.md § H-arch-9](../../../spec/iced-aw-cherry-pick/feature.md#h-arch-9--iced_awspinner-deterministic-render--resolved-pass-with-caveat).
+/// [iced-aw-cherry-pick/feature.md § H-arch-9](../../../spec/v1/iced-aw-cherry-pick/feature.md#h-arch-9--iced_awspinner-deterministic-render--resolved-pass-with-caveat).
 /// `iced_test` snapshot paths render at `t = 0.0` because they do not
 /// fire `RedrawRequested` events, so `*_loading.snap` baselines stay
 /// deterministic — the throttle does not perturb this.

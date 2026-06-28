@@ -269,7 +269,7 @@ further plumbing.
   trained in `candle`).
 - [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) — superseded
   Kronos-targeted ADR (preserved for archaeology).
-- [v25-dl-forecast-overlay/feature.md](../v25-dl-forecast-overlay/feature.md)
+- [v25-dl-forecast-overlay/feature.md](../v1/v25-dl-forecast-overlay/feature.md)
   — the active v2.5 brief.
 
 ## Changelog

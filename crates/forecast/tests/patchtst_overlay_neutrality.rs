@@ -142,14 +142,14 @@ fn patchtst_overlay_does_not_regress_tcn_scenario() {
     }
 
     // Locate the generated report. Realdata scenarios land in
-    // `spec/backtest-real-binance-data/reports/` per the backtest crate's
+    // `spec/v1/backtest-real-binance-data/reports/` per the backtest crate's
     // `report_dir_for_scenario` mapping; older shipped reports may live in
-    // `spec/v25-tcn-overlay/reports/` or the v2.5a feature folder.
+    // `spec/v1/v25-tcn-overlay/reports/` or the v2.5a feature folder.
     let report_pattern = "top10-2023-fy-tcn-overlay-realdata";
     let candidates = [
-        "spec/backtest-real-binance-data/reports",
-        "spec/v25a-patchtst-overlay/reports",
-        "spec/v25-tcn-overlay/reports",
+        "spec/v1/backtest-real-binance-data/reports",
+        "spec/v1/v25a-patchtst-overlay/reports",
+        "spec/v1/v25-tcn-overlay/reports",
     ];
     let report_path = candidates
         .iter()

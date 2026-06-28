@@ -18,9 +18,9 @@ related:
 
 > Locks the determinism + anchoring contract for the Monte-Carlo robustness
 > lane (C1 path generator + C2 robustness harness). C1
-> ([`monte-carlo-bootstrap-path-generator`](../../monte-carlo-bootstrap-path-generator/feature.md))
+> ([`monte-carlo-bootstrap-path-generator`](../../v1/monte-carlo-bootstrap-path-generator/feature.md))
 > produces a deterministic `Vec<Vec<Bar>>` ensemble from a single `path_seed: u64`;
-> C2 ([`strategy-robustness-harness`](../../strategy-robustness-harness/feature.md))
+> C2 ([`strategy-robustness-harness`](../../v1/strategy-robustness-harness/feature.md))
 > derives the N per-path seeds, runs the existing single-path backtest per path,
 > reduces the N outcomes to a distribution summary, and emits **ONE** anchored
 > report. This ADR is the contract that makes a *stochastic* method coexist with
@@ -283,7 +283,7 @@ accepted limitation, not a new one.
 ### D6 — θ-sweep extension: two-axis sub-seed composition + θ-surface anchor unit (C3 amendment, 2026-05-30)
 
 > **Amendment, not a new ADR.** C3
-> ([`momentum-parameter-robustness-sweep`](../../momentum-parameter-robustness-sweep/feature.md))
+> ([`momentum-parameter-robustness-sweep`](../../v1/momentum-parameter-robustness-sweep/feature.md))
 > wraps the C2 inner harness in an outer θ-loop: for each θ-cell `g` in a
 > bounded grid it runs the N-path harness (D1-D4 unchanged) and collects one
 > `DistributionSummary`, then emits ONE θ-surface report. C3 adds NO new
@@ -380,7 +380,7 @@ determinism surface.
 **D6.5 — Strategy-family axis (Momentum vs Reversion) inherits D6.1 (cross-sectional MR amendment, 2026-05-31).**
 
 > **Cross-reference amendment, not a new ADR.** The first robustness pivot
-> ([`cross-sectional-mean-reversion-strategy`](../../cross-sectional-mean-reversion-strategy/feature.md),
+> ([`cross-sectional-mean-reversion-strategy`](../../v1/cross-sectional-mean-reversion-strategy/feature.md),
 > § D-MR.6) sweeps a **second strategy family** (cross-sectional mean-reversion =
 > the v1 score negated) through the **same C3 θ-surface machinery**. Like the
 > θ-axis (D6.1), the **family axis is varied at the strategy/config level — a
@@ -440,7 +440,7 @@ its own ADR with a collision-free mix (the D6.2 standing warning).
 
 > **Amendment, and — unlike D6.5 — a REAL-MECHANISM amendment, not a pure
 > cross-reference.** The second robustness pivot
-> ([`carry-strategy`](../../carry-strategy/feature.md), § D-CARRY.7) is the
+> ([`carry-strategy`](../../v1/carry-strategy/feature.md), § D-CARRY.7) is the
 > pre-registered rotation after BOTH price families (momentum #86, MR #87) came
 > back FAMILY-UNIFORM-FRAGILE on the turnover-killer. Carry differs from MR in a
 > way that matters to this ADR: MR consumed the **same price input** as momentum
@@ -626,7 +626,7 @@ one-report anchor unit are all reused; only a 2nd selector is added at the confi
 
 > **Amendment, and — like D6.6 — a REAL-MECHANISM amendment, the most invasive one
 > to date.** The market-neutral basis-spread
-> ([`perp-basis-mn-spread`](../../perp-basis-mn-spread/feature.md), v0.2.0) is the
+> ([`perp-basis-mn-spread`](../../v1/perp-basis-mn-spread/feature.md), v0.2.0) is the
 > pre-registered follow-on after the long-only basis-reversal arm (D6.9) closed
 > FAMILY-UNIFORM-FRAGILE at every fee level **including 0 bps gross** — a *vehicle*
 > verdict, not a signal verdict (the long-only arm carries full market beta + captures
@@ -951,8 +951,8 @@ horizon=D6.8, long-only-basis=D6.9) and the FIRST to touch `run_path`.
 
 ## Cross-references
 
-- Feature briefs — [`spec/monte-carlo-bootstrap-path-generator/feature.md`](../../monte-carlo-bootstrap-path-generator/feature.md)
-  (C1), [`spec/strategy-robustness-harness/feature.md`](../../strategy-robustness-harness/feature.md) (C2).
+- Feature briefs — [`spec/monte-carlo-bootstrap-path-generator/feature.md`](../../v1/monte-carlo-bootstrap-path-generator/feature.md)
+  (C1), [`spec/strategy-robustness-harness/feature.md`](../../v1/strategy-robustness-harness/feature.md) (C2).
 - Architecture-readiness audit —
   [`spec/dev-notes/monte-carlo-robustness-architecture-readiness-2026-05-29.md`](../../dev-notes/archive/2026-Q2/monte-carlo-robustness-architecture-readiness-2026-05-29.md)
   § 3 (the hard tension), § 5 (the ADR mandate this ADR fulfils).
@@ -994,7 +994,7 @@ horizon=D6.8, long-only-basis=D6.9) and the FIRST to touch `run_path`.
   Status `accepted`. Registered atomically in `README.md` (architect.md § ADR
   registry contract).
 - 2026-05-30 (architect, C3 M-T1): **D6 amendment added** — θ-sweep extension for
-  C3 ([`momentum-parameter-robustness-sweep`](../../momentum-parameter-robustness-sweep/feature.md)).
+  C3 ([`momentum-parameter-robustness-sweep`](../../v1/momentum-parameter-robustness-sweep/feature.md)).
   Resolves the C3 § ADR flag (amendment, NOT a new ADR-0052) and OQ-1/OQ-3/OQ-4.
   **D6.1** ratifies SAME path-set across all θ-cells: `cell_seed_g := ensemble_seed`
   for all g, so `path_seed_{g,j} = ensemble_seed.wrapping_add(j*0x9E37_79B9)` is
@@ -1016,7 +1016,7 @@ horizon=D6.8, long-only-basis=D6.9) and the FIRST to touch `run_path`.
   § ADR registry contract).
 - 2026-05-31 (architect, cross-sectional-mean-reversion M-T1): **D6.5
   cross-reference amendment added** — the first robustness pivot
-  ([`cross-sectional-mean-reversion-strategy`](../../cross-sectional-mean-reversion-strategy/feature.md))
+  ([`cross-sectional-mean-reversion-strategy`](../../v1/cross-sectional-mean-reversion-strategy/feature.md))
   sweeps a **second strategy family** (cross-sectional MR = the v1 vol-adjusted
   score negated) through the **same C3 θ-surface machinery**. The family axis,
   like the θ-axis (D6.1), is varied at the **strategy/config level** (a
@@ -1037,7 +1037,7 @@ horizon=D6.8, long-only-basis=D6.9) and the FIRST to touch `run_path`.
   atomically (architect.md § ADR registry contract).
 - 2026-05-31 (architect, carry-strategy M-T1): **D6.6 amendment added — a
   REAL-MECHANISM amendment (not a pure cross-ref like D6.5).** The second
-  robustness pivot ([`carry-strategy`](../../carry-strategy/feature.md), § D-CARRY.7)
+  robustness pivot ([`carry-strategy`](../../v1/carry-strategy/feature.md), § D-CARRY.7)
   sweeps cross-sectional funding carry. Unlike MR (same price input, 1-line
   negation), carry consumes a **different input (the funding rate)** the bootstrap
   does not carry, so it introduces a **SECOND time series co-resampled under the

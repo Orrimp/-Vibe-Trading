@@ -138,9 +138,9 @@ fn llm_forecaster_registry_does_not_regress_tcn_scenario() {
     // Locate the generated report.
     let report_pattern = "top10-2023-fy-tcn-overlay-realdata";
     let candidates = [
-        "spec/backtest-real-binance-data/reports",
-        "spec/v25a-patchtst-overlay/reports",
-        "spec/v25-tcn-overlay/reports",
+        "spec/v1/backtest-real-binance-data/reports",
+        "spec/v1/v25a-patchtst-overlay/reports",
+        "spec/v1/v25-tcn-overlay/reports",
     ];
     let report_path = candidates
         .iter()

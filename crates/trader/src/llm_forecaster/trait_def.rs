@@ -21,8 +21,8 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — signal-pipeline shape.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + replay-cache contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-1` — signal-pipeline shape.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + replay-cache contract.
 //! - `crates/llm/src/trait_def.rs` — `LlmProvider` trait (infrastructure layer).
 
 use async_trait::async_trait;

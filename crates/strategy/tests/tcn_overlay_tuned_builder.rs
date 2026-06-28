@@ -15,8 +15,8 @@
 //!
 //! - `crates/strategy/src/tcn_overlay_momentum.rs:158-214` — `TcnSyncForecaster` struct + builders.
 //! - `crates/strategy/src/tcn_overlay_momentum.rs:305-313` — `infer()` epsilon read.
-//! - `spec/v25-tcn-threshold-tuning/decomp.md § D-AR-1.f` — explicit-arg contract.
-//! - `spec/v25-tcn-threshold-tuning/decomp.md § D-AR-1.g` — `direction_epsilon` field.
+//! - `spec/v1/v25-tcn-threshold-tuning/decomp.md § D-AR-1.f` — explicit-arg contract.
+//! - `spec/v1/v25-tcn-threshold-tuning/decomp.md § D-AR-1.g` — `direction_epsilon` field.
 
 use std::path::PathBuf;
 

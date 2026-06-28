@@ -12,7 +12,7 @@ superseded-by: none
 ## Context
 
 The v2.5 TCN alpha-investigation
-([feature.md](../../v25-tcn-alpha-investigation/feature.md),
+([feature.md](../../v1/v25-tcn-alpha-investigation/feature.md),
 [presenter deck 2026-05-19](../../archive/presentations-2026-Q2.tar.gz))
 shipped a joint **F4 verdict** ("no signal at 1h horizon") across BS-1 +
 BS-2 on real Binance hourly OHLCV. The forensic deep-dive in the
@@ -362,12 +362,12 @@ training loop, which is not re-run in this feature).
   decision algorithm (§ D3). This ADR does NOT supersede ADR-0033;
   per `v25-tcn-recalibrate` Q4 = (a) the F-verdict algorithm stays
   immutable.
-- [`spec/v25-tcn-recalibrate/feature.md`](../../v25-tcn-recalibrate/feature.md)
+- [`spec/v25-tcn-recalibrate/feature.md`](../../v1/v25-tcn-recalibrate/feature.md)
   — analyst R1-R8 + H1-H3 + K1-K5 + Q1-Q5 (operator-resolved
   2026-05-21).
-- [`spec/v25-tcn-recalibrate/decomp.md`](../../v25-tcn-recalibrate/decomp.md)
+- [`spec/v25-tcn-recalibrate/decomp.md`](../../v1/v25-tcn-recalibrate/decomp.md)
   — architect M-T1 decomposition (this ADR's wave-level decomposition).
-- [`spec/v25-tcn-alpha-investigation/feature.md`](../../v25-tcn-alpha-investigation/feature.md)
+- [`spec/v25-tcn-alpha-investigation/feature.md`](../../v1/v25-tcn-alpha-investigation/feature.md)
   — predecessor F4 verdict.
 - [`spec/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../../archive/presentations-2026-Q2.tar.gz)
   — presenter deck where the σ_train calibration anomaly was first

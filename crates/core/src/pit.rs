@@ -12,7 +12,7 @@
 //! This is the single guarded as-of join every sidecar feature (funding,
 //! basis, on-chain) routes through. A hand-rolled `partition_point` is the
 //! anti-pattern this replaces. See
-//! `spec/point-in-time-data-discipline/feature.md` § Design and ADR-0058.
+//! `spec/v1/point-in-time-data-discipline/feature.md` § Design and ADR-0058.
 //!
 //! ```rust
 //! use trading_core::pit::{PitSeries, TimestampMs};

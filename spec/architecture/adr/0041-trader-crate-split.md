@@ -17,7 +17,7 @@ The v3-llm-forecaster ship (REQ-V3-LLM-FORECASTER-001, state =
 inside `crates/strategy/src/llm_forecaster/` across Waves B / C / G
 (commits `8c40ab0` + `97b7c39` + `8dcd72c`). This violates the
 **R8.1 / R10.8 layering invariant** asserted in
-[`spec/v3-llm-forecaster/feature.md`](../../v3-llm-forecaster/feature.md)
+[`spec/v3-llm-forecaster/feature.md`](../../v1/v3-llm-forecaster/feature.md)
 § R8.1 and § R10.8 — the analyst-layer strategy crate is forbidden from
 consuming reflection-retrieval (memory-aware decision synthesis is a
 trader-layer concern per
@@ -423,12 +423,12 @@ non-anchored):
 - [ADR-0039](0039-llm-forecaster-verdict-criteria.md) — L0-L4
   verdict criteria; the `verdict.rs` classifier moves with the rest
   of `llm_forecaster/` under D2. No verdict shape change.
-- [`spec/reflection-memory-trader-wiring/feature.md`](../../reflection-memory-trader-wiring/feature.md)
+- [`spec/reflection-memory-trader-wiring/feature.md`](../../v1/reflection-memory-trader-wiring/feature.md)
   — analyst brief; R1-R7 + K1-K8 + H1-H5 + Q1-Q7.
-- [`spec/reflection-memory-trader-wiring/tasks.md`](../../reflection-memory-trader-wiring/tasks.md)
+- [`spec/reflection-memory-trader-wiring/tasks.md`](../../v1/reflection-memory-trader-wiring/tasks.md)
   — architect M-T1 decomposition into Waves A-D + M-FINAL +
   M-PRESENTER.
-- [`spec/v3-llm-forecaster/feature.md`](../../v3-llm-forecaster/feature.md)
+- [`spec/v3-llm-forecaster/feature.md`](../../v1/v3-llm-forecaster/feature.md)
   § R8.1 + § R10.8 — the violated invariants this ADR recovers.
 - [`crates/reflection/tests/no_strategy_caller.rs`](../../../crates/reflection/tests/no_strategy_caller.rs)
   — gate-test source; t1810 added in the same file under D5.

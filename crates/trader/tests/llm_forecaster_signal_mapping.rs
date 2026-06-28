@@ -16,8 +16,8 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — signal mapping table.
-//! - `spec/v3-llm-forecaster/tasks.md § Wave C T-D-N(C4)` — test requirement.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-1` — signal mapping table.
+//! - `spec/v1/v3-llm-forecaster/tasks.md § Wave C T-D-N(C4)` — test requirement.
 //! - `crates/strategy/src/llm_forecaster/strategy.rs` — implementation.
 //! - `crates/strategy/src/llm_forecaster/types.rs:ForecastContext::from_runtime` —
 //!   Wave C builder.

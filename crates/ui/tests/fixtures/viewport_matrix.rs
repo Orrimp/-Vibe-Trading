@@ -52,7 +52,7 @@ use super::visual_diff::matches_screenshot;
 ///
 /// Tuple shape: `(slot_name, (logical_w, logical_h), scale_factor)`.
 ///
-/// MUST stay in sync with `spec/ui-test-harness-viewport-matrix/feature.md
+/// MUST stay in sync with `spec/v1/ui-test-harness-viewport-matrix/feature.md
 /// § Design D-VPM-1`.
 pub const SLOTS: &[(&str, (u32, u32), f32)] = &[
     ("floor", (1280, 720), 1.0),

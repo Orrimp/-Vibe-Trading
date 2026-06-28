@@ -1,6 +1,6 @@
 //! T1912 acceptance — `BudgetedProvider<Inner>` integration test.
 //!
-//! Three acceptance cases from `spec/v2-llm-strategy/tasks.md`:
+//! Three acceptance cases from `spec/v1/v2-llm-strategy/tasks.md`:
 //!
 //! - (a) seed $179.99 / $200; DeepThink request → degraded to
 //!   QuickThink + `cfg.quick_think.model`; warn line emits (assert

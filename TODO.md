@@ -8,8 +8,8 @@ through the `sma_crossover` strategy, and shows a live fills tape, positions, a 
 equity curve, and a KPI strip. Total-return units are correct, and the agent trades real
 ~$10k clips. The items below are what's left.
 
-**Read first:** [`spec/cockpit-live-dashboard-wiring/feature.md`](spec/cockpit-live-dashboard-wiring/feature.md)
-(design) + [`spec/cockpit-live-dashboard-wiring/tasks.md`](spec/cockpit-live-dashboard-wiring/tasks.md)
+**Read first:** [`spec/v1/cockpit-live-dashboard-wiring/feature.md`](spec/v1/cockpit-live-dashboard-wiring/feature.md)
+(design) + [`spec/v1/cockpit-live-dashboard-wiring/tasks.md`](spec/v1/cockpit-live-dashboard-wiring/tasks.md)
 (v0.1.x follow-ups, incl. the reverted I1). Relevant commits: `40f5de9` (bar-time revert),
 `72d0138` (Live wiring), `40c9be3` (paced replay), `4b478ad` (replay path/pace fix).
 
@@ -39,7 +39,7 @@ minute. The render harness above (`live_equity_render.rs`, 5/5 green) proves the
 the unit test `live_equity_curve_plots_bar_ts_not_wallclock` proves it plots `bar_ts`. A **bonus
 NaN-panic** in `equity_curve.rs` (flat / 1-point curve → `lyon_path: p.y.is_finite()`, the cockpit
 crashing on the FIRST live bar) was caught by the harness and fixed in the same pass. Full record:
-`spec/cockpit-live-dashboard-wiring/tasks.md` I1.
+`spec/v1/cockpit-live-dashboard-wiring/tasks.md` I1.
 
 > **Operator still owes the human-render confirmation:** run
 > `cargo run -p ui --release --bin cockpit_live --features live` and confirm the equity-curve
@@ -108,9 +108,9 @@ Deprecation warning gone; cockpit-smoke PASS on the fixtures boot.
   `trading` bin can pass `--fast-replay` for as-fast-as-possible.
 - **The "$4 buys/sells" were never a bug** — that's the 4 bps taker fee on ~$10k clips
   (`fixed_fraction = 0.10` × $100k). The **Notional** column shows the real ~$10k trade size.
-- **Parked:** [`spec/cockpit-reports-viewer/feature.md`](spec/cockpit-reports-viewer/feature.md)
+- **Parked:** [`spec/v1/cockpit-reports-viewer/feature.md`](spec/v1/cockpit-reports-viewer/feature.md)
   (candidate — no backtest report has equity-curve companion data, so it'd be a metrics/writeup
-  browser only). [`spec/cockpit-chart-cache/feature.md`](spec/cockpit-chart-cache/feature.md)
+  browser only). [`spec/v1/cockpit-chart-cache/feature.md`](spec/v1/cockpit-chart-cache/feature.md)
   (measured NO-GO — `canvas::Cache` saves <0.1% of a frame).
 
 ---

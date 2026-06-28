@@ -1,7 +1,7 @@
 //! T1908 acceptance — `CachedSystemPrompt` builder integration test.
 //!
 //! Verifies the four T1908 acceptance criteria from
-//! `spec/v2-llm-strategy/tasks.md`:
+//! `spec/v1/v2-llm-strategy/tasks.md`:
 //!
 //! - (a) Anthropic build emits exactly 2 `Cached` markers.
 //! - (b) OpenAI / Ollama builds emit zero markers.

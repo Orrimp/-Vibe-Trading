@@ -1,6 +1,6 @@
 //! LLM pricing — hard-coded base table + TOML override (T1911).
 //!
-//! Design § Q7 (`spec/v2-llm-strategy/feature.md:1567`):
+//! Design § Q7 (`spec/v1/v2-llm-strategy/feature.md:1567`):
 //!
 //! - Hard-coded base table at `base_rate(provider, model)` — exhaustive
 //!   `match` over the v2 supported model set. Unknown combos return

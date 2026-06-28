@@ -11,7 +11,7 @@ superseded-by: none
 
 ## Context
 
-[`spec/v3-regime-classifier/feature.md`](../../v3-regime-classifier/feature.md)
+[`spec/v3-regime-classifier/feature.md`](../../v1/v3-regime-classifier/feature.md)
 v0.1.0 M-OD closed 2026-05-28 (commit `6b47027`) with operator going
 bolder than analyst defaults on three load-bearing knobs: **Q1=(b)
 4-state Bull/Bear/Volatile/Calm**, **Q3=(b) Markov-switching regression

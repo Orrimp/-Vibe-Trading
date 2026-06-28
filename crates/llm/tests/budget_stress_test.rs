@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T1918 — V12 concurrent-overshoot stress test
-//! (`spec/v2-llm-strategy/feature.md` Design § Q6c).
+//! (`spec/v1/v2-llm-strategy/feature.md` Design § Q6c).
 //!
 //! Design § Q6c documents the **bounded 0.2 % concurrent overshoot**
 //! invariant: with M concurrent in-flight `BudgetedProvider::complete`

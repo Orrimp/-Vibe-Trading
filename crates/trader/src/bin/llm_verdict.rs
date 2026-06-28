@@ -10,7 +10,7 @@
 //! cargo run -p trader --bin llm_verdict -- \
 //!     --audit-db data/audit.db \
 //!     --window-bars 1000 \
-//!     --out-dir spec/v3-llm-forecaster/reports/
+//!     --out-dir spec/v1/v3-llm-forecaster/reports/
 //! ```
 //!
 //! ## Read-only contract
@@ -73,7 +73,7 @@ struct Args {
     window_bars: u64,
 
     /// Output directory for the L-verdict report.
-    #[arg(long, default_value = "spec/v3-llm-forecaster/reports/")]
+    #[arg(long, default_value = "spec/v1/v3-llm-forecaster/reports/")]
     out_dir: PathBuf,
 
     /// Architect-locked cost projection from `llm-forecaster-bench` (USD).

@@ -13,9 +13,9 @@ decomposed-by: spec/audit-tick-consumer-envelope/decomp.md
 > **Status `accepted` on 2026-05-20.** All five operator-decide
 > questions resolved to analyst defaults via "Autoapprove all"
 > directive. Implementation contract is at
-> [`spec/audit-tick-consumer-envelope/feature.md`](../../audit-tick-consumer-envelope/feature.md);
+> [`spec/audit-tick-consumer-envelope/feature.md`](../../v1/audit-tick-consumer-envelope/feature.md);
 > per-writer change list + ForecastEmitted call-site pin are at
-> [`spec/audit-tick-consumer-envelope/decomp.md`](../../audit-tick-consumer-envelope/decomp.md).
+> [`spec/audit-tick-consumer-envelope/decomp.md`](../../v1/audit-tick-consumer-envelope/decomp.md).
 > ADR remains source-of-truth for the direction; the brief +
 > decomp are source-of-truth for the v0.1.0 contract.
 
@@ -33,8 +33,8 @@ tap-style hooks:
 The pattern is **producer-pushes-to-named-consumer**. Each new consumer
 needs a new tap or read path:
 
-- Phase D Lab `Trail` screen ([spec/ui-rethink-phase-a-lab/feature.md](../../ui-rethink-phase-a-lab/feature.md) — UI rethink Section 2 J4) needs to drill from bar → features → signal → fill → P&L.
-- v2.6 bake-off ([spec/v26-forecast-bakeoff/feature.md](../../v26-forecast-bakeoff/feature.md)) needs to read trade outcomes per forecast.
+- Phase D Lab `Trail` screen ([spec/ui-rethink-phase-a-lab/feature.md](../../v1/ui-rethink-phase-a-lab/feature.md) — UI rethink Section 2 J4) needs to drill from bar → features → signal → fill → P&L.
+- v2.6 bake-off ([spec/v26-forecast-bakeoff/feature.md](../../v1/v26-forecast-bakeoff/feature.md)) needs to read trade outcomes per forecast.
 - v3 continuous-paper + success-reports (terminal milestone) needs to read everything.
 
 Adding a tap per consumer would multiply the number of write call sites
@@ -156,9 +156,9 @@ send is constant-time).
 > Closes deferred `T-D-14` from the predecessor
 > `audit-tick-consumer-envelope v0.1.0`. K5 spike outcome
 > documented in
-> [`spec/ui-rethink-phase-d-trail/decomp.md §1`](../../ui-rethink-phase-d-trail/decomp.md);
+> [`spec/ui-rethink-phase-d-trail/decomp.md §1`](../../v1/ui-rethink-phase-d-trail/decomp.md);
 > per-wave T-D-N rows in
-> [`spec/ui-rethink-phase-d-trail/tasks.md`](../../ui-rethink-phase-d-trail/tasks.md).
+> [`spec/ui-rethink-phase-d-trail/tasks.md`](../../v1/ui-rethink-phase-d-trail/tasks.md).
 
 ### Context
 
@@ -236,7 +236,7 @@ NULL-default), 1 `CREATE TABLE IF NOT EXISTS forecast_events`,
 4 `CREATE INDEX IF NOT EXISTS`. The shape mirrors migrations
 008 / 009 / 010 — all three precedents are anchor-safe and the same
 proof carries forward. See
-[`decomp.md §2`](../../ui-rethink-phase-d-trail/decomp.md) for the
+[`decomp.md §2`](../../v1/ui-rethink-phase-d-trail/decomp.md) for the
 column-level SQL and §5 for the anchor-preservation proof sketch.
 
 ### Consequences (Phase D-specific)
@@ -254,7 +254,7 @@ column-level SQL and §5 for the anchor-preservation proof sketch.
   UI talks to the trail-mirror via a `tokio::sync::mpsc` request
   channel + a `tokio::sync::broadcast` snapshot channel surfaced
   as an iced Subscription — see
-  [`decomp.md §3`](../../ui-rethink-phase-d-trail/decomp.md)).
+  [`decomp.md §3`](../../v1/ui-rethink-phase-d-trail/decomp.md)).
 - **No new external crates.** The amendment uses
   `tokio::sync::broadcast` (already imported), `audit::Ledger`
   (already in scope), and the existing `with_ledger` builder. LRU
@@ -275,7 +275,7 @@ column-level SQL and §5 for the anchor-preservation proof sketch.
    contradicts the existing trait-object pattern. The builder mirror
    stays type-safe.
 3. **Defer T-D-14 again** (fallback path). Documented in
-   [`decomp.md §1.4`](../../ui-rethink-phase-d-trail/decomp.md). Not
+   [`decomp.md §1.4`](../../v1/ui-rethink-phase-d-trail/decomp.md). Not
    exercised — the spike succeeded.
 
 ### Test gates (Phase D)

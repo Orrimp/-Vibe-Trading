@@ -550,7 +550,7 @@ pub const MEMORY_CLUSTER_MODE_DISABLED_TOOLTIP: &str =
 pub const MEMORY_CARD_TRAIL_LINK_LABEL: &str = "View in Trail \u{2192}";
 
 /// Phase F — Models screen: empty-state placeholder copy (R2.4 / Q3=(a)).
-pub const MODELS_EMPTY_STATE: &str = "No models loaded yet. See `spec/v25-tcn-overlay/feature.md` for how to train v2.5.0 TCN checkpoints.";
+pub const MODELS_EMPTY_STATE: &str = "No models loaded yet. See `spec/v1/v25-tcn-overlay/feature.md` for how to train v2.5.0 TCN checkpoints.";
 
 /// Phase F — Models screen: sparkline deferred placeholder (K3 / R2.2).
 pub const MODELS_SPARKLINE_DEFERRED_TOOLTIP: &str =
@@ -579,7 +579,7 @@ pub const ASSISTANT_OFFLINE_TITLE: &str = "Assistant offline";
 
 /// Phase F — Assistant slot: stub body copy (R3.2(a) / K7 mitigation).
 pub const ASSISTANT_OFFLINE_BODY: &str = "v2 LLM wiring lands in v0.2.0. \
-     See spec/v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md \
+     See spec/v1/v2-llm-strategy/presentations/v2-llm-strategy-2026-05-13.md \
      for what shipped 2026-05-13.";
 
 /// Phase F — status bar toggle button label when Assistant slot is closed.

@@ -34,9 +34,9 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-overlay/feature.md § R7` — training schedule
-//! - `spec/v25-tcn-overlay/feature.md § R8` — checkpoint provenance
-//! - `spec/v25-tcn-overlay/feature.md § D4` — metadata-JSON canonicalisation
+//! - `spec/v1/v25-tcn-overlay/feature.md § R7` — training schedule
+//! - `spec/v1/v25-tcn-overlay/feature.md § R8` — checkpoint provenance
+//! - `spec/v1/v25-tcn-overlay/feature.md § D4` — metadata-JSON canonicalisation
 //! - `crates/forecast/src/provenance.rs` — canonicaliser
 //! - `ADR-0029` — cross-phase provenance contract
 

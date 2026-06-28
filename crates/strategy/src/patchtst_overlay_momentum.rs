@@ -30,7 +30,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25a-patchtst-overlay/feature.md § Q8=(a)` — Q8 decision
+//! - `spec/v1/v25a-patchtst-overlay/feature.md § Q8=(a)` — Q8 decision
 //! - `spec/architecture/adr/0036-patchtst-training-contract.md § D7`
 //! - `crates/forecast/src/patchtst.rs` — `PatchTstForecaster` + `AnchorScenario`
 //! - `crates/strategy/src/tcn_overlay_momentum.rs` — TCN sibling (mirror source)

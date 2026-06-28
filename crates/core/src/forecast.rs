@@ -18,7 +18,7 @@
 //!
 //! Cross-references:
 //! - [`spec/architecture/12-forecast-overlay.md`](../../../spec/architecture/12-forecast-overlay.md)
-//! - [`spec/v25-dl-forecast-overlay/feature.md`](../../../spec/v25-dl-forecast-overlay/feature.md)
+//! - [`spec/v1/v25-dl-forecast-overlay/feature.md`](../../../spec/v1/v25-dl-forecast-overlay/feature.md)
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

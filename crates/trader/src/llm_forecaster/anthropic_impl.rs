@@ -38,9 +38,9 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — signal pipeline.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + replay-cache contract.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-5` — determinism contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-1` — signal pipeline.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + replay-cache contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-5` — determinism contract.
 //! - `crates/llm/src/trait_def.rs` — `LlmProvider` + `ChatRequest` / `ChatResponse`.
 //! - `crates/llm/src/tools.rs` — `validate_tool_use`.
 

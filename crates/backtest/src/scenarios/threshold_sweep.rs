@@ -23,7 +23,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-threshold-tuning/decomp.md § D-AR-1.c` — helper design.
+//! - `spec/v1/v25-tcn-threshold-tuning/decomp.md § D-AR-1.c` — helper design.
 //! - `crates/backtest/src/scenarios/tcn_overlay_weights.rs` — source of truth for
 //!   the bar-loop body (replicated here for the caller-supplied strategy path).
 //! - `crates/forecast/src/bin/threshold_sweep.rs` — sweep bin that calls `run_cell`.

@@ -37,7 +37,7 @@ observation-oriented — they pair naturally with positions.
 Architect fixes the panel's column position and the
 Model/Message surface. Final widget composition (column widths, row
 heights, padding) is ui-designer's call — see
-[`../v05-composed-strategies/feature.md#design`](../../v05-composed-strategies/feature.md#design).
+[`../v05-composed-strategies/feature.md#design`](../../v1/v05-composed-strategies/feature.md#design).
 
 ## Alternatives considered
 

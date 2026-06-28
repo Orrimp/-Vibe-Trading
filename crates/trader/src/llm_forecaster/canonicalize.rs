@@ -13,8 +13,8 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — architect-locked hash algorithm.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-5` — determinism contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — architect-locked hash algorithm.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-5` — determinism contract.
 //! - `crates/strategy/src/llm_forecaster/types.rs` — `ForecastContext::request_hash()`.
 
 use sha2::{Digest, Sha256};

@@ -11,7 +11,7 @@ superseded-by: none
 
 ## Context
 
-Feature [`binance-corpus-expansion`](../../binance-corpus-expansion/feature.md)
+Feature [`binance-corpus-expansion`](../../v1/binance-corpus-expansion/feature.md)
 adds **2021–2022 hourly** OHLCV for the existing 10-symbol Binance universe to
 firm up the down-market hedge finding from the
 [2026-06-13 real-data survey](../../dev-notes/realdata-simple-strategy-survey-2026-06-13.md)
@@ -157,7 +157,7 @@ strongest anchor guarantee is the one a reviewer cannot forget to check).
   — `--interval` / `--out` / `--emit-revision-manifest` CLI; writes the flat
   `<out>/<SYMBOL>/<YEAR>/<MM>.parquet` layout; zero code change needed for any
   timeframe under this convention.
-- [`spec/binance-corpus-expansion/feature.md`](../../binance-corpus-expansion/feature.md)
+- [`spec/binance-corpus-expansion/feature.md`](../../v1/binance-corpus-expansion/feature.md)
   § Open questions Q1 — the question this ADR resolves.
 
 ## Changelog

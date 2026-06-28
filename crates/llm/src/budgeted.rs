@@ -1,7 +1,7 @@
 //! `BudgetedProvider<Inner>` — pre-call gate + post-call reconcile
 //! decorator (T1912).
 //!
-//! Design § Q6 (`spec/v2-llm-strategy/feature.md:1451`) resolution:
+//! Design § Q6 (`spec/v1/v2-llm-strategy/feature.md:1451`) resolution:
 //!
 //! - **Factory-wrapped.** `LlmProviderFactory::build` always wraps the
 //!   leaf provider in this decorator; consumers receive

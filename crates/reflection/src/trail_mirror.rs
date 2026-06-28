@@ -29,7 +29,7 @@
 //! ## Architecture invariant
 //!
 //! The trail-mirror lives in `crates/reflection` (NOT `crates/ui`) per
-//! [decomp.md §3](../../spec/ui-rethink-phase-d-trail/decomp.md).  This
+//! [decomp.md §3](../../spec/v1/ui-rethink-phase-d-trail/decomp.md).  This
 //! preserves the ADR-0031 architecture edge `reflection → audit` and
 //! ensures no `ui → audit` dep is added (R7.7).
 //!

@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T1916 — `audit::journal::post_llm_budget_event` acceptance.
 //!
-//! Acceptance criterion from `spec/v2-llm-strategy/tasks.md` (M5 T1916):
+//! Acceptance criterion from `spec/v1/v2-llm-strategy/tasks.md` (M5 T1916):
 //! > fires `post_llm_budget_event(...)` against an in-memory ledger;
 //! > asserts (a) one row lands at `expense:llm:deep_think` with the
 //! > expected tag, (b) global debit-credit sum balanced

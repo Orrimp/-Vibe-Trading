@@ -24,9 +24,9 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — the 5-tier rating + confidence
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-1` — the 5-tier rating + confidence
 //!   + reasoning trace fields.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — the `propose_forecast` contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — the `propose_forecast` contract.
 //! - `spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md § D1.b` — L4
 //!   `short_frac`/`duplicate_frac` thresholds depend on `minLength: 50`.
 

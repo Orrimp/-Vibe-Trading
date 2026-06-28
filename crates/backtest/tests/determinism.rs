@@ -878,7 +878,7 @@ fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
 //
 // Design: we place the fixture at `<tmpdir>/data/binance/` and run the binary
 // from `<tmpdir>` so the hardcoded `data/binance` relative path resolves.
-// Report output goes to `<tmpdir>/spec/backtest-real-binance-data/reports/`.
+// Report output goes to `<tmpdir>/spec/v1/backtest-real-binance-data/reports/`.
 // `config/strategies/` is copied from the workspace so composed-strategy TOML
 // lookup does not fail.
 //

@@ -14,7 +14,7 @@
 //! cost: idle cockpit at ~66.9 % CPU with
 //! `iced_tiny_skia::Compositor::present` accounting for 45.5 % of
 //! main-thread time. Per
-//! [`feature.md ## M0 results`](../../../spec/cockpit-performance-and-input-responsiveness/feature.md#m0-results-orchestrator-executed-2026-05-15)
+//! [`feature.md ## M0 results`](../../../spec/v1/cockpit-performance-and-input-responsiveness/feature.md#m0-results-orchestrator-executed-2026-05-15)
 //! the architect-ratified primary fix is to coarsen the spinner cadence
 //! 60 fps → 10 fps so a future legitimate use of
 //! `frame::loading_with_spinner` (data actually loading) does not eat a
@@ -40,7 +40,7 @@
 //! Upstream Spinner's `state()` uses `Instant::now()` to seed the
 //! widget-local `last_update` field. Per the architect's H-arch-9
 //! verdict on Brief B
-//! ([`iced-aw-cherry-pick/feature.md#h-arch-9`](../../../spec/iced-aw-cherry-pick/feature.md#h-arch-9--iced_awspinner-deterministic-render--resolved-pass-with-caveat)),
+//! ([`iced-aw-cherry-pick/feature.md#h-arch-9`](../../../spec/v1/iced-aw-cherry-pick/feature.md#h-arch-9--iced_awspinner-deterministic-render--resolved-pass-with-caveat)),
 //! this is test-unreachable because `iced_test` snapshot paths render
 //! at `t = 0.0` (no `RedrawRequested` events are delivered, so
 //! `state.t` never advances). We preserve the same shape exactly — no
@@ -94,7 +94,7 @@ impl Default for ThrottledSpinner {
 impl ThrottledSpinner {
     /// Target redraw cadence — 10 fps, vs upstream `iced_aw::Spinner`'s
     /// 60 fps. The choice is architect-ratified per
-    /// [`feature.md Q3 resolution`](../../../spec/cockpit-performance-and-input-responsiveness/feature.md#q3-resolution--m2-perf-budget-floor-is-fps_p50--30-hardware-uniform-no-coefficient):
+    /// [`feature.md Q3 resolution`](../../../spec/v1/cockpit-performance-and-input-responsiveness/feature.md#q3-resolution--m2-perf-budget-floor-is-fps_p50--30-hardware-uniform-no-coefficient):
     /// 10 fps stays above the operator's 30-fps perf-budget floor
     /// (the cockpit-smoke gate budget) while cutting per-frame
     /// repaint cost ~6×.

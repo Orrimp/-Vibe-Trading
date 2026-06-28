@@ -18,7 +18,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-overlay/feature.md § D4`
+//! - `spec/v1/v25-tcn-overlay/feature.md § D4`
 //! - `ADR-0029` — cross-phase provenance contract
 
 use serde::{Deserialize, Serialize};

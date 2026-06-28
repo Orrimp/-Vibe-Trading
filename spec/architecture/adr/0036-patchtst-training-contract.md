@@ -32,9 +32,9 @@ accumulator at
 is **not** replicated.
 
 The
-[`v25a-patchtst-overlay v0.1.0`](../../v25a-patchtst-overlay/feature.md)
+[`v25a-patchtst-overlay v0.1.0`](../../v1/v25a-patchtst-overlay/feature.md)
 feature.md R1-R10 + the architect M-T1 decomp at
-[`v25a-patchtst-overlay/decomp.md`](../../v25a-patchtst-overlay/decomp.md)
+[`v25a-patchtst-overlay/decomp.md`](../../v1/v25a-patchtst-overlay/decomp.md)
 spell the build-out. This ADR is the single citable contract for
 PatchTST that the developer code-reviews against, that the tester gates
 against at M-FINAL, and that v2.5b vanilla Transformer + v2.6 bake-off
@@ -552,9 +552,9 @@ code-review check at D3 closes this loop.
 - [ADR-0035](0035-tcn-sigma-train-recalibration.md) § D1 — σ_train
   post-training derivation cross-phase contract (D3 of this ADR
   cites verbatim).
-- [`spec/v25a-patchtst-overlay/feature.md`](../../v25a-patchtst-overlay/feature.md)
+- [`spec/v25a-patchtst-overlay/feature.md`](../../v1/v25a-patchtst-overlay/feature.md)
   — R1-R10 / H1-H4 / K1-K6 / Q1-Q8 (analyst pass 2026-05-21).
-- [`spec/v25a-patchtst-overlay/decomp.md`](../../v25a-patchtst-overlay/decomp.md)
+- [`spec/v25a-patchtst-overlay/decomp.md`](../../v1/v25a-patchtst-overlay/decomp.md)
   — architect M-T1 decomp (sibling deliverable to this ADR).
 - Nie, Y., Nguyen, N.H., Sinthong, P., Kalagnanam, J. (2022). *A Time
   Series is Worth 64 Words: Long-term Forecasting with Transformers.*

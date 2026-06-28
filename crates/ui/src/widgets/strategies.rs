@@ -241,7 +241,7 @@ pub(crate) fn id_cell<'a>(id: StrategyId, label: String, is_active: bool) -> Ele
     // sends a zero-height styled fill_quad into `iced_tiny_skia`'s
     // all-radii-zero fast-path and panics. See
     // `crate::theme::layout::STRATEGY_RULE_HEIGHT_PX` for the WHY, and
-    // `spec/cockpit-render-regression/feature.md` `## M0-FIX` for the
+    // `spec/v1/cockpit-render-regression/feature.md` `## M0-FIX` for the
     // F1 falsifier that confirmed this fix (2026-05-14).
     let rule = Container::new(
         iced::widget::Space::new()

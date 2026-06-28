@@ -22,7 +22,7 @@
 //!
 //! - ADR-0038 § D5 — strategy-side composition lock.
 //! - `crates/strategy/src/vol_targeting_overlay.rs` — the strategy impl.
-//! - `spec/v3-volatility-forecaster/decomp.md § T-D-N22` — task spec.
+//! - `spec/v1/v3-volatility-forecaster/decomp.md § T-D-N22` — task spec.
 
 use anyhow::Result;
 

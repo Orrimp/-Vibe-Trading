@@ -15,7 +15,7 @@ The single-coin investment-advisor MVP (product pivot 2026-06-19) journey step 4
 (feature `advisor-forward-plan`, roadmap **F6**) sits **between** the crowned
 bake-off pick (F1–F3, ADR-0059) and the forward paper-trade (F4–F5, ADR-0060).
 It is a **read-only, conditional, reactive decision plan — NOT a price forecast**
-([feature.md](../../advisor-forward-plan/feature.md) § The honest definition). For
+([feature.md](../../v1/advisor-forward-plan/feature.md) § The honest definition). For
 the crowned strategy the surface shows:
 
 1. **Current stance** — the latest-bar signal (`FLAT` / `LONG`, plus the most

@@ -130,17 +130,17 @@ while IFS= read -r line; do
                 2>/dev/null | sort | tail -1 || true)"
         elif [[ "$version" == "mc-robustness-2026-06" ]]; then
             # Monte-Carlo robustness namespace (ADR-0051 D4):
-            # C2 reports live under spec/strategy-robustness-harness/reports/
-            # C3 θ-surface reports live under spec/momentum-parameter-robustness-sweep/reports/
-            # MR θ-surface reports live under spec/cross-sectional-mean-reversion-strategy/reports/
-            # Carry θ-surface reports live under spec/carry-strategy/reports/
-            # TS-momentum θ-surface reports live under spec/time-series-momentum-robustness/reports/
+            # C2 reports live under spec/v1/strategy-robustness-harness/reports/
+            # C3 θ-surface reports live under spec/v1/momentum-parameter-robustness-sweep/reports/
+            # MR θ-surface reports live under spec/v1/cross-sectional-mean-reversion-strategy/reports/
+            # Carry θ-surface reports live under spec/v1/carry-strategy/reports/
+            # TS-momentum θ-surface reports live under spec/v1/time-series-momentum-robustness/reports/
             # All use robustness[-sweep]-<stamp>-<scenario>.md naming.
-            mc_reports_dir="$root/spec/strategy-robustness-harness/reports"
-            mc_sweep_dir="$root/spec/momentum-parameter-robustness-sweep/reports"
-            mc_mr_dir="$root/spec/cross-sectional-mean-reversion-strategy/reports"
-            mc_carry_dir="$root/spec/carry-strategy/reports"
-            mc_ts_dir="$root/spec/time-series-momentum-robustness/reports"
+            mc_reports_dir="$root/spec/v1/strategy-robustness-harness/reports"
+            mc_sweep_dir="$root/spec/v1/momentum-parameter-robustness-sweep/reports"
+            mc_mr_dir="$root/spec/v1/cross-sectional-mean-reversion-strategy/reports"
+            mc_carry_dir="$root/spec/v1/carry-strategy/reports"
+            mc_ts_dir="$root/spec/v1/time-series-momentum-robustness/reports"
             latest="$(find "$mc_reports_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
             if [[ -z "$latest" ]]; then
@@ -162,27 +162,27 @@ while IFS= read -r line; do
         elif [[ "$version" == "horizon-retest-robustness" ]]; then
             # Horizon retest namespace (ADR-0051 § D6.8 amendment):
             # TS + carry × 4h + daily θ-surface reports live under
-            # spec/horizon-retest-robustness/reports/ using
+            # spec/v1/horizon-retest-robustness/reports/ using
             # robustness-sweep-<stamp>-<scenario>.md naming.
-            mc_horizon_dir="$root/spec/horizon-retest-robustness/reports"
+            mc_horizon_dir="$root/spec/v1/horizon-retest-robustness/reports"
             latest="$(find "$mc_horizon_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
         elif [[ "$version" == "perp-basis-signal-robustness" ]]; then
             # Perp-basis-signal-robustness namespace (ADR-0051 § D6.9 amendment):
             # Basis-reversal θ × fee surface reports live under
-            # spec/perp-basis-signal-robustness/reports/ using
+            # spec/v1/perp-basis-signal-robustness/reports/ using
             # robustness-*-<scenario>.md naming.
             # Scenario format: v1-basis-reversal-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy
-            mc_basis_dir="$root/spec/perp-basis-signal-robustness/reports"
+            mc_basis_dir="$root/spec/v1/perp-basis-signal-robustness/reports"
             latest="$(find "$mc_basis_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
         elif [[ "$version" == "perp-basis-mn-spread" ]]; then
             # Perp-basis MN-spread namespace (ADR-0051 § D6.10 amendment, M-DEV-9):
             # MN θ × fee surface reports live under
-            # spec/perp-basis-mn-spread/reports/ using
+            # spec/v1/perp-basis-mn-spread/reports/ using
             # robustness-*-<scenario>.md naming.
             # Scenario format: v2-mn-{arm}-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy
-            mn_spread_dir="$root/spec/perp-basis-mn-spread/reports"
+            mn_spread_dir="$root/spec/v1/perp-basis-mn-spread/reports"
             latest="$(find "$mn_spread_dir" -maxdepth 1 -type f -name "robustness-*-${scenario}.md" \
                 2>/dev/null | sort | tail -1 || true)"
         else

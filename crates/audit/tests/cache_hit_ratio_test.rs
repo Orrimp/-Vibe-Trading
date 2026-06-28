@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T1910 — `audit::query::cache_hit_ratio_since` acceptance.
 //!
-//! Acceptance criterion from `spec/v2-llm-strategy/tasks.md`:
+//! Acceptance criterion from `spec/v1/v2-llm-strategy/tasks.md`:
 //! > fixture ledger with 3 LLM events (`tokens_in=1000,
 //! > tokens_cached_in=500` each) returns ratio `0.5`; empty fixture
 //! > returns `0.0`.

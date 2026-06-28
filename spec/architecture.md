@@ -261,7 +261,7 @@ entries live in each section file.
   the `signal` string in memory + `ComposedStrategyConfig::from_str` (SMA already has
   the typed `sma_fast_len/slow_len` seam) — ship SMA-first, then the composed
   families behind a round-trip test. New library API: see the engine-seam note in
-  [advisor-param-tuning/feature.md](advisor-param-tuning/feature.md) § 2. Grid capped
+  [advisor-param-tuning/feature.md](v1/advisor-param-tuning/feature.md) § 2. Grid capped
   at `MAX_SWEEP_CONFIGS = 24` with honest truncation. FRAGILE is prominent +
   promotion-blocking; the editor is a **Lab sub-view** reached by a "Tune…"
   drill-down (the `InspectStrategyFromLeaderboard` precedent), NOT a 13th nav screen.

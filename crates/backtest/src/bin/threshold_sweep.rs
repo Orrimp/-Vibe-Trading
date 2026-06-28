@@ -11,13 +11,13 @@
 //! cargo run -p backtest --features candle,realdata --release --bin threshold_sweep -- \
 //!   --scenario bs1 \
 //!   --metadata-path crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d79933c8d97695e5fff671f645f810e7961becb2333475fb9cc44fcd2.metadata.recalibrated.json \
-//!   --out-dir spec/v25-tcn-threshold-tuning/reports/
+//!   --out-dir spec/v1/v25-tcn-threshold-tuning/reports/
 //!
 //! # BS-2 sweep (full 2024 FY):
 //! cargo run -p backtest --features candle,realdata --release --bin threshold_sweep -- \
 //!   --scenario bs2 \
 //!   --metadata-path crates/forecast/checkpoints/anchors/tcn-bs2-3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d.metadata.recalibrated.json \
-//!   --out-dir spec/v25-tcn-threshold-tuning/reports/
+//!   --out-dir spec/v1/v25-tcn-threshold-tuning/reports/
 //! ```
 //!
 //! ## Read-only contract (ADR-0033 § D1.c + ADR-0035 D3)
@@ -37,10 +37,10 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-threshold-tuning/decomp.md § D-AR-1.a..D-AR-1.j` — design.
+//! - `spec/v1/v25-tcn-threshold-tuning/decomp.md § D-AR-1.a..D-AR-1.j` — design.
 //! - `crates/backtest/src/scenarios/threshold_sweep.rs` — `run_cell` helper.
 //! - `crates/strategy/src/tcn_overlay_momentum.rs` — `with_tcn_bs{1,2}_tuned`.
-//! - `spec/v25-tcn-threshold-tuning/tasks.md` T-D-N4..T-D-N7.
+//! - `spec/v1/v25-tcn-threshold-tuning/tasks.md` T-D-N4..T-D-N7.
 
 use std::path::PathBuf;
 
@@ -103,10 +103,10 @@ impl ScenarioArg {
     fn gate_survivor_report(self) -> &'static str {
         match self {
             ScenarioArg::Bs1 => {
-                "spec/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md"
+                "spec/v1/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md"
             }
             ScenarioArg::Bs2 => {
-                "spec/v25-tcn-recalibrate/reports/forecast-distribution-bs2-realdata-recalibrated-20260521.md"
+                "spec/v1/v25-tcn-recalibrate/reports/forecast-distribution-bs2-realdata-recalibrated-20260521.md"
             }
         }
     }
@@ -149,7 +149,7 @@ struct Args {
     metadata_path: PathBuf,
 
     /// Output directory for the heatmap report.
-    #[arg(long, default_value = "spec/v25-tcn-threshold-tuning/reports/")]
+    #[arg(long, default_value = "spec/v1/v25-tcn-threshold-tuning/reports/")]
     out_dir: PathBuf,
 
     /// Pinned data revision SHA (v2.6.0-realdata default).

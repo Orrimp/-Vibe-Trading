@@ -204,7 +204,7 @@ reachability is UNCHANGED. Not-financial-advice + paper-only disclaimers stand.
 
 ## References
 
-- Feature: [`advisor-signal-library-expansion/feature.md`](../../advisor-signal-library-expansion/feature.md)
+- Feature: [`advisor-signal-library-expansion/feature.md`](../../v1/advisor-signal-library-expansion/feature.md)
   (compressed to a CHANGELOG stub 2026-06-26; the full § Design D0–D9 + tasks are in `git log`).
 - Trace: `REQ-ADVISOR-SIGNAL-LIBRARY-EXPANSION-001`.
 - Leans on / relates to: ADR-0067 (pre-registered combination slate), ADR-0068

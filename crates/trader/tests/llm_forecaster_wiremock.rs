@@ -31,8 +31,8 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-5` — determinism contract.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + cache contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-5` — determinism contract.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-2` — prompt + cache contract.
 //! - `spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md § D1.b` — L4 gate.
 
 use std::sync::Arc;

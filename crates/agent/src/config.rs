@@ -581,7 +581,7 @@ pub struct TcnOverlayConfig {
 /// conservative-off shipping default lets operators opt in once they
 /// actually want the ghost-layer audit trail. Reflection-memory was
 /// flipped to default-on on operator approval 2026-05-10 (presenter
-/// deck `spec/reflection-memory/presentations/reflection-memory-
+/// deck `spec/v1/reflection-memory/presentations/reflection-memory-
 /// 2026-05-08.md`); the signal-log gate stays off in v1.9 and will be
 /// re-evaluated for default-flip in a future brief once the live
 /// agent-runtime tap point lands and operators are ready.
@@ -602,7 +602,7 @@ pub struct SignalLogConfig {
 /// `path` is the sibling sqlite file used by `SqliteReflectionStore`.
 /// `channel_capacity` is the bounded mpsc capacity (Q8 default 1024).
 /// `enable_writer = true` is the v1 default per operator approval
-/// 2026-05-10 (presenter deck `spec/reflection-memory/presentations/reflection-memory-2026-05-08.md`,
+/// 2026-05-10 (presenter deck `spec/v1/reflection-memory/presentations/reflection-memory-2026-05-08.md`,
 /// "Approve with notes — flip enable_writer to true"). Tests that
 /// need the writer off MUST set `enable_writer = false` explicitly
 /// on their `ReflectionConfig`.

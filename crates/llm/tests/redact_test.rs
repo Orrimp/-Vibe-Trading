@@ -1,6 +1,6 @@
 //! T1915 — `redact()` helper acceptance.
 //!
-//! Acceptance criteria a + b from `spec/v2-llm-strategy/tasks.md`. Test
+//! Acceptance criteria a + b from `spec/v1/v2-llm-strategy/tasks.md`. Test
 //! (c) — tracing-subscriber field rewrite — is deferred to pass 4
 //! follow-up (see `crates/llm/src/redact.rs` module docs).
 

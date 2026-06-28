@@ -3,7 +3,7 @@
 //! and assert each session's expectations hold.
 //!
 //! ui-session-journal-iced-tester v0.1 (T04). See
-//! [`spec/ui-session-journal-iced-tester/feature.md`](../../spec/ui-session-journal-iced-tester/feature.md).
+//! [`spec/v1/ui-session-journal-iced-tester/feature.md`](../../spec/v1/ui-session-journal-iced-tester/feature.md).
 //!
 //! ## How sessions are produced
 //!

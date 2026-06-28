@@ -102,7 +102,7 @@ fn is_structural_literal(lit: &str) -> bool {
 ///   warn!, info!, debug!, trace!) — the first arg there is a span /
 ///   event name, not user-visible UI copy. Added 2026-05-15 for the
 ///   ui-quality-gate-overhaul M2-A instrumentation; see
-///   `spec/ui-quality-gate-overhaul/feature.md ## Q2`.
+///   `spec/v1/ui-quality-gate-overhaul/feature.md ## Q2`.
 ///
 /// This is not a full Rust parser, just good enough for the cockpit files
 /// which never use raw strings.

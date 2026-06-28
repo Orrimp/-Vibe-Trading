@@ -1,7 +1,7 @@
 //! `CachedSystemPrompt` builder — provider-aware system-prompt
 //! composition (T1908).
 //!
-//! Design § Q5 resolution (`spec/v2-llm-strategy/feature.md:1335`):
+//! Design § Q5 resolution (`spec/v1/v2-llm-strategy/feature.md:1335`):
 //!
 //! - **TTL-driven**, no explicit invalidation — Anthropic's 5-minute
 //!   ephemeral TTL evicts edited entries automatically.

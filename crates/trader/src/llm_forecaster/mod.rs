@@ -47,7 +47,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md` — architect decomposition.
+//! - `spec/v1/v3-llm-forecaster/decomp.md` — architect decomposition.
 //! - `spec/architecture/adr/0039-llm-forecaster-verdict-criteria.md` — L0-L4.
 //! - `crates/llm/src/trait_def.rs` — `LlmProvider` trait (infra layer).
 //! - `crates/reflection/src/lib.rs` — lesson-card retrieval (Wave C).

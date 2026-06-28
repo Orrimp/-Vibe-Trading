@@ -18,7 +18,7 @@
 //! `regime_tag_cell` + `regime_tag_column_header` pair to this module,
 //! never wired into `view()`. v3 was operator-retired 2026-05-29 after
 //! Wave E proved a -0.294 Sharpe-delta against the v1 momentum baseline
-//! (see `spec/v3-regime-classifier/feature.md` shipped_disposition).
+//! (see `spec/v1/v3-regime-classifier/feature.md` shipped_disposition).
 //! Per the durable-over-quick contract the dead helpers + their snapshot
 //! scaffolding were excised by
 //! `post-v3-retirement-trail-ui-cleanup v0.1.0` — see

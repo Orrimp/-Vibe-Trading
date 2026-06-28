@@ -21,7 +21,7 @@ i.i.d. Gaussian log-returns sit out-of-distribution relative to real
 crypto returns (volatility clustering, fat tails, overnight gaps) —
 the model's `r_hat` falls inside the ε = 0.0005 deadband on every
 bar, so `Direction::Flat` on every signal. See
-[`spec/v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md`](../../v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md)
+[`spec/v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md`](../../v1/v25-tcn-overlay/reports/m3-bs1-training-2026-05-18.md)
 § Finding.
 
 The fix is to wire the backtest harness to read real Binance hourly

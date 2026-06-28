@@ -28,7 +28,7 @@ resolver = "2"
 # snapshot-test determinism over GPU `wgpu`. At `opt-level = 0` (the dev
 # default) that rasterization is brutally slow: a MEASURED per-frame render
 # on the Lab/Charts screen was **707 ms** in dev vs **17 ms** in release
-# — a **40× debug-tax** (see `spec/cockpit-performance-and-input-responsiveness/`
+# — a **40× debug-tax** (see `spec/v1/cockpit-performance-and-input-responsiveness/`
 # and `crates/ui/tests/render_timing_probe.rs`). That 40× IS the operator's
 # "1–3 s per interaction" lag.
 #

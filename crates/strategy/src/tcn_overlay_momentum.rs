@@ -28,7 +28,7 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v25-tcn-overlay/feature.md § D5` — thresholds
+//! - `spec/v1/v25-tcn-overlay/feature.md § D5` — thresholds
 //! - `crates/forecast/src/overlay.rs` — combine() helper
 //! - `crates/forecast/src/tcn.rs` — TcnForecaster + AnchorScenario
 

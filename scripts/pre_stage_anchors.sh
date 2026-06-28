@@ -30,8 +30,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SAMPLE_7D="spec/operator-success-reports/reports/success-fixed-report-sample-7d.md"
-SAMPLE_90D="spec/operator-success-reports/reports/success-fixed-report-sample-90d.md"
+SAMPLE_7D="spec/v1/operator-success-reports/reports/success-fixed-report-sample-7d.md"
+SAMPLE_90D="spec/v1/operator-success-reports/reports/success-fixed-report-sample-90d.md"
 
 if [[ ! -f "$SAMPLE_7D" ]]; then
   echo "ERROR: $SAMPLE_7D not found — run 'cargo test -p reports --test report_scenarios' first" >&2

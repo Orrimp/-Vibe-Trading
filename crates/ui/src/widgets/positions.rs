@@ -9,7 +9,7 @@
 //! helper at `positions.rs:62-78` pre-migration) — is replaced by
 //! `iced::widget::table::Table`.
 //!
-//! Per H-arch-A2 REFINED ([`feature.md`](../../../../spec/iced-native-widgets/feature.md)
+//! Per H-arch-A2 REFINED ([`feature.md`](../../../../spec/v1/iced-native-widgets/feature.md)
 //! refinement-pass 2026-05-13), `Table::new(columns, rows)` accepts any
 //! `IntoIterator<Item = T> where T: Clone`. `PositionView` is `Clone`
 //! per [`trading_core::PositionView`](../../../../crates/core/src/views.rs)

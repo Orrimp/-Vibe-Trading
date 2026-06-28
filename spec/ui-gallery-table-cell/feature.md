@@ -7,7 +7,7 @@ predecessor: ui-gallery-bin v0.1.0-partial-terminal
 ---
 
 > **Supersedes
-> [`ui-gallery-bin`](../ui-gallery-bin/feature.md) (terminal at
+> [`ui-gallery-bin`](../v1/ui-gallery-bin/feature.md) (terminal at
 > v0.1-partial, 2026-05-16).** That feature shipped V1–V4 green
 > and is operator-accepted as terminal. This brief owns V5+:
 > restoring the full gallery render path.
@@ -16,7 +16,7 @@ predecessor: ui-gallery-bin v0.1.0-partial-terminal
 
 ## Why
 
-V5+ of [`ui-gallery-bin`](../ui-gallery-bin/feature.md) is
+V5+ of [`ui-gallery-bin`](../v1/ui-gallery-bin/feature.md) is
 blocked on a `tiny-skia` `Build quad rectangle` panic in
 `widget::table::Table`, bisected to `GALLERY_CELLS[7]` (the
 **strategies** cell) by
@@ -34,7 +34,7 @@ row A4) and opened this successor brief to own the V5+ work.
 
 Cycle-2 item E (`ui-test-harness-viewport-matrix`) is downstream
 of a green gallery (see
-[`ui-gallery-bin/feature.md ## Why`](../ui-gallery-bin/feature.md)
+[`ui-gallery-bin/feature.md ## Why`](../v1/ui-gallery-bin/feature.md)
 context) — so closing this brief unblocks the next ui-testability
 cycle.
 
@@ -88,7 +88,7 @@ _tester links to reports here_
 ## Open questions for architect
 
 1. **Q-FIX-STRATEGY** — Three candidate fix paths surfaced in
-   [`ui-gallery-bin/tasks.md ## Status as of 2026-05-15`](../ui-gallery-bin/tasks.md):
+   [`ui-gallery-bin/tasks.md ## Status as of 2026-05-15`](../v1/ui-gallery-bin/tasks.md):
    (a) special-case the strategies cell wrapper inside
    `cell::view`; (b) swap `widget::table::Table` for a
    non-table render in the gallery only; (c) fix the
@@ -100,7 +100,7 @@ _tester links to reports here_
 2. **Q-RENDER-SHAPE** — If (a) or (b) is chosen, does the
    strategies cell need to render the full v1 multi-row state
    (matches the
-   [`panel_snapshots__positions_v1_three_rows`](../v1-cross-sectional-momentum/feature.md#ui--v1)
+   [`panel_snapshots__positions_v1_three_rows`](../v1/v1-cross-sectional-momentum/feature.md#ui--v1)
    shape), or is a single-row representative acceptable?
 3. **Q-CELL-HEIGHT** — `CELL_HEIGHT_PX` was tested at 260 and
    500 in v0.1-partial; both panic. Is there a deterministic
@@ -145,7 +145,7 @@ estimate: 0.5–1.5d depending on Q-FIX-STRATEGY resolution._
 
 - 2026-05-16 (analyst, Wave 2a spec-hygiene): brief opened as
   the successor to
-  [`ui-gallery-bin`](../ui-gallery-bin/feature.md) per
+  [`ui-gallery-bin`](../v1/ui-gallery-bin/feature.md) per
   [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
   row A4. Frontmatter: `status: draft`, `owner: analyst`,
   `predecessor: ui-gallery-bin v0.1.0-partial-terminal`. R1

@@ -16,7 +16,7 @@
 //!
 //! - Does NOT modify any checkpoint, anchor, or backtest report.
 //! - Re-runs scenarios into a tempdir; the four anchored `-realdata`
-//!   reports under `spec/backtest-real-binance-data/reports/` are NEVER
+//!   reports under `spec/v1/backtest-real-binance-data/reports/` are NEVER
 //!   touched.
 //! - No flag implies retraining or anchor mutation.
 //!
@@ -85,9 +85,9 @@ struct Args {
     scenario: ScenarioFamily,
 
     /// Output directory for the report.
-    /// Defaults: tcn → spec/v25a-patchtst-overlay/reports/,
-    ///           vol-target-bs1 → spec/v3-volatility-forecaster/reports/,
-    ///           regime-dispatcher-bs1 → spec/v3-regime-classifier/reports/.
+    /// Defaults: tcn → spec/v1/v25a-patchtst-overlay/reports/,
+    ///           vol-target-bs1 → spec/v1/v3-volatility-forecaster/reports/,
+    ///           regime-dispatcher-bs1 → spec/v1/v3-regime-classifier/reports/.
     #[arg(long)]
     out_dir: Option<PathBuf>,
 
@@ -2022,12 +2022,12 @@ fn main() -> Result<()> {
 
     // Resolve out_dir based on scenario family.
     let out_dir: PathBuf = args.out_dir.clone().unwrap_or_else(|| match args.scenario {
-        ScenarioFamily::VolTarget => PathBuf::from("spec/v3-volatility-forecaster/reports/"),
+        ScenarioFamily::VolTarget => PathBuf::from("spec/v1/v3-volatility-forecaster/reports/"),
         ScenarioFamily::VolTargetRebaseline => {
-            PathBuf::from("spec/v3-volatility-forecaster-rebaseline/reports/")
+            PathBuf::from("spec/v1/v3-volatility-forecaster-rebaseline/reports/")
         }
-        ScenarioFamily::RegimeDispatcher => PathBuf::from("spec/v3-regime-classifier/reports/"),
-        ScenarioFamily::Tcn => PathBuf::from("spec/v25a-patchtst-overlay/reports/"),
+        ScenarioFamily::RegimeDispatcher => PathBuf::from("spec/v1/v3-regime-classifier/reports/"),
+        ScenarioFamily::Tcn => PathBuf::from("spec/v1/v25a-patchtst-overlay/reports/"),
     });
 
     info!(
@@ -2348,7 +2348,7 @@ fn main() -> Result<()> {
     // Collect source report paths (advisory only, for frontmatter).
     let source_reports: Vec<String> = rerun::SCENARIOS
         .iter()
-        .map(|s| format!("spec/backtest-real-binance-data/reports/backtest-…-{s}.md"))
+        .map(|s| format!("spec/v1/backtest-real-binance-data/reports/backtest-…-{s}.md"))
         .collect();
 
     let ctx = render::ReportContext {

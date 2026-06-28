@@ -22,7 +22,7 @@
 //!    tautology: the form paints regardless of the rate; a ZERO-foreground failure
 //!    would indicate the hint block is entirely absent, not just wrong-number.
 //!
-//! The render-layer proof (T8 per `spec/advisor-eur-fx/tasks.md`).
+//! The render-layer proof (T8 per `spec/v1/advisor-eur-fx/tasks.md`).
 //!
 //! ## macOS gate (ADR-0057 D2)
 //!

@@ -131,13 +131,13 @@ new v2.5 analyst owns a fresh set: model size / architecture (Transformer vs
 TCN vs hybrid), tokenisation strategy, training data span, loss function,
 inference horizon, success criterion vs v1 momentum baseline, training
 checkpoint storage, audit integration shape. The new analyst pass at
-[`spec/v25-dl-forecast-overlay/feature.md`](../../v25-dl-forecast-overlay/feature.md)
+[`spec/v25-dl-forecast-overlay/feature.md`](../../v1/v25-dl-forecast-overlay/feature.md)
 authors these.
 
 ## References
 
 - ADR-0027 (superseded) — Kronos ONNX + `tract` decision.
-- [`spec/v25-dl-forecast-overlay/feature.md`](../../v25-dl-forecast-overlay/feature.md)
+- [`spec/v25-dl-forecast-overlay/feature.md`](../../v1/v25-dl-forecast-overlay/feature.md)
   — active v2.5 brief.
 - [`spec/dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md`](../../dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md)
   — preserved as "what-not-to-do" reference for the new analyst.

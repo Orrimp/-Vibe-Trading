@@ -30,7 +30,7 @@ that don't translate to LLM forecasts; ADR-0038 § D1 is the precedent
 that *new verdict shapes for new forecaster paradigms get their own
 ADR*.
 
-[`spec/v3-llm-forecaster/feature.md`](../../v3-llm-forecaster/feature.md)
+[`spec/v3-llm-forecaster/feature.md`](../../v1/v3-llm-forecaster/feature.md)
 asks the architect to lock the **LLM-forecaster verdict shape**. Per
 Q6 = (b) (operator-decided 2026-05-22, analyst-strawman LOCKED — no
 expansion authorization at M-T1; architect cap "≤2 new priorities
@@ -659,12 +659,12 @@ preserved.
   protocol (the load-bearing sibling precedent; this ADR mirrors the
   ADR-0038 structure verbatim, swapping vol-specific decisions for
   LLM-specific ones).
-- [`spec/v3-llm-forecaster/feature.md`](../../v3-llm-forecaster/feature.md)
+- [`spec/v3-llm-forecaster/feature.md`](../../v1/v3-llm-forecaster/feature.md)
   R1-R10, H1-H5, K-llm-1..10, Q1-Q8 + Q-PROMOTE + Q-V2X-SEQ +
   Q-ASSISTANT-WAKE operator-decide bundle (resolved 2026-05-22 —
   Q1/Q2/Q3/Q5/Q7/Q8 + Q-V2X-SEQ + Q-ASSISTANT-WAKE under standing
   Autoapprove; Q4 + Q6 explicit operator-pick).
-- [`spec/v3-llm-forecaster/decomp.md`](../../v3-llm-forecaster/decomp.md)
+- [`spec/v3-llm-forecaster/decomp.md`](../../v1/v3-llm-forecaster/decomp.md)
   § T-AR-9 — this ADR's authoring spec.
 - [`spec/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../../dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
   § Candidate 5 — survey-time cost / EV / reuse scoping.

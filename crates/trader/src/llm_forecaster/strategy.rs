@@ -39,8 +39,8 @@
 //!
 //! ## Cross-references
 //!
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-1` — call sequence.
-//! - `spec/v3-llm-forecaster/decomp.md § T-AR-7 Wave C` — real impl.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-1` — call sequence.
+//! - `spec/v1/v3-llm-forecaster/decomp.md § T-AR-7 Wave C` — real impl.
 //! - `crates/strategy/src/traits.rs` — `Strategy` trait.
 
 use std::collections::HashMap;

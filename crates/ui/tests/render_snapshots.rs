@@ -65,7 +65,7 @@ use fixtures::visual_diff::matches_screenshot;
 use ui::test_support::program_from_cockpit;
 
 /// SSIM threshold — strict 0.99 per architect Q5 resolution
-/// (`spec/ui-quality-gate-overhaul/feature.md ## Q5`). The helper at
+/// (`spec/v1/ui-quality-gate-overhaul/feature.md ## Q5`). The helper at
 /// `fixtures/visual_diff.rs` currently does byte-strict compare; an SSIM
 /// fallback path is queued as a follow-up (see "Open questions" in the
 /// developer's handoff envelope). The threshold is the architectural

@@ -17,7 +17,7 @@
 //!
 //! Cross-references:
 //! - `spec/architecture/12-forecast-overlay.md` — overlay design pattern.
-//! - `spec/v25-dl-forecast-overlay/feature.md` — current v2.5 brief.
+//! - `spec/v1/v25-dl-forecast-overlay/feature.md` — current v2.5 brief.
 
 use async_trait::async_trait;
 use trading_core::forecast::{ForecastError, ForecastRequest, ForecastResponse};

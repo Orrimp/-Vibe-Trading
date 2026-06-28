@@ -3,7 +3,7 @@
 //! Re-runs the held-out 2024 val-window regime-dispatcher scenario via the
 //! backtest binary, parses the aggregate statistics from the produced report,
 //! and emits a deterministic V-REG verdict report under
-//! `spec/v3-regime-classifier/reports/`.
+//! `spec/v1/v3-regime-classifier/reports/`.
 //!
 //! ## Usage
 //!
@@ -82,7 +82,7 @@ impl ScenarioArg {
     name = "regime_verdict",
     about = "V-REG: regime-classifier verdict report (ADR-0049 § D4)",
     long_about = "Re-runs the held-out 2024 val-window regime-dispatcher scenario and\n\
-                  emits a V-REG-1..V-REG-5 verdict report under spec/v3-regime-classifier/reports/.\n\n\
+                  emits a V-REG-1..V-REG-5 verdict report under spec/v1/v3-regime-classifier/reports/.\n\n\
                   Read-only contract: no checkpoint, anchor, or anchored report is modified."
 )]
 struct Args {
@@ -91,7 +91,7 @@ struct Args {
     scenario: ScenarioArg,
 
     /// Output directory for the verdict report.
-    /// Default: spec/v3-regime-classifier/reports/
+    /// Default: spec/v1/v3-regime-classifier/reports/
     #[arg(long)]
     out_dir: Option<PathBuf>,
 
@@ -790,7 +790,7 @@ fn main() -> Result<()> {
     let out_dir: PathBuf = args
         .out_dir
         .clone()
-        .unwrap_or_else(|| PathBuf::from("spec/v3-regime-classifier/reports/"));
+        .unwrap_or_else(|| PathBuf::from("spec/v1/v3-regime-classifier/reports/"));
 
     std::fs::create_dir_all(&out_dir).with_context(|| format!("creating out_dir {:?}", out_dir))?;
 

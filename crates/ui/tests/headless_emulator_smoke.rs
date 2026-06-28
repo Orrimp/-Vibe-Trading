@@ -4,7 +4,7 @@
 //! events until `Ready` (or a 10-event deadline), takes a screenshot
 //! at the floor viewport, and asserts dimensions. Proves the
 //! Emulator boots the FULL iced subscription pump headlessly — see
-//! [`spec/ui-headless-emulator/feature.md`](../../spec/ui-headless-emulator/feature.md)
+//! [`spec/v1/ui-headless-emulator/feature.md`](../../spec/v1/ui-headless-emulator/feature.md)
 //! for what this unlocks vs. the existing
 //! [`visual_snapshots.rs`](visual_snapshots.rs) free-function pattern.
 

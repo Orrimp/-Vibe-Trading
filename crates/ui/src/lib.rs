@@ -119,7 +119,7 @@ pub mod test_support;
 // (`crates/ui/src/bin/ui_gallery.rs`) still requires `--features
 // fixtures` via `Cargo.toml [[bin]] required-features`.
 // Q-GALLERY-SCOPE: imports `crate::fixtures::*` directly; no local
-// state builders inside `gallery/`. See spec/ui-gallery-bin/feature.md.
+// state builders inside `gallery/`. See spec/v1/ui-gallery-bin/feature.md.
 pub mod gallery;
 
 /// Live broadcast-bus subscription (T32). Gated behind the `live` feature

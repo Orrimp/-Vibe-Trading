@@ -53,7 +53,7 @@ paper-only, not-advice on every recommendation.
 - **F9 — guided UX polish + LLM-narrated "why"** (M).
 
 ### Combination-space expansion (proposed 2026-06-23 — operator request)
-- **advisor-combination-search** (M, NEW, `proposed` — [feature.md](advisor-combination-search/feature.md),
+- **advisor-combination-search** (M, NEW, `proposed` — [feature.md](v1/advisor-combination-search/feature.md),
   trace `REQ-ADVISOR-COMBINATION-SEARCH-001`) — **expand the strategy-COMBINATION space, overfit-safely.**
   Widen F8's bounded, **pre-registered** vote-ensemble slate from 2 → 8 arms (3 decorrelation pairings +
   the complete k-of-4 ladder over the 4 base signals) → advisor field 4 singles + 8 ensembles +
@@ -70,7 +70,7 @@ paper-only, not-advice on every recommendation.
   risk → defer to a v0.2 of this feature).
 
 ### Single-coin directional short-selling (proposed 2026-06-23 — operator directive "do the expensive short selling")
-- **advisor-short-selling** (L, NEW, `proposed` — [feature.md](advisor-short-selling/feature.md),
+- **advisor-short-selling** (L, NEW, `proposed` — [feature.md](v1/advisor-short-selling/feature.md),
   trace `REQ-ADVISOR-SHORT-SELLING-001`) — **give the long-or-flat single-coin advisor the down-half
   lever.** A bounded, **pre-registered** set of short-capable single-coin strategies (v1 slate:
   `sma_cross_ls` / `macd_ls` / `rsi_ls` / `bbands_ls` symmetric long/short variants of the existing

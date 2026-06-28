@@ -10,7 +10,7 @@ updated: 2026-05-17
 > Additive extension to the
 > [Lumen Phase 1 foundation](../lumen-design-adoption/phase-1-foundation/feature.md)
 > token contract. Forced by operator-decision **Q-A1** in
-> [`ui-rethink-phase-a-lab`](../ui-rethink-phase-a-lab/feature.md):
+> [`ui-rethink-phase-a-lab`](../v1/ui-rethink-phase-a-lab/feature.md):
 > the multi-strategy comparison overlay (≤4 lines) must use a palette
 > that is visually distinct from each other AND from `color::ACCENT`
 > (the price line) AND from `color::UP_500` / `color::DOWN_500` (which

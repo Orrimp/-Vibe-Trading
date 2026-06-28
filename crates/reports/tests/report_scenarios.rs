@@ -20,7 +20,7 @@
 //!    a complete file (the test polls the path while the renders run
 //!    and asserts no file ever observes a partial body).
 //!
-//! The reports land under `spec/operator-success-reports/reports/success-<run_id>-<scenario>.md`
+//! The reports land under `spec/v1/operator-success-reports/reports/success-<run_id>-<scenario>.md`
 //! so `scripts/verify_anchors.sh` (after its glob extension to `success-*-`)
 //! can pick them up alongside the 9 backtest anchors → 11/11.
 //!
@@ -145,7 +145,7 @@ async fn render_scenario(
 
 /// Resolve the workspace root via `CARGO_MANIFEST_DIR` (which points
 /// at `crates/reports`).  Used to publish the "lock" copy of each
-/// rendered scenario report under `spec/operator-success-reports/reports/`
+/// rendered scenario report under `spec/v1/operator-success-reports/reports/`
 /// so `scripts/verify_anchors.sh` can resolve it via the recursive
 /// `*/reports/success-*-<scenario>.md` glob extension.
 fn workspace_success_dir() -> PathBuf {
@@ -161,14 +161,14 @@ fn workspace_success_dir() -> PathBuf {
 }
 
 /// Publish the canonical `success-*-<scenario>.md` copy of a freshly
-/// rendered scenario report into `spec/operator-success-reports/reports/`.
+/// rendered scenario report into `spec/v1/operator-success-reports/reports/`.
 /// This is the file `verify_anchors.sh` (post glob-extension) hashes —
 /// the test itself runs against `tempfile::TempDir` paths to keep the
 /// fixture surface ephemeral, but the locked SHA only matters when the
 /// gate can find a real report on disk to hash against.
 fn publish_success_copy(src_full_md: &Path, scenario: &str) -> PathBuf {
     let dest_dir = workspace_success_dir();
-    std::fs::create_dir_all(&dest_dir).expect("create spec/operator-success-reports/reports");
+    std::fs::create_dir_all(&dest_dir).expect("create spec/v1/operator-success-reports/reports");
     // Single canonical filename per scenario (no timestamp suffix) — the
     // verify_anchors.sh `ls -1 | sort | tail -1` step picks any matching
     // file regardless of how many we publish, but a stable filename
@@ -202,7 +202,7 @@ async fn t816_report_sample_7d_determinism_and_anchor_lock() {
     // Two sequential renders — same seed, same fixture.
     let body_a = render_scenario(&db_path, &out_a, fixture_7d_period_start()).await;
     let body_b = render_scenario(&db_path, &out_b, fixture_7d_period_start()).await;
-    // Publish the `out_a` rendering to `spec/operator-success-reports/reports/`
+    // Publish the `out_a` rendering to `spec/v1/operator-success-reports/reports/`
     // so the verify-anchors gate can pick it up via the success-* glob (the
     // body bytes match `out_b` byte-for-byte by V4 — either copy works).
     let _published = publish_success_copy(&out_a, "report-sample-7d");

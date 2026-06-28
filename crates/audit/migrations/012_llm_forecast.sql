@@ -30,7 +30,7 @@
 --   forecaster_name  TEXT NOT NULL    — "llm_forecaster_impl"
 --   model_id         TEXT NOT NULL    — e.g. "claude-haiku-4-5-20251001"
 --
--- See spec/v3-llm-forecaster/decomp.md § T-AR-1 step 8 + R7.1 for
+-- See spec/v1/v3-llm-forecaster/decomp.md § T-AR-1 step 8 + R7.1 for
 -- the full payload contract.
 
 CREATE TABLE IF NOT EXISTS llm_forecast_entries (

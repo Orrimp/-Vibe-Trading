@@ -4,7 +4,7 @@
 //!
 //! ## Why this exists
 //!
-//! `spec/ui-quality-gate-overhaul/feature.md ## M2-B` — the F1 incident
+//! `spec/v1/ui-quality-gate-overhaul/feature.md ## M2-B` — the F1 incident
 //! shipped a `fill_quad` call with `Quad { bounds: Rectangle { width: 0,
 //! height: 0, .. }, .. }` reaching `iced_tiny_skia`'s all-radii-zero
 //! fast-path, which panics inside the renderer with no widget context.
@@ -58,7 +58,7 @@
 //!   `~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/iced_core-0.14.0/src/renderer.rs:11-75`
 //!   (developer-confirmed H-A5 falsifier 2026-05-14: trait is public,
 //!   NOT `#[doc(hidden)]`, NOT `#[unstable]`).
-//! - F1 incident: `spec/cockpit-render-regression/feature.md`.
+//! - F1 incident: `spec/v1/cockpit-render-regression/feature.md`.
 
 #![cfg(feature = "render-debug")]
 

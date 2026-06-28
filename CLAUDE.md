@@ -50,7 +50,11 @@ trading/
     ├── runbooks/            # Operational runbooks
     ├── archive/             # Compressed historical reports
     ├── dev-notes/           # Cross-cutting dev memos
-    └── <feature-slug>/      # Per-feature folder
+    ├── v1/                  # SHIPPED product — implemented feature folders (2026-06-28 reorg)
+    │   └── <feature-slug>/  # Per-feature folder (archive; anchored reports byte-immutable in place)
+    ├── v2/                  # NEW research-driven phase (see research/APPLICATIONS.md); analyst/architect populate
+    │   └── <feature-slug>/  # Per-feature folder
+    └── <feature-slug>/      # Not-yet-built features pending triage (e.g. advisor-reflection-decision-loop)
         ├── feature.md       # Brief (frontmatter has version: x.y.z)
         ├── tasks.md         # Task list
         ├── reports/         # test-*.md, backtest-*.md, screenshots/
@@ -122,7 +126,7 @@ or the `verify_anchors` gate. The `.codegraph/` index is gitignored. Setup + the
   `[patch.crates-io]` in the workspace `Cargo.toml`. **Operator-
   locked 2026-05-20** — no iced 0.14.x patch branch exists; no
   iced upgrade expected near-term. See
-  [`spec/chart-fixture-line-clipping/feature.md`](spec/chart-fixture-line-clipping/feature.md)
+  [`spec/v1/chart-fixture-line-clipping/feature.md`](spec/v1/chart-fixture-line-clipping/feature.md)
   for the maintenance contract — any future iced bump MUST audit
   the `Transformation::scale(scale_factor) * group.transformation()`
   ordering before retiring the fork.

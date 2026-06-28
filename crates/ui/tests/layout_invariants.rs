@@ -3,7 +3,7 @@
 //! Asserts that under any fuzz-generated reasonable input, no widget's
 //! `Widget::layout(...)` returns a `layout::Node` whose root (or
 //! direct child) `Size` has a literal zero width or height. The F1
-//! incident (`spec/cockpit-render-regression/feature.md`) shipped past
+//! incident (`spec/v1/cockpit-render-regression/feature.md`) shipped past
 //! 267 panel-snapshot tests because the bug was at the layout level
 //! — `Length::Fill` collapsed to 0 inside an iced `Table` cell — and
 //! no harness walked the layout tree to catch it.

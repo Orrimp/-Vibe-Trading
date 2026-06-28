@@ -669,7 +669,7 @@ date.
   legal copy source; (7) fixtures provide the dev-mode data path
   for `cargo run --bin cockpit --features fixtures`. No code change;
   documents the existing contract. Companion living doc
-  [ui-design-principles.md](ui-design-principles.md) lands the
+  [ui-design-principles.md](../ui-design-principles.md) lands the
   design-system rules these interfaces dress (color palette
   extensions, type/spacing scale lock, density tables, motion
   timings, trading-specific patterns, eight open questions for
@@ -729,7 +729,7 @@ date.
   **Q3** land all three theme tokens in this feature:
   `bg_overlay = #0B0D12`, `info = #7BC2FF`,
   `border_strong = #3A4456` (dark-mode hex from
-  [ui-design-principles.md](ui-design-principles.md)). Light-mode
+  [ui-design-principles.md](../ui-design-principles.md)). Light-mode
   hex documented but landed by the broader light-mode feature.
   **Q4** column order `Account | Debit | Credit | Currency`;
   numbers right-aligned, monospace digits, locale-default
@@ -759,7 +759,7 @@ date.
   **Q9** modal closes on `Message::AgentHaltedExternally`;
   one modal at a time (`TapeRowClicked` while open replaces
   identity); clipboard `Cmd-C` deferred. **First feature against
-  [ui-design-principles.md](ui-design-principles.md)** — documents
+  [ui-design-principles.md](../ui-design-principles.md)** — documents
   the click-through-to-audit modal pattern that future drilldowns
   inherit (`Stack` overlay + `bg_overlay` backdrop +
   `border_strong` frame + Esc-to-close subscription +
@@ -799,7 +799,7 @@ date.
   metadata reader lands. This feature is that reader. **Q1** new
   `pub struct JournalTransactionMetadata { transaction_id: SmolStr,
   ts: Timestamp, description: SmolStr, strategy_id: Option<StrategyId> }`
-  in [`crates/core/src/views.rs`](../crates/core/src/views.rs)
+  in [`crates/core/src/views.rs`](../../crates/core/src/views.rs)
   alongside `JournalEntry` (T1201); re-exported from
   `crates/core/src/lib.rs:48`. **Principled override** on the
   brief default: `description: SmolStr` (not `String`) — symmetry
@@ -988,7 +988,7 @@ date.
   analyst strawman + `signal_id: SmolStr`. Operator-resolved
   Q4 / Q5 / Q8 recorded for trace. Anchor risk zero (R9.4 / V8
   hard gate). Tasks T2001–T2027 + T_FINAL_CHART_BUY_SELL_EMPHASIS
-  filed at [chart-buy-sell-emphasis/tasks.md](chart-buy-sell-emphasis/tasks.md);
+  filed at [chart-buy-sell-emphasis/tasks.md](../v1/chart-buy-sell-emphasis/tasks.md);
   8 new files + 12 modified files; `crates/strategy/`,
   `crates/risk/`, `crates/backtest/`, `crates/reports/`,
   `crates/exec/` untouched. UI-heavy feature; ui-designer + developer

@@ -687,7 +687,7 @@ pub mod layout {
     /// inter-cell breathing). Tune in 4 px steps if a future Lumen update
     /// shifts row metrics.
     ///
-    /// See [`spec/cockpit-render-regression/feature.md`](../../../spec/cockpit-render-regression/feature.md)
+    /// See [`spec/v1/cockpit-render-regression/feature.md`](../../../spec/v1/cockpit-render-regression/feature.md)
     /// `## M0 results` for the bisect that pinned this trigger to the
     /// rule Container inside [`widgets::strategies::id_cell`](crate::widgets::strategies),
     /// and `## M0-FIX` for the F1 falsifier that confirmed the fix.
@@ -840,7 +840,7 @@ pub mod layout {
     // legend inset card (Q5). All values are in **logical pixels**; iced's
     // HiDPI pipeline scales them on Retina.
     //
-    // See `spec/chart-canvas-overhaul/feature.md ## Design` for the per-
+    // See `spec/v1/chart-canvas-overhaul/feature.md ## Design` for the per-
     // token derivation. Naming is the architect's pick — the suffix
     // `_PX` makes them grep-distinct from spacing tokens (`space::*`) and
     // signals "absolute pixel value, not a step on the spacing ladder."
@@ -1437,7 +1437,7 @@ mod tests {
 
     /// T3009 — pin the six chart-canvas-overhaul layout tokens to the
     /// architect's design table in
-    /// `spec/chart-canvas-overhaul/feature.md ## Design`.  These tokens
+    /// `spec/v1/chart-canvas-overhaul/feature.md ## Design`.  These tokens
     /// drive the price axis (M2), time axis (M3), and legend (M4) draw
     /// passes added by v1.10.0; drift on any one of them desyncs the
     /// chart canvas from `inner_rect_with_gutters` arithmetic and the

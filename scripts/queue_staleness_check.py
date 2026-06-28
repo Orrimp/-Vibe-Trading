@@ -21,7 +21,7 @@ Usage:
     python3 scripts/queue_staleness_check.py --spec-dir PATH # override spec dir root
 
 Part of the Pick C Wave 1 orchestrator hygiene compounder trio.
-Per spec/queue-staleness-reconciliation/feature.md § Design D-QSR-1..6.
+Per spec/v1/queue-staleness-reconciliation/feature.md § Design D-QSR-1..6.
 """
 from __future__ import annotations
 

@@ -11,8 +11,8 @@
 //! # Cross-references
 //!
 //! - ADR-0035 D2 / ADR-0033 § D1.c — read-only hard invariant.
-//! - `spec/v25-tcn-threshold-tuning/decomp.md § D-AR-1.d` — CLI surface.
-//! - T-D-N8 in `spec/v25-tcn-threshold-tuning/tasks.md`.
+//! - `spec/v1/v25-tcn-threshold-tuning/decomp.md § D-AR-1.d` — CLI surface.
+//! - T-D-N8 in `spec/v1/v25-tcn-threshold-tuning/tasks.md`.
 
 use std::process::Command;
 
