@@ -6,8 +6,12 @@ applications**. Findings here will later feed concrete improvements to **our app
 
 > **Status: ✅ COMPLETE — 900/900 papers across 9 topics (2026-06-27), + DEEP-READ PASS
 > (2026-06-28)** that upgraded ~100 highest-value entries to full-text reads and corrected
-> four claims. Start at [SYNTHESIS.md](SYNTHESIS.md) for the "what do we change in the app"
-> distillation (incl. the now-EXACT P0 gate spec); [PROGRESS.md](PROGRESS.md) for the
+> four claims. **Analyst + architect start at [APPLICATIONS.md](APPLICATIONS.md)** — 21 per-topic
+> application docs (Summary · Solutions · Relevance · Advantages · Problems · Next
+> steps · Open questions) translating the research into project decisions, plus the
+> convergent-priorities map (the P0 selection-bias scorecard + the actionable
+> builds + the do-not-build dead ends). For the cross-topic distillation + the exact
+> P0 gate spec see [SYNTHESIS.md](SYNTHESIS.md); [PROGRESS.md](PROGRESS.md) has the
 > per-topic count table. The resume protocol below stays valid for any future extension.
 
 > **Our app (context for "relevance" notes):** a Rust single-coin crypto
