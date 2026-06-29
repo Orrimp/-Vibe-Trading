@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Framework v2 — The Honest Advisor</title>
+<style>
+  :root{
+    --navy:#0f172a; --slate:#334155; --muted:#64748b; --line:#e2e8f0;
+    --bg:#f6f8fb; --card:#ffffff; --teal:#0d9488; --teal-d:#0f766e;
+    --go:#16a34a; --go-bg:#ecfdf5; --warn:#b45309; --warn-bg:#fffbeb;
+    --p0:#7c3aed; --p1:#0ea5e9; --r1:#db2777;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--slate);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+  h1,h2,h3{color:var(--navy);line-height:1.25;margin:0 0 .4em}
+  h2{font-size:1.55rem;margin-top:0}
+  h3{font-size:1.12rem}
+  p{margin:.4em 0 .9em}
+  .lead{font-size:1.08rem;color:var(--slate)}
+  a{color:var(--teal-d)}
+  .small{font-size:.86rem;color:var(--muted)}
+
+  /* hero */
+  header{background:linear-gradient(135deg,#0f172a 0%,#0f3b46 55%,#0d9488 130%);color:#e6fbf8;padding:64px 0 56px}
+  header .wrap{position:relative}
+  .kicker{display:inline-block;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;
+    color:#7fe9dd;background:rgba(13,148,136,.18);border:1px solid rgba(127,233,221,.35);
+    padding:5px 12px;border-radius:999px;margin-bottom:18px}
+  header h1{color:#fff;font-size:2.5rem;margin:0 0 .2em;letter-spacing:-.02em}
+  header .tag{font-size:1.2rem;color:#bff3ec;max-width:660px}
+  header .sub{margin-top:18px;color:#9fd9d1;max-width:680px;font-size:1.02rem}
+
+  section{padding:48px 0;border-bottom:1px solid var(--line)}
+  section:last-of-type{border-bottom:0}
+  .eyebrow{font-size:.78rem;letter-spacing:.13em;text-transform:uppercase;color:var(--teal-d);font-weight:700;margin-bottom:8px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:18px}
+  .grid.two{grid-template-columns:1fr 1fr}
+  .grid.three{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:760px){.grid.two,.grid.three{grid-template-columns:1fr}}
+
+  /* the big promise */
+  .promise{background:linear-gradient(180deg,#ffffff,#f1f7f6);border-left:4px solid var(--teal)}
+  .promise b{color:var(--navy)}
+
+  /* workflow flow */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:8px}
+  @media(max-width:860px){.flow{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.flow{grid-template-columns:1fr}}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px;position:relative;box-shadow:var(--shadow)}
+  .step .n{position:absolute;top:-12px;left:16px;width:26px;height:26px;border-radius:50%;
+    background:var(--teal);color:#fff;font-size:.82rem;font-weight:700;display:grid;place-items:center;box-shadow:var(--shadow)}
+  .step .ico{font-size:1.6rem}
+  .step h3{margin:.4em 0 .25em}
+  .step p{font-size:.92rem;margin:.2em 0}
+  .step .out{margin-top:10px;font-size:.86rem;color:var(--teal-d);font-weight:600}
+
+  /* before / after */
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.ba{grid-template-columns:1fr}}
+  .ba .today{border-top:4px solid #cbd5e1}
+  .ba .v2{border-top:4px solid var(--teal)}
+  ul.tick,ul.cross{list-style:none;padding:0;margin:.3em 0}
+  ul.tick li,ul.cross li{padding:5px 0 5px 28px;position:relative}
+  ul.tick li::before{content:"✓";position:absolute;left:0;color:var(--go);font-weight:700}
+  ul.cross li::before{content:"✕";position:absolute;left:0;color:#94a3b8;font-weight:700}
+
+  /* feature cards */
+  .feat{display:flex;flex-direction:column}
+  .badge{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:#fff;
+    padding:3px 10px;border-radius:999px;align-self:flex-start;margin-bottom:10px}
+  .b-p0{background:var(--p0)} .b-p1{background:var(--p1)} .b-r1{background:var(--r1)} .b-spine{background:var(--teal)}
+  .feat h3{margin:0 0 .4em}
+  .feat .plain{color:var(--navy);font-weight:600}
+  .feat dl{margin:.6em 0 0;font-size:.92rem}
+  .feat dt{color:var(--teal-d);font-weight:700;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;margin-top:10px}
+  .feat dd{margin:.1em 0 0}
+
+  /* achieve list */
+  .achieve{background:var(--go-bg);border:1px solid #bbf7d0;border-radius:14px;padding:22px}
+  .achieve h2{color:#14532d}
+  .achieve ul.tick li::before{color:#16a34a}
+
+  /* avoid */
+  .avoid{background:var(--warn-bg);border:1px solid #fde68a;border-radius:14px;padding:22px}
+  .avoid h2{color:#92400e}
+  .avoid .row{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:10px 0;border-top:1px dashed #fcd9a0}
+  .avoid .row:first-of-type{border-top:0}
+  .avoid .x{color:var(--warn);font-weight:800;font-size:1.05rem}
+  .avoid .why{color:var(--slate);font-size:.92rem}
+  .avoid b{color:#92400e}
+
+  /* roadmap */
+  .road{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:760px){.road{grid-template-columns:1fr}}
+  .phase{border-top:4px solid var(--teal);background:var(--card);border-radius:14px;padding:20px;box-shadow:var(--shadow)}
+  .phase .ph{font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .phase h3{margin:.2em 0 .5em}
+  .phase ul.tick li{font-size:.92rem}
+
+  .principle{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;margin:.6em 0}
+  .principle .dot{width:10px;height:10px;border-radius:50%;background:var(--teal);margin-top:9px}
+
+  footer{background:var(--navy);color:#cbd5e1;padding:34px 0;font-size:.9rem}
+  footer b{color:#fff}
+  .pill{display:inline-block;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+    padding:3px 11px;border-radius:999px;font-size:.78rem;margin:3px 5px 3px 0;color:#e2e8f0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <span class="kicker">Trading Framework · Version 2</span>
+    <h1>The Honest Advisor</h1>
+    <div class="tag">A framework for <b>traceable and plausible</b> trading — it shows its work, so you can trust the answer.</div>
+    <div class="sub">You pick one coin and a small budget. The framework bakes off every strategy, ranks them honestly, and tells you what to do with your money — <i>and how much to trust it</i>. v2 makes the whole journey end-to-end and finally makes the “why” visible.</div>
+  </div>
+</header>
+
+<!-- THE BIG IDEA -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The idea in one minute</div>
+    <h2>We sell <em>honesty</em>, not promises</h2>
+    <div class="card promise">
+      <p>Nine independent reviews of 900 research papers reached the same conclusion: on a single coin, <b>no active strategy reliably beats simply holding</b>, once you pay the trading costs. That sounds like bad news — it’s actually our <b>superpower</b>.</p>
+      <p>Most tools shout “buy this, it’ll go up!” Ours does the opposite: it runs every strategy against your coin, and <b>tells you the truth</b> — usually “just hold,” sometimes “this rule looks better, and here’s exactly how confident we are.” The value isn’t a magic money-maker. The value is a tool you can <b>believe</b>.</p>
+      <p class="small">v2 is about making that honesty <b>complete and visible</b>: a single end-to-end flow from raw data to a clear buy/sell suggestion, with the confidence and the risk shown right next to it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- THE WORKFLOW -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The centerpiece</div>
+    <h2>One clear journey: Data → Training → Analysis → Suggestion</h2>
+    <p class="lead">Today the screens work, but they don’t tell a story. v2 ties them into a single spine that answers four questions: <b>when to buy, when to sell, which coin, and how much money.</b></p>
+    <div class="flow">
+      <div class="step">
+        <div class="n">1</div>
+        <div class="ico">📥</div>
+        <h3>Data</h3>
+        <p>Pull real, point-in-time market history for your coin and chosen window — no peeking into the future.</p>
+        <div class="out">Honest, reproducible inputs</div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <div class="ico">🎚️</div>
+        <h3>Training</h3>
+        <p>Learn the one thing that’s actually learnable: <b>how wild the ride is</b> (volatility) — to size your bets sensibly. We do <i>not</i> try to predict the price; the research is clear that doesn’t work.</p>
+        <div class="out">Risk you can size by — not a crystal ball</div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <div class="ico">⚖️</div>
+        <h3>Analysis</h3>
+        <p>Bake off every strategy, rank them under the robustness gate, and <b>score how much to trust the winner</b> — “did we just get lucky by trying many?”</p>
+        <div class="out">A ranked, trust-scored verdict</div>
+      </div>
+      <div class="step">
+        <div class="n">4</div>
+        <div class="ico">🧭</div>
+        <h3>Suggestion</h3>
+        <p>A plain plan: <b>Buy / Hold / Sell now</b>, on <b>your coin</b>, with <b>how much of your €200</b> to deploy — plus the honest confidence and the worst-case risk.</p>
+        <div class="out">Buy / Sell · which · how much</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THE GAP -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Why v2</div>
+    <h2>What’s missing today — and what you’ll see instead</h2>
+    <div class="ba">
+      <div class="card today">
+        <h3>Today’s screen</h3>
+        <p class="small">It shows the basics and picks a winner…</p>
+        <ul class="tick"><li>Return, Sharpe, Max-Drawdown, Trade count</li><li>A single highlighted recommendation</li></ul>
+        <p class="small">…but it stays silent on the things that decide whether to <i>believe</i> it:</p>
+        <ul class="cross">
+          <li>How many strategies we tried (is the “winner” just luck?)</li>
+          <li>The deflated confidence after that search</li>
+          <li>The trading costs / turnover behind the number</li>
+          <li>The tail &amp; drawdown risk — how bad the bad days get</li>
+          <li>A clear start-to-finish journey</li>
+        </ul>
+      </div>
+      <div class="card v2">
+        <h3>v2’s screen</h3>
+        <p class="small">Everything above, <b>plus the “show your work” layer:</b></p>
+        <ul class="tick">
+          <li><b>Honesty scorecard</b> next to every pick — confidence after accounting for how many strategies we tried</li>
+          <li><b>“Beats holding?”</b> stated plainly, never assumed</li>
+          <li><b>Cost story</b> — the turnover that explains the net result</li>
+          <li><b>Risk story</b> — drawdown &amp; tail, not just average return</li>
+          <li>The <b>Data → Training → Analysis → Suggestion</b> spine tying it together</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">What we’ll build</div>
+    <h2>The v2 features</h2>
+    <p class="lead">Small, additive, honest. Each one makes the advice more trustworthy — none of them is a bet on “more profit.”</p>
+    <div class="grid two">
+
+      <div class="card feat">
+        <span class="badge b-p0">P0 · BUILD FIRST</span>
+        <h3>The Honesty Scorecard</h3>
+        <p class="plain">“Did we fool ourselves by trying many strategies?” — answered, every time.</p>
+        <dl>
+          <dt>What you’ll see</dt>
+          <dd>For the crowned strategy: how many we tried, a <i>deflated</i> confidence, a minimum-history check, and a clear “does this really beat holding?” verdict.</dd>
+          <dt>Why it matters</dt>
+          <dd>This is the literal meaning of “traceable &amp; plausible.” It’s the credibility layer the whole product rests on — and it was the #1 finding across the research.</dd>
+          <dt>Honest framing</dt>
+          <dd>Most of the time it will confirm “just hold.” That’s the point — it stops a lucky fluke from being sold as a winner.</dd>
+        </dl>
+      </div>
+
+      <div class="card feat">
+        <span class="badge b-r1">R1 · GROUNDWORK</span>
+        <h3>Faithful “watch your money”</h3>
+        <p class="plain">When you watch your €200 trade forward, it runs the <i>exact</i> strategy that won — not a stand-in.</p>
+        <dl>
+          <dt>What you’ll see</dt>
+          <dd>The forward paper-trade plays the real crowned strategy for every strategy type the bake-off can crown.</dd>
+          <dt>Why it matters</dt>
+          <dd>“Watch the selected strategy” has to be literally true. This closes the gap and must land before anything new is added.</dd>
+        </dl>
+      </div>
+
+      <div class="card feat">
+        <span class="badge b-p1">P1 · NEXT</span>
+        <h3>Smart risk control</h3>
+        <p class="plain">The one place active management genuinely helps — a <i>smoother ride</i>, not bigger returns.</p>
+        <dl>
+          <dt>What you’ll see</dt>
+          <dd>A drawdown guard (caps how deep losses go) and volatility-based sizing (smaller bets when the market is wild), with the trade-off shown honestly.</dd>
+          <dt>Why it matters</dt>
+          <dd>On crypto you can’t reliably buy more return — but you <i>can</i> cut the worst drawdowns. We’ll sell it as exactly that: risk reduction, with the cost (some upside given up) stated plainly.</dd>
+        </dl>
+      </div>
+
+      <div class="card feat">
+        <span class="badge b-spine">SPINE</span>
+        <h3>The unified journey</h3>
+        <p class="plain">Tie the screens into one Data → Training → Analysis → Suggestion flow.</p>
+        <dl>
+          <dt>What you’ll see</dt>
+          <dd>A coherent path from picking a coin to watching the plan unfold — each stage labelled, each hand-off clear.</dd>
+          <dt>Why it matters</dt>
+          <dd>It turns a set of tools into a product a non-expert can actually follow end-to-end.</dd>
+        </dl>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- WHAT WE ACHIEVE -->
+<section>
+  <div class="wrap">
+    <div class="achieve">
+      <div class="eyebrow" style="color:#15803d">The outcome</div>
+      <h2>What we’ll achieve</h2>
+      <p>An advisor you can <b>trust because it shows its work</b> — the honest answer (often “hold”), with the confidence and the risk visible right beside it.</p>
+      <ul class="tick">
+        <li><b>A complete, guided journey</b> from real data to a concrete buy/sell/how-much suggestion.</li>
+        <li><b>Every recommendation is auditable</b> — you can see how many strategies were tried and how confident the verdict really is.</li>
+        <li><b>Honest risk</b> — drawdown and tail shown, with an optional guard to smooth the ride.</li>
+        <li><b>No over-claiming</b> — when nothing beats holding, it says so, plainly.</li>
+        <li><b>Reproducible</b> — same inputs, same answer; nothing hidden.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT WE AVOID -->
+<section>
+  <div class="wrap">
+    <div class="avoid">
+      <div class="eyebrow" style="color:#92400e">Deliberate boundaries</div>
+      <h2>What we will <em>not</em> build (and why)</h2>
+      <p class="small">Staying honest means saying no to the tempting-but-fake. These would pull the framework off-mission.</p>
+      <div class="row"><span class="x">✕</span><div><b>Picking the “best of many coins.”</b><div class="why">You choose one coin. Spreading across many coins doesn’t protect you in a crypto crash (everything falls together), and the edges that exist there are a different product entirely.</div></div></div>
+      <div class="row"><span class="x">✕</span><div><b>AI that predicts the price.</b><div class="why">The research is unanimous: price/return prediction doesn’t beat a coin-flip once you pay costs. We won’t pretend otherwise. (AI helps explain, and we can forecast <i>volatility</i> for sizing — never the price.)</div></div></div>
+      <div class="row"><span class="x">✕</span><div><b>Auto-hunting for a winning strategy.</b><div class="why">Letting a machine search thousands of strategies is the fastest way to fool yourself — it finds flukes. Our honesty gate exists precisely to prevent this.</div></div></div>
+      <div class="row"><span class="x">✕</span><div><b>An AI that places trades.</b><div class="why">The AI narrates and explains the real numbers; it never decides what to buy. That bright line stays.</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">How it rolls out</div>
+    <h2>The path</h2>
+    <div class="road">
+      <div class="phase">
+        <div class="ph">Phase 1 · Trust</div>
+        <h3>Show the work</h3>
+        <ul class="tick"><li>Faithful forward-trade (R1)</li><li>The Honesty Scorecard (P0), report-only</li></ul>
+        <p class="small">Near-zero risk, highest value — the credibility layer.</p>
+      </div>
+      <div class="phase">
+        <div class="ph">Phase 2 · Risk</div>
+        <h3>Smooth the ride</h3>
+        <ul class="tick"><li>Drawdown guard + volatility sizing</li><li>Cost &amp; tail-risk reporting</li></ul>
+        <p class="small">The one place active control honestly helps.</p>
+      </div>
+      <div class="phase">
+        <div class="ph">Phase 3 · Journey</div>
+        <h3>One flow</h3>
+        <ul class="tick"><li>The Data→Training→Analysis→Suggestion spine</li><li>A guided, end-to-end experience</li></ul>
+        <p class="small">Turns the tools into a product.</p>
+      </div>
+    </div>
+    <p class="small" style="margin-top:18px">Architecture verdict: <b>no new “plugin” machinery</b> — v2 extends the existing engine through three clean seams (strategy arm · risk overlay · report annex). The robustness gate stays frozen; new pieces are added <i>beside</i> it, never inside it.</p>
+  </div>
+</section>
+
+<!-- PRINCIPLES -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The thread through all of it</div>
+    <h2>Three principles</h2>
+    <div class="principle"><div class="dot"></div><div><b>Measured, not asserted.</b> Every claim is earned against a “just hold” benchmark and a resampling stress-test — never assumed.</div></div>
+    <div class="principle"><div class="dot"></div><div><b>Risk-shaping, not alpha.</b> Where active management helps at all, it’s by cutting drawdowns — we say that plainly and never promise more profit.</div></div>
+    <div class="principle"><div class="dot"></div><div><b>Show the work.</b> Confidence, costs, and risk are surfaced next to every suggestion. If we can’t prove it, we don’t crown it.</div></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div style="margin-bottom:10px">
+      <span class="pill">Paper / simulation only</span>
+      <span class="pill">Not financial advice</span>
+      <span class="pill">Single coin · single budget</span>
+      <span class="pill">Past performance ≠ future results</span>
+    </div>
+    <b>Trading Framework v2</b> — measured honesty, not asserted alpha. The €200 is simulated; no real orders are ever placed.
+    <div class="small" style="margin-top:8px;color:#94a3b8">Source plans: <code>spec/v2/v2-analysis.md</code> (analyst) &amp; <code>spec/v2/v2-architecture.md</code> (architect), scoped from the 900-paper research program (<code>research/APPLICATIONS.md</code>).</div>
+  </div>
+</footer>
+
+</body>
+</html>

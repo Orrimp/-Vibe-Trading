@@ -487,6 +487,33 @@ These are the decisions that are **not pure engineering** — they need an opera
 product/values call (durable-over-quick framing). Carried from `v2-analysis.md` §5 +
 the §0 corrections.
 
+### §6.0 — RESOLVED (operator, 2026-06-28)
+
+All decisions ratified to the architect's recommended (durable) defaults:
+
+- **D1–D4 (scorecard scope) → REPORT-ONLY, CLOSED-FORM.** Ship DSR + MinBTL + N_eff
+  (closed-form `ρ̄+(1−ρ̄)·M`, **frozen** at the 24-config scale — D4) as a **report-only**
+  scorecard. **No crown-veto, no hard threshold / ORATIO** in v2 (the design leaves a
+  one-line veto switch via `Scorecard.crown_clears_dsr` for later — D2/D3). **PBO
+  deferred** to the homogeneous Tune/sweep surface, not the 18-arm field (D1).
+- **D5 (vol-estimator home) → `crates/strategy/src/vol_estimator.rs`.** Keeps
+  vol-for-sizing ≠ return-prediction; the model-based vol forecast stays opt-in behind
+  the `forecast` feature flag.
+- **D6 (cost model) → OPT-IN-FOREVER.** New `SlippageModel::VolScaledSpread` variant;
+  default `LinearBps` unchanged → anchors stay **119/119**. No default bump / re-anchor
+  in v2.
+- **D7 (Tune stage) → PROMOTE to a named "Calibrate" stage.** Screen-routed, carrying
+  the P0-1 scorecard readout; the cross-stage `agent::AdvisorStage` context-carrier
+  deferred until the need is felt.
+- **D8 (drawdown floor CPPI vs TIPP + the X% promise) → DEFERRED** to P1-3 scoping
+  (needs breach-frequency measured on real crypto windows first).
+- **D9 (F5b framing) → DONE** — the stale "SMA proxy" memory was corrected to
+  "forward-coverage gap (14 post-F5b arms not in `build_registry_for`)".
+
+**Build sequence (per §5):** Phase 2A (P0-1 report-only scorecard → P1-1 turnover →
+P1-2 tail) needs **no R1**; Phase 2B = R1 forward-coverage + P0-3 framing; 2C =
+overlays; 2D = cost opt-in + coverage hardening. **First to build: P0-1.**
+
 - **D1 — PBO timing (resolves CX-1).** The return-matrix plumbing is *trivial* (data
   already captured). **Recommended:** ship closed-form DSR/MinBTL/N_eff first (Phase
   2A); add PBO on the **Tune/sweep surface** in Phase 3 where CSCV is statistically
