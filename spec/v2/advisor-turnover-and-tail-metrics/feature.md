@@ -1,7 +1,7 @@
 ---
 slug: advisor-turnover-and-tail-metrics
-status: in-progress
-owner: ui-designer
+status: tester-done
+owner: tester
 version: 0.2.0
 updated: 2026-06-29
 ---

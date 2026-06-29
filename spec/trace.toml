@@ -3272,6 +3272,6 @@ feature     = "advisor-turnover-and-tail-metrics"
 product     = "spec/product.md"
 arch        = ["spec/v2/v2-architecture.md"]
 crates      = ["crates/backtest", "crates/ui"]   # developer 2026-06-29: bakeoff/mod.rs (CandidateKpis.turnover + derive_candidate_kpis + tests), stats/mod.rs (DistributionSummary + from_path_metrics + helpers + tests), ui/src/leaderboard/state.rs (LeaderRow.turnover mirror), ui/src/fixtures.rs (49 literal updates), ui/src/tune/state.rs (test helpers).
-tests       = []   # tester fills with the final test-report path
+tests       = ["spec/v2/advisor-turnover-and-tail-metrics/reports/test-2026-06-29-advisor-turnover-and-tail-metrics.md"]
 anchors     = []   # EXPECTED NONE — no anchored report emitted; advisor bakeoff uses write_report=false; 119/119 unchanged.
-state       = "proposed"
+state       = "verified"

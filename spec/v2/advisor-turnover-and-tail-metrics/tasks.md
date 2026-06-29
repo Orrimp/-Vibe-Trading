@@ -1,7 +1,7 @@
 ---
 slug: advisor-turnover-and-tail-metrics
-status: in-progress
-owner: ui-designer
+status: tester-done
+owner: tester
 version: 0.2.0
 updated: 2026-06-29
 ---
@@ -70,8 +70,9 @@ updated: 2026-06-29
   - test: `python3 scripts/spec_lint.py`
   - output: `spec-lint: PASS (0 violations)` (bknfq6fa2)
 
-- [ ] T14: `cargo test -p ui --lib` (additive, should pass)
-  - NOTE: test blocked on artifact lock (by0rf36nk); HANDOFF to tester for final verify-and-tick
+- [x] T14: `cargo test -p ui --lib` (additive, should pass)
+  - test: `cargo test -p ui --lib`
+  - output: `test result: ok. 583 passed; 0 failed; 0 ignored; finished in 0.68s` (tester 2026-06-29)
 
 ## UI (ui-designer — done 2026-06-29 by Opus 4.7)
 
