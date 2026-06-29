@@ -140,6 +140,57 @@ pub struct RecommendationMirror {
     pub reasons: Vec<ReasonLabel>,
 }
 
+// ── P1-2 coherent-tail / median (advisor-turnover-and-tail-metrics) ──────────
+
+/// The crown's coherent-tail + median summary, mirrored from
+/// `backtest::TailSummary` into a pure-`ui` shape
+/// (advisor-turnover-and-tail-metrics, P1-2).
+///
+/// **Plain `f64` fields only — NO `backtest::TailSummary` crosses into the
+/// widgets.** Every field is the same `f64` shape `LeaderRow.sharpe` / the
+/// scorecard's `n_eff` use: the engine type is read ONCE in
+/// [`BakeoffReportMirror::from_report`] and projected here, so the render code
+/// never names an engine struct.
+///
+/// # REPORT-ONLY (v2-architecture §1 P1-2)
+///
+/// This is a tail/median honesty readout, never a verdict.  It does NOT (and
+/// must not) change the crown, the rank, or the FROZEN robustness gate.  The
+/// screen labels the block "Risk story" + a one-line caption so the operator
+/// can never mistake it for the pick.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TailSummaryView {
+    /// Expected shortfall at α=0.05 — mean of the worst 5% of paths by
+    /// `total_return`.  Coherent / sub-additive (`CVaR` not `VaR` — the doc is
+    /// explicit).  Stored as a fraction (e.g. `-0.32` = a 32 % loss).
+    pub cvar_95: f64,
+    /// Expected shortfall at α=0.01 — extreme-tail complement to `cvar_95`.
+    pub cvar_99: f64,
+    /// Median terminal wealth — the "typical outcome" in dollars.  More
+    /// representative than mean (which is pulled by extreme wins).
+    pub median_terminal_wealth: f64,
+    /// Skew of `total_return` across paths.  Positive → right tail (lottery);
+    /// negative → left tail (crash-prone); zero on a symmetric distribution.
+    pub skew: f64,
+}
+
+impl TailSummaryView {
+    /// Mirror a `backtest::TailSummary` into the pure-`ui` view.  This is the
+    /// only place a `TailSummary` is read on the `ui` side; it is reached
+    /// exclusively from [`BakeoffReportMirror::from_report`] (the single mirror
+    /// boundary).  Pure + total — no I/O, no panic.  Crosses the seam as plain
+    /// `f64` (zero new `ui` dep edge).
+    #[must_use]
+    pub fn from_tail(tail: &backtest::TailSummary) -> Self {
+        Self {
+            cvar_95: tail.cvar_95,
+            cvar_99: tail.cvar_99,
+            median_terminal_wealth: tail.median_terminal_wealth,
+            skew: tail.skew,
+        }
+    }
+}
+
 // ── P0-1 overfitting scorecard (ADR-0075) — the "show your work" readout ──────
 
 /// The overfitting scorecard, mirrored from `backtest::bakeoff::Scorecard` into
@@ -293,6 +344,14 @@ pub struct BakeoffReportMirror {
     /// all-zero readout. **REPORT-ONLY** — display-only honesty readout, never
     /// touches the crown / rank / gate.
     pub scorecard: Option<ScorecardView>,
+    /// The crown's coherent-tail + median summary (P1-2 /
+    /// advisor-turnover-and-tail-metrics), mirrored from
+    /// `Recommendation.crown_tail`. `None` when the robustness gate ran in
+    /// `Skip` mode or the curve was too short for the bootstrap to produce a
+    /// summary — the "Risk story" block then paints nothing rather than a
+    /// blank or all-zero readout. **REPORT-ONLY** — display-only honesty
+    /// readout, never touches the crown / rank / gate.
+    pub tail: Option<TailSummaryView>,
 }
 
 impl BakeoffReportMirror {
@@ -339,6 +398,10 @@ impl BakeoffReportMirror {
             // P0-1 (ADR-0075): mirror the report-only scorecard. `None` for a
             // degenerate (empty-field) scorecard. Crosses as plain f64/usize/bool.
             scorecard: ScorecardView::from_scorecard(&r.scorecard),
+            // P1-2 (advisor-turnover-and-tail-metrics): mirror the report-only
+            // crown tail summary. `None` when the gate ran in `Skip` mode or the
+            // curve was too short. Crosses as plain f64.
+            tail: r.crown_tail.as_ref().map(TailSummaryView::from_tail),
         }
     }
 
@@ -895,6 +958,12 @@ mod tests {
                 min_btl_years: 1.2,
                 crown_clears_dsr: false,
             }),
+            tail: Some(TailSummaryView {
+                cvar_95: -0.18,
+                cvar_99: -0.27,
+                median_terminal_wealth: 105_000.0,
+                skew: 0.4,
+            }),
         }
     }
 
@@ -997,6 +1066,25 @@ mod tests {
         assert!((view.deflated_sharpe - 0.62).abs() < 1e-9);
         assert!((view.min_btl_years - 6.4).abs() < 1e-9);
         assert!(!view.crown_clears_dsr);
+    }
+
+    // ── P1-2 tail mirror (advisor-turnover-and-tail-metrics) ────────────────
+
+    #[test]
+    fn tail_summary_view_mirrors_a_populated_tail() {
+        // The four `f64` fields project through unchanged — no scaling, no
+        // sign-flip, no unit shift.
+        let backend = backtest::TailSummary {
+            cvar_95: -0.182,
+            cvar_99: -0.301,
+            median_terminal_wealth: 104_217.50,
+            skew: 0.421,
+        };
+        let view = TailSummaryView::from_tail(&backend);
+        assert!((view.cvar_95 - -0.182).abs() < 1e-9);
+        assert!((view.cvar_99 - -0.301).abs() < 1e-9);
+        assert!((view.median_terminal_wealth - 104_217.50).abs() < 1e-9);
+        assert!((view.skew - 0.421).abs() < 1e-9);
     }
 
     #[test]

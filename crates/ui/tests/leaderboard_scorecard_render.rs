@@ -107,10 +107,22 @@ fn scorecard_block_paints_and_exceeds_no_scorecard() {
     // WITHOUT the scorecard — the SAME mirror with the block removed. The ONLY
     // difference between the two frames is the scorecard block, so the
     // foreground delta is attributable to it alone (not a tautology).
-    let mut without_sc = with_sc.clone();
+    //
+    // **Also remove the Risk story (`tail`) in BOTH baselines** so the delta is
+    // strictly "scorecard added/removed" — without this, removing the
+    // scorecard would shift the Risk story block UP into the 1080-px viewport
+    // (the scorecard sits above the Risk story in the stack), inflating
+    // `fg_without` and breaking the strict-positive-delta proof. Setting both
+    // to `tail = None` keeps the test isolated to the scorecard contribution
+    // (the post-`advisor-turnover-and-tail-metrics` discipline — each report-
+    // only block has its own render guard; the scorecard test only proves the
+    // scorecard renders).
+    let mut with_sc_tail_off = with_sc.clone();
+    with_sc_tail_off.tail = None;
+    let mut without_sc = with_sc_tail_off.clone();
     without_sc.scorecard = None;
 
-    let cockpit_with = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(with_sc));
+    let cockpit_with = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(with_sc_tail_off));
     let cockpit_without = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(without_sc));
 
     let (ww, wh, wr) = render_leaderboard_rgba(cockpit_with);
@@ -173,10 +185,16 @@ fn scorecard_block_present_in_benchmark_wins_modal_case() {
         "DSR is a real probability in (0, 1)"
     );
 
-    let mut without_sc = mirror.clone();
+    // Same Risk-story-isolation discipline as the first guard — see comment
+    // there. Strip BOTH baselines' `tail` so the delta is strictly "scorecard
+    // present/absent" (the only block that should move with this test's
+    // intent).
+    let mut with_sc_tail_off = mirror;
+    with_sc_tail_off.tail = None;
+    let mut without_sc = with_sc_tail_off.clone();
     without_sc.scorecard = None;
 
-    let cockpit_with = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
+    let cockpit_with = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(with_sc_tail_off));
     let cockpit_without = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(without_sc));
 
     let (ww, wh, wr) = render_leaderboard_rgba(cockpit_with);

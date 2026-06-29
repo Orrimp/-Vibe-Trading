@@ -97,7 +97,7 @@ pub use paper::PaperEngine;
 pub use bakeoff::robustness::{ParamRobustnessVerdict, RobustnessFlag};
 pub use bakeoff::{
     BakeoffConfig, BakeoffReport, BakeoffRequest, CandidateKpis, CandidateResult, Ranking,
-    ReasonCode, Recommendation, RecommendationOutcome, RobustnessMode,
+    ReasonCode, Recommendation, RecommendationOutcome, RobustnessMode, TailSummary,
     compute_robustness_distribution, rank_candidates, run_bakeoff,
 };
 pub use stats::DistributionSummary;

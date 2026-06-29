@@ -44,6 +44,56 @@ use crate::{
     stats::{compute_calmar, compute_sharpe_hourly, compute_sortino_hourly},
 };
 
+// ── P1-2 coherent tail / median summary (REPORT-ONLY) ─────────────────────────
+//
+// Carries the four `DistributionSummary` fields the developer added in commit
+// 66286e2 across the public seam so the leaderboard "Risk story" block can
+// surface them next to the scorecard.  The crown only — one summary per
+// bake-off, mirroring how `Scorecard` lives on `Recommendation` (P0-1).
+//
+// **Pure reporting — does NOT change crowning, ranking, or the FROZEN gate.**
+// Filled by `run_bakeoff` from `compute_robustness_distribution`; `None` when
+// the robustness gate ran in `Skip` mode or the curve was too short.
+
+/// The crown's coherent-tail + median summary (P1-2 / advisor-turnover-and-tail-metrics).
+///
+/// Four reductions over the crown's 1 000-path bootstrap `PathMetrics` vector:
+/// `CVaR` at α=0.05 / α=0.01 (coherent / sub-additive, preferred over `VaR`),
+/// the median terminal wealth (the "typical outcome" — counters the mean),
+/// and the return-distribution skew (right-skewed lottery vs left-skewed crash).
+///
+/// **Public seam contract:** all four fields are plain `f64` so the `ui`
+/// mirror crosses without naming `DistributionSummary` (the `ui` purity rule).
+#[derive(Debug, Clone, Copy)]
+pub struct TailSummary {
+    /// Expected shortfall at α=0.05 — mean of the worst 5% of paths by `total_return`.
+    /// Coherent / sub-additive (the doc is explicit: `CVaR` not `VaR` — P1-2).
+    pub cvar_95: f64,
+    /// Expected shortfall at α=0.01 — extreme-tail complement to `cvar_95`.
+    pub cvar_99: f64,
+    /// Median terminal wealth (p50 of `final_equity` across paths, as `f64`).
+    /// The honest "what does the middle outcome actually look like in dollars?"
+    pub median_terminal_wealth: f64,
+    /// Skew of `total_return` across paths (3rd standardised central moment).
+    /// Positive → right tail (lottery); negative → left tail (crash-prone).
+    pub skew: f64,
+}
+
+impl TailSummary {
+    /// Build from a populated `DistributionSummary` — pure projection of the
+    /// four P1-2 fields.  The only place a `DistributionSummary` is read in the
+    /// bake-off result path; the leaderboard mirror then reads `TailSummary`.
+    #[must_use]
+    pub fn from_distribution(summary: &crate::stats::DistributionSummary) -> Self {
+        Self {
+            cvar_95: summary.cvar_95,
+            cvar_99: summary.cvar_99,
+            median_terminal_wealth: summary.median_terminal_wealth,
+            skew: summary.skew,
+        }
+    }
+}
+
 // ── Binance corpus root (mirrors the Lab constant; backtest must NOT import ui) ─
 
 /// Path to the Binance parquet corpus, relative to the workspace root.
@@ -693,6 +743,16 @@ pub struct Recommendation {
     /// **REPORT-ONLY** — does NOT change crowning, eligibility, or the gate bands.
     /// `crown_clears_dsr` is informational; never a veto in v2.
     pub scorecard: Scorecard,
+    /// Crown's coherent-tail + median summary (P1-2 / advisor-turnover-and-tail-metrics).
+    ///
+    /// Surfaced by the leaderboard's "Risk story" block — `CVaR` (coherent),
+    /// median terminal wealth, and skew, projected from the crown's 1 000-path
+    /// bootstrap `DistributionSummary`. `None` when the robustness gate ran in
+    /// `Skip` mode or the equity curve was too short for the bootstrap to
+    /// produce a summary.
+    ///
+    /// **REPORT-ONLY** — does NOT change crowning, ranking, or the FROZEN gate.
+    pub crown_tail: Option<TailSummary>,
 }
 
 /// Which honesty branch fired (drives the headline recommendation sentence).
@@ -1129,6 +1189,31 @@ pub async fn run_bakeoff(
         "Overfitting scorecard (report-only, ADR-0075)"
     );
 
+    // ── P1-2 Crown's coherent-tail + median summary (REPORT-ONLY) ────────────
+    //
+    // One additional `compute_robustness_distribution` call for the CROWN only
+    // (not the whole field — the panel describes the pick, not every arm).
+    // Mirrors how the scorecard is computed once at the end for the crown.
+    // **Bootstrap mode only** — `Skip` leaves `crown_tail = None`, which the UI
+    // mirrors to a `None`-tail (the Risk story block then paints nothing).
+    let crown_tail = match cfg.robustness {
+        RobustnessMode::Skip => None,
+        RobustnessMode::Bootstrap { paths, seed } => {
+            let master_seed = derive_master_seed(seed, crowned_idx);
+            compute_robustness_distribution(&crown_equity_decimals, paths, master_seed)
+                .map(|(summary, _verdict)| TailSummary::from_distribution(&summary))
+        }
+    };
+
+    tracing::debug!(
+        target: "bakeoff.tail",
+        cvar_95 = ?crown_tail.map(|t| t.cvar_95),
+        cvar_99 = ?crown_tail.map(|t| t.cvar_99),
+        median_terminal_wealth = ?crown_tail.map(|t| t.median_terminal_wealth),
+        skew = ?crown_tail.map(|t| t.skew),
+        "Crown tail summary (P1-2, report-only)"
+    );
+
     let rationale = Recommendation {
         outcome: ranking.outcome,
         winner: crowned_candidate.strategy.clone(),
@@ -1137,6 +1222,7 @@ pub async fn run_bakeoff(
         winner_robustness: crowned_candidate.robustness,
         reasons: ranking.reasons.clone(),
         scorecard: bakeoff_scorecard,
+        crown_tail,
     };
 
     Ok(BakeoffReport {

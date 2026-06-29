@@ -1754,6 +1754,62 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE",
             LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE,
         ),
+        // advisor-turnover-and-tail-metrics P1-1 — turnover column
+        ("LEADERBOARD_COL_TURNOVER", LEADERBOARD_COL_TURNOVER),
+        // advisor-turnover-and-tail-metrics P1-2 — Risk story tail/median block
+        ("LEADERBOARD_RISK_STORY_TITLE", LEADERBOARD_RISK_STORY_TITLE),
+        (
+            "LEADERBOARD_RISK_STORY_CAPTION",
+            LEADERBOARD_RISK_STORY_CAPTION,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_MEDIAN_LABEL",
+            LEADERBOARD_RISK_STORY_MEDIAN_LABEL,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_MEDIAN_HINT",
+            LEADERBOARD_RISK_STORY_MEDIAN_HINT,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_CVAR_95_LABEL",
+            LEADERBOARD_RISK_STORY_CVAR_95_LABEL,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_CVAR_99_LABEL",
+            LEADERBOARD_RISK_STORY_CVAR_99_LABEL,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_CVAR_HINT",
+            LEADERBOARD_RISK_STORY_CVAR_HINT,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_SKEW_LABEL",
+            LEADERBOARD_RISK_STORY_SKEW_LABEL,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_SKEW_HINT",
+            LEADERBOARD_RISK_STORY_SKEW_HINT,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_SORTINO_LABEL",
+            LEADERBOARD_RISK_STORY_SORTINO_LABEL,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_SORTINO_HINT",
+            LEADERBOARD_RISK_STORY_SORTINO_HINT,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_CALMAR_LABEL",
+            LEADERBOARD_RISK_STORY_CALMAR_LABEL,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_CALMAR_HINT",
+            LEADERBOARD_RISK_STORY_CALMAR_HINT,
+        ),
+        (
+            "LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE",
+            LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE,
+        ),
         // advisor-bakeoff-ranking F3 — guided input
         ("LEADERBOARD_PLAN_TITLE", LEADERBOARD_PLAN_TITLE),
         ("LEADERBOARD_COIN_LABEL", LEADERBOARD_COIN_LABEL),
@@ -2909,6 +2965,109 @@ pub const LEADERBOARD_SCORECARD_BEATS_HOLD_NO: &str =
 /// directly under the yes/no so the operator can't mistake it for the verdict.
 pub const LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE: &str =
     "Informational, not a gate \u{2014} this never changes the pick above.";
+
+// ── advisor-turnover-and-tail-metrics P1-1 — turnover column ──────────────────
+//
+// The "cost story" — how many times the strategy churned its capital. Surfaced
+// as a leaderboard column next to Trades so the operator sees the trading
+// behaviour behind the net number (presentation: "the turnover that explains
+// the net result").  REPORT-ONLY — does NOT touch crowning or ranking.
+
+/// Table column header — capital turnover ratio (trade notional / mean equity).
+/// One word, scannable. Right-aligned numeric column.
+pub const LEADERBOARD_COL_TURNOVER: &str = "Churn";
+
+// ── advisor-turnover-and-tail-metrics P1-2 — "Risk story" tail/median block ──
+//
+// The "tail / cost / median" honesty layer: what happens in the BAD 5 % / 1 %
+// of resampled paths, what the TYPICAL outcome actually looks like (median, not
+// mean), how the distribution is shaped (skew), and the downside-only /
+// drawdown-aware risk-adjusted measures (Sortino / Calmar) that complement the
+// crown's Sharpe.  Reads as an honesty self-check, NEVER a verdict — REPORT-ONLY
+// (v2-architecture §1 P1-2): never changes the pick, the rank, or the gate.
+//
+// Plain language, no jargon undefined: each term-of-art (CVaR, skew, Sortino,
+// Calmar) gets a one-line gloss (the no-jargon rule).  The block is sibling to
+// the scorecard's "show your work" — frame as "how bad the bad days get" + the
+// "typical outcome" + the "shape of the surprises".
+
+/// Title of the "Risk story" block — frames it as the operator's risk readout
+/// (presentation: "Risk story — drawdown & tail, not just average return").
+/// Sits beside the scorecard ("how much to trust") so the two honesty layers
+/// pair: trust + risk.
+pub const LEADERBOARD_RISK_STORY_TITLE: &str = "Risk story";
+
+/// One-line caption under the title — the honest framing: this is what the
+/// BAD 5 % of scenarios look like + how the typical (median) outcome compares
+/// to the headline average return.  Never a second verdict, never changes the
+/// pick.
+pub const LEADERBOARD_RISK_STORY_CAPTION: &str = "What the bad days look like, and what the typical outcome is \u{2014} \
+     report-only, never changes the pick above.";
+
+/// Label — "Typical outcome (median)" row.  The p50 of `final_equity` across
+/// the 1 000 bootstrap paths, in USDT.  Plain language for "median terminal
+/// wealth" — the operator-friendly counterpart to the mean Return (which is
+/// pulled by extreme winners).
+pub const LEADERBOARD_RISK_STORY_MEDIAN_LABEL: &str = "Typical outcome (median)";
+
+/// One-line gloss under the median value — defines why the operator should
+/// look at median, not mean (the no-jargon rule).
+pub const LEADERBOARD_RISK_STORY_MEDIAN_HINT: &str = "What the middle path actually ends at \u{2014} more representative than \
+     average (which gets pulled by extreme wins).";
+
+/// Label — "Average loss in the worst 5 % of paths" row.  `CVaR` at α=0.05 —
+/// expected shortfall on the worst-5 %-of-resampled-paths tail.  Framed in
+/// plain words so a non-expert understands the operator-visible meaning.
+pub const LEADERBOARD_RISK_STORY_CVAR_95_LABEL: &str = "Average loss in the worst 5 % of paths";
+
+/// Label — "Average loss in the worst 1 % of paths" row.  `CVaR` at α=0.01 —
+/// the extreme-tail complement to `CVaR_95`.
+pub const LEADERBOARD_RISK_STORY_CVAR_99_LABEL: &str = "Average loss in the worst 1 % of paths";
+
+/// One-line gloss under the two `CVaR` rows — names the metric (`CVaR` /
+/// expected shortfall) AND why it's coherent (sub-additive, unlike plain
+/// `VaR`).  The no-jargon rule + the load-bearing "`CVaR` not `VaR`" framing
+/// the doc is explicit about (P1-2 rationale).
+pub const LEADERBOARD_RISK_STORY_CVAR_HINT: &str = "Expected shortfall (CVaR) \u{2014} the average outcome in those bad-tail \
+     paths, not just the cut-off. CVaR is coherent (combines safely across \
+     portfolios), unlike plain VaR.";
+
+/// Label — "Surprise shape (skew)" row.  The third standardised central
+/// moment of `total_return` across the bootstrap paths.  Plain-language framing
+/// of distribution skew — positive = lottery-style (rare big wins), negative
+/// = crash-prone (rare big losses).
+pub const LEADERBOARD_RISK_STORY_SKEW_LABEL: &str = "Surprise shape (skew)";
+
+/// One-line gloss under the skew value — defines positive vs negative skew in
+/// operator-friendly terms (the no-jargon rule).
+pub const LEADERBOARD_RISK_STORY_SKEW_HINT: &str = "Positive = rare big wins (lottery-like); negative = rare big losses \
+     (crash-prone); near zero = symmetric.";
+
+/// Label — "Downside-only Sharpe (Sortino)" row.  The Sortino ratio already
+/// computed on `CandidateKpis.sortino` — just surfaced here, framed as
+/// "downside-only Sharpe" so the operator sees how it differs from Sharpe.
+pub const LEADERBOARD_RISK_STORY_SORTINO_LABEL: &str = "Downside-only Sharpe (Sortino)";
+
+/// One-line gloss under the Sortino value — names what Sortino is in plain
+/// words.
+pub const LEADERBOARD_RISK_STORY_SORTINO_HINT: &str = "Like Sharpe, but only counts downside swings as risk \u{2014} ignores \
+     upside volatility.";
+
+/// Label — "Return vs worst drawdown (Calmar)" row.  The Calmar ratio already
+/// on `CandidateKpis.calmar` — framed as the worst-case-adjusted version of
+/// the return number.
+pub const LEADERBOARD_RISK_STORY_CALMAR_LABEL: &str = "Return vs worst drawdown (Calmar)";
+
+/// One-line gloss under the Calmar value — Calmar in plain words.
+pub const LEADERBOARD_RISK_STORY_CALMAR_HINT: &str = "Annualised return divided by the worst peak-to-trough drop \u{2014} \
+     reward per unit of worst-case loss.";
+
+/// The load-bearing "informational, not a gate" note at the bottom of the
+/// Risk story block.  REPORT-ONLY (v2-architecture §1 P1-2 / §6.0 D3): every
+/// number in this block is honesty-only, never changes the pick / rank /
+/// gate.  Same shape as the scorecard's informational note.
+pub const LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE: &str =
+    "Informational, not a gate \u{2014} these never change the pick above.";
 
 // ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──────
 

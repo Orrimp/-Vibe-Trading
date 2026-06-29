@@ -1,8 +1,8 @@
 ---
 slug: advisor-turnover-and-tail-metrics
-status: dev-done
-owner: developer
-version: 0.1.0
+status: in-progress
+owner: ui-designer
+version: 0.2.0
 updated: 2026-06-29
 ---
 
@@ -73,7 +73,35 @@ updated: 2026-06-29
 - [ ] T14: `cargo test -p ui --lib` (additive, should pass)
   - NOTE: test blocked on artifact lock (by0rf36nk); HANDOFF to tester for final verify-and-tick
 
-## UI (ui-designer — later)
+## UI (ui-designer — done 2026-06-29 by Opus 4.7)
 
-- [ ] TUI1: Surface `turnover` column in the leaderboard table
-- [ ] TUI2: Surface `cvar_95` / `cvar_99` / `median_terminal_wealth` / `skew` in the scorecard/tail block
+- [x] TUI1: Surface `turnover` column in the leaderboard table
+  - file: `crates/ui/src/screens/leaderboard.rs` — new `LEADERBOARD_COL_TURNOVER`
+    header + `turnover_num_cell` + `format_turnover_ratio` (`"N.N×"`).
+  - layout: rightmost numeric column, `W_TURNOVER = 80.0` (narrower than
+    `W_NUM`). After `Trades` — same trading-activity half of the row.
+  - mirror: already shipped by the developer (`LeaderRow.turnover`, commit
+    `66286e2`); the UI populated the fixtures with realistic values for the
+    canonical `fake_bakeoff_report_mirror`.
+  - tests: `format_turnover_ratio_renders_one_decimal_with_x_suffix`
+    (`crates/ui/src/screens/leaderboard.rs::tests`).
+
+- [x] TUI2: Surface `cvar_95` / `cvar_99` / `median_terminal_wealth` / `skew` +
+      Sortino + Calmar in a `Risk story` `frame::panel`.
+  - mirror seam: NEW `backtest::TailSummary` on `Recommendation.crown_tail`
+    (small additive change — `[A]` per architect notation), mirrored to
+    `ui::leaderboard::TailSummaryView` + `BakeoffReportMirror.tail`. Crosses
+    as plain `f64` (zero new `ui` dep edge).
+  - render: `risk_story_block` rendered DIRECTLY UNDER the scorecard block
+    (the two honesty layers pair: trust + risk).
+  - strings: 13 new `LEADERBOARD_RISK_STORY_*` constants in `ui::strings`,
+    registered in `strings::all()`.
+  - tests: `crates/ui/tests/leaderboard_risk_story_render.rs` — populated +
+    negative control (`risk_story_block_paints_and_exceeds_no_tail`,
+    `risk_story_block_present_in_benchmark_wins_modal_case`); plus
+    `tail_summary_view_mirrors_a_populated_tail` (state.rs unit test);
+    plus `fmt_signed_pct_from_f64_renders_signed_one_decimal_with_unicode_minus`
+    and `format_signed_decimal_renders_signed_with_unicode_minus`
+    (screens/leaderboard.rs unit tests).
+  - PNG: `/tmp/leaderboard_risk_story_render.png` (populated) +
+    `/tmp/leaderboard_no_risk_story_render.png` (negative control).

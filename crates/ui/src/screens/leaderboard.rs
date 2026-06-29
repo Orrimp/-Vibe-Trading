@@ -62,27 +62,35 @@ use trading_core::{StrategyId, Symbol};
 
 use crate::leaderboard::state::{
     BakeoffReportMirror, LeaderRow, LeaderboardLookback, NarrationState, OutcomeKind, ReasonLabel,
-    RecommendationMirror, RobustnessLabel, ScorecardView,
+    RecommendationMirror, RobustnessLabel, ScorecardView, TailSummaryView,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     LEADERBOARD_BENCHMARK_FRAGILE_NOTE, LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_BUDGET_CONTEXT_FMT,
     LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN,
     LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES,
-    LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_TAG, LEADERBOARD_DISCLAIMER,
-    LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL, LEADERBOARD_ENSEMBLE_K2OF4_LABEL,
-    LEADERBOARD_ENSEMBLE_K3OF4_LABEL, LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
-    LEADERBOARD_ENSEMBLE_SAT_IN_CASH, LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL,
-    LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL, LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL,
-    LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL, LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX,
-    LEADERBOARD_EXPLAIN_BUTTON, LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT,
-    LEADERBOARD_EXPLAIN_LLM_LABEL, LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FRAGILE_TAG,
-    LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
+    LEADERBOARD_COL_TURNOVER, LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_TAG,
+    LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL,
+    LEADERBOARD_ENSEMBLE_K2OF4_LABEL, LEADERBOARD_ENSEMBLE_K3OF4_LABEL,
+    LEADERBOARD_ENSEMBLE_MAJORITY_LABEL, LEADERBOARD_ENSEMBLE_SAT_IN_CASH,
+    LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL, LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL,
+    LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
+    LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_EXPLAIN_BUTTON,
+    LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
+    LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE,
+    LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
     LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
     LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
     LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
-    LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
+    LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE,
+    LEADERBOARD_RISK_STORY_CALMAR_HINT, LEADERBOARD_RISK_STORY_CALMAR_LABEL,
+    LEADERBOARD_RISK_STORY_CAPTION, LEADERBOARD_RISK_STORY_CVAR_95_LABEL,
+    LEADERBOARD_RISK_STORY_CVAR_99_LABEL, LEADERBOARD_RISK_STORY_CVAR_HINT,
+    LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE, LEADERBOARD_RISK_STORY_MEDIAN_HINT,
+    LEADERBOARD_RISK_STORY_MEDIAN_LABEL, LEADERBOARD_RISK_STORY_SKEW_HINT,
+    LEADERBOARD_RISK_STORY_SKEW_LABEL, LEADERBOARD_RISK_STORY_SORTINO_HINT,
+    LEADERBOARD_RISK_STORY_SORTINO_LABEL, LEADERBOARD_RISK_STORY_TITLE, LEADERBOARD_ROBUST_TAG,
     LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
     LEADERBOARD_SCORECARD_BEATS_HOLD_NO, LEADERBOARD_SCORECARD_BEATS_HOLD_YES,
     LEADERBOARD_SCORECARD_CAPTION, LEADERBOARD_SCORECARD_CONFIDENCE_HINT,
@@ -114,6 +122,10 @@ use crate::widgets::num::{fmt_pct_signed, format_pct_max_dd, format_sharpe};
 const W_RANK: f32 = 28.0;
 /// Numeric cell width (Return / Sharpe / Max DD / Trades).
 const W_NUM: f32 = 110.0;
+/// Churn (turnover) cell width — narrower than `W_NUM` because the values are
+/// always short ("0.0×" / "1.4×" / "12.7×"). Keeps the table fitting at the
+/// 1920-wide leaderboard screenshot viewport.
+const W_TURNOVER: f32 = 80.0;
 
 /// Render the Leaderboard screen body.
 ///
@@ -447,6 +459,18 @@ fn ready_pane<'a>(
     // display-only, never the verdict.
     if let Some(sc) = &report.scorecard {
         stack = stack.push(scorecard_block(sc, mode));
+    }
+
+    // advisor-turnover-and-tail-metrics (P1-2) — the "Risk story" block. Sits
+    // BELOW the scorecard so the two honesty layers pair: trust (scorecard) +
+    // risk (tail/median). Rendered ONLY when the report carries the crown's
+    // tail summary; absent → no block (the negative control). Sortino/Calmar
+    // come from the crowned row (`CandidateKpis` already carried them for
+    // narration). REPORT-ONLY — display-only, never changes the pick.
+    if let Some(tail) = &report.tail
+        && let Some(crown) = report.crowned_row()
+    {
+        stack = stack.push(risk_story_block(tail, crown, mode));
     }
 
     // advisor-short-selling (T-U2 / T-U4) — when the field contains one or more
@@ -869,6 +893,174 @@ fn round_years(years: f64) -> String {
     format!("{y:.1}")
 }
 
+// ── Risk story block (advisor-turnover-and-tail-metrics P1-2) ─────────────────
+
+/// The "Risk story" honesty readout — a `frame::panel`-titled block rendering
+/// the REPORT-ONLY [`TailSummaryView`] + the crowned row's Sortino/Calmar in
+/// plain language (v2-architecture §1 P1-2).
+///
+/// Reads as a tail/median honesty self-check, NEVER a verdict: the title +
+/// caption frame it as "what the bad days look like, and what the typical
+/// outcome is", and the bottom carries the load-bearing "informational, not a
+/// gate" note so the operator can never mistake it for the pick.
+///
+/// Six facts, each `label : value` with a one-line plain-language gloss for
+/// the terms of art (`CVaR`, skew, Sortino, Calmar) per the no-jargon rule:
+/// - **Typical outcome (median)** — `median_terminal_wealth` in USDT.
+/// - **Worst-5 % `CVaR`** + **worst-1 % `CVaR`** — paired (one gloss covers both).
+/// - **Surprise shape (skew)** — `skew`, signed (positive = lottery).
+/// - **Sortino + Calmar** — the crown's downside-only + drawdown-adjusted
+///   Sharpe analogues (already on `CandidateKpis`; surfaced here as part of
+///   the "tail/median honesty layer").
+fn risk_story_block(
+    tail: &TailSummaryView,
+    crown: &LeaderRow,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    let caption = Text::new(LEADERBOARD_RISK_STORY_CAPTION)
+        .size(text::SMALL)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill);
+
+    // Typical outcome (median) — the honest "middle outcome" in USDT. Neutral
+    // colour (not pos/neg) — a typical outcome can be above or below the
+    // initial budget; the sentiment doesn't drive the read.
+    let median = risk_story_fact(
+        LEADERBOARD_RISK_STORY_MEDIAN_LABEL,
+        crate::widgets::num::fmt_usdt(
+            rust_decimal::Decimal::try_from(tail.median_terminal_wealth)
+                .unwrap_or(rust_decimal::Decimal::ZERO),
+        ),
+        Some(LEADERBOARD_RISK_STORY_MEDIAN_HINT),
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // Worst-5 % CVaR + Worst-1 % CVaR — paired rows, one shared CVaR gloss
+    // beneath the second so the term-of-art is defined once. Coloured DOWN_500
+    // (these are losses by construction — the bad-tail of the distribution).
+    let cvar_95 = risk_story_fact(
+        LEADERBOARD_RISK_STORY_CVAR_95_LABEL,
+        fmt_signed_pct_from_f64(tail.cvar_95),
+        None,
+        color::DOWN_500.current(mode),
+        mode,
+    );
+    let cvar_99 = risk_story_fact(
+        LEADERBOARD_RISK_STORY_CVAR_99_LABEL,
+        fmt_signed_pct_from_f64(tail.cvar_99),
+        Some(LEADERBOARD_RISK_STORY_CVAR_HINT),
+        color::DOWN_500.current(mode),
+        mode,
+    );
+
+    // Surprise shape (skew) — signed, three decimal places. Neutral colour:
+    // positive AND negative skew are both informational, neither is "good" or
+    // "bad" — the gloss explains the sign meaning. The sign and magnitude
+    // carry the signal (a `+`/`-` prefix is always present beyond colour).
+    let skew = risk_story_fact(
+        LEADERBOARD_RISK_STORY_SKEW_LABEL,
+        format_signed_decimal(tail.skew, 2),
+        Some(LEADERBOARD_RISK_STORY_SKEW_HINT),
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // Sortino + Calmar — the crown's already-carried downside-only +
+    // drawdown-adjusted ratios. Neutral colour for both — they're risk-adjusted
+    // ratios, not P&L, so the "good/bad" reading depends on context.
+    let sortino = risk_story_fact(
+        LEADERBOARD_RISK_STORY_SORTINO_LABEL,
+        format_signed_decimal(crown.sortino, 2),
+        Some(LEADERBOARD_RISK_STORY_SORTINO_HINT),
+        color::FG_1.current(mode),
+        mode,
+    );
+    let calmar = risk_story_fact(
+        LEADERBOARD_RISK_STORY_CALMAR_LABEL,
+        format_signed_decimal(crown.calmar, 2),
+        Some(LEADERBOARD_RISK_STORY_CALMAR_HINT),
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // The bottom "informational, not a gate" note — REPORT-ONLY (§1 P1-2).
+    let info_note = Text::new(LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE)
+        .size(text::MICRO)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill);
+
+    let body = Column::new()
+        .spacing(space::M)
+        .push(caption)
+        .push(median)
+        .push(cvar_95)
+        .push(cvar_99)
+        .push(skew)
+        .push(sortino)
+        .push(calmar)
+        .push(info_note);
+
+    frame::panel(LEADERBOARD_RISK_STORY_TITLE, body.into(), mode)
+}
+
+/// One Risk-story fact — same shape as [`scorecard_fact`] (label `MICRO` muted
+/// over a `value` `H3` `value_color` + optional one-line `hint` `SMALL` muted).
+/// Composed here so the two blocks are visually peer (both honesty readouts).
+fn risk_story_fact(
+    label: &'static str,
+    value: String,
+    hint: Option<&'static str>,
+    value_color: iced::Color,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    scorecard_fact(label, value, hint, value_color, mode)
+}
+
+/// Format a signed `f64` fraction (e.g. `-0.18` = a 18 % loss) as a signed
+/// percentage string with explicit `+`/`-` prefix.  Used for the `CVaR` rows —
+/// `CVaR` is always `≤ 0` by construction (the worst-tail mean of total
+/// returns), so the leading `-` is the operator-visible "you lose this much".
+fn fmt_signed_pct_from_f64(fraction: f64) -> String {
+    let pct = fraction * 100.0;
+    // Display only — round to one decimal place. Bounded `[-1, +infty)` in
+    // practice (a 100 % loss caps the worst path); the cast for the sign check
+    // is on `f64.is_sign_negative()` (no truncation).
+    if fraction.is_nan() {
+        // Defensive: NaN should not arrive (engine returns `f64::NAN` only for
+        // empty inputs which the bootstrap guards against), but render a
+        // visible placeholder rather than `NaN%`.
+        return "\u{2014}".to_string();
+    }
+    if pct == 0.0 || fraction == 0.0 {
+        return "0.0%".to_string();
+    }
+    if fraction.is_sign_negative() {
+        format!("{}{:.1}%", crate::strings::MINUS_SIGN_LITERAL, pct.abs())
+    } else {
+        format!("+{pct:.1}%")
+    }
+}
+
+/// Format a signed `f64` to `N` decimal places with explicit `+`/`-` prefix
+/// (using the unicode `MINUS_SIGN_LITERAL`).  Used for the skew, Sortino, and
+/// Calmar values — the sign carries the directional read (positive lottery /
+/// negative crash for skew; positive risk-adjusted / negative for the ratios).
+fn format_signed_decimal(value: f64, decimals: usize) -> String {
+    if value.is_nan() {
+        return "\u{2014}".to_string();
+    }
+    let abs = value.abs();
+    let body = format!("{abs:.decimals$}");
+    if value == 0.0 {
+        body
+    } else if value.is_sign_negative() {
+        format!("{}{body}", crate::strings::MINUS_SIGN_LITERAL)
+    } else {
+        format!("+{body}")
+    }
+}
+
 // ── The ranked table ──────────────────────────────────────────────────────────
 
 /// The leaderboard table — a header row + one row per candidate, in `ranked`
@@ -914,6 +1106,12 @@ fn leaderboard_table<'a>(
 
 /// The table header row — column labels in `MICRO` muted (the col-header
 /// convention). Numeric columns right-aligned to match the data rows.
+///
+/// **P1-1 turnover column ("Churn"):** the rightmost numeric column, sized
+/// narrower than the other numerics because turnover values are short
+/// ("0.0×" / "1.4×" / "12.7×"). Right of Trades because it's the same
+/// "trading-activity" half of the row (Trades = count; Churn = capital
+/// equivalents) — kept together for scanning.
 fn header_row(mode: ThemeMode) -> crate::Element<'static> {
     Row::new()
         .spacing(space::S)
@@ -924,6 +1122,7 @@ fn header_row(mode: ThemeMode) -> crate::Element<'static> {
         .push(col_head(LEADERBOARD_COL_SHARPE, W_NUM, true, mode))
         .push(col_head(LEADERBOARD_COL_MAX_DD, W_NUM, true, mode))
         .push(col_head(LEADERBOARD_COL_TRADES, W_NUM, true, mode))
+        .push(col_head(LEADERBOARD_COL_TURNOVER, W_TURNOVER, true, mode))
         .into()
 }
 
@@ -957,6 +1156,11 @@ fn col_head_fill(label: &'static str, mode: ThemeMode) -> crate::Element<'static
 /// `ACCENT` left rule) + `ACCENT` strategy text + a `★ best` tag; non-crowned
 /// rows are neutral. The benchmark row carries a `benchmark` tag. Numbers are
 /// right-aligned with `pos`/`neg`/`warn`-only colour.
+///
+/// Splitting this further would obscure the row-layout sequence (rank → strat
+/// + tags → numeric cells → click-wrap); the extras are the inline tag flags
+///   (crown / vote / short / benchmark / robustness) + the new `turnover_cell`.
+#[allow(clippy::too_many_lines)]
 fn data_row<'a>(
     rank: usize,
     leader: &'a LeaderRow,
@@ -1054,6 +1258,10 @@ fn data_row<'a>(
         crate::widgets::num::format_count(leader.trade_count as u64),
         color::FG_1.current(mode),
     );
+    // P1-1 (advisor-turnover-and-tail-metrics) — the "cost story" column.
+    // `0.0` for idle / no-fills (the buy-and-hold benchmark always sits here).
+    // The narrower `W_TURNOVER` width keeps the table fitting at 1920px.
+    let turnover_cell = turnover_num_cell(leader.turnover, color::FG_1.current(mode));
 
     let row = Row::new()
         .spacing(space::S)
@@ -1064,7 +1272,8 @@ fn data_row<'a>(
         .push(return_cell)
         .push(sharpe_cell)
         .push(dd_cell)
-        .push(trades_cell);
+        .push(trades_cell)
+        .push(turnover_cell);
 
     // Crowned rows get the 2 px ACCENT left rule (the active-row pattern);
     // non-crowned rows pass `active = false` (transparent rule, identical
@@ -1307,6 +1516,51 @@ fn num_cell(value: String, value_color: iced::Color) -> crate::Element<'static> 
         .into()
 }
 
+/// A right-aligned turnover cell at the narrower [`W_TURNOVER`] width.
+/// Formats the turnover ratio as `"N.N\u{00d7}"` (e.g. `"1.4×"`), the operator-
+/// friendly "this many capital-equivalents traded" framing (P1-1).
+fn turnover_num_cell(value: rust_decimal::Decimal, color: iced::Color) -> crate::Element<'static> {
+    Text::new(format_turnover_ratio(value))
+        .size(text::BODY)
+        .color(color)
+        .width(Length::Fixed(W_TURNOVER))
+        .align_x(iced::alignment::Horizontal::Right)
+        .into()
+}
+
+/// Format the turnover ratio as a short "N.N×" string. A ratio of `1.0` (the
+/// strategy churned its entire equity once) renders as `"1.0×"`; `0.0` (idle /
+/// no fills) as `"0.0×"`; `12.7` as `"12.7×"`. One decimal place — sub-tenth
+/// precision is noise for a churn readout the operator scans at a glance.
+///
+/// **Why `×` not `%`:** turnover here is a *ratio*, not a percentage, so the
+/// "×" suffix reads directly as "this many capital-equivalents". `350%` would
+/// be technically equivalent but confusing once the value exceeds 1.0 (a
+/// turnover of 12.7 reads worse as `1270%`).
+fn format_turnover_ratio(value: rust_decimal::Decimal) -> String {
+    // `Decimal::round_dp(1)` rounds to one decimal place using banker's
+    // rounding; safe + lossless for the display string.
+    let rounded = value.round_dp(1);
+    // `Decimal::to_string()` always renders the full scale, so a rounded `1.0`
+    // is the string `"1.0"` directly. Negative values shouldn't happen for
+    // turnover (it's `Σ|notional| / mean_equity` — non-negative by
+    // construction) but `Decimal::abs()` keeps the display defensive.
+    let abs = rounded.abs();
+    let raw = abs.to_string();
+    // Pad to exactly one fractional digit so "1" → "1.0".
+    let padded = if raw.contains('.') {
+        let (int, frac) = raw.split_once('.').unwrap_or((&raw, ""));
+        if frac.is_empty() {
+            format!("{int}.0")
+        } else {
+            format!("{int}.{}", &frac[..1])
+        }
+    } else {
+        format!("{raw}.0")
+    };
+    format!("{padded}\u{00d7}")
+}
+
 // ── Disclaimer ────────────────────────────────────────────────────────────────
 
 /// The persistent NOT-ADVICE + simulated-results disclaimer (product § D5).
@@ -1533,5 +1787,73 @@ mod tests {
                 "`{id}` is NOT a short arm — the `short` tag must not fire"
             );
         }
+    }
+
+    // ── P1-1 turnover formatting ────────────────────────────────────────────
+
+    /// The turnover ratio renders as a short "N.N×" string — the operator-
+    /// friendly "this many capital-equivalents traded" framing. Always exactly
+    /// one fractional digit so the column reads as a uniform grid.
+    #[test]
+    fn format_turnover_ratio_renders_one_decimal_with_x_suffix() {
+        use rust_decimal_macros::dec;
+        // Idle / no fills — the buy-and-hold benchmark sits here.
+        assert_eq!(format_turnover_ratio(dec!(0)), "0.0\u{00d7}");
+        // One full capital churn.
+        assert_eq!(format_turnover_ratio(dec!(1.0)), "1.0\u{00d7}");
+        // Sub-unit — rounded to one decimal.
+        assert_eq!(format_turnover_ratio(dec!(0.42)), "0.4\u{00d7}");
+        // Multi-capital churn — the active-trading case.
+        assert_eq!(format_turnover_ratio(dec!(12.74)), "12.7\u{00d7}");
+        // Pad missing fractional digit ("3" → "3.0×").
+        assert_eq!(format_turnover_ratio(dec!(3)), "3.0\u{00d7}");
+    }
+
+    // ── P1-2 risk-story formatting ──────────────────────────────────────────
+
+    /// `CVaR` rendering — signed-pct from `f64` fraction, leading `MINUS_SIGN_LITERAL`
+    /// (unicode minus) for negatives, `+` for positives, plain `0.0%` for zero.
+    /// One decimal place. `NaN` renders as the em-dash (defensive — engine
+    /// should not emit `NaN`, but a bare `NaN%` would be operator-hostile if
+    /// it did).
+    #[test]
+    fn fmt_signed_pct_from_f64_renders_signed_one_decimal_with_unicode_minus() {
+        use crate::strings::MINUS_SIGN_LITERAL;
+        assert_eq!(fmt_signed_pct_from_f64(0.0), "0.0%");
+        assert_eq!(fmt_signed_pct_from_f64(0.182), "+18.2%");
+        assert_eq!(
+            fmt_signed_pct_from_f64(-0.182),
+            format!("{MINUS_SIGN_LITERAL}18.2%")
+        );
+        // CVaR_99 is typically deeper than CVaR_95 — exercise the larger loss.
+        assert_eq!(
+            fmt_signed_pct_from_f64(-0.301),
+            format!("{MINUS_SIGN_LITERAL}30.1%")
+        );
+        // Defensive NaN guard.
+        assert_eq!(fmt_signed_pct_from_f64(f64::NAN), "\u{2014}");
+    }
+
+    /// Skew/Sortino/Calmar rendering — `format_signed_decimal` writes `+N.NN`
+    /// for positives, the unicode `-N.NN` for negatives, bare `N.NN` for zero.
+    /// The sign carries the directional read (positive skew = lottery; negative
+    /// skew = crash-prone) so a sign prefix is always present beyond colour
+    /// (accessibility — colour is never the only signal).
+    #[test]
+    fn format_signed_decimal_renders_signed_with_unicode_minus() {
+        use crate::strings::MINUS_SIGN_LITERAL;
+        // Positive skew (lottery-like).
+        assert_eq!(format_signed_decimal(0.42, 2), "+0.42");
+        // Negative skew (crash-prone).
+        assert_eq!(
+            format_signed_decimal(-0.42, 2),
+            format!("{MINUS_SIGN_LITERAL}0.42")
+        );
+        // Zero — no sign.
+        assert_eq!(format_signed_decimal(0.0, 2), "0.00");
+        // Multi-decimal — Sortino above 1 with two-dp precision.
+        assert_eq!(format_signed_decimal(1.95, 2), "+1.95");
+        // NaN guard.
+        assert_eq!(format_signed_decimal(f64::NAN, 2), "\u{2014}");
     }
 }

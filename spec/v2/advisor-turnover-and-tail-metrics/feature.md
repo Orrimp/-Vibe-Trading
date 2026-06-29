@@ -1,8 +1,8 @@
 ---
 slug: advisor-turnover-and-tail-metrics
-status: dev-done
-owner: developer
-version: 0.1.0
+status: in-progress
+owner: ui-designer
+version: 0.2.0
 updated: 2026-06-29
 ---
 
@@ -113,10 +113,12 @@ tail (crash-prone).  Zero on a symmetric distribution.
 
 ## Not in this increment
 
-- UI column rendering (ui-designer's call — `LeaderRow.turnover` is carried
-  for narration exactly as `sortino`/`calmar` are carried today).
-- CVaR / tail metrics exposed in the leaderboard table columns (ui-designer).
-- Annualised turnover rate (a future formatting decision).
+- Annualised turnover rate (a future formatting decision — the current
+  `"N.N×"` ratio is the operator-natural "this-many-capital-equivalents"
+  framing; the per-year scaling can be added later if needed).
+- Per-candidate tail summary (the current `crown_tail` is the CROWN only —
+  mirrors the scorecard's "one block per bake-off" precedent; per-row tail
+  expansion is a future polish if requested).
 
 ## Implementation
 
@@ -149,3 +151,168 @@ tail (crash-prone).  Zero on a symmetric distribution.
 - `cargo fmt -- --check`: `FMT_CHECK_EXIT: 0`
 - `bash scripts/verify_anchors.sh`: `ANCHORS PASS (119 / 119)`
 - `python3 scripts/spec_lint.py`: `spec-lint: PASS (0 violations)`
+
+## UI (advisor-turnover-and-tail-metrics, 2026-06-29 — Opus 4.7)
+
+The "cost story" + "tail / median honesty layer" surfaced on the leaderboard
+screen. Two new visible additions, both REPORT-ONLY (never feed the crown /
+rank / verdict — same discipline as the scorecard block).
+
+### Wireframe (post-feature leaderboard, ASCII)
+
+```text
+┌─ Strategy bake-off ─────────────────────────────────────────────────────────┐
+│ Headline + caption                                          [ Run bake-off ] │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Plan your bake-off (coin + budget + lookback + timeframe + capital)          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Ranking strategies for €200 in BTCUSDT.   13 strategies head-to-head…        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Recommendation                                                                │
+│   <headline> + <reasons / Explain control>                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ #  Strategy            Return   Sharpe   Max DD   Trades   Churn  ← NEW col  │
+│ 1  v0.sma  ★ best     +18.37%  1.4200   -6.12%   38       3.4×   ← P1-1     │
+│ 2  v0.5.macd          +9.21%   0.8800   -10.43%  64       5.8×              │
+│ …                                                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ How much to trust this              ← P0-1 scorecard (existing)              │
+│   Strategies tried · Deflated confidence · Min history · Beats holding?      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Risk story                          ← NEW P1-2 block                         │
+│   Typical outcome (median) ………………………… €104,500                              │
+│     "What the middle path actually ends at — more representative…"          │
+│   Average loss in the worst 5 % of paths …… −18.0 %                          │
+│   Average loss in the worst 1 % of paths …… −31.0 %                          │
+│     "Expected shortfall (CVaR) — coherent, unlike plain VaR…"               │
+│   Surprise shape (skew) ………………………………… +0.42                                  │
+│     "Positive = rare big wins; negative = rare big losses…"                 │
+│   Downside-only Sharpe (Sortino) ………………… +1.95                              │
+│   Return vs worst drawdown (Calmar) ……………… +2.32                            │
+│   Informational, not a gate — these never change the pick above.            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Not financial advice. Results are simulated…  (persistent)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### New screens / panels / widgets
+
+- **`Churn` column** in the ranked table (`screens/leaderboard.rs`): rightmost
+  numeric column, after `Trades`. Width `W_TURNOVER = 80.0` (narrower than the
+  other numerics — values are always short). Format helper
+  `format_turnover_ratio(Decimal) -> String` renders as `"N.N×"` (e.g.
+  `"3.4×"`, `"0.0×"`). One decimal place. The `×` glyph (`\u{00d7}`) directly
+  expresses "this many capital-equivalents" — unambiguous beyond `100 %` (a
+  turnover of 12.7× is `1270 %`, confusing once the value exceeds 1.0).
+- **`Risk story` panel** (`risk_story_block` in `screens/leaderboard.rs`):
+  rendered DIRECTLY UNDER the scorecard block when `BakeoffReportMirror.tail`
+  is `Some(..)`. `frame::panel` with the same chrome as `scorecard_block`. Six
+  facts, each via `risk_story_fact` (composed from `scorecard_fact`):
+  1. **Typical outcome (median)** — `median_terminal_wealth` via `fmt_usdt`,
+     neutral `FG_1` (a typical outcome can be above or below the budget).
+  2. **Average loss in the worst 5 % of paths** — `cvar_95` as a signed pct
+     via `fmt_signed_pct_from_f64`, `DOWN_500` (losses by construction).
+  3. **Average loss in the worst 1 % of paths** — `cvar_99`, same style.  The
+     shared CVaR gloss ("Expected shortfall (CVaR) — coherent, unlike plain
+     VaR") sits under this second row so the term-of-art is defined once.
+  4. **Surprise shape (skew)** — `skew` via `format_signed_decimal(_, 2)`,
+     neutral `FG_1` (positive AND negative skew are informational; the gloss
+     explains the sign meaning).
+  5. **Downside-only Sharpe (Sortino)** — crown row's `sortino` via the same
+     `format_signed_decimal(_, 2)`.
+  6. **Return vs worst drawdown (Calmar)** — crown row's `calmar`, same style.
+  Bottom `informational, not a gate` note (`MICRO` muted) makes the
+  REPORT-ONLY framing load-bearing — same shape as the scorecard's footer
+  note.
+
+### Backend wiring (a small additive change)
+
+- **`backtest::TailSummary`** (new struct) — four `f64` fields. Sibling of
+  `Scorecard` on `Recommendation`. Public-seam type so the `ui` mirror crosses
+  as plain scalars (no `DistributionSummary` import on the `ui` side).
+- **`Recommendation.crown_tail: Option<TailSummary>`** — the crown's tail/median
+  summary, projected from `compute_robustness_distribution` for the CROWNED
+  candidate only (mirrors how `Scorecard` is computed once at the end for the
+  crown). `None` when `RobustnessMode::Skip` or the curve was too short.
+- **`compute_robustness_flag` → `compute_robustness_distribution`** is NOT
+  changed (the per-candidate path still uses `compute_robustness_flag`, which
+  per the docstring "delegates to `compute_robustness_distribution` and
+  discards the summary — bit-identical"). The crown's distribution is a
+  *separate* call at the end, mirroring the scorecard path — small + isolated.
+
+### UI mirror seam (the invariant)
+
+- **`ui::leaderboard::TailSummaryView`** — four `f64` fields, identical to
+  `backtest::TailSummary`. The single mirror `from_tail` is the only `ui` site
+  that names the engine type.
+- **`BakeoffReportMirror.tail: Option<TailSummaryView>`** — projected from
+  `Recommendation.crown_tail` in `from_report`. `None` → no Risk story block
+  paints (the negative control).
+- **`LeaderRow.turnover`** was already mirrored by the developer in commit
+  `66286e2`; the UI just had to populate the column.
+- `ui` MUST NOT gain a dep on strategy/exec/llm/models — confirmed.  Only
+  `backtest` plain scalars cross the existing mirror boundary.
+
+### New strings in `ui::strings`
+
+P1-1 (turnover column):
+- `LEADERBOARD_COL_TURNOVER` ("Churn")
+
+P1-2 (Risk story block):
+- `LEADERBOARD_RISK_STORY_TITLE`
+- `LEADERBOARD_RISK_STORY_CAPTION`
+- `LEADERBOARD_RISK_STORY_MEDIAN_LABEL`
+- `LEADERBOARD_RISK_STORY_MEDIAN_HINT`
+- `LEADERBOARD_RISK_STORY_CVAR_95_LABEL`
+- `LEADERBOARD_RISK_STORY_CVAR_99_LABEL`
+- `LEADERBOARD_RISK_STORY_CVAR_HINT` (the shared "CVaR coherent, unlike VaR" gloss)
+- `LEADERBOARD_RISK_STORY_SKEW_LABEL` / `LEADERBOARD_RISK_STORY_SKEW_HINT`
+- `LEADERBOARD_RISK_STORY_SORTINO_LABEL` / `LEADERBOARD_RISK_STORY_SORTINO_HINT`
+- `LEADERBOARD_RISK_STORY_CALMAR_LABEL` / `LEADERBOARD_RISK_STORY_CALMAR_HINT`
+- `LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE`
+
+All registered in `strings::all()` for the future-localization seam.
+
+### New theme tokens
+
+**Zero new theme tokens** — every colour / spacing / radius / text size reuses
+existing tokens (`color::FG_1` / `FG_3` / `DOWN_500`; `space::M` / `XXS`;
+`radius::R4` via `frame::panel`; `text::H3` / `SMALL` / `MICRO` / `BODY`).
+One new layout constant `W_TURNOVER: f32 = 80.0` (a per-table column width —
+not a token, the same way `W_RANK` and `W_NUM` aren't tokens).
+
+### Accessibility notes
+
+- **Sign is always present beyond colour.** The CVaR rows always render the
+  unicode minus prefix (`\u{2212}`), and skew/Sortino/Calmar always show an
+  explicit `+`/`-` sign — colour is never the only signal.
+- **Right-aligned, single-decimal turnover column.** Reads as a clean grid in
+  the table.
+- **No new keyboard targets.** The Risk story block + the Churn column are
+  display-only — no buttons, no interaction surface beyond the existing
+  row-click that inspects in the Lab.
+- **Plain language for every term of art.** Every label has a one-line gloss
+  beneath ("median" → "the middle path's outcome"; "CVaR" → "expected
+  shortfall, coherent unlike VaR"; "skew" → "rare big wins vs rare big
+  losses"; "Sortino" → "downside-only Sharpe"; "Calmar" → "reward per unit of
+  worst-case loss") — the no-jargon human-friendliness rule.
+
+### Render-layer verification (CLAUDE.md non-negotiable)
+
+`crates/ui/tests/leaderboard_risk_story_render.rs` — populated + negative
+control on the 2-row `benchmark_wins` fixture (short table → block in
+viewport).
+- `risk_story_block_paints_and_exceeds_no_tail` — strict foreground delta
+  `> 1500 px` (vs scorecard's `> 1200` because 6 facts vs 4).
+- `risk_story_block_present_in_benchmark_wins_modal_case` — same fixture, but
+  asserts the modal "holding wins" case still paints the block + reads
+  sensibly (wider negative tail, mildly negative skew).
+- Writes `/tmp/leaderboard_risk_story_render.png`,
+  `/tmp/leaderboard_no_risk_story_render.png`,
+  `/tmp/leaderboard_risk_story_benchmark_wins_render.png` for operator
+  eyeball.
+
+The Churn column is exercised by the existing
+`leaderboard_populated_render.rs` (general table render — the new column
+inherits the standard numeric-cell discipline) plus the
+`format_turnover_ratio` unit test (`screens/leaderboard.rs::tests`).

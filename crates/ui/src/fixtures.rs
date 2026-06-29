@@ -1345,6 +1345,28 @@ pub fn fake_scorecard_view() -> crate::leaderboard::ScorecardView {
     }
 }
 
+/// A deterministic [`TailSummaryView`](crate::leaderboard::TailSummaryView) for the
+/// leaderboard "Risk story" block (advisor-turnover-and-tail-metrics, P1-2).
+/// Fixed numbers so the render guard is stable. Models a realistic crown:
+/// - **`CVaR_95`** = −18 % (the worst-5 %-of-paths average loss).
+/// - **`CVaR_99`** = −31 % (the extreme-tail complement, deeper than `CVaR_95`).
+/// - **Median terminal wealth** = ~105 000 USDT (modestly above the 100 000
+///   default start capital — the "typical outcome" reads as a small positive).
+/// - **Skew** = +0.42 (mildly right-skewed — a few outsized winners pull the
+///   tail; the OQ-3 "honest near-zero with positive surprises" shape).
+///
+/// Used by `fake_bakeoff_report_mirror*` so a populated leaderboard always has
+/// a populated Risk story block to render against.
+#[must_use]
+pub fn fake_tail_summary_view() -> crate::leaderboard::TailSummaryView {
+    crate::leaderboard::TailSummaryView {
+        cvar_95: -0.18,
+        cvar_99: -0.31,
+        median_terminal_wealth: 104_500.0,
+        skew: 0.42,
+    }
+}
+
 /// A populated, deterministic `BakeoffReportMirror` for the Leaderboard screen.
 ///
 /// The **full 13-arm advisor field** post-ADR-0067 (advisor-combination-search):
@@ -1386,7 +1408,9 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.1837),
             max_drawdown: dec!(0.0612),
             trade_count: 38,
-            turnover: Decimal::ZERO,
+            // P1-1 turnover: 38 trades + 50/50 buy/sell → ~3.4× capital churn.
+            // Realistic for an SMA-cross strategy over a 6-month window.
+            turnover: dec!(3.4),
             // The crowned arm — robust under resampling.
             robustness: Some(RobustnessLabel::Robust),
         },
@@ -1399,7 +1423,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0921),
             max_drawdown: dec!(0.1043),
             trade_count: 64,
-            turnover: Decimal::ZERO,
+            // P1-1 turnover: 64 trades → ~5.8× churn (MACD signals more often).
+            turnover: dec!(5.8),
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -1411,7 +1436,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(-0.0457),
             max_drawdown: dec!(0.1872),
             trade_count: 112,
-            turnover: Decimal::ZERO,
+            // P1-1 turnover: 112 trades → ~10.1× — high churn that cost the arm.
+            turnover: dec!(10.1),
             // A fragile single loser — exercises the warn tag in the table.
             robustness: Some(RobustnessLabel::Fragile),
         },
@@ -1424,7 +1450,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0388),
             max_drawdown: dec!(0.0921),
             trade_count: 47,
-            turnover: Decimal::ZERO,
+            // P1-1 turnover: 47 trades → ~4.2× churn (band-reversion entries).
+            turnover: dec!(4.2),
             robustness: Some(RobustnessLabel::Marginal),
         },
         // ── 8 vote ensembles (2 F8 + 6 combination-search, ADR-0067) ─────────
@@ -1440,7 +1467,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.2104),
             max_drawdown: dec!(0.0788),
             trade_count: 29,
-            turnover: Decimal::ZERO,
+            // 29 majority-vote trades → ~2.6× churn (vote-gated entries thin out signal).
+            turnover: dec!(2.6),
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1453,7 +1481,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             max_drawdown: dec!(0.0534),
             // Trades rarely (4-of-4 agreement is rare) but robust.
             trade_count: 9,
-            turnover: Decimal::ZERO,
+            // Rare unanimous-quorum trades → low churn (~0.8×).
+            turnover: dec!(0.8),
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -1555,7 +1584,9 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
-            turnover: Decimal::ZERO,
+            // P1-1 turnover: 1 entry + 1 final exit ≈ 1.0× capital churn — the
+            // honest "deployed capital once, held it" baseline.
+            turnover: dec!(1.0),
             robustness: Some(RobustnessLabel::Robust),
         },
     ];
@@ -1591,6 +1622,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
         },
         // P0-1 (ADR-0075): the report-only "show your work" scorecard.
         scorecard: Some(fake_scorecard_view()),
+        // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
+        tail: Some(fake_tail_summary_view()),
     }
 }
 
@@ -1777,6 +1810,8 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
         },
         // P0-1 (ADR-0075): the report-only "show your work" scorecard.
         scorecard: Some(fake_scorecard_view()),
+        // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
+        tail: Some(fake_tail_summary_view()),
     }
 }
 
@@ -2032,6 +2067,8 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             min_btl_years: 2.6,
             crown_clears_dsr: false,
         }),
+        // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
+        tail: Some(fake_tail_summary_view()),
     }
 }
 
@@ -2091,6 +2128,17 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             deflated_sharpe: 0.38,
             min_btl_years: 1.1,
             crown_clears_dsr: false,
+        }),
+        // P1-2 (advisor-turnover-and-tail-metrics): the BENCHMARK-WINS modal
+        // case still carries a tail summary — the crown (buy-and-hold) has its
+        // own bootstrap distribution. Wider negative tail (the single-asset
+        // hold itself is path-dependent on real crypto), slightly negative
+        // skew (drawdowns dominate). Report-only.
+        tail: Some(crate::leaderboard::TailSummaryView {
+            cvar_95: -0.24,
+            cvar_99: -0.41,
+            median_terminal_wealth: 102_300.0,
+            skew: -0.31,
         }),
     }
 }
@@ -2253,6 +2301,15 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             min_btl_years: 3.2,
             crown_clears_dsr: false,
         }),
+        // P1-2 (advisor-turnover-and-tail-metrics): wider negative tail
+        // matching the buy-and-hold honest path-dependence on this single
+        // volatile asset (B1). Report-only.
+        tail: Some(crate::leaderboard::TailSummaryView {
+            cvar_95: -0.26,
+            cvar_99: -0.44,
+            median_terminal_wealth: 101_800.0,
+            skew: -0.28,
+        }),
     }
 }
 
@@ -2412,6 +2469,8 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             min_btl_years: 3.3,
             crown_clears_dsr: false,
         }),
+        // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
+        tail: Some(fake_tail_summary_view()),
     }
 }
 

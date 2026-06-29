@@ -47,21 +47,23 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 // ── Region band ────────────────────────────────────────────────────────────────
 //
 // The progress strip is inserted between the "Plan your bake-off" input panel
-// and the budget-context line. Measured from the saved PNG: the form panel ends
-// ~y305, the strip's LABEL paints ~y327, and the BAR FILL paints ~y341–348 (an
-// 8px-tall track). The STRIP_FILL band is scoped tightly to the bar rows so the
-// budget-context text below (~y369 in the running frame) never confounds the
-// ACCENT_2 fill scan. A separate, wider LABEL band carries the label foreground.
+// and the budget-context line. Measured from the saved PNG (post tuning-knobs
+// + FX-hint additions to the input panel — commit b0aeb17 grew the form by a
+// row): the form panel ends ~y405, the strip's LABEL paints ~y414, and the
+// BAR FILL paints ~y429–435 (a 7px-tall track). The STRIP_FILL band is scoped
+// tightly to the bar rows so the budget-context text below (~y462 in the
+// running frame) never confounds the ACCENT_2 fill scan. A separate, wider
+// LABEL band carries the label foreground.
 
-/// Top of the BAR-FILL band — the 8px determinate track.
-const FILL_TOP: u32 = 338;
+/// Top of the BAR-FILL band — the 7px determinate track.
+const FILL_TOP: u32 = 425;
 /// Bottom of the BAR-FILL band.
-const FILL_BOTTOM: u32 = 352;
+const FILL_BOTTOM: u32 = 440;
 
 /// Top of the LABEL band — the "Running … — 4 of 7" line above the bar.
-const LABEL_TOP: u32 = 320;
+const LABEL_TOP: u32 = 405;
 /// Bottom of the LABEL band (just above the bar fill).
-const LABEL_BOTTOM: u32 = 338;
+const LABEL_BOTTOM: u32 = 425;
 
 /// `true` for an `ACCENT_2`-fill (#A6D5CF — R166 G213 B207) pixel: the lighter
 /// TEAL of the progress-bar FILL. The teal-ness gates `(g - r) > 20` AND
