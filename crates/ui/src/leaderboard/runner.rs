@@ -46,8 +46,9 @@ pub type BakeoffRunResult = Result<BakeoffReportMirror, SmolStr>;
 /// fallback. Binance-style symbol, resolved against the pinned hourly corpus.
 pub const DEFAULT_BAKEOFF_COIN: &str = "BTCUSDT";
 
-/// The advisor bake-off field: the 9 single rule engines (4 original + 5 ADR-0071
-/// signal-library arms) + the 8 F8/ADR-0067 vote ensembles + 1 ADR-0073 macro arm.
+/// The advisor bake-off field: 11 single rule engines (4 original, 5 ADR-0071
+/// signal-library arms, 1 ADR-0072 `v0.dvol_regime`, 1 ADR-0073 `v0.macro_riskon`)
+/// plus the 8 F8/ADR-0067 vote ensembles → 19 arms.
 /// Buy-and-hold is appended by `run_bakeoff`. The cockpit opts into the ensembles
 /// and the macro arm HERE — anchored paths are unaffected (anchor-additive contract;
 /// all new arms run `write_report=false`).
@@ -257,11 +258,12 @@ mod tests {
             ),
             "the advisor opts into the real bootstrap gate (ADR-0063)"
         );
-        // ADR-0071: field grew from 12 (4+8) to 17 (9+8) with the 5 new signal-library arms.
+        // Field lineage: 12 (4+8) -> 17 (+5 ADR-0071 signal-library arms) ->
+        // 19 (+1 ADR-0072 v0.dvol_regime, +1 ADR-0073 v0.macro_riskon).
         assert_eq!(
             cfg.request.field.len(),
-            17,
-            "9 single rule engines (4 original + 5 ADR-0071) + 8 vote ensembles"
+            19,
+            "11 single rule engines (4 original + 5 ADR-0071 + DVOL + macro_riskon) + 8 vote ensembles"
         );
         let ids: Vec<&str> = cfg.request.field.iter().map(|s| s.0.as_str()).collect();
         // F8 original arms must be present.
@@ -330,11 +332,11 @@ mod tests {
             other => panic!("OneMonth must map to a Custom window, got {other:?}"),
         }
         // Field / seed / source / gate match the default advisor contract.
-        // ADR-0071: field grew from 12 (4+8) to 17 (9+8) with the 5 new arms.
+        // Field lineage: 12 (4+8) -> 17 (+5 ADR-0071) -> 19 (+DVOL ADR-0072, +macro ADR-0073).
         assert_eq!(
             cfg.request.field.len(),
-            17,
-            "9 single rule engines (4 original + 5 ADR-0071) + 8 vote ensembles"
+            19,
+            "11 single rule engines (4 original + 5 ADR-0071 + DVOL + macro_riskon) + 8 vote ensembles"
         );
         assert!(matches!(
             cfg.data_source,

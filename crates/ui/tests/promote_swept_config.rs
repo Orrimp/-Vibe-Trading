@@ -1,5 +1,6 @@
 //! advisor-param-promotion (ADR-0070 § D4) — `PromoteSweptConfig` pure-state
 //! behaviour relay (the LOAD-BEARING wiring proof).
+#![allow(clippy::field_reassign_with_default)] // test helpers use Default + a single screen-flip; clippy-1.94 pedantry, idiom is fine
 //!
 //! ## Why this file is the wiring proof (not the render PNG)
 //!
