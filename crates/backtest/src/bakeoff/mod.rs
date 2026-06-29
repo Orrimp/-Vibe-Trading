@@ -641,6 +641,14 @@ pub struct CandidateKpis {
     pub max_drawdown: Decimal,
     /// Number of executed trades (buys + sells). From `RunReport.kpis.trade_count`.
     pub trade_count: usize,
+    /// Capital turnover ratio (P1-1 / advisor-turnover-and-tail-metrics, REPORT-ONLY).
+    ///
+    /// `Σ(fill.price × fill.qty) / mean_equity` — "how many times did the
+    /// strategy churn its capital?"  A ratio of 1.0 means total trade notional
+    /// equals mean equity; 0.0 for idle / buy-and-hold with zero fills.
+    ///
+    /// **Pure reporting — does NOT change crowning, ranking, or the FROZEN gate.**
+    pub turnover: Decimal,
 }
 
 /// One strategy's outcome in the bake-off (the leaderboard row).
@@ -746,6 +754,15 @@ pub struct BakeoffReport {
 /// stats functions (`compute_sharpe_hourly`, `compute_sortino_hourly`,
 /// `compute_calmar`).  Total-return + max-drawdown + trade-count come
 /// directly from `report.kpis` (no recomputation).
+///
+/// # Turnover (P1-1)
+///
+/// `turnover = Σ(fill.price × fill.qty) / mean_equity`
+///
+/// Sum of absolute trade notional (fill price × fill quantity, in USDT)
+/// divided by the arithmetic mean of the equity series.  Returns `Decimal::ZERO`
+/// when fills is empty OR the equity series is empty / mean is zero.
+/// Pure reporting — does NOT affect ranking or the FROZEN gate.
 #[must_use]
 pub fn derive_candidate_kpis(report: &RunReport) -> CandidateKpis {
     let equity: Vec<Decimal> = report
@@ -754,6 +771,30 @@ pub fn derive_candidate_kpis(report: &RunReport) -> CandidateKpis {
         .map(|(_, m)| m.amount())
         .collect();
 
+    // ── Turnover (P1-1) ───────────────────────────────────────────────────────
+    // Σ(fill.price × fill.qty) / mean_equity
+    // Decimal arithmetic throughout — no f64 in money calculations.
+    let turnover = {
+        let total_notional: Decimal = report
+            .fills
+            .iter()
+            .map(|f| f.price.get() * f.qty.get())
+            .fold(Decimal::ZERO, |acc, v| acc + v);
+
+        if equity.is_empty() || total_notional.is_zero() {
+            Decimal::ZERO
+        } else {
+            let n = Decimal::from(equity.len());
+            let sum_equity: Decimal = equity.iter().copied().fold(Decimal::ZERO, |acc, v| acc + v);
+            let mean_equity = sum_equity / n;
+            if mean_equity.is_zero() {
+                Decimal::ZERO
+            } else {
+                total_notional / mean_equity
+            }
+        }
+    };
+
     CandidateKpis {
         sharpe: compute_sharpe_hourly(&equity),
         sortino: compute_sortino_hourly(&equity),
@@ -761,6 +802,7 @@ pub fn derive_candidate_kpis(report: &RunReport) -> CandidateKpis {
         total_return_pct: report.kpis.total_return_pct,
         max_drawdown: report.kpis.max_drawdown,
         trade_count: report.kpis.trade_count,
+        turnover,
     }
 }
 
@@ -1053,6 +1095,7 @@ pub async fn run_bakeoff(
                 total_return_pct: Decimal::ZERO,
                 max_drawdown: Decimal::ZERO,
                 trade_count: 0,
+                turnover: Decimal::ZERO,
             }
         },
         |c| c.kpis,
@@ -1106,21 +1149,19 @@ pub async fn run_bakeoff(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
     use time::OffsetDateTime;
-    use trading_core::{Timestamp, Usdt};
+    use trading_core::fill::FeeTier;
+    use trading_core::{FillView, Money, Price, Quantity, Side, Symbol, Timestamp, Usdt};
 
     use crate::BacktestKpis;
 
-    /// Verify `derive_candidate_kpis` maps a 2-point equity curve correctly
-    /// (zero Sharpe on < 2 returns).
-    #[test]
-    fn derive_kpis_two_point_curve() {
-        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
-        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
-        let report = RunReport {
+    /// Build a minimal `RunReport` with no fills and a 2-point equity curve.
+    fn minimal_report(ts0: Timestamp, ts1: Timestamp) -> RunReport {
+        RunReport {
             equity_series: vec![
                 (ts0, Money::<Usdt>::from_decimal(dec!(100_000))),
                 (ts1, Money::<Usdt>::from_decimal(dec!(101_000))),
@@ -1139,7 +1180,30 @@ mod tests {
             report_path: None,
             bars: std::sync::Arc::new(vec![]),
             position_curve_raw: vec![],
-        };
+        }
+    }
+
+    /// Build a minimal `FillView` for turnover tests.
+    fn make_fill(price: Decimal, qty: Decimal) -> FillView {
+        FillView {
+            symbol: Symbol("BTCUSDT".into()),
+            side: Side::Buy,
+            price: Price::new(price).unwrap(),
+            qty: Quantity::new(qty).unwrap(),
+            fee: Money::<Usdt>::zero(),
+            fee_tier: FeeTier::Maker,
+            venue_ts: Timestamp::new(OffsetDateTime::UNIX_EPOCH),
+            transaction_id: smol_str::SmolStr::default(),
+        }
+    }
+
+    /// Verify `derive_candidate_kpis` maps a 2-point equity curve correctly
+    /// (zero Sharpe on < 2 returns).
+    #[test]
+    fn derive_kpis_two_point_curve() {
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
+        let report = minimal_report(ts0, ts1);
 
         let kpis = derive_candidate_kpis(&report);
         // Two-point equity curve → one log-return; Sharpe uses sample std
@@ -1148,5 +1212,196 @@ mod tests {
         assert_eq!(kpis.total_return_pct, dec!(0.01));
         assert_eq!(kpis.max_drawdown, dec!(0.02));
         assert_eq!(kpis.trade_count, 5);
+    }
+
+    // ── P1-1 turnover unit tests ──────────────────────────────────────────────
+
+    /// Idle strategy (no fills) → turnover = 0.
+    #[test]
+    fn turnover_idle_zero() {
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
+        let report = minimal_report(ts0, ts1);
+        let kpis = derive_candidate_kpis(&report);
+        assert_eq!(
+            kpis.turnover,
+            Decimal::ZERO,
+            "idle strategy must have zero turnover"
+        );
+    }
+
+    /// One buy-sell round-trip: `price=50_000`, `qty=0.04` -> notional = `2_000`.
+    /// Equity series = `[100_000, 100_000]` -> mean = `100_000`.
+    /// Expected turnover = `2_000 / 100_000 = 0.02`.
+    ///
+    /// Note: both fills (buy + sell) are included; each contributes notional
+    /// of `price x qty = 2_000`. Total = `4_000 / 100_000 = 0.04`.
+    #[test]
+    fn turnover_one_roundtrip() {
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
+
+        // equity stays flat at 100_000 for simplicity
+        let report = RunReport {
+            equity_series: vec![
+                (ts0, Money::<Usdt>::from_decimal(dec!(100_000))),
+                (ts1, Money::<Usdt>::from_decimal(dec!(100_000))),
+            ],
+            // buy 0.04 BTC @ 50_000 + sell 0.04 BTC @ 50_000
+            fills: vec![
+                make_fill(dec!(50_000), dec!(0.04)), // notional = 2_000
+                make_fill(dec!(50_000), dec!(0.04)), // notional = 2_000
+            ],
+            kpis: BacktestKpis {
+                final_equity: Money::<Usdt>::from_decimal(dec!(100_000)),
+                initial_equity: Money::<Usdt>::from_decimal(dec!(100_000)),
+                max_drawdown: Decimal::ZERO,
+                trade_count: 2,
+                total_fees: Money::<Usdt>::zero(),
+                buys: 1,
+                sells: 1,
+                total_return_pct: Decimal::ZERO,
+            },
+            report_path: None,
+            bars: std::sync::Arc::new(vec![]),
+            position_curve_raw: vec![],
+        };
+
+        let kpis = derive_candidate_kpis(&report);
+        // total_notional = 2_000 + 2_000 = 4_000
+        // mean_equity = 100_000
+        // turnover = 4_000 / 100_000 = 0.04
+        let expected = dec!(0.04);
+        assert_eq!(
+            kpis.turnover, expected,
+            "one round-trip turnover: got {}, expected {expected}",
+            kpis.turnover
+        );
+    }
+
+    /// Multi-trade: verify `Σ(price × qty) / mean_equity` scales correctly.
+    ///
+    /// 3 fills: `(30_000 × 0.1)`, `(40_000 × 0.2)`, `(50_000 × 0.05)`
+    /// = `3_000 + 8_000 + 2_500 = 13_500`
+    /// Equity: `[100_000, 110_000, 120_000]` -> mean = `110_000`
+    /// turnover = `13_500 / 110_000` ~= 0.122727...
+    #[test]
+    fn turnover_multi_trade() {
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let ts1 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(1));
+        let ts2 = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::hours(2));
+
+        let report = RunReport {
+            equity_series: vec![
+                (ts0, Money::<Usdt>::from_decimal(dec!(100_000))),
+                (ts1, Money::<Usdt>::from_decimal(dec!(110_000))),
+                (ts2, Money::<Usdt>::from_decimal(dec!(120_000))),
+            ],
+            fills: vec![
+                make_fill(dec!(30_000), dec!(0.1)),  // 3_000
+                make_fill(dec!(40_000), dec!(0.2)),  // 8_000
+                make_fill(dec!(50_000), dec!(0.05)), // 2_500
+            ],
+            kpis: BacktestKpis {
+                final_equity: Money::<Usdt>::from_decimal(dec!(120_000)),
+                initial_equity: Money::<Usdt>::from_decimal(dec!(100_000)),
+                max_drawdown: Decimal::ZERO,
+                trade_count: 3,
+                total_fees: Money::<Usdt>::zero(),
+                buys: 2,
+                sells: 1,
+                total_return_pct: dec!(0.2),
+            },
+            report_path: None,
+            bars: std::sync::Arc::new(vec![]),
+            position_curve_raw: vec![],
+        };
+
+        let kpis = derive_candidate_kpis(&report);
+        // total_notional = 13_500; mean_equity = 330_000 / 3 = 110_000
+        let expected = dec!(13_500) / dec!(110_000);
+        let diff = (kpis.turnover - expected).abs();
+        assert!(
+            diff < dec!(0.000_001),
+            "multi-trade turnover: got {}, expected {expected}",
+            kpis.turnover
+        );
+    }
+
+    // ── Frozen-gate identity: turnover does NOT change crowning ───────────────
+
+    /// Prove that `rank_candidates` produces BYTE-IDENTICAL output before and
+    /// after the `turnover` field is populated on `CandidateKpis`.
+    ///
+    /// The `rank_candidates` function reads only: `sharpe`, `sortino`, `calmar`,
+    /// `total_return_pct`, `max_drawdown`, `is_benchmark`, `robustness`.
+    /// It does NOT read `turnover` or `trade_count` — so adding the field cannot
+    /// change the crown, outcome, or ranking order.
+    #[test]
+    fn turnover_does_not_change_ranking() {
+        use crate::bakeoff::rank::rank_candidates;
+
+        let make_candidate = |id: &'static str, sharpe: f64, is_benchmark: bool| CandidateResult {
+            strategy: StrategyId(smol_str::SmolStr::new_static(id)),
+            is_benchmark,
+            kpis: CandidateKpis {
+                sharpe,
+                sortino: sharpe * 0.8,
+                calmar: sharpe * 0.5,
+                total_return_pct: dec!(0.1),
+                max_drawdown: dec!(0.05),
+                trade_count: 10,
+                turnover: Decimal::ZERO, // before
+            },
+            equity_curve: vec![],
+            robustness: Some(RobustnessFlag::Robust),
+        };
+
+        let candidates_before = vec![
+            make_candidate("v0.sma", 1.5, false),
+            make_candidate("v0.macd", 0.9, false),
+            make_candidate("v0.buyhold", 1.1, true),
+        ];
+
+        let ranking_before = rank_candidates(&candidates_before);
+
+        // Now build the same candidates with non-zero turnover.
+        let make_candidate_with_turnover =
+            |id: &'static str, sharpe: f64, is_benchmark: bool, to: Decimal| CandidateResult {
+                strategy: StrategyId(smol_str::SmolStr::new_static(id)),
+                is_benchmark,
+                kpis: CandidateKpis {
+                    sharpe,
+                    sortino: sharpe * 0.8,
+                    calmar: sharpe * 0.5,
+                    total_return_pct: dec!(0.1),
+                    max_drawdown: dec!(0.05),
+                    trade_count: 10,
+                    turnover: to,
+                },
+                equity_curve: vec![],
+                robustness: Some(RobustnessFlag::Robust),
+            };
+
+        let candidates_after = vec![
+            make_candidate_with_turnover("v0.sma", 1.5, false, dec!(0.5)),
+            make_candidate_with_turnover("v0.macd", 0.9, false, dec!(1.2)),
+            make_candidate_with_turnover("v0.buyhold", 1.1, true, dec!(0.01)),
+        ];
+
+        let ranking_after = rank_candidates(&candidates_after);
+
+        assert_eq!(
+            ranking_before.crowned, ranking_after.crowned,
+            "crowned index changed after adding turnover!"
+        );
+        assert_eq!(
+            ranking_before.outcome, ranking_after.outcome,
+            "outcome changed after adding turnover!"
+        );
+        assert_eq!(
+            ranking_before.order, ranking_after.order,
+            "ranking order changed after adding turnover!"
+        );
     }
 }

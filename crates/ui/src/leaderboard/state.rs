@@ -59,6 +59,16 @@ pub struct LeaderRow {
     pub max_drawdown: Decimal,
     /// Number of executed trades (buys + sells).
     pub trade_count: usize,
+    /// Capital turnover ratio (P1-1 / advisor-turnover-and-tail-metrics, REPORT-ONLY).
+    ///
+    /// `Σ(fill.price × fill.qty) / mean_equity` — "how many times did the
+    /// strategy churn its capital?"  Mirrored from `CandidateKpis.turnover`.
+    /// `0.0` for idle / buy-and-hold with no fills.
+    ///
+    /// **NOT displayed in the leaderboard table columns yet** (carried for
+    /// narration, exactly as `sortino`/`calmar` are today — the ui-designer
+    /// surfaces it in a later increment).
+    pub turnover: Decimal,
     /// Robustness flag mirrored as a display string, `None` when the gate was
     /// not run (`RobustnessMode::Skip`). One of `"robust"` / `"marginal"` /
     /// `"fragile"` / `"not checked"`.
@@ -305,6 +315,8 @@ impl BakeoffReportMirror {
                 total_return_pct: c.kpis.total_return_pct,
                 max_drawdown: c.kpis.max_drawdown,
                 trade_count: c.kpis.trade_count,
+                // P1-1: mirror turnover (report-only; not displayed in table columns yet).
+                turnover: c.kpis.turnover,
                 robustness: c.robustness.map(robustness_label),
             })
             .collect();
@@ -858,6 +870,7 @@ mod tests {
             total_return_pct: dec!(0.05),
             max_drawdown: dec!(0.10),
             trade_count: 12,
+            turnover: Decimal::ZERO,
             robustness: None,
         }
     }

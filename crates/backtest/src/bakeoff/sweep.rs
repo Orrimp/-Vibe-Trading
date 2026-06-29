@@ -1215,6 +1215,11 @@ fn fallback_distribution_summary() -> DistributionSummary {
         prob_sharpe_gt_1: 0.0,
         max_dd_tail_p50: 1.0,
         max_dd_tail_p95: 1.0,
+        // P1-2 fallback values (worst-case for a failed/timeout distribution).
+        cvar_95: -1.0,
+        cvar_99: -1.0,
+        median_terminal_wealth: 0.0,
+        skew: 0.0,
     }
 }
 

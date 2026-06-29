@@ -303,6 +303,10 @@ pub struct MetricDistribution {
 ///
 /// Built by [`DistributionSummary::from_path_metrics`]. The `max_dd_tail_*`
 /// fields are the headline `paper→live` gate numbers (ADR-0051 D4 / feature R2.2).
+///
+/// The four P1-2 fields (`cvar_95`, `cvar_99`, `median_terminal_wealth`, `skew`)
+/// are additive report-only metrics (v2 advisor-turnover-and-tail-metrics).
+/// They do NOT change the frozen gate or rankings.
 #[derive(Debug, Clone)]
 pub struct DistributionSummary {
     /// Distribution of annualised Sharpe ratio across N paths.
@@ -325,6 +329,39 @@ pub struct DistributionSummary {
     pub max_dd_tail_p50: f64,
     /// Headline gate number: p95 of max-drawdown across paths (tail risk).
     pub max_dd_tail_p95: f64,
+
+    // ── P1-2 coherent tail + median metrics (v2, REPORT-ONLY) ────────────────
+    //
+    // CVaR (Conditional Value-at-Risk / Expected Shortfall) is used instead of
+    // VaR because CVaR is sub-additive (coherent): the risk of a combined
+    // portfolio never exceeds the sum of the individual risks.  VaR is NOT
+    // sub-additive and can reward concentration — see feature.md P1-2 rationale.
+    //
+    // Computed over `total_return` (a fraction, comparable across budget sizes).
+    // The FROZEN gate (`classify_verdict` / `rank_candidates`) does NOT read
+    // these fields — they are pure report additions.
+    /// Expected shortfall at α = 0.05: mean of the worst 5% of paths by `total_return`.
+    ///
+    /// "Expected loss in the worst 5% of simulated scenarios."
+    /// Conditional value-at-risk (coherent / sub-additive); preferred over plain var.
+    pub cvar_95: f64,
+
+    /// Expected shortfall at α = 0.01: mean of the worst 1% of paths by `total_return`.
+    ///
+    /// The extreme-tail complement to `cvar_95`.
+    pub cvar_99: f64,
+
+    /// Median terminal wealth: p50 of `final_equity` (as f64) across N paths.
+    ///
+    /// Answers "what does the middle outcome actually look like in dollars?"
+    /// More representative than mean wealth (which is pulled by extreme wins).
+    pub median_terminal_wealth: f64,
+
+    /// Skew of `total_return` across N paths: 3rd standardised central moment.
+    ///
+    /// Positive → right tail (lottery-style gains); negative → left tail
+    /// (crash-prone).  Zero on a symmetric distribution.
+    pub skew: f64,
 }
 
 /// Per-path metrics collected by the harness for one ensemble path.
@@ -363,6 +400,8 @@ impl DistributionSummary {
     /// Returns [`DistributionError::EmptyMetrics`] if `metrics` is empty, or
     /// [`DistributionError::NanValue`] if any per-path metric is `NaN`.
     pub fn from_path_metrics(metrics: &[PathMetrics]) -> Result<Self, DistributionError> {
+        use rust_decimal::prelude::ToPrimitive;
+
         if metrics.is_empty() {
             return Err(DistributionError::EmptyMetrics);
         }
@@ -403,6 +442,32 @@ impl DistributionSummary {
         #[allow(clippy::cast_precision_loss)]
         let prob_sharpe_gt_1 = sharpe_gt_1_count as f64 / n as f64;
 
+        // ── P1-2 coherent tail + median metrics (REPORT-ONLY, no gate impact) ──
+        //
+        // CVaR_α = mean of the worst α-fraction of total_return paths.
+        // Computed over `total_return` (a fraction — comparable across budgets).
+        // Uses the sorted total_ret vector (already sorted via `reduce_samples`
+        // sort — but we need an explicit sort here since we only have `total_ret_dist`
+        // from `reduce_samples`, not the sorted slice directly).
+        //
+        // We sort a copy of `total_ret_vals` for the CVaR tail reduction.
+        // ADR-0051 D2 specifies `total_cmp` sort for NaN-safe total order.
+        let cvar_95 = compute_cvar(&total_ret_vals, 0.05);
+        let cvar_99 = compute_cvar(&total_ret_vals, 0.01);
+
+        // Median terminal wealth: p50 of final_equity (as f64) across paths.
+        // `final_equity` is `Decimal`; we convert to f64 for the statistical layer
+        // (consistent with ADR-0003 / R-NR.3 convention for the stats layer).
+        let mut final_equity_f64: Vec<f64> = metrics
+            .iter()
+            .map(|m| m.final_equity.to_f64().unwrap_or(0.0))
+            .collect();
+        final_equity_f64.sort_by(f64::total_cmp);
+        let median_terminal_wealth = linear_percentile(&final_equity_f64, 50.0);
+
+        // Skew of `total_return` across N paths: 3rd standardised central moment.
+        let skew = compute_distribution_skew(&total_ret_vals);
+
         Ok(Self {
             sharpe: sharpe_dist,
             sortino: sortino_dist,
@@ -414,6 +479,10 @@ impl DistributionSummary {
             prob_sharpe_gt_1,
             max_dd_tail_p50,
             max_dd_tail_p95,
+            cvar_95,
+            cvar_99,
+            median_terminal_wealth,
+            skew,
         })
     }
 }
@@ -525,6 +594,68 @@ fn linear_percentile(sorted: &[f64], p: f64) -> f64 {
     }
 }
 
+// ── P1-2 coherent tail helpers ────────────────────────────────────────────────
+
+/// Compute Expected Shortfall (conditional value-at-risk) over `total_return` samples.
+///
+/// Result = mean of the worst α-fraction of returns.
+///
+/// For α = 0.05: `cvar_95` — mean of the bottom 5% of paths.
+/// For α = 0.01: `cvar_99` — mean of the bottom 1% of paths.
+///
+/// Coherent / sub-additive risk measure; preferred over plain percentile var.
+/// See feature.md P1-2.
+///
+/// The tail is taken as `floor(α × N)` elements from the sorted-ascending slice.
+/// If `floor(α × N) == 0` (very small N), returns the minimum value (a single
+/// worst-case observation — conservative).
+///
+/// Returns 0.0 on empty input.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
+fn compute_cvar(samples: &[f64], alpha: f64) -> f64 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let mut sorted = samples.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let n = sorted.len();
+    // tail_count = floor(alpha * N), at least 1.
+    let tail_count = ((alpha * n as f64).floor() as usize).max(1);
+    let tail = &sorted[..tail_count];
+    tail.iter().sum::<f64>() / tail_count as f64
+}
+
+/// Compute the 3rd standardised central moment (skew) of a sample.
+///
+/// `skew = E[(r − μ)³] / σ³`
+///
+/// Returns 0.0 for fewer than 3 observations or zero standard deviation.
+/// This is the population skew (divisor N) — consistent with the existing
+/// `compute_distribution_skew` conventions in this module.
+#[allow(clippy::cast_precision_loss)]
+fn compute_distribution_skew(samples: &[f64]) -> f64 {
+    let n = samples.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let n_f = n as f64;
+    let mean = samples.iter().sum::<f64>() / n_f;
+    let var = samples.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n_f;
+    let std = var.sqrt();
+    if std < 1e-15 {
+        return 0.0;
+    }
+    samples
+        .iter()
+        .map(|&x| ((x - mean) / std).powi(3))
+        .sum::<f64>()
+        / n_f
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Unit tests — M-DEV-2 acceptance gate
 // ─────────────────────────────────────────────────────────────────────────────
@@ -536,7 +667,8 @@ fn linear_percentile(sorted: &[f64], p: f64) -> f64 {
     clippy::cast_precision_loss,
     clippy::cast_lossless,
     clippy::float_cmp,
-    clippy::assertions_on_constants
+    clippy::assertions_on_constants,
+    clippy::doc_markdown
 )]
 mod tests {
     use super::*;
@@ -1047,5 +1179,233 @@ mod tests {
             "P(loss)={:.6} expected 0.25",
             summary.prob_loss
         );
+    }
+
+    // ── P1-2 CVaR / median / skew unit tests ─────────────────────────────────
+
+    /// CVaR_0.05 on 20 uniform returns [−19/20, −18/20, …, 0].
+    ///
+    /// Sorted ascending: [−0.95, −0.90, …, 0.0].
+    /// 5% tail = floor(0.05 * 20) = 1 element: [−0.95].
+    /// CVaR = −0.95.
+    #[test]
+    fn cvar_uniform_n20_closed_form() {
+        // 20 returns: −0.95, −0.90, … , 0.0 (step 0.05)
+        let samples: Vec<f64> = (0..20).map(|i| -0.95 + i as f64 * 0.05).collect();
+        // floor(0.05 * 20) = 1; worst element = −0.95
+        let cvar = compute_cvar(&samples, 0.05);
+        assert!(
+            (cvar - (-0.95)).abs() < 1e-12,
+            "CVaR_0.05 on uniform: got {cvar}, expected -0.95"
+        );
+    }
+
+    /// CVaR_0.05 on 100 returns [−0.99, −0.98, …, 0.00].
+    ///
+    /// 5% tail = floor(0.05 * 100) = 5 elements: [−0.99, −0.98, −0.97, −0.96, −0.95].
+    /// CVaR = mean = (−0.99 − 0.98 − 0.97 − 0.96 − 0.95) / 5 = −0.97.
+    #[test]
+    fn cvar_uniform_n100_closed_form() {
+        let samples: Vec<f64> = (0..100).map(|i| -0.99 + i as f64 * 0.01).collect();
+        // worst 5 = [−0.99, −0.98, −0.97, −0.96, −0.95]; mean = −0.97
+        let cvar = compute_cvar(&samples, 0.05);
+        assert!(
+            (cvar - (-0.97)).abs() < 1e-10,
+            "CVaR_0.05 on n=100 uniform: got {cvar}, expected -0.97"
+        );
+    }
+
+    /// CVaR_0.01 on 100 returns: bottom 1% = 1 element = minimum.
+    #[test]
+    fn cvar_99_equals_min_on_n100() {
+        let samples: Vec<f64> = (0..100).map(|i| -0.99 + i as f64 * 0.01).collect();
+        let cvar = compute_cvar(&samples, 0.01);
+        // floor(0.01 * 100) = 1; worst 1 = [−0.99]
+        assert!(
+            (cvar - (-0.99)).abs() < 1e-12,
+            "CVaR_0.01: got {cvar}, expected -0.99"
+        );
+    }
+
+    /// CVaR on empty returns 0.0 (not NaN, not panic).
+    #[test]
+    fn cvar_empty_returns_zero() {
+        assert_eq!(compute_cvar(&[], 0.05), 0.0);
+        assert_eq!(compute_cvar(&[], 0.01), 0.0);
+    }
+
+    /// CVaR is always ≤ the α-percentile of the distribution (the ES/CVaR property).
+    /// For a strictly sorted set, CVaR_0.05 ≤ VaR_5 (the 5th-percentile value).
+    #[test]
+    fn cvar_le_var_property() {
+        // Linearly spaced [−1, 0] with 200 elements.
+        let samples: Vec<f64> = (0..200).map(|i| -1.0 + i as f64 / 199.0).collect();
+        let cvar = compute_cvar(&samples, 0.05);
+        // VaR_5 ≈ the 5th percentile ≈ −0.95 (the boundary of the worst 5%).
+        // CVaR should be below (more negative than) the VaR boundary.
+        assert!(cvar < -0.90, "CVaR_0.05 should be in the deep tail: {cvar}");
+    }
+
+    /// Skew is zero on a perfectly symmetric distribution [−3, −2, −1, 0, 1, 2, 3].
+    #[test]
+    fn skew_zero_on_symmetric() {
+        let sym: Vec<f64> = (-3..=3).map(|i| i as f64).collect();
+        let s = compute_distribution_skew(&sym);
+        assert!(s.abs() < 1e-12, "skew of symmetric should be 0, got {s}");
+    }
+
+    /// Skew is positive on a right-skewed distribution.
+    ///
+    /// [0, 0, 0, 10] → mean = 2.5, dominated by one extreme positive value.
+    #[test]
+    fn skew_positive_on_right_skewed() {
+        let s = compute_distribution_skew(&[0.0, 0.0, 0.0, 10.0]);
+        assert!(
+            s > 0.0,
+            "right-skewed distribution should have positive skew, got {s}"
+        );
+    }
+
+    /// Skew is negative on a left-skewed distribution.
+    ///
+    /// [0, 0, 0, −10] → skew < 0.
+    #[test]
+    fn skew_negative_on_left_skewed() {
+        let s = compute_distribution_skew(&[0.0, 0.0, 0.0, -10.0]);
+        assert!(
+            s < 0.0,
+            "left-skewed distribution should have negative skew, got {s}"
+        );
+    }
+
+    /// Skew returns 0.0 for fewer than 3 observations.
+    #[test]
+    fn skew_degenerate_small_n() {
+        assert_eq!(compute_distribution_skew(&[]), 0.0);
+        assert_eq!(compute_distribution_skew(&[1.0]), 0.0);
+        assert_eq!(compute_distribution_skew(&[1.0, 2.0]), 0.0);
+    }
+
+    /// `DistributionSummary::from_path_metrics` populates all four P1-2 fields.
+    ///
+    /// Hand-built 4-path vector:
+    /// total_return = [−0.3, 0.0, 0.1, 0.5]
+    /// CVaR_0.05: floor(0.05*4)=0 → max(1, 0)=1 path; worst = −0.3 → CVaR = −0.3
+    /// CVaR_0.01: same → −0.3
+    /// median_terminal_wealth: p50 of [80k, 100k, 110k, 150k] = (100k+110k)/2 = 105k
+    /// skew: computed over [−0.3, 0.0, 0.1, 0.5]
+    ///   mean = 0.075, σ = sqrt(mean((r−μ)²))
+    ///   numerically should be positive (right tail at 0.5 dominates).
+    #[test]
+    fn distribution_summary_p1_2_fields_populated() {
+        let metrics = vec![
+            PathMetrics {
+                sharpe: -1.0,
+                sortino: -1.0,
+                calmar: 0.0,
+                max_drawdown: 0.3,
+                total_return: -0.3,
+                final_equity: dec!(70000),
+                initial_equity: dec!(100000),
+            },
+            PathMetrics {
+                sharpe: 0.0,
+                sortino: 0.0,
+                calmar: 0.0,
+                max_drawdown: 0.1,
+                total_return: 0.0,
+                final_equity: dec!(100000),
+                initial_equity: dec!(100000),
+            },
+            PathMetrics {
+                sharpe: 0.5,
+                sortino: 0.6,
+                calmar: 0.1,
+                max_drawdown: 0.05,
+                total_return: 0.1,
+                final_equity: dec!(110000),
+                initial_equity: dec!(100000),
+            },
+            PathMetrics {
+                sharpe: 2.0,
+                sortino: 2.4,
+                calmar: 0.8,
+                max_drawdown: 0.02,
+                total_return: 0.5,
+                final_equity: dec!(150000),
+                initial_equity: dec!(100000),
+            },
+        ];
+
+        let summary = DistributionSummary::from_path_metrics(&metrics).unwrap();
+
+        // CVaR_95: floor(0.05 * 4) = 0 → clamped to 1; worst total_return = −0.3
+        assert!(
+            (summary.cvar_95 - (-0.3)).abs() < 1e-12,
+            "cvar_95: got {}, expected -0.3",
+            summary.cvar_95
+        );
+        // CVaR_99: same → −0.3
+        assert!(
+            (summary.cvar_99 - (-0.3)).abs() < 1e-12,
+            "cvar_99: got {}, expected -0.3",
+            summary.cvar_99
+        );
+        // median_terminal_wealth: sorted final_equity f64 = [70000, 100000, 110000, 150000]
+        // p50 of 4 elements: linear interp h=(4-1)*50/100=1.5 → 100000 + 0.5*(110000-100000) = 105000
+        assert!(
+            (summary.median_terminal_wealth - 105_000.0).abs() < 1.0,
+            "median_terminal_wealth: got {}, expected 105000",
+            summary.median_terminal_wealth
+        );
+        // Skew: total_return = [−0.3, 0, 0.1, 0.5]; right tail at 0.5 → positive skew.
+        assert!(
+            summary.skew > 0.0,
+            "skew should be positive (right-skewed returns), got {}",
+            summary.skew
+        );
+    }
+
+    /// Regression: the four P1-2 fields do NOT change `prob_loss` / `max_dd_tail_p50`
+    /// (the gate inputs) — purely additive.
+    #[test]
+    fn p1_2_fields_additive_gate_unchanged() {
+        let metrics = vec![
+            PathMetrics {
+                sharpe: -0.5,
+                sortino: -0.4,
+                calmar: 0.0,
+                max_drawdown: 0.25,
+                total_return: -0.1,
+                final_equity: dec!(90000),
+                initial_equity: dec!(100000),
+            },
+            PathMetrics {
+                sharpe: 1.2,
+                sortino: 1.5,
+                calmar: 0.4,
+                max_drawdown: 0.10,
+                total_return: 0.3,
+                final_equity: dec!(130000),
+                initial_equity: dec!(100000),
+            },
+        ];
+
+        let s = DistributionSummary::from_path_metrics(&metrics).unwrap();
+
+        // Gate fields unchanged (P(loss) = 0.5, max_dd_tail_p50 from the two values).
+        assert!(
+            (s.prob_loss - 0.5).abs() < 1e-12,
+            "prob_loss must be 0.5, got {}",
+            s.prob_loss
+        );
+        // P1-2 fields present and not NaN.
+        assert!(!s.cvar_95.is_nan(), "cvar_95 must not be NaN");
+        assert!(!s.cvar_99.is_nan(), "cvar_99 must not be NaN");
+        assert!(
+            !s.median_terminal_wealth.is_nan(),
+            "median_terminal_wealth must not be NaN"
+        );
+        assert!(!s.skew.is_nan(), "skew must not be NaN");
     }
 }

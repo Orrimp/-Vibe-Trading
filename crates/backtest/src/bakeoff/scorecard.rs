@@ -870,6 +870,7 @@ mod tests {
                 total_return_pct: dec!(0.1),
                 max_drawdown: dec!(0.05),
                 trade_count: 10,
+                turnover: rust_decimal::Decimal::ZERO,
             },
             equity_curve: vec![],
             robustness: Some(RobustnessFlag::Robust),

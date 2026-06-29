@@ -1386,6 +1386,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.1837),
             max_drawdown: dec!(0.0612),
             trade_count: 38,
+            turnover: Decimal::ZERO,
             // The crowned arm — robust under resampling.
             robustness: Some(RobustnessLabel::Robust),
         },
@@ -1398,6 +1399,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0921),
             max_drawdown: dec!(0.1043),
             trade_count: 64,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -1409,6 +1411,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(-0.0457),
             max_drawdown: dec!(0.1872),
             trade_count: 112,
+            turnover: Decimal::ZERO,
             // A fragile single loser — exercises the warn tag in the table.
             robustness: Some(RobustnessLabel::Fragile),
         },
@@ -1421,6 +1424,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0388),
             max_drawdown: dec!(0.0921),
             trade_count: 47,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Marginal),
         },
         // ── 8 vote ensembles (2 F8 + 6 combination-search, ADR-0067) ─────────
@@ -1436,6 +1440,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.2104),
             max_drawdown: dec!(0.0788),
             trade_count: 29,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1448,6 +1453,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             max_drawdown: dec!(0.0534),
             // Trades rarely (4-of-4 agreement is rare) but robust.
             trade_count: 9,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -1462,6 +1468,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0188),
             max_drawdown: dec!(0.0892),
             trade_count: 21,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1477,6 +1484,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0041),
             max_drawdown: dec!(0.0413),
             trade_count: 4,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1492,6 +1500,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0),
             max_drawdown: dec!(0.0),
             trade_count: 0,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1505,6 +1514,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0312),
             max_drawdown: dec!(0.1207),
             trade_count: 88,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1518,6 +1528,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0466),
             max_drawdown: dec!(0.0954),
             trade_count: 33,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Marginal),
         },
         LeaderRow {
@@ -1531,6 +1542,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.0421),
             max_drawdown: dec!(0.0489),
             trade_count: 14,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         // ── buy-and-hold benchmark (appended by run_bakeoff) ─────────────────
@@ -1543,6 +1555,7 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
     ];
@@ -1618,6 +1631,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.1837),
             max_drawdown: dec!(0.0612),
             trade_count: 38,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -1629,6 +1643,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.0921),
             max_drawdown: dec!(0.1043),
             trade_count: 64,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -1640,6 +1655,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(-0.0457),
             max_drawdown: dec!(0.1872),
             trade_count: 112,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1651,6 +1667,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.0388),
             max_drawdown: dec!(0.0921),
             trade_count: 47,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Marginal),
         },
         // ── the FIXED 5-arm short slate (ADR-0068 § D9) ──────────────────────
@@ -1665,6 +1682,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.0241),
             max_drawdown: dec!(0.1418),
             trade_count: 52,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1676,6 +1694,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.0153),
             max_drawdown: dec!(0.1622),
             trade_count: 78,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1688,6 +1707,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(-0.0712),
             max_drawdown: dec!(0.2238),
             trade_count: 134,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1699,6 +1719,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.0108),
             max_drawdown: dec!(0.1534),
             trade_count: 61,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -1714,6 +1735,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(-0.2884),
             max_drawdown: dec!(0.4173),
             trade_count: 1,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         // ── buy-and-hold benchmark (appended by run_bakeoff) ─────────────────
@@ -1726,6 +1748,7 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
     ];
@@ -1814,6 +1837,7 @@ pub fn fake_bakeoff_report_mirror_with_signal_library() -> crate::leaderboard::B
         total_return_pct: dec!(0.0287),
         max_drawdown: dec!(0.1361),
         trade_count: 29,
+        turnover: Decimal::ZERO,
         robustness: Some(RobustnessLabel::Fragile),
     });
     base.rows.push(LeaderRow {
@@ -1827,6 +1851,7 @@ pub fn fake_bakeoff_report_mirror_with_signal_library() -> crate::leaderboard::B
         total_return_pct: dec!(-0.0418),
         max_drawdown: dec!(0.1747),
         trade_count: 41,
+        turnover: Decimal::ZERO,
         robustness: Some(RobustnessLabel::Fragile),
     });
     base.rows.push(LeaderRow {
@@ -1842,6 +1867,7 @@ pub fn fake_bakeoff_report_mirror_with_signal_library() -> crate::leaderboard::B
         total_return_pct: dec!(0.0613),
         max_drawdown: dec!(0.0828),
         trade_count: 12,
+        turnover: Decimal::ZERO,
         robustness: Some(RobustnessLabel::Robust),
     });
     base.rows.push(LeaderRow {
@@ -1855,6 +1881,7 @@ pub fn fake_bakeoff_report_mirror_with_signal_library() -> crate::leaderboard::B
         total_return_pct: dec!(0.0224),
         max_drawdown: dec!(0.1492),
         trade_count: 87,
+        turnover: Decimal::ZERO,
         robustness: Some(RobustnessLabel::Fragile),
     });
     base.rows.push(LeaderRow {
@@ -1868,6 +1895,7 @@ pub fn fake_bakeoff_report_mirror_with_signal_library() -> crate::leaderboard::B
         total_return_pct: dec!(-0.0203),
         max_drawdown: dec!(0.1605),
         trade_count: 23,
+        turnover: Decimal::ZERO,
         robustness: Some(RobustnessLabel::Fragile),
     });
 
@@ -1922,6 +1950,7 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             total_return_pct: dec!(0.1837),
             max_drawdown: dec!(0.0612),
             trade_count: 38,
+            turnover: Decimal::ZERO,
             robustness: None,
         },
         LeaderRow {
@@ -1933,6 +1962,7 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             total_return_pct: dec!(0.0921),
             max_drawdown: dec!(0.1043),
             trade_count: 64,
+            turnover: Decimal::ZERO,
             robustness: None,
         },
         LeaderRow {
@@ -1944,6 +1974,7 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             total_return_pct: dec!(-0.0457),
             max_drawdown: dec!(0.1872),
             trade_count: 112,
+            turnover: Decimal::ZERO,
             // A fragile loser — exercises the warn tag in the table.
             robustness: Some(RobustnessLabel::Fragile),
         },
@@ -1956,6 +1987,7 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             total_return_pct: dec!(0.0388),
             max_drawdown: dec!(0.0921),
             trade_count: 47,
+            turnover: Decimal::ZERO,
             robustness: None,
         },
         LeaderRow {
@@ -1967,6 +1999,7 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
+            turnover: Decimal::ZERO,
             robustness: None,
         },
     ];
@@ -2021,6 +2054,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.0143),
             max_drawdown: dec!(0.1521),
             trade_count: 41,
+            turnover: Decimal::ZERO,
             robustness: None,
         },
         LeaderRow {
@@ -2032,6 +2066,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
+            turnover: Decimal::ZERO,
             robustness: None,
         },
     ];
@@ -2103,6 +2138,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(0.0218),
             max_drawdown: dec!(0.1731),
             trade_count: 44,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2114,6 +2150,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(0.0094),
             max_drawdown: dec!(0.1442),
             trade_count: 71,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2125,6 +2162,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(-0.0381),
             max_drawdown: dec!(0.1903),
             trade_count: 118,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2136,6 +2174,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(0.0152),
             max_drawdown: dec!(0.1288),
             trade_count: 52,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2147,6 +2186,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(0.0307),
             max_drawdown: dec!(0.1104),
             trade_count: 23,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2161,6 +2201,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(0.0),
             max_drawdown: dec!(0.0),
             trade_count: 0,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2175,6 +2216,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
     ];
@@ -2253,6 +2295,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.1837),
             max_drawdown: dec!(0.0612),
             trade_count: 38,
+            turnover: Decimal::ZERO,
             // The crowned arm — robust under resampling (the gate is LIVE).
             robustness: Some(RobustnessLabel::Robust),
         },
@@ -2265,6 +2308,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.0921),
             max_drawdown: dec!(0.1043),
             trade_count: 64,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -2276,6 +2320,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(-0.0457),
             max_drawdown: dec!(0.1872),
             trade_count: 112,
+            turnover: Decimal::ZERO,
             // A fragile single loser.
             robustness: Some(RobustnessLabel::Fragile),
         },
@@ -2288,6 +2333,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.0388),
             max_drawdown: dec!(0.0921),
             trade_count: 47,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Marginal),
         },
         LeaderRow {
@@ -2304,6 +2350,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.2104),
             max_drawdown: dec!(0.0788),
             trade_count: 29,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Fragile),
         },
         LeaderRow {
@@ -2316,6 +2363,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             max_drawdown: dec!(0.0534),
             // Trades rarely (4-of-4 agreement is rare).
             trade_count: 9,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
         LeaderRow {
@@ -2327,6 +2375,7 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             total_return_pct: dec!(0.1124),
             max_drawdown: dec!(0.1338),
             trade_count: 2,
+            turnover: Decimal::ZERO,
             robustness: Some(RobustnessLabel::Robust),
         },
     ];

@@ -395,6 +395,11 @@ mod tests {
             prob_sharpe_gt_1: prob_sharpe_gt1,
             max_dd_tail_p50: 0.3,
             max_dd_tail_p95: maxdd_p95,
+            // P1-2 fields: zero for test helper (gate tests don't read these).
+            cvar_95: 0.0,
+            cvar_99: 0.0,
+            median_terminal_wealth: 0.0,
+            skew: 0.0,
         }
     }
 
@@ -406,6 +411,7 @@ mod tests {
             total_return_pct: ret_pct,
             max_drawdown: dec!(0.15),
             trade_count: trades,
+            turnover: rust_decimal::Decimal::ZERO,
         }
     }
 

@@ -517,6 +517,7 @@ fn make_rank_candidate(
             total_return_pct: dec!(0.10),
             max_drawdown: dec!(0.05),
             trade_count: 0,
+            turnover: rust_decimal::Decimal::ZERO,
         },
         equity_curve: vec![],
         robustness,

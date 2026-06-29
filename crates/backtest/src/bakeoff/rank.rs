@@ -234,6 +234,7 @@ mod tests {
                 total_return_pct: total_return,
                 max_drawdown,
                 trade_count: 0,
+                turnover: rust_decimal::Decimal::ZERO,
             },
             equity_curve: vec![],
             robustness,

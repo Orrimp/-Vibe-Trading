@@ -3264,3 +3264,14 @@ crates      = []   # developer fills (per-feature; this row is the umbrella anal
 tests       = ["spec/v2/advisor-overfitting-scorecard/reports/test-2026-06-29-advisor-overfitting-scorecard.md"]   # tester-owned; P0-1 scorecard verdict 2026-06-29 — 178 pass / 0 fail (backtest), render 2/2, anchors 119/119, spec-lint PASS.
 anchors     = []   # EXPECTED NONE by design — SPEC-ONLY analysis; no engine output, no anchored body touched; the FROZEN gate is untouched (119/119 by construction).
 state       = "proposed"
+
+[[req]]
+id          = "REQ-V2-P1-TURNOVER-TAIL-001"
+title       = "P1-1 Turnover KPI + P1-2 Coherent Tail / Median Reporting — additive report-honesty increment. P1-1: pub turnover: Decimal on CandidateKpis = Σ(fill.price × fill.qty) / mean_equity (unitless capital-churn ratio); mirrored to LeaderRow. P1-2: DistributionSummary extended with cvar_95 / cvar_99 / median_terminal_wealth / skew — all reductions over the existing 1000-path PathMetrics vector; CVaR (Expected Shortfall) not VaR because CVaR is sub-additive (coherent). FROZEN gate (classify_verdict / rank_candidates / ADR-0066 benchmark exemption) byte-untouched. Anchors 119/119 unchanged by construction (advisor bakeoff path uses write_report=false)."
+feature     = "advisor-turnover-and-tail-metrics"
+product     = "spec/product.md"
+arch        = ["spec/v2/v2-architecture.md"]
+crates      = ["crates/backtest", "crates/ui"]   # developer 2026-06-29: bakeoff/mod.rs (CandidateKpis.turnover + derive_candidate_kpis + tests), stats/mod.rs (DistributionSummary + from_path_metrics + helpers + tests), ui/src/leaderboard/state.rs (LeaderRow.turnover mirror), ui/src/fixtures.rs (49 literal updates), ui/src/tune/state.rs (test helpers).
+tests       = []   # tester fills with the final test-report path
+anchors     = []   # EXPECTED NONE — no anchored report emitted; advisor bakeoff uses write_report=false; 119/119 unchanged.
+state       = "proposed"
