@@ -24,6 +24,7 @@ pub mod bootstrap;
 pub mod buyhold;
 pub mod rank;
 pub mod robustness;
+pub mod scorecard;
 pub mod sweep;
 
 use rust_decimal::Decimal;
@@ -33,6 +34,7 @@ use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};
 pub use bootstrap::{compute_robustness_distribution, compute_robustness_flag, derive_master_seed};
 pub use rank::{Ranking, rank_candidates};
 pub use robustness::RobustnessFlag;
+pub use scorecard::Scorecard;
 
 use crate::{
     DateRange, RunReport, ScenarioConfig,
@@ -677,6 +679,12 @@ pub struct Recommendation {
     pub winner_robustness: Option<RobustnessFlag>,
     /// Machine-readable reason codes (ordered, deterministic).
     pub reasons: Vec<ReasonCode>,
+    /// Overfitting scorecard (P0-1 / ADR-0075).
+    ///
+    /// Computed from the candidate Sharpe vector + crown equity curve.
+    /// **REPORT-ONLY** — does NOT change crowning, eligibility, or the gate bands.
+    /// `crown_clears_dsr` is informational; never a veto in v2.
+    pub scorecard: Scorecard,
 }
 
 /// Which honesty branch fired (drives the headline recommendation sentence).
@@ -1053,6 +1061,31 @@ pub async fn run_bakeoff(
     let crowned_idx = ranking.crowned.unwrap_or(0);
     let crowned_candidate = &candidates[crowned_idx];
 
+    // ── P0-1 Overfitting scorecard (REPORT-ONLY, ADR-0075) ───────────────────
+    //
+    // Computed from inputs already available: per-candidate Sharpe vector +
+    // crown's equity curve + bar count.  Does NOT touch the gate / rank / bands.
+    // `crown_clears_dsr` is informational only — never a veto in v2 (§6.0 D3).
+    let all_sharpes: Vec<f64> = candidates.iter().map(|c| c.kpis.sharpe).collect();
+    let crown_equity_decimals: Vec<Decimal> = crowned_candidate
+        .equity_curve
+        .iter()
+        .map(|(_, m)| m.amount())
+        .collect();
+    let t_bars = crown_equity_decimals.len().saturating_sub(1).max(1);
+    let bakeoff_scorecard =
+        scorecard::compute_scorecard(&all_sharpes, &crown_equity_decimals, t_bars);
+
+    tracing::debug!(
+        target: "bakeoff.scorecard",
+        n_candidates = bakeoff_scorecard.n_candidates,
+        n_eff = bakeoff_scorecard.n_eff,
+        deflated_sharpe = bakeoff_scorecard.deflated_sharpe,
+        min_btl_years = bakeoff_scorecard.min_btl_years,
+        crown_clears_dsr = bakeoff_scorecard.crown_clears_dsr,
+        "Overfitting scorecard (report-only, ADR-0075)"
+    );
+
     let rationale = Recommendation {
         outcome: ranking.outcome,
         winner: crowned_candidate.strategy.clone(),
@@ -1060,6 +1093,7 @@ pub async fn run_bakeoff(
         winner_kpis: crowned_candidate.kpis,
         winner_robustness: crowned_candidate.robustness,
         reasons: ranking.reasons.clone(),
+        scorecard: bakeoff_scorecard,
     };
 
     Ok(BakeoffReport {
