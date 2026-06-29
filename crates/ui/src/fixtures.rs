@@ -1328,6 +1328,23 @@ pub fn fake_run_report_mirror_pair() -> (
 
 // ── advisor-leaderboard-screen v0.1.0 — bake-off leaderboard fixtures ─────────
 
+/// A deterministic [`ScorecardView`](crate::leaderboard::ScorecardView) for the
+/// leaderboard "show your work" block (advisor-overfitting-scorecard, P0-1 /
+/// ADR-0075). Fixed numbers so the render guard is stable. The default models a
+/// 13-arm field whose effective trial count is ~8 (correlated families) with a
+/// modest deflated confidence that does NOT clear the 0.95 bar — the honest case
+/// where an active arm is crowned but the scorecard tempers the claim.
+#[must_use]
+pub fn fake_scorecard_view() -> crate::leaderboard::ScorecardView {
+    crate::leaderboard::ScorecardView {
+        n_candidates: 13,
+        n_eff: 8.2,
+        deflated_sharpe: 0.61,
+        min_btl_years: 6.4,
+        crown_clears_dsr: false,
+    }
+}
+
 /// A populated, deterministic `BakeoffReportMirror` for the Leaderboard screen.
 ///
 /// The **full 13-arm advisor field** post-ADR-0067 (advisor-combination-search):
@@ -1559,6 +1576,8 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
                 ReasonLabel::BeatBenchmarkSharpe,
             ],
         },
+        // P0-1 (ADR-0075): the report-only "show your work" scorecard.
+        scorecard: Some(fake_scorecard_view()),
     }
 }
 
@@ -1733,6 +1752,8 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
                 ReasonLabel::BeatBenchmarkSharpe,
             ],
         },
+        // P0-1 (ADR-0075): the report-only "show your work" scorecard.
+        scorecard: Some(fake_scorecard_view()),
     }
 }
 
@@ -1969,6 +1990,15 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
                 ReasonLabel::BeatBenchmarkSharpe,
             ],
         },
+        // P0-1 (ADR-0075): a 5-arm-field scorecard (fewer trials → fewer
+        // independent, less deflation needed). Report-only.
+        scorecard: Some(crate::leaderboard::ScorecardView {
+            n_candidates: 5,
+            n_eff: 3.6,
+            deflated_sharpe: 0.74,
+            min_btl_years: 2.6,
+            crown_clears_dsr: false,
+        }),
     }
 }
 
@@ -2017,6 +2047,16 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             winner_robustness: None,
             reasons: vec![ReasonLabel::BenchmarkUndefeated],
         },
+        // P0-1 (ADR-0075): the modal buy-and-hold-crowned case. The scorecard
+        // reads sensibly: nothing active cleared the bar, so the "beats holding
+        // after the search?" check is honestly "no". Report-only.
+        scorecard: Some(crate::leaderboard::ScorecardView {
+            n_candidates: 2,
+            n_eff: 1.7,
+            deflated_sharpe: 0.38,
+            min_btl_years: 1.1,
+            crown_clears_dsr: false,
+        }),
     }
 }
 
@@ -2043,6 +2083,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
 /// note, and the "sat in cash" ensemble note together. Built directly as the
 /// mirror type — fixtures NEVER stand up the engine.
 #[must_use]
+#[allow(clippy::too_many_lines)] // a multi-row literal data table — splitting it hurts readability
 pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::BakeoffReportMirror {
     use crate::leaderboard::state::{
         BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
@@ -2160,6 +2201,16 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             winner_robustness: None,
             reasons: vec![ReasonLabel::BenchmarkUndefeated],
         },
+        // P0-1 (ADR-0075): the honest full-field buy-and-hold-crowned case —
+        // every active arm was fragile/lost, so the search-honesty check reads
+        // "no" plainly. Report-only.
+        scorecard: Some(crate::leaderboard::ScorecardView {
+            n_candidates: 7,
+            n_eff: 4.9,
+            deflated_sharpe: 0.41,
+            min_btl_years: 3.2,
+            crown_clears_dsr: false,
+        }),
     }
 }
 
@@ -2182,6 +2233,7 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
 ///
 /// Built directly as the mirror type — fixtures NEVER stand up the engine.
 #[must_use]
+#[allow(clippy::too_many_lines)] // a multi-row literal data table — splitting it hurts readability
 pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::BakeoffReportMirror {
     use crate::leaderboard::state::{
         BakeoffReportMirror, LeaderRow, OutcomeKind, ReasonLabel, RecommendationMirror,
@@ -2302,6 +2354,15 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
                 ReasonLabel::BeatBenchmarkSharpe,
             ],
         },
+        // P0-1 (ADR-0075): a 7-arm-field scorecard for the F8 ensemble fixture.
+        // Report-only.
+        scorecard: Some(crate::leaderboard::ScorecardView {
+            n_candidates: 7,
+            n_eff: 5.1,
+            deflated_sharpe: 0.66,
+            min_btl_years: 3.3,
+            crown_clears_dsr: false,
+        }),
     }
 }
 

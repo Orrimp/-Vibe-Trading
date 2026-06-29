@@ -1704,6 +1704,56 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_EXPLAIN_LLM_LABEL,
         ),
         ("LEADERBOARD_EXPLAIN_FELLBACK", LEADERBOARD_EXPLAIN_FELLBACK),
+        // advisor-overfitting-scorecard P0-1 (ADR-0075) — "show your work" block
+        ("LEADERBOARD_SCORECARD_TITLE", LEADERBOARD_SCORECARD_TITLE),
+        (
+            "LEADERBOARD_SCORECARD_CAPTION",
+            LEADERBOARD_SCORECARD_CAPTION,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_TRIED_LABEL",
+            LEADERBOARD_SCORECARD_TRIED_LABEL,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT",
+            LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_CONFIDENCE_LABEL",
+            LEADERBOARD_SCORECARD_CONFIDENCE_LABEL,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_CONFIDENCE_HINT",
+            LEADERBOARD_SCORECARD_CONFIDENCE_HINT,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_HISTORY_LABEL",
+            LEADERBOARD_SCORECARD_HISTORY_LABEL,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_HISTORY_FMT",
+            LEADERBOARD_SCORECARD_HISTORY_FMT,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_HISTORY_HINT",
+            LEADERBOARD_SCORECARD_HISTORY_HINT,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL",
+            LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_BEATS_HOLD_YES",
+            LEADERBOARD_SCORECARD_BEATS_HOLD_YES,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_BEATS_HOLD_NO",
+            LEADERBOARD_SCORECARD_BEATS_HOLD_NO,
+        ),
+        (
+            "LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE",
+            LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE,
+        ),
         // advisor-bakeoff-ranking F3 — guided input
         ("LEADERBOARD_PLAN_TITLE", LEADERBOARD_PLAN_TITLE),
         ("LEADERBOARD_COIN_LABEL", LEADERBOARD_COIN_LABEL),
@@ -2789,6 +2839,76 @@ pub const LEADERBOARD_EXPLAIN_LLM_LABEL: &str =
 /// is already visible (the honest floor); this just explains why no prose
 /// appeared, without alarming the operator. Deliberately understated.
 pub const LEADERBOARD_EXPLAIN_FELLBACK: &str = "Couldn\u{2019}t generate a plain-language summary \u{2014} the numbers above are the full result.";
+
+// ── advisor-overfitting-scorecard P0-1 (ADR-0075) — "show your work" block ────
+//
+// The honesty / credibility readout shown next to the crowned recommendation:
+// "how much to trust this", answered from the REPORT-ONLY `Scorecard`. The
+// block reads as an honesty self-check, never a verdict — even when
+// buy-and-hold is crowned (the modal case) it reads sensibly ("we tried N,
+// here's how confident we are that the winner's edge is real"). Plain language,
+// no jargon undefined: each term-of-art (DSR, MinBTL) gets a one-line gloss.
+
+/// Title of the scorecard block — frames it as a trust/credibility readout, not
+/// a verdict. Sits beside the recommendation ("did we fool ourselves by trying
+/// many strategies?", answered every time — the presentation's framing).
+pub const LEADERBOARD_SCORECARD_TITLE: &str = "How much to trust this";
+
+/// One-line caption under the title — the honest framing: this is a self-check
+/// on the search, not a second verdict, and it never changes the pick.
+pub const LEADERBOARD_SCORECARD_CAPTION: &str =
+    "An honesty check on the search behind the pick \u{2014} it never changes the result.";
+
+/// Label — "Strategies tried" row. The raw N (how many arms we ranked,
+/// including buy-and-hold). Plain language for the literature's "number of
+/// trials" — the more we try, the easier it is to find a fluke.
+pub const LEADERBOARD_SCORECARD_TRIED_LABEL: &str = "Strategies tried";
+
+/// Value-suffix template for the "Strategies tried" row — appends the effective
+/// (correlation-adjusted) trial count in plain words. `{n_eff}` = the rounded
+/// effective count. Example: "13 (about 8 truly independent)".
+pub const LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT: &str = "about {n_eff} truly independent";
+
+/// Label — "Deflated confidence" row. The DSR: confidence the crown's edge is
+/// real AFTER accounting for how many strategies we tried.
+pub const LEADERBOARD_SCORECARD_CONFIDENCE_LABEL: &str = "Deflated confidence";
+
+/// One-line gloss under the confidence figure — defines the term of art in
+/// plain words (the no-jargon rule: surface a one-liner for DSR).
+pub const LEADERBOARD_SCORECARD_CONFIDENCE_HINT: &str =
+    "Chance the edge is real after accounting for how many we tried.";
+
+/// Label — "Minimum history needed" row. `MinBTL`: trustworthy only with at
+/// least this much data behind the test.
+pub const LEADERBOARD_SCORECARD_HISTORY_LABEL: &str = "Minimum history needed";
+
+/// Value template for the minimum-history row. `{years}` = `min_btl_years`
+/// rounded to one decimal. Example: "about 6.4 years of data".
+pub const LEADERBOARD_SCORECARD_HISTORY_FMT: &str = "about {years} years of data";
+
+/// One-line gloss under the minimum-history figure — plain-language `MinBTL`.
+pub const LEADERBOARD_SCORECARD_HISTORY_HINT: &str =
+    "Trust the result only with at least this much history behind it.";
+
+/// Label — "Beats holding after the search?" row. The `crown_clears_dsr` flag,
+/// rendered as a plain yes/no. Plain language for "DSR clears 0.95".
+pub const LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL: &str = "Beats holding after the search?";
+
+/// Affirmative value for the beats-holding row (`crown_clears_dsr == true`).
+/// Paired with a ✓ glyph so colour is never the only signal.
+pub const LEADERBOARD_SCORECARD_BEATS_HOLD_YES: &str = "\u{2713} Yes, with confidence to spare";
+
+/// Negative value for the beats-holding row (`crown_clears_dsr == false`) — the
+/// HONEST modal case (buy-and-hold usually wins). Paired with a ✗ glyph; reads
+/// as expected-and-fine, never as a failure.
+pub const LEADERBOARD_SCORECARD_BEATS_HOLD_NO: &str =
+    "\u{2717} Not clearly \u{2014} holding is the honest call";
+
+/// The load-bearing "informational, not a gate" note on the beats-holding row —
+/// REPORT-ONLY (§6.0 D3 / ADR-0075): this check NEVER changes the crown. Sits
+/// directly under the yes/no so the operator can't mistake it for the verdict.
+pub const LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE: &str =
+    "Informational, not a gate \u{2014} this never changes the pick above.";
 
 // ── advisor-bakeoff-ranking F3 — guided input (coin + budget + lookback) ──────
 

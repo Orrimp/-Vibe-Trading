@@ -130,6 +130,72 @@ pub struct RecommendationMirror {
     pub reasons: Vec<ReasonLabel>,
 }
 
+// ── P0-1 overfitting scorecard (ADR-0075) — the "show your work" readout ──────
+
+/// The overfitting scorecard, mirrored from `backtest::bakeoff::Scorecard` into
+/// a pure-`ui` shape (advisor-overfitting-scorecard, P0-1 / ADR-0075).
+///
+/// **Plain fields only — NO `backtest::Scorecard` crosses into the widgets.**
+/// Every field is a `usize` / `f64` / `bool` (the same value-only discipline
+/// [`LeaderRow`] follows): the engine type is read ONCE in
+/// [`BakeoffReportMirror::from_report`] and projected here, so the render code
+/// never names an engine struct. `pbo` is intentionally omitted — it is always
+/// `None` in v2 (deferred to the Tune/sweep surface, §6.0 D1), so there is
+/// nothing to display.
+///
+/// # REPORT-ONLY (§6.0 D3 / ADR-0075)
+///
+/// This is a credibility/honesty readout, never a verdict. `crown_clears_dsr`
+/// is informational — it does NOT (and must not) change the crown, the rank, or
+/// the FROZEN robustness gate. The screen labels it "informational, not a gate"
+/// so the operator can never mistake it for the pick.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScorecardView {
+    /// Raw number of candidates tried (every arm ranked, including the
+    /// buy-and-hold benchmark). The literature's "number of trials" N.
+    pub n_candidates: usize,
+    /// Effective (correlation-adjusted) trial count — `ρ̄ + (1 − ρ̄) · M`.
+    /// Always `1.0 ≤ n_eff ≤ n_candidates`. Shown rounded as "about N
+    /// truly independent".
+    pub n_eff: f64,
+    /// Deflated Sharpe Ratio — probability in `[0, 1]` that the crown's true
+    /// edge exceeds zero AFTER correcting for how many strategies were tried.
+    /// Rendered as a percentage.
+    pub deflated_sharpe: f64,
+    /// Minimum backtest length (years) needed to trust the crown —
+    /// `2 · ln(n_eff) / SR_target²`. `0.0` when `n_eff ≤ 1`.
+    pub min_btl_years: f64,
+    /// Informational flag: `deflated_sharpe ≥ 0.95`. **REPORT-ONLY** — never a
+    /// veto. Drives the plain "Beats holding after the search?" yes/no.
+    pub crown_clears_dsr: bool,
+}
+
+impl ScorecardView {
+    /// Mirror a `backtest::bakeoff::Scorecard` into the pure-`ui` view, or
+    /// `None` for a **degenerate** scorecard (`n_candidates == 0` — the
+    /// zero-field returned by `compute_scorecard` on empty inputs). The screen
+    /// renders no "show your work" block for a `None`, so a bake-off that
+    /// produced no real scorecard never paints a misleading all-zero readout.
+    ///
+    /// This is the only place a `backtest::Scorecard` is read on the `ui` side;
+    /// it is reached exclusively from [`BakeoffReportMirror::from_report`]
+    /// (the single mirror boundary). Pure + total — no I/O, no panic. Crosses
+    /// the seam as plain `usize` / `f64` / `bool` (zero new `ui` dep edge).
+    #[must_use]
+    pub fn from_scorecard(sc: &backtest::bakeoff::Scorecard) -> Option<Self> {
+        if sc.n_candidates == 0 {
+            return None;
+        }
+        Some(Self {
+            n_candidates: sc.n_candidates,
+            n_eff: sc.n_eff,
+            deflated_sharpe: sc.deflated_sharpe,
+            min_btl_years: sc.min_btl_years,
+            crown_clears_dsr: sc.crown_clears_dsr,
+        })
+    }
+}
+
 // ── F9 LLM "why this one" narration (ADR-0064) ────────────────────────────────
 
 /// The narration's lifecycle on the leaderboard recommendation block (F9,
@@ -211,6 +277,12 @@ pub struct BakeoffReportMirror {
     pub crowned: Option<usize>,
     /// The structured recommendation.
     pub recommendation: RecommendationMirror,
+    /// The overfitting scorecard (P0-1 / ADR-0075), mirrored from
+    /// `Recommendation.scorecard`. `None` for a degenerate (empty-field)
+    /// scorecard so the "show your work" block paints nothing rather than an
+    /// all-zero readout. **REPORT-ONLY** — display-only honesty readout, never
+    /// touches the crown / rank / gate.
+    pub scorecard: Option<ScorecardView>,
 }
 
 impl BakeoffReportMirror {
@@ -252,6 +324,9 @@ impl BakeoffReportMirror {
             ranked: report.ranked.clone(),
             crowned: report.crowned,
             recommendation,
+            // P0-1 (ADR-0075): mirror the report-only scorecard. `None` for a
+            // degenerate (empty-field) scorecard. Crosses as plain f64/usize/bool.
+            scorecard: ScorecardView::from_scorecard(&r.scorecard),
         }
     }
 
@@ -800,6 +875,13 @@ mod tests {
                 winner_robustness: None,
                 reasons: vec![ReasonLabel::HighestRobustSharpe],
             },
+            scorecard: Some(ScorecardView {
+                n_candidates: 2,
+                n_eff: 1.8,
+                deflated_sharpe: 0.71,
+                min_btl_years: 1.2,
+                crown_clears_dsr: false,
+            }),
         }
     }
 
@@ -882,6 +964,42 @@ mod tests {
         let mut none = m;
         none.crowned = None;
         assert!(none.crowned_row().is_none());
+    }
+
+    // ── P0-1 scorecard mirror (ADR-0075) ─────────────────────────────────────
+
+    #[test]
+    fn scorecard_view_mirrors_a_populated_scorecard() {
+        let sc = backtest::bakeoff::Scorecard {
+            n_candidates: 13,
+            n_eff: 8.4,
+            deflated_sharpe: 0.62,
+            min_btl_years: 6.4,
+            pbo: None,
+            crown_clears_dsr: false,
+        };
+        let view = ScorecardView::from_scorecard(&sc).expect("populated → Some");
+        assert_eq!(view.n_candidates, 13);
+        assert!((view.n_eff - 8.4).abs() < 1e-9);
+        assert!((view.deflated_sharpe - 0.62).abs() < 1e-9);
+        assert!((view.min_btl_years - 6.4).abs() < 1e-9);
+        assert!(!view.crown_clears_dsr);
+    }
+
+    #[test]
+    fn scorecard_view_is_none_for_degenerate_empty_field() {
+        // The zero scorecard `compute_scorecard` returns on empty inputs
+        // (`n_candidates == 0`) must mirror to `None`, so the "show your work"
+        // block paints nothing rather than an all-zero readout.
+        let degenerate = backtest::bakeoff::Scorecard {
+            n_candidates: 0,
+            n_eff: 0.0,
+            deflated_sharpe: 0.0,
+            min_btl_years: 0.0,
+            pbo: None,
+            crown_clears_dsr: false,
+        };
+        assert!(ScorecardView::from_scorecard(&degenerate).is_none());
     }
 
     // ── F9 narration state transitions (ADR-0064) ────────────────────────────

@@ -62,7 +62,7 @@ use trading_core::{StrategyId, Symbol};
 
 use crate::leaderboard::state::{
     BakeoffReportMirror, LeaderRow, LeaderboardLookback, NarrationState, OutcomeKind, ReasonLabel,
-    RecommendationMirror, RobustnessLabel,
+    RecommendationMirror, RobustnessLabel, ScorecardView,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
@@ -83,9 +83,15 @@ use crate::strings::{
     LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
     LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_ROBUST_TAG,
-    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
-    LEADERBOARD_SHORT_BBANDS_LS_LABEL, LEADERBOARD_SHORT_FIELD_NOTE,
-    LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
+    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
+    LEADERBOARD_SCORECARD_BEATS_HOLD_NO, LEADERBOARD_SCORECARD_BEATS_HOLD_YES,
+    LEADERBOARD_SCORECARD_CAPTION, LEADERBOARD_SCORECARD_CONFIDENCE_HINT,
+    LEADERBOARD_SCORECARD_CONFIDENCE_LABEL, LEADERBOARD_SCORECARD_HISTORY_FMT,
+    LEADERBOARD_SCORECARD_HISTORY_HINT, LEADERBOARD_SCORECARD_HISTORY_LABEL,
+    LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE, LEADERBOARD_SCORECARD_TITLE,
+    LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT, LEADERBOARD_SCORECARD_TRIED_LABEL,
+    LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL, LEADERBOARD_SHORT_BBANDS_LS_LABEL,
+    LEADERBOARD_SHORT_FIELD_NOTE, LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
     LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG,
     LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL, LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
     LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL, LEADERBOARD_SIGNAL_MACRO_RISKON_LABEL,
@@ -432,6 +438,17 @@ fn ready_pane<'a>(
         .push(recommendation)
         .push(table);
 
+    // advisor-overfitting-scorecard (P0-1 / ADR-0075) — the "show your work"
+    // honesty readout. Rendered DIRECTLY UNDER the ranked table (so it reads as
+    // "here's the pick, and here's how much to trust it") ONLY when the report
+    // carries a (non-degenerate) scorecard; absent → no block (the negative
+    // control). Placed below the table — not between recommendation and table —
+    // so the ranked rows keep their position in the result pane. REPORT-ONLY:
+    // display-only, never the verdict.
+    if let Some(sc) = &report.scorecard {
+        stack = stack.push(scorecard_block(sc, mode));
+    }
+
     // advisor-short-selling (T-U2 / T-U4) — when the field contains one or more
     // short-capable arms, carry the short field-note + the load-bearing
     // unbounded-loss disclaimer ABOVE the persistent not-advice disclaimer.
@@ -700,6 +717,156 @@ fn reason_copy(reason: ReasonLabel) -> &'static str {
         ReasonLabel::TieBrokenByReturn => LEADERBOARD_REASON_TIE_RETURN,
         ReasonLabel::TieBrokenByDrawdown => LEADERBOARD_REASON_TIE_DRAWDOWN,
     }
+}
+
+// ── Scorecard block (advisor-overfitting-scorecard P0-1 / ADR-0075) ───────────
+
+/// The "How much to trust this" / "show your work" honesty readout — a
+/// `frame::panel`-titled block rendering the REPORT-ONLY [`ScorecardView`] in
+/// plain language (ADR-0075 / §6.0 D3).
+///
+/// Reads as an honesty self-check, NEVER a verdict: the title + caption frame it
+/// as "an honesty check on the search", and the "Beats holding after the
+/// search?" row carries the load-bearing "informational, not a gate" note so the
+/// operator can never mistake it for the pick. When buy-and-hold is crowned (the
+/// modal case) the block still reads sensibly — the "Not clearly — holding is the
+/// honest call" value is the expected, fine answer, not a failure.
+///
+/// Four facts, each `label : value` with a one-line plain-language gloss for the
+/// terms of art (`DSR`, `MinBTL`) per the no-jargon rule:
+/// - **Strategies tried** — `n_candidates` (+ the effective count in plain words).
+/// - **Deflated confidence** — `deflated_sharpe` as a %, glossed.
+/// - **Minimum history needed** — `min_btl_years` years, glossed.
+/// - **Beats holding after the search?** — `crown_clears_dsr` yes/no + the
+///   informational-not-a-gate note.
+fn scorecard_block(sc: &ScorecardView, mode: ThemeMode) -> crate::Element<'static> {
+    let caption = Text::new(LEADERBOARD_SCORECARD_CAPTION)
+        .size(text::SMALL)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill);
+
+    // Strategies tried — raw N, with the effective count in plain words.
+    let tried_value = format!(
+        "{} \u{2014} {}",
+        sc.n_candidates,
+        LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT.replace("{n_eff}", &round_count(sc.n_eff))
+    );
+    let tried = scorecard_fact(
+        LEADERBOARD_SCORECARD_TRIED_LABEL,
+        tried_value,
+        None,
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // Deflated confidence — DSR as a percentage, with the plain-language gloss.
+    let confidence = scorecard_fact(
+        LEADERBOARD_SCORECARD_CONFIDENCE_LABEL,
+        fmt_probability_pct(sc.deflated_sharpe),
+        Some(LEADERBOARD_SCORECARD_CONFIDENCE_HINT),
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // Minimum history needed — MinBTL in years, with the gloss.
+    let history = scorecard_fact(
+        LEADERBOARD_SCORECARD_HISTORY_LABEL,
+        LEADERBOARD_SCORECARD_HISTORY_FMT.replace("{years}", &round_years(sc.min_btl_years)),
+        Some(LEADERBOARD_SCORECARD_HISTORY_HINT),
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // Beats holding after the search? — the yes/no + the load-bearing
+    // informational-not-a-gate note (REPORT-ONLY). The value is muted FG_1 (NOT
+    // pos/neg) — a "no" here is the honest modal case, not a loss, so it must not
+    // wear the red sentiment colour. The ✓/✗ glyph carries the signal beyond
+    // colour (accessibility — colour is never the only signal).
+    let beats_value = if sc.crown_clears_dsr {
+        LEADERBOARD_SCORECARD_BEATS_HOLD_YES
+    } else {
+        LEADERBOARD_SCORECARD_BEATS_HOLD_NO
+    };
+    let beats = scorecard_fact(
+        LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
+        beats_value.to_string(),
+        Some(LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE),
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    let body = Column::new()
+        .spacing(space::M)
+        .push(caption)
+        .push(tried)
+        .push(confidence)
+        .push(history)
+        .push(beats);
+
+    frame::panel(LEADERBOARD_SCORECARD_TITLE, body.into(), mode)
+}
+
+/// One scorecard fact — a `label` (muted `MICRO`) over a `value` (`H3`,
+/// `value_color`), with an optional one-line plain-language `hint` (muted
+/// `SMALL`) beneath. The label-over-value shape keeps each fact scannable as a
+/// small stat, and the hint glosses the terms of art (`DSR` / `MinBTL`) inline
+/// so there is no undefined jargon (the no-jargon human-friendliness rule).
+fn scorecard_fact(
+    label: &'static str,
+    value: String,
+    hint: Option<&'static str>,
+    value_color: iced::Color,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
+    let mut col = Column::new()
+        .spacing(space::XXS)
+        .push(
+            Text::new(label)
+                .size(text::MICRO)
+                .color(color::FG_3.current(mode)),
+        )
+        .push(Text::new(value).size(text::H3).color(value_color));
+    if let Some(h) = hint {
+        col = col.push(
+            Text::new(h)
+                .size(text::SMALL)
+                .color(color::FG_3.current(mode))
+                .width(Length::Fill),
+        );
+    }
+    col.width(Length::Fill).into()
+}
+
+/// Format a `[0, 1]` probability (the `DSR`) as a whole-percent string, e.g.
+/// `0.62 → "62%"`. Clamped to `[0, 1]` defensively (the engine already returns
+/// in-range, but the UI must never render a nonsense `-3%` / `140%`). Rounded to
+/// the nearest whole percent — sub-percent precision is noise for a confidence
+/// readout the operator scans at a glance.
+fn fmt_probability_pct(p: f64) -> String {
+    let clamped = p.clamp(0.0, 1.0);
+    // `clamped * 100` is in `[0, 100]`; `.round()` lands on an integer that
+    // fits a u32 with room to spare — the cast is lossless and in-range.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let pct = (clamped * 100.0).round() as u32;
+    format!("{pct}%")
+}
+
+/// Round an effective-trial count (`n_eff`) to a friendly whole number for the
+/// "about N truly independent" copy. `n_eff` is always `≥ 1.0`; we floor the
+/// rounding at 1 so it never reads "about 0".
+fn round_count(n_eff: f64) -> String {
+    // `n_eff` is bounded `[1.0, n_candidates]` (a small count) → `.round()` fits
+    // a u32 trivially; the cast is lossless and in-range.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let n = (n_eff.round() as u32).max(1);
+    n.to_string()
+}
+
+/// Round a `MinBTL` year figure to one decimal place for display, e.g.
+/// `6.36 → "6.4"`. Clamped at `0.0` (`MinBTL` is `≥ 0` by construction).
+fn round_years(years: f64) -> String {
+    let y = years.max(0.0);
+    format!("{y:.1}")
 }
 
 // ── The ranked table ──────────────────────────────────────────────────────────

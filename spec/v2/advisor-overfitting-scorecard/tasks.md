@@ -1,7 +1,7 @@
 ---
 slug: advisor-overfitting-scorecard
 status: dev-done
-owner: developer
+owner: ui-designer
 version: 0.1.0
 updated: 2026-06-29
 ---
@@ -25,8 +25,14 @@ updated: 2026-06-29
 
 ## Follow-on (separate increments)
 
-- [ ] ui-designer: `ScorecardView` mirror in `BakeoffReportMirror::from_report` +
-      the leaderboard scorecard block + `crate::strings` copy (no new `ui` dep edge).
+- [x] ui-designer: `ScorecardView` mirror in `BakeoffReportMirror::from_report` +
+      the leaderboard "How much to trust this" scorecard block + `crate::strings`
+      copy (13 `LEADERBOARD_SCORECARD_*`). Zero new `ui` dep edge, zero new theme
+      tokens, zero new widgets (reuses `frame::panel`). Render-verified at the
+      pixel layer (`crates/ui/tests/leaderboard_scorecard_render.rs`: populated
+      block paints strictly more foreground than the same screen with the
+      scorecard removed; the modal `BenchmarkWins` case still paints). See
+      feature.md § UI.
 - [ ] tester: full `cargo test -p backtest` regression + the VERDICT report.
 - [ ] ADR-0075 authored + registered atomically.
 - [ ] PBO/CSCV on the Tune/sweep surface (D1, later increment).
