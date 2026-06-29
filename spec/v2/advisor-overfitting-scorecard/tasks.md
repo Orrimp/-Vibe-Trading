@@ -1,7 +1,7 @@
 ---
 slug: advisor-overfitting-scorecard
-status: dev-done
-owner: ui-designer
+status: tester-done
+owner: tester
 version: 0.1.0
 updated: 2026-06-29
 ---
@@ -33,6 +33,6 @@ updated: 2026-06-29
       block paints strictly more foreground than the same screen with the
       scorecard removed; the modal `BenchmarkWins` case still paints). See
       feature.md § UI.
-- [ ] tester: full `cargo test -p backtest` regression + the VERDICT report.
+- [x] tester: full `cargo test -p backtest` regression + the VERDICT report. PASS 2026-06-29 — 178/178 tests pass (16 scorecard + gate-identity); render guard 2/2; anchors 119/119; spec-lint PASS. Report: `spec/v2/advisor-overfitting-scorecard/reports/test-2026-06-29-advisor-overfitting-scorecard.md`.
 - [ ] ADR-0075 authored + registered atomically.
 - [ ] PBO/CSCV on the Tune/sweep surface (D1, later increment).

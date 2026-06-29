@@ -1,7 +1,7 @@
 ---
 slug: advisor-overfitting-scorecard
-status: dev-done
-owner: ui-designer
+status: tester-done
+owner: tester
 version: 0.1.0
 updated: 2026-06-29
 ---
