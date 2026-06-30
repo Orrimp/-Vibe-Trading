@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2A — Approve to Ship · The Honest Advisor</title>
+<style>
+  :root{
+    --navy:#0f172a; --slate:#334155; --muted:#64748b; --line:#e2e8f0;
+    --bg:#f6f8fb; --card:#fff; --teal:#0d9488; --teal-d:#0f766e;
+    --go:#16a34a; --go-bg:#ecfdf5; --warn:#b45309; --warn-bg:#fffbeb;
+    --p0:#7c3aed; --p1:#0ea5e9; --r1:#db2777;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:64px}
+  body{margin:0;background:var(--bg);color:var(--slate);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+  h1,h2,h3,h4{color:var(--navy);line-height:1.25;margin:0 0 .4em}
+  h1{font-size:2.1rem;letter-spacing:-.02em}
+  h2{font-size:1.6rem;margin-top:0}
+  h3{font-size:1.18rem}
+  h4{font-size:.98rem;letter-spacing:.04em;text-transform:uppercase;color:var(--teal-d);margin-bottom:.2em}
+  p{margin:.4em 0 .9em}
+  a{color:var(--teal-d)}
+  .small{font-size:.86rem;color:var(--muted)}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+  code{background:#eef2f6;border-radius:4px;padding:1px 6px;font-size:.86em}
+
+  /* sticky nav */
+  nav.top{position:sticky;top:0;z-index:10;background:rgba(15,23,42,.96);
+    color:#e6fbf8;backdrop-filter:saturate(180%) blur(6px);
+    border-bottom:1px solid rgba(255,255,255,.08)}
+  nav.top .wrap{display:flex;align-items:center;gap:16px;height:54px}
+  nav.top a{color:#bff3ec;text-decoration:none;font-size:.92rem;font-weight:600;
+    padding:6px 10px;border-radius:8px}
+  nav.top a:hover{background:rgba(255,255,255,.08);color:#fff}
+  nav.top .brand{color:#fff;font-weight:700;letter-spacing:.02em;margin-right:auto}
+  nav.top .brand .small{color:#7fe9dd;font-weight:600;margin-left:8px}
+
+  /* hero */
+  header.hero{background:linear-gradient(135deg,#0f172a 0%,#0f3b46 55%,#0d9488 130%);
+    color:#e6fbf8;padding:46px 0 38px}
+  header.hero .kicker{display:inline-block;font-size:.78rem;letter-spacing:.14em;
+    text-transform:uppercase;color:#7fe9dd;background:rgba(13,148,136,.18);
+    border:1px solid rgba(127,233,221,.35);padding:5px 12px;border-radius:999px;margin-bottom:14px}
+  header.hero h1{color:#fff;margin:0 0 .25em;font-size:2.3rem}
+  header.hero .tag{font-size:1.12rem;color:#bff3ec;max-width:740px}
+  header.hero .sub{margin-top:14px;color:#9fd9d1;max-width:780px;font-size:.98rem}
+
+  /* summary chips */
+  .summary{margin:-22px auto 0;padding:0 22px}
+  .summary .grid{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:760px){.summary .grid{grid-template-columns:1fr}}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+    box-shadow:var(--shadow);position:relative;border-top:4px solid var(--teal)}
+  .chip .head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .chip .badge{display:inline-block;font-size:.7rem;font-weight:700;color:#fff;padding:2px 9px;border-radius:999px;letter-spacing:.04em}
+  .chip .b-p0{background:var(--p0)} .chip .b-p1{background:var(--p1)} .chip .b-p03{background:var(--r1)}
+  .chip h3{margin:0;font-size:1.02rem}
+  .chip .small{font-size:.8rem;color:var(--muted)}
+  .chip .verdict{margin-top:6px;font-size:.85rem;font-weight:700;color:var(--go)}
+  .chip a.jump{display:inline-block;margin-top:8px;font-size:.84rem;font-weight:600;color:var(--teal-d);text-decoration:none}
+  .chip a.jump:hover{text-decoration:underline}
+
+  section.feature{padding:52px 0 36px;border-bottom:1px solid var(--line)}
+  section.feature:last-of-type{border-bottom:0}
+  .eyebrow{font-size:.78rem;letter-spacing:.13em;text-transform:uppercase;color:var(--teal-d);
+    font-weight:700;margin-bottom:6px}
+  .feature h2 .num{display:inline-block;background:var(--teal);color:#fff;font-size:.86rem;
+    padding:2px 11px;border-radius:999px;vertical-align:middle;margin-right:10px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;
+    box-shadow:var(--shadow)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}}
+
+  /* TL;DR card */
+  .promise{background:linear-gradient(180deg,#fff,#f1f7f6);border-left:4px solid var(--teal)}
+  .promise b{color:var(--navy)}
+
+  /* monospace "screen" for demo */
+  .screen{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:18px 20px;
+    font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    overflow-x:auto;white-space:pre;box-shadow:0 12px 32px rgba(15,23,42,.18)}
+  .screen .lbl{color:#7fe9dd;font-weight:700}
+  .screen .ok{color:#86efac}
+  .screen .warn{color:#fcd34d}
+  .screen .bad{color:#fca5a5}
+  .screen .dim{color:#94a3b8}
+
+  /* verification table */
+  table.metrics{width:100%;border-collapse:collapse;font-size:.92rem}
+  table.metrics th,table.metrics td{text-align:left;padding:9px 10px;border-top:1px solid var(--line)}
+  table.metrics th{background:#f1f5f9;color:var(--navy);font-weight:700}
+  table.metrics tr:first-child td,table.metrics tr:first-child th{border-top:0}
+  table.metrics td.num{font-variant-numeric:tabular-nums;color:var(--navy);font-weight:700}
+
+  ul.tick,ul.cross{list-style:none;padding:0;margin:.3em 0}
+  ul.tick li,ul.cross li{padding:5px 0 5px 28px;position:relative}
+  ul.tick li::before{content:"✓";position:absolute;left:0;color:var(--go);font-weight:700}
+  ul.cross li::before{content:"✕";position:absolute;left:0;color:#94a3b8;font-weight:700}
+
+  .row{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:10px 0;border-top:1px dashed var(--line)}
+  .row:first-of-type{border-top:0}
+  .row .k{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--teal-d);
+    font-weight:700;align-self:start;min-width:170px}
+  .row .v{color:var(--navy)}
+  .row .v .gloss{display:block;color:var(--muted);font-size:.9rem;margin-top:2px;font-weight:400}
+
+  /* approval */
+  .approve{background:#fff;border:2px solid var(--teal);border-radius:14px;padding:22px;
+    box-shadow:var(--shadow);margin-top:18px}
+  .approve h3{margin-top:0;color:var(--navy)}
+  .approve .opts{display:grid;gap:10px;margin:.4em 0 .8em}
+  .approve label{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;
+    border:1px solid var(--line);border-radius:10px;cursor:pointer;background:#f8fafc;
+    transition:background .12s ease, border-color .12s ease}
+  .approve label:hover{background:#eefaf8;border-color:var(--teal)}
+  .approve label input{margin-top:3px}
+  .approve label .lbl{font-weight:700;color:var(--navy)}
+  .approve label .lbl-desc{color:var(--muted);font-size:.88rem;margin-top:2px}
+  .approve .ship label .lbl{color:var(--go)}
+  .approve .reject label .lbl{color:var(--warn)}
+  .approve .note{font-size:.84rem;color:var(--muted);margin-top:10px}
+  .approve .reply{background:#f8fafc;border:1px dashed var(--line);border-radius:10px;
+    padding:10px 12px;font-size:.86rem;color:var(--muted);margin-top:6px}
+  .approve .reply code{font-size:.86em}
+
+  /* avoid / not-doing */
+  .avoid{background:var(--warn-bg);border:1px solid #fde68a;border-radius:14px;padding:18px}
+  .avoid h4{color:var(--warn);margin-bottom:.5em}
+  .avoid .row{padding:8px 0;border-top:1px dashed #fcd9a0}
+  .avoid .row:first-of-type{border-top:0}
+  .avoid .row .k{color:var(--warn);min-width:auto}
+
+  /* numbers/achievements */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:6px 0}
+  @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .v{font-size:1.18rem;font-weight:700;color:var(--navy);line-height:1.1}
+  .stat .k{font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+
+  /* phase-2a closed banner */
+  .closed{background:linear-gradient(180deg,#ecfdf5,#dcfce7);border:1px solid #86efac;
+    border-radius:14px;padding:22px;margin-top:18px}
+  .closed h3{color:#14532d}
+  .closed table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:6px}
+  .closed th,.closed td{text-align:left;padding:7px 10px;border-top:1px solid #bbf7d0}
+  .closed th{background:rgba(255,255,255,.6);color:#14532d}
+  .closed code{background:#fff;border:1px solid #bbf7d0}
+
+  footer{background:var(--navy);color:#cbd5e1;padding:34px 0;font-size:.9rem}
+  footer b{color:#fff}
+  .pill{display:inline-block;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+    padding:3px 11px;border-radius:999px;font-size:.78rem;margin:3px 5px 3px 0;color:#e2e8f0}
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <div class="brand">Phase 2A · Approve to Ship <span class="small">The Honest Advisor</span></div>
+    <a href="#p01">P0-1 Scorecard</a>
+    <a href="#p1">P1 Cost + Risk</a>
+    <a href="#p03">P0-3 Framing</a>
+    <a href="#closed">Roll-up</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">Phase 2A · 3 features · 0 rejects pending</span>
+    <h1>Three things to read, three decisions to make.</h1>
+    <div class="tag">The credibility layer is built end-to-end and tester-PASS on all three. This page is the operator-friendly summary; the full decks are linked at the bottom of each section.</div>
+    <div class="sub">Reading time: ~3 minutes per section. You can approve/reject inline below each one, or just reply with your call.</div>
+  </div>
+</header>
+
+<div class="summary">
+  <div class="grid">
+    <div class="chip">
+      <div class="head"><span class="badge b-p0">P0-1</span><h3>The Honesty Scorecard</h3></div>
+      <div class="small">"How much to trust this pick" — strategies tried, deflated confidence, min history, beats-holding?</div>
+      <div class="verdict">✓ Tester PASS · 759 tests · anchors 119/119</div>
+      <a class="jump" href="#p01">Read & approve ↓</a>
+    </div>
+    <div class="chip">
+      <div class="head"><span class="badge b-p1">P1</span><h3>Cost &amp; Risk Story</h3></div>
+      <div class="small">Churn column + 6-fact Risk Story panel (CVaR-95/99, median, skew, Sortino, Calmar).</div>
+      <div class="verdict">✓ Tester PASS · 783 tests · anchors 119/119</div>
+      <a class="jump" href="#p1">Read &amp; approve ↓</a>
+    </div>
+    <div class="chip">
+      <div class="head"><span class="badge b-p03">P0-3</span><h3>Confidence Check (not verdict)</h3></div>
+      <div class="small">Forward-plan relabel + the same scorecard on the "watch your €200" screen.</div>
+      <div class="verdict">✓ Tester PASS · 881 tests · anchors 119/119</div>
+      <a class="jump" href="#p03">Read &amp; approve ↓</a>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────── P0-1 ─────────────────────────────────────────── -->
+<section class="feature" id="p01">
+  <div class="wrap">
+    <div class="eyebrow">Feature 1 of 3 · ADR-0075 reserved</div>
+    <h2><span class="num">P0-1</span>The Honesty Scorecard</h2>
+    <div class="card promise">
+      <h4>TL;DR</h4>
+      <p>Every bake-off recommendation now carries an honesty check next to it that answers the one question the whole product rests on — <b>"did we fool ourselves by trying many strategies?"</b> In plain language: <i>strategies tried · deflated confidence · minimum history needed · beats-holding-after-the-search?</i></p>
+      <p>It is <b>report-only</b> — never changes the pick above. The frozen robustness gate is proven byte-identical before and after the scorecard runs. <b>Most of the time it will confirm "just hold." That's the point.</b></p>
+    </div>
+
+    <h4 style="margin-top:24px">What the operator sees — the modal "holding wins" case</h4>
+    <pre class="screen">
+<span class="lbl">[ Recommendation ]</span>
+No active strategy cleared the robustness bar on BTCUSDT —
+simply holding (buy-and-hold) is the least-bad choice on this window.
+
+<span class="lbl">[ Ranked table ]</span>
+#  Strategy        Return    Sharpe   Max-DD     Trades
+1  v0.buyhold ★    +11.24%   0.6900   −13.38%        2
+2  v0.sma           +1.43%   0.2100   −15.21%       41
+
+<span class="lbl">[ How much to trust this ]</span>      <span class="dim">← NEW</span>
+An honesty check on the search behind the pick — it never changes
+the result.
+
+  <span class="lbl">STRATEGIES TRIED</span>
+  2 — about 2 truly independent
+
+  <span class="lbl">DEFLATED CONFIDENCE</span>
+  38%
+  Chance the edge is real after accounting for how many we tried.
+
+  <span class="lbl">MINIMUM HISTORY NEEDED</span>
+  about 1.1 years of data
+  Trust the result only with at least this much history behind it.
+
+  <span class="lbl">BEATS HOLDING AFTER THE SEARCH?</span>
+  <span class="bad">✗</span> Not clearly — holding is the honest call
+  <span class="dim">Informational, not a gate — this never changes the pick above.</span>
+</pre>
+    <p class="small" style="margin-top:8px">Read those rows together. The verdict above (buy-and-hold crowned) and the four facts below describe the <i>same picture</i>: only two strategies tried, the deflated confidence is modest, and the search hasn't beaten holding. The scorecard isn't telling you "you missed an edge" — it's confirming the search was <i>honest</i> and the modest verdict is the right one.</p>
+
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h4>Verification</h4>
+        <div class="stats">
+          <div class="stat"><div class="v">759</div><div class="k">tests pass</div></div>
+          <div class="stat"><div class="v">0</div><div class="k">failed</div></div>
+          <div class="stat"><div class="v">119/119</div><div class="k">anchors</div></div>
+          <div class="stat"><div class="v">880</div><div class="k">backend lines</div></div>
+        </div>
+        <ul class="tick">
+          <li><b>Frozen-gate identity</b> proven: <code>scorecard_does_not_change_ranking</code> — <code>rank_candidates</code> byte-identical before and after the scorecard.</li>
+          <li><b>DSR research worked examples</b> all pass (fails-at-N=100 / passes-at-N=46 / clears-at-N=88-Normal).</li>
+          <li><b>Render-pixel proof</b>: the block paints (+1200 px foreground vs the negative control with the block removed).</li>
+          <li>Clippy <code>-D warnings</code> clean · fmt clean · spec-lint PASS · cockpit smoke 0 panics.</li>
+        </ul>
+        <p class="small">Tester report: <code>spec/v2/advisor-overfitting-scorecard/reports/test-2026-06-29-advisor-overfitting-scorecard.md</code> · Commits: <code>9c3c002</code> backend → <code>ac7c779</code> UI → <code>d3a9a4a</code> arm-count refresh → <code>1d5b114</code> VERDICT PASS.</p>
+      </div>
+      <div class="avoid">
+        <h4>What it deliberately doesn't do (and why)</h4>
+        <div class="row"><div class="k">Report-only</div><div class="v">No crown-veto, no hard threshold. The carrier <code>crown_clears_dsr</code> is informational; a future veto needs its own ADR + your call (D3).</div></div>
+        <div class="row"><div class="k">No PBO yet</div><div class="v">PBO/CSCV deferred to the homogeneous Tune surface where it's statistically honest (D1).</div></div>
+        <div class="row"><div class="k">N_eff frozen</div><div class="v">Closed-form <code>ρ̄+(1−ρ̄)·M</code> at the 24-config scale — sufficient forever at this size (D4).</div></div>
+        <div class="row"><div class="k">Frozen gate untouched</div><div class="v">Bands &amp; classifier byte-immutable. The whole feature is a parallel report — never a re-rank.</div></div>
+      </div>
+    </div>
+
+    <div class="approve">
+      <h3>Approval — P0-1 Honesty Scorecard</h3>
+      <div class="opts">
+        <label class="ship"><input type="radio" name="p01"><div><div class="lbl">✓ Approve — ship</div><div class="lbl-desc">Flip <code>status: shipped</code>; register ADR-0075 atomically; the scorecard goes live.</div></div></label>
+        <label><input type="radio" name="p01"><div><div class="lbl">Approve with notes</div><div class="lbl-desc">Ship, but tell me what you'd like reframed/relabelled.</div></div></label>
+        <label class="reject"><input type="radio" name="p01"><div><div class="lbl">✕ Reject — with reason</div><div class="lbl-desc">Don't ship; tell me what to change.</div></div></label>
+      </div>
+      <div class="reply">To act on this, reply with <code>approve P0-1</code> · <code>approve P0-1 with notes: …</code> · or <code>reject P0-1: …</code></div>
+      <div class="note">Full deck: <code>spec/v2/advisor-overfitting-scorecard/presentations/advisor-overfitting-scorecard-2026-06-29.md</code></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── P1 ─────────────────────────────────────────── -->
+<section class="feature" id="p1">
+  <div class="wrap">
+    <div class="eyebrow">Feature 2 of 3 · ADR-0076 reserved</div>
+    <h2><span class="num">P1</span>Cost story + Risk story</h2>
+    <div class="card promise">
+      <h4>TL;DR</h4>
+      <p>The leaderboard used to stop at Return/Sharpe/MaxDD/Trades + a headline. v2 fills the two missing chapters: the <b>cost story</b> (a <code>Churn</code> column on every row — turnover as a multiple of capital) and the <b>risk story</b> (a six-fact panel: typical outcome, CVaR-95, CVaR-99, skew, Sortino, Calmar).</p>
+      <p>Both are <b>report-only</b>. The frozen gate is byte-identical before and after (proven by <code>turnover_does_not_change_ranking</code>). <b>CVaR — not VaR</b>: CVaR is coherent (the risk of a combined portfolio never exceeds the sum of parts'); plain VaR isn't, and rewards concentration over diversification.</p>
+    </div>
+
+    <h4 style="margin-top:24px">What the operator sees — the same modal "holding wins" case</h4>
+    <pre class="screen">
+<span class="lbl">[ Recommendation ]</span>
+No active strategy cleared the robustness bar on BTCUSDT —
+simply holding (buy-and-hold) is the least-bad choice on this window.
+
+<span class="lbl">[ Ranked table ]</span>     <span class="dim">← new "Churn" column</span>
+#  Strategy        Return    Sharpe   Max-DD     Trades   Churn
+1  v0.buyhold ★    +11.24%   0.6900   −13.38%        2    <span class="ok">0.0×</span>
+2  v0.sma           +1.43%   0.2100   −15.21%       41    <span class="warn">5.0×</span>
+…
+
+<span class="lbl">[ How much to trust this ]</span>       <span class="dim">(P0-1 scorecard — existing)</span>
+
+<span class="lbl">[ Risk story ]</span>                  <span class="dim">← NEW</span>
+  <span class="lbl">Typical outcome (median)</span>                    102,300 USDT
+    <span class="dim">"What the middle path actually ends at — more representative
+     than the average, which gets pulled by extreme wins."</span>
+  <span class="lbl">Average loss in the worst 5% of paths</span>         <span class="bad">−18.0%</span>
+  <span class="lbl">Average loss in the worst 1% of paths</span>         <span class="bad">−31.0%</span>
+    <span class="dim">"Expected shortfall (CVaR) — coherent, unlike plain VaR."</span>
+  <span class="lbl">Surprise shape (skew)</span>                         <span class="ok">+0.42</span>
+    <span class="dim">"Positive = rare big wins (lottery-like); negative = rare
+     big losses (crash-prone)."</span>
+  <span class="lbl">Downside-only Sharpe (Sortino)</span>                <span class="ok">+1.95</span>
+  <span class="lbl">Return vs worst drawdown (Calmar)</span>             <span class="ok">+2.32</span>
+  <span class="dim">Informational, not a gate — these never change the pick above.</span>
+</pre>
+    <p class="small" style="margin-top:8px">Read the rows together. The headline crowns buy-and-hold. The <b>Churn column</b> confirms <i>why</i>: holding transacts nothing (<code>0.0×</code>) while the SMA churns ~5× its capital — the active strategy is paying for its modest +1.43% return in fees. The <b>Risk story</b> explains the honest range: middle path lands at €102,300, worst-5% paths lose 18%, worst-1% lose 31%; the shape is mildly right-skewed. That's the whole story — <i>why</i> holding wins, not just <i>that</i> it wins.</p>
+
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h4>Verification</h4>
+        <div class="stats">
+          <div class="stat"><div class="v">783</div><div class="k">tests pass</div></div>
+          <div class="stat"><div class="v">0</div><div class="k">failed</div></div>
+          <div class="stat"><div class="v">119/119</div><div class="k">anchors</div></div>
+          <div class="stat"><div class="v">3/3</div><div class="k">render PASS<br/>(populated + ø + modal)</div></div>
+        </div>
+        <ul class="tick">
+          <li><b>Frozen-gate identity</b>: <code>turnover_does_not_change_ranking</code> — <code>rank_candidates</code> byte-identical.</li>
+          <li><b>CVaR coherence direction</b>: <code>cvar_le_var_property</code> passes — <code>CVaR ≤ VaR</code> always.</li>
+          <li><b>Skew worked examples</b>: symmetric → 0; right-skewed → positive; left-skewed → negative.</li>
+          <li><b>Bonus fix</b>: pre-existing 1/3-broken <code>bakeoff_progress_render</code> re-calibrated → 3/3 now.</li>
+        </ul>
+        <p class="small">Tester report: <code>spec/v2/advisor-turnover-and-tail-metrics/reports/test-2026-06-29-advisor-turnover-and-tail-metrics.md</code> · Commits: <code>66286e2</code> backend → <code>00240ed</code> UI → <code>decbcc4</code> VERDICT PASS.</p>
+      </div>
+      <div class="avoid">
+        <h4>What it deliberately doesn't do (and why)</h4>
+        <div class="row"><div class="k">CVaR, not VaR</div><div class="v">Non-negotiable on coherence; reporting a non-coherent measure is dishonest.</div></div>
+        <div class="row"><div class="k">Crown-only tail</div><div class="v">One panel per bake-off — mirrors the scorecard precedent. Per-row tail tooltips are a future polish.</div></div>
+        <div class="row"><div class="k">No annualised churn</div><div class="v">"<code>5.0×</code>" is the operator-natural framing. Per-year scaling is a future formatting call.</div></div>
+        <div class="row"><div class="k">No tail metric feeds the verdict</div><div class="v">A future "disqualify if CVaR-99 &lt; X" would be a FROZEN-gate change — separate ADR + your call.</div></div>
+      </div>
+    </div>
+
+    <div class="approve">
+      <h3>Approval — P1 Cost &amp; Risk Story</h3>
+      <div class="opts">
+        <label class="ship"><input type="radio" name="p1"><div><div class="lbl">✓ Approve — ship</div><div class="lbl-desc">Flip <code>status: shipped</code>; register ADR-0076 atomically.</div></div></label>
+        <label><input type="radio" name="p1"><div><div class="lbl">Approve with notes</div><div class="lbl-desc">Ship, but tell me what you'd like reframed/relabelled (e.g. Churn glyph, panel order).</div></div></label>
+        <label class="reject"><input type="radio" name="p1"><div><div class="lbl">✕ Reject — with reason</div><div class="lbl-desc">Don't ship; tell me what to change.</div></div></label>
+      </div>
+      <div class="reply">To act on this, reply with <code>approve P1</code> · <code>approve P1 with notes: …</code> · or <code>reject P1: …</code></div>
+      <div class="note">Full deck: <code>spec/v2/advisor-turnover-and-tail-metrics/presentations/advisor-turnover-and-tail-metrics-2026-06-30.md</code></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── P0-3 ─────────────────────────────────────────── -->
+<section class="feature" id="p03">
+  <div class="wrap">
+    <div class="eyebrow">Feature 3 of 3 · Phase 2A closer</div>
+    <h2><span class="num">P0-3</span>Confidence check, not verdict</h2>
+    <div class="card promise">
+      <h4>TL;DR</h4>
+      <p>The forward paper-trade screen used to read as <i>a fresh verdict</i>. Now it reads as <b>a confidence check on the crown the bake-off already chose</b>. Same paper trade, same €200, same standing rules — the relabel just says out loud what the screen has always been.</p>
+      <p>A 4-row "How much to trust this pick" block now appears below the plan — the <i>same</i> scorecard the operator read on the leaderboard while crowning. So "watching it" never gets confused with "a new bet being placed." One consistent honesty surface across ANALYSIS and SUGGESTION.</p>
+    </div>
+
+    <h4 style="margin-top:24px">What the operator sees — fixture: "the search ran wide, edge is uncertain"</h4>
+    <pre class="screen">
+<span class="lbl">[ Confidence check ]</span>           <span class="dim">← new headline (was "Your plan")</span>
+Watching the crowned strategy as new bars arrive — a confidence
+check on that pick, not a fresh prediction or a guarantee of
+future edge. The same rules your simulated €200 paper-trade runs.
+
+…  <span class="dim">(existing plan blocks: framing banner, stance, rules, sizing,
+                                                            horizon …)</span>
+
+<span class="lbl">[ How much to trust this pick ]</span>   <span class="dim">← NEW 4-row block</span>
+This is a confidence check on the crowned pick, not a fresh verdict.
+The pick was chosen in the bake-off; this is how much to trust that choice.
+
+  <span class="lbl">STRATEGIES TRIED</span>
+  18
+  Each extra strategy tried raises the bar for the winner.
+
+  <span class="lbl">DEFLATED CONFIDENCE</span>
+  87%
+  Probability the pick's edge is real after correcting for the number
+  of tries. Above 95% is the honest bar.
+
+  <span class="lbl">BEATS HOLDING?</span>
+  <span class="warn">⚠</span> Not yet — edge uncertain after the search
+  <span class="dim">Informational only — never a rule change. The pick stands regardless.</span>
+
+  <span class="lbl">MINIMUM HISTORY NEEDED</span>
+  6.4 yr
+  Years of data required to distinguish real edge from luck at this
+  trial count.
+
+<span class="dim">The confidence block is informational — it does not change the pick
+or the rules.</span>
+</pre>
+    <p class="small" style="margin-top:8px">Read the relabel + the four rows together. The search tried 18 strategies; the crown's deflated confidence sits at 87% (under the 95% honest bar); it has not yet shown it beats holding after the search; you'd want 6.4 years of data to call this real. The plan above still runs the same rules and the same €200 — the operator just sees the credibility of that pick out loud while it paper-trades.</p>
+
+    <div class="grid2" style="margin-top:18px">
+      <div class="card">
+        <h4>Verification</h4>
+        <div class="stats">
+          <div class="stat"><div class="v">881</div><div class="k">tests pass</div></div>
+          <div class="stat"><div class="v">0</div><div class="k">failed</div></div>
+          <div class="stat"><div class="v">119/119</div><div class="k">anchors</div></div>
+          <div class="stat"><div class="v">2/2</div><div class="k">render PASS<br/>(populated + ø)</div></div>
+        </div>
+        <ul class="tick">
+          <li><b>Pure read-path projection</b> of P0-1's scorecard — zero new dep edges, zero new widgets, zero new theme tokens.</li>
+          <li><b>FROZEN gate still byte-identical</b>: P0-1's <code>scorecard_does_not_change_ranking</code> still passes — no rank-path touch.</li>
+          <li><b>Negative control</b> proves the block draws content (the <code>if let Some(c) = confidence</code> guard fires cleanly when <code>confidence: None</code>).</li>
+          <li>Clippy / fmt / spec-lint / cockpit smoke all green.</li>
+        </ul>
+        <p class="small">Tester report: <code>spec/v2/advisor-confidence-not-verdict/reports/test-2026-06-30-advisor-confidence-not-verdict.md</code> · Commit: <code>bcc4c24</code> (one-pass backend + UI; smaller scope warranted it) → <code>7ea4ce7</code> VERDICT PASS.</p>
+      </div>
+      <div class="avoid">
+        <h4>What it deliberately doesn't do (and why)</h4>
+        <div class="row"><div class="k">No new credibility math</div><div class="v">Thin projection of P0-1's existing scorecard — same numbers, different surface.</div></div>
+        <div class="row"><div class="k">No veto, no gate</div><div class="v">The footer is repeated below the block <i>and</i> in the closing note: "Informational only — never a rule change. The pick stands regardless."</div></div>
+        <div class="row"><div class="k">No anchored side-effects</div><div class="v">Forward-plan path runs <code>write_report=false</code> by construction — anchor-safe.</div></div>
+        <div class="row"><div class="k">Live-view carry deferred</div><div class="v">Same scorecard could travel into the running paper-trade later (Phase 2B/2C alongside R1).</div></div>
+      </div>
+    </div>
+
+    <div class="approve">
+      <h3>Approval — P0-3 Confidence Check</h3>
+      <div class="opts">
+        <label class="ship"><input type="radio" name="p03"><div><div class="lbl">✓ Approve — ship</div><div class="lbl-desc">Flip <code>status: shipped</code>; closes Phase 2A.</div></div></label>
+        <label><input type="radio" name="p03"><div><div class="lbl">Approve with notes</div><div class="lbl-desc">Ship, but tell me what you'd like reframed/relabelled.</div></div></label>
+        <label class="reject"><input type="radio" name="p03"><div><div class="lbl">✕ Reject — with reason</div><div class="lbl-desc">Don't ship; tell me what to change.</div></div></label>
+      </div>
+      <div class="reply">To act on this, reply with <code>approve P0-3</code> · <code>approve P0-3 with notes: …</code> · <code>reject P0-3: …</code> · or batch all three with <code>approve all</code>.</div>
+      <div class="note">Full deck: <code>spec/v2/advisor-confidence-not-verdict/presentations/advisor-confidence-not-verdict-2026-06-30.md</code></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── ROLL-UP / WHAT'S NEXT ───────────────────────────── -->
+<section class="feature" id="closed">
+  <div class="wrap">
+    <div class="eyebrow">Phase 2A roll-up</div>
+    <h2>The whole story — one consistent honesty surface</h2>
+    <p>The three features above compose into one thing: the same trial-aware honesty numbers (strategies tried, deflated confidence, min history needed, beats-holding?) now appear on the <b>leaderboard</b> (where you crown the pick), <i>and</i> on the <b>forward plan</b> (where you watch it paper-trade) — alongside the new <b>cost story</b> (Churn) and the new <b>risk story</b> (median + CVaR + skew + Sortino + Calmar). Every layer is additive; the FROZEN robustness gate is byte-untouched throughout; anchors held at 119/119.</p>
+
+    <div class="closed">
+      <h3>Phase 2A — closed (on disk, awaiting your approval to ship)</h3>
+      <table>
+        <thead><tr><th>Feature</th><th>Tester</th><th>Commit</th></tr></thead>
+        <tbody>
+          <tr><td>P0-1 advisor-overfitting-scorecard</td><td><b>PASS 2026-06-29</b></td><td><code>1d5b114</code></td></tr>
+          <tr><td>P1 advisor-turnover-and-tail-metrics</td><td><b>PASS 2026-06-29</b></td><td><code>decbcc4</code></td></tr>
+          <tr><td>P0-3 advisor-confidence-not-verdict</td><td><b>PASS 2026-06-30</b></td><td><code>7ea4ce7</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="margin-top:24px">What's next (no action needed from you)</h4>
+    <ul class="tick">
+      <li><b>Phase 2B — R1 forward-fidelity coverage</b> (committed, tester running). Today, if the bake-off crowns one of 14 newer arms (5 signal-library, 6 vote-ensembles, DVOL, macro), the forward run errors out. R1 wires real constructors for all 14 + adds 13 new "builds-not-bails" tests. Anti-fake sentinel preserved; <code>None</code>-path byte-identical; anchors 119/119.</li>
+      <li><b>Phase 2C</b> — drawdown-control overlay + vol-overlay reposition + multi-horizon σ̂ estimator (the one place active management plausibly helps: smoothing drawdown, never promising Sharpe).</li>
+      <li><b>Phase 2D</b> — cost-model opt-in (<code>SlippageModel::VolScaledSpread</code>, default unchanged → anchors safe) + DATA-quality surface + no-alpha-gate CI.</li>
+    </ul>
+
+    <h4 style="margin-top:24px">If you want to approve all three at once</h4>
+    <div class="approve" style="margin-top:6px">
+      <p style="margin:.3em 0 .6em">Reply with: <code>approve all</code> — and I'll batch the three status flips + atomically register ADR-0075 + ADR-0076 in one commit, then push.</p>
+      <p class="small" style="margin:0">Or pick and choose: <code>approve P0-1, P1; hold P0-3</code> works too.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div style="margin-bottom:10px">
+      <span class="pill">Paper / simulation only</span>
+      <span class="pill">Not financial advice</span>
+      <span class="pill">Single coin · single budget</span>
+      <span class="pill">Past performance ≠ future results</span>
+    </div>
+    <b>Phase 2A · Approve to Ship</b> — measured honesty, not asserted alpha. The €200 is simulated; no real orders are ever placed.
+    <div class="small" style="margin-top:8px;color:#94a3b8">Source decks: each section's "Full deck" link · Architecture: <code>spec/v2/v2-architecture.md</code> · Analyst plan: <code>spec/v2/v2-analysis.md</code> · 900-paper research base: <code>research/APPLICATIONS.md</code>.</div>
+  </div>
+</footer>
+
+</body>
+</html>

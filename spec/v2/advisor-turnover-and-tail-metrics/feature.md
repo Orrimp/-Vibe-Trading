@@ -1,9 +1,9 @@
 ---
 slug: advisor-turnover-and-tail-metrics
-status: tester-done
-owner: tester
+status: shipped
+owner: operator
 version: 0.2.0
-updated: 2026-06-29
+updated: 2026-06-30
 ---
 
 # Turnover KPI + Coherent Tail / Median Reporting (P1-1 + P1-2)

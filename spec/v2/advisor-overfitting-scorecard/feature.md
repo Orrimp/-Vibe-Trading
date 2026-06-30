@@ -1,9 +1,9 @@
 ---
 slug: advisor-overfitting-scorecard
-status: tester-done
-owner: tester
+status: shipped
+owner: operator
 version: 0.1.0
-updated: 2026-06-29
+updated: 2026-06-30
 ---
 
 # Overfitting Scorecard (P0-1) — the credibility layer
