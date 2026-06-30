@@ -137,6 +137,7 @@ fn zero_sigma_defensive_guard() {
         scale_clamp_min: 0.5,
         scale_clamp_max: 2.0,
         min_sigma_floor: 1e-8,
+        ..VolTargetingConfig::default()
     };
     let overlay = VolTargetingOverlay::new(stub_momentum(), BTreeMap::new(), cfg.clone());
     // Exactly 0.0 → floored to min_sigma_floor → scale = 0.02/1e-8 = 2e6 >> clamp_max.

@@ -24,6 +24,14 @@ pub mod always_long;
 pub mod cash_hold;
 pub mod composed;
 pub mod cross_sectional;
+/// P1-3 drawdown-control overlay with HWM restart (v2 Phase 2C / ADR-0080).
+///
+/// CPPI-style cushion multiplier `M(k) = (d_max − d(k)) / (d_max × (1 − d(k)))` with a
+/// **load-bearing HWM restart** (BTC benchmark: Sharpe 1.52, max-DD 72%→20% WITH restart;
+/// Sharpe −0.04 WITHOUT).  Static floor = `initial × 0.80` per operator decision D8.
+/// Composes via `Strategy::quantity_scale` — NEVER bypasses the `FixedFractionSizer`
+/// budget cap.
+pub mod drawdown_control_overlay;
 /// `v0.dvol_regime` — Deribit DVOL implied-vol regime long/flat filter (ADR-0072).
 pub mod dvol_regime;
 /// F8 signal-vote ensemble (ADR-0063): `EnsembleStrategy` + `VoteMethod` + `build_ensemble`.
@@ -56,6 +64,9 @@ pub use composed::{ComposedStrategy, ComposedStrategyConfig, Sizing, Stage, Stra
 pub use cross_sectional::{
     CrossSectionalLoadError, CrossSectionalMomentumConfig, Direction, MomentumStrategy,
     ScoreSource, SelectionMode, select_above_threshold, top_k_long,
+};
+pub use drawdown_control_overlay::{
+    DrawdownControlConfig, DrawdownControlOverlay, DrawdownTelemetry, compute_cushion_multiplier,
 };
 pub use dvol_regime::{DVOL_REGIME_WINDOW, DvolRegimeStrategy};
 pub use ensemble::{

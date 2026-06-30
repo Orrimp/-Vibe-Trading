@@ -119,7 +119,10 @@ cost-default change (§2 R3 / CX-7).
 **P1-3 · Drawdown-control overlay (HWM restart).** `[N+]`
 - **Seam:** new `crates/strategy/src/drawdown_control_overlay.rs`, mirroring the
   `VolTargetingOverlay`/`Strategy` shape (`vol_targeting_overlay.rs`). Cushion
-  multiplier `M(k)=(d_max−d(k))/(1−d(k))` + the **load-bearing HWM restart** (without
+  multiplier `M(k)=(d_max−d(k))/(1−d(k))` (NORMALISED in implementation to
+  `M(k)=(d_max−d(k))/[d_max·(1−d(k))]` so `M(0)=1.0` at HWM, `M(d_max)=0` at floor — the
+  correct operator contract; the bare research formula gives `M(0)=d_max` which is the wrong
+  direction. ADR-0080 §D2 ratifies the normalised form.) + the **load-bearing HWM restart** (without
   it BTC Sharpe collapsed −0.04; with it held 1.52, max-DD 72%→20%). Composes with
   `FixedFractionSizer` — **never bypasses the budget cap**.
 - **Bake-off arm:** a new `v0.dd_control` id (or as a sizing modifier on an existing
@@ -129,13 +132,19 @@ cost-default change (§2 R3 / CX-7).
   v3-vol-overlay-noop precedent — the overlay MUST be proven to *change* equity.
 - **Refs:** `research/risk-and-sizing/application-vol-targeting-and-drawdown-overlays.md` §6 P1-B.
 
-**P1-4 · Reposition the shipped vol-targeting overlay as a risk tool.** `[A]`
+**P1-4 · Reposition the shipped vol-targeting overlay as a risk tool.** `[A]` **DEV-DONE 2026-06-30**
 - **Seam:** reparameterise `vol_targeting_overlay.rs` (slow ~126-day-half-life EWMA σ̂,
   cost-and-vol-scaled no-trade band, **de-risk-only**) + report each coin's per-window
   return-vol correlation (so the operator sees whether a Sharpe gain is even
   mechanistically possible — crypto's leverage effect is reversed, γ=−0.261). Existing
   e2e stays green; **add a divergence assertion if defaults change.**
+- **What landed:** `VolSource` enum (Ewma/Garch); `VolTargetingConfig` gains 4 fields
+  (`vol_source`, `ewma_lambda`, `no_trade_band`, `derisk_only`); `p1_4_defaults()` ctor;
+  `ReturnVolCorrelation` struct (Pearson ρ per symbol, diagnostic-only); `PerSymbolEwmaState`
+  (rolling log-return buffer). 33 new unit tests (233→266). Backward-compat `Default`
+  (Garch source, no band, derisk_only=false) keeps existing e2e green without modification.
 - **Refs:** `research/risk-and-sizing/application-vol-targeting-and-drawdown-overlays.md` §6 P1-A.
+- **Spec:** `spec/v2/advisor-vol-overlay-reposition/`; trace `REQ-V2-P1-4-VOL-OVERLAY-REPOSITION-001`.
 
 **P1-5 · σ̂ upgrade: multi-horizon realized-vol (HAR / two-half-life EWMA).** `[N+]`
 - **Seam + the layering rule (CX-5 / §6 D5):** a **shared vol-estimator** consumed by
@@ -505,8 +514,13 @@ All decisions ratified to the architect's recommended (durable) defaults:
 - **D7 (Tune stage) → PROMOTE to a named "Calibrate" stage.** Screen-routed, carrying
   the P0-1 scorecard readout; the cross-stage `agent::AdvisorStage` context-carrier
   deferred until the need is felt.
-- **D8 (drawdown floor CPPI vs TIPP + the X% promise) → DEFERRED** to P1-3 scoping
-  (needs breach-frequency measured on real crypto windows first).
+- **D8 (drawdown floor CPPI vs TIPP + the X% promise) → RESOLVED 2026-06-30
+  (operator): STATIC CPPI @ 20% DRAWDOWN.** Floor never moves (`floor = initial ×
+  0.80`); HWM restart still load-bearing (the research benchmark: BTC, 0.1% costs,
+  max-DD 72%→20% holding Sharpe 1.52). Simple operator promise: "never lose more
+  than 20% of the starting €200." TIPP / ratcheting deferred to v0.2 — needs
+  breach-frequency measurement on real crypto windows before any "lock-in-gains"
+  promise. Recorded for ADR-0079 (P1-3 drawdown-control overlay).
 - **D9 (F5b framing) → DONE** — the stale "SMA proxy" memory was corrected to
   "forward-coverage gap (14 post-F5b arms not in `build_registry_for`)".
 
