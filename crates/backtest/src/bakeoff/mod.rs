@@ -34,7 +34,7 @@ use trading_core::{Money, StrategyId, Symbol, Timestamp, Usdt};
 pub use bootstrap::{compute_robustness_distribution, compute_robustness_flag, derive_master_seed};
 pub use rank::{Ranking, rank_candidates};
 pub use robustness::RobustnessFlag;
-pub use scorecard::Scorecard;
+pub use scorecard::{Scorecard, ScorecardSummary};
 
 use crate::{
     DateRange, RunReport, ScenarioConfig,

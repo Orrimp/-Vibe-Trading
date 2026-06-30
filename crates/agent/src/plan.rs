@@ -170,6 +170,9 @@ pub fn build_forward_plan(
         projected_units,
         sizing_capped,
         horizon_days,
+        // P0-3: thread the scorecard summary from the ForwardRunConfig (populated
+        // by cockpit_live.rs at launch time from the completed bake-off report).
+        confidence: cfg.confidence,
     }
 }
 
@@ -438,6 +441,7 @@ mod tests {
             budget: Money::<Usdt>::from_decimal(dec!(200)),
             lookback: None,
             param_override: None,
+            confidence: None, // P0-3: no scorecard in unit tests
         }
     }
 

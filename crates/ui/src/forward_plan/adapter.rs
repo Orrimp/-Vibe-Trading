@@ -29,7 +29,8 @@
 use smol_str::SmolStr;
 
 use super::state::{
-    ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
+    ConfidenceSummaryView, ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    PlanVoteMethodView,
 };
 
 impl ForwardPlanView {
@@ -46,6 +47,10 @@ impl ForwardPlanView {
         let horizon_through_label =
             SmolStr::new(format_through_label(plan.last_bar_ts, plan.horizon_days));
 
+        // P0-3: mirror the scorecard summary from the ForwardPlan into the
+        // pure-`ui` ConfidenceSummaryView (plain f64/bool/usize — zero new dep edge).
+        let confidence = plan.confidence.map(confidence_summary_view);
+
         Self {
             strategy: SmolStr::new(plan.strategy.0.as_str()),
             symbol: SmolStr::new(plan.symbol.0.as_str()),
@@ -59,6 +64,7 @@ impl ForwardPlanView {
             sizing_capped: plan.sizing_capped,
             horizon_days: plan.horizon_days,
             horizon_through_label,
+            confidence,
         }
     }
 }
@@ -130,6 +136,19 @@ fn vote_method_view(method: &agent::config::PlanVoteMethod) -> PlanVoteMethodVie
             PlanVoteMethodView::Majority { k: *k, n: *n }
         }
         agent::config::PlanVoteMethod::Unanimous { n } => PlanVoteMethodView::Unanimous { n: *n },
+    }
+}
+
+/// Map the `backtest::bakeoff::ScorecardSummary` into the pure-`ui`
+/// `ConfidenceSummaryView` (plain scalars — zero new `ui` dep edge; `backtest`
+/// is already a `ui` dep). This is the ONLY place a `ScorecardSummary` is read
+/// on the `ui` side; it is called exclusively from `ForwardPlanView::from_plan`.
+fn confidence_summary_view(sc: backtest::bakeoff::ScorecardSummary) -> ConfidenceSummaryView {
+    ConfidenceSummaryView {
+        n_candidates: sc.n_candidates,
+        deflated_sharpe: sc.deflated_sharpe,
+        crown_clears_dsr: sc.crown_clears_dsr,
+        min_btl_years: sc.min_btl_years,
     }
 }
 

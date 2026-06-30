@@ -240,6 +240,36 @@ impl PlanRuleView {
     }
 }
 
+// ── P0-3 — Confidence-check summary (advisor-confidence-not-verdict) ─────────
+
+/// The 4-field confidence summary mirrored from
+/// `backtest::bakeoff::ScorecardSummary` into a pure-`ui` shape (P0-3 /
+/// advisor-confidence-not-verdict, ADR-0076).
+///
+/// **Plain fields only — NO `backtest::ScorecardSummary` crosses into the
+/// widgets.** Every field is a `usize` / `f64` / `bool` (same value-only
+/// discipline [`crate::leaderboard::state::ScorecardView`] follows): the
+/// engine type is read ONCE in `from_plan` (the `live`-feature adapter) and
+/// projected here, so the render code never names an engine struct.
+///
+/// # REPORT-ONLY (§6.0 D3 / ADR-0075)
+///
+/// Informational only — does NOT change the crown, the rank, or the FROZEN
+/// robustness gate. The forward-plan screen labels it "confidence check, not
+/// verdict" so the operator sees the forward run is NOT a fresh pick.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ConfidenceSummaryView {
+    /// Raw number of candidates tried — "how many strategies were ranked".
+    pub n_candidates: usize,
+    /// Deflated Sharpe Ratio — probability in `[0, 1]` the crown's true edge
+    /// exceeds zero after correcting for how many strategies were tried.
+    pub deflated_sharpe: f64,
+    /// `true` iff `deflated_sharpe >= 0.95`. Informational, never a veto.
+    pub crown_clears_dsr: bool,
+    /// Minimum backtest length (years) needed to trust the crown.
+    pub min_btl_years: f64,
+}
+
 /// The full forward plan the screen renders — a pure-`ui` mirror of the
 /// `core`-typed `agent::config::ForwardPlan` (ADR-0062 § D4 struct shape).
 ///
@@ -292,6 +322,16 @@ pub struct ForwardPlanView {
     /// forbids inline date formatting in the render layer). Renders as
     /// "planned through <date>" (R4).
     pub horizon_through_label: SmolStr,
+    /// P0-3 — confidence-check summary from the crowning bake-off (ADR-0076).
+    ///
+    /// A 4-field projection of the bake-off `Scorecard` — the same four facts
+    /// the leaderboard's "show your work" block surfaces, carried here so the
+    /// forward-plan screen can frame the run as "a confidence check on the
+    /// crowned pick" rather than a fresh verdict. `None` when no scorecard was
+    /// computed (degenerate bake-off or older launches).
+    ///
+    /// **REPORT-ONLY** — informational only; does NOT change the crown or gate.
+    pub confidence: Option<ConfidenceSummaryView>,
 }
 
 impl ForwardPlanView {
@@ -414,6 +454,7 @@ mod tests {
             sizing_capped: false,
             horizon_days: 7,
             horizon_through_label: SmolStr::new("Jun 26"),
+            confidence: None, // P0-3: no scorecard in unit tests
         }
     }
 

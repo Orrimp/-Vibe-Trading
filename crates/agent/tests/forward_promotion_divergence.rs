@@ -42,6 +42,7 @@ fn fwd_no_override(strategy_id: &str) -> ForwardRunConfig {
         budget: Money::<Usdt>::from_decimal(dec!(200)),
         lookback: None,
         param_override: None,
+        confidence: None, // P0-3: no scorecard in integration tests
     }
 }
 
@@ -53,6 +54,7 @@ fn fwd_with_override(strategy_id: &str, override_params: ForwardParamOverride) -
         budget: Money::<Usdt>::from_decimal(dec!(200)),
         lookback: None,
         param_override: Some(override_params),
+        confidence: None, // P0-3: no scorecard in integration tests
     }
 }
 

@@ -2627,6 +2627,7 @@ pub fn fake_forward_plan() -> crate::forward_plan::ForwardPlanView {
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 26"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
 }
 
@@ -2656,6 +2657,7 @@ pub fn fake_forward_plan_rsi() -> crate::forward_plan::ForwardPlanView {
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 28"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
 }
 
@@ -2682,6 +2684,7 @@ pub fn fake_forward_plan_buy_and_hold() -> crate::forward_plan::ForwardPlanView 
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 26"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
 }
 
@@ -2724,6 +2727,7 @@ pub fn fake_forward_plan_ensemble() -> crate::forward_plan::ForwardPlanView {
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 28"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
 }
 
@@ -2769,6 +2773,7 @@ pub fn fake_forward_plan_combination() -> crate::forward_plan::ForwardPlanView {
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 28"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
 }
 
@@ -2807,6 +2812,7 @@ pub fn fake_forward_plan_short() -> crate::forward_plan::ForwardPlanView {
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 28"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
 }
 
@@ -2839,7 +2845,51 @@ pub fn fake_forward_plan_always_short() -> crate::forward_plan::ForwardPlanView 
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 28"),
+        confidence: None, // P0-3: no scorecard in this fixture
     }
+}
+
+/// P0-3 "Confidence check" — a [`ForwardPlanView`] with a populated
+/// [`ConfidenceSummaryView`]. This is the POSITIVE case for the confidence-block
+/// render guard: it exercises every row in the summary block (candidates, DSR,
+/// beats-holding, min BTL). The `crown_clears_dsr: false` case intentionally
+/// exercises the warning branch (`FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_NO`) so
+/// the render guard covers both branches without a second fixture.
+#[must_use]
+pub fn fake_forward_plan_with_confidence() -> crate::forward_plan::ForwardPlanView {
+    use crate::forward_plan::state::{
+        ConfidenceSummaryView, ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    };
+    ForwardPlanView {
+        strategy: SmolStr::new("v0.sma"),
+        symbol: SmolStr::new("BTCUSDT"),
+        stance: PlanStanceView::Flat,
+        latest_signal: Some(PlanSignalView::Hold),
+        rule: PlanRuleView::SmaCross {
+            fast_len: 12,
+            slow_len: 26,
+        },
+        last_close: dec!(64000.00),
+        as_of_label: SmolStr::new("Jun 19 14:00"),
+        budget: dec!(200),
+        projected_units: dec!(0.003125),
+        sizing_capped: false,
+        horizon_days: 7,
+        horizon_through_label: SmolStr::new("Jun 26"),
+        confidence: Some(ConfidenceSummaryView {
+            n_candidates: 18,
+            deflated_sharpe: 0.87,
+            crown_clears_dsr: false, // exercises the warning branch
+            min_btl_years: 6.4,
+        }),
+    }
+}
+
+/// P0-3 — `Cockpit` routed to `Screen::ForwardPlan` with a populated
+/// confidence summary (the confidence-check render guard's positive case).
+#[must_use]
+pub fn fake_cockpit_forward_plan_with_confidence() -> Cockpit {
+    fake_cockpit_forward_plan(PanelState::Ready(fake_forward_plan_with_confidence()))
 }
 
 /// A `Cockpit` routed to `Screen::ForwardPlan` with the supplied plan state
@@ -2882,6 +2932,7 @@ pub fn fake_cockpit_forward_plan_promoted() -> Cockpit {
         sizing_capped: false,
         horizon_days: 7,
         horizon_through_label: SmolStr::new("Jun 26"),
+        confidence: None, // P0-3: no scorecard in this fixture
     };
     let mut cockpit = fake_cockpit_forward_plan(PanelState::Ready(tuned));
     cockpit.pending_forward_promotion = Some(crate::state::ForwardPromotion {

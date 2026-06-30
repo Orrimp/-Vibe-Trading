@@ -3275,3 +3275,14 @@ crates      = ["crates/backtest", "crates/ui"]   # developer 2026-06-29: bakeoff
 tests       = ["spec/v2/advisor-turnover-and-tail-metrics/reports/test-2026-06-29-advisor-turnover-and-tail-metrics.md"]
 anchors     = []   # EXPECTED NONE — no anchored report emitted; advisor bakeoff uses write_report=false; 119/119 unchanged.
 state       = "verified"
+
+[[req]]
+id          = "REQ-V2-P0-CONFIDENCE-001"
+title       = "P0-3 Confidence check, not verdict framing — the forward paper-trade screen is relabelled as a confidence check on the crown already decided by the bake-off, not a fresh prediction. ScorecardSummary (4 fields: n_candidates / deflated_sharpe / crown_clears_dsr / min_btl_years) added to crates/backtest/src/bakeoff/scorecard.rs; confidence: Option<ScorecardSummary> wired into ForwardRunConfig + ForwardPlan in crates/agent/src/config.rs; mirrored to ui as ConfidenceSummaryView via forward_plan/adapter.rs (the ADR-0062 seam, #[cfg(feature='live')]); UI copy relabelled (FORWARD_PLAN_HEADLINE → 'Confidence check', FORWARD_PLAN_CAPTION updated, 14 new P0-3 string constants); confidence summary block added to screens/forward_plan.rs with 4 fact rows. FROZEN gate (classify_verdict / rank_candidates / verdict_bands) byte-untouched. Anchors 119/119 unchanged by construction."
+feature     = "advisor-confidence-not-verdict"
+product     = "spec/product.md"
+arch        = ["spec/v2/v2-architecture.md"]
+crates      = ["crates/backtest", "crates/agent", "crates/ui"]   # developer 2026-06-29: scorecard.rs (ScorecardSummary + summary() + 2 unit tests), bakeoff/mod.rs (re-export), agent/config.rs (ForwardRunConfig + ForwardPlan confidence field), agent/plan.rs (propagate confidence), ui/src/forward_plan/state.rs (ConfidenceSummaryView + field), ui/src/forward_plan/adapter.rs (confidence_summary_view), ui/src/forward_plan/mod.rs (re-export), ui/src/bin/cockpit_live.rs (two launch sites), ui/src/strings.rs (relabel + 14 constants), ui/src/screens/forward_plan.rs (confidence_block), ui/src/fixtures.rs (8 None + 2 new fixtures).
+tests       = ["crates/ui/tests/forward_plan_confidence_render.rs"]   # tester-owned; forward_plan_confidence_render — 2 render guards (positive + spatial)
+anchors     = []   # EXPECTED NONE — no anchored report emitted; advisor bakeoff uses write_report=false; 119/119 unchanged.
+state       = "proposed"

@@ -2077,6 +2077,60 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             FORWARD_PLAN_NOT_A_PREDICTION,
         ),
         ("FORWARD_PLAN_DISCLAIMER", FORWARD_PLAN_DISCLAIMER),
+        // P0-3 confidence-check block (advisor-confidence-not-verdict)
+        (
+            "FORWARD_PLAN_CONFIDENCE_TITLE",
+            FORWARD_PLAN_CONFIDENCE_TITLE,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_CAPTION",
+            FORWARD_PLAN_CONFIDENCE_CAPTION,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_CANDIDATES_LABEL",
+            FORWARD_PLAN_CONFIDENCE_CANDIDATES_LABEL,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_CANDIDATES_GLOSS",
+            FORWARD_PLAN_CONFIDENCE_CANDIDATES_GLOSS,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_DSR_LABEL",
+            FORWARD_PLAN_CONFIDENCE_DSR_LABEL,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_DSR_GLOSS",
+            FORWARD_PLAN_CONFIDENCE_DSR_GLOSS,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_LABEL",
+            FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_LABEL,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_YES",
+            FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_YES,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_NO",
+            FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_NO,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_GLOSS",
+            FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_GLOSS,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_MIN_BTL_LABEL",
+            FORWARD_PLAN_CONFIDENCE_MIN_BTL_LABEL,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_MIN_BTL_GLOSS",
+            FORWARD_PLAN_CONFIDENCE_MIN_BTL_GLOSS,
+        ),
+        (
+            "FORWARD_PLAN_CONFIDENCE_MIN_BTL_FMT",
+            FORWARD_PLAN_CONFIDENCE_MIN_BTL_FMT,
+        ),
+        ("FORWARD_PLAN_CONFIDENCE_NOTE", FORWARD_PLAN_CONFIDENCE_NOTE),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -3356,14 +3410,79 @@ pub const TUNE_PROMOTE_WINDOW_FALLBACK: &str = "the tuned window";
 /// Sidebar nav label for the forward-plan screen.
 pub const FORWARD_PLAN_SIDEBAR_LABEL: &str = "Plan";
 
-/// Page headline — names the screen's job in plain language. "Forward plan",
-/// not "forecast" — deliberately avoids any prediction connotation.
-pub const FORWARD_PLAN_HEADLINE: &str = "Forward plan";
+/// Page headline — P0-3 relabel: frames the forward run explicitly as a
+/// CONFIDENCE CHECK on the crowned pick, NOT a fresh prediction.  The honest
+/// framing demanded by v2-analysis.md § workflow gap: the forward paper-trade
+/// "read as a fresh verdict" in v1; v2 names it what it actually is.
+///
+/// (Was "Forward plan" in v1; relabelled "Confidence check" in v2.)
+pub const FORWARD_PLAN_HEADLINE: &str = "Confidence check";
 
-/// Page caption — the one-line "what this is", framed as conditional rules,
-/// NOT a prediction. This is the first not-a-prediction signal on the surface.
-pub const FORWARD_PLAN_CAPTION: &str = "What the crowned strategy will do as new bars arrive \u{2014} the standing buy/sell rules, \
-     not a forecast of price. The same rules your simulated \u{20ac}200 paper-trade runs.";
+/// Page caption — the one-line "what this is", framed as a confidence check on
+/// the ALREADY-CROWNED pick, NOT a fresh prediction. This is the first
+/// not-a-prediction signal on the surface (P0-3 relabel from v1's neutral copy).
+pub const FORWARD_PLAN_CAPTION: &str = "Watching the crowned strategy as new bars arrive \u{2014} \
+     a confidence check on that pick, not a fresh prediction or a guarantee of future edge. \
+     The same rules your simulated \u{20ac}200 paper-trade runs.";
+
+// ── P0-3 confidence-check block (advisor-confidence-not-verdict, ADR-0076) ────
+
+/// Section title for the confidence-check summary block on the forward-plan
+/// screen. Frames the scorecard as an honest "how much to trust this pick"
+/// readout — the SAME four facts the leaderboard's "show your work" block
+/// surfaces, repeated alongside the plan so the framing is always visible.
+pub const FORWARD_PLAN_CONFIDENCE_TITLE: &str = "How much to trust this pick";
+
+/// One-line caption under the confidence-check title — restates the key
+/// honest framing: this is about the ALREADY-CROWNED pick's credibility,
+/// not a new assessment.
+pub const FORWARD_PLAN_CONFIDENCE_CAPTION: &str = "This is a confidence check on the crowned pick, not a fresh verdict. \
+     The pick was chosen in the bake-off; this is how much to trust that choice.";
+
+/// Label row — "Strategies tried".
+pub const FORWARD_PLAN_CONFIDENCE_CANDIDATES_LABEL: &str = "Strategies tried";
+
+/// Gloss under "Strategies tried" — one-liner explaining the trial count's
+/// meaning for the operator.
+pub const FORWARD_PLAN_CONFIDENCE_CANDIDATES_GLOSS: &str =
+    "Each extra strategy tried raises the bar for the winner.";
+
+/// Label row — "Deflated confidence" (the DSR).
+pub const FORWARD_PLAN_CONFIDENCE_DSR_LABEL: &str = "Deflated confidence";
+
+/// Gloss under "Deflated confidence" — operator-plain explainer.
+pub const FORWARD_PLAN_CONFIDENCE_DSR_GLOSS: &str = "Probability the pick\u{2019}s edge is real after correcting for the number of tries. \
+     Above 95\u{0025} is the honest bar.";
+
+/// Label row — "Beats holding?" (the `crown_clears_dsr` flag).
+pub const FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_LABEL: &str = "Beats holding?";
+
+/// "Yes, with confidence to spare" (`crown_clears_dsr` == true).
+pub const FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_YES: &str = "\u{2713} Yes, with confidence to spare";
+
+/// "Not yet — edge uncertain" (`crown_clears_dsr` == false).
+pub const FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_NO: &str =
+    "\u{26a0} Not yet \u{2014} edge uncertain after the search";
+
+/// Gloss under "Beats holding?" — plain note reminding the operator this is
+/// informational, not a gate.
+pub const FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_GLOSS: &str =
+    "Informational only \u{2014} never a rule change. The pick stands regardless.";
+
+/// Label row — "Minimum history needed".
+pub const FORWARD_PLAN_CONFIDENCE_MIN_BTL_LABEL: &str = "Minimum history needed";
+
+/// Gloss under "Minimum history" — explains what the number means.
+pub const FORWARD_PLAN_CONFIDENCE_MIN_BTL_GLOSS: &str =
+    "Years of data required to distinguish real edge from luck at this trial count.";
+
+/// Format string for the minimum history value — `{years}` filled at the call site.
+pub const FORWARD_PLAN_CONFIDENCE_MIN_BTL_FMT: &str = "{years} yr";
+
+/// Informational note at the bottom of the confidence block — the persistent
+/// honest framing reminder (keeps the block from being read as a verdict).
+pub const FORWARD_PLAN_CONFIDENCE_NOTE: &str =
+    "The confidence block is informational \u{2014} it does not change the pick or the rules.";
 
 /// Empty-state prompt — no crowned pick yet → no plan (the clean tautology
 /// guard). Tells the operator exactly what to do next (never a blank screen).

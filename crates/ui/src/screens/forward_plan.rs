@@ -71,12 +71,20 @@ use smol_str::SmolStr;
 use trading_core::FxNote;
 
 use crate::forward_plan::state::{
-    ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView, PlanVoteMethodView,
+    ConfidenceSummaryView, ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
+    PlanVoteMethodView,
 };
 use crate::state::{Cockpit, PanelState};
 use crate::strings::{
     FORWARD_PLAN_AS_OF_FMT, FORWARD_PLAN_BUDGET_LINE_FMT, FORWARD_PLAN_CADENCE_FMT,
-    FORWARD_PLAN_CAPTION, FORWARD_PLAN_DISCLAIMER, FORWARD_PLAN_EMPTY_PROMPT,
+    FORWARD_PLAN_CAPTION, FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_GLOSS,
+    FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_LABEL, FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_NO,
+    FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_YES, FORWARD_PLAN_CONFIDENCE_CANDIDATES_GLOSS,
+    FORWARD_PLAN_CONFIDENCE_CANDIDATES_LABEL, FORWARD_PLAN_CONFIDENCE_CAPTION,
+    FORWARD_PLAN_CONFIDENCE_DSR_GLOSS, FORWARD_PLAN_CONFIDENCE_DSR_LABEL,
+    FORWARD_PLAN_CONFIDENCE_MIN_BTL_FMT, FORWARD_PLAN_CONFIDENCE_MIN_BTL_GLOSS,
+    FORWARD_PLAN_CONFIDENCE_MIN_BTL_LABEL, FORWARD_PLAN_CONFIDENCE_NOTE,
+    FORWARD_PLAN_CONFIDENCE_TITLE, FORWARD_PLAN_DISCLAIMER, FORWARD_PLAN_EMPTY_PROMPT,
     FORWARD_PLAN_ERROR_PREFIX, FORWARD_PLAN_HEADLINE, FORWARD_PLAN_HORIZON_FMT,
     FORWARD_PLAN_HORIZON_TITLE, FORWARD_PLAN_LATEST_SIGNAL_FMT, FORWARD_PLAN_LOADING,
     FORWARD_PLAN_NOT_A_PREDICTION, FORWARD_PLAN_RULE_ALWAYS_SHORT,
@@ -288,6 +296,14 @@ fn ready_pane<'a>(
         .push(rules_block(plan, mode))
         .push(sizing_block(plan, fx_note, mode))
         .push(horizon_block(plan, mode));
+
+    // P0-3: confidence-check summary block — appears after the horizon block
+    // when a scorecard summary is available. Frames the forward run as a
+    // "confidence check on the crowned pick, not a fresh verdict" with the
+    // four facts (candidates / DSR / beats holding? / min history).
+    if let Some(ref confidence) = plan.confidence {
+        stack = stack.push(confidence_block(confidence, mode));
+    }
 
     // advisor-short-selling (T-U4, LOAD-BEARING) — for a short-capable plan,
     // carry the unbounded-loss disclaimer above the persistent not-advice
@@ -909,6 +925,105 @@ fn horizon_block(plan: &ForwardPlanView, mode: ThemeMode) -> crate::Element<'_> 
             .into(),
         mode,
     )
+}
+
+// ── P0-3 Confidence-check block (advisor-confidence-not-verdict, ADR-0076) ────
+
+/// The confidence-check summary block — a titled panel showing the four facts
+/// the operator needs to assess how much to trust the crowned pick:
+/// - "Strategies tried" (N candidates)
+/// - "Deflated confidence" (DSR as a percentage)
+/// - "Beats holding?" (the `crown_clears_dsr` informational flag)
+/// - "Minimum history needed" (`MinBTL` in years)
+///
+/// Framed as a CONFIDENCE CHECK (not a fresh verdict; not a gate change).
+/// Uses the same label/value/gloss 3-line-per-fact pattern as the leaderboard's
+/// "show your work" scorecard block (ADR-0075). REPORT-ONLY — informational.
+///
+/// Only rendered when `plan.confidence` is `Some(..)`.
+fn confidence_block(sc: &ConfidenceSummaryView, mode: ThemeMode) -> crate::Element<'_> {
+    // Helper: one fact row (label / value / gloss).
+    let fact =
+        |label: &'static str, value: String, gloss: &'static str| -> crate::Element<'static> {
+            Column::new()
+                .spacing(space::XXS)
+                .push(
+                    Text::new(label)
+                        .size(text::SMALL)
+                        .color(color::FG_3.current(mode)),
+                )
+                .push(
+                    Text::new(value)
+                        .size(text::BODY)
+                        .color(color::FG_1.current(mode)),
+                )
+                .push(
+                    Text::new(gloss)
+                        .size(text::MICRO)
+                        .color(color::FG_3.current(mode))
+                        .width(Length::Fill),
+                )
+                .into()
+        };
+
+    // Caption under the title — restates the honesty framing.
+    let caption = Text::new(FORWARD_PLAN_CONFIDENCE_CAPTION)
+        .size(text::SMALL)
+        .color(color::FG_2.current(mode))
+        .width(Length::Fill);
+
+    // "Strategies tried" — raw candidate count.
+    let candidates_fact = fact(
+        FORWARD_PLAN_CONFIDENCE_CANDIDATES_LABEL,
+        sc.n_candidates.to_string(),
+        FORWARD_PLAN_CONFIDENCE_CANDIDATES_GLOSS,
+    );
+
+    // "Deflated confidence" — DSR as a percentage (e.g. "73 %").
+    let dsr_pct = format!("{:.0}\u{202f}%", sc.deflated_sharpe * 100.0);
+    let dsr_fact = fact(
+        FORWARD_PLAN_CONFIDENCE_DSR_LABEL,
+        dsr_pct,
+        FORWARD_PLAN_CONFIDENCE_DSR_GLOSS,
+    );
+
+    // "Beats holding?" — the informational yes/no flag.
+    let beats_label = if sc.crown_clears_dsr {
+        FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_YES
+    } else {
+        FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_NO
+    };
+    let beats_fact = fact(
+        FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_LABEL,
+        beats_label.to_string(),
+        FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_GLOSS,
+    );
+
+    // "Minimum history needed" — MinBTL in years (e.g. "6.4 yr").
+    let min_btl_text =
+        FORWARD_PLAN_CONFIDENCE_MIN_BTL_FMT.replace("{years}", &format!("{:.1}", sc.min_btl_years));
+    let min_btl_fact = fact(
+        FORWARD_PLAN_CONFIDENCE_MIN_BTL_LABEL,
+        min_btl_text,
+        FORWARD_PLAN_CONFIDENCE_MIN_BTL_GLOSS,
+    );
+
+    // Informational note at the bottom — the persistent honest framing reminder.
+    let note = Text::new(FORWARD_PLAN_CONFIDENCE_NOTE)
+        .size(text::MICRO)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill);
+
+    let body = Column::new()
+        .spacing(space::S)
+        .push(caption)
+        .push(candidates_fact)
+        .push(dsr_fact)
+        .push(beats_fact)
+        .push(min_btl_fact)
+        .push(note);
+
+    frame::panel(FORWARD_PLAN_CONFIDENCE_TITLE, body.into(), mode)
 }
 
 // ── Disclaimer ────────────────────────────────────────────────────────────────

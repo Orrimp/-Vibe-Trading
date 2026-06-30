@@ -71,6 +71,18 @@ pub struct ForwardRunConfig {
     /// strategy from the tuned params instead (the same identity-guard path the
     /// sweep used to score the cell).
     pub param_override: Option<ForwardParamOverride>,
+    /// P0-3 — the scorecard summary from the crowning bake-off (ADR-0076).
+    ///
+    /// Populated by `cockpit_live.rs` at `ForwardCommand::Launch` time from the
+    /// `BakeoffReportMirror.scorecard` (the leaderboard already holds the
+    /// scorecard from the completed bake-off). `None` when no scorecard was
+    /// computed (degenerate bake-off or older launch paths). Threaded through to
+    /// `ForwardPlan.confidence` so the plan screen can frame the forward run as
+    /// "a confidence check on the crowned pick, not a fresh prediction".
+    ///
+    /// **`backtest` is already a `ui` dep**, so this does not add a new edge.
+    /// The type crosses as plain `f64`/`bool`/`usize` at the UI mirror boundary.
+    pub confidence: Option<backtest::bakeoff::ScorecardSummary>,
 }
 
 // ── F6 forward-plan types (ADR-0062) ─────────────────────────────────────────
@@ -263,6 +275,20 @@ pub struct ForwardPlan {
     /// the coming N days"), NOT a self-terminate condition.  The
     /// `paper_loop_supervisor` / `spawn_trading_loop` lifecycle is unchanged.
     pub horizon_days: u16,
+    /// P0-3 — the scorecard summary from the crowning bake-off (ADR-0076).
+    ///
+    /// A 4-field projection of the bake-off `Scorecard` (`n_candidates`,
+    /// `deflated_sharpe`, `crown_clears_dsr`, `min_btl_years`). Populated by
+    /// `build_forward_plan` when the caller provides a `ForwardRunConfig` with
+    /// `confidence: Some(..)`. `None` when no scorecard was computed.
+    ///
+    /// The `ui` adapter mirrors this to a `ConfidenceSummaryView` (plain
+    /// `f64`/`bool`/`usize`) — zero new `ui` dep edge (same discipline as
+    /// `ScorecardView::from_scorecard`).
+    ///
+    /// **REPORT-ONLY** — does NOT change crowning, ranking, or the FROZEN gate.
+    /// The forward-plan screen frames it as "confidence check, not verdict".
+    pub confidence: Option<backtest::bakeoff::ScorecardSummary>,
 }
 
 // ── T1928 (pass 6) — `LlmConfig` re-exported from the llm crate ───────────────

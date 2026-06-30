@@ -40,6 +40,7 @@ fn fwd_cfg(strategy_id: &str) -> ForwardRunConfig {
         budget: Money::<Usdt>::from_decimal(dec!(200)),
         lookback: None,
         param_override: None,
+        confidence: None, // P0-3: no scorecard in integration tests
     }
 }
 

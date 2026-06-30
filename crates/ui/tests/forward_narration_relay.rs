@@ -58,6 +58,7 @@ fn agent_forward_plan() -> agent::config::ForwardPlan {
         projected_units: Quantity::new(dec!(0.005)).unwrap(),
         sizing_capped: false,
         horizon_days: 7,
+        confidence: None, // P0-3: no scorecard in integration tests
     }
 }
 

@@ -72,6 +72,60 @@ const SQRT_HPY: f64 = 92.601_295_098_46;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
+/// A thin 4-field projection of [`Scorecard`] for the forward-plan confidence
+/// check (P0-3 / advisor-confidence-not-verdict, ADR-0076).
+///
+/// "Summary" means the four facts the operator needs at the forward-plan
+/// surface; the implementation-detail fields (`n_eff`, `pbo`) are excluded.
+///
+/// Chosen fields (rationale):
+/// - `n_candidates` — "how many strategies were tried" (the trial count)
+/// - `deflated_sharpe` — the headline credibility number (DSR probability)
+/// - `crown_clears_dsr` — the yes/no "beats holding after the search?" flag
+/// - `min_btl_years` — "how much data was needed" (the honest lower-bound)
+///
+/// `pbo` is always `None` in v2 (not displayed); `n_eff` is an
+/// implementation detail the operator doesn't need at the plan surface.
+///
+/// # REPORT-ONLY (§6.0 D3 / ADR-0075)
+///
+/// Same contract as `Scorecard` — informational only, never a veto.
+/// Carried on `agent::config::ForwardPlan` so the forward-plan screen
+/// can show "confidence check, not verdict" alongside the plan.
+#[derive(Debug, Clone, Copy)]
+pub struct ScorecardSummary {
+    /// Raw number of candidates tried — "how many strategies were ranked".
+    pub n_candidates: usize,
+    /// Deflated Sharpe Ratio — probability in `[0, 1]` the crown's edge
+    /// exceeds zero after correcting for how many strategies were tried.
+    pub deflated_sharpe: f64,
+    /// `true` iff `deflated_sharpe >= 0.95`. Informational, never a veto.
+    pub crown_clears_dsr: bool,
+    /// Minimum backtest length needed to trust the crown (years).
+    /// `2 · ln(n_eff) / SR_target²`. `0.0` when `n_eff ≤ 1`.
+    pub min_btl_years: f64,
+}
+
+impl Scorecard {
+    /// Project the four forward-plan-relevant fields into a [`ScorecardSummary`].
+    ///
+    /// Returns `None` for a degenerate scorecard (`n_candidates == 0`) so the
+    /// plan screen can gracefully omit the confidence block when no real
+    /// scorecard was computed (same guard as `ScorecardView::from_scorecard`).
+    #[must_use]
+    pub fn summary(&self) -> Option<ScorecardSummary> {
+        if self.n_candidates == 0 {
+            return None;
+        }
+        Some(ScorecardSummary {
+            n_candidates: self.n_candidates,
+            deflated_sharpe: self.deflated_sharpe,
+            crown_clears_dsr: self.crown_clears_dsr,
+            min_btl_years: self.min_btl_years,
+        })
+    }
+}
+
 /// Overfitting scorecard for one bake-off run.
 ///
 /// Carried on [`super::Recommendation`] as `pub scorecard: Scorecard`.
@@ -832,6 +886,40 @@ mod tests {
         assert!(sc.n_eff <= 1.0 + 1e-10);
         assert!(sc.min_btl_years >= 0.0);
         assert!(sc.pbo.is_none(), "PBO must be None in v2");
+    }
+
+    // ── ScorecardSummary / Scorecard::summary() tests (P0-3) ──────────────────
+
+    /// Positive case: a non-degenerate scorecard produces a `Some(summary)`
+    /// with the four projected fields matching.
+    #[test]
+    fn scorecard_summary_positive_case() {
+        let equity: Vec<Decimal> = (0..200)
+            .map(|i| dec!(100_000) + Decimal::from(i * 50))
+            .collect();
+        let sharpes = vec![2.0, 1.5, 1.2, 0.8, 0.3, -0.2, 1.1, 0.9, 1.7, 0.5];
+        let sc = compute_scorecard(&sharpes, &equity, 199);
+        let summary = sc.summary();
+        assert!(
+            summary.is_some(),
+            "non-degenerate scorecard must yield Some from summary()"
+        );
+        let summary = summary.unwrap_or_else(|| panic!("checked above"));
+
+        assert_eq!(summary.n_candidates, sc.n_candidates);
+        assert!((summary.deflated_sharpe - sc.deflated_sharpe).abs() < 1e-12);
+        assert_eq!(summary.crown_clears_dsr, sc.crown_clears_dsr);
+        assert!((summary.min_btl_years - sc.min_btl_years).abs() < 1e-12);
+    }
+
+    /// Degenerate case: empty scorecard (`n_candidates == 0`) must yield `None`.
+    #[test]
+    fn scorecard_summary_degenerate_yields_none() {
+        let sc = compute_scorecard(&[], &[], 0);
+        assert!(
+            sc.summary().is_none(),
+            "degenerate scorecard (n_candidates==0) must yield None from summary()"
+        );
     }
 
     #[test]

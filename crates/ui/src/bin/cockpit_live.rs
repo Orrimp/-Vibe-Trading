@@ -1590,12 +1590,34 @@ impl AppState {
                 if let Some(row) = mirror.crowned_row() {
                     let strategy_id = trading_core::StrategyId::new(row.strategy.as_str());
                     let symbol = trading_core::Symbol::new(mirror.coin.as_str());
+                    // P0-3: extract the scorecard summary from the completed
+                    // bake-off report and pass it to the ForwardPlan so the
+                    // plan screen can show "confidence check, not verdict".
+                    // `backtest` is already a `ui` dep — no new edge.
+                    // P0-3: extract the scorecard summary from the completed
+                    // bake-off report and pass it to the ForwardPlan so the
+                    // plan screen can show "confidence check, not verdict".
+                    // `backtest` is already a `ui` dep — no new edge.
+                    // Re-project from the leaderboard's ScorecardView into
+                    // the backtest ScorecardSummary (both carry the same four
+                    // fields; the ScorecardView was already projected at the
+                    // from_report boundary).
+                    let confidence =
+                        mirror
+                            .scorecard
+                            .map(|sc| backtest::bakeoff::ScorecardSummary {
+                                n_candidates: sc.n_candidates,
+                                deflated_sharpe: sc.deflated_sharpe,
+                                crown_clears_dsr: sc.crown_clears_dsr,
+                                min_btl_years: sc.min_btl_years,
+                            });
                     let fwd_cfg = agent::ForwardRunConfig {
                         strategy: strategy_id,
                         symbol,
                         budget,
                         lookback: None, // real-time-only (MVP; replay preview = v0.2)
                         param_override: None, // crowned-pick path: params from Config/disk (anchor-safe)
+                        confidence, // P0-3: scorecard summary for confidence check framing
                     };
                     if let Some(ref tx) = self.forward_tx {
                         match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
@@ -1880,12 +1902,29 @@ impl AppState {
 
             // Build ForwardRunConfig from core types + the tuned override (the
             // single UI→agent map, binary-side where `agent` is already imported).
+            // P0-3: promoted plans inherit the existing leaderboard scorecard
+            // (same bake-off, same crown — the confidence check framing applies).
+            let promote_confidence = if let ui::state::PanelState::Ready(ref mirror) =
+                self.cockpit.leaderboard_screen_state.result
+            {
+                mirror
+                    .scorecard
+                    .map(|sc| backtest::bakeoff::ScorecardSummary {
+                        n_candidates: sc.n_candidates,
+                        deflated_sharpe: sc.deflated_sharpe,
+                        crown_clears_dsr: sc.crown_clears_dsr,
+                        min_btl_years: sc.min_btl_years,
+                    })
+            } else {
+                None
+            };
             let fwd_cfg = agent::ForwardRunConfig {
                 strategy: promotion.strategy_id.clone(),
                 symbol: promotion.coin.clone(),
                 budget,
                 lookback: None, // real-time-only (the crowned-pick MVP behaviour)
                 param_override: Some(promote_params_to_override(&promotion.params)),
+                confidence: promote_confidence, // P0-3
             };
             if let Some(ref tx) = self.forward_tx {
                 match tx.try_send(agent::ForwardCommand::Launch(fwd_cfg)) {
