@@ -1,7 +1,7 @@
 ---
 slug: advisor-vol-estimator
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 version: 2.0.0
 updated: 2026-06-30
 ---

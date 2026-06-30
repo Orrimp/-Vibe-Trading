@@ -1,7 +1,7 @@
 ---
 slug: advisor-drawdown-control-overlay
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 updated: 2026-06-30
 version: v2.0.0-phase-2c
 ---

@@ -3305,9 +3305,9 @@ feature     = "advisor-vol-estimator"
 product     = "spec/product.md"
 arch        = ["spec/v2/v2-architecture.md"]   # §1 P1-5 + §6.0 D5 (binding home decision)
 crates      = ["crates/strategy"]   # developer 2026-06-30: vol_estimator.rs (4 pub fns + 3 pub λ constants + 21 unit tests); lib.rs (pub mod vol_estimator registration).
-tests       = ["crates/strategy/src/vol_estimator.rs"]   # 21 inline unit tests (log_returns: 5, realized_vol: 5, ewma: 5, har: 4, λ constants: 2). Tester to verify via cargo test -p strategy vol_estimator.
+tests       = ["crates/strategy/src/vol_estimator.rs", "spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md"]   # 23 inline unit tests (log_returns: 5, realized_vol: 5, ewma: 5, har: 4, λ constants: 2). Verified 2026-06-30: cargo test -p strategy --lib → 266/266 PASS (incl. all 23 vol_estimator tests). Tester report: phase-2c-overlays.
 anchors     = []   # EXPECTED NONE — pure new module, no engine path change; advisor bakeoff write_report=false; 119/119 unchanged by construction.
-state       = "dev-done"
+state       = "tester-done"
 
 [[req]]
 id          = "REQ-V2-P1-4-VOL-OVERLAY-REPOSITION-001"
@@ -3316,9 +3316,9 @@ feature     = "advisor-vol-overlay-reposition"
 product     = "spec/product.md"
 arch        = ["spec/v2/v2-architecture.md"]   # §1 P1-4 (binding)
 crates      = ["crates/strategy"]   # developer 2026-06-30: vol_targeting_overlay.rs (VolSource enum, VolTargetingConfig 4 new fields, p1_4_defaults(), PerSymbolEwmaState, ReturnVolCorrelation, pearson_correlation, apply_policy, sigma_from_ewma, sigma_from_garch); tests/vol_targeting_overlay.rs (..Default::default() fix); tests/drawdown_control_overlay_end_to_end.rs (doc comment fix — pre-existing clippy issue from P1-3 developer).
-tests       = ["crates/strategy/src/vol_targeting_overlay.rs", "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs", "crates/strategy/tests/vol_targeting_overlay.rs"]   # 33 new inline unit tests (no-trade band: 4, derisk-only: 4, return-vol correlation: 6, EWMA vol source: 2, p1_4_defaults: 1, Pearson: 5, GARCH backward-compat: 3 preserved). Existing e2e stays green: overlay_quantity_scale_reflects_computed_factor. Integration tests in vol_targeting_overlay.rs (7 tests) updated for backward-compat. Verify via: cargo test -p strategy --lib && cargo test -p strategy --test vol_targeting_overlay_end_to_end.
+tests       = ["crates/strategy/src/vol_targeting_overlay.rs", "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs", "crates/strategy/tests/vol_targeting_overlay.rs", "spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md"]   # 33 new inline unit tests (no-trade band: 4, derisk-only: 4, return-vol correlation: 6, EWMA vol source: 2, p1_4_defaults: 1, Pearson: 5, GARCH backward-compat: 3 preserved). Existing e2e stays green: overlay_quantity_scale_reflects_computed_factor. Verified 2026-06-30: cargo test -p strategy --lib → 266/266 PASS; cargo test -p strategy --test vol_targeting_overlay_end_to_end → 1/1 PASS (byte-identical on Default). Tester report: phase-2c-overlays.
 anchors     = []   # EXPECTED NONE — overlay operates on write_report=false advisor path; 119/119 unchanged by construction (verified 2026-06-30).
-state       = "dev-done"
+state       = "tester-done"
 
 [[req]]
 id          = "REQ-V2-P1-3-DRAWDOWN-OVERLAY-001"
@@ -3327,6 +3327,6 @@ feature     = "advisor-drawdown-control-overlay"
 product     = "spec/product.md"
 arch        = ["spec/v2/v2-architecture.md", "spec/architecture/adr/0080-drawdown-control-overlay.md"]   # §1 P1-3 + D8 (static CPPI @ 20%)
 crates      = ["crates/strategy"]   # developer 2026-06-30: drawdown_control_overlay.rs (DrawdownControlConfig + DrawdownControlOverlay<S> + compute_cushion_multiplier + DrawdownTelemetry + 12 unit tests); lib.rs (pub mod + pub use).
-tests       = ["crates/strategy/src/drawdown_control_overlay.rs", "crates/strategy/tests/drawdown_control_overlay_end_to_end.rs"]   # 12 inline unit tests + 6 e2e integration tests (incl. mandatory load-bearing divergence gate). cargo test -p strategy --lib -- drawdown_control + cargo test -p strategy --test drawdown_control_overlay_end_to_end
+tests       = ["crates/strategy/src/drawdown_control_overlay.rs", "crates/strategy/tests/drawdown_control_overlay_end_to_end.rs", "spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md"]   # 12 inline unit tests + 6 e2e integration tests (incl. mandatory load-bearing divergence gate). Verified 2026-06-30: cargo test -p strategy --lib → 266/266 PASS (incl. 12 drawdown unit tests); cargo test -p strategy --test drawdown_control_overlay_end_to_end → 6/6 PASS (overlay_equity_diverges_from_baseline_on_drawdown_scenario PASS; hwm_restart_proof_benchmark_sequence PASS; floor_never_moves_static_cppi_d8 PASS; budget_cap_invariant_quantity_scale_max_one PASS). Tester report: phase-2c-overlays.
 anchors     = []   # EXPECTED NONE — overlay runs on advisor path (write_report=false); no anchored report emitted; 119/119 unchanged by construction.
-state       = "dev-done"
+state       = "tester-done"

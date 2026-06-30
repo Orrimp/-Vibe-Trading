@@ -44,11 +44,30 @@ updated: 2026-06-30
 
 ## Tester tasks (T_FINAL_*)
 
-- [ ] T_FINAL_1: Verify `cargo test -p strategy --lib` (all 260+ tests pass, no regressions).
-- [ ] T_FINAL_2: Verify `cargo test -p strategy --test drawdown_control_overlay_end_to_end` (6/6 pass).
-- [ ] T_FINAL_3: Verify `cargo clippy -p strategy --tests -- -D warnings` clean.
-- [ ] T_FINAL_4: Verify `cargo fmt --check` clean.
-- [ ] T_FINAL_5: Verify `bash scripts/verify_anchors.sh` 119/119 (before + after).
-- [ ] T_FINAL_6: Verify `python3 scripts/spec_lint.py` PASS.
-- [ ] T_FINAL_7: Verify `python3 scripts/adr_registry_check.py --self-test` PASS.
-- [ ] T_FINAL_8: Tick completed tasks with file:line + test cmd + output line per honest-tick rule.
+- [x] T_FINAL_1: Verify `cargo test -p strategy --lib` (all 260+ tests pass, no regressions).
+  - test cmd: `cargo test -p strategy --lib`
+  - output: `test result: ok. 266 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s`
+- [x] T_FINAL_2: Verify `cargo test -p strategy --test drawdown_control_overlay_end_to_end` (6/6 pass).
+  - test cmd: `cargo test -p strategy --test drawdown_control_overlay_end_to_end -- --nocapture`
+  - output: `test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+  - load-bearing divergence gate: `overlay_equity_diverges_from_baseline_on_drawdown_scenario ... ok`
+  - HWM-restart proof: `hwm_restart_proof_benchmark_sequence ... ok`
+  - D8 floor invariant: `floor_never_moves_static_cppi_d8 ... ok`
+  - budget-cap invariant: `budget_cap_invariant_quantity_scale_max_one ... ok`
+- [x] T_FINAL_3: Verify `cargo clippy -p strategy --tests -- -D warnings` clean.
+  - test cmd: `cargo clippy -p strategy --tests -- -D warnings`
+  - output: `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 4m 35s  EXIT:0`
+- [x] T_FINAL_4: Verify `cargo fmt --check` clean.
+  - test cmd: `cargo fmt --check`
+  - output: `(no output; exit 0)`
+- [x] T_FINAL_5: Verify `bash scripts/verify_anchors.sh` 119/119 (before + after).
+  - test cmd: `bash scripts/verify_anchors.sh`
+  - output: `ANCHORS PASS  (119 / 119)`
+- [x] T_FINAL_6: Verify `python3 scripts/spec_lint.py` PASS.
+  - test cmd: `python3 scripts/spec_lint.py`
+  - output: `spec-lint: PASS (0 violations)`
+- [x] T_FINAL_7: Verify `python3 scripts/adr_registry_check.py --self-test` PASS.
+  - test cmd: `python3 scripts/adr_registry_check.py --self-test`
+  - output: `Ran 5 tests in 0.005s  OK  EXIT:0`
+- [x] T_FINAL_8: Tick completed tasks with file:line + test cmd + output line per honest-tick rule.
+  - Completed above (T_FINAL_1 through T_FINAL_7). Report at `spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md`.

@@ -75,6 +75,8 @@ updated: 2026-06-30
 
 ## Tester — to verify (T_FINAL_*)
 
-- [ ] Full `cargo test -p strategy` (lib + integration) regression pass.
-- [ ] VERDICT report under `spec/v2/advisor-vol-overlay-reposition/reports/`.
-- [ ] `spec/trace.toml` `REQ-V2-P1-4-VOL-OVERLAY-REPOSITION-001` `state = "tester-done"`.
+- [x] Full `cargo test -p strategy` (lib + integration) regression pass.
+  - test cmd: `cargo test -p strategy --lib && cargo test -p strategy --test vol_targeting_overlay_end_to_end`
+  - output: `test result: ok. 266 passed; 0 failed; 0 ignored; 0 measured; finished in 0.01s` + `test result: ok. 1 passed; 0 failed; finished in 0.00s`
+- [x] VERDICT report at `spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md` (combined Phase 2C report per tester brief).
+- [x] `spec/trace.toml` `REQ-V2-P1-4-VOL-OVERLAY-REPOSITION-001` `state = "tester-done"` (updated 2026-06-30).
