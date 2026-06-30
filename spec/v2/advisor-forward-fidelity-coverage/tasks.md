@@ -1,7 +1,7 @@
 ---
 slug: advisor-forward-fidelity-coverage
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 updated: 2026-06-30
 ---
 
@@ -47,13 +47,13 @@ updated: 2026-06-30
 
 ## Verification gates (tester)
 
-- [ ] **T_FINAL_01** — `cargo test -p agent` all targets clean (21+ tests pass).
-- [ ] **T_FINAL_02** — `cargo test -p backtest --lib` clean (195/195, no regressions).
-- [ ] **T_FINAL_03** — `cargo test -p ui --lib --features fixtures` clean (583/583).
-- [ ] **T_FINAL_04** — `cargo clippy -p agent --tests -- -D warnings` clean.
-- [ ] **T_FINAL_05** — `cargo clippy -p backtest --tests -- -D warnings` clean.
-- [ ] **T_FINAL_06** — `cargo clippy -p ui --tests --features fixtures -- -D warnings` clean.
-- [ ] **T_FINAL_07** — `cargo fmt --check` clean.
-- [ ] **T_FINAL_08** — `bash scripts/verify_anchors.sh` → 119/119.
-- [ ] **T_FINAL_09** — `python3 scripts/spec_lint.py` PASS.
-- [ ] **T_FINAL_10** — `python3 scripts/adr_registry_check.py --self-test` PASS.
+- [x] **T_FINAL_01** — `cargo test -p agent` all targets clean (21 passed: 13 new r1_* + 8 pre-existing f5b_*; 7 promotion_divergence; 101 lib). Tester 2026-06-30.
+- [x] **T_FINAL_02** — `cargo test -p backtest --lib` clean (195/195, no regressions; `scorecard_does_not_change_ranking` PASS). Tester 2026-06-30.
+- [x] **T_FINAL_03** — `cargo test -p ui --lib --features fixtures` clean (583/583). Tester 2026-06-30.
+- [x] **T_FINAL_04** — `cargo clippy -p agent --tests -- -D warnings` clean (exit 0). Tester 2026-06-30.
+- [x] **T_FINAL_05** — `cargo clippy -p backtest --tests -- -D warnings` clean (exit 0). Tester 2026-06-30.
+- [x] **T_FINAL_06** — `cargo clippy -p ui --tests --features fixtures -- -D warnings` clean (exit 0). Tester 2026-06-30.
+- [x] **T_FINAL_07** — `cargo fmt --check` clean (exit 0). Tester 2026-06-30.
+- [x] **T_FINAL_08** — `bash scripts/verify_anchors.sh` → 119/119 PASS. Tester 2026-06-30.
+- [x] **T_FINAL_09** — `python3 scripts/spec_lint.py` → PASS (0 violations). Tester 2026-06-30.
+- [x] **T_FINAL_10** — `python3 scripts/adr_registry_check.py --self-test` → 5/5 OK; ADR-0077 registered. Tester 2026-06-30.
