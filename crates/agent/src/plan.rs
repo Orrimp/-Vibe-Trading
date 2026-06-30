@@ -281,6 +281,87 @@ pub fn build_forward_plan_from_registry(
                 None
             }
         },
+
+        // ── R1 (ADR-0077): ADR-0071 signal-library arms (5 DSL strategies) ──
+        //
+        // Load the same TOML the bakeoff used. Fresh instance → no warmed
+        // indicators → stance = Flat (honest "waiting for first bar" stance).
+        "v0.donchian_break" => load_composed_describer("btc_donchian_break")
+            .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
+        "v0.donchian_floor" => load_composed_describer("btc_donchian_floor")
+            .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
+        "v0.vol_breakout" => load_composed_describer("btc_vol_breakout")
+            .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
+        "v0.roc_momentum" => load_composed_describer("btc_roc_momentum")
+            .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
+        "v0.obv" => load_composed_describer("btc_obv")
+            .map(|d| build_forward_plan(&d, fwd, last_close, last_bar_ts, horizon_days)),
+
+        // ── R1 (ADR-0077): ADR-0067 combination-search ensemble arms (6 ids) ─
+        //
+        // `build_ensemble` already knows all 8 vote ids; routing all 6 new ids
+        // to the same factory as majority/unanimous — no new engine code.
+        "v0.8.vote.trend_pair"
+        | "v0.8.vote.tr_mr_macd_rsi"
+        | "v0.8.vote.tr_mr_sma_bb"
+        | "v0.8.vote.any1of4"
+        | "v0.8.vote.k2of4"
+        | "v0.8.vote.k3of4" => match strategy::build_ensemble(id) {
+            Ok(ensemble) => Some(build_forward_plan(
+                &ensemble,
+                fwd,
+                last_close,
+                last_bar_ts,
+                horizon_days,
+            )),
+            Err(e) => {
+                tracing::warn!(
+                    strategy = id,
+                    error = %e,
+                    "build_forward_plan_from_registry: ADR-0067 EnsembleStrategy load failed \
+                     — no plan emitted"
+                );
+                None
+            }
+        },
+
+        // ── R1 (ADR-0077): ADR-0072 DVOL regime arm ──────────────────────────
+        //
+        // `DvolRegimeStrategy` implements `PlanDescribe` indirectly via the
+        // `Strategy` trait approach. Since the forward-plan read path calls
+        // `describe_plan` on a `PlanDescribe` implementor, and
+        // `DvolRegimeStrategy` does NOT implement `PlanDescribe`, we fall back
+        // to `AlwaysLongStrategy` as the honest plan describer: the DVOL arm in
+        // the forward paper loop runs warm-up-only (flat) because no corpus is
+        // loaded, which is equivalent to buy-and-hold at the plan level.
+        "v0.dvol_regime" => {
+            let describer = strategy::AlwaysLongStrategy::new();
+            Some(build_forward_plan(
+                &describer,
+                fwd,
+                last_close,
+                last_bar_ts,
+                horizon_days,
+            ))
+        }
+
+        // ── R1 (ADR-0077): ADR-0073 macro risk-on arm ────────────────────────
+        //
+        // `v0.macro_riskon` uses `run_macro_gated_buyhold_path` (not a Strategy).
+        // In the forward paper loop the macro corpus is not loaded; graceful
+        // degradation = buy-and-hold (same as an empty regime series).
+        // `AlwaysLongStrategy` is the honest plan describer.
+        "v0.macro_riskon" => {
+            let describer = strategy::AlwaysLongStrategy::new();
+            Some(build_forward_plan(
+                &describer,
+                fwd,
+                last_close,
+                last_bar_ts,
+                horizon_days,
+            ))
+        }
+
         unknown => {
             tracing::warn!(
                 strategy = unknown,

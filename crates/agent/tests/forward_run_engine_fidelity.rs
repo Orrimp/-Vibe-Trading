@@ -360,6 +360,260 @@ fn f5b_unknown_strategy_id_returns_err_not_sma_fallback() {
     );
 }
 
+// ── R1 (ADR-0077): 14 missing forward-buildability tests ─────────────────────
+//
+// Guarantees that each of the 14 arms that previously hit the `bail!` arm
+// in `build_registry_for` now builds successfully.  The `None` path and
+// anti-fake gate are NOT changed — both tested below (byte-identical).
+//
+// Test families:
+// 1. ADR-0071 DSL arms (5) — donchian_break, donchian_floor, vol_breakout,
+//    roc_momentum, obv — each loads its TOML from `config/strategies/`.
+// 2. ADR-0067 vote ensemble arms (6) — trend_pair, tr_mr_macd_rsi,
+//    tr_mr_sma_bb, any1of4, k2of4, k3of4 — routed to `build_ensemble`.
+// 3. ADR-0072 DVOL regime (1) — registers `DvolRegimeStrategy` (warm-up).
+// 4. ADR-0073 macro risk-on (1) — registers `AlwaysLongStrategy` (graceful
+//    degradation; no corpus in forward run).
+//
+// Contract: each test asserts `build_registry_for` returns `Ok` (NOT `Err`).
+// The `unknown` bail-gate sentinel test below still asserts `Err`.
+
+/// ADR-0071 arm: `v0.donchian_break` must build (not bail).
+#[test]
+fn r1_donchian_break_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.donchian_break");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.donchian_break must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one strategy registered");
+    assert_ne!(
+        events[0].strategy_id.0.as_str(),
+        "sma_crossover",
+        "v0.donchian_break must NOT register sma_crossover (proxy regression)"
+    );
+}
+
+/// ADR-0071 arm: `v0.donchian_floor` must build (not bail).
+#[test]
+fn r1_donchian_floor_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.donchian_floor");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.donchian_floor must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one strategy registered");
+    assert_ne!(
+        events[0].strategy_id.0.as_str(),
+        "sma_crossover",
+        "v0.donchian_floor must NOT register sma_crossover (proxy regression)"
+    );
+}
+
+/// ADR-0071 arm: `v0.vol_breakout` must build (not bail).
+#[test]
+fn r1_vol_breakout_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.vol_breakout");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.vol_breakout must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one strategy registered");
+    assert_ne!(
+        events[0].strategy_id.0.as_str(),
+        "sma_crossover",
+        "v0.vol_breakout must NOT register sma_crossover (proxy regression)"
+    );
+}
+
+/// ADR-0071 arm: `v0.roc_momentum` must build (not bail).
+#[test]
+fn r1_roc_momentum_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.roc_momentum");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.roc_momentum must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one strategy registered");
+    assert_ne!(
+        events[0].strategy_id.0.as_str(),
+        "sma_crossover",
+        "v0.roc_momentum must NOT register sma_crossover (proxy regression)"
+    );
+}
+
+/// ADR-0071 arm: `v0.obv` must build (not bail).
+#[test]
+fn r1_obv_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.obv");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.obv must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one strategy registered");
+    assert_ne!(
+        events[0].strategy_id.0.as_str(),
+        "sma_crossover",
+        "v0.obv must NOT register sma_crossover (proxy regression)"
+    );
+}
+
+/// ADR-0067 ensemble arm: `v0.8.vote.trend_pair` must build (not bail).
+#[test]
+fn r1_ensemble_trend_pair_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.8.vote.trend_pair");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.8.vote.trend_pair must build — got Err: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().len(), 1, "exactly one strategy registered");
+}
+
+/// ADR-0067 ensemble arm: `v0.8.vote.tr_mr_macd_rsi` must build (not bail).
+#[test]
+fn r1_ensemble_tr_mr_macd_rsi_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.8.vote.tr_mr_macd_rsi");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.8.vote.tr_mr_macd_rsi must build — got Err: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().len(), 1, "exactly one strategy registered");
+}
+
+/// ADR-0067 ensemble arm: `v0.8.vote.tr_mr_sma_bb` must build (not bail).
+#[test]
+fn r1_ensemble_tr_mr_sma_bb_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.8.vote.tr_mr_sma_bb");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.8.vote.tr_mr_sma_bb must build — got Err: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().len(), 1, "exactly one strategy registered");
+}
+
+/// ADR-0067 ensemble arm: `v0.8.vote.any1of4` must build (not bail).
+#[test]
+fn r1_ensemble_any1of4_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.8.vote.any1of4");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.8.vote.any1of4 must build — got Err: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().len(), 1, "exactly one strategy registered");
+}
+
+/// ADR-0067 ensemble arm: `v0.8.vote.k2of4` must build (not bail).
+#[test]
+fn r1_ensemble_k2of4_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.8.vote.k2of4");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.8.vote.k2of4 must build — got Err: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().len(), 1, "exactly one strategy registered");
+}
+
+/// ADR-0067 ensemble arm: `v0.8.vote.k3of4` must build (not bail).
+#[test]
+fn r1_ensemble_k3of4_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.8.vote.k3of4");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.8.vote.k3of4 must build — got Err: {:?}",
+        result.err()
+    );
+    assert_eq!(result.unwrap().len(), 1, "exactly one strategy registered");
+}
+
+/// ADR-0072 DVOL regime arm: `v0.dvol_regime` must build (not bail).
+/// Registers `DvolRegimeStrategy` with empty as_of (warm-up-only / flat).
+#[test]
+fn r1_dvol_regime_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.dvol_regime");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.dvol_regime must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    assert_eq!(registry.len(), 1, "exactly one strategy registered");
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one Load event");
+    assert_eq!(
+        events[0].strategy_id.0.as_str(),
+        "dvol_regime",
+        "v0.dvol_regime must register DvolRegimeStrategy (id='dvol_regime')"
+    );
+}
+
+/// ADR-0073 macro risk-on arm: `v0.macro_riskon` must build (not bail).
+/// Registers `AlwaysLongStrategy` (graceful degradation — no macro corpus
+/// available in the forward run).
+#[test]
+fn r1_macro_riskon_builds_not_bails() {
+    let cfg = default_cfg();
+    let fwd = fwd_cfg("v0.macro_riskon");
+    let result = build_registry_for(&cfg, Some(&fwd));
+    assert!(
+        result.is_ok(),
+        "v0.macro_riskon must build — got Err: {:?}",
+        result.err()
+    );
+    let registry = result.unwrap();
+    assert_eq!(registry.len(), 1, "exactly one strategy registered");
+    let events = registry.drain_pending_events();
+    assert_eq!(events.len(), 1, "exactly one Load event");
+    assert_eq!(
+        events[0].strategy_id.0.as_str(),
+        "always_long",
+        "v0.macro_riskon must register AlwaysLongStrategy (id='always_long') for graceful degradation"
+    );
+}
+
 /// `forward = None` returns the default SMA registry (byte-identical headless path).
 #[test]
 fn f5b_no_forward_returns_default_sma_registry() {

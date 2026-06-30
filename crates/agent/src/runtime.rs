@@ -473,6 +473,155 @@ pub fn build_registry_for(
                 "build_registry_for: EnsembleStrategy registered"
             );
         }
+
+        // ── R1 (ADR-0077): ADR-0071 signal-library arms (5 DSL strategies) ──
+        //
+        // Each loads its pre-registered TOML from `config/strategies/`.
+        // Mirrors the MACD/RSI/BBands pattern above exactly (same 3-line shape).
+        // The TOML was already used in the bakeoff — loading it here makes the
+        // forward run byte-for-byte the same strategy that won the ranking.
+        "v0.donchian_break" => {
+            let toml_name = "btc_donchian_break";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                     for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
+            tracing::info!(
+                strategy = id,
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy registered"
+            );
+        }
+        "v0.donchian_floor" => {
+            let toml_name = "btc_donchian_floor";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                     for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
+            tracing::info!(
+                strategy = id,
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy registered"
+            );
+        }
+        "v0.vol_breakout" => {
+            let toml_name = "btc_vol_breakout";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                     for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
+            tracing::info!(
+                strategy = id,
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy registered"
+            );
+        }
+        "v0.roc_momentum" => {
+            let toml_name = "btc_roc_momentum";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                     for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
+            tracing::info!(
+                strategy = id,
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy registered"
+            );
+        }
+        "v0.obv" => {
+            let toml_name = "btc_obv";
+            let reg = load_composed_strategy_from_toml(toml_name).with_context(|| {
+                format!(
+                    "build_registry_for: failed to load ComposedStrategy \
+                     for strategy id '{id}' from config/strategies/{toml_name}.toml"
+                )
+            })?;
+            registry.register(Box::new(reg));
+            tracing::info!(
+                strategy = id,
+                toml = toml_name,
+                "build_registry_for: ComposedStrategy registered"
+            );
+        }
+
+        // ── R1 (ADR-0077): ADR-0067 combination-search ensemble arms (6 ids) ─
+        //
+        // `build_ensemble` already knows ALL 8 vote ids (ADR-0067).  The original
+        // match only routed majority/unanimous; widening it to all 8 is a one-arm
+        // expansion — no new engine code (ADR-0077 § D2).
+        "v0.8.vote.trend_pair"
+        | "v0.8.vote.tr_mr_macd_rsi"
+        | "v0.8.vote.tr_mr_sma_bb"
+        | "v0.8.vote.any1of4"
+        | "v0.8.vote.k2of4"
+        | "v0.8.vote.k3of4" => {
+            let ensemble = strategy::build_ensemble(id).with_context(|| {
+                format!(
+                    "build_registry_for: failed to build EnsembleStrategy for id '{id}' \
+                     (ADR-0077 R1 coverage)"
+                )
+            })?;
+            registry.register(Box::new(ensemble));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: EnsembleStrategy (ADR-0067 combination arm) registered"
+            );
+        }
+
+        // ── R1 (ADR-0077): ADR-0072 DVOL regime arm ──────────────────────────
+        //
+        // `DvolRegimeStrategy` is a proper `Strategy` impl. In the forward run
+        // the DVOL corpus is not loaded (no real-time feed), so we construct it
+        // with an empty `as_of_dvol` vec → warm-up-only (flat) behaviour for
+        // every bar. This is honest: the forward paper loop starts flat and waits
+        // for real bars; the DVOL-gating only activates when a preloaded series
+        // is injected (bakeoff path). The symbol is read from the forward config.
+        "v0.dvol_regime" => {
+            let symbol = fwd.symbol.clone();
+            let dvol_strategy = strategy::DvolRegimeStrategy::new(
+                symbol.clone(),
+                vec![], // empty as_of → warm-up flat (no DVOL corpus in forward run)
+                strategy::DVOL_REGIME_WINDOW,
+            );
+            registry.register(Box::new(dvol_strategy));
+            tracing::info!(
+                strategy = id,
+                %symbol,
+                "build_registry_for: DvolRegimeStrategy registered (empty as_of — forward warm-up only)"
+            );
+        }
+
+        // ── R1 (ADR-0077): ADR-0073 macro risk-on arm ────────────────────────
+        //
+        // `v0.macro_riskon` in the bakeoff is driven by `run_macro_gated_buyhold_path`
+        // (a standalone function, NOT a `Strategy` impl). In the forward paper loop
+        // `Box<dyn Strategy>` is required.  `AlwaysLongStrategy` is the honest
+        // proxy: the macro gating relies on external corpus data (`data/yahoo-macro/`)
+        // that is not loaded in the forward run, so the arm degrades to buy-and-hold
+        // exactly as `run_macro_gated_buyhold_path` does with an empty regime series
+        // (ADR-0073 graceful-degradation precedent).  This prevents the `bail!` and
+        // lets the forward plan emit an honest "BuyAndHold" description.
+        "v0.macro_riskon" => {
+            registry.register(Box::new(strategy::AlwaysLongStrategy::new()));
+            tracing::info!(
+                strategy = id,
+                "build_registry_for: AlwaysLongStrategy registered for macro_riskon \
+                 (macro corpus not available in forward run — graceful degradation to buy-and-hold)"
+            );
+        }
+
         unknown => {
             // Unknown id — return a typed error so the supervisor can log and
             // surface it to the UI error path. NO silent SMA fallback.
