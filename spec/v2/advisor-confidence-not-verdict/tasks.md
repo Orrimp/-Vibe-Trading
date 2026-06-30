@@ -73,12 +73,12 @@ updated: 2026-06-30
 
 ## Tester verification items (T_FINAL_*)
 
-- [ ] **T_FINAL_1** — `cargo test -p backtest` clean
-- [ ] **T_FINAL_2** — `cargo test -p ui --lib` clean
-- [ ] **T_FINAL_3** — `cargo test -p ui --test forward_plan_confidence_render --features fixtures` PASS (describe PNG output)
-- [ ] **T_FINAL_4** — `cargo clippy -p backtest --tests -- -D warnings` clean
-- [ ] **T_FINAL_5** — `cargo clippy -p ui --tests --features fixtures -- -D warnings` clean
-- [ ] **T_FINAL_6** — `cargo fmt --check` clean
-- [ ] **T_FINAL_7** — `bash scripts/verify_anchors.sh` → 119/119 PASS
-- [ ] **T_FINAL_8** — `python3 scripts/spec_lint.py` PASS
-- [ ] **T_FINAL_9** — cockpit smoke: `cargo build -p ui --features fixtures,live` clean, 0 panics
+- [x] **T_FINAL_1** — `cargo test -p backtest` clean — 195 passed, 0 failed, 8 ignored (2026-06-30 tester)
+- [x] **T_FINAL_2** — `cargo test -p ui --lib` clean — 583 passed, 0 failed (2026-06-30 tester)
+- [x] **T_FINAL_3** — `cargo test -p ui --test forward_plan_confidence_render --features fixtures` PASS — 2 passed; headline "Confidence check" + 4-row block (strategies:18 / deflated:87% / beats-holding:not-yet / min-history:6.4yr) renders; negative control (confidence:None) renders without block (2026-06-30 tester)
+- [x] **T_FINAL_4** — `cargo clippy -p backtest --tests -- -D warnings` clean (2026-06-30 tester)
+- [x] **T_FINAL_5** — `cargo clippy -p ui --tests --features fixtures -- -D warnings` clean (2026-06-30 tester)
+- [x] **T_FINAL_6** — `cargo fmt --check` clean (2026-06-30 tester)
+- [x] **T_FINAL_7** — `bash scripts/verify_anchors.sh` → ANCHORS PASS (119/119) (2026-06-30 tester)
+- [x] **T_FINAL_8** — `python3 scripts/spec_lint.py` → spec-lint: PASS (0 violations) (2026-06-30 tester)
+- [x] **T_FINAL_9** — cockpit smoke: `cargo build -p ui --features fixtures,live` clean; 7s window, 0 panics (2026-06-30 tester)

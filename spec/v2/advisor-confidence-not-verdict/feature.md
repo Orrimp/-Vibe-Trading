@@ -1,7 +1,7 @@
 ---
 slug: advisor-confidence-not-verdict
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 version: 0.1.0
 updated: 2026-06-30
 ---

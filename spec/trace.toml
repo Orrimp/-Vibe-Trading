@@ -3283,6 +3283,6 @@ feature     = "advisor-confidence-not-verdict"
 product     = "spec/product.md"
 arch        = ["spec/v2/v2-architecture.md"]
 crates      = ["crates/backtest", "crates/agent", "crates/ui"]   # developer 2026-06-29: scorecard.rs (ScorecardSummary + summary() + 2 unit tests), bakeoff/mod.rs (re-export), agent/config.rs (ForwardRunConfig + ForwardPlan confidence field), agent/plan.rs (propagate confidence), ui/src/forward_plan/state.rs (ConfidenceSummaryView + field), ui/src/forward_plan/adapter.rs (confidence_summary_view), ui/src/forward_plan/mod.rs (re-export), ui/src/bin/cockpit_live.rs (two launch sites), ui/src/strings.rs (relabel + 14 constants), ui/src/screens/forward_plan.rs (confidence_block), ui/src/fixtures.rs (8 None + 2 new fixtures).
-tests       = ["crates/ui/tests/forward_plan_confidence_render.rs"]   # tester-owned; forward_plan_confidence_render — 2 render guards (positive + spatial)
-anchors     = []   # EXPECTED NONE — no anchored report emitted; advisor bakeoff uses write_report=false; 119/119 unchanged.
-state       = "proposed"
+tests       = ["crates/ui/tests/forward_plan_confidence_render.rs", "spec/v2/advisor-confidence-not-verdict/reports/test-2026-06-30-advisor-confidence-not-verdict.md"]   # tester-owned; forward_plan_confidence_render — 2 render guards (positive + spatial); tester report 2026-06-30
+anchors     = []   # EXPECTED NONE — no anchored report emitted; advisor bakeoff uses write_report=false; 119/119 unchanged. Confirmed by tester 2026-06-30.
+state       = "verified"
