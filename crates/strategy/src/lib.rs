@@ -38,6 +38,14 @@ pub mod registry;
 pub mod sma_crossover;
 pub mod tcn_overlay_momentum;
 pub mod traits;
+/// P1-5 shared σ̂ vol estimator (v2 Phase 2C / ADR-0079).
+///
+/// Pure functions (`log_returns_from_bars`, `ewma_realized_vol`,
+/// `har_realized_vol`, `realized_vol_from_returns`) consumed by both
+/// overlay crates.  Homed here per operator-ratified D5
+/// (v2-architecture.md §6.0): keeps "vol-for-sizing ≠ return-prediction"
+/// clean; `ui` never imports this module.
+pub mod vol_estimator;
 pub mod vol_killswitch_overlay;
 pub mod vol_meanreversion;
 pub mod vol_targeting_overlay;

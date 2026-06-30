@@ -3297,3 +3297,14 @@ crates      = ["crates/agent"]   # developer 2026-06-30: runtime.rs (14 new matc
 tests       = ["crates/agent/tests/forward_run_engine_fidelity.rs", "spec/v2/advisor-forward-fidelity-coverage/reports/test-2026-06-30-advisor-forward-fidelity-coverage.md"]   # 13 new r1_* tests; all 21 pass; tester report 2026-06-30.
 anchors     = []   # EXPECTED NONE — None path byte-identical; no anchored report emitted by any of the 14 arms (write_report=false in bakeoff path); 119/119 unchanged. Tester-confirmed 2026-06-30.
 state       = "tester-done"
+
+[[req]]
+id          = "REQ-V2-P1-5-VOL-ESTIMATOR-001"
+title       = "P1-5 Shared σ̂ vol estimator — pure, stateless module in crates/strategy/src/vol_estimator.rs consumed by both P1-3 (drawdown-control overlay) and P1-4 (vol-targeting overlay reparameterisation). Four functions: log_returns_from_bars (Decimal→f64 at stats boundary), realized_vol_from_returns (trailing-window stddev), ewma_realized_vol (RiskMetrics-style EWMA recurrence with documented half-life↔λ formula), har_realized_vol (Corsi 2009 HAR-RV equal-weight blend: daily+weekly[5]+monthly[22]). Three exported λ constants: LAMBDA_126D_DAILY≈0.9945 (architect 126-day slow default), LAMBDA_126D_HOURLY≈0.999771, LAMBDA_RISKMETRICS=0.94. No consumer wiring in this increment (P1-4 switches to EWMA source; P1-3 builds the drawdown overlay). Binding home per operator-ratified D5 (v2-architecture.md §6.0): strategy crate; NOT forecast. ui dep edge zero (module never crosses into ui). Anchor-safe by construction (no engine path; write_report=false; 119/119 unchanged)."
+feature     = "advisor-vol-estimator"
+product     = "spec/product.md"
+arch        = ["spec/v2/v2-architecture.md"]   # §1 P1-5 + §6.0 D5 (binding home decision)
+crates      = ["crates/strategy"]   # developer 2026-06-30: vol_estimator.rs (4 pub fns + 3 pub λ constants + 21 unit tests); lib.rs (pub mod vol_estimator registration).
+tests       = ["crates/strategy/src/vol_estimator.rs"]   # 21 inline unit tests (log_returns: 5, realized_vol: 5, ewma: 5, har: 4, λ constants: 2). Tester to verify via cargo test -p strategy vol_estimator.
+anchors     = []   # EXPECTED NONE — pure new module, no engine path change; advisor bakeoff write_report=false; 119/119 unchanged by construction.
+state       = "dev-done"
