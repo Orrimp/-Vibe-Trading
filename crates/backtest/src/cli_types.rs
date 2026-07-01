@@ -50,7 +50,11 @@ use trading_core::Symbol;
 /// This config is consumed only by `crates/backtest`. The live-mode agent
 /// (`crates/agent`) does not read it — live fills already carry real
 /// latency and slippage from the venue.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+// Note: `Eq` is intentionally NOT derived. `SlippageModel::VolScaledSpread`
+// contains `f64` fields (vol_multiplier, sigma_lambda) which do not implement
+// `Eq`. Use `PartialEq` comparison or field-wise checks instead.
+// ADR-0081 § Consequences records this.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LatencySlippageSimConfig {
     /// Minimum latency added to `order_ts_ms` in milliseconds.
     /// Default: 0 (noop).

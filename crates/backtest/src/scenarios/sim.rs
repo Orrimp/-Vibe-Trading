@@ -13,6 +13,10 @@
 //!   `cost::apply_slippage_model`. The per-symbol volume is looked up from
 //!   `cfg.volume_usd_per_symbol` using the provided `symbol` key; if the map
 //!   is absent or the symbol is missing, `Decimal::ZERO` is used (no impact).
+//! - `VolScaledSpread { .. }`: vol-scaled spread (ADR-0081, opt-in-forever).
+//!   At this seam no returns slice is available, so the EWMA falls back to
+//!   `base_bps` only (conservative lower bound). Full vol-scaling is exercised
+//!   by callers that call `apply_slippage_model_with_returns` with a returns slice.
 //!
 //! ## Anchor-additive contract (ADR-0038 § D6.a)
 //!
@@ -27,7 +31,7 @@
 use rust_decimal::Decimal;
 use trading_core::{Side, Symbol};
 
-use cost::{SlippageModel, apply_slippage_model};
+use cost::{SlippageModel, apply_slippage_model, apply_slippage_model_with_returns};
 
 use crate::cli_types::LatencySlippageSimConfig;
 
@@ -85,6 +89,35 @@ pub fn sim_slippage_cost(
             // Cost = qty × |adjusted_fill - fill_price| (always non-negative).
             // For Buy: adjusted_fill > fill_price → extra cost.
             // For Sell: adjusted_fill < fill_price → cost = qty × (fill_price - adjusted_fill).
+            match side {
+                Side::Buy => qty * (adjusted_fill - fill_price),
+                Side::Sell => qty * (fill_price - adjusted_fill),
+            }
+        }
+        SlippageModel::VolScaledSpread { .. } => {
+            // Vol-scaled spread model (ADR-0081, opt-in-forever).
+            // The spread is conditioned on recent returns; no per-symbol volume lookup needed.
+            // `bar_log_returns` would be provided by the scenario runner in a wired-up
+            // path; here at the `sim_slippage_cost` level we receive no returns slice.
+            // We call `apply_slippage_model_with_returns` with an empty slice → the
+            // EWMA falls back to `base_bps` only (warm-up behaviour, conservative).
+            //
+            // This is intentional for the cost-accounting path: the scenario runner
+            // that calls this function does not have a returns buffer at fill time.
+            // The VolScaledSpread cost at this seam is therefore a conservative lower
+            // bound (base_bps). The full vol-scaled behaviour is exercised at the
+            // `apply_slippage_model_with_returns` layer by callers that DO have returns.
+            //
+            // ADR-0081 § D3 notes this warm-up fallback contract.
+            let notional = qty * fill_price;
+            let adjusted_fill = apply_slippage_model_with_returns(
+                fill_price,
+                side,
+                notional,
+                cfg.slippage_model,
+                Decimal::ZERO, // volume_usd unused by VolScaledSpread
+                &[],           // no returns → fallback to base_bps (conservative)
+            );
             match side {
                 Side::Buy => qty * (adjusted_fill - fill_price),
                 Side::Sell => qty * (fill_price - adjusted_fill),

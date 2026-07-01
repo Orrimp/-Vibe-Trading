@@ -14,4 +14,7 @@ pub mod slippage;
 pub use budget::{BudgetError, CostBudget};
 pub use event::{AgentRole, CostEvent, InfraLine, LlmTier, ProviderKind};
 pub use sink::{CostSink, LedgerCostSink, NoopCostSink};
-pub use slippage::{MAX_SLIPPAGE_BPS, SlippageModel, apply_slippage, apply_slippage_model};
+pub use slippage::{
+    DEFAULT_VOL_SCALED_SPREAD, MAX_SLIPPAGE_BPS, SlippageModel, apply_slippage,
+    apply_slippage_model, apply_slippage_model_with_returns, fee_sensitivity_report,
+};

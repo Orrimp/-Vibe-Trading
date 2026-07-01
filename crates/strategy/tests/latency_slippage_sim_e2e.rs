@@ -227,6 +227,7 @@ fn enabled_audit_metrics_recorded() {
     let sim_slip_bps: u32 = match enabled_cfg.slippage_model {
         cost::SlippageModel::Linear { bps } => bps,
         cost::SlippageModel::SquareRoot { .. } => 1, // non-zero → emit
+        cost::SlippageModel::VolScaledSpread { base_bps, .. } => base_bps, // non-zero → emit
     };
     let would_emit = sim_latency_applied > 0 || sim_slip_bps > 0;
     assert!(
