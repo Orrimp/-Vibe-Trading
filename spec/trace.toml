@@ -3296,7 +3296,7 @@ arch        = ["spec/v2/v2-architecture.md", "spec/architecture/adr/0077-forward
 crates      = ["crates/agent"]   # developer 2026-06-30: runtime.rs (14 new match arms in build_registry_for), plan.rs (14 new match arms in build_forward_plan_from_registry).
 tests       = ["crates/agent/tests/forward_run_engine_fidelity.rs", "spec/v2/advisor-forward-fidelity-coverage/reports/test-2026-06-30-advisor-forward-fidelity-coverage.md"]   # 13 new r1_* tests; all 21 pass; tester report 2026-06-30.
 anchors     = []   # EXPECTED NONE — None path byte-identical; no anchored report emitted by any of the 14 arms (write_report=false in bakeoff path); 119/119 unchanged. Tester-confirmed 2026-06-30.
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)
 
 [[req]]
 id          = "REQ-V2-P1-5-VOL-ESTIMATOR-001"
@@ -3307,7 +3307,7 @@ arch        = ["spec/v2/v2-architecture.md"]   # §1 P1-5 + §6.0 D5 (binding ho
 crates      = ["crates/strategy"]   # developer 2026-06-30: vol_estimator.rs (4 pub fns + 3 pub λ constants + 21 unit tests); lib.rs (pub mod vol_estimator registration).
 tests       = ["crates/strategy/src/vol_estimator.rs", "spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md"]   # 23 inline unit tests (log_returns: 5, realized_vol: 5, ewma: 5, har: 4, λ constants: 2). Verified 2026-06-30: cargo test -p strategy --lib → 266/266 PASS (incl. all 23 vol_estimator tests). Tester report: phase-2c-overlays.
 anchors     = []   # EXPECTED NONE — pure new module, no engine path change; advisor bakeoff write_report=false; 119/119 unchanged by construction.
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)
 
 [[req]]
 id          = "REQ-V2-P1-4-VOL-OVERLAY-REPOSITION-001"
@@ -3318,7 +3318,7 @@ arch        = ["spec/v2/v2-architecture.md"]   # §1 P1-4 (binding)
 crates      = ["crates/strategy"]   # developer 2026-06-30: vol_targeting_overlay.rs (VolSource enum, VolTargetingConfig 4 new fields, p1_4_defaults(), PerSymbolEwmaState, ReturnVolCorrelation, pearson_correlation, apply_policy, sigma_from_ewma, sigma_from_garch); tests/vol_targeting_overlay.rs (..Default::default() fix); tests/drawdown_control_overlay_end_to_end.rs (doc comment fix — pre-existing clippy issue from P1-3 developer).
 tests       = ["crates/strategy/src/vol_targeting_overlay.rs", "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs", "crates/strategy/tests/vol_targeting_overlay.rs", "spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md"]   # 33 new inline unit tests (no-trade band: 4, derisk-only: 4, return-vol correlation: 6, EWMA vol source: 2, p1_4_defaults: 1, Pearson: 5, GARCH backward-compat: 3 preserved). Existing e2e stays green: overlay_quantity_scale_reflects_computed_factor. Verified 2026-06-30: cargo test -p strategy --lib → 266/266 PASS; cargo test -p strategy --test vol_targeting_overlay_end_to_end → 1/1 PASS (byte-identical on Default). Tester report: phase-2c-overlays.
 anchors     = []   # EXPECTED NONE — overlay operates on write_report=false advisor path; 119/119 unchanged by construction (verified 2026-06-30).
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)
 
 [[req]]
 id          = "REQ-V2-P1-6-COST-MODEL-OPT-IN-001"
@@ -3329,7 +3329,7 @@ arch        = ["spec/v2/v2-architecture.md", "spec/architecture/adr/0081-cost-mo
 crates      = ["crates/cost"]   # developer 2026-07-01: slippage.rs (VolScaledSpread variant + DEFAULT_VOL_SCALED_SPREAD const + apply_slippage_vol_scaled_bps + apply_slippage_model_with_returns + fee_sensitivity_report + 14 new unit tests); lib.rs (re-exports updated).
 tests       = ["crates/cost/src/slippage.rs", "spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md"]   # 14 new unit tests: default_is_linear_bps_8 (load-bearing), vol_scaled_zero_vol_gives_base_bps, vol_scaled_empty_returns_gives_base_bps, vol_scaled_constant_vol_closed_form, vol_scaled_high_vol_widens_vs_low_vol, vol_scaled_capped_at_max_slippage_bps, vol_scaled_fill_price_buy_increases, vol_scaled_fill_price_sell_decreases, vol_scaled_widens_vs_linear_on_volatile_returns, anchor_safety_linear_unchanged_by_vol_scaled_variant, fee_sensitivity_report_zero_vol, fee_sensitivity_report_known_value, fee_sensitivity_report_capped_at_max, fee_sensitivity_report_empty_factors, default_vol_scaled_spread_constant_fields. Total: 39/39 PASS (cargo test -p cost --lib). Verified 2026-07-01; re-verified independently by tester 2026-07-05 (bundled Phase 2D report).
 anchors     = []   # EXPECTED NONE — VolScaledSpread unreachable from any anchored CLI path (default=Linear; anchored paths construct LatencySlippageSimConfig::default()); 119/119 unchanged by construction. Verified BEFORE+AFTER via bash scripts/verify_anchors.sh.
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)
 
 [[req]]
 id          = "REQ-V2-P1-3-DRAWDOWN-OVERLAY-001"
@@ -3340,7 +3340,7 @@ arch        = ["spec/v2/v2-architecture.md", "spec/architecture/adr/0080-drawdow
 crates      = ["crates/strategy"]   # developer 2026-06-30: drawdown_control_overlay.rs (DrawdownControlConfig + DrawdownControlOverlay<S> + compute_cushion_multiplier + DrawdownTelemetry + 12 unit tests); lib.rs (pub mod + pub use).
 tests       = ["crates/strategy/src/drawdown_control_overlay.rs", "crates/strategy/tests/drawdown_control_overlay_end_to_end.rs", "spec/v2/phase-2c-overlays/reports/test-2026-06-30-phase-2c-overlays.md"]   # 12 inline unit tests + 6 e2e integration tests (incl. mandatory load-bearing divergence gate). Verified 2026-06-30: cargo test -p strategy --lib → 266/266 PASS (incl. 12 drawdown unit tests); cargo test -p strategy --test drawdown_control_overlay_end_to_end → 6/6 PASS (overlay_equity_diverges_from_baseline_on_drawdown_scenario PASS; hwm_restart_proof_benchmark_sequence PASS; floor_never_moves_static_cppi_d8 PASS; budget_cap_invariant_quantity_scale_max_one PASS). Tester report: phase-2c-overlays.
 anchors     = []   # EXPECTED NONE — overlay runs on advisor path (write_report=false); no anchored report emitted; 119/119 unchanged by construction.
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)
 
 [[req]]
 id          = "REQ-V2-P2-1-NARRATION-FAITHFULNESS-001"
@@ -3351,7 +3351,7 @@ arch        = ["spec/v2/v2-architecture.md", "spec/architecture/adr/0064-advisor
 crates      = ["crates/agent"]   # developer 2026-07-01: narration.rs (allowed_numbers() Vec→HashSet, RejectReason::FabricatedNumber/BannedPhrase gain String payload, BANNED_PHRASES +19 phrases, 6 pre-existing tests updated for new payload literals); no other crate touched.
 tests       = ["crates/agent/tests/narration_faithfulness.rs", "crates/agent/src/narration.rs", "spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md"]   # 27 new integration tests (narration_faithfulness.rs: 1 positive, 3 number-invention, 9 prediction, 4 causation, 8 recommendation, 2 backward-compat) + 25 pre-existing narration.rs unit tests (updated, still pass). Verified 2026-07-01: cargo test -p agent --lib → 101/101 PASS; cargo test -p agent --test narration_faithfulness → 27/27 PASS; cargo test -p llm --lib → 108/108 PASS (1 pre-existing ignored, unrelated); cargo clippy -p agent -p llm --tests -- -D warnings clean; cargo fmt --check clean. Re-verified independently by tester 2026-07-05, incl. grep-confirmed zero external RejectReason variant matches (bundled Phase 2D report).
 anchors     = []   # EXPECTED NONE — narration is display-only/ephemeral (ADR-0064 §D7, unchanged by this amendment); no anchored report emitted; 119/119 unchanged by construction. Verified BEFORE+AFTER via bash scripts/verify_anchors.sh.
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)
 
 [[req]]
 id          = "REQ-V2-P2-2-NO-ALPHA-GATE-CI-001"
@@ -3362,4 +3362,4 @@ arch        = ["spec/v2/v2-architecture.md"]   # §1 P2-2 ([N+] test-only)
 crates      = ["crates/backtest"]   # developer 2026-07-05: tests/null_data_no_crown.rs (new file, 545+ lines) — no src/ change, test-only.
 tests       = ["crates/backtest/tests/null_data_no_crown.rs", "spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md"]   # 3 new integration tests (gbm_null_rarely_crowns_and_dsr_rejects_when_it_does, garch11_null_rarely_crowns_and_dsr_rejects_when_it_does, ou_positive_control_crown_is_mean_reversion_family_when_active_wins). Verified 2026-07-05: cargo test -p backtest --test null_data_no_crown → 3/3 PASS (5.63s); cargo test -p backtest --lib → 195 passed/0 failed/8 ignored (incl. FROZEN-gate identity proofs scorecard_does_not_change_ranking + turnover_does_not_change_ranking); cargo clippy -p backtest --tests -- -D warnings clean; cargo fmt --check clean. Re-verified independently by tester 2026-07-05 on a FRESH seed draw (own re-run, not developer's session): GBM 1/5 ActiveWins (v0.5.rsi, dsr=0.5704), GARCH 1/5 ActiveWins (v0.5.rsi, dsr=0.7804), both correctly DSR-rejected; OU 0/5. Two-layer contract holds; empirical finding is documented (not a regression) per bundled Phase 2D report.
 anchors     = []   # EXPECTED NONE — test-only, write_report=false throughout every scenario_cfg_for call; no anchored report body ever written; 119/119 unchanged by construction. Verified BEFORE+AFTER via bash scripts/verify_anchors.sh.
-state       = "tester-done"
+state       = "verified"   # operator-approved SHIPPED 2026-07-01 (Phase 2B/2C/2D)

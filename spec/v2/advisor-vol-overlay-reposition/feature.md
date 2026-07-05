@@ -1,9 +1,9 @@
 ---
 slug: advisor-vol-overlay-reposition
-status: tester-done
-owner: tester
+status: shipped
+owner: operator
 version: 2.0.0
-updated: 2026-06-30
+updated: 2026-07-01
 ---
 
 # P1-4 Vol-Overlay Reposition — Risk Tool, Not Sharpe Tool

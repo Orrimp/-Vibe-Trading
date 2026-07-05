@@ -1,7 +1,7 @@
 ---
 slug: advisor-no-alpha-gate-ci
-status: tester-done
-owner: tester
+status: shipped
+owner: operator
 version: 2.0.0
 updated: 2026-07-01
 ---

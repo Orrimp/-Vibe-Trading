@@ -1,9 +1,9 @@
 ---
 slug: advisor-forward-fidelity-coverage
-status: tester-done
-owner: tester
+status: shipped
+owner: operator
 version: 0.1.0
-updated: 2026-06-30
+updated: 2026-07-01
 ---
 
 # Forward-Fidelity Coverage (R1) — 14 missing arms wired
