@@ -1,7 +1,7 @@
 ---
 slug: advisor-narration-faithfulness
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 version: 2.0.0
 updated: 2026-07-01
 ---

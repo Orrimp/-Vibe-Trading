@@ -1,7 +1,7 @@
 ---
 slug: advisor-cost-model-opt-in
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 updated: 2026-07-01
 ---
 
@@ -69,10 +69,27 @@ updated: 2026-07-01
 
 ## Tester-owned (T_FINAL)
 
-- [ ] **T_FINAL_1 — `cargo test -p cost` full run** (all 39 pass)
-- [ ] **T_FINAL_2 — `cargo test -p backtest --lib` incl. frozen-gate identity tests**
-  - Must verify `scorecard_does_not_change_ranking` and `turnover_does_not_change_ranking` still PASS
-- [ ] **T_FINAL_3 — `cargo clippy -p cost --tests -- -D warnings` clean**
-- [ ] **T_FINAL_4 — `bash scripts/verify_anchors.sh` → 119/119 AFTER**
-- [ ] **T_FINAL_5 — `python3 scripts/spec_lint.py` PASS**
-- [ ] **T_FINAL_6 — `python3 scripts/adr_registry_check.py --self-test` OK**
+- [x] **T_FINAL_1 — `cargo test -p cost` full run** (all 39 pass)
+  - Re-verified independently 2026-07-05: `cargo test -p cost --lib` →
+    `test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s`.
+    Confirms `default_is_linear_bps_8` and `anchor_safety_linear_unchanged_by_vol_scaled_variant`
+    both PASS — the D6 opt-in-forever contract holds.
+- [x] **T_FINAL_2 — `cargo test -p backtest --lib` incl. frozen-gate identity tests**
+  - `test result: ok. 195 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 0.66s`.
+    Targeted re-run: `cargo test -p backtest --lib does_not_change_ranking` →
+    both `bakeoff::tests::turnover_does_not_change_ranking` and
+    `bakeoff::scorecard::tests::scorecard_does_not_change_ranking` PASS.
+- [x] **T_FINAL_3 — `cargo clippy -p cost --tests -- -D warnings` clean**
+  - Run combined as `cargo clippy -p cost -p agent -p llm -p backtest --tests -- -D warnings`
+    (all four Phase 2D crates in one invocation) — `Finished dev profile
+    [unoptimized + debuginfo] target(s) in 12m 09s`, exit 0, zero warnings.
+- [x] **T_FINAL_4 — `bash scripts/verify_anchors.sh` → 119/119 AFTER**
+  - `ANCHORS PASS  (119 / 119)`, verified both at session start and after this
+    tasks.md edit.
+- [x] **T_FINAL_5 — `python3 scripts/spec_lint.py` PASS**
+  - `spec-lint: PASS (0 violations)`.
+- [x] **T_FINAL_6 — `python3 scripts/adr_registry_check.py --self-test` OK**
+  - `Ran 5 tests in 0.011s\n\nOK`; production check (`adr_registry_check.py`,
+    no flag) exits 0.
+
+Full bundled report: `spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md`.

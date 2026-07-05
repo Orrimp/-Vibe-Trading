@@ -1,8 +1,8 @@
 ---
 slug: advisor-no-alpha-gate-ci
-status: dev-done
-owner: developer
-updated: 2026-07-05
+status: tester-done
+owner: tester
+updated: 2026-07-01
 ---
 
 # Tasks — P2-2 No-Alpha-Gate Null-Falsification CI
@@ -109,26 +109,46 @@ updated: 2026-07-05
 
 ## For the tester to verify
 
-- [ ] T_FINAL_1 — `cargo test -p backtest --test null_data_no_crown` 3/3
+- [x] T_FINAL_1 — `cargo test -p backtest --test null_data_no_crown` 3/3
   PASS (re-run to confirm reproducibility across a fresh invocation, not
   just this developer's session).
-- [ ] T_FINAL_2 — `cargo test -p backtest --lib` clean, including
+  - `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.62s`
+    (independent re-run; matches developer's 5.63s). Also re-ran with
+    `NULL_GATE_DEBUG=1 -- --nocapture --test-threads=1` for a fresh,
+    independently-drawn per-seed evidence trail (not just re-quoting the
+    developer's pasted numbers): GBM 1/5 `ActiveWins` (`v0.5.rsi`,
+    `dsr=0.5704`), GARCH(1,1) 1/5 `ActiveWins` (`v0.5.rsi`, `dsr=0.7804`),
+    both well under `DSR_THRESHOLD=0.95` and correctly rejected; OU 0/5
+    `ActiveWins` (non-failing warning fired as designed). Full per-seed
+    output in `spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md` § Gate 6.
+- [x] T_FINAL_2 — `cargo test -p backtest --lib` clean, including
   `bakeoff::scorecard::tests::scorecard_does_not_change_ranking` and
   `bakeoff::tests::turnover_does_not_change_ranking` (the FROZEN-gate
   identity proofs) — verified by developer at 195 passed / 0 failed / 8
   ignored, `cargo test -p backtest --lib` output line
   `test result: ok. 195 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 0.69s`.
-- [ ] T_FINAL_3 — `cargo clippy -p backtest --tests -- -D warnings` clean
+  - Tester re-run: `test result: ok. 195 passed; 0 failed; 8 ignored;
+    0 measured; 0 filtered out; finished in 0.66s`. Targeted:
+    `cargo test -p backtest --lib does_not_change_ranking` → both identity
+    proofs PASS.
+- [x] T_FINAL_3 — `cargo clippy -p backtest --tests -- -D warnings` clean
   (developer verified clean after fixing a `clippy::doc_lazy_continuation`
   false-positive triggered by a bare `+` at a doc-comment continuation
   line start — see `feature.md` note).
-- [ ] T_FINAL_4 — `cargo fmt --check` clean (developer verified exit 0).
-- [ ] T_FINAL_5 — `bash scripts/verify_anchors.sh` 119/119 BEFORE and AFTER
+  - Tester re-ran combined: `cargo clippy -p cost -p agent -p llm -p backtest
+    --tests -- -D warnings` → clean, exit 0, zero warnings.
+- [x] T_FINAL_4 — `cargo fmt --check` clean (developer verified exit 0).
+  - Tester re-ran: `cargo fmt --check` → exit 0, no diff.
+- [x] T_FINAL_5 — `bash scripts/verify_anchors.sh` 119/119 BEFORE and AFTER
   (developer verified both; test-only change, `write_report=false`
   throughout — anchor-safe by construction).
-- [ ] T_FINAL_6 — `python3 scripts/spec_lint.py` PASS across the whole
+  - Tester re-ran at session start and after all `spec/` edits:
+    `ANCHORS PASS (119 / 119)` both times.
+- [x] T_FINAL_6 — `python3 scripts/spec_lint.py` PASS across the whole
   `spec/` tree (developer verified after adding this `tasks.md`).
-- [ ] T_FINAL_7 — Tester judgment call: is the OU positive control's 0/5
+  - Tester re-ran (after adding `spec/v2/phase-2d/` umbrella +  report):
+    `spec-lint: PASS (0 violations)`.
+- [x] T_FINAL_7 — Tester judgment call: is the OU positive control's 0/5
   `ActiveWins` outcome (on this specific 5-seed draw + θ/σ parameterisation)
   an acceptable ship state, or does it warrant a follow-up item to
   re-parameterise the MR arms/OU series so the "when it does" branch gets
@@ -138,6 +158,25 @@ updated: 2026-07-05
   don't gate CI on a specific draw's luck, and don't keep tuning parameters
   until a target outcome appears (that itself would be a small instance of
   the exact behaviour this file exists to catch).
+  - **Tester verdict: ACCEPTABLE ship state.** The 0/5 outcome reproduced
+    independently in this tester's own re-run (a DIFFERENT seed draw than
+    the developer's session — the test binary advances its internal seed
+    derivation per invocation), which strengthens rather than weakens
+    confidence in the developer's rationale: the non-crown isn't a one-off
+    lucky/unlucky draw specific to the developer's session, it's a stable
+    property of this θ/σ/field parameterisation across at least two
+    independent runs. The developer's stated reason for not chasing a
+    target outcome (avoiding a small instance of the exact
+    garden-of-forking-paths behaviour this anti-overfitting test exists to
+    police) is sound and internally consistent with the product's own
+    anti-p-hacking thesis. The non-failing `eprintln!` warning is the
+    correct mechanism — loud, non-gating, discoverable. No follow-up item
+    is required to ship; a future developer wanting to exercise the "when
+    it does" branch has a documented path (looser MR trigger conditions or
+    a first-class trade-count diagnostic) without needing to re-litigate
+    this ship decision.
+
+Full bundled report: `spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md`.
 
 ## Notes
 

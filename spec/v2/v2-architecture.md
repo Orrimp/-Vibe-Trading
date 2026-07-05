@@ -505,6 +505,17 @@ All decisions ratified to the architect's recommended (durable) defaults:
   scorecard. **No crown-veto, no hard threshold / ORATIO** in v2 (the design leaves a
   one-line veto switch via `Scorecard.crown_clears_dsr` for later — D2/D3). **PBO
   deferred** to the homogeneous Tune/sweep surface, not the 18-arm field (D1).
+  - **D3 RE-CONFIRMED 2026-07-01 (operator), informed by P2-2 empirical data.** The
+    no-alpha-gate null-falsification CI (`crates/backtest/tests/null_data_no_crown.rs`)
+    proved the PRIMARY FROZEN gate alone crowns an active arm on ~1/5 pure-noise seeds
+    (GBM→`v0.5.rsi`, GARCH→`v0.sma`), and the DSR scorecard caught every one
+    (deflated-Sharpe ~0.4–0.78, all < 0.95). This VALIDATES the report-only scorecard as
+    load-bearing (it catches what the primary gate misses via the documented
+    `is_eligible()` per-candidate multiple-testing gap). Operator reviewed and **kept
+    report-only** — the cockpit shows the crown AND its low deflated-confidence side by
+    side; the `crown_clears_dsr` veto switch stays ready for a future FROZEN-gate change +
+    its own ADR if wanted. The numbers are on short synthetic series (150 bootstrap paths
+    vs production 1000, subset of arms) so production likely rejects more.
 - **D5 (vol-estimator home) → `crates/strategy/src/vol_estimator.rs`.** Keeps
   vol-for-sizing ≠ return-prediction; the model-based vol forecast stays opt-in behind
   the `forecast` feature flag.

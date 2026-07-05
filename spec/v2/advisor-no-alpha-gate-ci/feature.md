@@ -1,9 +1,9 @@
 ---
 slug: advisor-no-alpha-gate-ci
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 version: 2.0.0
-updated: 2026-07-05
+updated: 2026-07-01
 ---
 
 # P2-2 No-Alpha-Gate Null-Falsification CI

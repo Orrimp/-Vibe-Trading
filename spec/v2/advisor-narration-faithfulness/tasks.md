@@ -1,7 +1,7 @@
 ---
 slug: advisor-narration-faithfulness
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 updated: 2026-07-01
 ---
 
@@ -102,13 +102,35 @@ updated: 2026-07-01
 
 ## For the tester to verify
 
-- [ ] T_FINAL_1 — Re-run the full gate list above independently.
-- [ ] T_FINAL_2 — Confirm `python3 scripts/spec_lint.py` PASS with the new
+- [x] T_FINAL_1 — Re-run the full gate list above independently.
+  - `cargo test -p agent --lib` → `test result: ok. 101 passed; 0 failed;
+    0 ignored; 0 measured; 0 filtered out; finished in 86.15s`.
+  - `cargo test -p agent --test narration_faithfulness` → `test result: ok.
+    27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in
+    0.00s`.
+  - `cargo test -p llm --lib` → `test result: ok. 108 passed; 0 failed;
+    1 ignored; 0 measured; 0 filtered out; finished in 0.03s` (the 1 ignore
+    confirmed pre-existing, unrelated).
+  - `cargo clippy -p cost -p agent -p llm -p backtest --tests -- -D warnings`
+    → clean, exit 0 (combined across all four Phase 2D crates).
+  - `cargo fmt --check` → clean, exit 0.
+  - `bash scripts/verify_anchors.sh` → `ANCHORS PASS (119 / 119)`.
+- [x] T_FINAL_2 — Confirm `python3 scripts/spec_lint.py` PASS with the new
   `feature.md`/`tasks.md`/trace.toml row in place.
-- [ ] T_FINAL_3 — Confirm no external crate (outside `agent`'s own test
+  - `spec-lint: PASS (0 violations)`.
+- [x] T_FINAL_3 — Confirm no external crate (outside `agent`'s own test
   module and the new `narration_faithfulness.rs`) matches on
   `RejectReason::FabricatedNumber`/`::BannedPhrase` in a way broken by the
   new payload (grep-confirmed clean by the developer; tester to
   independently re-verify).
-- [ ] T_FINAL_4 — Confirm the FROZEN gate identity proofs stay green (no
+  - Independently re-ran `grep -rn "RejectReason::FabricatedNumber\|RejectReason::BannedPhrase"
+    crates --include="*.rs"` filtered to exclude `narration.rs`/
+    `narration_faithfulness.rs` — zero hits. Confirmed: no external crate
+    consumes these two variants' prior unit-variant shape.
+- [x] T_FINAL_4 — Confirm the FROZEN gate identity proofs stay green (no
   rank-path touch expected; narration is display-only).
+  - `cargo test -p backtest --lib does_not_change_ranking` → both
+    `bakeoff::tests::turnover_does_not_change_ranking` and
+    `bakeoff::scorecard::tests::scorecard_does_not_change_ranking` PASS.
+
+Full bundled report: `spec/v2/phase-2d/reports/test-2026-07-01-phase-2d.md`.
