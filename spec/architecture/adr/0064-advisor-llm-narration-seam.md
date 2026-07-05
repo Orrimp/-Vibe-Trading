@@ -2,7 +2,7 @@
 adr: 0064
 title: Advisor LLM "why this one" narration seam — agent-side generator + frozen faithfulness post-check + plain ui mirror + triggered second async step
 status: accepted
-date: 2026-06-22
+date: 2026-07-01
 supersedes: none
 superseded-by: none
 ---
@@ -433,8 +433,140 @@ the tester does not expect it.
   formatters); a substantive change to the predicate set or banned-phrase list is
   an ADR-0064 amendment, not an ad-hoc edit.
 
+## Amendment 2026-07-01 (P2-1 faithfulness hardening)
+
+**Context.** `research/llms/application-llm-narration-and-agents.md` § 6 P0
+identified LLM narration hallucination as the one real risk on the shipped F9
+seam. Two of D2's four predicates were the ones with headroom to tighten
+without changing the post-check's shape: P3 (fabricated number) had a
+correctness gap in its *representation* (a `Vec` round-tripped through a
+`HashSet` at the call site rather than being the allowed-set's native type,
+and its `RejectReason::FabricatedNumber` audit variant carried no payload —
+harder to debug a leaky provider from `tracing::warn` output alone); P4 (banned
+phrase) had **zero prediction-verb, causation-clause, or bare-recommendation
+coverage** beyond the original 42-phrase list — an LLM narrator could write
+"the strategy will likely keep outperforming because of strong momentum" and
+trip nothing (no "because of", no "likely to", no "will keep outperforming"
+that exactly matches a frozen phrase). This amendment closes both gaps. It
+does **not** touch P1 (wrong crown) or P2 (contradicted outcome) — those two
+predicates were unaffected by the research finding and stay exactly as D2
+specified them.
+
+**D9 — Verbatim-number match, hardened representation
+(`NarrationFacts::allowed_numbers`).** `allowed_numbers()` now returns an
+owned `HashSet<String>` directly (was `Vec<String>`, converted to a
+`HashSet` inline inside `check_faithful`'s P3 block on every call). This is a
+representational tightening, not a semantic one: P3's match was ALREADY
+exact-string (D2's original "not float-tolerant" design decision is
+unchanged) — the fix removes a redundant `Vec`→`HashSet` round-trip at the
+call site and makes the type signature honestly describe what the set IS (a
+deduplicated membership set, never iterated in order), matching the P2-1
+task framing "every number the LLM was told." A numeric token in the
+narration is accepted **iff** it is a byte-exact member of this set — no
+rounding, no rephrasing (`"12.3%"` is rejected even when the true value is
+`"11.24%"` in `facts`; only `"11.24%"` verbatim passes). `RejectReason`'s two
+data-bearing predicates now carry the offending value for the audit trail:
+`FabricatedNumber(String)` carries the invented/rounded token (was a unit
+variant); `BannedPhrase(String)` carries the matched phrase (was a unit
+variant). `WrongCrown` and `ContradictedOutcome` are UNCHANGED unit variants.
+This is a source-level (not semantic) break of `RejectReason`'s two touched
+variants — the ONLY consumer of the variant's shape is `narration.rs`'s own
+test module (verified: no external crate matches on `RejectReason` variants,
+grep-confirmed against `crates/ui` and `crates/agent`); the `Faithful::Pass`
+/ `FaithfulnessVerdict::Pass` arm — the happy path every consumer actually
+branches on — is semantically byte-identical to before this amendment (see
+the backward-compat proof in D10 below).
+
+**D10 — Extended banned-phrase list (prediction / causation / recommendation).**
+`BANNED_PHRASES` (§ D2.P4) gains three new categories, additive to the frozen
+42-phrase list (no existing phrase removed or altered):
+
+```text
+P2-1 AMENDMENT 2026-07-01 — prediction verbs:
+  "expected to"   "forecast"   "predict"   "probably"
+  "likely to"     "anticipates"   "projected"
+
+P2-1 AMENDMENT 2026-07-01 — causation clauses:
+  "because of"   "driven by"   "caused by"   "due to"
+
+P2-1 AMENDMENT 2026-07-01 — advice/recommendation phrases:
+  "you should"   "we recommend"   "invest in"   "stay away from"
+```
+
+("will rise" / "will fall" / "buy now" / "sell now" are already in the
+original § D2.P4 list — not duplicated here.) The match discipline is
+UNCHANGED: case-insensitive substring, scanned in array order, first hit
+wins (so `"you should buy"` — the original list's more specific phrase —
+still fires before the new bare `"you should"` when both are present in the
+same sentence; this is existing scan-order behaviour, not new to this
+amendment). This closes the exact gap the research finding named: a
+narrator can no longer write "the return was driven by momentum" (causation),
+"the strategy is likely to keep outperforming" (prediction), or "you should
+feel confident about this pick" (recommendation) without tripping P4.
+
+**D11 — Verification (the adversarial corpus).**
+`crates/agent/tests/narration_faithfulness.rs` adds 27 tests through the
+crate's public API (`agent::{check_faithful, NarrationFacts,
+FaithfulnessVerdict, RejectReason}`): 1 positive (a faithful narration
+citing only `facts` numbers, no banned phrase → `Pass`), 3 number-invention
+(a rounded/rephrased number, a wholly fabricated number, and the documented
+scope note that a real-but-differently-attributed number still passes — P3
+is a membership check over ALL candidates, not a per-candidate attribution
+check; attribution is P1's job), 9 prediction (one per new prediction-verb
+phrase, `"predict"`/`"probably"` hedged for scan-order collision with the
+`"will keep"`/`"will continue"` frozen phrases already present in some test
+sentences), 4 causation (one per new clause), 8 recommendation (one per new
+advice phrase, `"stay away from"` tested both in collision with the bare
+`"you should"` prefix and isolated), plus 2 backward-compatibility proofs
+(the pre-amendment `build_faithful_text` fixture output, for both an
+`ActiveWins` and an `AllFragile` outcome, still produces `Pass` after the
+hardening). All 27 pass; the pre-existing 25 unit tests in `narration.rs`
+(updated only to add the new `RejectReason` payload literals to their
+`assert_eq!` calls — no test's expected OUTCOME changed) also pass.
+
+**Anchor safety.** Unchanged from D7 — the narration is still ephemeral,
+still display-only, still produces no anchored artifact.
+`scripts/verify_anchors.sh` stays 119/119 by construction; verified both
+before and after this amendment.
+
+**Public API.** `NarrationFacts::allowed_numbers()`'s return type changed
+(`Vec<String>` → `HashSet<String>`); `RejectReason::FabricatedNumber` and
+`RejectReason::BannedPhrase` gained a `String` payload. Both are re-exported
+from `crates/agent/src/lib.rs`; grep-confirmed no crate outside `agent`
+consumes either symbol's prior shape. `FaithfulnessVerdict::Pass` — the ONE
+arm every consumer actually branches on to decide `Ready` vs `FellBack` — is
+unaffected. No new dependency edge: `crates/llm` and `crates/backtest` were
+already hard deps of `agent`; nothing in `strategy`/`exec`/`models`/`ui` is
+touched.
+
 ## Changelog
 
+- 2026-07-01 (developer, P2-1 amendment): **narration faithfulness
+  hardening** — closes the LLM-narration-hallucination risk
+  `research/llms/application-llm-narration-and-agents.md` § 6 P0 flagged as
+  the one real risk on the shipped F9 seam. **D9** `NarrationFacts::allowed_numbers()`
+  now returns an owned `HashSet<String>` (was `Vec<String>` converted
+  inline) — the verbatim-number-match discipline itself is unchanged
+  (exact-string, no float tolerance; D2's original design), this is a
+  representational tightening that also fixes the audit trail:
+  `RejectReason::FabricatedNumber(String)` and `RejectReason::BannedPhrase(String)`
+  now carry the offending token/phrase (were unit variants) — `WrongCrown` /
+  `ContradictedOutcome` unchanged, `FaithfulnessVerdict::Pass` semantically
+  identical. **D10** `BANNED_PHRASES` (§ D2.P4) gains three additive
+  categories — prediction verbs (`expected to`, `forecast`, `predict`,
+  `probably`, `likely to`, `anticipates`, `projected`), causation clauses
+  (`because of`, `driven by`, `caused by`, `due to`), advice/recommendation
+  phrases (`you should`, `we recommend`, `invest in`, `stay away from`) — no
+  phrase removed, no existing phrase's match behaviour altered. **D11**
+  27-test adversarial corpus in `crates/agent/tests/narration_faithfulness.rs`
+  (1 positive, 3 number-invention, 9 prediction, 4 causation, 8
+  recommendation, 2 backward-compat) through the public API; all pass; the
+  pre-existing 25 `narration.rs` unit tests pass unchanged in outcome (only
+  their `assert_eq!` literals gained the new payload argument). Anchor-safe
+  by construction — 119/119 before and after (verified). No new dependency
+  edge (`llm`/`backtest` already hard deps of `agent`; `strategy`/`exec`/
+  `models`/`ui` untouched). Feature `advisor-narration-faithfulness`,
+  v2-architecture.md § 1 P2-1.
 - 2026-06-22 (architect): initial accept. Homes the **LLM "why this one"
   narration seam** for feature `advisor-llm-narration` (F9, the first in-app LLM
   consumer). **D1** the generator lives AGENT-SIDE in a new `agent::narration`

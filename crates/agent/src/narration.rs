@@ -24,6 +24,27 @@
 //! The predicate set + banned-phrase list in `check_faithful` are FROZEN by
 //! ADR-0064 § D2.  A change requires an ADR-0064 amendment — NOT an ad-hoc
 //! edit.
+//!
+//! ## P2-1 faithfulness hardening (ADR-0064 amendment 2026-07-01)
+//!
+//! Two additive layers on top of the D2 predicate set, still `llm`-free and
+//! deterministic:
+//!
+//! - **Verbatim-number match (P3 hardening)** — [`NarrationFacts::allowed_numbers`]
+//!   now returns an owned `HashSet<String>` (was `Vec<String>`, converted to a
+//!   `HashSet` inline at the `check_faithful` call site on every invocation),
+//!   so every numeric token the LLM used must be a byte-exact member of the
+//!   *exact* set of numbers the LLM was told. This was already the P3
+//!   mechanism (exact-string, never float-tolerant); the change is
+//!   representational (dedup + O(1) lookup, no redundant `Vec`→`HashSet`
+//!   round-trip) plus a widened banned-phrase list (below) — no weakening of
+//!   the match.
+//! - **Prediction/causation banned-phrase list** — [`BANNED_PHRASES`] gains
+//!   prediction verbs (`"expected to"`, `"forecast"`, `"predict"`, …),
+//!   causation clauses (`"because of"`, `"driven by"`, …), and
+//!   recommendation phrases (`"you should"`, `"we recommend"`, …). Still a
+//!   case-insensitive substring match; still FROZEN by the same ADR-0064 § D2
+//!   discipline — a further change requires another amendment.
 
 use std::sync::Arc;
 
@@ -179,21 +200,33 @@ impl NarrationFacts {
         }
     }
 
-    /// Collect the full set of allowed numeric token strings for P3.
+    /// Collect the full set of allowed numeric token strings for P3
+    /// (P2-1 hardening — ADR-0064 amendment 2026-07-01).
     ///
     /// Returns every canonical KPI string across all candidates, plus
-    /// the `trade_count` for each. This is the allowed-token set; any
-    /// numeric token in the LLM text that does not appear here is fabricated.
+    /// the `trade_count` for each, as a deduplicated `HashSet` — the exact
+    /// set of numbers the LLM was told, in the exact display format the
+    /// `render_kpi_strings` formatters use (which mirror
+    /// `crates/ui/src/widgets/num.rs`). This is the allowed-token set: a
+    /// verbatim-number-match failure means a narration numeric token is
+    /// NOT a byte-exact member of this set, i.e. it is either a rounding /
+    /// rephrasing of a real number OR wholly invented — both are rejected
+    /// identically (P3 does not distinguish "close" from "wrong").
+    ///
+    /// `HashSet` (not `Vec`) is deliberate: P3 does membership checks only,
+    /// never iteration order, so the O(1) lookup is both faster and the
+    /// honest representation of "the allowed set", matching the task intent
+    /// ("every number the LLM was told").
     #[must_use]
-    pub fn allowed_numbers(&self) -> Vec<String> {
-        let mut set = Vec::new();
+    pub fn allowed_numbers(&self) -> std::collections::HashSet<String> {
+        let mut set = std::collections::HashSet::new();
         for kpi in &self.candidate_kpi_strings {
-            set.push(kpi.sharpe.clone());
-            set.push(kpi.sortino.clone());
-            set.push(kpi.calmar.clone());
-            set.push(kpi.total_return_pct.clone());
-            set.push(kpi.max_drawdown.clone());
-            set.push(kpi.trade_count.clone());
+            set.insert(kpi.sharpe.clone());
+            set.insert(kpi.sortino.clone());
+            set.insert(kpi.calmar.clone());
+            set.insert(kpi.total_return_pct.clone());
+            set.insert(kpi.max_drawdown.clone());
+            set.insert(kpi.trade_count.clone());
         }
         set
     }
@@ -272,6 +305,12 @@ pub enum FaithfulnessVerdict {
 }
 
 /// The reason a narration was rejected (for `tracing::warn` audit; never reaches `ui`).
+///
+/// P2-1 hardening (ADR-0064 amendment 2026-07-01): `FabricatedNumber` and
+/// `BannedPhrase` now carry the offending token/phrase (were unit variants).
+/// This is an additive extension of the rejection cases per the amendment —
+/// `WrongCrown` / `ContradictedOutcome` are unchanged, and the `Pass` arm of
+/// `FaithfulnessVerdict` is semantically identical to before the hardening.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RejectReason {
     /// P1 — a non-winner strategy was crowned, or the winner was not named
@@ -279,16 +318,24 @@ pub enum RejectReason {
     WrongCrown,
     /// P2 — the narration's outcome contradicts `facts.outcome`.
     ContradictedOutcome,
-    /// P3 — a numeric token in the prose does not match any canonical KPI string.
-    FabricatedNumber,
-    /// P4 — a predict/advise banned phrase was found.
-    BannedPhrase,
+    /// P3 — a numeric token in the prose does not match any canonical KPI
+    /// string in `NarrationFacts::allowed_numbers()`. Carries the offending
+    /// token (P2-1: verbatim-number-match hardening) — the token is either a
+    /// rounded/rephrased real number or a wholly invented one; P3 does not
+    /// distinguish the two, both are rejected.
+    FabricatedNumber(String),
+    /// P4 — a predict/advise/causation banned phrase was found. Carries the
+    /// offending phrase (P2-1: the list was extended with prediction verbs,
+    /// causation clauses, and recommendation phrases).
+    BannedPhrase(String),
 }
 
-/// FROZEN BANNED-PHRASE LIST (ADR-0064 § D2.P4).
+/// FROZEN BANNED-PHRASE LIST (ADR-0064 § D2.P4, extended by the P2-1
+/// amendment 2026-07-01 — see the ADR-0064 "Amendment 2026-07-01" section).
 ///
 /// Change requires an ADR-0064 amendment — NOT an ad-hoc edit.
 const BANNED_PHRASES: &[&str] = &[
+    // ── original ADR-0064 § D2.P4 list ──────────────────────────────────
     "will rise",
     "will fall",
     "will go up",
@@ -332,6 +379,26 @@ const BANNED_PHRASES: &[&str] = &[
     "likely to climb",
     "next week will",
     "going forward it will",
+    // ── P2-1 amendment 2026-07-01 — prediction verbs ────────────────────
+    // ("will rise" / "will fall" already frozen above — not duplicated.)
+    "expected to",
+    "forecast",
+    "predict",
+    "probably",
+    "likely to",
+    "anticipates",
+    "projected",
+    // ── P2-1 amendment 2026-07-01 — causation clauses ───────────────────
+    "because of",
+    "driven by",
+    "caused by",
+    "due to",
+    // ── P2-1 amendment 2026-07-01 — advice/recommendation phrases ───────
+    // ("buy now" / "sell now" already frozen above — not duplicated.)
+    "you should",
+    "we recommend",
+    "invest in",
+    "stay away from",
 ];
 
 /// FROZEN CROWN LEXEME SET (ADR-0064 § D2.P1).
@@ -507,7 +574,7 @@ fn extract_numeric_tokens(text: &str) -> Vec<String> {
 pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict {
     let lower = text.to_lowercase();
 
-    // ── P4 — Banned phrase ────────────────────────────────────────────────────
+    // ── P4 — Banned phrase (predict / advise / causation) ────────────────────
     for phrase in BANNED_PHRASES {
         if lower.contains(phrase) {
             tracing::warn!(
@@ -515,7 +582,7 @@ pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict
                 winner = %facts.winner_id,
                 "narration rejected: P4 banned phrase found"
             );
-            return FaithfulnessVerdict::Reject(RejectReason::BannedPhrase);
+            return FaithfulnessVerdict::Reject(RejectReason::BannedPhrase((*phrase).to_string()));
         }
     }
 
@@ -631,10 +698,14 @@ pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict
         }
     }
 
-    // ── P3 — Fabricated number ────────────────────────────────────────────────
-    let allowed = facts.allowed_numbers();
-    // Collect all allowed number strings as a sorted dedup list for fast lookup.
-    let allowed_set: std::collections::HashSet<String> = allowed.into_iter().collect();
+    // ── P3 — Fabricated / invented number (verbatim-number match, P2-1) ──────
+    //
+    // Every numeric token in the narration MUST be a byte-exact member of
+    // `allowed_numbers()` — the exact set of numbers the LLM was told, in the
+    // exact display format `render_kpi_strings` produced. No rounding, no
+    // rephrasing: "0.5678" passes only if "0.5678" (not "0.57" or "0.568")
+    // is a KPI string somewhere in `facts`.
+    let allowed_set = facts.allowed_numbers();
 
     let numeric_tokens = extract_numeric_tokens(text);
     for token in &numeric_tokens {
@@ -646,7 +717,7 @@ pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict
                 token,
                 "narration rejected: P3 numeric token not in allowed KPI set"
             );
-            return FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber);
+            return FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber(token.clone()));
         }
     }
 
@@ -1309,7 +1380,7 @@ mod tests {
         );
         assert_eq!(
             check_faithful(&text, &facts),
-            FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber),
+            FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber("9999.9999".to_string())),
             "P3: fabricated number should be rejected"
         );
     }
@@ -1325,7 +1396,7 @@ mod tests {
         );
         assert_eq!(
             check_faithful(&text, &facts),
-            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase),
+            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase("will rise".to_string())),
             "P4: 'will rise' should be rejected"
         );
     }
@@ -1339,7 +1410,7 @@ mod tests {
         );
         assert_eq!(
             check_faithful(&text, &facts),
-            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase),
+            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase("expected return".to_string())),
             "P4: 'expected return' should be rejected"
         );
     }
@@ -1368,7 +1439,7 @@ mod tests {
         );
         assert_eq!(
             check_faithful(&text, &facts),
-            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase),
+            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase("guaranteed".to_string())),
         );
     }
 
@@ -1381,7 +1452,7 @@ mod tests {
         );
         assert_eq!(
             check_faithful(&text, &facts),
-            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase),
+            FaithfulnessVerdict::Reject(RejectReason::BannedPhrase("you should buy".to_string())),
         );
     }
 
@@ -1510,17 +1581,20 @@ mod tests {
         let allowed = facts.allowed_numbers();
 
         // The fixture has sortino "0.6789" and calmar "0.7890" for v0.5.macd (the winner).
+        // `HashSet<String>: Borrow<str>` lets `.contains()` take a `&str` directly —
+        // no owned-`String` allocation needed (P2-1: allowed_numbers() now returns
+        // `HashSet<String>`, was `Vec<String>`).
         assert!(
-            allowed.contains(&"0.6789".to_string()),
+            allowed.contains("0.6789"),
             "sortino for v0.5.macd must be in the allowed set (got: {allowed:?})"
         );
         assert!(
-            allowed.contains(&"0.7890".to_string()),
+            allowed.contains("0.7890"),
             "calmar for v0.5.macd must be in the allowed set (got: {allowed:?})"
         );
         // No empty strings — the gap that caused FellBack.
         assert!(
-            !allowed.contains(&String::new()),
+            !allowed.contains(""),
             "the allowed set must NOT contain empty strings (each was a sortino/calmar gap)"
         );
     }
@@ -1573,7 +1647,7 @@ mod tests {
         );
         assert_eq!(
             check_faithful(&text, &facts),
-            FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber),
+            FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber("9999.9999".to_string())),
             "an unfaithful sortino (fabricated) must STILL be rejected by P3"
         );
     }
