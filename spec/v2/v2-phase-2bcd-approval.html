@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v2 Phases 2B–2D — Approve to Ship · The Honest Advisor</title>
+<style>
+  :root{
+    --navy:#0f172a; --slate:#334155; --muted:#64748b; --line:#e2e8f0;
+    --bg:#f6f8fb; --card:#fff; --teal:#0d9488; --teal-d:#0f766e;
+    --go:#16a34a; --go-bg:#ecfdf5; --warn:#b45309; --warn-bg:#fffbeb;
+    --b2:#7c3aed; --c2:#0ea5e9; --d2:#db2777;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:64px}
+  body{margin:0;background:var(--bg);color:var(--slate);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+  h1,h2,h3,h4{color:var(--navy);line-height:1.25;margin:0 0 .4em}
+  h1{font-size:2.1rem;letter-spacing:-.02em}
+  h2{font-size:1.55rem;margin-top:0}
+  h3{font-size:1.12rem}
+  h4{font-size:.95rem;letter-spacing:.04em;text-transform:uppercase;color:var(--teal-d);margin-bottom:.2em}
+  p{margin:.4em 0 .85em}
+  a{color:var(--teal-d)}
+  .small{font-size:.86rem;color:var(--muted)}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    background:#eef2f6;border-radius:4px;padding:1px 6px;font-size:.86em}
+
+  nav.top{position:sticky;top:0;z-index:10;background:rgba(15,23,42,.96);color:#e6fbf8;
+    backdrop-filter:saturate(180%) blur(6px);border-bottom:1px solid rgba(255,255,255,.08)}
+  nav.top .wrap{display:flex;align-items:center;gap:14px;height:52px;flex-wrap:wrap}
+  nav.top a{color:#bff3ec;text-decoration:none;font-size:.9rem;font-weight:600;padding:5px 9px;border-radius:8px}
+  nav.top a:hover{background:rgba(255,255,255,.08);color:#fff}
+  nav.top .brand{color:#fff;font-weight:700;margin-right:auto}
+  nav.top .brand .small{color:#7fe9dd;font-weight:600;margin-left:8px}
+
+  header.hero{background:linear-gradient(135deg,#0f172a 0%,#0f3b46 55%,#0d9488 130%);color:#e6fbf8;padding:44px 0 36px}
+  header.hero .kicker{display:inline-block;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;
+    color:#7fe9dd;background:rgba(13,148,136,.18);border:1px solid rgba(127,233,221,.35);
+    padding:5px 12px;border-radius:999px;margin-bottom:14px}
+  header.hero h1{color:#fff;margin:0 0 .25em;font-size:2.2rem}
+  header.hero .tag{font-size:1.1rem;color:#bff3ec;max-width:760px}
+  header.hero .sub{margin-top:12px;color:#9fd9d1;max-width:780px;font-size:.96rem}
+
+  section.phase{padding:44px 0 30px;border-bottom:1px solid var(--line)}
+  section.phase:last-of-type{border-bottom:0}
+  .eyebrow{font-size:.78rem;letter-spacing:.13em;text-transform:uppercase;color:var(--teal-d);font-weight:700;margin-bottom:6px}
+  .phase h2 .tagnum{display:inline-block;color:#fff;font-size:.82rem;padding:2px 11px;border-radius:999px;vertical-align:middle;margin-right:10px}
+  .b2 .tagnum{background:var(--b2)} .c2 .tagnum{background:var(--c2)} .d2 .tagnum{background:var(--d2)}
+
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);margin:16px 0}
+  .feat .badge{display:inline-block;font-size:.7rem;font-weight:700;color:#fff;padding:2px 9px;border-radius:999px;letter-spacing:.04em;margin-bottom:8px}
+  .feat h3{margin:0 0 .25em;font-size:1.14rem}
+  .feat .plain{color:var(--navy);font-weight:600;margin:.2em 0 .5em}
+  .feat .adr{float:right;font-size:.74rem;color:var(--muted);font-weight:600;background:#f1f5f9;border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+  .feat dl{margin:.5em 0 0;font-size:.94rem}
+  .feat dt{color:var(--teal-d);font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;margin-top:10px}
+  .feat dd{margin:.1em 0 0}
+  .stats{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:.82rem}
+  .stat b{color:var(--navy)}
+  .ok{color:var(--go);font-weight:700}
+
+  .callout{background:linear-gradient(180deg,#fff,#f1f7f6);border-left:4px solid var(--teal);border-radius:0 12px 12px 0;padding:16px 20px;margin:14px 0}
+  .callout.hot{border-left-color:var(--warn);background:linear-gradient(180deg,#fff,#fffbeb)}
+  .callout b{color:var(--navy)}
+
+  .approve{background:#fff;border:2px solid var(--teal);border-radius:14px;padding:22px;box-shadow:var(--shadow);margin-top:8px}
+  .approve h3{margin-top:0}
+  .approve .opts{display:grid;gap:10px;margin:.4em 0 .8em}
+  .approve label{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;cursor:pointer;background:#f8fafc}
+  .approve label:hover{background:#eefaf8;border-color:var(--teal)}
+  .approve label input{margin-top:3px}
+  .approve label .lbl{font-weight:700;color:var(--navy)}
+  .approve label .lbl-desc{color:var(--muted);font-size:.88rem;margin-top:2px}
+  .approve .ship label .lbl{color:var(--go)}
+  .approve .reply{background:#f8fafc;border:1px dashed var(--line);border-radius:10px;padding:10px 13px;font-size:.86rem;color:var(--muted);margin-top:6px}
+
+  footer{background:var(--navy);color:#cbd5e1;padding:32px 0;font-size:.9rem}
+  footer b{color:#fff}
+  .pill{display:inline-block;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);padding:3px 11px;border-radius:999px;font-size:.78rem;margin:3px 5px 3px 0;color:#e2e8f0}
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <div class="brand">v2 Phases 2B–2D · Approve to Ship <span class="small">The Honest Advisor</span></div>
+    <a href="#b2">2B · Forward</a>
+    <a href="#c2">2C · Risk</a>
+    <a href="#d2">2D · Cost + Proof</a>
+    <a href="#approve">Approve</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">v2 build · feature-complete · 7 features tester-PASS</span>
+    <h1>The rest of v2 is built and proven. Sign it off.</h1>
+    <div class="tag">Phase 2A (the credibility layer) already shipped with your approval. Phases 2B–2D — forward-fidelity, the risk overlays, cost realism, and the falsification proof — are all tester-PASS and waiting for the same sign-off.</div>
+    <div class="sub">Everything below is on <code>main</code>, FROZEN gate byte-untouched, anchors 119/119 throughout. Reading time ~6 minutes. Approve all at the bottom, or pick and choose.</div>
+  </div>
+</header>
+
+<!-- ───────────── PHASE 2B ───────────── -->
+<section class="phase b2" id="b2">
+  <div class="wrap">
+    <div class="eyebrow">Phase 2B · the prerequisite refactor</div>
+    <h2><span class="tagnum">2B</span>Forward-fidelity coverage</h2>
+
+    <div class="feat">
+      <span class="adr">ADR-0077 · commit 8391abc</span>
+      <span class="badge" style="background:var(--b2)">R1 · GROUNDWORK</span>
+      <h3>Faithful "watch your money" — for every strategy type</h3>
+      <p class="plain">When you watch your €200 paper-trade forward, it now runs the exact crowned strategy — for all 14 newer arm types, not just the original 5.</p>
+      <p>Before this, if the bake-off crowned a vote-ensemble, a signal-library rule, the DVOL arm, or the macro arm, the forward run <em>errored out</em> — it could describe a pick it couldn't actually run. R1 wires real constructors for all 14. The anti-fake gate stays: an unknown id still refuses (never a silent stand-in).</p>
+      <div class="stats">
+        <span class="stat"><b>21</b> fidelity tests (13 new "builds-not-bails")</span>
+        <span class="stat">anchors <b class="ok">119/119</b></span>
+        <span class="stat">None-path <b>byte-identical</b></span>
+      </div>
+      <dl><dt>Why it matters</dt><dd>"Watch the selected strategy" has to be literally true for every strategy the gate can crown — this closes the last gap, and had to land before any new arm/overlay.</dd></dl>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── PHASE 2C ───────────── -->
+<section class="phase c2" id="c2">
+  <div class="wrap">
+    <div class="eyebrow">Phase 2C · the one place active management plausibly helps</div>
+    <h2><span class="tagnum">2C</span>Risk overlays</h2>
+
+    <div class="feat">
+      <span class="adr">ADR-0079 · commit c6ef1b3</span>
+      <span class="badge" style="background:var(--c2)">P1-5 · PLUMBING</span>
+      <h3>Shared volatility estimator</h3>
+      <p class="plain">A shared "how wild is the ride" (σ̂) module that both risk overlays draw from.</p>
+      <p>Realized-vol, a slow EWMA (126-day half-life), and a HAR multi-horizon blend. Homed in <code>strategy</code>, deliberately <em>not</em> in the forecasting crate — keeping the "volatility-for-sizing ≠ price-prediction" line clean.</p>
+      <div class="stats"><span class="stat"><b>23</b> unit tests</span><span class="stat">pure infra, no behaviour change</span><span class="stat">anchors <b class="ok">119/119</b></span></div>
+    </div>
+
+    <div class="feat">
+      <span class="adr">ADR-0078 · commit 9433e35</span>
+      <span class="badge" style="background:var(--c2)">P1-4 · HONEST REPOSITION</span>
+      <h3>The vol overlay is a risk tool, not a Sharpe tool</h3>
+      <p class="plain">Reframed the existing volatility overlay to promise <em>smoother drawdowns</em>, never a higher Sharpe — because on crypto it mechanistically can't deliver one.</p>
+      <p>On equities, cutting size when volatility spikes raises risk-adjusted return (the leverage effect). On crypto that effect is <b>reversed</b> (γ ≈ −0.261 — volatility spikes <i>after</i> rallies, FOMO-driven), so the Sharpe mechanism simply isn't there. The overlay now uses a slow EWMA + a no-trade band (bounds churn) + de-risk-only (never levers up), and reports a per-coin correlation telling you whether the Sharpe mechanism is even present. Default behaviour is unchanged — the honest posture is an explicit opt-in.</p>
+      <div class="stats"><span class="stat"><b>266</b> strategy tests</span><span class="stat">existing e2e <b>byte-identical</b> on default</span><span class="stat">anchors <b class="ok">119/119</b></span></div>
+    </div>
+
+    <div class="feat">
+      <span class="adr">ADR-0080 · commit 9433e35</span>
+      <span class="badge" style="background:var(--c2)">P1-3 · THE €200 FLOOR</span>
+      <h3>Drawdown guard — "never lose more than 20%"</h3>
+      <p class="plain">A new overlay that shrinks exposure as losses approach a floor, promising: never lose more than 20% of the starting €200.</p>
+      <p>Static floor (CPPI @ 20%, your ratified D8 choice) plus a <b>load-bearing high-water-mark restart</b> — the benchmark is stark: on BTC with 0.1% costs, <i>with</i> the restart it held Sharpe 1.52 and cut max-drawdown 72%→20%; the <i>same</i> controller <i>without</i> the restart collapsed to Sharpe −0.04. It composes with the budget cap (never bypasses it).</p>
+      <div class="stats"><span class="stat"><b>6</b>-test day-1 divergence e2e (proves it's not a no-op)</span><span class="stat">HWM-restart + floor-never-moves + budget-cap proofs</span><span class="stat">anchors <b class="ok">119/119</b></span></div>
+      <div class="callout"><b>An honest catch worth noting:</b> the drawdown formula cited in the research (<code>M = (d_max−d)/(1−d)</code>) evaluates to "only 20% exposure when you're winning" — the wrong direction. The dev caught it and used the corrected normalised form (<code>M(0)=1.0</code> at a new high, <code>M=0</code> at the floor), documented in ADR-0080 §D2. The research prose ("scale exposure <i>up</i> with the cushion") confirms the correction is what was intended.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── PHASE 2D ───────────── -->
+<section class="phase d2" id="d2">
+  <div class="wrap">
+    <div class="eyebrow">Phase 2D · cost realism + the honesty capstone</div>
+    <h2><span class="tagnum">2D</span>Cost model, narration, and the proof</h2>
+
+    <div class="feat">
+      <span class="adr">ADR-0081 · commit c0d3b6b</span>
+      <span class="badge" style="background:var(--d2)">P1-6 · REALISTIC COSTS</span>
+      <h3>State-aware costs — opt-in, anchors safe</h3>
+      <p class="plain">A cost model where trading spreads widen with volatility (crypto's real behaviour) — available as an opt-in, with the default left byte-for-byte unchanged.</p>
+      <p>Your ratified D6 call: the default cost model stays exactly as-is, so all 119 anchored backtest reports remain byte-identical. The realistic model is a new variant you opt into. Ships with a venue-trust map (which crypto exchanges to believe for which metrics — Kraken/HTX reconcile; others have fabricated volume/OI).</p>
+      <div class="stats"><span class="stat"><b>39</b> cost tests (incl. default-unchanged proof)</span><span class="stat">anchors <b class="ok">119/119</b> by construction</span></div>
+    </div>
+
+    <div class="feat">
+      <span class="adr">ADR-0064 amendment · commit 46acc9e</span>
+      <span class="badge" style="background:var(--d2)">P2-1 · THE NARRATOR CAN'T LIE</span>
+      <h3>Narration faithfulness hardening</h3>
+      <p class="plain">The "why this pick" LLM narrator now physically can't invent a number, predict, or advise.</p>
+      <p>Every figure it prints must be a verbatim match to the real facts (no invented or even rounded numbers), and 19 new banned phrases block any prediction ("will rise", "expected to"), causation ("because of", "driven by"), or advice ("you should", "we recommend"). It narrates the numbers; it never crosses into forecasting or telling you what to do.</p>
+      <div class="stats"><span class="stat"><b>27</b>-test adversarial corpus</span><span class="stat">rejects invented numbers + all banned phrases</span><span class="stat">anchors <b class="ok">119/119</b></span></div>
+    </div>
+
+    <div class="feat">
+      <span class="adr">test-only · commit a43bf3f</span>
+      <span class="badge" style="background:var(--d2)">P2-2 · THE CAPSTONE</span>
+      <h3>Proof the gate can't be fooled by noise</h3>
+      <p class="plain">A test that runs the full bake-off on <em>pure noise</em> — and proves the credibility gate rejects it.</p>
+      <p>It feeds the bake-off random walks (GBM), volatility-clustering (GARCH), and mean-reversion (OU) — data with no real edge — across 15 seeded runs, and asserts no lucky "winner" survives as credible. The striking result:</p>
+      <div class="callout hot"><b>The primary gate alone crowned an active strategy on pure noise ~1 in 5 times</b> (a random walk "beaten" by RSI!). <b>The honesty scorecard caught every single one</b> (deflated-confidence ~0.4–0.8, all below the 0.95 bar). This is the empirical proof that the scorecard you shipped in Phase 2A is <i>load-bearing</i>, not decorative — it catches exactly what the primary gate misses. You reviewed this and kept the scorecard report-only (it shows the crown <i>and</i> its low confidence, side by side); the veto switch stays ready if you ever want it.</div>
+      <div class="stats"><span class="stat"><b>3</b> tests · <b>15</b> noise runs</span><span class="stat">the two-layer contract holds on every one</span><span class="stat">anchors <b class="ok">119/119</b></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── APPROVE ───────────── -->
+<section class="phase" id="approve">
+  <div class="wrap">
+    <div class="eyebrow">Sign-off</div>
+    <h2>Approve to ship</h2>
+    <p>All seven features are tester-PASS with ADRs registered (0077–0081 + the 0064 amendment). Approving flips them from <code>tester-done</code> → <code>shipped</code> — same step you took for Phase 2A.</p>
+
+    <div class="approve">
+      <h3>v2 Phases 2B–2D</h3>
+      <div class="opts">
+        <label class="ship"><input type="radio" name="all"><div><div class="lbl">✓ Approve all — ship 2B, 2C, 2D</div><div class="lbl-desc">Flip all seven to <code>shipped</code>. The v2 build is done (bar the punted P1-7 DATA-quality surface, which redoes cleanly next).</div></div></label>
+        <label><input type="radio" name="all"><div><div class="lbl">Approve most — hold specific ones</div><div class="lbl-desc">Tell me which to hold and why; I ship the rest.</div></div></label>
+        <label><input type="radio" name="all"><div><div class="lbl">Approve with notes</div><div class="lbl-desc">Ship all, with feedback to fold into a follow-up.</div></div></label>
+      </div>
+      <div class="reply">Reply with <code>approve all</code> · <code>approve all except P1-4</code> · <code>approve with notes: …</code></div>
+    </div>
+
+    <h4 style="margin-top:26px">What's left after this</h4>
+    <p class="small" style="margin:0">
+      • <b>P1-7 DATA-quality surface</b> — the one punted feature (a display-only "how much to trust this data" panel); ~80% of the work survived on disk, redoes cleanly when you want it. &nbsp;·&nbsp;
+      • The v2 architect roadmap (2A–2D) is otherwise <b>fully delivered</b> — the "no plugin architecture, stay additive" plan held end-to-end, FROZEN gate never touched, anchors 119/119 at every commit.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div style="margin-bottom:10px">
+      <span class="pill">Paper / simulation only</span>
+      <span class="pill">Not financial advice</span>
+      <span class="pill">Single coin · single budget</span>
+      <span class="pill">Past performance ≠ future results</span>
+    </div>
+    <b>v2 Phases 2B–2D · Approve to Ship</b> — measured honesty, not asserted alpha. The €200 is simulated; no real orders are ever placed.
+    <div class="small" style="margin-top:8px;color:#94a3b8">Evidence: tester reports under <code>spec/v2/{phase-2c-overlays,phase-2d}/reports/</code> + <code>spec/v2/advisor-forward-fidelity-coverage/reports/</code> · ADRs <code>spec/architecture/adr/0077–0081</code> · commits <code>8391abc … a44338d</code> (all on origin/main).</div>
+  </div>
+</footer>
+
+</body>
+</html>
