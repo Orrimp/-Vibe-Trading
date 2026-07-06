@@ -140,6 +140,165 @@ pub struct RecommendationMirror {
     pub reasons: Vec<ReasonLabel>,
 }
 
+// ── P1-7 DATA-stage trust/quality surface (advisor-data-quality-surface) ─────
+
+/// How much the operator should trust the price data behind a bake-off,
+/// mirrored as a **plain, `ui`-owned DTO** (advisor-data-quality-surface,
+/// P1-7 / v2-architecture §1 P1-7).
+///
+/// **Display-only — NEVER feeds any gate/rank/verdict.** This is the DATA-
+/// stage counterpart to the ANALYSIS-stage [`ScorecardView`] and the SUGGEST-
+/// stage [`TailSummaryView`]: the workflow spine is DATA → ANALYSIS →
+/// SUGGEST, and this block is the DATA readout the operator sees first. It
+/// carries zero engine type — every field is a plain `String` / closed enum,
+/// built by [`DataQualityView::for_symbol`] from a hardcoded per-symbol
+/// lookup (no `data`/`strategy`/`exec`/`llm`/`models` dep edge on `ui`).
+///
+/// Grounded in `research/crypto-market-structure/application-data-integrity.md`
+/// §6 C and the venue-trust classifications recorded in
+/// `spec/dev-notes/venue-trust-map-2026-07-01.md` (REUSED verbatim, not
+/// reinvented — the P1-6 cost-model hardening cites the same map).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataQualityView {
+    /// The venue the price series is sourced from, e.g. `"Binance"`.
+    pub venue: String,
+    /// One-line provenance readout — where the bars actually came from, e.g.
+    /// `"Hourly close from Binance klines, cached in the pinned corpus."`.
+    /// Answers "how much can I trust this data" at the source-mechanics
+    /// level (as opposed to `venue_trust`, which answers it at the
+    /// fabrication-risk level).
+    pub provenance: String,
+    /// The venue/metric fabrication-risk classification (the venue-trust-map
+    /// dev-note's three-tier scheme), driving the badge colour + framing.
+    pub venue_trust: VenueTrust,
+    /// The survival-bias caveat — ALWAYS present (every symbol in the
+    /// bake-off universe survived to today by construction; the doc's §6 D
+    /// backtest-window-hygiene finding + the general survivorship-bias
+    /// truth). Plain language, no jargon: "coins that failed to reach today
+    /// are absent from this universe; results overstate the expected
+    /// outcome for a randomly chosen NEW coin."
+    pub survival_note: String,
+    /// Zero or more plain-language data-quality warnings (thin liquidity /
+    /// wash-trading suspicion / pump-and-dump risk). Empty for the
+    /// default deep-liquidity major-venue symbols (e.g. `BTCUSDT` on
+    /// Binance) — the honest "nothing to flag" case, not a placeholder.
+    pub warnings: Vec<DataQualityWarning>,
+}
+
+/// The venue/metric fabrication-risk tier, mapped from the venue-trust-map
+/// dev-note's summary table (`spec/dev-notes/venue-trust-map-2026-07-01.md`).
+///
+/// A closed `ui`-owned enum (same mirror discipline as [`RobustnessLabel`]):
+/// the render code matches on this discriminant, never a raw trust string,
+/// so the badge colour + copy stay centrally driven.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VenueTrust {
+    /// Deep major-venue spot price (Binance / Coinbase / Kraken) — the
+    /// dev-note's "HIGH (with caveats)" tier for spot price, reconcilable
+    /// against the hard `|ΔOI| ≤ traded_volume` accounting identity where
+    /// applicable. The default for the pinned Binance corpus symbols.
+    HighReconcilable,
+    /// A venue/metric combination with a known partial-fabrication risk that
+    /// still WARRANTS USE with an explicit caveat (e.g. medium-trust volume
+    /// on a major venue) — the dev-note's "MEDIUM" tier.
+    ConditionalWatch,
+    /// A venue/metric combination the dev-note explicitly advises AGAINST
+    /// (e.g. OI from Bybit/OKX/Binance-inverse, volume from unregulated
+    /// CEXs, aggregated OI feeds) — the "LOW" tier. Reserved for future
+    /// symbols/venues outside the pinned corpus default; the shipped bake-
+    /// off universe never resolves here today.
+    LowFabricatedRisk,
+}
+
+impl VenueTrust {
+    /// Short badge label for the trust tier — plain language, no jargon
+    /// (e.g. never bare "HIGH"/"LOW" without the qualifying clause).
+    #[must_use]
+    pub fn badge_label(self) -> &'static str {
+        match self {
+            VenueTrust::HighReconcilable => crate::strings::LEADERBOARD_DATA_QUALITY_TRUST_HIGH,
+            VenueTrust::ConditionalWatch => {
+                crate::strings::LEADERBOARD_DATA_QUALITY_TRUST_CONDITIONAL
+            }
+            VenueTrust::LowFabricatedRisk => crate::strings::LEADERBOARD_DATA_QUALITY_TRUST_LOW,
+        }
+    }
+}
+
+/// A plain-language data-quality caveat surfaced on the DATA-quality panel —
+/// mirrors the venue-trust-map dev-note's "what NOT to do" advisories
+/// (thin liquidity, wash-trading suspicion, pump-and-dump risk).
+///
+/// A closed `ui`-owned enum: the render code matches on the discriminant and
+/// looks up its plain-language description via [`DataQualityWarning::copy`],
+/// so a new warning kind fails to compile until it is worded (the same
+/// exhaustive-match discipline [`ReasonLabel`] follows).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataQualityWarning {
+    /// Low trading volume / shallow order book for this symbol — visible
+    /// depth is already partly spoofable (§6 research finding [90]) and
+    /// thin liquidity compounds the effective-spread risk.
+    ThinLiquidity,
+    /// Reported volume on this venue carries a wash-trading suspicion — the
+    /// dev-note's >70%-wash-traded finding for unregulated CEXs
+    /// (`crypto-market-structure[19]`).
+    WashTradingSuspicion,
+    /// This symbol has a history of pump-and-dump-style price action —
+    /// small/low-liquidity/DEX-only coins are the typical target
+    /// (`crypto-market-structure[19][20][31][32]`).
+    PumpAndDump,
+}
+
+impl DataQualityWarning {
+    /// One-line plain-language description of this warning — no jargon, the
+    /// operator reads it standalone without the dev-note open.
+    #[must_use]
+    pub fn copy(self) -> &'static str {
+        match self {
+            DataQualityWarning::ThinLiquidity => {
+                crate::strings::LEADERBOARD_DATA_QUALITY_WARNING_THIN_LIQUIDITY
+            }
+            DataQualityWarning::WashTradingSuspicion => {
+                crate::strings::LEADERBOARD_DATA_QUALITY_WARNING_WASH_TRADING
+            }
+            DataQualityWarning::PumpAndDump => {
+                crate::strings::LEADERBOARD_DATA_QUALITY_WARNING_PUMP_AND_DUMP
+            }
+        }
+    }
+}
+
+impl DataQualityView {
+    /// Build the DATA-quality readout for `symbol`, e.g. `"BTCUSDT"`.
+    ///
+    /// **MVP lookup — hardcoded, not a live venue-metadata service.** Every
+    /// symbol in [`BAKEOFF_COIN_UNIVERSE`] is sourced from the SAME pinned
+    /// Binance-klines corpus (`data/binance/<SYM>/…`), so every default
+    /// resolves to the SAME venue/provenance/trust tier: Binance,
+    /// [`VenueTrust::HighReconcilable`], the standard survival note, and NO
+    /// warnings (the honest "nothing to flag" case for the deep-liquidity
+    /// pinned universe — none of it is small/DEX-only/wash-traded per the
+    /// venue-trust-map dev-note). A future increment can widen this to a
+    /// per-symbol match (e.g. a low-liquidity addition would carry
+    /// [`DataQualityWarning::ThinLiquidity`]); today's universe does not
+    /// need one. Pure + total — no I/O, no panic, never `None`.
+    #[must_use]
+    pub fn for_symbol(symbol: &str) -> Self {
+        // `symbol` is accepted (not currently branched on) — the constructor
+        // signature is symbol-shaped so a future per-symbol classification
+        // slots in without a call-site change. `let _ =` documents the
+        // intentional non-use rather than silently ignoring the parameter.
+        let _ = symbol;
+        Self {
+            venue: "Binance".to_string(),
+            provenance: crate::strings::LEADERBOARD_DATA_QUALITY_PROVENANCE_BINANCE.to_string(),
+            venue_trust: VenueTrust::HighReconcilable,
+            survival_note: crate::strings::LEADERBOARD_DATA_QUALITY_SURVIVAL_NOTE.to_string(),
+            warnings: Vec::new(),
+        }
+    }
+}
+
 // ── P1-2 coherent-tail / median (advisor-turnover-and-tail-metrics) ──────────
 
 /// The crown's coherent-tail + median summary, mirrored from
@@ -352,6 +511,15 @@ pub struct BakeoffReportMirror {
     /// blank or all-zero readout. **REPORT-ONLY** — display-only honesty
     /// readout, never touches the crown / rank / gate.
     pub tail: Option<TailSummaryView>,
+    /// The DATA-stage trust/quality readout (P1-7 /
+    /// advisor-data-quality-surface), built from `request.symbol` via
+    /// [`DataQualityView::for_symbol`]. Always `Some` — every bake-off runs
+    /// on a known symbol, so there is no "degenerate" DATA-quality state to
+    /// suppress (unlike `scorecard`/`tail`, which mirror an engine-computed
+    /// summary that CAN be empty). **DISPLAY-ONLY** — never feeds any
+    /// gate/rank/verdict; zero new `ui` dep edge (no engine type crosses
+    /// this field).
+    pub data_quality: DataQualityView,
 }
 
 impl BakeoffReportMirror {
@@ -389,6 +557,10 @@ impl BakeoffReportMirror {
         };
 
         Self {
+            // P1-7 (advisor-data-quality-surface): built from the SAME
+            // `request.symbol` the `coin` field below echoes, so the DATA
+            // panel always describes the symbol actually ranked.
+            data_quality: DataQualityView::for_symbol(report.request.symbol.0.as_str()),
             coin: SmolStr::new(report.request.symbol.0.as_str()),
             range_label: SmolStr::new(range_label_for(&report.request.range)),
             rows,
@@ -964,6 +1136,7 @@ mod tests {
                 median_terminal_wealth: 105_000.0,
                 skew: 0.4,
             }),
+            data_quality: DataQualityView::for_symbol("BTCUSDT"),
         }
     }
 
@@ -1101,6 +1274,96 @@ mod tests {
             crown_clears_dsr: false,
         };
         assert!(ScorecardView::from_scorecard(&degenerate).is_none());
+    }
+
+    // ── P1-7 DATA-quality surface (advisor-data-quality-surface) ─────────────
+
+    #[test]
+    fn data_quality_for_symbol_btcusdt_is_high_reconcilable_no_warnings() {
+        // The default pinned-corpus symbol must resolve to the honest
+        // "nothing to flag" case: Binance / HighReconcilable / a real
+        // survival note / an EMPTY warnings list.
+        let dq = DataQualityView::for_symbol("BTCUSDT");
+        assert_eq!(dq.venue, "Binance");
+        assert_eq!(dq.venue_trust, VenueTrust::HighReconcilable);
+        assert!(
+            dq.warnings.is_empty(),
+            "the deep-liquidity default universe carries no warnings"
+        );
+        assert!(
+            !dq.survival_note.is_empty(),
+            "the survival-bias caveat is ALWAYS present"
+        );
+        assert!(
+            !dq.provenance.is_empty(),
+            "the provenance readout is always populated"
+        );
+    }
+
+    #[test]
+    fn data_quality_for_symbol_is_stable_across_the_universe() {
+        // Every symbol in the pinned Binance corpus shares the SAME sourcing
+        // mechanics today (MVP hardcode — see `for_symbol` doc comment), so
+        // every universe member must classify identically to BTCUSDT.
+        let btc = DataQualityView::for_symbol("BTCUSDT");
+        for sym in BAKEOFF_COIN_UNIVERSE {
+            let dq = DataQualityView::for_symbol(sym);
+            assert_eq!(
+                dq, btc,
+                "symbol {sym} must classify identically to BTCUSDT under the \
+                 current MVP lookup (all sourced from the same pinned corpus)"
+            );
+        }
+    }
+
+    #[test]
+    fn venue_trust_badge_labels_are_distinct_and_non_empty() {
+        // Each of the three trust tiers renders a distinct, non-empty badge
+        // label — the render code matches on the enum, never a raw string.
+        let high = VenueTrust::HighReconcilable.badge_label();
+        let conditional = VenueTrust::ConditionalWatch.badge_label();
+        let low = VenueTrust::LowFabricatedRisk.badge_label();
+        assert!(!high.is_empty());
+        assert!(!conditional.is_empty());
+        assert!(!low.is_empty());
+        assert_ne!(high, conditional);
+        assert_ne!(high, low);
+        assert_ne!(conditional, low);
+    }
+
+    #[test]
+    fn data_quality_warning_copy_is_plain_language_and_distinct() {
+        // Each warning variant has a non-empty, distinct, plain-language
+        // description — the operator reads it standalone, no jargon.
+        let thin = DataQualityWarning::ThinLiquidity.copy();
+        let wash = DataQualityWarning::WashTradingSuspicion.copy();
+        let pnd = DataQualityWarning::PumpAndDump.copy();
+        assert!(!thin.is_empty());
+        assert!(!wash.is_empty());
+        assert!(!pnd.is_empty());
+        assert_ne!(thin, wash);
+        assert_ne!(thin, pnd);
+        assert_ne!(wash, pnd);
+        // No raw jargon abbreviation stands alone without a gloss: none of the
+        // three descriptions is just the enum variant name restated.
+        assert!(!thin.eq_ignore_ascii_case("thin liquidity"));
+        assert!(!wash.eq_ignore_ascii_case("wash trading suspicion"));
+        assert!(!pnd.eq_ignore_ascii_case("pump and dump"));
+    }
+
+    #[test]
+    fn bakeoff_report_mirror_from_report_populates_data_quality() {
+        // `from_report` must build `data_quality` from the SAME symbol the
+        // `coin` field echoes — proven directly against the `ready_mirror()`
+        // fixture shape (constructed the same way `from_report` would for a
+        // BTCUSDT request).
+        let m = ready_mirror();
+        assert_eq!(m.coin.as_str(), "BTCUSDT");
+        assert_eq!(
+            m.data_quality,
+            DataQualityView::for_symbol("BTCUSDT"),
+            "data_quality must be built from the SAME symbol as coin"
+        );
     }
 
     // ── F9 narration state transitions (ADR-0064) ────────────────────────────

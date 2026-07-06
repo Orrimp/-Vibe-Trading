@@ -1624,6 +1624,9 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
         scorecard: Some(fake_scorecard_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
+        // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
+        // pinned-corpus default symbol. Display-only.
+        data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
     }
 }
 
@@ -1812,6 +1815,9 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
         scorecard: Some(fake_scorecard_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
+        // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
+        // pinned-corpus default symbol. Display-only.
+        data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
     }
 }
 
@@ -2069,6 +2075,9 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
         }),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
+        // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
+        // pinned-corpus default symbol. Display-only.
+        data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
     }
 }
 
@@ -2140,6 +2149,11 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             median_terminal_wealth: 102_300.0,
             skew: -0.31,
         }),
+        // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
+        // pinned-corpus default symbol. Display-only. This is the SHORT-TABLE
+        // fixture the scorecard/risk-story render guards drive; the DATA-quality
+        // render guard reuses it too (same short-table viewport rationale).
+        data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
     }
 }
 
@@ -2310,6 +2324,9 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             median_terminal_wealth: 101_800.0,
             skew: -0.28,
         }),
+        // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
+        // pinned-corpus default symbol. Display-only.
+        data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
     }
 }
 
@@ -2471,6 +2488,9 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
         }),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
+        // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
+        // pinned-corpus default symbol. Display-only.
+        data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
     }
 }
 

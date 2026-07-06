@@ -61,8 +61,9 @@ use iced::{Border, Length};
 use trading_core::{StrategyId, Symbol};
 
 use crate::leaderboard::state::{
-    BakeoffReportMirror, LeaderRow, LeaderboardLookback, NarrationState, OutcomeKind, ReasonLabel,
-    RecommendationMirror, RobustnessLabel, ScorecardView, TailSummaryView,
+    BakeoffReportMirror, DataQualityView, LeaderRow, LeaderboardLookback, NarrationState,
+    OutcomeKind, ReasonLabel, RecommendationMirror, RobustnessLabel, ScorecardView,
+    TailSummaryView,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
@@ -70,6 +71,10 @@ use crate::strings::{
     LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN,
     LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES,
     LEADERBOARD_COL_TURNOVER, LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_TAG,
+    LEADERBOARD_DATA_QUALITY_CAPTION, LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE,
+    LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL, LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL,
+    LEADERBOARD_DATA_QUALITY_TITLE, LEADERBOARD_DATA_QUALITY_TRUST_LABEL,
+    LEADERBOARD_DATA_QUALITY_VENUE_LABEL, LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL,
     LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL,
     LEADERBOARD_ENSEMBLE_K2OF4_LABEL, LEADERBOARD_ENSEMBLE_K3OF4_LABEL,
     LEADERBOARD_ENSEMBLE_MAJORITY_LABEL, LEADERBOARD_ENSEMBLE_SAT_IN_CASH,
@@ -445,8 +450,17 @@ fn ready_pane<'a>(
     let recommendation = recommendation_block(report, narration, mode);
     let table = leaderboard_table(report, coin, lookback, mode);
 
+    // advisor-data-quality-surface (P1-7) — the DATA-stage trust/quality
+    // readout, rendered FIRST (above the recommendation + table) so the
+    // workflow spine reads DATA → ANALYSIS → SUGGEST: "here's what the
+    // numbers are built on" before "here's the pick". Always present
+    // (`data_quality` is not `Option` — every bake-off has a known symbol).
+    // DISPLAY-ONLY: never feeds the crown/rank/gate.
+    let data_quality = data_quality_block(&report.data_quality, mode);
+
     let mut stack = Column::new()
         .spacing(space::L)
+        .push(data_quality)
         .push(recommendation)
         .push(table);
 
@@ -741,6 +755,107 @@ fn reason_copy(reason: ReasonLabel) -> &'static str {
         ReasonLabel::TieBrokenByReturn => LEADERBOARD_REASON_TIE_RETURN,
         ReasonLabel::TieBrokenByDrawdown => LEADERBOARD_REASON_TIE_DRAWDOWN,
     }
+}
+
+// ── DATA-quality block (advisor-data-quality-surface P1-7) ────────────────────
+
+/// The "Data quality" DATA-stage readout — a `frame::panel`-titled block
+/// rendering the DISPLAY-ONLY [`DataQualityView`] in plain language (P1-7 /
+/// v2-architecture §1 P1-7).
+///
+/// Sits ABOVE the recommendation + ranked table (the DATA → ANALYSIS →
+/// SUGGEST workflow spine — this is the first honesty layer, describing the
+/// INPUT rather than the output). The bottom carries the load-bearing
+/// "informational, not a gate" note, matching the scorecard's + Risk story's
+/// framing, so the operator can never mistake it for a verdict.
+///
+/// Facts, each `label : value`:
+/// - **Venue** — where the price series is sourced from.
+/// - **Provenance** — the one-line sourcing mechanics.
+/// - **Trust level** — the venue-trust-map tier badge.
+/// - **Survival bias** — ALWAYS present (every universe symbol survived to
+///   today by construction).
+/// - **Warnings** — rendered ONLY when non-empty (the honest "nothing to
+///   flag" case renders no row at all for the default deep-liquidity
+///   universe, not a placeholder "no warnings" line).
+fn data_quality_block(dq: &DataQualityView, mode: ThemeMode) -> crate::Element<'static> {
+    let caption = Text::new(LEADERBOARD_DATA_QUALITY_CAPTION)
+        .size(text::SMALL)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill);
+
+    let venue = scorecard_fact(
+        LEADERBOARD_DATA_QUALITY_VENUE_LABEL,
+        dq.venue.clone(),
+        None,
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    let provenance = scorecard_fact(
+        LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL,
+        dq.provenance.clone(),
+        None,
+        color::FG_3.current(mode),
+        mode,
+    );
+
+    // Trust level — neutral colour (NOT pos/neg): `HighReconcilable` is the
+    // expected default for the pinned corpus, not a "win"; a lower tier
+    // (reserved for future symbols) is a caveat to read, not a loss.
+    let trust = scorecard_fact(
+        LEADERBOARD_DATA_QUALITY_TRUST_LABEL,
+        dq.venue_trust.badge_label().to_string(),
+        None,
+        color::FG_1.current(mode),
+        mode,
+    );
+
+    // Survival bias — ALWAYS present. Muted colour: it's a caveat on the
+    // universe, not a sentiment-bearing figure.
+    let survival = scorecard_fact(
+        LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL,
+        dq.survival_note.clone(),
+        None,
+        color::FG_3.current(mode),
+        mode,
+    );
+
+    let mut body = Column::new()
+        .spacing(space::M)
+        .push(caption)
+        .push(venue)
+        .push(provenance)
+        .push(trust)
+        .push(survival);
+
+    // Warnings — rendered ONLY when non-empty (the negative control: the
+    // default deep-liquidity universe carries zero warnings, so this whole
+    // section is absent rather than an empty placeholder row).
+    if !dq.warnings.is_empty() {
+        let warnings_label = Text::new(LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL)
+            .size(text::MICRO)
+            .color(color::FG_3.current(mode));
+        let mut warnings_col = Column::new().spacing(space::XXS).push(warnings_label);
+        for w in &dq.warnings {
+            warnings_col = warnings_col.push(
+                Text::new(w.copy())
+                    .size(text::BODY)
+                    .color(color::WARN_500.current(mode))
+                    .width(Length::Fill),
+            );
+        }
+        body = body.push(warnings_col);
+    }
+
+    // The bottom "informational, not a gate" note — DISPLAY-ONLY (P1-7).
+    let info_note = Text::new(LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE)
+        .size(text::MICRO)
+        .color(color::FG_3.current(mode))
+        .width(Length::Fill);
+    body = body.push(info_note);
+
+    frame::panel(LEADERBOARD_DATA_QUALITY_TITLE, body.into(), mode)
 }
 
 // ── Scorecard block (advisor-overfitting-scorecard P0-1 / ADR-0075) ───────────

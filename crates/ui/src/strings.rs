@@ -1704,6 +1704,71 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_EXPLAIN_LLM_LABEL,
         ),
         ("LEADERBOARD_EXPLAIN_FELLBACK", LEADERBOARD_EXPLAIN_FELLBACK),
+        // advisor-data-quality-surface P1-7 — DATA-stage trust/quality panel
+        (
+            "LEADERBOARD_DATA_QUALITY_TITLE",
+            LEADERBOARD_DATA_QUALITY_TITLE,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_CAPTION",
+            LEADERBOARD_DATA_QUALITY_CAPTION,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_VENUE_LABEL",
+            LEADERBOARD_DATA_QUALITY_VENUE_LABEL,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL",
+            LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_PROVENANCE_BINANCE",
+            LEADERBOARD_DATA_QUALITY_PROVENANCE_BINANCE,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_TRUST_LABEL",
+            LEADERBOARD_DATA_QUALITY_TRUST_LABEL,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_TRUST_HIGH",
+            LEADERBOARD_DATA_QUALITY_TRUST_HIGH,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_TRUST_CONDITIONAL",
+            LEADERBOARD_DATA_QUALITY_TRUST_CONDITIONAL,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_TRUST_LOW",
+            LEADERBOARD_DATA_QUALITY_TRUST_LOW,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL",
+            LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_SURVIVAL_NOTE",
+            LEADERBOARD_DATA_QUALITY_SURVIVAL_NOTE,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL",
+            LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_WARNING_THIN_LIQUIDITY",
+            LEADERBOARD_DATA_QUALITY_WARNING_THIN_LIQUIDITY,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_WARNING_WASH_TRADING",
+            LEADERBOARD_DATA_QUALITY_WARNING_WASH_TRADING,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_WARNING_PUMP_AND_DUMP",
+            LEADERBOARD_DATA_QUALITY_WARNING_PUMP_AND_DUMP,
+        ),
+        (
+            "LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE",
+            LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE,
+        ),
         // advisor-overfitting-scorecard P0-1 (ADR-0075) — "show your work" block
         ("LEADERBOARD_SCORECARD_TITLE", LEADERBOARD_SCORECARD_TITLE),
         (
@@ -2949,6 +3014,97 @@ pub const LEADERBOARD_EXPLAIN_LLM_LABEL: &str =
 /// is already visible (the honest floor); this just explains why no prose
 /// appeared, without alarming the operator. Deliberately understated.
 pub const LEADERBOARD_EXPLAIN_FELLBACK: &str = "Couldn\u{2019}t generate a plain-language summary \u{2014} the numbers above are the full result.";
+
+// ── advisor-data-quality-surface P1-7 — DATA-stage trust/quality panel ───────
+//
+// The DATA-stage readout that opens the workflow spine (DATA → ANALYSIS →
+// SUGGEST): "how much can I trust this data", answered from the DISPLAY-ONLY
+// `DataQualityView`. Venue + provenance + a survival-bias caveat that is
+// ALWAYS present + zero or more plain-language warnings (thin liquidity /
+// wash-trading suspicion / pump-and-dump risk). Grounded in
+// `research/crypto-market-structure/application-data-integrity.md` §6 C and
+// the P1-6 venue-trust-map dev-note (REUSED, not reinvented). Plain language,
+// no jargon undefined — this panel is read standalone, before the operator
+// ever opens the dev-note.
+
+/// Title of the DATA-quality panel — frames it as a trust readout on the
+/// INPUT to the bake-off, sitting ABOVE the scorecard/risk-story blocks (the
+/// DATA → ANALYSIS → SUGGEST spine: this is the first honesty layer).
+pub const LEADERBOARD_DATA_QUALITY_TITLE: &str = "Data quality";
+
+/// One-line caption under the title — the honest framing: this describes
+/// where the numbers came from, not how good the pick is.
+pub const LEADERBOARD_DATA_QUALITY_CAPTION: &str = "Where this price data came from, and how much to trust it \u{2014} \
+     it never changes the pick below.";
+
+/// Label — "Venue" row. Which exchange the price series is sourced from.
+pub const LEADERBOARD_DATA_QUALITY_VENUE_LABEL: &str = "Venue";
+
+/// Label — "Provenance" row. The one-line mechanics of how the bars reached
+/// the bake-off (e.g. "hourly close from Binance klines, cached").
+pub const LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL: &str = "Provenance";
+
+/// Provenance value for the pinned Binance-klines corpus — every symbol in
+/// `BAKEOFF_COIN_UNIVERSE` shares this exact sourcing mechanics.
+pub const LEADERBOARD_DATA_QUALITY_PROVENANCE_BINANCE: &str =
+    "Hourly close from Binance klines, cached in the pinned backtest corpus.";
+
+/// Label — "Trust level" row. The venue-trust-map tier badge.
+pub const LEADERBOARD_DATA_QUALITY_TRUST_LABEL: &str = "Trust level";
+
+/// Badge copy for [`crate::leaderboard::VenueTrust::HighReconcilable`] — the
+/// dev-note's top tier: deep major-venue spot price, reconcilable.
+pub const LEADERBOARD_DATA_QUALITY_TRUST_HIGH: &str =
+    "High \u{2014} reconcilable major-venue price";
+
+/// Badge copy for [`crate::leaderboard::VenueTrust::ConditionalWatch`] — a
+/// venue/metric with a known partial-fabrication risk that still warrants
+/// use with an explicit caveat.
+pub const LEADERBOARD_DATA_QUALITY_TRUST_CONDITIONAL: &str =
+    "Conditional \u{2014} usable, watch for known caveats";
+
+/// Badge copy for [`crate::leaderboard::VenueTrust::LowFabricatedRisk`] — a
+/// venue/metric the venue-trust-map dev-note advises against.
+pub const LEADERBOARD_DATA_QUALITY_TRUST_LOW: &str =
+    "Low \u{2014} known fabrication risk on this venue/metric";
+
+/// Label — "Survival bias" row. ALWAYS present (§6 D backtest-window-hygiene
+/// and the general survivorship-bias truth) — every symbol in the bake-off
+/// universe survived to today by construction.
+pub const LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL: &str = "Survival bias";
+
+/// The survival-bias caveat value — plain language, no jargon: coins that
+/// failed to reach today are absent from this universe, so results overstate
+/// the expected outcome for a randomly chosen NEW coin.
+pub const LEADERBOARD_DATA_QUALITY_SURVIVAL_NOTE: &str = "Coins that failed to reach today are absent from this universe \u{2014} \
+     results overstate the expected outcome for a random new coin.";
+
+/// Label — "Warnings" row header, shown only when at least one
+/// `DataQualityWarning` is present (empty list \u{2192} no row at all, the
+/// honest "nothing to flag" case for the default deep-liquidity universe).
+pub const LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL: &str = "Warnings";
+
+/// Plain-language description for
+/// [`crate::leaderboard::DataQualityWarning::ThinLiquidity`].
+pub const LEADERBOARD_DATA_QUALITY_WARNING_THIN_LIQUIDITY: &str = "Thin liquidity \u{2014} a shallow order book means visible depth may \
+     overstate what you can actually trade at.";
+
+/// Plain-language description for
+/// [`crate::leaderboard::DataQualityWarning::WashTradingSuspicion`].
+pub const LEADERBOARD_DATA_QUALITY_WARNING_WASH_TRADING: &str = "Wash-trading suspicion \u{2014} reported volume on this venue may be \
+     substantially self-traded, not real demand.";
+
+/// Plain-language description for
+/// [`crate::leaderboard::DataQualityWarning::PumpAndDump`].
+pub const LEADERBOARD_DATA_QUALITY_WARNING_PUMP_AND_DUMP: &str = "Pump-and-dump history \u{2014} this coin has a track record of \
+     coordinated, short-lived price spikes.";
+
+/// The load-bearing "informational, not a gate" note — REPORT-ONLY (P1-7 /
+/// v2-architecture §1 P1-7): this panel NEVER changes the pick. Same shape
+/// as the scorecard's + Risk story's informational notes (the three-block
+/// honesty-layer family).
+pub const LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE: &str =
+    "Informational, not a gate \u{2014} this never changes the pick below.";
 
 // ── advisor-overfitting-scorecard P0-1 (ADR-0075) — "show your work" block ────
 //
