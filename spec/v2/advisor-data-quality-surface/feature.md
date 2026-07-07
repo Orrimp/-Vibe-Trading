@@ -1,7 +1,7 @@
 ---
 slug: advisor-data-quality-surface
-status: dev-done
-owner: developer
+status: shipped
+owner: operator
 version: 2.0.0
 updated: 2026-07-06
 ---
