@@ -64,14 +64,16 @@ async fn t14_decisive_signal_library_bakeoff() {
         0x4e, 0x43, 0x45, 0x31, // "NCE1"
     ];
 
-    // Field: 9 single engines + 8 vote ensembles (mirrors advisor_field() in runner.rs).
+    // Field: 10 single engines + 8 vote ensembles (default_field + default_ensemble_field).
+    // advisor_field() in runner.rs additionally carries the v0.macro_riskon overlay (= 19);
+    // this signal-library bake-off excludes it by design.
     let mut field: Vec<StrategyId> = BakeoffConfig::default_field();
     field.extend(BakeoffConfig::default_ensemble_field());
-    let expected_field_len = 17; // 9 + 8
+    let expected_field_len = 18; // 10 single (incl. v0.obv + v0.dvol_regime) + 8 ensemble
     assert_eq!(
         field.len(),
         expected_field_len,
-        "expected {expected_field_len} arms in field (9 single + 8 ensemble)"
+        "expected {expected_field_len} arms in field (10 single + 8 ensemble)"
     );
 
     // Bootstrap: 1000 paths, same seed as the advisor path.
