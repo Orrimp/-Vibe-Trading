@@ -1,0 +1,12 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.15s
+     Running tests/bakeoff_e2e.rs (target/debug/deps/bakeoff_e2e-b1d0eca826a506ac)
+
+running 1 test
+
+=== T6.2 SANITY GUARD — BTCUSDT 2024-Q1 ===
+  buy-and-hold total_return = 67.82%  (must be > +20%)
+  buy-and-hold sharpe       = 3.692
+test bakeoff_realdata::t6_2_bakeoff_buyhold_positive_on_bull_window ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.21s
+

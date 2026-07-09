@@ -1,0 +1,21 @@
+   Compiling backtest v0.1.0 (/Users/Vitaliy.Schreibmann/Projects/Privat/trading/trading/crates/backtest)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 47.46s
+     Running tests/signal_library_bakeoff_t14.rs (target/debug/deps/signal_library_bakeoff_t14-3cbf1eb92e66c549)
+
+running 1 test
+
+thread 't14_decisive_signal_library_bakeoff' (29447211) panicked at crates/backtest/tests/signal_library_bakeoff_t14.rs:71:5:
+assertion `left == right` failed: expected 17 arms in field (9 single + 8 ensemble)
+  left: 18
+ right: 17
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test t14_decisive_signal_library_bakeoff ... FAILED
+
+failures:
+
+failures:
+    t14_decisive_signal_library_bakeoff
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p backtest --test signal_library_bakeoff_t14`
