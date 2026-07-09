@@ -1,41 +1,87 @@
 # Trading
 
-A **Rust crypto trading agent** with persistent reflection memory and a double-entry audit ledger, built as a spec-driven research platform. Operates on real-data backtesting + paper simulation over top-10 USDT-quote crypto pairs (live trading is out of scope).
+A **Rust crypto trading agent** — now shipped as **"The Honest Advisor,"** a single-coin paper/sim investment advisor (pick a coin + budget → bake off all strategies → rank under a robustness gate → forward paper-trade your €200) — built on a spec-driven research engine with persistent reflection memory and a double-entry audit ledger. Operates on real-data backtesting + paper simulation over crypto pairs; **paper/sim only** (live trading is out of scope), not financial advice.
 
 This README is the human entry point. AI agents should start at **[CLAUDE.md](CLAUDE.md)** then **[AGENT.md](AGENT.md)**.
 
 ---
 
-## Status (2026-06-16)
+## Status (2026-07-09) — FEATURE-COMPLETE
 
-**The active-vs-passive research program is CONCLUDED (2026-06-08): SHIP PASSIVE.**
-Across all three reachable channels — price/OHLCV, derivatives-positioning, and on-chain —
-no active strategy beat passive buy-and-hold net of cost. The verdict was firmed on real
-bear-market data 2026-06-15 (block-bootstrap overfit-guard + a 2021-22 bear-market survey:
-every apparent edge was path-fragile, not robust). The project is now in post-research
-build-out / wind-down.
+**The product is "The Honest Advisor" — a single-coin paper/sim investment advisor —
+and it is feature-complete.** The honest arc that got here:
+
+1. **The active-vs-passive research program CONCLUDED (2026-06-08): SHIP PASSIVE.** Across
+   all three reachable channels — price/OHLCV, derivatives-positioning, and on-chain — no
+   active strategy beat passive buy-and-hold net of cost under a frozen, pre-registered
+   block-bootstrap robustness rule (firmed on real 2021-22 bear-market data). **This result
+   is the moat, not a disappointment** — it is kept prominent because it is the product's
+   credibility.
+2. **Product pivot (2026-06-19): "The Honest Advisor."** The shipped engine was re-framed
+   into a guided retail journey — *pick a coin + budget (e.g. €200 XRPUSDT) → bake off ALL
+   strategies → rank the best under the robustness gate → forward plan → paper-trade your
+   €200 and watch the P/L.* The ship-passive verdict became a **feature** of it: buy-and-hold
+   is the always-present benchmark arm, and when nothing active clears the bar (the modal
+   real-crypto outcome) the advisor honestly crowns "just hold" (`BenchmarkWins`).
+3. **v2 (11 research-driven features) + v3 close-out shipped.** The 900-paper research
+   program's entire ship-worthy tranche landed as v2 (overfitting scorecard, turnover/tail
+   metrics, confidence-not-verdict, forward-coverage, vol-estimator/overlay, drawdown-overlay,
+   opt-in cost model, narration-faithfulness, no-alpha CI, data-quality surface — ADRs
+   0075–0081). The v3 **"prove it's done"** close-out then added the Calibrate-stage stepper
+   (ADR-0083), the do-not-build register, the DSR report-only decision, and the end-to-end
+   demo runbook.
+
+The thesis has now been stress-tested from every reachable angle — long, combinations,
+shorts, breakout/volume/OBV signals, implied-vol regime, macro cross-asset — and **held
+every time**. There is no coherent "add-more-features" v3 (see
+[`spec/dev-notes/post-v2-scoping-2026-07-09.md`](spec/dev-notes/post-v2-scoping-2026-07-09.md));
+manufacturing more alpha surface would contradict *measured honesty, not asserted alpha*.
 
 | Dimension | State |
 |---|---|
-| Mode | **Research CONCLUDED — ship passive.** Real-data backtest + paper sim. Live trading removed from scope 2026-06-12 (not wired, not planned). |
+| Mode | **Feature-complete single-coin paper/sim advisor ("The Honest Advisor").** Research CONCLUDED — **ship passive** (the credibility layer). Real-data backtest + paper sim. Live trading removed from scope 2026-06-12 (not wired, not planned). |
 | Workspace | Rust stable, edition 2024 |
-| Test gates | 119/119 anchored body-SHAs byte-identical; full lib/integration/UI-snapshot suite green. Visual-regression gate de-flaked 2026-06-16 (a multithread `set_var` race was randomizing chart renders); WCAG contrast gate flipped WARN→ENFORCING 2026-06-15. |
-| UI | Cockpit shipped (`cockpit_live` + `cockpit` fixtures binaries, iced 0.14.0 + vendored `iced_tiny_skia` patch); Linux/Windows portability source shipped 2026-06-15 (macOS-verified; CI matrix deferred to the near-done milestone). |
-| Strategies | SMA, composed, cross-sectional momentum, mean-reversion pairs, multi-venue, LLM-as-analyst all shipped — and all dominated by passive net of cost. |
-| Strategy research retired | The full DL chain (TCN/PatchTST/GARCH/Transformer), LLM-/xgboost-/regime-forecasters, AND the derivatives perp-basis market-neutral spread (FAMILY-UNIFORM-FRAGILE 2026-06-08) + on-chain (PIT-infeasible) — i.e. the entire active-edge search. |
-| Data | 10-symbol Binance hourly 2023-24 (pinned `3a8b96c4`) + a 2021-22 bear corpus added 2026-06-15 (pinned `4f390622`); fetcher made idempotent for gapped months 2026-06-16. |
+| Test gates | **119/119 anchored body-SHAs byte-identical**; full lib/integration/UI-snapshot suite green. Visual-regression gate de-flaked (a multithread `set_var` race was randomizing chart renders); WCAG contrast gate ENFORCING. |
+| CI | 3-OS (Linux/Windows/macOS) cross-platform source shipped + macOS-verified; the GitHub Actions matrix stays **operator-parked** inert at `.github/workflows/ci.yml.deferred` — the "near-done" milestone is reached but the operator kept it parked in the v3 close-out (do not activate without operator direction). |
+| UI | Cockpit shipped (`cockpit_live` + `cockpit` fixtures binaries, iced 0.14.0 + vendored `iced_tiny_skia` patch). The advisor journey re-centres it on **DATA → CALIBRATE → ANALYZE → SUGGEST** with a visible stepper band (ADR-0083). |
+| Advisor product | Pick coin + budget → bake off ALL strategies → rank under the robustness gate → forward plan → forward paper-trade the €200. MVP (F1–F9 + EUR-FX + dynamic data) + v2 tranche + v3 close-out all shipped. Honest `BenchmarkWins` when nothing active clears the bar. An end-to-end demo runbook exists (awaiting operator approval). |
+| Strategies | SMA, composed (MACD/RSI/Bollinger), cross-sectional momentum, mean-reversion pairs, multi-venue, vote-ensembles, signal-library (Donchian/volume-breakout/ROC/OBV), directional shorts, DVOL/macro exogenous arms, LLM-as-narrator — all shipped, all judged by the same frozen gate + buy-and-hold benchmark; none robustly beats holding. |
+| Strategy research retired | The full DL chain (TCN/PatchTST/GARCH/Transformer), LLM-/xgboost-/regime-forecasters, AND the derivatives perp-basis market-neutral spread (FAMILY-UNIFORM-FRAGILE) + on-chain (PIT-infeasible) — i.e. the entire active-edge search. |
+| Data | 10-symbol Binance hourly 2023-24 (pinned `3a8b96c4`) + a 2021-22 bear corpus (pinned `4f390622`) + on-demand dynamic fetch for any coin/window + Deribit DVOL and Yahoo cross-asset/macro corpora; the fetcher is idempotent for gapped months. |
 
-For the feature-by-feature index see [`CHANGELOG.md`](CHANGELOG.md) (one line per implemented feature, grouped by subsystem/version); for the current wind-down reconciliation see [`spec/dev-notes/backlog-staleness-audit-2026-06-15.md`](spec/dev-notes/backlog-staleness-audit-2026-06-15.md).
+For the feature-by-feature index see [`CHANGELOG.md`](CHANGELOG.md) (one line per implemented
+feature, grouped by subsystem/version). The settled dead-ends that should NOT be re-proposed
+are consolidated in the [**do-not-build register**](spec/dev-notes/do-not-build-register.md);
+the whole spine hanging together on one golden input is walked in the
+[**end-to-end demo runbook**](spec/runbooks/advisor-end-to-end-demo.md).
 
 ---
 
 ## What this project does
 
-**Core proposition.** A single-operator trading research stack with two differentiators:
+**The product — "The Honest Advisor" (2026-06-19 pivot).** A single-operator, paper/sim
+decision-support tool that answers one concrete question: *"I have €200 for one crypto
+(say XRPUSDT) — which strategy should I use, and what should I do over the next few days?"*
+The guided journey: **pick** a coin + budget → **bake off** every available strategy over a
+configurable 2-week-to-4-year window → **rank & select** the best by risk-adjusted Sharpe
+under a Monte-Carlo robustness gate (with a plain-language "why this one") → **plan** a
+budget-aware, rule-driven forward stance → **watch** the selection paper-trade your simulated
+€200 forward on real data. It is **paper/sim only** (no live orders), **not financial advice**,
+and **single-coin** by design. Its credibility comes from the concluded research verdict, not
+from an alpha claim: **buy-and-hold is always in the bake-off as the benchmark**, and when no
+active strategy robustly beats it — the modal real-crypto outcome — the advisor says so plainly
+(`BenchmarkWins`). Full spec: [`spec/product.md`](spec/product.md).
+
+**Built on a shipped research engine (the moat, not waste).** The advisor is a re-framing of
+an existing, working stack with two durable differentiators that remain its trust layer:
 1. **Persistent reflection memory** (`crates/reflection`): every shipped strategy decision + outcome is stored as a `LessonCard` with a 32-dim deterministic embedding, retrievable by symbol/regime via `retrieve_top_k`.
 2. **Auditable double-entry ledger** (`crates/audit`): every fill, fee, slippage, LLM call, and strategy emit is recorded as journal transactions with full body-SHA-256 anchoring for byte-identical regression gates.
 
-**Cockpit.** A native iced app (`cockpit_live`) surfaces strategy state, equity curves, drawdowns, positions, audit trail, reflection memory, and an Assistant slot for LLM reasoning traces. 14 screens; sidebar IA.
+Alongside these sit the backtest/matching engine, the strategy library, the Monte-Carlo
+robustness harness (the credibility layer that gates every pick), the LLM integration (narration
+only — never the alpha source), and the paper simulator — all reused by the advisor journey.
+
+**Cockpit.** A native iced app (`cockpit_live`) surfaces strategy state, equity curves, drawdowns, positions, audit trail, reflection memory, and an Assistant slot for LLM reasoning traces. The advisor journey re-centres it on a visible **DATA → CALIBRATE → ANALYZE → SUGGEST** stepper (ADR-0083) over the existing sidebar IA.
 
 **Spec-driven workflow.** Every feature lives in `spec/<slug>/` with a brief (`feature.md`), task breakdown (`tasks.md`), decomp (`decomp.md`), and anchored backtest reports under `reports/`. Multi-agent workflow (analyst → architect → developer → tester → presenter) is documented in [AGENT.md](AGENT.md).
 
@@ -125,6 +171,11 @@ cargo test --workspace --lib --features candle
 
 Full per-feature index: see [`CHANGELOG.md`](CHANGELOG.md) — one line per implemented feature, grouped by subsystem/version.
 
+> The tables below sample the **engine-era** strategy/research work these are built on. The
+> current product surface — **"The Honest Advisor"** (bake-off + ranking + forward plan +
+> paper-trade, the MVP + v2 tranche + v3 close-out) — is indexed in the CHANGELOG's
+> [advisor section](CHANGELOG.md#single-coin-investment-advisor-paper--2026-06-19-pivot-mvp-shipped).
+
 ### Trading strategies (shipped)
 
 | Feature | Version | Purpose |
@@ -184,7 +235,7 @@ trading/
 │   ├── reflection/     # SQLite reflection store
 │   └── llm-replay.db   # Deterministic LLM response cache
 ├── scripts/
-│   ├── verify_anchors.sh   # Regression gate: 34 body-SHA-256 anchors
+│   ├── verify_anchors.sh   # Regression gate: 119 body-SHA-256 anchors
 │   ├── spec_lint.py        # Spec structural integrity
 │   ├── hash_report.py      # Canonical body-SHA hasher
 │   └── check_presentation.sh
@@ -192,9 +243,9 @@ trading/
 │   ├── product.md          # Product requirements + moat statement
 │   ├── architecture.md     # System design
 │   ├── architecture/       # Domain architecture + ADRs
-│   │   └── adr/            # 0028-0039 architecture decision records
+│   │   └── adr/            # architecture decision records (through ADR-0083)
 │   ├── backlog.md          # Active / Queue / Recent
-│   ├── anchors.toml        # 34 locked body-SHA-256 regression anchors
+│   ├── anchors.toml        # 119 locked body-SHA-256 regression anchors
 │   ├── trace.toml          # Requirement → feature → code traceability
 │   ├── dev-notes/          # Cross-cutting memos + audits + retrospectives
 │   │   └── archive/2026-Q2/   # Archived stale notes

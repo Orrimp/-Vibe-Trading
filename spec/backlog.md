@@ -22,6 +22,14 @@ updated: 2026-06-23
 
 ## Active — Single-Coin Investment Advisor (2026-06-19 pivot)
 
+> **Status (2026-07-09): FEATURE-COMPLETE.** The advisor MVP (F1–F9 + EUR-FX + dynamic data),
+> the **v2 research-driven tranche** (11 features, ADRs 0075–0081), and the **v3 "prove it's
+> done" close-out** (Calibrate-stage stepper ADR-0083, do-not-build register, DSR report-only
+> decision, end-to-end demo runbook) have all shipped — see [`../CHANGELOG.md`](../CHANGELOG.md).
+> The MVP/v0.2 roadmap and the proposed arm-class expansions below are **retained as the
+> shipped-history record**; the only genuinely-open items are in § Queue. Post-v2 scoping
+> verdict (there is no coherent add-more-features v3): [`dev-notes/post-v2-scoping-2026-07-09.md`](dev-notes/post-v2-scoping-2026-07-09.md).
+
 The product was **redefined 2026-06-19** (see [`product.md`](product.md)): a paper
 decision-support tool for a retail investor — *pick a coin + budget → bake off all
 strategies → rank & pick the best → forward plan → watch it paper-trade your €200*. The
@@ -124,7 +132,9 @@ Full rationale + reuse-vs-new mapping + the ranked product decisions: [`product.
   3-OS GitHub Actions matrix is parked inert at `.github/workflows/ci.yml.deferred`.
   Activation deferred to the **near-done project milestone** (do not `git mv` it live before then).
 - **`lab-recipe-test-harness v0.3.0+`** — Recipe / subscription harness extension;
-  robustness gate cleared, awaiting an analyst spawn. The one genuinely-open build item.
+  robustness gate cleared, awaiting an analyst spawn. **Still wanted** — re-confirmed in the
+  v3 close-out (2026-07-09) as the one genuinely-open forward *build* item; it is infra, NOT
+  required for product feature-completeness (see [`../CHANGELOG.md`](../CHANGELOG.md) § Deferred).
 
 ### Gated on the parked v2 LLM strategy
 - **Lumen Phase 6 — right-rail Assistant slot** — reserved column-track in the shell grid;
