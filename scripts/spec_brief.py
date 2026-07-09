@@ -40,7 +40,7 @@ ARCHITECTURE_MD = SPEC_DIR / "architecture.md"
 TRACE_TOML = SPEC_DIR / "trace.toml"
 ANCHORS_TOML = SPEC_DIR / "anchors.toml"
 
-NON_FEATURE = {"design", "dev-notes", "runbooks", "archive", "architecture", "v1", "v2"}
+NON_FEATURE = {"design", "dev-notes", "runbooks", "archive", "architecture", "v1", "v2", "v3"}
 
 # How many lines of architecture to include around each match. Keep small
 # because the brief should not exceed ~5k tokens / ~20k chars.
@@ -52,7 +52,7 @@ def list_slugs() -> list[str]:
     slugs = []
     # Feature folders live at spec/ root AND under spec/v1/ + spec/v2/ (2026-06-28 reorg).
     dirs = list(SPEC_DIR.iterdir())
-    for container in ("v1", "v2"):
+    for container in ("v1", "v2", "v3"):
         sub = SPEC_DIR / container
         if sub.is_dir():
             dirs.extend(sub.iterdir())
@@ -130,7 +130,7 @@ def anchor_rows() -> list[dict]:
 def render_brief(slug: str) -> str:
     # Feature folders may live at spec/<slug>, spec/v1/<slug>, or spec/v2/<slug> (2026-06-28 reorg).
     feature_dir = next(
-        ((SPEC_DIR / prefix / slug) for prefix in ("", "v1", "v2")
+        ((SPEC_DIR / prefix / slug) for prefix in ("", "v1", "v2", "v3")
          if (SPEC_DIR / prefix / slug).exists()),
         SPEC_DIR / slug,
     )
