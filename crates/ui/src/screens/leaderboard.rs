@@ -70,7 +70,8 @@ use crate::strings::{
     LEADERBOARD_BENCHMARK_FRAGILE_NOTE, LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_BUDGET_CONTEXT_FMT,
     LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN,
     LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES,
-    LEADERBOARD_COL_TURNOVER, LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_TAG,
+    LEADERBOARD_COL_TURNOVER, LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_PASSES_DSR,
+    LEADERBOARD_CROWN_TAG, LEADERBOARD_CROWN_WEAK_EVIDENCE, LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT,
     LEADERBOARD_DATA_QUALITY_CAPTION, LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE,
     LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL, LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL,
     LEADERBOARD_DATA_QUALITY_TITLE, LEADERBOARD_DATA_QUALITY_TRUST_LABEL,
@@ -566,6 +567,18 @@ fn recommendation_block<'a>(
 
     let mut col = Column::new().spacing(space::S).push(headline);
 
+    // advisor-crown-credibility P1 (ADR-0085 § D1/D4) — CO-PRESENT the crown's
+    // overfitting (DSR) verdict directly under the H2 headline, so an active pick
+    // that failed the deflated-Sharpe check can never be read as "best pick"
+    // without the co-located weak-evidence caveat. A pure projection of the two
+    // values already on the mirror (`recommendation.outcome` + `scorecard`) — no
+    // new stored field, no `crates/backtest` change. `NotApplicable` (benchmark /
+    // fragile / no scorecard) renders a zero-size `Space` → byte-identical layout.
+    col = col.push(crown_credibility_element(
+        crown_credibility(rec.outcome, report.scorecard.as_ref()),
+        mode,
+    ));
+
     // The winner-robustness clause (only when the gate ran for the winner).
     if let Some(clause) = winner_robustness_clause(rec) {
         let (clause_text, clause_color) = clause;
@@ -577,6 +590,127 @@ fn recommendation_block<'a>(
     col = col.push(narration_section(rec, narration, mode));
 
     frame::panel(LEADERBOARD_RECOMMENDATION_TITLE, col.into(), mode)
+}
+
+// ── Crown credibility (advisor-crown-credibility P1 / ADR-0085) ───────────────
+
+/// The crown's overfitting (DSR) verdict, as co-presented on the recommendation
+/// banner. A **transient `view`-time** projection of the two values already on
+/// the [`BakeoffReportMirror`] at the banner (`recommendation.outcome` +
+/// `scorecard`) — NOT a stored field. Resolved by [`crown_credibility`];
+/// rendered by [`crown_credibility_element`].
+///
+/// This mirrors the ADR-0083 `stage_for` discipline: read the existing state,
+/// derive the presentation, add no new field. The engine's informational
+/// `crown_clears_dsr` boolean is READ here and never made a veto — `rank.rs` is
+/// byte-untouched (do-not-build register E-1; ADR-0085 § D2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CrownCredibility {
+    /// `ActiveWins` crown that CLEARS DSR — a small muted "passes the overfitting
+    /// check" reassurance (ADR-0085 § D3 (i)).
+    Passes,
+    /// `ActiveWins` crown that FAILS DSR — the unmissable `WARN`-tier weak-evidence
+    /// band (the money shot; ADR-0085 § D3 (ii)).
+    WeakEvidence,
+    /// Not meaningful on the banner — `BenchmarkWins` / `AllFragile` / no scorecard.
+    /// The banner renders as today, with no credibility affordance (the
+    /// no-misleading-badge rule; ADR-0085 § D3 (iii) / § D4).
+    NotApplicable,
+}
+
+/// Resolve the crown's credibility state from the two values already at the
+/// banner. **Pure + total** — no I/O, no panic, no new stored field (ADR-0085
+/// § D2). The ONLY logic is the ADR-0085 § D3/D4 decision table:
+///
+/// | `outcome`       | `scorecard` | `crown_clears_dsr` | → `CrownCredibility` |
+/// |-----------------|-------------|--------------------|----------------------|
+/// | `ActiveWins`    | `Some`      | `true`             | `Passes`             |
+/// | `ActiveWins`    | `Some`      | `false`            | `WeakEvidence`       |
+/// | `ActiveWins`    | `None`      | —                  | `NotApplicable`      |
+/// | `BenchmarkWins` | any         | —                  | `NotApplicable`      |
+/// | `AllFragile`    | any         | —                  | `NotApplicable`      |
+///
+/// `BenchmarkWins`/`AllFragile` are `NotApplicable` on purpose: buy-and-hold is
+/// exempt from the gate (ADR-0066) and the scorecard's `deflated_sharpe` is
+/// computed on the max-Sharpe ACTIVE arm (a loser), so a "fails the overfitting
+/// check" badge on a *hold* recommendation would bind an active-arm statistic to
+/// a passive pick — actively misleading (ADR-0085 § D4).
+fn crown_credibility(outcome: OutcomeKind, scorecard: Option<&ScorecardView>) -> CrownCredibility {
+    match (outcome, scorecard) {
+        (OutcomeKind::ActiveWins, Some(sc)) => {
+            if sc.crown_clears_dsr {
+                CrownCredibility::Passes
+            } else {
+                CrownCredibility::WeakEvidence
+            }
+        }
+        // ActiveWins with no scorecard, or any non-active crown — no computed
+        // figure to present about the crowned pick, so the banner stays as-is.
+        _ => CrownCredibility::NotApplicable,
+    }
+}
+
+/// Render the crown-credibility state under the headline (ADR-0085 § D3).
+///
+/// - `Passes` → one quiet `✓` line in muted `ACCENT` (a reassurance, not a
+///   celebration; the glyph carries the signal beyond colour).
+/// - `WeakEvidence` → a `width(Fill)` `WARN`-tier band: `⚠` + `WARN_500` text on
+///   a `WARN_50` soft-tint fill, `WARN_500` 1 px border + `radius::R3` (mirrors
+///   the `llm_summary_card` tinted-bordered-card vocabulary), plus a muted `FG_3`
+///   `SMALL` hint line pointing at the scorecard detail below. Caution, NOT alarm
+///   — `WARN` tier, explicitly not `NEG_*`/error-red.
+/// - `NotApplicable` → a zero-size `Space` (the `templated_reasons`-empty idiom)
+///   so the pre-feature banner layout is byte-identical for a benchmark/fragile
+///   crown.
+///
+/// All colour resolves via `ModeColor::current(mode)` (dual-mode); no new theme
+/// token, no new dependency. Colour is never the only signal — `⚠`/`✓` glyphs +
+/// the literal words carry the state.
+fn crown_credibility_element(state: CrownCredibility, mode: ThemeMode) -> crate::Element<'static> {
+    match state {
+        // A muted positive affordance — one accent line, no panel tint.
+        CrownCredibility::Passes => Text::new(LEADERBOARD_CROWN_PASSES_DSR)
+            .size(text::BODY)
+            .color(color::ACCENT.current(mode))
+            .width(Length::Fill)
+            .into(),
+        // The money shot — the unmissable WARN-tier band + a muted hint line.
+        CrownCredibility::WeakEvidence => {
+            let band_text = Text::new(LEADERBOARD_CROWN_WEAK_EVIDENCE)
+                .size(text::BODY)
+                .color(color::WARN_500.current(mode))
+                .width(Length::Fill);
+            let band = Container::new(band_text)
+                .width(Length::Fill)
+                .padding(space::M as u16)
+                .style(move |_t: &iced::Theme| iced::widget::container::Style {
+                    background: Some(color::WARN_50.current(mode).into()),
+                    border: Border {
+                        color: color::WARN_500.current(mode),
+                        width: 1.0,
+                        radius: radius::R3.into(),
+                    },
+                    text_color: Some(color::WARN_500.current(mode)),
+                    ..Default::default()
+                });
+            let hint = Text::new(LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT)
+                .size(text::SMALL)
+                .color(color::FG_3.current(mode))
+                .width(Length::Fill);
+            Column::new()
+                .spacing(space::XS)
+                .push(band)
+                .push(hint)
+                .width(Length::Fill)
+                .into()
+        }
+        // Render nothing — the byte-identical pre-feature banner (BenchmarkWins /
+        // AllFragile / no scorecard).
+        CrownCredibility::NotApplicable => Space::new()
+            .width(Length::Shrink)
+            .height(Length::Shrink)
+            .into(),
+    }
 }
 
 /// The F9 narration section (ADR-0064 § D7) — dispatches on the closed
@@ -1970,5 +2104,100 @@ mod tests {
         assert_eq!(format_signed_decimal(1.95, 2), "+1.95");
         // NaN guard.
         assert_eq!(format_signed_decimal(f64::NAN, 2), "\u{2014}");
+    }
+
+    // ── advisor-crown-credibility P1 (ADR-0085) — the pure resolver ───────────
+    //
+    // One test per row of the ADR-0085 § D3/D4 decision table (5 rows). The
+    // resolver is a pure projection of `OutcomeKind` + `Option<&ScorecardView>`;
+    // these guards pin every branch, including the load-bearing
+    // no-badge-on-a-hold-pick invariant (BenchmarkWins / AllFragile →
+    // NotApplicable).
+
+    /// Build a `ScorecardView` with a chosen `crown_clears_dsr` — the only field
+    /// the resolver reads. The other fields are plausible non-degenerate values.
+    fn scorecard_with_dsr(clears: bool) -> ScorecardView {
+        ScorecardView {
+            n_candidates: 5,
+            n_eff: 3.6,
+            deflated_sharpe: if clears { 0.97 } else { 0.74 },
+            min_btl_years: 2.6,
+            crown_clears_dsr: clears,
+        }
+    }
+
+    /// Row 1 — `ActiveWins` + `Some` + clears → `Passes`.
+    #[test]
+    fn crown_credibility_active_wins_clears_dsr_is_passes() {
+        let sc = scorecard_with_dsr(true);
+        assert_eq!(
+            crown_credibility(OutcomeKind::ActiveWins, Some(&sc)),
+            CrownCredibility::Passes,
+            "a crowned active pick that clears DSR passes the overfitting check"
+        );
+    }
+
+    /// Row 2 — `ActiveWins` + `Some` + fails → `WeakEvidence` (the money shot).
+    #[test]
+    fn crown_credibility_active_wins_fails_dsr_is_weak_evidence() {
+        let sc = scorecard_with_dsr(false);
+        assert_eq!(
+            crown_credibility(OutcomeKind::ActiveWins, Some(&sc)),
+            CrownCredibility::WeakEvidence,
+            "a crowned active pick that fails DSR is the unmissable weak-evidence state"
+        );
+    }
+
+    /// Row 3 — `ActiveWins` + `None` → `NotApplicable` (no computed figure to
+    /// present, so the banner stays as-is rather than asserting an unrun check).
+    #[test]
+    fn crown_credibility_active_wins_no_scorecard_is_not_applicable() {
+        assert_eq!(
+            crown_credibility(OutcomeKind::ActiveWins, None),
+            CrownCredibility::NotApplicable,
+            "an active crown with no scorecard has no credibility figure to present"
+        );
+    }
+
+    /// Row 4 — `BenchmarkWins` (any scorecard) → `NotApplicable`. The
+    /// no-badge-on-a-hold-pick invariant: buy-and-hold is exempt from the gate
+    /// (ADR-0066) and the DSR is on a losing ACTIVE arm, so a badge would mislead.
+    /// Asserted with BOTH a present and an absent scorecard.
+    #[test]
+    fn crown_credibility_benchmark_wins_is_not_applicable() {
+        let sc_fails = scorecard_with_dsr(false);
+        let sc_clears = scorecard_with_dsr(true);
+        assert_eq!(
+            crown_credibility(OutcomeKind::BenchmarkWins, Some(&sc_fails)),
+            CrownCredibility::NotApplicable,
+            "a buy-and-hold crown never carries an active-arm DSR badge (fails)"
+        );
+        assert_eq!(
+            crown_credibility(OutcomeKind::BenchmarkWins, Some(&sc_clears)),
+            CrownCredibility::NotApplicable,
+            "a buy-and-hold crown never carries an active-arm DSR badge (clears)"
+        );
+        assert_eq!(
+            crown_credibility(OutcomeKind::BenchmarkWins, None),
+            CrownCredibility::NotApplicable,
+            "a buy-and-hold crown with no scorecard is NotApplicable"
+        );
+    }
+
+    /// Row 5 — `AllFragile` (any scorecard) → `NotApplicable`. A null verdict on a
+    /// fragile active field: no crowned pick whose evidence-strength to caveat.
+    #[test]
+    fn crown_credibility_all_fragile_is_not_applicable() {
+        let sc = scorecard_with_dsr(false);
+        assert_eq!(
+            crown_credibility(OutcomeKind::AllFragile, Some(&sc)),
+            CrownCredibility::NotApplicable,
+            "an all-fragile field has no crowned pick to caveat"
+        );
+        assert_eq!(
+            crown_credibility(OutcomeKind::AllFragile, None),
+            CrownCredibility::NotApplicable,
+            "an all-fragile field with no scorecard is NotApplicable"
+        );
     }
 }

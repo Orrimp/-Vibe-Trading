@@ -1,8 +1,8 @@
 ---
 slug: advisor-crown-credibility
-status: arch-done
-owner: architect
-updated: 2026-07-09
+status: dev-done
+owner: ui-designer
+updated: 2026-07-10
 version: 3.2.0
 ---
 
@@ -370,6 +370,14 @@ is byte-identical to pre-feature.
 | `five_arm` mutated to `crown_clears_dsr=true`           | ✓ Passes line          | `/tmp/crown_credibility_passes.png`      |
 | `benchmark_wins` (`BenchmarkWins`)                      | (no credibility band)  | `/tmp/crown_credibility_benchmark.png`   |
 
+**Band-intensity call (render review, 2026-07-10 — the pixel-layer judgment the
+ADR § Risks flagged): FILLED, not border-only.** `WARN_50` soft-tint fill +
+`WARN_500` 1px border + `WARN_500` text + `radius::R3`, `width(Fill)`. Verified at
+`/tmp/crown_credibility_weak.png`: the 0.12-alpha amber tint over the near-black
+panel is subtle (does not read as "broken"/error-red) while the border + amber text
+make the band the unmissable "sibling to the headline" § D3 (ii) requires. No ADR
+amendment (a `view`-time call, as the ADR authorised).
+
 ### New widget / function
 
 - **`crown_credibility(outcome, Option<&ScorecardView>) -> CrownCredibility`** (pure)
@@ -416,3 +424,36 @@ new dependency (`cargo tree -p ui` unchanged).
   sibling P2 corpus-expansion ADR had already claimed 0084 when this landed). FROZEN gate +
   scorecard math byte-untouched; the veto stays unbuilt (do-not-build E-1). Handoff
   to ui-designer.
+- 2026-07-10 (ui-designer): BUILT (`status: dev-done`). T1–T8 landed exactly per
+  ADR-0085 — no redesign. **Resolver home:** an inline pure `fn crown_credibility(
+  outcome, Option<&ScorecardView>) -> CrownCredibility` co-located with
+  `recommendation_block` in `crates/ui/src/screens/leaderboard.rs` (chosen over the
+  `state.rs` assoc-fn option — it consumes only render-time inputs and keeps the
+  transient `view`-time enum where it renders; mirrors the ADR-0083 `stage_for`
+  screen-local seam). `crown_credibility_element(state, mode)` renders the three
+  states; wired with one `.push` between the H2 headline and the robustness clause.
+  Three copy strings added + registered in `strings::all()`; **zero** new theme
+  token; **zero** new dependency (`cargo tree -p ui` unchanged). **Band-intensity
+  call (the pixel-layer judgment the ADR flagged): FILLED, not border-only** —
+  `WARN_50` soft-tint fill + `WARN_500` 1px border + `WARN_500` text + `radius::R3`,
+  `width(Fill)`. At the render walk (`/tmp/crown_credibility_weak.png`) the filled
+  band reads as a calibrated CAUTION (the 0.12-alpha amber tint over the near-black
+  panel is subtle — it does not scream "broken"), while the border + amber text make
+  it the unmissable "sibling to the headline" the ADR § D3 (ii) demands; border-only
+  under-weighted the "impossible to read the crown without it" requirement. **Render
+  proof (T7, the closing gate) GREEN + all three PNGs eyeballed:** the WeakEvidence
+  band paints on the banner (money shot, `five_arm`; ~6.1k WARN-amber px in the
+  banner region vs ~26 for the `Passes` control — delta 6060); `crown_clears_dsr→true`
+  shows the muted teal `✓ Passes` line and NO band (the flag-tracks-the-render
+  control); `BenchmarkWins` shows NO credibility band (the no-badge-on-a-hold-pick
+  invariant). **T7 caught a test-region bug, not a feature bug** — the initial guard
+  counted amber in the top third, but with the full 20-arm field the banner lands in
+  the LOWER half (the guided-input form + Data-quality panel push it down; band at
+  y≈890); the fix restricts the classifier to `y > h/2` (the "read the PNG, not the
+  count" lesson — MEMORY). 5 resolver unit tests green (one per D3/D4 row incl.
+  `ActiveWins`+`None`→NA and both non-`ActiveWins`→NA). Gates: `cargo build -p ui`
+  ✓; `cargo test -p ui --lib` ✓; `cargo test -p ui --test crown_credibility_render`
+  ✓ (3/3, macOS); `cargo clippy -p ui --tests -- -D warnings` ✓; `cargo fmt --check`
+  ✓; anchors 119/119 before AND after; `spec_lint.py` PASS(0). FROZEN gate
+  `bakeoff/{robustness,rank}.rs` + `scorecard.rs` byte-untouched (no `crates/backtest`
+  diff); the veto stays unbuilt (E-1). Handoff to tester.

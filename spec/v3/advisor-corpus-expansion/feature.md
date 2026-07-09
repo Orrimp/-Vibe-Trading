@@ -1,9 +1,9 @@
 ---
 slug: advisor-corpus-expansion
-status: arch-done
-owner: architect
-updated: 2026-07-09
-version: 3.1.0
+status: dev-done
+owner: developer
+updated: 2026-07-10
+version: 3.2.0
 trace: REQ-V3-P2-CORPUS-EXPANSION-001
 ---
 
@@ -511,9 +511,84 @@ the overlap window (AC5). Empty wobble list + `crown_clears_dsr==false` everywhe
 shippable top-line, AC8).
 
 ## Implementation
-_developer fills this (fetches AFTER the architect designs; emits the
-copy-pasteable `watch -n N '<probe>'` block for the multi-hour multi-corpus
-fetch + re-run per the long-running-task memory)._
+
+**Developer 2026-07-10 (T1-T3, T6-investigated, T9, T10 — see `tasks.md` for
+file:line + test-command + output-line citations per row).** Scope was T1-T3
+(Coinbase fetcher) + T2 dry-run + T6 (exogenous back-fill) + T9 (verdict-rerun
+harness) + T10 (gates); T4 (the 4 multi-hour corpus fetches) and T7/T8 (which
+are blocked on T4's manifests) are explicitly the orchestrator's / tester's
+scope and are NOT ticked.
+
+**Files:**
+- `crates/data/src/coinbase_klines.rs` (new lib) — the Coinbase Exchange REST
+  backfiller: `coinbase_product_id_for_symbol` (symbol→product-id shim),
+  `parse_coinbase_candle` (the four D2.a mappings), `paginate_coinbase_candles`
+  (300-candle forward-sub-window pager), `CoinbaseKlineFetcher` trait +
+  `HttpCoinbaseKlineFetcher` (with the discovered-required `User-Agent` header)
+  + mock, reuses `binance_klines::{Kline, write_parquet}` verbatim.
+- `crates/data/src/bin/fetch_coinbase_klines.rs` (new bin) — CLI mirror of
+  `fetch_binance_klines.rs`: `--symbols` (canonical `BTCUSDT`), `--start`,
+  `--end`, `--interval` (only `1h` wired), `--out`, `--force`,
+  `--emit-revision-manifest`, plus `[EARLIEST-SERVED]` reporting for A2.
+- `crates/data/src/lib.rs` — module registration + re-export.
+- `crates/backtest/src/dvol_data.rs` — `EXPECTED_DVOL_REVISION_SHA` re-pinned
+  after the T6 DVOL back-fill (2021/2022/2025/2026 added, 4→12 files).
+- `crates/backtest/tests/p2_verdict_rerun.rs` (new harness) — composes
+  `ReplayFeed::merge_symbols` arbitrary-corpus loading with a generalized
+  `run_field_and_rank` reproducing `run_bakeoff`'s exact per-arm sequence;
+  `build_field(ArmSupport)` encodes the R4 matrix; S1-S8 scenario fns (S4
+  un-ignored as the always-on smoke against the existing `data/binance`
+  corpus; S1/S2/S3/S5/S6/S7/S8 SKIP-safe on absence).
+- `crates/backtest/Cargo.toml` — `[[test]] p2_verdict_rerun` with
+  `required-features = ["realdata", "yahoo"]`.
+
+**Two real bugs found + fixed during testing (not design reversals — the
+DELIVERED behaviour matches ADR-0084's design intent in both cases):**
+
+1. **Symbol mapping.** ADR-0084 D2.a named the reused
+   `crate::coinbase::coinbase_symbol_map` for `BTCUSDT → BTC-USD`. That
+   shipped helper checks `USDC → USDT → USD` suffixes in that order, so
+   `coinbase_symbol_map(&Symbol::new("BTCUSDT"))` actually returns
+   `"BTC-USDT"` — a real, thinner, non-blessed Coinbase product — not
+   `"BTC-USD"`. The ADR's own worked example used a DIFFERENT input
+   (`BTCUSD`, where the helper IS correct). Fixed via a new dedicated
+   `coinbase_product_id_for_symbol` (strip-then-fixed-append `-USD`), which
+   delivers the ADR's actual design intent.
+2. **Missing `User-Agent` header.** Discovered live during the T2 dry-run:
+   Coinbase Exchange rejects requests without one (`HTTP 400`); `reqwest`'s
+   default client sets none. Fixed with a fixed `User-Agent` constant on
+   every request.
+
+**T2 dry-run + A2 result:** a live 3-day BTC-USD hourly fetch (2024-01-01 →
+2024-01-03) succeeded post-fix (72 candles; `ReplayFeed` read all 72 with sane
+BTC prices $42.4k-$42.9k). The A2 earliest-served-candle probe (bounded, ~10
+small live calls bisecting 2015-2018) found BTC-USD hourly is served starting
+**2015-08** — deeper than the ADR's "~2015-16" estimate; **A2 confirmed, no
+window narrowing needed** for the proposed 2020-01→last-closed-month
+`data/coinbase` window.
+
+**T6 findings:** DVOL genuinely needed the back-fill (2021-22 + 2025-26;
+history starts ~2021-04, so 2021 is legitimately short) and received it live
+— `data/deribit-dvol/` grew from 4 to 12 parquet files, the 4 pre-existing
+files verified byte-identical via `shasum -a 256 -c` before/after. **Macro is
+a NO-OP on this machine** — `data/yahoo-macro/` already covers 2021-01 through
+2026-06 for all 3 tickers; no fetch was run for zero new data.
+`crates/backtest/src/dvol_data.rs::EXPECTED_DVOL_REVISION_SHA` (a hard-pinned
+constant over the WHOLE manifest aggregate, distinct from `spec/anchors.toml`'s
+9 regression anchors) was updated and proven via the `#[ignore]`d
+`real_corpus_load_smoke` test against the real, grown corpus.
+
+**Gates (T10):** `cargo build`, `cargo clippy -- -D warnings`, `cargo fmt
+--check` all clean on `-p data -p backtest` (incl. `--tests` and the
+`realdata,yahoo` features the new harness needs). `verify_anchors.sh` 119/119
+(run before AND after every edit this session). `spec_lint.py` PASS(0).
+`adr_registry_check.py` exit 0. FROZEN gate files
+(`bakeoff/{robustness,rank,scorecard,mod}.rs`) confirmed byte-untouched via
+`git diff --stat`.
+
+**T4/T5 handed off** — see the developer's `HANDOFF →` message for the exact
+ready-to-run per-corpus commands, a `watch` probe, and the post-fetch
+verification command.
 
 ## Verification
 _tester links to the re-run report + the corpus-consistency tests here._
@@ -631,4 +706,29 @@ _tester links to the re-run report + the corpus-consistency tests here._
   `verdict_bands`/ADR-0066 byte-untouched — NOT a band proposal); existing pins
   byte-immutable (additive `--out` dirs); anchors 119/119 + spec-lint PASS(0) by
   construction; the 9 anchors.toml SHAs untouched (no anchor-additive re-emission).
+- 2026-07-10 (developer): T1-T3 (Coinbase fetcher lib + bin + export), T2
+  live dry-run + A2 probe, T6 exogenous back-fill (DVOL live-fetched, macro
+  found already-complete/no-op), T9 (`p2_verdict_rerun.rs` harness, SKIP-safe
+  + S4-smoke proven), T10 (full gate sweep green) — see `tasks.md` for
+  file:line + test-command + output-line per row. status arch-done→dev-done;
+  version 3.1.0→3.2.0. **Two real bugs found + fixed during testing (not
+  design reversals):** (1) `coinbase_symbol_map` maps `BTCUSDT→BTC-USDT`
+  (checks USDC→USDT→USD suffixes in that order), not `BTC-USD` as ADR-0084's
+  prose implied for that input (the ADR's own worked example used the
+  DIFFERENT input `BTCUSD`, where the helper IS correct) — fixed via a new
+  `coinbase_product_id_for_symbol` delivering the ADR's actual design intent;
+  (2) Coinbase Exchange requires a `User-Agent` header (discovered live during
+  the T2 dry-run) — fixed with a fixed constant on every request. **A2
+  RESOLVED:** BTC-USD hourly reaches back to 2015-08 (deeper than "~2015-16"),
+  no window narrowing needed. **T6:** DVOL back-filled live (2021-22+2025-26,
+  4→12 files, pre-existing files byte-identical via `shasum -a 256 -c`,
+  `EXPECTED_DVOL_REVISION_SHA` re-pinned + proven via `real_corpus_load_smoke`);
+  macro is a NO-OP on this machine (already covers 2021-01→2026-06). T4 (the 4
+  multi-hour corpus fetches) + T7/T8 (blocked on T4's manifests) explicitly
+  NOT done — orchestrator/tester scope; exact commands + watch probe +
+  post-fetch verification handed off in the developer's `HANDOFF →` message.
+  Gates: build/clippy(-D warnings)/fmt-check/anchors(119/119 before+after)/
+  spec-lint(PASS-0)/adr_registry_check(exit 0) all green; FROZEN gate files
+  byte-untouched (`git diff --stat`). HANDOFF → tester (or orchestrator runs
+  T4 first, then tester completes T7/T8 + authors the AC1-AC8 re-run report).
   status proposed→arch-done; trace row → arch-done. HANDOFF → developer.

@@ -117,6 +117,14 @@ required-features = ["yahoo"]
 name = "robustness_bootstrap_bites"
 path = "tests/robustness_bootstrap_bites.rs"
 
+# P2 corpus expansion — multi-corpus verdict-rerun harness (ADR-0084 D4).
+# Needs `realdata` (resolve_dvol_override / DvolDataSource) + `yahoo`
+# (load_macro_regime_series / YahooBarSource) simultaneously.
+[[test]]
+name = "p2_verdict_rerun"
+path = "tests/p2_verdict_rerun.rs"
+required-features = ["realdata", "yahoo"]
+
 [dev-dependencies]
 criterion.workspace = true
 cost = { path = "../cost" }

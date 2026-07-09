@@ -43,8 +43,19 @@ use trading_core::{PitSeries, Symbol, TimestampMs};
 ///
 /// To bypass during development (no real data yet), tests use synthetic
 /// `dvol_as_of` directly without going through `DvolDataSource::load`.
+///
+/// **2026-07-10 (ADR-0084 T6 back-fill):** re-pinned after additively
+/// fetching 2021/2022/2025/2026 BTC+ETH DVOL (was 2023/2024 only, 4 files;
+/// now 12 files). The 4 pre-existing 2023/2024 parquets are byte-identical
+/// (verified via `shasum -a 256 -c` against a pre-fetch snapshot) — only
+/// this manifest-aggregate constant moves, because the aggregate SHA is
+/// computed over the WHOLE `[files]` map (`compute_aggregate_sha`), not a
+/// per-span subset; adding new file ROWS necessarily changes it even though
+/// no existing row's value changed. This constant is NOT one of the 9
+/// `spec/anchors.toml` regression anchors (a fully separate pin) — updating
+/// it does not touch `verify_anchors.sh`'s 119/119 gate.
 pub const EXPECTED_DVOL_REVISION_SHA: &str =
-    "8e6b8000e87dde1c1af59a378a4e29a4e68367d24b9784e9817215e34d4c402f";
+    "b21dc8691c257731d9043fc3e19b858c326ab4dd3d975f10de0eccf90cf480ff";
 
 // ── Error type ─────────────────────────────────────────────────────────────────
 

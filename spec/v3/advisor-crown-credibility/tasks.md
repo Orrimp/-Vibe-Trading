@@ -1,8 +1,8 @@
 ---
 slug: advisor-crown-credibility
-status: in-progress
+status: dev-done
 owner: ui-designer
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
 # Tasks — advisor-crown-credibility (P1, D1=(a) presentation-layer)
@@ -13,7 +13,7 @@ no gate change, no new anchors, no new field on any backtest type. The render te
 shows the `WeakEvidence` band on the banner. See
 [`feature.md`](feature.md) § Design + § UI for the exact copy, tokens, and states.
 
-- [ ] **T1 — the pure resolver.** Add `enum CrownCredibility { Passes, WeakEvidence,
+- [x] **T1 — the pure resolver.** Add `enum CrownCredibility { Passes, WeakEvidence,
   NotApplicable }` + `fn crown_credibility(outcome: OutcomeKind,
   scorecard: Option<&ScorecardView>) -> CrownCredibility`, co-located with
   `recommendation_block` in `crates/ui/src/screens/leaderboard.rs` (or as an assoc.
@@ -23,19 +23,19 @@ shows the `WeakEvidence` band on the banner. See
   no I/O, no panic. — _acceptance: reads only `OutcomeKind` + `Option<&ScorecardView>`;
   no new stored field; no `crates/backtest` change._
 
-- [ ] **T2 — unit tests for the resolver.** One test per row of the § Decision-1 table
+- [x] **T2 — unit tests for the resolver.** One test per row of the § Decision-1 table
   (5 rows incl. `ActiveWins`+`None` and both non-`ActiveWins` outcomes) asserting the
   returned variant. — _acceptance: every table row covered; `BenchmarkWins`/`AllFragile`
   → `NotApplicable` explicitly asserted (the no-badge-on-a-hold-pick invariant)._
 
-- [ ] **T3 — the copy strings.** Add `LEADERBOARD_CROWN_PASSES_DSR`,
+- [x] **T3 — the copy strings.** Add `LEADERBOARD_CROWN_PASSES_DSR`,
   `LEADERBOARD_CROWN_WEAK_EVIDENCE`, `LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT` (+ any glyph
   sub-constants) to `crates/ui/src/strings.rs`, registered in `strings::all()`. Copy is
   VERBATIM from feature.md § Decision 2 (plain-language, non-alarmist, `⚠`/`✓` glyphs).
   — _acceptance: zero inline literals in the render path; the consistency check (no
   inline strings/hex) passes; wording matches feature.md exactly._
 
-- [ ] **T4 — the view element.** Add `fn crown_credibility_element(CrownCredibility,
+- [x] **T4 — the view element.** Add `fn crown_credibility_element(CrownCredibility,
   mode) -> Element`: `Passes` → one quiet `✓` line in `ACCENT`; `WeakEvidence` → a
   `width(Fill)` bordered band, `WARN_500` text + `⚠` on `WARN_50` fill, `WARN_500` 1px
   border + `radius::R3`, plus the muted `FG_3` `SMALL` hint line; `NotApplicable` →
@@ -44,7 +44,7 @@ shows the `WeakEvidence` band on the banner. See
   -p ui` unchanged; no hardcoded hex; `NotApplicable` renders nothing (byte-identical
   pre-feature layout for non-`ActiveWins`)._
 
-- [ ] **T5 — wire into the banner.** In `recommendation_block`
+- [x] **T5 — wire into the banner.** In `recommendation_block`
   (`crates/ui/src/screens/leaderboard.rs`), push `crown_credibility_element(
   crown_credibility(report.recommendation.outcome, report.scorecard.as_ref()), mode)`
   **immediately after the `headline` push, before the `winner_robustness_clause` push**
@@ -52,13 +52,13 @@ shows the `WeakEvidence` band on the banner. See
   the crown; the scorecard panel + its `leaderboard_scorecard_render.rs` guard are
   UNTOUCHED._
 
-- [ ] **T6 — dark/light + gallery.** Confirm both themes render (the band legible in
+- [x] **T6 — dark/light + gallery.** Confirm both themes render (the band legible in
   `--theme dark` and `--theme light`); add a gallery cell for the `WeakEvidence` state
   if the widget is factored as a reusable widget (follow the ADR-0083 gallery-cell
   precedent; skip if it stays an inline `recommendation_block` helper). — _acceptance:
   both-theme legibility confirmed at the render walk._
 
-- [ ] **T7 — RENDER PROOF (the closing gate, MANDATORY).** Add
+- [x] **T7 — RENDER PROOF (the closing gate, MANDATORY).** Add
   `crates/ui/tests/crown_credibility_render.rs`, `#![cfg(target_os = "macos")]`,
   mirroring `leaderboard_scorecard_render.rs` (hue/foreground pixel counts, PNGs to
   `/tmp/`, coarse thresholds robust to font jitter). Three guards:
@@ -81,7 +81,7 @@ shows the `WeakEvidence` band on the banner. See
   banner; the `Passes` + `BenchmarkWins` controls visibly differ; all three tests
   green on macOS._
 
-- [ ] **T8 — gates + spec close.** Run and record verbatim:
+- [x] **T8 — gates + spec close.** Run and record verbatim:
   `cargo build -p ui`; `cargo test -p ui --lib`; `cargo test -p ui --test
   crown_credibility_render` (macOS); `cargo clippy -p ui --tests -- -D warnings`;
   `cargo fmt --check`; the consistency check; `cargo tree -p ui` (unchanged);

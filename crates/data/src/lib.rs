@@ -19,6 +19,7 @@ pub mod binance;
 pub mod binance_klines;
 pub mod clock_skew;
 pub mod coinbase;
+pub mod coinbase_klines;
 pub mod daily_volume;
 pub mod dynamic_cache;
 pub mod fake_feed;
@@ -38,6 +39,10 @@ pub use bar_stream::{bar_stream, bar_stream_with_cross_check};
 pub use binance::BinanceFeed;
 pub use clock_skew::{ClockSkewConfig, ClockSkewDetector, ObserveResult};
 pub use coinbase::{CoinbaseFeed, coinbase_symbol_map};
+pub use coinbase_klines::{
+    CoinbaseKlineFetcher, HttpCoinbaseKlineFetcher, build_coinbase_candles_url,
+    coinbase_product_id_for_symbol, paginate_coinbase_candles, parse_coinbase_candle,
+};
 pub use daily_volume::{
     DailyVolumeError, daily_volume_usd_trailing, universe_avg_daily_volume_usd_trailing,
 };

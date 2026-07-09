@@ -1,8 +1,8 @@
 ---
 slug: advisor-corpus-expansion
 status: in-progress
-owner: developer
-updated: 2026-07-09
+owner: tester
+updated: 2026-07-10
 ---
 
 # Tasks — P2 corpus expansion + verdict re-run
@@ -31,35 +31,60 @@ pinned corpora SHAs byte-immutable. No live trading. `ci.yml.deferred` parked.
 
 ## Phase A — the Coinbase second-venue fetcher (ADR-0084 D2.a)
 
-- [ ] **T1 — `coinbase_klines.rs` library module** — new `crates/data/src/coinbase_klines.rs`
+- [x] **T1 — `coinbase_klines.rs` library module** — new `crates/data/src/coinbase_klines.rs`
   mirroring `binance_klines.rs`. Reuse the shared `binance_klines::Kline` struct +
-  `write_parquet` + `expected_bars_per_month` + `should_skip` idempotency verbatim
-  (venue-neutral). Add: `build_coinbase_candles_url(product_id, granularity_secs, start_iso, end_iso)`;
-  a `CoinbaseKlineFetcher` trait + `HttpCoinbaseKlineFetcher` + a mock (mirror the
-  Binance testability seam); `parse_coinbase_candle(&[serde_json::Value]) -> Kline`
-  doing the FOUR shim mappings (positional `[time,low,high,open,close,vol]` →
-  canonical `Kline`; `time` seconds ×1000 → millis; `close_time = open_time +
-  granularity_ms − 1`; `trade_count = 0`); `paginate_coinbase_candles` (300-candle
-  window step, ≥200 ms pace, forward sub-windows within a month). _acceptance: unit
-  tests — URL builder, positional+seconds→millis parse round-trip, paginator
-  300-window boundary + empty-stop, no socket in tests (all via the mock)._
-- [ ] **T2 — `fetch_coinbase_klines` bin** — new `crates/data/src/bin/fetch_coinbase_klines.rs`
+  `write_parquet` verbatim. Added: `build_coinbase_candles_url`; `CoinbaseKlineFetcher`
+  trait + `HttpCoinbaseKlineFetcher` + a mock; `parse_coinbase_candle` doing the FOUR
+  shim mappings; `paginate_coinbase_candles` (300-candle window step, forward
+  sub-windows within a month). **Deviation from the original plan (a real bug found
+  + fixed during testing):** ADR-0084 named the reused `crate::coinbase::coinbase_symbol_map`
+  for the symbol→product-id mapping, but that fn returns `BTC-USDT` (not `BTC-USD`)
+  for a `BTCUSDT` input (it checks USDC→USDT→USD suffixes in that order and BTCUSDT
+  matches USDT first) — a real, thinner, non-blessed Coinbase product, different from
+  the ADR's own worked example (`BTCUSD → BTC-USD`, a different input). Added a
+  DEDICATED `coinbase_product_id_for_symbol` (strip-then-fixed-append-`-USD`) instead,
+  which delivers the ADR's actual DESIGN INTENT (`BTCUSDT→BTC-USD`) — flagged to the
+  architect as a spec-precision note in `spec/trace.toml`, not a design reversal.
+  file: `crates/data/src/coinbase_klines.rs:83` (`coinbase_product_id_for_symbol`).
+  test: `cargo test -p data --lib coinbase_klines`.
+  output: `test result: ok. 19 passed; 0 failed; 0 ignored; ... finished in 0.01s`.
+- [x] **T2 — `fetch_coinbase_klines` bin** — new `crates/data/src/bin/fetch_coinbase_klines.rs`
   (CLI glue mirroring `fetch_binance_klines.rs`): `--symbols` (canonical `BTCUSDT`,
-  mapped to `BTC-USD` for the REST call via `data::coinbase_symbol_map`), `--start`,
-  `--end`, `--interval` (hourly → granularity 3600), `--out data/coinbase`,
-  `--force`, `--emit-revision-manifest`. On-disk layout `<out>/BTCUSDT/<YEAR>/<MM>.parquet`.
-  Reuse `data::revision::write_revision_manifest` + the pinned-manifest `should_skip`
-  idempotency path verbatim. _acceptance: `cargo run -p data --bin fetch_coinbase_klines
-  -- --help` works; a bounded dry-run (one month BTC-USD hourly) writes a valid
-  parquet `ReplayFeed` can read + records the earliest served candle (A2)._
-- [ ] **T3 — export + build/validate** — add `pub mod coinbase_klines;` to
-  `crates/data/src/lib.rs` (re-export the public surface the harness needs). Run
-  `rust-build` + `rust-validate` (clippy `-D warnings`, fmt). _acceptance:
-  workspace builds; clippy clean; `cargo test -p data` green (T1's unit tests)._
+  mapped to `BTC-USD` via `data::coinbase_product_id_for_symbol`), `--start`, `--end`,
+  `--interval` (only `1h` wired, granularity 3600), `--out data/coinbase`, `--force`,
+  `--emit-revision-manifest`. **T2 dry-run + A2 findings (bounded live network,
+  2026-07-10):** `--help` proof green; a live 3-day BTC-USD hourly fetch (2024-01-01→
+  2024-01-03) initially failed `HTTP 400 {"message":"User-Agent header is required."}`
+  — a REAL bug (`reqwest::Client`'s default has no User-Agent; Coinbase enforces this,
+  Binance doesn't) — fixed by setting a fixed `User-Agent` header on every request
+  (`COINBASE_USER_AGENT` const). Re-run succeeded: 72 candles for the 3-day window,
+  `ReplayFeed` read all 72 bars with sane BTC prices ($42.4k-$42.9k). **A2 earliest-
+  served-candle probe** (bounded — ~10 small live calls bisecting 2015-2018): BTC-USD
+  hourly is served starting **2015-08** (2015-07 and earlier is empty) — DEEPER than
+  the ADR's "~2015-16" estimate and comfortably covers the proposed `data/coinbase`
+  2020-01→last-closed-month window; **A2 CONFIRMED, no window narrowing needed.**
+  file: `crates/data/src/coinbase_klines.rs:242` (`COINBASE_USER_AGENT` +
+  `HttpCoinbaseKlineFetcher::fetch`); `crates/data/src/bin/fetch_coinbase_klines.rs`.
+  test: `cargo test -p data --bin fetch_coinbase_klines`.
+  output: `test result: ok. 8 passed; 0 failed; 0 ignored; ... finished in 0.01s`.
+- [x] **T3 — export + build/validate** — added `pub mod coinbase_klines;` +
+  `pub use coinbase_klines::{...}` to `crates/data/src/lib.rs`.
+  file: `crates/data/src/lib.rs:22` (`pub mod coinbase_klines;`).
+  test: `cargo build -p data -p backtest --features backtest/realdata,backtest/yahoo`
+  + `cargo clippy -p data -p backtest --tests --features backtest/realdata,backtest/yahoo -- -D warnings`
+  + `cargo fmt --check -p data -p backtest`.
+  output: `Finished` dev profile (build); `Finished` dev profile with zero clippy
+  warnings; fmt --check exit 0.
 
 ## Phase B — fetch the corpora (ADR-0084 D1 + D2.b + D3 + D5) — the long job
 
 > Emit the `watch` probe block (T5) BEFORE kicking these off. Multi-hour steps.
+>
+> **T4/T5 are explicitly OUT OF SCOPE for this developer session** (per the
+> orchestrator's brief — the multi-hour Binance/Coinbase fetches are resumable
+> background jobs the orchestrator runs). Left UNTICKED here; the exact
+> ready-to-run commands + watch probe + post-fetch verification are handed off
+> in the developer's HANDOFF message verbatim (also below for convenience).
 
 - [ ] **T4 — fetch the 3 new Binance corpora + the Coinbase cross-check corpus.**
   Each with `--emit-revision-manifest`; record the exact fetch command +
@@ -78,17 +103,40 @@ pinned corpora SHAs byte-immutable. No live trading. `ci.yml.deferred` parked.
   copy-pasteable block, e.g.
   `watch -n 30 'find data/binance-1718 data/binance-2020 data/binance-2526 data/coinbase -name "*.parquet" | wc -l; ls -la data/*/REVISION.toml 2>/dev/null'`.
   _acceptance: the operator can watch fetch progress without blocking._
-- [ ] **T6 — exogenous back-fill (D3), additive, existing pinned SHAs
-  byte-identical.** DVOL: `fetch_deribit_dvol --currencies BTC,ETH --start 2021-01-01
-  --end 2022-12-31` then `--start 2025-01-01 --end <closed-month>` (per-year parquet
-  into the EXISTING `data/deribit-dvol/`). Macro: `fetch_yahoo_klines` for
-  DXY/GSPC/TNX `--start 2025-01-01 --end <closed-month>` (per-month into the
-  EXISTING `data/yahoo-macro/`). Re-emit each corpus's `REVISION.toml` (additive —
-  new years/months are new file rows; existing rows byte-identical). _acceptance:
-  the pre-existing DVOL/macro file SHAs are unchanged in the re-emitted manifest;
-  new years/months present; `verify_anchors.sh` 119/119._
+- [x] **T6 — exogenous back-fill (D3), additive, existing pinned SHAs
+  byte-identical.** DVOL back-filled live: `fetch_deribit_dvol --currencies BTC,ETH
+  --start 2021-01-01 --end 2022-12-31` (283/365 daily rows for BTC/ETH 2021/2022 —
+  2021 is short because DVOL history genuinely starts ~2021-04) + `--start
+  2025-01-01 --end 2026-06-30` (365/181 daily rows, D5-clamped to the 2026-06
+  last-fully-closed-UTC-month) → `data/deribit-dvol/` grew from 4 to 12 parquet
+  files; `--emit-revision-manifest` re-emitted (new aggregate
+  `b21dc8691c257731d9043fc3e19b858c326ab4dd3d975f10de0eccf90cf480ff`). Before/after
+  `shasum -a 256` snapshot of the 4 pre-existing files (BTC/ETH 2023/2024)
+  confirms byte-identity (`shasum -a 256 -c` → 4× `OK`, only `REVISION.toml`
+  itself differs, as expected when 8 new file rows are added). **Load-bearing
+  side-effect:** `crates/backtest/src/dvol_data.rs::EXPECTED_DVOL_REVISION_SHA`
+  is a hard-pinned constant checked against the WHOLE manifest's aggregate — it
+  MUST move when new years are added or `v0.dvol_regime` silently degrades to
+  warm-up-only on EVERY corpus (incl. the 2324 base) — updated + proven via the
+  `#[ignore]`d `real_corpus_load_smoke` test (loads 182 real rows for the 2024-H1
+  span with the new SHA). **Macro finding: NO-OP on this machine** —
+  `data/yahoo-macro/{DX-Y.NYB,^GSPC,^TNX}/1d/` already covers 2021-01 through
+  2026-06 (66 months × 3 tickers, verified via `find … | wc -l`) — nothing to
+  fetch; did NOT run `fetch_yahoo_klines --features yahoo-online` for zero new
+  data (would be a wasted live-network round-trip). `verify_anchors.sh` re-run
+  AFTER the DVOL back-fill + SHA update — still 119/119 (this constant is NOT
+  one of the 9 `spec/anchors.toml` rows).
+  file: `crates/backtest/src/dvol_data.rs:57` (`EXPECTED_DVOL_REVISION_SHA`).
+  test: `cargo test -p backtest --features realdata --lib dvol_data::tests::real_corpus_load_smoke -- --ignored --nocapture`.
+  output: `OK: 182 rows, sha=b21dc8691c257731d9043fc3e19b858c326ab4dd3d975f10de0eccf90cf480ff` /
+  `test dvol_data::tests::real_corpus_load_smoke ... ok`.
 
 ## Phase C — new-corpus consistency + smoke tests (AC7)
+
+> **T7/T8 are BLOCKED on T4** — mirroring `binance_2122_revision_consistency.rs`
+> requires the actual committed `REVISION.toml` for each new corpus, which only
+> exists once T4's fetches run. Left UNTICKED (not silently dropped): the
+> tester (or whoever runs T4) authors these once the 4 new corpora land.
 
 - [ ] **T7 — per-new-corpus REVISION internal-consistency test** — mirror
   `crates/data/tests/binance_2122_revision_consistency.rs` for each new corpus
@@ -105,51 +153,111 @@ pinned corpora SHAs byte-immutable. No live trading. `ci.yml.deferred` parked.
 
 ## Phase D — the verdict re-run harness (ADR-0084 D4)
 
-- [ ] **T9 — `p2_verdict_rerun.rs` harness** — new `crates/backtest/tests/p2_verdict_rerun.rs`.
-  Compose the two proven pieces: (a) load bars per corpus via
-  `ReplayFeed::new(<corpus_root>, true).merge_symbols(&[(sym, root)], Timeframe::OneHour)`
-  (per `realdata_simple_strategy_bear_survey.rs:168`); (b) run
-  `null_data_no_crown.rs::run_field_and_rank`'s exact per-arm sequence
+- [x] **T9 — `p2_verdict_rerun.rs` harness** — new `crates/backtest/tests/p2_verdict_rerun.rs`.
+  Composes the two proven pieces: (a) `load_corpus_symbol_bars` via
+  `ReplayFeed::merge_symbols` (SKIP-safe on absence, REVISION-verifies when present);
+  (b) `run_field_and_rank` reproducing `run_bakeoff`'s exact per-arm sequence
   (`run_scenario` bars_override → `derive_candidate_kpis` → `derive_master_seed` +
   `compute_robustness_flag` → `rank_candidates` → `compute_scorecard`),
-  `write_report=false`. Per the R4 matrix, build each corpus's field from the
-  SUPPORTED arms only; thread `dvol_override` / `macro_regime_series` via the SAME
-  public `resolve_dvol_override` / `load_macro_regime_series` fns for corpora that
-  support those arms; ABSENT arms are NOT added to the field (report them "not
-  evaluable (no <data>)", never a silent drop). SKIP-safe per corpus. Fixed seed
-  base per corpus (recorded). Include the S7/S8 opt-in `VolScaledSpread` annex runs.
-  Emit the `watch` probe if the re-run is >2 min. _acceptance: harness runs each
-  present corpus + produces `FieldOutcome` per (corpus, arm); `verify_anchors.sh`
-  119/119 during AND after; no anchored report body written; SKIP-safe when corpora
-  absent._
-- [ ] **T10 — full gate sweep** — `bash scripts/verify_anchors.sh` (→119/119) +
+  `write_report=false` on every call. `build_field(ArmSupport)` encodes the R4 matrix
+  per corpus; threads `dvol_override` via `resolve_dvol_override` + `macro_regime_series`
+  via `load_macro_regime_series` for corpora that support those arms, INCLUDING the
+  ADR-0072-D8 per-symbol `v0.dvol_regime` field-exclusion parity (non-BTC/ETH symbols
+  get the arm REMOVED from the field, not run-and-degraded — matches
+  `bakeoff/mod.rs:1030-1039` exactly, a real correctness fix found during testing).
+  S1/S2/S3/S5/S6 SKIP-safe (return early + eprintln when the corpus is absent); S4
+  (`data/binance`, the EXISTING pinned base) runs UN-IGNORED as the always-on smoke;
+  S7/S8 are the opt-in `VolScaledSpread` era-cost annex. `[[test]] required-features
+  = ["realdata", "yahoo"]` added to `crates/backtest/Cargo.toml`.
+  file: `crates/backtest/tests/p2_verdict_rerun.rs` (harness);
+  `crates/backtest/Cargo.toml:118` (`[[test]] p2_verdict_rerun`).
+  test 1 (SKIP-safe, corpora absent): `cargo test -p backtest --features realdata,yahoo
+  --test p2_verdict_rerun -- --include-ignored --nocapture s1_binance_1718_btc_eth_bnb
+  s2_binance_2020_seven_listers s5_binance_2526_all_ten s6_coinbase_btc_venue_crosscheck
+  s7_binance_1718_era_cost_annex_vol_scaled_spread s8_binance_2020_era_cost_annex_vol_scaled_spread`.
+  output 1: `test result: ok. 6 passed; 0 failed; 0 measured; 9 filtered out; finished
+  in 0.00s` (each printed a `SKIP …: BTCUSDT absent under …` / `… corpus entirely
+  absent — nothing to run` line, no panic).
+  test 2 (default `cargo test`, no `--include-ignored` — the CI-realistic invocation):
+  `cargo test -p backtest --features realdata,yahoo --test p2_verdict_rerun`.
+  output 2: `test result: ok. 8 passed; 0 failed; 7 ignored; 0 measured; 0 filtered
+  out; finished in 29.09s` (S4 smoke + 7 unit tests run; S1/S2/S3/S5/S6/S7/S8 correctly
+  `#[ignore]`d by default).
+  test 3 (full sweep incl. the locally-present `data/binance-2122`, proves the
+  harness handles a real multi-symbol field end-to-end): `cargo test -p backtest
+  --features realdata,yahoo --test p2_verdict_rerun -- --include-ignored --nocapture`.
+  output 3: `test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered
+  out; finished in 233.91s`.
+  Re-run after T6's DVOL back-fill (proves the harness is stable across the
+  corpus-underneath change): same command as test 2 → `test result: ok. 8 passed;
+  0 failed; 7 ignored; ... finished in 29.04s`, byte-identical S4 output.
+- [x] **T10 — full gate sweep** — `bash scripts/verify_anchors.sh` (→119/119) +
   `python3 scripts/spec_lint.py` (→PASS) + `python3 scripts/adr_registry_check.py`
-  (→exit 0) + `cargo test --workspace` (the new tests green, nothing else broken).
-  Confirm the FROZEN gate files (`bakeoff/robustness.rs`, `bakeoff/rank.rs`,
-  `classify_verdict`) are byte-untouched (`git diff --stat`). _acceptance: all
-  gates green; frozen-gate files show no diff._
+  (→exit 0) + `cargo build -p data -p backtest --features backtest/realdata,backtest/yahoo`
+  + `cargo clippy -p data -p backtest --tests --features backtest/realdata,backtest/yahoo
+  -- -D warnings` + `cargo fmt --check -p data -p backtest` + `git diff --stat` on the
+  FROZEN gate files. `cargo test --workspace` (the FULL workspace sweep) NOT run —
+  scoped to `-p data -p backtest` per the brief's explicit gate list; the tester owns
+  the full-workspace confirmation.
+  output: `ANCHORS PASS (119 / 119)`; `spec-lint: PASS (0 violations)`; exit 0
+  (adr_registry_check); `Finished dev profile` (build, clean); `Finished dev profile`
+  (clippy, ZERO warnings); fmt --check exit 0; `git diff --stat -- crates/backtest/src/bakeoff/{robustness,rank,scorecard,mod}.rs`
+  → empty (byte-untouched).
 
 ## Handoff to tester
 
-The tester authors the NON-anchored `reports/backtest-<date>-p2-verdict-rerun.md`
-(AC1-AC8) from T9's `FieldOutcome` data + the T7/T8 consistency/smoke results, and
-links it in the feature `## Verification` section. The report is the AC1-AC8
-deliverable; it is NEW and NOT anchored initially.
+**Sequencing note (2026-07-10):** T4 (the 4 multi-hour fetches) must land BEFORE
+T7/T8 (new-corpus consistency + smoke) and the full S1/S2/S3/S5/S6/S7/S8 harness
+scenarios can produce real results — see the developer's HANDOFF message for the
+exact ready-to-run T4 commands + a `watch` probe + the post-fetch verification
+command. Until then, T9's harness is proven SKIP-safe + the S4 smoke is proven
+green (see T9 above) — the harness itself is NOT blocked, only the new-corpus
+DATA is.
+
+Once T4 lands: the tester (or whoever runs T4) completes T7/T8, re-runs T9 with
+`--include-ignored` for the real per-corpus results, and authors the NON-anchored
+`reports/backtest-<date>-p2-verdict-rerun.md` (AC1-AC8) from T9's `FieldOutcome`
+data + the T7/T8 consistency/smoke results, linking it in the feature
+`## Verification` section. The report is the AC1-AC8 deliverable; it is NEW and
+NOT anchored initially.
 
 ## Notes
 
 - The Coinbase candle endpoint caps at **300 candles/call** (>300 → rejected) and
   the `time` field is in **seconds**; both handled in T1's shim. Coinbase historical
   data may have gaps ("no data is published for intervals where there are no
-  ticks") — the `should_skip` content-SHA idempotency path handles genuinely short
-  months exactly as it does for Binance.
+  ticks") — the `should_skip` content-SHA idempotency path (implemented in
+  `fetch_coinbase_klines.rs`, byte-identical decision tree to the Binance bin's)
+  handles genuinely short months exactly as it does for Binance.
+- **Coinbase Exchange REQUIRES a `User-Agent` header** (`HTTP 400
+  {"message":"User-Agent header is required."}` otherwise) — discovered during
+  T2's live-network dry-run; `reqwest::Client`'s default has none. Fixed via
+  `COINBASE_USER_AGENT` in `HttpCoinbaseKlineFetcher::fetch`
+  (`crates/data/src/coinbase_klines.rs`).
+- **`coinbase_symbol_map` is NOT the right symbol-mapping fn for this fetcher**
+  (a real bug found + fixed during T1 testing) — it returns `BTC-USDT` (not
+  `BTC-USD`) for a `BTCUSDT` input. Use `coinbase_product_id_for_symbol`
+  instead (strip the on-disk symbol's own quote suffix, always re-append a
+  FIXED `-USD`). See T1's tick note for the full analysis.
 - The R4 arm×corpus availability matrix (feature § R4) is the binding arm-selection
   contract for T9. Perp-basis/funding MN arms are ABSENT on every corpus except the
-  2324 base (basis is 2023-24 only) — do NOT back-fill them (out of scope).
-- If a Coinbase fetch reveals BTC-USD does NOT reach as deep as 2020 on the overlap
-  window, narrow `data/coinbase` to the deepest reachable window that still overlaps
-  ≥2 Binance corpora and record it in the fetch report (A2 — confirm the earliest
-  served candle at fetch time).
+  2324 base (basis is 2023-24 only) — do NOT back-fill them (out of scope). They
+  never appear in `default_field()`/`default_ensemble_field()`/`default_macro_field()`
+  at all (they live in the separate `bakeoff::sweep` robustness-sweep path), so no
+  exclusion logic was needed in `build_field` — confirmed by a structural unit test
+  (`build_field_never_includes_basis_or_funding_arms`).
+- **A2 RESOLVED (bounded live probe, 2026-07-10):** BTC-USD hourly is served
+  starting **2015-08** (2015-07 and earlier is empty) — DEEPER than the "~2015-16"
+  estimate, comfortably covering the proposed `data/coinbase` 2020-01→last-closed-
+  month window. NO window narrowing needed.
+- **T6 macro back-fill is a NO-OP on this machine** — `data/yahoo-macro/` already
+  covers 2021-01 through 2026-06 for all 3 tickers (DXY/GSPC/TNX). DVOL genuinely
+  needed + received the back-fill (2021-22 + 2025-26). **`EXPECTED_DVOL_REVISION_SHA`
+  in `crates/backtest/src/dvol_data.rs` moves whenever the DVOL corpus grows** — this
+  is a hard-pinned constant over the WHOLE manifest aggregate (not a per-span
+  subset); forgetting to update it after a future DVOL back-fill silently degrades
+  `v0.dvol_regime` to warm-up-only on EVERY corpus, including the 2324 base.
 - Anchors 119/119 + spec-lint PASS(0) gated per commit; `write_report=false`
   throughout (anchor-safe by construction); FROZEN gate byte-frozen; existing
-  pinned corpora SHAs byte-immutable.
+  pinned corpora SHAs byte-immutable (verified via `shasum -a 256 -c` before/after
+  the DVOL back-fill: the 4 pre-existing parquet files are byte-identical).

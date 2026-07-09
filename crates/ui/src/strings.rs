@@ -1819,6 +1819,16 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE",
             LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE,
         ),
+        // advisor-crown-credibility P1 (ADR-0085) — the crown co-presents its DSR
+        ("LEADERBOARD_CROWN_PASSES_DSR", LEADERBOARD_CROWN_PASSES_DSR),
+        (
+            "LEADERBOARD_CROWN_WEAK_EVIDENCE",
+            LEADERBOARD_CROWN_WEAK_EVIDENCE,
+        ),
+        (
+            "LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT",
+            LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT,
+        ),
         // advisor-turnover-and-tail-metrics P1-1 — turnover column
         ("LEADERBOARD_COL_TURNOVER", LEADERBOARD_COL_TURNOVER),
         // advisor-turnover-and-tail-metrics P1-2 — Risk story tail/median block
@@ -3182,6 +3192,39 @@ pub const LEADERBOARD_SCORECARD_BEATS_HOLD_NO: &str =
 /// directly under the yes/no so the operator can't mistake it for the verdict.
 pub const LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE: &str =
     "Informational, not a gate \u{2014} this never changes the pick above.";
+
+// ── advisor-crown-credibility P1 (ADR-0085) — the crown co-presents its DSR ────
+//
+// The recommendation banner must CO-PRESENT the credibility verdict directly
+// under the H2 headline, so a chance-crowned active pick can never be read as
+// "best pick" without the co-located weak-evidence caveat. Presentation-only:
+// the copy summarises the EXISTING `crown_clears_dsr` boolean already shown in
+// detail in the scorecard panel below; it never re-derives or vetoes anything.
+
+/// `Passes` state (crowned active pick CLEARS DSR) — a single quiet reassurance
+/// line under the headline. Muted `ACCENT`, not a hype badge. The `✓` glyph
+/// carries the signal beyond colour (accessibility: colour is never the only
+/// signal). Verbatim per ADR-0085 § D3 / feature.md § Decision 2 (i).
+pub const LEADERBOARD_CROWN_PASSES_DSR: &str =
+    "\u{2713} Passed the overfitting check (deflated-Sharpe above the bar).";
+
+/// `WeakEvidence` state (crowned active pick FAILS DSR — the money shot) — the
+/// unmissable `WARN`-tier band under the headline. Plain-language, non-alarmist:
+/// it names the pick as *weak evidence* and states the MECHANISM (many strategies
+/// tried → a chance edge) so it educates rather than scolds. It QUALIFIES the
+/// still-true headline ("best of the field"); it does not negate it. Register is
+/// caution, NOT alarm (`WARN`, explicitly not `NEG_*`/error-red — the pick is
+/// weakly evidenced, not broken). The `⚠` glyph + the literal words "weak
+/// evidence" carry the state without hue. Verbatim per ADR-0085 § D3 /
+/// feature.md § Decision 2 (ii).
+pub const LEADERBOARD_CROWN_WEAK_EVIDENCE: &str = "\u{26a0} This pick did not survive the overfitting check \u{2014} treat it as weak evidence. \
+     With this many strategies tried, an edge this size can appear by chance.";
+
+/// The muted second line under the `WeakEvidence` band — points to the scorecard
+/// detail without repeating the figure (`SMALL`, `FG_3`). Verbatim per ADR-0085
+/// § D3 / feature.md § Decision 2 (ii).
+pub const LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT: &str =
+    "See \u{2018}How much to trust this\u{2019} below for the deflated-confidence figure.";
 
 // ── advisor-turnover-and-tail-metrics P1-1 — turnover column ──────────────────
 //
