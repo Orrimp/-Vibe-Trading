@@ -101,6 +101,7 @@ CATEGORIES = (
     "unreferenced-anchor",
     "shipped-no-tests",
     "status-drift",
+    "feature-shipped-trace-drift",
     "trace-broken-path",
     "adr-not-registered",
 )
@@ -541,12 +542,77 @@ def check_status_drift(spec_dir: Path, report: Report) -> None:
         )
 
 
-def self_test() -> int:
+# ---------------------------------------------------------------------------
+# Check: feature.md `status: shipped` ⇒ trace row `state == "shipped"`
+# ---------------------------------------------------------------------------
+#
+# ADR-0082 invariant: feature.md frontmatter `status:` is the single source of
+# truth for a feature's lifecycle; a trace.toml [[req]] row's `state=` must not
+# contradict it. Concretely: once a feature's feature.md reaches
+# `status: shipped`, every trace row whose `feature=` slug resolves to it MUST
+# read `state = "shipped"`. The tester-terminal aliases (verified/passed/tested/
+# tester-done) are legal ONLY while the feature is still pre-ship, so rows whose
+# feature is not shipped are never flagged here.
+
+
+def feature_status_for_slug(spec_dir: Path, slug: str) -> str | None:
+    """Resolve a trace `feature=` slug to its feature.md `status:` value.
+
+    Mirrors the feature-folder resolution in ``check_trace``: a feature folder
+    may live at ``spec/<slug>``, ``spec/v1/<slug>``, or ``spec/v2/<slug>`` (the
+    2026-06-28 v1/v2 reorg). Returns the status string, or None if no
+    feature.md / no parseable frontmatter / no ``status:`` key is found.
+    """
+    for prefix in ("", "v1", "v2"):
+        feature = (spec_dir / prefix / slug / "feature.md") if prefix \
+            else (spec_dir / slug / "feature.md")
+        if feature.exists():
+            fm = parse_frontmatter(feature.read_text(encoding="utf-8", errors="replace"))
+            return (fm or {}).get("status")
+    return None
+
+
+def check_feature_shipped_trace_drift(spec_dir: Path, report: Report) -> None:
+    """ADR-0082 enforcement: shipped feature ⇒ trace row state == "shipped".
+
+    For every [[req]] whose `feature=` slug resolves to an existing
+    ``spec/**/feature.md`` with ``status: shipped``, assert the row's
+    ``state == "shipped"``. Rows whose feature is not shipped (or whose feature
+    folder is absent — that's a separate ``trace-broken-path`` concern) are not
+    flagged: their tester-terminal aliases are legal pre-ship.
+    """
+    trace_path = spec_dir / "trace.toml"
+    if not trace_path.exists():
+        return  # not yet adopted; that's fine
+
+    with trace_path.open("rb") as f:
+        data = tomllib.load(f)
+
+    for row in data.get("req", []):
+        rid = row.get("id", "<no-id>")
+        feat = row.get("feature")
+        feats = [feat] if isinstance(feat, str) else (feat or [])
+        for slug in feats:
+            status = feature_status_for_slug(spec_dir, slug)
+            if status != "shipped":
+                continue  # pre-ship (or unresolved) — aliases are legal here
+            state = row.get("state")
+            if state != "shipped":
+                shown = "<missing state= field>" if state is None else repr(state)
+                report.add(
+                    "feature-shipped-trace-drift",
+                    trace_path,
+                    f"row {rid} (feature {slug!r}): feature.md status is 'shipped' "
+                    f"but trace state is {shown} — must be \"shipped\" (ADR-0082 § D2)",
+                )
+
+
+def _self_test_status_drift() -> bool:
     """Synthetic-fixture proof that the status-drift rule fires and clears.
 
     Three fixtures in a tempdir: (a) drifting — tester-done + deck + PASS
     report → exactly 1 violation; (b) compliant — same artifacts at
-    presenter-done → 0; (c) deck but no PASS report → 0. Exit 0 iff all
+    presenter-done → 0; (c) deck but no PASS report → 0. Returns True iff all
     three behave.
     """
     import tempfile
@@ -579,7 +645,71 @@ def self_test() -> int:
             + ("PASS — fires on drift, silent on compliant/no-pass" if ok
                else f"FAIL — expected exactly 1 hit on 'drifting', got {[(str(v.path), v.detail) for v in hits]}")
         )
-        return 0 if ok else 1
+        return ok
+
+
+def _self_test_feature_shipped_trace_drift() -> bool:
+    """Synthetic-fixture proof of the ADR-0082 feature-shipped-trace-drift rule.
+
+    Four fixtures in a tempdir with a synthetic trace.toml:
+      (a) drifting     — feature.md=shipped, row state="passed"  → 1 violation.
+      (b) compliant    — feature.md=shipped, row state="shipped" → 0.
+      (c) preship      — feature.md=tester-done, row state="tested" → 0
+                         (tester-terminal alias legal pre-ship; feature under
+                         v1/ also proves the multi-prefix slug resolution).
+      (d) missing-state— feature.md=shipped, row has NO state= field → 1
+                         violation (the paper-mode-equity-wiring-style case).
+    Expect exactly 2 violations, on 'drifting' and 'missing-state'. Returns
+    True iff the rule behaves.
+    """
+    import tempfile
+
+    def write_feature(dir_: Path, slug: str, status: str) -> None:
+        dir_.mkdir(parents=True)
+        (dir_ / "feature.md").write_text(
+            f"---\nslug: {slug}\nstatus: {status}\nowner: t\nupdated: 2026-07-09\n---\n# x\n"
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write_feature(root / "drifting", "drifting", "shipped")
+        write_feature(root / "compliant", "compliant", "shipped")
+        write_feature(root / "v1" / "preship", "preship", "tester-done")  # v1/ prefix
+        write_feature(root / "missing-state", "missing-state", "shipped")
+        (root / "trace.toml").write_text(
+            "[[req]]\n"
+            'id = "REQ-DRIFT"\nfeature = "drifting"\nstate = "passed"\n\n'
+            "[[req]]\n"
+            'id = "REQ-OK"\nfeature = "compliant"\nstate = "shipped"\n\n'
+            "[[req]]\n"
+            'id = "REQ-PRESHIP"\nfeature = "preship"\nstate = "tested"\n\n'
+            "[[req]]\n"
+            'id = "REQ-NOSTATE"\nfeature = "missing-state"\n'  # no state= field
+        )
+        rep = Report()
+        check_feature_shipped_trace_drift(root, rep)
+        hits = [v for v in rep.violations if v.category == "feature-shipped-trace-drift"]
+        hit_ids = sorted(
+            (h.detail.split("row ", 1)[1].split(" ", 1)[0] for h in hits)
+        )
+        ok = hit_ids == ["REQ-DRIFT", "REQ-NOSTATE"]
+        print(
+            "spec-lint --self-test (feature-shipped-trace-drift): "
+            + ("PASS — fires on shipped/non-shipped-state + missing-state, "
+               "silent on compliant + pre-ship alias" if ok
+               else f"FAIL — expected hits on ['REQ-DRIFT', 'REQ-NOSTATE'], "
+                    f"got {[(str(v.path), v.detail) for v in hits]}")
+        )
+        return ok
+
+
+def self_test() -> int:
+    """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
+    results = [
+        _self_test_status_drift(),
+        _self_test_feature_shipped_trace_drift(),
+    ]
+    return 0 if all(results) else 1
 
 
 # ---------------------------------------------------------------------------
@@ -644,6 +774,7 @@ def main(argv: list[str]) -> int:
         check_trace(SPEC_DIR, report, anchors)
         check_shipped_have_tests(SPEC_DIR, report)
         check_status_drift(SPEC_DIR, report)
+        check_feature_shipped_trace_drift(SPEC_DIR, report)
 
     # Render output, grouped by category.
     grouped = report.by_category()
