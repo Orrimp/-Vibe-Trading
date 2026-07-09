@@ -2,7 +2,7 @@
 slug: product
 status: shipped
 owner: analyst
-updated: 2026-06-26
+updated: 2026-07-09
 ---
 
 # Product Requirements — Single-Coin Investment Advisor (paper)
@@ -79,6 +79,13 @@ not waste.
   paper-sim so the user can see for themselves.
 - **Not HFT, not market-making, not regulated derivatives, not tax/lot
   accounting.** Unchanged non-goals.
+
+> The authoritative list of **settled dead-ends** these boundaries imply — with
+> the guardrail/evidence that kills each and a cited rebuttal for when they get
+> re-proposed (multi-coin, return-prediction-in-ranking, automated alpha search,
+> LLM-as-trader, on-chain/sentiment arms, live trading, Kelly/impact/HFT,
+> generative test data, gate/anchor tampering) — is the **do-not-build register**:
+> [`dev-notes/do-not-build-register.md`](dev-notes/do-not-build-register.md).
 
 ## Why this is honest (the robustness truth, carried forward)
 
@@ -476,6 +483,15 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-07-09 (analyst, R3-4a do-not-build register): added a single pointer line
+  at the end of § What this product IS NOT to the new authoritative **do-not-build
+  register** ([`dev-notes/do-not-build-register.md`](dev-notes/do-not-build-register.md))
+  — the consolidated "settled dead-ends + why + cited rebuttal" reference so the
+  off-track ideas (multi-coin, return-prediction-in-ranking, automated alpha search,
+  LLM-as-trader, on-chain/sentiment arms, live trading, Kelly/impact/HFT, generative
+  test data, gate/anchor tampering) stop getting re-litigated each session. Pointer
+  only — no § What this product IS / IS NOT boundary changed, no D1–D5, no
+  2026-06-08 ship-passive verdict touched; 119/119 anchors + spec-lint unchanged.
 - 2026-06-23 (analyst, short-selling scoping): scoped the operator-directed (2026-06-23
   *"do the expensive short selling"*) **single-coin DIRECTIONAL short-selling** capability
   as a new feature ([`advisor-short-selling/feature.md`](v1/advisor-short-selling/feature.md),
