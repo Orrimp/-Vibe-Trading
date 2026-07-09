@@ -266,7 +266,8 @@ def check_frontmatter(md_path: Path, text: str, report: Report) -> None:
 
 # Folder names that are not features (cross-cutting siblings of feature folders).
 NON_FEATURE_FOLDERS = {"design", "dev-notes", "runbooks", "archive", "architecture",
-                       "v1", "v2"}  # v1/v2 are containers for feature folders (2026-06-28 reorg)
+                       "v1", "v2", "v3"}  # v1/v2/v3 are containers for feature folders
+                                          # (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out phase)
 
 
 def is_feature_folder(p: Path) -> bool:
@@ -280,10 +281,10 @@ def is_feature_folder(p: Path) -> bool:
 
 
 def check_orphan_features(spec_dir: Path, report: Report) -> None:
-    # Feature folders live at spec/ root AND under spec/v1/ + spec/v2/
-    # (the 2026-06-28 v1/v2 reorg). Lint feature folders in all three.
+    # Feature folders live at spec/ root AND under spec/v1/ + spec/v2/ + spec/v3/
+    # (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out phase). Lint all.
     children = list(spec_dir.iterdir())
-    for container in ("v1", "v2"):
+    for container in ("v1", "v2", "v3"):
         sub = spec_dir / container
         if sub.is_dir():
             children.extend(sub.iterdir())
@@ -383,14 +384,15 @@ def check_trace(
         feats = [feat] if isinstance(feat, str) else (feat or [])
         for slug in feats:
             cited_features.add(slug)
-            # Feature folders may live at spec/<slug>, spec/v1/<slug>, or
-            # spec/v2/<slug> (the 2026-06-28 v1/v2 reorg).
+            # Feature folders may live at spec/<slug>, spec/v1/<slug>,
+            # spec/v2/<slug>, or spec/v3/<slug> (v1/v2 = 2026-06-28 reorg;
+            # v3 = 2026-07-09 close-out phase).
             if not any((SPEC_DIR / prefix / slug).exists()
-                       for prefix in ("", "v1", "v2")):
+                       for prefix in ("", "v1", "v2", "v3")):
                 report.add(
                     "trace-broken-path",
                     trace_path,
-                    f"row {rid} field feature: missing folder spec/[v1|v2/]{slug}",
+                    f"row {rid} field feature: missing folder spec/[v1|v2|v3/]{slug}",
                 )
         # Anchor citations.
         # `anchors` may be a list of scenario-name strings (the normal case),
@@ -559,11 +561,12 @@ def feature_status_for_slug(spec_dir: Path, slug: str) -> str | None:
     """Resolve a trace `feature=` slug to its feature.md `status:` value.
 
     Mirrors the feature-folder resolution in ``check_trace``: a feature folder
-    may live at ``spec/<slug>``, ``spec/v1/<slug>``, or ``spec/v2/<slug>`` (the
-    2026-06-28 v1/v2 reorg). Returns the status string, or None if no
-    feature.md / no parseable frontmatter / no ``status:`` key is found.
+    may live at ``spec/<slug>``, ``spec/v1/<slug>``, ``spec/v2/<slug>``, or
+    ``spec/v3/<slug>`` (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out
+    phase). Returns the status string, or None if no feature.md / no parseable
+    frontmatter / no ``status:`` key is found.
     """
-    for prefix in ("", "v1", "v2"):
+    for prefix in ("", "v1", "v2", "v3"):
         feature = (spec_dir / prefix / slug / "feature.md") if prefix \
             else (spec_dir / slug / "feature.md")
         if feature.exists():

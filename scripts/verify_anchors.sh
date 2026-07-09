@@ -35,6 +35,17 @@
 # Legacy default now excludes ALL v5-latency-slippage-sim-v0 dirs to prevent
 # pre-v0.5.0 anchors (e.g. v3.0.0-regime) from accidentally resolving to the
 # newer sqrt-impact reports.
+#
+# spec/vN folder-reorg note (2026-06-28 v1/v2 · 2026-07-09 v3):
+# This resolver is already path-reorg-agnostic for the DEFAULT (legacy) and
+# noop-baseline namespaces — they `find "$root"/spec -path "*/reports/..."`,
+# which recurses ALL of spec/ including spec/v1/, spec/v2/, and spec/v3/. That
+# is why the 2026-06-28 v1/v2 reorg needed NO edit here (only the older
+# mc/perp-basis namespaces below hardcode spec/v1/ paths, and those are
+# v1-specific by construction). The 2026-07-09 v3 close-out phase likewise
+# needs no change: any spec/v3/<feature>/reports/backtest-*-<scenario>.md would
+# be discovered by the recursive default. v3 is expected to add ZERO anchors
+# (UI/report-only + docs), so 119/119 is unaffected either way.
 
 set -euo pipefail
 
