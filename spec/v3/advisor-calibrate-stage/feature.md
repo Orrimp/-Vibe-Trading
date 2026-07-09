@@ -1,7 +1,7 @@
 ---
 slug: advisor-calibrate-stage
-status: dev-done
-owner: ui-designer
+status: shipped
+owner: operator
 updated: 2026-07-09
 version: 3.0.0
 ---

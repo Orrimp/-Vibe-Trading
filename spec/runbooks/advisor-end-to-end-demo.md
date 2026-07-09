@@ -244,7 +244,7 @@ the honest spine — and its honest `BenchmarkWins` result — reads as the prod
 
 ## Approval block
 
-- [ ] Approved — ship
+- [x] Approved — ship — operator go-ahead ("move on", 2026-07-09); orchestrator render+cockpit-smoke+gate-verified (a wave-through, not a line-by-line operator read)
 - [ ] Approve with notes (notes below)
 - [ ] Reject — _add reason below_
 
