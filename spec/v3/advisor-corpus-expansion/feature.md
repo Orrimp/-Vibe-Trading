@@ -1,9 +1,9 @@
 ---
 slug: advisor-corpus-expansion
-status: dev-done
-owner: developer
+status: tester-done
+owner: tester
 updated: 2026-07-10
-version: 3.2.0
+version: 3.3.0
 trace: REQ-V3-P2-CORPUS-EXPANSION-001
 ---
 
@@ -591,7 +591,49 @@ ready-to-run per-corpus commands, a `watch` probe, and the post-fetch
 verification command.
 
 ## Verification
-_tester links to the re-run report + the corpus-consistency tests here._
+
+**Tester (2026-07-10) — T7, T8, and THE full multi-corpus verdict re-run.**
+AC1-AC8 report: [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](reports/backtest-2026-07-10-p2-verdict-rerun.md)
+(NEW, non-anchored). Corpus-consistency tests:
+`crates/data/tests/p2_corpora_revision_consistency.rs` (T7, 4/4 un-ignored,
+un-ignored PASS — `cargo test -p data --test p2_corpora_revision_consistency`)
+and `crates/data/tests/p2_corpora_replayfeed_smoke.rs` (T8, 4/4 `--ignored`
+PASS — `cargo test -p data --test p2_corpora_replayfeed_smoke -- --ignored
+--nocapture`). THE RUN — `cargo test -p backtest --features realdata,yahoo
+--test p2_verdict_rerun -- --include-ignored --nocapture` — **15/15 passed,
+0 failed, 238.79s (~4.0 min).**
+
+**Headline answer (data-driven, not pre-written):** ship-passive **WOBBLES**
+on the older, thinner-liquidity crypto eras (2017-18, 2020, and to a lesser
+extent 2021-22 show materially more `ActiveWins` crowns — 19/32 primary
+symbol-runs, 16 of which clear the DSR≥0.95 credibility check) but **HOLDS**
+on the most recent regime (2025-26, matching the existing 2023-24 baseline —
+8/10 `BenchmarkWins`) and on the Coinbase second-venue cross-check relative to
+its own Binance-era counterpart (AC5: median price deviation 3-8 bps across
+all 4 overlap windows, confirming the two venues track tightly). The era-cost
+`VolScaledSpread` annex (S7/S8) explains exactly 1 of 10 tested symbol-runs
+(DOGEUSDT/2020) as a pure cost-sensitivity flip; the rest of the older-era
+gradient survives that stress-test. `MinBTL` before/after (AC3): the evidence
+base grew from 3.99 years (2 regimes, SHORT of the honest 6.36-year bar by
+2.36 years) to 7.90 years (5 regimes + 1 venue cross-check, now MEETING the
+bar with +1.54 years margin) — the cleanest "stronger claim" result. Full
+per-corpus tables, the wobble list, survivorship + era-cost caveats, and
+corpus provenance SHAs are in the report; both outcomes (holds/wobbles) are
+reported honestly per this feature's own framing — neither was suppressed
+nor manufactured.
+
+**Gates:** `scripts/verify_anchors.sh` 119/119 BEFORE and AFTER (the report
+is new and non-anchored, no `anchors.toml` edit); `scripts/spec_lint.py`
+PASS(0); `cargo fmt --check -p data` + `cargo clippy -p data --tests -- -D
+warnings` clean on the two new T7/T8 test files. FROZEN gate
+(`bakeoff/{robustness,rank,scorecard,mod}.rs`) byte-untouched this session
+(zero edits — the tester only READ these files via the developer's existing
+`p2_verdict_rerun.rs` harness).
+
+**VERDICT → PASS.** `HANDOFF → analyst (informational, non-blocking)` on the
+wobble-list finding — a follow-on product-copy/research question (should "no
+active edge" be scoped to "in today's deep-liquidity market" vs "in any
+crypto era, ever"?), not a gate failure.
 
 ## Open questions (for the architect M-T1 + operator)
 
@@ -732,3 +774,33 @@ _tester links to the re-run report + the corpus-consistency tests here._
   byte-untouched (`git diff --stat`). HANDOFF → tester (or orchestrator runs
   T4 first, then tester completes T7/T8 + authors the AC1-AC8 re-run report).
   status proposed→arch-done; trace row → arch-done. HANDOFF → developer.
+- 2026-07-10 (tester): **T4 already landed** (orchestrator fetch job ahead of
+  this session, SHAs independently re-verified) — completed **T7**
+  (`crates/data/tests/p2_corpora_revision_consistency.rs`, 4/4 un-ignored
+  green) + **T8** (`crates/data/tests/p2_corpora_replayfeed_smoke.rs`, 4/4
+  `--ignored` green, era-sanity bounds grounded in real on-disk price ranges)
+  + **THE full S1-S8 multi-corpus verdict re-run**
+  (`cargo test -p backtest --features realdata,yahoo --test p2_verdict_rerun
+  -- --include-ignored --nocapture`: 15/15 passed, 0 failed, 238.79s). Authored
+  the AC1-AC8 report
+  [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](reports/backtest-2026-07-10-p2-verdict-rerun.md)
+  (NEW, non-anchored). **Headline finding, reported plainly per the feature's
+  own no-suppression framing:** ship-passive WOBBLES on 2017-18/2020/2021-22
+  (19/32 primary symbol-runs `ActiveWins`, 16 clear DSR≥0.95) but HOLDS on
+  2025-26 (matching the 2023-24 baseline, 8/10 `BenchmarkWins`) and on the
+  Coinbase venue cross-check (AC5: 3-8 bps median price agreement vs Binance
+  across all 4 overlap windows). The `VolScaledSpread` era-cost annex (S7/S8)
+  explains exactly 1 of 10 tested symbol-runs (DOGEUSDT/2020) as a pure
+  cost-sensitivity flip — the rest of the older-era gradient survives that
+  stress-test. `MinBTL` before/after (AC3): evidence base 3.99→7.90 years (2→5
+  regimes + 1 venue cross-check), now MEETING the honest 6.36-year bar
+  (previously SHORT by 2.36 years). Also root-caused (non-blocking, confirmed
+  pre-existing on the byte-untouched 2324 baseline too, NOT a P2 regression) a
+  `min_btl_years=0.00`/`n_eff=NaN` scorecard-math characteristic driven by
+  `sharpe=NaN` on `_ls`/`always_short` arms propagating through Rust's
+  `f64::max(NaN,x)==x` semantics — flagged as a future hardening item, out of
+  P2's scope, no gate/band file touched. Gates: `verify_anchors.sh` 119/119
+  before AND after; `spec_lint.py` PASS(0); `cargo fmt --check -p data` +
+  `cargo clippy -p data --tests -- -D warnings` clean. status dev-done→tester-done;
+  version 3.2.0→3.3.0; trace row → tested. VERDICT → PASS. HANDOFF → analyst
+  (informational, non-blocking) on the wobble-list product-copy question.
