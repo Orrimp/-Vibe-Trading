@@ -1,7 +1,7 @@
 ---
 slug: advisor-corpus-expansion
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-07-09
 version: 3.1.0
 trace: REQ-V3-P2-CORPUS-EXPANSION-001
@@ -352,19 +352,163 @@ PASSES iff it carries all of:
   AC4), or BREAKS — chosen by the data, not pre-written.
 
 ## Design
-_architect fills this (M-T1). Resolve Q-CE-1..7; lock the venue choice (Q-CE-2)
-and the exogenous-back-fill scope (Q-CE-3); confirm the corpus windows +
-symbol-subsets (Q-CE-1) and the 2526 end-date clamp (Q-CE-6); decide the runner
-seam for the re-run (a `--corpus <dir>` selector vs a dedicated
-`p2_verdict_rerun` bench/bin); confirm whether any ADR amendment is owed (analyst
-lean: likely just a small "P2 corpus-set + Coinbase adapter" ADR — no
-anchor-additive re-emission, no gate change, no clamp change to the single-coin
-engine)._
+
+**Design lock: [ADR-0084](../../architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md)**
+(P2 corpus set + Coinbase second-venue adapter + multi-corpus verdict-rerun
+harness). This section is the operator-readable summary; ADR-0084 D1–D8 are the
+binding record. No gate change, no anchor-additive re-emission, no single-coin
+engine clamp change.
+
+### Q-CE-1..7 decisions (one line each)
+
+- **Q-CE-1 (corpus windows + subsets) — RATIFY unchanged (ADR-0084 D1).** The
+  exact analyst 3-corpus set: `data/binance-1718` (2017-08→2018-12, BTC/ETH/BNB),
+  `data/binance-2020` (2020, the 7 pre-2020 listers), `data/binance-2526`
+  (2025-01→last-closed-month, all 10). Bounded; honest full-coverage subsets; no
+  add/trim.
+- **Q-CE-2 (second venue — THE key decision) — COINBASE-HOURLY, RATIFIED (ADR-0084
+  D2).** Kraken REST OHLC hourly deep-history is INFEASIBLE (720-candle total cap,
+  no backward `since` paging). Coinbase gives a true apples-to-apples *hourly*
+  cross-check on the same windows, reuses the windowed-pagination pattern, and is
+  already `VenueTrust::HighReconcilable`. **Correction to A3:** the shipped
+  `coinbase.rs` is a live-WS feed and CANNOT backfill → a NEW `fetch_coinbase_klines`
+  bin + `coinbase_klines.rs` lib are required. Kraken-daily fallback + Kraken-CSV
+  are OUT of P2.
+- **Q-CE-3 (exogenous back-fill) — FETCH, bounded (ADR-0084 D3).** DVOL
+  (2021-22 + 2025-26, BTC/ETH) + macro (2025-26, DXY/GSPC/TNX), additive per-year/
+  per-month, existing pinned SHAs byte-identical → `v0.dvol_regime` / `v0.macro_riskon`
+  genuinely evaluable on 2122 + 2526. Perp-basis/funding NOT back-filled (stay
+  legitimately absent).
+- **Q-CE-4 (survivorship caveat) — STRONGER prose, no code (ADR-0084 D6).** The
+  1718/2020 corpora carry an explicit survivor-of-survivors caveat in the re-run
+  report; the shipped survival note already fires for every bake-off.
+- **Q-CE-5 (era-cost annex) — YES, opt-in annex (ADR-0084 D7).** Register E-2;
+  primary verdict on the frozen flat-8-bps default (cross-regime comparability);
+  1718 + 2020 also re-run once under the opt-in `VolScaledSpread` (ADR-0081) as a
+  supplementary sensitivity annex.
+- **Q-CE-6 (2526 end-clamp) — CONFIRMED (ADR-0084 D5).** Developer clamps
+  `binance-2526` (and `data/coinbase`) `--end` to the last fully-closed UTC month
+  at fetch time; the exact end month is recorded in the fetch report.
+- **Q-CE-7 (re-run harness seam) — DEDICATED `p2_verdict_rerun` harness (ADR-0084
+  D4).** NOT a `--corpus` selector: `run_bakeoff` hardcodes `data/binance` in the
+  `pub(crate)` `preload_bakeoff_binance_bars`, so the harness composes two proven
+  pieces — arbitrary-corpus `ReplayFeed::new(<root>).merge_symbols` (per
+  `realdata_simple_strategy_bear_survey.rs:168`) + `null_data_no_crown.rs::run_field_and_rank`'s
+  exact per-arm sequence — with ZERO shipped-runner change and `write_report=false`.
+
+### Designed seams
+
+**Seam 1 — the Coinbase fetcher (ADR-0084 D2.a).** New
+`crates/data/src/coinbase_klines.rs` (library) + `crates/data/src/bin/fetch_coinbase_klines.rs`
+(CLI glue), a direct mirror of `binance_klines.rs` + `fetch_binance_klines.rs`.
+The **one real seam** is the venue shim, confined to `coinbase_klines.rs`:
+
+| Concern            | Binance                                  | Coinbase (the shim)                                          |
+|--------------------|------------------------------------------|-------------------------------------------------------------|
+| On-disk symbol dir | `BTCUSDT` (canonical `Symbol`)           | **`BTCUSDT`** (normalized) — REST call uses `coinbase_symbol_map(&sym)`→`BTC-USD` |
+| Endpoint           | `/api/v3/klines?…&limit=1000`            | `/products/{product-id}/candles?start=<ISO8601>&end=<ISO8601>&granularity=3600` |
+| Page size          | 1000 candles                             | **300** candles (>300 → rejected)                           |
+| Candle order       | `[open_time,open,high,low,close,vol,close_time,…]` | `[time,low,high,open,close,volume]` — map positionally into the shared `Kline` |
+| Timestamp unit     | millis                                   | **seconds** → ×1000; `close_time = open_time + granularity_ms − 1` |
+| `trade_count`      | real                                     | absent → `0` (the `coinbase.rs:299` sentinel)               |
+| Pace               | 200 ms                                   | ≥200 ms (Coinbase ~10 req/s public → 5 req/s safe)          |
+
+Everything else is reused verbatim: the shared `binance_klines::Kline` struct,
+`write_parquet` (same 8-col `replay_feed.rs` schema), `should_skip` content-SHA
+idempotency, `data::revision::write_revision_manifest`, `expected_bars_per_month`,
+`--emit-revision-manifest`. A new `paginate_coinbase_candles` mirrors
+`paginate_klines` with the 300-window step + forward sub-windows within each month
+(iterating months back to listing IS the deep-history paging). A new
+`CoinbaseKlineFetcher` trait + `HttpCoinbaseKlineFetcher` + a mock mirror the
+Binance testability seam (no socket in unit tests).
+
+**Seam 2 — corpus pinning (ADR-0084 D1 + D2.b + D5).** Four new `--out` dirs, each
+with its own `REVISION.toml` via `--emit-revision-manifest`, mirroring the
+`data/binance-2122/` convention exactly (fetch command recorded in a non-anchored
+`reports/fetch-*.md`; per-symbol bar totals; aggregate SHA; the "must stay"
+existing SHAs `3a8b96c4…` + `4f390622…` recorded). Existing pins byte-immutable —
+P2 adds new dirs only. The DVOL/macro back-fills (D3) are additive per-year/
+per-month writes into the EXISTING `data/deribit-dvol/` + `data/yahoo-macro/` roots;
+their existing pinned file SHAs are byte-identical (new years/months are new files).
+
+**Seam 3 — the re-run harness (ADR-0084 D4).** `crates/backtest/tests/p2_verdict_rerun.rs`.
+For each `(corpus_root, symbol(s), supported_arm_field)` from the R4 matrix:
+load bars via `ReplayFeed::new(corpus_root, true).merge_symbols(…)`; run the
+null-CI's `run_field_and_rank` verbatim (every fn = the production fn `run_bakeoff`
+calls; `write_report=false`); collect `FieldOutcome` (`ranking` + `scorecard` +
+`candidates`). DVOL/macro arms thread `dvol_override` / `macro_regime_series` via
+the SAME public `resolve_dvol_override` / `load_macro_regime_series` fns, pointed
+at the back-filled corpora. Absent arms (R4 ❌) are **not added to that corpus's
+field** — reported as "not evaluable (no <data>)", never a silent drop, never a
+warm-up-only proxy masquerading as an evaluation. SKIP-safe per corpus. The harness
+emits the AC1-AC8 report data (in-memory `FieldOutcome`s → the tester's report).
+
+**Seam 4 — the report contract (ADR-0084 D8; R8 AC1-AC8).** A NEW, NON-anchored
+`spec/v3/advisor-corpus-expansion/reports/backtest-<date>-p2-verdict-rerun.md`,
+tester-authored, carrying: AC1 per-corpus×per-arm verdict table
+(`RobustnessFlag` + `RecommendationOutcome` + Sharpe-vs-B&H; absent arms shown, never
+blank); AC2 null-CI `crown_clears_dsr` per `ActiveWins` crown (must be `false` for a
+credible ship-passive claim; a `true` on a real corpus is the honest signal to
+surface loudly, mirroring `null_data_no_crown.rs`); AC3 `MinBTL` before/after
+(`scorecard.min_btl_years` aggregated, improvement in years); AC4 explicit wobble
+list (any verdict flip across corpora/venues; empty = valid strong result); AC5
+Binance-vs-Coinbase BTC price agreement on the overlap window; AC6 survivorship +
+E-2 era-cost caveats in words; AC7 gate section (anchors 119/119 + spec-lint
+PASS(0) + new-corpus REVISION consistency test + SKIP-safe smoke); AC8 the top-line
+HOLDS/WOBBLES/BREAKS sentence chosen by the data.
+
+### What this feature deliberately does NOT do
+
+No new backtest math, no new arm, no gate/band change (`bakeoff/{robustness,rank}.rs`,
+`classify_verdict`, `verdict_bands`, the ADR-0066 benchmark all byte-untouched — NOT
+a band proposal). No shipped-runner change. No live trading (the €200 stays
+SIMULATED). No Kraken adapter. No full-universe Coinbase re-run (BTC-only, bounded).
+No reconstruction of delisted coins (survivorship handled by prose framing).
+
+### ADR
+
+**ADR-0084 authored + registered atomically** (README `## Registry` row +
+frontmatter `updated:` in the same edit pass; `scripts/adr_registry_check.py`
+green in both `--pre-commit` and bare mode). No anchor-additive re-emission owed;
+the 9 `spec/anchors.toml` SHAs are untouched.
 
 ## Backtest Scenarios
-_analyst + architect fill this using the backtest/scenario template — the re-run
-is itself the scenario set: {1718, 2020, 2122, 2324, 2526} × {supported arms} +
-the Coinbase BTC cross-check, all `write_report=false`._
+
+The re-run IS the scenario set. All runs `write_report=false` (anchors 119/119 by
+construction); the FROZEN `RobustnessMode::Bootstrap` gate + the buy-and-hold
+benchmark judge every arm. Determinism: each corpus's field uses a fixed seed base
+(the null-CI `run_field_and_rank(seed_u64)` contract; `ChaCha20Rng`), recorded in
+the report.
+
+**Primary matrix (frozen flat-8-bps cost default) — the R4 honest arm×corpus
+availability drives the field per corpus:**
+
+| Scenario | Corpus | Symbols | Supported arms (R4) |
+|----------|--------|---------|---------------------|
+| S1 | `data/binance-1718` | BTC/ETH/BNB | price-only singles + vote-ensembles + short/`_ls` (NO DVOL/macro/basis) |
+| S2 | `data/binance-2020` | the 7 pre-2020 listers | price-only singles + vote-ensembles + short/`_ls` (NO DVOL/macro/basis) |
+| S3 | `data/binance-2122` | 10 | singles + ensembles + short/`_ls` + **DVOL** (back-filled 2021-22) + **macro** (on disk) — NO basis |
+| S4 | `data/binance` (2324 base) | 10 | full field (singles + ensembles + short/`_ls` + DVOL + macro + basis) — the reference/baseline |
+| S5 | `data/binance-2526` | 10 | singles + ensembles + short/`_ls` + **DVOL** (back-filled 2025-26) + **macro** (back-filled 2025-26) — NO basis |
+| S6 | `data/coinbase` | BTC only | price-only singles + vote-ensembles + short/`_ls` (venue cross-check; DVOL/macro N/A) |
+
+**Sensitivity annex (opt-in `VolScaledSpread`, ADR-0081 — E-2 quantification):**
+
+| Scenario | Corpus | Note |
+|----------|--------|------|
+| S7 | `data/binance-1718` | same field as S1, re-run once under `VolScaledSpread`; report Δverdict vs S1 |
+| S8 | `data/binance-2020` | same field as S2, re-run once under `VolScaledSpread`; report Δverdict vs S2 |
+
+**Per-scenario assertions (mirroring `null_data_no_crown.rs`'s two-layer contract,
+applied to REAL corpora):** for every corpus whose crown is `ActiveWins`, record
+`scorecard.crown_clears_dsr` (AC2 — a `true` on a real corpus is the honest
+loud-surface signal, not an auto-fail). Aggregate `scorecard.min_btl_years` across
+the old 2-regime base {2122, 2324} vs the extended base {1718, 2020, 2122, 2324,
+2526} (AC3). Cross-corpus verdict-flip detection → the wobble list (AC4). S6 also
+computes the Binance-vs-Coinbase BTC median-absolute hourly-close % deviation on
+the overlap window (AC5). Empty wobble list + `crown_clears_dsr==false` everywhere
++ `MinBTL` improved = "ship-passive holds; stronger claim" (a valid, expected,
+shippable top-line, AC8).
 
 ## Implementation
 _developer fills this (fetches AFTER the architect designs; emits the
@@ -427,7 +571,16 @@ _tester links to the re-run report + the corpus-consistency tests here._
   venue-agnostic on the OHLCV columns, so a Coinbase corpus in the same schema
   is consumable by `resolve_bakeoff_bars` without engine changes (architect
   verifies the `Venue`/`Symbol` wiring — `BTC-USD` vs `BTCUSDT` symbol-string
-  handling is the one likely seam).
+  handling is the one likely seam). **[architect, ADR-0084 D2.a] RESOLVED +
+  amended:** confirmed venue-agnostic (`merge_symbols` reads by column name). The
+  seam is resolved by storing the on-disk symbol dir as the **canonical `BTCUSDT`**
+  (not `BTC-USD`) and mapping to the product-id `BTC-USD` only for the REST call
+  via the existing `coinbase_symbol_map` — so the corpus reads with the same
+  `Symbol::new("BTCUSDT")` the engine uses, zero engine change. A3's second clause
+  ("architect verifies") is now discharged. **Correction to the reuse assumption:**
+  the shipped `coinbase.rs` is a live-WS feed, NOT a REST backfiller → a new
+  `fetch_coinbase_klines` bin + `coinbase_klines.rs` lib are required (only
+  `coinbase_symbol_map` is reused).
 - **A4** — `write_report=false` on the whole re-run keeps anchors 119/119 by
   construction (same contract as the shipped advisor bake-off + the P2-2 null-CI,
   both of which never touch the anchored report path).
@@ -456,3 +609,26 @@ _tester links to the re-run report + the corpus-consistency tests here._
   M-T1. Anchors 119/119 + spec-lint PASS(0) by construction (write_report=false;
   frozen gate byte-untouched; existing pinned SHAs immutable). REQ-V3-P2-CORPUS-EXPANSION-001
   created in trace.toml (state=proposed, ADR-0082-compliant).
+- 2026-07-09 (architect): **M-T1 design lock — [ADR-0084](../../architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md)**
+  authored + registered atomically (README `## Registry` row + frontmatter in the
+  same edit pass; `adr_registry_check.py` green `--pre-commit` + bare). Q-CE-1..7
+  all resolved (§ Design): Q-CE-1 RATIFY the 3-corpus set unchanged; **Q-CE-2
+  Coinbase-hourly RATIFIED** (Kraken hourly INFEASIBLE — 720-cap/no-backward-paging;
+  a NEW `fetch_coinbase_klines` bin + `coinbase_klines.rs` lib required because the
+  shipped `coinbase.rs` is a live-WS feed that CANNOT backfill — the ONE seam is the
+  Coinbase→canonical-`BTCUSDT` symbol + `[time,low,high,open,close,vol]` seconds→millis
+  schema shim, correcting A3); Q-CE-3 FETCH DVOL(2021-22+2025-26)+macro(2025-26)
+  additive; Q-CE-4 stronger survivorship prose; Q-CE-5 opt-in `VolScaledSpread`
+  era-cost annex (E-2, primary verdict on the frozen default); Q-CE-6 last-closed-
+  UTC-month clamp; **Q-CE-7 a DEDICATED `p2_verdict_rerun` harness** (NOT a `--corpus`
+  selector — the runner hardcodes `data/binance` in `preload_bakeoff_binance_bars`;
+  the harness composes arbitrary-corpus `ReplayFeed` + `null_data_no_crown.rs::run_field_and_rank`,
+  ZERO runner change, `write_report=false`). Four seams designed (fetcher bin /
+  corpus pinning / re-run harness / AC1-AC8 report contract); § Backtest Scenarios
+  = S1-S8 (6 primary corpora + 2 era-cost annex). `tasks.md` authored (ordered
+  developer‖ lane, no UI lane — the DATA-quality panel already handles venue
+  display). NO gate/band change (`bakeoff/{robustness,rank}.rs`/`classify_verdict`/
+  `verdict_bands`/ADR-0066 byte-untouched — NOT a band proposal); existing pins
+  byte-immutable (additive `--out` dirs); anchors 119/119 + spec-lint PASS(0) by
+  construction; the 9 anchors.toml SHAs untouched (no anchor-additive re-emission).
+  status proposed→arch-done; trace row → arch-done. HANDOFF → developer.
