@@ -1793,7 +1793,7 @@ state       = "shipped"  # operator reconcile-to-shipped 2026-06-16. Already bui
 # ── v5-latency-slippage-sim v0.1.0 (analyst M0 + architect M-T1 same-day 2026-05-26) ──
 #   Operator-directed P1 feature track to close the backtest-vs-live execution gap.
 #   Default-zero noop preserves 34 anchors; non-zero values defer to v0.2.0 migration brief.
-[[requirements]]
+[[req]]
 id          = "REQ-V5-LATENCY-SLIPPAGE-001"
 title       = "Deterministic latency + linear-bps slippage simulation in backtest — `LatencySlippageSimConfig` plumbed through `ScenarioConfig`; latency = uniform jitter sampled from seeded `ChaCha20Rng` sub-stream keyed on `(scenario_seed, order_id)` (D2); slippage = linear bps multiplier on signal price sign-applied per `Side` (D3); NEW `AuditEvent::SimulatedExecMetrics` variant with skip-when-zero guard (D4); default = 0..=0 ms latency + 0 bps slippage → byte-identical to pre-feature code (D1 always-on noop, NOT a Cargo feature flag); backtest-only scope (D5 — live mode untouched); 34 anchors byte-identical at v0.1.0 ship via R-NR.1 hard gate; v0.2.0 anchor-migration brief deferred per Q5"
 feature     = "v5-latency-slippage-sim"
@@ -1806,7 +1806,7 @@ arch        = [
   "spec/v5-latency-slippage-sim/feature.md#design",
   "spec/architecture/adr/0043-simulated-latency-and-slippage.md",     # NEW ADR — locks D1-D5 sub-decisions
   "spec/architecture/adr/0032-backtest-realdata-path-and-revision-pin.md",  # CROSS-FEATURE PRECEDENT — parquet revision pinning (R-NR.1 anchor byte-identity)
-  "spec/architecture/adr/0038-spec-anchor-bounded-set-discipline.md",  # CROSS-FEATURE PRECEDENT — § D6 wiring-bug-fix protocol does NOT apply (new feature, not bug-fix); cited in feature.md R-NR.5
+  "spec/architecture/adr/0038-vol-forecast-verdict-shape.md",  # CROSS-FEATURE PRECEDENT — § D6 wiring-bug-fix protocol does NOT apply (new feature, not bug-fix); cited in feature.md R-NR.5. [path repointed 2026-07-09: stale filename 0038-spec-anchor-bounded-set-discipline.md → canonical 0038-vol-forecast-verdict-shape.md during [[requirements]]→[[req]] migration; every other trace row cites the canonical name]
   "spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md",       # PRECEDENT — the e2e divergence test (R5) is mandated by this discovery + CLAUDE.md non-negotiable
   "spec/bug-log.md",                                                  # references Bug #65 K5 sequencing constraint
 ]
@@ -1848,11 +1848,11 @@ tests       = [
   "crates/exec/benches/latency_slippage.rs",                         # Wave E T-D-N9: criterion bench — noop 1.46 ns / jitter 2.28 ns / slippage 19 ns
   "crates/exec/benches/throughput_with_sim.rs",                      # Wave E T-D-N10: throughput bench — noop 33 µs / enabled 191 µs (8760 fills)
 ]
-anchors     = "34/34 PASS"  # Verified 2026-05-26 (task bxjh9cwf5). NONE ADDED — all scenarios use Default::default() = noop. v0.2.0 anchor-migration brief deferred per Q5.
-state       = "passed"        # Developer M-DEV complete 2026-05-26. Tester M-FINAL PASS 2026-05-27 (commit 28db398). R-O1 SHIP path confirmed: 34/34 anchors + e2e divergence 3/3 + all 5 wave tests green. Verdict tree: R-O1 → SHIP v0.1.0 + spawn v0.2.0 anchor-migration brief.
+anchors     = []   # 34/34 PASS — Verified 2026-05-26 (task bxjh9cwf5). NONE ADDED — all scenarios use Default::default() = noop. v0.2.0 anchor-migration brief deferred per Q5. [normalized string "34/34 PASS"→[] array 2026-07-09 during [[requirements]]→[[req]] migration: canonical [[req]] schema uses an array; zero new anchors → empty list, detail preserved here]
+state       = "shipped"   # migrated [[requirements]]→[[req]] 2026-07-09 (ADR-0082 single-source-of-truth; audit-2026-07-06 P3 coverage-gap close). PRIOR: Developer M-DEV complete 2026-05-26. Tester M-FINAL PASS 2026-05-27 (commit 28db398). R-O1 SHIP path confirmed: 34/34 anchors + e2e divergence 3/3 + all 5 wave tests green. Verdict tree: R-O1 → SHIP v0.1.0 + spawn v0.2.0 anchor-migration brief.
 
 # ── cockpit-toast-queue v0.1.0 (analyst inline-salvaged 2026-05-27 after a43a615341bd60112 529'd at tool 26/30) ──
-[[requirements]]
+[[req]]
 id          = "REQ-COCKPIT-TOAST-QUEUE-001"
 title       = "Cockpit toast subsystem — bounded queue replacing single-slot REPLACE semantic at state.rs:2056-2061; spawned from cockpit-training-pressed-wiring v0.1.0 M-DEV K5 follow-on (commit 28db398); operator-decide on (a) display strategy [stacked vs carousel vs tray vs dropdown] / (b) queue capacity / (c) auto-dismiss timeout / (d) placement vs activity-tape cohabitation; ZERO anchor delta (UI-only); cross-references cockpit-activity-status-bar v0.1.0 sibling status-strip surface + cockpit-activity-audit-ledger-producer v0.1.0 K3 high-frequency producer interaction"
 feature     = "cockpit-toast-queue"
@@ -1877,11 +1877,11 @@ tests       = [
   # state.rs::tests inline (4 unit tests): toast_queue_enqueue_basic, toast_queue_overflow_drops_oldest, toast_queue_dismiss_by_id, show_toast_msg_back_compat
   # cockpit_training_pressed_wiring.rs (R4.2 regression) — back-compat shim keeps it green; ZERO byte mutation expected
 ]
-anchors     = "69/69 PASS (ZERO delta — UI-only feature R5.1). Tester-verified 2026-05-27. Integration scenarios: queue_displays_multiple / auto_dismiss_after_timeout / two_completions_in_rapid_succession_both_visible / overflow_drops_oldest_keeps_newest / k5_toast_non_clobber_run_completed_then_training_completed"
-state       = "passed"        # developer M-DEV CLOSED 2026-05-27. Tester M-FINAL SOFT-PASS 2026-05-27 (commit 9cf813a). All functional gates green: 397 lib + 4 toast-queue integration + 5 K5 regression + 3 shell_grid + 86 panel_snapshots PASS; 69/69 anchors; no new workspace failures; no new spec-lint categories; fmt clean; 0 clippy in toast files. Operator-side cockpit_smoke + visual smoke deferred per AGENT.md human-verification recipe contract. Architecture deviation (toast_message field coexistence) confirmed functionally sound. See test-final-2026-05-27-cockpit-toast-queue.md.
+anchors     = []   # 69/69 PASS (ZERO delta — UI-only feature R5.1). Tester-verified 2026-05-27. Integration scenarios: queue_displays_multiple / auto_dismiss_after_timeout / two_completions_in_rapid_succession_both_visible / overflow_drops_oldest_keeps_newest / k5_toast_non_clobber_run_completed_then_training_completed. [normalized string "69/69 PASS ..."→[] array 2026-07-09 during [[requirements]]→[[req]] migration: canonical [[req]] schema uses an array; UI-only zero-delta → empty list, detail preserved here]
+state       = "shipped"   # migrated [[requirements]]→[[req]] 2026-07-09 (ADR-0082 single-source-of-truth; audit-2026-07-06 P3 coverage-gap close). PRIOR: developer M-DEV CLOSED 2026-05-27. Tester M-FINAL SOFT-PASS 2026-05-27 (commit 9cf813a). All functional gates green: 397 lib + 4 toast-queue integration + 5 K5 regression + 3 shell_grid + 86 panel_snapshots PASS; 69/69 anchors; no new workspace failures; no new spec-lint categories; fmt clean; 0 clippy in toast files. Operator-side cockpit_smoke + visual smoke deferred per AGENT.md human-verification recipe contract. Architecture deviation (toast_message field coexistence) confirmed functionally sound. See test-final-2026-05-27-cockpit-toast-queue.md.
 
 # ── v5-latency-slippage-sim-v0.2.0-anchor-migration v0.1.0 (analyst inline-salvaged 2026-05-27 after ac4d192d801af160a 529'd at tool 14/35) ──
-[[requirements]]
+[[req]]
 id          = "REQ-V5-ANCHOR-MIGRATION-V0-2-0-001"
 title       = "v5 latency-slippage-sim v0.2.0 anchor migration — re-emits 34 anchored backtest reports under canonical non-zero LatencySlippageSimConfig (analyst-recommended default: medium = 30..=80ms / 8bps per Q1); migrates SHAs in spec/anchors.toml under new namespace pin; 34 OLD anchors retire to noop-baseline namespace per Q2=(a); Sharpe-delta-per-scenario table for K1 surprise audit per Q3; cross-feature anchor cascade re-verifies every overlay/sizing-modifier e2e test per Q4; this is the brief that makes v5 v0.1.0's engine actually useful — every alpha number under canonical friction"
 feature     = "v5-latency-slippage-sim-v0.2.0-anchor-migration"
@@ -1906,11 +1906,11 @@ tests       = [
   "crates/strategy/tests/vol_targeting_overlay_end_to_end.rs",                  # 1/1 PASS under canonical config
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",                 # 4/4 PASS under canonical config
 ]
-anchors     = "68/68 PASS — 34 noop-baseline + 34 v5-realdata-medium-2026-05 — tester M-FINAL 2026-05-27; scenarios: noop_byte_identical_to_baseline, enabled_diverges_by_at_least_1bp, enabled_audit_metrics_recorded, overlay_quantity_scale_reflects_computed_factor, post_trigger_signals_are_hold, broadened_filter_dampens_cross_sectional_basket, passthrough_when_threshold_unreachably_high, trigger_fires_and_equity_diverges"
-state       = "passed"   # tester M-FINAL VERDICT → PASS 2026-05-27 — 68/68 anchors, 8/8 e2e, K1=0, no new clippy/spec-lint categories; 2 pre-existing test failures whitelisted (t1937 noop-SHA superseded + lab_run_engine flake). See test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md
+anchors     = []   # 68/68 PASS at ship — 34 noop-baseline + 34 v5-realdata-medium-2026-05 — tester M-FINAL 2026-05-27; scenarios: noop_byte_identical_to_baseline, enabled_diverges_by_at_least_1bp, enabled_audit_metrics_recorded, overlay_quantity_scale_reflects_computed_factor, post_trigger_signals_are_hold, broadened_filter_dampens_cross_sectional_basket, passthrough_when_threshold_unreachably_high, trigger_fires_and_equity_diverges. [normalized string "68/68 PASS ..."→[] array 2026-07-09 during [[requirements]]→[[req]] migration: canonical [[req]] schema uses an array. Empty (not the 68 names) because this anchor set was re-emitted/superseded by v5-...-v0.3.0-full-path-wiring (which owns the current namespace citations); duplicating names here would double-cite and mis-key unreferenced-anchor accounting. Historical count preserved in this comment]
+state       = "shipped"   # migrated [[requirements]]→[[req]] 2026-07-09 (ADR-0082 single-source-of-truth; audit-2026-07-06 P3 coverage-gap close). PRIOR: tester M-FINAL VERDICT → PASS 2026-05-27 — 68/68 anchors, 8/8 e2e, K1=0, no new clippy/spec-lint categories; 2 pre-existing test failures whitelisted (t1937 noop-SHA superseded + lab_run_engine flake). See test-final-2026-05-27-v5-latency-slippage-sim-v0.2.0-anchor-migration.md
 
 # ── v5-latency-slippage-sim-v0.3.0-full-path-wiring v0.1.0 (analyst M0 promotion Queue → Active 2026-05-27) ──
-[[requirements]]
+[[req]]
 id          = "REQ-V5-FULL-PATH-WIRING-001"
 title       = "v5 latency-slippage-sim v0.3.0 full-path wiring — plumbs canonical LatencySlippageSimConfig { latency_ms_min: 30, latency_ms_max: 80, slippage_bps: 8 } into the 6 strategy construction sites v0.2.0 missed (SmaComposed / TcnOverlay / PatchTstOverlay / Pairs / VolTargetOverlay / GarchVolOverlay), closes the operator-approved v0.2.0 Ship Route (a) partial-migration follow-on commitment; resolves LOAD-BEARING Group A data-source decision (Q1 = HARD operator-decide, no safe analyst default — revert to synthetic baseline OR accept real-Binance as new oracle epoch); flips v0.2.0-whitelisted t1937_nine_strategy_anchors_unchanged to GREEN via namespace-aware resolver mirroring scripts/verify_anchors.sh; re-emits 32 currently-=noop canonical SHAs; extends Sharpe-delta table to cover all 7 strategy paths under canonical friction with K1 surprise scan"
 feature     = "v5-latency-slippage-sim-v0.3.0-full-path-wiring"
@@ -1950,11 +1950,11 @@ tests       = [
   "crates/strategy/tests/vol_killswitch_overlay_end_to_end.rs",
   "crates/ui/tests/lab_markers_anchor.rs",
 ]
-anchors     = "69/69 PASS — tester-verified 2026-05-27 (v0.3.0 canonical: 9 SHAs updated; 60 unchanged; determinism spot-check PASS pairs-2023-zscore-mr + top10-2023-1h-momentum)"
-state       = "passed"   # Tester M-FINAL SOFT-PASS 2026-05-27. All 69/69 anchors verified. t1937 + t1937b GREEN. 0 K1 surprises. 8 candle/realdata-absent scenarios deferred to v0.4.0. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
+anchors     = []   # 69/69 PASS — tester-verified 2026-05-27 (v0.3.0 canonical: 9 SHAs updated; 60 unchanged; determinism spot-check PASS pairs-2023-zscore-mr + top10-2023-1h-momentum). [normalized string "69/69 PASS ..."→[] array 2026-07-09 during [[requirements]]→[[req]] migration: canonical [[req]] schema uses an array. Empty (not the 69 names) because the current anchor set is already cited by the per-strategy/lab-yahoo/theta-surface [[req]] rows that own those scenarios; this row re-emitted 9 SHAs in-place but adds no NEW anchor name — listing them here would double-cite. Historical 69/69 preserved in this comment]
+state       = "shipped"   # migrated [[requirements]]→[[req]] 2026-07-09 (ADR-0082 single-source-of-truth; audit-2026-07-06 P3 coverage-gap close). PRIOR: Tester M-FINAL SOFT-PASS 2026-05-27. All 69/69 anchors verified. t1937 + t1937b GREEN. 0 K1 surprises. 8 candle/realdata-absent scenarios deferred to v0.4.0. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
 
 # ── cockpit-toast-queue-v0.2.0-cleanup v0.1.0 (analyst M0 close 2026-05-27 — closes v0.1.0 architecture-deviation follow-on) ──
-[[requirements]]
+[[req]]
 id          = "REQ-COCKPIT-TOAST-QUEUE-CLEANUP-001"
 title       = "Cockpit toast subsystem v0.2.0 cleanup — retire the legacy `pub toast_message: Option<SmolStr>` FIELD kept as one-cycle back-compat shim by the v0.1.0 developer (commit a723d24); migrates the 2 known direct-field-WRITE sites in cockpit_training_pressed_wiring.rs (lines 125, 323) to Message::ShowToastWithSeverity / Message::ShowToast dispatch; optionally retires the toast_message() method shim too (developer-discretion sub-route); zero operator-visible behaviour change; zero anchor delta (UI-only); zero new Lumen tokens; no operator-decide Qs (standing-Autoapprove-eligible); pre-verified at analyst pass via grep — H1+H2 VERIFIED, no K1 hidden-writer detected"
 feature     = "cockpit-toast-queue-v0.2.0-cleanup"
@@ -1973,8 +1973,8 @@ tests       = [
   "crates/ui/tests/cockpit_training_pressed_wiring.rs",                         # 5/5 PASS — cargo test -p ui --test cockpit_training_pressed_wiring --features live
   "crates/ui/tests/cockpit_toast_queue.rs",                                     # 4/4 PASS — cargo test -p ui --test cockpit_toast_queue
 ]
-anchors     = "byte-identical to v0.1.0 baseline — verify_anchors.sh: ANCHORS PASS (69 / 69)"
-state       = "passed"   # Tester M-FINAL PASS 2026-05-28. All gates green. K5 5/5, toast_queue 4/4, 69/69 anchors, grep gates 0/0, workspace only pre-existing lab_run_engine flake. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
+anchors     = []   # byte-identical to v0.1.0 baseline — verify_anchors.sh: ANCHORS PASS (69 / 69). [normalized string "byte-identical ... (69 / 69)"→[] array 2026-07-09 during [[requirements]]→[[req]] migration: canonical [[req]] schema uses an array; UI-only cleanup with zero anchor delta → empty list, detail preserved here]
+state       = "shipped"   # migrated [[requirements]]→[[req]] 2026-07-09 (ADR-0082 single-source-of-truth; audit-2026-07-06 P3 coverage-gap close). PRIOR: Tester M-FINAL PASS 2026-05-28. All gates green. K5 5/5, toast_queue 4/4, 69/69 anchors, grep gates 0/0, workspace only pre-existing lab_run_engine flake. Report: spec/archive/tester-reports-2026-05-to-06.tar.gz
 
 #
 # ─── Lab Yahoo realdata v0.1.2 — ETH-USD anchor + cache-state summary badge (proposed 2026-05-27) ───
