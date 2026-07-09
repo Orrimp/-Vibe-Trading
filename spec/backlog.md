@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-06-23
+updated: 2026-07-09
 ---
 
 # Backlog
@@ -125,12 +125,61 @@ paper-only, not-advice on every recommendation.
 
 Full rationale + reuse-vs-new mapping + the ranked product decisions: [`product.md`](product.md).
 
+## Remediation plan — RATIFIED 2026-07-09 (operator: "lets start with it")
+
+> Source: the 2026-07-09 orchestrator critique (product/integrity/data/governance review,
+> after feature-completeness). **This is the active forward queue.** Sequenced by leverage;
+> each phase runs the normal analyst → architect → developer ‖ ui-designer → tester →
+> presenter pipeline with anchors 119/119 + spec-lint gated per commit. **FROZEN gate stays
+> byte-frozen throughout** (sole ADR-gated exception would be a future D1=(b) reversal).
+> Ratified defaults: **D1=(a)** presentation-layer, **D2=in** (wording ratification built
+> into P5), **D3=CI stays parked**, **D4 deferred to P8**.
+
+- **P0 — ops unblock** (hours, in progress) — kill the recurring 1Password SSH relock push
+  wedge (repo-scoped keychain deploy key or HTTPS credential helper; operator generates the
+  key) + `spec/runbooks/ops-push-and-cache.md` incl. cargo cache-corruption recovery.
+- **P1 — crown/scorecard integrity alignment** (2-3 days, **D1=(a) ratified**) — the gate
+  crowns noise ~1/5 seeds (P2-2 empirical); DSR catches every one but only in a side panel.
+  Fix at the PRESENTATION layer: the recommendation banner co-presents the credibility
+  verdict — a crowned pick failing deflated-Sharpe renders an unmissable "fails overfitting
+  check — weak evidence" state on the crown itself. No gate change (D3 report-only stands);
+  additive UI; render-verified with negative control.
+- **P2 — data corpus expansion + verdict re-run** (1-2 wks, mostly compute; in progress) —
+  Binance hourly back to 2017-08 (mania/COVID/recent regimes) + a second reconcilable venue
+  (Kraken per the venue-trust map) as a cross-check corpus; new pinned SHAs; re-run the full
+  bake-off + the P2-2 null CI on the extended corpora (`write_report=false` → anchors
+  untouched by construction). Either ship-passive survives (stronger claim, MinBTL improves)
+  or it breaks somewhere (real signal). Both outcomes are product value.
+- **P3 — PIT/as-of discipline** (3-4 days) — the do-not-build register's ONE open gap: an
+  `as_of` join helper + a look-ahead lint that makes future-peeking impossible by
+  construction; retrofit onto the DVOL/macro exogenous joins.
+- **P4 — €200 realism** (2 days) — min-notional + lot-size rounding as an **opt-in**
+  exec-sim mode (the `VolScaledSpread` pattern; default byte-unchanged, anchors safe by
+  construction) + the mandatory day-1 divergence e2e.
+- **P5 — SUGGEST → manual hand-off export** (3 days, wording operator-ratified before
+  build) — a checklist export at journey end ("following this plan manually means X"):
+  plan rules, sizing, disclaimers; **NO order placement, NO venue API** (register B-2
+  intact). The cheapest change that makes the product usable by a human at all.
+- **P6 — governance debt** (3-4 days) — (a) **CHANGELOG-completeness lint** (shipped trace
+  row ⇒ CHANGELOG line; the exact hole R3-4b found; ADR-0082 lint pattern + self-test);
+  (b) dev-notes consolidation (index + archive, v1-stub discipline); (c) a
+  current-architecture rollup doc superseding serial reads of 83 ADRs.
+- **P7 — CI activation** (1 day, **operator-gated — stays PARKED**) — `git mv
+  ci.yml.deferred → ci.yml` starts the 3-OS matrix; operator declined at the v3 close-out;
+  do NOT activate without explicit direction. Standing recommendation: activate once P1-P4
+  add code deserving the matrix.
+- **P8 — identity fork** (**operator decision, after P1-P6 land**) — (A) instrument: done
+  after P1-P7; (B) multi-asset cross-sectional track: register B-1 named TRACK CHANGE, a
+  new product, only edge family the research found surviving; (C) honesty-as-a-service:
+  package the inoculation demo as the shareable output.
+
 ## Queue (open / deferred)
 
 ### Deferred by decision
 - **cockpit-cross-platform CI** — Linux/Windows source shipped + macOS-verified; the
   3-OS GitHub Actions matrix is parked inert at `.github/workflows/ci.yml.deferred`.
-  Activation deferred to the **near-done project milestone** (do not `git mv` it live before then).
+  Activation deferred to the **near-done project milestone**; re-affirmed as remediation
+  **P8 → P7** above (do not `git mv` it live before an explicit operator go).
 - **`lab-recipe-test-harness v0.3.0+`** — Recipe / subscription harness extension;
   robustness gate cleared, awaiting an analyst spawn. **Still wanted** — re-confirmed in the
   v3 close-out (2026-07-09) as the one genuinely-open forward *build* item; it is infra, NOT
