@@ -59,6 +59,11 @@ pub mod pnl;
 pub mod positions;
 pub mod sidebar_nav;
 pub mod sparkline;
+/// advisor-calibrate-stage (R3-3a / ADR-0083) — the DATA → CALIBRATE → ANALYZE
+/// → SUGGEST spine orientation band, rendered at the top of the shell centre
+/// column. Not a router — the highlight is resolved by the pure
+/// `stage_stepper::stage_for` over `current_screen` + the leaderboard substate.
+pub mod stage_stepper;
 pub mod status_bar;
 pub mod strategies;
 // cockpit-performance-and-input-responsiveness M1 Candidate A — local

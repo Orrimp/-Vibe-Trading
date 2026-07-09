@@ -1914,6 +1914,13 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_CAPITAL_PLACEHOLDER,
         ),
         ("LEADERBOARD_CAPITAL_HINT", LEADERBOARD_CAPITAL_HINT),
+        // advisor-calibrate-stage (R3-3a / ADR-0083) — the spine stepper +
+        // the promoted "Calibrate" sidebar label.
+        ("CALIBRATE_SIDEBAR_LABEL", CALIBRATE_SIDEBAR_LABEL),
+        ("SPINE_STAGE_DATA", SPINE_STAGE_DATA),
+        ("SPINE_STAGE_CALIBRATE", SPINE_STAGE_CALIBRATE),
+        ("SPINE_STAGE_ANALYZE", SPINE_STAGE_ANALYZE),
+        ("SPINE_STAGE_SUGGEST", SPINE_STAGE_SUGGEST),
         // advisor-param-tuning (ADR-0069) — the gate-tied sweep editor
         ("TUNE_SIDEBAR_LABEL", TUNE_SIDEBAR_LABEL),
         ("TUNE_HEADLINE", TUNE_HEADLINE),
@@ -3379,7 +3386,39 @@ pub const LEADERBOARD_CAPITAL_HINT: &str = "Does not affect ranking — all arms
 // below is written so the anti-overfitting point is unmissable.
 
 /// Sidebar/route label for the Tune editor (navigable, not sidebar-default).
+///
+/// **Superseded as the sidebar-row display label by `CALIBRATE_SIDEBAR_LABEL`**
+/// (R3-3a / ADR-0083 D4): the sidebar now shows the promoted **"Calibrate"**
+/// stage name. Retained for any non-sidebar route/debug reference and for
+/// source-compat; the `Screen::Tune` enum variant name is unchanged.
 pub const TUNE_SIDEBAR_LABEL: &str = "Tune";
+
+// ── advisor-calibrate-stage (R3-3a / ADR-0083) — the spine stepper ────────────
+//
+// The DATA → CALIBRATE → ANALYZE → SUGGEST orientation band (a shell-chrome
+// "you are here" affordance across the advisor journey) + the promoted
+// "Calibrate" sidebar label for `Screen::Tune`. The four verbs are an
+// orientation spine, NOT a router: DATA and ANALYZE both live inside
+// `Screen::Leaderboard` (see `widgets::stage_stepper::stage_for`).
+
+/// Sidebar-row display label for the promoted Calibrate stage (`Screen::Tune`).
+/// The enum variant stays `Tune` for source-compat; only the display string
+/// changes (ADR-0083 D4).
+pub const CALIBRATE_SIDEBAR_LABEL: &str = "Calibrate";
+
+/// Spine-stepper segment 1 — the DATA stage (F3 guided input + the
+/// data-quality panel; before a bake-off has run).
+pub const SPINE_STAGE_DATA: &str = "Data";
+
+/// Spine-stepper segment 2 — the CALIBRATE stage (the gate-tied sweep editor).
+pub const SPINE_STAGE_CALIBRATE: &str = "Calibrate";
+
+/// Spine-stepper segment 3 — the ANALYZE stage (the ranked bake-off table +
+/// scorecard; after a run).
+pub const SPINE_STAGE_ANALYZE: &str = "Analyze";
+
+/// Spine-stepper segment 4 — the SUGGEST stage (the forward buy/sell plan).
+pub const SPINE_STAGE_SUGGEST: &str = "Suggest";
 
 /// Screen headline — plain language for "what this is".
 pub const TUNE_HEADLINE: &str = "Tune parameters";

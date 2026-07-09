@@ -1,7 +1,7 @@
 ---
 slug: advisor-calibrate-stage
-status: arch-done
-owner: architect
+status: dev-done
+owner: ui-designer
 updated: 2026-07-09
 version: 3.0.0
 ---
@@ -218,6 +218,97 @@ explicitly NOT sufficient.
 `arch-done` (design-complete; NOT shipped — honoring ADR-0082). Arch refs:
 `spec/v3/README.md`, this feature, `spec/architecture/adr/0083-calibrate-stage-and-spine-stepper.md`.
 
+## UI
+
+### Wireframe (the band, rendered)
+
+```
+┌──────────┬──────────────────────────────────────────────────────────────────┐
+│ Lab      │  Data › [● Calibrate] › Analyze › Suggest        ← spine stepper   │
+│ Live     │ ─────────────────────────────────────────────────────────────────│
+│ Compare  │  Tune parameters                                                  │
+│ Baseline │  Sweep a strategy's parameters and see how each config holds up…  │
+│ Leaderb… │  ┌ Choose a parameter grid ─────────────────────────────────────┐│
+│ Calibrate│  │ [SMA crossover] MACD  RSI  Bollinger bands                    ││
+│ Plan     │  │ …                                                            ││
+│ ──────   │  └──────────────────────────────────────────────────────────────┘│
+│ Strateg… │                                                                   │
+│ …        │                                        [status bar]               │
+└──────────┴──────────────────────────────────────────────────────────────────┘
+```
+
+The band is the FIRST child of the shell `centre` Column (above `body`, below
+nothing) — it spans every advisor-journey screen. The active segment paints a
+SOLID `ACCENT` chip with `FG_ON_ACCENT` text + a leading `●` marker (shape
+signal, not colour-only); the rest are `PANEL_RAISED` chips with `FG_2` text,
+`›` chevrons between. Off the journey the band is elided (a 0-sized `Space`).
+
+The four rendered states (all pixel-verified — read the PNGs):
+
+| screen / substate            | highlight   | PNG                              |
+|------------------------------|-------------|----------------------------------|
+| `Tune`                       | ● Calibrate | `/tmp/stage_stepper_calibrate.png` |
+| `ForwardPlan`                | ● Suggest   | `/tmp/stage_stepper_suggest.png`   |
+| `Leaderboard` + `Empty`      | ● Data      | `/tmp/stage_stepper_data.png`      |
+| `Leaderboard` + `Ready`      | ● Analyze   | `/tmp/stage_stepper_analyze.png`   |
+| `Lab` (off-journey)          | (elided)    | `/tmp/stage_stepper_off_journey.png` |
+
+### New screens / panels / widgets
+
+- **`crates/ui/src/widgets/stage_stepper.rs`** (new) — `SpineStage` enum
+  (`Data|Calibrate|Analyze|Suggest`), the pure `stage_for(screen,
+  &PanelState<T>) -> Option<SpineStage>` mapping, and `view(Option<SpineStage>,
+  mode)`. Registered `pub mod` in `widgets/mod.rs` + a gallery cell
+  (`stage_stepper :: calibrate_highlighted`) in `gallery/routes.rs`.
+- **`Screen::Tune` promoted** to a sidebar-visible **"Calibrate"** entry (Work
+  group, between Leaderboard and ForwardPlan) — the enum variant is unchanged;
+  `sidebar_nav::label_for(Screen::Tune)` now resolves `CALIBRATE_SIDEBAR_LABEL`.
+
+### New strings (`ui::strings`)
+
+`CALIBRATE_SIDEBAR_LABEL`, `SPINE_STAGE_DATA`, `SPINE_STAGE_CALIBRATE`,
+`SPINE_STAGE_ANALYZE`, `SPINE_STAGE_SUGGEST` — all registered in `strings::all()`.
+(`TUNE_SIDEBAR_LABEL` retained but superseded as the sidebar-row label.)
+
+### New theme tokens
+
+**Zero.** The band composes existing tokens only (`ACCENT`, `FG_ON_ACCENT`,
+`PANEL`, `PANEL_RAISED`, `FG_2`, `FG_3`, `BORDER_1`, `space::{XS,S,M,L}`,
+`radius::R2`, `text::SMALL`). No new dependency (`cargo tree -p ui` unchanged).
+
+### Accessibility notes
+
+- **Keyboard**: the band is display-only for R3-3a (no click-nav — see the
+  view-time decision below), so it introduces no new focus stops; every stage is
+  still reachable via the sidebar (Calibrate now included) + the existing
+  `OpenTuneEditor` drill-down.
+- **Colour is never the only signal**: the active segment carries a leading `●`
+  marker + the chevron flow, so "you are here" is legible without hue (satisfies
+  the contrast/second-signal minimum). Text-on-accent uses `FG_ON_ACCENT`
+  (theme-verified ≥ 4.5:1).
+- **Both themes**: colours resolve via `ModeColor::current(mode)` — the band
+  renders correctly under `--theme dark` and `--theme light` (all tokens are
+  dual-mode).
+
+### View-time decision at the pixel layer (ADR-0083 sanctioned fallback)
+
+The DATA/ANALYZE-share-`Leaderboard` highlight (D2) rendered **correctly and
+unambiguously** at the render review (see `/tmp/stage_stepper_data.png` vs
+`/tmp/stage_stepper_analyze.png` — the highlight moves DATA→ANALYZE purely on
+the substate flip, same screen). So the sanctioned fallback (merged
+"DATA·ANALYZE" segment / default-to-ANALYZE) was **NOT needed** — the substate
+discriminator is honest and legible as-is.
+
+Two intentional scope calls, both `view`-time (no ADR amendment):
+- **Display-only stepper** (T7 optional). The band does NOT click-navigate for
+  R3-3a — the sidebar (now with Calibrate) already routes every stage, and a
+  clickable band risks a confusing "click DATA/ANALYZE both go to Leaderboard"
+  ambiguity for zero present benefit. Deferred cleanly; the widget takes only
+  `Option<SpineStage>` so adding click-nav later is additive.
+- **`Loading`/`Error` on Leaderboard → DATA** (not a 5th state). The operator is
+  still on the input surface with no ranked table to analyse, so DATA is the
+  honest highlight.
+
 ## Changelog
 
 - 2026-07-09 (architect): design pass complete (`status: arch-done`). Grounded R3-3a
@@ -226,3 +317,17 @@ explicitly NOT sufficient.
   precedent). Decided the stepper is an orientation band (not a router) and Tune is
   promoted to a sidebar "Calibrate" stage; deferred the `AdvisorStage` carrier again
   (D7). Recorded the design in ADR-0083. Handoff to ui-designer.
+- 2026-07-09 (ui-designer): built + render-verified (`status: dev-done`). Shipped the
+  `stage_stepper` widget (`SpineStage` + pure `stage_for` + `view`), wired it at the
+  top of the shell `centre` Column, promoted `Screen::Tune` to a sidebar "Calibrate"
+  entry (both `SIDEBAR_ENTRIES_PHASE_A` + `SIDEBAR_GROUPS_PHASE_C` Work group in
+  lock-step — flatten-invariant green), added 5 `strings` constants + a gallery cell.
+  Render proof `crates/ui/tests/stage_stepper_render.rs` (macOS-gated): CALIBRATE
+  positive + ForwardPlan→SUGGEST negative control + the DATA/ANALYZE substate
+  discriminator + off-journey elision — all four PNGs read + eyeballed. 9 `stage_for`
+  unit tests cover every D2 row incl. `None`. Gates green: `cargo build -p ui`,
+  `cargo test -p ui --lib` (597), `cargo test -p ui --test stage_stepper_render` (4),
+  `cargo clippy -p ui [--tests] -- -D warnings`, `cargo fmt --check`, consistency
+  (no inline strings/hex), `cargo tree -p ui` unchanged, `verify_anchors.sh` 119/119,
+  `spec_lint.py` PASS. `AdvisorStage` carrier NOT built (D3/D7 deferred). Handoff to
+  tester.

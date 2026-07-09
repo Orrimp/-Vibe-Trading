@@ -35,7 +35,7 @@ use crate::theme::layout::{
     RIGHT_RAIL_OPEN_WIDTH_PX, RIGHT_RAIL_WIDTH_PX, SIDEBAR_ENTRIES_PHASE_A, SIDEBAR_GROUPS_PHASE_C,
 };
 use crate::theme::{ThemeMode, color};
-use crate::widgets::{sidebar_nav, status_bar, toast_tray};
+use crate::widgets::{sidebar_nav, stage_stepper, status_bar, toast_tray};
 
 /// Render the full cockpit shell.
 #[allow(clippy::needless_pass_by_value, clippy::cast_possible_truncation)]
@@ -49,6 +49,18 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     );
     let body = screen_body(model.current_screen, model, mode);
     let bar = status_bar::view(model);
+
+    // advisor-calibrate-stage (R3-3a / ADR-0083 D1) — the DATA → CALIBRATE →
+    // ANALYZE → SUGGEST spine orientation band, pushed at the TOP of the centre
+    // Column (above `body`, mirroring the halted-banner placement) so it spans
+    // every advisor-journey screen consistently. It is NOT a router: the
+    // highlighted stage is resolved by the pure `stage_for` over the current
+    // screen + the EXISTING leaderboard result substate (Leaderboard+Empty →
+    // DATA, Leaderboard+Ready → ANALYZE; Tune → CALIBRATE; ForwardPlan →
+    // SUGGEST), and the band is elided (pixel-silent) off the journey.
+    let spine_stage =
+        stage_stepper::stage_for(model.current_screen, &model.leaderboard_screen_state.result);
+    let stepper = stage_stepper::view(spine_stage, mode);
 
     // Phase F T-D-N17 — Assistant slot wake (K6 Option A).
     // When `assistant_state.is_open == false`, `assistant::view::view` returns a
@@ -76,6 +88,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .height(Length::Fill);
 
     let centre = Column::new()
+        .push(stepper)
         .push(body)
         .push(bar)
         .width(Length::Fill)

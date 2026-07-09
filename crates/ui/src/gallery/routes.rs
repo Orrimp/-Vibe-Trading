@@ -21,13 +21,14 @@ use crate::state::{
 };
 use crate::strings;
 use crate::theme::ThemeMode;
+use crate::widgets::stage_stepper::SpineStage;
 use crate::widgets::{
     activity_tape, agent_feed, bakeoff_input, cache_state_badge, cache_state_summary_badge,
     cadence_badge, chart, date_range, focus_ring, frame, human_control, journal_transaction_modal,
     kill, kpi_strip, latency, num, override_risk_veto, pair_chip, placeholder, pnl, position_curve,
     positions, progress_bar, run_button, run_delta_badge, settings_tabs, sidebar_nav,
-    source_toggle, sparkline, status_bar, strategies, strategy_card, strategy_chip, training_log,
-    training_plot, volume_histogram,
+    source_toggle, sparkline, stage_stepper, status_bar, strategies, strategy_card, strategy_chip,
+    training_log, training_plot, volume_histogram,
 };
 
 use super::cell::GalleryCell;
@@ -257,6 +258,12 @@ fn seed_sparkline() -> Cockpit {
 
 fn seed_status_bar() -> Cockpit {
     fx::fake_cockpit_v1_steady_state()
+}
+
+// advisor-calibrate-stage (R3-3a / ADR-0083) — a real Calibrate state (the
+// Tune editor, no sweep run yet) so `stage_for` would resolve CALIBRATE.
+fn seed_stage_stepper() -> Cockpit {
+    fx::fake_cockpit_tune(PanelState::Empty)
 }
 
 // ── Cell render closures (fn(&Cockpit) -> Element<'static, Message>) ─────────
@@ -750,6 +757,14 @@ fn render_status_bar(model: &Cockpit) -> iced::Element<'_, Message> {
     status_bar::view(model)
 }
 
+// advisor-calibrate-stage (R3-3a / ADR-0083) — the spine band in isolation,
+// showing the CALIBRATE segment highlighted (the state `seed_stage_stepper`
+// seeds). The gallery cell displays the widget standalone; in the shell the
+// stage is resolved by `stage_stepper::stage_for(current_screen, …)`.
+fn render_stage_stepper(_model: &Cockpit) -> iced::Element<'static, Message> {
+    stage_stepper::view(Some(SpineStage::Calibrate), ThemeMode::Dark)
+}
+
 // ── Phase C — settings_tabs widget ────────────────────────────────────────────
 
 fn seed_settings_tabs_risk() -> Cockpit {
@@ -1117,6 +1132,14 @@ pub const GALLERY_CELLS: &[GalleryCell] = &[
         state: "equity_ramp",
         render: render_sparkline,
         seed: seed_sparkline,
+    },
+    // advisor-calibrate-stage (R3-3a / ADR-0083) — the DATA · CALIBRATE ·
+    // ANALYZE · SUGGEST spine band with CALIBRATE highlighted.
+    GalleryCell {
+        widget: "stage_stepper",
+        state: "calibrate_highlighted",
+        render: render_stage_stepper,
+        seed: seed_stage_stepper,
     },
     GalleryCell {
         widget: "status_bar",
@@ -1528,6 +1551,7 @@ pub const EXPECTED_WIDGETS: &[&str] = &[
     "sidebar_nav",
     "source_toggle",
     "sparkline",
+    "stage_stepper",
     "status_bar",
     "settings_tabs",
     "strategies",

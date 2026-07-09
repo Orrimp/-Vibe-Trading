@@ -78,7 +78,10 @@ pub const GALLERY_LOGICAL_HEIGHT: u32 = {
     //   cache_state_summary_badge (empty + one + two + ten).
     // advisor-bakeoff-ranking F3 adds 1 new cell:
     //   bakeoff_input (xrp_200_one_month).
-    // 74 * 260 = 19_240. Adding 360 px headroom for outer container padding.
+    // advisor-calibrate-stage (R3-3a / ADR-0083) adds 1 new cell:
+    //   stage_stepper (calibrate_highlighted).
+    // 75 * 260 = 19_500. Adding 100 px headroom for outer container padding
+    // (still within the 19_600 budget; the covers-all-cells test is the guard).
     19_600
 };
 

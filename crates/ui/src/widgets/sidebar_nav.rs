@@ -20,11 +20,11 @@ use iced::{Border, Length};
 
 use crate::state::{Message, Screen};
 use crate::strings::{
-    BASELINE_SIDEBAR_LABEL, FORWARD_PLAN_SIDEBAR_LABEL, LAB_TITLE, LEADERBOARD_SIDEBAR_LABEL,
-    LIVE_TITLE, REPORTS_SIDEBAR_LABEL, SIDEBAR_NAV_AUDIT, SIDEBAR_NAV_CHARTS, SIDEBAR_NAV_COMPARE,
-    SIDEBAR_NAV_CONTROL, SIDEBAR_NAV_DEBUG, SIDEBAR_NAV_HOME, SIDEBAR_NAV_MEMORY,
-    SIDEBAR_NAV_MODELS, SIDEBAR_NAV_RISK, SIDEBAR_NAV_SETTINGS, SIDEBAR_NAV_STRATEGIES,
-    TRAIL_TITLE, TUNE_SIDEBAR_LABEL,
+    BASELINE_SIDEBAR_LABEL, CALIBRATE_SIDEBAR_LABEL, FORWARD_PLAN_SIDEBAR_LABEL, LAB_TITLE,
+    LEADERBOARD_SIDEBAR_LABEL, LIVE_TITLE, REPORTS_SIDEBAR_LABEL, SIDEBAR_NAV_AUDIT,
+    SIDEBAR_NAV_CHARTS, SIDEBAR_NAV_COMPARE, SIDEBAR_NAV_CONTROL, SIDEBAR_NAV_DEBUG,
+    SIDEBAR_NAV_HOME, SIDEBAR_NAV_MEMORY, SIDEBAR_NAV_MODELS, SIDEBAR_NAV_RISK,
+    SIDEBAR_NAV_SETTINGS, SIDEBAR_NAV_STRATEGIES, TRAIL_TITLE,
 };
 use crate::theme::{ThemeMode, color, layout, radius, space, text};
 use crate::widgets::frame;
@@ -42,10 +42,14 @@ pub const fn label_for(screen: Screen) -> &'static str {
         Screen::Baseline => BASELINE_SIDEBAR_LABEL,
         Screen::Leaderboard => LEADERBOARD_SIDEBAR_LABEL,
         Screen::ForwardPlan => FORWARD_PLAN_SIDEBAR_LABEL,
-        // advisor-param-tuning (ADR-0069) — Tune editor. Navigable via the
-        // "Tune…" row drill-down only, NOT in any sidebar group, so the label
-        // exists for routing/exhaustiveness but never paints a sidebar row.
-        Screen::Tune => TUNE_SIDEBAR_LABEL,
+        // advisor-calibrate-stage (R3-3a / ADR-0083 D4) — the promoted
+        // "Calibrate" stage. `Screen::Tune` is now a sidebar-visible Work-group
+        // entry (between Leaderboard and ForwardPlan) displayed as "Calibrate";
+        // the enum variant name stays `Tune` for source-compat. The existing
+        // `OpenTuneEditor` drill-down (a preseeded entry from a Leaderboard row)
+        // still routes here; the sidebar entry is an ADDITIONAL unseeded entry
+        // point that opens the Tune form in its default/last state.
+        Screen::Tune => CALIBRATE_SIDEBAR_LABEL,
         Screen::Memory => SIDEBAR_NAV_MEMORY,
         Screen::Models => SIDEBAR_NAV_MODELS,
         Screen::Reports => REPORTS_SIDEBAR_LABEL,

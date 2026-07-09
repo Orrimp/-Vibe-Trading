@@ -757,6 +757,16 @@ pub mod layout {
         // which is the passive-BH companion it benchmarks against). Must stay
         // lock-step with `SIDEBAR_GROUPS_PHASE_C` Work group below.
         Screen::Leaderboard,
+        // advisor-calibrate-stage (R3-3a / ADR-0083 D4) — Work group, after
+        // Leaderboard and before ForwardPlan. Promotes the (previously
+        // drill-down-only) `Screen::Tune` to a sidebar-visible "Calibrate"
+        // stage; the spine order DATA/ANALYZE → CALIBRATE → SUGGEST places it
+        // after the leaderboard it tunes and before the forward plan. The enum
+        // variant stays `Screen::Tune` (source-compat); the display label is
+        // "Calibrate" (`sidebar_nav::label_for`). MUST stay lock-step with the
+        // `SIDEBAR_GROUPS_PHASE_C` Work group below (the flatten-invariant test
+        // `sidebar_groups_phase_c__flatten_matches_phase_a` is the guard).
+        Screen::Tune,
         // advisor-forward-plan v0.1.0 (F6) — Work group, after Leaderboard
         // (the single-coin advisor "plan" step sits between the crowned pick
         // and the Live view). Must stay lock-step with `SIDEBAR_GROUPS_PHASE_C`
@@ -796,6 +806,11 @@ pub mod layout {
             Screen::Compare,
             Screen::Baseline,
             Screen::Leaderboard,
+            // advisor-calibrate-stage (R3-3a / ADR-0083 D4) — after Leaderboard
+            // and before ForwardPlan (the promoted "Calibrate" stage). MUST be
+            // the SAME position as in `SIDEBAR_ENTRIES_PHASE_A` above (the
+            // flatten-invariant test is the guard).
+            Screen::Tune,
             // advisor-forward-plan v0.1.0 (F6) — after Leaderboard (the
             // "plan" step between the crowned pick and Live).
             Screen::ForwardPlan,
