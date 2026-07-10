@@ -286,6 +286,7 @@ trading/
 | **[AGENT.md](AGENT.md)** | Multi-agent orchestration: analyst → architect → developer ‖ ui-designer → tester → presenter loop. |
 | **[spec/product.md](spec/product.md)** | What this project is and isn't (analyst-owned). |
 | **[spec/architecture.md](spec/architecture.md)** | System design (architect-owned). |
+| **[spec/architecture/00-current-state.md](spec/architecture/00-current-state.md)** | Derived current-state snapshot — crate map + invariants-in-force + advisor spine in one read, instead of the ~88-ADR series. ADRs authoritative on conflict. |
 | **[spec/backlog.md](spec/backlog.md)** | Forward-looking Queue + open items (shipped work lives in CHANGELOG.md). |
 
 ---

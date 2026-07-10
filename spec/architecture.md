@@ -18,6 +18,8 @@ To answer a specific architectural question, jump straight to the
 relevant section or ADR — there is nothing substantive in this
 file beyond the registries and the cross-cutting invariants below.
 
+> **New here (or a new session)?** Read [`architecture/00-current-state.md`](architecture/00-current-state.md) first — a single derived snapshot (crate map + invariants-in-force + advisor spine) that replaces a serial read of the ~88 ADRs; the ADRs remain authoritative on any conflict.
+
 ## Cross-cutting invariants
 
 Three rules apply to every section file and ADR. They are the
@@ -55,6 +57,7 @@ determinism rules live alongside their respective sections —
 
 | File | Topic |
 |------|-------|
+| [00-current-state.md](architecture/00-current-state.md) | **Start here** — derived current-state snapshot: crate map, invariants-in-force, advisor spine (replaces a serial ~88-ADR read; ADRs authoritative on conflict) |
 | [00-overview.md](architecture/00-overview.md) | Workspace layout, crate naming, runtime model |
 | [01-data-flow.md](architecture/01-data-flow.md) | End-to-end data flow, crate-dependency edges, bin-shared `agent::runtime::run` API, audit migrations |
 | [02-strategy-registry.md](architecture/02-strategy-registry.md) | Strategy registry shape, hot-loading lifecycle, journal integration |
