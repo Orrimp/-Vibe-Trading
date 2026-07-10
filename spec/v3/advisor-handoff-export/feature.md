@@ -573,6 +573,8 @@ anchor: [`spec/backlog.md`](../../backlog.md) § Remediation plan P5.
 
 ## Changelog
 
+- 2026-07-10 (orchestrator): **DECISION-P5-WORDING RATIFIED AS DRAFTED** by the operator — the § Draft wording (Variant A + B) is now the binding serialiser contract. Build unblocked; HANDOFF → architect (Q-HE-1..6).
+
 - 2026-07-10 (analyst): feature proposed from `spec/backlog.md` § Remediation plan P5
   (ratified 2026-07-09, "wording operator-ratified before build"). Framed the SUGGEST →
   manual hand-off export as a DETERMINISTIC, offline, LLM-free serialisation of the EXISTING

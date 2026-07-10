@@ -22,7 +22,7 @@ anchors 119/119 before AND after; spec-lint PASS(0).**
 
 ## Gate
 
-- [ ] **T0 — operator ratifies `DECISION-P5-WORDING`.** The operator reviews § Draft
+- [x] **T0 — operator ratifies `DECISION-P5-WORDING`.** ✅ RATIFIED AS DRAFTED (operator, 2026-07-10; orchestrator-recorded — the § Draft wording Variant A+B is the binding serialiser contract). The operator reviews § Draft
   wording in `feature.md` (instantiated on the golden `(BTCUSDT, €200, 2024 H1)` case) and
   ratifies or redlines: (a) the BenchmarkWins-first ordering; (b) the "following this plan
   manually would mean X" not-advice frame; (c) the three `«NEW»` honesty lines (the ~1/5
