@@ -2,7 +2,7 @@
 slug: do-not-build-register
 status: reference
 owner: analyst
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
 # Do-not-build register — the authoritative settled dead-ends
@@ -38,10 +38,41 @@ below is closed.
 ## Group A — Alpha-chasing (the bright lines the thesis exists to hold)
 
 The product's validated thesis (900 papers, 9 independent reviews, deep-read at
-primary-source depth): **no active strategy robustly beats buy-and-hold net of
-costs on a single liquid coin.** The differentiator is **measured honesty, not
-asserted alpha.** Every idea in this group is a way of quietly re-becoming the
-over-claiming alpha framework the research exists to deflate.
+primary-source depth): **on the current deep-liquidity market era (2023+), no
+active strategy robustly beats buy-and-hold net of costs on a single liquid
+coin** — the modal outcome on every window the advisor can actually run. The
+differentiator is **measured honesty, not asserted alpha.** Every idea in this
+group is a way of quietly re-becoming the over-claiming alpha framework the
+research exists to deflate.
+
+**Why the era clause, and why it is a strength (efficiency migration).** The P2
+corpus-expansion verdict re-run (`../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`,
+tester PASS) ran this same frozen gate back across the older, thinner-liquidity
+eras and found REAL, DSR-clearing, cost-annex-surviving active edges in the
+early market (2017-18, 2020, 2021-22) — and measured their **decay to ~zero in
+the current era** (2023-24: 0/1 ActiveWins; 2025-26: 2/10, both marginal). That
+is the textbook efficiency-migration / anomaly-decay pattern the research corpus
+*predicted* (McLean–Pontiff, `../../../research/SYNTHESIS.md` §62: decay largest
+for the cheapest-to-arbitrage large caps = BTC/ETH). The machinery did not merely
+fail to find alpha — it **positively detected real historical edges and then
+detected the boundary where they died**, and reported it. That is a stronger
+honesty claim than "we looked and found nothing," and it is the credibility story,
+not a wobble. Qualified always by: **survivor-of-survivors** (the 2017-18 subset
+is BTC/ETH/BNB — the three extreme eventual survivors of a top-10 now mostly
+near-zero; those early edges were NOT knowably harvestable ex-ante) and **old-era
+cost realism as a stated limit** (flat-8bps AND vol-scaled likely understate
+2017-20 frictions — depth, impact, outages, withdrawal risk — so old-era crown
+Sharpe margins are upper bounds; the direction is conservative for today's
+verdict).
+
+**This does NOT reopen Group A.** The old-era edges are unreachable in any window
+the advisor runs (every lookback ends at "now"; there is no time machine), and
+chasing them as live strategy is the *exact* alpha-chasing A-3 (automated search)
+crossed with survivorship mining that this group forbids — "re-enable
+donchian_floor because it won in 2020" is a settled dead-end, not a gap. Every
+conclusion in the tables below stands unchanged: the forward advice is identical
+(on the current era, hold), and nothing here is a licence to add alpha surface.
+The finding sharpens the thesis's *scope*; it does not soften a single row.
 
 | # | Tempting idea (usual re-proposal framing) | Guardrail / evidence that kills it | If re-proposed, point here |
 |---|---|---|---|
@@ -132,6 +163,19 @@ workflow-spine last-mile, NOT new alpha surface
 
 ## Changelog
 
+- 2026-07-10 (analyst, P2 efficiency-migration ratification): era-scoped the
+  Group A preamble's "validated thesis" sentence (universal → current-era 2023+)
+  and added the efficiency-migration framing + a pointer to the P2 corpus-expansion
+  verdict re-run (`../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`).
+  The P2 re-run found real, DSR-clearing, cost-annex-surviving active edges in the
+  older eras (2017-20) that decayed to ~zero by 2023+ — the corpus-predicted
+  anomaly-decay pattern (SYNTHESIS §62). Added an explicit "this does NOT reopen
+  Group A" paragraph: old-era edges are unreachable (all advisor lookbacks end at
+  "now") and chasing them is the exact A-3 alpha-chasing + survivorship mining the
+  group forbids — every table row stands unchanged; only the thesis *scope* is
+  sharpened. Decision-support: `p2-wobble-thesis-analysis-2026-07-10.md` (operator
+  ratified Option B). Docs-only; no gate/anchor/code touched; anchors 119/119 and
+  spec-lint PASS(0).
 - 2026-07-09 (analyst, R3-4a): created the authoritative do-not-build register —
   13 entries across 5 groups (A alpha-chasing ×5, B scope-expansion ×2,
   C infeasible-data ×2, D execution-overreach ×4, E gate-tampering ×2), each with

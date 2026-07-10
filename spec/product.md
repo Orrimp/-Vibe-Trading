@@ -2,7 +2,7 @@
 slug: product
 status: shipped
 owner: analyst
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
 # Product Requirements — Single-Coin Investment Advisor (paper)
@@ -73,10 +73,13 @@ not waste.
   **one coin, one budget** at a time. Multi-coin portfolios are out of scope.
 - **Not an alpha claim.** The 2026-06 research program concluded that *no
   active strategy beat passive buy-and-hold net of cost* on the 2023-24
-  large-cap sample under the frozen robustness rule (see § The robustness
-  truth below). The product does **not** promise the selected strategy will
-  win — it promises an honest, measured, reproducible bake-off and a forward
-  paper-sim so the user can see for themselves.
+  large-cap sample under the frozen robustness rule (see § Why this is honest
+  below), and the P2 corpus-expansion re-run confirmed the same holds across
+  every recent-era window the advisor can run — while honestly detecting that
+  *older, less-efficient eras (2017-20) did carry real, since-decayed active
+  edges*. The product does **not** promise the selected strategy will win — it
+  promises an honest, measured, reproducible bake-off and a forward paper-sim
+  so the user can see for themselves.
 - **Not HFT, not market-making, not regulated derivatives, not tax/lot
   accounting.** Unchanged non-goals.
 
@@ -91,10 +94,23 @@ not waste.
 
 The prior identity of this repo was a *research stack* hunting for an active
 edge. That hunt **concluded 2026-06-08: ship passive** — across the three
-reachable channels (price/OHLCV, derivatives-positioning, on-chain) no active
-strategy beat passive buy-and-hold net of cost under a pre-registered
-block-bootstrap Monte-Carlo rule. That result is **not discarded by this
-pivot — it is a feature of it.** Two consequences the product must honour:
+reachable channels (price/OHLCV, derivatives-positioning, on-chain), on the
+current deep-liquidity market era, no active strategy beat passive buy-and-hold
+net of cost under a pre-registered block-bootstrap Monte-Carlo rule. That result
+is **not discarded by this pivot — it is a feature of it.**
+
+The scope of that claim is itself measured, not asserted. The P2 corpus-expansion
+verdict re-run ([`v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md),
+tester PASS) ran this same frozen gate back across the older, thinner-liquidity
+eras and found **real, DSR-clearing active edges in the early market (2017-20)
+that decay to ~zero by 2023+** — the efficiency-migration / anomaly-decay pattern
+the research corpus predicted. The honest headline is that the machinery
+*positively detected* real historical edges and their decay boundary, not merely
+"found nothing" — qualified by survivor-of-survivors bias (the 2017-18 winners
+are the extreme eventual survivors, not knowable ex-ante) and by old-era cost
+realism (those crown margins are upper bounds). Forward advice is unchanged: every
+window the advisor runs ends at "now," where the modal outcome is still just-hold.
+Two consequences the product must honour:
 
 1. **Passive buy-and-hold is always in the bake-off as the benchmark arm.**
    The "best strategy" is meaningful only relative to just-holding-the-coin.
@@ -483,6 +499,20 @@ Tracked here until the operator answers; then they migrate into the body.
 
 ## Changelog
 
+- 2026-07-10 (analyst, P2 efficiency-migration ratification): scoped the § "Why
+  this is honest" opener and the § IS-NOT "Not an alpha claim" bullet to the
+  current market era (2023+) and added the efficiency-migration narrative — the
+  P2 corpus-expansion verdict re-run
+  ([`v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md))
+  found real, DSR-clearing active edges in the older eras (2017-20) that decayed
+  to ~zero by 2023+, the corpus-predicted anomaly-decay pattern. Framed as a
+  strength (the gate positively detected historical edges + their decay boundary),
+  qualified by survivor-of-survivors bias + old-era cost realism (crown margins
+  are upper bounds); forward advice unchanged (every advisor window ends at "now",
+  modal outcome still just-hold). The § Active-edge-search status block (2026-06-08,
+  retained) already carried the bounded 2023-24 scope and is left as-is. Operator
+  ratified Option B; decision-support `dev-notes/p2-wobble-thesis-analysis-2026-07-10.md`.
+  Docs-only; no gate/anchor/code touched.
 - 2026-07-09 (analyst, R3-4a do-not-build register): added a single pointer line
   at the end of § What this product IS NOT to the new authoritative **do-not-build
   register** ([`dev-notes/do-not-build-register.md`](dev-notes/do-not-build-register.md))

@@ -11,12 +11,21 @@ This README is the human entry point. AI agents should start at **[CLAUDE.md](CL
 **The product is "The Honest Advisor" — a single-coin paper/sim investment advisor —
 and it is feature-complete.** The honest arc that got here:
 
-1. **The active-vs-passive research program CONCLUDED (2026-06-08): SHIP PASSIVE.** Across
+1. **The active-vs-passive research program CONCLUDED (2026-06-08): SHIP PASSIVE (current era).** Across
    all three reachable channels — price/OHLCV, derivatives-positioning, and on-chain — no
    active strategy beat passive buy-and-hold net of cost under a frozen, pre-registered
-   block-bootstrap robustness rule (firmed on real 2021-22 bear-market data). **This result
-   is the moat, not a disappointment** — it is kept prominent because it is the product's
-   credibility.
+   block-bootstrap robustness rule, on the current deep-liquidity market (firmed on real
+   2021-22 bear-market data). **This result is the moat, not a disappointment** — it is kept
+   prominent because it is the product's credibility. And the *scope* of the claim is itself
+   measured: the P2 corpus-expansion verdict re-run
+   ([`spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md))
+   ran the same gate back across the older, thinner-liquidity eras and found **real,
+   DSR-clearing active edges in the early market (2017-20) that decay to ~zero by 2023+** —
+   the efficiency-migration pattern the research predicted. The gate did not merely fail to
+   find alpha; it *positively detected* real historical edges and the boundary where they died
+   (qualified by survivor-of-survivors bias + old-era cost realism — those margins are upper
+   bounds). Forward advice is unchanged: every window the advisor runs ends at "now", where
+   holding still wins.
 2. **Product pivot (2026-06-19): "The Honest Advisor."** The shipped engine was re-framed
    into a guided retail journey — *pick a coin + budget (e.g. €200 XRPUSDT) → bake off ALL
    strategies → rank the best under the robustness gate → forward plan → paper-trade your
@@ -32,8 +41,14 @@ and it is feature-complete.** The honest arc that got here:
    demo runbook.
 
 The thesis has now been stress-tested from every reachable angle — long, combinations,
-shorts, breakout/volume/OBV signals, implied-vol regime, macro cross-asset — and **held
-every time**. There is no coherent "add-more-features" v3 (see
+shorts, breakout/volume/OBV signals, implied-vol regime, macro cross-asset, and (P2) four
+extra market eras + a second venue — and on the current deep-liquidity market it **holds
+every time**. The one place it *bends* is the honest one: on the older, less-efficient eras
+(2017-20) the same gate crowned real, DSR-clearing active edges that have since decayed —
+which is the gate **working**, positively mapping the boundary of its own claim rather than
+asserting a universal that isn't true (this is a *strength* of measured honesty, not a crack;
+those old edges are unreachable today and are the exact alpha-chasing the do-not-build register
+forbids). There is no coherent "add-more-features" v3 (see
 [`spec/dev-notes/post-v2-scoping-2026-07-09.md`](spec/dev-notes/post-v2-scoping-2026-07-09.md));
 manufacturing more alpha surface would contradict *measured honesty, not asserted alpha*.
 
