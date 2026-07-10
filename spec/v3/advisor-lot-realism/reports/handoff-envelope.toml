@@ -1,0 +1,59 @@
+[handoff]
+from      = "architect"
+to        = "developer"
+feature   = "advisor-lot-realism"
+trace_refs = ["REQ-V3-P4-LOT-REALISM-001"]
+verdict   = "arch-done"
+priority  = "P4"
+
+[inputs]
+brief     = "spec/backlog.md#p4"
+artifacts = [
+  "spec/v3/advisor-lot-realism/feature.md",
+  "spec/v3/advisor-lot-realism/tasks.md",
+  "spec/architecture/adr/0087-lot-realism-opt-in-exec-sim.md",
+]
+
+[outputs]
+spec_files = [
+  "spec/v3/advisor-lot-realism/feature.md",
+  "spec/v3/advisor-lot-realism/tasks.md",
+  "spec/trace.toml",
+  "spec/architecture/adr/README.md",
+]
+adrs_added = ["0087"]
+
+[seam]
+site        = "crates/backtest/src/paper.rs:67  (PaperEngine::step)"
+covers_bakeoff = "crates/backtest/src/engine.rs:2501 + every crates/backtest/src/scenarios/*"
+covers_forward = "crates/agent/src/runtime.rs:2291"
+config_home = "crates/backtest/src/cli_types.rs:58  (LatencySlippageSimConfig, #[serde(default)] venue_filter)"
+filter_table = "crates/cost/src/venue_filter.rs  (NEW; reuses data::SymbolInfo shape from crates/data/src/source.rs:8; no live fetch)"
+divergence_e2e = "crates/backtest/tests/lot_realism_divergence_end_to_end.rs  (NEW; DOGE €50-200 ≥1bp + €200-major negative control)"
+
+[open_questions]
+items = [
+  "OQ-VF-STORAGE: carry the resolved VenueFilter per-symbol on PaperEngine at construction vs lazy venue_filter_for() lookup inside step. Architect lean: lazy lookup (the table is tiny + step already iterates orders); developer picks whichever keeps step allocation-free on the hot path.",
+  "OQ-VF-SUMMARY-SURFACE: exactly which run-summary struct folds in skipped_min_notional (the advisor bake-off summary vs the forward-loop summary). Architect lean: wherever SimulatedExecMetrics-style friction is already summarized; both paths should expose sim_filter_stats().",
+]
+
+[assumptions]
+items = [
+  "The advisor bake-off + forward loop keep cash/equity in-memory (state/cash in engine.rs/runtime.rs) and do NOT write to audit::Ledger — VERIFIED by grounding. Hence the primary skip record is an in-memory tally; the strategy_events min_notional_skip wiring is RESERVED for a live-agent caller that does not ship here.",
+  "Every downstream cash/position update reads fill.qty.get() (engine.rs:2504-2521, runtime.rs:2298-2333) — VERIFIED — so rewriting fill.qty in step propagates to equity on both paths (the one-apply-site guarantee).",
+  "The Sell/close leg builds its order from position.base_qty directly (bypassing FixedFractionSizer::compute_qty) on both paths — VERIFIED — which is why the seam is step, not the sizer.",
+  "DOGEUSDT step_size = 1 (whole units) makes rounding bite at €20 clips; confirm the exact snapshot value when populating venue_filter.rs (a dated SNAPSHOT_DATE capture; staleness is a stated limit).",
+]
+
+[gates_at_authoring]
+verify_anchors     = "119/119 (before AND after writes)"
+spec_lint          = "PASS (0 violations)"
+adr_registry_check = "--pre-commit exit 0 (ADR-0087 registered atomically: Registry row + frontmatter same edit pass)"
+
+[risks]
+items = [
+  "NOOP TRAP (v3-vol-overlay-noop): a mode that computes rounded_qty but never assigns it to Fill.qty would show ZERO divergence. Mitigation: the T6 e2e MUST FAIL before the T5 wiring lands and PASS after — build T6 first, watch it fail, then wire T5.",
+  "OVER-SPEND: rounding UP would let a €20 clip deploy €20.01. Mitigation: floor only (never round/ceil), Decimal-exact; T2/T3 unit tests pin round-down (0.999→0 at step 1).",
+  "ANCHOR DRIFT: any accidental change to the default (venue_filter defaulting to Some, or step touching the None path) breaks 119 anchors. Mitigation: venue_filter_default_is_none + paper_step_none_is_byte_identical enforcement tests (T7, NEVER DELETE) + verify_anchors.sh before/after.",
+  "SIBLING COLLISION: the P5 analyst owns spec/v3/advisor-handoff-export/** in parallel. Their folder is untouched; trace.toml/adr-README edits were targeted appends/inserts. Developer: do not edit the P5 folder; re-read + retry on any trace.toml/README merge collision.",
+]
