@@ -6,8 +6,9 @@
 
 Companion to scripts/verify_anchors.sh (which checks content hashes).
 This script checks shape: dead links, missing frontmatter, orphan
-feature folders, anchor coverage, trace.toml row validity, and
-pipeline status drift (deck + PASS report ⇒ status ≥ presenter-done).
+feature folders, anchor coverage, trace.toml row validity, pipeline
+status drift (deck + PASS report ⇒ status ≥ presenter-done), and
+CHANGELOG-index completeness (every shipped feature ⇒ a CHANGELOG.md line).
 
 Exit code = number of violation CATEGORIES that triggered (0 = clean).
 Pass --all to print every violation regardless of category count.
@@ -16,8 +17,8 @@ Usage:
     uv run scripts/spec_lint.py            # whole spec/ tree (preferred)
     uv run scripts/spec_lint.py spec/<slug>  # restrict to one folder
     uv run scripts/spec_lint.py --all      # verbose
-    uv run scripts/spec_lint.py --self-test  # synthetic-fixture check of the
-                                             # status-drift rule (exit 0 = ok)
+    uv run scripts/spec_lint.py --self-test  # synthetic-fixture check of every
+                                             # self-tested rule (exit 0 = ok)
 
 System Python (3.11+) also works:
     python3 scripts/spec_lint.py
@@ -102,6 +103,7 @@ CATEGORIES = (
     "shipped-no-tests",
     "status-drift",
     "feature-shipped-trace-drift",
+    "feature-shipped-changelog-missing",
     "trace-broken-path",
     "adr-not-registered",
 )
@@ -200,6 +202,60 @@ KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
         "../architecture/adr/0038-vol-forecast-verdict-shape.md"
         "#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension",
     ),
+}
+
+
+# Shipped features whose CHANGELOG.md index entry is a documented THEMATIC
+# ROLLUP line rather than a verbatim slug — exempted from
+# feature-shipped-changelog-missing. Each entry cites the exact covering
+# CHANGELOG.md line (verified 2026-07-10). This mirrors KNOWN_FROZEN_DEAD_LINKS:
+# a short, per-entry-justified allowlist for irreducible reality. See the
+# GRANDFATHERING note above check_feature_shipped_changelog_missing for why
+# these are rollups (intentional, per the 2026-06-17 spec-compression pass) and
+# NOT gaps. Keep SHORT — a NEW shipped feature earns a real CHANGELOG line, not
+# an allowlist row. Remove an entry the moment its feature gains a verbatim line.
+CHANGELOG_ROLLUP_ALLOWLIST: dict[str, str] = {
+    # --- v0…v5 strategy/engine ladder → thematic per-version rollup lines
+    #     (CHANGELOG § "Strategy & backtest engine"). The folder slugs carry a
+    #     descriptive tail (`v05-composed-strategies`) that the compressed
+    #     `**v0.5**` line intentionally omits.
+    "v0-paper-sma": "CHANGELOG § Strategy — `**v0**` (Paper-trading SMA-crossover tracer bullet).",
+    "v05-composed-strategies": "CHANGELOG § Strategy — `**v0.5**` (Composed strategies).",
+    "v1-cross-sectional-momentum": "CHANGELOG § Strategy — `**v1**` (Cross-sectional top-N momentum).",
+    "v15a-mean-reversion-pairs": "CHANGELOG § Strategy — `**v1.5a**` (Mean-reversion on z-scored pairs).",
+    "v1-5b-multi-venue": "CHANGELOG § Strategy — `**v1.5b**` (Multi-venue + 1-second aggregated trades).",
+    "v2-llm-strategy": "CHANGELOG § Strategy — `**v2**` (LLM news/sentiment strategy overlay).",
+    "v2-1-tracing-layer-redactor": "CHANGELOG § Strategy — `**v2.1**` (tracing-Layer secret redactor).",
+    # v5 latency/slippage: one `**v5**` line names every v0.2→v0.5 sub-phase as
+    # the "full anchor-migration chain" rather than the folder slugs.
+    "v5-latency-slippage-sim": "CHANGELOG § Strategy — `**v5**` (deterministic latency & slippage sim, v0.1→v0.5 chain).",
+    "v5-latency-slippage-sim-v0.2.0-anchor-migration": "CHANGELOG § Strategy — `**v5**` line ('v0.2 anchor migration').",
+    "v5-latency-slippage-sim-v0.3.0-full-path-wiring": "CHANGELOG § Strategy — `**v5**` line ('v0.3 full-path wiring').",
+    "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit": "CHANGELOG § Strategy — `**v5**` line ('v0.4 candle/realdata feature-gated re-emit').",
+    "v5-latency-slippage-sim-v0.5.0-square-root-market-impact": "CHANGELOG § Strategy — `**v5**` line ('v0.5 sqrt-impact').",
+    # --- Retired DL/ML research lines → the single `**v2.5 DL forecaster
+    #     programme**` rollup (CHANGELOG § "Retired research lines"), which
+    #     names the TCN/PatchTST/Transformer/bake-off sub-studies collectively.
+    "v25-tcn-overlay": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN overlay).",
+    "v25-tcn-alpha-investigation": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN alpha-investigation sub-study).",
+    "v25-tcn-recalibrate": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN recalibrate sub-study).",
+    "v25-tcn-threshold-tuning": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN threshold-tuning sub-study).",
+    "v25-tcn-horizon-bump-or-retire": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN horizon-bump sub-study).",
+    "v25a-patchtst-overlay": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (PatchTST overlay).",
+    "v3-volatility-forecaster-noop-fix": "CHANGELOG § Retired — `**v3 volatility forecaster**` line ('+ noop-fix').",
+    "v3-regime-classifier": "CHANGELOG § Retired — `**v3 regime-classifier / v3 XGBoost cheap-classifier**`.",
+    # --- Iteration/follow-up folders folded into their base feature's line
+    #     with a `(+ …)` suffix (the CHANGELOG's iteration convention).
+    "cockpit-activity-audit-ledger-producer": "CHANGELOG § Cockpit — `**cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer**`.",
+    "cockpit-activity-llm-producer": "CHANGELOG § Cockpit — `**cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer**`.",
+    "reflection-memory-trader-wiring": "CHANGELOG § Core infra — `**reflection-memory** (+ trader-wiring)`.",
+    "ui-rethink-phase-d-trail-followup": "CHANGELOG § Cockpit — `**ui-rethink-phase-d-trail** (+ follow-up)`.",
+    # --- Label-shorthand: the CHANGELOG entry uses the roadmap shorthand
+    #     `F1+F2` for the folder slug's `-ranking` variant.
+    "advisor-bakeoff-ranking": "CHANGELOG § Advisor — `**advisor-bakeoff F1+F2**` (F1 bake-off + F2 ranking; slug carries the -ranking tail).",
+    # --- v2 tester-report UMBRELLA folder (not a standalone product feature):
+    #     its three overlay features are each independently indexed.
+    "phase-2c-overlays": "CHANGELOG § v2 — the three children are indexed: `**advisor-vol-estimator**` / `**advisor-vol-overlay-reposition**` / `**advisor-drawdown-control-overlay**` (this folder is their shared test-report umbrella).",
 }
 
 
@@ -610,6 +666,165 @@ def check_feature_shipped_trace_drift(spec_dir: Path, report: Report) -> None:
                 )
 
 
+# ---------------------------------------------------------------------------
+# Check: feature.md `status: shipped` ⇒ indexed in CHANGELOG.md
+# ---------------------------------------------------------------------------
+#
+# Sibling of feature-shipped-trace-drift, extending the SAME ADR-0082 single-
+# source-of-truth philosophy to the OTHER derived index. ADR-0082 § D1 makes
+# feature.md `status:` the authoritative lifecycle record and names two derived
+# artifacts it must not contradict: the `trace.toml` `state=` (enforced by
+# feature-shipped-trace-drift) and — explicitly — the CHANGELOG that "indexes"
+# the shipped set (ADR-0082 § "Alternatives", the reason feature.md wins over
+# trace.toml: "the CHANGELOG indexes [feature.md]"). CHANGELOG.md's own header
+# declares it "The canonical 'what's-been-built' index — one line per
+# implemented feature". This rule makes that invariant mechanical: once a
+# feature's feature.md reaches `status: shipped`, CHANGELOG.md MUST reference
+# it. Closes the drift class R3-4b found (the entire v2 tranche + the v3
+# close-out were absent from the canonical index until manually reconciled) —
+# the exact bookkeeping debt the durable-contract lints are built to prevent.
+#
+# MATCH SEMANTICS (measured against the whole tree 2026-07-10 — 114 shipped
+# features: 84 matched by raw substring, 4 by the iteration-suffix normalizer,
+# 26 by the documented rollup allowlist):
+#   A feature counts as INDEXED iff CHANGELOG.md contains, CASE-INSENSITIVELY,
+#   any of:
+#     (1) its feature-folder slug         (e.g. `advisor-overfitting-scorecard`)
+#     (2) any trace.toml REQ-id whose `feature=` resolves to it
+#         (e.g. `REQ-V3-P2-CORPUS-EXPANSION-001`)
+#     (3) its repo-relative folder PATH   (e.g. `spec/v2/phase-2d/` — the
+#         CHANGELOG sometimes cites the folder instead of a bare slug).
+#     (4) — for a `…-vN.N.N-<descriptor>` ITERATION folder only — its BASE slug
+#         with the trailing `-vN.N.N-…` stripped (e.g.
+#         `lab-yahoo-realdata-v0.1.2-eth-usd-…` → `lab-yahoo-realdata`), which
+#         the CHANGELOG indexes via its `(+ vN.N …)` iteration convention.
+#   Raw substring is wrapping-ROBUST by construction: `**slug**`, `` `slug` ``,
+#   and `[slug](…)` all embed the bare slug flanked by non-`[a-z0-9-]` chars, so
+#   the match fires regardless of markdown emphasis/code/link decoration. It was
+#   verified (2026-07-10) that none of the 84 raw matches occurs ONLY as a
+#   substring of a longer slug-token — i.e. no false-positive can mask a real
+#   gap through embedding.
+#
+# GRANDFATHERING — the CHANGELOG_ROLLUP_ALLOWLIST (below). ~30 legitimately-
+# shipped features are indexed under CHANGELOG.md's *documented compression
+# convention* — thematic ROLLUP lines that deliberately do NOT carry a verbatim
+# slug (the `v0…v5` engine ladder rolled into `**v0**`…`**v5**`; the retired DL
+# programme rolled into `**v2.5 DL forecaster programme**`; iteration folders
+# like `…-v0.2.0-cleanup` folded into the base line as `(+ v0.2 cleanup)`). Per
+# the 2026-06-17 spec-compression pass, these rollups are INTENTIONAL, not gaps;
+# adding 30 verbatim one-liners would duplicate existing content and fight the
+# CHANGELOG's own "grouped by subsystem" convention. So — like the established
+# KNOWN_FROZEN_DEAD_LINKS pattern — each is allowlisted with the exact covering
+# CHANGELOG line cited inline. The allowlist is HONEST: every entry was verified
+# to have a real covering line (a slug is exempted only because it IS indexed,
+# just under a rollup the substring match can't mechanically reach — never
+# because it is genuinely absent). A DELIBERATELY-loose normalizer (e.g.
+# `v05`→`v0.5` then bare-`v0.5` presence) was REJECTED: `v0.5` recurs as a
+# version tag throughout the file, so it would silently PASS a genuinely-missing
+# `v0.5.x` feature (false-negative) — strictly worse than an allowlist a human
+# reviews. Keep this list SHORT; a NEW shipped feature earns a real CHANGELOG
+# line, never an allowlist entry.
+
+
+def _slug_indexed_in_changelog(
+    prefix: str, slug: str, reqs: Iterable[str], changelog_lower: str,
+) -> bool:
+    """True iff CHANGELOG.md references this feature (slug / REQ-id / path).
+
+    All comparisons are case-insensitive raw-substring against the whole
+    lower-cased CHANGELOG text (wrapping-robust — see MATCH SEMANTICS above).
+    The allowlist is consulted last so that a real CHANGELOG line always
+    satisfies the check without needing an exemption.
+    """
+    if slug.lower() in changelog_lower:
+        return True
+    for rid in reqs:
+        if rid and rid.lower() in changelog_lower:
+            return True
+    # Folder-path form, e.g. "spec/v2/phase-2d/".
+    path_form = (f"spec/{prefix}/{slug}/" if prefix else f"spec/{slug}/").lower()
+    if path_form in changelog_lower:
+        return True
+    # Iteration-folder form: a `…-vN.N.N-<descriptor>` slug is a version bump of
+    # a base feature and is indexed by the BASE feature's line (the CHANGELOG's
+    # `(+ vN.N …)` iteration convention). Strip the trailing `-vN.N.N-…` and
+    # require the SPECIFIC base slug to be present. Safe by construction — the
+    # base slug (e.g. `lab-yahoo-realdata`) is a full descriptive token, so this
+    # cannot spuriously match a bare version tag the way a `v05`→`v0.5` squeeze
+    # would. Only fires when the residual is a real, non-empty base slug that
+    # differs from the original.
+    base = re.sub(r"-v\d+\.\d+\.\d+.*$", "", slug)
+    if base != slug and base and base.lower() in changelog_lower:
+        return True
+    if slug in CHANGELOG_ROLLUP_ALLOWLIST:
+        return True
+    return False
+
+
+def check_feature_shipped_changelog_missing(spec_dir: Path, report: Report) -> None:
+    """ADR-0082-aligned enforcement: shipped feature ⇒ a CHANGELOG.md line.
+
+    For every ``spec/**/feature.md`` (across ``spec/``, ``spec/v1``,
+    ``spec/v2``, ``spec/v3`` — mirroring the resolution used by every other
+    tree-level check) whose frontmatter ``status:`` is ``shipped``, assert that
+    CHANGELOG.md references it by slug, by any trace REQ-id, by folder path, or
+    via the documented rollup allowlist. Non-shipped features are never flagged
+    — the CHANGELOG indexes what has *shipped*, so a pre-ship feature is
+    correctly absent.
+    """
+    # CHANGELOG.md sits at the repo root, i.e. the parent of spec/. Resolving it
+    # relative to spec_dir (rather than the module-level REPO_ROOT) lets the
+    # --self-test drive the check against a synthetic tree in a tempdir.
+    changelog_path = spec_dir.parent / "CHANGELOG.md"
+    if not changelog_path.exists():
+        return  # nothing to index against; degrade gracefully
+    changelog_lower = changelog_path.read_text(
+        encoding="utf-8", errors="replace"
+    ).lower()
+
+    # trace.toml slug → [REQ-id, …] (best-effort; absent trace = empty map).
+    slug_to_reqs: dict[str, list[str]] = {}
+    trace_path = spec_dir / "trace.toml"
+    if trace_path.exists():
+        with trace_path.open("rb") as f:
+            tdata = tomllib.load(f)
+        for row in tdata.get("req", []):
+            rid = row.get("id")
+            feat = row.get("feature")
+            feats = [feat] if isinstance(feat, str) else (feat or [])
+            for s in feats:
+                slug_to_reqs.setdefault(s, []).append(rid)
+
+    # Feature folders: spec/<slug> and spec/{v1,v2,v3}/<slug>.
+    containers: list[tuple[str, Path]] = [("", child) for child in spec_dir.iterdir()]
+    for prefix in ("v1", "v2", "v3"):
+        sub = spec_dir / prefix
+        if sub.is_dir():
+            containers.extend((prefix, child) for child in sub.iterdir())
+
+    for prefix, child in sorted(containers, key=lambda pc: (pc[0], pc[1].name)):
+        if not is_feature_folder(child):
+            continue
+        feature = child / "feature.md"
+        if not feature.exists():
+            continue
+        fm = parse_frontmatter(feature.read_text(encoding="utf-8", errors="replace"))
+        if not fm or fm.get("status") != "shipped":
+            continue
+        slug = child.name
+        reqs = slug_to_reqs.get(slug, [])
+        if not _slug_indexed_in_changelog(prefix, slug, reqs, changelog_lower):
+            report.add(
+                "feature-shipped-changelog-missing",
+                feature,
+                f"feature {slug!r} is status:shipped but is not indexed in "
+                f"CHANGELOG.md (no slug / REQ-id {reqs or '[]'} / folder-path "
+                f"reference, and not in the documented rollup allowlist) — the "
+                f"canonical 'what's-been-built' index must reference every "
+                f"shipped feature (ADR-0082 § D1)",
+            )
+
+
 def _self_test_status_drift() -> bool:
     """Synthetic-fixture proof that the status-drift rule fires and clears.
 
@@ -706,11 +921,77 @@ def _self_test_feature_shipped_trace_drift() -> bool:
         return ok
 
 
+def _self_test_feature_shipped_changelog_missing() -> bool:
+    """Synthetic-fixture proof of the feature-shipped-changelog-missing rule.
+
+    Five fixtures in a tempdir with a synthetic CHANGELOG.md at the tree root:
+      (a) indexed-slug   — shipped, slug appears (wrapped in ``**…**``) → silent.
+      (b) missing        — shipped, NOT referenced anywhere              → 1 hit.
+      (c) preship        — status:tester-done, absent from CHANGELOG     → silent
+                           (pre-ship is correctly not yet indexed; also under a
+                           v2/ prefix, exercising multi-prefix resolution).
+      (d) indexed-req    — shipped, slug absent but its trace REQ-id is in the
+                           CHANGELOG                                     → silent.
+      (e) indexed-path   — shipped, slug/REQ absent but the folder PATH
+                           ``spec/v3/indexed-path/`` is cited            → silent.
+      (f) foo-v0.2.0-x   — shipped ITERATION folder; only its BASE slug ``foo``
+                           is in the CHANGELOG (layer-4 suffix strip)    → silent.
+    Expect exactly 1 violation, on 'missing'. Returns True iff the rule behaves.
+    """
+    import tempfile
+
+    def write_feature(dir_: Path, slug: str, status: str) -> None:
+        dir_.mkdir(parents=True)
+        (dir_ / "feature.md").write_text(
+            f"---\nslug: {slug}\nstatus: {status}\nowner: t\nupdated: 2026-07-10\n---\n# x\n"
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        spec = root / "spec"
+        spec.mkdir()
+        write_feature(spec / "indexed-slug", "indexed-slug", "shipped")
+        write_feature(spec / "missing", "missing", "shipped")
+        write_feature(spec / "v2" / "preship", "preship", "tester-done")   # v2/ prefix
+        write_feature(spec / "indexed-req", "indexed-req", "shipped")
+        write_feature(spec / "v3" / "indexed-path", "indexed-path", "shipped")  # v3/ prefix
+        write_feature(spec / "foo-v0.2.0-x", "foo-v0.2.0-x", "shipped")  # iteration folder
+        # A trace.toml giving indexed-req a REQ-id that the CHANGELOG cites.
+        (spec / "trace.toml").write_text(
+            "[[req]]\n"
+            'id = "REQ-INDEXED-REQ-001"\nfeature = "indexed-req"\nstate = "shipped"\n'
+        )
+        # Synthetic CHANGELOG: references indexed-slug (wrapped), indexed-req by
+        # REQ-id, indexed-path by folder path, and 'foo' (the base of the
+        # iteration folder); deliberately omits 'missing' and 'preship'.
+        (root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n"
+            "- **indexed-slug** — a shipped-and-indexed feature.\n"
+            "- some rollup line covering REQ-INDEXED-REQ-001 without the slug.\n"
+            "- see `spec/v3/indexed-path/` for the path-cited feature.\n"
+            "- **foo** (+ v0.2 x) — base feature with an iteration bump.\n"
+        )
+        rep = Report()
+        check_feature_shipped_changelog_missing(spec, rep)
+        hits = [v for v in rep.violations
+                if v.category == "feature-shipped-changelog-missing"]
+        ok = len(hits) == 1 and hits[0].path.parent.name == "missing"
+        print(
+            "spec-lint --self-test (feature-shipped-changelog-missing): "
+            + ("PASS — fires on shipped-not-indexed, silent on slug/REQ-id/path "
+               "matches + pre-ship" if ok
+               else f"FAIL — expected exactly 1 hit on 'missing', got "
+                    f"{[(str(v.path), v.detail) for v in hits]}")
+        )
+        return ok
+
+
 def self_test() -> int:
     """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
     results = [
         _self_test_status_drift(),
         _self_test_feature_shipped_trace_drift(),
+        _self_test_feature_shipped_changelog_missing(),
     ]
     return 0 if all(results) else 1
 
@@ -750,7 +1031,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--self-test",
         action="store_true",
-        help="run the status-drift rule against synthetic fixtures and exit",
+        help="run every rule's synthetic-fixture self-test and exit (0 = all pass)",
     )
     args = parser.parse_args(argv)
 
@@ -778,6 +1059,7 @@ def main(argv: list[str]) -> int:
         check_shipped_have_tests(SPEC_DIR, report)
         check_status_drift(SPEC_DIR, report)
         check_feature_shipped_trace_drift(SPEC_DIR, report)
+        check_feature_shipped_changelog_missing(SPEC_DIR, report)
 
     # Render output, grouped by category.
     grouped = report.by_category()

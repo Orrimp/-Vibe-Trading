@@ -122,6 +122,24 @@ inline.
   (a shipped-feature/non-shipped-row pair that must produce exactly one
   violation, plus a compliant pair and a pre-ship pair that must produce
   none). CI runs `--self-test` as the rule's proof.
+- **CHANGELOG index (2026-07-10 amendment, remediation-plan P6a).** D1 names
+  the CHANGELOG as a derived index authoritative-from `feature.md`
+  ("`feature.md` … the CHANGELOG indexes [it]" — the stated reason D1 picks
+  `feature.md` over `trace.toml`). A SIBLING enforcement of the SAME invariant
+  now guards that second index: `spec_lint.py` category
+  `feature-shipped-changelog-missing` asserts that every
+  `status: shipped` feature (resolved across `spec/`+`spec/v1/`+`spec/v2/`+
+  `spec/v3/`, as `feature-shipped-trace-drift` does) is referenced in
+  `CHANGELOG.md` — by slug, by any trace REQ-id, by folder path, or via the
+  iteration-suffix base slug — with a short, per-entry-justified rollup
+  allowlist (`CHANGELOG_ROLLUP_ALLOWLIST`, the `KNOWN_FROZEN_DEAD_LINKS`
+  pattern) for the ~26 features indexed under the CHANGELOG's documented
+  thematic-rollup convention (the `v0…v5` ladder, the retired DL programme).
+  Proven by a `feature-shipped-changelog-missing` `--self-test` fixture. This
+  closes the drift class R3-4b found (the entire v2 tranche + the v3 close-out
+  were absent from the canonical index until manually reconciled). This is an
+  enforcement extension inside D1's philosophy, not a new normative decision —
+  hence an amendment here, not a new ADR.
 
 ## Changelog
 - 2026-07-09 (architect): initial accept. Ratifies the single-source-of-
@@ -130,3 +148,14 @@ inline.
   `feature-shipped-trace-drift` enforcement rule (D5), and the full-
   vocabulary legend (D6). Enforced by `scripts/spec_lint.py`; proven by
   `spec_lint.py --self-test`.
+- 2026-07-10 (architect, remediation-plan P6a): amendment — a sibling
+  mechanical enforcement of the D1 invariant on the OTHER derived index.
+  Adds `spec_lint.py` category `feature-shipped-changelog-missing`
+  (shipped feature ⇒ a `CHANGELOG.md` reference; slug / REQ-id / folder-path
+  / iteration-suffix base slug match + a per-entry-justified rollup
+  allowlist for the CHANGELOG's documented thematic-rollup convention) with
+  its own `--self-test` fixture. Closes the R3-4b drift class (v2 tranche +
+  v3 close-out were missing from the canonical index). Baseline measured at
+  amendment time: 114 shipped features, 30 not verbatim-indexed (all under
+  documented rollups — 4 auto-resolved by the iteration-suffix normalizer,
+  26 allowlisted), 0 genuinely missing. See § Consequences.
