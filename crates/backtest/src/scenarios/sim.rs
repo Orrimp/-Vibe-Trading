@@ -146,6 +146,7 @@ mod tests {
             latency_ms_min: 0,
             latency_ms_max: 0,
             slippage_model: SlippageModel::Linear { bps: 0 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &btc_symbol());
@@ -161,6 +162,7 @@ mod tests {
             latency_ms_min: 30,
             latency_ms_max: 80,
             slippage_model: SlippageModel::Linear { bps: 8 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         // 1.0 * 50_000 * 8 / 10_000 = 40
@@ -175,6 +177,7 @@ mod tests {
             latency_ms_min: 30,
             latency_ms_max: 80,
             slippage_model: SlippageModel::Linear { bps: 8 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let buy_cost = sim_slippage_cost(dec!(2.5), dec!(40_000), Side::Buy, &cfg, &btc_symbol());
@@ -198,6 +201,7 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
+            venue_filter: None,
             volume_usd_per_symbol: Some(Arc::new(map)),
         };
         // 1 BTC @ $50k, daily volume $10B → positive cost
@@ -215,6 +219,7 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
+            venue_filter: None,
             volume_usd_per_symbol: None, // no map → V=0 fallback
         };
         let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Buy, &cfg, &btc_symbol());
@@ -238,6 +243,7 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
+            venue_filter: None,
             volume_usd_per_symbol: Some(Arc::new(map)),
         };
         let cost = sim_slippage_cost(dec!(1.0), dec!(50_000), Side::Sell, &cfg, &sym);
@@ -258,6 +264,7 @@ mod tests {
                 alpha: dec!(1.0),
                 volume_lookback_days: 90,
             },
+            venue_filter: None,
             volume_usd_per_symbol: Some(Arc::new(map)),
         };
         // BTC not in map → V=0 fallback → zero cost

@@ -145,6 +145,7 @@ async fn enabled_diverges_by_at_least_1bp() {
         latency_ms_min: 50,
         latency_ms_max: 100,
         slippage_model: cost::SlippageModel::Linear { bps: 10 }, // 10 bps = 0.1%
+        venue_filter: None,
         volume_usd_per_symbol: None,
     };
 
@@ -220,6 +221,7 @@ fn enabled_audit_metrics_recorded() {
         latency_ms_min: 50,
         latency_ms_max: 100,
         slippage_model: cost::SlippageModel::Linear { bps: 10 },
+        venue_filter: None,
         volume_usd_per_symbol: None,
     };
     let sim_latency_applied: u64 = 75; // representative sample from [50, 100]

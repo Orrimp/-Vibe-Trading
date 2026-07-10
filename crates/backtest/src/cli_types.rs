@@ -50,6 +50,18 @@ use trading_core::Symbol;
 /// This config is consumed only by `crates/backtest`. The live-mode agent
 /// (`crates/agent`) does not read it — live fills already carry real
 /// latency and slippage from the venue.
+/// Opt-in venue-filter exec-sim mode (ADR-0087, opt-in-forever — mirrors the
+/// `SlippageModel::VolScaledSpread` ADR-0081 precedent). An enum (not a bool)
+/// so a future mode (e.g. a maker-rebate simulation) stays additive.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VenueFilterMode {
+    /// Round qty down to the venue's `step_size` + reject sub-`min_notional`
+    /// orders, using the checked-in static filter table
+    /// (`cost::venue_filter::venue_filter_for`, ADR-0087 § D3).
+    LotSizeAndMinNotional,
+}
+
 // Note: `Eq` is intentionally NOT derived. `SlippageModel::VolScaledSpread`
 // contains `f64` fields (vol_multiplier, sigma_lambda) which do not implement
 // `Eq`. Use `PartialEq` comparison or field-wise checks instead.
@@ -68,6 +80,14 @@ pub struct LatencySlippageSimConfig {
     /// The legacy field name `slippage_bps` is accepted by the custom `Deserialize` impl
     /// for backward-compat with v0.1.0–v0.4.0 config files/tests.
     pub slippage_model: SlippageModel,
+    /// Opt-in venue-filter realism (ADR-0087). `None` (the serde default) =
+    /// no lot-size rounding, no min-notional reject — byte-identical to the
+    /// pre-ADR-0087 fill path. `Some(VenueFilterMode::LotSizeAndMinNotional)`
+    /// rounds fill qty down to the venue `step_size` and skips (no `Fill`)
+    /// any order whose rounded notional is below `min_notional`, applied at
+    /// the `PaperEngine::step` seam (opt-in-forever).
+    #[serde(default)]
+    pub venue_filter: Option<VenueFilterMode>,
     /// Pre-computed per-symbol daily volume proxy in USD (V term in α·√(Q/V)).
     ///
     /// Used ONLY by `SlippageModel::SquareRoot`. Populated by the scenario loader
@@ -81,27 +101,30 @@ pub struct LatencySlippageSimConfig {
 }
 
 impl Default for LatencySlippageSimConfig {
-    /// Noop default: latency=0, slippage=Linear{bps:0}.
+    /// Noop default: latency=0, slippage=Linear{bps:0}, `venue_filter=None`.
     /// Produces byte-identical output to the pre-v0.5.0 default config.
     fn default() -> Self {
         Self {
             latency_ms_min: 0,
             latency_ms_max: 0,
             slippage_model: SlippageModel::Linear { bps: 0 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         }
     }
 }
 
 impl LatencySlippageSimConfig {
-    /// Returns `true` when the config is the noop default (all zeros, linear bps=0).
-    /// Used by callers to skip RNG construction on the hot path.
+    /// Returns `true` when the config is the noop default (all zeros, linear
+    /// bps=0, no venue filter). Used by callers to skip RNG construction on
+    /// the hot path.
     #[inline]
     #[must_use]
     pub fn is_noop(&self) -> bool {
         self.latency_ms_min == 0
             && self.latency_ms_max == 0
             && matches!(self.slippage_model, SlippageModel::Linear { bps: 0 })
+            && self.venue_filter.is_none()
     }
 }
 
@@ -131,6 +154,11 @@ impl<'de> Deserialize<'de> for LatencySlippageSimConfig {
                 // One of these must be present:
                 let mut slippage_model: Option<SlippageModel> = None;
                 let mut slippage_bps_legacy: Option<u32> = None;
+                // ADR-0087 § D2: `#[serde(default)]` is inert under a custom
+                // Deserialize impl — the `None` default is applied manually
+                // via this initial binding (never overwritten unless the
+                // "venue_filter" key is present).
+                let mut venue_filter: Option<VenueFilterMode> = None;
 
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
@@ -146,6 +174,11 @@ impl<'de> Deserialize<'de> for LatencySlippageSimConfig {
                         // Legacy field name (v0.1.0–v0.4.0): accept as u32 or u16.
                         "slippage_bps" => {
                             slippage_bps_legacy = Some(map.next_value::<u32>()?);
+                        }
+                        "venue_filter" => {
+                            // `Option<VenueFilterMode>::deserialize` handles both
+                            // `null` and a present `{ kind: ... }` value.
+                            venue_filter = map.next_value()?;
                         }
                         _ => {
                             // Unknown fields: skip.
@@ -164,6 +197,7 @@ impl<'de> Deserialize<'de> for LatencySlippageSimConfig {
                     latency_ms_min: latency_ms_min.unwrap_or(0),
                     latency_ms_max: latency_ms_max.unwrap_or(0),
                     slippage_model: model,
+                    venue_filter,
                     volume_usd_per_symbol: None,
                 })
             }
@@ -209,6 +243,7 @@ mod latency_slippage_config_tests {
             latency_ms_min: 50,
             latency_ms_max: 100,
             slippage_model: SlippageModel::Linear { bps: 10 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         assert!(!cfg.is_noop(), "non-zero config must not be noop");
@@ -221,6 +256,7 @@ mod latency_slippage_config_tests {
             latency_ms_min: 20,
             latency_ms_max: 80,
             slippage_model: SlippageModel::Linear { bps: 5 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let json = serde_json::to_string(&cfg).expect("must serialize");
@@ -261,11 +297,52 @@ mod latency_slippage_config_tests {
                 alpha: rust_decimal_macros::dec!(1.0),
                 volume_lookback_days: 90,
             },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let json = serde_json::to_string(&cfg).expect("must serialize");
         let back: LatencySlippageSimConfig = serde_json::from_str(&json).expect("must deserialize");
         assert_eq!(cfg, back, "SquareRoot model must survive serde round-trip");
+    }
+
+    /// ADR-0087 § D6 (`venue_filter_default_is_none` precedent): the config
+    /// default carries no venue filter — the mode is opt-in-forever.
+    #[test]
+    fn venue_filter_defaults_to_none() {
+        assert!(LatencySlippageSimConfig::default().venue_filter.is_none());
+        assert!(LatencySlippageSimConfig::default().is_noop());
+    }
+
+    /// `venue_filter` round-trips through serde (new field, ADR-0087 § D2).
+    #[test]
+    fn venue_filter_serde_round_trip() {
+        let cfg = LatencySlippageSimConfig {
+            latency_ms_min: 0,
+            latency_ms_max: 0,
+            slippage_model: SlippageModel::Linear { bps: 0 },
+            venue_filter: Some(super::VenueFilterMode::LotSizeAndMinNotional),
+            volume_usd_per_symbol: None,
+        };
+        let json = serde_json::to_string(&cfg).expect("must serialize");
+        assert!(
+            json.contains("lot_size_and_min_notional"),
+            "expected snake_case tag in JSON, got: {json}"
+        );
+        let back: LatencySlippageSimConfig = serde_json::from_str(&json).expect("must deserialize");
+        assert_eq!(cfg, back);
+        assert!(
+            !back.is_noop(),
+            "a config with venue_filter set is not noop"
+        );
+    }
+
+    /// Legacy JSON payloads (pre-ADR-0087, no `venue_filter` key) still
+    /// deserialize with `venue_filter: None` (R-NR.2 backward-compat).
+    #[test]
+    fn missing_venue_filter_field_defaults_to_none() {
+        let json = r#"{"latency_ms_min":10,"latency_ms_max":50,"slippage_bps":8}"#;
+        let cfg: LatencySlippageSimConfig = serde_json::from_str(json).expect("must deserialize");
+        assert!(cfg.venue_filter.is_none());
     }
 
     // ── T-D-N4 plumbing tests: default-is-noop for each new struct ────────────
@@ -344,6 +421,7 @@ mod latency_slippage_config_tests {
             latency_ms_min: 30,
             latency_ms_max: 80,
             slippage_model: SlippageModel::Linear { bps: 8 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let input = super::PairsScenarioInput {
@@ -370,6 +448,7 @@ mod latency_slippage_config_tests {
             latency_ms_min: 30,
             latency_ms_max: 80,
             slippage_model: SlippageModel::Linear { bps: 8 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let input = super::TcnScenarioInput {
@@ -402,6 +481,7 @@ mod latency_slippage_config_tests {
             latency_ms_min: 30,
             latency_ms_max: 80,
             slippage_model: SlippageModel::Linear { bps: 8 },
+            venue_filter: None,
             volume_usd_per_symbol: None,
         };
         let input = super::SmaComposedRunInput {

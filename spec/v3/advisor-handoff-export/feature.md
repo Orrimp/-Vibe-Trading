@@ -1,7 +1,7 @@
 ---
 slug: advisor-handoff-export
-status: proposed
-owner: analyst
+status: arch-done
+owner: architect
 updated: 2026-07-10
 version: 3.4.0
 trace: REQ-V3-P5-HANDOFF-EXPORT-001
@@ -564,6 +564,240 @@ gains the down-half rules AND a mandatory risk section is inserted before "What 
 > **(d)** any redlines. On ratification the architect locks these into the serialiser as
 > new `crate::strings` constants.
 
+## Design
+
+_architect, 2026-07-10 (M-T1). ADR: [ADR-0088](../../architecture/adr/0088-suggest-manual-handoff-export.md).
+The operator-ratified § Draft wording (Variant A + B) is the IMMUTABLE serialiser
+contract — this design emits it and does not rewrite a word._
+
+### Q-HE-1..6 decisions
+
+- **Q-HE-1 (format): markdown `.md`** — RATIFY the analyst lean. Preserves the
+  co-located-caveat heading structure the not-advice boundary depends on; still
+  readable as raw text. A `.txt` variant is a trivial additive follow-on.
+- **Q-HE-2 (trigger): the SUGGEST / `Screen::ForwardPlan` screen** — RATIFY. An
+  "Export this plan" button on the plan the export serialises (the journey
+  terminus), new const `PLAN_EXPORT_BUTTON`.
+- **Q-HE-3 (one-per-plan + stamp): one artifact per crowned plan; stamp = run
+  seed + `last_bar_ts`, NEVER wall-clock** — RATIFY. The export path reads no
+  clock (it echoes the pre-formatted `as_of_label` already on the view + the seed
+  echoed onto the mirror). Two exports of the same run ⇒ byte-identical.
+- **Q-HE-4 (layering): `ui` owns the serialiser** — RATIFY, with a REFINEMENT:
+  the pure fn is over the pure-`ui` **`ForwardPlanView`** mirror, NOT the
+  `#[cfg(feature="live")]`-gated `agent::config::ForwardPlan` (grounds below). `ui`
+  never depends on `strategy`/`exec`/`models`/`llm`; `cargo tree -p ui` unchanged.
+- **Q-HE-5 (verification): golden-text serialiser tests + a rendered-PIXEL proof
+  of the button** — the pixel-test call is **YES for the button** (a new visible
+  control on a journey screen ⇒ CLAUDE.md render-layer non-negotiable), **NO pixel
+  test for the export content** (it is text; golden tests own it). Detail below.
+- **Q-HE-6 (empty-plan guard): the action is absent until a plan is crowned** —
+  RATIFY. The button renders only in `PanelState::Ready`; the handler early-returns
+  otherwise. No empty-export artifact is ever produced; the render proof asserts
+  the absence as the negative control.
+
+### Serialiser home + signature (D1–D2)
+
+Home: a new module `crates/ui/src/export/plan_export.rs`. Pure, **default `ui`
+build** (no `live` feature):
+
+```rust
+pub fn serialize_plan_export(
+    plan: &crate::forward_plan::ForwardPlanView,      // stance / signal / rule / sizing / budget / confidence / short predicates / as_of_label
+    report: &crate::leaderboard::BakeoffReportMirror, // outcome / winner / scorecard / data_quality / coin / range_label / run_seed
+    narration: &crate::leaderboard::NarrationState,   // F9 — embed ONLY if Ready
+    fx: Option<&crate::state::FxNote>,                // the €→USDT budget line, threaded as the screen threads it
+) -> String;
+
+pub fn export_filename(report: &crate::leaderboard::BakeoffReportMirror) -> String;
+```
+
+**Why `ForwardPlanView`, not `agent::config::ForwardPlan` (refines the brief's
+literal signature):** the `from_plan` adapter that reads the engine plan is
+`#[cfg(feature="live")]`-gated (`crates/ui/src/forward_plan/adapter.rs:27`), so a
+serialiser over the raw plan would be live-gated and **untestable in the default
+`ui` build**. `ForwardPlanView` is unit-constructible from fixtures and already
+carries the short predicates (`is_short_capable`/`is_always_short`/`is_buy_and_hold`),
+the `ConfidenceSummaryView`, and the pre-formatted `as_of_label`. `DataQualityView`,
+`ScorecardView`, and `OutcomeKind` are reachable **through** the mirror, so they
+are not separate arguments.
+
+**Structural fidelity (D3):** the serialiser walks the SAME predicate tree as
+`screens/forward_plan.rs::view` + `screens/leaderboard.rs::recommendation_block`,
+reusing the SAME `crate::strings` consts, the SAME `crate::widgets::num`
+formatters (`fmt_price`/`fmt_qty`/`fmt_eur_plain`/`fmt_usdt_plain`/`fmt_rate`), and
+the SAME `crown_credibility` resolver — emitting text instead of widgets. This is
+the guarantee the export cannot drift more prescriptive than, or numerically
+inconsistent with, the screen (R-HE.3). To reuse the resolver without duplicating
+logic, `crown_credibility` + `CrownCredibility` move (behaviour-preserving) from
+private in `screens/leaderboard.rs` to `pub(crate)` in `leaderboard/state.rs`
+(their data home); `crown_credibility_element` (rendering) stays in the screen.
+
+### Section-by-section source map (every «SOURCE» + every «NEW»)
+
+Every existing SOURCE const the ratified template names was verified present in
+`crates/ui/src/strings.rs`. Every «NEW» line becomes a new const carrying the
+ratified text VERBATIM (enumerated in the "New strings" table).
+
+| Export section | Existing SOURCE consts (reused verbatim) | New consts |
+|---|---|---|
+| Header | `FORWARD_PLAN_DISCLAIMER` | `PLAN_EXPORT_TITLE`, `PLAN_EXPORT_HEADER_META_FMT`, `PLAN_EXPORT_NOT_ADVICE_BANNER`, `PLAN_EXPORT_HANDOFF_FRAME` |
+| THE MEASURED ANSWER | `LEADERBOARD_HEADLINE_{BENCHMARK_WINS,ACTIVE_WINS,ALL_FRAGILE}`, `LEADERBOARD_CROWN_{WEAK_EVIDENCE,WEAK_EVIDENCE_HINT,PASSES_DSR}` | `PLAN_EXPORT_SECTION_MEASURED_ANSWER`, `PLAN_EXPORT_BENCHMARK_WINS_BRIDGE` |
+| RIGHT NOW | `FORWARD_PLAN_STANCE_{LONG,FLAT}`, `FORWARD_PLAN_AS_OF_FMT`, `FORWARD_PLAN_LATEST_SIGNAL_FMT`, `FORWARD_PLAN_SIGNAL_{BUY,SELL,HOLD}` | `PLAN_EXPORT_SECTION_RIGHT_NOW` |
+| STANDING RULES | `FORWARD_PLAN_NOT_A_PREDICTION`, `FORWARD_PLAN_RULE_{IF,THEN}`, the family `*_ENTRY_IF_FMT`/`_THEN` + `*_EXIT_*` (SMA/MACD/RSI/BBands), `FORWARD_PLAN_RULE_{BUY_AND_HOLD,COMPOUND_CAVEAT}`, `FORWARD_PLAN_RULE_ENSEMBLE_*`, `FORWARD_PLAN_CADENCE_FMT` | `PLAN_EXPORT_SECTION_STANDING_RULES` |
+| SIZING | `FORWARD_PLAN_BUDGET_LINE_FMT`, `FORWARD_PLAN_SIZING_{BUY_AND_HOLD_FMT,FLAT_FMT,LONG_FMT,CAPPED_NOTE}` | `PLAN_EXPORT_SECTION_SIZING` |
+| HOW MUCH TO TRUST | `FORWARD_PLAN_CONFIDENCE_{CANDIDATES_LABEL,DSR_LABEL,DSR_GLOSS,BEATS_HOLD_LABEL,BEATS_HOLD_YES,BEATS_HOLD_NO,MIN_BTL_LABEL,MIN_BTL_FMT,NOTE}` | `PLAN_EXPORT_SECTION_TRUST`, `PLAN_EXPORT_ONE_IN_FIVE_NOTE` |
+| WHERE THIS DATA CAME FROM | `LEADERBOARD_DATA_QUALITY_{VENUE_LABEL,PROVENANCE_BINANCE,TRUST_*,SURVIVAL_NOTE,WARNING_*}` (via `DataQualityView`) | `PLAN_EXPORT_SECTION_DATA_SOURCE`, `PLAN_EXPORT_ERA_QUALIFIED_THESIS` |
+| WHAT THIS IS NOT | — | `PLAN_EXPORT_SECTION_WHAT_THIS_IS_NOT` + 5 bullets `PLAN_EXPORT_NOT_BULLET_{ADVICE,PREDICTION,PAST,CHANCE,PAPER}` |
+| PROVENANCE | `LEADERBOARD_EXPLAIN_LLM_LABEL` (F9, only if `NarrationState::Ready`) | `PLAN_EXPORT_SECTION_PROVENANCE`, `PLAN_EXPORT_PROVENANCE_{COIN_FMT,PICK_FMT,SEED_FMT}`, `PLAN_EXPORT_REPRODUCE_HINT`, `PLAN_EXPORT_FOOTER` |
+| SHORT RISK (Variant B, short-only) | `FORWARD_PLAN_SHORT_RULES_HEADING`, `FORWARD_PLAN_RULE_{SHORT_OPEN_IF_GENERIC,SHORT_OPEN_THEN,SHORT_COVER_IF,SHORT_COVER_THEN,ALWAYS_SHORT,SHORT_LIQUIDATION}`, `SHORT_UNBOUNDED_LOSS_DISCLAIMER` | `PLAN_EXPORT_SECTION_SHORT_RISK` |
+| Button | — | `PLAN_EXPORT_BUTTON` |
+
+**New strings — 27 consts, each carrying the ratified text VERBATIM** (23 static +
+4 `_FMT`): `PLAN_EXPORT_TITLE`, `_NOT_ADVICE_BANNER`, `_HANDOFF_FRAME`,
+`_SECTION_MEASURED_ANSWER`, `_BENCHMARK_WINS_BRIDGE`, `_SECTION_RIGHT_NOW`,
+`_SECTION_STANDING_RULES`, `_SECTION_SIZING`, `_SECTION_TRUST`, `_ONE_IN_FIVE_NOTE`,
+`_SECTION_DATA_SOURCE`, `_ERA_QUALIFIED_THESIS`, `_SECTION_WHAT_THIS_IS_NOT`,
+`_NOT_BULLET_ADVICE`, `_NOT_BULLET_PREDICTION`, `_NOT_BULLET_PAST`,
+`_NOT_BULLET_CHANCE`, `_NOT_BULLET_PAPER`, `_SECTION_PROVENANCE`, `_REPRODUCE_HINT`,
+`_FOOTER`, `_SECTION_SHORT_RISK`, `_BUTTON` (static); `_HEADER_META_FMT`,
+`_PROVENANCE_COIN_FMT`, `_PROVENANCE_PICK_FMT`, `_PROVENANCE_SEED_FMT` (`_FMT`).
+The box-drawing rule lines (`═`/`─`) are serialiser-emitted layout, not user copy.
+
+### Variant selection decision table (for the developer)
+
+The serialiser branches on
+`(report.recommendation.outcome, crown_credibility(outcome, report.scorecard.as_ref()),
+plan.is_buy_and_hold(), plan.is_always_short(), plan.is_short_capable())` — the
+SAME predicates the screen uses.
+
+**THE MEASURED ANSWER block:**
+
+| `outcome` | `crown_credibility` | verdict lines emitted |
+|---|---|---|
+| `BenchmarkWins` | `NotApplicable` | `LEADERBOARD_HEADLINE_BENCHMARK_WINS`(`{coin}`) + `PLAN_EXPORT_BENCHMARK_WINS_BRIDGE`. **NO credibility line.** |
+| `ActiveWins` | `WeakEvidence` | `LEADERBOARD_HEADLINE_ACTIVE_WINS`(`{winner}`) + `LEADERBOARD_CROWN_WEAK_EVIDENCE` + `_WEAK_EVIDENCE_HINT`. |
+| `ActiveWins` | `Passes` | `LEADERBOARD_HEADLINE_ACTIVE_WINS`(`{winner}`) + `LEADERBOARD_CROWN_PASSES_DSR`. |
+| `ActiveWins` | `NotApplicable` (no scorecard) | `LEADERBOARD_HEADLINE_ACTIVE_WINS`(`{winner}`). **NO credibility line.** |
+| `AllFragile` | `NotApplicable` | `LEADERBOARD_HEADLINE_ALL_FRAGILE`. **NO credibility line.** |
+
+**STANDING RULES block** (mirrors `forward_plan.rs` exactly):
+
+| plan shape | rules emitted |
+|---|---|
+| `is_buy_and_hold` | `FORWARD_PLAN_RULE_BUY_AND_HOLD` (no IF/THEN, no cadence) |
+| `is_always_short` | skip long IF/THEN; short section only (heading + `FORWARD_PLAN_RULE_ALWAYS_SHORT` + `_SHORT_LIQUIDATION`) |
+| `is_ensemble` | ensemble named-members + method + tally + caveat + cadence |
+| single family (SMA/MACD/RSI/BBands) | `FORWARD_PLAN_RULE_IF/_THEN` + family entry/exit FMT + compound caveat (composed) + cadence |
+| **+ `is_short_capable`** (any `*_ls`) | ALSO append: `FORWARD_PLAN_SHORT_RULES_HEADING` + bearish-flip IF + `_SHORT_OPEN_THEN` + `_SHORT_COVER_IF/_THEN` + `_SHORT_LIQUIDATION` |
+
+**SHORT RISK section** (inserted before "What this is NOT"):
+
+| `plan.is_short_capable()` | emitted |
+|---|---|
+| `true` | `PLAN_EXPORT_SECTION_SHORT_RISK` + `SHORT_UNBOUNDED_LOSS_DISCLAIMER` (verbatim) + `FORWARD_PLAN_RULE_SHORT_LIQUIDATION` |
+| `false` | section absent (the golden long/hold case) |
+
+**HOW MUCH TO TRUST** emits only when `plan.confidence` is `Some` (else omitted,
+mirroring the screen). **F9 narration** emits only when `narration` is
+`NarrationState::Ready(prose)` (`LEADERBOARD_EXPLAIN_LLM_LABEL` + the prose
+verbatim); every other narration state omits the block.
+
+### Filename + determinism + file-write (D6, D8)
+
+`export_filename(report) = "plan-{coin}-{window-slug}-{seed8}.md"`, e.g.
+`plan-BTCUSDT-2024-h1-a1b2c3d4.md` — `window-slug` slugifies `range_label`,
+`seed8` is the first 8 hex chars of `report.run_seed`. Deterministic, no
+wall-clock. Same run ⇒ same name ⇒ idempotent overwrite; different seed ⇒
+different suffix ⇒ no collision. The file lands under a **git-ignored
+workspace-root `plan-exports/` dir** (the ADR-0055 `lab-runs/` precedent — outside
+every `spec/**` anchor glob, so `verify_anchors.sh` stays 119/119 BY
+CONSTRUCTION). The `Message::ExportPlan` handler assembles the inputs, calls the
+pure `serialize_plan_export`, and does the single leaf `std::fs::write`; the
+serialiser + filename are pure and fully golden-tested (a `PlanExportSink` trait
+is an optional cleanliness upgrade, not required for MVP — the pure core needs no
+fake).
+
+### Verification contract (D9 / Q-HE-5)
+
+- **Golden-text tests** (default `ui` build, over fixtures), 4 variants:
+  1. **BenchmarkWins** — `fake_bakeoff_report_mirror_benchmark_wins()` +
+     `fake_forward_plan_buy_and_hold()`: asserts the headline + bridge present,
+     and NO `LEADERBOARD_CROWN_*` credibility line (the **negative control**).
+  2. **ActiveWins + WeakEvidence** (the money shot) —
+     `fake_bakeoff_report_mirror_five_arm()` (`crown_clears_dsr=false`, €200) +
+     `fake_forward_plan()`: asserts headline + `LEADERBOARD_CROWN_WEAK_EVIDENCE` +
+     `_HINT` + the €200 sizing + the always-present survivorship caveat + the
+     disclaimers.
+  3. **ActiveWins + Passes** — a `crown_clears_dsr=true` mirror: asserts
+     `LEADERBOARD_CROWN_PASSES_DSR` present, `WEAK_EVIDENCE` absent.
+  4. **Short-crowned** — `fake_bakeoff_report_mirror_with_shorts()` +
+     `fake_forward_plan_short()`: asserts `PLAN_EXPORT_SECTION_SHORT_RISK` +
+     `SHORT_UNBOUNDED_LOSS_DISCLAIMER` + `FORWARD_PLAN_RULE_SHORT_LIQUIDATION`.
+- **Byte-determinism test:** `serialize_plan_export(same inputs)` twice ⇒
+  `assert_eq!` byte-identical.
+- **Filename-determinism test:** `export_filename` deterministic + slug-safe + no
+  wall-clock.
+- **Rendered-PIXEL button proof** (macOS-gated, the Q-HE-5 YES call): the
+  "Export this plan" button paints in `PanelState::Ready` and is ABSENT in
+  `Empty`/`Loading`/`Error` (the Q-HE-6 negative control). Extend
+  `forward_plan_populated_render.rs` or add `forward_plan_export_button_render.rs`.
+- **R-HE.12 — divergence e2e N/A, recorded not skipped:** P5 introduces no
+  overlay/sizing-modifier/decision-variable and computes no equity; a divergence
+  gate would assert the opposite of the design goal. The determinism + golden
+  tests are the substitute gates (the P1/P3 precedent).
+
+### Flagged template-vs-data reconciliation (build tasks — the template is NOT rewritten)
+
+Per the M-T1 guard, where the ratified template names a value the engine does not
+yet surface, it is recorded as a build task / derivation note — never a wording
+change:
+
+1. **Run seed** — the provenance footer's "Run seed: {seed}" is not on the mirror
+   today. Resolution: an additive echo field `run_seed: [u8; 32]` on
+   `BakeoffReportMirror`, set in `from_report` from the already-existing
+   `report.request.seed` (`backtest/src/bakeoff/mod.rs:481`). Value-echo, zero
+   engine computation; renders as lowercase hex; ~6 `fake_bakeoff_report_mirror*`
+   fixtures gain the field (mechanical).
+2. **Window as ISO dates** — the template shows `2024-01-01 → 2024-06-30`; the
+   mirror carries `range_label` ("2024 H1"). Resolution: the window line is filled
+   from `range_label` (the sanctioned window display already on the mirror); the
+   ISO dates shown are illustrative per § How-to-read. (Optional upgrade:
+   `window_start/end` echo fields — deferred.)
+3. **Last bar as ISO-UTC** — the template shows `2024-06-30 23:00 UTC`; the view
+   carries `as_of_label`. Resolution: the "Last bar" line uses `plan.as_of_label`
+   (already on the view).
+4. **`{winner}` display name** — the ACTIVE_WINS headline is filled the SAME way
+   the screen fills it (`LEADERBOARD_HEADLINE_ACTIVE_WINS.replace("{winner}",
+   winner.as_str())`, `leaderboard.rs:858`) for byte-fidelity; the PROVENANCE
+   "Crowned pick" line separately uses `display_label(id)` (`leaderboard.rs:1586`)
+   for the human name, matching the template's "SMA crossover (v0.sma)".
+5. **`crown_credibility` is private** — promote it + `CrownCredibility` to
+   `pub(crate)` in `leaderboard/state.rs` (behaviour-preserving move) so screen +
+   export share one resolver.
+6. **New fixtures** — `fake_forward_plan_short()` (a short-crowned `ForwardPlanView`)
+   + a `crown_clears_dsr=true` mirror for the Passes golden case.
+7. **`.gitignore`** — add `/plan-exports/`.
+
+### Lane split (developer ‖ ui-designer)
+
+- **Developer lane** (pure Rust): the serialiser + branches + the 27 `strings`
+  consts + the `run_seed` mirror echo + the `crown_credibility` move + the new
+  fixtures + the golden/determinism/filename tests.
+- **ui-designer lane**: the `PLAN_EXPORT_BUTTON` control + empty-plan guard on
+  `Screen::ForwardPlan`, the `Message::ExportPlan` handler + the `std::fs::write`
+  to `plan-exports/`, the `.gitignore` entry, and the rendered-pixel button proof.
+  Can start in parallel against the agreed const names + the `serialize_plan_export`
+  signature; `strings.rs` is append-only (low-conflict).
+
+### Anchor + gate safety (R-HE.11)
+
+Anchor-safe BY CONSTRUCTION (like P1/P3): the artifact lands in a git-ignored dir
+outside every `spec/**` glob; no `spec/*/reports/*.md` is created or read; no
+engine computation (the `run_seed` echo reads an existing value in `ui`); the 9
+`anchors.toml` SHAs + the FROZEN gate are byte-untouched; `cargo tree -p ui`
+unchanged (all inputs are pure-`ui`/`core`/std types). `verify_anchors.sh` 119/119
+before AND after; `spec_lint.py` PASS(0); `adr_registry_check.py` exit 0.
+
 ## Trace
 
 `REQ-V3-P5-HANDOFF-EXPORT-001` in [`spec/trace.toml`](../../trace.toml), state
@@ -572,6 +806,32 @@ step 5 (SUGGEST) + § What this product IS NOT (not-advice, paper-only). Remedia
 anchor: [`spec/backlog.md`](../../backlog.md) § Remediation plan P5.
 
 ## Changelog
+
+- 2026-07-10 (architect, M-T1): **§ Design appended; status → arch-done; ADR-0088 accepted +
+  registered atomically** (Registry row + frontmatter `updated:` same edit pass;
+  `adr_registry_check.py --pre-commit` clean). Decided Q-HE-1..6 (md `.md`; the
+  SUGGEST/`Screen::ForwardPlan` screen; one-per-plan + seed/`last_bar_ts` stamp, NO
+  wall-clock; `ui` owns it — REFINED to serialise the pure-`ui` `ForwardPlanView`
+  mirror not the `#[cfg(live)]`-gated `agent::config::ForwardPlan`; golden-text +
+  byte-determinism tests **plus a rendered-pixel button proof** since the export
+  button is a new visible journey control; disable the action until crowned). Home =
+  a pure `serialize_plan_export(&ForwardPlanView, &BakeoffReportMirror, &NarrationState,
+  Option<&FxNote>) -> String` in `crates/ui/src/export/plan_export.rs` that walks the
+  SAME predicate tree + reuses the SAME strings/num-formatters/`crown_credibility`
+  resolver as the screens (structural fidelity). Verified every «SOURCE» const the
+  template names EXISTS in `strings.rs`; enumerated the ~27 new «NEW» consts (carrying
+  the ratified text verbatim). Filename `plan-{coin}-{window}-{seed8}.md`; artifact
+  lands in a git-ignored workspace-root `plan-exports/` dir (ADR-0055 lab-runs
+  precedent → anchors 119/119 by construction). Flagged (as build tasks, NOT wording
+  changes): the provenance `run_seed` needs an additive value-echo field on
+  `BakeoffReportMirror` (from the existing `report.request.seed`); the window/last-bar
+  lines fill from `range_label`/`as_of_label` (the template's ISO forms are
+  illustrative); `crown_credibility` promoted to `pub(crate)`; two new fixtures
+  (`fake_forward_plan_short`, a Passes-DSR mirror). Recorded R-HE.12 divergence-e2e as
+  N/A-not-skipped. Lane split developer ‖ ui-designer. Gates green: verify_anchors.sh
+  119/119, spec_lint.py PASS(0), adr_registry_check.py exit 0. FILES ONLY (orchestrator
+  commits/pushes); sibling P4 `advisor-lot-realism` folder untouched; trace.toml/adr
+  README edits were TARGETED. HANDOFF → developer ‖ ui-designer.
 
 - 2026-07-10 (orchestrator): **DECISION-P5-WORDING RATIFIED AS DRAFTED** by the operator — the § Draft wording (Variant A + B) is now the binding serialiser contract. Build unblocked; HANDOFF → architect (Q-HE-1..6).
 

@@ -1,7 +1,7 @@
 ---
 slug: advisor-lot-realism
-status: arch-done
-owner: architect
+status: dev-done
+owner: developer
 updated: 2026-07-10
 version: 3.5.0
 ---
@@ -225,3 +225,90 @@ architect's handoff.
 - `cargo clippy -p cost -p backtest --tests -- -D warnings`; `cargo fmt --check`.
 - FROZEN-gate diff-empty: `git status --porcelain` shows no
   `bakeoff/{robustness,rank}.rs` / `spec/*/reports/` / `ci.yml.deferred` changes.
+
+## Implementation
+
+Built per `tasks.md` T1–T8, developer 2026-07-10. Full task-by-task file:line +
+test-command + output citations live in `tasks.md`; this section is the summary.
+
+**T1–T3 (table + helpers, `crates/cost/src/venue_filter.rs`, new file).**
+`VenueFilter { step_size, min_notional }` (mirrors `data::SymbolInfo`'s shape, no
+new `cost → data` dep), `round_down_to_step` (Decimal-exact floor, `step <= 0`
+guarded), `VenueFilter::admit` (round then check `>= min_notional`),
+`venue_filter_for` (10 Binance USDT pairs + Coinbase `BTC-USD`, `SNAPSHOT_DATE =
+"2026-07-10"`, unknown symbol → `None`). 15 unit tests, all green
+(`cargo test -p cost --lib venue_filter`).
+
+**T4 (config surface, `crates/backtest/src/cli_types.rs`).** `VenueFilterMode`
+enum (`LotSizeAndMinNotional`) + `#[serde(default)] venue_filter:
+Option<VenueFilterMode>` on `LatencySlippageSimConfig`; `Default`/`is_noop`
+extended; the custom `Deserialize` visitor updated (a hand-rolled impl — the
+`#[serde(default)]` attribute alone is inert there). **Ripple**: every one of the
+33 existing `LatencySlippageSimConfig { .. }` literal-construction sites across
+`cli_types.rs`, `main.rs`, `scenarios/sim.rs`, and
+`crates/strategy/tests/latency_slippage_sim_e2e.rs` needed an explicit
+`venue_filter: None,` (none used `..Default::default()` spread) — a purely
+mechanical, behavior-preserving addition, verified by a full workspace build.
+
+**T5 (the seam, `crates/backtest/src/paper.rs`).** `PaperEngine` gained
+`venue_filter: Option<VenueFilterMode>` + `skipped_min_notional: u64` fields, a
+`with_venue_filter_mode` builder (all existing constructors default to `None`,
+unchanged), and `sim_filter_stats()`. Inside `step`, `qty` is now selected via a
+3-way branch (mode off → `order.qty()` unchanged; mode on + known symbol →
+round-then-admit-or-skip; mode on + unknown symbol → `order.qty()` unchanged,
+no-op) computed **before** the `Fill` is built — the sole place `qty` is
+finalized. A sub-min-notional order is dropped via `continue` (no `Fill` pushed,
+tally incremented) and is explicitly **not** a `MatchError`.
+
+**T6 (the day-1 divergence e2e, `crates/backtest/tests/lot_realism_divergence_end_to_end.rs`,
+new file).** Built BEFORE T5 per the noop-trap discipline (CLAUDE.md
+non-negotiable, v3-vol-overlay-noop precedent): with only the T5 scaffold (fields
++ builder, `step` not yet consulting them) landed, the test **FAILED** exactly as
+required — `eq_baseline == eq_filtered` to the last decimal (proof the mode was
+inert). After the real `step` wiring landed, the same test **PASSED**: DOGEUSDT
+at a €100 budget diverges 57 bp (5.7× the 1bp gate) via genuine floor-rounding
+(zero rejects — the reject path is covered separately by a `paper.rs` unit test);
+direction holds (`eq_filtered <= eq_baseline`); the BTCUSDT-€200 negative control
+diverges only 0.21 bp (27× smaller than DOGE). Both captured outputs are
+verbatim in the test file's own module doc-comment and in `tasks.md`.
+**Deviation**: the ADR/tasks.md €50 example was replaced with €100 for the
+*primary* divergence test — at €50 every DOGE clip landed just under
+min-notional and 100% of orders were rejected outright (still passes the
+assertions, but exercises only the reject path, not the "shaves a few sats"
+floor-rounding mechanism the ADR names as the primary honesty gap). €50 exact
+outright-reject behavior remains demonstrated by a dedicated `paper.rs` unit
+test (`venue_filter_rejects_sub_min_notional_order_no_fill_no_error`).
+
+**T7 (anchor-safety enforcement, `paper.rs`, NEVER DELETE).**
+`venue_filter_default_is_none` + `paper_step_none_is_byte_identical` (the latter
+uses DOGEUSDT — a table symbol — with a fractional qty, proving the default path
+never rounds even when the symbol *is* in the table).
+
+**T8 (reserved live-agent audit wiring, spec-only).** A doc-comment stub at the
+`step` seam's reject branch cites `crates/audit/src/journal.rs:1623`
+(`strategy_event`) and the `rebalance_rejected` precedent at `:1722`; no
+`crates/audit` change, no new `AuditEvent` variant. **Scope note**: the fuller
+tasks.md wording ("surface `skipped_min_notional` into the advisor run summary")
+was interpreted narrowly per the developer brief's explicit crate-scope guard —
+`sim_filter_stats()` (T5) is the surface; threading it further into
+`RunReport`/`CandidateResult` or the forward-loop summary was out of scope (no
+existing call site enables `venue_filter` yet). Flagged for architect/tester
+review in `tasks.md`.
+
+**Gate results (verbatim in `tasks.md`).** `cargo test -p cost --lib` 54 passed;
+`cargo test -p backtest --lib --features realdata,yahoo,candle` 249 passed / 11
+pre-existing-ignored; the T6 e2e 2 passed; `cargo test -p strategy --test
+vol_targeting_overlay_end_to_end` 1 passed (regression — note the corrected
+package name, see `tasks.md` § Notes); `cargo clippy -p cost -p backtest --tests
+--features backtest/realdata,backtest/yahoo -- -D warnings` clean; `cargo fmt
+--check` clean; `bash scripts/verify_anchors.sh` 119/119 before AND after;
+`python3 scripts/spec_lint.py` PASS(0); `python3 scripts/adr_registry_check.py
+--pre-commit` exit 0; `bash scripts/check_no_raw_asof_join.sh` PASS. FROZEN gate
+(`bakeoff/{robustness,rank,scorecard}.rs`) byte-untouched.
+
+## Changelog
+
+- 2026-07-10 (developer): T1–T8 built per tasks.md; the T6 day-1
+  baseline-equity-divergence e2e FAIL-before/PASS-after cycle completed and
+  documented; anchors 119/119 before and after; status → `dev-done`. Handoff →
+  tester.
