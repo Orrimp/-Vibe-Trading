@@ -64,17 +64,18 @@
     clippy::needless_pass_by_value
 )]
 
-use iced::widget::{Column, Container, Row, Scrollable, Space, Text};
+use iced::widget::{Button, Column, Container, Row, Scrollable, Space, Text, button};
 use iced::{Border, Length};
 use smol_str::SmolStr;
 
 use trading_core::FxNote;
 
+use crate::export::plan_export::{export_filename, serialize_plan_export};
 use crate::forward_plan::state::{
     ConfidenceSummaryView, ForwardPlanView, PlanRuleView, PlanSignalView, PlanStanceView,
     PlanVoteMethodView,
 };
-use crate::state::{Cockpit, PanelState};
+use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     FORWARD_PLAN_AS_OF_FMT, FORWARD_PLAN_BUDGET_LINE_FMT, FORWARD_PLAN_CADENCE_FMT,
     FORWARD_PLAN_CAPTION, FORWARD_PLAN_CONFIDENCE_BEATS_HOLD_GLOSS,
@@ -106,7 +107,7 @@ use crate::strings::{
     FORWARD_PLAN_SIGNAL_SELL, FORWARD_PLAN_SIZING_BUY_AND_HOLD_FMT,
     FORWARD_PLAN_SIZING_CAPPED_NOTE, FORWARD_PLAN_SIZING_FLAT_FMT, FORWARD_PLAN_SIZING_LONG_FMT,
     FORWARD_PLAN_SIZING_TITLE, FORWARD_PLAN_STANCE_FLAT, FORWARD_PLAN_STANCE_LONG,
-    FORWARD_PLAN_STANCE_TITLE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
+    FORWARD_PLAN_STANCE_TITLE, PLAN_EXPORT_BUTTON, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
@@ -126,7 +127,9 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let mut col = Column::new()
         .padding(space::L as u16)
         .spacing(space::L)
-        .push(header_text(mode));
+        // The headline/caption block plus — ONLY when a crowned plan is Ready —
+        // the right-aligned "Export this plan" action (Q-HE-6, ADR-0088 § D5).
+        .push(header_row(&st.plan, mode));
 
     // advisor-param-promotion (ADR-0070 § D6) — when the active plan came from a
     // PROMOTION, lead with the "you tuned this" provenance strip (distinct from
@@ -211,6 +214,59 @@ fn header_text(mode: ThemeMode) -> crate::Element<'static> {
                 .color(color::FG_3.current(mode))
                 .width(Length::Fixed(720.0)),
         )
+        .into()
+}
+
+// ── Header row + export action (advisor-handoff-export P5, ADR-0088 § D5) ──────
+
+/// The screen header — the headline/caption block, and, on the right, the
+/// "Export this plan" action. The export affordance renders **ONLY when the
+/// crowned plan is `PanelState::Ready`** (Q-HE-6 / ADR-0088 § D5): in
+/// `Loading`/`Empty`/`Error` there is no plan to hand off, so the button is
+/// ABSENT (no empty-export artifact is ever offered). The rendered-pixel proof
+/// `tests/plan_export_button_render.rs` asserts both the presence (Ready) and
+/// the absence (Empty) at the pixel layer.
+fn header_row(plan: &PanelState<ForwardPlanView>, mode: ThemeMode) -> crate::Element<'static> {
+    let mut row = Row::new()
+        .align_y(iced::alignment::Vertical::Center)
+        .spacing(space::M)
+        .push(header_text(mode))
+        // Push the action to the trailing edge — the header title stays left.
+        .push(Space::new().width(Length::Fill));
+
+    // Q-HE-6: the export action exists only for a Ready crowned plan.
+    if matches!(plan, PanelState::Ready(_)) {
+        row = row.push(export_button(mode));
+    }
+
+    row.into()
+}
+
+/// The "Export this plan" action — an `ACCENT`-filled button, the same
+/// primary-action idiom as the leaderboard's "Run bake-off" button
+/// (`screens/leaderboard.rs::run_button`). It is the SUGGEST screen's primary
+/// CTA at the journey terminus (take the honest plan with you). Emits
+/// [`Message::ExportPlan`]; the handler assembles the crowned-plan inputs,
+/// calls the golden-tested `serialize_plan_export`, and does the single
+/// `std::fs::write` to the git-ignored `plan-exports/` dir. Dual-mode:
+/// `ACCENT` / `FG_ON_ACCENT` resolve per `ThemeMode`, so it is legible under
+/// both `--theme dark` and `--theme light`.
+fn export_button(mode: ThemeMode) -> crate::Element<'static> {
+    let fg = color::FG_ON_ACCENT.current(mode);
+    let bg = color::ACCENT.current(mode);
+    Button::new(Text::new(PLAN_EXPORT_BUTTON).size(text::BODY).color(fg))
+        .padding([space::S as u16, space::L as u16])
+        .style(move |_t: &iced::Theme, _s: button::Status| button::Style {
+            background: Some(bg.into()),
+            border: Border {
+                color: bg,
+                width: 1.0,
+                radius: radius::R3.into(),
+            },
+            text_color: fg,
+            ..Default::default()
+        })
+        .on_press(Message::ExportPlan)
         .into()
 }
 
@@ -1037,4 +1093,76 @@ fn disclaimer(mode: ThemeMode) -> crate::Element<'static> {
         .color(color::FG_3.current(mode))
         .width(Length::Fill)
         .into()
+}
+
+// ── Export action handler (advisor-handoff-export P5, ADR-0088 § D5/D6/D8) ─────
+
+/// The outcome of an [`export_current_plan`] attempt — surfaced to the operator
+/// as a toast by the `Message::ExportPlan` update arm (never a silent action on
+/// real money).
+#[derive(Debug)]
+pub enum PlanExportOutcome {
+    /// The artifact was written. Carries the file NAME (not the full path) for
+    /// the success toast (`PLAN_EXPORT_TOAST_SAVED_FMT`).
+    Saved(String),
+    /// The `create_dir_all` / `fs::write` failed. Carries the OS error detail
+    /// (dynamic data) for the honest failure toast (`PLAN_EXPORT_TOAST_FAILED_FMT`).
+    Failed(String),
+    /// No crowned plan (or no bake-off mirror) was `Ready` to export — a
+    /// defensive guard. The button is ABSENT unless the plan is Ready (Q-HE-6,
+    /// proven at the pixel layer), so this is structurally unreachable from the
+    /// UI; the handler no-ops it, mirroring the button-gated `TrainingPressed`
+    /// no-op precedent (`state.rs`). Never writes a file.
+    NotReady,
+}
+
+/// Resolve the git-ignored `plan-exports/` artifact directory at the workspace
+/// root (`CARGO_MANIFEST_DIR` = `crates/ui`, so `../..` reaches the repo root —
+/// the same compile-time base as `baseline::loader::workspace_root`). ADR-0088
+/// § D8 / the ADR-0055 `lab-runs/` precedent: outside every `spec/**` anchor
+/// glob, so `verify_anchors.sh` stays 119/119 BY CONSTRUCTION.
+fn plan_exports_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("plan-exports")
+}
+
+/// Assemble the crowned-plan inputs from the model, serialise them with the
+/// pure golden-tested [`serialize_plan_export`], and write the artifact to the
+/// git-ignored `plan-exports/` dir. **This is the single filesystem-write leaf
+/// (ADR-0088 § D5) — it happens ONLY here, on the explicit `Message::ExportPlan`
+/// button press, never automatically on render/update.** Pure-read of the model
+/// (`&Cockpit`); no panic, no `unwrap`. The `Message::ExportPlan` arm maps the
+/// returned [`PlanExportOutcome`] to a toast.
+#[must_use]
+pub fn export_current_plan(model: &Cockpit) -> PlanExportOutcome {
+    // Q-HE-6 guard: only a Ready crowned plan whose bake-off mirror is also
+    // Ready can be exported (the mirror carries the outcome / scorecard /
+    // data-quality / coin / window / run-seed the serialiser needs). The button
+    // is absent otherwise, so both `else` arms are defensive.
+    let PanelState::Ready(plan) = &model.forward_plan_screen_state.plan else {
+        return PlanExportOutcome::NotReady;
+    };
+    let PanelState::Ready(report) = &model.leaderboard_screen_state.result else {
+        return PlanExportOutcome::NotReady;
+    };
+    let narration = &model.leaderboard_screen_state.narration;
+    let fx = model.forward_fx.as_ref();
+
+    // Pure serialisation — no I/O, no wall-clock, no RNG (the golden-tested
+    // contract). Same inputs ⇒ byte-identical output (R-HE.1).
+    let text = serialize_plan_export(plan, report, narration, fx);
+    let filename = export_filename(report);
+
+    // The single fs-write leaf. `create_dir_all` is idempotent; the filename is
+    // deterministic (same run ⇒ same name ⇒ idempotent overwrite).
+    let dir = plan_exports_dir();
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return PlanExportOutcome::Failed(e.to_string());
+    }
+    match std::fs::write(dir.join(&filename), text) {
+        Ok(()) => PlanExportOutcome::Saved(filename),
+        Err(e) => PlanExportOutcome::Failed(e.to_string()),
+    }
 }

@@ -1,7 +1,7 @@
 ---
 slug: advisor-handoff-export
-status: arch-done
-owner: architect
+status: dev-done
+owner: ui-designer
 updated: 2026-07-10
 version: 3.4.0
 trace: REQ-V3-P5-HANDOFF-EXPORT-001
@@ -798,6 +798,68 @@ engine computation (the `run_seed` echo reads an existing value in `ui`); the 9
 unchanged (all inputs are pure-`ui`/`core`/std types). `verify_anchors.sh` 119/119
 before AND after; `spec_lint.py` PASS(0); `adr_registry_check.py` exit 0.
 
+## UI
+
+_ui-designer, 2026-07-10 (T6). The `PLAN_EXPORT_BUTTON` trigger + `Message::ExportPlan`
+handler + the `std::fs::write` leaf + the rendered-pixel proof. The serialiser content
+(the 27 golden-locked `PLAN_EXPORT_*` consts + `export/plan_export.rs`) is byte-untouched._
+
+### Wireframe (the SUGGEST / `Screen::ForwardPlan` header)
+
+```text
+┌─ Confidence check ─────────────────────────────────  [ Export this plan ] ┐  ← header ROW:
+│ Watching the crowned strategy as new bars arrive …          (ACCENT-fill)  │    title left,
+├────────────────────────────────────────────────────────────────────────────┤    button right —
+│ ⚠ This is a conditional, rule-based plan — NOT a price prediction …         │    ONLY in Ready
+│ … stance / standing rules / sizing / horizon / disclaimer …                 │  (Q-HE-6: absent
+└────────────────────────────────────────────────────────────────────────────┘   in Loading/Empty/Error)
+```
+
+Press → `Message::ExportPlan` → `screens::forward_plan::export_current_plan(model)`
+serialises the crowned plan + bake-off mirror + F9 narration + FX note, writes the
+deterministic `plan-{coin}-{window}-{seed8}.md` into the git-ignored workspace-root
+`plan-exports/` dir (the SINGLE fs-write leaf; only on the explicit press), and toasts
+the outcome.
+
+### New screens / panels / widgets
+
+- **No new screen, no new widget.** One button on the EXISTING `Screen::ForwardPlan`
+  header (`header_row` splits the old `header_text` into a `Row` with the title left +
+  the `export_button` right). `export_button` is `ACCENT`-filled — the SAME hand-rolled
+  primary-action idiom as `screens/leaderboard.rs::run_button` (no new reusable widget
+  is warranted for a single-site button).
+- **`Message::ExportPlan`** (payload-free) + its exhaustive `update` arm; the arm maps
+  the `PlanExportOutcome { Saved | Failed | NotReady }` to the existing toast queue.
+
+### New strings (`ui::strings`) — 2, both toast feedback (NOT serialiser content)
+
+- `PLAN_EXPORT_TOAST_SAVED_FMT` = `"Plan saved to plan-exports/{file}"` (Success toast).
+- `PLAN_EXPORT_TOAST_FAILED_FMT` = `"Could not save the plan: {reason}"` (Danger toast;
+  `{reason}` is the OS error detail — dynamic data, like the `PanelState::Error` detail).
+
+Both registered in `strings::all()`. `PLAN_EXPORT_BUTTON` ("Export this plan") already
+existed (developer T2). The 27 golden-locked `PLAN_EXPORT_*` wording consts are untouched.
+
+### New theme tokens — ZERO
+
+Reuses `color::ACCENT` / `color::FG_ON_ACCENT` / `radius::R3` / `space::{S,L,M}` and the
+existing toast-severity tokens (`Success → UP_500`, `Danger → DOWN_500`). No new token.
+
+### Accessibility notes
+
+- **Keyboard:** the export affordance is a real `iced::widget::Button`, so it is
+  focusable + activatable by keyboard like every other button in the app.
+- **Contrast:** `FG_ON_ACCENT` on `ACCENT` is the app's verified button-fill pairing
+  (the same tokens `run_button` uses), ≥ 4.5:1 in both modes (theme-verified).
+- **Colour is never the only signal:** the button carries the literal label "Export this
+  plan" (not colour-only); the toast pairs its severity tint with the message TEXT
+  (filename on success, an honest reason on failure).
+- **Focus order:** the button is the first interactive element in the header, ahead of
+  the scrollable plan body.
+- **Dual-theme:** dual-mode `ModeColor` tokens ⇒ correct under `--theme dark`
+  (`ACCENT` `#6FB6AE`) AND `--theme light` (`ACCENT` `#3F968D`) by construction; the
+  pixel proof renders dark (ADR-0057 dark-canonical harness).
+
 ## Trace
 
 `REQ-V3-P5-HANDOFF-EXPORT-001` in [`spec/trace.toml`](../../trace.toml), state
@@ -806,6 +868,45 @@ step 5 (SUGGEST) + § What this product IS NOT (not-advice, paper-only). Remedia
 anchor: [`spec/backlog.md`](../../backlog.md) § Remediation plan P5.
 
 ## Changelog
+
+- 2026-07-10 (ui-designer): **ui-designer lane (T6) built + green; status → dev-done.**
+  Wired the SUGGEST → export trigger per ADR-0088 § D5. (1) The "Export this plan" button
+  (`PLAN_EXPORT_BUTTON`) on the `Screen::ForwardPlan` header — `ACCENT`-filled, the
+  `leaderboard::run_button` idiom; `header_text` became `header_row` (title left, button
+  right) and the button renders **ONLY** in `PanelState::Ready` (Q-HE-6 — absent in
+  `Loading`/`Empty`/`Error`, no empty-export affordance). (2) `Message::ExportPlan` + its
+  exhaustive `update` arm calling the new `screens::forward_plan::export_current_plan(&Cockpit)`
+  — the single `std::fs::write` leaf: it reads the Ready plan + Ready `BakeoffReportMirror`
+  + `NarrationState` + `forward_fx`, calls the pure golden-tested `serialize_plan_export` /
+  `export_filename`, `create_dir_all`s the git-ignored workspace-root `plan-exports/` dir
+  (compile-time `env!("CARGO_MANIFEST_DIR")/../..`, the `baseline::loader::workspace_root`
+  pattern / ADR-0055 lab-runs precedent), and writes the artifact. Outcome → the existing
+  cockpit-toast-queue: `Saved(file)` → `Success` toast naming the file
+  (`PLAN_EXPORT_TOAST_SAVED_FMT`), `Failed(reason)` → `Danger` toast with the OS-error
+  detail (`PLAN_EXPORT_TOAST_FAILED_FMT`), defensive `NotReady` → no-op (mirrors the
+  button-gated `TrainingPressed` no-op). No panic, no `unwrap`; the fs-write happens ONLY
+  on the explicit press, never on render/update. (3) `/plan-exports/` added to `.gitignore`
+  (anchor-safe by construction). (4) Two NEW toast-feedback strings
+  (`PLAN_EXPORT_TOAST_{SAVED,FAILED}_FMT`, registered in `strings::all()`) — the ONLY new
+  copy; the 27 golden-locked `PLAN_EXPORT_*` serialiser consts + `export/plan_export.rs`
+  emitted content are byte-UNTOUCHED. ZERO new theme tokens (reuses `ACCENT`/`FG_ON_ACCENT`/
+  `R3`/`space`/toast-severity). **Verification:** `crates/ui/tests/plan_export_button_render.rs`
+  — the macOS-gated rendered-PIXEL proof (`export_button_paints_in_ready_header` — the
+  ACCENT button paints in the header band on Ready; `export_button_absent_when_not_ready` —
+  the Q-HE-6 negative control, Empty paints ~no header accent + strictly less than Ready);
+  **both PNGs read** (`/tmp/plan_export_button_{ready,empty}_render.png` — Ready shows the
+  teal button top-right, Empty shows none). Plus 2 feedback-state handler tests in
+  `state.rs::tests`. **Gates:** `cargo test -p ui --lib` 617 passed (615 baseline + 2);
+  `--test plan_export_button_render` 2/2; `--test crown_credibility_render` 3/3 regression;
+  `clippy -p ui --tests -D warnings` clean; `fmt --check` clean; `cargo tree -p ui`
+  unchanged (empty `git diff` on Cargo.toml/Cargo.lock/crates/ui/Cargo.toml — zero new
+  deps); `verify_anchors.sh` 119/119 before AND after; `spec_lint.py` PASS(0). Appended
+  the § UI section (wireframe / new controls / new strings / zero tokens / a11y). FILES
+  ONLY (orchestrator commits/pushes); scope `crates/ui` + `.gitignore` + this feature's
+  `feature.md`/`tasks.md`/trace row; no `spec/**/reports/` touch; `ci.yml.deferred` +
+  FROZEN gate untouched; no live-exchange code. **T7 (tester) OPEN** — owns the flip to
+  `shipped` per ADR-0082.
+  HANDOFF → tester (T7).
 
 - 2026-07-10 (developer): **Developer lane (T2–T5) built + green — see
   [`tasks.md`](tasks.md) T2–T5 for file:line + test-command + output-line citations per row.**

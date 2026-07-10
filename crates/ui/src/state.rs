@@ -2371,6 +2371,19 @@ pub enum Message {
     /// `BakeoffReport`). Lands `Ready(view)` on the forward-plan screen state.
     ForwardPlanReceived(crate::forward_plan::ForwardPlanView),
 
+    // ── advisor-handoff-export v0.1.0 (P5, ADR-0088) — the SUGGEST export ─────
+    /// The operator pressed "Export this plan" on the `Screen::ForwardPlan`
+    /// header (Q-HE-2). The handler assembles the crowned plan, the bake-off
+    /// mirror, the F9 narration, and the FX note, calls the pure golden-tested
+    /// `serialize_plan_export`, and does the single `std::fs::write` to the
+    /// git-ignored `plan-exports/` dir
+    /// (`screens::forward_plan::export_current_plan`), then toasts the outcome
+    /// (success carries the filename; failure carries an honest OS-error
+    /// detail). The button renders ONLY in `PanelState::Ready` (Q-HE-6), so this
+    /// message is only reachable for a crowned plan. Carries no payload — the
+    /// handler reads the current model state.
+    ExportPlan,
+
     // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────────
     /// An `ActivityEvent` arrived from the broadcast channel via
     /// `ActivityRecipe`. Delegates to `ActivityTape::apply`.
@@ -3552,6 +3565,33 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             // mirror happened at the recipe boundary (the binary side), so the
             // engine/agent type never reaches `update` (the INVARIANT seam).
             model.forward_plan_screen_state.set_plan(view);
+        }
+
+        // ── advisor-handoff-export v0.1.0 (P5, ADR-0088) — the SUGGEST export ─
+        Message::ExportPlan => {
+            // The single fs-write leaf lives at `screens::forward_plan`
+            // (ADR-0088 § D5 / lib.rs contract) — it reads the model, serialises
+            // via the pure golden-tested `serialize_plan_export`, and writes the
+            // artifact to the git-ignored `plan-exports/` dir. It happens ONLY on
+            // this explicit button press, never on render/update. We surface the
+            // outcome via the existing toast queue (no panic, no unwrap).
+            use crate::screens::forward_plan::PlanExportOutcome;
+            match crate::screens::forward_plan::export_current_plan(model) {
+                PlanExportOutcome::Saved(filename) => {
+                    let msg =
+                        crate::strings::PLAN_EXPORT_TOAST_SAVED_FMT.replace("{file}", &filename);
+                    enqueue_toast(model, SmolStr::new(msg), ToastSeverity::Success);
+                }
+                PlanExportOutcome::Failed(reason) => {
+                    let msg =
+                        crate::strings::PLAN_EXPORT_TOAST_FAILED_FMT.replace("{reason}", &reason);
+                    enqueue_toast(model, SmolStr::new(msg), ToastSeverity::Danger);
+                }
+                // Structurally unreachable from the UI (the button is absent
+                // unless the plan is Ready, Q-HE-6) — no toast, no file, mirroring
+                // the button-gated `TrainingPressed` no-op.
+                PlanExportOutcome::NotReady => {}
+            }
         }
 
         // ── cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) ───────────────
@@ -6025,6 +6065,72 @@ mod tests {
             c.toast_queue.front().map(|t| t.message.as_str()),
             Some("hello"),
             "message must match"
+        );
+    }
+
+    /// advisor-handoff-export P5 (ADR-0088 § D5) — the `Message::ExportPlan`
+    /// handler happy path: a Ready crowned plan + Ready bake-off mirror
+    /// serialises, writes the deterministic artifact to the git-ignored
+    /// `plan-exports/` dir, and enqueues ONE `Success` toast naming the file.
+    /// Mirrors the toast-idiom tests above; cleans up the written file.
+    #[test]
+    fn export_plan_writes_artifact_and_toasts_success() {
+        let mut c = Cockpit::new();
+        c.forward_plan_screen_state
+            .set_plan(crate::fixtures::fake_forward_plan());
+        c.leaderboard_screen_state.result =
+            PanelState::Ready(crate::fixtures::fake_bakeoff_report_mirror_five_arm());
+
+        update(&mut c, Message::ExportPlan);
+
+        // Exactly one Success toast, naming the deterministic filename.
+        assert_eq!(c.toast_queue.len(), 1, "export must enqueue one toast");
+        let toast = c.toast_queue.front().expect("one toast");
+        assert_eq!(
+            toast.severity,
+            ToastSeverity::Success,
+            "a written export toasts Success"
+        );
+        assert!(
+            toast.message.contains("plan-BTCUSDT-2024-h1-a1b2c3d4.md"),
+            "the success toast names the deterministic filename, got {:?}",
+            toast.message
+        );
+
+        // The artifact really landed in the git-ignored plan-exports/ dir
+        // (`CARGO_MANIFEST_DIR` = crates/ui, so `../..` = workspace root). Remove
+        // it so the test leaves no working-tree debris.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("plan-exports")
+            .join("plan-BTCUSDT-2024-h1-a1b2c3d4.md");
+        assert!(
+            path.exists(),
+            "the export file must exist at {}",
+            path.display()
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// advisor-handoff-export P5 (ADR-0088 § D5 / Q-HE-6) — the negative control:
+    /// dispatching `Message::ExportPlan` with NO Ready plan (the button is absent
+    /// in that state) is a no-op — no toast, no write. Proves the guard tracks the
+    /// state, not a tautology.
+    #[test]
+    fn export_plan_without_ready_plan_is_a_noop() {
+        let mut c = Cockpit::new();
+        // Cold-start default: the forward plan is not Ready (no crowned pick yet).
+        assert!(
+            !matches!(c.forward_plan_screen_state.plan, PanelState::Ready(_)),
+            "cold-start plan must not be Ready"
+        );
+
+        update(&mut c, Message::ExportPlan);
+
+        assert!(
+            c.toast_queue.is_empty(),
+            "ExportPlan with no Ready plan must not toast (the button is absent there)"
         );
     }
 

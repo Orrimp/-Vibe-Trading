@@ -1,7 +1,7 @@
 ---
 slug: advisor-handoff-export
-status: arch-done
-owner: architect
+status: dev-done
+owner: ui-designer
 updated: 2026-07-10
 ---
 
@@ -136,7 +136,7 @@ anchors 119/119 before AND after; spec-lint PASS(0).**
 
 ## ui-designer lane (after T1, ‖ developer against the agreed signature)
 
-- [ ] **T6 — the export trigger + write + gitignore + pixel proof.** The "Export this plan"
+- [x] **T6 — the export trigger + write + gitignore + pixel proof.** The "Export this plan"
   button (`PLAN_EXPORT_BUTTON`) on the `Screen::ForwardPlan` header, rendered ONLY when
   `forward_plan_screen_state.plan == PanelState::Ready` (Q-HE-6). A `Message::ExportPlan`
   handler assembles inputs from `forward_plan_screen_state.plan` + `leaderboard_screen_state`
@@ -146,6 +146,40 @@ anchors 119/119 before AND after; spec-lint PASS(0).**
   in `Empty`/`Loading`/`Error` (the Q-HE-6 negative control). — _acceptance: no export action
   on the empty-plan state; the button passes the render walk; the artifact lands outside every
   `spec/**` anchor glob._
+  ✅ DONE (ui-designer, 2026-07-10). **Button:** `crates/ui/src/screens/forward_plan.rs` —
+  `header_row` (the old `header_text` push in `view` became `header_row(&st.plan, mode)`)
+  puts the title left + the right-aligned `export_button(mode)`, gated `if matches!(plan,
+  PanelState::Ready(_))` (Q-HE-6 — absent in `Loading`/`Empty`/`Error`); `export_button` is
+  `ACCENT`-filled with `FG_ON_ACCENT` text (dual-mode `ModeColor`), the SAME hand-rolled idiom
+  as `screens/leaderboard.rs::run_button`, emitting `Message::ExportPlan`. **Handler + write:**
+  `Message::ExportPlan` (`crates/ui/src/state.rs`, payload-free variant after
+  `ForwardPlanReceived`) + its exhaustive `update` arm calls the new
+  `screens::forward_plan::export_current_plan(&Cockpit) -> PlanExportOutcome` (same file, the
+  SINGLE `std::fs::write` leaf per lib.rs's `pub mod export` contract): it guards both
+  `forward_plan_screen_state.plan` AND `leaderboard_screen_state.result` are `Ready`, reads
+  `leaderboard_screen_state.narration` + `forward_fx`, calls the pure `serialize_plan_export` /
+  `export_filename`, `create_dir_all`s `plan_exports_dir()` (compile-time
+  `env!("CARGO_MANIFEST_DIR")/../../plan-exports` — the `baseline::loader::workspace_root`
+  pattern / ADR-0055 lab-runs precedent), and `std::fs::write`s the artifact. No panic/`unwrap`;
+  the write happens ONLY on the press. **Feedback:** `Saved(file)` → `Success` toast
+  (`PLAN_EXPORT_TOAST_SAVED_FMT`), `Failed(reason)` → `Danger` toast (`PLAN_EXPORT_TOAST_FAILED_FMT`,
+  `{reason}` = OS-error detail), `NotReady` → no-op (button-gated, mirrors `TrainingPressed`).
+  **.gitignore:** `/plan-exports/` added (root `.gitignore`, after `/lab-runs/`). **Strings:**
+  2 NEW toast-feedback consts in `strings.rs` (`PLAN_EXPORT_TOAST_{SAVED,FAILED}_FMT`,
+  registered in `strings::all()`) — the golden-locked 27 `PLAN_EXPORT_*` serialiser consts +
+  `export/plan_export.rs` byte-UNTOUCHED. Zero new theme tokens. **Pixel proof:**
+  `crates/ui/tests/plan_export_button_render.rs` (macOS-gated) — `export_button_paints_in_ready_header`
+  (the ACCENT button paints in the header band, `> 800` teal px) + `export_button_absent_when_not_ready`
+  (Q-HE-6 negative control: Empty `< 150` header teal AND Ready `>` Empty `+ 600`); `cargo test
+  -p ui --test plan_export_button_render` → 2 passed; **both PNGs read**
+  (`/tmp/plan_export_button_{ready,empty}_render.png` — Ready shows the teal button top-right,
+  Empty shows none). **Feedback-state tests:** `state.rs::tests` — `export_plan_writes_artifact_and_toasts_success`
+  (happy path writes the deterministic `plan-BTCUSDT-2024-h1-a1b2c3d4.md` + Success toast, then
+  cleans up) + `export_plan_without_ready_plan_is_a_noop`. **Gates:** `cargo test -p ui --lib`
+  617 passed (615 + 2); `--test crown_credibility_render` 3/3 regression; `clippy -p ui --tests
+  -D warnings` clean; `fmt --check` clean; `cargo tree -p ui` unchanged (empty `git diff` on
+  Cargo.toml/Cargo.lock/crates/ui/Cargo.toml); `verify_anchors.sh` 119/119 before AND after;
+  `spec_lint.py` PASS(0). FILES ONLY. **T7 (tester) stays open.**
 
 ## Tester (closes the loop)
 

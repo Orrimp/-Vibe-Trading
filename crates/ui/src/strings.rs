@@ -2289,6 +2289,8 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             PLAN_EXPORT_SECTION_SHORT_RISK,
         ),
         ("PLAN_EXPORT_BUTTON", PLAN_EXPORT_BUTTON),
+        ("PLAN_EXPORT_TOAST_SAVED_FMT", PLAN_EXPORT_TOAST_SAVED_FMT),
+        ("PLAN_EXPORT_TOAST_FAILED_FMT", PLAN_EXPORT_TOAST_FAILED_FMT),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -4230,6 +4232,19 @@ pub const PLAN_EXPORT_SECTION_SHORT_RISK: &str =
 /// The "Export this plan" trigger button label (Q-HE-2), rendered on the
 /// SUGGEST/`Screen::ForwardPlan` header — wired by the ui-designer's T6.
 pub const PLAN_EXPORT_BUTTON: &str = "Export this plan";
+
+/// Success toast after the plan export is written (ui-designer T6 feedback).
+/// `{file}` is the deterministic filename; the `plan-exports/` prefix tells the
+/// operator where to find it. NOT part of the golden-locked serialiser content —
+/// this is the button's transient feedback, never written into the artifact.
+pub const PLAN_EXPORT_TOAST_SAVED_FMT: &str = "Plan saved to plan-exports/{file}";
+
+/// Failure toast when the plan export could not be written (ui-designer T6
+/// feedback). `{reason}` carries the underlying filesystem error detail (dynamic
+/// data, like the `PanelState::Error` detail the plan screen already renders) —
+/// the frame copy is this const, the detail is the OS error. An honest failure,
+/// never a silent swallow.
+pub const PLAN_EXPORT_TOAST_FAILED_FMT: &str = "Could not save the plan: {reason}";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05
