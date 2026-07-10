@@ -3,7 +3,7 @@ slug: advisor-corpus-expansion
 status: tester-done
 owner: tester
 updated: 2026-07-10
-version: 3.3.0
+version: 3.3.1
 trace: REQ-V3-P2-CORPUS-EXPANSION-001
 ---
 
@@ -804,3 +804,79 @@ crypto era, ever"?), not a gate failure.
   `cargo clippy -p data --tests -- -D warnings` clean. status dev-done→tester-done;
   version 3.2.0→3.3.0; trace row → tested. VERDICT → PASS. HANDOFF → analyst
   (informational, non-blocking) on the wobble-list product-copy question.
+- 2026-07-10 (developer): **P2 follow-on bug fix — scorecard `n_eff=NaN`/
+  `min_btl_years=0.00` NaN-swallow hardening** (the tester's own flagged item
+  above; `spec/dev-notes/p2-wobble-thesis-analysis-2026-07-10.md` § (d)).
+  **Root cause, pinned exactly:** `compute_sharpe_hourly`
+  (`crates/backtest/src/stats/mod.rs:52`, a frozen M-DEV-1 verbatim lift, out
+  of scope to edit) guards a non-positive STARTING equity but not a
+  positive-to-NEGATIVE crossing WITHIN one bar; `v0.sma_cross_ls` /
+  `v0.always_short` (in every corpus's field via `default_short_field()`) can
+  drive equity through zero, so `(curr / prev).ln()` computes `ln(negative)
+  = NaN` for that window, and `Sharpe = NaN` survives into
+  `CandidateKpis.sharpe` untouched. That `NaN` then poisoned TWO independent
+  moment computations in `bakeoff/scorecard.rs`: (1) `n_eff()`'s
+  mean/variance/correlation chain → `n_eff = NaN`, which `min_btl()`'s
+  `n_eff.max(1.0 + f64::EPSILON)` silently clamped to `~1.0` per IEEE 754
+  `f64::max(NaN, x) == x` (so `min_btl_years` read `~4.4e-16 ≈ "0.00"` —
+  looked like zero, was actually a non-zero epsilon from a silent
+  substitution, not an honest computed value); (2) `sharpe_variance()`
+  (`dsr()`'s cross-trial variance `V` input) → `NaN`, which `dsr()`'s
+  `(sharpe_variance_annualised / hpy).max(0.0)` silently clamped to `V=0.0`
+  — a SECOND, previously-undiscovered manifestation of the same bug class:
+  `deflated_sharpe` was NOT merely unaffected by the NaN (as it first
+  appeared, since `crown_sr`'s `.fold(NEG_INFINITY, f64::max)` correctly
+  drops NaN by construction) — it was ALSO silently computed off a wrong,
+  artificially-zero `V`, over-crediting every crown.
+  **Fix (`crates/backtest/src/bakeoff/scorecard.rs`, module doc "Degenerate-
+  Sharpe hardening" section):** non-finite Sharpes are excluded from every
+  moment-based statistic (`n_eff`, `sharpe_variance`) at the point of
+  computation, NOT silently clamped after the fact; `n_candidates` (the "N
+  tried" field size) is UNCHANGED — still counts every arm run, per the DSR/
+  MinBTL literature's trial-count definition. `n_eff`/`min_btl`/`dsr` each
+  additionally carry an explicit `is_nan()` guard (defense in depth) instead
+  of relying on `f64::max`'s implicit NaN-propagation rule. No redesign, no
+  ONC, closed-form preserved verbatim (ADR-0075 D4 untouched).
+  **Proof (before/after S4, byte-untouched 2324 baseline, identical smoke
+  command):** `n_candidates=25 n_eff=NaN deflated_sharpe=0.9947
+  min_btl_years=0.00 crown_clears_dsr=true` → `n_candidates=25 n_eff=25.00
+  deflated_sharpe=0.1979 min_btl_years=6.44 crown_clears_dsr=false`
+  (`n_eff` finite + at the correct closed-form value for a genuinely
+  low-correlation 23-arm field, ρ̄≈−0.045 verified by hand; `min_btl_years`
+  a real 6.44y, not an epsilon artefact).
+  **Blast-radius honesty (`--include-ignored` full matrix re-run, 15/15
+  passed, 794.88s, byte-identical pass count to the tester's original run):**
+  **`outcome` and crowned-arm-name are BYTE-IDENTICAL on all 32/32 primary
+  symbol-runs — the FROZEN-gate report-only contract held exactly as
+  designed.** `crown_clears_dsr` flips `true→false` on **17 of 32** primary
+  rows (all 19 `ActiveWins` crowns' DSR values drop materially — e.g. S2
+  LINKUSDT 0.9999→0.7762, S3 AVAXUSDT 1.0000→0.8127 — because the true,
+  non-zero cross-trial Sharpe variance now feeds `dsr()` instead of the
+  silently-zeroed `V=0.0`); **AC2's rollup changes from "16 of 19 (84%)
+  `ActiveWins` crowns clear DSR" to "0 of 19 (0%) clear DSR"** post-fix — the
+  DSR check is now materially MORE conservative on every row, which is the
+  textbook-correct direction (a wider true variance makes the multiple-
+  testing bar harder to clear, not easier). The S2→S8 DOGEUSDT era-cost
+  OUTCOME FLIP (AC4) and all 3 named S7/S8 crown-swap rows are unchanged in
+  crown identity (DSR values drop the same way, direction-consistent).
+  **AC1 (`RecommendationOutcome`), AC3 (`MinBTL` 3.99→7.90y — computed
+  independently from the corpus WINDOWS, never touched the buggy per-run
+  field), AC4 (wobble list), and AC8 (top-line HOLDS/WOBBLES verdict) are
+  ALL UNCHANGED** — none of them read the per-run `crown_clears_dsr`/`n_eff`
+  fields this fix touches; only AC2's specific DSR-clear-rate numbers move.
+  **New regression tests** (`crates/backtest/src/bakeoff/scorecard.rs`, 10
+  new `#[test]`s incl. `compute_scorecard_s4_shape_two_nan_sharpes_stays_
+  honest` pinning the exact S4 field shape) + all pre-existing scorecard
+  tests green (26/26); gate-identity tests
+  `scorecard_does_not_change_ranking` + `turnover_does_not_change_ranking`
+  both green (proving the fix touches no ranking path). Gates:
+  `cargo test -p backtest --lib` 238/238 (0 failed, 11 pre-existing ignored,
+  unrelated); `cargo clippy -p backtest --features realdata,yahoo
+  --all-targets -- -D warnings` clean; `cargo fmt --check -p backtest`
+  clean; `verify_anchors.sh` 119/119 before AND after; `spec_lint.py`
+  PASS(0). FROZEN gate (`bakeoff/{robustness,rank,mod}.rs`, `write_report`
+  paths) byte-untouched — only `scorecard.rs` edited. version 3.3.0→3.3.1.
+  No trace-state change (bug fix within ADR-0075's existing design, per the
+  task brief's guard). HANDOFF → tester (verify-and-tick per the honest-tick
+  rule; no ticks claimed here beyond this feature.md changelog entry, which
+  is self-verified by the citations above).

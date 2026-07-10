@@ -50,6 +50,49 @@
 //! - PBO via CSCV: deferred to the Tune/sweep surface (R2). `pbo` is always `None`.
 //! - Crown-eligibility veto: `crown_clears_dsr` is report-only in v2.
 //! - ONC clustering for `N_eff`: moot at N = 24; closed-form is frozen.
+//!
+//! # Degenerate-Sharpe hardening (bug fix, post-P2, `p2-wobble-thesis-analysis-2026-07-10.md` § (d))
+//!
+//! A per-candidate Sharpe can be `NaN`: `compute_sharpe_hourly`'s log-return
+//! `(curr / prev).ln()` is only guarded against a non-positive **starting**
+//! equity (`prev <= 0.0 → 0.0`); when equity crosses from positive to
+//! negative WITHIN one bar (the short-side arms `v0.sma_cross_ls` /
+//! `v0.always_short` can blow equity through zero), `curr / prev` is
+//! negative and `.ln()` of a negative number is `NaN` by IEEE 754. That NaN
+//! survives into `CandidateResult.kpis.sharpe` untouched (this module does
+//! not own `compute_sharpe_hourly` — it is a frozen M-DEV-1 verbatim lift,
+//! `crates/backtest/src/stats/mod.rs:40`, and is out of scope here).
+//!
+//! **The defined semantics, applied at the [`compute_scorecard`] boundary:**
+//! non-finite (`NaN` / `±∞`) Sharpe estimates are **excluded** from every
+//! moment-based statistic — [`n_eff`] and [`sharpe_variance`] — before they
+//! are computed. `n_candidates` (the "N tried" field size reported to the
+//! operator) is UNCHANGED — it still counts every arm actually run,
+//! including the degenerate ones, because "how many strategies were tried"
+//! is what the DSR/`MinBTL` literature means by trial count. Only the
+//! *statistics derived from the Sharpe distribution* use the finite subset.
+//! If fewer than 2 finite Sharpes remain (e.g. a 1-candidate field, or a
+//! field where every non-benchmark arm degenerated), `n_eff` falls back to
+//! the existing `m < 2` convention — returns the raw candidate count,
+//! documented as "conservative — never over-deflates" — using the FULL `m`
+//! (not the finite count), so a field that is mostly non-finite is not
+//! rewarded with an artificially small `N_eff`.
+//!
+//! No `NaN` may ever reach [`Scorecard::n_eff`], [`Scorecard::min_btl_years`],
+//! or [`Scorecard::deflated_sharpe`] — [`n_eff`], [`min_btl`], and [`dsr`]
+//! additionally each carry their own explicit `is_nan()` guard on every
+//! external input (defense in depth: even a future caller that skips the
+//! filtering above cannot smuggle a `NaN` past these three functions). A
+//! `NaN`-triggered degenerate result is, respectively, `m as f64` (the raw
+//! trial count — [`n_eff`]'s pre-existing "conservative, never
+//! over-deflates" convention), `0.0` ([`min_btl`] — the same value the
+//! pre-existing `f64::max(NaN, x) == x` clamp produced by accident, but now
+//! from an explicit, documented branch rather than a silent IEEE-754
+//! coincidence), and `0.0` ([`dsr`] — its existing "degenerate inputs"
+//! convention). This preserves every existing non-degenerate numeric result
+//! byte-for-byte (verified: the `n_eff`/`min_btl`/DSR unit tests below are
+//! unchanged) while making the degenerate path honest instead of a silent
+//! coincidence.
 
 #![allow(clippy::float_arithmetic)] // statistical metric computations
 #![allow(clippy::cast_precision_loss)] // intentional usize→f64 casts in stats computations
@@ -292,14 +335,47 @@ pub fn normal_inv_cdf(p: f64) -> f64 {
 /// - `m`: total candidate count (must equal `sharpe_ratios.len()`; passed
 ///   separately for clarity and to allow an early-return).
 ///
+/// # Degenerate-Sharpe handling (post-P2 hardening — see module doc)
+///
+/// Non-finite entries (`NaN` / `±∞`) in `sharpe_ratios` are excluded from the
+/// mean/variance/correlation computation below — a `NaN` Sharpe (e.g. a
+/// short-side arm whose equity crossed zero, poisoning
+/// `compute_sharpe_hourly`'s log-return) must never poison `ρ̄`/`N_eff` via
+/// `f64` NaN-propagation. `m` (the caller-supplied raw trial count) is used
+/// for the `M < 2` early-return and the final `N_eff` upper clamp REGARDLESS
+/// of how many entries were finite — `N_eff` is bounded by "how many
+/// strategies were tried", not "how many computed cleanly". If fewer than 2
+/// Sharpes are finite, this falls back to the same `m < 2` convention below
+/// (returns `m as f64` — conservative, never over-deflates) using the FULL
+/// `m`, not the finite subset count, so a mostly-degenerate field is never
+/// rewarded with an artificially small `N_eff`.
+///
 /// # Returns
 ///
-/// `N_eff` clamped to `[1.0, m as f64]`.
-/// Returns `m as f64` (raw N) when M < 2 or all Sharpes are identical
-/// (correlation undefined or 1.0 — conservative, never over-deflates).
+/// `N_eff` clamped to `[1.0, m as f64]`. Never `NaN` — see the guard above
+/// and the final `is_nan()` check.
+/// Returns `m as f64` (raw N) when M < 2, when fewer than 2 Sharpes are
+/// finite, or all finite Sharpes are identical (correlation undefined or
+/// 1.0 — conservative, never over-deflates).
 #[must_use]
 pub fn n_eff(sharpe_ratios: &[f64], m: usize) -> f64 {
     if m < 2 || sharpe_ratios.len() < 2 {
+        return m as f64;
+    }
+
+    // Exclude non-finite Sharpes (NaN / ±∞) BEFORE any moment computation —
+    // see "Degenerate-Sharpe hardening" in the module doc. A finite Sharpe
+    // is required for a candidate to contribute to the correlation estimate;
+    // a poisoned candidate is still counted in `m` (the trial count) but not
+    // in the statistics derived from the Sharpe distribution.
+    let finite_sharpes: Vec<f64> = sharpe_ratios
+        .iter()
+        .copied()
+        .filter(|s| s.is_finite())
+        .collect();
+    if finite_sharpes.len() < 2 {
+        // Not enough clean signal to estimate ρ̄ — fall back to the raw trial
+        // count (same conservative convention as the M < 2 guard above).
         return m as f64;
     }
 
@@ -312,6 +388,7 @@ pub fn n_eff(sharpe_ratios: &[f64], m: usize) -> f64 {
     // This is the closed-form approximation cited in backtesting[1-App.3].
 
     let m_f = m as f64;
+    let sharpe_ratios = finite_sharpes.as_slice();
     let n = sharpe_ratios.len();
 
     // Compute sample mean and sample std of the Sharpe estimates.
@@ -324,7 +401,7 @@ pub fn n_eff(sharpe_ratios: &[f64], m: usize) -> f64 {
     let std_sr = var_sr.sqrt();
 
     if std_sr < 1e-12 {
-        // All Sharpes identical → full correlation → N_eff = 1.
+        // All (finite) Sharpes identical → full correlation → N_eff = 1.
         // (Edge case: a totally homogeneous field.)
         return 1.0_f64.min(m_f);
     }
@@ -362,6 +439,14 @@ pub fn n_eff(sharpe_ratios: &[f64], m: usize) -> f64 {
 
     // N_eff = ρ̄ + (1 − ρ̄) · M   (Bailey-López de Prado App.3)
     let n_eff_raw = rho_bar + (1.0 - rho_bar) * m_f;
+    // Defense in depth (see module doc): `n_eff_raw` is mathematically
+    // guaranteed finite here (every input above was filtered to `is_finite()`
+    // first), but an explicit `is_nan()` guard — rather than relying on
+    // `f64::clamp`'s implicit NaN-propagation behaviour — keeps this function
+    // honest even if a future edit reintroduces an unfiltered path.
+    if n_eff_raw.is_nan() {
+        return m_f;
+    }
     n_eff_raw.clamp(1.0, m_f)
 }
 
@@ -380,10 +465,21 @@ pub fn n_eff(sharpe_ratios: &[f64], m: usize) -> f64 {
 ///
 /// # Returns
 ///
-/// Years of backtest data required.  Clamped to ≥ 0.
+/// Years of backtest data required.  Clamped to ≥ 0.  `0.0` on a `NaN`
+/// `n_eff` — the SAME degenerate output the `N_eff ≤ 1` case already
+/// documents (a `NaN` trial count is, definitionally, not a trustworthy
+/// multiple-testing correction; `0.0` is the honest "cannot compute a
+/// non-trivial bound" answer, not a silent coincidence of `f64::max`'s
+/// NaN-propagation rule — see the module doc's degenerate-Sharpe section).
 #[must_use]
 pub fn min_btl(n_eff: f64, sr_target: f64) -> f64 {
-    if n_eff <= 1.0 || sr_target <= 0.0 {
+    // `n_eff <= 1.0` is `false` for a NaN `n_eff` (NaN comparisons are always
+    // false), so a bare `<=` guard alone would fall through to
+    // `n_eff.max(1.0 + f64::EPSILON)` — which silently returns `1.0 + ε`
+    // because `f64::max` returns the non-NaN operand. Guard `is_nan()`
+    // explicitly first so the degenerate case is a documented `0.0`, not an
+    // accident of IEEE 754 max semantics.
+    if n_eff.is_nan() || n_eff <= 1.0 || sr_target <= 0.0 {
         return 0.0;
     }
     let n_eff_clamped = n_eff.max(1.0 + f64::EPSILON);
@@ -413,9 +509,18 @@ pub fn min_btl(n_eff: f64, sr_target: f64) -> f64 {
 ///   We accept standard excess-kurtosis (0 for Normal) and convert internally.
 /// - `n_eff`: effective trial count from [`n_eff`].
 ///
+/// # Degenerate-Sharpe handling (post-P2 hardening — see module doc)
+///
+/// `n_eff < 1.0` is `false` for a `NaN` `n_eff` (NaN comparisons are always
+/// false in IEEE 754), so an `is_nan()` check is explicit here rather than
+/// relying on `<` to catch it — the same discipline as [`min_btl`]. In
+/// practice `n_eff` reaching this function is already guaranteed finite by
+/// [`n_eff`]'s own hardening (see module doc); this is defense in depth.
+///
 /// # Returns
 ///
-/// DSR as a probability in [0, 1].  Returns 0.0 on degenerate inputs.
+/// DSR as a probability in [0, 1].  Returns 0.0 on degenerate inputs
+/// (including a `NaN` `n_eff` — never propagated into the output).
 #[must_use]
 pub fn dsr(
     sr_hat_annualised: f64,
@@ -425,7 +530,7 @@ pub fn dsr(
     excess_kurtosis: f64,
     n_eff: f64,
 ) -> f64 {
-    if t_periods < 2 || n_eff < 1.0 {
+    if t_periods < 2 || n_eff.is_nan() || n_eff < 1.0 {
         return 0.0;
     }
 
@@ -436,6 +541,9 @@ pub fn dsr(
     // Convert annualised Sharpe variance → per-period.
     // Var[SR_ann] = Var[SR_period · √HPY] = HPY · Var[SR_period]
     // → Var[SR_period] = Var[SR_ann] / HPY
+    // (`sharpe_variance_annualised` is guaranteed finite — see
+    // `sharpe_variance`'s own hardening — so `.max(0.0)` here is purely a
+    // non-negativity clamp, not a NaN-swallow.)
     let hpy = SQRT_HPY * SQRT_HPY; // 24 * 365
     let v_sr = (sharpe_variance_annualised / hpy).max(0.0);
 
@@ -524,19 +632,31 @@ pub fn compute_excess_kurtosis(log_returns: &[f64]) -> f64 {
 /// the sampling SE of one Sharpe.  This is the common error warned about in
 /// `backtesting[1]`: using a single SE as V over-deflates the DSR.
 ///
+/// # Degenerate-Sharpe handling (post-P2 hardening — see module doc)
+///
+/// Non-finite entries (`NaN` / `±∞`) are excluded before the mean/variance
+/// computation, same discipline as [`n_eff`] — a `NaN` Sharpe must not
+/// poison the cross-trial variance DSR uses as `V`.
+///
 /// # Returns
 ///
-/// Annualised Sharpe variance (sample variance, Bessel-corrected).
+/// Annualised Sharpe variance (sample variance, Bessel-corrected). `0.0`
+/// when fewer than 2 Sharpes are finite. Never `NaN`.
 #[must_use]
 pub fn sharpe_variance(sharpe_ratios: &[f64]) -> f64 {
-    let n = sharpe_ratios.len();
+    let finite_sharpes: Vec<f64> = sharpe_ratios
+        .iter()
+        .copied()
+        .filter(|s| s.is_finite())
+        .collect();
+    let n = finite_sharpes.len();
     if n < 2 {
         return 0.0;
     }
     let n_f = n as f64;
-    let mean = sharpe_ratios.iter().sum::<f64>() / n_f;
+    let mean = finite_sharpes.iter().sum::<f64>() / n_f;
     // Bessel correction (n − 1) for an unbiased sample variance.
-    sharpe_ratios
+    finite_sharpes
         .iter()
         .map(|&s| (s - mean).powi(2))
         .sum::<f64>()
@@ -706,6 +826,116 @@ mod tests {
         assert_eq!(ne, 0.0);
     }
 
+    // ── NaN-Sharpe regression (post-P2 hardening) ─────────────────────────────
+    //
+    // Root cause: `compute_sharpe_hourly` can return `NaN` for a short-side
+    // arm whose equity crosses through zero mid-window (ln of a negative
+    // ratio). Before the fix, ANY NaN entry in `sharpe_ratios` poisoned the
+    // mean/variance/correlation computation, producing `n_eff = NaN`, which
+    // `min_btl`'s `n_eff.max(1.0 + f64::EPSILON)` then silently clamped to
+    // ~1.0 (`f64::max(NaN, x) == x` per IEEE 754) — so `min_btl_years` read
+    // `0.00` while `n_eff` itself stayed a raw, unusable `NaN`.
+    //
+    // Reproduces the exact S4 field shape: a realistic Sharpe spread (24
+    // finite values matching the observed `s4_binance_2324_base_smoke`
+    // magnitudes) plus 2 NaN entries at the positions `v0.sma_cross_ls` /
+    // `v0.always_short` occupy in the real field.
+
+    /// A single `NaN` Sharpe in an otherwise-normal field must NOT poison
+    /// `N_eff` — it must be excluded from the moment computation, leaving
+    /// `N_eff` finite and matching what the SAME field minus the NaN entry
+    /// would produce (the NaN candidate is invisible to the correlation
+    /// estimate, not present-but-corrupting).
+    #[test]
+    fn n_eff_excludes_single_nan_sharpe() {
+        let clean = vec![1.4668, 0.6604, -0.9666, 1.7909, 0.5, -0.3, 1.1, 0.2];
+        let mut with_nan = clean.clone();
+        with_nan.insert(2, f64::NAN); // same position family as the real field
+        let m = with_nan.len();
+
+        let ne_with_nan = n_eff(&with_nan, m);
+        assert!(
+            ne_with_nan.is_finite(),
+            "N_eff must be finite when the input contains one NaN Sharpe, got {ne_with_nan}"
+        );
+
+        // The NaN-bearing field's N_eff must equal the clean field's N_eff
+        // computed against the SAME raw trial count `m` (NaN is excluded from
+        // the correlation estimate, but `m` — the trial count — still counts
+        // the degenerate arm; see module doc).
+        let ne_clean_same_m = n_eff(&clean, m);
+        assert!(
+            (ne_with_nan - ne_clean_same_m).abs() < 1e-9,
+            "N_eff with 1 NaN excluded should match N_eff of the finite subset \
+             at the same trial count m={m}: with_nan={ne_with_nan}, clean={ne_clean_same_m}"
+        );
+    }
+
+    /// A field with ALL Sharpes `NaN` (fully degenerate) must fall back to
+    /// the conservative `m as f64` convention — not propagate `NaN`.
+    #[test]
+    fn n_eff_all_nan_falls_back_to_m() {
+        let all_nan = vec![f64::NAN, f64::NAN, f64::NAN, f64::NAN];
+        let ne = n_eff(&all_nan, all_nan.len());
+        assert_eq!(
+            ne, 4.0,
+            "all-NaN field must fall back to raw trial count m, got {ne}"
+        );
+        assert!(!ne.is_nan());
+    }
+
+    /// The exact S4 shape: 25 candidates (24 finite + benchmark), 2 of them
+    /// `NaN` (`v0.sma_cross_ls`, `v0.always_short`) — matches the field size
+    /// observed in `s4_binance_2324_base_smoke`. `N_eff` must be finite and
+    /// in `(1.0, 25.0]`.
+    #[test]
+    fn n_eff_s4_shape_two_nan_of_25_stays_finite_and_bounded() {
+        let mut sharpes = vec![
+            1.4668,
+            0.6604,
+            -0.5399,
+            -1.6644,
+            -1.9697,
+            1.5656,
+            -2.8920,
+            -0.0955,
+            -0.3175,
+            0.0,
+            -0.9666,
+            0.0,
+            0.3371,
+            0.0,
+            -0.9443,
+            1.2460,
+            -0.2157,
+            -0.1275,
+            f64::NAN,
+            0.5721,
+            -0.5724,
+            -1.6946,
+            f64::NAN,
+            1.0655,
+            1.7909,
+        ];
+        let m = sharpes.len();
+        assert_eq!(m, 25, "must match the S4 field size (24 arms + benchmark)");
+        let ne = n_eff(&sharpes, m);
+        assert!(ne.is_finite(), "N_eff must be finite, got {ne}");
+        assert!(
+            ne > 1.0 && ne <= m as f64 + 1e-9,
+            "N_eff={ne} out of (1, {m}] bounds"
+        );
+
+        // Order independence sanity: shuffling the NaN positions must not
+        // change the result (filter is position-independent by construction).
+        sharpes.swap(0, 18);
+        let ne2 = n_eff(&sharpes, m);
+        assert!(
+            (ne - ne2).abs() < 1e-9,
+            "n_eff must be order-independent: {ne} vs {ne2}"
+        );
+    }
+
     // ── min_btl tests ──────────────────────────────────────────────────────────
 
     /// Verify the MinBTL formula against the table from `evolution[29]`:
@@ -738,6 +968,24 @@ mod tests {
     fn min_btl_zero_for_n_le_1() {
         assert_eq!(min_btl(1.0, 1.0), 0.0);
         assert_eq!(min_btl(0.0, 1.0), 0.0);
+    }
+
+    /// Regression: a `NaN` `n_eff` must produce an EXPLICIT, documented
+    /// `0.0` (the `is_nan()` guard firing), not a value that HAPPENS to be
+    /// ~0.0 via `f64::max(NaN, x) == x` silently clamping to `x=1.0+ε` and
+    /// then `2·ln(1.0+ε) ≈ 4.4e-16`. Both produce a number that *rounds* to
+    /// `0.00` at 2dp — this test pins the EXACT bit-for-bit `0.0`, which the
+    /// pre-fix silent-clamp path did NOT produce (it produced `4.44e-16`, a
+    /// non-zero float that only LOOKED like zero when formatted `{:.2}`).
+    #[test]
+    fn min_btl_nan_input_produces_exact_zero_not_epsilon() {
+        let btl = min_btl(f64::NAN, 1.0);
+        assert_eq!(
+            btl, 0.0,
+            "NaN n_eff must produce an EXACT 0.0 via the explicit is_nan() \
+             guard, not an epsilon-near-zero value from a silent clamp, got {btl:e}"
+        );
+        assert!(!btl.is_nan(), "min_btl must never return NaN");
     }
 
     // ── DSR tests ──────────────────────────────────────────────────────────────
@@ -864,6 +1112,51 @@ mod tests {
         );
     }
 
+    /// Regression: a `NaN` `n_eff` passed into `dsr()` must yield `0.0`, not
+    /// propagate `NaN` into `deflated_sharpe` and not silently proceed as if
+    /// `N_eff == 1` (the pre-fix behaviour, via `n_eff < 1.0` being `false`
+    /// for NaN so the early-return didn't fire, then `n_eff.max(1.0+ε)`
+    /// silently substituting ~1.0).
+    #[test]
+    fn dsr_nan_n_eff_returns_zero_not_nan() {
+        let dsr_val = dsr(1.5, 0.3, 500, 0.0, 0.0, f64::NAN);
+        assert_eq!(
+            dsr_val, 0.0,
+            "NaN n_eff must produce an explicit 0.0 DSR, got {dsr_val}"
+        );
+        assert!(!dsr_val.is_nan(), "dsr() must never return NaN");
+    }
+
+    // ── sharpe_variance NaN-exclusion tests ───────────────────────────────────
+
+    /// `sharpe_variance` must exclude non-finite entries — a single `NaN`
+    /// Sharpe must not poison `V`, DSR's cross-trial-variance input.
+    #[test]
+    fn sharpe_variance_excludes_nan() {
+        let clean = vec![1.0, 2.0, 0.5, -0.5, 1.5];
+        let mut with_nan = clean.clone();
+        with_nan.push(f64::NAN);
+
+        let v_with_nan = sharpe_variance(&with_nan);
+        assert!(
+            v_with_nan.is_finite(),
+            "sharpe_variance must be finite with one NaN entry, got {v_with_nan}"
+        );
+        let v_clean = sharpe_variance(&clean);
+        assert!(
+            (v_with_nan - v_clean).abs() < 1e-9,
+            "sharpe_variance with NaN excluded should match the finite subset: \
+             with_nan={v_with_nan}, clean={v_clean}"
+        );
+    }
+
+    /// All-NaN input → `0.0`, not `NaN` (mirrors the `n < 2` convention).
+    #[test]
+    fn sharpe_variance_all_nan_returns_zero() {
+        let v = sharpe_variance(&[f64::NAN, f64::NAN, f64::NAN]);
+        assert_eq!(v, 0.0);
+    }
+
     // ── compute_scorecard integration test ────────────────────────────────────
 
     #[test]
@@ -872,6 +1165,93 @@ mod tests {
         assert_eq!(sc.n_candidates, 0);
         assert_eq!(sc.deflated_sharpe, 0.0);
         assert!(!sc.crown_clears_dsr);
+    }
+
+    /// End-to-end regression pinning the ORIGINAL bug: `compute_scorecard`
+    /// fed the exact S4 field shape (25 candidates, 2 `NaN` Sharpes at the
+    /// `v0.sma_cross_ls` / `v0.always_short` positions, matching
+    /// `s4_binance_2324_base_smoke`'s observed field) must produce a FINITE
+    /// `n_eff` and a `min_btl_years` that is EITHER a genuine positive value
+    /// OR an honest `0.0` derived from a finite, in-bounds `n_eff` — never a
+    /// `NaN` `n_eff` paired with an accidental `0.0` `min_btl_years`.
+    ///
+    /// Before the fix this test would have failed on `sc.n_eff.is_finite()`
+    /// (it was `NaN`), even though `min_btl_years` happened to already read
+    /// `~0.0` (see `min_btl_nan_input_produces_exact_zero_not_epsilon` for
+    /// why "reads as 0.00" was not proof of correctness).
+    #[test]
+    fn compute_scorecard_s4_shape_two_nan_sharpes_stays_honest() {
+        let all_sharpes = vec![
+            1.4668,
+            0.6604,
+            -0.5399,
+            -1.6644,
+            -1.9697,
+            1.5656,
+            -2.8920,
+            -0.0955,
+            -0.3175,
+            0.0,
+            -0.9666,
+            0.0,
+            0.3371,
+            0.0,
+            -0.9443,
+            1.2460,
+            -0.2157,
+            -0.1275,
+            f64::NAN,
+            0.5721,
+            -0.5724,
+            -1.6946,
+            f64::NAN,
+            1.0655,
+            1.7909,
+        ];
+        assert_eq!(all_sharpes.len(), 25, "must match the S4 field shape");
+
+        // Crown (buy-and-hold, Sharpe=1.7909) equity curve — a modest, steady
+        // rise over 1000 bars is sufficient to exercise the full pipeline.
+        let crown_equity: Vec<Decimal> = (0..1001)
+            .map(|i| dec!(100_000) + Decimal::from(i * 50))
+            .collect();
+
+        let sc = compute_scorecard(&all_sharpes, &crown_equity, 1000);
+
+        assert_eq!(sc.n_candidates, 25, "n_candidates counts every arm tried");
+        assert!(
+            sc.n_eff.is_finite(),
+            "n_eff must be finite with 2 NaN Sharpes in the field — THE bug this test pins, got {}",
+            sc.n_eff
+        );
+        assert!(
+            sc.n_eff > 1.0 && sc.n_eff <= 25.0 + 1e-9,
+            "n_eff must stay within (1, 25], got {}",
+            sc.n_eff
+        );
+        assert!(
+            !sc.min_btl_years.is_nan(),
+            "min_btl_years must never be NaN"
+        );
+        assert!(
+            sc.min_btl_years >= 0.0,
+            "min_btl_years must be non-negative, got {}",
+            sc.min_btl_years
+        );
+        // With n_eff well above 1 (24 finite arms feeding the correlation
+        // estimate), min_btl_years must be a GENUINE positive number, not the
+        // degenerate near-zero the pre-fix NaN-clamp produced.
+        assert!(
+            sc.min_btl_years > 0.1,
+            "min_btl_years should be a real positive bound (n_eff={}), not a \
+             degenerate near-zero artefact of the pre-fix clamp, got {}",
+            sc.n_eff,
+            sc.min_btl_years
+        );
+        assert!(
+            !sc.deflated_sharpe.is_nan(),
+            "deflated_sharpe must never be NaN"
+        );
     }
 
     #[test]
