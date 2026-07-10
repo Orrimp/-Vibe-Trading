@@ -14,6 +14,14 @@ scope: analyzes an empirical finding; recommends framing options + a follow-on r
 
 # P2 corpus-expansion wobble — is the ship-passive thesis falsified, and what (if anything) changes?
 
+> **CORRECTION (same day, post scorecard-fix `9e8cd05`):** the DSR figures in this analysis
+> ("16/19 clear DSR≥0.95", the §1(d) weighting) were computed under the scorecard NaN bug that
+> zeroed DSR's variance input. Post-fix **0/19 old-era crowns clear DSR** — the era-boundary
+> pattern (60-86% crowning vs the ~20% noise floor, cost-annex-robust) STANDS; individual-edge
+> DSR certification does NOT. Component (d) is larger than assessed below. Authoritative
+> correction: [`../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md`](../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md)
+
+
 ## 0. The one-paragraph statement of the problem
 
 The P2 verdict re-run (tester PASS, orchestrator-verified against the raw

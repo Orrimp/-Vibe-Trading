@@ -20,7 +20,7 @@ and it is feature-complete.** The honest arc that got here:
    measured: the P2 corpus-expansion verdict re-run
    ([`spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md))
    ran the same gate back across the older, thinner-liquidity eras and found **real,
-   DSR-clearing active edges in the early market (2017-20) that decay to ~zero by 2023+** —
+   cost-annex-robust active edges in the early market (2017-20) that decay to ~zero by 2023+** (gate-crowned; post scorecard-fix none is DSR-certified — see the [errata](spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md)) —
    the efficiency-migration pattern the research predicted. The gate did not merely fail to
    find alpha; it *positively detected* real historical edges and the boundary where they died
    (qualified by survivor-of-survivors bias + old-era cost realism — those margins are upper
@@ -44,7 +44,7 @@ The thesis has now been stress-tested from every reachable angle — long, combi
 shorts, breakout/volume/OBV signals, implied-vol regime, macro cross-asset, and (P2) four
 extra market eras + a second venue — and on the current deep-liquidity market it **holds
 every time**. The one place it *bends* is the honest one: on the older, less-efficient eras
-(2017-20) the same gate crowned real, DSR-clearing active edges that have since decayed —
+(2017-20) the same gate crowned real, cost-annex-robust active edges that have since decayed (gate-crowned, NOT DSR-certified after the scorecard variance fix) —
 which is the gate **working**, positively mapping the boundary of its own claim rather than
 asserting a universal that isn't true (this is a *strength* of measured honesty, not a crack;
 those old edges are unreachable today and are the exact alpha-chasing the do-not-build register

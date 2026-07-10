@@ -48,7 +48,7 @@ research exists to deflate.
 **Why the era clause, and why it is a strength (efficiency migration).** The P2
 corpus-expansion verdict re-run (`../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`,
 tester PASS) ran this same frozen gate back across the older, thinner-liquidity
-eras and found REAL, DSR-clearing, cost-annex-surviving active edges in the
+eras and found REAL, cost-annex-surviving active edges in the
 early market (2017-18, 2020, 2021-22) — and measured their **decay to ~zero in
 the current era** (2023-24: 0/1 ActiveWins; 2025-26: 2/10, both marginal). That
 is the textbook efficiency-migration / anomaly-decay pattern the research corpus
@@ -167,7 +167,7 @@ workflow-spine last-mile, NOT new alpha surface
   Group A preamble's "validated thesis" sentence (universal → current-era 2023+)
   and added the efficiency-migration framing + a pointer to the P2 corpus-expansion
   verdict re-run (`../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`).
-  The P2 re-run found real, DSR-clearing, cost-annex-surviving active edges in the
+  The P2 re-run found real, cost-annex-surviving active edges in the
   older eras (2017-20) that decayed to ~zero by 2023+ — the corpus-predicted
   anomaly-decay pattern (SYNTHESIS §62). Added an explicit "this does NOT reopen
   Group A" paragraph: old-era edges are unreachable (all advisor lookbacks end at

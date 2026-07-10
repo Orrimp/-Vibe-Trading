@@ -102,7 +102,7 @@ is **not discarded by this pivot — it is a feature of it.**
 The scope of that claim is itself measured, not asserted. The P2 corpus-expansion
 verdict re-run ([`v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md),
 tester PASS) ran this same frozen gate back across the older, thinner-liquidity
-eras and found **real, DSR-clearing active edges in the early market (2017-20)
+eras and found **real, cost-annex-robust active edges in the early market (2017-20)
 that decay to ~zero by 2023+** — the efficiency-migration / anomaly-decay pattern
 the research corpus predicted. The honest headline is that the machinery
 *positively detected* real historical edges and their decay boundary, not merely
@@ -504,7 +504,7 @@ Tracked here until the operator answers; then they migrate into the body.
   current market era (2023+) and added the efficiency-migration narrative — the
   P2 corpus-expansion verdict re-run
   ([`v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md))
-  found real, DSR-clearing active edges in the older eras (2017-20) that decayed
+  found real, cost-annex-robust active edges in the older eras (2017-20) that decayed
   to ~zero by 2023+, the corpus-predicted anomaly-decay pattern. Framed as a
   strength (the gate positively detected historical edges + their decay boundary),
   qualified by survivor-of-survivors bias + old-era cost realism (crown margins
