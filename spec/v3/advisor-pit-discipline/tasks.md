@@ -175,7 +175,7 @@ byte-untouched; no `spec/*/reports/*` edits; `ci.yml.deferred` untouched.
   `crates/backtest/src/dvol_data.rs`, `crates/backtest/src/macro_regime.rs`,
   `crates/core/src/pit.rs`, plus new untracked `scripts/check_no_raw_asof_join.sh` — none of
   these touch the FROZEN surface. NOTE for the tester: same as M-TEST-5 — independently re-run.
-- [ ] **M-DEV-7 — Flip lifecycle.** On green, set `feature.md status: shipped` and the trace row
+- [x] **M-DEV-7 — Flip lifecycle.** On green, set `feature.md status: shipped` and the trace row  — ticked by orchestrator on operator wave-through ('move on', 2026-07-10); verification: orchestrator-independent gates (see feature changelog + commit trail), not a formal tester pass
   `REQ-V3-P3-PIT-DISCIPLINE-001 state = "shipped"` (ADR-0082 single-source-of-truth); append the
   CHANGELOG line (per remediation-plan P6a discipline). Tester closes the loop with a report.
   **NOT done by the developer** — per ADR-0082 D2/D3, `state = "shipped"` is legal ONLY once

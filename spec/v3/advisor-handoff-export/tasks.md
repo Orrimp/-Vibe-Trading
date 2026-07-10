@@ -183,7 +183,7 @@ anchors 119/119 before AND after; spec-lint PASS(0).**
 
 ## Tester (closes the loop)
 
-- [ ] **T7 — gates + lifecycle.** `cargo build`/`test -p ui` + clippy `-D warnings` + `fmt
+- [x] **T7 — gates + lifecycle.** `cargo build`/`test -p ui` + clippy `-D warnings` + `fmt  — ticked by orchestrator on operator wave-through ('move on', 2026-07-10); verification: orchestrator-independent gates (see feature changelog + commit trail), not a formal tester pass
   --check` + the golden/determinism tests + the render-pixel button proof + `verify_anchors.sh`
   **119/119** before AND after + `spec_lint.py` **PASS(0)**; confirm NO `crates/backtest` diff
   (no engine computation) and register B-2 intact (no order/venue code); confirm the artifact

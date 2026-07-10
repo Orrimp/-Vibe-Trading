@@ -1,7 +1,7 @@
 ---
 slug: advisor-pit-discipline
-status: dev-done
-owner: developer
+status: shipped
+owner: operator
 updated: 2026-07-10
 version: 3.2.0
 ---

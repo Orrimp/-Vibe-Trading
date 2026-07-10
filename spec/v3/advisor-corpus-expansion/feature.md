@@ -1,7 +1,7 @@
 ---
 slug: advisor-corpus-expansion
-status: tester-done
-owner: tester
+status: shipped
+owner: operator
 updated: 2026-07-10
 version: 3.3.1
 trace: REQ-V3-P2-CORPUS-EXPANSION-001

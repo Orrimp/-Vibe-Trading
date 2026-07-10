@@ -1,7 +1,7 @@
 ---
 slug: advisor-handoff-export
-status: dev-done
-owner: ui-designer
+status: shipped
+owner: operator
 updated: 2026-07-10
 version: 3.4.0
 trace: REQ-V3-P5-HANDOFF-EXPORT-001
