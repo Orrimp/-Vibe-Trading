@@ -416,6 +416,82 @@ impl ScorecardView {
     }
 }
 
+// ── advisor-crown-credibility P1 (ADR-0085) / advisor-handoff-export P5
+// (ADR-0088) — the crown's overfitting (DSR) verdict ──────────────────────────
+//
+// Moved here (behaviour-preserving) from `screens/leaderboard.rs` by
+// ADR-0088 § D3 / "Alternatives considered": the P5 hand-off-export
+// serialiser (`crates/ui/src/export/plan_export.rs`) needs the EXACT SAME
+// resolver the SUGGEST screen's `crown_credibility_element` reads, so the
+// screen and the export share ONE source of truth rather than risking two
+// decision tables drifting. `crown_credibility_element` (the iced-rendering
+// half) stays in `screens/leaderboard.rs`; only the pure resolver + its enum
+// move.
+
+/// The crown's overfitting (DSR) verdict, as co-presented on the
+/// recommendation banner AND the P5 hand-off export. A **transient
+/// `view`-time** projection of the two values already on the
+/// [`BakeoffReportMirror`] (`recommendation.outcome` + `scorecard`) — NOT a
+/// stored field. Resolved by [`crown_credibility`]; rendered by
+/// `crown_credibility_element` (`crates/ui/src/screens/leaderboard.rs`).
+///
+/// This mirrors the ADR-0083 `stage_for` discipline: read the existing
+/// state, derive the presentation, add no new field. The engine's
+/// informational `crown_clears_dsr` boolean is READ here and never made a
+/// veto — `rank.rs` is byte-untouched (do-not-build register E-1; ADR-0085
+/// § D2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CrownCredibility {
+    /// `ActiveWins` crown that CLEARS DSR — a small muted "passes the
+    /// overfitting check" reassurance (ADR-0085 § D3 (i)).
+    Passes,
+    /// `ActiveWins` crown that FAILS DSR — the unmissable `WARN`-tier
+    /// weak-evidence band (the money shot; ADR-0085 § D3 (ii)).
+    WeakEvidence,
+    /// Not meaningful on the banner — `BenchmarkWins` / `AllFragile` / no
+    /// scorecard. The banner renders as today, with no credibility
+    /// affordance (the no-misleading-badge rule; ADR-0085 § D3 (iii) / § D4).
+    NotApplicable,
+}
+
+/// Resolve the crown's credibility state from the two values already at the
+/// banner. **Pure + total** — no I/O, no panic, no new stored field
+/// (ADR-0085 § D2). The ONLY logic is the ADR-0085 § D3/D4 decision table:
+///
+/// | `outcome`       | `scorecard` | `crown_clears_dsr` | → `CrownCredibility` |
+/// |-----------------|-------------|--------------------|----------------------|
+/// | `ActiveWins`    | `Some`      | `true`             | `Passes`             |
+/// | `ActiveWins`    | `Some`      | `false`            | `WeakEvidence`       |
+/// | `ActiveWins`    | `None`      | —                  | `NotApplicable`      |
+/// | `BenchmarkWins` | any         | —                  | `NotApplicable`      |
+/// | `AllFragile`    | any         | —                  | `NotApplicable`      |
+///
+/// `BenchmarkWins`/`AllFragile` are `NotApplicable` on purpose: buy-and-hold
+/// is exempt from the gate (ADR-0066) and the scorecard's `deflated_sharpe`
+/// is computed on the max-Sharpe ACTIVE arm (a loser), so a "fails the
+/// overfitting check" badge on a *hold* recommendation would bind an
+/// active-arm statistic to a passive pick — actively misleading (ADR-0085
+/// § D4).
+#[must_use]
+pub(crate) fn crown_credibility(
+    outcome: OutcomeKind,
+    scorecard: Option<&ScorecardView>,
+) -> CrownCredibility {
+    match (outcome, scorecard) {
+        (OutcomeKind::ActiveWins, Some(sc)) => {
+            if sc.crown_clears_dsr {
+                CrownCredibility::Passes
+            } else {
+                CrownCredibility::WeakEvidence
+            }
+        }
+        // ActiveWins with no scorecard, or any non-active crown — no
+        // computed figure to present about the crowned pick, so the banner
+        // stays as-is.
+        _ => CrownCredibility::NotApplicable,
+    }
+}
+
 // ── F9 LLM "why this one" narration (ADR-0064) ────────────────────────────────
 
 /// The narration's lifecycle on the leaderboard recommendation block (F9,
@@ -520,6 +596,17 @@ pub struct BakeoffReportMirror {
     /// gate/rank/verdict; zero new `ui` dep edge (no engine type crosses
     /// this field).
     pub data_quality: DataQualityView,
+    /// advisor-handoff-export P5 (ADR-0088 § D7) — the bake-off's master
+    /// `ChaCha20` seed, echoed from the already-existing
+    /// `report.request.seed` (`backtest::bakeoff::BakeoffRequest::seed`).
+    /// A **value-echo, not a computation**: `ui` reads this ONE existing
+    /// `[u8; 32]` field at the single [`BakeoffReportMirror::from_report`]
+    /// boundary — no `crates/backtest` change, no new engine call. Renders
+    /// as lowercase hex in the P5 export's provenance footer (the full 32
+    /// bytes there; the first 8 hex chars — `seed8` — in the deterministic
+    /// export filename). `[u8; 32]` is `core`/`std`, so this crosses the
+    /// `ui` seam with zero new dependency edge.
+    pub run_seed: [u8; 32],
 }
 
 impl BakeoffReportMirror {
@@ -574,6 +661,9 @@ impl BakeoffReportMirror {
             // crown tail summary. `None` when the gate ran in `Skip` mode or the
             // curve was too short. Crosses as plain f64.
             tail: r.crown_tail.as_ref().map(TailSummaryView::from_tail),
+            // advisor-handoff-export P5 (ADR-0088 § D7): value-echo of the
+            // existing master seed — zero engine computation.
+            run_seed: report.request.seed,
         }
     }
 
@@ -1137,6 +1227,7 @@ mod tests {
                 skew: 0.4,
             }),
             data_quality: DataQualityView::for_symbol("BTCUSDT"),
+            run_seed: [0u8; 32],
         }
     }
 

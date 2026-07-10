@@ -50,6 +50,15 @@ pub mod assistant;
 /// Pure-`ui` over `core` + `std::fs`; no new crate edge (AC7). The screen
 /// body lives at `screens::baseline`.
 pub mod baseline;
+/// advisor-handoff-export v0.1.0 (remediation-plan P5, ADR-0088) — the
+/// SUGGEST → manual hand-off export. Houses `export::plan_export`
+/// (`serialize_plan_export` + `export_filename`) — a pure, deterministic,
+/// offline serialiser turning a crowned plan into a portable markdown
+/// checklist. Pure-`ui` over `core` + `std`; NO new crate edge (`ui` never
+/// imports `strategy`/`exec`/`models`/`llm`). The "Export this plan" trigger
+/// + the single `std::fs::write` leaf live at `screens::forward_plan`
+/// (ui-designer's T6) — this module never touches the filesystem.
+pub mod export;
 /// advisor-forward-plan v0.1.0 — the forward buy/sell PLAN (single-coin
 /// investment-advisor journey, step 4: the conditional, reactive,
 /// rule-driven decision plan between the crowned pick and the Live view).

@@ -2213,6 +2213,82 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             FORWARD_PLAN_CONFIDENCE_MIN_BTL_FMT,
         ),
         ("FORWARD_PLAN_CONFIDENCE_NOTE", FORWARD_PLAN_CONFIDENCE_NOTE),
+        // advisor-handoff-export P5 (ADR-0088) — the SUGGEST → manual hand-off export
+        ("PLAN_EXPORT_TITLE", PLAN_EXPORT_TITLE),
+        ("PLAN_EXPORT_HEADER_META_FMT", PLAN_EXPORT_HEADER_META_FMT),
+        (
+            "PLAN_EXPORT_NOT_ADVICE_BANNER",
+            PLAN_EXPORT_NOT_ADVICE_BANNER,
+        ),
+        ("PLAN_EXPORT_HANDOFF_FRAME", PLAN_EXPORT_HANDOFF_FRAME),
+        (
+            "PLAN_EXPORT_SECTION_MEASURED_ANSWER",
+            PLAN_EXPORT_SECTION_MEASURED_ANSWER,
+        ),
+        (
+            "PLAN_EXPORT_BENCHMARK_WINS_BRIDGE",
+            PLAN_EXPORT_BENCHMARK_WINS_BRIDGE,
+        ),
+        (
+            "PLAN_EXPORT_SECTION_RIGHT_NOW",
+            PLAN_EXPORT_SECTION_RIGHT_NOW,
+        ),
+        (
+            "PLAN_EXPORT_SECTION_STANDING_RULES",
+            PLAN_EXPORT_SECTION_STANDING_RULES,
+        ),
+        ("PLAN_EXPORT_SECTION_SIZING", PLAN_EXPORT_SECTION_SIZING),
+        ("PLAN_EXPORT_SECTION_TRUST", PLAN_EXPORT_SECTION_TRUST),
+        ("PLAN_EXPORT_ONE_IN_FIVE_NOTE", PLAN_EXPORT_ONE_IN_FIVE_NOTE),
+        (
+            "PLAN_EXPORT_SECTION_DATA_SOURCE",
+            PLAN_EXPORT_SECTION_DATA_SOURCE,
+        ),
+        (
+            "PLAN_EXPORT_ERA_QUALIFIED_THESIS",
+            PLAN_EXPORT_ERA_QUALIFIED_THESIS,
+        ),
+        (
+            "PLAN_EXPORT_SECTION_WHAT_THIS_IS_NOT",
+            PLAN_EXPORT_SECTION_WHAT_THIS_IS_NOT,
+        ),
+        (
+            "PLAN_EXPORT_NOT_BULLET_ADVICE",
+            PLAN_EXPORT_NOT_BULLET_ADVICE,
+        ),
+        (
+            "PLAN_EXPORT_NOT_BULLET_PREDICTION",
+            PLAN_EXPORT_NOT_BULLET_PREDICTION,
+        ),
+        ("PLAN_EXPORT_NOT_BULLET_PAST", PLAN_EXPORT_NOT_BULLET_PAST),
+        (
+            "PLAN_EXPORT_NOT_BULLET_CHANCE",
+            PLAN_EXPORT_NOT_BULLET_CHANCE,
+        ),
+        ("PLAN_EXPORT_NOT_BULLET_PAPER", PLAN_EXPORT_NOT_BULLET_PAPER),
+        (
+            "PLAN_EXPORT_SECTION_PROVENANCE",
+            PLAN_EXPORT_SECTION_PROVENANCE,
+        ),
+        (
+            "PLAN_EXPORT_PROVENANCE_COIN_FMT",
+            PLAN_EXPORT_PROVENANCE_COIN_FMT,
+        ),
+        (
+            "PLAN_EXPORT_PROVENANCE_PICK_FMT",
+            PLAN_EXPORT_PROVENANCE_PICK_FMT,
+        ),
+        (
+            "PLAN_EXPORT_PROVENANCE_SEED_FMT",
+            PLAN_EXPORT_PROVENANCE_SEED_FMT,
+        ),
+        ("PLAN_EXPORT_REPRODUCE_HINT", PLAN_EXPORT_REPRODUCE_HINT),
+        ("PLAN_EXPORT_FOOTER", PLAN_EXPORT_FOOTER),
+        (
+            "PLAN_EXPORT_SECTION_SHORT_RISK",
+            PLAN_EXPORT_SECTION_SHORT_RISK,
+        ),
+        ("PLAN_EXPORT_BUTTON", PLAN_EXPORT_BUTTON),
         ("CHART_LEGEND_BUY_LABEL", CHART_LEGEND_BUY_LABEL),
         ("CHART_LEGEND_SELL_LABEL", CHART_LEGEND_SELL_LABEL),
         ("CHART_LEGEND_BUY_GHOST_LABEL", CHART_LEGEND_BUY_GHOST_LABEL),
@@ -4019,6 +4095,141 @@ pub const FORWARD_PLAN_NOT_A_PREDICTION: &str = "This is a conditional, rule-bas
 /// § D5). Always present at the foot of the plan surface.
 pub const FORWARD_PLAN_DISCLAIMER: &str = "Not financial advice. The \u{20ac}200 is a simulated paper budget on historical/live data \u{2014} \
      no real orders are placed. Past behaviour does not guarantee future results.";
+
+// ── advisor-handoff-export P5 (ADR-0088) — the SUGGEST → manual hand-off export ─
+//
+// The operator-ratified § Draft wording (Variant A + B,
+// spec/v3/advisor-handoff-export/feature.md) is the IMMUTABLE serialiser
+// contract for `crates/ui/src/export/plan_export.rs` — a drift here is a
+// golden-text test failure (ADR-0088 § Consequences). These 27 consts carry
+// that ratified text VERBATIM. Every other line the export emits is sourced
+// from an EXISTING const declared above (`FORWARD_PLAN_*`, `LEADERBOARD_*`,
+// `SHORT_UNBOUNDED_LOSS_DISCLAIMER`) — these are only the export's own
+// section headers + the small set of new framing/honesty lines the operator
+// ratified. The box-drawing rule lines (\u{2550}/\u{2500}) are
+// serialiser-emitted layout, not user copy, and are deliberately NOT consts
+// (ADR-0088 § Design "Section-by-section source map").
+
+/// Export header title (`«NEW»`) — the artifact's first line.
+pub const PLAN_EXPORT_TITLE: &str = "YOUR PLAN \u{2014} a manual hand-off checklist";
+
+/// Export header meta line format — `{coin}` / `{budget}` / `{window}`
+/// filled at the call site (`{budget}` via `fmt_eur`; `{window}` via the
+/// mirror's `range_label` — the ratified template's ISO dates are
+/// illustrative, see feature.md § Flagged template-vs-data reconciliation #2).
+pub const PLAN_EXPORT_HEADER_META_FMT: &str =
+    "Coin: {coin}   \u{00b7}   Budget: {budget} (simulated)   \u{00b7}   Window: {window}";
+
+/// Export not-advice banner heading (`«NEW header»`) — precedes the
+/// verbatim [`FORWARD_PLAN_DISCLAIMER`] text.
+pub const PLAN_EXPORT_NOT_ADVICE_BANNER: &str =
+    "\u{26a0} NOT FINANCIAL ADVICE \u{2014} PAPER SIMULATION";
+
+/// The "following this plan manually would mean" hand-off frame (`«NEW»`) —
+/// the not-advice register: a conditional description of a hypothetical the
+/// reader chose to enter, never an imperative directed at them.
+pub const PLAN_EXPORT_HANDOFF_FRAME: &str = "This file describes what FOLLOWING THIS PLAN MANUALLY would mean. It places no \
+     orders and connects to no exchange. If you choose to act on it, you do so \
+     entirely on your own account and at your own risk.";
+
+/// Section title — "THE MEASURED ANSWER FOR THIS WINDOW" (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_MEASURED_ANSWER: &str = "THE MEASURED ANSWER FOR THIS WINDOW";
+
+/// The `BenchmarkWins`-case descriptive bridge (`«NEW, descriptive framing
+/// line»`) — restates the honest buy-and-hold plan without prescribing it.
+pub const PLAN_EXPORT_BENCHMARK_WINS_BRIDGE: &str = "The honest plan for this window is therefore BUY-AND-HOLD. Following it \
+     manually would mean: buy once now and hold for the horizon \u{2014} there is no \
+     timing rule to follow. Here is what that means for your \u{20ac}200. \u{2193}";
+
+/// Section title — "RIGHT NOW (as of the last bar)" (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_RIGHT_NOW: &str = "RIGHT NOW (as of the last bar)";
+
+/// Section title — the standing-rules descriptive heading (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_STANDING_RULES: &str =
+    "THE STANDING RULES \u{2014} what the plan says (not what you should do)";
+
+/// Section title — "SIZING AT YOUR €200 BUDGET" (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_SIZING: &str = "SIZING AT YOUR \u{20ac}200 BUDGET";
+
+/// Section title — "HOW MUCH TO TRUST THIS" (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_TRUST: &str = "HOW MUCH TO TRUST THIS";
+
+/// The honest ~1-in-5 search note (`«NEW»`, P2-2) — the gate can crown noise
+/// by chance; the deflated-confidence figure above is the second-layer catch.
+pub const PLAN_EXPORT_ONE_IN_FIVE_NOTE: &str = "A note on the search: this ranking gate, run on pure-noise price series, \
+     still crowns an \"active winner\" by chance in roughly 1 run out of 5 (the \
+     deflated-confidence figure above is the second-layer check that catches those \
+     chance winners). A crowned pick is the best of what was tried on this window \u{2014} \
+     not proof of a real, repeatable edge.";
+
+/// Section title — "WHERE THIS DATA CAME FROM" (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_DATA_SOURCE: &str = "WHERE THIS DATA CAME FROM";
+
+/// The era-qualified thesis one-liner (`«NEW»`, post-`61887c8`) — the modal
+/// recent-era outcome is still just-hold; the machine positively detected +
+/// dated the decay of real older-era edges.
+pub const PLAN_EXPORT_ERA_QUALIFIED_THESIS: &str = "On this and every recent-era window the advisor can run, the modal honest \
+     outcome is still just-hold: no active strategy robustly beat buy-and-hold net \
+     of cost. The same machine did positively detect \u{2014} and date the decay of \u{2014} \
+     real active edges in older, less-efficient markets (2017\u{2013}2020); those edges \
+     had decayed to ~zero by 2023. This window ends at \"now\", where hold stands.";
+
+/// Section title — "WHAT THIS IS NOT" (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_WHAT_THIS_IS_NOT: &str = "WHAT THIS IS NOT";
+
+/// "What this is NOT" bullet — not advice.
+pub const PLAN_EXPORT_NOT_BULLET_ADVICE: &str = "NOT financial advice. This describes a computed plan; it recommends nothing \
+     to you personally.";
+
+/// "What this is NOT" bullet — not a prediction.
+pub const PLAN_EXPORT_NOT_BULLET_PREDICTION: &str = "NOT a prediction. The rules say what the strategy does when conditions are \
+     met \u{2014} they do not forecast the price.";
+
+/// "What this is NOT" bullet — past ≠ future.
+pub const PLAN_EXPORT_NOT_BULLET_PAST: &str = "Past \u{2260} future. Every number here is measured on historical/simulated data. \
+     Past simulated results do not predict future outcomes.";
+
+/// "What this is NOT" bullet — the ~1-in-5 chance-crown caveat.
+pub const PLAN_EXPORT_NOT_BULLET_CHANCE: &str = "The ranking gate can be fooled by chance (~1 in 5 on pure-noise series, see \
+     above). \"Best of what we tried\" is not \"a real edge\".";
+
+/// "What this is NOT" bullet — paper only, no real orders.
+pub const PLAN_EXPORT_NOT_BULLET_PAPER: &str = "Paper only. The \u{20ac}200 is a simulated budget. No real orders are placed and no \
+     exchange is connected \u{2014} following this plan for real is entirely your own \
+     decision, on your own account.";
+
+/// Section title — the provenance footer heading (`«NEW section»`).
+pub const PLAN_EXPORT_SECTION_PROVENANCE: &str = "PROVENANCE (so you can reproduce this)";
+
+/// Provenance line 1 format — `{coin}` / `{budget}` / `{window}` (no
+/// "(simulated)" suffix, unlike [`PLAN_EXPORT_HEADER_META_FMT`]).
+pub const PLAN_EXPORT_PROVENANCE_COIN_FMT: &str =
+    "Coin: {coin}   \u{00b7}   Budget: {budget}   \u{00b7}   Window: {window}";
+
+/// Provenance line 2 format — the crowned pick + the horizon.
+pub const PLAN_EXPORT_PROVENANCE_PICK_FMT: &str =
+    "Crowned pick: {pick}   \u{00b7}   Horizon: {horizon} days";
+
+/// Provenance line 3 format — the run seed (lowercase hex) + the last bar.
+pub const PLAN_EXPORT_PROVENANCE_SEED_FMT: &str =
+    "Run seed: {seed}   \u{00b7}   Last bar: {last_bar}";
+
+/// Provenance reproduce-in-cockpit hint (static, no placeholders).
+pub const PLAN_EXPORT_REPRODUCE_HINT: &str =
+    "Reproduce this run in the cockpit: Reports screen \u{2192} this bake-off.";
+
+/// Export footer (`«NEW footer»`).
+pub const PLAN_EXPORT_FOOTER: &str =
+    "End of plan. Not advice. Paper simulation. Your decision, your account.";
+
+/// Section title — the mandatory short/unbounded-loss risk section
+/// (short-only, `«NEW section, short-only»`).
+pub const PLAN_EXPORT_SECTION_SHORT_RISK: &str =
+    "\u{26a0} RISK \u{2014} A SHORT CAN LOSE MORE THAN YOUR \u{20ac}200";
+
+/// The "Export this plan" trigger button label (Q-HE-2), rendered on the
+/// SUGGEST/`Screen::ForwardPlan` header — wired by the ui-designer's T6.
+pub const PLAN_EXPORT_BUTTON: &str = "Export this plan";
 
 // ── Phase C — Live / Strategy registry / Settings ────────────────────────────
 // ui-rethink-phase-c-sidebar-ia T-D-N05

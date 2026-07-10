@@ -1627,6 +1627,9 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
         // pinned-corpus default symbol. Display-only.
         data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
+        // advisor-handoff-export P5 (ADR-0088 § D7): a fixed, deterministic
+        // run seed (mechanical — the field is a value-echo, not a computation).
+        run_seed: [0x10; 32],
     }
 }
 
@@ -1818,6 +1821,11 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
         // pinned-corpus default symbol. Display-only.
         data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
+        // advisor-handoff-export P5 (ADR-0088 § D7) — the golden short-crowned
+        // export test pairs THIS report mirror with `fake_forward_plan_short()`
+        // (a different, short-capable `ForwardPlanView`); the run seed here is
+        // this report mirror's own value-echo, independent of the plan fixture.
+        run_seed: [0x20; 32],
     }
 }
 
@@ -2078,7 +2086,38 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
         // pinned-corpus default symbol. Display-only.
         data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
+        // advisor-handoff-export P5 (ADR-0088 § D7) — the golden money-shot
+        // export test fixture: `seed8` = "a1b2c3d4", matching ADR-0088 § Design
+        // "Filename + determinism" verbatim (`plan-BTCUSDT-2024-h1-a1b2c3d4.md`).
+        run_seed: [
+            0xa1, 0xb2, 0xc3, 0xd4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+        ],
     }
+}
+
+/// advisor-handoff-export P5 (ADR-0088 § D9) — the same five-arm field as
+/// [`fake_bakeoff_report_mirror_five_arm`], but with the crown's scorecard
+/// CLEARING the deflated-Sharpe bar (`crown_clears_dsr = true`, `deflated_sharpe`
+/// bumped to a passing value). Drives the export's `ActiveWins + Passes` golden
+/// case — the sibling positive control to the `WeakEvidence` money shot:
+/// `LEADERBOARD_CROWN_PASSES_DSR` must appear in the export and
+/// `LEADERBOARD_CROWN_WEAK_EVIDENCE` must NOT. A distinct `run_seed` from the
+/// base fixture so the two fixtures' export filenames never collide.
+#[must_use]
+pub fn fake_bakeoff_report_mirror_five_arm_passes_dsr() -> crate::leaderboard::BakeoffReportMirror {
+    let mut mirror = fake_bakeoff_report_mirror_five_arm();
+    if let Some(sc) = mirror.scorecard.as_mut() {
+        // Mirrors `screens/leaderboard.rs` test helper `scorecard_with_dsr(true)`
+        // — 0.97 clears the 0.95 `crown_clears_dsr` bar.
+        sc.deflated_sharpe = 0.97;
+        sc.crown_clears_dsr = true;
+    }
+    mirror.run_seed = [
+        0xc0, 0xff, 0xee, 0x11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0,
+    ];
+    mirror
 }
 
 /// A `BakeoffReportMirror` where buy-and-hold won (`BenchmarkWins`) — exercises
@@ -2154,6 +2193,10 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
         // fixture the scorecard/risk-story render guards drive; the DATA-quality
         // render guard reuses it too (same short-table viewport rationale).
         data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
+        // advisor-handoff-export P5 (ADR-0088 § D7): a fixed, deterministic
+        // run seed (mechanical — the field is a value-echo, not a computation).
+        // This is the export's `BenchmarkWins` golden fixture.
+        run_seed: [0x30; 32],
     }
 }
 
@@ -2327,6 +2370,9 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
         // pinned-corpus default symbol. Display-only.
         data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
+        // advisor-handoff-export P5 (ADR-0088 § D7): a fixed, deterministic
+        // run seed (mechanical — the field is a value-echo, not a computation).
+        run_seed: [0x40; 32],
     }
 }
 
@@ -2491,6 +2537,9 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
         // pinned-corpus default symbol. Display-only.
         data_quality: crate::leaderboard::DataQualityView::for_symbol("BTCUSDT"),
+        // advisor-handoff-export P5 (ADR-0088 § D7): a fixed, deterministic
+        // run seed (mechanical — the field is a value-echo, not a computation).
+        run_seed: [0x50; 32],
     }
 }
 

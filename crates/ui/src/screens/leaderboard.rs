@@ -61,9 +61,9 @@ use iced::{Border, Length};
 use trading_core::{StrategyId, Symbol};
 
 use crate::leaderboard::state::{
-    BakeoffReportMirror, DataQualityView, LeaderRow, LeaderboardLookback, NarrationState,
-    OutcomeKind, ReasonLabel, RecommendationMirror, RobustnessLabel, ScorecardView,
-    TailSummaryView,
+    BakeoffReportMirror, CrownCredibility, DataQualityView, LeaderRow, LeaderboardLookback,
+    NarrationState, OutcomeKind, ReasonLabel, RecommendationMirror, RobustnessLabel, ScorecardView,
+    TailSummaryView, crown_credibility,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
@@ -593,62 +593,13 @@ fn recommendation_block<'a>(
 }
 
 // ── Crown credibility (advisor-crown-credibility P1 / ADR-0085) ───────────────
-
-/// The crown's overfitting (DSR) verdict, as co-presented on the recommendation
-/// banner. A **transient `view`-time** projection of the two values already on
-/// the [`BakeoffReportMirror`] at the banner (`recommendation.outcome` +
-/// `scorecard`) — NOT a stored field. Resolved by [`crown_credibility`];
-/// rendered by [`crown_credibility_element`].
-///
-/// This mirrors the ADR-0083 `stage_for` discipline: read the existing state,
-/// derive the presentation, add no new field. The engine's informational
-/// `crown_clears_dsr` boolean is READ here and never made a veto — `rank.rs` is
-/// byte-untouched (do-not-build register E-1; ADR-0085 § D2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CrownCredibility {
-    /// `ActiveWins` crown that CLEARS DSR — a small muted "passes the overfitting
-    /// check" reassurance (ADR-0085 § D3 (i)).
-    Passes,
-    /// `ActiveWins` crown that FAILS DSR — the unmissable `WARN`-tier weak-evidence
-    /// band (the money shot; ADR-0085 § D3 (ii)).
-    WeakEvidence,
-    /// Not meaningful on the banner — `BenchmarkWins` / `AllFragile` / no scorecard.
-    /// The banner renders as today, with no credibility affordance (the
-    /// no-misleading-badge rule; ADR-0085 § D3 (iii) / § D4).
-    NotApplicable,
-}
-
-/// Resolve the crown's credibility state from the two values already at the
-/// banner. **Pure + total** — no I/O, no panic, no new stored field (ADR-0085
-/// § D2). The ONLY logic is the ADR-0085 § D3/D4 decision table:
-///
-/// | `outcome`       | `scorecard` | `crown_clears_dsr` | → `CrownCredibility` |
-/// |-----------------|-------------|--------------------|----------------------|
-/// | `ActiveWins`    | `Some`      | `true`             | `Passes`             |
-/// | `ActiveWins`    | `Some`      | `false`            | `WeakEvidence`       |
-/// | `ActiveWins`    | `None`      | —                  | `NotApplicable`      |
-/// | `BenchmarkWins` | any         | —                  | `NotApplicable`      |
-/// | `AllFragile`    | any         | —                  | `NotApplicable`      |
-///
-/// `BenchmarkWins`/`AllFragile` are `NotApplicable` on purpose: buy-and-hold is
-/// exempt from the gate (ADR-0066) and the scorecard's `deflated_sharpe` is
-/// computed on the max-Sharpe ACTIVE arm (a loser), so a "fails the overfitting
-/// check" badge on a *hold* recommendation would bind an active-arm statistic to
-/// a passive pick — actively misleading (ADR-0085 § D4).
-fn crown_credibility(outcome: OutcomeKind, scorecard: Option<&ScorecardView>) -> CrownCredibility {
-    match (outcome, scorecard) {
-        (OutcomeKind::ActiveWins, Some(sc)) => {
-            if sc.crown_clears_dsr {
-                CrownCredibility::Passes
-            } else {
-                CrownCredibility::WeakEvidence
-            }
-        }
-        // ActiveWins with no scorecard, or any non-active crown — no computed
-        // figure to present about the crowned pick, so the banner stays as-is.
-        _ => CrownCredibility::NotApplicable,
-    }
-}
+//
+// `CrownCredibility` + `crown_credibility` moved (behaviour-preserving) to
+// `pub(crate)` in `crate::leaderboard::state` by ADR-0088 § D3
+// (advisor-handoff-export P5): the hand-off-export serialiser
+// (`crates/ui/src/export/plan_export.rs`) needs the EXACT SAME resolver this
+// screen reads, so both share ONE source of truth. Only the render half
+// (`crown_credibility_element`, below) stays here.
 
 /// Render the crown-credibility state under the headline (ADR-0085 § D3).
 ///

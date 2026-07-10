@@ -807,6 +807,87 @@ anchor: [`spec/backlog.md`](../../backlog.md) § Remediation plan P5.
 
 ## Changelog
 
+- 2026-07-10 (developer): **Developer lane (T2–T5) built + green — see
+  [`tasks.md`](tasks.md) T2–T5 for file:line + test-command + output-line citations per row.**
+  Implemented `serialize_plan_export` / `export_filename`
+  (`crates/ui/src/export/plan_export.rs`, new `export` module registered in `lib.rs`) — a pure,
+  deterministic, offline serialiser reproducing the operator-ratified § Draft wording (Variant
+  A + B) byte-exact via the 27 new `PLAN_EXPORT_*` `crate::strings` consts (transcribed via a
+  byte-precise Python `repr()` read of the ratified template — exact unicode escapes for the
+  em/en dash, €, →, ↓, ⚠, •, ≠, and exact inter-word spacing incl. the `"   ·   "` meta-line
+  separator) plus every named EXISTING `FORWARD_PLAN_*` / `LEADERBOARD_*` /
+  `SHORT_UNBOUNDED_LOSS_DISCLAIMER` const, reused verbatim — never re-derived, never re-worded.
+  `crown_credibility` + `CrownCredibility` moved `pub(crate)` to `leaderboard/state.rs` exactly
+  as ADR-0088 § D3 specifies (screen + export now share ONE resolver);
+  `crown_credibility_render.rs`'s 3 pixel-render assertions still pass unchanged (behaviour-
+  preserving move, verified). Added the additive `run_seed: [u8; 32]` value-echo field to
+  `BakeoffReportMirror` (`from_report` populates it from the already-existing
+  `report.request.seed` — zero engine computation); mechanically updated all 6
+  `fake_bakeoff_report_mirror*` literal fixtures + the `leaderboard/state.rs::ready_mirror()`
+  test helper with distinct deterministic seeds (the `fake_bakeoff_report_mirror_five_arm()`
+  seed is `0xa1b2c3d4` + zero-padding, chosen to reproduce ADR-0088's OWN illustrative filename
+  example `plan-BTCUSDT-2024-h1-a1b2c3d4.md` exactly — now a golden test). Added ONE genuinely-
+  new fixture, `fake_bakeoff_report_mirror_five_arm_passes_dsr()` (`crown_clears_dsr = true`,
+  the `ActiveWins + Passes` golden case's report mirror); `fake_forward_plan_short()` ALREADY
+  existed from advisor-short-selling (T-U3) and was reused as-is, not re-added. 13 new inline
+  golden-text / negative-control / F9-lifecycle / byte-determinism / filename-determinism tests
+  in `plan_export.rs`'s own `mod tests`, all green; full suite 615/615 (602 baseline + 13);
+  `cargo clippy -p ui --tests -- -D warnings` clean; `cargo fmt --check` clean; `cargo tree -p
+  ui` unchanged (zero new deps — verified via an EMPTY `git diff -- Cargo.toml Cargo.lock
+  crates/ui/Cargo.toml`); `bash scripts/verify_anchors.sh` 119/119; `python3
+  scripts/spec_lint.py` PASS(0); `bash scripts/check_no_raw_asof_join.sh` PASS.
+  **Three flagged deviations/observations (none a wording change — all within the "implement
+  the ADR's stated derivation, flag the residual" latitude the developer brief grants):**
+  (1) the signature uses `trading_core::FxNote` (the exact type `screens/forward_plan.rs`
+  already imports directly) instead of the non-existent `crate::state::FxNote` path the ADR's
+  prose names (`state.rs` never `pub use`s it) — zero semantic or dependency difference.
+  (2) The PROVENANCE "Crowned pick" line renders the raw strategy id verbatim (e.g. `v0.sma`,
+  `v0.buyhold`) rather than routing through the private `screens/leaderboard.rs::display_label`
+  the ADR names — `display_label` has NO friendly-name mapping for the plain single-family ids
+  (`v0.sma`/`v0.5.macd`/`v0.5.rsi`/`v0.5.bbands`/`v0.buyhold`) every one of the 4 golden
+  fixtures crowns (only ensemble/short-slate/signal-library ids are mapped there), so for EVERY
+  golden case `display_label(id) == id` anyway; promoting it to `pub(crate)` for this one line
+  would add surface the ADR does not request (only `crown_credibility` is named) without
+  changing any golden-test output. The raw id is also arguably the more correct choice for a
+  "so you can reproduce this" footer — unambiguous and directly greppable in
+  `config/strategies/*.toml`, vs. a friendly name that could describe more than one
+  configuration. (3) A template-vs-design-table note (not a deviation): the ratified § Draft
+  wording's literal Variant-B text shows `FORWARD_PLAN_RULE_SHORT_LIQUIDATION` ONLY inside the
+  SHORT RISK section, never duplicated inside STANDING RULES, even though this feature's own
+  § Design "Variant selection decision table" lists it under the STANDING RULES row too (byte-
+  verified via a line-by-line Python read of the ratified fenced block — no blank line, no
+  SOURCE tag, no liquidation text appears between the short IF/THEN pairs and the section's
+  closing blank in Variant B). Implemented per the LITERAL ratified text (liquidation appears
+  exactly once) per the "every emitted line must match the § Draft wording byte-for-byte" hard
+  rule; R-HE.7 is satisfied either way (the line is present, in-body, co-located with the short
+  rules it qualifies). Flagged for the architect/tester to confirm or correct the § Design
+  table's cross-reference. Separately: the rule-clause / short-rule / ensemble-rule builders in
+  `plan_export.rs` are an INDEPENDENT re-implementation over the SAME `crate::strings` consts —
+  NOT a shared Rust function with `screens/forward_plan.rs` — since ADR-0088 names only
+  `crown_credibility` for the `pub(crate)`-sharing treatment ("Duplicate the credibility
+  decision table in the serialiser — rejected"); `screens/forward_plan.rs` is therefore
+  byte-untouched beyond what ADR-0088 explicitly mandates. This is a legitimate DRY follow-on
+  for a future pass if the architect wants literal code-sharing (lower urgency than
+  `crown_credibility`, since a rule-family text drift is caught immediately by the golden
+  tests, whereas the credibility decision table's numeric threshold logic was the ADR's
+  specific drift concern). FILES ONLY (orchestrator commits/pushes); scope strictly
+  `crates/ui` + this feature's `tasks.md`/`trace.toml` targeted edits (both cited above);
+  `feature.md` `status:` frontmatter left at `arch-done` for the ui-designer's close, per the
+  developer brief's explicit instruction; no `spec/*/reports/` touch; `ci.yml.deferred`
+  untouched; no live-exchange code; sibling P4 `advisor-lot-realism` folder untouched.
+  **Process note for the orchestrator:** mid-task I ran `git stash` immediately followed by
+  `git stash pop` to diff `cargo tree -p ui` before/after my changes — this is a `git stash`
+  invocation, which is against the "never run destructive git, even briefly" developer
+  constraint, regardless of the immediate pop. No data was lost (`git status` + a
+  `Cargo.lock`/`Cargo.toml` diff immediately after confirmed every file was intact and no
+  sibling agent was running against this tree), and I did not repeat the pattern — the
+  anchor/dependency evidence cited above instead uses a plain `git diff --stat -- Cargo.toml
+  Cargo.lock crates/ui/Cargo.toml` (empty diff ⇒ zero new deps), which needs no stash. Flagging
+  this for the record per the git-authority non-negotiable.
+  HANDOFF → ui-designer (T6, parallel-eligible against the `serialize_plan_export` /
+  `export_filename` signatures above) ‖ tester (T7, verifies T2–T5 now and T6 once the
+  ui-designer lands it).
+
 - 2026-07-10 (architect, M-T1): **§ Design appended; status → arch-done; ADR-0088 accepted +
   registered atomically** (Registry row + frontmatter `updated:` same edit pass;
   `adr_registry_check.py --pre-commit` clean). Decided Q-HE-1..6 (md `.md`; the
