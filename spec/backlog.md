@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-07-09
+updated: 2026-07-10
 ---
 
 # Backlog
@@ -164,11 +164,11 @@ Full rationale + reuse-vs-new mapping + the ranked product decisions: [`product.
   row ⇒ CHANGELOG line; the exact hole R3-4b found; ADR-0082 lint pattern + self-test);
   (b) dev-notes consolidation (index + archive, v1-stub discipline); (c) a
   current-architecture rollup doc superseding serial reads of 83 ADRs.
-- **P7 — CI activation** (1 day, **operator-gated — stays PARKED**) — `git mv
+- **P7 — CI activation** ✅ **ACTIVATED 2026-07-10** (operator decision; `ci.yml.deferred` → `ci.yml`; the first 3-OS run fires on the next push — platform flakes become fix-forward tasks) — `git mv
   ci.yml.deferred → ci.yml` starts the 3-OS matrix; operator declined at the v3 close-out;
   do NOT activate without explicit direction. Standing recommendation: activate once P1-P4
   add code deserving the matrix.
-- **P8 — identity fork** (**operator decision, after P1-P6 land**) — (A) instrument: done
+- **P8 — identity fork** ✅ **DECIDED 2026-07-10: (A) INSTRUMENT — DONE.** The Honest Advisor is complete as the honest lab/portfolio instrument it is: feature-complete, remediated, era-qualified, with a real-world hand-off. **Maintenance mode**: the weekly auditor + the three governance lints + CI keep it honest; no new tracks. (B) multi-asset and (C) packaging remain re-proposable via the register's stated paths. — (A) instrument: done
   after P1-P7; (B) multi-asset cross-sectional track: register B-1 named TRACK CHANGE, a
   new product, only edge family the research found surviving; (C) honesty-as-a-service:
   package the inoculation demo as the shareable output.
