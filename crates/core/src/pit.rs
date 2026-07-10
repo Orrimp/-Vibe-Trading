@@ -93,7 +93,9 @@ pub enum PitError {
 /// queries.
 ///
 /// `T` is the payload (`Decimal` in production; generic so research/tests can
-/// use any `Clone` type). Stores `Vec<(TimestampMs, T)>` sorted ascending.
+/// use any `Clone` type). Stores `Vec<(TimestampMs, T)>` sorted ascending,
+/// plus a `publication_lag_ms` (ADR-0086 D2 / P3 M-DEV-4) declaring how long
+/// after a record's own `ts` it becomes queryable.
 ///
 /// # PIT discipline
 ///
@@ -104,13 +106,29 @@ pub enum PitError {
 /// partition_point(t <= query)` — a record with `ts <= query`. There is no
 /// `get(i)`, no `Index`, no `iter()` returning future records, no
 /// `records()` accessor.
+///
+/// # Publication lag (ADR-0086)
+///
+/// `publication_lag_ms` is a **declared, per-series** interval: a record at
+/// `ts` is not visible until `query >= ts + publication_lag_ms`. It defaults
+/// to `0` via [`from_sorted`](Self::from_sorted) / [`from_unsorted`](Self::from_unsorted)
+/// / [`from_sorted_slice`](Self::from_sorted_slice), which are all defined
+/// as their `*_with_lag(records, 0)` sibling — **byte-identical to the
+/// pre-P3 primitive**. Use [`from_sorted_with_lag`](Self::from_sorted_with_lag)
+/// / [`from_unsorted_with_lag`](Self::from_unsorted_with_lag) to declare a
+/// non-zero lag for a channel with a genuine release delay (none exist in
+/// production today — every current series' join key already encodes its
+/// availability instant; see `spec/v3/advisor-pit-discipline/feature.md` §
+/// D2 lag table).
 #[derive(Debug, Clone)]
 pub struct PitSeries<T> {
     records: Vec<(TimestampMs, T)>,
+    publication_lag_ms: i64,
 }
 
 impl<T: Clone> PitSeries<T> {
-    /// Build from an already-sorted owned vec, CHECKING the sort invariant.
+    /// Build from an already-sorted owned vec, CHECKING the sort invariant,
+    /// with `publication_lag_ms = 0` (byte-identical to the pre-P3 primitive).
     ///
     /// Returns [`PitError::NotSorted`] at the first index where a record's
     /// timestamp is strictly less than the previous record's timestamp (ties —
@@ -121,28 +139,68 @@ impl<T: Clone> PitSeries<T> {
     /// Returns `PitError::NotSorted(i)` where `i` is the first out-of-order
     /// index.
     pub fn from_sorted(records: Vec<(TimestampMs, T)>) -> Result<Self, PitError> {
+        Self::from_sorted_with_lag(records, 0)
+    }
+
+    /// Build from an already-sorted owned vec, CHECKING the sort invariant,
+    /// with an explicit, declared `publication_lag_ms` (ADR-0086 D2).
+    ///
+    /// A record at `ts` becomes queryable only once
+    /// `query >= ts + publication_lag_ms`. With `publication_lag_ms == 0`
+    /// this is character-for-character [`from_sorted`](Self::from_sorted).
+    ///
+    /// # Errors
+    ///
+    /// Returns `PitError::NotSorted(i)` where `i` is the first out-of-order
+    /// index. Sort-order is checked on the RAW record `ts`, independent of
+    /// `publication_lag_ms` (the lag shifts availability, not the series'
+    /// own ordering).
+    pub fn from_sorted_with_lag(
+        records: Vec<(TimestampMs, T)>,
+        publication_lag_ms: i64,
+    ) -> Result<Self, PitError> {
         for i in 1..records.len() {
             if records[i].0 < records[i - 1].0 {
                 return Err(PitError::NotSorted(i));
             }
         }
-        Ok(Self { records })
+        Ok(Self {
+            records,
+            publication_lag_ms,
+        })
     }
 
     /// Build from an unsorted owned vec, sorting by `ts` with a STABLE sort
-    /// (`sort_by_key`) so equal-timestamp records keep input order.
+    /// (`sort_by_key`) so equal-timestamp records keep input order, with
+    /// `publication_lag_ms = 0` (byte-identical to the pre-P3 primitive).
     ///
     /// Matching the loaders' `sort_unstable_by_key`-then-dedup discipline is
     /// the caller's job; this primitive preserves whatever order it is given
     /// for ties.
     #[must_use]
-    pub fn from_unsorted(mut records: Vec<(TimestampMs, T)>) -> Self {
+    pub fn from_unsorted(records: Vec<(TimestampMs, T)>) -> Self {
+        Self::from_unsorted_with_lag(records, 0)
+    }
+
+    /// Build from an unsorted owned vec, sorting by `ts` with a STABLE sort
+    /// (`sort_by_key`), with an explicit, declared `publication_lag_ms`
+    /// (ADR-0086 D2). See [`from_sorted_with_lag`](Self::from_sorted_with_lag)
+    /// for the lag semantics.
+    #[must_use]
+    pub fn from_unsorted_with_lag(
+        mut records: Vec<(TimestampMs, T)>,
+        publication_lag_ms: i64,
+    ) -> Self {
         records.sort_by_key(|&(t, _)| t);
-        Self { records }
+        Self {
+            records,
+            publication_lag_ms,
+        }
     }
 
     /// Borrowing constructor over a sorted slice (zero-copy view + clone);
-    /// CHECKED.
+    /// CHECKED. `publication_lag_ms = 0` (byte-identical to the pre-P3
+    /// primitive).
     ///
     /// For callers that hold a `&[(TimestampMs, T)]` and want to avoid
     /// constructing an owned `Vec` themselves. The production loaders use the
@@ -159,19 +217,28 @@ impl<T: Clone> PitSeries<T> {
         }
         Ok(Self {
             records: records.to_vec(),
+            publication_lag_ms: 0,
         })
     }
 
-    /// THE query. Returns the most-recent record at-or-before `query`
-    /// (`ts <= query`), or `None` if no record precedes `query` (warm-up).
+    /// THE query. Returns the most-recent record at-or-before the record's
+    /// EFFECTIVE availability instant `ts + publication_lag_ms <= query`
+    /// (equivalently: the most-recent record with
+    /// `ts <= query - publication_lag_ms`), or `None` if no record's
+    /// availability instant precedes `query` (warm-up).
     ///
-    /// Implemented as `self.records.partition_point(|&(t, _)| t <= query)` —
-    /// the EXACT legacy predicate — taking `idx-1` (or `None` when `idx ==
-    /// 0`). This is the single line that guarantees byte-identical migration
-    /// (R3 / ADR-0058 D4).
+    /// Implemented by querying the RAW record timestamps against
+    /// `query.saturating_sub(publication_lag_ms)`:
+    /// `self.records.partition_point(|&(t, _)| t <= adjusted_query)` — the
+    /// EXACT legacy predicate at `publication_lag_ms == 0` (`adjusted_query
+    /// == query` character-for-character) — taking `idx-1` (or `None` when
+    /// `idx == 0`). This is the single line that guarantees byte-identical
+    /// migration (R3 / ADR-0058 D4, preserved verbatim by ADR-0086 D2 at
+    /// lag=0).
     #[must_use]
     pub fn as_of(&self, query: TimestampMs) -> Option<AsOf<T>> {
-        let idx = self.records.partition_point(|&(t, _)| t <= query);
+        let adjusted_query = TimestampMs(query.0.saturating_sub(self.publication_lag_ms));
+        let idx = self.records.partition_point(|&(t, _)| t <= adjusted_query); // PIT-OK: the sanctioned core::pit implementation itself.
         if idx == 0 {
             None
         } else {
@@ -390,5 +457,139 @@ mod tests {
         assert_eq!(result.as_of_ts(), ms(1_000));
         assert_eq!(*result.value(), dec!(0.42));
         assert_eq!(result.into_value(), dec!(0.42));
+    }
+
+    // ── Publication lag (ADR-0086 D2 / P3 M-TEST-2) ──────────────────────────
+
+    /// (a) Lag-0 reduction: `from_sorted_with_lag(r, 0)` is byte-identical to
+    /// `from_sorted(r)` for a sweep of queries, including warm-up, exact
+    /// boundary, and between-record cases. This is the AC2 / feature.md §
+    /// D4.3 "byte-identical default" proof.
+    #[test]
+    fn lag_zero_reduction_matches_legacy_from_sorted() {
+        let records = vec![
+            (ms(1_000), dec!(0.1)),
+            (ms(2_000), dec!(0.2)),
+            (ms(3_000), dec!(0.3)),
+        ];
+        let legacy = PitSeries::from_sorted(records.clone()).unwrap();
+        let with_lag_zero = PitSeries::from_sorted_with_lag(records, 0).unwrap();
+
+        // Sweep across warm-up, exact-boundary, between-record, and
+        // past-last-record queries.
+        for q in [0, 500, 1_000, 1_500, 2_000, 2_500, 3_000, 3_500, 10_000] {
+            let legacy_result = legacy.as_of(ms(q));
+            let lagged_result = with_lag_zero.as_of(ms(q));
+            assert_eq!(
+                legacy_result, lagged_result,
+                "lag=0 must equal legacy from_sorted at query={q}"
+            );
+            // Also confirm the value-projection wrapper agrees.
+            assert_eq!(
+                legacy.as_of_value(ms(q)),
+                with_lag_zero.as_of_value(ms(q)),
+                "as_of_value must also agree at query={q}"
+            );
+        }
+    }
+
+    /// (a-2) `from_unsorted_with_lag(r, 0)` is byte-identical to
+    /// `from_unsorted(r)`.
+    #[test]
+    fn lag_zero_reduction_matches_legacy_from_unsorted() {
+        let records = vec![
+            (ms(3_000), dec!(0.3)),
+            (ms(1_000), dec!(0.1)),
+            (ms(2_000), dec!(0.2)),
+        ];
+        let legacy = PitSeries::from_unsorted(records.clone());
+        let with_lag_zero = PitSeries::from_unsorted_with_lag(records, 0);
+
+        for q in [0, 500, 1_000, 1_500, 2_000, 2_500, 3_000, 3_500] {
+            assert_eq!(
+                legacy.as_of_value(ms(q)),
+                with_lag_zero.as_of_value(ms(q)),
+                "lag=0 (from_unsorted_with_lag) must equal legacy from_unsorted at query={q}"
+            );
+        }
+    }
+
+    /// (b) Positive lag delays availability — the explicit-lag analogue of
+    /// `as_of_no_look_ahead_falsifier`. A record at `ts=1000` with
+    /// `lag=500` is invisible at `query=1200` (< 1500) and visible at
+    /// `query=1500` (== 1000+500), with `as_of_ts()` still returning the
+    /// RECORD's own ts (1000), not the query or the availability instant.
+    #[test]
+    fn positive_lag_delays_availability() {
+        let series = PitSeries::from_sorted_with_lag(vec![(ms(1_000), dec!(0.42))], 500).unwrap();
+
+        // Before ts+lag (1000+500=1500): not yet available.
+        assert_eq!(
+            series.as_of(ms(1_200)),
+            None,
+            "record must be invisible before ts+lag"
+        );
+        assert_eq!(series.as_of_value(ms(1_499)), None);
+
+        // At exactly ts+lag: available (the lag's <= boundary).
+        let at_boundary = series.as_of(ms(1_500)).unwrap();
+        assert_eq!(
+            at_boundary.as_of_ts(),
+            ms(1_000),
+            "as_of_ts must be the RECORD's own ts, not the query or availability instant"
+        );
+        assert_eq!(*at_boundary.value(), dec!(0.42));
+
+        // After ts+lag: still available (forward-filled).
+        let after = series.as_of(ms(2_000)).unwrap();
+        assert_eq!(after.as_of_ts(), ms(1_000));
+        assert_eq!(*after.value(), dec!(0.42));
+    }
+
+    /// (b-2) Positive lag across multiple records: forward-fill still
+    /// respects each record's OWN effective availability instant
+    /// independently.
+    #[test]
+    fn positive_lag_multi_record_forward_fill() {
+        // Two records, lag=1000: record@2000 available from query=3000;
+        // record@5000 available from query=6000.
+        let series = PitSeries::from_sorted_with_lag(
+            vec![(ms(2_000), dec!(0.1)), (ms(5_000), dec!(0.2))],
+            1_000,
+        )
+        .unwrap();
+
+        assert_eq!(
+            series.as_of_value(ms(2_500)),
+            None,
+            "before first availability"
+        );
+        assert_eq!(
+            series.as_of_value(ms(3_000)),
+            Some(dec!(0.1)),
+            "first record available at ts+lag"
+        );
+        assert_eq!(
+            series.as_of_value(ms(5_999)),
+            Some(dec!(0.1)),
+            "second record not yet available — forward-fill on first"
+        );
+        assert_eq!(
+            series.as_of_value(ms(6_000)),
+            Some(dec!(0.2)),
+            "second record available at its own ts+lag"
+        );
+    }
+
+    /// (b-3) Negative-lag guard: `saturating_sub` must not panic/overflow
+    /// when `publication_lag_ms` exceeds `query` in magnitude (an
+    /// pathological but representable config) — the query clamps to
+    /// `TimestampMs(0)` rather than wrapping.
+    #[test]
+    fn lag_saturating_sub_does_not_underflow() {
+        let series = PitSeries::from_sorted_with_lag(vec![(ms(0), dec!(0.1))], i64::MAX).unwrap();
+        // query.saturating_sub(i64::MAX) saturates to a very negative number
+        // (i64::MIN-ish), well below the record's ts=0, so warm-up (None).
+        assert_eq!(series.as_of(ms(100)), None);
     }
 }

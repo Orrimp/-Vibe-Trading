@@ -11,6 +11,21 @@ Non-negotiable quality gates.
 
 Run in order; stop and report on the first failure.
 
+0. **Pre-test grep gates** (defence-in-depth, non-deterministic-path /
+   look-ahead / secret-leak backstops — cheap, run first):
+
+   ```bash
+   bash scripts/check_no_clocks_in_ui_tests.sh
+   bash scripts/check_no_raw_asof_join.sh
+   ```
+
+   `check_no_raw_asof_join.sh` forbids a raw, hand-rolled time-keyed
+   as-of join (`partition_point`/`binary_search_by*` on a `t <= query`
+   predicate) anywhere under `crates/*/src/**` outside the sanctioned
+   `crates/core/src/pit.rs` home — the ADR-0086 D1 look-ahead lint.
+   `--self-test` (synthetic offending + clean fixtures) verifies the
+   matcher itself; run it once after touching either script.
+
 1. **Formatting**
 
    ```bash

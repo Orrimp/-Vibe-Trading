@@ -206,7 +206,16 @@ pub fn load_macro_regime_series(
     }
 
     // Records are produced in ascending timestamp order (BTreeSet).
-    PitSeries::from_sorted(regime_records).map_err(MacroRegimeError::PitSort)
+    //
+    // Explicit publication lag (ADR-0086 D2/D3, P3 M-DEV-6): macro's
+    // publication_lag_ms = 0 per the feature's lag table
+    // (spec/v3/advisor-pit-discipline/feature.md § D2) — the three legs
+    // (^GSPC/DX-Y.NYB/^TNX) are market-observable prices/yields with no
+    // release lag beyond end-of-day, and `close_ts` ≈ EOD UTC already
+    // encodes that. `from_sorted_with_lag(_, 0)` is byte-identical to
+    // `from_sorted(_)` (proven by
+    // `macro_byte_identical_legacy_vs_with_lag_zero`).
+    PitSeries::from_sorted_with_lag(regime_records, 0).map_err(MacroRegimeError::PitSort)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -327,5 +336,75 @@ mod tests {
 
         let risk_on = spx_close > spx_sma && dxy_close < dxy_sma && tnx_close < tnx_sma;
         assert!(!risk_on, "SPX below SMA → should be risk-OFF");
+    }
+
+    // ── Byte-identity test (ADR-0086 D3 / P3 M-TEST-3) ────────────────────────
+
+    /// Proves the P3 retrofit (`PitSeries::from_sorted` →
+    /// `from_sorted_with_lag(_, 0)` in `load_macro_regime_series`) moves NO
+    /// value on a representative regime-record series + bar-open grid: the
+    /// LEGACY raw `partition_point(|&(t,_)| t <= q)` predicate computed
+    /// directly over the regime records must equal the RETROFITTED
+    /// `PitSeries::from_sorted_with_lag(_, 0).as_of_value(_)` (the exact
+    /// primitive the loader now calls) element-for-element.
+    ///
+    /// This tests the reduction at the `PitSeries` level rather than through
+    /// the full `load_macro_regime_series` (which requires the Yahoo
+    /// corpus I/O) — a synthetic `(TimestampMs, bool)` series is
+    /// representative because the retrofit only changes HOW the series is
+    /// constructed (`from_sorted` → `from_sorted_with_lag(_, 0)`), not what
+    /// `regime_records` contains. Because macro also runs
+    /// `write_report = false`, no anchored report body can move; this test
+    /// is the load-bearing proof that the as-of VALUES are unchanged.
+    #[test]
+    fn macro_byte_identical_legacy_vs_with_lag_zero() {
+        let one_day_ms: i64 = 86_400_000;
+        let regime_records: Vec<(TimestampMs, bool)> = vec![
+            (TimestampMs(one_day_ms - 1), true),
+            (TimestampMs(2 * one_day_ms - 1), false),
+            (TimestampMs(3 * one_day_ms - 1), true),
+            (TimestampMs(3 * one_day_ms - 1), false), // tie: second wins
+        ];
+
+        // A representative bar-open grid: warm-up, exact boundary, between,
+        // and past-last-record.
+        let grid: Vec<i64> = vec![
+            0,
+            one_day_ms - 2,
+            one_day_ms - 1,
+            one_day_ms,
+            2 * one_day_ms - 1,
+            2 * one_day_ms,
+            3 * one_day_ms - 1,
+            3 * one_day_ms,
+            10 * one_day_ms,
+        ];
+
+        // LEGACY: the exact raw predicate the primitive replaced (pinned by
+        // `pit.rs`'s own docstring/tests as byte-for-byte identical at
+        // lag=0; recomputed here directly over the tuples for the
+        // independent oracle this test requires).
+        let legacy_as_of = |query: i64| -> Option<bool> {
+            let idx = regime_records.partition_point(|&(t, _)| t.0 <= query); // PIT-OK: legacy-predicate byte-identity oracle for the M-TEST-3 retrofit proof.
+            if idx == 0 {
+                None
+            } else {
+                Some(regime_records[idx - 1].1)
+            }
+        };
+        let legacy_results: Vec<Option<bool>> = grid.iter().map(|&q| legacy_as_of(q)).collect();
+
+        // RETROFITTED: the exact primitive load_macro_regime_series now calls.
+        let retrofitted =
+            PitSeries::from_sorted_with_lag(regime_records.clone(), 0).expect("sorted fixture");
+        let retrofitted_results: Vec<Option<bool>> = grid
+            .iter()
+            .map(|&q| retrofitted.as_of_value(TimestampMs(q)))
+            .collect();
+
+        assert_eq!(
+            legacy_results, retrofitted_results,
+            "P3 retrofit must be byte-identical to the legacy raw partition_point predicate"
+        );
     }
 }

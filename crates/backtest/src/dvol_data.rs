@@ -381,7 +381,18 @@ pub fn dvol_as_of(dvol: &[(i64, Decimal)], bar_open_ts_ms: &[i64]) -> Vec<Option
     // before calling this function, so from_sorted would succeed; we use
     // from_unsorted here so this library function is infallible — the sort
     // is a stable no-op on an already-sorted slice.
-    let series = PitSeries::from_unsorted(dvol.iter().map(|&(t, r)| (TimestampMs(t), r)).collect());
+    //
+    // Explicit publication lag (ADR-0086 D2/D3, P3 M-DEV-5): DVOL's
+    // publication_lag_ms = 0 per the feature's lag table
+    // (spec/v3/advisor-pit-discipline/feature.md § D2) — the join key
+    // `day_close_ts_ms` already places the record at the FULLY-observed
+    // instant, so no additional lag applies. `from_unsorted_with_lag(_, 0)`
+    // is byte-identical to `from_unsorted(_)` (proven by
+    // `dvol_byte_identical_legacy_vs_with_lag_zero`).
+    let series = PitSeries::from_unsorted_with_lag(
+        dvol.iter().map(|&(t, r)| (TimestampMs(t), r)).collect(),
+        0,
+    );
 
     bar_open_ts_ms
         .iter()
@@ -491,6 +502,61 @@ mod tests {
     fn empty_dvol_series_all_none() {
         let result = dvol_as_of(&[], &[100, 200, 300]);
         assert_eq!(result, vec![None, None, None]);
+    }
+
+    // ── Byte-identity test (ADR-0086 D3 / P3 M-TEST-3) ────────────────────────
+
+    /// Proves the P3 retrofit (`PitSeries::from_unsorted` →
+    /// `from_unsorted_with_lag(_, 0)`, `dvol_data.rs::dvol_as_of`) moves NO
+    /// value on a representative series + bar-open grid: the LEGACY raw
+    /// `partition_point(|&(t,_)| t <= q)` predicate computed directly over
+    /// the DVOL rows must equal the RETROFITTED `dvol_as_of` (which now
+    /// routes through `from_unsorted_with_lag(_, 0)`) element-for-element.
+    ///
+    /// This is the anchor question, answered by construction: because DVOL
+    /// runs `write_report = false` on the bake-off path, no anchored report
+    /// body can move; this test is the load-bearing proof that the
+    /// as-of VALUES themselves are unchanged.
+    #[test]
+    fn dvol_byte_identical_legacy_vs_with_lag_zero() {
+        let day1_close_ts: i64 = ONE_DAY_MS - 1;
+        let day2_close_ts: i64 = 2 * ONE_DAY_MS - 1;
+        let day3_close_ts: i64 = 3 * ONE_DAY_MS - 1;
+        let dvol: Vec<(i64, Decimal)> = vec![
+            (day1_close_ts, dec!(50.0)),
+            (day2_close_ts, dec!(70.0)),
+            (day3_close_ts, dec!(40.0)),
+        ];
+
+        // A representative bar-open grid spanning warm-up, exact boundaries,
+        // between-record forward-fill, and past-last-record.
+        let one_hour_ms: i64 = 3_600_000;
+        let mut grid: Vec<i64> = vec![0, day1_close_ts - 1, day1_close_ts, day2_close_ts - 1];
+        grid.extend((0..30).map(|h| day1_close_ts + h * one_hour_ms));
+        grid.push(day2_close_ts);
+        grid.push(day3_close_ts);
+        grid.push(day3_close_ts + ONE_DAY_MS);
+
+        // LEGACY: the exact raw predicate `dvol_as_of` used before the P3
+        // retrofit (partition_point(|&(t,_)| t <= q), idx-1, None at idx==0).
+        let legacy_as_of = |query: i64| -> Option<Decimal> {
+            let idx = dvol.partition_point(|&(t, _)| t <= query); // PIT-OK: legacy-predicate byte-identity oracle for the M-TEST-3 retrofit proof.
+            if idx == 0 {
+                None
+            } else {
+                Some(dvol[idx - 1].1)
+            }
+        };
+        let legacy_results: Vec<Option<Decimal>> = grid.iter().map(|&q| legacy_as_of(q)).collect();
+
+        // RETROFITTED: the current dvol_as_of, which now routes through
+        // PitSeries::from_unsorted_with_lag(_, 0).
+        let retrofitted_results = dvol_as_of(&dvol, &grid);
+
+        assert_eq!(
+            legacy_results, retrofitted_results,
+            "P3 retrofit must be byte-identical to the legacy raw partition_point predicate"
+        );
     }
 
     /// No-look-ahead falsifier: future-shifting the DVOL series changes the result.

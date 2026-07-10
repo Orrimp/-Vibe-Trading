@@ -637,6 +637,7 @@ Python or hand-typed pipelines.
 | `scripts/prune_backtest_duplicates.sh`  | Collapse duplicate backtest reports in `spec/*/reports/`      | tester (via `rust-test`, `verify-anchors`, `backtest` skills) |
 | `scripts/check_no_secrets_in_llm_artifacts.sh` | Guard: LLM artifacts contain no secrets                | tester, regression gate      |
 | `scripts/check_no_clocks_in_ui_tests.sh`| Guard: UI tests have no wall-clock dependency                 | tester, regression gate      |
+| `scripts/check_no_raw_asof_join.sh`     | Guard: no raw hand-rolled as-of join outside `core::pit` (ADR-0086) | developer (`rust-validate` pre-test gate), tester, regression gate |
 
 For the orchestrator-only `scripts/orch_*` set (cursor automation,
 screencapture, cockpit on/off, supplement-log, determinism check, TCC

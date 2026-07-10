@@ -1,9 +1,9 @@
 ---
 slug: advisor-pit-discipline
-status: arch-done
-owner: architect
+status: dev-done
+owner: developer
 updated: 2026-07-10
-version: 3.1.0
+version: 3.2.0
 ---
 
 # P3 — Point-in-time / as-of data discipline: the look-ahead lint + explicit publication lag
@@ -330,3 +330,155 @@ the opposite of the design goal. This is recorded, not skipped. The verification
   `newtype PublicationLagMs(i64)` for symmetry with `TimestampMs`? Architect lean: **plain `i64`
   field** (the lag is an interval, not a timestamp; no join-key round-trip risk; smallest diff).
   Developer's call at implementation.
+
+  **Resolved (developer, 2026-07-10): plain `i64` field, per the architect's lean.**
+  `publication_lag_ms: i64` on `PitSeries<T>` (`crates/core/src/pit.rs:126`). No newtype — the
+  smallest diff, no join-key round-trip risk.
+
+- **Resolved OQ-LINT-SCANLIST (developer, 2026-07-10): production `src` only, per the
+  architect's lean, confirmed against the actual corpus.** `scan_list()`
+  (`scripts/check_no_raw_asof_join.sh`) covers `crates/*/src/*.rs` +
+  `crates/*/src/**/*.rs` (see § Implementation for the pathspec bug this surfaced and fixed) and
+  nothing under `tests/`/`benches/`/`examples/`. No `// PIT-OK:` marker noise was needed on the
+  real tree — the sanctioned-home exemption alone (`crates/core/src/pit.rs`) sufficed; the one
+  `// PIT-OK:` marker present (on `pit.rs`'s own `as_of` implementation) is belt-and-suspenders
+  documentation, not a required escape (that file is exempted outright by name).
+
+---
+
+## Implementation
+
+**Status: `dev-done`.** All four milestones (A–D) built and gate-proven. Handing off to the
+tester to verify-and-tick and run the ship-side gates (M-TEST-5/M-TEST-6 already run once by
+the developer as the load-bearing "before AND after" proof; the tester re-runs as the
+independent verification pass per the standard workflow).
+
+### Milestone A — the lint (D1)
+
+- **`scripts/check_no_raw_asof_join.sh`** (new file, executable). Mirrors
+  `check_no_clocks_in_ui_tests.sh`'s shape (`set -euo pipefail`, a per-line `// PIT-OK: <reason>`
+  allowlist marker checked on the same-or-preceding line, a clear FAIL banner with remediation
+  text) but matches the **as-of predicate shape** rather than a bare method name: a
+  `.partition_point(` / `.binary_search_by(` / `.binary_search_by_key(` call
+  (`ASOF_METHOD_RE`) on a line that ALSO contains a `<=`-comparison whose left side looks
+  timestamp-shaped (`ASOF_PREDICATE_RE` — an identifier, optionally `.0`-projected, followed by
+  `<=`). Both legs must hit the SAME source line, matching how every production one-liner in
+  this codebase is written (confirmed against the real corpus — no multi-line raw predicate
+  exists). `crates/core/src/pit.rs` is exempted by exact path match
+  (`SANCTIONED_HOME`), independent of the marker mechanism.
+- **A scanlist bug found and fixed during M-TEST-1.** The naive
+  `git ls-files 'crates/*/src/**/*.rs'` pathspec silently EXCLUDES any file sitting directly in
+  `crates/<name>/src/*.rs` (no subdirectory) — git's `**` glob requires at least one intermediate
+  directory. That bug would have hidden 178 of 400 production files, including BOTH P3 retrofit
+  targets (`crates/backtest/src/dvol_data.rs`, `crates/backtest/src/macro_regime.rs`) and
+  `crates/core/src/pit.rs` itself. Caught live: the first negative-control plant (M-TEST-1) into
+  `dvol_data.rs` produced a false PASS. Fixed by combining `'crates/*/src/*.rs'` (flat) +
+  `'crates/*/src/**/*.rs'` (nested), de-duplicated (`scan_list()`, `check_no_raw_asof_join.sh`).
+  Re-verified: 400 files scanned (was silently 222), negative control now correctly fails the
+  gate. This is recorded here because it is a real finding, not implementation noise — a wider
+  gap than the ADR/feature.md's four-site grounding survey implied, closed before it could ship.
+- `--self-test` writes a synthetic offending fixture (`partition_point(|&(t,_)| t <= query)` in
+  a temp `.rs`) and a clean fixture (a `PitSeries`-routed function + a legitimate NON-temporal
+  `partition_point` on a `u32` needle, proving no bare-symbol false-positive) to a tempdir; both
+  outcomes are asserted.
+- Wired into `rust-validate`'s pre-test gate: `.claude/skills/rust-validate/SKILL.md` gained a
+  new step 0 ("Pre-test grep gates") invoking both `check_no_clocks_in_ui_tests.sh` and
+  `check_no_raw_asof_join.sh` before formatting/clippy. `AGENT.md`'s tooling table gained the
+  corresponding row next to the two sibling `check_no_*` scripts.
+
+### Milestone B — the lag (D2)
+
+- `crates/core/src/pit.rs`: `PitSeries<T>` gained a `publication_lag_ms: i64` field.
+  `from_sorted_with_lag(records, lag)` and `from_unsorted_with_lag(records, lag)` are the new
+  primary constructors; `from_sorted`/`from_unsorted`/`from_sorted_slice` are now one-line
+  delegations to their `*_with_lag(_, 0)` sibling (`from_sorted_slice` sets the field inline —
+  it has no natural delegation target since it borrows rather than moves).
+- `as_of(query)` computes `adjusted_query = query.saturating_sub(publication_lag_ms)` and queries
+  `self.records.partition_point(|&(t, _)| t <= adjusted_query)` — the EXACT legacy one-liner,
+  now against the lag-adjusted query. At `publication_lag_ms == 0`, `saturating_sub(0)` is a
+  byte-identical no-op, so `adjusted_query == query` and the predicate is character-for-character
+  the pre-P3 line.
+- 5 new unit tests in `pit.rs`'s `#[cfg(test)] mod tests`: `lag_zero_reduction_matches_legacy_from_sorted`,
+  `lag_zero_reduction_matches_legacy_from_unsorted` (the AC2 byte-identical-default proof, swept
+  across warm-up/boundary/between/past-last queries), `positive_lag_delays_availability` (a
+  record at `ts=1000, lag=500` is `None` at `q=1200`/`q=1499`, `Some` with `as_of_ts()==1000` at
+  `q=1500`/`q=2000` — proving `as_of_ts()` still returns the record's OWN ts, not the query or
+  the availability instant), `positive_lag_multi_record_forward_fill` (two records forward-fill
+  independently against their own effective availability instants), and
+  `lag_saturating_sub_does_not_underflow` (a defensive `i64::MAX` lag does not panic — clamps to
+  warm-up rather than wrapping).
+
+### Milestone C — the retrofit (D3)
+
+- `crates/backtest/src/dvol_data.rs::dvol_as_of` (dvol_data.rs:384-391 after the change):
+  `PitSeries::from_unsorted(...)` → `PitSeries::from_unsorted_with_lag(..., 0)`, comment citing
+  ADR-0086 + the feature's lag table (DVOL lag = 0, key already EOD-close instant). Public
+  signature unchanged.
+- `crates/backtest/src/macro_regime.rs::load_macro_regime_series` (macro_regime.rs:209-218 after
+  the change): `PitSeries::from_sorted(regime_records)` → `PitSeries::from_sorted_with_lag(regime_records, 0)`,
+  same citing comment (macro lag = 0, `close_ts` ≈ EOD UTC, market-observable).
+  `MacroRegimeError::PitSort` mapping unchanged.
+- **Byte-identity tests** (M-TEST-3), one per site, co-located with each loader's existing tests:
+  `dvol_data.rs::tests::dvol_byte_identical_legacy_vs_with_lag_zero` computes the as-of result
+  the LEGACY raw `partition_point(|&(t,_)| t <= q)` way (an independent closure recomputing the
+  predicate directly over the DVOL row tuples — the pre-P3 oracle) and the RETROFITTED
+  `dvol_as_of(...)` way (which now internally routes through `from_unsorted_with_lag(_, 0)`) on
+  a representative series (3 daily closes) + a 34-point bar-open grid spanning warm-up, exact
+  boundaries, 24h of hourly forward-fill, and past-last-record, asserting element-for-element
+  equality. `macro_regime.rs::tests::macro_byte_identical_legacy_vs_with_lag_zero` does the same
+  at the `PitSeries<bool>` level (a synthetic 4-record series incl. a tie) since the full
+  `load_macro_regime_series` requires Yahoo-corpus I/O and the retrofit only changes the
+  CONSTRUCTION call, not what `regime_records` contains.
+- Regression net (M-TEST-4) re-run and confirmed unchanged: DVOL's `warm_up_before_first_dvol_is_none`,
+  `bar_on_day2_sees_day1_close`, `forward_fill_across_intraday_bars`, `no_look_ahead_falsifier`
+  all green; macro's `risk_on_when_all_three_conditions_met` / `risk_off_when_spx_below_sma`
+  green; the ADR-0058-era `basis_data.rs::no_look_ahead_falsifier` +
+  `funding_data.rs::no_look_ahead_falsifier` (untouched files, confirmed no collateral damage
+  from the `pit.rs` primitive change) both green.
+
+### Milestone D — gates run (all verbatim in the developer handoff message; not re-pasted here)
+
+`check_no_raw_asof_join.sh` clean on the real tree (400 files) + `--self-test` PASS;
+`cargo test -p trading_core --lib` 110/110; `cargo test -p backtest --lib --features
+realdata,yahoo,candle` 240/240 (11 pre-existing `#[ignore]`d on-machine tests unaffected);
+`cargo clippy -p trading_core -p backtest --tests --features realdata,yahoo -- -D warnings`
+clean; `cargo fmt --check` clean (2 cosmetic wrap findings auto-fixed via `cargo fmt`, both in
+newly-added P3 code); `scripts/verify_anchors.sh` 119/119 BEFORE and AFTER; `python3
+scripts/spec_lint.py` PASS(0); `scripts/adr_registry_check.py --pre-commit` exit 0 (ADR-0086 was
+already registered atomically by the architect at accept-time). FROZEN-gate diff-empty confirmed
+via `git status --porcelain | grep -E "bakeoff/(robustness|rank|scorecard)\.rs|spec/.*/reports/|ci\.yml\.deferred"`
+(zero matches).
+
+### Files touched
+
+- `scripts/check_no_raw_asof_join.sh` — new.
+- `crates/core/src/pit.rs` — `publication_lag_ms` field + `*_with_lag` ctors + adjusted-query
+  `as_of` + 5 new unit tests.
+- `crates/backtest/src/dvol_data.rs` — retrofit `dvol_as_of` + 1 byte-identity test.
+- `crates/backtest/src/macro_regime.rs` — retrofit `load_macro_regime_series` + 1 byte-identity
+  test.
+- `.claude/skills/rust-validate/SKILL.md` — new pre-test-gate step 0.
+- `AGENT.md` — new tooling-table row.
+- `spec/v3/advisor-pit-discipline/{feature.md,tasks.md}` — this section + task ticks.
+- `spec/trace.toml` — `REQ-V3-P3-PIT-DISCIPLINE-001` row flipped to `dev-done`.
+
+**No CHANGELOG.md line added yet** — per ADR-0082 D2/D3, `feature.md status: shipped` (and the
+CHANGELOG entry it implies) is a post-tester/post-presenter milestone; this feature is at
+`dev-done`. The tester/orchestrator adds the CHANGELOG line at actual ship.
+
+### Divergence e2e gate: confirmed N/A (not skipped)
+
+Per feature.md § D4, no baseline-equity-divergence e2e test was written. P3 introduces no
+decision variable, scale, or signal; the byte-identity tests (M-TEST-3) ARE the success
+condition (zero divergence = pass), mirroring the ADR-0058 § D5 precedent this design explicitly
+cites. Recorded here per the CLAUDE.md non-negotiable's own carve-out language.
+
+## Changelog
+
+- 2026-07-10 (architect): initial `arch-done` — P3 design lock (D1–D4), ADR-0086 accepted +
+  registered, `tasks.md` Milestones A–D authored.
+- 2026-07-10 (developer): `dev-done` — all four milestones built + gate-proven (see §
+  Implementation). Both open questions resolved (plain `i64` lag field; production-`src`-only
+  lint scanlist). One real bug found and fixed en route: the lint's naive `git ls-files` pathspec
+  silently missed 178/400 production files including both retrofit targets — caught by the
+  M-TEST-1 negative-control plant, fixed before ship. Handoff → tester.
