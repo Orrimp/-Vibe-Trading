@@ -2,7 +2,7 @@
 slug: do-not-build-register
 status: reference
 owner: analyst
-updated: 2026-07-10
+updated: 2026-07-11
 ---
 
 # Do-not-build register — the authoritative settled dead-ends
@@ -143,16 +143,26 @@ ideas look additive but are not.
 
 ## What IS still legitimately open (so this register isn't read as "nothing may ever change")
 
-Exactly **one** direction is genuinely open and scope-fitting, per the qlib
-scope-aware comparison and project memory: **a first-class structural
-point-in-time / as-of data discipline** — a focused as-of-join helper + a lint that
-makes look-ahead *impossible by construction*, rather than re-proven per feature by
-hand. It strengthens the honest-negative-result moat (the most important claim the
+~~Exactly **one** direction is genuinely open~~ **UPDATE 2026-07-11: that direction
+SHIPPED** — the structural point-in-time / as-of discipline landed as remediation
+**P3 / ADR-0086** (`scripts/check_no_raw_asof_join.sh` + explicit `publication_lag_ms`
+on `PitSeries`; the DVOL/macro joins verified already-as-of and retrofitted with a
+zero-divergence proof). The register's original one-open-item text is preserved below
+for history:
+
+A first-class structural point-in-time / as-of data discipline — a focused
+as-of-join helper + a lint that makes look-ahead *impossible by construction*,
+rather than re-proven per feature by hand. It strengthens the honest-negative-result moat (the most important claim the
 product makes) and is the ONE qlib capability that is a real gap here rather than
 TRIED-RETIRED or out-of-scope. It is modest (a helper + lint, **not** a new
 database) and does not touch the frozen gate. See
 `spec/dev-notes/qlib-feature-gap-2026-06-17.md` gap #1 and project memory
 "qlib gap: only PIT data is worth it."
+
+The current honest gap map (post-remediation, 2026-07-11) lives in
+[`research-gap-analysis-2026-07-11.md`](research-gap-analysis-2026-07-11.md) — its one
+build-candidate is a cross-run family-wise multiple-testing report-annex (online-FDR;
+created by P2's own 32-run design), everything else stated-limit/leave.
 
 Everything else the operator might reach for is settled-dead above. The honest v3
 posture is **"prove it's done," not "do more"** — ship-readiness and the
