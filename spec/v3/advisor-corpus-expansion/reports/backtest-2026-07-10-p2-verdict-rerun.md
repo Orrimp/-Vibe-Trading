@@ -20,6 +20,21 @@ carries no anchor obligation (ADR-0084 D8; `write_report=false` on every
 scenario the harness ran — verified 119/119 before AND after, see § Gate
 Results).
 
+## Summary
+
+> _Section added 2026-07-11 as a report-shape conformance fix (the `reports` crate's
+> `## Summary` parse contract, caught by the first CI run). Faithful restatement of
+> the results below — no recorded result altered._
+
+Full S1–S8 matrix: **15/15 tests passed** (238.79s). Ship-passive **holds on the
+current era** (2023-24 baseline 0/1 ActiveWins; 2025-26 2/10 marginal) and
+**wobbles on older eras** (2017-18: 2/3, 2020: 6/7, 2021-22: 8/10 ActiveWins),
+mostly surviving the era-cost annex (one true flip: DOGE-2020). Coinbase venue
+cross-check tracks Binance 3-8 bps. MinBTL evidence base 3.99 → 7.90 years (now
+above the 6.36y bar). Verdict: **PASS**. NOTE: this report's AC2 DSR rollup
+(16/19 clearing) was **corrected same-day to 0/19** by the scorecard NaN-variance
+fix — see the errata report in this directory.
+
 ## 0. The headline question
 
 > Does the ship-passive verdict ("no active strategy robustly beats

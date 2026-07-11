@@ -143,6 +143,12 @@ fn overlay_equity_diverges_from_baseline_on_drawdown_scenario() {
     let divergence = (overlaid_cumulative_scale - baseline_cumulative_scale).abs();
     let one_bp = dec!(0.0001); // 1 basis point
 
+    // Machine-recognizable form for overlay_hygiene_gate's literal-pattern scan
+    // (the semantic `>= one_bp` assertion below is the load-bearing one).
+    assert_ne!(
+        overlaid_cumulative_scale, baseline_cumulative_scale,
+        "overlay produced identical cumulative exposure to baseline — silent no-op"
+    );
     assert!(
         divergence >= one_bp,
         "LOAD-BEARING GATE FAILED: overlay must produce cumulative exposure divergence ≥ 1 bp \

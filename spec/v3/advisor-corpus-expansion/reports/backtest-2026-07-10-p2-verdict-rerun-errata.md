@@ -27,6 +27,19 @@ authoritative statement of AC2 going forward.
 
 ---
 
+## Summary
+
+> _Section added 2026-07-11 as a report-shape conformance fix (parse contract;
+> caught by the first CI run). No corrected finding altered._
+
+The original AC2 rollup (**16/19** old-era ActiveWins crowns clearing DSR≥0.95)
+was an artifact of the scorecard NaN bug (NaN Sharpes zeroed DSR's variance
+input). Post-fix (`9e8cd05`): **0/19 clear DSR**; `crown_clears_dsr` flips
+true→false on 17/32 primary rows; **outcomes + crowned arms byte-identical
+32/32**. The era-boundary pattern stands (60-86% old-era crowning vs the ~20%
+noise floor, cost-annex-robust); individual-edge DSR certification is retracted —
+the accurate qualifier is "gate-crowned, cost-robust, NOT DSR-certified."
+
 ## 1. What the original report said (AC2, verbatim)
 
 > **16 of 19 `ActiveWins` crowns (84%) clear DSR ≥ 0.95.** The 3 that do NOT
