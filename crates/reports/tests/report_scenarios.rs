@@ -143,22 +143,15 @@ async fn render_scenario(
     body_after_fence(&full).to_string()
 }
 
-/// Resolve the workspace root via `CARGO_MANIFEST_DIR` (which points
-/// at `crates/reports`).  Used to publish the "lock" copy of each
-/// rendered scenario report under `spec/v1/operator-success-reports/reports/`
-/// so `scripts/verify_anchors.sh` can resolve it via the recursive
-/// `*/reports/success-*-<scenario>.md` glob extension.
-fn workspace_success_dir() -> PathBuf {
-    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace = crate_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map_or_else(|| crate_dir.clone(), Path::to_path_buf);
-    workspace
-        .join("spec")
-        .join("operator-success-reports")
-        .join("reports")
-}
+// NOTE (2026-07-12): the pre-reorg `workspace_success_dir()` published the
+// "lock" copy into `spec/operator-success-reports/reports/` — a path the
+// 2026-06-28 v1 reorg retired. Post-reorg, `verify_anchors.sh` hashes the
+// COMMITTED `spec/v1/operator-success-reports/reports/` bodies (byte-stable),
+// and the locked in-test SHAs below independently prove the fresh render
+// matches. Publishing into `spec/` is therefore vestigial — it only littered
+// an untracked root dir on every full test run (caught by spec-lint
+// orphan-feature after the first CI shakeout). The publish now targets the
+// test's own TempDir purely for local inspection.
 
 /// Publish the canonical `success-*-<scenario>.md` copy of a freshly
 /// rendered scenario report into `spec/v1/operator-success-reports/reports/`.
@@ -166,9 +159,9 @@ fn workspace_success_dir() -> PathBuf {
 /// the test itself runs against `tempfile::TempDir` paths to keep the
 /// fixture surface ephemeral, but the locked SHA only matters when the
 /// gate can find a real report on disk to hash against.
-fn publish_success_copy(src_full_md: &Path, scenario: &str) -> PathBuf {
-    let dest_dir = workspace_success_dir();
-    std::fs::create_dir_all(&dest_dir).expect("create spec/v1/operator-success-reports/reports");
+fn publish_success_copy(dest_root: &Path, src_full_md: &Path, scenario: &str) -> PathBuf {
+    let dest_dir = dest_root.join("published");
+    std::fs::create_dir_all(&dest_dir).expect("create TempDir publish dir");
     // Single canonical filename per scenario (no timestamp suffix) — the
     // verify_anchors.sh `ls -1 | sort | tail -1` step picks any matching
     // file regardless of how many we publish, but a stable filename
@@ -205,7 +198,7 @@ async fn t816_report_sample_7d_determinism_and_anchor_lock() {
     // Publish the `out_a` rendering to `spec/v1/operator-success-reports/reports/`
     // so the verify-anchors gate can pick it up via the success-* glob (the
     // body bytes match `out_b` byte-for-byte by V4 — either copy works).
-    let _published = publish_success_copy(&out_a, "report-sample-7d");
+    let _published = publish_success_copy(dir.path(), &out_a, "report-sample-7d");
 
     let sha_a = body_sha256_hex(&body_a);
     let sha_b = body_sha256_hex(&body_b);
@@ -250,7 +243,7 @@ async fn t816_report_sample_90d_determinism_and_anchor_lock() {
 
     let body_a = render_scenario(&db_path, &out_a, fixture_90d_period_start()).await;
     let body_b = render_scenario(&db_path, &out_b, fixture_90d_period_start()).await;
-    let _published = publish_success_copy(&out_a, "report-sample-90d");
+    let _published = publish_success_copy(dir.path(), &out_a, "report-sample-90d");
 
     let sha_a = body_sha256_hex(&body_a);
     let sha_b = body_sha256_hex(&body_b);
