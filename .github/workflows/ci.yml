@@ -51,6 +51,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The forecast crate's checkpoint anchors (crates/forecast/checkpoints/
+          # anchors/*.safetensors) are LFS-tracked; without lfs:true the runner
+          # gets pointer stubs and the checkpoint-anchor tests fail (first-CI
+          # shakeout finding, run #2 2026-07-12).
+          lfs: true
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -73,7 +79,14 @@ jobs:
             libxkbcommon-x11-0 \
             libx11-dev \
             libssl-dev \
-            pkg-config
+            pkg-config \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libwayland-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev
 
       # ── All legs: build the ui crate (fixtures binary) ────────────────────
       - name: Build ui (fixtures)
