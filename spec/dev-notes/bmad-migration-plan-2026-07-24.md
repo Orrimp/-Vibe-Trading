@@ -436,3 +436,7 @@ Full migration re-homes these; it does not delete a guarantee:
 - Corpus: 155 `feature.md`, 130 `reports/` dirs, 119 anchors, 86 ADRs.
 - Gate baseline at authoring: see the migration commit's `verify_anchors` (119/119) + `spec_lint`
   (PASS) run appended to the orchestrator's handoff.
+
+
+## Ratification (2026-07-24)
+All 7 decisions resolved by operator; see commit message.
