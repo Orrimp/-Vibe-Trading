@@ -173,7 +173,7 @@ async fn t32_external_halt_flips_cockpit_banner() {
 // `strategy_error`) fan-in to a distinct `Message` variant. The tests drive
 // a fake `EventBus`, publish one event, and assert the cockpit's state
 // machine reflects it within 2s — matching the T32 contract carried forward
-// into v0.5 per `spec/reports/ui-v05-blockers-2026-04-19.md`.
+// into v0.5 per `evidence/v1/v05-composed-strategies/reports/ui-v05-blockers-2026-04-19.md`.
 
 fn synthetic_strategy_loaded(id: &str) -> StrategyLoaded {
     StrategyLoaded {

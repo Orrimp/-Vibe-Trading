@@ -12,7 +12,7 @@
 //!    constructed an *empty* `Arc<EventBus>` because there was no IPC
 //!    layer to connect it to the running agent. Every panel sat in
 //!    `Loading` forever (the v0 IPC handoff contract — see
-//!    `spec/reports/dev-week2-broadcast-api-2026-04-18.md`).
+//!    `evidence/v1/v0-paper-sma/reports/dev-week2-broadcast-api-2026-04-18.md`).
 //!
 //! `cockpit_live` collapses both into a single process: the agent
 //! runtime and the iced cockpit share one `Arc<EventBus>` + one

@@ -2,7 +2,7 @@
 //!
 //! Read-only over the audit ledger + parquet roots.  Produces a
 //! YAML-front-mattered markdown body + companion CSV artifacts under
-//! `spec/reports/success/`.  The body is deterministic (R10.3) so a
+//! `evidence/reports/success/`.  The body is deterministic (R10.3) so a
 //! body-SHA256 anchor can lock it into the regression gate.
 //!
 //! See `spec/features/operator-success-reports.md` and

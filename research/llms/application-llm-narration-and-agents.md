@@ -223,7 +223,7 @@ research *validates* the constraints the codebase already enforces.
 - **HARD CONSTRAINTS to respect:** USDT-denominated; Decimal not f64 (any sentiment
   score that touches sizing must not introduce f64 into the money path); anchored
   report SHAs byte-immutable (119/119) — narration/doc changes must not mutate
-  anchored `spec/*/reports/`; gate/bands FROZEN (narration is additive, never a
+  anchored `evidence/*/reports/`; gate/bands FROZEN (narration is additive, never a
   ranking input); paper-only; LLM via API with prompt caching + monthly budget,
   local Ollama for cost-free dev; `crates/llm` provides the provider trait +
   budgeted/cached/record-replay (use it; do not add a second LLM client path).

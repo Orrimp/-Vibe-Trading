@@ -148,7 +148,7 @@ const BTC_ANCHOR_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da4114071
 /// ETH body SHA under the v0.1.3 emit shape (no `rev=` in body; `revision_sha:` in frontmatter).
 ///
 /// The v0.1.3 body→frontmatter migration changed this SHA from the v0.1.2
-/// anchor (`e59a5f87...`).  Row 70 in spec/anchors.toml retains the OLD SHA
+/// anchor (`e59a5f87...`).  Row 70 in evidence/anchors.toml retains the OLD SHA
 /// (`e59a5f87...`) because the on-disk archived file is byte-immutable
 /// (ADR-0038 § D6.b); bulk Yahoo ticker re-emit deferred to v0.1.4 BNB ship
 /// (D-V0.1.3-6).  This constant tracks the CURRENT live-emission shape,

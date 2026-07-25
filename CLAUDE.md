@@ -40,25 +40,29 @@ trading/
 │   ├── agents/              # analyst, architect, developer, tester
 │   └── skills/              # rust-build, rust-test, rust-validate,
 │                            # rust-bench, backtest, spec-update
+├── evidence/                # Byte-immutable reports corpus (2026-07-25 BMAD-migration
+│   │                        # Phase 3 `git mv` out of spec/, layout preserved 1:1)
+│   ├── anchors.toml         # Locked body-SHA-256 regression anchors
+│   ├── v1/<feature-slug>/reports/   # test-*.md, backtest-*.md, screenshots/
+│   ├── v2/<feature-slug>/reports/
+│   └── <feature-slug>/reports/      # mirrors the not-yet-triaged spec/<feature-slug>/ below
 └── spec/
     ├── product.md           # Product requirements (analyst-owned)
     ├── architecture.md      # System design (architect-owned)
     ├── backlog.md           # Roadmap / queue
-    ├── anchors.toml         # Locked body-SHA-256 regression anchors
     ├── ui-design-principles.md   # Cross-cutting UI codex
     ├── design/              # Lumen design system (cross-phase)
     ├── runbooks/            # Operational runbooks
     ├── archive/             # Compressed historical reports
     ├── dev-notes/           # Cross-cutting dev memos
     ├── v1/                  # SHIPPED product — implemented feature folders (2026-06-28 reorg)
-    │   └── <feature-slug>/  # Per-feature folder (archive; anchored reports byte-immutable in place)
+    │   └── <feature-slug>/  # Per-feature folder (archive; anchored reports byte-immutable in evidence/)
     ├── v2/                  # NEW research-driven phase (see research/APPLICATIONS.md); analyst/architect populate
     │   └── <feature-slug>/  # Per-feature folder
     └── <feature-slug>/      # Not-yet-built features pending triage (e.g. advisor-reflection-decision-loop)
         ├── feature.md       # Brief (frontmatter has version: x.y.z)
         ├── tasks.md         # Task list
-        ├── reports/         # test-*.md, backtest-*.md, screenshots/
-        └── presentations/   # Operator decks + artifacts/
+        └── presentations/   # Operator decks + artifacts/ (reports/ lives under evidence/<feature-slug>/)
 ```
 
 The crate layout under `crates/` is proposed in
@@ -147,7 +151,7 @@ or the `verify_anchors` gate. The `.codegraph/` index is gitignored. Setup + the
   e2e test that asserts the overlay's output equity diverges from the un-targeted
   baseline equity by ≥ 1 bp (or some testable epsilon) when the strategy decision
   variable is non-trivial. Pattern reference: [`crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`](crates/strategy/tests/vol_targeting_overlay_end_to_end.rs).
-- **Anchored report files in `spec/*/reports/` are byte-immutable.** Per ADR-0038 § D6
+- **Anchored report files in `evidence/*/reports/` are byte-immutable.** Per ADR-0038 § D6
   anchor-additive contract, even mechanical link-fix edits mutate the body-SHA and
   break the regression gate. Documentation-link cleanup sweeps MUST exclude anchored
   report files OR invoke the ADR-0038 § D6.b wiring-bug-fix re-emission protocol

@@ -653,7 +653,7 @@ rationale).
 These are **not backtest anchors** — they are visual-regression
 baselines for the cockpit, accepted via `cargo insta review`. The
 11 backtest body-SHA-256 anchors in
-[`spec/anchors.toml`](../anchors.toml) remained untouched.
+[`evidence/anchors.toml`](../../evidence/anchors.toml) remained untouched.
 
 **Phase 2 specifically:** snapshot baselines refresh again — every
 existing widget moves from a single-page layout to a screen-routed

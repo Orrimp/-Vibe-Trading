@@ -61,7 +61,7 @@ the harness to reproduce the verdict, and reading the recorded conclusion.
 The harness `--nocapture` stdout IS the deliverable (un-anchored analysis tooling;
 this feature ships no binary). Per the run constraint on this deck, the output
 below is quoted verbatim from the tester PASS report
-([`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)),
+([`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../../../../evidence/v1/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)),
 **Stage 2 — block-bootstrap results (N=500 per candidate)**, byte-identical across
 two consecutive runs:
 
@@ -124,7 +124,7 @@ report (UN-ANCHORED per [`feature.md`](../feature.md) § Anchoring / D-BS.4)._
 
 V-ids map to the feature's acceptance criteria (AC-BS.1–AC-BS.9). Evidence cites
 the tester PASS report
-[`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)
+[`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../../../../evidence/v1/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)
 (verdict PASS, commit `4585cf9`).
 
 | V-id | Description | Status | Evidence |

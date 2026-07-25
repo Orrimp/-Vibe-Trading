@@ -28,7 +28,7 @@
 //! The `sma_fast`/`sma_slow` overrides are no longer needed for `v0.always_short`
 //! (the SMA(1,2) hack was the proxy -- the proper arm uses the direct equity formula).
 //!
-//! # Un-anchored (no spec/*/reports file, no anchors.toml row)
+//! # Un-anchored (no evidence/*/reports file, no anchors.toml row)
 //!
 //! `#[ignore]` -- run with:
 //! ```text

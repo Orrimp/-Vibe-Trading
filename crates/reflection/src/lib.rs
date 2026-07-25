@@ -65,5 +65,5 @@ pub use writer::{ReflectionWriter, TryEnqueueError};
 ///
 /// Pinned in one place so a future architect grep-changes here and
 /// re-locks the two `report-sample-*` body-SHA-256 anchors at
-/// `spec/anchors.toml:67-75`.
+/// `evidence/anchors.toml:67-75`.
 pub const REPORT_TIME_TOP_K: usize = 5;

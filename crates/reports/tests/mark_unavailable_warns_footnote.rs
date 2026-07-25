@@ -9,7 +9,7 @@
 //! isolation guarantees the warn-capture sibling cannot pollute the
 //! `tracing::Dispatch` thread-local cache before the capture layer is
 //! installed. See the V6 flake analysis in
-//! `spec/reports/test-2026-05-02-2113-real-mtm-unrealized-pnl-final.md`
+//! `evidence/reports/test-2026-05-02-2113-real-mtm-unrealized-pnl-final.md`
 //! § 3 for the root-cause writeup that motivated this split.
 
 use reports::{FrozenMarkSource, ReportWindow, render::reconciliation::MARK_UNAVAILABLE_FOOTNOTE};

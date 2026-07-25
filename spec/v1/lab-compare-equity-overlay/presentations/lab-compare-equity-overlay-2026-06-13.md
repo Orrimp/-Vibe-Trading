@@ -87,7 +87,7 @@ To persist a screenshot into the deck later, save it under `spec/lab-compare-equ
 | AC3 | Full UI suites green; H3 still passes (no loader regression); 119/119 anchors; no new clippy in lib; fmt clean | VERIFIED | Suites 626/626 (re-run); H3 1/1; `verify_anchors.sh` 119/119 (re-run live below); fmt clean; zero new lib clippy |
 | — | Baseline-equity-divergence gate | N/A | Read-only visualization of already-persisted backtest series — no strategy overlay or sizing decision (per feature.md § Out of scope / law) |
 
-Tester verdict: **PASS** (after baseline rebase — see Open decisions). Report: [reports/test-2026-06-13-lab-compare-equity-overlay.md](../reports/test-2026-06-13-lab-compare-equity-overlay.md).
+Tester verdict: **PASS** (after baseline rebase — see Open decisions). Report: [reports/test-2026-06-13-lab-compare-equity-overlay.md](../../../../evidence/v1/lab-compare-equity-overlay/reports/test-2026-06-13-lab-compare-equity-overlay.md).
 
 ## Numbers that matter
 

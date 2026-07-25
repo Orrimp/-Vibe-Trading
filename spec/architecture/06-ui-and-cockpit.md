@@ -677,7 +677,7 @@ invariants" sub-section for the row-by-row preservation note.
 **Anchor budget.** Zero touched. UI shell + read-only audit query;
 `crates/strategy/`, `crates/exec/`, `crates/risk/`, `crates/cost/`,
 `crates/backtest/`, `crates/reports/` unchanged. The 11 backtest
-body-SHA-256 anchors in [`spec/anchors.toml`](../anchors.toml) verify
+body-SHA-256 anchors in [`evidence/anchors.toml`](../../evidence/anchors.toml) verify
 byte-identical post-Phase 2; the `recent_fills_filtered` query is
 read-only over the same description-prefixed rows `recent_fills`
 already iterates and cannot alter any committed report body by
@@ -878,7 +878,7 @@ reuse of `Message::TapeRowClicked(tx_id)`, no new variant).
 addition + additive schema migration with constant-string backfill.
 `crates/strategy/`, `crates/cost/`, `crates/backtest/`,
 `crates/reports/` unchanged. The 11 backtest body-SHA-256 anchors in
-[`spec/anchors.toml`](../anchors.toml) verify byte-identical post-Phase
+[`evidence/anchors.toml`](../../evidence/anchors.toml) verify byte-identical post-Phase
 3. The `008_journal_transactions_venue.sql` migration is **additive**:
 `ADD COLUMN … DEFAULT 'Binance'`. SQLite's column-add is a schema
 change, not a row-body rewrite; existing rows' description / amount /
@@ -1118,7 +1118,7 @@ query.
 read-only audit query addition + UI-only screens. `crates/strategy/`,
 `crates/cost/`, `crates/backtest/`, `crates/reports/src/render/`
 unchanged. The 11 backtest body-SHA-256 anchors in
-[`spec/anchors.toml`](../anchors.toml) verify byte-identical post-Phase
+[`evidence/anchors.toml`](../../evidence/anchors.toml) verify byte-identical post-Phase
 4. The KPI-strip parser at `crates/reports/src/parse.rs` is read-only
 over the existing markdown bodies; the viewer's equity-curve
 companion-CSV reader is read-only over the existing
@@ -1404,7 +1404,7 @@ schema migration. No new backtest scenarios; no committed report
 body re-renders. The `tape` → `agent_feed` rename is module-path +
 snapshot-filename + title-string only — no committed report
 references the `tape` widget module. The 11 backtest body-SHA-256
-anchors in [`spec/anchors.toml`](../anchors.toml) verify byte-identical
+anchors in [`evidence/anchors.toml`](../../evidence/anchors.toml) verify byte-identical
 post-Phase 5.
 
 **Library compatibility checklist.**

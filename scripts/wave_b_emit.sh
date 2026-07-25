@@ -14,7 +14,7 @@ set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
 BINARY="$WORKSPACE/target/release/backtest"
-REPORTS_DIR="$WORKSPACE/spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports"
+REPORTS_DIR="$WORKSPACE/evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports"
 SEED="0xC0FFEE"
 SIM_FLAGS="--sim-latency-ms-min 30 --sim-latency-ms-max 80 --sim-slippage-bps 8"
 LOG="/tmp/v5-v030-wave-b.log"

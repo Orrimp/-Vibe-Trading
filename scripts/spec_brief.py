@@ -35,10 +35,14 @@ import tomllib  # Python 3.11+ (enforced by PEP-723 header above)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEC_DIR = REPO_ROOT / "spec"
+# Byte-immutable reports corpus + anchors.toml `git mv`d here from spec/ in
+# the 2026-07-25 BMAD-migration Phase 3 (layout preserved 1:1). feature.md /
+# tasks.md stay under SPEC_DIR until Phase 5b.
+EVIDENCE_DIR = REPO_ROOT / "evidence"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 ARCHITECTURE_MD = SPEC_DIR / "architecture.md"
 TRACE_TOML = SPEC_DIR / "trace.toml"
-ANCHORS_TOML = SPEC_DIR / "anchors.toml"
+ANCHORS_TOML = EVIDENCE_DIR / "anchors.toml"
 
 NON_FEATURE = {"design", "dev-notes", "runbooks", "archive", "architecture", "v1", "v2", "v3"}
 
@@ -73,7 +77,10 @@ def extract_non_negotiables(claude_md_text: str) -> str:
 
 
 def latest_test_report(feature_dir: Path) -> Path | None:
-    reports = feature_dir / "reports"
+    # reports/ lives under EVIDENCE_DIR (2026-07-25 Phase 3 move), mirroring
+    # feature_dir's path relative to SPEC_DIR (feature_dir is always a
+    # SPEC_DIR subpath by construction — see render_brief).
+    reports = EVIDENCE_DIR / feature_dir.relative_to(SPEC_DIR) / "reports"
     if not reports.exists():
         return None
     candidates = sorted(reports.glob("test-*.md"))

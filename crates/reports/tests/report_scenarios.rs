@@ -11,7 +11,7 @@
 //! 2. **Anchor lock** — the captured body-SHA256 matches the expected
 //!    hex constant.  When the SHA legitimately rotates (e.g. a render
 //!    change) the constant updates here AND the entry in
-//!    `spec/anchors.toml` rotates with the same value — the test owns
+//!    `evidence/anchors.toml` rotates with the same value — the test owns
 //!    both gates.
 //! 3. **Cron-friendliness (V10)** — three concurrent renders against
 //!    the same fixture targeting the same canonical output path each
@@ -20,7 +20,7 @@
 //!    a complete file (the test polls the path while the renders run
 //!    and asserts no file ever observes a partial body).
 //!
-//! The reports land under `spec/v1/operator-success-reports/reports/success-<run_id>-<scenario>.md`
+//! The reports land under `evidence/v1/operator-success-reports/reports/success-<run_id>-<scenario>.md`
 //! so `scripts/verify_anchors.sh` (after its glob extension to `success-*-`)
 //! can pick them up alongside the 9 backtest anchors → 11/11.
 //!
@@ -69,25 +69,25 @@ use crate::build_ledger_90d::{
 };
 
 /// Locked body-SHA256 for `report-sample-7d`.  Captured at first
-/// successful local run on 2026-05-01; mirrored in `spec/anchors.toml`
+/// successful local run on 2026-05-01; mirrored in `evidence/anchors.toml`
 /// under the matching `[[anchors]]` entry.
 ///
 /// **Rotation policy:** if a render-side change legitimately shifts
 /// the body, this constant moves AND the anchors.toml entry moves —
 /// in the same commit.  Architect approval required (per
-/// `spec/anchors.toml` ownership note).
+/// `evidence/anchors.toml` ownership note).
 // T1810 / T1813 — re-captured post-reflection-memory renderer rewrite
 // (R5.4 re-anchor procedure).  The reflection-memory empty-state body
 // supersedes the v1+ placeholder body; the new SHA was captured at the
 // developer's first deterministic local run on 2026-05-08 against the
-// FIXTURE_SEED = 0xC0FFEE fixtures.  spec/anchors.toml lines 67–75
+// FIXTURE_SEED = 0xC0FFEE fixtures.  evidence/anchors.toml lines 67–75
 // receive the same value at T_FINAL_REFLECTION_MEMORY (tester only).
 //
 // T1935 / T1936 (v2-llm-strategy, pass 6) — re-captured post-System-
 // Health rewrite (Q11 denominator `$135 → $200` + Q5d `Cache hit
 // ratio` row). New SHAs captured at the developer's first deterministic
 // local run on 2026-05-12 against the FIXTURE_SEED = 0xC0FFEE
-// fixtures. spec/anchors.toml lines 67–75 receive these values at
+// fixtures. evidence/anchors.toml lines 67–75 receive these values at
 // T_FINAL_V2_LLM_STRATEGY (tester only).
 const EXPECTED_SHA_7D: &str = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3";
 
@@ -143,18 +143,22 @@ async fn render_scenario(
     body_after_fence(&full).to_string()
 }
 
-// NOTE (2026-07-12): the pre-reorg `workspace_success_dir()` published the
-// "lock" copy into `spec/operator-success-reports/reports/` — a path the
-// 2026-06-28 v1 reorg retired. Post-reorg, `verify_anchors.sh` hashes the
-// COMMITTED `spec/v1/operator-success-reports/reports/` bodies (byte-stable),
-// and the locked in-test SHAs below independently prove the fresh render
-// matches. Publishing into `spec/` is therefore vestigial — it only littered
-// an untracked root dir on every full test run (caught by spec-lint
-// orphan-feature after the first CI shakeout). The publish now targets the
-// test's own TempDir purely for local inspection.
+// NOTE (2026-07-12, repointed 2026-07-25 Phase 3): the pre-reorg
+// `workspace_success_dir()` published the "lock" copy into
+// `spec/operator-success-reports/reports/` — a path the 2026-06-28 v1
+// reorg retired. Post-reorg, `verify_anchors.sh` hashed the COMMITTED
+// `spec/v1/operator-success-reports/reports/` bodies (byte-stable); the
+// 2026-07-25 BMAD-migration Phase 3 moved that corpus (layout preserved)
+// to `evidence/v1/operator-success-reports/reports/`, which is what
+// `verify_anchors.sh` hashes today. The locked in-test SHAs below
+// independently prove the fresh render matches either way. Publishing
+// into `spec/` was therefore vestigial — it only littered an untracked
+// root dir on every full test run (caught by spec-lint orphan-feature
+// after the first CI shakeout). The publish now targets the test's own
+// TempDir purely for local inspection.
 
 /// Publish the canonical `success-*-<scenario>.md` copy of a freshly
-/// rendered scenario report into `spec/v1/operator-success-reports/reports/`.
+/// rendered scenario report into `evidence/v1/operator-success-reports/reports/`.
 /// This is the file `verify_anchors.sh` (post glob-extension) hashes —
 /// the test itself runs against `tempfile::TempDir` paths to keep the
 /// fixture surface ephemeral, but the locked SHA only matters when the
@@ -195,7 +199,7 @@ async fn t816_report_sample_7d_determinism_and_anchor_lock() {
     // Two sequential renders — same seed, same fixture.
     let body_a = render_scenario(&db_path, &out_a, fixture_7d_period_start()).await;
     let body_b = render_scenario(&db_path, &out_b, fixture_7d_period_start()).await;
-    // Publish the `out_a` rendering to `spec/v1/operator-success-reports/reports/`
+    // Publish the `out_a` rendering to `evidence/v1/operator-success-reports/reports/`
     // so the verify-anchors gate can pick it up via the success-* glob (the
     // body bytes match `out_b` byte-for-byte by V4 — either copy works).
     let _published = publish_success_copy(dir.path(), &out_a, "report-sample-7d");
@@ -221,11 +225,11 @@ async fn t816_report_sample_7d_determinism_and_anchor_lock() {
     // Anchor gate — captured SHA must match the locked constant.  When
     // first running this test, the assertion will fail and the actual
     // SHA will be printed above.  Update both [`EXPECTED_SHA_7D`] AND
-    // `spec/anchors.toml` in the same commit.
+    // `evidence/anchors.toml` in the same commit.
     assert_eq!(
         sha_a, EXPECTED_SHA_7D,
         "report-sample-7d body-SHA256 drifted.  \
-         Update both EXPECTED_SHA_7D and spec/anchors.toml if the rotation is intentional.",
+         Update both EXPECTED_SHA_7D and evidence/anchors.toml if the rotation is intentional.",
     );
 }
 
@@ -265,7 +269,7 @@ async fn t816_report_sample_90d_determinism_and_anchor_lock() {
     assert_eq!(
         sha_a, EXPECTED_SHA_90D,
         "report-sample-90d body-SHA256 drifted.  \
-         Update both EXPECTED_SHA_90D and spec/anchors.toml if the rotation is intentional.",
+         Update both EXPECTED_SHA_90D and evidence/anchors.toml if the rotation is intentional.",
     );
 }
 

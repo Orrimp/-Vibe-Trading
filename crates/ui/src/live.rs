@@ -7,7 +7,7 @@
 //! ### Design — same-process, shared-Arc
 //!
 //! Per the handoff contract in
-//! `spec/reports/dev-week2-broadcast-api-2026-04-18.md`, v0 uses the
+//! `evidence/v1/v0-paper-sma/reports/dev-week2-broadcast-api-2026-04-18.md`, v0 uses the
 //! **same-process** model: the cockpit imports `agent` as a library
 //! dependency and subscribes to the running agent's `EventBus` via a
 //! shared `Arc<EventBus>`. No IPC (domain sockets / TCP) is involved.

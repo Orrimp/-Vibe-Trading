@@ -903,7 +903,7 @@ re-check, both green).
 
 ## Verification
 
-Tester report: [`spec/cockpit-reports-viewer/reports/test-2026-06-17-cockpit-reports-viewer.md`](reports/test-2026-06-17-cockpit-reports-viewer.md) — **VERDICT: PASS** (2026-06-17). Gates: build clean, 856/0 tests, clippy `--lib --tests --bins` rc0, fmt rc0, anchors 119/119, spec-lint floor=1 (pre-existing immutable anchor). AC1–AC7: 7/7 PASS. Visual baseline confinement confirmed via PIL pixel diff (3 samples, all changes x=[0,179]).
+Tester report: [`evidence/v1/cockpit-reports-viewer/reports/test-2026-06-17-cockpit-reports-viewer.md`](../../../evidence/v1/cockpit-reports-viewer/reports/test-2026-06-17-cockpit-reports-viewer.md) — **VERDICT: PASS** (2026-06-17). Gates: build clean, 856/0 tests, clippy `--lib --tests --bins` rc0, fmt rc0, anchors 119/119, spec-lint floor=1 (pre-existing immutable anchor). AC1–AC7: 7/7 PASS. Visual baseline confinement confirmed via PIL pixel diff (3 samples, all changes x=[0,179]).
 
 ## Changelog
 

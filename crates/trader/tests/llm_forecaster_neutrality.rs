@@ -25,12 +25,12 @@
 //! ## Cross-references
 //!
 //! - R10.2 — LLM-forecaster registry add must not change existing scenario SHAs.
-//! - `spec/anchors.toml` — anchor `top10-2023-fy-tcn-overlay-realdata`.
+//! - `evidence/anchors.toml` — anchor `top10-2023-fy-tcn-overlay-realdata`.
 //! - ADR-0039 § D6 — anchor-additive-only contract.
 
 /// SHA-256 of the `top10-2023-fy-tcn-overlay-realdata` report body.
 ///
-/// Locked in `spec/anchors.toml` (v2.6.0-realdata row).
+/// Locked in `evidence/anchors.toml` (v2.6.0-realdata row).
 /// This is the R10.2 immutable baseline: the LLM-forecaster registry add
 /// must not change this value.
 const EXPECTED_SHA: &str = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642";
@@ -138,9 +138,9 @@ fn llm_forecaster_registry_does_not_regress_tcn_scenario() {
     // Locate the generated report.
     let report_pattern = "top10-2023-fy-tcn-overlay-realdata";
     let candidates = [
-        "spec/v1/backtest-real-binance-data/reports",
-        "spec/v1/v25a-patchtst-overlay/reports",
-        "spec/v1/v25-tcn-overlay/reports",
+        "evidence/v1/backtest-real-binance-data/reports",
+        "evidence/v1/v25a-patchtst-overlay/reports",
+        "evidence/v1/v25-tcn-overlay/reports",
     ];
     let report_path = candidates
         .iter()

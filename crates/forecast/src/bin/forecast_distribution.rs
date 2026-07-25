@@ -2,7 +2,7 @@
 //!
 //! Reads an anchored TCN checkpoint (BS-1 or BS-2), runs a forward pass over
 //! all 10 USDT symbols for the checkpoint's evaluation span, and emits a
-//! deterministic markdown report under `spec/v1/v25-tcn-alpha-investigation/reports/`.
+//! deterministic markdown report under `evidence/v1/v25-tcn-alpha-investigation/reports/`.
 //!
 //! ## Usage
 //!
@@ -116,7 +116,10 @@ struct Args {
     data_root: PathBuf,
 
     /// Output directory for the report.
-    #[arg(long, default_value = "spec/v1/v25-tcn-alpha-investigation/reports/")]
+    #[arg(
+        long,
+        default_value = "evidence/v1/v25-tcn-alpha-investigation/reports/"
+    )]
     out_dir: PathBuf,
 
     /// Evaluation span lower bound (UTC inclusive). Defaults to scenario default.
@@ -594,7 +597,7 @@ pub mod verdict {
 /// section (per Q4=(c) of the v25-tcn-recalibrate feature).
 ///
 /// Values are read from the predecessor's anchored report bodies
-/// (anchor-locked per `spec/anchors.toml`).  Pre-recal values are 0.000000
+/// (anchor-locked per `evidence/anchors.toml`).  Pre-recal values are 0.000000
 /// for all τ across both BS-1 and BS-2 (per F4 evidence reports).
 ///
 /// `sigma_train_original` and `verdict_original` are also from the predecessor

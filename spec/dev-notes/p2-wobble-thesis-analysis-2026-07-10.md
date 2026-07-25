@@ -6,7 +6,7 @@ status: decision-support (READ-ONLY analysis; operator ratifies any product.md/R
 feature: advisor-corpus-expansion
 trace: REQ-V3-P2-CORPUS-EXPANSION-001
 inputs:
-  - spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md  (AC1–AC8, tester PASS)
+  - evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md  (AC1–AC8, tester PASS)
   - raw 1208-line matrix: /private/tmp/.../scratchpad/p2-verdict-rerun-full.txt (orchestrator-verified)
   - research/SYNTHESIS.md, research/strategies/knowledge.md
 scope: analyzes an empirical finding; recommends framing options + a follow-on register; changes NO product framing, NO code, NO reports.
@@ -19,7 +19,7 @@ scope: analyzes an empirical finding; recommends framing options + a follow-on r
 > zeroed DSR's variance input. Post-fix **0/19 old-era crowns clear DSR** — the era-boundary
 > pattern (60-86% crowning vs the ~20% noise floor, cost-annex-robust) STANDS; individual-edge
 > DSR certification does NOT. Component (d) is larger than assessed below. Authoritative
-> correction: [`../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md`](../v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md)
+> correction: [`../../evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md`](../../evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md)
 
 
 ## 0. The one-paragraph statement of the problem

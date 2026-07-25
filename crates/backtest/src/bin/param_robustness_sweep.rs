@@ -4,7 +4,7 @@
 //! (orchestrator-specified 2026-05-30 for tractability; was 14-cell × N=500 per
 //! original architect design; re-scoped to 6-cell × N=200 for ~10-15 min wall-clock).
 //! Runs the C2 N-path robustness harness at each cell, and emits ONE anchored
-//! θ-surface report under `spec/v1/momentum-parameter-robustness-sweep/reports/`.
+//! θ-surface report under `evidence/v1/momentum-parameter-robustness-sweep/reports/`.
 //!
 //! ## Re-scope rationale (2026-05-30)
 //!
@@ -40,7 +40,7 @@
 //!   --generator block-bootstrap-real \
 //!   --paths 200 \
 //!   --ensemble-seed 0xC0FFEE \
-//!   --out-dir spec/v1/momentum-parameter-robustness-sweep/reports/
+//!   --out-dir evidence/v1/momentum-parameter-robustness-sweep/reports/
 //! ```
 //!
 //! ## Watch recipe (for long-running N=200 runs — copy-paste to operator terminal)
@@ -49,7 +49,7 @@
 //! watch -n 15 '
 //! PID=$(pgrep -f param_robustness_sweep | head -1)
 //! [ -z "$PID" ] && echo "param_robustness_sweep not running" && exit
-//! N=$(ls spec/v1/momentum-parameter-robustness-sweep/reports/robustness-sweep-*.md 2>/dev/null | wc -l | tr -d " ")
+//! N=$(ls evidence/v1/momentum-parameter-robustness-sweep/reports/robustness-sweep-*.md 2>/dev/null | wc -l | tr -d " ")
 //! ELAPSED=$(ps -o etime= -p $PID 2>/dev/null | tr -d " ")
 //! [ "$N" -gt 0 ] && echo "surface landed ($N file); elapsed ${ELAPSED}" || echo "running (no surface yet); elapsed ${ELAPSED}"
 //! '
@@ -1322,7 +1322,7 @@ struct Args {
     /// Defaults to the momentum dir; use --out-dir to override for MR runs.
     #[arg(
         long,
-        default_value = "spec/v1/momentum-parameter-robustness-sweep/reports/"
+        default_value = "evidence/v1/momentum-parameter-robustness-sweep/reports/"
     )]
     out_dir: PathBuf,
 
@@ -3866,24 +3866,24 @@ fn main() -> Result<()> {
     // For basis: default to the perp-basis-signal-robustness reports dir (D-BR.9).
     // We detect "was the default changed?" by checking if it's still the momentum default.
     let momentum_default_out_dir =
-        PathBuf::from("spec/v1/momentum-parameter-robustness-sweep/reports/");
+        PathBuf::from("evidence/v1/momentum-parameter-robustness-sweep/reports/");
     let effective_out_dir = if is_horizon_run && args.out_dir == momentum_default_out_dir {
         // M-DEV-3: horizon runs default to the horizon-retest-robustness reports dir (D-HR.8).
-        PathBuf::from("spec/v1/horizon-retest-robustness/reports/")
+        PathBuf::from("evidence/v1/horizon-retest-robustness/reports/")
     } else if args.selection_mode.is_ts() && args.out_dir == momentum_default_out_dir {
-        PathBuf::from("spec/v1/time-series-momentum-robustness/reports/")
+        PathBuf::from("evidence/v1/time-series-momentum-robustness/reports/")
     } else if args.score_source == SweepScoreSource::Carry
         && args.out_dir == momentum_default_out_dir
     {
-        PathBuf::from("spec/v1/carry-strategy/reports/")
+        PathBuf::from("evidence/v1/carry-strategy/reports/")
     } else if args.score_source == SweepScoreSource::BasisReversal
         && args.out_dir == momentum_default_out_dir
     {
         // M-DEV-5 (D-BR.9): basis-reversal reports live in the dedicated namespace dir.
-        PathBuf::from("spec/v1/perp-basis-signal-robustness/reports/")
+        PathBuf::from("evidence/v1/perp-basis-signal-robustness/reports/")
     } else if args.score_source.is_mn() && args.out_dir == momentum_default_out_dir {
         // M-DEV-5 (D-MN.8): MN-spread reports live in the MN namespace dir (§ D6.10).
-        PathBuf::from("spec/v1/perp-basis-mn-spread/reports/")
+        PathBuf::from("evidence/v1/perp-basis-mn-spread/reports/")
     } else {
         args.out_dir.clone()
     };

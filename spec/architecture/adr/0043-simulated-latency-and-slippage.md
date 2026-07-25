@@ -39,7 +39,7 @@ The feature brief at
 introduces deterministic, optional, default-zero simulation of both
 frictions. This ADR codifies the 5 sub-decisions (D1-D5) that determine
 how the simulator is wired without breaking the 34 SHA-256 anchors in
-[`spec/anchors.toml`](../../anchors.toml).
+[`evidence/anchors.toml`](../../../evidence/anchors.toml).
 
 ## Decision
 

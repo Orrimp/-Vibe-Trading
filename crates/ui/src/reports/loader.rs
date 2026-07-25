@@ -18,9 +18,9 @@
 //!    name is the report's own file stem, so the pairing is 1:1 — see the
 //!    fn doc for why a first-match scan was the wrong contract.
 //! 3. [`discover_reports`] — a **new** all-slug scan of
-//!    `spec/*/reports/backtest-*.md`, the corpus the picker browses. K2
+//!    `evidence/*/reports/backtest-*.md`, the corpus the picker browses. K2
 //!    never-panic: an unreadable dir is skipped with a `tracing` breadcrumb;
-//!    an absent `spec/` yields an empty `Vec`. The `robustness-sweep-*.md`
+//!    an absent `evidence/` yields an empty `Vec`. The `robustness-sweep-*.md`
 //!    and `test-*.md` families are excluded by the `backtest-` filter.
 //!
 //! The `parse_front_matter` / `strip_front_matter` helpers round out the
@@ -263,7 +263,7 @@ pub fn strip_front_matter(raw: &str) -> &str {
 }
 
 /// Discover every committed `backtest-*.md` report under
-/// `spec/*/reports/`, across **all** feature slugs (R1 / R7 / AC1).
+/// `evidence/*/reports/`, across **all** feature slugs (R1 / R7 / AC1).
 ///
 /// This is the corpus the Reports picker browses. It is a **new** top-level
 /// scan — the existing `lab::equity_loader::discover_reports` is private +
@@ -272,7 +272,7 @@ pub fn strip_front_matter(raw: &str) -> &str {
 /// [`load_report`]; discovery is a distinct filename-only concern.)
 ///
 /// **K2 never-panic contract** (mirrors `models::registry_read` +
-/// `baseline::loader`): an unreadable `spec/` root → empty `Vec` + a
+/// `baseline::loader`): an unreadable `evidence/` root → empty `Vec` + a
 /// `tracing::debug!` breadcrumb; an unreadable per-slug `reports/` dir →
 /// skipped with a breadcrumb. Never panics.
 ///
@@ -285,11 +285,11 @@ pub fn strip_front_matter(raw: &str) -> &str {
 /// list ordering + reproducible snapshots.
 #[must_use]
 pub fn discover_reports() -> Vec<ReportEntry> {
-    let spec_root = workspace_root().join("spec");
-    let Ok(slug_dirs) = std::fs::read_dir(&spec_root) else {
+    let evidence_root = workspace_root().join("evidence");
+    let Ok(slug_dirs) = std::fs::read_dir(&evidence_root) else {
         tracing::debug!(
-            path = %spec_root.display(),
-            "discover_reports: spec/ not found or unreadable — returning empty list"
+            path = %evidence_root.display(),
+            "discover_reports: evidence/ not found or unreadable — returning empty list"
         );
         return Vec::new();
     };
@@ -363,7 +363,7 @@ fn is_backtest_report(name: &str) -> bool {
 
 /// Workspace root, derived from this crate's manifest dir
 /// (`<root>/crates/ui` → `<root>`). Single source of the base path so the
-/// discovery scan resolves `spec/` workspace-relative, never an absolute
+/// discovery scan resolves `evidence/` workspace-relative, never an absolute
 /// hard-code (mirrors `baseline/loader.rs:234`).
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
@@ -406,14 +406,14 @@ mod tests {
 
     /// Discovery finds `backtest-*.md` and **excludes** the
     /// `robustness-sweep-*.md` + `test-*.md` families (AC1). Gated on
-    /// `spec/` being present so a minimal checkout that omits the reports
+    /// `evidence/` being present so a minimal checkout that omits the reports
     /// tree does not fail this unit test (the absent-root path is covered
     /// separately below) — mirrors `baseline/loader.rs`'s
     /// `committed_csvs_load_to_ready` skip-if-absent guard.
     #[test]
     fn discover_finds_backtest_excludes_other_families() {
-        let spec_root = workspace_root().join("spec");
-        if !spec_root.is_dir() {
+        let evidence_root = workspace_root().join("evidence");
+        if !evidence_root.is_dir() {
             // Minimal checkout — skip; the absent-root path is tested below.
             return;
         }
@@ -444,11 +444,11 @@ mod tests {
 
     /// Discovery is deterministically sorted by `(slug, file_stem)` so the
     /// list order + snapshots are stable across runs (AC1). Gated on
-    /// `spec/` present.
+    /// `evidence/` present.
     #[test]
     fn discover_is_deterministically_sorted() {
-        let spec_root = workspace_root().join("spec");
-        if !spec_root.is_dir() {
+        let evidence_root = workspace_root().join("evidence");
+        if !evidence_root.is_dir() {
             return;
         }
         let entries = discover_reports();
@@ -639,7 +639,7 @@ mod tests {
     #[test]
     fn load_equity_companion_real_demo_report_is_ready() {
         let demo = workspace_root()
-            .join("spec/v1/v0-paper-sma/reports")
+            .join("evidence/v1/v0-paper-sma/reports")
             .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
         if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
             // Demo artifact pruned from this checkout — skip.
@@ -754,7 +754,7 @@ mod tests {
     #[test]
     fn report_has_companion_agrees_with_loader_on_real_demo() {
         let demo = workspace_root()
-            .join("spec/v1/v0-paper-sma/reports")
+            .join("evidence/v1/v0-paper-sma/reports")
             .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
         if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
             return; // demo artifact pruned — skip

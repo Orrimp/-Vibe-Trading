@@ -18,9 +18,9 @@ and it is feature-complete.** The honest arc that got here:
    2021-22 bear-market data). **This result is the moat, not a disappointment** — it is kept
    prominent because it is the product's credibility. And the *scope* of the claim is itself
    measured: the P2 corpus-expansion verdict re-run
-   ([`spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md))
+   ([`evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md`](evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md))
    ran the same gate back across the older, thinner-liquidity eras and found **real,
-   cost-annex-robust active edges in the early market (2017-20) that decay to ~zero by 2023+** (gate-crowned; post scorecard-fix none is DSR-certified — see the [errata](spec/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md)) —
+   cost-annex-robust active edges in the early market (2017-20) that decay to ~zero by 2023+** (gate-crowned; post scorecard-fix none is DSR-certified — see the [errata](evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md)) —
    the efficiency-migration pattern the research predicted. The gate did not merely fail to
    find alpha; it *positively detected* real historical edges and the boundary where they died
    (qualified by survivor-of-survivors bias + old-era cost realism — those margins are upper
@@ -163,7 +163,7 @@ cargo run -p backtest --release --features realdata,candle --bin backtest -- \
   --scenario top10-2023-fy-momentum-realdata --seed 0xC0FFEE
 ```
 
-Backtest reports land under `spec/<feature>/reports/backtest-<stamp>-<scenario>.md` with body-SHA-256 anchored for regression.
+Backtest reports land under `evidence/<feature>/reports/backtest-<stamp>-<scenario>.md` with body-SHA-256 anchored for regression.
 
 ### Verify regression gates
 
@@ -309,7 +309,7 @@ trading/
 
 ### Anchored body-SHA-256 regression gates
 
-Every shipped backtest report has a body-SHA-256 entry in `spec/anchors.toml`. The gate is `bash scripts/verify_anchors.sh` (must report `ANCHORS PASS (N / N)` before any ship). Bodies are byte-immutable; documentation-link cleanup sweeps MUST exclude anchored files (see CLAUDE.md non-negotiables).
+Every shipped backtest report has a body-SHA-256 entry in `evidence/anchors.toml`. The gate is `bash scripts/verify_anchors.sh` (must report `ANCHORS PASS (N / N)` before any ship). Bodies are byte-immutable; documentation-link cleanup sweeps MUST exclude anchored files (see CLAUDE.md non-negotiables).
 
 ### Multi-agent workflow
 
@@ -327,7 +327,7 @@ All `spec/` file edits go through the [`spec-update`](.claude/skills/spec-update
 - No shipping on a `REGRESSION` verdict without an explicit human override.
 - No silent divergence from `spec/architecture.md`.
 - **Every strategy overlay or sizing-modifier ships with a baseline-equity-divergence e2e test from day 1** (precedent: `v3-volatility-forecaster-noop-fix` 2026-05-22; the noop bug went undetected by 5 sequential gates).
-- **Anchored report files in `spec/*/reports/` are byte-immutable** per ADR-0038 § D6; even mechanical link-fix edits mutate the body-SHA. Documentation-link cleanup MUST exclude anchored files.
+- **Anchored report files in `evidence/*/reports/` are byte-immutable** per ADR-0038 § D6; even mechanical link-fix edits mutate the body-SHA. Documentation-link cleanup MUST exclude anchored files.
 
 ---
 

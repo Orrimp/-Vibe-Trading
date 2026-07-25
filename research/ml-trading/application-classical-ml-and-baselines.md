@@ -256,7 +256,7 @@ distributional output is an *honesty* win, not an alpha win. The strand's job is
   verdict. Any new diagnostic is additive in `crates/backtest/src/bakeoff/{robustness.rs, rank.rs}`.
 - **Anchored report SHAs are byte-immutable (119/119).** A distributional band or vol-estimate added
   to a report goes in a *new* section/file or via the ADR-0038 re-emission protocol — never mutate an
-  anchored body. Run `scripts/verify_anchors.sh` before and after any `spec/*/reports/` touch.
+  anchored body. Run `scripts/verify_anchors.sh` before and after any `evidence/*/reports/` touch.
 - **Decimal, not f64, for money.** The statistics (R², Sharpe, VaR-as-a-return, interval bounds in
   *return* space) can be f64; anything that becomes a **position size / budget number / sized bet**
   must be `Decimal`. A VaR/ES used to *throttle position size* crosses that seam — keep it clean.

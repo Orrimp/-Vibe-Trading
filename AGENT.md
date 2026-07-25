@@ -576,7 +576,7 @@ it lets `spec_brief.py` do the relevant-section extraction.
 - Any change to alerts, confirms, or destructive-action flows.
 - Periodic **consistency audits** — even with no feature in flight, the
   orchestrator may spawn ui-designer to scan for theme/string drift and
-  produce a `spec/<slug>/reports/ui-debt-<date>.md`.
+  produce a `evidence/<slug>/reports/ui-debt-<date>.md`.
 
 If a feature is purely backend (data ingestion plumbing, model training
 script, no operator-visible change), skip ui-designer.
@@ -610,7 +610,7 @@ but those are technical artifacts — the presenter is the agile
 | `rust-validate`      | fmt, clippy, audit, deny, docs                                |
 | `rust-bench`         | Criterion benchmarks with baseline diffs                      |
 | `backtest`           | Historical strategy simulation                                |
-| `verify-anchors`     | Regression-gate the body-SHA anchors in `spec/anchors.toml`   |
+| `verify-anchors`     | Regression-gate the body-SHA anchors in `evidence/anchors.toml`   |
 | `present-results`    | Assemble a `spec/<slug>/presentations/<slug>-<date>.md` from spec + tests + live bin runs |
 | `capture-screenshot` | Capture (or operator-instruct) a UI screenshot                |
 | `spec-update`        | Safe writer for `spec/` files                                 |
@@ -627,14 +627,14 @@ Python or hand-typed pipelines.
 | Script                                  | Purpose                                                       | Caller                       |
 |-----------------------------------------|---------------------------------------------------------------|------------------------------|
 | `scripts/hash_report.py`                | Body-only SHA-256 of a YAML-front-mattered report file        | tester, developer, architect |
-| `scripts/verify_anchors.sh`             | Verify all 9 anchors in `spec/anchors.toml`                   | tester (mandatory gate)      |
+| `scripts/verify_anchors.sh`             | Verify all 9 anchors in `evidence/anchors.toml`                   | tester (mandatory gate)      |
 | `scripts/precheck.sh`                   | Stdlib-name clash check + task-tick summary                   | architect, orchestrator      |
 | `scripts/spec_brief.py`                 | Generate per-feature curated context brief for sub-agent prompts | orchestrator                 |
 | `scripts/spec_lint.py`                  | Mechanical lint of `spec/` (frontmatter, trace, hygiene)      | spec-auditor (via `spec-lint` skill) |
 | `scripts/check_presentation.sh`         | Pre-tick guard for `spec/<slug>/presentations/*.md` shape     | presenter (via `present-results` skill) |
 | `scripts/capture_screenshot.sh`         | Darwin `screencapture` wrapper for cockpit/binary output      | tester, presenter (via `capture-screenshot` skill) |
 | `scripts/pre_stage_anchors.sh`          | Stage candidate anchor SHAs from a backtest run               | tester, architect (anchor refresh) |
-| `scripts/prune_backtest_duplicates.sh`  | Collapse duplicate backtest reports in `spec/*/reports/`      | tester (via `rust-test`, `verify-anchors`, `backtest` skills) |
+| `scripts/prune_backtest_duplicates.sh`  | Collapse duplicate backtest reports in `evidence/*/reports/`      | tester (via `rust-test`, `verify-anchors`, `backtest` skills) |
 | `scripts/check_no_secrets_in_llm_artifacts.sh` | Guard: LLM artifacts contain no secrets                | tester, regression gate      |
 | `scripts/check_no_clocks_in_ui_tests.sh`| Guard: UI tests have no wall-clock dependency                 | tester, regression gate      |
 | `scripts/check_no_raw_asof_join.sh`     | Guard: no raw hand-rolled as-of join outside `core::pit` (ADR-0086) | developer (`rust-validate` pre-test gate), tester, regression gate |
@@ -646,7 +646,7 @@ probe, PNG crop), see
 Sub-agents must NOT call those — they wrap capabilities scoped to the
 orchestrator's lane.
 
-`spec/anchors.toml` is the single source of truth for locked anchor SHAs
+`evidence/anchors.toml` is the single source of truth for locked anchor SHAs
 — never duplicate hashes into feature/task/report files. Update only via
 architect approval; tester locks new entries.
 
@@ -673,7 +673,7 @@ incident and a concrete tooling gate:
    `crates/audit/`, `crates/exec/`, `crates/backtest/`, or report
    rendering MUST run `verify-anchors`. A single FAIL routes
    `HANDOFF → developer` with the body diff. The 9 anchors live in
-   `spec/anchors.toml`; nowhere else.
+   `evidence/anchors.toml`; nowhere else.
 
 4. **Body-vs-front-matter discipline.** Anything that may differ
    between two equivalent runs (timestamps, wall-clock, host, pid,
@@ -773,11 +773,11 @@ The single `tester` role is split into two:
 
 - **test-runner** (write-allowed): runs `rust-test`, `rust-validate`,
   `verify_anchors`, dumps raw output to
-  `spec/<slug>/reports/test-run-<ts>.log`. No verdict, no prose.
+  `evidence/<slug>/reports/test-run-<ts>.log`. No verdict, no prose.
 - **evaluator** (read-only): fresh context that never saw the developer
   diff. Only `Read` + `Bash(grep|wc|sha256sum|cat)`. Reads the run log + any
   cited artifact screenshots. Writes
-  `spec/<slug>/reports/evaluation-<ts>.md`. VERDICT → PASS/FAIL/REGRESSION
+  `evidence/<slug>/reports/evaluation-<ts>.md`. VERDICT → PASS/FAIL/REGRESSION
   emits from the evaluator, never from the test-runner. Mirrors Anthropic's
   reference harness ([cwc-long-running-agents](https://github.com/anthropics/cwc-long-running-agents))
   to break the "agents skew positive when grading their own work" failure

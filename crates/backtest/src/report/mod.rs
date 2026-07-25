@@ -8,7 +8,7 @@
 //!
 //! The bytes produced by each writer must be byte-identical to those
 //! produced by the original `main.rs` functions when given the same inputs.
-//! The 22 body-SHA-256 anchors in `spec/anchors.toml` guard this contract.
+//! The 22 body-SHA-256 anchors in `evidence/anchors.toml` guard this contract.
 
 pub mod momentum;
 pub mod pairs;

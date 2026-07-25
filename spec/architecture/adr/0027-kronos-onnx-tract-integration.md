@@ -136,11 +136,11 @@ Architect + tester decide (architect proposes, tester locks). After
 v2.5 ships:
 
 - The 9 strategy anchors at
-  [`spec/anchors.toml`](../../anchors.toml) lines 15–58 stay
+  [`evidence/anchors.toml`](../../../evidence/anchors.toml) lines 15–58 stay
   **byte-identical** (the v2.5 strategy is additive — a new
   `Strategy` impl, not a modification of any existing impl).
 - The 2 `report-sample-*` anchors at
-  [`spec/anchors.toml`](../../anchors.toml) lines 75–83 (`v2.0.0`)
+  [`evidence/anchors.toml`](../../../evidence/anchors.toml) lines 75–83 (`v2.0.0`)
   stay **byte-identical**. The default `KronosConfig.energy_cost_per_kwh
   = 0` means the v2.5 build emits a `$0.00 expense:infra:kronos_inference`
   line that does not surface in the fixture-driven `report-sample-*`
@@ -152,7 +152,7 @@ v2.5 ships:
 
 If a `report-sample-*` anchor moves unexpectedly, the tester routes
 back to this ADR for a re-lock decision per the
-[T1937 negative-invariant gate](../../anchors.toml). Routes **back to
+[T1937 negative-invariant gate](../../../evidence/anchors.toml). Routes **back to
 the analyst** for a re-lock decision; do not silently re-lock. This
 matches the
 [v2.0.0 Q11 precedent](0019-v2-llm-strategy.md#q11--operator-success-report-llm-spend-denominator-option-c-hot-fix).

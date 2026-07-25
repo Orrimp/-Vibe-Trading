@@ -7,7 +7,7 @@
 Sub-second, no engine execution.  Asserts that every non-cfg-gated
 const ANCHOR / const ANCHOR_PREFIX site in
 crates/backtest/tests/determinism.rs equals the corresponding
-v5-realdata-medium-2026-05 SHA in spec/anchors.toml.
+v5-realdata-medium-2026-05 SHA in evidence/anchors.toml.
 
 ADR-0045 § D7.1 (Decision 2, primary gate).
 
@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ANCHORS_TOML = REPO_ROOT / "spec" / "anchors.toml"
+ANCHORS_TOML = REPO_ROOT / "evidence" / "anchors.toml"
 DETERMINISM_RS = REPO_ROOT / "crates" / "backtest" / "tests" / "determinism.rs"
 
 # Version tag that marks the canonical in-test SHA namespace.
@@ -81,7 +81,7 @@ class InTestSite(NamedTuple):
 # ---------------------------------------------------------------------------
 
 def parse_anchors_toml(path: Path) -> list[AnchorEntry]:
-    """Parse spec/anchors.toml into a list of AnchorEntry records.
+    """Parse evidence/anchors.toml into a list of AnchorEntry records.
 
     Handles multi-line [[anchors]] TOML blocks.  Does NOT use a full TOML
     library to avoid requiring tomllib on Python <3.11 (though 3.11 ships it).
@@ -464,7 +464,7 @@ def _relevant_files_staged() -> bool:
                 "git", "diff", "--cached", "--name-only",
                 "--",
                 "crates/backtest/tests/determinism.rs",
-                "spec/anchors.toml",
+                "evidence/anchors.toml",
             ],
             cwd=REPO_ROOT,
             capture_output=True,

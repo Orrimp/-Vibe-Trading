@@ -180,7 +180,7 @@ pub enum Screen {
     Tune,
 
     // ── cockpit-reports-viewer v0.1.0 ─────────────────────────────────
-    /// Browse + render any committed `spec/*/reports/backtest-*.md`
+    /// Browse + render any committed `evidence/*/reports/backtest-*.md`
     /// (cockpit-reports-viewer R6 / D4). Navigable from the **Library**
     /// sidebar group, after `Models` (D5 — navigable, not default-routed).
     /// List-detail: a left picker over the discovered corpus + a right

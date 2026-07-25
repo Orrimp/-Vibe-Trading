@@ -182,7 +182,7 @@ Opens IF operator answers Q-O2 = ADOPT.
 - **Anchor risk: zero across all 4 briefs.** No changes to
   `crates/strategy/`, `crates/audit/`, `crates/exec/`, `crates/backtest/`,
   or report rendering. The 11 backtest body-SHA-256 anchors in
-  [`spec/anchors.toml`](../anchors.toml) are not in scope for ANY of A /
+  [`evidence/anchors.toml`](../../evidence/anchors.toml) are not in scope for ANY of A /
   B / C / D / markdown-viewer.
 - **PNG baseline impact: zero across all 4 briefs.** None of the briefs
   touches the Charts screen (the only surface backed by PNG baselines

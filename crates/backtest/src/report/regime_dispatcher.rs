@@ -7,7 +7,7 @@
 //!
 //! Run-varying fields (`generated:`, `wall_clock_s:`, `host:`, `git_commit:`,
 //! `data_revision_sha:`) live in YAML front-matter and are excluded from the
-//! body SHA-256 anchored in `spec/anchors.toml`.  The report body must be
+//! body SHA-256 anchored in `evidence/anchors.toml`.  The report body must be
 //! byte-identical across two runs with identical bar input.
 
 use std::path::Path;

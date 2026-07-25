@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 //! T1937 / T1942 (v2-llm-strategy, pass 6) — negative-invariant test
-//! for the 9 strategy-backtest anchors at `spec/anchors.toml:15-58`.
+//! for the 9 strategy-backtest anchors at `evidence/anchors.toml:15-58`.
 //!
 //! After T1935's `crates/reports/src/render/system_health.rs` rewrite,
-//! the two `report-sample-*` anchors at `spec/anchors.toml:67-75` ARE
+//! the two `report-sample-*` anchors at `evidence/anchors.toml:67-75` ARE
 //! expected to drift (T_FINAL_V2_LLM_STRATEGY re-locks them). The 9
 //! strategy anchors MUST stay byte-identical — none of the strategy /
 //! audit / exec / backtest crates were touched by M7, so their
@@ -41,7 +41,7 @@
 //! 2. Strip the YAML front-matter (matching `scripts/hash_report.py`).
 //! 3. Compute the body SHA-256.
 //! 4. Assert the SHA matches the locked value at
-//!    `spec/anchors.toml:15-58`.
+//!    `evidence/anchors.toml:15-58`.
 //!
 //! The 9 anchors are inlined here (matching the constants the
 //! anchors.toml file carries) so the test depends only on the report
@@ -116,9 +116,9 @@ fn is_sqrt_impact_path(path: &Path) -> bool {
 // ── NOOP-baseline anchor table ────────────────────────────────────────────────
 
 /// Each tuple = `(scenario_id, sha256_hex)`. Mirrors
-/// `spec/anchors.toml:15-58` byte-for-byte at v2.0.0 ship time. The
+/// `evidence/anchors.toml:15-58` byte-for-byte at v2.0.0 ship time. The
 /// orchestrator updates BOTH places in lockstep — if these constants
-/// drift from `spec/anchors.toml`, the workspace fails this test AND
+/// drift from `evidence/anchors.toml`, the workspace fails this test AND
 /// `bash scripts/verify_anchors.sh`.
 ///
 /// These SHAs are NOOP-BASELINE (no v5 sim applied). They are pinned
@@ -177,7 +177,7 @@ const STRATEGY_ANCHORS: &[(&str, &str)] = &[
 /// frozen. Future updates require a new ADR re-emission trigger.
 const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave C close (v5-latency-slippage-sim v0.3.0 M-DEV, 2026-05-27).
-    // Reports in spec/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/
+    // Reports in evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/
     // All run under canonical LatencySlippageSimConfig { latency_ms_min: 30,
     // latency_ms_max: 80, slippage_bps: 8 } per ADR-0047 D1.
     // Determinism verified: 2 independent runs produced identical body-SHAs.
@@ -232,7 +232,7 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
         "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e",
     ),
     // Group F: TCN overlay weights (candle feature — v0.4.0 re-emit, 2026-05-28)
-    // Reports in spec/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/
+    // Reports in evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/
     // Built with --features "candle realdata"; 2-run determinism verified.
     (
         "top10-2023-fy-tcn-overlay-weights",
@@ -289,7 +289,7 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
 /// require a new re-emission trigger (v0.6.0 sub-namespace cleanup).
 const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave E close (v5-latency-slippage-sim v0.5.0 M-DEV, 2026-05-29).
-    // Reports in spec/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/
+    // Reports in evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/
     // Real-data scenarios ONLY (Q-D1=(a) operator decision): SquareRoot { alpha: 1.0, volume_lookback_days: 90 }
     // Volume proxy: universe_avg_daily_volume_usd_trailing (Q-D2=(β) per-scenario end_date)
     // Determinism verified: 9/9 scenarios × 2 independent runs → byte-identical body-SHAs (H3 PASS).
@@ -348,16 +348,16 @@ fn workspace_root() -> PathBuf {
 /// Find the latest `backtest-*-<scenario>.md` file for the given namespace.
 ///
 /// Resolution algorithm per ADR-0047 D3:
-/// - `Namespace::Noop`: collect under `spec/**/reports/`, EXCLUDING any path
+/// - `Namespace::Noop`: collect under `evidence/**/reports/`, EXCLUDING any path
 ///   that contains a canonical feature directory name. Return lex-newest.
 /// - `Namespace::Canonical`: collect ONLY from canonical feature directories
-///   (`spec/v5-latency-slippage-sim-*/reports/`). Return lex-newest.
+///   (`evidence/v5-latency-slippage-sim-*/reports/`). Return lex-newest.
 ///
 /// Mirrors `scripts/verify_anchors.sh:63-110`.
 fn find_backtest_report(scenario: &str, namespace: Namespace) -> Option<PathBuf> {
-    let spec_dir = workspace_root().join("spec");
+    let evidence_dir = workspace_root().join("evidence");
     let mut candidates: Vec<PathBuf> = Vec::new();
-    walk_collect(&spec_dir, scenario, namespace, &mut candidates);
+    walk_collect(&evidence_dir, scenario, namespace, &mut candidates);
     candidates.sort();
     candidates.into_iter().next_back()
 }
@@ -419,7 +419,7 @@ fn strip_front_matter(text: &str) -> &str {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 /// T1937 — every one of the 9 strategy anchors is byte-identical to
-/// the locked SHA-256 in `spec/anchors.toml:15-58`.
+/// the locked SHA-256 in `evidence/anchors.toml:15-58`.
 ///
 /// If this test FAILS in pass 6 (M7), a non-M7 change has touched the
 /// report rendering of one of the 9 backtest scenarios — re-run the
@@ -584,7 +584,7 @@ fn t1937c_sqrt_impact_strategy_anchors_unchanged() {
 
 /// T1942 — V8 / V12 confirmation gate: assert each anchor's SHA hex
 /// is exactly 64 lowercase-hex chars (no whitespace, no upper-case).
-/// Defends against a malformed paste in `spec/anchors.toml` or in
+/// Defends against a malformed paste in `evidence/anchors.toml` or in
 /// the inlined constants here.
 #[test]
 fn t1942_anchor_shas_are_well_formed_64_lowercase_hex() {

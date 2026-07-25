@@ -8,7 +8,7 @@
 //!
 //! Every body is a behaviour-preserving extraction: same seed handling,
 //! same RNG construction, same bar-iteration order, same fill/equity/KPI
-//! compute. The 22 body-SHA-256 anchors in `spec/anchors.toml` must stay
+//! compute. The 22 body-SHA-256 anchors in `evidence/anchors.toml` must stay
 //! byte-identical after this extraction (H2 / H4 / R10.1).
 
 pub mod garch_vol_target_overlay;

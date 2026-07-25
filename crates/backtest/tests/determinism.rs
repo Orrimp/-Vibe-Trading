@@ -259,9 +259,9 @@ fn t33_report_sha256_deterministic() {
         assert!(status.success(), "cargo build --bin backtest failed");
     }
 
-    // Use a temp directory for report output so we don't pollute spec/reports.
+    // Use a temp directory for report output so we don't pollute evidence/reports.
     let tmp = tempfile::tempdir().expect("create tempdir");
-    let reports_dir = tmp.path().join("spec/reports");
+    let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
 
     let run_backtest = || -> String {
@@ -276,7 +276,7 @@ fn t33_report_sha256_deterministic() {
             String::from_utf8_lossy(&output.stderr)
         );
 
-        // The binary prints "Report written: spec/reports/backtest-<stamp>-<scenario>.md"
+        // The binary prints "Report written: evidence/reports/backtest-<stamp>-<scenario>.md"
         let stdout = String::from_utf8_lossy(&output.stdout);
         let report_rel = stdout
             .lines()
@@ -338,7 +338,7 @@ fn assert_scenario_deterministic(scenario: &str) {
     }
 
     let tmp = tempfile::tempdir().expect("create tempdir");
-    let reports_dir = tmp.path().join("spec/reports");
+    let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
 
     // Also need config/strategies/ accessible for composed scenarios.
@@ -450,7 +450,7 @@ fn run_scenario_once(scenario: &str) -> String {
     }
 
     let tmp = tempfile::tempdir().expect("create tempdir");
-    let reports_dir = tmp.path().join("spec/reports");
+    let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
 
     let config_dir = tmp.path().join("config/strategies");
@@ -586,7 +586,7 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 // these anchors (architecture determinism contract R9.4).
 //
 // Anchor hashes re-locked 2026-05-30 to canonical namespace per ADR-0045 § D6.
-// Original noop-baseline SHAs are preserved in spec/anchors.toml.
+// Original noop-baseline SHAs are preserved in evidence/anchors.toml.
 // SMA/Momentum/tt1 re-locked to v5-realdata-medium-2026-05 (synthetic == real-data SHA).
 // MACD/RSI/BBands re-locked to SYNTHETIC SHAs (ADR-0045 § D6.3): the v5-realdata-medium
 // rows for these 3 were emitted from the REAL-DATA path (17544-bar Binance bodies);
@@ -720,7 +720,7 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 // ── T-T-1 — v2.5 TCN overlay anchor regression gate ──────────────────────────
 //
 // Re-locked 2026-05-30 to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
-// Original stale noop-baseline SHAs preserved in spec/anchors.toml.
+// Original stale noop-baseline SHAs preserved in evidence/anchors.toml.
 // These anchors capture the PassthroughForecaster path (candle feature
 // absent in CI). The tt1_* scenarios are bare synthetic paths (no -realdata
 // suffix) and take the Linear{bps:8} fallback in the default binary.
@@ -776,7 +776,7 @@ fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
 ///
 /// Runs from the workspace root so that relative paths
 /// (`crates/forecast/checkpoints/anchors/`, `config/strategies/`) resolve
-/// correctly.  The report is written to `spec/<feature>/reports/` under the
+/// correctly.  The report is written to `evidence/<feature>/reports/` under the
 /// workspace root (the same path the production binary uses).
 ///
 /// Returns the full report text so the caller can body-hash it.
@@ -802,7 +802,7 @@ fn run_scenario_once_candle(scenario: &str) -> String {
     let bin_path = workspace_root.join("target/debug/backtest");
 
     // Run from workspace root so checkpoint + config paths resolve correctly.
-    // The report is written to spec/<feature>/reports/ under the workspace root.
+    // The report is written to evidence/<feature>/reports/ under the workspace root.
     let output = std::process::Command::new(&bin_path)
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
         .current_dir(workspace_root)
@@ -878,7 +878,7 @@ fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
 //
 // Design: we place the fixture at `<tmpdir>/data/binance/` and run the binary
 // from `<tmpdir>` so the hardcoded `data/binance` relative path resolves.
-// Report output goes to `<tmpdir>/spec/v1/backtest-real-binance-data/reports/`.
+// Report output goes to `<tmpdir>/evidence/v1/backtest-real-binance-data/reports/`.
 // `config/strategies/` is copied from the workspace so composed-strategy TOML
 // lookup does not fail.
 //

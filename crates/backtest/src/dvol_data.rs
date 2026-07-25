@@ -52,7 +52,7 @@ use trading_core::{PitSeries, Symbol, TimestampMs};
 /// computed over the WHOLE `[files]` map (`compute_aggregate_sha`), not a
 /// per-span subset; adding new file ROWS necessarily changes it even though
 /// no existing row's value changed. This constant is NOT one of the 9
-/// `spec/anchors.toml` regression anchors (a fully separate pin) — updating
+/// `evidence/anchors.toml` regression anchors (a fully separate pin) — updating
 /// it does not touch `verify_anchors.sh`'s 119/119 gate.
 pub const EXPECTED_DVOL_REVISION_SHA: &str =
     "b21dc8691c257731d9043fc3e19b858c326ab4dd3d975f10de0eccf90cf480ff";

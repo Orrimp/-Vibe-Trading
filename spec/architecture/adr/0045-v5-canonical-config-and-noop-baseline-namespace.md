@@ -23,7 +23,7 @@ related:
 
 v5-latency-slippage-sim v0.1.0 shipped 2026-05-26 (commit `a5f8647`)
 with three knobs defaulted to zero. All 34 SHA-256 anchors in
-[`spec/anchors.toml`](../../anchors.toml) stayed byte-identical — the
+[`evidence/anchors.toml`](../../../evidence/anchors.toml) stayed byte-identical — the
 non-negotiable Wave A gate. But default-zero is operationally
 meaningless: we shipped the engine without using it.
 
@@ -430,7 +430,7 @@ file-anchor set.
 - Parent ADR — [`ADR-0043 simulated-latency-and-slippage`](0043-simulated-latency-and-slippage.md)
 - Anchor-additive precedent — [`ADR-0038 spec-anchor-bounded-set-discipline`](0038-vol-forecast-verdict-shape.md)
 - Trace row — `REQ-V5-ANCHOR-MIGRATION-V0-2-0-001` in [`spec/trace.toml`](../../trace.toml)
-- Anchors file (target of migration) — [`spec/anchors.toml`](../../anchors.toml)
+- Anchors file (target of migration) — [`evidence/anchors.toml`](../../../evidence/anchors.toml)
 - CLAUDE.md non-negotiable — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` pattern reference
 - Verify script — `scripts/verify_anchors.sh`
 - Hash recompute — `scripts/hash_report.py`

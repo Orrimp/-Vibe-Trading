@@ -43,11 +43,15 @@ LOG_DIR="${LOG_DIR:-target/logs}"
 FIXTURES_DIR="${FIXTURES_DIR:-crates/llm/fixtures}"
 AUDIT_DB="${AUDIT_DB:-data/audit.db}"
 # By default the gate scans LLM-written artifacts only. Pass
-# `--scan-spec` to also grep `spec/**.md` and `spec/**.toml` (used
-# by the standalone CI helper that catches operators pasting real
-# keys into runbooks). The T1926 integration test passes the
-# artifact set only — spec files legitimately use `sk-...` /
-# `Bearer ...` as placeholder examples in design / runbook docs.
+# `--scan-spec` to also grep `spec/**.md` + `spec/**.toml` AND
+# `evidence/**.md` + `evidence/**.toml` (used by the standalone CI
+# helper that catches operators pasting real keys into runbooks /
+# reports). `evidence/` joined the scan 2026-07-25 (BMAD-migration
+# Phase 3 — the byte-immutable reports corpus moved out of `spec/`
+# there; flag name kept verbatim). The T1926 integration test passes
+# the artifact set only — spec/evidence files legitimately use
+# `sk-...` / `Bearer ...` as placeholder examples in design / runbook
+# / report docs.
 SCAN_SPEC=0
 
 while [[ $# -gt 0 ]]; do
@@ -146,14 +150,21 @@ fi
 # 3. Audit ledger.
 scan_binary_file "$AUDIT_DB"
 
-# 4. Any committed report bodies under spec/ — opt-in via
-#    `--scan-spec`. Spec docs legitimately use placeholder key
-#    shapes (`sk-ant-...`, `Bearer ...`) so the default
+# 4. Any committed docs under spec/ + committed report bodies under
+#    evidence/ (the byte-immutable reports corpus moved there in the
+#    2026-07-25 BMAD-migration Phase 3 `git mv`) — opt-in via
+#    `--scan-spec`. Spec/evidence docs legitimately use placeholder
+#    key shapes (`sk-ant-...`, `Bearer ...`) so the default
 #    integration-test invocation skips this leg.
 if [[ "$SCAN_SPEC" -eq 1 && -d "spec" ]]; then
   while IFS= read -r f; do
     scan_text_file "$f"
   done < <(find spec -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
+fi
+if [[ "$SCAN_SPEC" -eq 1 && -d "evidence" ]]; then
+  while IFS= read -r f; do
+    scan_text_file "$f"
+  done < <(find evidence -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
 fi
 
 if [[ $hits -gt 0 ]]; then

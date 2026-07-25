@@ -143,7 +143,7 @@ folder's `README.md`.
 V-ids map to the feature's nine acceptance criteria (AC1–AC9). Evidence is the
 proving test + the suite it ran in; all green at HEAD `9eef752` per the tester
 report
-[`reports/test-2026-06-11-live-equity-history-durable.md`](../reports/test-2026-06-11-live-equity-history-durable.md).
+[`reports/test-2026-06-11-live-equity-history-durable.md`](../../../../evidence/v1/live-equity-history-durable/reports/test-2026-06-11-live-equity-history-durable.md).
 
 | V-id | Description | Status | Evidence |
 |------|-------------|--------|----------|
@@ -158,7 +158,7 @@ report
 | AC9 | Fixtures cockpit smoke unchanged; every I/O behind a trait; no new dep | VERIFIED | `cargo build -p ui --bin cockpit --features fixtures` PASS + smoke log clean + `LiveEquityStore` trait + `async-trait` already in workspace |
 
 Cockpit-smoke gate (orchestrator pre-tick, mandatory after a UI brief's PASS):
-[`reports/cockpit-smoke-2026-06-11T20-43Z.log`](../reports/cockpit-smoke-2026-06-11T20-43Z.log)
+[`reports/cockpit-smoke-2026-06-11T20-43Z.log`](../../../../evidence/v1/live-equity-history-durable/reports/cockpit-smoke-2026-06-11T20-43Z.log)
 — the fixtures cockpit booted and ran (`Running target/debug/cockpit`) with
 **no first-frame panic signature**, which is the gate's pass condition (absence
 of the `iced_tiny_skia::engine.rs` zero-dim Quad panic).

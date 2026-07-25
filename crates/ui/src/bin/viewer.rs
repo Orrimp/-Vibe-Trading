@@ -1,7 +1,7 @@
 //! Backtest report viewer — Phase 4.
 //!
 //! Read-only iced surface that renders a single committed
-//! `spec/<feature>/reports/backtest-*.md` body alongside its KPI strip + equity
+//! `evidence/<feature>/reports/backtest-*.md` body alongside its KPI strip + equity
 //! curve + drawdown band. CLI-arg-driven (`viewer <report-path>`);
 //! offline / single-shot — no `Subscription`, no audit-bus channels,
 //! no kill switch. Sibling of `cockpit` and `cockpit_live`.
@@ -18,9 +18,10 @@
 //!
 //! ## Build-time R17.4 / V9 invariant
 //!
-//! The viewer is read-only on the spec tree. The integration test at
-//! `crates/ui/tests/viewer_read_only.rs` greps this file for
-//! `File::create` / `tokio::fs::write` against `spec/**` paths and
+//! The viewer is read-only on the evidence tree (the committed reports
+//! corpus; `spec/` housed it until the 2026-07-25 BMAD-migration Phase 3
+//! `git mv`). The integration test at `crates/ui/tests/viewer_read_only.rs`
+//! greps this file for `File::create` / `tokio::fs::write` call sites and
 //! fails loudly if any surface.
 
 use std::path::PathBuf;
@@ -43,7 +44,7 @@ use ui::widgets::{drawdown_band, equity_curve, kpi_strip};
 #[derive(Parser)]
 #[command(name = "viewer", about = "Backtest report viewer")]
 struct Args {
-    /// Path to a backtest report under `spec/<feature>/reports/backtest-*.md`.
+    /// Path to a backtest report under `evidence/<feature>/reports/backtest-*.md`.
     report_path: PathBuf,
 }
 
@@ -153,13 +154,13 @@ mod tests {
         // Construct a parsed Args from a one-arg vector.
         let args = Args::try_parse_from([
             "viewer",
-            "spec/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md",
+            "evidence/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md",
         ])
         .expect("parser must accept positional report path");
         assert_eq!(
             args.report_path,
             PathBuf::from(
-                "spec/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md"
+                "evidence/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md"
             )
         );
     }

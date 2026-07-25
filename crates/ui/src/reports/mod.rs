@@ -4,7 +4,7 @@
 //! Pure-`ui` over `trading_core` + `reports` (the report-writer crate) +
 //! `std::fs` — **no new crate edge** (AC7). A navigable `Screen::Reports`
 //! list-detail screen: a left picker over the discovered
-//! `spec/*/reports/backtest-*.md` corpus + a right detail pane that renders
+//! `evidence/*/reports/backtest-*.md` corpus + a right detail pane that renders
 //! the selected report via the existing `kpi_strip` / `equity_curve` /
 //! `drawdown_band` widgets verbatim, plus the markdown body.
 //!

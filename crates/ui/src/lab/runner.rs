@@ -176,7 +176,7 @@ pub struct LabRunConfig {
     pub range_label: SmolStr,
     /// `ChaCha20` seed per ADR-0030.
     pub seed: [u8; 32],
-    /// Write a Markdown report to `spec/<slug>/reports/…` on completion.
+    /// Write a Markdown report to `evidence/<slug>/reports/…` on completion.
     pub write_report: bool,
     /// Data source for this run. `Synthetic` (default) preserves byte-identical
     /// pre-v0.1.0 behaviour (H5 / R-NR.8). `YahooCache` loads real bars from

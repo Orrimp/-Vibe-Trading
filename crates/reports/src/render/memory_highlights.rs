@@ -33,7 +33,7 @@ use crate::render::risk_metrics::SharpeFn;
 ///
 /// Pinned as a `pub const` so a future architect grep-changes in one
 /// place (and re-locks the two `report-sample-*` body-SHA-256
-/// anchors at `spec/anchors.toml:67-75`).
+/// anchors at `evidence/anchors.toml:67-75`).
 pub const REFLECTION_MEMORY_EMPTY_STATE: &str =
     "_no closed trades yet — lesson cards will appear after the first closed trade._\n";
 

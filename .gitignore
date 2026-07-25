@@ -2,12 +2,12 @@
 
 # Lab-run report cache (lab-run-save-compare ADR-0055 § D1/D2).
 # Git-ignored ⇒ never committed ⇒ invisible to `verify_anchors.sh`
-# `find spec …` glob ⇒ 119 anchored report bodies are byte-immutable BY CONSTRUCTION.
+# `find evidence …` glob ⇒ 119 anchored report bodies are byte-immutable BY CONSTRUCTION.
 /lab-runs/
 
 # SUGGEST → manual hand-off plan exports (advisor-handoff-export P5, ADR-0088 § D8).
 # The "Export this plan" button writes `plan-{coin}-{window}-{seed8}.md` here.
-# Same ADR-0055 lab-runs precedent: git-ignored ⇒ outside every `spec/**` anchor
+# Same ADR-0055 lab-runs precedent: git-ignored ⇒ outside every `evidence/**` anchor
 # glob ⇒ `verify_anchors.sh` stays 119/119 BY CONSTRUCTION (the git boundary is
 # the guarantee, not reviewer vigilance).
 /plan-exports/

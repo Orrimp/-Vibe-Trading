@@ -1874,7 +1874,7 @@ mod tests {
     // cargo run (3360×1890 Retina). The manual capture command is:
     //   cargo run -p ui --bin cockpit --features fixtures
     // and the screenshots land in
-    //   spec/v1/ui-rethink-phase-a-lab/reports/screenshots/
+    //   evidence/v1/ui-rethink-phase-a-lab/reports/screenshots/
     //
     // See T-D-19 in spec/v1/ui-rethink-phase-a-lab/tasks.md for the full gate.
 

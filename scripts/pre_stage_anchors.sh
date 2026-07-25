@@ -5,13 +5,13 @@
 # System Health renderer rewrite (Q11 denominator $135 → $200 + Q5d
 # `Cache hit ratio` row). The tester reads this output at
 # `T_FINAL_V2_LLM_STRATEGY` and copies the new SHAs into
-# `spec/anchors.toml:67-75` (lines 67–75 in the v2.0.0 layout).
+# `evidence/anchors.toml:67-75` (lines 67–75 in the v2.0.0 layout).
 #
-# The 9 strategy anchors at `spec/anchors.toml:15-58` stay byte-
+# The 9 strategy anchors at `evidence/anchors.toml:15-58` stay byte-
 # identical — T1937 (and its sibling negative-invariant test
 # `crates/reports/tests/strategy_anchors_unchanged.rs`) guards that.
 #
-# This script does NOT mutate `spec/anchors.toml`; it only prints
+# This script does NOT mutate `evidence/anchors.toml`; it only prints
 # the captured SHAs and verifies byte-stability by hashing the
 # regenerated `success-fixed-report-sample-*.md` files twice.
 #
@@ -30,8 +30,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-SAMPLE_7D="spec/v1/operator-success-reports/reports/success-fixed-report-sample-7d.md"
-SAMPLE_90D="spec/v1/operator-success-reports/reports/success-fixed-report-sample-90d.md"
+SAMPLE_7D="evidence/v1/operator-success-reports/reports/success-fixed-report-sample-7d.md"
+SAMPLE_90D="evidence/v1/operator-success-reports/reports/success-fixed-report-sample-90d.md"
 
 if [[ ! -f "$SAMPLE_7D" ]]; then
   echo "ERROR: $SAMPLE_7D not found — run 'cargo test -p reports --test report_scenarios' first" >&2
@@ -62,7 +62,7 @@ cat <<EOF
 # v2-llm-strategy v2.0.0 anchor re-lock (pre-staged by T1936)
 #
 # The tester applies these SHAs at T_FINAL_V2_LLM_STRATEGY by editing
-# spec/anchors.toml:67-75 in place. Body-byte changes are driven by
+# evidence/anchors.toml:67-75 in place. Body-byte changes are driven by
 # T1935 (Q11 denominator + Q5d Cache hit ratio row).
 #
 # Determinism gate: each SHA is captured twice from the same file via

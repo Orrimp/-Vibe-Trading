@@ -17,7 +17,7 @@
 //! placeholder can be replaced when the real implementation lands.
 //!
 //! **Anchor contract (T-D-13):** The standalone binary is UNCHANGED
-//! at Phase A. All 11 body-SHA-256 anchors in `spec/anchors.toml`
+//! at Phase A. All 11 body-SHA-256 anchors in `evidence/anchors.toml`
 //! remain byte-identical. The `run_scenario` implementation below
 //! is NOT called by the binary yet; it is a type-safe stub that
 //! validates the seed and returns `RunError::NotImplemented` for
@@ -212,7 +212,7 @@ pub struct ScenarioConfig {
     /// Mandatory `ChaCha20` RNG seed (`[0u8; 32]` is rejected).
     pub seed: [u8; 32],
     /// When `true`, write the Markdown report to
-    /// `spec/<feature>/reports/backtest-<stamp>-<scenario>.md`.
+    /// `evidence/<feature>/reports/backtest-<stamp>-<scenario>.md`.
     pub write_report: bool,
     /// Data source for the run (lab-yahoo-realdata v0.1.0 / T-AR1).
     ///

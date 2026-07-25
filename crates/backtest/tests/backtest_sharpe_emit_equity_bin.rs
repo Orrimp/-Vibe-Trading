@@ -8,7 +8,7 @@
 //!     scenario produces the equity bin (basic I/O sanity check).
 //!
 //! The full anchor-SHA invariant (running top10-2023-fy-tcn-overlay-realdata
-//! twice and confirming report body SHAs match `spec/anchors.toml`) requires
+//! twice and confirming report body SHAs match `evidence/anchors.toml`) requires
 //! `--features realdata,candle` and live data, so it is marked as the tester's
 //! T-T-1 gate. This test file covers the developer's unit-level evidence for T-D-8.
 

@@ -4,7 +4,7 @@
 //! the GARCH recurrence over every bar in the evaluation span for all
 //! 10 USDT-quote symbols, computes per-symbol QLIKE vs. the Parkinson
 //! realized-vol target, and emits a deterministic markdown report under
-//! `spec/v1/v3-volatility-forecaster/reports/`.
+//! `evidence/v1/v3-volatility-forecaster/reports/`.
 //!
 //! ## Usage
 //!
@@ -124,7 +124,7 @@ struct Args {
     data_root: PathBuf,
 
     /// Output directory for the V-verdict report.
-    #[arg(long, default_value = "spec/v1/v3-volatility-forecaster/reports/")]
+    #[arg(long, default_value = "evidence/v1/v3-volatility-forecaster/reports/")]
     out_dir: PathBuf,
 
     /// Anchors directory for the GARCH JSON checkpoint.

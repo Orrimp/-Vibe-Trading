@@ -49,7 +49,7 @@ use crate::build_ledger_with_open_positions_7d::{
 };
 
 /// Locked body-SHA256 for `report-sample-7d` (mirrors the entry in
-/// `spec/anchors.toml` and `tests/report_scenarios.rs::EXPECTED_SHA_7D`).
+/// `evidence/anchors.toml` and `tests/report_scenarios.rs::EXPECTED_SHA_7D`).
 /// The Q4 invariant — "anchors stay byte-identical" — is the load-bearing
 /// claim of T1003; this constant pins it locally so the smoke fails
 /// loudly rather than via the slower workspace anchor sweep.

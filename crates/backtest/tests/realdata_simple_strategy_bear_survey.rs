@@ -47,7 +47,7 @@
 //!
 //! # UN-ANCHORED (D-BS.4 / R-BS.9)
 //!
-//! `#[ignore]`, no `spec/*/reports/` file, no `anchors.toml` row. The
+//! `#[ignore]`, no `evidence/*/reports/` file, no `anchors.toml` row. The
 //! `--nocapture` stdout + a `findings` dev-note are the deliverable.
 //!
 //! # Baseline-divergence e2e gate: N/A (D-BS.4 / D-OG.6 analogue)

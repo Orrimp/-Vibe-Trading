@@ -54,7 +54,7 @@ pub mod memory;
 pub mod models;
 /// cockpit-reports-viewer v0.1.0 — browse + render committed backtest
 /// reports. List-detail: left picker over the discovered
-/// `spec/*/reports/backtest-*.md` corpus + right detail pane reusing
+/// `evidence/*/reports/backtest-*.md` corpus + right detail pane reusing
 /// `kpi_strip` / `equity_curve` / `drawdown_band` + the markdown body.
 /// Navigable via the Library sidebar group (after Models); not
 /// default-routed (D5).

@@ -29,7 +29,7 @@ feature closes that defect and ships the longevity evidence artifact.
   `unwrap_or(Chop)` fallback is now only the genuine <7d-data path.
 - **AC3** — soak evidence: durable fills, equity movement, restart-continuity, kill
   switch, and an accumulated lesson card — see
-  [reports/longevity-2026-06-19.md](reports/longevity-2026-06-19.md).
+  [reports/longevity-2026-06-19.md](../../../evidence/v1/paper-soak-longevity/reports/longevity-2026-06-19.md).
 - **AC4** — gates green: `agent`+`reflection`+`ui` full suite, `clippy -D` (forced),
   `fmt`, `verify_anchors` 119/119, cockpit render harnesses.
 - **AC5** — operator runbook for the real-time soak:
@@ -52,7 +52,7 @@ completion pass.
   (Parity is a possible follow-up.)
 
 ## Verification
-[reports/longevity-2026-06-19.md](reports/longevity-2026-06-19.md) — evidence artifact.
+[reports/longevity-2026-06-19.md](../../../evidence/v1/paper-soak-longevity/reports/longevity-2026-06-19.md) — evidence artifact.
 
 ## Changelog
 - 2026-06-19 (operator): shipped — reflection writer wired into the paper loop

@@ -309,7 +309,7 @@ fresh overfit winners each cycle (`evolution[29]`).
 - **Anchored report SHAs byte-immutable (119/119).** The overfitting scorecard emits
   *new* report sections/files; it must not mutate any anchored report body (run
   `scripts/verify_anchors.sh` before and after touching anything under
-  `spec/*/reports/`).
+  `evidence/*/reports/`).
 - **`ui` must NOT depend on `strategy`/`exec`/`llm`/`models`.** The scorecard is plain
   data produced in `backtest` and fed to `ui` via the existing leaderboard runner
   pattern — no new cross-crate dependency.

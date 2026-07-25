@@ -58,7 +58,7 @@ items for macd/rsi/bbands).
 
 ## Current anchor set
 
-The locked anchors live in [`../anchors.toml`](../anchors.toml).
+The locked anchors live in [`evidence/anchors.toml`](../../evidence/anchors.toml).
 At Phase 1A close, the set was 11 scenarios (the count grew from 9
 during the v1+ operator-reports and v2 LLM ships). The LIVE set has since grown well beyond that (post-Phase-1A: the v2.5/v2.6 TCN-overlay + realdata locks and the `mc-robustness-2026-06` Monte-Carlo θ-surface anchors); [`scripts/verify_anchors.sh`](../../scripts/verify_anchors.sh) is the SOLE source of truth for the current count — do not hard-code it here. The Phase-1A-close snapshot:
 

@@ -593,7 +593,7 @@ verification command.
 ## Verification
 
 **Tester (2026-07-10) — T7, T8, and THE full multi-corpus verdict re-run.**
-AC1-AC8 report: [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](reports/backtest-2026-07-10-p2-verdict-rerun.md)
+AC1-AC8 report: [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](../../../evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md)
 (NEW, non-anchored). Corpus-consistency tests:
 `crates/data/tests/p2_corpora_revision_consistency.rs` (T7, 4/4 un-ignored,
 un-ignored PASS — `cargo test -p data --test p2_corpora_revision_consistency`)
@@ -783,7 +783,7 @@ crypto era, ever"?), not a gate failure.
   (`cargo test -p backtest --features realdata,yahoo --test p2_verdict_rerun
   -- --include-ignored --nocapture`: 15/15 passed, 0 failed, 238.79s). Authored
   the AC1-AC8 report
-  [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](reports/backtest-2026-07-10-p2-verdict-rerun.md)
+  [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](../../../evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md)
   (NEW, non-anchored). **Headline finding, reported plainly per the feature's
   own no-suppression framing:** ship-passive WOBBLES on 2017-18/2020/2021-22
   (19/32 primary symbol-runs `ActiveWins`, 16 clear DSR≥0.95) but HOLDS on

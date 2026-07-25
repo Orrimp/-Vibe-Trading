@@ -6,7 +6,7 @@
 //!
 //! Reads Parquet via `ReplayFeed` (or generates synthetic data if absent),
 //! drives `StrategyRegistry` → `risk` → `PaperEngine` → `audit`,
-//! writes a report to `spec/<feature>/reports/backtest-<stamp>-<scenario>.md`,
+//! writes a report to `evidence/<feature>/reports/backtest-<stamp>-<scenario>.md`,
 //! where `<feature>` is resolved from the scenario name via
 //! [`scenario_to_feature`] (defined at the bottom of this file).
 
@@ -88,7 +88,7 @@ struct Args {
     /// name via `report_dir_for_scenario`).
     /// When set, the report is written to `<reports_dir>/backtest-<stamp>-<scenario>.md`
     /// instead. Useful for re-running into a tempdir without touching the
-    /// anchored reports under `spec/`.
+    /// anchored reports under `evidence/`.
     ///
     /// Strictly additive flag — default-disabled; existing behaviour unchanged.
     #[arg(long)]
@@ -984,7 +984,7 @@ impl Scenario {
                 // T-D-17: pinned 2026-05-18 after revision-roundtrip fix.
                 // SHA = aggregate over all 240 Binance hourly parquets (10 symbols × 24 months,
                 // 2023-01-01 through 2024-12-31, fetched 2026-05-18 16:33 UTC).
-                // See spec/v1/backtest-real-binance-data/reports/ for the M5 capture log.
+                // See evidence/v1/backtest-real-binance-data/reports/ for the M5 capture log.
                 expected_revision_sha: Some(
                     "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7".into(),
                 ),
@@ -2511,9 +2511,9 @@ fn find_latest_report(dir: &Path, scenario: &str) -> Option<String> {
 
 /// Map a backtest scenario name to the feature slug that owns its
 /// reports. Fixed mapping (each scenario was first locked into
-/// `spec/anchors.toml` under exactly one feature). Future scenarios
+/// `evidence/anchors.toml` under exactly one feature). Future scenarios
 /// that don't match return `"_unknown"`, which causes
-/// [`report_dir_for_scenario`] to write under `spec/_unknown/reports/`
+/// [`report_dir_for_scenario`] to write under `evidence/_unknown/reports/`
 /// so orphaned reports surface immediately.
 fn scenario_to_feature(scenario: &str) -> &'static str {
     match scenario {
@@ -2564,10 +2564,10 @@ fn scenario_to_feature(scenario: &str) -> &'static str {
     }
 }
 
-/// Resolve the per-feature `spec/<feature>/reports/` directory for a
+/// Resolve the per-feature `evidence/<feature>/reports/` directory for a
 /// given scenario. Caller is responsible for `create_dir_all`.
 fn report_dir_for_scenario(scenario: &str) -> PathBuf {
-    PathBuf::from("spec")
+    PathBuf::from("evidence")
         .join(scenario_to_feature(scenario))
         .join("reports")
 }

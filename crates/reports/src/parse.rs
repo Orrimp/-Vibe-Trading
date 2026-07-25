@@ -299,7 +299,7 @@ PASS.
         assert_eq!(m.win_rate_pct, dec!(55.50));
     }
 
-    /// Iterate every committed `spec/<feature>/reports/backtest-*.md`
+    /// Iterate every committed `evidence/<feature>/reports/backtest-*.md`
     /// and assert each parse returns `Ok(_)` (no field aborts the
     /// parser on any of the anchored reports + any extras).
     #[test]
@@ -310,16 +310,16 @@ PASS.
             .unwrap()
             .parent()
             .unwrap();
-        let spec_root = workspace_root.join("spec");
+        let evidence_root = workspace_root.join("evidence");
         let mut backtests: Vec<PathBuf> = Vec::new();
-        collect_backtest_reports(&spec_root, &mut backtests);
+        collect_backtest_reports(&evidence_root, &mut backtests);
         for path in &backtests {
             let res = parse_from_report(path);
             assert!(res.is_ok(), "parse failed for {}: {res:?}", path.display());
         }
         assert!(
             backtests.len() >= 9,
-            "expected ≥ 9 anchored backtest-*.md across spec/<feature>/reports/, found {}",
+            "expected ≥ 9 anchored backtest-*.md across evidence/<feature>/reports/, found {}",
             backtests.len()
         );
     }

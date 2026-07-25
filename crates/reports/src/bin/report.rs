@@ -4,7 +4,7 @@
 //! cargo run -p reports --bin report -- \
 //!     --period 7d \
 //!     --ledger /path/to/audit.db \
-//!     --output spec/reports/success/sample-7d.md \
+//!     --output evidence/reports/success/sample-7d.md \
 //!     --seed 0xC0FFEE
 //! ```
 //!
@@ -38,7 +38,7 @@ struct Cli {
     /// be writable.
     #[arg(
         long,
-        default_value = "spec/v1/operator-success-reports/reports/report.md"
+        default_value = "evidence/v1/operator-success-reports/reports/report.md"
     )]
     output: PathBuf,
 

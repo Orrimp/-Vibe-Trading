@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Prune duplicate backtest reports under spec/reports/, keeping ONE file
-# per anchor scenario.
+# Prune duplicate backtest reports under evidence/**/reports/, keeping ONE
+# file per anchor scenario.
 #
 # Policy (option A + C):
-# - For each scenario in spec/anchors.toml, the surviving file is the
+# - For each scenario in evidence/anchors.toml, the surviving file is the
 #   *oldest* report on disk whose body-SHA matches the locked anchor.
 #   The surviving filename's timestamp therefore records when the
 #   current canonical body was first produced; idempotent re-runs do
@@ -24,7 +24,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-anchors="$root/spec/anchors.toml"
+anchors="$root/evidence/anchors.toml"
 hasher="$root/scripts/hash_report.py"
 dry_run=0
 
@@ -50,7 +50,7 @@ while IFS= read -r line; do
         files=()
         while IFS= read -r f; do
             [[ -n "$f" ]] && files+=("$f")
-        done < <(find "$root"/spec -type f -path "*/reports/backtest-*-$scenario.md" 2>/dev/null | sort || true)
+        done < <(find "$root"/evidence -type f -path "*/reports/backtest-*-$scenario.md" 2>/dev/null | sort || true)
 
         if [[ "${#files[@]}" -eq 0 ]]; then
             continue

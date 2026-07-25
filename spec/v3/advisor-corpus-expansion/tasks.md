@@ -275,7 +275,7 @@ re-run:**
   `/private/tmp/claude-502/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/362d2a09-04ba-4ea6-a7c1-07605f6e187a/scratchpad/p2-verdict-rerun-full.txt`
   (1,208 lines) and used as the evidence base for the report below.
 - **The AC1-AC8 report** —
-  [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](reports/backtest-2026-07-10-p2-verdict-rerun.md),
+  [`reports/backtest-2026-07-10-p2-verdict-rerun.md`](../../../evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md),
   linked from the feature's `## Verification` section. **Headline finding
   (NOT suppressed): ship-passive WOBBLES on older/thinner-liquidity crypto
   eras (2017-18/2020/2021-22 show materially more `ActiveWins` crowns, 16/19

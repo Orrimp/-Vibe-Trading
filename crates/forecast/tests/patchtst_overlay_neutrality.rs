@@ -25,7 +25,7 @@
 //!
 //! - ADR-0036 K4 — PatchTST overlay must not change TCN backtest output.
 //! - `decomp.md § T-AR-6` — architecture design for this test.
-//! - `spec/anchors.toml` — anchor `top10-2023-fy-tcn-overlay-realdata`.
+//! - `evidence/anchors.toml` — anchor `top10-2023-fy-tcn-overlay-realdata`.
 
 /// SHA-256 of the `top10-2023-fy-tcn-overlay-realdata` report body.
 ///
@@ -142,14 +142,14 @@ fn patchtst_overlay_does_not_regress_tcn_scenario() {
     }
 
     // Locate the generated report. Realdata scenarios land in
-    // `spec/v1/backtest-real-binance-data/reports/` per the backtest crate's
+    // `evidence/v1/backtest-real-binance-data/reports/` per the backtest crate's
     // `report_dir_for_scenario` mapping; older shipped reports may live in
-    // `spec/v1/v25-tcn-overlay/reports/` or the v2.5a feature folder.
+    // `evidence/v1/v25-tcn-overlay/reports/` or the v2.5a feature folder.
     let report_pattern = "top10-2023-fy-tcn-overlay-realdata";
     let candidates = [
-        "spec/v1/backtest-real-binance-data/reports",
-        "spec/v1/v25a-patchtst-overlay/reports",
-        "spec/v1/v25-tcn-overlay/reports",
+        "evidence/v1/backtest-real-binance-data/reports",
+        "evidence/v1/v25a-patchtst-overlay/reports",
+        "evidence/v1/v25-tcn-overlay/reports",
     ];
     let report_path = candidates
         .iter()

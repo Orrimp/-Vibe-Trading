@@ -46,7 +46,7 @@ use crate::widgets::frame;
 ///   always "shipped"), event ring.
 /// - `config` — optional lookup for universe / params. Pass `None` when
 ///   `Cockpit::strategies_config` has no entry for this strategy.
-/// - `last_anchor` — `(scenario_name, sha256_prefix)` from `spec/anchors.toml`
+/// - `last_anchor` — `(scenario_name, sha256_prefix)` from `evidence/anchors.toml`
 ///   lookup, or `None` when no anchor is recorded (all rows at Phase C).
 /// - `last_run_ts` — newest `Run` event timestamp from
 ///   `Cockpit::strategies_recent_events`, or `None`.

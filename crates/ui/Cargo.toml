@@ -128,7 +128,7 @@ iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia",
 # `live` feature deps — Week 2 (T32). Only enabled when wiring the cockpit
 # against the real `agent::EventBus`. Pinned like iced to keep the live
 # path reproducible; the bus surface is a handoff contract (see
-# spec/reports/dev-week2-broadcast-api-2026-04-18.md).
+# evidence/v1/v0-paper-sma/reports/dev-week2-broadcast-api-2026-04-18.md).
 agent = { path = "../agent", optional = true }
 # T-RED-D10 (v2-1-tracing-layer-redactor) — llm::tracing_init::install_global for
 # the cockpit_live subscriber migration. Optional dep gated on `live` feature.

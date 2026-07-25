@@ -28,7 +28,7 @@ fn run_pairs_scenario_once(scenario: &str) -> String {
     }
 
     let tmp = tempfile::tempdir().expect("create tempdir");
-    let reports_dir = tmp.path().join("spec/reports");
+    let reports_dir = tmp.path().join("evidence/reports");
     std::fs::create_dir_all(&reports_dir).expect("create temp reports dir");
 
     // Copy strategy TOML into temp config dir.

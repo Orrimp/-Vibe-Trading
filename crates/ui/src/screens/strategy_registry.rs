@@ -12,7 +12,7 @@
 //! Panel chrome: `widgets::frame::panel(STRATEGY_REGISTRY_PANEL_TITLE, …, mode)`.
 //!
 //! Anchor lookup: `None` for all rows at Phase C (A11 — no `Cockpit` field
-//! mirrors `spec/anchors.toml`; Phase D adds the lookup).
+//! mirrors `evidence/anchors.toml`; Phase D adds the lookup).
 //!
 //! Last-run timestamp: newest entry in `Cockpit::strategies_recent_events`
 //! with matching `strategy_id` (existing field at `state.rs:698`).

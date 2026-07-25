@@ -294,7 +294,7 @@ Named, with codebase location and priority. All ADDITIVE to the FROZEN gate.
   reported diagnostic only (with DSR as the binding gate)? The literature reject
   bar and our "report don't binarize" instinct pull in different directions.
 - **Where does the scorecard live so it stays anchor-safe?** A new
-  `write_report = false` artifact, a new anchor in `spec/anchors.toml`, or a
+  `write_report = false` artifact, a new anchor in `evidence/anchors.toml`, or a
   UI-only surface (the leaderboard already shows the verdict)? Note `ui` must NOT
   depend on strategy/exec/llm/models — the scorecard data must reach the UI via an
   already-permitted seam.

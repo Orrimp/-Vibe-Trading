@@ -1,6 +1,6 @@
 //! Cached backtest report equity-curve loader — ui-rethink-phase-a-lab T-D-10.
 //!
-//! Scans `spec/<strategy-slug>/reports/backtest-*.md` for reports that match
+//! Scans `evidence/<strategy-slug>/reports/backtest-*.md` for reports that match
 //! a `(strategy, pair, range)` tuple and parses the per-bar equity series.
 //!
 //! ## Design notes (Design § 4.3 / R7)
@@ -109,8 +109,8 @@ impl LabTuple {
 /// Errors from the equity loader.
 #[derive(Debug, Error)]
 pub enum EquityLoadError {
-    #[error("spec directory not found: {0}")]
-    SpecDirNotFound(String),
+    #[error("report directory not found: {0}")]
+    ReportDirNotFound(String),
     #[error("no cached report found for ({strategy}, {symbol}, {range:?})")]
     NoReport {
         strategy: SmolStr,
@@ -145,15 +145,15 @@ impl EquityCache {
     /// Return a cached `Arc<LabEquitySeries>` if present, otherwise load it
     /// synchronously from a SINGLE disk root, cache it, and return it.
     ///
-    /// `spec_root` should point to one report root (e.g. the repository's
-    /// `spec/` directory, or a `lab-runs/` tempdir). The loader searches
+    /// `report_root` should point to one report root (e.g. the repository's
+    /// `evidence/` directory, or a `lab-runs/` tempdir). The loader searches
     /// `<root>/<strategy-slug>/reports/backtest-*.md`.
     ///
     /// This single-root entry point is the H3 invariant's read seam
     /// (ADR-0055 § D6 — `crates/ui/tests/lab_run_engine.rs` calls it with the
     /// engine's `report_path.parent().parent().parent()` write-root). The
     /// production Lab path uses [`EquityCache::get_or_load_roots`] for the
-    /// two-root (`lab-runs/` + `spec/`) union (Q4).
+    /// two-root (`lab-runs/` + `evidence/`) union (Q4).
     ///
     /// # Errors
     ///
@@ -162,12 +162,12 @@ impl EquityCache {
     pub fn get_or_load(
         &mut self,
         tuple: &LabTuple,
-        spec_root: &std::path::Path,
+        report_root: &std::path::Path,
     ) -> Result<Arc<LabEquitySeries>, EquityLoadError> {
         if let Some(cached) = self.by_tuple.get(tuple) {
             return Ok(Arc::clone(cached));
         }
-        let loaded = load_equity(tuple, spec_root)?;
+        let loaded = load_equity(tuple, report_root)?;
         let arc = Arc::new(loaded);
         self.by_tuple.insert(tuple.clone(), Arc::clone(&arc));
         Ok(arc)
@@ -177,9 +177,9 @@ impl EquityCache {
     ///
     /// Like [`EquityCache::get_or_load`] but searches a **fixed-order slice of
     /// roots** (production passes `[default_lab_runs_root(),
-    /// default_spec_root()]`, lab-runs FIRST). The first root that yields a
+    /// default_evidence_root()]`, lab-runs FIRST). The first root that yields a
     /// matching report wins — so a fresh Lab run under `lab-runs/` shadows a
-    /// committed `spec/` report for the same tuple (the collision rule:
+    /// committed `evidence/` report for the same tuple (the collision rule:
     /// lab-runs wins). A tuple resolves to exactly one series, so the cache
     /// stays keyed on `tuple` alone (root-independent); the cached `Arc` is
     /// returned on subsequent hits regardless of which root won.
@@ -187,8 +187,8 @@ impl EquityCache {
     /// # Errors
     ///
     /// Returns the LAST root's `EquityLoadError` when no root yields a report
-    /// (the spec-root error is the most informative for the operator — it is
-    /// the committed tree). Empty `roots` yields a `NoReport` error.
+    /// (the evidence-root error is the most informative for the operator — it
+    /// is the committed tree). Empty `roots` yields a `NoReport` error.
     pub fn get_or_load_roots(
         &mut self,
         tuple: &LabTuple,
@@ -224,9 +224,9 @@ impl EquityCache {
 
 // ── Strategy slug resolution ──────────────────────────────────────────────────
 
-/// Map a `StrategyId` to the spec directory slug that holds its reports.
+/// Map a `StrategyId` to the evidence-directory slug that holds its reports.
 /// Phase A supports the known strategy ids; unknown ids fall back to the
-/// verbatim id string (which may produce a `SpecDirNotFound` error if the
+/// verbatim id string (which may produce a `ReportDirNotFound` error if the
 /// directory doesn't exist).
 #[must_use]
 fn strategy_slug(id: &str) -> SmolStr {
@@ -241,9 +241,10 @@ fn strategy_slug(id: &str) -> SmolStr {
 
 // ── Report scanning and parsing ───────────────────────────────────────────────
 
-/// Discover all `backtest-*.md` paths under `spec/<slug>/reports/`.
-fn discover_reports(spec_root: &std::path::Path, slug: &str) -> Vec<PathBuf> {
-    let dir = spec_root.join(slug).join("reports");
+/// Discover all `backtest-*.md` paths under `<report_root>/<slug>/reports/`
+/// (production roots: `evidence/` or `lab-runs/`).
+fn discover_reports(report_root: &std::path::Path, slug: &str) -> Vec<PathBuf> {
+    let dir = report_root.join(slug).join("reports");
     if !dir.is_dir() {
         return Vec::new();
     }
@@ -561,7 +562,8 @@ fn parse_equity_section(body: &str) -> Vec<(i64, Decimal)> {
 
 // ── Main load function ────────────────────────────────────────────────────────
 
-/// Load an equity series for `tuple` from the spec directory tree.
+/// Load an equity series for `tuple` from a report-root directory tree
+/// (production roots: `evidence/` or `lab-runs/`).
 /// Synchronous; call from the iced thread on first cache miss.
 ///
 /// # Errors
@@ -570,15 +572,15 @@ fn parse_equity_section(body: &str) -> Vec<(i64, Decimal)> {
 /// `EquityLoadError::ParseError` when the best candidate cannot be parsed.
 pub fn load_equity(
     tuple: &LabTuple,
-    spec_root: &std::path::Path,
+    report_root: &std::path::Path,
 ) -> Result<LabEquitySeries, EquityLoadError> {
     let slug = strategy_slug(&tuple.strategy);
-    let reports = discover_reports(spec_root, &slug);
+    let reports = discover_reports(report_root, &slug);
 
     if reports.is_empty() {
-        return Err(EquityLoadError::SpecDirNotFound(format!(
+        return Err(EquityLoadError::ReportDirNotFound(format!(
             "{}/{}",
-            spec_root.display(),
+            report_root.display(),
             slug
         )));
     }
@@ -644,8 +646,8 @@ pub fn load_equity(
     // equity CSV (full per-bar series) if present beside the `.md`. Lab runs
     // persist it, so a saved run hydrates a REAL curve instead of the sparkline
     // start-end 2-point fallback (the `.md`'s `## Equity curve` is only a
-    // visual sparkline, not machine-parseable). Older committed `spec/` reports
-    // without a companion stay at their existing fidelity.
+    // visual sparkline, not machine-parseable). Older committed `evidence/`
+    // reports without a companion stay at their existing fidelity.
     let (samples, fidelity) = if let Some(csv_pts) = load_companion_equity_csv(&best_path) {
         (csv_pts, Fidelity::PerBar)
     } else if meta.has_equity_section {
@@ -738,34 +740,37 @@ fn find_body_start(content: &str) -> usize {
 
 // ── Public helpers ────────────────────────────────────────────────────────────
 
-/// Convenience: resolve the `spec/` root relative to the workspace `Cargo.toml`.
+/// Convenience: resolve the `evidence/` root relative to the workspace
+/// `Cargo.toml` (the byte-immutable reports corpus; `spec/` housed it until
+/// the 2026-07-25 BMAD-migration Phase 3 `git mv`, layout preserved).
 /// Used by production code; tests pass an explicit temp-dir path.
 #[must_use]
-pub fn default_spec_root() -> PathBuf {
+pub fn default_evidence_root() -> PathBuf {
     // Walk up from the manifest directory to find the workspace root that
-    // contains a `spec/` directory.
+    // contains an `evidence/` directory.
     let manifest_dir =
         std::env::var("CARGO_MANIFEST_DIR").map_or_else(|_| PathBuf::from("."), PathBuf::from);
     // `crates/ui` → `crates` → workspace root.
     if let Some(root) = manifest_dir.parent().and_then(|p| p.parent()) {
-        let candidate = root.join("spec");
+        let candidate = root.join("evidence");
         if candidate.is_dir() {
             return candidate;
         }
     }
-    PathBuf::from("spec")
+    PathBuf::from("evidence")
 }
 
 /// Resolve the git-ignored `lab-runs/` root at the workspace root
 /// (lab-run-save-compare T2 / Q1 / ADR-0055 § D1).
 ///
-/// Sibling of [`default_spec_root`]: walks up from `CARGO_MANIFEST_DIR`
+/// Sibling of [`default_evidence_root`]: walks up from `CARGO_MANIFEST_DIR`
 /// (`crates/ui` → `crates` → workspace root) and returns `<workspace>/lab-runs`.
 /// This is the home the engine's `run_scenario` writes persisted Lab reports
 /// to (the developer's write-root) — read-root == write-root is the H3
-/// invariant. Unlike `default_spec_root` this does NOT require the directory
-/// to exist: a fresh checkout has no `lab-runs/` until the first Lab run
-/// persists, and the loaders fail soft on a missing root (return no series).
+/// invariant. Unlike `default_evidence_root` this does NOT require the
+/// directory to exist: a fresh checkout has no `lab-runs/` until the first
+/// Lab run persists, and the loaders fail soft on a missing root (return no
+/// series).
 #[must_use]
 pub fn default_lab_runs_root() -> PathBuf {
     let manifest_dir =
@@ -778,13 +783,13 @@ pub fn default_lab_runs_root() -> PathBuf {
 }
 
 /// The production Lab/Compare read-root union (Q4 / ADR-0055 § D5):
-/// `[lab-runs/, spec/]` — **lab-runs FIRST**. Persisted Lab runs shadow
-/// committed `spec/` reports on a tuple collision (lab-runs wins). Exposed so
-/// the Lab screen and the Compare cold-boot wire pass the identical ordered
-/// roots.
+/// `[lab-runs/, evidence/]` — **lab-runs FIRST**. Persisted Lab runs shadow
+/// committed `evidence/` reports on a tuple collision (lab-runs wins).
+/// Exposed so the Lab screen and the Compare cold-boot wire pass the
+/// identical ordered roots.
 #[must_use]
 pub fn default_report_roots() -> Vec<PathBuf> {
-    vec![default_lab_runs_root(), default_spec_root()]
+    vec![default_lab_runs_root(), default_evidence_root()]
 }
 
 // ── route_equity_overlay (T-D-N11 / R5.1–R5.4) ──────────────────────────────
@@ -798,7 +803,7 @@ pub fn default_report_roots() -> Vec<PathBuf> {
 ///    `equity_series` (no I/O). The `narrowed_from` field is `None` (exact
 ///    match by construction — R5.3 suppresses the narrowed-from badge).
 /// 2. Otherwise fall through to the cold disk path — the two-root union
-///    (`EquityCache::get_or_load_roots`, lab-runs FIRST then spec/ —
+///    (`EquityCache::get_or_load_roots`, lab-runs FIRST then evidence/ —
 ///    lab-run-save-compare T4 / R4 / Q4). After a Lab run persists its report
 ///    under `lab-runs/`, the curve repaints from disk on the next boot /
 ///    tuple-select even with the in-memory mirror cleared (AC4). If the cache
@@ -832,7 +837,7 @@ pub fn route_equity_overlay(
         }
     }
 
-    // Cold path: the two-root union (lab-runs first, then spec/).
+    // Cold path: the two-root union (lab-runs first, then evidence/).
     cache
         .get_or_load_roots(current_tuple, roots)
         .ok()
@@ -1111,11 +1116,11 @@ data_source: synthetic
     }
 
     /// lab-run-save-compare T2 — `default_lab_runs_root()` resolves a sibling
-    /// `lab-runs/` of `spec/` at the workspace root, and `default_report_roots()`
-    /// orders lab-runs FIRST (Q4 / ADR-0055 § D5).
+    /// `lab-runs/` of `evidence/` at the workspace root, and
+    /// `default_report_roots()` orders lab-runs FIRST (Q4 / ADR-0055 § D5).
     #[test]
     fn default_roots_order_lab_runs_first() {
-        let spec = default_spec_root();
+        let evidence = default_evidence_root();
         let lab_runs = default_lab_runs_root();
         // Both resolve under the same workspace parent.
         assert_eq!(
@@ -1123,16 +1128,16 @@ data_source: synthetic
             Some("lab-runs"),
             "lab-runs root must end in /lab-runs"
         );
-        if let (Some(spec_parent), Some(lr_parent)) = (spec.parent(), lab_runs.parent()) {
+        if let (Some(evidence_parent), Some(lr_parent)) = (evidence.parent(), lab_runs.parent()) {
             assert_eq!(
-                spec_parent, lr_parent,
-                "spec/ and lab-runs/ must be siblings at the workspace root"
+                evidence_parent, lr_parent,
+                "evidence/ and lab-runs/ must be siblings at the workspace root"
             );
         }
         let roots = default_report_roots();
         assert_eq!(roots.len(), 2, "union is exactly two roots");
         assert_eq!(roots[0], lab_runs, "lab-runs MUST be searched first");
-        assert_eq!(roots[1], spec, "spec/ is searched second");
+        assert_eq!(roots[1], evidence, "evidence/ is searched second");
     }
 
     /// lab-run-save-compare T2 — `get_or_load_roots` resolves a report from a
@@ -1360,18 +1365,25 @@ data_source: synthetic
         assert!(result.is_none(), "empty mirror series must fall through");
     }
 
-    /// T-D-10 — integration test: load the real v1 report from spec/.
+    /// T-D-10 — integration test: load the real v1 report from evidence/.
     ///
-    /// Skipped if the report file doesn't exist (CI without the full spec tree).
+    /// Skipped if the report file doesn't exist (CI without the full
+    /// evidence tree). NOTE: this mirrors `default_evidence_root()`'s flat
+    /// `<slug>/reports` join (no `v1/` container) — pre-existing since the
+    /// 2026-06-28 v1/v2 spec reorg added the container a level above the
+    /// slug; the real committed report lives at
+    /// `evidence/v1/v1-cross-sectional-momentum/reports/` today, so this
+    /// probe has skipped since that reorg and continues to skip post the
+    /// 2026-07-25 evidence/ move (unchanged behaviour — out of scope here).
     #[test]
     fn integration_load_real_v1_report() {
-        let spec = default_spec_root();
-        if !spec
+        let evidence = default_evidence_root();
+        if !evidence
             .join("v1-cross-sectional-momentum")
             .join("reports")
             .is_dir()
         {
-            eprintln!("skipped: spec/v1/v1-cross-sectional-momentum/reports not found");
+            eprintln!("skipped: evidence/v1-cross-sectional-momentum/reports not found");
             return;
         }
 
@@ -1383,7 +1395,7 @@ data_source: synthetic
 
         // The existing reports don't have an equity-curve section, so we
         // expect StartEndOnly fidelity with valid start/end values.
-        let result = load_equity(&tuple, &spec);
+        let result = load_equity(&tuple, &evidence);
         match result {
             Ok(series) => {
                 assert!(

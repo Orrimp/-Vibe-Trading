@@ -131,7 +131,7 @@ struct Args {
     data_root: PathBuf,
 
     /// Output directory for the recalibration derivation report.
-    #[arg(long, default_value = "spec/v1/v25-tcn-recalibrate/reports/")]
+    #[arg(long, default_value = "evidence/v1/v25-tcn-recalibrate/reports/")]
     out_dir: PathBuf,
 
     /// Target directory for the new .metadata.recalibrated.json file.

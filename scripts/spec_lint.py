@@ -36,6 +36,11 @@ import tomllib  # Python 3.11+ (enforced by PEP-723 header above)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPEC_DIR = REPO_ROOT / "spec"
+# The byte-immutable reports corpus (`*/reports/` dirs) + `anchors.toml`
+# `git mv`d from `spec/` to this top-level sibling root in the 2026-07-25
+# BMAD-migration Phase 3 (layout preserved 1:1). `feature.md`/`tasks.md`/
+# `presentations/` stay under SPEC_DIR until Phase 5b.
+EVIDENCE_DIR = REPO_ROOT / "evidence"
 
 # ---------------------------------------------------------------------------
 # Configuration: which frontmatter keys are required on which files.
@@ -70,7 +75,7 @@ VALID_STATUSES = {
     # 2026-05-22 additions:
     "shipped-partial",  # first-of-kind precedent from v3-llm-forecaster v0.1.0 — code gates clean,
                         # one wave deferred due to external-dependency resolution (API key, vendor
-                        # account, third-party data, etc.). See spec/v1/v3-llm-forecaster/reports/
+                        # account, third-party data, etc.). See evidence/v1/v3-llm-forecaster/reports/
                         # test-final-2026-05-22.md § 14 for the protocol.
     "retired",          # research-line closure (not deletion). Used by v3-volatility-forecaster +
                         # v3-volatility-forecaster-rebaseline after the noop-fix retire decision
@@ -198,7 +203,7 @@ KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
     # re-emission protocol (NOT YET CODIFIED — see CLAUDE.md). Exempted here
     # rather than re-emitting a retired line.
     (
-        "spec/v1/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
+        "evidence/v1/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
         "../architecture/adr/0038-vol-forecast-verdict-shape.md"
         "#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension",
     ),
@@ -381,8 +386,8 @@ def check_orphan_features(spec_dir: Path, report: Report) -> None:
 # Check: anchors.toml well-formed
 # ---------------------------------------------------------------------------
 
-def check_anchors(spec_dir: Path, report: Report) -> dict[str, dict]:
-    anchors_path = spec_dir / "anchors.toml"
+def check_anchors(evidence_dir: Path, report: Report) -> dict[str, dict]:
+    anchors_path = evidence_dir / "anchors.toml"
     if not anchors_path.exists():
         return {}
     with anchors_path.open("rb") as f:
@@ -506,7 +511,13 @@ def _check_trace_path(
 # Check: shipped feature has at least one test report
 # ---------------------------------------------------------------------------
 
-def check_shipped_have_tests(spec_dir: Path, report: Report) -> None:
+def check_shipped_have_tests(
+    spec_dir: Path, report: Report, evidence_dir: Path | None = None
+) -> None:
+    """``evidence_dir`` defaults to the module-level ``EVIDENCE_DIR``; tests
+    may inject a synthetic root (mirrors ``check_status_drift``)."""
+    if evidence_dir is None:
+        evidence_dir = EVIDENCE_DIR
     for child in sorted(spec_dir.iterdir()):
         if not is_feature_folder(child):
             continue
@@ -518,7 +529,9 @@ def check_shipped_have_tests(spec_dir: Path, report: Report) -> None:
             continue
         if fm.get("status") != "shipped":
             continue
-        reports_dir = child / "reports"
+        # reports/ lives under evidence_dir (2026-07-25 Phase 3 move,
+        # layout-preserving mirror of the feature-folder relative path).
+        reports_dir = evidence_dir / child.relative_to(spec_dir) / "reports"
         if not reports_dir.exists():
             report.add(
                 "shipped-no-tests",
@@ -556,7 +569,9 @@ STATUS_AT_OR_PAST_PRESENTER = {
 VERDICT_PASS_RE = re.compile(r"VERDICT\s*(?:→|->)\s*PASS")
 
 
-def check_status_drift(spec_dir: Path, report: Report) -> None:
+def check_status_drift(
+    spec_dir: Path, report: Report, evidence_dir: Path | None = None
+) -> None:
     """The audit-2026-06-12 enforcement hook (5 consecutive audits of drift).
 
     Rule: if a feature folder contains a presentation deck
@@ -570,7 +585,13 @@ def check_status_drift(spec_dir: Path, report: Report) -> None:
     Deliberately requires BOTH artifacts: archived decks/reports (moved to
     spec/archive tars by cleanup sweeps) make a folder skip this check —
     the rule fires at the moment drift is introduced, not retroactively.
+
+    ``evidence_dir`` defaults to the module-level ``EVIDENCE_DIR`` (the
+    2026-07-25 Phase 3 reports-corpus root); tests pass a synthetic root
+    that mirrors ``spec_dir``'s fixture layout so self-tests stay hermetic.
     """
+    if evidence_dir is None:
+        evidence_dir = EVIDENCE_DIR
     for child in sorted(spec_dir.iterdir()):
         if not is_feature_folder(child):
             continue
@@ -586,9 +607,12 @@ def check_status_drift(spec_dir: Path, report: Report) -> None:
         decks = list((child / "presentations").glob("*.md"))
         if not decks:
             continue
+        # reports/ lives under evidence_dir (2026-07-25 Phase 3 move);
+        # presentations/ stays under spec_dir until Phase 5b.
+        evidence_reports_dir = evidence_dir / child.relative_to(spec_dir) / "reports"
         has_pass = any(
             VERDICT_PASS_RE.search(p.read_text(encoding="utf-8", errors="replace"))
-            for p in (child / "reports").glob("test-*.md")
+            for p in evidence_reports_dir.glob("test-*.md")
         )
         if not has_pass:
             continue
@@ -835,7 +859,7 @@ def _self_test_status_drift() -> bool:
     """
     import tempfile
 
-    def make_feature(root: Path, slug: str, status: str,
+    def make_feature(root: Path, evidence_root: Path, slug: str, status: str,
                      deck: bool, pass_report: bool) -> None:
         d = root / slug
         d.mkdir()
@@ -846,16 +870,23 @@ def _self_test_status_drift() -> bool:
             (d / "presentations").mkdir()
             (d / "presentations" / f"{slug}-2026-06-12.md").write_text("# deck\n")
         if pass_report:
-            (d / "reports").mkdir()
-            (d / "reports" / "test-2026-06-12.md").write_text("VERDICT → PASS\n")
+            # reports/ mirrors the feature-folder relative path under a
+            # SEPARATE evidence root (2026-07-25 Phase 3 — reports/ no
+            # longer sits alongside feature.md/presentations/).
+            e = evidence_root / slug / "reports"
+            e.mkdir(parents=True)
+            (e / "test-2026-06-12.md").write_text("VERDICT → PASS\n")
 
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        make_feature(root, "drifting", "tester-done", deck=True, pass_report=True)
-        make_feature(root, "compliant", "presenter-done", deck=True, pass_report=True)
-        make_feature(root, "no-pass-yet", "tester-done", deck=True, pass_report=False)
+        root = Path(tmp) / "spec-fixture"
+        evidence_root = Path(tmp) / "evidence-fixture"
+        root.mkdir()
+        evidence_root.mkdir()
+        make_feature(root, evidence_root, "drifting", "tester-done", deck=True, pass_report=True)
+        make_feature(root, evidence_root, "compliant", "presenter-done", deck=True, pass_report=True)
+        make_feature(root, evidence_root, "no-pass-yet", "tester-done", deck=True, pass_report=False)
         rep = Report()
-        check_status_drift(root, rep)
+        check_status_drift(root, rep, evidence_dir=evidence_root)
         hits = [v for v in rep.violations if v.category == "status-drift"]
         ok = len(hits) == 1 and "drifting" in str(hits[0].path)
         print(
@@ -1010,12 +1041,15 @@ def iter_spec_md(roots: Iterable[Path]) -> Iterable[Path]:
                 # Skip archived content — it's frozen by design.
                 if "archive/" in rel:
                     continue
-                # Skip byte-immutable anchored report bodies under the v1 archive.
+                # Skip byte-immutable anchored report bodies under the v1 corpus.
                 # The 2026-06-28 v1/v2 reorg moved them one level deeper, so their
                 # internal relative links are off-by-one — but they CANNOT be
                 # repaired without changing the body bytes and breaking the
                 # body-SHA-256 anchors (CLAUDE.md non-negotiable). Frozen evidence.
-                if rel.startswith("spec/v1/") and "/reports/" in rel:
+                # Repointed 2026-07-25 (BMAD-migration Phase 3): the corpus lives
+                # under evidence/v1/ now, not spec/v1/ — same off-by-one, same
+                # freeze, new root.
+                if rel.startswith("evidence/v1/") and "/reports/" in rel:
                     continue
                 yield p
 
@@ -1042,7 +1076,16 @@ def main(argv: list[str]) -> int:
         print(f"error: spec/ not found at {SPEC_DIR}", file=sys.stderr)
         return 99
 
-    roots = [Path(p).resolve() for p in args.paths] if args.paths else [SPEC_DIR]
+    # Default roots: spec/ (feature.md/tasks.md/presentations/ + everything
+    # else not yet migrated) AND evidence/ (the reports corpus, since the
+    # 2026-07-25 Phase 3 move — dead-link + frontmatter checks still walk
+    # every report body EVIDENCE_DIR holds, mirroring pre-move coverage).
+    # `iter_spec_md` no-ops gracefully if EVIDENCE_DIR doesn't exist yet.
+    roots = (
+        [Path(p).resolve() for p in args.paths]
+        if args.paths
+        else [SPEC_DIR, EVIDENCE_DIR]
+    )
     report = Report()
 
     # Per-file checks (links + frontmatter).
@@ -1054,7 +1097,7 @@ def main(argv: list[str]) -> int:
     # Tree-level checks (only when running over the whole spec/).
     if not args.paths or any(Path(p).resolve() == SPEC_DIR for p in args.paths):
         check_orphan_features(SPEC_DIR, report)
-        anchors = check_anchors(SPEC_DIR, report)
+        anchors = check_anchors(EVIDENCE_DIR, report)
         check_trace(SPEC_DIR, report, anchors)
         check_shipped_have_tests(SPEC_DIR, report)
         check_status_drift(SPEC_DIR, report)

@@ -13,8 +13,10 @@
 //!
 //! Opt-in spec-persist: set `EMIT_VISUAL_FAIL_TO_SPEC=1` AND
 //! `VISUAL_FAIL_SPEC_SLUG=<slug>` to also write a byte-identical copy to
-//! `spec/<slug>/reports/visual-fail-<test_name>-<ts>.html`. Default OFF
-//! (repo-size guard per K1+K2 falsifiers). If only
+//! `evidence/<slug>/reports/visual-fail-<test_name>-<ts>.html` (env var
+//! names kept verbatim across the 2026-07-25 BMAD-migration Phase 3
+//! `spec/`→`evidence/` reports-corpus move — only the disk target moved).
+//! Default OFF (repo-size guard per K1+K2 falsifiers). If only
 //! `EMIT_VISUAL_FAIL_TO_SPEC=1` is set without `VISUAL_FAIL_SPEC_SLUG`,
 //! a warning is emitted to stderr and only the `target/` copy is written.
 //!
@@ -96,7 +98,7 @@ pub struct VisualFailContext<'a> {
 ///
 /// When `EMIT_VISUAL_FAIL_TO_SPEC=1` and `VISUAL_FAIL_SPEC_SLUG` are both
 /// set, a byte-identical copy is additionally written to
-/// `spec/<slug>/reports/visual-fail-<test_name>-<ts>.html`.
+/// `evidence/<slug>/reports/visual-fail-<test_name>-<ts>.html`.
 pub fn emit_visual_fail_html(ctx: VisualFailContext<'_>) -> Result<PathBuf, VisualFailHtmlError> {
     let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let filename = format!("visual-fail-{}-{ts}.html", ctx.test_name);
@@ -111,18 +113,24 @@ pub fn emit_visual_fail_html(ctx: VisualFailContext<'_>) -> Result<PathBuf, Visu
     fs::write(&target_path, html.as_bytes()).map_err(VisualFailHtmlError::Io)?;
 
     // ── Optional spec-persist (Q1 env-var gate) ───────────────────────────────
+    // Env var names kept verbatim (EMIT_VISUAL_FAIL_TO_SPEC /
+    // VISUAL_FAIL_SPEC_SLUG) across the 2026-07-25 Phase 3 evidence/ move —
+    // only the disk target changed.
     let emit_to_spec = std::env::var("EMIT_VISUAL_FAIL_TO_SPEC")
         .map(|v| v == "1")
         .unwrap_or(false);
     if emit_to_spec {
         match std::env::var("VISUAL_FAIL_SPEC_SLUG") {
             Ok(slug) if !slug.is_empty() => {
-                let spec_dir = workspace_root().join("spec").join(&slug).join("reports");
-                if let Err(e) = fs::create_dir_all(&spec_dir) {
+                let evidence_dir = workspace_root()
+                    .join("evidence")
+                    .join(&slug)
+                    .join("reports");
+                if let Err(e) = fs::create_dir_all(&evidence_dir) {
                     eprintln!("warning: visual-fail HTML spec-persist dir create failed: {e}");
                 } else {
-                    let spec_path = spec_dir.join(&filename);
-                    if let Err(e) = fs::write(&spec_path, html.as_bytes()) {
+                    let evidence_path = evidence_dir.join(&filename);
+                    if let Err(e) = fs::write(&evidence_path, html.as_bytes()) {
                         eprintln!("warning: visual-fail HTML spec-persist write failed: {e}");
                     }
                 }
@@ -392,10 +400,10 @@ mod tests {
         write_tiny_png(&actual_path, 0, 128, 0);
 
         let target_override = dir.path().join("target");
-        // Spec root is also under TempDir so the test is fully hermetic.
+        // Evidence root is also under TempDir so the test is fully hermetic.
         // We pass an absolute path via VISUAL_FAIL_SPEC_SLUG by pointing
         // workspace_root() to the TempDir. We use a relative slug name and
-        // create the expected spec/<slug>/reports/ structure manually.
+        // create the expected evidence/<slug>/reports/ structure manually.
         let spec_slug = "test-slug";
 
         let result = {
@@ -439,12 +447,12 @@ mod tests {
         let target_path = result.expect("emit_visual_fail_html must succeed");
         assert!(target_path.exists(), "target/ HTML must exist");
 
-        // Find the spec-side copy — it has the same filename under
-        // <TempDir>/spec/test-slug/reports/.
+        // Find the evidence-side copy — it has the same filename under
+        // <TempDir>/evidence/test-slug/reports/.
         let filename = target_path.file_name().unwrap();
         let spec_path = dir
             .path()
-            .join("spec")
+            .join("evidence")
             .join(spec_slug)
             .join("reports")
             .join(filename);

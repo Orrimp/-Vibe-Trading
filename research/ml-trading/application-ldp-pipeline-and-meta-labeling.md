@@ -218,7 +218,7 @@ legitimate, honest thing to surface to the operator.
 - **Anchored report SHAs are byte-immutable (119/119).** New scorecard fields must land in *new*
   report sections / *new* report files, or follow the ADR-0038 re-emission protocol — never mutate
   an existing anchored report body. Run `scripts/verify_anchors.sh` before and after any
-  `spec/*/reports/` touch.
+  `evidence/*/reports/` touch.
 - **Decimal, not f64, for money.** The selection-bias math is statistics over returns (f64 is fine
   for the stats), but anything that flows into a *position size / budget allocation* (e.g.
   meta-label-derived bet size, cost-filter position deltas) must be `Decimal`. Keep a clean seam

@@ -340,10 +340,12 @@ fn extract_equity_curve_tail(body: &str, max_points: usize) -> Vec<f64> {
 /// is kept (R3.3: most-recent wins; older reports reachable from Trail).
 ///
 /// `spec_root` should be the absolute path to one report root (the repo's
-/// `spec/` directory, or a `lab-runs/` tree). On parse failure the file is
-/// skipped with a `tracing::warn!` (K2 fail-soft).
+/// `evidence/` directory — the byte-immutable reports corpus, `spec/` housed
+/// it until the 2026-07-25 BMAD-migration Phase 3 `git mv` — or a
+/// `lab-runs/` tree). On parse failure the file is skipped with a
+/// `tracing::warn!` (K2 fail-soft).
 ///
-/// For the production two-root union (`lab-runs/` + `spec/`) use
+/// For the production two-root union (`lab-runs/` + `evidence/`) use
 /// [`scan_report_roots`] (lab-run-save-compare T5 / Q4).
 #[must_use]
 pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
@@ -354,8 +356,8 @@ pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange)
 /// Scan a FIXED-ORDER union of report roots and build the Compare cache
 /// (lab-run-save-compare T5 / Q4 / ADR-0055 § D5).
 ///
-/// Production passes `[default_lab_runs_root(), default_spec_root()]` —
-/// **lab-runs FIRST, then spec/**. Precedence rules (pinned, ADR-0055 § D5):
+/// Production passes `[default_lab_runs_root(), default_evidence_root()]` —
+/// **lab-runs FIRST, then evidence/**. Precedence rules (pinned, ADR-0055 § D5):
 ///
 /// 1. Search order is the slice order: `lab-runs/` first.
 /// 2. On an **identical filename across roots** (same `backtest-<stamp>-<scenario>.md`

@@ -2,7 +2,7 @@
 //! Yahoo BTC-USD daily bars.
 //!
 //! Purpose: the Yahoo data source has no anchored Markdown report yet
-//! (cross-sectional anchors at `spec/anchors.toml` use Binance synthetic
+//! (cross-sectional anchors at `evidence/anchors.toml` use Binance synthetic
 //! bars). This test pins three invariants that gate future Yahoo regressions
 //! without needing a full report-body SHA anchor (deferred to v0.1.2):
 //!
@@ -45,7 +45,7 @@ const EXPECTED_TRADE_COUNT: usize = 7;
 /// 2024 with initial capital = $100,000, 2 bps slippage, 4 bps taker fee.
 ///
 /// Confirmed 2026-05-27: $104,560.07 USDT (+4.56%).
-/// Body-SHA anchored in `spec/anchors.toml` as `btc-yahoo-2024-1d-sma-cross`.
+/// Body-SHA anchored in `evidence/anchors.toml` as `btc-yahoo-2024-1d-sma-cross`.
 /// Mismatch = behaviour drift in the SMA engine or fill logic.
 fn expected_final_equity() -> Decimal {
     // 2026-05-27 confirmed empirical value.

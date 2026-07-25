@@ -10,7 +10,7 @@
 //! footnote literal assertion lives in
 //! `mark_unavailable_warns_footnote.rs` (separate binary, separate
 //! process, no shared dispatcher cache). See the V6 flake analysis in
-//! `spec/reports/test-2026-05-02-2113-real-mtm-unrealized-pnl-final.md`
+//! `evidence/reports/test-2026-05-02-2113-real-mtm-unrealized-pnl-final.md`
 //! § 3 for the root-cause writeup that motivated this split.
 //!
 //! The contract being asserted (architect Design § Q6):
