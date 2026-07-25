@@ -4,7 +4,7 @@ description: >
   Run cargo-llvm-cov over the workspace and render a structured per-crate
   coverage report. Non-gating warning mode at v0.1 (operator reviews output;
   no threshold gate). Invoked on demand by the operator or the tester agent.
-  Produces a report at spec/<slug>/reports/coverage-<YYYY-MM-DD>-<slug>.md
+  Produces a report at evidence/<slug>/reports/coverage-<YYYY-MM-DD>-<slug>.md
   using the template in this skill.
 version: 0.1.0
 phase: warning-only
@@ -123,7 +123,7 @@ coverage points per unit of effort.
 
 ### Step 5 — Diff vs previous report
 
-If a previous coverage report exists under `spec/<slug>/reports/coverage-*.md`,
+If a previous coverage report exists under `evidence/<slug>/reports/coverage-*.md`,
 extract its per-crate percentage column and compute the delta for each crate.
 Annotate with:
 - `+` prefix for crates that improved
@@ -135,7 +135,7 @@ If no previous report exists, write `_first run — no baseline to diff_`.
 ### Step 6 — Render report
 
 Copy `templates/coverage-report.md` into
-`spec/<slug>/reports/coverage-<YYYY-MM-DD>-<slug>.md` and fill every section.
+`evidence/<slug>/reports/coverage-<YYYY-MM-DD>-<slug>.md` and fill every section.
 Use UTC date only (no time component — coverage runs are not time-sensitive at
 the minute level). Derive `<slug>` from the active feature (the most recently
 edited `spec/*/tasks.md`).

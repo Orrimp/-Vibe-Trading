@@ -2,7 +2,7 @@
 
 Status: done
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the measured dead-ends stay on the record so they are never re-litigated
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `v25-tcn-overlay`'s landing commits (`git log -- spec/v1/v25-tcn-overlay`), **when** the recorded verification for `v25-tcn-overlay` is replayed (tests, reports under `spec/v1/v25-tcn-overlay/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the TCN forecast overlay (phase 1 of 4) + its alpha-investigation / recalibrate / threshold-tuning / horizon-bump sub-studies - no +0.10 Sharpe delta; line retired.
+1. **Given** the repo history at `v25-tcn-overlay`'s landing commits (`git log -- spec/v1/v25-tcn-overlay`), **when** the recorded verification for `v25-tcn-overlay` is replayed (tests, reports under `evidence/v1/v25-tcn-overlay/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the TCN forecast overlay (phase 1 of 4) + its alpha-investigation / recalibrate / threshold-tuning / horizon-bump sub-studies - no +0.10 Sharpe delta; line retired.
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -29,7 +29,7 @@ so that the measured dead-ends stay on the record so they are never re-litigated
 - Source feature folder: `spec/v1/v25-tcn-overlay/` - frontmatter status **`shipped`** (verbatim), version `2.5.0`, updated `2026-06-17`.
 - Status mapping: `shipped` -> `done` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § Retired research lines.
-- Provenance: `git log -- spec/v1/v25-tcn-overlay` (full narrative); reports under `spec/v1/v25-tcn-overlay/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/v25-tcn-overlay` (full narrative); reports under `evidence/v1/v25-tcn-overlay/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

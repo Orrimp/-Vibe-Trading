@@ -2,7 +2,7 @@
 
 Status: retired
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the strategy/backtest engine is deterministic, real-data-grounded, and h
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `carry-strategy`'s landing commits (`git log -- spec/v1/carry-strategy`), **when** the recorded verification for `carry-strategy` is replayed (tests, reports under `spec/v1/carry-strategy/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the cross-sectional funding-carry rotation (verdict: FRAGILE; retired).
+1. **Given** the repo history at `carry-strategy`'s landing commits (`git log -- spec/v1/carry-strategy`), **when** the recorded verification for `carry-strategy` is replayed (tests, reports under `evidence/v1/carry-strategy/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the cross-sectional funding-carry rotation (verdict: FRAGILE; retired).
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -26,7 +26,7 @@ so that the strategy/backtest engine is deterministic, real-data-grounded, and h
 - Status mapping: `retired` -> `retired` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - Disposition: retired research/measure line — code + evidence retained, not deleted.
 - CHANGELOG index: CHANGELOG § Robustness program — CONCLUDED 2026-06-08 → ship passive.
-- Provenance: `git log -- spec/v1/carry-strategy` (full narrative); reports under `spec/v1/carry-strategy/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/carry-strategy` (full narrative); reports under `evidence/v1/carry-strategy/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

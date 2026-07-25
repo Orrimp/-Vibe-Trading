@@ -2,7 +2,7 @@
 
 Status: in-progress
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -25,7 +25,7 @@ so that the gates, ledgers, and process infrastructure keep the repo honest with
 - Source feature folder: `spec/cockpit-cross-platform/` - frontmatter status **`in-progress`** (verbatim), version `0.1.0`, updated `2026-06-15`.
 - Status mapping: `in-progress` -> `in-progress` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § Deferred / not built (by decision) — superseded: CI activated 2026-07-10 (PRD §14 assumption).
-- Provenance: `git log -- spec/cockpit-cross-platform` (full narrative); reports under `spec/cockpit-cross-platform/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/cockpit-cross-platform` (full narrative); reports under `evidence/cockpit-cross-platform/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

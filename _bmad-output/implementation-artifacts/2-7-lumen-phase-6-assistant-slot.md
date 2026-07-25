@@ -2,7 +2,7 @@
 
 Status: backlog
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -26,7 +26,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 - Status mapping: `reserved` -> `backlog` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - Disposition: reserved — forward-compat reservation only (gated on a v2 LLM assistant); deliberately not built.
 - CHANGELOG index: CHANGELOG § Cockpit & UI › Shell, navigation & design system (reservation noted on the `lumen-design-adoption` line).
-- Provenance: `git log -- spec/lumen-design-adoption/phase-6-assistant-slot` (full narrative); reports under `spec/lumen-design-adoption/phase-6-assistant-slot/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/lumen-design-adoption/phase-6-assistant-slot` (full narrative); reports under `evidence/lumen-design-adoption/phase-6-assistant-slot/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

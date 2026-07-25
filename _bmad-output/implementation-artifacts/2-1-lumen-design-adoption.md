@@ -2,7 +2,7 @@
 
 Status: in-progress
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -26,7 +26,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 - Status mapping: `roadmap` -> `in-progress` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - Disposition: master-roadmap umbrella — phases 1-5 shipped as their own stories, phase 6 reserved; the roadmap doc stays the open governing document.
 - CHANGELOG index: CHANGELOG § Cockpit & UI › Shell, navigation & design system.
-- Provenance: `git log -- spec/lumen-design-adoption` (full narrative); reports under `spec/lumen-design-adoption/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/lumen-design-adoption` (full narrative); reports under `evidence/lumen-design-adoption/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

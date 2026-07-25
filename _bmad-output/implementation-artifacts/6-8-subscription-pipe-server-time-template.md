@@ -2,7 +2,7 @@
 
 Status: done
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the gates, ledgers, and process infrastructure keep the repo honest with
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `subscription-pipe-server-time-template`'s landing commits (`git log -- spec/v1/subscription-pipe-server-time-template`), **when** the recorded verification for `subscription-pipe-server-time-template` is replayed (tests, reports under `spec/v1/subscription-pipe-server-time-template/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the server-time template closing the Wave-1 subscription-pipe carve-out.
+1. **Given** the repo history at `subscription-pipe-server-time-template`'s landing commits (`git log -- spec/v1/subscription-pipe-server-time-template`), **when** the recorded verification for `subscription-pipe-server-time-template` is replayed (tests, reports under `evidence/v1/subscription-pipe-server-time-template/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the server-time template closing the Wave-1 subscription-pipe carve-out.
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -25,7 +25,7 @@ so that the gates, ledgers, and process infrastructure keep the repo honest with
 - Source feature folder: `spec/v1/subscription-pipe-server-time-template/` - frontmatter status **`shipped`** (verbatim), version `0.1.0`, updated `2026-06-17`.
 - Status mapping: `shipped` -> `done` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § Tooling & process.
-- Provenance: `git log -- spec/v1/subscription-pipe-server-time-template` (full narrative); reports under `spec/v1/subscription-pipe-server-time-template/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/subscription-pipe-server-time-template` (full narrative); reports under `evidence/v1/subscription-pipe-server-time-template/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

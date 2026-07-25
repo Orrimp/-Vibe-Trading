@@ -17,8 +17,8 @@ context. This skill produces a self-contained brief from:
 1. CLAUDE.md non-negotiables (always verbatim).
 2. The feature's `feature.md` and `tasks.md`.
 3. Any `trace.toml` rows that reference the feature.
-4. The most recent test report under `spec/<slug>/reports/`.
-5. The full anchor table from `spec/anchors.toml` (small, always included).
+4. The most recent test report under `evidence/<slug>/reports/`.
+5. The full anchor table from `evidence/anchors.toml` (small, always included).
 6. Architecture-section excerpts that mention the slug (best-effort grep
    until `spec/architecture/*.md` lands per Phase 1A).
 

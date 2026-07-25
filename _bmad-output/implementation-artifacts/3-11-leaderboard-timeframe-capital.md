@@ -2,7 +2,7 @@
 
 Status: done
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the guided EUR-200 journey stays honest, reproducible, and robustness-ga
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `leaderboard-timeframe-capital`'s landing commits (`git log -- spec/v1/leaderboard-timeframe-capital`), **when** the recorded verification for `leaderboard-timeframe-capital` is replayed (tests, reports under `spec/v1/leaderboard-timeframe-capital/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the bake-off tune knobs: H1/H4/D1 timeframe resampling (may change ranking) and starting-capital control (does not - and the UI says so).
+1. **Given** the repo history at `leaderboard-timeframe-capital`'s landing commits (`git log -- spec/v1/leaderboard-timeframe-capital`), **when** the recorded verification for `leaderboard-timeframe-capital` is replayed (tests, reports under `evidence/v1/leaderboard-timeframe-capital/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the bake-off tune knobs: H1/H4/D1 timeframe resampling (may change ranking) and starting-capital control (does not - and the UI says so).
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -25,7 +25,7 @@ so that the guided EUR-200 journey stays honest, reproducible, and robustness-ga
 - Source feature folder: `spec/v1/leaderboard-timeframe-capital/` - frontmatter status **`shipped`** (verbatim), version `0.1.0`, updated `2026-06-26`.
 - Status mapping: `shipped` -> `done` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § Advisor — `**leaderboard-timeframe-capital**`.
-- Provenance: `git log -- spec/v1/leaderboard-timeframe-capital` (full narrative); reports under `spec/v1/leaderboard-timeframe-capital/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/leaderboard-timeframe-capital` (full narrative); reports under `evidence/v1/leaderboard-timeframe-capital/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

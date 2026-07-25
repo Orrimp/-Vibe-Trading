@@ -2,7 +2,7 @@
 
 Status: done
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge`'s landing commits (`git log -- spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge`), **when** the recorded verification for `lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge` is replayed (tests, reports under `spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the v0.1.2 ETH-USD anchor + cache-state summary badge.
+1. **Given** the repo history at `lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge`'s landing commits (`git log -- spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge`), **when** the recorded verification for `lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge` is replayed (tests, reports under `evidence/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the v0.1.2 ETH-USD anchor + cache-state summary badge.
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -25,7 +25,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 - Source feature folder: `spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/` - frontmatter status **`shipped`** (verbatim), version `0.1.0`, updated `2026-06-17`.
 - Status mapping: `shipped` -> `done` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § Cockpit & UI › Lab (run → save → compare) & data (noted on the `lab-yahoo-realdata` line).
-- Provenance: `git log -- spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge` (full narrative); reports under `spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge` (full narrative); reports under `evidence/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

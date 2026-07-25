@@ -10,7 +10,7 @@ description: Run a historical backtest for a strategy feature and emit a metrics
 - `feature_slug` — matches `spec/<slug>/feature.md`
 - `scenario` — section within that feature file, e.g. `btc-2023-regime`
 - `baseline` — optional report path to diff against; defaults to most recent
-  `spec/<slug>/reports/test-*-<slug>.md` with a Backtest section.
+  `evidence/<slug>/reports/test-*-<slug>.md` with a Backtest section.
 
 ## Procedure
 
@@ -31,7 +31,7 @@ description: Run a historical backtest for a strategy feature and emit a metrics
    `rust-test/templates/test-report.md`. Embed it into the caller's report.
 
 6. Save raw artifacts (equity curve CSV, trade log) under
-   `spec/<feature>/reports/artifacts/<run_id>/` so they survive for future diffs.
+   `evidence/<feature>/reports/artifacts/<run_id>/` so they survive for future diffs.
 
 ## Failure Modes
 
@@ -42,7 +42,7 @@ description: Run a historical backtest for a strategy feature and emit a metrics
 
 ## Body-vs-front-matter discipline (HARD RULE)
 
-The 9-anchor regression gate hashes the body of each report only —
+The 119-anchor regression gate hashes the body of each report only —
 the leading YAML front-matter is excluded. Use `scripts/hash_report.py`
 to compute the canonical hash; never re-type a hash function inline.
 
@@ -76,7 +76,7 @@ After the binary writes a report, run the regression gate:
 scripts/verify_anchors.sh
 ```
 
-- All 9 PASS → run `scripts/prune_backtest_duplicates.sh` to collapse
+- All 119 PASS → run `scripts/prune_backtest_duplicates.sh` to collapse
   the just-written file into the canonical one-per-scenario set, then
   embed metrics in the test report and continue. (See
   `.claude/skills/verify-anchors/SKILL.md` § "Post-PASS bookkeeping".)
@@ -87,7 +87,7 @@ scripts/verify_anchors.sh
   prune on FAIL — keep the divergent file for the developer's diff.
 - MISS on a brand-new scenario the architect added → that's expected;
   capture the SHA across two sequential runs and propose appending
-  to `spec/anchors.toml` (architect approves).
+  to `evidence/anchors.toml` (architect approves).
 
 ## Templates
 

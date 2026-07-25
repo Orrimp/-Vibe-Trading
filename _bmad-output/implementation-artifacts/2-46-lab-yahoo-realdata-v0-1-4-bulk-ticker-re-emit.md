@@ -2,7 +2,7 @@
 
 Status: retired
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit`'s landing commits (`git log -- spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit`), **when** the recorded verification for `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` is replayed (tests, reports under `spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the v0.1.4 bulk-ticker re-emit (9 new tickers + ETH-daily redo) - retired.
+1. **Given** the repo history at `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit`'s landing commits (`git log -- spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit`), **when** the recorded verification for `lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` is replayed (tests, reports under `evidence/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the v0.1.4 bulk-ticker re-emit (9 new tickers + ETH-daily redo) - retired.
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -26,7 +26,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 - Status mapping: `retired` -> `retired` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - Disposition: retired research/measure line — code + evidence retained, not deleted.
 - CHANGELOG index: no CHANGELOG line (retired iteration).
-- Provenance: `git log -- spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` (full narrative); reports under `spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit` (full narrative); reports under `evidence/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

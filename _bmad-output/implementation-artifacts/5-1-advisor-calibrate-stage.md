@@ -2,7 +2,7 @@
 
 Status: done
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the shipped product is provably done, with its thesis boundary honestly 
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `advisor-calibrate-stage`'s landing commits (`git log -- spec/v3/advisor-calibrate-stage`), **when** the recorded verification for `advisor-calibrate-stage` is replayed (tests, reports under `spec/v3/advisor-calibrate-stage/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the first-class Calibrate stage + the DATA -> CALIBRATE -> ANALYZE -> SUGGEST stepper band (orientation affordance, render-pixel-verified) (R3-3a).
+1. **Given** the repo history at `advisor-calibrate-stage`'s landing commits (`git log -- spec/v3/advisor-calibrate-stage`), **when** the recorded verification for `advisor-calibrate-stage` is replayed (tests, reports under `evidence/v3/advisor-calibrate-stage/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the first-class Calibrate stage + the DATA -> CALIBRATE -> ANALYZE -> SUGGEST stepper band (orientation affordance, render-pixel-verified) (R3-3a).
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -25,7 +25,7 @@ so that the shipped product is provably done, with its thesis boundary honestly 
 - Source feature folder: `spec/v3/advisor-calibrate-stage/` - frontmatter status **`shipped`** (verbatim), version `3.0.0`, updated `2026-07-09`.
 - Status mapping: `shipped` -> `done` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § v3 — "prove it's done" close-out.
-- Provenance: `git log -- spec/v3/advisor-calibrate-stage` (full narrative); reports under `spec/v3/advisor-calibrate-stage/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v3/advisor-calibrate-stage` (full narrative); reports under `evidence/v3/advisor-calibrate-stage/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

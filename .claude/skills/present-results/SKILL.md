@@ -1,6 +1,6 @@
 ---
 name: present-results
-description: Assemble a presentation for a feature — TL;DR, what changed, demo run, verification matrix, screenshot references, approval block. Use when the presenter agent needs to produce or refresh a `spec/<slug>/presentations/<slug>-<date>.md` file. Pulls evidence from spec/<slug>/{feature.md,tasks.md,reports/test-*.md}, spec/anchors.toml, and live binary runs.
+description: Assemble a presentation for a feature — TL;DR, what changed, demo run, verification matrix, screenshot references, approval block. Use when the presenter agent needs to produce or refresh a `spec/<slug>/presentations/<slug>-<date>.md` file. Pulls evidence from spec/<slug>/{feature.md,tasks.md}, evidence/<slug>/reports/test-*.md, evidence/anchors.toml, and live binary runs.
 ---
 
 # present-results
@@ -25,7 +25,7 @@ presentation file and zero external side effects (no commits, no PRs).
 
 3. **Read the latest test report** (release mode). Pull pass/fail counts,
    anchor-gate result, perf numbers.
-   - Look first under `spec/<slug>/reports/test-*.md`.
+   - Look first under `evidence/<slug>/reports/test-*.md`.
    - If none exist, the feature is pre-Lumen (shipped before the
      2026-05-08 spec restructure) and its tester reports live in
      `spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz`.
@@ -51,8 +51,8 @@ presentation file and zero external side effects (no commits, no PRs).
    PASS/FAIL summary line. If FAIL, do NOT continue with `release`
    mode — emit `HANDOFF → developer` and stop.
 
-6. **Find existing screenshots.** Glob `spec/<slug>/reports/screenshots/`
-   and `spec/<slug>/reports/screenshots/<feature-version>/` for any `.png` files.
+6. **Find existing screenshots.** Glob `evidence/<slug>/reports/screenshots/`
+   and `evidence/<slug>/reports/screenshots/<feature-version>/` for any `.png` files.
    Reference each with a relative-link caption. Three branches:
    - **PNGs exist** → reference each with caption.
    - **No PNGs and feature is UI-related** (`spec/<slug>/feature.md`
@@ -66,7 +66,7 @@ presentation file and zero external side effects (no commits, no PRs).
      `viewer` renders it inline"). Do NOT invoke
      `capture-screenshot`; there is nothing to capture.
 
-7. **Read `spec/anchors.toml`.** Embed the count + the first 8 chars of
+7. **Read `evidence/anchors.toml`.** Embed the count + the first 8 chars of
    each anchor SHA — proves byte-stable output without flooding the
    presentation.
 
@@ -133,7 +133,7 @@ $ <cmd>
 <one-line interpretation: "Notice X. The Y row is the new feature working.">
 
 ## Screenshots
-<reference + caption per .png in spec/<slug>/reports/screenshots/, OR
+<reference + caption per .png in evidence/<slug>/reports/screenshots/, OR
  a manual-capture instruction block if missing-but-UI, OR
  `_n/a — non-UI feature_` with one-line reason>
 

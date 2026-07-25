@@ -26,7 +26,7 @@ Brief A's 267-test panel-snapshot suite uses **text-summary helpers** (`tape_sum
 2. **Spawn cockpit in background, capture stderr, wait, kill.**
 
    ```bash
-   LOG=spec/<slug>/reports/cockpit-smoke-$(date -u +%Y-%m-%dT%H-%MZ).log
+   LOG=evidence/<slug>/reports/cockpit-smoke-$(date -u +%Y-%m-%dT%H-%MZ).log
    mkdir -p "$(dirname "$LOG")"
    (RUST_BACKTRACE=1 cargo run -p ui --bin cockpit --features fixtures > "$LOG" 2>&1 &)
    sleep 7
@@ -87,14 +87,14 @@ Pair this skill with M1-B and M1-C for full coverage. Defense in depth, not sing
 - Capture the panic site + first `panicked at` line + the backtrace's first widget-named frame.
 - Route `HANDOFF → developer` for non-visual regressions (`unwrap`/`expect`/integer overflow).
 - Route `HANDOFF → ui-designer` for visual regressions (panel disappears, color is wrong but no panic — though those route through M1-B, not this skill).
-- File the log under `spec/<slug>/reports/cockpit-smoke-<ts>.log` so the evaluator's read trace can cite it.
+- File the log under `evidence/<slug>/reports/cockpit-smoke-<ts>.log` so the evaluator's read trace can cite it.
 
 ## On success
 
 Report a single line in the orchestrator's pre-tick gate output:
 
 ```
-cockpit-smoke: PASS (0 panics, 7s window, log: spec/<slug>/reports/cockpit-smoke-<ts>.log)
+cockpit-smoke: PASS (0 panics, 7s window, log: evidence/<slug>/reports/cockpit-smoke-<ts>.log)
 ```
 
 That single line is what the presenter agent cites in the verification matrix.

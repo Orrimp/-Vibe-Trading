@@ -2,7 +2,7 @@
 
 Status: review
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -25,7 +25,7 @@ so that the strategy/backtest engine is deterministic, real-data-grounded, and h
 - Source feature folder: `spec/v1/carry-funding-data-backfill/` - frontmatter status **`dev-done`** (verbatim), version `0.1.0`, updated `2026-06-17`.
 - Status mapping: `dev-done` -> `review` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: no CHANGELOG line (dev-done; never flipped to shipped).
-- Provenance: `git log -- spec/v1/carry-funding-data-backfill` (full narrative); reports under `spec/v1/carry-funding-data-backfill/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/carry-funding-data-backfill` (full narrative); reports under `evidence/v1/carry-funding-data-backfill/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

@@ -8,7 +8,7 @@ Status: in-progress
 ## Story
 
 As the operator of the Honest Advisor,
-I want the operator-ratified full migration to BMAD-METHOD v6.10.0 (7 phases; Phase 0 install + Phase 1 planning docs landed; THIS story - Phase 2 retro epics/stories/sprint-status - is the live work; Phases 3-5c pending),
+I want the operator-ratified full migration to BMAD-METHOD v6.10.0 (7 phases; Phases 0-4 landed (install, planning docs, retro epics/stories/sprint-status — THIS story — evidence/ corpus move, docs/ knowledge move); Phase 5a persona customization TOMLs + the two flagged path-sweep debts landed; Phases 5b-5c pending),
 so that the gates, ledgers, and process infrastructure keep the repo honest without manual vigilance.
 
 ## Acceptance Criteria
@@ -23,7 +23,9 @@ so that the gates, ledgers, and process infrastructure keep the repo honest with
 - [x] Phase 2 - retro epics + stories + sprint-status (THIS story; `_bmad-output/` only, gates untouched)
 - [x] Phase 3 - move report corpus -> `evidence/`, base-swap anchors (must hold 119/119 in the same commit; commit `452ce02`)
 - [x] Phase 4 - move knowledge -> `docs/` (`git mv` spec/{dev-notes,runbooks,design,ui-design-principles.md} -> docs/, spec/architecture/adr -> `_bmad-output/planning-artifacts/architecture/decisions/`, atomic per AD-18; 211 renames, 0 deletions; `bash scripts/verify_anchors.sh` -> 119/119; `python3 scripts/spec_lint.py` -> PASS(0); `python3 scripts/adr_registry_check.py --self-test` -> OK, `--pre-commit` -> exit 0; `cargo test -p ui --lib` -> 617 passed)
-- [ ] Phase 5a - persona customization TOMLs; 5b - re-found lints + retire `spec/`; 5c - docs cutover
+- [x] Phase 5a - persona customization TOMLs (`_bmad/custom/bmad-agent-{analyst,architect,dev,ux-designer,tech-writer}.toml` + `bmad-code-review.toml` + `bmad-sprint-status.toml`, all `tomllib`-valid and `resolve_customization.py`-verified; presenter mapped to `bmad-agent-tech-writer` per this pass's dispatch, a deliberate delta from this plan's own § 6 table which named `bmad-agent-pm` — noted in the tech-writer override's header; no-BMAD-twin charter notes for spec-auditor/ui-debugger/researcher at `_bmad/custom/{spec-auditor,ui-debugger,researcher}-charter.md`) + the two flagged path-sweep debts (`.claude/skills/*/SKILL.md` reports/dev-notes path refs, 11 files fixed, `spec-update` given a Phase-5c deprecation header per ratified D5; `_bmad-output/implementation-artifacts/*.md` provenance pointers, 402 substitutions across 141 files, scripted + sample-verified); `bash scripts/verify_anchors.sh` -> 119/119; `python3 scripts/spec_lint.py` -> PASS(0); `python3 scripts/adr_registry_check.py --pre-commit` -> exit 0 (commit pending — orchestrator commits per this project's git-authority contract)
+- [ ] Phase 5b - re-found lints + retire `spec/`
+- [ ] Phase 5c - docs cutover
 
 ## Dev Notes
 

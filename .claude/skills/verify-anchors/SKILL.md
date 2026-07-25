@@ -1,11 +1,11 @@
 ---
 name: verify-anchors
-description: Verify the 9 locked backtest body-SHA-256 anchors in spec/anchors.toml against the latest matching reports under spec/reports/. Use as a hard gate before VERDICT → PASS in any tester run that touched strategy, audit, exec, or backtest code. Also use after any change that modifies report rendering. A single FAIL routes HANDOFF → developer with the body diff.
+description: Verify the 119 locked backtest body-SHA-256 anchors in evidence/anchors.toml against the latest matching reports under evidence/**/reports/. Use as a hard gate before VERDICT → PASS in any tester run that touched strategy, audit, exec, or backtest code. Also use after any change that modifies report rendering. A single FAIL routes HANDOFF → developer with the body diff.
 ---
 
 # verify-anchors
 
-Single-command regression gate for the 9-anchor body-only SHA-256 contract.
+Single-command regression gate for the 119-anchor body-only SHA-256 contract.
 
 ## Procedure
 
@@ -16,7 +16,7 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
    ```
 
    Exit 0 = all non-cfg-gated `const ANCHOR` sites in `determinism.rs` match
-   `spec/anchors.toml` `v5-realdata-medium-2026-05` SHAs.
+   `evidence/anchors.toml` `v5-realdata-medium-2026-05` SHAs.
    Exit 1 = stale literal(s) detected → drift table on stderr → route to developer.
 
    Run this FIRST before the engine-executing steps below. It is fail-fast
@@ -35,8 +35,8 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
 
    ```bash
    # Compare two report bodies (front-matter stripped).
-   diff <(awk '/^---$/{n++; next} n>=2' spec/<slug>/reports/<old>.md) \
-        <(awk '/^---$/{n++; next} n>=2' spec/<slug>/reports/<new>.md)
+   diff <(awk '/^---$/{n++; next} n>=2' evidence/<slug>/reports/<old>.md) \
+        <(awk '/^---$/{n++; next} n>=2' evidence/<slug>/reports/<new>.md)
    ```
 
 4. On MISS (no report for a scenario) re-run the backtest first:
@@ -80,7 +80,7 @@ Single-command regression gate for the 9-anchor body-only SHA-256 contract.
   matter checklist exists for exactly this.
 - **MISS** for a brand-new scenario the architect added → `HANDOFF →
   developer` to run it; once stable across two runs, append to
-  `spec/anchors.toml`.
+  `evidence/anchors.toml`.
 
 ## Post-PASS bookkeeping (mandatory)
 
@@ -100,7 +100,7 @@ produced, not when last verified). Stale runs from before an anchor
 update are also removed; their content lives in git history. Run with
 `--dry-run` to preview.
 
-Without this step `spec/*/reports/` accumulates duplicate runs every time
+Without this step `evidence/*/reports/` accumulates duplicate runs every time
 the tester touches strategy code; with it the directory steady-states
 at one file per anchored scenario.
 
@@ -122,12 +122,12 @@ identical across two sequential `--release` runs at the same seed:
 ```bash
 cargo run --release --bin backtest -- --scenario <name>  # run 1
 cargo run --release --bin backtest -- --scenario <name>  # run 2
-scripts/hash_report.py spec/<feature>/reports/backtest-*-<name>.md  # compare two bodies
-# If hashes match -> append to spec/anchors.toml under the new version.
+scripts/hash_report.py evidence/<feature>/reports/backtest-*-<name>.md  # compare two bodies
+# If hashes match -> append to evidence/anchors.toml under the new version.
 ```
 
 ## What this skill does NOT do
 
 - Does not run backtests. That is `backtest`.
 - Does not modify reports. They are append-only.
-- Does not auto-update `spec/anchors.toml` on FAIL — that requires architect approval.
+- Does not auto-update `evidence/anchors.toml` on FAIL — that requires architect approval.

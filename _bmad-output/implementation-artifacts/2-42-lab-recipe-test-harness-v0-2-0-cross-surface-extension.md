@@ -2,7 +2,7 @@
 
 Status: done
 
-<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: spec/dev-notes/bmad-migration-plan-2026-07-24.md).
+<!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
 
 ## Story
@@ -13,7 +13,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 
 ## Acceptance Criteria
 
-1. **Given** the repo history at `lab-recipe-test-harness-v0.2.0-cross-surface-extension`'s landing commits (`git log -- spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension`), **when** the recorded verification for `lab-recipe-test-harness-v0.2.0-cross-surface-extension` is replayed (tests, reports under `spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the v0.2.0 cross-surface extension of the recipe harness.
+1. **Given** the repo history at `lab-recipe-test-harness-v0.2.0-cross-surface-extension`'s landing commits (`git log -- spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension`), **when** the recorded verification for `lab-recipe-test-harness-v0.2.0-cross-surface-extension` is replayed (tests, reports under `evidence/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/reports/` where present, render proofs where UI-facing), **then** the shipped behaviour holds: the v0.2.0 cross-surface extension of the recipe harness.
 2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
 
 ## Tasks / Subtasks
@@ -25,7 +25,7 @@ so that the cockpit shows the true system state and every UI claim is provable a
 - Source feature folder: `spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/` - frontmatter status **`shipped`** (verbatim), version `0.2.0`, updated `2026-06-17`.
 - Status mapping: `shipped` -> `done` (Phase-2 retro convention: shipped->done; retired/deprecated->retired; presenter/tester/dev-done->review; arch-done->ready-for-dev; candidate/draft/reserved->backlog; honest, never promoted).
 - CHANGELOG index: CHANGELOG § Cockpit & UI › Lab (run → save → compare) & data (the `lab-recipe-test-harness (+ v0.2 cross-surface extension)` line).
-- Provenance: `git log -- spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension` (full narrative); reports under `spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
+- Provenance: `git log -- spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension` (full narrative); reports under `evidence/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
 ### References
 

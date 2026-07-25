@@ -45,7 +45,7 @@ for content stability (anchors) and one for shape stability (this).
 | `dead-link`               | A markdown link to `spec/**` or `../**` whose target path doesn't exist. |
 | `missing-frontmatter`     | A required key is absent on `product.md`, `architecture.md`, `feature.md`, `tasks.md`. |
 | `orphan-feature`          | A `spec/<slug>/` folder missing either `feature.md` or `tasks.md`.    |
-| `bad-anchor`              | `spec/anchors.toml` entry missing `scenario`, `version`, or `sha256`. |
+| `bad-anchor`              | `evidence/anchors.toml` entry missing `scenario`, `version`, or `sha256`. |
 | `unreferenced-anchor`     | (only when `spec/trace.toml` exists) anchor not cited by any trace row. |
 | `shipped-no-tests`        | `feature.md` with `status: shipped` but no test report in `reports/`. |
 | `trace-broken-path`       | A `trace.toml` row references a path that doesn't exist on disk.       |

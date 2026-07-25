@@ -5,7 +5,7 @@ description: >
   and render a structured mutation-score report. Non-gating warning mode at v0.1
   (operator reviews output; no threshold gate). Recommended cadence: nightly on
   `main` per analyst Q1 default (a) "adopt as nightly with operator punch-list".
-  Produces a report at spec/<slug>/reports/mutation-<YYYY-MM-DD>-<slug>.md using
+  Produces a report at evidence/<slug>/reports/mutation-<YYYY-MM-DD>-<slug>.md using
   the template in this skill.
 version: 0.1.0
 phase: warning-only
@@ -81,7 +81,7 @@ analyst Q1 default — see `cadence: nightly` in this skill's frontmatter).
 ### 3. Render the report
 
 Copy `templates/mutation-report.md` (in this skill dir) to
-`spec/<feature>/reports/mutation-<YYYY-MM-DD>-<feature>.md` and fill every
+`evidence/<feature>/reports/mutation-<YYYY-MM-DD>-<feature>.md` and fill every
 section. The template enforces:
 
 - Mutation score per crate: `(caught + timed_out + unviable) / total`.
@@ -90,7 +90,7 @@ section. The template enforces:
 - **Survived-mutation punch-list** with `file:line` refs. This is the
   primary operator deliverable.
 - **Newly-survived mutations vs previous baseline** (diff against the
-  most recent prior report in the same `spec/<feature>/reports/` dir).
+  most recent prior report in the same `evidence/<feature>/reports/` dir).
 - **Timeout / unviable counts** — these are NOT failures but worth
   tracking; a sudden spike means a flaky test or a build break.
 

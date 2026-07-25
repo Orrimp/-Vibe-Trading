@@ -1,0 +1,15 @@
+# Team override for bmad-sprint-status (committed). Workflow-level surface —
+# [workflow] namespace only. Sparse: a single cross-reference note.
+#
+# Why this file exists: docs/dev-notes/bmad-migration-plan-2026-07-24.md § 6
+# observes that bmad-sprint-status covers SOME of the retired spec-auditor
+# agent's surface (risk callouts) but explicitly NOT anchor/trace drift.
+# That gap is easy to miss silently since this workflow's own risk-callout
+# framing invites the assumption it's a full audit. This note makes the gap
+# visible at the point an operator would reach for it.
+
+[workflow]
+
+persistent_facts = [
+  "This workflow's risk callouts do NOT cover spec/trace drift, anchor-body immutability, or orphan/dead-link structural decay — that is the spec-auditor charter (_bmad/custom/spec-auditor-charter.md), still run as .claude/agents/spec-auditor.md until its Phase 5c re-instantiation. For that surface, run `python3 scripts/spec_lint.py --all` and `bash scripts/verify_anchors.sh` directly, or invoke the spec-auditor agent by name.",
+]
