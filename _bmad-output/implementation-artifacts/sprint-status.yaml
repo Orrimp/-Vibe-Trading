@@ -1,0 +1,268 @@
+# generated: 2026-07-25 13:31
+# last_updated: 2026-07-25 13:31
+# project: trading
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+# RETROACTIVE BROWNFIELD BOARD (BMAD migration Phase 2, 2026-07-25):
+# ==================================================================
+# The product is SHIPPED and FEATURE-COMPLETE (2026-07-09); posture is MAINTENANCE MODE -
+# keep the gates green (verify_anchors 119/119, spec_lint PASS, test suite), honor the
+# frozen-gate/anchor guardrails, check the do-not-build register before proposing features.
+# There is NO add-more-features roadmap.
+#
+# Statuses are mapped HONESTLY from spec/**/feature.md frontmatter (the lifecycle source of
+# truth until the Phase 5b cutover) - never silently promoted:
+#   shipped -> done            retired/deprecated -> done  # retired (story file says: retired)
+#   presenter/tester/dev-done -> review   (frozen mid-pipeline at the 2026-06-17 compression;
+#                                          work concluded, status never flipped - carried as-is)
+#   arch-done -> ready-for-dev   candidate/draft/reserved -> backlog   in-progress -> in-progress
+#
+# The honest NON-DONE exceptions on an otherwise-done board:
+#   - 6-9-cockpit-cross-platform (in-progress): CI matrix ACTIVATED 2026-07-10 (P7); the
+#     run-2 shakeout on Linux/Windows lanes is the open work (fix-forward).
+#   - 6-10-bmad-method-migration (in-progress): this very migration, live at Phase 2
+#     (epics/stories/sprint-status generated; Phases 3-5c pending).
+#   - 2-63-lab-recipe-test-harness-v0-3-extension (backlog): the one genuinely-open forward
+#     build item (robustness gate cleared, awaiting an analyst spawn).
+#   - 3-18-advisor-reflection-decision-loop (ready-for-dev): C4 architecture done, not built.
+#   - 2-64..: none - candidates/drafts (cockpit-app-bundle, iced-ecosystem-evaluation,
+#     ui-gallery-table-cell, lumen-phase-6 reservation) stay backlog by decision.
+#   - 14 review-status stories: frontmatter frozen at presenter-/tester-/dev-done.
+#   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
+
+generated: 2026-07-25 13:31
+last_updated: 2026-07-25 13:31
+project: trading
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+
+  # -- Epic 1: Strategy & Backtest Engine (v0-v5 ladder + robustness program)
+  epic-1: in-progress
+  1-1-v0-paper-sma: done
+  1-2-v05-composed-strategies: done
+  1-3-v1-cross-sectional-momentum: done
+  1-4-v15a-mean-reversion-pairs: done
+  1-5-v1-5b-multi-venue: done
+  1-6-v2-llm-strategy: done
+  1-7-v2-1-tracing-layer-redactor: done
+  1-8-v5-latency-slippage-sim: done
+  1-9-backtest-real-binance-data: done
+  1-10-simple-strategies-realdata: review
+  1-11-binance-corpus-expansion: done
+  1-12-carry-funding-data-backfill: review  # frontmatter dev-done — frozen mid-pipeline at the 2026-06-17 spec compression
+  1-13-monte-carlo-bootstrap-path-generator: review
+  1-14-strategy-robustness-harness: review
+  1-15-momentum-parameter-robustness-sweep: review
+  1-16-cross-sectional-mean-reversion-strategy: review
+  1-17-time-series-momentum-robustness: review
+  1-18-horizon-retest-robustness: review
+  1-19-carry-strategy: done  # retired (story-file status: retired; work complete, line retired)
+  1-20-perp-basis-signal-robustness: review
+  1-21-perp-basis-mn-spread: review
+  1-22-simple-strategy-overfit-guard: done
+  1-23-simple-strategy-bear-survey: done
+  epic-1-retrospective: optional
+
+  # -- Epic 2: Cockpit & UI (Lumen shell, Live, Lab, charts, quality gates)
+  epic-2: in-progress
+  2-1-lumen-design-adoption: in-progress  # roadmap umbrella — phases 1-5 shipped, phase 6 reserved
+  2-2-lumen-phase-1-foundation: done
+  2-3-lumen-phase-2-shell-ia-charts: done
+  2-4-lumen-phase-3-detail-screens: done
+  2-5-lumen-phase-4-backtest-panel: done
+  2-6-lumen-phase-5-humancontrol-agentfeed: done
+  2-7-lumen-phase-6-assistant-slot: backlog  # reserved — forward-compat only, gated on a v2 LLM assistant
+  2-8-ui-rethink-phase-a-lab: done
+  2-9-ui-rethink-phase-b-lab-run: done
+  2-10-ui-rethink-phase-c-sidebar-ia: done
+  2-11-ui-rethink-phase-d-trail: done
+  2-12-ui-rethink-phase-e-compare: done
+  2-13-ui-rethink-phase-f-memory-models-assistant: done
+  2-14-live-cockpit-unified: done
+  2-15-cockpit-live-dashboard-wiring: review
+  2-16-live-equity-history-durable: done
+  2-17-paper-mode-equity-wiring: done
+  2-18-cockpit-baseline-panel: review
+  2-19-cockpit-reports-viewer: done
+  2-20-backtest-equity-companion: done
+  2-21-cockpit-activity-status-bar: done
+  2-22-cockpit-toast-queue: done
+  2-23-cockpit-toast-queue-v0-2-0-cleanup: done
+  2-24-cockpit-training-control: done
+  2-25-cockpit-training-pressed-wiring: done
+  2-26-cockpit-performance-and-input-responsiveness: done
+  2-27-cockpit-render-regression: done
+  2-28-cockpit-chart-cache: done  # retired (story-file status: retired; work complete, line retired)
+  2-29-chart-canvas-overhaul: done
+  2-30-chart-buy-sell-emphasis: done
+  2-31-chart-x-axis-local-time: done
+  2-32-chart-fixture-line-clipping: done
+  2-33-tape-row-audit-modal: done
+  2-34-journal-transactions-metadata: done
+  2-35-real-mtm-unrealized-pnl: done
+  2-36-per-symbol-position-accounts: done
+  2-37-lab-run-save-compare: done
+  2-38-lab-compare-equity-overlay: done
+  2-39-lab-end-to-end-v2: done
+  2-40-lab-polish-round-2: done
+  2-41-lab-recipe-test-harness: done
+  2-42-lab-recipe-test-harness-v0-2-0-cross-surface-extension: done
+  2-43-lab-yahoo-realdata: done
+  2-44-lab-yahoo-realdata-v0-1-2-eth-usd-anchor-and-cache-badge: done
+  2-45-lab-yahoo-realdata-v0-1-3-rev-frontmatter-and-binance-eth-h1: done
+  2-46-lab-yahoo-realdata-v0-1-4-bulk-ticker-re-emit: done  # retired (story-file status: retired; work complete, line retired)
+  2-47-lab-yahoo-empty-range-ux: done
+  2-48-bug-64-d11-attempt-3-yahoo-run-runtime-context: done
+  2-49-iced-native-widgets: done
+  2-50-iced-aw-cherry-pick: done
+  2-51-ui-drop-iced-aw: done
+  2-52-ui-gallery-bin: done
+  2-53-ui-gallery-table-cell: backlog
+  2-54-ui-contrast-asserter: done
+  2-55-ui-quality-gate-overhaul: done
+  2-56-ui-headless-emulator: done
+  2-57-ui-session-journal-iced-tester: done
+  2-58-ui-test-harness-bootstrap: done
+  2-59-ui-test-harness-viewport-matrix: done
+  2-60-visual-fail-html-reporter: done
+  2-61-iced-ecosystem-evaluation: backlog
+  2-62-cockpit-app-bundle: backlog
+  2-63-lab-recipe-test-harness-v0-3-extension: backlog  # the one genuinely-open forward build item (PRD §13 Q2)
+  epic-2-retrospective: optional
+
+  # -- Epic 3: Advisor MVP (F1-F9 + EUR-FX + dynamic data + PIT discipline)
+  epic-3: in-progress
+  3-1-advisor-bakeoff-ranking: done
+  3-2-advisor-forward-paper: done
+  3-3-advisor-forward-plan: done
+  3-4-advisor-dynamic-data: done
+  3-5-advisor-ensemble: done
+  3-6-advisor-llm-narration: done
+  3-7-advisor-eur-fx: done
+  3-8-advisor-benchmark-robustness: done
+  3-9-advisor-combination-search: done
+  3-10-advisor-short-selling: done
+  3-11-leaderboard-timeframe-capital: done
+  3-12-advisor-param-tuning: done
+  3-13-advisor-param-promotion: done
+  3-14-advisor-signal-library-expansion: done
+  3-15-advisor-options-impliedvol-probe: review
+  3-16-advisor-crossasset-macro-regime: review
+  3-17-point-in-time-data-discipline: done
+  3-18-advisor-reflection-decision-loop: ready-for-dev  # arch-done; build awaits an operator decision
+  epic-3-retrospective: optional
+
+  # -- Epic 4: v2 Research-Driven Credibility Tranche
+  epic-4: done
+  4-1-advisor-overfitting-scorecard: done
+  4-2-advisor-turnover-and-tail-metrics: done
+  4-3-advisor-confidence-not-verdict: done
+  4-4-advisor-forward-fidelity-coverage: done
+  4-5-advisor-vol-estimator: done
+  4-6-advisor-vol-overlay-reposition: done
+  4-7-advisor-drawdown-control-overlay: done
+  4-8-advisor-cost-model-opt-in: done
+  4-9-advisor-narration-faithfulness: done
+  4-10-advisor-no-alpha-gate-ci: done
+  4-11-phase-2d: done
+  4-12-advisor-data-quality-surface: done
+  epic-4-retrospective: optional
+
+  # -- Epic 5: v3 "Prove It's Done" Close-Out
+  epic-5: done
+  5-1-advisor-calibrate-stage: done
+  5-2-advisor-corpus-expansion: done
+  5-3-advisor-crown-credibility: done
+  5-4-advisor-pit-discipline: done
+  5-5-advisor-lot-realism: done
+  5-6-advisor-handoff-export: done
+  epic-5-retrospective: optional
+
+  # -- Epic 6: Remediation, Infra & Governance (P0-P8, lints, BMAD migration)
+  epic-6: in-progress
+  6-1-reflection-memory: done
+  6-2-operator-success-reports: done
+  6-3-audit-tick-consumer-envelope: done
+  6-4-paper-soak-longevity: done
+  6-5-operator-ledger-schema-lint: done
+  6-6-adr-registry-atomic-lint: done
+  6-7-queue-staleness-reconciliation: done
+  6-8-subscription-pipe-server-time-template: done
+  6-9-cockpit-cross-platform: in-progress  # the open CI run-2 shakeout (P7 activated 2026-07-10; fix-forward)
+  6-10-bmad-method-migration: in-progress  # THIS migration — Phase 2 of 7 executing now
+  epic-6-retrospective: optional
+
+  # -- Epic 7: Retired Research Lines (measured-and-retired bets)
+  epic-7: done
+  7-1-v25-dl-forecast-overlay: done  # retired (story-file status: retired; work complete, line retired)
+  7-2-v25-tcn-overlay: done
+  7-3-v25a-patchtst-overlay: done
+  7-4-v25b-transformer-overlay: done  # retired (story-file status: retired; work complete, line retired)
+  7-5-v26-forecast-bakeoff: done  # retired (story-file status: retired; work complete, line retired)
+  7-6-v3-llm-forecaster: done  # shipped-partial — alpha-verdict wave deferred (terminal by decision)
+  7-7-v3-volatility-forecaster: done  # retired (story-file status: retired; work complete, line retired)
+  7-8-v3-volatility-forecaster-rebaseline: done  # retired (story-file status: retired; work complete, line retired)
+  7-9-v3-regime-classifier: done
+  7-10-v3-xgboost-cheap-classifier: done  # retired (story-file status: retired; work complete, line retired)
+  7-11-vol-killswitch-overlay-noop-fix: done
+  epic-7-retrospective: optional
+
+# PRD §13 open questions carried as migration backlog notes (not retrospective output;
+# recorded here so the board surfaces them - owner: operator).
+action_items:
+  - epic: 3
+    action: "PRD §13 Q1 - EUR/USD rate source v0.3 fork: live-fetched rate over static fallback - build or leave? (low stakes)"
+    owner: "operator"
+    status: open
+  - epic: 2
+    action: "PRD §13 Q2 - lab-recipe-test-harness v0.3.0+: schedule the analyst spawn or retire the backlog entry (story 2-63)"
+    owner: "operator"
+    status: open
+  - epic: 4
+    action: "PRD §13 Q3 - cross-run family-wise multiple-testing report-annex (online-FDR): build as report-annex or record as stated limit"
+    owner: "operator"
+    status: open
+  - epic: 5
+    action: "PRD §13 Q4 - reconcile the stale CHANGELOG 'demo awaiting operator approval' note at (or before) the Phase 5b cutover"
+    owner: "operator"
+    status: open
