@@ -26,7 +26,7 @@ without ever becoming **advice** (it describes what the plan says; it never tell
 user what they should do).
 
 > **The register B-2 constraint stays intact.** No real orders, no exchange keys, no
-> venue API, no KYC, no withdrawals — see `spec/dev-notes/do-not-build-register.md`
+> venue API, no KYC, no withdrawals — see `docs/dev-notes/do-not-build-register.md`
 > (live trading / order placement). The export is a *reading artifact*, not an
 > execution bridge. It ends exactly where the product ends: a described plan the user
 > may choose to act on entirely off-platform, on their own account, at their own risk.
@@ -566,7 +566,7 @@ gains the down-half rules AND a mandatory risk section is inserted before "What 
 
 ## Design
 
-_architect, 2026-07-10 (M-T1). ADR: [ADR-0088](../../architecture/adr/0088-suggest-manual-handoff-export.md).
+_architect, 2026-07-10 (M-T1). ADR: [ADR-0088](../../../_bmad-output/planning-artifacts/architecture/decisions/0088-suggest-manual-handoff-export.md).
 The operator-ratified § Draft wording (Variant A + B) is the IMMUTABLE serialiser
 contract — this design emits it and does not rewrite a word._
 

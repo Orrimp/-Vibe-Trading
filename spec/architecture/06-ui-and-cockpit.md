@@ -9,7 +9,7 @@ updated: 2026-05-17
 
 The cockpit (live ops) and viewer (offline backtest) UI architecture
 built on iced. The "why iced" decision lives in
-[ADR-0023](adr/0023-iced-frontend.md); this file holds the current-state
+[ADR-0023](../../_bmad-output/planning-artifacts/architecture/decisions/0023-iced-frontend.md); this file holds the current-state
 UI architecture — screen routing, the `audit::query` read-only surface,
 KPI strip widget contracts, status bar, and the Lumen design-system
 integration. Content migrated from `spec/architecture.md` §
@@ -17,18 +17,18 @@ Foundation libraries — Frontend — iced during Phase 1A Session 11
 (2026-05-13).
 
 Companion docs:
-- [`../ui-design-principles.md`](../ui-design-principles.md) — the prose
+- [`../../docs/ui-design-principles.md`](../../docs/ui-design-principles.md) — the prose
   contract for visual / interaction patterns.
 - `crates/ui/src/theme.rs` — the executable contract for tokens.
-- [`../design/`](../design/) — the Lumen bundle (source-of-record for
+- [`../../docs/design`](../../docs/design) — the Lumen bundle (source-of-record for
   future token additions).
 
-When `theme.rs` and `spec/design/` diverge, `theme.rs` wins. See
-[ADR-0018](adr/0018-lumen-phase-1-foundation.md) for the rationale.
+When `theme.rs` and `docs/design/` diverge, `theme.rs` wins. See
+[ADR-0018](../../_bmad-output/planning-artifacts/architecture/decisions/0018-lumen-phase-1-foundation.md) for the rationale.
 
 ## Stack
 
-[iced](https://github.com/iced-rs/iced) — see [ADR-0023](adr/0023-iced-frontend.md).
+[iced](https://github.com/iced-rs/iced) — see [ADR-0023](../../_bmad-output/planning-artifacts/architecture/decisions/0023-iced-frontend.md).
 
 
 Single UI stack across the project. No mixing with `egui`/`tauri`/`dioxus`.
@@ -73,7 +73,7 @@ only on `core` (shared domain types), `audit` (read-only ledger queries
 via `audit::query`), `agent` (the public `agent::runtime::run`
 surface plus the shared `Arc<EventBus>` / `Arc<KillSwitch>` /
 `Arc<StrategyRegistry>` handles `agent` constructs), and — per
-[ADR-0030](adr/0030-cockpit-in-process-backtest.md) — `backtest`
+[ADR-0030](../../_bmad-output/planning-artifacts/architecture/decisions/0030-cockpit-in-process-backtest.md) — `backtest`
 (the `backtest::engine::run_scenario` library API used by the Lab
 Run button shipped in `ui-rethink-phase-a-lab`). It **never**
 depends — directly or transitively from any `crates/ui/src/` file,
@@ -146,7 +146,7 @@ differentiator argues against.
 The cockpit + viewer are the only operator-facing surfaces; this subsection
 formalizes every load-bearing interface they consume so a future
 ui-designer / developer / architect doesn't have to grep the codebase to
-find the contract. See also [spec/ui-design-principles.md](../ui-design-principles.md)
+find the contract. See also [docs/ui-design-principles.md](../../docs/ui-design-principles.md)
 for the design-system rules these interfaces dress.
 
 ##### Surface map
@@ -586,7 +586,7 @@ left rule; chip row is horizontal → bottom rule. The
 `Column::push(content).push(rule_2px_bottom)` (mirror of the existing
 `active_row` Row-composition helper). One-line note in the Phase 2
 principles-doc append (a follow-up the orchestrator routes to the
-analyst — architect does not edit `spec/ui-design-principles.md`,
+analyst — architect does not edit `docs/ui-design-principles.md`,
 operator-locked Phase 1 Q7).
 
 **Q6 — synthetic-candle seed: per-symbol, in-process determinism**
@@ -620,7 +620,7 @@ at master Constraint 4 supersedes that.
 on-disk persistence** (R2.2, R6.4). `Cockpit::current_screen: Screen`
 (default `Home`) + `Cockpit::selected_symbol: Option<(Venue, Symbol)>`
 (default `None`). Both session-scoped per
-[ui-design-principles.md § Persistence](../ui-design-principles.md). No
+[ui-design-principles.md § Persistence](../../docs/ui-design-principles.md). No
 `~/.cockpit-state.json`, no `serde::Serialize` on `Cockpit`, no
 `Drop` impl writing state. The cockpit is an instrument, not a
 browser.
@@ -1207,7 +1207,7 @@ rows, exceeds status-bar-adjacent slot).
 **Q2 / Q3 — New audit writers: `strategy_paused` + `risk_veto_overridden`**
 (R5.1–R5.5, R8.1–R8.5). Two new sibling-of-`kill_switch_tripped`
 functions in `crates/audit/src/journal.rs`. Operator decisions belong
-in the ledger (`spec/ui-design-principles.md:282–284` — "audit ledger
+in the ledger (`docs/ui-design-principles.md:282–284` — "audit ledger
 is the canonical why"); compliance-bounded for the override case.
 Atomic dual-write per `kill_switch_tripped` (memo row in
 `journal_transactions` + `strategy_events` row in one txn). Memo `ts`
@@ -1296,7 +1296,7 @@ load-bearing.
 R6.1). Pause is bounded-destructive (skips future signals; doesn't
 reverse past decisions); resume returns to default state — principles-
 doc "undo where physically possible" case
-(`spec/ui-design-principles.md:275–278`). Typed-confirm both sides
+(`docs/ui-design-principles.md:275–278`). Typed-confirm both sides
 rejected — friction without proportional safety value.
 
 **Q9 — Override-risk-veto scope: per-veto override** (R7.3). One
@@ -1332,7 +1332,7 @@ review passes for tightly-coupled visuals is overhead without value.
 **Q12 — Kill button copy in HumanControl: preserve "Stop trading"**
 (R2.4). Master Constraint 2 (no voice rewrite) + principles-doc
 "exact phrase not negotiable mid-session"
-(`spec/ui-design-principles.md:391–393`). Lumen `"Halt all agents"`
+(`docs/ui-design-principles.md:391–393`). Lumen `"Halt all agents"`
 rejected.
 
 **Q13 — Risk-engine veto-emit wiring: placeholder feed in Phase 5;
@@ -1438,7 +1438,7 @@ gate.
 
 ## Changelog
 - 2026-06-22 (architect): recorded the F9 LLM-narration leaderboard surface
-  ([ADR-0064](adr/0064-advisor-llm-narration-seam.md), feature
+  ([ADR-0064](../../_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md), feature
   [`advisor-llm-narration`](../v1/advisor-llm-narration/feature.md)). The narration
   extends the § App layout `ui`-never-imports-`llm`-through-`view` isolation rule:
   the LLM prose reaches the leaderboard recommendation block as a **plain
@@ -1469,6 +1469,6 @@ gate.
 - 2026-05-13 (architect / ui-designer): content migrated from
   `spec/architecture.md` § Foundation libraries — Frontend — iced
   during Phase 1A Session 11. The "why iced" decision was extracted
-  to [ADR-0023](adr/0023-iced-frontend.md) alongside this body move.
+  to [ADR-0023](../../_bmad-output/planning-artifacts/architecture/decisions/0023-iced-frontend.md) alongside this body move.
   The chart-canvas custom-Canvas-vs-plotters spike outcome (custom
-  Canvas wins) is recorded in [ADR-0020](adr/0020-chart-buy-sell-emphasis.md).
+  Canvas wins) is recorded in [ADR-0020](../../_bmad-output/planning-artifacts/architecture/decisions/0020-chart-buy-sell-emphasis.md).

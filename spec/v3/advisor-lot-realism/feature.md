@@ -34,7 +34,7 @@ sizing-modifier — the overlay/modifier gate APPLIES).
 
 ## Design
 
-Full design + alternatives: **[ADR-0087](../../architecture/adr/0087-lot-realism-opt-in-exec-sim.md)**
+Full design + alternatives: **[ADR-0087](../../../_bmad-output/planning-artifacts/architecture/decisions/0087-lot-realism-opt-in-exec-sim.md)**
 (D1–D6). This section is the buildable summary; the ADR is the source of truth.
 
 ### Seam (grounded in code)

@@ -54,18 +54,18 @@ updated: 2026-07-01
   - test: `cargo clippy -p agent -p llm --tests -- -D warnings`
   - output: `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 0.83s` (exit 0, zero warnings)
 
-- [x] T7 — Amend `spec/architecture/adr/0064-advisor-llm-narration-seam.md`
+- [x] T7 — Amend `_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md`
   with the `## Amendment 2026-07-01 (P2-1 faithfulness hardening)` section
   (D9/D10/D11) + a Changelog entry; bump the frontmatter `date:`.
-  - file: `spec/architecture/adr/0064-advisor-llm-narration-seam.md:5`
+  - file: `_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md:5`
     (date bump), `:436-540` (Amendment section), `:544-568` (Changelog entry)
   - test: `python3 scripts/adr_registry_check.py --self-test`
   - output: `Ran 5 tests in 0.004s\n\nOK`
 
 - [x] T8 — Update the ADR registry row for ADR-0064 in
-  `spec/architecture/adr/README.md` § Registry to note the amendment
+  `_bmad-output/planning-artifacts/architecture/decisions/README.md` § Registry to note the amendment
   (keeps the index-row honest per the amendment).
-  - file: `spec/architecture/adr/README.md:114`
+  - file: `_bmad-output/planning-artifacts/architecture/decisions/README.md:114`
   - test: `python3 scripts/adr_registry_check.py --self-test`
   - output: `Ran 5 tests in 0.004s\n\nOK`
 

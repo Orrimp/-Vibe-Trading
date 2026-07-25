@@ -8,10 +8,10 @@ updated: 2026-06-21
 # Tasks — Advisor forward buy/sell plan (F6)
 
 Normative design: [feature.md § Design](feature.md#design) +
-[ADR-0062](../../architecture/adr/0062-forward-plan-read-seam.md). The seam reuses
-[ADR-0060 § D6](../../architecture/adr/0060-budget-aware-sizing-and-forward-paper-run-seam.md)
+[ADR-0062](../../../_bmad-output/planning-artifacts/architecture/decisions/0062-forward-plan-read-seam.md). The seam reuses
+[ADR-0060 § D6](../../../_bmad-output/planning-artifacts/architecture/decisions/0060-budget-aware-sizing-and-forward-paper-run-seam.md)
 (the `ForwardCommand::Launch` / `paper_loop_supervisor` / `build_registry_for` /
-`forward_rx` hot-swap) and the [ADR-0059](../../architecture/adr/0059-bakeoff-orchestrator-home-and-result-seam.md)
+`forward_rx` hot-swap) and the [ADR-0059](../../../_bmad-output/planning-artifacts/architecture/decisions/0059-bakeoff-orchestrator-home-and-result-seam.md)
 mirror discipline.
 
 **Parallelism:** the **developer** track (D-tasks: trait surface + agent-side

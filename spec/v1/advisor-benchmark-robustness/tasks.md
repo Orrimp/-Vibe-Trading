@@ -8,7 +8,7 @@ updated: 2026-06-22
 # Tasks — B1 benchmark exemption from the `AllFragile` outcome
 
 Normative design: **ADR-0066**
-(`spec/architecture/adr/0066-benchmark-exempt-from-allfragile.md`). The classifier
+(`_bmad-output/planning-artifacts/architecture/decisions/0066-benchmark-exempt-from-allfragile.md`). The classifier
 (`classify_verdict` / `compute_robustness_flag` / `verdict_bands`) is **byte-frozen** —
 do NOT touch it. All edits below are in `crates/backtest/src/bakeoff/rank.rs` (engine)
 and `crates/ui/` (copy/render). Run `scripts/verify_anchors.sh` → **119/119** before T1

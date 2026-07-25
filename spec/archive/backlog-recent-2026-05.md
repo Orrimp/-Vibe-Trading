@@ -567,7 +567,7 @@
   Predecessor:
   `ui-rethink-phase-e-compare v0.1.0`.
   **SIXTH AND FINAL PHASE OF THE UI RETHINK** — closes the
-  `spec/dev-notes/ui-rethink-2026-05-17.md`
+  `docs/dev-notes/ui-rethink-2026-05-17.md`
   redesign per §6 line 1134 ("No cliffs at C, E, F — each phase is
   independently shippable and independently reversible"). Lands all
   three deferred surfaces from dev-note §6 Phase F (lines 1098-1112):
@@ -624,7 +624,7 @@
   deferrals**). Predecessor:
   `ui-rethink-phase-d-trail-followup v0.1.1`.
   Fifth concrete feature in the UI rethink at
-  `spec/dev-notes/ui-rethink-2026-05-17.md`.
+  `docs/dev-notes/ui-rethink-2026-05-17.md`.
   Lands the **read-only Compare matrix** (J3) — 6 strategies × ≤10 pairs
   grid that reads cached report frontmatter under `spec/<strategy>/reports/`
   via the new `crates/ui/src/compare/cache.rs` hand-parser (no
@@ -700,7 +700,7 @@
   v0.1.1 follow-up scope; wiring confirmed by inspection).
   Predecessor: `ui-rethink-phase-c-sidebar-ia v0.1.0`.
   Fourth concrete feature in the UI rethink at
-  `spec/dev-notes/ui-rethink-2026-05-17.md`.
+  `docs/dev-notes/ui-rethink-2026-05-17.md`.
   Lands the **decision-trail visualisation** of the multi-agent pipeline
   — Fill → Signal → Forecast as a stacked node graph via new
   `widgets::trail_node` + `widgets::trail_drawer` + `screens::trail`.
@@ -727,7 +727,7 @@
   Phase D). Predecessor:
   `ui-rethink-phase-b-lab-run v0.2.0`.
   Third concrete feature in the UI rethink at
-  `spec/dev-notes/ui-rethink-2026-05-17.md`.
+  `docs/dev-notes/ui-rethink-2026-05-17.md`.
   Lands the **three-group sidebar IA** (Work zone Lab · Live ·
   Compare; Library zone Strategies · Memory · Models · Trail; Chrome
   zone Settings) with hairline `BORDER_1` dividers — entries
@@ -835,7 +835,7 @@
   the same blanket approval). Predecessor:
   `ui-rethink-phase-a-lab v0.2.0`.
   Second concrete feature in the broader UI rethink at
-  `spec/dev-notes/ui-rethink-2026-05-17.md`.
+  `docs/dev-notes/ui-rethink-2026-05-17.md`.
   Promotes Phase A's stubbed Lab `Run` button to a real in-process
   backtest call closing the operator's J2 workflow end-to-end.
   **Headline:** `crates/backtest/src/main.rs` collapsed **3417 → 1447
@@ -1047,7 +1047,7 @@
   ceiling with auto-degrade at 80% (Q6 + Q11) + strict
   SQLite replay cache (D2 / Q8) + 9-row fixture cache + V9
   secrets grep + 3-provider × 3-role `llm-smoke` harness +
-  two operator runbooks (`spec/runbooks/llm-{cost,replay}.md`).
+  two operator runbooks (`docs/runbooks/llm-{cost,replay}.md`).
   Q4 bonus rename **`cost::LlmProvider` enum → `ProviderKind`**
   (D1) freed the `LlmProvider` name for the trait; 5 call
   sites + serde wire shape preserved → zero on-disk ledger
@@ -1131,7 +1131,7 @@
   clamp to inner-rect bounds. V15 (live tooltip-hover screenshot
   at 3360×1890) DEFERRED to the queued
   `ui-test-harness-bootstrap` v0.1 feature per operator decision
-  D4 in `spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`
+  D4 in `docs/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md ## Section 9`
   — the first `iced_test::Simulator::snapshot().matches_image()`
   chart-hover test in that feature replaces the manual capture.
   Q4 local-time x-axis labels DEFERRED to v1.11
@@ -1141,7 +1141,7 @@
   disproved by orchestrator's red-rect + cyan-dot probe; T3002 /
   T3003 / T3007 / T3008 closed as no-op) — produced the
   `AGENT.md ## Capability boundaries` amendment (D5,
-  load-bearing) + `spec/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`
+  load-bearing) + `docs/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md`
   strategy document + `ui-test-harness-bootstrap` v0.1 follow-on
   feature now in Active. Anchor neutrality preserved: 11/11
   byte-identical (`bash scripts/verify_anchors.sh → ANCHORS PASS
@@ -1389,7 +1389,7 @@
   account / server time always-visible at the bottom of the shell;
   refreshed the existing 36 panel snapshot baselines (5 net-new for
   T1506 / T1508 = 41 total); superseded
-  `spec/ui-design-principles.md` with a
+  `docs/ui-design-principles.md` with a
   Lumen-anchored rewrite. Anchor risk: zero — verified PASS at
   ship (11/11 anchors byte-identical). 757 tests passed across 96
   binaries; rust-validate clean (fmt + clippy + cargo-deny + docs);

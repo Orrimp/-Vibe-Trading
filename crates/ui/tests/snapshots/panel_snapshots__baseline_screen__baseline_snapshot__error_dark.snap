@@ -17,5 +17,5 @@ kpi_strip:
   win_rate: —
   trades: 0
 curve+band:
-  state: error body=Equity curve unavailable: Baseline equity data isn't bundled in this build. The realized buy-and-hold curves live at spec/runbooks/artifacts/passive-baseline-2026-06-08/.
+  state: error body=Equity curve unavailable: Baseline equity data isn't bundled in this build. The realized buy-and-hold curves live at docs/runbooks/artifacts/passive-baseline-2026-06-08/.
 risk_detail: Sortino 2.51 / Calmar 5.68 (2023)  ·  Sortino 1.20 / Calmar 1.85 (2024)

@@ -26,7 +26,7 @@ equity curve + drawdown band + markdown body. But it is a **separate
 CLI-launched process**: the operator must quit the cockpit, hand-type a report
 path, and launch `viewer <path>`. None of that capability is reachable from
 `cockpit_live`. The ui-designer's build-out audit
-(`spec/dev-notes/cockpit-buildout-audit-2026-06-08.md` §2 rough-edge #4, §3
+(`docs/dev-notes/cockpit-buildout-audit-2026-06-08.md` §2 rough-edge #4, §3
 candidate **#2**) flags this as "the 'surface backtest results in the cockpit'
 muscle is already written; it just lives in the wrong binary."
 

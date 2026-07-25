@@ -108,7 +108,7 @@ recover performance).
 ## Cross-references
 
 - `spec/v3-regime-classifier/feature.md` § H1 (hypothesis definition)
-- `spec/architecture/adr/0049-v3-regime-classifier-markov-switching-verdict-shape.md` § D4 (T-REG gate)
+- `_bmad-output/planning-artifacts/architecture/decisions/0049-v3-regime-classifier-markov-switching-verdict-shape.md` § D4 (T-REG gate)
 - `spec/v3-regime-classifier/reports/backtest-20260529-055141-top10-2023-fy-regime-dispatcher-realdata.md`
 - `spec/v3-regime-classifier/reports/backtest-20260529-055810-top10-2024-fy-regime-dispatcher-realdata.md`
 - `spec/v3-regime-classifier/reports/regime-verdict-bs1-realdata-20260529.md`

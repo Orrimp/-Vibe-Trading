@@ -5,7 +5,7 @@
 """adr_registry_check.py — ADR registry atomicity lint.
 
 Enforces the architect.md § ADR registry atomic-write contract on every
-commit touching spec/architecture/adr/.  Runs in pre-commit hook mode by
+commit touching _bmad-output/planning-artifacts/architecture/decisions/.  Runs in pre-commit hook mode by
 default (reads the staged index via `git diff --cached`).
 
 Exit codes:
@@ -30,7 +30,10 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ADR_DIR = REPO_ROOT / "spec" / "architecture" / "adr"
+# BMAD migration Phase 4 (2026-07-25): the ADR corpus `git mv`d from
+# spec/architecture/adr/ to this path, atomically with this repoint
+# (AD-18 one-atomic-commit rule: "the lint defines the home").
+ADR_DIR = REPO_ROOT / "_bmad-output" / "planning-artifacts" / "architecture" / "decisions"
 README_PATH = ADR_DIR / "README.md"
 
 # Canonical status enum per architect.md § ADR registry + README.md § Format.
@@ -62,7 +65,7 @@ def _staged_adr_files() -> list[str]:
     """Return list of staged ADR paths (repo-relative) via git diff --cached.
 
     Uses the exact load-bearing command from D-ADR-2:
-      git diff --cached --name-only --diff-filter=ACMR -- 'spec/architecture/adr/*.md'
+      git diff --cached --name-only --diff-filter=ACMR -- '_bmad-output/planning-artifacts/architecture/decisions/*.md'
 
     No shell=True; literal glob reaches git without shell expansion.
     Raises RuntimeError if git is unavailable or the cwd is not a repo.
@@ -72,7 +75,7 @@ def _staged_adr_files() -> list[str]:
             [
                 "git", "diff", "--cached", "--name-only",
                 "--diff-filter=ACMR",
-                "--", "spec/architecture/adr/*.md",
+                "--", "_bmad-output/planning-artifacts/architecture/decisions/*.md",
             ],
             cwd=REPO_ROOT,
             capture_output=True,
@@ -93,17 +96,17 @@ def _staged_adr_files() -> list[str]:
     # but git may return them if they happen to be staged too; belt-and-suspenders).
     return [
         p for p in lines
-        if re.match(r"spec/architecture/adr/\d{4}-.*\.md$", p)
+        if re.match(r"_bmad-output/planning-artifacts/architecture/decisions/\d{4}-.*\.md$", p)
     ]
 
 
 def _readme_staged() -> bool:
-    """Return True if spec/architecture/adr/README.md is staged."""
+    """Return True if _bmad-output/planning-artifacts/architecture/decisions/README.md is staged."""
     try:
         result = subprocess.run(
             [
                 "git", "diff", "--cached", "--name-only",
-                "--", "spec/architecture/adr/README.md",
+                "--", "_bmad-output/planning-artifacts/architecture/decisions/README.md",
             ],
             cwd=REPO_ROOT,
             capture_output=True,
@@ -150,7 +153,7 @@ def _parse_registered_ids(readme_text: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 def _discover_adr_files() -> list[Path]:
-    """Glob spec/architecture/adr/[0-9][0-9][0-9][0-9]-*.md.
+    """Glob _bmad-output/planning-artifacts/architecture/decisions/[0-9][0-9][0-9][0-9]-*.md.
 
     The pattern structurally excludes README.md and TEMPLATE.md (R1.3).
     """
@@ -252,7 +255,7 @@ def _check_invariants(
                 invariant="(b) updated-not-bumped",
                 file=example_file,
                 observed="README.md not staged in this commit",
-                expected="stage spec/architecture/adr/README.md with bumped frontmatter updated:",
+                expected="stage _bmad-output/planning-artifacts/architecture/decisions/README.md with bumped frontmatter updated:",
             ))
 
     # --- Invariant (c) — status in enum ---
@@ -428,7 +431,7 @@ class _SelfTest(unittest.TestCase):
         drifts = self._check(
             adr_texts={"0001-foo.md": self._make_adr("0001")},
             registered_ids=["0001"],
-            staged_adr_paths=["spec/architecture/adr/0001-foo.md"],
+            staged_adr_paths=["_bmad-output/planning-artifacts/architecture/decisions/0001-foo.md"],
             readme_is_staged=False,
         )
         self.assertEqual(len(drifts), 1)
@@ -468,7 +471,7 @@ class _SelfTest(unittest.TestCase):
         drifts = self._check(
             adr_texts={"0001-foo.md": self._make_adr("0001")},
             registered_ids=["0001"],
-            staged_adr_paths=["spec/architecture/adr/0001-foo.md"],
+            staged_adr_paths=["_bmad-output/planning-artifacts/architecture/decisions/0001-foo.md"],
             readme_is_staged=True,
         )
         self.assertEqual(len(drifts), 0)
@@ -511,7 +514,7 @@ def _check_invariants_raw(
                 invariant="(b) updated-not-bumped",
                 file=example_file,
                 observed="README.md not staged in this commit",
-                expected="stage spec/architecture/adr/README.md with bumped frontmatter updated:",
+                expected="stage _bmad-output/planning-artifacts/architecture/decisions/README.md with bumped frontmatter updated:",
             ))
 
     # Invariant (c).

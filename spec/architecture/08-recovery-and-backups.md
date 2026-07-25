@@ -38,11 +38,11 @@ real-money execution lands
 
 Restore runbook lives at `../runbooks/disaster-recovery.md` (v0.5
 deliverable — file not yet created; for v0 a section in
-[`../runbooks/kill-switch.md`](../runbooks/kill-switch.md) suffices).
+[`../../docs/runbooks/kill-switch.md`](../../docs/runbooks/kill-switch.md) suffices).
 
 ## Changelog
 - 2026-05-13 (architect): content migrated from `spec/architecture.md` §
   Disaster recovery & backups during Phase 1A Session 3. Two link
   rewrites applied: `product.md` → `../product.md` and
-  `spec/runbooks/...` → `../runbooks/...` (relative paths from the new
+  `docs/runbooks/...` → `../runbooks/...` (relative paths from the new
   location).

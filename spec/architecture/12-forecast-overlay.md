@@ -14,7 +14,7 @@ updated: 2026-05-17
 > DL/ML forecaster — but the v2.5 instantiation (TCN @ 1h, PatchTST @
 > 24h, vanilla Transformer @ TBD, bake-off) did NOT extract +0.10
 > Sharpe-delta vs the v1 momentum baseline. See
-> [`spec/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
+> [`docs/dev-notes/v25-dl-journey-retrospective-2026-05-22.md`](../../docs/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md)
 > for the full evidence chain and "what NOT to chase" guardrails.
 > Future forecaster designs (volatility forecasting, regime
 > classification, longer horizons, crypto-specific features) can reuse
@@ -28,8 +28,8 @@ and modulates an existing strategy's signal.
 
 The v2.5 strategy-specific decisions (model family, training framework,
 crate placement, audit-row shape) live in
-[ADR-0028](adr/0028-v25-dl-forecast-overlay-candle.md) — which superseded
-the original Kronos-targeted [ADR-0027](adr/0027-kronos-onnx-tract-integration.md)
+[ADR-0028](../../_bmad-output/planning-artifacts/architecture/decisions/0028-v25-dl-forecast-overlay-candle.md) — which superseded
+the original Kronos-targeted [ADR-0027](../../_bmad-output/planning-artifacts/architecture/decisions/0027-kronos-onnx-tract-integration.md)
 on 2026-05-16. This file is the *shape*; the v2.5 instantiation is now
 retired (see status note above).
 
@@ -50,7 +50,7 @@ not at the risk-clamp level. The reasons:
 2. **"Strategy proposes, risk disposes" stays intact**
    ([architecture/02 § Cross-cutting rules](02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters)).
 3. **The v0.5 composed-strategy precedent**
-   ([ADR-0010](adr/0010-v05-composed-exit-policy.md)) already composes
+   ([ADR-0010](../../_bmad-output/planning-artifacts/architecture/decisions/0010-v05-composed-exit-policy.md)) already composes
    at the signal level. Overlays are a generalisation of that pattern,
    not a new one.
 4. **Audit clarity.** A signal-level overlay posts one journal entry
@@ -82,7 +82,7 @@ no streaming, no provider-aware prompt cache. It is one method, one
 request type, one response type, one error type.
 
 `ForecastError` variants (mirrors the 8-variant `LlmError` pattern from
-[ADR-0019](adr/0019-v2-llm-strategy.md) Q4 but only the ones that
+[ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) Q4 but only the ones that
 actually apply): `Provider | Timeout | InvalidInput | InvalidResponse |
 ReplayMiss | Inference | BudgetExceeded`. No `RateLimited` (local
 inference); no `Network` / `Auth` (local). `BudgetExceeded` is for
@@ -121,7 +121,7 @@ the replay-cache row (keyed by the same hash); the audit row carries
 only the summary.
 
 `rust_decimal::Decimal` for `confidence` per
-[ADR-0003](adr/0003-decimal-money-math.md) — no `f64` anywhere in
+[ADR-0003](../../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md) — no `f64` anywhere in
 spec-traceable types.
 
 ## Overlay composition pattern (signal-level)
@@ -147,7 +147,7 @@ short.
 Step ordering matters for determinism. The audit row posts AFTER the
 cost event AFTER the forecast call. In replay mode, the forecast call
 either hits the cache (deterministic) or fails with
-`ForecastError::ReplayMiss` (per [ADR-0019](adr/0019-v2-llm-strategy.md)
+`ForecastError::ReplayMiss` (per [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md)
 Q8's strict-replay-only rule, which v2.5 inherits wholesale).
 
 ## Replay cache — shared with v2 LLM
@@ -197,7 +197,7 @@ A forecast call posts ONE journal entry to the audit ledger
 The `model_revision` value in `payload_json` is SHA-256 over the
 canonical bytes of the forecaster's `<sha>.metadata.json` provenance
 file. The canonicalisation rules + schema shape are locked at
-[ADR-0029](adr/0029-tcn-checkpoint-provenance.md) as a cross-phase
+[ADR-0029](../../_bmad-output/planning-artifacts/architecture/decisions/0029-tcn-checkpoint-provenance.md) as a cross-phase
 contract — v2.5 (TCN), v2.5a (PatchTST), and v2.5b (vanilla
 Transformer) all emit `model_revision` under the same rules. Inspectors
 can recompute the SHA from a checkpoint's metadata file without
@@ -225,7 +225,7 @@ CostEvent::Infra {
 `energy_cost_per_kwh` defaults to zero, which keeps the fixture backtest
 reports byte-identical (the cost line is present in the report but the
 dollar amount is `$0.00` and the LLM-spend denominator stays unchanged
-— see [ADR-0019](adr/0019-v2-llm-strategy.md) Q11). Operators who want
+— see [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) Q11). Operators who want
 non-zero energy accounting opt in via config; their reports diverge
 from the fixture anchors deterministically, which is correct because
 operator-config divergence is per-operator-config (not project-wide).
@@ -234,7 +234,7 @@ No new `CostEvent` variant. No new ledger account at default config.
 If the operator opts in to non-zero energy cost, the existing
 `expense:infra:forecast_inference` posting path (which
 `cost::CostEvent::Infra` already routes through per
-[ADR-0022](adr/0022-cost-telemetry-crate.md)) absorbs it without
+[ADR-0022](../../_bmad-output/planning-artifacts/architecture/decisions/0022-cost-telemetry-crate.md)) absorbs it without
 further plumbing.
 
 ## Crate placement
@@ -264,10 +264,10 @@ further plumbing.
 - [architecture/10-foundation-libraries.md § Numerics & ML](10-foundation-libraries.md#numerics--ml)
   — `candle` named as the prototyping framework; v2.5 is its first
   concrete consumer.
-- [ADR-0028](adr/0028-v25-dl-forecast-overlay-candle.md) — the active
+- [ADR-0028](../../_bmad-output/planning-artifacts/architecture/decisions/0028-v25-dl-forecast-overlay-candle.md) — the active
   v2.5 instantiation of this pattern (small custom Transformer/TCN
   trained in `candle`).
-- [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) — superseded
+- [ADR-0027](../../_bmad-output/planning-artifacts/architecture/decisions/0027-kronos-onnx-tract-integration.md) — superseded
   Kronos-targeted ADR (preserved for archaeology).
 - [v25-dl-forecast-overlay/feature.md](../v1/v25-dl-forecast-overlay/feature.md)
   — the active v2.5 brief.

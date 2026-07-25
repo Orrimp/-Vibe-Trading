@@ -96,8 +96,8 @@ usdc_enabled = false  # opt-in to USDC mirror set
 # to `config/agent.toml.local` and editing in real keys (per Q3 = C).
 #
 # Keys are NOT in this committed file — they live in
-# `config/agent.toml.local` (git-ignored). See `spec/runbooks/llm-cost.md`
-# and `spec/runbooks/llm-replay.md` for operator workflow.
+# `config/agent.toml.local` (git-ignored). See `docs/runbooks/llm-cost.md`
+# and `docs/runbooks/llm-replay.md` for operator workflow.
 [llm]
 enabled              = true  # foundation-only at v2.0.0
 default_provider     = "anthropic"

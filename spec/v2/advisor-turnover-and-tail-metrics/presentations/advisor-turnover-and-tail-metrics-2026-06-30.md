@@ -217,7 +217,7 @@ commit `decbcc4`, run_id `2026-06-29-2039-UTC`):
   + 2 scorecard + 3 bakeoff-progress).
 - Anchors: **119 / 119** PASS — frozen gate byte-immutable.
 - Spec-lint: **PASS (0 violations)** — baseline of
-  `spec/dev-notes/audit-2026-06-29.md` held.
+  `docs/dev-notes/audit-2026-06-29.md` held.
 - Risk-story render-test cost: **96.24s** for the 2 macOS render tests
   (`leaderboard_risk_story_render`).
 - New types added to the public seam: **1** (`backtest::TailSummary`,

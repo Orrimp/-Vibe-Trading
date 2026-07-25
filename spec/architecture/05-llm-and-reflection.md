@@ -21,7 +21,7 @@ The first concrete consumer landed at v2.5 with the Kronos
 foundation-model forecast overlay — see
 [12-forecast-overlay.md](12-forecast-overlay.md) for the cross-cutting
 `ForecastProvider` trait + signal-level overlay composition pattern,
-and [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) for the
+and [ADR-0027](../../_bmad-output/planning-artifacts/architecture/decisions/0027-kronos-onnx-tract-integration.md) for the
 v2.5-specific Kronos resolutions (Option B ONNX + `tract`, base
 102.3M, inherited record/replay determinism contract).
 
@@ -33,7 +33,7 @@ new ADR with explicit rationale.
 ## LLM integration
 
 Foundation resolved at v2.0.0 in
-[ADR-0019 — v2 LLM strategy foundation (Q4–Q11)](adr/0019-v2-llm-strategy.md).
+[ADR-0019 — v2 LLM strategy foundation (Q4–Q11)](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md).
 
 The trait surface, three provider impls (Anthropic / OpenAI-compatible /
 Ollama), prompt-cache builder, budget gate with auto-degrade,
@@ -46,7 +46,7 @@ canonical first consumer; see the cross-link below.
 
 The single-coin-advisor "why this one" **narration** (feature
 [`advisor-llm-narration`](../v1/advisor-llm-narration/feature.md), pivot F9,
-[ADR-0064](adr/0064-advisor-llm-narration-seam.md)) is the **first place an
+[ADR-0064](../../_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md)) is the **first place an
 `Arc<dyn LlmProvider>` is actually called in-app**. It is a **READ-ONLY**
 plain-language rendering of the ALREADY-DECIDED structured bake-off
 `Recommendation` (the LLM never enters the ranking — narration only, reinforcing
@@ -85,7 +85,7 @@ re-inject prior session learnings".
 
 ## Changelog
 - 2026-06-22 (architect): added § "First in-app LLM consumer — the advisor 'why
-  this one' narration (F9)" recording [ADR-0064](adr/0064-advisor-llm-narration-seam.md):
+  this one' narration (F9)" recording [ADR-0064](../../_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md):
   the agent-side `agent::narration` generator (the `agent::plan` twin), the FROZEN
   deterministic faithfulness post-check as the load-bearing guard (the
   prompt-is-soft / post-check-is-the-net pattern any structured-result LLM

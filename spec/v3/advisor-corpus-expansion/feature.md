@@ -353,7 +353,7 @@ PASSES iff it carries all of:
 
 ## Design
 
-**Design lock: [ADR-0084](../../architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md)**
+**Design lock: [ADR-0084](../../../_bmad-output/planning-artifacts/architecture/decisions/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md)**
 (P2 corpus set + Coinbase second-venue adapter + multi-corpus verdict-rerun
 harness). This section is the operator-readable summary; ADR-0084 D1–D8 are the
 binding record. No gate change, no anchor-additive re-emission, no single-coin
@@ -726,7 +726,7 @@ crypto era, ever"?), not a gate failure.
   M-T1. Anchors 119/119 + spec-lint PASS(0) by construction (write_report=false;
   frozen gate byte-untouched; existing pinned SHAs immutable). REQ-V3-P2-CORPUS-EXPANSION-001
   created in trace.toml (state=proposed, ADR-0082-compliant).
-- 2026-07-09 (architect): **M-T1 design lock — [ADR-0084](../../architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md)**
+- 2026-07-09 (architect): **M-T1 design lock — [ADR-0084](../../../_bmad-output/planning-artifacts/architecture/decisions/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md)**
   authored + registered atomically (README `## Registry` row + frontmatter in the
   same edit pass; `adr_registry_check.py` green `--pre-commit` + bare). Q-CE-1..7
   all resolved (§ Design): Q-CE-1 RATIFY the 3-corpus set unchanged; **Q-CE-2
@@ -806,7 +806,7 @@ crypto era, ever"?), not a gate failure.
   (informational, non-blocking) on the wobble-list product-copy question.
 - 2026-07-10 (developer): **P2 follow-on bug fix — scorecard `n_eff=NaN`/
   `min_btl_years=0.00` NaN-swallow hardening** (the tester's own flagged item
-  above; `spec/dev-notes/p2-wobble-thesis-analysis-2026-07-10.md` § (d)).
+  above; `docs/dev-notes/p2-wobble-thesis-analysis-2026-07-10.md` § (d)).
   **Root cause, pinned exactly:** `compute_sharpe_hourly`
   (`crates/backtest/src/stats/mod.rs:52`, a frozen M-DEV-1 verbatim lift, out
   of scope to edit) guards a non-positive STARTING equity but not a

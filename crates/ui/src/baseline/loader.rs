@@ -21,7 +21,7 @@
 //!    embedded as a typed `const`-built [`BacktestMetrics`]. Never errors.
 //!
 //! **RE-SYNC contract (D1 cost):** the embedded scalars mirror
-//! `spec/runbooks/artifacts/passive-baseline-2026-06-08/passive-baseline-characterization.md`
+//! `docs/runbooks/artifacts/passive-baseline-2026-06-08/passive-baseline-characterization.md`
 //! §7.1 (the **realized single-path** row, NOT bootstrap p50). They go
 //! stale only if the characterization is re-run with different numbers;
 //! the `baseline_metrics_match_characterization` unit test below trips on
@@ -224,7 +224,7 @@ pub fn baseline_csv_path(year: BaselineYear) -> PathBuf {
         BaselineYear::Y2024 => "bh-equity-curve-2024.csv",
     };
     workspace_root()
-        .join("spec/runbooks/artifacts/passive-baseline-2026-06-08")
+        .join("docs/runbooks/artifacts/passive-baseline-2026-06-08")
         .join(file)
 }
 

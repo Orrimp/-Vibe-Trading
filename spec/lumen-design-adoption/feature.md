@@ -33,11 +33,11 @@ The shipped cockpit is **operator-correct but design-system-thin**.
 [`crates/ui/src/theme.rs`](../../crates/ui/src/theme.rs) ships **12
 semantic tokens** (9 original + `bg_overlay` / `info` / `border_strong`
 added at the tape-modal feature), six widgets in
-[`crates/ui/src/widgets/`](../../crates/ui/src/widgets/) (`tape`,
+[`crates/ui/src/widgets/`](../../crates/ui/src/widgets) (`tape`,
 `positions`, `pnl`, `kill`, `strategies`, `journal_transaction_modal`),
 two binaries (`cockpit` for fixtures, `cockpit_live` for the unified
 live bin landed at `live-cockpit-unified`), and a 599-line
-[`spec/ui-design-principles.md`](../ui-design-principles.md) that
+[`docs/ui-design-principles.md`](../../docs/ui-design-principles.md) that
 codifies what is — Bloomberg discipline, Linear taste, Stripe state
 clarity. None of that is wrong. But there is no **elevation system**,
 no **whisper-shadow** language, no concrete **light-mode hex palette**
@@ -48,7 +48,7 @@ of the shell.
 ### The Lumen bundle is purpose-built for this project
 
 The
-[design conversation transcript](../design/chats/chat1.md) shows the
+[design conversation transcript](../../docs/design/chats/chat1.md) shows the
 operator asking the design assistant for "rust driven applications
 with focus on desktop", "calm modern fintech", "clear and clean
 structure visible", and "I like cards panel with elevation but I
@@ -61,25 +61,25 @@ desktop-first system (chat1.md, lines 42–49) with:
   the operator asked the assistant to clarify (chat1.md, line 47).
 - A **warm-paper light** + **cool-deep dark** twin palette, joined by
   a single muted teal accent
-  ([`spec/design/project/colors_and_type.css:13–108`](../design/project/colors_and_type.css)).
+  ([`docs/design/project/colors_and_type.css:13–108`](../../docs/design/project/colors_and_type.css)).
 - **Sage / clay** for up / down (calmer than the standard neon
   green / red), keyed to a 12-hour session at the desk
-  ([`spec/design/project/README.md:71–73`](../design/project/README.md)).
+  ([`docs/design/project/README.md:71–73`](../../docs/design/project/README.md)).
 - A **status bar** that is **always visible** and shows connection,
   latency, account, server time
-  ([`spec/design/project/README.md:127–131`](../design/project/README.md);
-  [`spec/design/project/ui_kits/desktop/Shell.jsx:67–81`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/README.md:127–131`](../../docs/design/project/README.md);
+  [`docs/design/project/ui_kits/desktop/Shell.jsx:67–81`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - A **Backtest report viewer** (`Backtest.jsx`) that is materially
   richer than our existing `viewer` binary —
   KPI strip + equity curve + drawdown band + deploy-live action
-  ([`spec/design/project/ui_kits/desktop/Backtest.jsx:54–110`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/ui_kits/desktop/Backtest.jsx:54–110`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - A **HumanControl** pattern (kill + execution-mode toggle:
   Observe / Supervised / Auto) that extends our shipped kill-only
   surface
-  ([`spec/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - An **AgentFeed** pattern that maps onto our existing tape with
   per-event sparkline visualization
-  ([`spec/design/project/ui_kits/desktop/AgentFeed.jsx:68–93`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/ui_kits/desktop/AgentFeed.jsx:68–93`](../archive/design-prototypes-2026-Q2.tar.gz)).
 
 The design system was generated **for this project**, by a design
 assistant that knew the operator wanted Rust desktop. That changes
@@ -90,7 +90,7 @@ a third-party kit.
 ### What adoption gets us
 
 1. **Concrete light-mode hexes.** Today
-   [`spec/ui-design-principles.md`](../ui-design-principles.md) lines
+   [`docs/ui-design-principles.md`](../../docs/ui-design-principles.md) lines
    97–110 propose a light palette but none are wired. The Lumen
    `colors_and_type.css` ships both modes, contrast-checked, with a
    single `[data-theme="dark"]` switch. Phase 1 wires both.
@@ -155,7 +155,7 @@ Scope:
   [`crates/ui/src/theme.rs`](../../crates/ui/src/theme.rs) with the
   full Lumen palette: warm + cool neutral scales, accent ramp 50→900,
   sage / clay / warn / info semantics, both light and dark modes
-  ([`spec/design/project/colors_and_type.css:13–160`](../design/project/colors_and_type.css)).
+  ([`docs/design/project/colors_and_type.css:13–160`](../../docs/design/project/colors_and_type.css)).
 - Add **Tier 0/1/2/3 elevation tokens** + sunken — `canvas`, `panel`,
   `panel_raised`, `panel_sunken`, `overlay` — and the corresponding
   semantic surface tokens.
@@ -176,13 +176,13 @@ Scope:
   table stripes adopt **sunken styling**.
 - Add the **active-row pattern** to tabular widgets — 2 px left rule
   in `accent`, no fill change
-  ([`spec/design/project/ui_kits/desktop/desktop.css:357–360`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/ui_kits/desktop/desktop.css:357–360`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - Add a new **status-bar widget** (`crates/ui/src/widgets/status_bar.rs`)
   rendering connection / latency / account / server-time — always
   visible at the bottom of the cockpit shell.
 - Refresh the existing 36 panel snapshots once
   (`cargo insta review`); the visual diff is the visible artefact.
-- **Supersede `spec/ui-design-principles.md`** with a Lumen-anchored
+- **Supersede `docs/ui-design-principles.md`** with a Lumen-anchored
   rewrite (~300–400 lines, single-file replace per Phase 1 Q7
   recommended resolution).
 
@@ -192,7 +192,7 @@ Scope:
 badges may need band-name reconcile (Phase 1 Q8); colour mapping
 stays compatible.
 
-**Open questions:** ~9 (see [`lumen-phase-1-foundation.md`](../lumen-design-adoption/phase-1-foundation/feature.md)).
+**Open questions:** ~9 (see [`lumen-phase-1-foundation.md`](phase-1-foundation/feature.md)).
 
 ### Phase 2 — Shell IA + Charts (sidebar nav + Home/Debug/Charts screens)
 
@@ -333,7 +333,7 @@ sketch:
 - The Lumen `Backtest.jsx` shows a **KPI strip** (Total return,
   CAGR, Sharpe, Max DD, Win rate, Trades), an **equity curve** with
   filled area, and a **drawdown band** beneath
-  ([`spec/design/project/ui_kits/desktop/Backtest.jsx:79–106`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/ui_kits/desktop/Backtest.jsx:79–106`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - Today the `viewer` bin renders a markdown report from
   `spec/*/reports/backtest-*.md`. Phase 4 adds a **structured KPI
   band + sparkline** above the markdown body, consuming the same
@@ -386,7 +386,7 @@ collapsible header or move to a dedicated **Control** sidebar entry
   switch becomes the bottom action of a richer "You're in control"
   panel that also shows execution-mode (Observe / Supervised /
   Auto), daily loss limit, max position, and used-today P&L
-  ([`spec/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../archive/design-prototypes-2026-Q2.tar.gz)).
+  ([`docs/design/project/ui_kits/desktop/HumanControl.jsx:6–55`](../archive/design-prototypes-2026-Q2.tar.gz)).
 - **Pause-strategy** and **override-risk-veto** controls land as
   per-strategy actions next to each row in the strategies panel
   (one button per row, typed-confirm flow per the principles
@@ -417,14 +417,14 @@ Notable cross-phase question: does the per-strategy "pause" /
 **Status: Reserved — not implemented in this initiative.** The
 Lumen `Assistant.jsx` and Shell `right-side AI assistant panel` is
 **opt-in, collapsible, and remembers state**
-([`spec/design/project/README.md:131`](../design/project/README.md)).
+([`docs/design/project/README.md:131`](../../docs/design/project/README.md)).
 
 Phase 6's scope **at the time it lands** (with the v2 LLM strategy):
 
 - Right-rail collapsible panel slot in the shell, hidden by default,
   revealed when the v2 LLM strategy is enabled.
 - A composer + message-list widget pattern aligned to
-  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../archive/design-prototypes-2026-Q2.tar.gz).
+  [`docs/design/project/ui_kits/desktop/Assistant.jsx`](../archive/design-prototypes-2026-Q2.tar.gz).
 - Wires into the v2 LLM trait the architect defines at v2 kickoff.
 - Coexists with the Phase 2 sidebar nav (the assistant rail lives
   on the right; the nav lives on the left). Phase 2 must not
@@ -461,7 +461,7 @@ brief states the constraint and moves on.
   renders `<span>Lumen</span>` — the Phase 1 status bar /
   title bar adopts the *layout* but **not** the brand string).
 - The eye/lens mark
-  ([`spec/design/project/README.md:204–207`](../design/project/README.md)
+  ([`docs/design/project/README.md:204–207`](../../docs/design/project/README.md)
   asset list — `lumen-mark.svg`, `lumen-wordmark.svg`,
   `lumen-monogram.svg`, `lumen-ai-lens.svg`).
 - Any "Lumen Trading" lockup or marketing typography.
@@ -492,7 +492,7 @@ citing the source files (which are named `lumen-*`).
 
 - Mass rename of any string in `ui::strings`.
 - Refactoring strings to match Lumen's voice examples table
-  ([`spec/design/project/README.md:53–60`](../design/project/README.md)).
+  ([`docs/design/project/README.md:53–60`](../../docs/design/project/README.md)).
 - Adding the typographic-minus (`U+2212`) sweep across all delta
   strings — the existing `widgets::num` ASCII minus stays.
 
@@ -754,7 +754,7 @@ hover-state ring + ACCENT input border-shift continue as the
 shipped approximation. Next re-evaluation: **Phase 3 (Detail
 screens) analyst kickoff**, post Phase 2 ship. Resolved as Phase 2
 Q11 in
-[`features/lumen-phase-2-shell-ia-charts.md`](../lumen-design-adoption/phase-2-shell-ia-charts/feature.md).
+[`features/lumen-phase-2-shell-ia-charts.md`](phase-2-shell-ia-charts/feature.md).
 
 **2026-05-05 design-pass verification (Phase 3 architect).** Re-
 verified [`crates/ui/Cargo.toml:52`](../../crates/ui/Cargo.toml)
@@ -973,7 +973,7 @@ visual three times before the final shape lands).
 ### Q2 — Principles-doc supersede inside Phase 1 or as a parallel spec-only update?
 
 **The question:** the existing 599-line
-[`spec/ui-design-principles.md`](../ui-design-principles.md)
+[`docs/ui-design-principles.md`](../../docs/ui-design-principles.md)
 needs to be rewritten Lumen-anchored (~300–400 lines, Phase 1 Q7
 recommended single-file replace). Does that happen **inside Phase
 1** (one feature, two artefacts) or as a **separate spec-only
@@ -1120,20 +1120,20 @@ ship):
 
 - **`lumen-phase-2-shell-ia-charts`** — promotes next (Phase 1
   shipped). Status: queued.
-  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](../lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
+  [`spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md`](phase-2-shell-ia-charts/feature.md)
 - **`lumen-phase-3-detail-screens`** — promotes on Phase 2 ship.
   Status: queued.
-  [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](../lumen-design-adoption/phase-3-detail-screens/feature.md)
+  [`spec/lumen-design-adoption/phase-3-detail-screens/feature.md`](phase-3-detail-screens/feature.md)
 - **`lumen-phase-4-backtest-panel`** — promotes on Phase 3 ship.
   Status: queued. (Was originally Phase 2.)
-  [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](../lumen-design-adoption/phase-4-backtest-panel/feature.md)
+  [`spec/lumen-design-adoption/phase-4-backtest-panel/feature.md`](phase-4-backtest-panel/feature.md)
 - **`lumen-phase-5-humancontrol-agentfeed`** — promotes on Phase 4
   ship. Status: queued. (Was originally Phase 3.)
-  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](../lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md)
+  [`spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/feature.md`](phase-5-humancontrol-agentfeed/feature.md)
 - **`lumen-phase-6-assistant-slot`** — `_reserved_`, linked to v2
   LLM. No analyst spawn until v2 LLM is approved. (Was originally
   Phase 4.)
-  [`spec/lumen-design-adoption/phase-6-assistant-slot/feature.md`](../lumen-design-adoption/phase-6-assistant-slot/feature.md)
+  [`spec/lumen-design-adoption/phase-6-assistant-slot/feature.md`](phase-6-assistant-slot/feature.md)
 
 ### Recent (shipped)
 
@@ -1258,7 +1258,7 @@ file does not commit a path until it is taken.
   (2026-05-03). Operator-locked constraints documented:
   no brand adoption, no voice rewrite, sequential ordering,
   Phase 4 forward-compat only. Phase 1 brief at
-  [`lumen-phase-1-foundation.md`](../lumen-design-adoption/phase-1-foundation/feature.md);
+  [`lumen-phase-1-foundation.md`](phase-1-foundation/feature.md);
   Phases 2 / 3 / 4 are queued / queued / reserved.
   HANDOFF → architect (Phase 1 first; master roadmap for
   orientation).

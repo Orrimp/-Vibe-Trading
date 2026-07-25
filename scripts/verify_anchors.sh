@@ -52,7 +52,7 @@
 # `git mv`d from `spec/` to a new top-level `evidence/` sibling root, layout
 # preserved 1:1. This is a pure base-swap of every `spec/` reference below to
 # `evidence/` — the `*/reports/…` sub-glob and per-scenario resolution logic
-# are byte-for-byte unchanged. See spec/dev-notes/bmad-migration-plan-2026-07-24.md
+# are byte-for-byte unchanged. See docs/dev-notes/bmad-migration-plan-2026-07-24.md
 # § 8 Phase 3.
 
 set -euo pipefail

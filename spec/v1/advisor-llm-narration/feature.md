@@ -212,7 +212,7 @@ templated copy rather than shipping a fabrication.
 
 ## Design
 
-Resolved in **[ADR-0064 — Advisor LLM "why this one" narration seam](../../architecture/adr/0064-advisor-llm-narration-seam.md)**.
+Resolved in **[ADR-0064 — Advisor LLM "why this one" narration seam](../../../_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md)**.
 F9 is structurally a near-twin of the F6 forward-plan agent→iced return path
 (ADR-0062 § D3–D4), with three load-bearing differences: the generation side
 touches `llm` (not `strategy`), it is **triggered by an explicit operator action**

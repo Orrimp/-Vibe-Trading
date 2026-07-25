@@ -155,7 +155,7 @@ pub const KILL_RUNBOOK_LINK_LABEL: &str = "Open kill-switch runbook";
 /// Relative path from the workspace root to the kill-switch runbook.
 /// Rendered next to the runbook link so operators without a clickable
 /// terminal can still find the file. Used by `T_FINAL_B`.
-pub const KILL_RUNBOOK_LINK_PATH: &str = "spec/runbooks/kill-switch.md";
+pub const KILL_RUNBOOK_LINK_PATH: &str = "docs/runbooks/kill-switch.md";
 
 // ── Strategies panel (v0.5 T522, R5 cockpit visibility) ─────────────────────
 //
@@ -2669,7 +2669,7 @@ pub const BASELINE_YEAR_2024_LABEL: &str = "2024";
 /// operator what is missing and where it lives — never a bare "no data".
 pub const BASELINE_DATA_UNAVAILABLE: &str = "Baseline equity data isn't bundled in this build. \
     The realized buy-and-hold curves live at \
-    spec/runbooks/artifacts/passive-baseline-2026-06-08/.";
+    docs/runbooks/artifacts/passive-baseline-2026-06-08/.";
 
 /// Caption-only risk-detail line (A2 / D1=c). Surfaces the §7.1 Sortino +
 /// Calmar metrics, which have no KPI card in the six-card strip. Rendered

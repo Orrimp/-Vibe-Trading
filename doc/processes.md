@@ -3,7 +3,7 @@
 How work gets done in this repository. The canonical sources are
 [`AGENT.md`](../AGENT.md) (orchestration contract) and [`CLAUDE.md`](../CLAUDE.md)
 (coding rules + non-negotiables); the gate commands live in
-[`scripts/`](../scripts/) and the agents/skills in [`.claude/`](../.claude/).
+[`scripts/`](../scripts) and the agents/skills in [`.claude/`](../.claude).
 This document narrates those sources — when they disagree with this file, they win.
 
 > **The product.** A *Single-Coin Investment Advisor (paper)* — pick a coin and a
@@ -166,7 +166,7 @@ Step by step:
 2. **Analyst brief.** The analyst turns intent into `spec/<slug>/feature.md` and
    creates the `[[req]]` row in `spec/trace.toml` (`status: proposed`).
 3. **Architect design + ADR.** The architect appends a `## Design` section, writes
-   any non-trivial decision as a numbered ADR under `spec/architecture/adr/`
+   any non-trivial decision as a numbered ADR under `_bmad-output/planning-artifacts/architecture/decisions/`
    (registering it in the same pass — see §5), and produces `tasks.md`
    (`status: arch-done`).
 4. **Developer ‖ ui-designer build.** Backend crates and the `ui` crate, in
@@ -299,8 +299,8 @@ paid for.
   unbuilt: **completed `feature.md` files are intentional one-line stubs**, and
   `tasks.md` is deleted on ship. A stub is *done*, not broken.
 - **ADRs.** Non-trivial design decisions are numbered ADRs under
-  `spec/architecture/adr/`. Writing an ADR = registering it **atomically** in the
-  same pass: append a row to `spec/architecture/adr/README.md` and bump its
+  `_bmad-output/planning-artifacts/architecture/decisions/`. Writing an ADR = registering it **atomically** in the
+  same pass: append a row to `_bmad-output/planning-artifacts/architecture/decisions/README.md` and bump its
   `updated:` field. Enforced by `scripts/adr_registry_check.py --pre-commit`.
 - **trace.toml.** `spec/trace.toml` threads each requirement (`[[req]]`) through
   the pipeline by column ownership: analyst creates the row, architect fills
@@ -313,7 +313,7 @@ paid for.
   `spec_lint.py` (shape), `verify_anchors.sh` (content), `queue_staleness_check.py`
   (Queue↔status reconciliation), `operator_ledger_check.py` (operator-verification
   ledger). The `spec-auditor` agent runs a deeper read-only drift sweep on a weekly
-  cadence into a dated `spec/dev-notes/audit-*.md`.
+  cadence into a dated `docs/dev-notes/audit-*.md`.
 
 ---
 

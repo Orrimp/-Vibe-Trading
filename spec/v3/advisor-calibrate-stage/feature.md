@@ -153,7 +153,7 @@ unchanged).
 ### Decision 5 — verification floor (ADR-0083 D6; CLAUDE.md non-negotiable)
 
 The stepper MUST be proven at the **rendered-pixel layer** with a populated state +
-a negative control (per `spec/dev-notes/iced-ui-render-verification.md`):
+a negative control (per `docs/dev-notes/iced-ui-render-verification.md`):
 
 1. **`stepper_highlights_current_stage`** — render the shell (or the stepper widget
    in a harnessed shell) with `current_screen = Tune`; assert the **CALIBRATE**
@@ -196,7 +196,7 @@ explicitly NOT sufficient.
 - `cargo clippy -p ui --tests -- -D warnings` clean; `cargo fmt --check` clean;
   `cargo tree -p ui` unchanged (no new dependency).
 - ADR-0083 accepted + registered atomically in
-  `spec/architecture/adr/README.md`.
+  `_bmad-output/planning-artifacts/architecture/decisions/README.md`.
 
 ## Risks
 
@@ -216,7 +216,7 @@ explicitly NOT sufficient.
 
 `REQ-V3-R3-3A-CALIBRATE-STAGE-001` in [`spec/trace.toml`](../../trace.toml), state
 `arch-done` (design-complete; NOT shipped — honoring ADR-0082). Arch refs:
-`spec/v3/README.md`, this feature, `spec/architecture/adr/0083-calibrate-stage-and-spine-stepper.md`.
+`spec/v3/README.md`, this feature, `_bmad-output/planning-artifacts/architecture/decisions/0083-calibrate-stage-and-spine-stepper.md`.
 
 ## UI
 

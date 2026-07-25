@@ -90,7 +90,7 @@ land.
   harnesses — `render_snapshots.rs`, `live_equity_render.rs`, `reports_populated_curve_render.rs`),
   exercising the *populated* state with a negative control — NOT unit tests, text-summary
   snapshots, or a no-panic boot. Read the rendered PNG; a passing proxy is not proof the screen
-  draws. Full guide: [`spec/dev-notes/iced-ui-render-verification.md`](spec/dev-notes/iced-ui-render-verification.md).
+  draws. Full guide: [`docs/dev-notes/iced-ui-render-verification.md`](docs/dev-notes/iced-ui-render-verification.md).
 
 ## What to do when the user asks for a change
 
@@ -116,11 +116,11 @@ Agents use these via the Skill tool; humans reference them by name:
 
 For fast navigation of this 715-crate-file Rust tree — "who calls `X`", "blast radius
 of changing `Y`", "relevant symbols + source for area `Z`" in one call instead of
-grepping — the repo is indexable with [CodeGraph](spec/dev-notes/codegraph.md)
+grepping — the repo is indexable with [CodeGraph](docs/dev-notes/codegraph.md)
 (`codegraph callers|impact|explore <symbol>`). It is a **dev/agent aid only**: not a
 Cargo dependency, not part of the product/runtime, **zero** effect on builds, tests,
 or the `verify_anchors` gate. The `.codegraph/` index is gitignored. Setup + the
-**opt-in** MCP wiring are in [`spec/dev-notes/codegraph.md`](spec/dev-notes/codegraph.md).
+**opt-in** MCP wiring are in [`docs/dev-notes/codegraph.md`](docs/dev-notes/codegraph.md).
 
 ## Vendored dependencies
 
@@ -145,7 +145,7 @@ or the `verify_anchors` gate. The `.codegraph/` index is gitignored. Setup + the
 - No silent divergence from `spec/architecture.md`.
 - **Every strategy overlay or sizing-modifier ships with a baseline-equity-divergence
   end-to-end test from day 1.** Per the `v3-volatility-forecaster-noop-fix` 2026-05-22
-  precedent (see [`spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md)),
+  precedent (see [`docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md)),
   unit tests on the math layer + anchored backtest reports are NOT sufficient to catch
   a no-op overlay where `scale` is computed but never applied. The required gate is an
   e2e test that asserts the overlay's output equity diverges from the un-targeted

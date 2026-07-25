@@ -46,7 +46,7 @@ it writes the equity the agent already computes to the store it already runs
 (the audit ledger), gated to paper/live so research replay can't pollute it, and
 reads it back on boot. See
 [`spec/live-equity-history-durable/feature.md`](../feature.md) and
-[ADR-0052](../../../architecture/adr/0052-durable-live-equity-series.md).
+[ADR-0052](../../../../_bmad-output/planning-artifacts/architecture/decisions/0052-durable-live-equity-series.md).
 
 ## What you can do now
 
@@ -193,7 +193,7 @@ of the `iced_tiny_skia::engine.rs` zero-dim Quad panic).
    now.** The retention purge (`purge_old_equity_snapshots`, 30-day horizon) is
    **wired as a function and unit-tested (AC8)**, but it is **not yet hooked
    into any nightly scheduler** — confirmed: no caller exists outside its own
-   test. Per [ADR-0052 § D5](../../../architecture/adr/0052-durable-live-equity-series.md)
+   test. Per [ADR-0052 § D5](../../../../_bmad-output/planning-artifacts/architecture/decisions/0052-durable-live-equity-series.md)
    this scheduling is an explicit operator decision deferred out of v0.1.0.
    **Practical cost of the deferral:** at 1-min paper bars the table grows ~1,440
    rows/day; the boot hydrate is always `LIMIT`-capped at 2,880 rows, so the UI

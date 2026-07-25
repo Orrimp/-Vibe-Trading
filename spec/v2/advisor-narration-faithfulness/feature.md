@@ -17,7 +17,7 @@ this ships two hardening layers on top.
 P2-1. Research:
 [`research/llms/application-llm-narration-and-agents.md`](../../../research/llms/application-llm-narration-and-agents.md)
 §6 P0 — LLM narration hallucination is the one real risk on the shipped F9
-seam. ADR: [`0064-advisor-llm-narration-seam.md`](../../architecture/adr/0064-advisor-llm-narration-seam.md)
+seam. ADR: [`0064-advisor-llm-narration-seam.md`](../../../_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md)
 § "Amendment 2026-07-01 (P2-1 faithfulness hardening)" — D9/D10/D11.
 
 ## What shipped

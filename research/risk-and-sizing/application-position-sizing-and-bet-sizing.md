@@ -279,7 +279,7 @@ fixed-fraction; do not build a μ-driven sizer."** The actionable items are *rep
   μ>√2(κ−1)σ [58], the finite-sample/asymptotic gap [55][100], and the budget cap as ruin
   control [17][37]. This makes the design decision *traceable* and pre-empts future "let's add
   a smart sizer" scope creep.
-- **Where:** a `spec/dev-notes/` memo (analyst/architect-owned; via the `spec-update` skill).
+- **Where:** a `docs/dev-notes/` memo (analyst/architect-owned; via the `spec-update` skill).
 - **Priority: P1.** Pure documentation; locks in the honest rationale.
 
 ### P2 — Optional one-knob fractional-Kelly dial (gated experiment, expected ≈ null)
@@ -325,7 +325,7 @@ fixed-fraction; do not build a μ-driven sizer."** The actionable items are *rep
 | Item | Where | Nature | Blast radius |
 |---|---|---|---|
 | P1 CVaR/Sortino/median reporting | bake-off + forward report | additive metrics from existing bootstrap | low (no FROZEN-band touch) |
-| P1 sizing-posture ADR/dev-note | `spec/dev-notes/` | documentation | none (no code) |
+| P1 sizing-posture ADR/dev-note | `docs/dev-notes/` | documentation | none (no code) |
 | P2 fractional-Kelly dial (gated) | transform on `risk/src/sizing.rs` + day-1 e2e | optional sizing knob | low–med (3 callers of `FixedFractionSizer`) |
 | P2 meta-labeling / cost filter | new candidate + day-1 e2e | gated experiment | med |
 

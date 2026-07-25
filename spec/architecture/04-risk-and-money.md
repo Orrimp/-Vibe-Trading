@@ -40,7 +40,7 @@ test in non-obvious ways.
 conversion is an explicit operation; cross-currency arithmetic that
 doesn't go through the conversion API is a compile error.
 
-See [ADR-0003](adr/0003-decimal-money-math.md) for the full context, the
+See [ADR-0003](../../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md) for the full context, the
 two reconciliation incidents that forced the rule, the alternatives
 considered, and the mechanical enforcement points.
 

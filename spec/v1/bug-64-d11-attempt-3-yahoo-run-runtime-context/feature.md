@@ -5,11 +5,11 @@ status: shipped
 owner: shipped
 updated: 2026-06-17
 related:
-  - spec/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md
-  - spec/dev-notes/bug-64-arch-validation-2026-05-29.md
-  - spec/dev-notes/bug-64-analyst-validation-2026-05-29.md
-  - spec/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md
-  - spec/dev-notes/operator-side-pending-ledger.md
+  - docs/dev-notes/bug-64-yahoo-run-code-map-2026-05-29.md
+  - docs/dev-notes/bug-64-arch-validation-2026-05-29.md
+  - docs/dev-notes/bug-64-analyst-validation-2026-05-29.md
+  - docs/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md
+  - docs/dev-notes/operator-side-pending-ledger.md
 ---
 
 # Bug #64 D.1.1 attempt-3 — Yahoo+Run runtime context + cancellation

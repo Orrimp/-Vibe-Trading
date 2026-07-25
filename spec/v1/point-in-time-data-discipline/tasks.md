@@ -9,7 +9,7 @@ updated: 2026-06-18
 
 > **M-T1 design lock complete (architect, 2026-06-18).** Open decisions D1–D5
 > are resolved in [`feature.md` § Design](feature.md#design); the numbered record
-> is [ADR-0058](../../architecture/adr/0058-pit-as-of-series-primitive.md).
+> is [ADR-0058](../../../_bmad-output/planning-artifacts/architecture/decisions/0058-pit-as-of-series-primitive.md).
 > Acceptance criteria are AC1–AC5 in
 > [`feature.md` § Acceptance criteria](feature.md#acceptance-criteria). This list
 > is ordered and executable: M-DEV-* are the build steps, M-TEST-* are the

@@ -241,7 +241,7 @@ pattern to copy.
 
 ## The ADR-0041 layering seam (the sanctioned reflection→decision seam — non-negotiable)
 
-ADR-0041 (`spec/architecture/adr/0041-trader-crate-split.md`, accepted
+ADR-0041 (`_bmad-output/planning-artifacts/architecture/decisions/0041-trader-crate-split.md`, accepted
 2026-05-26) **forbids the analyst-layer `crates/strategy` from consuming
 reflection-retrieval** — "memory-aware decision synthesis is a trader-layer
 concern." It created `crates/trader/` as the legitimate consumer and **dropped
@@ -337,7 +337,7 @@ is itself an honest answer.
 ## Design
 
 > Architect, 2026-06-26. Grounded in code; every claim carries a `file:line`.
-> ADR: this feature **warrants ADR-0074** (`spec/architecture/adr/0074-reflection-decision-surface.md`)
+> ADR: this feature **warrants ADR-0074** (`_bmad-output/planning-artifacts/architecture/decisions/0074-reflection-decision-surface.md`)
 > — it introduces a NEW reusable pattern (read-only reflection at advisor
 > decision points: a trader-layer read helper + a `core`-typed UI summary
 > mirror + a per-screen hydrate seam). It is more than "just follows ADR-0041 +
@@ -565,7 +565,7 @@ bit the equity curve). The mandatory proof is at the rendered-PIXEL layer:
 
 - A new `leaderboard_memory_chip_render.rs` (`#![cfg(target_os = "macos")]`,
   ADR-0057 § D2; cosmic-text font-mutex serialized per
-  `spec/dev-notes/iced-ui-render-verification.md`) modelled on
+  `docs/dev-notes/iced-ui-render-verification.md`) modelled on
   `crates/ui/tests/leaderboard_narration_render.rs`: a **populated-store
   fixture** (`MemoryNoteState::Present`) paints the chip as foreground in a
   scoped band near the recommendation block; an **empty-store NEGATIVE control**
@@ -622,7 +622,7 @@ bit the equity curve). The mandatory proof is at the rendered-PIXEL layer:
 
 - 2026-06-26 (architect, C4 design): designed the honest C4 as a **read-only
   reflection decision-support surface**. Authored **ADR-0074**
-  (`spec/architecture/adr/0074-reflection-decision-surface.md`, extends ADR-0041
+  (`_bmad-output/planning-artifacts/architecture/decisions/0074-reflection-decision-surface.md`, extends ADR-0041
   + ADR-0064). Locked: the trader-layer helper `recall_decision_lessons` in NEW
   `crates/trader/src/decision_memory.rs` (ADR-0041 home, a *second*
   `retrieve_top_k` consumer alongside `from_runtime` `types.rs:516` — `t1810`

@@ -5,7 +5,7 @@ a feature program. v2 is **feature-complete** — the research-driven roadmap (1
 features) consumed every ship-worthy application from the 900-paper program, and the
 remaining surface is either explicitly-deferred polish or the alpha-chasing the
 product exists to refuse. See the scoping memo
-[`spec/dev-notes/post-v2-scoping-2026-07-09.md`](../dev-notes/post-v2-scoping-2026-07-09.md)
+[`docs/dev-notes/post-v2-scoping-2026-07-09.md`](../../docs/dev-notes/post-v2-scoping-2026-07-09.md)
 for the full evidence.
 
 > **The one thing v3 is:** prove the DATA → CALIBRATE → ANALYZE → SUGGEST spine
@@ -31,7 +31,7 @@ into a crown veto.
 | Item | What | Owner | Kind | Status |
 |---|---|---|---|---|
 | **R3-3a** | Promote `Screen::Tune` to a first-class named **"Calibrate"** stage + a visible **DATA → CALIBRATE → ANALYZE → SUGGEST** stepper across the existing screens. Build the VISIBLE stepper only; **defer** the `agent::AdvisorStage` context-carrier again (D7). | ui-designer (+ developer if needed) | **the ONE real build** | `spec/v3/advisor-calibrate-stage/` — see ADR-0083 |
-| **R3-3b** | **Document** the D3 report-only DSR decision + its empirical basis (the P2-2 no-alpha CI). Record that the crown-eligibility veto is a **ready-but-unbuilt** one-line switch (`crown_clears_dsr`). NOT a build; NOT a gate change. | architect (done) | decision doc | [`spec/dev-notes/dsr-report-only-decision-2026-07-09.md`](../dev-notes/dsr-report-only-decision-2026-07-09.md) |
+| **R3-3b** | **Document** the D3 report-only DSR decision + its empirical basis (the P2-2 no-alpha CI). Record that the crown-eligibility veto is a **ready-but-unbuilt** one-line switch (`crown_clears_dsr`). NOT a build; NOT a gate change. | architect (done) | decision doc | [`docs/dev-notes/dsr-report-only-decision-2026-07-09.md`](../../docs/dev-notes/dsr-report-only-decision-2026-07-09.md) |
 | **R3-2** | A runnable/scripted **end-to-end demo** + committed narrative exercising the whole spine in one honest pass, showing the modal `BenchmarkWins` null as the product working. | presenter | walkthrough + runbook | scoped below — build AFTER R3-3a lands |
 | **R3-4** | Reconcile README/CHANGELOG to "v2 complete / feature-complete"; author the authoritative **do-not-build register** so the research dead-ends stop being re-proposed. | docs (analyst/architect) | pure docs | scoped below |
 
@@ -64,14 +64,14 @@ verification contract are in the feature spec.
 `#![cfg(target_os = "macos")]` render harness proving the stepper paints with the
 correct stage highlighted, plus a negative control (a different `current_screen`
 highlights a different stage). A passing model state / text snapshot / no-panic boot
-is NOT proof. See [`spec/dev-notes/iced-ui-render-verification.md`](../dev-notes/iced-ui-render-verification.md).
+is NOT proof. See [`docs/dev-notes/iced-ui-render-verification.md`](../../docs/dev-notes/iced-ui-render-verification.md).
 
 ## R3-2 — end-to-end demo (presenter, after R3-3a)
 
 **Owner:** presenter. **Build order:** *after* R3-3a lands, so the demo shows the
 final IA (the named Calibrate stage + the stepper).
 
-**Deliverable:** a committed narrative at `spec/runbooks/advisor-end-to-end-demo.md`
+**Deliverable:** a committed narrative at `docs/runbooks/advisor-end-to-end-demo.md`
 (+ a scripted cockpit walkthrough / render-verified screenshot walk if practical)
 with a golden `(coin, budget, window)` → DATA-quality panel → CALIBRATE sweep →
 ANALYZE leaderboard + scorecard → SUGGEST forward plan → forward paper-run, in one
@@ -99,7 +99,7 @@ pass.
    queue confirmed accurate (the CI item stays "deferred/parked, operator gates
    activation").
 2. **The do-not-build register** — an authoritative doc (proposed home:
-   `spec/dev-notes/do-not-build-register.md`) consolidating the off-track register
+   `docs/dev-notes/do-not-build-register.md`) consolidating the off-track register
    (scoping memo §4) + `research/APPLICATIONS.md` "Dead ends" so ML/forecasting,
    multi-coin, automated alpha search, LLM-as-trader, etc. stop being re-proposed as
    "gaps" each session (project memory shows they recur).
@@ -125,7 +125,7 @@ pass.
 - 2026-07-09 (architect): created `spec/v3/` + this README framing the bounded
   close-out phase; scoped the four items (R3-2/R3-3a/R3-3b/R3-4); designed R3-3a
   (`advisor-calibrate-stage/`, ADR-0083); framed R3-3b
-  (`spec/dev-notes/dsr-report-only-decision-2026-07-09.md`). Made `spec_lint.py`
+  (`docs/dev-notes/dsr-report-only-decision-2026-07-09.md`). Made `spec_lint.py`
   v3-aware (folder resolution + orphan-feature + trace + feature-shipped-drift) and
   documented `verify_anchors.sh` as already reorg-agnostic. CI stays parked (R3-1
   OUT).

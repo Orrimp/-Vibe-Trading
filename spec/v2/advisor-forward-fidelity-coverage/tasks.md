@@ -34,8 +34,8 @@ updated: 2026-06-30
   - test: `cargo test -p agent --test forward_run_engine_fidelity`
   - output: `test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
 
-- [x] **T6** — Write ADR-0077 at `spec/architecture/adr/0077-forward-fidelity-coverage.md` and register in `spec/architecture/adr/README.md`.
-  - file:line: `spec/architecture/adr/0077-forward-fidelity-coverage.md` (new file)
+- [x] **T6** — Write ADR-0077 at `_bmad-output/planning-artifacts/architecture/decisions/0077-forward-fidelity-coverage.md` and register in `_bmad-output/planning-artifacts/architecture/decisions/README.md`.
+  - file:line: `_bmad-output/planning-artifacts/architecture/decisions/0077-forward-fidelity-coverage.md` (new file)
   - test: `python3 scripts/adr_registry_check.py --self-test`
   - output: (see ADR registry check in final report)
 

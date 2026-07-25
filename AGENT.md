@@ -64,7 +64,7 @@ not part of the linear flow): `spec-auditor` (read-only spec-drift audit) and
 render & behavior bugs at the rendered-PIXEL layer). Route a UI **bug** ("no graph",
 "blank panel", "looks wrong", a mystery UI-test failure) to `ui-debugger`; route UI
 **design/implementation** to `ui-designer`. Both follow
-[`spec/dev-notes/iced-ui-render-verification.md`](spec/dev-notes/iced-ui-render-verification.md).
+[`docs/dev-notes/iced-ui-render-verification.md`](docs/dev-notes/iced-ui-render-verification.md).
 
 ## Canonical workflow
 
@@ -488,7 +488,7 @@ entry (suppress a single stub inline with `# noqa: queue-staleness`).
 
 The single source of truth for operator-run recipes that survive
 session boundaries is
-[`spec/dev-notes/operator-side-pending-ledger.md`](spec/dev-notes/operator-side-pending-ledger.md)
+[`docs/dev-notes/operator-side-pending-ledger.md`](docs/dev-notes/operator-side-pending-ledger.md)
 (orchestrator-maintained, append-only). Its schema is enforced by
 `scripts/operator_ledger_check.py` (Python stdlib; exit 0 clean / 1 on
 schema violation or stale-FAILED escalation / >= 2 on script failure).
@@ -499,7 +499,7 @@ Run it at session pre-flight alongside the Queue-staleness sweep:
 
 FAILED rows older than 7 days escalate (exit 1); FAILED rows within the
 window emit a soft carry-over line for the session header. Every FAILED
-row MUST cite a follow-up `spec/dev-notes/*.md` investigation in its
+row MUST cite a follow-up `docs/dev-notes/*.md` investigation in its
 Notes cell (Q-LED-NOTE). See
 [`spec/v1/operator-ledger-schema-lint/feature.md`](spec/v1/operator-ledger-schema-lint/feature.md).
 
@@ -642,7 +642,7 @@ Python or hand-typed pipelines.
 For the orchestrator-only `scripts/orch_*` set (cursor automation,
 screencapture, cockpit on/off, supplement-log, determinism check, TCC
 probe, PNG crop), see
-[`spec/dev-notes/orchestrator-tooling-2026-05-12.md`](spec/dev-notes/archive/2026-Q2/orchestrator-tooling-2026-05-12.md).
+[`docs/dev-notes/orchestrator-tooling-2026-05-12.md`](docs/dev-notes/archive/2026-Q2/orchestrator-tooling-2026-05-12.md).
 Sub-agents must NOT call those — they wrap capabilities scoped to the
 orchestrator's lane.
 
@@ -746,7 +746,7 @@ incident and a concrete tooling gate:
 ## Capability boundaries (orchestrator vs. sub-agent)
 
 Adopted 2026-05-12 after the chart-canvas-overhaul retrospective
-([spec/dev-notes/ui-testing-direction-2026-05-12.md](spec/dev-notes/ui-testing-direction-2026-05-12.md)).
+([docs/dev-notes/ui-testing-direction-2026-05-12.md](docs/dev-notes/ui-testing-direction-2026-05-12.md)).
 Sub-agents are **context tools, not capability tools**. Their toolset is a
 subset of the orchestrator's. When a sub-agent's sandbox blocks a capability
 the orchestrator has, the sub-agent must escalate, not rationalize.
@@ -784,7 +784,7 @@ The single `tester` role is split into two:
   mode.
 
 Once PreToolUse hooks are wired (week 3 of the
-[ui-testing-direction adoption plan](spec/dev-notes/ui-testing-direction-2026-05-12.md)),
+[ui-testing-direction adoption plan](docs/dev-notes/ui-testing-direction-2026-05-12.md)),
 the evaluator's `Write` on the evaluation file is default-FAIL unless its
 read trace contains the run log AND every cited artifact. Until those hooks
 land, the contract is procedural — the evaluator agent's brief enforces it

@@ -431,7 +431,7 @@ both gate-tied.
 
 > Sequenced by **credibility-per-unit-risk**, honoring the analyst's §5 ship order and
 > the §0 corrections. Each phase lists the **ADRs owed** (registered atomically in
-> `spec/architecture/adr/README.md` when written — the 2026-05-29 contract).
+> `_bmad-output/planning-artifacts/architecture/decisions/README.md` when written — the 2026-05-29 contract).
 
 ### Phase 2A — the credibility layer (the product goal made visible)
 **Ship:** P0-1 closed-form scorecard (DSR + MinBTL + N_eff, **report-only**) →
@@ -618,12 +618,12 @@ brief       = "spec/v2/v2-analysis.md"
 artifacts   = [
   "spec/v2/v2-analysis.md",
   "spec/architecture.md",
-  "spec/architecture/adr/0059-bakeoff-orchestrator-home-and-result-seam.md",
-  "spec/architecture/adr/0060-budget-aware-sizing-and-forward-paper-run-seam.md",
-  "spec/architecture/adr/0062-forward-plan-read-seam.md",
-  "spec/architecture/adr/0066-benchmark-exempt-from-allfragile.md",
-  "spec/architecture/adr/0069-gate-tied-parameter-sweep-seam.md",
-  "spec/architecture/adr/0070-promote-tuned-config-into-forward-paper-run.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0059-bakeoff-orchestrator-home-and-result-seam.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0060-budget-aware-sizing-and-forward-paper-run-seam.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0062-forward-plan-read-seam.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0066-benchmark-exempt-from-allfragile.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0069-gate-tied-parameter-sweep-seam.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0070-promote-tuned-config-into-forward-paper-run.md",
   "crates/backtest/src/bakeoff/{mod,rank,robustness,bootstrap,sweep}.rs",
   "crates/backtest/src/stats/mod.rs",
   "crates/agent/src/runtime.rs",

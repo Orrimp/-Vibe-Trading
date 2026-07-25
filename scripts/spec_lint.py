@@ -41,6 +41,11 @@ SPEC_DIR = REPO_ROOT / "spec"
 # BMAD-migration Phase 3 (layout preserved 1:1). `feature.md`/`tasks.md`/
 # `presentations/` stay under SPEC_DIR until Phase 5b.
 EVIDENCE_DIR = REPO_ROOT / "evidence"
+# Project-knowledge home (BMAD `project_knowledge`). `spec/{dev-notes,runbooks,
+# design,ui-design-principles.md}` `git mv`d here in the 2026-07-25 BMAD-migration
+# Phase 4. Walked for dead-link + frontmatter checks alongside SPEC_DIR/EVIDENCE_DIR
+# so cross-links between the three roots stay checked.
+DOCS_DIR = REPO_ROOT / "docs"
 
 # ---------------------------------------------------------------------------
 # Configuration: which frontmatter keys are required on which files.
@@ -198,14 +203,36 @@ KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
     # scenario `vol-verdict-bs1-realdata` in anchors.toml) froze an off-by-one
     # relative link at emission: `../architecture/...` should be
     # `../../architecture/...` (the report sits two dirs deep; the ADR-0038
-    # target exists at spec/architecture/adr/). A raw `../`→`../../` edit breaks
-    # the body-SHA; the proper fix is the ADR-0038 §D6.c documentation-link-fix
-    # re-emission protocol (NOT YET CODIFIED — see CLAUDE.md). Exempted here
-    # rather than re-emitting a retired line.
+    # target was spec/architecture/adr/, now _bmad-output/planning-artifacts/
+    # architecture/decisions/ since the 2026-07-25 BMAD-migration Phase 4
+    # ADR-corpus move — the frozen link is doubly stale, but was already dead
+    # pre-move). A raw `../`->`../../` edit breaks the body-SHA; the proper
+    # fix is the ADR-0038 §D6.c documentation-link-fix re-emission protocol
+    # (NOT YET CODIFIED — see CLAUDE.md). Exempted here rather than
+    # re-emitting a retired line.
     (
         "evidence/v1/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
         "../architecture/adr/0038-vol-forecast-verdict-shape.md"
         "#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension",
+    ),
+    # BMAD-migration Phase 4 (2026-07-25) fallout: these two evidence/v3 reports
+    # are byte-immutable (anchored `backtest-*.md` bodies) and each carry ONE
+    # real markdown link that resolved correctly into spec/dev-notes/ and
+    # spec/architecture/adr/ respectively at emission time. Both targets moved
+    # in this same migration phase (-> docs/dev-notes/, -> _bmad-output/
+    # planning-artifacts/architecture/decisions/); the frozen bodies cannot be
+    # edited to follow, so the tuple's second element below is the literal
+    # (now-stale) string as it still reads in the frozen file -- do NOT
+    # "fix" it to the new path, that would break the match. Newly-dead, not
+    # pre-existing — tracked here per the same allowlist convention rather
+    # than editing evidence/**.
+    (
+        "evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md",
+        "../../../../spec/dev-notes/p2-wobble-thesis-analysis-2026-07-10.md",
+    ),
+    (
+        "evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md",
+        "../../../../spec/architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md",
     ),
 }
 
@@ -326,7 +353,11 @@ def check_frontmatter(md_path: Path, text: str, report: Report) -> None:
 # ---------------------------------------------------------------------------
 
 # Folder names that are not features (cross-cutting siblings of feature folders).
-NON_FEATURE_FOLDERS = {"design", "dev-notes", "runbooks", "archive", "architecture",
+# `design`/`dev-notes`/`runbooks` `git mv`d out of spec/ entirely in the
+# 2026-07-25 BMAD-migration Phase 4 (-> docs/); no longer possible children of
+# spec_dir.iterdir(), so dropped from this set (dead entries would be harmless
+# but the folder names genuinely no longer occur here).
+NON_FEATURE_FOLDERS = {"archive", "architecture",
                        "v1", "v2", "v3"}  # v1/v2/v3 are containers for feature folders
                                           # (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out phase)
 
@@ -1079,12 +1110,15 @@ def main(argv: list[str]) -> int:
     # Default roots: spec/ (feature.md/tasks.md/presentations/ + everything
     # else not yet migrated) AND evidence/ (the reports corpus, since the
     # 2026-07-25 Phase 3 move — dead-link + frontmatter checks still walk
-    # every report body EVIDENCE_DIR holds, mirroring pre-move coverage).
-    # `iter_spec_md` no-ops gracefully if EVIDENCE_DIR doesn't exist yet.
+    # every report body EVIDENCE_DIR holds, mirroring pre-move coverage) AND
+    # docs/ (project-knowledge — dev-notes/runbooks/design/ui-design-principles.md,
+    # since the 2026-07-25 Phase 4 move — dead-link checks walk every doc DOCS_DIR
+    # holds, and cross-links spec/ <-> docs/ resolve against the same tree).
+    # `iter_spec_md` no-ops gracefully if a root doesn't exist yet.
     roots = (
         [Path(p).resolve() for p in args.paths]
         if args.paths
-        else [SPEC_DIR, EVIDENCE_DIR]
+        else [SPEC_DIR, EVIDENCE_DIR, DOCS_DIR]
     )
     report = Report()
 

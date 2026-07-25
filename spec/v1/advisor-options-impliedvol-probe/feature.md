@@ -6,13 +6,13 @@ owner: tester
 priority: P2
 updated: 2026-06-27
 arch_refs:
-  - spec/architecture/adr/0072-dvol-implied-vol-exogenous-series-probe.md
-  - spec/architecture/adr/0058-pit-as-of-series-primitive.md
-  - spec/architecture/adr/0059-bakeoff-orchestrator-home-and-result-seam.md
-  - spec/architecture/adr/0071-obv-dsl-primitive-and-signal-arm-expansion.md
+  - _bmad-output/planning-artifacts/architecture/decisions/0072-dvol-implied-vol-exogenous-series-probe.md
+  - _bmad-output/planning-artifacts/architecture/decisions/0058-pit-as-of-series-primitive.md
+  - _bmad-output/planning-artifacts/architecture/decisions/0059-bakeoff-orchestrator-home-and-result-seam.md
+  - _bmad-output/planning-artifacts/architecture/decisions/0071-obv-dsl-primitive-and-signal-arm-expansion.md
 related:
-  - spec/dev-notes/onchain-netflow-spike-2026-06-08.md
-  - spec/dev-notes/onchain-vs-conclude-fork-2026-06-08.md
+  - docs/dev-notes/onchain-netflow-spike-2026-06-08.md
+  - docs/dev-notes/onchain-vs-conclude-fork-2026-06-08.md
   - spec/perp-basis-mn-spread/feature.md
   - spec/product.md
   - spec/backlog.md
@@ -46,7 +46,7 @@ is the difference between this probe and the on-chain one:
 - **On-chain net-flows DIED at the PIT gate** because the vendor (CryptoQuant) **itself
   disclaims** point-in-time accuracy — historical values are *mutable*, silently
   rewritten as exchange wallets are retroactively discovered and relabeled
-  ([onchain-netflow-spike-2026-06-08 § 1.1](../../dev-notes/onchain-netflow-spike-2026-06-08.md)).
+  ([onchain-netflow-spike-2026-06-08 § 1.1](../../../docs/dev-notes/onchain-netflow-spike-2026-06-08.md)).
   That address-relabeling look-ahead is unfixable on free data.
 - **DVOL has NO such mutation mechanism.** It is computed **live, in real time, from the
   Deribit option order book** via a variance-swap construction (a deterministic function
@@ -284,7 +284,7 @@ the funding/accrual path. The reusable parts, verbatim from the basis build:
 
 ### 3.2 NOT the multi-symbol cross_sectional path
 
-[`crates/strategy/src/cross_sectional/`](../../../crates/strategy/src/cross_sectional/)
+[`crates/strategy/src/cross_sectional/`](../../../crates/strategy/src/cross_sectional)
 consumes multi-symbol bars for a *cross-sectional rank*. With only 2 DVOL symbols, the
 cross-section is meaningless (§ 1.4) — so the arm is a **per-symbol time-series regime
 filter**, NOT a cross-sectional rank. The cross_sectional `ScoreSource` enum
@@ -332,7 +332,7 @@ day-1 divergence e2e test (§ 5), and 2 anchored surfaces (BTC, ETH — added, n
 ## 5. Day-1 baseline-equity-divergence gate (MANDATORY — CLAUDE.md non-negotiable)
 
 Per the CLAUDE.md non-negotiable + the
-[`v3-volatility-forecaster-noop-fix` precedent](../../dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md):
+[`v3-volatility-forecaster-noop-fix` precedent](../../../docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md):
 **every strategy overlay or sizing-modifier ships with a baseline-equity-divergence e2e
 test from day 1** — unit tests on the regime math + anchored surfaces are NOT sufficient to
 catch a no-op arm where `dvol_t` is computed but never actually flattens the position. This
@@ -518,7 +518,7 @@ signal (no grid, no PIT-relabeling guard to invent — DVOL is clean by construc
 
 > **Scope of this section.** Converts the analyst's FEASIBLE verdict into a buildable
 > single-coin bake-off arm. Every claim is grounded in code (file:line). The decision
-> record + alternatives live in [ADR-0072](../../architecture/adr/0072-dvol-implied-vol-exogenous-series-probe.md);
+> record + alternatives live in [ADR-0072](../../../_bmad-output/planning-artifacts/architecture/decisions/0072-dvol-implied-vol-exogenous-series-probe.md);
 > this section is the developer-facing "what to build". Two analyst seam reads are
 > corrected here (the `ScoreSource`/`SweepFamily` registration target and the DSL-vs-hand-written
 > question) — see § D-DVOL.3 and the Changelog entry above.

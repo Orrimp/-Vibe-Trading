@@ -30,7 +30,7 @@ adopt instead of hand-rolling more widget code?"
 
 The cockpit's hand-rolled widget surface has grown to **22 widgets totalling
 ~5.2k LOC** across `crates/ui/src/widgets/` (count from
-[`crates/ui/src/widgets/`](../../crates/ui/src/widgets/) directory listing;
+[`crates/ui/src/widgets/`](../../crates/ui/src/widgets) directory listing;
 LOC totals from `wc -l`). The largest single file is
 [`chart.rs`](../../crates/ui/src/widgets/chart.rs) at **1,539 lines** — a
 canvas `Program` covering axes, gutters, gridlines, candles/lines, buy/sell
@@ -115,11 +115,11 @@ precedent on `dssim-core`.
 | Crate | Latest | License | iced 0.14? | Maps to (file:line OR roadmap) | Verdict | Rationale |
 |---|---|---|---|---|---|---|
 | [`iced_aw`](https://github.com/iced-rs/iced_aw) | 0.14.1 (2026-04-27) | MIT | ✅ yes | Multiple — date_picker → v2.5 Kronos backtest range / Phase 4 viewer; menu → screens routing; tab_bar → screens nav; sidebar → [`sidebar_nav.rs:1`](../../crates/ui/src/widgets/sidebar_nav.rs); badge → status chips; spinner → `panel_state::Loading`; number_input → [`override_risk_veto.rs:1`](../../crates/ui/src/widgets/override_risk_veto.rs) typed-confirm; card → frame replacement; context_menu → audit row right-click | **ADOPT (cherry-pick)** | Architect-resolved Q5 = cherry-pick. Brief B scope = `date_picker` + `spinner` + `badge` only, feature-gated. Block-adoption of `full` rejected per Q5 rationale (surface-area dump). 21,998 downloads/month, last commit 2026-04-27, official iced-rs org repo. |
-| [`iced_anim`](https://crates.io/crates/iced_anim) | 0.3.1 (2026-01-01) | MIT | ✅ yes (0.3.x → iced 0.14.x) | None directly; could power motion tokens in [`spec/ui-design-principles.md`](../ui-design-principles.md) `DUR_1..DUR_4` ladder | **SKIP** | [`ui-design-principles.md:62`](../ui-design-principles.md) explicitly says "Not animation-rich. Trading UIs that move when nothing has happened are…" — the design constitution forbids the use case this crate solves. Iced 0.14 also ships a built-in `Animation` API that covers the bounded cases ([changelog](https://github.com/iced-rs/iced/blob/master/CHANGELOG.md)). Re-evaluate only if a Phase 6 Assistant slot (LLM streaming token reveal) lands. |
+| [`iced_anim`](https://crates.io/crates/iced_anim) | 0.3.1 (2026-01-01) | MIT | ✅ yes (0.3.x → iced 0.14.x) | None directly; could power motion tokens in [`docs/ui-design-principles.md`](../../docs/ui-design-principles.md) `DUR_1..DUR_4` ladder | **SKIP** | [`ui-design-principles.md:62`](../../docs/ui-design-principles.md) explicitly says "Not animation-rich. Trading UIs that move when nothing has happened are…" — the design constitution forbids the use case this crate solves. Iced 0.14 also ships a built-in `Animation` API that covers the bounded cases ([changelog](https://github.com/iced-rs/iced/blob/master/CHANGELOG.md)). Re-evaluate only if a Phase 6 Assistant slot (LLM streaming token reveal) lands. |
 | [`iced_dialog`](https://crates.io/crates/iced_dialog) | 0.14.0 (2025-12-08) | MIT | ✅ yes | [`journal_transaction_modal.rs:1`](../../crates/ui/src/widgets/journal_transaction_modal.rs) (571 LOC) | **DEFER (Brief C, gated on H6)** | Architect-resolved Q6: API-shape diff IS architect work. Native `iced::widget::float` (Brief A) covers the overlay primitive — `iced_dialog` only buys us the *modal chrome* (header / button row / focus-trap). Defer until H6 falsification (native `float` doesn't compose with typed-confirm focus path). |
 | [`iced_toasts`](https://crates.io/crates/iced_toasts) | 0.1.1 (2025-08-22) | MIT | ⚠️ iced 0.13 only | New surface (no current toast widget) | **SKIP** | Lags one iced version. No current toast surface in the cockpit, and the operator hasn't surfaced this as a pain point — adoption would be inventing a need. Re-evaluate if upstream bumps to 0.14, or wait until the cockpit needs ephemeral notifications (likely never — see `ui-design-principles.md` quiet aesthetic). |
 | [`iced_drop`](https://crates.io/crates/iced_drop) | 0.2.26 (2026-05-11) | MIT | ✅ yes (`^0.14`) | None — no current drag-drop surface | **SKIP** | Live and maintained, but cockpit has no drag-drop use case. Could become relevant if Phase 6 Assistant adds card-rearrangement, but that's hypothetical. |
-| [`iced_fonts`](https://crates.io/crates/iced_fonts) | 0.3.0 (2025-12-08) | MIT | ✅ yes (0.3.x → iced 0.14.x) | None directly; principles section [`Iconography`](../ui-design-principles.md) currently silent on icon-font source | **DEFER (wait for Phase 6)** | Architect-resolved Q9: pre-adoption manufactures a need. No current icon surface; cockpit ships zero system icons per `ui-design-principles.md` quiet aesthetic. Re-evaluate when Phase 6 Assistant brief opens — pulling 8 font families now would inflate snapshot baselines for zero present-tense win. |
+| [`iced_fonts`](https://crates.io/crates/iced_fonts) | 0.3.0 (2025-12-08) | MIT | ✅ yes (0.3.x → iced 0.14.x) | None directly; principles section [`Iconography`](../../docs/ui-design-principles.md) currently silent on icon-font source | **DEFER (wait for Phase 6)** | Architect-resolved Q9: pre-adoption manufactures a need. No current icon surface; cockpit ships zero system icons per `ui-design-principles.md` quiet aesthetic. Re-evaluate when Phase 6 Assistant brief opens — pulling 8 font families now would inflate snapshot baselines for zero present-tense win. |
 | [`iced_drop`](https://crates.io/crates/iced_drop) (dup) | — | — | — | — | — | (duplicate row — ignore) |
 | [`iced_plot`](https://crates.io/crates/iced_plot) | 0.4.0 (2026-03-20) | MIT | ✅ yes | [`chart.rs:1`](../../crates/ui/src/widgets/chart.rs) (1,539 LOC), [`equity_curve.rs:1`](../../crates/ui/src/widgets/equity_curve.rs) (386 LOC), [`drawdown_band.rs:1`](../../crates/ui/src/widgets/drawdown_band.rs) (353 LOC), [`sparkline.rs:1`](../../crates/ui/src/widgets/sparkline.rs) (180 LOC) | **SKIP** | Description: "GPU-accelerated plotting widget for Iced, handles up to millions of points." **Hard-requires wgpu** for GPU acceleration — exactly the dep weight (~10–15 MB) we are NOT paying today. Tiny-skia-only renderer is non-negotiable per chart-canvas-overhaul retrospective. Re-evaluate only if we ever flip to wgpu. |
 | [`plotters-iced`](https://github.com/Joylei/plotters-iced) | 0.11.0 (2024-09-18) | MIT | ❌ iced 0.13 only | [`chart.rs:1`](../../crates/ui/src/widgets/chart.rs), `equity_curve.rs`, `drawdown_band.rs`, `sparkline.rs` | **SKIP** | Stuck at iced 0.13, last commit ~20 months ago. Original-author maintenance has stalled. |
@@ -155,7 +155,7 @@ SKIP, with the precise reason:
    Adopting would invalidate the entire snapshot harness investment.
 3. **`iced-anim` / `Cosmic Time` / `anim-rs`** — animation crates are
    attractive because animations look polished, but
-   [`ui-design-principles.md:62`](../ui-design-principles.md) explicitly
+   [`ui-design-principles.md:62`](../../docs/ui-design-principles.md) explicitly
    says "Not animation-rich. Trading UIs that move when nothing has happened
    are…". Adopting any of these would require an operator-locked
    constitutional amendment first.
@@ -195,7 +195,7 @@ land. The operator may need to ratify some of these.
   called out tooltip-overlay-clamp behaviour ([`spec/chart-canvas-overhaul/feature.md`](../v1/chart-canvas-overhaul/feature.md));
   understand whether native `float` exposes equivalent clamp/anchor APIs.
 - **Q4.** Adopt iced 0.14's **built-in `Animation` API** for the bounded
-  motion tokens in [`ui-design-principles.md`](../ui-design-principles.md)
+  motion tokens in [`ui-design-principles.md`](../../docs/ui-design-principles.md)
   (`DUR_1..DUR_4`)? This is zero-new-dep and aligned with the constitution
   ("Not animation-rich" forbids 60fps movement, NOT bounded transitions).
   If yes, the constitution may need a clarification sentence distinguishing
@@ -235,7 +235,7 @@ land. The operator may need to ratify some of these.
 - **Q10.** Beyond the surveyed crates, is there an iced-adjacent **MCP
   server / accessibility / introspection tool** the architect would want?
   The HN discussion on iced 0.14 (cited in
-  [`ui-testing-direction-2026-05-12.md ## 7`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#7-what-this-wont-fix))
+  [`ui-testing-direction-2026-05-12.md ## 7`](../../docs/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#7-what-this-wont-fix))
   flagged accessibility as "WIP in iced." [AccessKit](https://accesskit.dev/)
   is the standard cross-toolkit a11y crate but iced 0.14 does not yet ship
   a first-class adapter. Out of scope for this survey, but worth raising.
@@ -328,7 +328,7 @@ appear in [`## Operator-input questions`](#operator-input-questions) below.
   doesn't apply. H2 (analyst's original) covers this.
 
 - **Q4 (Animation API) — ROUTE TO OPERATOR.** This is a constitutional
-  reading: does [`ui-design-principles.md:62`](../ui-design-principles.md)
+  reading: does [`ui-design-principles.md:62`](../../docs/ui-design-principles.md)
   "Not animation-rich" forbid bounded state transitions (e.g. focus-ring
   fade-in, panel-state cross-fade)? Architect's view: bounded transitions
   are NOT what the line forbids (it targets ambient motion-decoration).
@@ -423,7 +423,7 @@ already in the iced lockfile.
 **License: MIT/Apache** (iced upstream).
 
 **PNG baseline impact (`ui-test-harness-bootstrap` v0.1):** The 3 PNG
-baselines at [`crates/ui/tests/visual-baselines/charts_screen_dark_*.png`](../../crates/ui/tests/visual-baselines/)
+baselines at [`crates/ui/tests/visual-baselines/charts_screen_dark_*.png`](../../crates/ui/tests/visual-baselines)
 render the Charts screen, NOT positions/strategies/kpi_strip/journal_modal —
 **Brief A leaves all 3 PNGs byte-identical.**
 
@@ -735,7 +735,7 @@ a typed-confirm focus-trap API hook compatible with our
 
 Sum of `.snap` files expected to diff across briefs (panel_snapshots
 prefix; total baseline count = 68 per
-[`crates/ui/tests/snapshots/`](../../crates/ui/tests/snapshots/)):
+[`crates/ui/tests/snapshots/`](../../crates/ui/tests/snapshots)):
 
 | Brief | `.snap` files refreshed (estimate) | PNG baselines refreshed |
 |---|---|---|
@@ -803,7 +803,7 @@ Explicit non-goals for this survey:
 
 - **Non-iced Rust GUI alternatives** (egui, slint, gpui, dioxus, makepad,
   floem, ribir). The
-  [`ui-testing-direction-2026-05-12.md`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
+  [`ui-testing-direction-2026-05-12.md`](../../docs/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md)
   dev-note covered that territory. This brief is iced-ecosystem-only.
 - **The wgpu vs tiny-skia decision.** Locked to tiny-skia per chart-canvas-
   overhaul retrospective and [`ui-test-harness-bootstrap` v0.1](../v1/ui-test-harness-bootstrap/feature.md);
@@ -811,7 +811,7 @@ Explicit non-goals for this survey:
   `iced_plot` row).
 - **Cross-platform (Windows/Linux).** The cockpit is macOS-only per
   operator decision D3 in
-  [`ui-testing-direction-2026-05-12.md ## 9`](../dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator).
+  [`ui-testing-direction-2026-05-12.md ## 9`](../../docs/dev-notes/archive/2026-Q2/ui-testing-direction-2026-05-12.md#9-open-decisions-for-the-operator).
   Candidate evaluation does not score cross-platform reach.
 - **The 34-crate transitive baseline.** Orchestrator-verified at commit
   `d8c3a99`; analyst does NOT re-survey.
@@ -885,7 +885,7 @@ of the candidate matrix + architect uptake of H1-H5._
   defaults):
   - **Q-O1 = bounded transitions allowed.** Constitutional amendment
     landed at
-    [`spec/ui-design-principles.md:62`](../ui-design-principles.md):
+    [`docs/ui-design-principles.md:62`](../../docs/ui-design-principles.md):
     fade-in, focus-ring pulse, panel slide, spinner-during-real-I/O
     ALLOWED when motion signals an event; continuous motion without
     an event stays forbidden. Unblocks `iced_aw::spinner` (Brief B)

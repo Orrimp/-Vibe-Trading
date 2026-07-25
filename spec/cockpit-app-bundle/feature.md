@@ -70,7 +70,7 @@ app packaging" (this candidate).
    `Lumen.app` for `cockpit_live` only, or three separate `.app`s
    (lumen-cockpit, lumen-cockpit-live, lumen-viewer)?
 3. **Icon rasterisation pipeline.** The brand mark is at
-   [`spec/design/project/assets/brand/lumen-mark.svg`](../design/project/assets/brand/lumen-mark.svg).
+   [`docs/design/project/assets/brand/lumen-mark.svg`](../../docs/design/project/assets/brand/lumen-mark.svg).
    `.icns` needs 6+ sizes (16, 32, 64, 128, 256, 512, 1024 px).
    Pre-rasterise once into the repo (the way `assets/lumen-mark-64x64.rgba`
    handles the iced path), or rasterise on every build (slower but
@@ -105,7 +105,7 @@ app packaging" (this candidate).
    the build pipeline (cargo-bundle or xtask), and the CI gate (skip
    on Linux runners or matrix-on-macOS).
 5. Developer ships the bundle plumbing; ui-designer reviews the
-   rasterised icon glyphs for parity with `spec/design/`.
+   rasterised icon glyphs for parity with `docs/design/`.
 6. Tester re-runs every cockpit V-gate against the bundled binary —
    the bundled path MUST keep all anchors green (the bundle is a
    wrapper, not a code change) — plus a new V-gate that confirms
@@ -121,7 +121,7 @@ app packaging" (this candidate).
 - [`spec/chart-buy-sell-emphasis/tasks.md`](../v1/chart-buy-sell-emphasis/tasks.md)
   § M6.2 / T2031 — the operator-feedback breadcrumb that surfaced
   this candidate.
-- [`spec/design/project/assets/brand/lumen-mark.svg`](../design/project/assets/brand/lumen-mark.svg)
+- [`docs/design/project/assets/brand/lumen-mark.svg`](../../docs/design/project/assets/brand/lumen-mark.svg)
   — the brand mark to rasterise into `.icns`.
 - [`crates/ui/assets/lumen-mark-64x64.rgba`](../../crates/ui/assets/lumen-mark-64x64.rgba)
   — the pre-rasterised 64×64 RGBA blob already shipped for the

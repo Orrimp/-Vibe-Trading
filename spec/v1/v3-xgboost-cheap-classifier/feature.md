@@ -4,7 +4,7 @@ version: 0.1.0
 status: retired
 owner: analyst
 updated: 2026-06-17
-predecessor: spec/dev-notes/post-v3-strategy-direction-2026-05-29.md (Route A Candidate 6 pre-position)
+predecessor: docs/dev-notes/post-v3-strategy-direction-2026-05-29.md (Route A Candidate 6 pre-position)
 parent: strategy-reformulation-survey-2026-05-22 Candidate 6
 priority: P2
 sibling_picks:

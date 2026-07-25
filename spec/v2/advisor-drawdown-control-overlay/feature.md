@@ -140,4 +140,4 @@ report body. 119/119 anchors unchanged.
 > is probabilistic on a gapping asset — a crypto jump larger than the cushion between
 > bars can still breach the floor. We disclose this."
 
-ADR: `spec/architecture/adr/0080-drawdown-control-overlay.md`
+ADR: `_bmad-output/planning-artifacts/architecture/decisions/0080-drawdown-control-overlay.md`

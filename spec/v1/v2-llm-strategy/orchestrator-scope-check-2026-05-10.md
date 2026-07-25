@@ -49,7 +49,7 @@ Full rationale lives in [`feature.md` § Design](feature.md) at lines
 
 ## Surface area
 
-- **32 new files** (12 `crates/llm/` source files + 1 SQL migration + 1 fixture replay DB + 8 integration tests + `llm-smoke` binary + `config/agent.toml.local.example` template + 2 new runbooks at `spec/runbooks/llm-{cost,replay}.md`).
+- **32 new files** (12 `crates/llm/` source files + 1 SQL migration + 1 fixture replay DB + 8 integration tests + `llm-smoke` binary + `config/agent.toml.local.example` template + 2 new runbooks at `docs/runbooks/llm-{cost,replay}.md`).
 - **22 modified files** (existing `crates/llm/` v0 stub swap; `crates/cost/{event,lib,sink,budget}.rs` absorb the `ProviderKind` rename + the `Llm` event extension; `crates/audit/src/{query,journal}.rs` add `cache_hit_ratio_since`; `crates/agent/src/{config,main}.rs` wire `LlmConfig` from `agent.toml.local` + factory at boot; `config/agent.toml` gets the new `[llm]` block; `crates/reports/src/{lib,render/system_health}.rs` land the Q5d row + the Q11 denominator hot-fix; the two `spec/operator-success-reports/reports/success-fixed-report-sample-*.md` bodies regenerate; `spec/architecture.md` stub at `:421-432` is replaced + the new "v2 — LLM strategy resolutions (Q4–Q11) — confirmed 2026-05-10" decisions-index section appends).
 - **45 developer tasks** T1901–T1945 + `T_FINAL_V2_LLM_STRATEGY` (tester gate).
 

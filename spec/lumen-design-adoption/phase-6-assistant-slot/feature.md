@@ -24,7 +24,7 @@ version: 2.5.0
 
 The Lumen `Assistant.jsx` and Shell `right-side AI assistant panel`
 is **opt-in, collapsible, and remembers state**
-([`spec/design/project/README.md:131`](../../design/project/README.md)).
+([`docs/design/project/README.md:131`](../../../docs/design/project/README.md)).
 The execution-mode toggle in Phase 5's HumanControl
 (Observe / Supervised / Auto) maps directly onto the v2 LLM gate —
 Supervised = trade-by-trade approval, Auto = within-envelope
@@ -37,7 +37,7 @@ time.
 - **Right-rail collapsible panel slot** in the shell, hidden by
   default, revealed when the v2 LLM strategy is enabled.
 - **Composer + message-list widget pattern** aligned to
-  [`spec/design/project/ui_kits/desktop/Assistant.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).
+  [`docs/design/project/ui_kits/desktop/Assistant.jsx`](../../archive/design-prototypes-2026-Q2.tar.gz).
 - **Wires into the v2 LLM trait** the architect defines at v2
   kickoff.
 - **Coexists with the Phase 2 sidebar nav** (assistant rail on

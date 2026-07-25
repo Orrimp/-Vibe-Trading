@@ -49,7 +49,7 @@ which is the gate **working**, positively mapping the boundary of its own claim 
 asserting a universal that isn't true (this is a *strength* of measured honesty, not a crack;
 those old edges are unreachable today and are the exact alpha-chasing the do-not-build register
 forbids). There is no coherent "add-more-features" v3 (see
-[`spec/dev-notes/post-v2-scoping-2026-07-09.md`](spec/dev-notes/post-v2-scoping-2026-07-09.md));
+[`docs/dev-notes/post-v2-scoping-2026-07-09.md`](docs/dev-notes/post-v2-scoping-2026-07-09.md));
 manufacturing more alpha surface would contradict *measured honesty, not asserted alpha*.
 
 | Dimension | State |
@@ -66,9 +66,9 @@ manufacturing more alpha surface would contradict *measured honesty, not asserte
 
 For the feature-by-feature index see [`CHANGELOG.md`](CHANGELOG.md) (one line per implemented
 feature, grouped by subsystem/version). The settled dead-ends that should NOT be re-proposed
-are consolidated in the [**do-not-build register**](spec/dev-notes/do-not-build-register.md);
+are consolidated in the [**do-not-build register**](docs/dev-notes/do-not-build-register.md);
 the whole spine hanging together on one golden input is walked in the
-[**end-to-end demo runbook**](spec/runbooks/advisor-end-to-end-demo.md).
+[**end-to-end demo runbook**](docs/runbooks/advisor-end-to-end-demo.md).
 
 ---
 
@@ -211,7 +211,7 @@ Full per-feature index: see [`CHANGELOG.md`](CHANGELOG.md) — one line per impl
 | `v3-volatility-forecaster` + rebaseline | MODEL-BROKEN / NO-ALPHA / NEGATIVE-NET-DELTA; retired 2026-05-22 after noop-fix |
 | `v3-regime-classifier` | Draft only; never promoted |
 
-Retired code stays in the tree (no deletion); anchors stay locked. See [`spec/dev-notes/retired-surface-inventory-2026-05-22.md`](spec/dev-notes/retired-surface-inventory-2026-05-22.md) for the inventory.
+Retired code stays in the tree (no deletion); anchors stay locked. See [`docs/dev-notes/retired-surface-inventory-2026-05-22.md`](docs/dev-notes/retired-surface-inventory-2026-05-22.md) for the inventory.
 
 ### Infrastructure (shipped, load-bearing)
 
@@ -221,7 +221,7 @@ Retired code stays in the tree (no deletion); anchors stay locked. See [`spec/de
 - `crates/backtest/` — `MatchingEngine` + scenarios + report rendering with body-SHA-256 anchors
 - `crates/strategy/` — `Strategy` trait + `Strategy::quantity_scale` sizing hook + all strategy implementations
 - `crates/ui/` — iced cockpit (14 screens; Lab/Live/Compare/Memory/Models/Trail/Strategies/Risk/Audit/Control/Settings/Charts/Home/Debug)
-- `crates/exec/` — fill publisher shim (note: real matching engine still lives in `crates/backtest/`; architect-flagged for rename per `spec/dev-notes/feature-state-architect-review-2026-05-22.md`)
+- `crates/exec/` — fill publisher shim (note: real matching engine still lives in `crates/backtest/`; architect-flagged for rename per `docs/dev-notes/feature-state-architect-review-2026-05-22.md`)
 
 ### UI surface
 
@@ -336,10 +336,10 @@ All `spec/` file edits go through the [`spec-update`](.claude/skills/spec-update
 When orienting on the project, these dev-notes give the most signal per word:
 
 - [`CHANGELOG.md`](CHANGELOG.md) — the comprehensive per-feature inventory (supersedes the retired `feature-state-table` snapshot)
-- [`v25-dl-journey-retrospective-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md) — what the forecaster track taught (4 retirements)
-- [`v3-vol-overlay-noop-discovery-2026-05-22.md`](spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) — the load-bearing engineering pattern
-- [`strategic-reset-2026-05-23.md`](spec/dev-notes/archive/2026-Q2/strategic-reset-2026-05-23.md) — half-validated moat finding + next-6-week roadmap framing
-- [`feature-state-analyst-review-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/feature-state-analyst-review-2026-05-22.md) + [`feature-state-architect-review-2026-05-22.md`](spec/dev-notes/archive/2026-Q2/feature-state-architect-review-2026-05-22.md) — dual-perspective reviews
+- [`v25-dl-journey-retrospective-2026-05-22.md`](docs/dev-notes/archive/2026-Q2/v25-dl-journey-retrospective-2026-05-22.md) — what the forecaster track taught (4 retirements)
+- [`v3-vol-overlay-noop-discovery-2026-05-22.md`](docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) — the load-bearing engineering pattern
+- [`strategic-reset-2026-05-23.md`](docs/dev-notes/archive/2026-Q2/strategic-reset-2026-05-23.md) — half-validated moat finding + next-6-week roadmap framing
+- [`feature-state-analyst-review-2026-05-22.md`](docs/dev-notes/archive/2026-Q2/feature-state-analyst-review-2026-05-22.md) + [`feature-state-architect-review-2026-05-22.md`](docs/dev-notes/archive/2026-Q2/feature-state-architect-review-2026-05-22.md) — dual-perspective reviews
 
 ---
 

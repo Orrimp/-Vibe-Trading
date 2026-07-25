@@ -666,7 +666,7 @@ _tester links to reports here — expect FAMILY-Fragile is a valid PASS; the gat
 ## Changelog
 
 - 2026-06-23 (architect, M-T1 lock): authored the Design + **ADR-0068** (registered
-  atomically in `spec/architecture/adr/README.md`; `adr_registry_check.py --pre-commit`
+  atomically in `_bmad-output/planning-artifacts/architecture/decisions/README.md`; `adr_registry_check.py --pre-commit`
   green). Resolved Q-SS-1..6: (1) signal = position-aware INTERPRETATION of `Buy`/`Sell`,
   no new `SignalKind`; (2) short engine = in-place-gated on a single `short_enabled` flag,
   not a sibling scenario; (3) audit seam = **reader-only** relaxation of `open_positions_at`

@@ -14,7 +14,7 @@ acceptance check. Gates run per the `rust-build` / `rust-validate` /
 `rust-test` skills.
 
 Design source: [`feature.md`](feature.md) § Design. ADR:
-[`../architecture/adr/0060-budget-aware-sizing-and-forward-paper-run-seam.md`](../../architecture/adr/0060-budget-aware-sizing-and-forward-paper-run-seam.md).
+[`../architecture/adr/0060-budget-aware-sizing-and-forward-paper-run-seam.md`](../../../_bmad-output/planning-artifacts/architecture/decisions/0060-budget-aware-sizing-and-forward-paper-run-seam.md).
 
 Legend: `M-DEV-*` developer, `M-TEST-*` tester.
 

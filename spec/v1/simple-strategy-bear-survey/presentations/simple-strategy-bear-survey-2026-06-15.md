@@ -53,8 +53,8 @@ the harness to reproduce the verdict, and reading the recorded conclusion.
 |--------|---------|
 | Reproduce the full two-stage survey (Stage 1 + Stage 2, ~2.3 min) | `cargo test -p backtest --release --test realdata_simple_strategy_bear_survey -- --ignored --nocapture` |
 | Watch the long (>2 min) Stage-2 release run | `watch -n 30 'tail -n 20 /tmp/bear-A.log'` |
-| Read the confirmed numbers + intuition + scope cap | `spec/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md` |
-| Read the runbook callout you are approving | `spec/runbooks/passive-baseline.md` (§ Real-data validation → BEAR-SURVEY 2026-06-15) |
+| Read the confirmed numbers + intuition + scope cap | `docs/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md` |
+| Read the runbook callout you are approving | `docs/runbooks/passive-baseline.md` (§ Real-data validation → BEAR-SURVEY 2026-06-15) |
 
 ## Live demo
 
@@ -135,7 +135,7 @@ the tester PASS report
 | AC-BS.4 | SKIP-safe + `#[ignore]`d (does not run in / fail the default suite) | VERIFIED | § 3 — harness `#[ignore]`d, not in default count; default suite 8 passed / 0 failed |
 | AC-BS.5 | Two consecutive `--release --ignored` runs are byte-identical (determinism) | VERIFIED | § 6 — `diff` of A vs B = **empty diff, PASS** (all 80 + 40 + 16 + contrast rows identical) |
 | AC-BS.6 | Negative control: no mean-reverter ROBUST; up-market contrast discriminates | VERIFIED | § 7 — 9/16 candidates RSI/BBands, all FRAGILE; contrast SOL-2021 SMA p5 +0.439 MARGINAL vs all-negative bear p5 |
-| AC-BS.7 | `findings` dev-note states per-candidate p5/prob_loss + folds into passive thesis | VERIFIED | [`analysis-2026-06-15-simple-strategy-bear-survey.md`](../../../dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md) — authored, status `findings` |
+| AC-BS.7 | `findings` dev-note states per-candidate p5/prob_loss + folds into passive thesis | VERIFIED | [`analysis-2026-06-15-simple-strategy-bear-survey.md`](../../../../docs/dev-notes/analysis-2026-06-15-simple-strategy-bear-survey.md) — authored, status `findings` |
 | AC-BS.8 | Corpus + anchors untouched; no `spec/*/reports/` anchored file written | VERIFIED | § 9–10 — `git diff` empty on corpus/shipped harnesses; `verify_anchors.sh` = **ANCHORS PASS (119/119)** (quoted from test report § 10); no new `anchors.toml` row |
 | AC-BS.9 | spec-lint = 70 zero-new; clippy clean; no `.unwrap()` outside test | VERIFIED | § 2 clippy zero warnings; § 11 spec-lint 70 (all pre-existing). Re-confirmed live for this deck (see Numbers) |
 
@@ -193,7 +193,7 @@ closed and no v0.2.0 trend-following product line is greenlit off this evidence.
 1. **Approve this finding + the passive-baseline BEAR-SURVEY callout (→ ship), or
    route back.** A "yes" ratifies that the 2026-06-08 terminal ship-passive verdict
    stands on the strongest available bear evidence, and that the dated callout in
-   `spec/runbooks/passive-baseline.md` § Real-data validation is the record. **No
+   `docs/runbooks/passive-baseline.md` § Real-data validation is the record. **No
    follow-up cost** is committed: no anchors to re-lock (UN-ANCHORED), no manual
    capture, no deferred question — the reopen path was the only thing a different
    result would have triggered, and it did not fire.

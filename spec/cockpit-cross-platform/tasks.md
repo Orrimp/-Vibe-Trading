@@ -222,7 +222,7 @@ edited).
       via winit docs). YAML step flagged "VALIDATE ON FIRST CI RUN" per D9.
       The Q5 acceptance criterion (0 panics on ubuntu CI) is T_FINAL — owned by
       the tester on first CI push.
-- [x] **T-D-8** Author `spec/runbooks/cockpit-cross-platform.md` (R6). Sections:
+- [x] **T-D-8** Author `docs/runbooks/cockpit-cross-platform.md` (R6). Sections:
       (1) **Linux build prereqs** — the rustls flip means no `libssl-dev`; list
       the Q5-resolved headless apt deps (`xvfb` + whatever T-D-7 found);
       (2) **macOS-only dev-script inventory** (Category C) — the six
@@ -237,7 +237,7 @@ edited).
       ADR-0057 and feature.md § Design; `spec_lint.py` stays ≤ 70 (no new
       findings — a runbook is in the lint-covered tree, so verify it does not
       introduce a broken link or missing-frontmatter finding).
-      **DEV TICK 2026-06-15:** file: `spec/runbooks/cockpit-cross-platform.md`
+      **DEV TICK 2026-06-15:** file: `docs/runbooks/cockpit-cross-platform.md`
       (written with all 3 required sections + §4 Windows notes + §5 changelog).
       `spec_lint.py | grep -c '\['` → 70 (pre-existing, 0 new). ADR-0057
       cross-linked. Test cmd: `python3 scripts/spec_lint.py 2>&1 | grep -c '\\['`.

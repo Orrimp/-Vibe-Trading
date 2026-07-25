@@ -11,7 +11,7 @@ Sequenced per the dependency chain: **market-calendar layer FIRST (the F-2
 unblock) → macro fetch/pin → exogenous-series seam + LOCF join → the
 `v0.macro_riskon` arm → day-1 divergence + leak-check → bake-off run →
 anchors/close.** Design: [feature.md § Design](feature.md#design).
-ADR: [ADR-0073](../../architecture/adr/0073-market-calendar-and-macro-exogenous-regime.md).
+ADR: [ADR-0073](../../../_bmad-output/planning-artifacts/architecture/decisions/0073-market-calendar-and-macro-exogenous-regime.md).
 
 Anchor invariant (CLAUDE.md non-negotiable): `bash scripts/verify_anchors.sh` →
 **119 / 119** at every checkpoint. The arm runs `write_report = false`

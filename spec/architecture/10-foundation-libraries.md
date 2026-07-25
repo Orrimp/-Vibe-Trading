@@ -23,7 +23,7 @@ feature file.
 ## Numerics & ML
 
 - `rust_decimal` — **mandatory** for prices, sizes, balances, P&L. No
-  `f64` for money anywhere. See [ADR-0003](adr/0003-decimal-money-math.md).
+  `f64` for money anywhere. See [ADR-0003](../../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md).
 - `ndarray`, `nalgebra` for general linear algebra.
 - `polars` for in-memory DataFrame work and Parquet read/write.
 - `candle` for DL prototyping; `tract` for ONNX serving.
@@ -34,7 +34,7 @@ feature file.
 
 Crypto doesn't fit ISO 4217 cleanly (BTC, USDT, stablecoins). We roll
 our own `Money<C: Currency>` newtype around `rust_decimal::Decimal`
-in `trading_core`. See [ADR-0003](adr/0003-decimal-money-math.md).
+in `trading_core`. See [ADR-0003](../../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md).
 For fiat sides only: `iso_currency` (or RustQuant's `iso`). Custom
 `Asset` enum for crypto symbols, sourced from venue metadata at
 startup.
@@ -44,7 +44,7 @@ Do **not** use generic money crates (`moneylib`, `moneta`,
 
 ## Quant primitives — RustQuant
 
-Adopted as a helper, not a foundation. See [ADR-0021](adr/0021-rustquant-adoption.md)
+Adopted as a helper, not a foundation. See [ADR-0021](../../_bmad-output/planning-artifacts/architecture/decisions/0021-rustquant-adoption.md)
 for the module-by-module adoption table, the modules explicitly NOT
 adopted, and the risk-mitigation plan (version pinning + adapter
 isolation).
@@ -55,7 +55,7 @@ A `MatchingEngine` trait in `backtest` isolates the choice so the
 implementation can swap without touching `strategy` / `risk` / `exec`.
 
 v0 ships a simple paper engine — no LOB. See
-[ADR-0026](adr/0026-v0-simple-paper-engine.md) for the v0 decision,
+[ADR-0026](../../_bmad-output/planning-artifacts/architecture/decisions/0026-v0-simple-paper-engine.md) for the v0 decision,
 the alternatives deferred to v0.5 (`orderbook-rs`, `matchcore`,
 `rust_ob`), and the trait-freeze rule that makes the future swap an
 additive change.
@@ -85,17 +85,17 @@ Double-entry ledger of decisions, intents, orders, fills, and P&L
 attribution. Lives in the `audit` crate.
 
 v0 ships raw `sqlx` + `SQLite` + in-repo migrations. See
-[ADR-0024](adr/0024-audit-sqlite-raw-sqlx.md) for the substantive
+[ADR-0024](../../_bmad-output/planning-artifacts/architecture/decisions/0024-audit-sqlite-raw-sqlx.md) for the substantive
 decision, the `sqlx-ledger` rejection rationale (Postgres-only), and
 the v1+ migration path.
 
 The v0.5 / v1 / v1.5a / v1.5b additions (strategy events, kill-switch
 trip events, multi-venue typed `venue` column) layer on top — see
-ADRs [0008](adr/0008-v05-strategy-event-journal-schema.md),
-[0013](adr/0013-v1-cross-sectional-momentum.md),
-[0014](adr/0014-v15a-mean-reversion-pairs.md),
-[0015](adr/0015-operator-success-reports.md),
-[0017](adr/0017-v15b-multi-venue.md).
+ADRs [0008](../../_bmad-output/planning-artifacts/architecture/decisions/0008-v05-strategy-event-journal-schema.md),
+[0013](../../_bmad-output/planning-artifacts/architecture/decisions/0013-v1-cross-sectional-momentum.md),
+[0014](../../_bmad-output/planning-artifacts/architecture/decisions/0014-v15a-mean-reversion-pairs.md),
+[0015](../../_bmad-output/planning-artifacts/architecture/decisions/0015-operator-success-reports.md),
+[0017](../../_bmad-output/planning-artifacts/architecture/decisions/0017-v15b-multi-venue.md).
 
 ## Tick aggregation
 
@@ -105,13 +105,13 @@ ADRs [0008](adr/0008-v05-strategy-event-journal-schema.md),
 
 ## Cost telemetry
 
-Standalone `cost` crate. See [ADR-0022](adr/0022-cost-telemetry-crate.md)
+Standalone `cost` crate. See [ADR-0022](../../_bmad-output/planning-artifacts/architecture/decisions/0022-cost-telemetry-crate.md)
 for the placement rationale and the `CostEvent` / `CostSink` /
 `CostBudget` surface.
 
 ## Frontend — iced
 
-Single UI stack across the project. See [ADR-0023](adr/0023-iced-frontend.md)
+Single UI stack across the project. See [ADR-0023](../../_bmad-output/planning-artifacts/architecture/decisions/0023-iced-frontend.md)
 for the high-level decision. The detailed UI architecture (cockpit
 screen routing, `audit::query` read-only surface, KPI strip, widget
 contracts, Lumen design system integration) lives in
@@ -127,11 +127,11 @@ contracts, Lumen design system integration) lives in
   to avoid two date libraries).
 
 v0 ships a hand-rolled Binance WS adapter behind a `MarketDataSource`
-trait. See [ADR-0025](adr/0025-hand-rolled-binance-ws.md) for the
+trait. See [ADR-0025](../../_bmad-output/planning-artifacts/architecture/decisions/0025-hand-rolled-binance-ws.md) for the
 trait shape, the rationale, and the alternatives surveyed
 (`binance-rs-async`, `barter-data`, `ccxt-rs`, full hand-rolled with
 no trait). v1.5b extends with Coinbase and Kraken; see
-[ADR-0017](adr/0017-v15b-multi-venue.md).
+[ADR-0017](../../_bmad-output/planning-artifacts/architecture/decisions/0017-v15b-multi-venue.md).
 
 **Explicitly NOT adopted from `lib.rs/finance`**: FIX engines
 (`easyfix`, `fixer`, `quickfix`); institutional equities/futures data
@@ -148,7 +148,7 @@ statements (`async-stripe`, `mt940`, `ofx-rs`); options pricing
 - `async-openai` for OpenAI-compatible providers (covers OpenRouter,
   DeepSeek, LM Studio)
 - Custom tool-use schema layer in `llm` crate. See
-  [ADR-0019](adr/0019-v2-llm-strategy.md) for the v2 LLM-strategy
+  [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) for the v2 LLM-strategy
   foundation decisions.
 
 ## Testing

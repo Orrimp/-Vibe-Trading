@@ -180,7 +180,7 @@ commit `bcc4c24`):
   uses `write_report=false`; the read-path projection is anchor-safe by
   construction).
 - Spec-lint: **PASS (0 violations)** — baseline of
-  `spec/dev-notes/audit-2026-06-29.md` held.
+  `docs/dev-notes/audit-2026-06-29.md` held.
 - Render-layer cost: **62.64 s** for the 2 macOS render tests
   (`forward_plan_confidence_render`); within the existing macOS render-suite
   budget.

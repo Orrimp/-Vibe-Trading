@@ -64,17 +64,17 @@ during the v1+ operator-reports and v2 LLM ships). The LIVE set has since grown 
 
 | Scenario                            | Version | Owner ADR                                                          |
 |-------------------------------------|---------|--------------------------------------------------------------------|
-| `btc-2023-1m-sma-cross`             | v0      | [ADR-0005](adr/0005-v0-strategy-trait-no-hotload.md) (v0 trait shape) |
-| `btc-2023-1m-sma-baseline-refresh`  | v0      | [ADR-0005](adr/0005-v0-strategy-trait-no-hotload.md)               |
-| `btc-2023-1m-macd-trend`            | v0.5    | [ADR-0006](adr/0006-v05-config-driven-composition.md)              |
-| `btc-2023-1m-rsi-reversion`         | v0.5    | [ADR-0006](adr/0006-v05-config-driven-composition.md)              |
-| `btc-2023-1m-bbands-mean-revert`    | v0.5    | [ADR-0006](adr/0006-v05-config-driven-composition.md)              |
-| `top10-2023-1h-momentum`            | v1      | [ADR-0013](adr/0013-v1-cross-sectional-momentum.md)                |
-| `top10-2024-h1-momentum`            | v1      | [ADR-0013](adr/0013-v1-cross-sectional-momentum.md)                |
-| `pairs-2023-zscore-mr`              | v1.5a   | [ADR-0014](adr/0014-v15a-mean-reversion-pairs.md)                  |
-| `pairs-2024-h1-zscore-mr`           | v1.5a   | [ADR-0014](adr/0014-v15a-mean-reversion-pairs.md)                  |
-| `report-sample-7d`                  | v2.0.0  | [ADR-0015](adr/0015-operator-success-reports.md) + [ADR-0019](adr/0019-v2-llm-strategy.md) Q11 |
-| `report-sample-90d`                 | v2.0.0  | [ADR-0015](adr/0015-operator-success-reports.md) + [ADR-0019](adr/0019-v2-llm-strategy.md) Q11 |
+| `btc-2023-1m-sma-cross`             | v0      | [ADR-0005](../../_bmad-output/planning-artifacts/architecture/decisions/0005-v0-strategy-trait-no-hotload.md) (v0 trait shape) |
+| `btc-2023-1m-sma-baseline-refresh`  | v0      | [ADR-0005](../../_bmad-output/planning-artifacts/architecture/decisions/0005-v0-strategy-trait-no-hotload.md)               |
+| `btc-2023-1m-macd-trend`            | v0.5    | [ADR-0006](../../_bmad-output/planning-artifacts/architecture/decisions/0006-v05-config-driven-composition.md)              |
+| `btc-2023-1m-rsi-reversion`         | v0.5    | [ADR-0006](../../_bmad-output/planning-artifacts/architecture/decisions/0006-v05-config-driven-composition.md)              |
+| `btc-2023-1m-bbands-mean-revert`    | v0.5    | [ADR-0006](../../_bmad-output/planning-artifacts/architecture/decisions/0006-v05-config-driven-composition.md)              |
+| `top10-2023-1h-momentum`            | v1      | [ADR-0013](../../_bmad-output/planning-artifacts/architecture/decisions/0013-v1-cross-sectional-momentum.md)                |
+| `top10-2024-h1-momentum`            | v1      | [ADR-0013](../../_bmad-output/planning-artifacts/architecture/decisions/0013-v1-cross-sectional-momentum.md)                |
+| `pairs-2023-zscore-mr`              | v1.5a   | [ADR-0014](../../_bmad-output/planning-artifacts/architecture/decisions/0014-v15a-mean-reversion-pairs.md)                  |
+| `pairs-2024-h1-zscore-mr`           | v1.5a   | [ADR-0014](../../_bmad-output/planning-artifacts/architecture/decisions/0014-v15a-mean-reversion-pairs.md)                  |
+| `report-sample-7d`                  | v2.0.0  | [ADR-0015](../../_bmad-output/planning-artifacts/architecture/decisions/0015-operator-success-reports.md) + [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) Q11 |
+| `report-sample-90d`                 | v2.0.0  | [ADR-0015](../../_bmad-output/planning-artifacts/architecture/decisions/0015-operator-success-reports.md) + [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) Q11 |
 
 ## The body-vs-frontmatter discipline
 
@@ -90,7 +90,7 @@ The HF-1 incident on 2026-04-18 forced this discipline: a
 9-anchor gate. The fix had two parts: move the leaking field to
 frontmatter, and widen audit-DB timestamps to 6-digit
 fractional-second precision so concurrent inserts don't tie on
-`ORDER BY ts`. See [ADR-0004](adr/0004-fractional-second-timestamps.md)
+`ORDER BY ts`. See [ADR-0004](../../_bmad-output/planning-artifacts/architecture/decisions/0004-fractional-second-timestamps.md)
 for the latter.
 
 The full body-vs-frontmatter table is the developer agent's
@@ -105,13 +105,13 @@ The three load-bearing rules:
 - **RNG.** All randomness uses `ChaCha20Rng::from_seed(...)` with
   a seed declared in the feature's `feature.md` frontmatter. No
   `thread_rng()`, no `OsRng`, no `SystemTime`-derived seed. See
-  [ADR-0002](adr/0002-rng-chacha20.md).
+  [ADR-0002](../../_bmad-output/planning-artifacts/architecture/decisions/0002-rng-chacha20.md).
 - **Money math.** `rust_decimal::Decimal` wrapped in `Money<C:
   Currency>` everywhere. No `f64` for money. See
-  [ADR-0003](adr/0003-decimal-money-math.md).
+  [ADR-0003](../../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md).
 - **Audit-DB timestamps.** 6-digit fractional-second format
   (`%Y-%m-%dT%H:%M:%S%.6f`) on every column. See
-  [ADR-0004](adr/0004-fractional-second-timestamps.md).
+  [ADR-0004](../../_bmad-output/planning-artifacts/architecture/decisions/0004-fractional-second-timestamps.md).
 
 A regression in any of these surfaces as an anchor body-SHA diff,
 which the tester's `verify-anchors` skill catches mechanically.
@@ -160,11 +160,11 @@ two cases that legitimately re-lock an anchor:
   ships R6 as a fixed placeholder string. When reflection-memory
   ships, the `report-sample-*` anchors re-lock **once** — not
   patched in place. See
-  [ADR-0015](adr/0015-operator-success-reports.md) Q9.
+  [ADR-0015](../../_bmad-output/planning-artifacts/architecture/decisions/0015-operator-success-reports.md) Q9.
 - The v2 LLM-spend denominator hot-fix. The `report-sample-7d`
   and `report-sample-90d` anchors re-locked once at
   `T_FINAL_V2_LLM_STRATEGY` per
-  [ADR-0019](adr/0019-v2-llm-strategy.md) Q11.
+  [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) Q11.
 
 Both are documented one-shot re-locks. The default rule —
 "anchors are immutable" — holds otherwise.

@@ -14,7 +14,7 @@ plus the section files, when you just need to know how the thing is wired and wh
 rules you must not break.
 
 > **This is a DERIVED convenience view, not the decision record.** The numbered
-> ADRs (`spec/architecture/adr/`) remain the single source of truth for *why* each
+> ADRs (`_bmad-output/planning-artifacts/architecture/decisions/`) remain the single source of truth for *why* each
 > decision was made and *what* its exact clauses are. **On any conflict, the ADR
 > wins.** This page compresses; it never overrides. Every claim below cites the
 > ADR (or section file) that governs it — follow the pointer for the binding text.
@@ -138,11 +138,11 @@ gate goes red. The ADR pointer is the binding text.
     PNG with a negative control — not unit tests, text snapshots, or a no-panic
     boot. Baselines are **macOS-canonical** (`#![cfg(target_os="macos")]`; off-macOS
     the snapshot files compile to nothing). ADR-0057 · guide:
-    [`../dev-notes/iced-ui-render-verification.md`](../dev-notes/iced-ui-render-verification.md).
+    [`../../docs/dev-notes/iced-ui-render-verification.md`](../../docs/dev-notes/iced-ui-render-verification.md).
 11. **The do-not-build register is binding; the thesis is ERA-QUALIFIED.** The
     settled dead-ends (combination-search engine, live trading, band-loosening,
     the ready-unbuilt DSR veto E-1, …) live in
-    [`../dev-notes/do-not-build-register.md`](../dev-notes/do-not-build-register.md)
+    [`../../docs/dev-notes/do-not-build-register.md`](../../docs/dev-notes/do-not-build-register.md)
     and must not be re-proposed. The ship-passive claim is scoped to the **current
     era (2023+)**: the P2 corpus re-run found real, cost-annex-robust active edges
     in the early market (2017-20) that decay to ~zero by 2023+ (gate-crowned; post
@@ -153,7 +153,7 @@ gate goes red. The ADR pointer is the binding text.
     P1 co-presents it on the banner as a WARN-tier "weak evidence" state
     (ADR-0085), but the gate is unchanged. Turning DSR into a hard veto is
     do-not-build **E-1** (the "ready-unbuilt" veto bar). ADR-0075 · ADR-0085 ·
-    [`../dev-notes/dsr-report-only-decision-2026-07-09.md`](../dev-notes/dsr-report-only-decision-2026-07-09.md).
+    [`../../docs/dev-notes/dsr-report-only-decision-2026-07-09.md`](../../docs/dev-notes/dsr-report-only-decision-2026-07-09.md).
 13. **CI is operator-PARKED.** The 3-OS (Linux/Windows/macOS) matrix is shipped +
     macOS-verified but sits inert at `.github/workflows/ci.yml.deferred`. Do **not**
     `git mv` it to `ci.yml` (which starts GitHub Actions) without explicit operator
@@ -206,7 +206,7 @@ crown, as a pure `crown_credibility(outcome, Option<&ScorecardView>)` projection
 
 This page is a snapshot. When you need the *why* or the *full lineage*:
 
-- **ADR registry** — [`adr/README.md`](adr/README.md) § Registry: the canonical
+- **ADR registry** — [`../../_bmad-output/planning-artifacts/architecture/decisions/README.md`](../../_bmad-output/planning-artifacts/architecture/decisions/README.md) § Registry: the canonical
   one-row-per-ADR table (0001-0088, `0054` intentionally skipped), each with its
   D-clause summary, status, and date. Cited by `spec/trace.toml` `arch=` fields.
 - **Section files** — [`../architecture.md`](../architecture.md) § Section file
@@ -214,7 +214,7 @@ This page is a snapshot. When you need the *why* or the *full lineage*:
 - **What shipped** — [`../../CHANGELOG.md`](../../CHANGELOG.md): one line per
   implemented feature, grouped by subsystem/version (the canonical "what's-been-built"
   index; completed `feature.md` are one-line stubs pointing here).
-- **Dev-notes index** — [`../dev-notes/README.md`](../dev-notes/README.md):
+- **Dev-notes index** — [`../../docs/dev-notes/README.md`](../../docs/dev-notes/README.md):
   categorized index of standing decisions, audits, analyses, and how-tos.
 - **Per-feature narrative** — `git log -- spec/<slug>/` for any feature's history.
 

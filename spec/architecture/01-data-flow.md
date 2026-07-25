@@ -270,7 +270,7 @@ budget unchanged (11 / 11 byte-identical, Q7 re-verified).
 Added 2026-05-18 as part of the
 [backtest-real-binance-data](../v1/backtest-real-binance-data/feature.md)
 feature. Full design in
-[ADR-0032](adr/0032-backtest-realdata-path-and-revision-pin.md).
+[ADR-0032](../../_bmad-output/planning-artifacts/architecture/decisions/0032-backtest-realdata-path-and-revision-pin.md).
 
 For the four new `top10-*-fy-tcn-overlay[-weights]-realdata`
 scenarios, the `backtest` binary reads real Binance hourly OHLCV

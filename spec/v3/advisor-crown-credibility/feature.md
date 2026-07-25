@@ -27,7 +27,7 @@ The FROZEN robustness gate crowns pure noise **~1 in 5 seeds** (P2-2 empirical,
 tester on fresh seeds — GBM 1/5, GARCH 1/5 ActiveWins on true-null series). The DSR
 scorecard **catches every one** (`crown_clears_dsr == false`, deflated-Sharpe
 ≈ 0.40–0.78 < 0.95 on those chance-crowns) — that two-layer property is exactly why
-the scorecard is load-bearing (`spec/dev-notes/dsr-report-only-decision-2026-07-09.md`
+the scorecard is load-bearing (`docs/dev-notes/dsr-report-only-decision-2026-07-09.md`
 § empirical basis).
 
 **But the presentation undercuts the protection.** The crown ("`v0.sma` is the best
@@ -49,8 +49,8 @@ the "trust the crown alone → misled" gap **without touching the gate**.
 - **No crown-eligibility veto. No gate change.** `rank.rs` / `robustness.rs` /
   `scorecard.rs` stay **byte-untouched**. This feature reads the EXISTING
   `crown_clears_dsr` (informational) field and presents it; it never makes it a
-  veto. The veto is a settled dead-end — `spec/dev-notes/do-not-build-register.md`
-  row **E-1** + `spec/dev-notes/dsr-report-only-decision-2026-07-09.md` (D3
+  veto. The veto is a settled dead-end — `docs/dev-notes/do-not-build-register.md`
+  row **E-1** + `docs/dev-notes/dsr-report-only-decision-2026-07-09.md` (D3
   report-only, re-confirmed 3×). Wiring the veto is NOT this feature's to do.
 - **No new field on any `crates/backtest` type.** `Scorecard` /
   `ScorecardView` are unchanged. The credibility state is a **derived value**
@@ -307,7 +307,7 @@ Column::new().spacing(space::S)
 - `bash scripts/verify_anchors.sh` → **119/119** before AND after;
   `python3 scripts/spec_lint.py` → **PASS(0)**.
 - `cargo clippy -p ui --tests -- -D warnings` clean; `cargo fmt --check` clean.
-- The ADR is accepted + registered **atomically** in `spec/architecture/adr/README.md`.
+- The ADR is accepted + registered **atomically** in `_bmad-output/planning-artifacts/architecture/decisions/README.md`.
 
 ## Risks
 
@@ -335,8 +335,8 @@ Column::new().spacing(space::S)
 `REQ-V3-P1-CROWN-CREDIBILITY-001` in [`spec/trace.toml`](../../trace.toml), state
 `arch-done` (design-complete; NOT shipped — honoring ADR-0082, feature.md status is
 the single source of truth). Arch refs: `spec/backlog.md` § Remediation plan P1,
-this feature, `spec/architecture/adr/0085-crown-credibility-co-presentation.md`,
-`spec/dev-notes/dsr-report-only-decision-2026-07-09.md` (the report-only decision
+this feature, `_bmad-output/planning-artifacts/architecture/decisions/0085-crown-credibility-co-presentation.md`,
+`docs/dev-notes/dsr-report-only-decision-2026-07-09.md` (the report-only decision
 this feature honours).
 
 ## UI

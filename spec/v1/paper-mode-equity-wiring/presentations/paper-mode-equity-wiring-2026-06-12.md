@@ -22,7 +22,7 @@ Paper mode now runs the real trading strategy against the live Binance feed, so 
 
 ## Why
 
-The cockpit's durable equity history (shipped the day before, ADR-0052) was faithfully persisting and re-hydrating a constant — the persistence rails were real but the value flowing through them never moved, because nothing in paper mode ran a strategy or produced a fill. Paper mode was therefore a rehearsal of "an account that never trades," which defeats the entire point of paper trading. This feature makes paper-mode equity reflect the real mark-to-market of a real (paper) position book driven by the strategy you actually configured, so paper mode becomes a true rehearsal of live. (Source: `spec/paper-mode-equity-wiring/feature.md` § Why; `spec/architecture/adr/0053-unified-per-bar-trading-loop.md`.)
+The cockpit's durable equity history (shipped the day before, ADR-0052) was faithfully persisting and re-hydrating a constant — the persistence rails were real but the value flowing through them never moved, because nothing in paper mode ran a strategy or produced a fill. Paper mode was therefore a rehearsal of "an account that never trades," which defeats the entire point of paper trading. This feature makes paper-mode equity reflect the real mark-to-market of a real (paper) position book driven by the strategy you actually configured, so paper mode becomes a true rehearsal of live. (Source: `spec/paper-mode-equity-wiring/feature.md` § Why; `_bmad-output/planning-artifacts/architecture/decisions/0053-unified-per-bar-trading-loop.md`.)
 
 ## What you can do now
 

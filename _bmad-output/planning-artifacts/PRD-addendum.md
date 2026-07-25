@@ -93,6 +93,6 @@ Auto-generated "is this working?" reports (equity, Sharpe/Sortino/Calmar/drawdow
 ## D. Provenance & non-migrated material
 
 - The **product changelog** embedded in `spec/product.md` (2026-04-17 → 2026-07-10, including the pivot record, per-feature scoping entries, and the terminal ship-passive verdict entries) is deliberately **not** migrated into the PRD: git history remains the narrative record, and `CHANGELOG.md` remains the shipped-feature index (and stays at the repo root through the migration).
-- The **do-not-build register** (`spec/dev-notes/do-not-build-register.md`) remains the authoritative dead-end reference; PRD §7.2 summarizes it and defers to it. It moves to `docs/` in migration Phase 4 without content change.
+- The **do-not-build register** (`docs/dev-notes/do-not-build-register.md`) remains the authoritative dead-end reference; PRD §7.2 summarizes it and defers to it. It moves to `docs/` in migration Phase 4 without content change.
 - The **era-qualified thesis wording** in PRD §2.1 is carried verbatim in meaning from the register's Group-A preamble (the post-P2, operator-ratified phrasing). Any future edit to that wording happens at the source first.
 - Engine-shape facts asserted here (USDT denomination, ranking inputs, the bake-off as a loop over the Lab runner, the forward run extending the paper runtime) were code-verified during the 2026-06-19 pivot analysis and re-confirmed by the shipped features they scoped.

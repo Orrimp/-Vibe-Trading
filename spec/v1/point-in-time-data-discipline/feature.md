@@ -27,7 +27,7 @@ concluded active-edge search. See [§ Out of scope](#out-of-scope).
 
 ### The qlib gap this closes
 
-The [qlib feature-gap analysis](../../dev-notes/qlib-feature-gap-2026-06-17.md)
+The [qlib feature-gap analysis](../../../docs/dev-notes/qlib-feature-gap-2026-06-17.md)
 (2026-06-17) compared Microsoft qlib against this project and found that almost
 all of qlib's surface area is *alpha-prediction* machinery this project tested
 and retired. The honest residue was three or four genuinely-scope-fitting gaps,
@@ -63,7 +63,7 @@ product. Today that assumption is defended *per feature, by hand*. The on-chain
 spike's PIT leak-check is the canonical example: it is what distinguished a
 causal join from a look-ahead one and let the program treat the stablecoin
 FRAGILE verdict as a real signal result rather than a contaminated one
-([onchain-netflow-spike § 1.3](../../dev-notes/onchain-netflow-spike-2026-06-08.md)).
+([onchain-netflow-spike § 1.3](../../../docs/dev-notes/onchain-netflow-spike-2026-06-08.md)).
 Making that discipline **structural** converts a per-feature manual proof into a
 property the pipeline carries by construction — directly hardening the moat.
 
@@ -427,7 +427,7 @@ section must be revisited.)
 > the migration of all **four** call sites (the brief listed three; a fourth
 > identical `f64` clone exists — see § Migration plan), states the anchor-safety
 > argument, and records the verification floor. The numbered design record is
-> [ADR-0058](../../architecture/adr/0058-pit-as-of-series-primitive.md).
+> [ADR-0058](../../../_bmad-output/planning-artifacts/architecture/decisions/0058-pit-as-of-series-primitive.md).
 
 ### Feasibility verdict (the load-bearing check the orchestrator asked for)
 

@@ -152,8 +152,10 @@ scan_binary_file "$AUDIT_DB"
 
 # 4. Any committed docs under spec/ + committed report bodies under
 #    evidence/ (the byte-immutable reports corpus moved there in the
-#    2026-07-25 BMAD-migration Phase 3 `git mv`) — opt-in via
-#    `--scan-spec`. Spec/evidence docs legitimately use placeholder
+#    2026-07-25 BMAD-migration Phase 3 `git mv`) + project-knowledge docs
+#    under docs/ (dev-notes/runbooks/design/ui-design-principles.md moved
+#    there in the 2026-07-25 BMAD-migration Phase 4 `git mv`) — opt-in via
+#    `--scan-spec`. Spec/evidence/docs legitimately use placeholder
 #    key shapes (`sk-ant-...`, `Bearer ...`) so the default
 #    integration-test invocation skips this leg.
 if [[ "$SCAN_SPEC" -eq 1 && -d "spec" ]]; then
@@ -165,6 +167,11 @@ if [[ "$SCAN_SPEC" -eq 1 && -d "evidence" ]]; then
   while IFS= read -r f; do
     scan_text_file "$f"
   done < <(find evidence -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
+fi
+if [[ "$SCAN_SPEC" -eq 1 && -d "docs" ]]; then
+  while IFS= read -r f; do
+    scan_text_file "$f"
+  done < <(find docs -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
 fi
 
 if [[ $hits -gt 0 ]]; then

@@ -18,8 +18,8 @@ roadmap:
   v0.2: 2-week soak complete; per-crate floors set from observed baseline data
   v0.3: CI / pre-commit gate enforcement (NOT this version)
 references:
-  - spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § R2
-  - spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md § §3 Coverage in this project's context
+  - docs/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § R2
+  - docs/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md § §3 Coverage in this project's context
 ---
 
 # rust-coverage
@@ -27,10 +27,10 @@ references:
 Source-based line and branch coverage via `cargo-llvm-cov`.
 
 Cross-references:
-- Architect recommendation: `spec/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § R2`
+- Architect recommendation: `docs/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § R2`
   ("Adopt `cargo-llvm-cov` in non-gating warning mode, 2-week soak, then
   per-crate floors — HIGH ROI")
-- Analyst strategic framing: `spec/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md § §3`
+- Analyst strategic framing: `docs/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md § §3`
   ("Code coverage in context — Coverage is the floor, mutation testing is the
   ceiling. They answer different questions.")
 

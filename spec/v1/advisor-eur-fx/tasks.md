@@ -8,7 +8,7 @@ updated: 2026-06-22
 # F7 — EUR→USDT budget conversion — task breakdown
 
 Design: [`feature.md`](feature.md) § Design +
-[ADR-0065](../../architecture/adr/0065-eur-usdt-budget-conversion-seam.md).
+[ADR-0065](../../../_bmad-output/planning-artifacts/architecture/decisions/0065-eur-usdt-budget-conversion-seam.md).
 
 **Owner split: ONE developer.** F7 is small + UI-centric. The only UI-surface
 change is three display literals that get filled from a value the same developer

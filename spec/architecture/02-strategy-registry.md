@@ -21,13 +21,13 @@ trade fired?".
 
 The mechanical surface for strategy lifecycle events lives in the
 `strategy_events` SQLite table — see
-[ADR-0008](adr/0008-v05-strategy-event-journal-schema.md). The
+[ADR-0008](../../_bmad-output/planning-artifacts/architecture/decisions/0008-v05-strategy-event-journal-schema.md). The
 `kind` column carries an open set of TEXT values including (today)
 `Load`, `Swap`, `Unload`, `Reject` (v0.5), `rebalance_rejected`
-(v1, [ADR-0013](adr/0013-v1-cross-sectional-momentum.md) Q6),
+(v1, [ADR-0013](../../_bmad-output/planning-artifacts/architecture/decisions/0013-v1-cross-sectional-momentum.md) Q6),
 `pair_hard_stop_tripped` / `pair_short_observed` / `pair_bar_stale`
-(v1.5a, [ADR-0014](adr/0014-v15a-mean-reversion-pairs.md) Q8 + Q10),
-and `KillSwitchTripped` (v1+, [ADR-0015](adr/0015-operator-success-reports.md) Q8).
+(v1.5a, [ADR-0014](../../_bmad-output/planning-artifacts/architecture/decisions/0014-v15a-mean-reversion-pairs.md) Q8 + Q10),
+and `KillSwitchTripped` (v1+, [ADR-0015](../../_bmad-output/planning-artifacts/architecture/decisions/0015-operator-success-reports.md) Q8).
 
 ## Hot-loading evolution
 
@@ -35,11 +35,11 @@ The hot-loading decision evolved across three releases. Each
 release's decision is captured in its own ADR; the decisions
 cross-link to form the v0 → v0.5 → v1+ narrative:
 
-- [ADR-0005](adr/0005-v0-strategy-trait-no-hotload.md) — v0 clean
+- [ADR-0005](../../_bmad-output/planning-artifacts/architecture/decisions/0005-v0-strategy-trait-no-hotload.md) — v0 clean
   trait shape, no hot-load (compiled-in).
-- [ADR-0006](adr/0006-v05-config-driven-composition.md) — v0.5
+- [ADR-0006](../../_bmad-output/planning-artifacts/architecture/decisions/0006-v05-config-driven-composition.md) — v0.5
   config-driven composition (hot-load A) via TOML + file watcher.
-- [ADR-0007](adr/0007-v1-wasm-plugin-deferred.md) — v1+ WASM
+- [ADR-0007](../../_bmad-output/planning-artifacts/architecture/decisions/0007-v1-wasm-plugin-deferred.md) — v1+ WASM
   plugins (hot-load B), deferred until a strategy with genuinely
   custom logic justifies it. Native dyn-libs and embedded
   scripting explicitly rejected.
@@ -47,11 +47,11 @@ cross-link to form the v0 → v0.5 → v1+ narrative:
 ## v0.5 strategy-registry resolution cluster
 
 Five interconnected v0.5 decisions captured as
-[ADR-0008](adr/0008-v05-strategy-event-journal-schema.md),
-[ADR-0009](adr/0009-v05-registry-concurrency.md),
-[ADR-0010](adr/0010-v05-composed-exit-policy.md),
-[ADR-0011](adr/0011-v05-cockpit-strategies-panel.md), and
-[ADR-0012](adr/0012-v05-broadcast-bus-extensions.md). Together they
+[ADR-0008](../../_bmad-output/planning-artifacts/architecture/decisions/0008-v05-strategy-event-journal-schema.md),
+[ADR-0009](../../_bmad-output/planning-artifacts/architecture/decisions/0009-v05-registry-concurrency.md),
+[ADR-0010](../../_bmad-output/planning-artifacts/architecture/decisions/0010-v05-composed-exit-policy.md),
+[ADR-0011](../../_bmad-output/planning-artifacts/architecture/decisions/0011-v05-cockpit-strategies-panel.md), and
+[ADR-0012](../../_bmad-output/planning-artifacts/architecture/decisions/0012-v05-broadcast-bus-extensions.md). Together they
 specify the strategy-event sibling table, the
 `parking_lot::RwLock` concurrency choice, the symmetric
 signal-flip exit policy, the cockpit Strategies panel placement,
@@ -64,15 +64,15 @@ a single multi-Q ADR rather than fragmenting into one ADR per Q,
 because the Q's within a release tend to be too interdependent to
 read separately:
 
-- [ADR-0013](adr/0013-v1-cross-sectional-momentum.md) — v1
+- [ADR-0013](../../_bmad-output/planning-artifacts/architecture/decisions/0013-v1-cross-sectional-momentum.md) — v1
   cross-sectional momentum (Q1–Q6).
-- [ADR-0014](adr/0014-v15a-mean-reversion-pairs.md) — v1.5a
+- [ADR-0014](../../_bmad-output/planning-artifacts/architecture/decisions/0014-v15a-mean-reversion-pairs.md) — v1.5a
   mean-reversion pairs (Q1–Q10).
-- [ADR-0017](adr/0017-v15b-multi-venue.md) — v1.5b multi-venue
+- [ADR-0017](../../_bmad-output/planning-artifacts/architecture/decisions/0017-v15b-multi-venue.md) — v1.5b multi-venue
   execution scaffolding (Q1–Q12).
-- [ADR-0019](adr/0019-v2-llm-strategy.md) — v2 LLM strategy
+- [ADR-0019](../../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) — v2 LLM strategy
   foundation (Q4–Q11).
-- [ADR-0027](adr/0027-kronos-onnx-tract-integration.md) — v2.5
+- [ADR-0027](../../_bmad-output/planning-artifacts/architecture/decisions/0027-kronos-onnx-tract-integration.md) — v2.5
   Kronos foundation-model forecast overlay (ONNX + tract). The
   cross-cutting overlay pattern lives in
   [12-forecast-overlay.md](12-forecast-overlay.md).

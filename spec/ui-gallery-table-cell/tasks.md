@@ -140,7 +140,7 @@ Test-runner spawn (per
 - 2026-05-16 (analyst, Wave 2a spec-hygiene): tasks file
   opened alongside
   [`feature.md`](feature.md) per
-  [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+  [`docs/dev-notes/feature-triage-2026-05-16.md`](../../docs/dev-notes/feature-triage-2026-05-16.md)
   row A4. V5+ tasks migrated from
   [`spec/ui-gallery-bin/tasks.md`](../v1/ui-gallery-bin/tasks.md)
   with re-keyed identifiers `T1..T9` + `T-FINAL-*` and verbatim

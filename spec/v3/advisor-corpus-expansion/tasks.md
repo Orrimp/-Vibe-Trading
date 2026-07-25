@@ -7,7 +7,7 @@ updated: 2026-07-10
 
 # Tasks — P2 corpus expansion + verdict re-run
 
-Binding design: [ADR-0084](../../architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md);
+Binding design: [ADR-0084](../../../_bmad-output/planning-artifacts/architecture/decisions/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md);
 feature [§ Design](feature.md) + [§ Backtest Scenarios](feature.md). **Run
 `bash scripts/verify_anchors.sh` (→119/119) + `python3 scripts/spec_lint.py`
 (→PASS) before AND after every commit.** `write_report=false` on every re-run

@@ -8,7 +8,7 @@ updated: 2026-06-21
 # F8 — Strategy-mix ensembles + robustness-gate activation — Task list
 
 Design: [feature.md § Design](feature.md#design) +
-[ADR-0063](../../architecture/adr/0063-ensemble-vote-seam-and-robustness-gate-activation.md).
+[ADR-0063](../../../_bmad-output/planning-artifacts/architecture/decisions/0063-ensemble-vote-seam-and-robustness-gate-activation.md).
 Developer and ui-designer run **in parallel** — the developer owns the engine
 seam + gate + the two day-1 e2e tests; the ui-designer owns the leaderboard +
 plan render proofs. The only cross-dependency: the ui-designer's render proofs

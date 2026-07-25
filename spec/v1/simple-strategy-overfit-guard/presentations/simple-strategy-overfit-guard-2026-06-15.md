@@ -5,7 +5,7 @@ date: 2026-06-15
 agent: presenter
 status: approved-shipped
 tester_report: spec/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md
-findings_note: spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md
+findings_note: docs/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md
 ---
 
 # Operator deck — simple-strategy-overfit-guard — 2026-06-15
@@ -68,7 +68,7 @@ confirm the numbers for yourself.
 
 2. **Read the one-page finding** (the full reasoning + scope cap):
    ```bash
-   open spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md
+   open docs/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md
    ```
 
 3. **Approve / reject the finding + the runbook revision** — see the Approval
@@ -137,7 +137,7 @@ tester's PASS evidence (commit `3d843fa`).
 | AC-OG.2 | Skips cleanly without the corpus; never in default suite | VERIFIED | Tester: `cargo test -p backtest` → 82 pass, 5 ignored; new harness correctly `#[ignore]`d. |
 | AC-OG.3 | Two runs byte-identical (determinism) | VERIFIED | Live `diff` above — only compile/wall-clock timing differs; all stats identical. |
 | AC-OG.4 | Negative control: RSI/BBands score FRAGILE, not ROBUST (test isn't rubber-stamping) | VERIFIED | RSI p5 -0.788 / -0.308; BBands p5 -1.217 / -2.263; BBands DOT prob_loss 0.886. All FRAGILE. |
-| AC-OG.5 | Headline answered in writing (findings dev-note, with actual numbers) | VERIFIED | `spec/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md` — path-fragile, scoped per-symbol-year. |
+| AC-OG.5 | Headline answered in writing (findings dev-note, with actual numbers) | VERIFIED | `docs/dev-notes/analysis-2026-06-15-simple-strategy-overfit-guard.md` — path-fragile, scoped per-symbol-year. |
 | AC-OG.6 | spec-lint ≤ 70 zero-new; clippy clean; no `.unwrap()` outside tests | VERIFIED | Tester: clippy `--tests -p backtest` 0 warnings; spec-lint 70 (baseline, 0 new). |
 | — | UN-ANCHORED by design (no `anchors.toml` row) | VERIFIED | `grep -c overfit-guard spec/anchors.toml` → 0; anchors total unchanged at 119. |
 | — | Up-market control behaves as expected (sanity, not a defect) | VERIFIED | AVAX·2023 SMA p5 = **-0.137** exactly as feature §2 anticipated; healthiest cell (prob_loss 0.062). |

@@ -220,7 +220,7 @@ a promised fill.
 
 ## Design
 
-_Architect, 2026-06-21 — [ADR-0062](../../architecture/adr/0062-forward-plan-read-seam.md)
+_Architect, 2026-06-21 — [ADR-0062](../../../_bmad-output/planning-artifacts/architecture/decisions/0062-forward-plan-read-seam.md)
 is the normative record; this section is the feature-local summary._
 
 ### The seam in one diagram
@@ -699,7 +699,7 @@ negative control), per R9 + the CLAUDE.md cockpit rule._
   trait-read-seam ADR, sibling of the shipped F4+F5 forward-paper feature, which
   itself pre-declared F6 as "a separate v0.2 feature". No production code; no
   anchored content touched.
-- 2026-06-21 (architect): authored the **§ Design** + [ADR-0062](../../architecture/adr/0062-forward-plan-read-seam.md)
+- 2026-06-21 (architect): authored the **§ Design** + [ADR-0062](../../../_bmad-output/planning-artifacts/architecture/decisions/0062-forward-plan-read-seam.md)
   (the forward-plan read seam) + `tasks.md`; status draft → in-progress, owner
   analyst → architect. **OQ-A resolved toward the durable option (a):** a NEW
   read-only sibling trait `strategy::PlanDescribe::describe_plan(&self,

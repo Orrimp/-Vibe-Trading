@@ -52,7 +52,7 @@ opt-in setup without specifying every field.
 
 ### 2. Venue-trust map (display-only)
 
-`spec/dev-notes/venue-trust-map-2026-07-01.md` — codifies which crypto venues
+`docs/dev-notes/venue-trust-map-2026-07-01.md` — codifies which crypto venues
 to trust for which metrics, grounded in
 `application-data-integrity.md §6 A/B`:
 

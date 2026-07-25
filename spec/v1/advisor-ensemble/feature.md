@@ -271,7 +271,7 @@ combination method + candidate set are operator-ratified._ Provisional shape:
 ## Design
 
 _Architect, 2026-06-21. Full rationale + alternatives in
-[ADR-0063](../../architecture/adr/0063-ensemble-vote-seam-and-robustness-gate-activation.md).
+[ADR-0063](../../../_bmad-output/planning-artifacts/architecture/decisions/0063-ensemble-vote-seam-and-robustness-gate-activation.md).
 Operator forks resolved: OQ-OP-1 = signal-vote; OQ-OP-2 = LLM/ML narration-only;
 OQ-OP-3 = exactly two pre-registered votes. The three architect OQs resolve as
 follows._

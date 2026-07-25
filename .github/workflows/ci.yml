@@ -14,7 +14,7 @@
 # Scope:
 #   - All legs: build the ui crate (cockpit + fixtures) + test the non-UI workspace crates.
 #   - ubuntu-latest: headless winit via xvfb-run + the Q5-researched apt deps
-#     (validate on first CI run — see spec/runbooks/cockpit-cross-platform.md §Q5).
+#     (validate on first CI run — see docs/runbooks/cockpit-cross-platform.md §Q5).
 #     Runs the ui headless smokes. Visual baselines are compiled OUT on Linux by
 #     the #![cfg(target_os="macos")] source gate (ADR-0057 D2) — no --skip filter needed.
 #   - macos-latest: full cargo test -p ui including all 56 visual baselines (canonical gate).

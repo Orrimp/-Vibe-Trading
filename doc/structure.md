@@ -10,7 +10,7 @@
 
 This document maps the *repository and code layout*. For the system design and
 data flow, see [`spec/architecture.md`](../spec/architecture.md) and the split
-chapters under [`spec/architecture/`](../spec/architecture/). For "what's built"
+chapters under [`spec/architecture/`](../spec/architecture). For "what's built"
 read [`CHANGELOG.md`](../CHANGELOG.md).
 
 ---

@@ -159,7 +159,7 @@ byte-untouched; no `spec/*/reports/*` edits; `ci.yml.deferred` untouched.
   `bash scripts/verify_anchors.sh` → `ANCHORS PASS  (119 / 119)` (both runs); `python3
   scripts/spec_lint.py` → `spec-lint: PASS (0 violations)`; `python3
   scripts/adr_registry_check.py --pre-commit` → exit 0 (ADR-0086 already registered atomically by
-  the architect at accept-time, confirmed via `grep -n "0086" spec/architecture/adr/README.md`);
+  the architect at accept-time, confirmed via `grep -n "0086" _bmad-output/planning-artifacts/architecture/decisions/README.md`);
   `cargo fmt --check -p trading_core -p backtest` → exit 0 (after `cargo fmt -p trading_core -p
   backtest` fixed 2 cosmetic wrap findings, both inside newly-added P3 code —
   `crates/core/src/pit.rs:238-243` and `:558-563`); `cargo clippy -p trading_core -p backtest

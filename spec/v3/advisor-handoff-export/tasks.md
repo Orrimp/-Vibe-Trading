@@ -32,7 +32,7 @@ anchors 119/119 before AND after; spec-lint PASS(0).**
 ## Architect (M-T1, after T0)
 
 - [x] **T1 — decided Q-HE-1..6 + took ADR-0088.** ✅ DONE (architect, 2026-07-10). See
-  [`feature.md`](feature.md) § Design + [ADR-0088](../../architecture/adr/0088-suggest-manual-handoff-export.md).
+  [`feature.md`](feature.md) § Design + [ADR-0088](../../../_bmad-output/planning-artifacts/architecture/decisions/0088-suggest-manual-handoff-export.md).
   Q-HE-1 = md `.md`; Q-HE-2 = the SUGGEST/`Screen::ForwardPlan` screen; Q-HE-3 = one-per-plan
   + seed/`last_bar_ts` stamp (NO wall-clock); Q-HE-4 = `ui` owns it, REFINED to serialise the
   pure-`ui` `ForwardPlanView` mirror not the `#[cfg(live)]`-gated `agent::config::ForwardPlan`;

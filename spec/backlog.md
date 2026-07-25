@@ -12,7 +12,7 @@ updated: 2026-07-10
 > queue** only. The concluded-program archaeology (the ~11 measured-and-retired
 > strategy bets, the v2.5 DL chain, the active-vs-passive wind-down record, the
 > on-chain fork) was compressed out 2026-06-17; it remains in **git history** and in
-> `spec/dev-notes/`.
+> `docs/dev-notes/`.
 >
 > **Strategy research is CONCLUDED (2026-06-08) → ship passive.** Across all three
 > reachable channels (price/OHLCV, derivatives-positioning, on-chain) no active
@@ -28,7 +28,7 @@ updated: 2026-07-10
 > decision, end-to-end demo runbook) have all shipped — see [`../CHANGELOG.md`](../CHANGELOG.md).
 > The MVP/v0.2 roadmap and the proposed arm-class expansions below are **retained as the
 > shipped-history record**; the only genuinely-open items are in § Queue. Post-v2 scoping
-> verdict (there is no coherent add-more-features v3): [`dev-notes/post-v2-scoping-2026-07-09.md`](dev-notes/post-v2-scoping-2026-07-09.md).
+> verdict (there is no coherent add-more-features v3): [`../docs/dev-notes/post-v2-scoping-2026-07-09.md`](../docs/dev-notes/post-v2-scoping-2026-07-09.md).
 
 The product was **redefined 2026-06-19** (see [`product.md`](product.md)): a paper
 decision-support tool for a retail investor — *pick a coin + budget → bake off all
@@ -137,7 +137,7 @@ Full rationale + reuse-vs-new mapping + the ranked product decisions: [`product.
 
 - **P0 — ops unblock** (hours, in progress) — kill the recurring 1Password SSH relock push
   wedge (repo-scoped keychain deploy key or HTTPS credential helper; operator generates the
-  key) + `spec/runbooks/ops-push-and-cache.md` incl. cargo cache-corruption recovery.
+  key) + `docs/runbooks/ops-push-and-cache.md` incl. cargo cache-corruption recovery.
 - **P1 — crown/scorecard integrity alignment** (2-3 days, **D1=(a) ratified**) — the gate
   crowns noise ~1/5 seeds (P2-2 empirical); DSR catches every one but only in a side panel.
   Fix at the PRESENTATION layer: the recommendation banner co-presents the credibility

@@ -7,7 +7,7 @@ updated: 2026-06-22
 
 # Tasks — advisor LLM "why this one" narration (F9)
 
-Seam: **[ADR-0064](../../architecture/adr/0064-advisor-llm-narration-seam.md)**.
+Seam: **[ADR-0064](../../../_bmad-output/planning-artifacts/architecture/decisions/0064-advisor-llm-narration-seam.md)**.
 F9 is the F6 forward-plan agent→iced return path (ADR-0062) made **triggered**
 (opt-in "Explain") + guarded by a **deterministic faithfulness post-check**.
 

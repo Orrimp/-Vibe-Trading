@@ -10,7 +10,7 @@ priority: P1
 q_d1: "(a) Linear{bps:8} fallback for synthetic scenarios — operator ratified 2026-05-29"
 q_d2: "(β) Per-scenario lazy-compute via universe_avg_daily_volume_usd_trailing — operator ratified 2026-05-29"
 anchor_cascade_revised: "75 → 84 (9 new real-data anchors under v5-sqrt-impact-2026-05; brief described 10 scenarios but top10-2024-fy-momentum-realdata was never implemented — only 2023 counterpart shipped)"
-m_od_q3b_supersession: "M-OD 2026-05-29 Q3=(b) ratification SUPERSEDED by Q-D1=(a); see spec/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md"
+m_od_q3b_supersession: "M-OD 2026-05-29 Q3=(b) ratification SUPERSEDED by Q-D1=(a); see docs/dev-notes/v5-v0.5.0-q-d1-q-d2-decision-brief-2026-05-29.md"
 ---
 
 # v5 latency-slippage-sim v0.5.0 — square-root market-impact model

@@ -4,13 +4,13 @@
 # ///
 """operator_ledger_check.py — orchestrator pre-flight: operator-side pending ledger lint.
 
-Reads spec/dev-notes/operator-side-pending-ledger.md and enforces:
+Reads docs/dev-notes/operator-side-pending-ledger.md and enforces:
   - Table schema (per-table column count and header match).
   - Status enum {pending, FAILED, done, cancelled} on Pending rows.
   - Stale FAILED escalation (>= STALE_FAILED_DAYS days since Date surfaced).
   - Done rows have a completion date in the Completed column.
   - Cancelled rows have a cancel date in the Cancelled column.
-  - FAILED rows cite a spec/dev-notes/*.md follow-up in their Notes cell.
+  - FAILED rows cite a docs/dev-notes/*.md follow-up in their Notes cell.
 
 Exit codes:
   0 — clean (or only within-window FAILED soft-warnings on stdout)
@@ -89,7 +89,7 @@ _BACKTICK_RE = re.compile(r"`(.+?)`")
 _LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 
 # dev-note citation pattern (Q-LED-NOTE check on FAILED Notes cell).
-_DEVNOTE_RE = re.compile(r"spec/dev-notes/[A-Za-z0-9._\-/]+\.md")
+_DEVNOTE_RE = re.compile(r"docs/dev-notes/[A-Za-z0-9._\-/]+\.md")
 
 # Date-surfaced date extraction: first ISO date token in a cell.
 _DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
@@ -374,15 +374,15 @@ def check_rows(
                         f"escalates {escalates_date})"
                     )
 
-            # (f) Q-LED-NOTE: FAILED rows MUST cite a spec/dev-notes/*.md in Notes.
+            # (f) Q-LED-NOTE: FAILED rows MUST cite a docs/dev-notes/*.md in Notes.
             notes_idx = required.index("Notes")
             notes_raw = cells[notes_idx] if len(cells) > notes_idx else ""
             if not _DEVNOTE_RE.search(notes_raw):
                 hard_issues.append(Issue(
                     issue="missing-devnote-citation",
                     row_label=label,
-                    observed=f"FAILED, Notes has no spec/dev-notes/*.md path",
-                    expected="a follow-up dev-note path like spec/dev-notes/foo.md",
+                    observed=f"FAILED, Notes has no docs/dev-notes/*.md path",
+                    expected="a follow-up dev-note path like docs/dev-notes/foo.md",
                     action="add investigation dev-note link to Notes cell",
                 ))
 
@@ -606,7 +606,7 @@ def run_self_test() -> None:
         ledger3 = _make_ledger(
             pending_rows=[
                 "| 2026-05-21 | Stale recipe | ~5 min | nothing | **FAILED** |"
-                " See spec/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md |"
+                " See docs/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md |"
             ],
             done_rows=["| 2026-05-27 | Cache populate BTC | ~3 min | 2026-05-27 | done |"],
         )
@@ -622,7 +622,7 @@ def run_self_test() -> None:
         ledger4 = _make_ledger(
             pending_rows=[
                 "| 2026-05-28 | Recent recipe | ~5 min | nothing | FAILED |"
-                " See spec/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md |"
+                " See docs/dev-notes/bug-64-d11-attempt-3-investigation-2026-05-29.md |"
             ],
             done_rows=["| 2026-05-27 | Cache populate BTC | ~3 min | 2026-05-27 | done |"],
         )
@@ -646,7 +646,7 @@ def run_self_test() -> None:
         classes5 = [i.issue for i in hard5]
         assert_contains("C5-class", str(classes5), "missing-completion-date")
 
-        # --- Case 6: missing-devnote-citation (FAILED, 1-day-old, NO spec/dev-notes path) ---
+        # --- Case 6: missing-devnote-citation (FAILED, 1-day-old, NO docs/dev-notes path) ---
         ledger6 = _make_ledger(
             pending_rows=[
                 "| 2026-05-28 | Uncited recipe | ~5 min | nothing | FAILED | TODO investigate |"
@@ -719,7 +719,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help=(
-            "Override the ledger path. Default: REPO_ROOT/spec/dev-notes/operator-side-pending-ledger.md"
+            "Override the ledger path. Default: REPO_ROOT/docs/dev-notes/operator-side-pending-ledger.md"
         ),
     )
     parser.add_argument(
@@ -760,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.ledger is not None:
         ledger_path = Path(args.ledger)
     else:
-        ledger_path = REPO_ROOT / "spec" / "dev-notes" / "operator-side-pending-ledger.md"
+        ledger_path = REPO_ROOT / "docs" / "dev-notes" / "operator-side-pending-ledger.md"
 
     exit_code, hard_issues, soft_lines = run_check(ledger_path, today)
 

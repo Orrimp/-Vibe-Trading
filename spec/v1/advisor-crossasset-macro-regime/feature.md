@@ -372,7 +372,7 @@ Q-MACRO-1(a)+Q-MACRO-2(a) combination.
 > layer; **Q-MACRO-1 = (a)** hand-written arm (NO DSL change); **Q-MACRO-3** the
 > locked ticker set + rule below; **Q-MACRO-4 = single `v0.macro_riskon` arm**;
 > **Q-MACRO-5** LOCF holds across resampled coarser bars (cadence-agnostic),
-> the divergence test exercises the hourly path. ADR: **[ADR-0073](../../architecture/adr/0073-market-calendar-and-macro-exogenous-regime.md)**.
+> the divergence test exercises the hourly path. ADR: **[ADR-0073](../../../_bmad-output/planning-artifacts/architecture/decisions/0073-market-calendar-and-macro-exogenous-regime.md)**.
 
 This design rests on two findings that make the build smaller and more durable
 than the analyst's "medium, not small" estimate feared:

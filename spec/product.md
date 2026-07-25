@@ -88,7 +88,7 @@ not waste.
 > re-proposed (multi-coin, return-prediction-in-ranking, automated alpha search,
 > LLM-as-trader, on-chain/sentiment arms, live trading, Kelly/impact/HFT,
 > generative test data, gate/anchor tampering) — is the **do-not-build register**:
-> [`dev-notes/do-not-build-register.md`](dev-notes/do-not-build-register.md).
+> [`../docs/dev-notes/do-not-build-register.md`](../docs/dev-notes/do-not-build-register.md).
 
 ## Why this is honest (the robustness truth, carried forward)
 
@@ -153,7 +153,7 @@ becomes the engine for the new journey:
 | Backtest engine (matching, fills, friction) | `crates/backtest` (`MatchingEngine`, `run_scenario`) | Runs each strategy on `(coin, window)` |
 | Risk-metric stats | `crates/backtest/src/stats` (`compute_sharpe_*`, `compute_sortino_*`, `compute_calmar`) + `BacktestKpis` (`total_return_pct`, `max_drawdown`, `trade_count`) | The ranking inputs — no new math needed |
 | Strategy library | `crates/strategy` (sma, composed MACD/RSI/Bollinger, cross-sectional momentum, mean-reversion pairs, regime dispatcher, LLM/ML overlays) | The bake-off field |
-| Passive baseline | shipped buy-and-hold control ([`runbooks/passive-baseline.md`](runbooks/passive-baseline.md)) | The benchmark arm + safe default |
+| Passive baseline | shipped buy-and-hold control ([`../docs/runbooks/passive-baseline.md`](../docs/runbooks/passive-baseline.md)) | The benchmark arm + safe default |
 | Robustness harness | `monte-carlo-bootstrap-path-generator` + `strategy-robustness-harness` | The credibility / fragility flag on the ranking |
 | Single-run backtest UX | cockpit **Lab** screen (`crates/ui/src/lab`, `runner::spawn_lab_run`) | The bake-off is essentially *looping Lab over the registry* |
 | Forward paper-sim | `crates/agent` runtime (paper mode) + EventBus | Drives the forward paper-trade |
@@ -361,7 +361,7 @@ negative verdicts.
 > scope, and the methodological spine (frozen pre-registered rule, block-bootstrap
 > MC, 119/119 byte-SHA anchors, day-1 falsifiers, anti-cherry-pick renderer,
 > live-bar calibration) are preserved in git history and in
-> [`runbooks/passive-baseline.md`](runbooks/passive-baseline.md).
+> [`../docs/runbooks/passive-baseline.md`](../docs/runbooks/passive-baseline.md).
 
 ### Robustness machine (the credibility layer)
 
@@ -515,7 +515,7 @@ Tracked here until the operator answers; then they migrate into the body.
   Docs-only; no gate/anchor/code touched.
 - 2026-07-09 (analyst, R3-4a do-not-build register): added a single pointer line
   at the end of § What this product IS NOT to the new authoritative **do-not-build
-  register** ([`dev-notes/do-not-build-register.md`](dev-notes/do-not-build-register.md))
+  register** ([`../docs/dev-notes/do-not-build-register.md`](../docs/dev-notes/do-not-build-register.md))
   — the consolidated "settled dead-ends + why + cited rebuttal" reference so the
   off-track ideas (multi-coin, return-prediction-in-ranking, automated alpha search,
   LLM-as-trader, on-chain/sentiment arms, live trading, Kelly/impact/HFT, generative
@@ -621,7 +621,7 @@ Tracked here until the operator answers; then they migrate into the body.
   touched.
 - 2026-06-22 (orchestrator, B1 robustness-honesty reconcile): sharpened **§ D1**
   (ranking metric) + the **Honesty gate** success metric to match the shipped B1
-  behaviour ([ADR-0066](architecture/adr/0066-benchmark-exempt-from-allfragile.md)):
+  behaviour ([ADR-0066](../_bmad-output/planning-artifacts/architecture/decisions/0066-benchmark-exempt-from-allfragile.md)):
   when *every active* strategy is FRAGILE — the **modal outcome on real crypto** —
   the buy-and-hold benchmark is crowned **#1** (`BenchmarkWins`, "simply holding is
   the least-bad choice on this window") and the €200 paper-trades as a hold, rather
@@ -770,7 +770,7 @@ Tracked here until the operator answers; then they migrate into the body.
   finalized the § Strategy library status note from "passive-may-be-terminal /
   on-chain-as-next-probe" to the **TERMINAL verdict: SHIP PASSIVE**. The
   pre-committed on-chain hard-stop fired
-  ([`onchain-netflow-spike-2026-06-08.md`](dev-notes/onchain-netflow-spike-2026-06-08.md))
+  ([`onchain-netflow-spike-2026-06-08.md`](../docs/dev-notes/onchain-netflow-spike-2026-06-08.md))
   — exchange net-flows are PIT-infeasible (CryptoQuant disclaims point-in-time
   accuracy; no free immutable past-only series), and the cleaner-PIT
   stablecoin-supply fallback is FRAGILE (sign flips year-over-year under the same
@@ -788,7 +788,7 @@ Tracked here until the operator answers; then they migrate into the body.
   certified the one real signal — the basis reversal — and correctly killed the
   rest). **Defined "ship passive" CONCRETELY for this research/backtest codebase**:
   mark the already-built+anchored BH control as the canonical production baseline
-  in the spec + a short `spec/runbooks/passive-baseline.md` runbook (baseline =
+  in the spec + a short `docs/runbooks/passive-baseline.md` runbook (baseline =
   BH on the configured universe; documented rebalance cadence, monthly default
   proposed; paper-mode run recipe; BH anchor scenarios) — explicitly NO new
   strategy crate / ScoreSource / sweep arm / anchor. Added a top-of-document
@@ -811,7 +811,7 @@ Tracked here until the operator answers; then they migrate into the body.
   robustness program, not a failure** (the machine correctly killed ~10 active bets;
   "ship passive" = promote the already-built+anchored BH control to production).
   Cross-linked the fork decision-support note
-  ([`onchain-vs-conclude-fork-2026-06-08.md`](dev-notes/onchain-vs-conclude-fork-2026-06-08.md)).
+  ([`onchain-vs-conclude-fork-2026-06-08.md`](../docs/dev-notes/onchain-vs-conclude-fork-2026-06-08.md)).
   No reversal of the thesis — a sharpening consistent with the ratified § Pillar
   stack (measured robustness, not asserted alpha) and the existing
   demotion-of-prediction-bets record. Locked (2)+(4) moat, the LLM-as-support
@@ -824,7 +824,7 @@ Tracked here until the operator answers; then they migrate into the body.
   item (5) measured robustness beside the (2)+(4) moat, added a scope banner to
   § Trading-time agent roster, and tightened the v1 success metric + `paper`
   lifecycle gate to be distribution-valued. Cross-linked the new
-  [`robustness-decision-rule-2026-05-30.md`](dev-notes/robustness-decision-rule-2026-05-30.md).
+  [`robustness-decision-rule-2026-05-30.md`](../docs/dev-notes/robustness-decision-rule-2026-05-30.md).
 - 2026-05-30 (analyst, monte-carlo-robustness-lane M0): ratified operator Q4 —
   added top-level § Pillar stack — core vs support (CORE = quantitative
   strategy + Monte-Carlo robustness + future deterministic learning loop +

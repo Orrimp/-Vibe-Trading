@@ -76,7 +76,7 @@ behaviour — forces explicit wiring).
 
 ## ADR
 
-ADR-0077: `spec/architecture/adr/0077-forward-fidelity-coverage.md`
+ADR-0077: `_bmad-output/planning-artifacts/architecture/decisions/0077-forward-fidelity-coverage.md`
 
 ## Changelog
 

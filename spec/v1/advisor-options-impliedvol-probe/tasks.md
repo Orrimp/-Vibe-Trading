@@ -8,7 +8,7 @@ updated: 2026-06-27
 # Tasks — advisor-options-impliedvol-probe (DVOL implied-vol bake-off arm)
 
 Sequenced developer checklist. Design: [feature.md § Design](feature.md#design-architect)
-+ [ADR-0072](../../architecture/adr/0072-dvol-implied-vol-exogenous-series-probe.md).
++ [ADR-0072](../../../_bmad-output/planning-artifacts/architecture/decisions/0072-dvol-implied-vol-exogenous-series-probe.md).
 Every claim is grounded in code (file:line) in the design. **DESIGN IS LOCKED** —
 the signal (`v0.dvol_regime`, W=30 daily, median cut), the arm id, the registration
 seam (bake-off `v0.*` path, NOT cross_sectional), and the two day-1 gates are

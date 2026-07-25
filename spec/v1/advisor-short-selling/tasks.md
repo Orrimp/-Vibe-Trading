@@ -9,7 +9,7 @@ updated: 2026-06-23
 
 > **Architect M-T1 lock landed 2026-06-23.** Design + **ADR-0068** are written and
 > registered. This is the real ordered build, split **developer ‖ ui-designer**.
-> Binding decision record: [ADR-0068](../../architecture/adr/0068-single-coin-directional-short-selling.md).
+> Binding decision record: [ADR-0068](../../../_bmad-output/planning-artifacts/architecture/decisions/0068-single-coin-directional-short-selling.md).
 > Design: [`feature.md` § Design](feature.md). Trace `REQ-ADVISOR-SHORT-SELLING-001`.
 
 ## Load-bearing constraints (carry into EVERY task — non-negotiable)

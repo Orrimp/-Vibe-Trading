@@ -14,7 +14,7 @@ sourceOfTruthUntilCutover: spec/ (feature.md frontmatter + trace.toml + CHANGELO
 
 This document provides the complete epic and story breakdown for **trading** (The Honest Advisor), decomposing the requirements from the PRD, and Architecture requirements into implementable stories.
 
-> **Retroactive brownfield breakdown.** The product is shipped and feature-complete (2026-07-09; maintenance mode). These epics/stories are the **BMAD-native registry of already-delivered work**, generated 1:1 from the 155 `spec/**/feature.md` folders per the ratified migration plan (`spec/dev-notes/bmad-migration-plan-2026-07-24.md`, Phase 2): **141 top-level stories** (iteration folders in `spec_lint.py`'s `CHANGELOG_ROLLUP_ALLOWLIST` fold as sub-tasks of their base story) **+ 2 forward stories** without feature folders (the live BMAD migration; the `lab-recipe-test-harness` v0.3 backlog item). Story **titles are the feature slugs** so the sprint-status key equals the slug and the story <-> `trace.toml` `REQ-*` bijection stays mechanical (the Phase 5b lint re-founding keys on it). Statuses live in the story files and `sprint-status.yaml`, mapped honestly from `feature.md` frontmatter - never silently promoted.
+> **Retroactive brownfield breakdown.** The product is shipped and feature-complete (2026-07-09; maintenance mode). These epics/stories are the **BMAD-native registry of already-delivered work**, generated 1:1 from the 155 `spec/**/feature.md` folders per the ratified migration plan (`docs/dev-notes/bmad-migration-plan-2026-07-24.md`, Phase 2): **141 top-level stories** (iteration folders in `spec_lint.py`'s `CHANGELOG_ROLLUP_ALLOWLIST` fold as sub-tasks of their base story) **+ 2 forward stories** without feature folders (the live BMAD migration; the `lab-recipe-test-harness` v0.3 backlog item). Story **titles are the feature slugs** so the sprint-status key equals the slug and the story <-> `trace.toml` `REQ-*` bijection stays mechanical (the Phase 5b lint re-founding keys on it). Statuses live in the story files and `sprint-status.yaml`, mapped honestly from `feature.md` frontmatter - never silently promoted.
 
 ## Requirements Inventory
 
@@ -82,7 +82,7 @@ NFR-6: Graceful degradation: missing corpora skip arms; LLM failure falls back t
 
 ### UX Design Requirements
 
-None - no bmad-ux design contract exists for this brownfield migration. UI requirements are carried by AD-10 (render-PIXEL verification), NFR-5, and the Epic 2 stories (the shipped Lumen design system + `spec/ui-design-principles.md`).
+None - no bmad-ux design contract exists for this brownfield migration. UI requirements are carried by AD-10 (render-PIXEL verification), NFR-5, and the Epic 2 stories (the shipped Lumen design system + `docs/ui-design-principles.md`).
 
 ### FR Coverage Map
 

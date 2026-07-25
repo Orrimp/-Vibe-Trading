@@ -34,8 +34,8 @@ updated: 2026-06-30
   - Test 6: Formula pin at 10% drawdown.
   - Test cmd: `cargo test -p strategy --test drawdown_control_overlay_end_to_end`
 
-- [x] T4: Write ADR-0080 (`spec/architecture/adr/0080-drawdown-control-overlay.md`)
-  - Register in `spec/architecture/adr/README.md` (table row + updated frontmatter).
+- [x] T4: Write ADR-0080 (`_bmad-output/planning-artifacts/architecture/decisions/0080-drawdown-control-overlay.md`)
+  - Register in `_bmad-output/planning-artifacts/architecture/decisions/README.md` (table row + updated frontmatter).
   - Verify: `python3 scripts/adr_registry_check.py --self-test`.
 
 - [x] T5: Add trace row `REQ-V2-P1-3-DRAWDOWN-OVERLAY-001` to `spec/trace.toml`.

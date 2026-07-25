@@ -8,8 +8,8 @@ version: 3.2.0
 
 # P3 — Point-in-time / as-of data discipline: the look-ahead lint + explicit publication lag
 
-Close the do-not-build register's **one named open gap** (`spec/dev-notes/do-not-build-register.md`
-§ *What IS still legitimately open*) and qlib-gap #1 (`spec/dev-notes/qlib-feature-gap-2026-06-17.md`
+Close the do-not-build register's **one named open gap** (`docs/dev-notes/do-not-build-register.md`
+§ *What IS still legitimately open*) and qlib-gap #1 (`docs/dev-notes/qlib-feature-gap-2026-06-17.md`
 row #2, "the one structurally-worthwhile gap"): make future-peeking **impossible by
 construction** across the whole tree — not re-proven per feature by hand.
 
@@ -31,7 +31,7 @@ proof, NOT a bug fix** (see § What we found). It ships:
 
 This is a **data-discipline hardening of the EXISTING pipeline**. It is NOT a new database,
 NOT a PIT-data vendor integration, NOT a re-opening of the concluded active-edge search
-(`spec/dev-notes/do-not-build-register.md` Group A/C). See [§ Out of scope](#out-of-scope).
+(`docs/dev-notes/do-not-build-register.md` Group A/C). See [§ Out of scope](#out-of-scope).
 
 ---
 
@@ -68,7 +68,7 @@ data onto a bar is UNREPRESENTABLE*. It migrated `funding_as_of` + `basis_as_of`
 > **A first-class point-in-time / as-of data discipline (table row #2).** … Today PIT-cleanliness
 > is re-proven per feature by hand (leak-checks, day-1 falsifiers) … a focused as-of-join helper
 > **+ a lint**, not a new database. Scope-fitting; would strengthen the moat.
-> — `spec/dev-notes/qlib-feature-gap-2026-06-17.md` § Genuinely-relevant gaps, ranked, #1.
+> — `docs/dev-notes/qlib-feature-gap-2026-06-17.md` § Genuinely-relevant gaps, ranked, #1.
 
 ADR-0058 delivered the *helper*. **P3 delivers the missing *lint* half of that verdict**, plus
 the explicit-lag hardening the DVOL/macro channels motivate.

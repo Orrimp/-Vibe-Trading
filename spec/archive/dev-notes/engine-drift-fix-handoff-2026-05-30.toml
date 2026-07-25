@@ -7,9 +7,9 @@ verdict = "APPROVED — PAPERWORK; no engine change"
 priority = "P1"
 
 [inputs]
-brief = "spec/dev-notes/engine-drift-fix-spec-2026-05-30.md"
+brief = "docs/dev-notes/engine-drift-fix-spec-2026-05-30.md"
 artifacts = [
-  "spec/dev-notes/engine-drift-diagnosis-2026-05-30.md",
+  "docs/dev-notes/engine-drift-diagnosis-2026-05-30.md",
   "spec/anchors.toml",
   "crates/backtest/tests/determinism.rs",
   "crates/backtest/src/main.rs",
@@ -17,9 +17,9 @@ artifacts = [
 
 [outputs]
 spec_files = [
-  "spec/architecture/adr/0045-v5-canonical-config-and-noop-baseline-namespace.md",
-  "spec/architecture/adr/README.md",
-  "spec/dev-notes/engine-drift-fix-spec-2026-05-30.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0045-v5-canonical-config-and-noop-baseline-namespace.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/README.md",
+  "docs/dev-notes/engine-drift-fix-spec-2026-05-30.md",
 ]
 adrs_added = []
 adrs_amended = ["ADR-0045 (§ D6 + § D7 + Changelog + registry row)"]

@@ -8,7 +8,7 @@ updated: 2026-06-23
 # Tasks — advisor-combination-search
 
 > **Architect-ratified, developer-ready.** Design + decisions are in
-> [`feature.md` § Design](feature.md) and [ADR-0067](../../architecture/adr/0067-pre-registered-combination-slate-expansion.md).
+> [`feature.md` § Design](feature.md) and [ADR-0067](../../../_bmad-output/planning-artifacts/architecture/decisions/0067-pre-registered-combination-slate-expansion.md).
 > All six analyst OQs are resolved in the Design; this list is the ordered build.
 > Trace `REQ-ADVISOR-COMBINATION-SEARCH-001`.
 

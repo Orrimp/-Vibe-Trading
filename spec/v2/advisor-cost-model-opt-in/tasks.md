@@ -55,14 +55,14 @@ updated: 2026-07-01
   - Output: `test slippage::tests::anchor_safety_linear_unchanged_by_vol_scaled_variant ... ok`
 
 - [x] **T10 — Venue-trust map dev-note**
-  - File: `spec/dev-notes/venue-trust-map-2026-07-01.md`
+  - File: `docs/dev-notes/venue-trust-map-2026-07-01.md`
 
 - [x] **T11 — Spec feature.md + tasks.md**
   - Files: `spec/v2/advisor-cost-model-opt-in/feature.md` + `tasks.md`
 
 - [x] **T12 — ADR-0081 + README update**
-  - Files: `spec/architecture/adr/0081-cost-model-opt-in.md`
-          + `spec/architecture/adr/README.md` (row added + `updated:` bumped)
+  - Files: `_bmad-output/planning-artifacts/architecture/decisions/0081-cost-model-opt-in.md`
+          + `_bmad-output/planning-artifacts/architecture/decisions/README.md` (row added + `updated:` bumped)
 
 - [x] **T13 — trace.toml row added**
   - File: `spec/trace.toml` (REQ-V2-P1-6-COST-MODEL-OPT-IN-001)

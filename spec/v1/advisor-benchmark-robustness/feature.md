@@ -28,7 +28,7 @@ top arm by Sharpe.
 Two parallel decision-support notes adjudicated this (both READ in full, both cited
 in ADR-0066):
 
-- **Analyst** (`spec/dev-notes/robustness-gate-allfragile-analysis-2026-06-22.md`):
+- **Analyst** (`docs/dev-notes/robustness-gate-allfragile-analysis-2026-06-22.md`):
   "all ACTIVE arms Fragile" is the **honest, designed-for truth** (the bands are a
   curve-fit detector for *active* strategies, pre-registered 2026-05-30, calibrated
   on multi-symbol active θ-surfaces — buy-and-hold was the benchmark every one of
@@ -39,7 +39,7 @@ in ADR-0066):
   missed exemption is `rank.rs`'s `all_fragile` counting the benchmark's own flag.
   Recommendation: A (copy) + **B1 (this fix)** + C (relative ladder); **reject** B2/B3
   (loosen the bands).
-- **Architect** (`spec/dev-notes/robustness-gate-allfragile-technical-2026-06-22.md`):
+- **Architect** (`docs/dev-notes/robustness-gate-allfragile-technical-2026-06-22.md`):
   the seam is `rank.rs`, **not** `classify_verdict`; the benchmark's p5-Sharpe < 0 is
   the (near-certain) binding signal on a 60-70%-vol single asset under 1000-path
   resampling — a **correct** computation, not a numeric bug; the fix is **anchor-safe
@@ -95,7 +95,7 @@ the unanimous-vote 0-trades arm reads "sat in cash — consensus never reached."
 ## Design
 
 The full normative design is **ADR-0066**
-(`spec/architecture/adr/0066-benchmark-exempt-from-allfragile.md`). Summary of the
+(`_bmad-output/planning-artifacts/architecture/decisions/0066-benchmark-exempt-from-allfragile.md`). Summary of the
 seam (all in `crates/backtest/src/bakeoff/rank.rs`; the classifier is untouched):
 
 ```mermaid

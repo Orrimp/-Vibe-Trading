@@ -9,7 +9,7 @@ version: 0.1.0
 # Tasks — C4 read-only reflection decision-support surface
 
 Design: `feature.md § Design` + ADR-0074
-(`spec/architecture/adr/0074-reflection-decision-surface.md`).
+(`_bmad-output/planning-artifacts/architecture/decisions/0074-reflection-decision-surface.md`).
 Sequenced so each task compiles + tests green before the next. **Read-only at
 the decision points; frozen gate; helper in `crates/trader` per ADR-0041.**
 
@@ -126,7 +126,7 @@ Legend: `[ ]` todo · all tasks are additive; no anchored content is touched.
 - [ ] **T17 — S1 render-PIXEL proof.** NEW
   `crates/ui/tests/leaderboard_memory_chip_render.rs` (`#![cfg(target_os =
   "macos")]`, ADR-0057 § D2; cosmic-text font-mutex serialized per
-  `spec/dev-notes/iced-ui-render-verification.md`), modelled on
+  `docs/dev-notes/iced-ui-render-verification.md`), modelled on
   `crates/ui/tests/leaderboard_narration_render.rs`: (a) a **populated-store
   fixture** (`MemoryNoteState::Present`) paints the chip as foreground in a
   scoped band near the recommendation block; (b) an **empty-store NEGATIVE

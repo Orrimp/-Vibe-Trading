@@ -11,9 +11,9 @@ updated: '2026-07-24'
 binds: []
 sources:
   - spec/architecture/00-current-state.md
-  - spec/architecture/adr/README.md (ADR registry, rows 0001-0088)
+  - _bmad-output/planning-artifacts/architecture/decisions/README.md (ADR registry, rows 0001-0088)
   - CLAUDE.md (non-negotiables)
-  - spec/dev-notes/bmad-migration-plan-2026-07-24.md
+  - docs/dev-notes/bmad-migration-plan-2026-07-24.md
 companions:
   - _bmad-output/planning-artifacts/architecture/architecture-trading-2026-07-24/.memlog.md
 ---
@@ -22,7 +22,7 @@ companions:
 
 > **Migrated from `spec/architecture/00-current-state.md` 2026-07-24 (BMAD Phase 1); `spec/`
 > remains authoritative until Phase 5b cutover; ADRs remain the decision record — on conflict
-> the ADR wins.** ADR links below cite their CURRENT `spec/architecture/adr/` paths; migration
+> the ADR wins.** ADR links below cite their CURRENT `_bmad-output/planning-artifacts/architecture/decisions/` paths; migration
 > Phase 4 rebases them to `_bmad-output/planning-artifacts/architecture/decisions/`.
 > Three snapshot facts of the 2026-07-10 source were repo-verified and updated here: CI is
 > ACTIVE (AD-13), the P4/P5 remediation features have shipped (Capability Map), and `tract`
@@ -211,14 +211,14 @@ test/lint/gate is the current enforcement. Break one and a gate goes red.
   (`spec/v1/cockpit-performance-and-input-responsiveness/`): neither is "cleanup".
 - **ADR:** ADR-0057. **Enforced by:** the render harnesses (`render_snapshots.rs`,
   `live_equity_render.rs`, `reports_populated_curve_render.rs`, feature-specific
-  `*_render.rs`); guide: `spec/dev-notes/iced-ui-render-verification.md`.
+  `*_render.rs`); guide: `docs/dev-notes/iced-ui-render-verification.md`.
 
 ### AD-11 — The do-not-build register is binding; the thesis is era-qualified [ADOPTED]
 
 - **Binds:** every future feature proposal; all copy stating the product thesis.
 - **Prevents:** re-proposing settled dead-ends; overclaiming the null result.
 - **Rule:** the settled dead-ends (combination-search engine, live trading, band-loosening,
-  the ready-unbuilt DSR veto E-1, …) live in `spec/dev-notes/do-not-build-register.md` and
+  the ready-unbuilt DSR veto E-1, …) live in `docs/dev-notes/do-not-build-register.md` and
   must not be re-proposed. The ship-passive claim is scoped to the **current era (2023+)**:
   the corpus re-run found real, cost-annex-robust, gate-crowned active edges in 2017-20 that
   decay to ~zero by 2023+ (none DSR-certified post scorecard-fix) — the efficiency-migration
@@ -235,7 +235,7 @@ test/lint/gate is the current enforcement. Break one and a gate goes red.
   `Passes` ✓ / `WeakEvidence` ⚠ WARN band / `NotApplicable` no badge, ADR-0085). Turning
   DSR into a hard veto is do-not-build **E-1**.
 - **ADR:** ADR-0075 · ADR-0085 ·
-  `spec/dev-notes/dsr-report-only-decision-2026-07-09.md`. **Enforced by:** AD-1's
+  `docs/dev-notes/dsr-report-only-decision-2026-07-09.md`. **Enforced by:** AD-1's
   ranking-identity tests + the unbuilt veto.
 
 ### AD-13 — Verification envelope: 3-OS CI active; macOS is the canonical visual box [ADOPTED]
@@ -353,7 +353,7 @@ neither mandated nor forbidden — the code owns them, subject to rules (a)–(e
   overlay stacking (AD-8 seam 2), the divergence e2e must exercise the **outermost composed
   stack** — each layer's removal moves equity by the epsilon — not each overlay in isolation.
 - **ADR:** CLAUDE.md non-negotiable ·
-  `spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`. **Enforced by:** the
+  `docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`. **Enforced by:** the
   per-feature `*_end_to_end.rs` divergence gates.
 
 ### AD-17 — The determinism envelope [ADOPTED]
@@ -382,21 +382,21 @@ neither mandated nor forbidden — the code owns them, subject to rules (a)–(e
 - **Prevents:** unregistered decisions; number collisions; a spine that silently diverges
   from the record.
 - **Rule:** every non-trivial decision is a numbered, dated, immutable ADR under
-  `spec/architecture/adr/` **plus** its Registry row in `adr/README.md`, written in the same
+  `_bmad-output/planning-artifacts/architecture/decisions/` **plus** its Registry row in `adr/README.md`, written in the same
   commit. Numbers are never reused; supersession is a new ADR citing `supersedes:`. This
   spine compresses; it never overrides — **on conflict, the ADR wins.** New invariants enter
   this spine only with an ADR behind them. Two scope clauses:
   - **The lint defines the home.** The ADR corpus lives, at every commit, in the directory
     `scripts/adr_registry_check.py` enforces; the migration's corpus `git mv` and the lint
     repoint travel in **one atomic commit** — until that commit, new ADRs land under
-    `spec/architecture/adr/`.
+    `_bmad-output/planning-artifacts/architecture/decisions/`.
   - **Precedence scope.** "The ADR wins" governs intent and precedence *among documents*; it
     never licenses changing byte-frozen behavior (AD-1/AD-2/AD-3/AD-17). Where an ADR's
     letter and shipped gate-locked bytes disagree, the as-built bytes stand and the
     divergence is recorded in a **new as-built ADR** — never resolved by editing code to
     match the stale clause. (Standing instance: ADR-0063 §D4 and the rustdoc say XOR;
     `derive_master_seed` ships `wrapping_add`.)
-- **ADR:** `spec/architecture/adr/README.md` (format + numbering rules). **Enforced by:**
+- **ADR:** `_bmad-output/planning-artifacts/architecture/decisions/README.md` (format + numbering rules). **Enforced by:**
   `scripts/adr_registry_check.py` (pre-commit/CI atomicity lint).
 
 ### AD-19 — Release discipline: gates green; REGRESSION blocks ship; no secrets in git [ADOPTED]
@@ -422,7 +422,7 @@ neither mandated nor forbidden — the code owns them, subject to rules (a)–(e
 | I/O & test seams | Every external I/O behind a trait (`LlmProvider`, fetcher seams, `LiveEquityStore`); tests use fakes / record-replay, never sockets. |
 | Config & secrets | No secrets in git; keys via env / secret store. LLM artifacts are scanned (`scripts/check_no_secrets_in_llm_artifacts.sh`). |
 | Release gates | `cargo fmt` + `cargo clippy -- -D warnings`; `rust-validate` (incl. the PIT lint); `scripts/verify_anchors.sh` 119/119 **before and after**; `python3 scripts/spec_lint.py` PASS; no shipping on a `REGRESSION` verdict without an explicit human override. |
-| UI | Lumen design system (`spec/design/`) + `spec/ui-design-principles.md`; dual-mode (light/dark) and colour is never the only signal (ADR-0085 §D5); user-facing copy lives in `crate::strings` consts (zero string literals in views). |
+| UI | Lumen design system (`docs/design/`) + `docs/ui-design-principles.md`; dual-mode (light/dark) and colour is never the only signal (ADR-0085 §D5); user-facing copy lives in `crate::strings` consts (zero string literals in views). |
 
 ## Stack
 
@@ -546,7 +546,7 @@ dead-ends live in the do-not-build register (AD-11) and are not re-proposed here
 
 ## Decision Record & History
 
-- **ADR registry** — `spec/architecture/adr/README.md` § Registry: the canonical
+- **ADR registry** — `_bmad-output/planning-artifacts/architecture/decisions/README.md` § Registry: the canonical
   one-row-per-ADR table, IDs 0001–0088 (0054 intentionally skipped; 0079 exists as a
   registry row without a standalone file), each with D-clause summary, status, date. Cited
   by `spec/trace.toml` `arch=` fields. **The ADRs are the decision record; this spine
@@ -561,7 +561,7 @@ dead-ends live in the do-not-build register (AD-11) and are not re-proposed here
   regression gate, forecast overlay).
 - **What shipped** — root `CHANGELOG.md`: one line per implemented feature (the canonical
   "what's-been-built" index; completed `feature.md` are one-line stubs pointing here).
-- **Dev-notes** — `spec/dev-notes/README.md`: standing decisions, audits, how-tos —
+- **Dev-notes** — `docs/dev-notes/README.md`: standing decisions, audits, how-tos —
   including the do-not-build register (AD-11) and the render-verification guide (AD-10).
 - **Per-feature narrative** — `git log -- spec/<slug>/` for any feature's history.
 
@@ -569,7 +569,7 @@ dead-ends live in the do-not-build register (AD-11) and are not re-proposed here
 
 Migrated 2026-07-24 from `spec/architecture/00-current-state.md` (its `updated:
 2026-07-10`) as BMAD migration Phase 1b, per the ratified plan
-`spec/dev-notes/bmad-migration-plan-2026-07-24.md`. AD-1…AD-13 preserve that source's
+`docs/dev-notes/bmad-migration-plan-2026-07-24.md`. AD-1…AD-13 preserve that source's
 thirteen load-bearing invariants 1:1 by number; AD-13's CI posture and the P4/P5 ship
 status were repo-verified and updated (see the run memlog for the evidence trail).
 Maintenance contract (carried from the source): update this spine whenever an ADR lands

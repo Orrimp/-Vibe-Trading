@@ -7,7 +7,7 @@ updated: 2026-07-24
 
 # PRD: The Honest Advisor — Single-Coin Investment Advisor (paper)
 
-> **Migration provenance — read this first.** Migrated from `spec/product.md` 2026-07-24 (BMAD Phase 1); **`spec/` remains authoritative until Phase 5b cutover.** This is a **brownfield PRD**: it describes a **shipped, feature-complete product in maintenance mode** (feature-complete 2026-07-09; remediation hardening P0–P8 completed 2026-07-10), not an aspirational build plan. Sources of truth transformed here: `spec/product.md` (the ratified product spec), `spec/dev-notes/do-not-build-register.md` (settled dead-ends + the era-qualified thesis wording), and `CHANGELOG.md` (the shipped-state index).
+> **Migration provenance — read this first.** Migrated from `spec/product.md` 2026-07-24 (BMAD Phase 1); **`spec/` remains authoritative until Phase 5b cutover.** This is a **brownfield PRD**: it describes a **shipped, feature-complete product in maintenance mode** (feature-complete 2026-07-09; remediation hardening P0–P8 completed 2026-07-10), not an aspirational build plan. Sources of truth transformed here: `spec/product.md` (the ratified product spec), `docs/dev-notes/do-not-build-register.md` (settled dead-ends + the era-qualified thesis wording), and `CHANGELOG.md` (the shipped-state index).
 
 ## 0. Document Purpose
 
@@ -360,7 +360,7 @@ Every recommendation is auditable and reproducible end to end.
 
 ### 7.2 Settled dead-ends (the do-not-build register)
 
-The authoritative register of settled dead-ends — with the guardrail/evidence that kills each and a cited rebuttal for re-proposals — is `spec/dev-notes/do-not-build-register.md` (13 entries, 5 groups). Summary; **do not re-litigate these**:
+The authoritative register of settled dead-ends — with the guardrail/evidence that kills each and a cited rebuttal for re-proposals — is `docs/dev-notes/do-not-build-register.md` (13 entries, 5 groups). Summary; **do not re-litigate these**:
 
 | Group | Entries |
 |---|---|

@@ -174,7 +174,7 @@ This is the load-bearing section. The scope hinges on it being **small**.
   byte-identical, the 56 visual baselines byte-identical, the macOS build/run
   path untouched. All portability changes are **additive `#[cfg]` / Cargo
   `[target.…]` stanzas**, never edits to the macOS code path.
-- **R6 — portability runbook.** A `spec/runbooks/cockpit-cross-platform.md`
+- **R6 — portability runbook.** A `docs/runbooks/cockpit-cross-platform.md`
   documents: the Linux build prereqs (TLS, xvfb), the macOS-only dev-script
   inventory (Category C), and the explicit "visual baselines are macOS-canonical,
   not cross-platform" contract (echoing ADR-0051 § D5).
@@ -520,7 +520,7 @@ graph TD
         RQ["reqwest rustls-tls<br/>D1 (data/agent/llm consume)"]
         CI[".github/workflows/ci.yml<br/>D8 matrix (ubuntu/macos/windows)"]
     end
-    RB["spec/runbooks/cockpit-cross-platform.md<br/>R6: Linux prereqs + macOS-script inventory + baseline contract"]
+    RB["docs/runbooks/cockpit-cross-platform.md<br/>R6: Linux prereqs + macOS-script inventory + baseline contract"]
     ADR["ADR-0057<br/>D6: macOS-canonical render-determinism scope"]
 
     D2gate["macOS canonical box<br/>56 baselines byte-identical (R-NR.1)"]
@@ -640,10 +640,10 @@ transport-implementation swap, not an API change).
   `#[cfg]` gate.
 - `cosmic-text-0.15.0/src/font/system.rs:400` — `db.load_system_fonts()` +
   `PlatformFallback`.
-- `spec/architecture/adr/0051-monte-carlo-determinism-and-distribution-report-anchoring.md`
+- `_bmad-output/planning-artifacts/architecture/decisions/0051-monte-carlo-determinism-and-distribution-report-anchoring.md`
   § D5 — "Apple-Silicon canonical box; cross-platform byte-identity explicitly
   NOT guaranteed."
-- `spec/architecture/adr/0043-simulated-latency-and-slippage.md` — f64
+- `_bmad-output/planning-artifacts/architecture/decisions/0043-simulated-latency-and-slippage.md` — f64
   conversion-boundary determinism scope (inherited verbatim by ADR-0051 § D5).
 - reqwest 0.12 docs — default-tls = native-tls; `rustls-tls` opt-in feature.
 

@@ -55,7 +55,7 @@ fn loader_missing_path_yields_error_both_years() {
         let bogus = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
-            .join("spec/runbooks/artifacts/passive-baseline-2026-06-08")
+            .join("docs/runbooks/artifacts/passive-baseline-2026-06-08")
             .join(format!("__missing__-{year:?}.csv"));
         match baseline::load_baseline_curve(&bogus) {
             PanelState::Error(msg) => assert_eq!(msg.as_str(), BASELINE_DATA_UNAVAILABLE),

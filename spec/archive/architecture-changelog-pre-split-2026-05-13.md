@@ -14,7 +14,7 @@ file preserves the prose for future archaeology.
 
 Original line range: 311..1286 of `spec/architecture.md` at the
 post-Session-11 state. To retrieve a specific entry, use the ADR
-registry in `spec/architecture/adr/README.md` and cross-reference by
+registry in `_bmad-output/planning-artifacts/architecture/decisions/README.md` and cross-reference by
 date.
 
 ## Changelog
@@ -669,7 +669,7 @@ date.
   legal copy source; (7) fixtures provide the dev-mode data path
   for `cargo run --bin cockpit --features fixtures`. No code change;
   documents the existing contract. Companion living doc
-  [ui-design-principles.md](../ui-design-principles.md) lands the
+  [ui-design-principles.md](../../docs/ui-design-principles.md) lands the
   design-system rules these interfaces dress (color palette
   extensions, type/spacing scale lock, density tables, motion
   timings, trading-specific patterns, eight open questions for
@@ -729,7 +729,7 @@ date.
   **Q3** land all three theme tokens in this feature:
   `bg_overlay = #0B0D12`, `info = #7BC2FF`,
   `border_strong = #3A4456` (dark-mode hex from
-  [ui-design-principles.md](../ui-design-principles.md)). Light-mode
+  [ui-design-principles.md](../../docs/ui-design-principles.md)). Light-mode
   hex documented but landed by the broader light-mode feature.
   **Q4** column order `Account | Debit | Credit | Currency`;
   numbers right-aligned, monospace digits, locale-default
@@ -759,7 +759,7 @@ date.
   **Q9** modal closes on `Message::AgentHaltedExternally`;
   one modal at a time (`TapeRowClicked` while open replaces
   identity); clipboard `Cmd-C` deferred. **First feature against
-  [ui-design-principles.md](../ui-design-principles.md)** — documents
+  [ui-design-principles.md](../../docs/ui-design-principles.md)** — documents
   the click-through-to-audit modal pattern that future drilldowns
   inherit (`Stack` overlay + `bg_overlay` backdrop +
   `border_strong` frame + Esc-to-close subscription +

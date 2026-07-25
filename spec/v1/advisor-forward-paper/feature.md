@@ -585,7 +585,7 @@ is the **real forward run's** P/L. F5's UI delta is then purely presentational:
 > isolation. See § 4.2 step 5.
 
 **Render-layer verification (the operator's #1 sensitivity).** Per the CLAUDE.md
-cockpit rule + [`../dev-notes/iced-ui-render-verification.md`](../../dev-notes/iced-ui-render-verification.md):
+cockpit rule + [`../dev-notes/iced-ui-render-verification.md`](../../../docs/dev-notes/iced-ui-render-verification.md):
 the €200-P/L surface is verified at the **rendered-pixel layer** with a populated
 fixture (a budget equity series with a non-zero P/L) **and a negative control**
 (flat-at-budget → zero P/L, no sentiment colour), asserting the P/L value + its

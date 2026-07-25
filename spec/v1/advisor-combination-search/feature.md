@@ -204,7 +204,7 @@ questions OQ-4.)
 ## Design
 
 _Architect, 2026-06-23. Full rationale + alternatives in
-[ADR-0067](../../architecture/adr/0067-pre-registered-combination-slate-expansion.md).
+[ADR-0067](../../../_bmad-output/planning-artifacts/architecture/decisions/0067-pre-registered-combination-slate-expansion.md).
 This feature is an **expansion of F8** (ADR-0063), not a new mechanism: it adds
 **6 new pre-registered vote-ensemble arms** to the live advisor field, each
 scored through the **identical byte-frozen** `RobustnessMode::Bootstrap` gate +

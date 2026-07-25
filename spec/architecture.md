@@ -9,7 +9,7 @@ updated: 2026-06-26
 
 This file is the **thin index** for the system architecture. All
 substantive content lives in `spec/architecture/NN-*.md` section
-files (current-state design) or `spec/architecture/adr/NNNN-*.md`
+files (current-state design) or `_bmad-output/planning-artifacts/architecture/decisions/NNNN-*.md`
 (numbered architectural decision records). Phase 1A of the spec
 hygiene plan (2026-05-13 → 2026-05-16) compressed the prior
 5,635-line monolith into this index plus 12 sections and 26 ADRs.
@@ -35,7 +35,7 @@ non-negotiables that any architectural change must preserve.
 2. **Money math uses `Decimal`, never `f64`.** Every monetary
    value is a `Money<C: Currency>` newtype wrapping
    `rust_decimal::Decimal`. Aggregation rules are exact-cent with
-   zero tolerance. See [ADR-0003](architecture/adr/0003-decimal-money-math.md).
+   zero tolerance. See [ADR-0003](../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md).
 3. **The `ui` crate (lib + every binary target) never depends on
    `strategy`, `exec`, `forecast`, or `llm`.** Bootstrap of those
    types happens in `agent`. (There is **no `crates/models`** — the
@@ -50,8 +50,8 @@ non-negotiables that any architectural change must preserve.
 Anchor regressions, RNG seeding, timestamp precision, and report
 determinism rules live alongside their respective sections —
 [11-regression-gate.md](architecture/11-regression-gate.md),
-[ADR-0002](architecture/adr/0002-rng-chacha20.md),
-[ADR-0004](architecture/adr/0004-fractional-second-timestamps.md).
+[ADR-0002](../_bmad-output/planning-artifacts/architecture/decisions/0002-rng-chacha20.md),
+[ADR-0004](../_bmad-output/planning-artifacts/architecture/decisions/0004-fractional-second-timestamps.md).
 
 ## Section file registry
 
@@ -73,36 +73,36 @@ determinism rules live alongside their respective sections —
 
 ## ADR registry
 
-Canonical index also at [architecture/adr/README.md](architecture/adr/README.md).
+Canonical index also at [../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md).
 
 | ID    | Title                                                      | Status   | Date       |
 |-------|------------------------------------------------------------|----------|------------|
-| [0001](architecture/adr/0001-crate-name-stdlib-collision.md) | Crate names avoid stdlib collisions | accepted | 2026-04-17 |
-| [0002](architecture/adr/0002-rng-chacha20.md) | RNG seeded with ChaCha20 from config seed | accepted | 2026-04-17 |
-| [0003](architecture/adr/0003-decimal-money-math.md) | Money math uses Decimal, never f64 | accepted | 2026-04-17 |
-| [0004](architecture/adr/0004-fractional-second-timestamps.md) | Audit-DB uses 6-digit fractional-second timestamps | accepted | 2026-04-18 |
-| [0005](architecture/adr/0005-v0-strategy-trait-no-hotload.md) | v0 — clean strategy trait shape, no hot-load | accepted | 2026-04-17 |
-| [0006](architecture/adr/0006-v05-config-driven-composition.md) | v0.5 — config-driven strategy composition | accepted | 2026-04-19 |
-| [0007](architecture/adr/0007-v1-wasm-plugin-deferred.md) | v1+ — WASM plugin hot-load deferred | accepted | 2026-04-19 |
-| [0008](architecture/adr/0008-v05-strategy-event-journal-schema.md) | v0.5 — strategy-event journal schema | accepted | 2026-04-19 |
-| [0009](architecture/adr/0009-v05-registry-concurrency.md) | v0.5 — registry concurrency: parking_lot::RwLock | accepted | 2026-04-19 |
-| [0010](architecture/adr/0010-v05-composed-exit-policy.md) | v0.5 — ComposedStrategy exit policy: signal-flip only | accepted | 2026-04-19 |
-| [0011](architecture/adr/0011-v05-cockpit-strategies-panel.md) | v0.5 — cockpit Strategies panel layout | accepted | 2026-04-19 |
-| [0012](architecture/adr/0012-v05-broadcast-bus-extensions.md) | v0.5 — strategy broadcast types in trading_core | accepted | 2026-04-19 |
-| [0013](architecture/adr/0013-v1-cross-sectional-momentum.md) | v1 — cross-sectional momentum resolutions | accepted | 2026-04-29 |
-| [0014](architecture/adr/0014-v15a-mean-reversion-pairs.md) | v1.5a — mean-reversion pairs resolutions | accepted | 2026-04-30 |
-| [0015](architecture/adr/0015-operator-success-reports.md) | v1+ — Operator success reports | accepted | 2026-05-01 |
-| [0016](architecture/adr/0016-real-mtm-unrealized-pnl.md) | v1+ — real-mtm unrealized PnL plumbing | accepted | 2026-05-02 |
-| [0017](architecture/adr/0017-v15b-multi-venue.md) | v1.5b — multi-venue execution scaffolding | accepted | 2026-05-03 |
-| [0018](architecture/adr/0018-lumen-phase-1-foundation.md) | Lumen design adoption — Phase 1 foundation | accepted | 2026-05-04 |
-| [0019](architecture/adr/0019-v2-llm-strategy.md) | v2 — LLM strategy foundation | accepted | 2026-05-10 |
-| [0020](architecture/adr/0020-chart-buy-sell-emphasis.md) | Chart buy/sell emphasis | accepted | 2026-05-10 |
-| [0021](architecture/adr/0021-rustquant-adoption.md) | RustQuant adopted as helper, not foundation | accepted | 2026-04-17 |
-| [0022](architecture/adr/0022-cost-telemetry-crate.md) | Cost telemetry lives in dedicated `cost` crate | accepted | 2026-04-17 |
-| [0023](architecture/adr/0023-iced-frontend.md) | iced is the single UI stack | accepted | 2026-04-17 |
-| [0024](architecture/adr/0024-audit-sqlite-raw-sqlx.md) | Audit ledger: raw `sqlx` + SQLite, not `sqlx-ledger` | accepted | 2026-04-19 |
-| [0025](architecture/adr/0025-hand-rolled-binance-ws.md) | v0 hand-rolled Binance WS behind `MarketDataSource` trait | accepted | 2026-04-17 |
-| [0026](architecture/adr/0026-v0-simple-paper-engine.md) | v0 simple paper engine; LOB deferred to v0.5 | accepted | 2026-04-17 |
+| [0001](../_bmad-output/planning-artifacts/architecture/decisions/0001-crate-name-stdlib-collision.md) | Crate names avoid stdlib collisions | accepted | 2026-04-17 |
+| [0002](../_bmad-output/planning-artifacts/architecture/decisions/0002-rng-chacha20.md) | RNG seeded with ChaCha20 from config seed | accepted | 2026-04-17 |
+| [0003](../_bmad-output/planning-artifacts/architecture/decisions/0003-decimal-money-math.md) | Money math uses Decimal, never f64 | accepted | 2026-04-17 |
+| [0004](../_bmad-output/planning-artifacts/architecture/decisions/0004-fractional-second-timestamps.md) | Audit-DB uses 6-digit fractional-second timestamps | accepted | 2026-04-18 |
+| [0005](../_bmad-output/planning-artifacts/architecture/decisions/0005-v0-strategy-trait-no-hotload.md) | v0 — clean strategy trait shape, no hot-load | accepted | 2026-04-17 |
+| [0006](../_bmad-output/planning-artifacts/architecture/decisions/0006-v05-config-driven-composition.md) | v0.5 — config-driven strategy composition | accepted | 2026-04-19 |
+| [0007](../_bmad-output/planning-artifacts/architecture/decisions/0007-v1-wasm-plugin-deferred.md) | v1+ — WASM plugin hot-load deferred | accepted | 2026-04-19 |
+| [0008](../_bmad-output/planning-artifacts/architecture/decisions/0008-v05-strategy-event-journal-schema.md) | v0.5 — strategy-event journal schema | accepted | 2026-04-19 |
+| [0009](../_bmad-output/planning-artifacts/architecture/decisions/0009-v05-registry-concurrency.md) | v0.5 — registry concurrency: parking_lot::RwLock | accepted | 2026-04-19 |
+| [0010](../_bmad-output/planning-artifacts/architecture/decisions/0010-v05-composed-exit-policy.md) | v0.5 — ComposedStrategy exit policy: signal-flip only | accepted | 2026-04-19 |
+| [0011](../_bmad-output/planning-artifacts/architecture/decisions/0011-v05-cockpit-strategies-panel.md) | v0.5 — cockpit Strategies panel layout | accepted | 2026-04-19 |
+| [0012](../_bmad-output/planning-artifacts/architecture/decisions/0012-v05-broadcast-bus-extensions.md) | v0.5 — strategy broadcast types in trading_core | accepted | 2026-04-19 |
+| [0013](../_bmad-output/planning-artifacts/architecture/decisions/0013-v1-cross-sectional-momentum.md) | v1 — cross-sectional momentum resolutions | accepted | 2026-04-29 |
+| [0014](../_bmad-output/planning-artifacts/architecture/decisions/0014-v15a-mean-reversion-pairs.md) | v1.5a — mean-reversion pairs resolutions | accepted | 2026-04-30 |
+| [0015](../_bmad-output/planning-artifacts/architecture/decisions/0015-operator-success-reports.md) | v1+ — Operator success reports | accepted | 2026-05-01 |
+| [0016](../_bmad-output/planning-artifacts/architecture/decisions/0016-real-mtm-unrealized-pnl.md) | v1+ — real-mtm unrealized PnL plumbing | accepted | 2026-05-02 |
+| [0017](../_bmad-output/planning-artifacts/architecture/decisions/0017-v15b-multi-venue.md) | v1.5b — multi-venue execution scaffolding | accepted | 2026-05-03 |
+| [0018](../_bmad-output/planning-artifacts/architecture/decisions/0018-lumen-phase-1-foundation.md) | Lumen design adoption — Phase 1 foundation | accepted | 2026-05-04 |
+| [0019](../_bmad-output/planning-artifacts/architecture/decisions/0019-v2-llm-strategy.md) | v2 — LLM strategy foundation | accepted | 2026-05-10 |
+| [0020](../_bmad-output/planning-artifacts/architecture/decisions/0020-chart-buy-sell-emphasis.md) | Chart buy/sell emphasis | accepted | 2026-05-10 |
+| [0021](../_bmad-output/planning-artifacts/architecture/decisions/0021-rustquant-adoption.md) | RustQuant adopted as helper, not foundation | accepted | 2026-04-17 |
+| [0022](../_bmad-output/planning-artifacts/architecture/decisions/0022-cost-telemetry-crate.md) | Cost telemetry lives in dedicated `cost` crate | accepted | 2026-04-17 |
+| [0023](../_bmad-output/planning-artifacts/architecture/decisions/0023-iced-frontend.md) | iced is the single UI stack | accepted | 2026-04-17 |
+| [0024](../_bmad-output/planning-artifacts/architecture/decisions/0024-audit-sqlite-raw-sqlx.md) | Audit ledger: raw `sqlx` + SQLite, not `sqlx-ledger` | accepted | 2026-04-19 |
+| [0025](../_bmad-output/planning-artifacts/architecture/decisions/0025-hand-rolled-binance-ws.md) | v0 hand-rolled Binance WS behind `MarketDataSource` trait | accepted | 2026-04-17 |
+| [0026](../_bmad-output/planning-artifacts/architecture/decisions/0026-v0-simple-paper-engine.md) | v0 simple paper engine; LOB deferred to v0.5 | accepted | 2026-04-17 |
 
 New ADRs are added under `architecture/adr/NNNN-<slug>.md` and
 registered both here and in the canonical README. The numbering is
@@ -163,7 +163,7 @@ entries live in each section file.
   5-arm signal-library expansion** (feature `advisor-signal-library-expansion`,
   the 3rd + cheapest pre-registered arm-class expansion after combination-search
   ADR-0067 + short-selling ADR-0068). Recorded in the canonical ADR registry
-  ([architecture/adr/README.md](architecture/adr/README.md) +
+  ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md) +
   `architecture/adr/0071-obv-dsl-primitive-and-signal-arm-expansion.md`).
   **The ComposedStrategy signal DSL** (`crates/strategy/src/composed/{node.rs,
   parser.rs,ast.rs}` — self-contained, imports nothing from `crates/features`)
@@ -199,7 +199,7 @@ entries live in each section file.
 - 2026-06-25 (architect): **ADR-0070 — promotion wiring: carry a robust Tune
   config into the forward €200 paper-trade** (feature `advisor-param-promotion`,
   the ADR-0069 § D5 deferred v0.2 carry-forward). Recorded in the canonical ADR
-  registry ([architecture/adr/README.md](architecture/adr/README.md) +
+  registry ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md) +
   `architecture/adr/0070-promote-tuned-config-into-forward-paper-run.md`). Wires
   the "Use this config" affordance — today a **visual pill with no message**
   (`crates/ui/src/screens/tune.rs:967-970`) — so a **promotable** (non-FRAGILE)
@@ -243,7 +243,7 @@ entries live in each section file.
 - 2026-06-24 (architect): **ADR-0069 — gate-tied hyperparameter sweep seam**
   (feature `advisor-param-tuning`, leaderboard-epic item #3 — the operator-chosen
   gate-tied option, NOT a naive single-config editor). Recorded in the canonical ADR
-  registry ([architecture/adr/README.md](architecture/adr/README.md) +
+  registry ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md) +
   `architecture/adr/0069-gate-tied-parameter-sweep-seam.md`). A parameter-grid
   **sibling of the bake-off**: a new library entry point
   `backtest::bakeoff::sweep::run_param_sweep` loops N parameterised configs of ONE
@@ -277,7 +277,7 @@ entries live in each section file.
   **ADR-0059 § D5** (the F2 comparator outcome rule) and **ADR-0063 § D7** (the
   R4.4 reachability promise), while leaving the classifier freeze (ADR-0059 § D4 /
   ADR-0063 § D4) byte-unchanged. Recorded in the ADR registry
-  ([architecture/adr/README.md](architecture/adr/README.md) +
+  ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md) +
   `architecture/adr/0066-benchmark-exempt-from-allfragile.md`). The F8 robustness
   gate judged the buy-and-hold **benchmark** by the same candidate-overfit ruler
   as the active arms, so on real BTCUSDT every arm flagged Fragile → outcome
@@ -290,7 +290,7 @@ entries live in each section file.
   (configurable static FX rate)** (feature `advisor-eur-fx`, single-coin-advisor
   pivot F7 — the LAST v0.2 item; resolves product § D4's deferred fixed EUR→USD
   rate). Recorded in the canonical ADR registry
-  ([architecture/adr/README.md](architecture/adr/README.md) +
+  ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md) +
   `architecture/adr/0065-eur-usdt-budget-conversion-seam.md`). The operator
   enters a budget in euros but the engine is USDT-denominated end-to-end and **no
   `Eur` type exists**, so today the parsed euro `Decimal` is stamped **1:1** into
@@ -329,7 +329,7 @@ entries live in each section file.
 - 2026-06-21 (architect): **ADR-0063 — ensemble signal-vote seam +
   robustness-gate activation** (feature `advisor-ensemble`, single-coin-advisor
   pivot F8). Recorded in the canonical ADR registry
-  ([architecture/adr/README.md](architecture/adr/README.md) +
+  ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md) +
   `architecture/adr/0063-ensemble-vote-seam-and-robustness-gate-activation.md`).
   The F8 "mix" capability ships as `strategy::EnsembleStrategy` implementing the
   FROZEN `Strategy` trait (the ADR-0049 `RegimeDispatcher` precedent generalised
@@ -355,7 +355,7 @@ entries live in each section file.
   recorded in [architecture/02-strategy-registry.md](architecture/02-strategy-registry.md).
 - 2026-06-21 (architect): **ADR-0062 — forward-plan read seam** (feature
   `advisor-forward-plan`, single-coin-advisor pivot F6). Recorded in the
-  canonical ADR registry ([architecture/adr/README.md](architecture/adr/README.md)
+  canonical ADR registry ([../_bmad-output/planning-artifacts/architecture/decisions/README.md](../_bmad-output/planning-artifacts/architecture/decisions/README.md)
   + `architecture/adr/0062-forward-plan-read-seam.md`). The F6 forward
   buy/sell plan (a CONDITIONAL, reactive, rule-driven decision surface —
   current stance + standing rules + €200 projected sizing, explicitly NOT a
@@ -404,4 +404,4 @@ entries live in each section file.
   original = -94% reduction). The 976-line per-feature changelog
   was archived since every entry's substance is already in the
   corresponding ADR. Sessions 1–12 dev-notes linked from
-  `spec/dev-notes/phase-1a-*.md`.
+  `docs/dev-notes/phase-1a-*.md`.

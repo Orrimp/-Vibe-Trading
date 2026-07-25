@@ -20,7 +20,7 @@ never feeds any gate, rank, or verdict.
 [`research/crypto-market-structure/application-data-integrity.md`](../../../research/crypto-market-structure/application-data-integrity.md)
 §6 C (universe screen / data-quality context). Reuses the venue-trust
 classifications shipped with P1-6:
-[`spec/dev-notes/venue-trust-map-2026-07-01.md`](../../dev-notes/venue-trust-map-2026-07-01.md).
+[`docs/dev-notes/venue-trust-map-2026-07-01.md`](../../../docs/dev-notes/venue-trust-map-2026-07-01.md).
 
 ## History note (REDO)
 

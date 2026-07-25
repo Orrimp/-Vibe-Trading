@@ -14,7 +14,7 @@
 > feature's ONLY test evidence — restoring them keeps the spec-lint `shipped-no-tests` contract
 > intact; net new-finding count vs baseline = **0**) ·
 > ✅ P2-1 108 presentation files → `presentations-2026-Q2.tar.gz` · ✅ P2-2 **49** dev-notes →
-> `spec/dev-notes/archive/2026-Q2/` (13 load-bearing kept; `feature-triage` returned — cited by a
+> `docs/dev-notes/archive/2026-Q2/` (13 load-bearing kept; `feature-triage` returned — cited by a
 > restored report) · ✅ P2-3 backlog `## Recent` 1,405 lines → `archive/backlog-recent-2026-05.md`
 > (de-linkified) · ✅ P2-4 45 design prototypes → `design-prototypes-2026-Q2.tar.gz`
 > (`colors_and_type.css` kept — `theme.rs` provenance source).
@@ -23,8 +23,8 @@
 > **zero** edits under `spec/*/reports/` except the 5 un-anchored screenshot READMEs + the
 > 51 byte-identical restores. Phase 3 items remain operator decisions.
 > Companion precedents already in-tree:
-> [`spec/dev-notes/repo-cleanup-plan-2026-05-22.md`](spec/dev-notes/repo-cleanup-plan-2026-05-22.md)
-> and [`spec/dev-notes/retired-surface-inventory-2026-05-22.md`](spec/dev-notes/retired-surface-inventory-2026-05-22.md).
+> [`docs/dev-notes/repo-cleanup-plan-2026-05-22.md`](docs/dev-notes/repo-cleanup-plan-2026-05-22.md)
+> and [`docs/dev-notes/retired-surface-inventory-2026-05-22.md`](docs/dev-notes/retired-surface-inventory-2026-05-22.md).
 
 ---
 
@@ -71,10 +71,10 @@
 | Rust | 647 | 150,231 | `crates/*` (98.5 %), `vendor/` (1.5 %) | KEEP — see §3 |
 | TOML | 58 | 5,591 | Cargo manifests, `spec/trace.toml` (328 KB / 97 req-rows), `spec/anchors.toml` (119 anchors), config | KEEP — gate- and build-bearing |
 | Python | 7 | 2,383 | `scripts/` only: `hash_report.py`, `check_determinism_anchors.py`, `spec_lint.py`, `spec_brief.py`, `adr_registry_check.py`, `operator_ledger_check.py`, `queue_staleness_check.py` | **KEEP — load-bearing.** These ARE the anchor + spec-lint gates. A Rust rewrite is possible (REPLACE option, §6 P3-6) but buys no size: 2.4k lines of Python would become ≥ similar Rust + build time |
-| JSX | 17 | 1,400 | `spec/design/` (Lumen design-system prototypes) | ARCHIVE-CANDIDATE — static design references, never built/run by any pipeline |
-| CSS | 3 | 1,135 | `spec/design/`, `crates/audit` fixture | KEEP audit fixture; design CSS goes with JSX |
+| JSX | 17 | 1,400 | `docs/design/` (Lumen design-system prototypes) | ARCHIVE-CANDIDATE — static design references, never built/run by any pipeline |
+| CSS | 3 | 1,135 | `docs/design/`, `crates/audit` fixture | KEEP audit fixture; design CSS goes with JSX |
 | Shell | 17 | 854 | `scripts/` — `verify_anchors.sh`, cockpit-smoke, orchestrator probes | KEEP — gate-bearing (`verify_anchors.sh` re-verified today: **119/119 PASS**) |
-| HTML | 22 | 823 | `crates/audit` test fixtures (12), `spec/design/`, `visual-fail-html-reporter` sample | KEEP fixtures; design HTML archivable |
+| HTML | 22 | 823 | `crates/audit` test fixtures (12), `docs/design/`, `visual-fail-html-reporter` sample | KEEP fixtures; design HTML archivable |
 | SQL | 15 | 195 | `crates/audit` (SQLite schema/migrations) | KEEP — audit ledger is product code |
 | Plain text / JSON / CSV / logs | ~60 | ~700 | mostly `spec/*/reports/` evidence artifacts | ARCHIVE with their reports (§4) |
 | Swift | 1 | 21 | `scripts/orch_cursor_move.swift` (macOS screenshot orchestration) | KEEP — 21 lines, used by capture tooling |
@@ -155,15 +155,15 @@ The active-vs-passive program was closed 2026-06-08: backlog `## Active` carries
 | Group | Files | Lines | Verdict | Rationale |
 |---|---:|---:|---|---|
 | Root: README, CLAUDE, AGENT, TODO | 4 | 1,353 | **KEEP** | Operating contract + active TODO |
-| Root: `SPEC_HYGIENE_PLAN.md` | 1 | 401 | **ARCHIVE** | 2026-05-13 proposal, since implemented (spec-lint/spec-brief/trace.toml/architecture-split all exist); its own frontmatter says it belongs in `spec/dev-notes/` |
+| Root: `SPEC_HYGIENE_PLAN.md` | 1 | 401 | **ARCHIVE** | 2026-05-13 proposal, since implemented (spec-lint/spec-brief/trace.toml/architecture-split all exist); its own frontmatter says it belongs in `docs/dev-notes/` |
 | spec core depth-1 (`backlog.md` 5,114 · `product.md` 1,011 · `ui-design-principles.md` 767 · `bug-log.md` 196 · `architecture.md` 178) | 5 | 7,266 | **KEEP + PRUNE backlog** | `backlog.md` is the 2nd-largest md file in the repo; `## Recent (shipped)` cohorts (≈ lines 3,311–4,716) can move to `spec/archive/` |
 | `spec/architecture/` + ADRs | 66 | 17,048 | **KEEP** | Live system design + decision record; gate scripts reference it |
 | Feature folders — `feature.md`/`tasks.md`/decomp etc. (~102 folders) | 225 | **158,516** | **KEEP shipped/active; ARCHIVE-CANDIDATE the 9 deprecated/retired folder docs** | This is 55 % of all markdown. Heaviest: `lumen-design-adoption` 19,446 lines/26 files, `v2-llm-strategy` 6,420, `v3-llm-forecaster` 4,869. Statuses: 69 shipped, 5 deprecated, 4 retired, 5 tester-done, 5 dev-done, 4 presenter-done, rest singles. Deprecated/retired set: `_probe_lint_test`, `cockpit-chart-cache`, `v25-dl-forecast-overlay`, `v25b-transformer-overlay`, `v26-forecast-bakeoff`, `carry-strategy`, `v3-volatility-forecaster{,-rebaseline}`, `v3-xgboost-cheap-classifier`. CAUTION: retired research folders also host anchored reports — archive the *narrative* files only, never `reports/` |
 | `spec/*/reports/` | 290 | 40,448 | **SPLIT** | **162 files match a locked anchor scenario → KEEP-LOCKED (byte-immutable, ADR-0038 §D6).** The ~98 `test-*.md` tester reports (24,011 lines) are *never* anchor-resolved (`verify_anchors.sh` only resolves `backtest-*`/`success-*`/`robustness*`/`<scenario>-<stamp>` names) → ARCHIVE per existing precedent (`spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz`). Plus ~30 misc evaluation/diag files case-by-case. The 4 `v5-latency-slippage-sim-v0.X.0-*` migration folders are hardcoded in `verify_anchors.sh` → KEEP-LOCKED |
 | `spec/*/presentations/` | 77 | 23,602 | **ARCHIVE** | Sprint-review decks of long-shipped features; operator already approved them; zero gate references. Keep only decks of not-yet-approved work (none currently pending) |
-| `spec/dev-notes/` | 70 | 29,649 | **ARCHIVE ~half (~35 files / ~15k lines)** | 12 weekly `audit-*.md` (each superseded by the next), 6-file `bug-64-*` investigation chain (bug fixed), superseded scoping/fork notes. Precedent + destination already exist: `spec/dev-notes/archive/2026-Q2/`. KEEP load-bearing ones: `feature-state-table-2026-05-22.md`, `v3-vol-overlay-noop-discovery` (cited by CLAUDE.md non-negotiable), terminal-verdict-adjacent notes |
-| `spec/design/` | 5 | 863 (+41 jsx/html/css files) | KEEP md / ARCHIVE prototypes | Lumen tokens are referenced; static JSX mockups are not |
-| `spec/runbooks/` | 6 | 1,232 | **KEEP** | incl. `passive-baseline.md` — THE ship artifact of the concluded program |
+| `docs/dev-notes/` | 70 | 29,649 | **ARCHIVE ~half (~35 files / ~15k lines)** | 12 weekly `audit-*.md` (each superseded by the next), 6-file `bug-64-*` investigation chain (bug fixed), superseded scoping/fork notes. Precedent + destination already exist: `docs/dev-notes/archive/2026-Q2/`. KEEP load-bearing ones: `feature-state-table-2026-05-22.md`, `v3-vol-overlay-noop-discovery` (cited by CLAUDE.md non-negotiable), terminal-verdict-adjacent notes |
+| `docs/design/` | 5 | 863 (+41 jsx/html/css files) | KEEP md / ARCHIVE prototypes | Lumen tokens are referenced; static JSX mockups are not |
+| `docs/runbooks/` | 6 | 1,232 | **KEEP** | incl. `passive-baseline.md` — THE ship artifact of the concluded program |
 | `spec/archive/` | 2 | 1,077 | KEEP | It is the archive |
 | `.claude/` (7 agents + 14 skills + helpers) | 25 | 3,051 | **KEEP** | Operational config, actively invoked |
 
@@ -177,7 +177,7 @@ The active-vs-passive program was closed 2026-06-08: backlog `## Active` carries
 |---|---|---|
 | `crates/ui/tests/visual-baselines/**` PNGs (56 of 70 PNGs) | 15.3 MB | **KEEP — load-bearing.** They gate rendering (the Live-view saga precedent: verify UI at the render layer). Marked `binary` in `.gitattributes` |
 | `spec/v1/chart-canvas-overhaul/reports/screenshots/` | **11.6 MB in 5 retina PNGs** (2.2–2.4 MB each, 3360×1890) + ~2.7 MB more | ARCHIVE/OPTIMIZE — diagnostic/presentation artifacts. **No anchored backtest report references any screenshot** (grep-verified); only an un-anchored `test-*.md` links them. Options: move into a `tar.gz` in `spec/archive/`, or downscale/oxipng in place (lossless ~30–60 %) |
-| `spec/design/project/` PNGs | ~1 MB | goes with design archive |
+| `docs/design/project/` PNGs | ~1 MB | goes with design archive |
 | `crates/forecast/checkpoints/anchors/*.safetensors` | 5 MB (3 files, **LFS-tracked**) | **KEEP** — TCN/PatchTST anchor checkpoints; anchored reports re-run against them |
 | 138 `.snap` files | 552 KB | KEEP — test goldens |
 | 27 `.log` + 23 `.txt` + 10 `.csv` + json.gz | ~1 MB | ARCHIVE with their parent reports (cockpit-smoke logs etc.) |
@@ -206,7 +206,7 @@ Gates that must pass after **every** phase:
 | P1-3 | REMOVE (tracked) | `git rm --cached scripts/__pycache__/spec_lint.cpython-310.pyc` | hygiene | None — regenerated on every run |
 | P1-4 | REMOVE | `crates/models/` + its `Cargo.toml` workspace-member line | 5 LOC, 1 crate slot | None — zero consumers (grep-verified); gate: `cargo test --workspace` |
 | P1-5 | REMOVE | `spec/_probe_lint_test/` (2 stub files, May-13 lint probe) | kills a recurring spec-audit punch-list item | None — referenced only BY audit notes as a finding; gate: `spec_lint.py` |
-| P1-6 | ARCHIVE | `SPEC_HYGIENE_PLAN.md` → `spec/dev-notes/archive/2026-Q2/` (via `spec-update` skill) | 401 lines off root | None — implemented long ago |
+| P1-6 | ARCHIVE | `SPEC_HYGIENE_PLAN.md` → `docs/dev-notes/archive/2026-Q2/` (via `spec-update` skill) | 401 lines off root | None — implemented long ago |
 | P1-7 | ARCHIVE | The ~98 un-anchored `spec/*/reports/test-*.md` tester reports + tracked cockpit-smoke `.log`/`.txt` evidence → one `spec/archive/tester-reports-2026-05-06.tar.gz` (follow the existing pre-lumen precedent exactly) | ~100 files / 24,011 lines / ~1.5 MB | Low — **never anchor-resolved** (verified against `verify_anchors.sh` resolution rules); MUST exclude anything matching an anchored scenario name; run `verify_anchors.sh` + `spec_lint.py` after |
 
 ### Phase 2 — Low-risk archival sweep (needs only spec-lint diligence)
@@ -214,9 +214,9 @@ Gates that must pass after **every** phase:
 | # | Action | Scope | Savings | Risk |
 |---|---|---|---|---|
 | P2-1 | ARCHIVE | All 77 `spec/*/presentations/` decks (+ small `artifacts/`, 760 KB) of shipped features → `spec/archive/presentations-2026-Q2.tar.gz` | 77 files / 23,602 lines | Low — post-approval artifacts; fix inbound links flagged by spec-lint |
-| P2-2 | ARCHIVE | ~35 stale dev-notes: 11 of 12 `audit-*.md` (keep newest), the 6 `bug-64-*` chain, superseded scoping/fork notes → `spec/dev-notes/archive/2026-Q2/` | ~15k lines | Low — keep `feature-state-table`, noop-discovery (CLAUDE.md-referenced), terminal-verdict notes |
+| P2-2 | ARCHIVE | ~35 stale dev-notes: 11 of 12 `audit-*.md` (keep newest), the 6 `bug-64-*` chain, superseded scoping/fork notes → `docs/dev-notes/archive/2026-Q2/` | ~15k lines | Low — keep `feature-state-table`, noop-discovery (CLAUDE.md-referenced), terminal-verdict notes |
 | P2-3 | OPTIMIZE | Prune `spec/backlog.md` `## Recent (shipped)` cohorts into `spec/archive/backlog-recent-2026-05.md` | ~3.5k lines (5,114 → ~1.5k) | Low — pure move; spec-lint guards links |
-| P2-4 | ARCHIVE | `spec/design/` JSX/HTML/CSS prototypes (41 files, ~3.4k lines) | ~3.4k lines | Low — static mockups; Lumen tokens (md) stay |
+| P2-4 | ARCHIVE | `docs/design/` JSX/HTML/CSS prototypes (41 files, ~3.4k lines) | ~3.4k lines | Low — static mockups; Lumen tokens (md) stay |
 
 ### Phase 3 — NEEDS-OPERATOR-DECISION (each item is a named trade-off)
 

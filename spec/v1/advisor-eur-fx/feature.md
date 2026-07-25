@@ -138,7 +138,7 @@ anchored scenario; the anchored CLI path never sees the budget).
 
 ## Design
 
-**Full decision record: [ADR-0065](../../architecture/adr/0065-eur-usdt-budget-conversion-seam.md)**
+**Full decision record: [ADR-0065](../../../_bmad-output/planning-artifacts/architecture/decisions/0065-eur-usdt-budget-conversion-seam.md)**
 (EUR→USDT budget-conversion seam — configurable static FX rate). Architecture
 changelog: [`../architecture.md`](../../architecture.md) § Changelog 2026-06-22.
 
@@ -409,7 +409,7 @@ the operator answers OQ-OP-1.
 ## Changelog
 
 - 2026-06-22 (architect, F7 design — ADR-0065): filled the `## Design` section +
-  authored [ADR-0065](../../architecture/adr/0065-eur-usdt-budget-conversion-seam.md)
+  authored [ADR-0065](../../../_bmad-output/planning-artifacts/architecture/decisions/0065-eur-usdt-budget-conversion-seam.md)
   (registered in the ADR README + architecture.md § Changelog). Resolved
   OQ-AR-1..4 to the operator-LOCKED **configurable static rate**: (OQ-AR-1) a
   `FxRate {rate,source,as_of}` value object in a new `crates/core::fx` (the

@@ -189,7 +189,7 @@ Pasted verbatim from the tester's `VERDICT → PASS` report
 - Anchors: **119 / 119** PASS — frozen gate byte-immutable (advisor bake-off
   runs `write_report=false`; scorecard is anchor-safe by construction).
 - Spec-lint: **PASS (0 violations)** — baseline of the
-  `spec/dev-notes/audit-2026-06-29.md` audit held.
+  `docs/dev-notes/audit-2026-06-29.md` audit held.
 - Render-layer cost: **94.20s** for the 2 macOS render tests
   (`leaderboard_scorecard_render`); within the existing macOS render-suite
   budget.

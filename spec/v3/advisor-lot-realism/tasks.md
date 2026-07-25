@@ -13,7 +13,7 @@ the seam is `PaperEngine::step` (the both-paths chokepoint). The **divergence e2
 (T6)** is the closing gate — the feature is not done until the DOGE small-budget
 run's terminal equity provably diverges ≥ 1 bp from the un-rounded baseline AND
 the €200-major negative control shows ≈ 0. Full design in
-[`feature.md`](feature.md) § Design + [ADR-0087](../../architecture/adr/0087-lot-realism-opt-in-exec-sim.md).
+[`feature.md`](feature.md) § Design + [ADR-0087](../../../_bmad-output/planning-artifacts/architecture/decisions/0087-lot-realism-opt-in-exec-sim.md).
 
 ## Build order
 

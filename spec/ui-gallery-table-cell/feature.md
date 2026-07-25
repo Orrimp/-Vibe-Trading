@@ -29,7 +29,7 @@ snapshot tests are written
 ([`crates/ui/tests/gallery_snapshots.rs`](../../crates/ui/tests/gallery_snapshots.rs))
 but `#[ignore]`d pending this fix. The operator accepted
 v0.1-partial of `ui-gallery-bin` as terminal (per
-[`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+[`docs/dev-notes/feature-triage-2026-05-16.md`](../../docs/dev-notes/feature-triage-2026-05-16.md)
 row A4) and opened this successor brief to own the V5+ work.
 
 Cycle-2 item E (`ui-test-harness-viewport-matrix`) is downstream
@@ -146,7 +146,7 @@ estimate: 0.5–1.5d depending on Q-FIX-STRATEGY resolution._
 - 2026-05-16 (analyst, Wave 2a spec-hygiene): brief opened as
   the successor to
   [`ui-gallery-bin`](../v1/ui-gallery-bin/feature.md) per
-  [`spec/dev-notes/feature-triage-2026-05-16.md`](../dev-notes/feature-triage-2026-05-16.md)
+  [`docs/dev-notes/feature-triage-2026-05-16.md`](../../docs/dev-notes/feature-triage-2026-05-16.md)
   row A4. Frontmatter: `status: draft`, `owner: analyst`,
   `predecessor: ui-gallery-bin v0.1.0-partial-terminal`. R1
   carries the load-bearing requirement verbatim from the

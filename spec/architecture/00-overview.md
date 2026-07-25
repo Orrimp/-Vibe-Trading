@@ -46,7 +46,7 @@ load-bearing across the workspace: every consumer's `[dependencies]` reads
 `use trading_core::{Symbol, Order, …};`. The directory name `crates/core/`
 is unrelated to the package name and stays.
 
-See [ADR-0001](adr/0001-crate-name-stdlib-collision.md) for the full
+See [ADR-0001](../../_bmad-output/planning-artifacts/architecture/decisions/0001-crate-name-stdlib-collision.md) for the full
 context, alternatives considered, and consequences. The short version:
 naming any workspace member after a Rust stdlib crate (`core`, `alloc`,
 `std`, `test`, `proc_macro`) causes silent failures in `cargo test
