@@ -32,7 +32,7 @@ description: Run criterion benchmarks on latency-sensitive paths (order book upd
 4. Emit a table: `{ benchmark, median (µs), change vs main (%), verdict }`.
 
 5. Flag anything regressing more than 5% (configurable in
-   `spec/architecture.md` under "Performance budget").
+   `_bmad-output/planning-artifacts/architecture.md` under "Performance budget").
 
 ## Reporting
 

@@ -1,4 +1,5 @@
-<!-- Paste this block under "## Backtest Scenarios" in spec/<slug>/feature.md -->
+<!-- Paste this block under "## Backtest Scenarios" in the feature's story file -->
+
 
 ### Scenario: `<scenario-slug>`
 

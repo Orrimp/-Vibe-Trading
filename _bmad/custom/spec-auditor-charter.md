@@ -9,10 +9,11 @@
 > `.claude/agents/*.md` retirement even though the migration plan has no
 > clean BMAD-native slot for it today.
 >
-> **Disposition until Phase 5c:** unchanged. The agent keeps running exactly
-> as `.claude/agents/spec-auditor.md` describes — read-only weekly audit,
-> invoked by name, no BMAD wiring involved. Do not treat this note as a
-> live replacement.
+> **Disposition since Phase 5c (2026-07-25):** this charter is now the live
+> definition. The retired agent file is archived verbatim at
+> `docs/archive/pre-bmad-agents/spec-auditor.md`; the specialist keeps
+> running exactly as that charter describes — read-only weekly audit,
+> invoked by name, no BMAD wiring involved.
 
 ## Why no v6 twin
 
@@ -25,7 +26,7 @@ project's own machinery (`scripts/spec_lint.py`, `scripts/verify_anchors.sh`,
 the trace/CHANGELOG/anchor triad) — BMAD has no equivalent concept to
 delegate to.
 
-## Condensed charter (full source: `.claude/agents/spec-auditor.md`)
+## Condensed charter (full source archived: `docs/archive/pre-bmad-agents/spec-auditor.md`)
 
 - **Read-only.** Never edits `spec/` (or, post-migration, the story/evidence/
   docs trees). Never changes `evidence/anchors.toml`. Never changes the

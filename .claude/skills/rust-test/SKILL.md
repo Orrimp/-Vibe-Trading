@@ -32,7 +32,7 @@ Canonical test-and-report pipeline.
 5. Render the report by copying `templates/test-report.md` to
    `evidence/<slug>/reports/test-<YYYY-MM-DD-HHMM>-<slug>.md` and filling every section.
    Use the current UTC timestamp; derive `<slug>` from the active feature
-   (read `spec/*/tasks.md` for the most recently edited task file).
+   (the most recently edited story under `_bmad-output/implementation-artifacts/`).
 
 6. If backtests are in scope for this run, invoke the `backtest` skill and embed
    its metrics table in the "Backtest Results" section of the same report.

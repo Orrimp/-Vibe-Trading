@@ -3,9 +3,11 @@
 # on_complete). No role/principles/menu: those fields don't exist on a
 # workflow customize.toml, only on an agent's.
 #
-# Source: tester folded from .claude/agents/tester.md (BMAD-migration
-# Phase 5a, docs/dev-notes/bmad-migration-plan-2026-07-24.md § 6).
-# .claude/agents/tester.md remains live until Phase 5c.
+# Source: tester folded from the legacy tester agent definition
+# (BMAD-migration Phase 5a, docs/dev-notes/bmad-migration-plan-2026-07-24.md
+# § 6). RETIRED at Phase 5c (2026-07-25): the agent file is archived at
+# docs/archive/pre-bmad-agents/tester.md; this override + bmad-agent-dev.toml's
+# harness menu are the live home of the split tester contract.
 #
 # *** FIDELITY NOTE (role-preserved-via-workflow, not clean) ***
 # BMM has no dedicated QA/tester persona agent. bmad-code-review is a

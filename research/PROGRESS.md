@@ -54,8 +54,9 @@ The ledgers ARE the state. Each round:
 grep -rc '^### ' research/*/papers.md     # per-topic counts (exclude llm-and-evolution once retired)
 ```
 
-For each topic **< 100**, spawn a `researcher` agent (registered in
-`.claude/agents/researcher.md`) told to **read its ledger first, skip titles already
+For each topic **< 100**, spawn a `researcher` agent (charter:
+`_bmad/custom/researcher-charter.md`; the retired full agent definition is
+archived at `docs/archive/pre-bmad-agents/researcher.md`) told to **read its ledger first, skip titles already
 listed**, and add a batch (~25–40) toward 100, writing incrementally. For `llms` /
 `evolution` the first round also **migrates** the relevant entries from
 `research/llm-and-evolution/papers.md` (renumber from [1]) before extending. After

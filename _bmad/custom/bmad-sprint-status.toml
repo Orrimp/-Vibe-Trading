@@ -11,5 +11,5 @@
 [workflow]
 
 persistent_facts = [
-  "This workflow's risk callouts do NOT cover spec/trace drift, anchor-body immutability, or orphan/dead-link structural decay — that is the spec-auditor charter (_bmad/custom/spec-auditor-charter.md), still run as .claude/agents/spec-auditor.md until its Phase 5c re-instantiation. For that surface, run `python3 scripts/spec_lint.py --all` and `bash scripts/verify_anchors.sh` directly, or invoke the spec-auditor agent by name.",
+  "This workflow's risk callouts do NOT cover story/trace drift, anchor-body immutability, or orphan/dead-link structural decay — that is the spec-auditor charter (_bmad/custom/spec-auditor-charter.md; the retired agent definition is archived at docs/archive/pre-bmad-agents/spec-auditor.md). For that surface, run `python3 scripts/spec_lint.py --all` and `bash scripts/verify_anchors.sh` directly, or invoke the spec-auditor specialist by name from its charter.",
 ]

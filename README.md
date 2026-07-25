@@ -85,7 +85,7 @@ budget-aware, rule-driven forward stance → **watch** the selection paper-trade
 and **single-coin** by design. Its credibility comes from the concluded research verdict, not
 from an alpha claim: **buy-and-hold is always in the bake-off as the benchmark**, and when no
 active strategy robustly beats it — the modal real-crypto outcome — the advisor says so plainly
-(`BenchmarkWins`). Full spec: [`spec/product.md`](spec/product.md).
+(`BenchmarkWins`). Full spec: [`_bmad-output/planning-artifacts/PRD.md`](_bmad-output/planning-artifacts/PRD.md).
 
 **Built on a shipped research engine (the moat, not waste).** The advisor is a re-framing of
 an existing, working stack with two durable differentiators that remain its trust layer:
@@ -98,7 +98,7 @@ only — never the alpha source), and the paper simulator — all reused by the 
 
 **Cockpit.** A native iced app (`cockpit_live`) surfaces strategy state, equity curves, drawdowns, positions, audit trail, reflection memory, and an Assistant slot for LLM reasoning traces. The advisor journey re-centres it on a visible **DATA → CALIBRATE → ANALYZE → SUGGEST** stepper (ADR-0083) over the existing sidebar IA.
 
-**Spec-driven workflow.** Every feature lives in `spec/<slug>/` with a brief (`feature.md`), task breakdown (`tasks.md`), decomp (`decomp.md`), and anchored backtest reports under `reports/`. Multi-agent workflow (analyst → architect → developer → tester → presenter) is documented in [AGENT.md](AGENT.md).
+**Story-driven workflow (BMAD-METHOD v6, migrated 2026-07-25).** Every feature is a story under `_bmad-output/implementation-artifacts/` (one file per feature, grouped into 7 epics), planned from `_bmad-output/planning-artifacts/` (PRD, architecture spine + ADRs, epics, trace ledger) and evidenced by the byte-immutable corpus under `evidence/`. The workflow cycle (sprint-status → create-story → dev-story → code-review → retrospective, with customized persona agents) is documented in [AGENT.md](AGENT.md).
 
 ---
 
@@ -251,27 +251,26 @@ trading/
 │   └── llm-replay.db   # Deterministic LLM response cache
 ├── scripts/
 │   ├── verify_anchors.sh   # Regression gate: 119 body-SHA-256 anchors
-│   ├── spec_lint.py        # Spec structural integrity
+│   ├── spec_lint.py        # Structural integrity (stories/board/trace/CHANGELOG triad)
 │   ├── hash_report.py      # Canonical body-SHA hasher
 │   └── check_presentation.sh
-├── spec/
-│   ├── product.md          # Product requirements + moat statement
-│   ├── architecture.md     # System design
-│   ├── architecture/       # Domain architecture + ADRs
-│   │   └── adr/            # architecture decision records (through ADR-0083)
-│   ├── backlog.md          # Active / Queue / Recent
+├── evidence/           # Byte-immutable corpus (moved out of spec/ 2026-07-25)
 │   ├── anchors.toml        # 119 locked body-SHA-256 regression anchors
-│   ├── trace.toml          # Requirement → feature → code traceability
-│   ├── dev-notes/          # Cross-cutting memos + audits + retrospectives
-│   │   └── archive/2026-Q2/   # Archived stale notes
+│   └── {v1,v2,v3,…}/<feature-slug>/
+│       ├── reports/        # Anchored backtest + test reports (frozen)
+│       └── presentations/  # Operator-approval decks (frozen)
+├── docs/               # Project knowledge
+│   ├── dev-notes/          # Cross-cutting memos + audits + do-not-build register
 │   ├── runbooks/           # Operational runbooks
-│   ├── design/             # Lumen design system
-│   └── <feature-slug>/     # Per-feature folders (~54 today)
-│       ├── feature.md
-│       ├── tasks.md
-│       ├── decomp.md (when architect M-T1 closes)
-│       ├── reports/        # Anchored backtest + test reports
-│       └── presentations/  # Operator-approval decks
+│   ├── design/             # Lumen design system (+ ui-design-principles.md)
+│   └── archive/            # Frozen history: pre-bmad-spec/ (retired spec/ tree),
+│                           #   pre-bmad-agents/ (retired .claude/agents/)
+├── _bmad/              # BMAD-METHOD install (config, manifests) + custom/ overrides
+├── _bmad-output/
+│   ├── planning-artifacts/     # PRD.md · architecture.md (AD-1..AD-19 spine)
+│   │                           #   · architecture/decisions/ (ADRs) · epics.md
+│   │                           #   · trace.toml · backlog.md
+│   └── implementation-artifacts/   # sprint-status.yaml + one story per feature
 ├── target/             # Cargo build output
 └── vendor/
     └── iced_tiny_skia/ # Long-term local fork (operator-locked per CLAUDE.md)
@@ -281,53 +280,69 @@ trading/
 
 | File | Purpose |
 |---|---|
-| **[CHANGELOG.md](CHANGELOG.md)** | Canonical "what's been built" index — one line per implemented feature, by subsystem/version. Completed `spec/<slug>/feature.md` are one-line stubs pointing here; full narrative in `git log`. |
+| **[CHANGELOG.md](CHANGELOG.md)** | Canonical "what's been built" index — one line per implemented feature, by subsystem/version; the third leg of the ADR-0082 triad. Full narrative in `git log`. |
 | **[CLAUDE.md](CLAUDE.md)** | Project rules + non-negotiables + coding conventions. AI agents read this first. |
-| **[AGENT.md](AGENT.md)** | Multi-agent orchestration: analyst → architect → developer ‖ ui-designer → tester → presenter loop. |
-| **[spec/product.md](spec/product.md)** | What this project is and isn't (analyst-owned). |
-| **[spec/architecture.md](spec/architecture.md)** | System design (architect-owned). |
-| **[spec/architecture/00-current-state.md](spec/architecture/00-current-state.md)** | Derived current-state snapshot — crate map + invariants-in-force + advisor spine in one read, instead of the ~88-ADR series. ADRs authoritative on conflict. |
-| **[spec/backlog.md](spec/backlog.md)** | Forward-looking Queue + open items (shipped work lives in CHANGELOG.md). |
+| **[AGENT.md](AGENT.md)** | BMAD orchestration contract: persona mapping, the workflow cycle, orchestrator duties, capability boundaries. |
+| **[_bmad-output/planning-artifacts/PRD.md](_bmad-output/planning-artifacts/PRD.md)** | What this project is and isn't. |
+| **[_bmad-output/planning-artifacts/architecture.md](_bmad-output/planning-artifacts/architecture.md)** | The architecture spine — 19 binding invariants (AD-1..AD-19); ADRs under [`architecture/decisions/`](_bmad-output/planning-artifacts/architecture/decisions/README.md) authoritative on conflict. |
+| **[_bmad-output/planning-artifacts/epics.md](_bmad-output/planning-artifacts/epics.md)** | The 7 epics grouping every story (shipped tranches + the open tail). |
+| **[_bmad-output/implementation-artifacts/sprint-status.yaml](_bmad-output/implementation-artifacts/sprint-status.yaml)** | The live board — epic/story statuses; maintenance posture. |
+| **[_bmad-output/planning-artifacts/backlog.md](_bmad-output/planning-artifacts/backlog.md)** | Forward-looking Queue only (shipped work lives in CHANGELOG.md). |
 
 ---
 
 ## Conventions
 
-### Status vocabulary (per `scripts/spec_lint.py` `VALID_STATUSES`)
+### Story status vocabulary (per `scripts/spec_lint.py` `VALID_STORY_STATUSES`)
+
+Each feature is a story file with a `Status:` line — the lifecycle source of
+truth since the 2026-07-25 BMAD migration (story-keyed AD-4):
 
 | Status | Meaning |
 |---|---|
-| `draft` | Analyst sketch; no code commitment |
-| `proposed` | Brief authored + ready for operator decision |
-| `in-progress` | Active work (architect / developer / tester) |
-| `shipped` | Code on main, anchors locked, tests green |
-| `shipped-partial` | Code gates clean; one wave deferred for external-dependency reasons (first used 2026-05-22 by `v3-llm-forecaster`) |
+| `backlog` | Exists in the epic file / board only; no committed work |
+| `ready-for-dev` | Story file created with full context; awaiting implementation |
+| `in-progress` | Developer actively working |
+| `review` | Awaiting/under code review (also the frozen home of pre-migration `presenter/tester/dev-done` states) |
+| `done` | Shipped: code on main, anchors locked, trace row `shipped`/`shipped-partial`, CHANGELOG line present |
 | `retired` | Research line closed; code stays in tree; anchors locked; no further effort |
-| `deprecated` | Roadmap item never built (or superseded) |
-| `candidate` | Under evaluation |
-| `roadmap` / `active` / `reserved` | Multi-phase initiative phases |
+
+The richer pre-migration vocabulary (`draft`/`proposed`/`shipped-partial`/…)
+lives on in `trace.toml` `state=` values; `scripts/spec_lint.py` maps and
+cross-checks the two (`status-drift`).
 
 ### Anchored body-SHA-256 regression gates
 
 Every shipped backtest report has a body-SHA-256 entry in `evidence/anchors.toml`. The gate is `bash scripts/verify_anchors.sh` (must report `ANCHORS PASS (N / N)` before any ship). Bodies are byte-immutable; documentation-link cleanup sweeps MUST exclude anchored files (see CLAUDE.md non-negotiables).
 
-### Multi-agent workflow
+### BMAD workflow
 
-Per [AGENT.md](AGENT.md): `analyst → architect → (developer ‖ ui-designer) → tester → presenter → operator-approve`. Every non-trivial change runs through this loop. The orchestrator runs sub-agents in parallel when independent. Trivial one-file edits skip the loop.
+Per [AGENT.md](AGENT.md): the BMAD v6 cycle — `bmad-sprint-status` →
+`bmad-create-story` → `bmad-dev-story` → `bmad-code-review` → story `done`
+(triad move) → `bmad-retrospective` per epic — with the customized persona
+agents (`_bmad/custom/` overrides) and the project harness skills
+(`rust-*`, `verify-anchors`, `spec-lint`, `backtest`, `cockpit-smoke`).
+Every non-trivial change runs through this loop; the orchestrator runs
+sub-agents in parallel when independent and owns all commits. Trivial
+one-file edits skip the loop.
 
-### Spec-update skill
+### Durable writes
 
-All `spec/` file edits go through the [`spec-update`](.claude/skills/spec-update/SKILL.md) skill — never raw Write/Edit. The skill enforces frontmatter + keeps a changelog stub.
+Durable output lands in `_bmad-output/` (stories, board, planning docs),
+`docs/` (knowledge), or `evidence/` (reports — byte-immutable once anchored)
+via the BMAD workflows' write-paths. The legacy `spec-update` skill is
+retired (ratified decision D5).
 
 ---
 
-## Non-negotiables (from CLAUDE.md)
+## Non-negotiables (from CLAUDE.md — the full enumerated list lives there)
 
-- No secrets in git. Keys in `config/agent.toml.local` (git-ignored) or env vars per `spec/architecture.md`.
+- No secrets in git. Keys in `config/agent.toml.local` (git-ignored) or env vars per [`_bmad-output/planning-artifacts/architecture.md`](_bmad-output/planning-artifacts/architecture.md).
 - No shipping on a `REGRESSION` verdict without an explicit human override.
-- No silent divergence from `spec/architecture.md`.
+- No silent divergence from [`_bmad-output/planning-artifacts/architecture.md`](_bmad-output/planning-artifacts/architecture.md) (the AD-1..AD-19 spine; the FROZEN robustness gate is byte-frozen).
 - **Every strategy overlay or sizing-modifier ships with a baseline-equity-divergence e2e test from day 1** (precedent: `v3-volatility-forecaster-noop-fix` 2026-05-22; the noop bug went undetected by 5 sequential gates).
-- **Anchored report files in `evidence/*/reports/` are byte-immutable** per ADR-0038 § D6; even mechanical link-fix edits mutate the body-SHA. Documentation-link cleanup MUST exclude anchored files.
+- **Anchored report files in `evidence/*/reports/` are byte-immutable** per ADR-0038 § D6; even mechanical link-fix edits mutate the body-SHA. Documentation-link cleanup MUST exclude anchored files. Anchors are 119/119 before AND after any change, keyed by scenario NAME.
+- **The do-not-build register is binding; the thesis is era-qualified** — see [`docs/dev-notes/do-not-build-register.md`](docs/dev-notes/do-not-build-register.md); never state the universal no-active-edge form.
 
 ---
 

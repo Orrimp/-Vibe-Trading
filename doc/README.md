@@ -11,9 +11,12 @@ advice** — and its honest, repeatedly-validated finding is that *no active str
 beats just holding*, so the product sells **measured honesty, not asserted alpha**.
 
 > These docs describe the product as of the 2026-06-19 advisor pivot and the work shipped since.
-> For the authoritative sources see [`spec/product.md`](../spec/product.md) (product),
-> [`spec/architecture.md`](../spec/architecture.md) (design), [`CHANGELOG.md`](../CHANGELOG.md)
-> (the per-feature shipped index), and [`AGENT.md`](../AGENT.md) (the dev workflow).
+> For the authoritative sources see
+> [`_bmad-output/planning-artifacts/PRD.md`](../_bmad-output/planning-artifacts/PRD.md) (product),
+> [`_bmad-output/planning-artifacts/architecture.md`](../_bmad-output/planning-artifacts/architecture.md)
+> (design; ADRs under `architecture/decisions/`), [`CHANGELOG.md`](../CHANGELOG.md)
+> (the per-feature shipped index), and [`AGENT.md`](../AGENT.md) (the BMAD dev workflow
+> since the 2026-07-25 migration — `spec/` is retired, archived at `docs/archive/pre-bmad-spec/`).
 
 ## The five documents
 

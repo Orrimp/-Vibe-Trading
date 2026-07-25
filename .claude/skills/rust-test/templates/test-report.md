@@ -12,7 +12,7 @@ verdict: <PASS | FAIL | REGRESSION>
 ## 1. Scope
 
 - **Feature / change under test:** <short description>
-- **Spec refs:** `spec/<slug>/feature.md`, `spec/<slug>/tasks.md`
+- **Spec refs:** `_bmad-output/implementation-artifacts/{epic}-{story}-<slug>.md` (story; pre-BMAD briefs under `docs/archive/pre-bmad-spec/`)
 - **Commit SHA:** `<sha>`
 - **Rust toolchain:** `<rustc --version>`
 - **OS / arch:** `<uname -a short>`
@@ -71,7 +71,7 @@ _Describe in 2–3 sentences: shape, notable regimes, worst drawdown window._
 
 ### Regressions vs Baseline
 
-_List any metric worse by more than the tolerance in `spec/architecture.md` risk budget._
+_List any metric worse by more than the tolerance in `_bmad-output/planning-artifacts/architecture.md` risk budget._
 
 ## 6. Benchmarks
 

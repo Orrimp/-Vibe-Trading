@@ -3,8 +3,20 @@
 How work gets done in this repository. The canonical sources are
 [`AGENT.md`](../AGENT.md) (orchestration contract) and [`CLAUDE.md`](../CLAUDE.md)
 (coding rules + non-negotiables); the gate commands live in
-[`scripts/`](../scripts) and the agents/skills in [`.claude/`](../.claude).
+[`scripts/`](../scripts) and the skills in [`.claude/skills/`](../.claude/skills).
 This document narrates those sources — when they disagree with this file, they win.
+
+> **2026-07-25 — BMAD-METHOD v6 migration.** The process this document
+> narrates was migrated to the BMAD story-driven cycle: `spec/` is retired
+> (stories under `_bmad-output/implementation-artifacts/`, planning docs under
+> `_bmad-output/planning-artifacts/`, knowledge under `docs/`, the immutable
+> corpus under `evidence/`), and the six `.claude/agents/*` definitions below
+> are RETIRED — archived at `docs/archive/pre-bmad-agents/`, replaced by the
+> customized BMAD personas (`_bmad/custom/*.toml`). The gates, guardrails, and
+> pipeline *semantics* described here are unchanged and carried into
+> [`AGENT.md`](../AGENT.md), which is authoritative; per this file's own rule,
+> where the narrative below still says `spec/<slug>/` or names an agent file,
+> AGENT.md/CLAUDE.md win.
 
 > **The product.** A *Single-Coin Investment Advisor (paper)* — pick a coin and a
 > €200 budget, bake off every strategy, rank the survivors under a **frozen
@@ -28,12 +40,12 @@ handoff envelope, so the next hop is mechanical.
 
 | Agent          | Model  | File                              | Owns                                                         |
 |----------------|--------|-----------------------------------|-------------------------------------------------------------|
-| **analyst**    | opus   | `.claude/agents/analyst.md`       | Research → requirements. Writes `feature.md`; creates the `[[req]]` row in `spec/trace.toml`. |
-| **architect**  | opus   | `.claude/agents/architect.md`     | System design → `spec/architecture.md` + ADRs + `tasks.md`. Fills the `arch` trace column. |
-| **developer**  | sonnet | `.claude/agents/developer.md`     | Rust implementation + tests alongside code. Fills `crates` / `tests` trace columns. |
-| **ui-designer**| opus   | `.claude/agents/ui-designer.md`   | The iced cockpit (`crates/ui`). Runs in **parallel** with the developer. |
-| **tester**     | sonnet | `.claude/agents/tester.md`        | Build / validate / backtest → `reports/test-*.md` + a `VERDICT`. Locks anchors. |
-| **presenter**  | opus   | `.claude/agents/presenter.md`     | Operator-facing approval deck under `presentations/`. The "sprint-review" face. |
+| **analyst**    | opus   | `docs/archive/pre-bmad-agents/analyst.md` (retired)       | Research → requirements. Writes `feature.md`; creates the `[[req]]` row in `spec/trace.toml`. |
+| **architect**  | opus   | `docs/archive/pre-bmad-agents/architect.md` (retired)     | System design → `spec/architecture.md` + ADRs + `tasks.md`. Fills the `arch` trace column. |
+| **developer**  | sonnet | `docs/archive/pre-bmad-agents/developer.md` (retired)     | Rust implementation + tests alongside code. Fills `crates` / `tests` trace columns. |
+| **ui-designer**| opus   | `docs/archive/pre-bmad-agents/ui-designer.md` (retired)   | The iced cockpit (`crates/ui`). Runs in **parallel** with the developer. |
+| **tester**     | sonnet | `docs/archive/pre-bmad-agents/tester.md` (retired)        | Build / validate / backtest → `reports/test-*.md` + a `VERDICT`. Locks anchors. |
+| **presenter**  | opus   | `docs/archive/pre-bmad-agents/presenter.md` (retired)     | Operator-facing approval deck under `presentations/`. The "sprint-review" face. |
 
 Two **on-demand specialists** sit outside the linear flow: `spec-auditor`
 (read-only spec-drift audit → a dated dev-note) and `ui-debugger` (diagnoses +

@@ -1,12 +1,13 @@
 ---
 name: present-results
-description: Assemble a presentation for a feature — TL;DR, what changed, demo run, verification matrix, screenshot references, approval block. Use when the presenter agent needs to produce or refresh a `spec/<slug>/presentations/<slug>-<date>.md` file. Pulls evidence from spec/<slug>/{feature.md,tasks.md}, evidence/<slug>/reports/test-*.md, evidence/anchors.toml, and live binary runs.
+description: Assemble a presentation for a feature — TL;DR, what changed, demo run, verification matrix, screenshot references, approval block. Use when the tech-writer persona (the retired presenter's seam) needs to produce or refresh an `evidence/<slug>/presentations/<slug>-<date>.md` deck. Pulls evidence from the feature's story, evidence/<slug>/reports/test-*.md, evidence/anchors.toml, and live binary runs.
 ---
 
 # present-results
 
-Single end-to-end pipeline for the presenter agent. Produces one
-presentation file and zero external side effects (no commits, no PRs).
+Single end-to-end pipeline for the operator-deck seam (tech-writer persona;
+formerly the presenter agent). Produces one presentation file and zero
+external side effects (no commits, no PRs).
 
 ## Inputs
 
@@ -17,27 +18,30 @@ presentation file and zero external side effects (no commits, no PRs).
 
 ## Procedure
 
-1. **Read the feature brief.** `spec/<slug>/feature.md`. Extract the
-   "Why", the requirements (R-items), and the verification matrix (V-items).
+1. **Read the feature's story.** `_bmad-output/implementation-artifacts/{epic}-{story}-<slug>.md`
+   (for pre-BMAD features the original brief is archived at
+   `docs/archive/pre-bmad-spec/**/<slug>/feature.md`). Extract the
+   "Why"/story statement, the acceptance criteria (or R-items), and the
+   verification matrix (V-items) where present.
 
-2. **Read the task list.** `spec/<slug>/tasks.md`. Note any unticked
-   rows and the changelog.
+2. **Read the story's Tasks/Subtasks.** Note any unticked rows (pre-BMAD:
+   the archived `tasks.md`).
 
 3. **Read the latest test report** (release mode). Pull pass/fail counts,
    anchor-gate result, perf numbers.
    - Look first under `evidence/<slug>/reports/test-*.md`.
    - If none exist, the feature is pre-Lumen (shipped before the
      2026-05-08 spec restructure) and its tester reports live in
-     `spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz`.
+     `docs/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz`.
      Extract the relevant report by name with `tar -xzf
-     spec/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz
+     docs/archive/pre-lumen-tester-reports-2026-04-to-05-03.tar.gz
      -C /tmp test-*-<slug>-final.md` (or one of the wave variants —
      `tar -tzf` to list). Read from `/tmp/`. Cite the archive path
      in the verification matrix evidence column so the operator can
      re-extract on their side. Do NOT copy the archived report into
      the per-feature `reports/` folder — the archive is the canonical
      home for these reports and committing extracts undoes the
-     `spec/archive/README.md` audit pattern.
+     `docs/archive/README.md` audit pattern.
 
 4. **Run a live demo.** Pick the most representative bin command for the
    feature. Examples:
@@ -55,8 +59,8 @@ presentation file and zero external side effects (no commits, no PRs).
    and `evidence/<slug>/reports/screenshots/<feature-version>/` for any `.png` files.
    Reference each with a relative-link caption. Three branches:
    - **PNGs exist** → reference each with caption.
-   - **No PNGs and feature is UI-related** (`spec/<slug>/feature.md`
-     contains a `## UI` heading, or the feature folder has a
+   - **No PNGs and feature is UI-related** (the story or archived brief
+     contains a `## UI` heading, or the feature's evidence folder has a
      `screenshots/` directory with a README) → use `capture-screenshot`
      skill to emit a manual-capture instruction block.
    - **No PNGs and feature is not UI-related** (no `## UI` heading,
@@ -72,14 +76,17 @@ presentation file and zero external side effects (no commits, no PRs).
 
 8. **Assemble the markdown** per the skeleton below.
 
-9. **Write via `spec-update` skill** to
-   `spec/<slug>/presentations/<slug>-<YYYY-MM-DD>.md`. Bump `updated:`. Add
-   changelog entry. Save raw stdout under
-   `spec/<slug>/presentations/artifacts/<slug>-<date>/<name>.txt` if longer
-   than the 30-line embed budget.
+9. **Write the deck** to
+   `evidence/<slug>/presentations/<slug>-<YYYY-MM-DD>.md` (a NEW dated file —
+   never edit an existing deck there; existing presentations are frozen
+   history alongside the anchored reports). Bump `updated:`. Add a changelog
+   entry. Save raw stdout under
+   `evidence/<slug>/presentations/artifacts/<slug>-<date>/<name>.txt` if longer
+   than the 30-line embed budget. (The `spec-update` skill is retired —
+   write directly.)
 
 10. **Run the pre-tick gate (mandatory):**
-    `bash scripts/check_presentation.sh spec/<slug>/presentations/<slug>-<date>.md`.
+    `bash scripts/check_presentation.sh evidence/<slug>/presentations/<slug>-<date>.md`.
     Must exit 0 and print `PRESENTATION CHECK PASS`. Quote that line
     verbatim in your closing summary. If it FAILs (any approval-block
     `[x]` detected), reset the box(es) to `[ ]` in the file and re-run
@@ -114,7 +121,7 @@ generated: <RFC3339>
 - <bullet 3>
 
 ## Why
-<analyst's rationale, distilled to one paragraph; cite spec/<slug>/feature.md>
+<analyst's rationale, distilled to one paragraph; cite the story (or archived brief)>
 
 ## What you can do now
 

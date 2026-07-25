@@ -138,7 +138,7 @@ Copy `templates/coverage-report.md` into
 `evidence/<slug>/reports/coverage-<YYYY-MM-DD>-<slug>.md` and fill every section.
 Use UTC date only (no time component — coverage runs are not time-sensitive at
 the minute level). Derive `<slug>` from the active feature (the most recently
-edited `spec/*/tasks.md`).
+edited story under `_bmad-output/implementation-artifacts/`).
 
 ## Tier classification
 

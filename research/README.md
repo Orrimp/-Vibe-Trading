@@ -93,6 +93,8 @@ The **ledgers ARE the state.** To resume in any fresh session:
 
 ## Agent contract
 
-Defined in [`.claude/agents/researcher.md`](../.claude/agents/researcher.md). Each
+Defined in [`docs/archive/pre-bmad-agents/researcher.md`](../docs/archive/pre-bmad-agents/researcher.md)
+(retired agent definition, archived; condensed charter:
+[`_bmad/custom/researcher-charter.md`](../_bmad/custom/researcher-charter.md)). Each
 agent owns **ONE** topic folder and writes **ONLY** there — no cross-agent file
 collisions. `PROGRESS.md` + the master `papers.md` are orchestrator-maintained.

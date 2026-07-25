@@ -3,9 +3,10 @@
 # (persistent_facts, principles, activation_steps_*) append, [[agent.menu]]
 # merges by `code`. Sparse by design.
 #
-# Source: developer folded from .claude/agents/developer.md (BMAD-migration
-# Phase 5a, docs/dev-notes/bmad-migration-plan-2026-07-24.md § 6).
-# .claude/agents/developer.md remains live until the Phase 5c retirement.
+# Source: developer folded from the legacy developer agent definition
+# (BMAD-migration Phase 5a, docs/dev-notes/bmad-migration-plan-2026-07-24.md
+# § 6). RETIRED at Phase 5c (2026-07-25): the agent file is archived at
+# docs/archive/pre-bmad-agents/developer.md; this override is the live home.
 #
 # Also carries the EXECUTION half of the tester-knowledge fold: BMM has no
 # standalone QA-execution persona, so the harness-skill menu items below

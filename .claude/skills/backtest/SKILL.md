@@ -1,20 +1,22 @@
 ---
 name: backtest
-description: Run a historical backtest for a strategy feature and emit a metrics block for embedding into the test report. Use when the tester agent verifies a strategy change, when the analyst needs baseline performance, or whenever spec/<slug>/feature.md specifies a backtest scenario.
+description: Run a historical backtest for a strategy feature and emit a metrics block for embedding into the test report. Use when a code review verifies a strategy change, when the analyst persona needs baseline performance, or whenever a feature's story (or its archived pre-BMAD feature brief) specifies a backtest scenario.
 ---
 
 # backtest
 
 ## Inputs
 
-- `feature_slug` — matches `spec/<slug>/feature.md`
-- `scenario` — section within that feature file, e.g. `btc-2023-regime`
+- `feature_slug` — the feature's slug (story file `_bmad-output/implementation-artifacts/{epic}-{story}-<slug>.md`; pre-BMAD briefs archived at `docs/archive/pre-bmad-spec/**/<slug>/feature.md`)
+- `scenario` — section within that story/brief, e.g. `btc-2023-regime`
 - `baseline` — optional report path to diff against; defaults to most recent
   `evidence/<slug>/reports/test-*-<slug>.md` with a Backtest section.
 
 ## Procedure
 
-1. Resolve the scenario: read `spec/<slug>/feature.md` → `## Backtest Scenarios` block.
+1. Resolve the scenario: read the feature's story → `## Backtest Scenarios` block
+   (for shipped pre-BMAD features the block lives in the archived
+   `docs/archive/pre-bmad-spec/**/<slug>/feature.md`).
    Each scenario defines universe, period, data source, fees, and entry config.
 
 2. Invoke the workspace's backtest binary (the architect defines this; default
@@ -92,4 +94,4 @@ scripts/verify_anchors.sh
 ## Templates
 
 See [templates/scenario.md](templates/scenario.md) for the scenario-definition
-format used inside `spec/<slug>/feature.md`.
+format used inside a feature's story (historically `feature.md`).

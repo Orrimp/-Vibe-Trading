@@ -1877,7 +1877,7 @@ so that the gates, ledgers, and process infrastructure keep the repo honest with
 ### Story 6.10: bmad-method-migration
 
 As the operator of the Honest Advisor,
-I want the operator-ratified full migration to BMAD-METHOD v6.10.0 (7 phases; Phase 0 install + Phase 1 planning docs landed; THIS story - Phase 2 retro epics/stories/sprint-status - is the live work; Phases 3-5c pending),
+I want the operator-ratified full migration to BMAD-METHOD v6.10.0 (7 phases, ALL LANDED 2026-07-24→25 — install, planning docs, retro epics/stories/sprint-status, evidence/ corpus move + anchor base-swap, docs/ knowledge move, persona customizations, lint re-founding + spec/ retirement, and the Phase 5c docs cutover; story 6-10 done),
 so that the gates, ledgers, and process infrastructure keep the repo honest without manual vigilance.
 
 **Acceptance Criteria:**

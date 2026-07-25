@@ -9,8 +9,10 @@
 > retirement even though the migration plan has no clean BMAD-native slot
 > for it today.
 >
-> **Disposition until Phase 5c:** unchanged. The agent keeps running
-> exactly as `.claude/agents/ui-debugger.md` describes, invoked by name
+> **Disposition since Phase 5c (2026-07-25):** this charter is now the live
+> definition (the retired agent file is archived verbatim at
+> `docs/archive/pre-bmad-agents/ui-debugger.md`); the specialist keeps
+> running exactly as that charter describes, invoked by name
 > for UI bugs. Its render-verification ladder is ALSO already folded live
 > into `_bmad/custom/bmad-agent-ux-designer.toml` and
 > `_bmad/custom/bmad-agent-dev.toml` (both cite
@@ -27,7 +29,7 @@ test failure) here; route UI **design/implementation** to
 debugging specialist with a tool-selection ladder — this is bespoke to
 this project's iced 0.14 + tiny-skia stack.
 
-## Condensed charter (full source: `.claude/agents/ui-debugger.md`)
+## Condensed charter (full source archived: `docs/archive/pre-bmad-agents/ui-debugger.md`)
 
 - **The cardinal rule:** verify at the rendered-PIXEL layer, exercising the
   POPULATED/non-trivial state, with a negative control — and actually

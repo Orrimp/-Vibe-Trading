@@ -6,11 +6,13 @@ parallel version ladders (strategy/engine `v0…v5`, plus independently-versione
 cockpit/UI and infra tracks), so entries are grouped by subsystem and tagged with
 their own version rather than forced onto a single release timeline.
 
-Per-feature narrative history lives in **git** (`git log -- spec/<slug>/`). The
-immutable backtest evidence lives under **`evidence/*/reports/`** (119 byte-SHA-256
-regression anchors, gated by `scripts/verify_anchors.sh`). Ratified scope and
-design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
-**`docs/runbooks/`**.
+Per-feature narrative history lives in **git** (`git log -- spec/<slug>/` for the
+pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
+2026-07-25 migration). The immutable backtest evidence lives under
+**`evidence/*/reports/`** (119 byte-SHA-256 regression anchors, gated by
+`scripts/verify_anchors.sh`). Ratified scope and design live in
+**`_bmad-output/planning-artifacts/`** (`PRD.md`, `architecture.md` +
+`architecture/decisions/` ADRs) and **`docs/runbooks/`**.
 
 > **Program status — "The Honest Advisor" (single-coin paper advisor), FEATURE-COMPLETE
 > (2026-07-09).** The terminal deliverable is the **advisor loop**: pick a coin + budget
@@ -35,7 +37,7 @@ design remain in **`spec/product.md`**, **`spec/architecture/`** (ADRs), and
 > bake-off benchmark arm** and the **Monte-Carlo robustness machine is the credibility layer**
 > that gates every pick. PAPER-ONLY (simulated fills, simulated €200); not financial advice; single-coin.
 > **No live trading** (removed 2026-06-12, out of scope). CI matrix stays operator-parked; the
-> end-to-end demo awaits operator approval. Full spec: `spec/product.md`.
+> end-to-end demo awaits operator approval. Full spec: `_bmad-output/planning-artifacts/PRD.md`.
 
 ---
 
@@ -208,10 +210,22 @@ Not a feature program — a **bounded ship-readiness pass** ratified after the v
 - **subscription-pipe-server-time-template** — server-time template closing the Wave-1 subscription-pipe carve-out.
 - **regression-anchor gate** — `evidence/anchors.toml` + `scripts/verify_anchors.sh` (119 byte-SHA bodies); `scripts/spec_lint.py` structural gate (dead-link, frontmatter, orphan, trace, status-drift).
 
+## BMAD-METHOD migration — 2026-07-24 → 2026-07-25 (process re-platform, zero guarantees dropped)
+
+- **bmad-method-migration** (story 6.10) — operator-ratified full migration to **BMAD-METHOD v6.10.0** (plan `docs/dev-notes/bmad-migration-plan-2026-07-24.md`, all 7 decisions D1–D7 resolved; ratification in `5582a74`'s message). `spec/` RETIRED with every gate/ledger ported, not dropped: anchors 119/119 byte-identical across every phase commit; the ADR-0082 triad re-founded story-keyed (story `Status:` ↔ `trace.toml` `state=` ↔ this file). One line per phase:
+  - **Phase 0** — install BMAD v6.10.0 (46 `bmad-*` skills + `_bmad/` + `_bmad-output/` scaffolds; additive, zero collisions). `5582a74`.
+  - **Phase 1** — BMAD-native planning docs: `PRD.md` (+addendum) + the `architecture.md` spine (AD-1..AD-19) under `_bmad-output/planning-artifacts/`. `4df9ef4`.
+  - **Phase 2** — 7 epics + 142 retroactive stories + `sprint-status.yaml` (exact trace reconciliation; 1:1 story-per-feature per D4). `226d00b`.
+  - **Phase 3** — report corpus `git mv` → `evidence/` + full resolver base-swap (128 dirs, 340 renames, atomic; `anchors.toml` travels with the corpus per D1). `452ce02`.
+  - **Phase 4** — knowledge → `docs/` + ADR corpus → `planning-artifacts/architecture/decisions/` (211 renames, AD-18 atomic). `d3a069c`.
+  - **Phase 5a** — persona customization TOMLs under `_bmad/custom/` (presenter→tech-writer mapping delta flagged; tester split static/dynamic) + skill/story path sweeps (154 files). `440c7e4`.
+  - **Phase 5b** — governance lints re-founded on the story layout (`spec_lint` triad + self-tests; `spec_brief`/`precheck`/`queue_staleness`/`operator_ledger`/`adr_registry`/secrets-scan repointed); `spec/` retired (291 renames, 0 deletions; presentations → `evidence/**/presentations/`; trace ledger authoritative at `_bmad-output/planning-artifacts/trace.toml`). `4e67191`.
+  - **Phase 5c** — docs cutover (this commit): `CLAUDE.md`/`AGENT.md`/`README.md` rewritten around the BMAD cycle with the non-negotiables verbatim-in-force; `.claude/agents/` retired → `docs/archive/pre-bmad-agents/` (charters live in `_bmad/custom/`); `spec-update` skill RETIRED per D5; harness-skill + stray references repointed.
+
 ## Deferred / not built (by decision)
 
 - **cockpit-cross-platform** — Linux/Windows source shipped + macOS-verified; 3-OS CI matrix parked inert (`.github/workflows/ci.yml.deferred`), activation deferred to the near-done milestone (now reached, but **operator kept it parked** in the v3 close-out — R3-1 out of scope; do not `git mv` it live without operator direction).
-- **`lab-recipe-test-harness v0.3.0+`** — recipe / subscription harness extension; robustness gate cleared, awaiting an analyst spawn. The one genuinely-open forward *build* item (see `spec/backlog.md`); not required for feature-completeness.
+- **`lab-recipe-test-harness v0.3.0+`** — recipe / subscription harness extension; robustness gate cleared, awaiting an analyst spawn. The one genuinely-open forward *build* item (see `_bmad-output/planning-artifacts/backlog.md`); not required for feature-completeness.
 - **DSR/PBO crown-eligibility veto** — a **ready-but-unbuilt one-line switch** (`crown_clears_dsr`); the scorecard stays report-only by operator decision (`docs/dev-notes/dsr-report-only-decision-2026-07-09.md`). A veto would change the FROZEN gate's effective behaviour → allowed ONLY as an explicit operator decision + its own ADR (never smuggled in as "additive").
 - **cockpit-app-bundle**, **iced-ecosystem-evaluation**, **ui-gallery-table-cell** — candidate/draft, not built.
 - **Settled dead-ends (do NOT re-propose):** the authoritative register is `docs/dev-notes/do-not-build-register.md` — multi-coin/basket, a return predictor in the ranking, automated alpha search, LLM-as-trader, deep-nets-as-alpha, on-chain/sentiment arms, Kelly-as-a-return-tool, VWAP/impact/HFT, generative synthetic test data, gate/anchor tampering.

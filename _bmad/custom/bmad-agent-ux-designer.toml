@@ -3,9 +3,10 @@
 # arrays (persistent_facts, principles, activation_steps_*) append,
 # [[agent.menu]] merges by `code`. Sparse by design.
 #
-# Source: ui-designer folded from .claude/agents/ui-designer.md
+# Source: ui-designer folded from the legacy ui-designer agent definition
 # (BMAD-migration Phase 5a, docs/dev-notes/bmad-migration-plan-2026-07-24.md
-# § 6). .claude/agents/ui-designer.md remains live until Phase 5c.
+# § 6). RETIRED at Phase 5c (2026-07-25): the agent file is archived at
+# docs/archive/pre-bmad-agents/ui-designer.md; this override is the live home.
 #
 # Note (per the plan's own fidelity call): BMAD's ux workflow is
 # design-only. Our ui-designer ALSO writes Rust (owns crates/ui end to

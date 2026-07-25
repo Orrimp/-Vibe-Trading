@@ -19,8 +19,9 @@
 #   2  — usage error (missing arg or file not found)
 #
 # Wired into:
-#   - .claude/agents/presenter.md (Procedure step + closing handoff)
-#   - .claude/skills/present-results/SKILL.md (post-write step)
+#   - .claude/skills/present-results/SKILL.md (post-write step; the deck seam —
+#     tech-writer persona since the BMAD migration; the retired presenter agent
+#     definition is archived at docs/archive/pre-bmad-agents/presenter.md)
 
 set -euo pipefail
 

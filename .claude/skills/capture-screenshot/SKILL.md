@@ -1,6 +1,6 @@
 ---
 name: capture-screenshot
-description: Capture a UI screenshot of a running binary, OR emit a manual-capture instruction block if running in a headless sandbox. Use when the presenter agent (or ui-designer) needs a fresh screenshot for a presentation. macOS uses `screencapture` natively; Linux + headless paths emit operator instructions instead of failing.
+description: Capture a UI screenshot of a running binary, OR emit a manual-capture instruction block if running in a headless sandbox. Use when the tech-writer persona (deck assembly) or ux-designer persona needs a fresh screenshot for a presentation. macOS uses `screencapture` natively; Linux + headless paths emit operator instructions instead of failing.
 ---
 
 # capture-screenshot
@@ -26,7 +26,7 @@ prefers a manual-instruction path over fake automation.
    **Pre-check: is this even a UI feature?** Before invoking any
    capture path, verify the feature has a UI surface. Heuristics
    (any one is sufficient):
-   - `spec/<slug>/feature.md` contains a `## UI` heading, or
+   - the feature's story (or archived `docs/archive/pre-bmad-spec/**/<slug>/feature.md`) contains a `## UI` heading, or
    - `evidence/<slug>/reports/screenshots/` directory exists (presence
      of the directory is the project convention for "UI feature").
 

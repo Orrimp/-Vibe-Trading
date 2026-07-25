@@ -74,9 +74,11 @@ the heavier live-window escalations** (and the cockpit isn't on `application::ti
 so time-travel needs a wiring change first). Adding `debug`/`hot` to `crates/ui` is a
 TEMPORARY diagnostic build — revert before shipping.
 
-> A dedicated **`ui-debugger` agent** (`.claude/agents/ui-debugger.md`) operationalizes
-> all of this — reproduce headless at pixels → escalate to comet/time-travel only when
-> needed → fix → re-prove. Invoke it for any cockpit/UI bug ("no graph", "looks wrong").
+> A dedicated **`ui-debugger` specialist** (charter: `_bmad/custom/ui-debugger-charter.md`;
+> the retired full agent definition is archived at `docs/archive/pre-bmad-agents/ui-debugger.md`)
+> operationalizes all of this — reproduce headless at pixels → escalate to
+> comet/time-travel only when needed → fix → re-prove. Invoke it by name for any
+> cockpit/UI bug ("no graph", "looks wrong").
 
 ## The rules (each one = a way the curve shipped blind)
 

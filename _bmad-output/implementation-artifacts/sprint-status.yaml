@@ -45,10 +45,13 @@
 # The product is SHIPPED and FEATURE-COMPLETE (2026-07-09); posture is MAINTENANCE MODE -
 # keep the gates green (verify_anchors 119/119, spec_lint PASS, test suite), honor the
 # frozen-gate/anchor guardrails, check the do-not-build register before proposing features.
-# There is NO add-more-features roadmap.
+# There is NO add-more-features roadmap. The BMAD-METHOD migration is COMPLETE (2026-07-25,
+# story 6-10, all 7 phases): this board + the story files ARE the process now — new work
+# flows bmad-sprint-status -> bmad-create-story -> bmad-dev-story -> bmad-code-review.
 #
-# Statuses are mapped HONESTLY from spec/**/feature.md frontmatter (the lifecycle source of
-# truth until the Phase 5b cutover) - never silently promoted:
+# Statuses were retro-mapped HONESTLY from the pre-migration spec/**/feature.md frontmatter
+# (the lifecycle source of truth until the Phase 5b cutover; since then each story file's
+# own `Status:` line is authoritative) - never silently promoted:
 #   shipped -> done            retired/deprecated -> done  # retired (story file says: retired)
 #   presenter/tester/dev-done -> review   (frozen mid-pipeline at the 2026-06-17 compression;
 #                                          work concluded, status never flipped - carried as-is)
@@ -57,10 +60,9 @@
 # The honest NON-DONE exceptions on an otherwise-done board:
 #   - 6-9-cockpit-cross-platform (in-progress): CI matrix ACTIVATED 2026-07-10 (P7); the
 #     run-2 shakeout on Linux/Windows lanes is the open work (fix-forward).
-#   - 6-10-bmad-method-migration (in-progress): this very migration; Phases 0-5b landed
-#     (install, planning docs, epics/stories/sprint-status, evidence/ corpus move,
-#     docs/ knowledge move, personas, spec/ retired + lints re-founded); Phase 5c
-#     (docs cutover: CLAUDE.md/AGENT.md/README.md rewrite + .claude/agents/ retirement) pending.
+#   (6-10-bmad-method-migration flipped DONE 2026-07-25 — all 7 phases landed, Phase 5c
+#    docs cutover included: CLAUDE.md/AGENT.md/README.md rewritten, .claude/agents/ retired
+#    to docs/archive/pre-bmad-agents/, CHANGELOG § "BMAD-METHOD migration" added.)
 #   - 2-63-lab-recipe-test-harness-v0-3-extension (backlog): the one genuinely-open forward
 #     build item (robustness gate cleared, awaiting an analyst spawn).
 #   - 3-18-advisor-reflection-decision-loop (ready-for-dev): C4 architecture done, not built.
@@ -70,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-07-25 13:31
+last_updated: 2026-07-25 21:45  # Phase 5c: 6-10 -> done; header posture note updated
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -231,7 +233,7 @@ development_status:
   6-7-queue-staleness-reconciliation: done
   6-8-subscription-pipe-server-time-template: done
   6-9-cockpit-cross-platform: in-progress  # the open CI run-2 shakeout (P7 activated 2026-07-10; fix-forward)
-  6-10-bmad-method-migration: in-progress  # THIS migration — Phases 0-5b landed, Phase 5c (docs cutover) pending
+  6-10-bmad-method-migration: done  # COMPLETE 2026-07-25 — all 7 phases (0..5c); spec/ retired, gates ported intact, docs cutover shipped
   epic-6-retrospective: optional
 
   # -- Epic 7: Retired Research Lines (measured-and-retired bets)

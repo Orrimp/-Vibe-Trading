@@ -20,7 +20,7 @@ references:
   - docs/dev-notes/archive/2026-Q2/testing-framework-audit-2026-05-25.md § Recommendations
   - docs/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md § Q1 nightly cargo-mutants
   - docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md (the exact case this would catch)
-  - spec/bug-log.md #65 vol_killswitch_overlay no-op (second exact case)
+  - docs/dev-notes/bug-log.md #65 vol_killswitch_overlay no-op (second exact case)
 ---
 
 # rust-mutants
@@ -40,7 +40,7 @@ Cross-references:
   highest-leverage change; would have caught the v3 no-op."*
 - The exact bug class this catches:
   [`docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md`](../../../docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md)
-  + [`spec/bug-log.md`](../../../spec/bug-log.md) `#65 vol_killswitch_overlay no-op`.
+  + [`docs/dev-notes/bug-log.md`](../../../docs/dev-notes/bug-log.md) `#65 vol_killswitch_overlay no-op`.
 
 ## Procedure
 

@@ -3,8 +3,10 @@
 # arrays (persistent_facts, principles, activation_steps_*) append,
 # [[agent.menu]] merges by `code`. Sparse by design.
 #
-# Source: presenter folded from .claude/agents/presenter.md (BMAD-migration
-# Phase 5a). .claude/agents/presenter.md remains live until Phase 5c.
+# Source: presenter folded from the legacy presenter agent definition
+# (BMAD-migration Phase 5a). RETIRED at Phase 5c (2026-07-25): the agent file
+# is archived at docs/archive/pre-bmad-agents/presenter.md; this override is
+# the live home.
 #
 # *** MAPPING DELTA (flagged per the Phase-5a dispatch instructions) ***
 # docs/dev-notes/bmad-migration-plan-2026-07-24.md § 6's own table maps

@@ -6,7 +6,9 @@
 > `bmad-agent-researcher` skill directory for `resolve_customization.py`
 > to merge this against, so nothing reads this file automatically.
 >
-> **Disposition until Phase 5c:** unchanged, and effectively **dormant**.
+> **Disposition since Phase 5c (2026-07-25):** this charter is the live
+> definition (the retired agent file is archived verbatim at
+> `docs/archive/pre-bmad-agents/researcher.md`), and effectively **dormant**.
 > The `research/` knowledge base is complete — 900/900 papers, 100 per
 > topic across the 9 topic folders (`research/{backtesting,crypto-market-
 > structure,data,deep-learning,evolution,llms,ml-trading,risk-and-sizing,
@@ -26,7 +28,7 @@ default). What has no BMAD equivalent is specifically this agent's
 shape — a different cadence and durability contract than analyst's
 per-decision research calls.
 
-## Condensed charter (full source: `.claude/agents/researcher.md`)
+## Condensed charter (full source archived: `docs/archive/pre-bmad-agents/researcher.md`)
 
 - **Scope discipline:** owns exactly ONE topic folder under `research/<topic>/`
   and writes ONLY there — never another topic, never `PROGRESS.md`, never

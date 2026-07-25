@@ -34,7 +34,7 @@ Brief A's 267-test panel-snapshot suite uses **text-summary helpers** (`tape_sum
    sleep 1
    ```
 
-   The 7s window is the hypothesis; per `spec/v1/ui-quality-gate-overhaul/feature.md ## H-A4`, the first three real runs against the post-F1 commit are MEASURED — if any exceeds 5s, bump to 10s and record the calibration in the feature's changelog.
+   The 7s window is the hypothesis; per `docs/archive/pre-bmad-spec/v1/ui-quality-gate-overhaul/feature.md ## H-A4` (archived), the first three real runs against the post-F1 commit are MEASURED — if any exceeds 5s, bump to 10s and record the calibration in the feature's changelog.
 
 3. **Grep stderr for any panic signature.**
 
