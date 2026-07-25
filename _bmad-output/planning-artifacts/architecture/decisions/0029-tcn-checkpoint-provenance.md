@@ -21,7 +21,7 @@ produce — checkpoint format, provenance hashing rules, anchor-storage
 policy, determinism caveats.
 
 The v2.5 TCN analyst pass (2026-05-17,
-[`spec/v25-tcn-overlay/feature.md`](../../../../spec/v1/v25-tcn-overlay/feature.md))
+[`docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md))
 authored a checkpoint-provenance schema (R8) and surfaced two operator-
 decide questions on anchor storage (LFS-track vs regenerate-from-seed,
 T-OP-1) and backtest split (one-checkpoint vs two-checkpoint, T-OP-2).
@@ -44,7 +44,7 @@ These decisions are **load-bearing across all four phases**:
   apples to apples.
 
 Recording this at the architecture level (not just in
-`spec/v25-tcn-overlay/feature.md`) gives v2.5a/v2.5b a single
+`docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md`) gives v2.5a/v2.5b a single
 citable contract.
 
 ## Decision
@@ -122,7 +122,7 @@ forecasters so future analysts cite a single ADR.
 ### 3. LFS-anchor strategy
 
 Fixture-anchored checkpoints (the ones referenced by the locked
-`spec/anchors.toml` rows) ship in-repo via Git LFS under
+`evidence/anchors.toml` rows) ship in-repo via Git LFS under
 `crates/forecast/checkpoints/anchors/<id>-<sha>.safetensors` +
 `<id>-<sha>.metadata.json`. The `.gitattributes` rule:
 
@@ -211,12 +211,12 @@ v2.6 bake-off fairness comparison.
 - This file: `_bmad-output/planning-artifacts/architecture/decisions/0029-tcn-checkpoint-provenance.md`.
 - TCN-side implementation lives at
   `crates/forecast/src/provenance.rs` (lands at T-D-9, M2 milestone
-  for v2.5 TCN per `spec/v25-tcn-overlay/tasks.md`).
+  for v2.5 TCN per `docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/tasks.md`).
 
 ### Modified files
 
 - `_bmad-output/planning-artifacts/architecture/decisions/README.md` — registry row added for ADR-0029.
-- `spec/architecture/12-forecast-overlay.md` — audit-row shape section
+- `docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md` — audit-row shape section
   references the provenance schema for the `model_revision` column.
 
 ### Cross-phase implications
@@ -234,7 +234,7 @@ v2.6 bake-off fairness comparison.
 - `crates/forecast/checkpoints/anchors/*.safetensors` join the
   LFS-tracked anchor surface. `.gitattributes` updated at T-D-11.
 - No effect on the 11 existing locked anchors in
-  `spec/anchors.toml`.
+  `evidence/anchors.toml`.
 - v2.5 adds 2 new anchors at ship (`top10-2023-fy-tcn-overlay`,
   `top10-2024-fy-tcn-overlay`).
 
@@ -249,10 +249,10 @@ v2.6 bake-off fairness comparison.
   data_span timestamps locked here).
 - [ADR-0002](0002-rng-chacha20.md) — `ChaCha20Rng` seed contract
   cited by `training.seed`.
-- [`spec/architecture/12-forecast-overlay.md`](../../../../spec/architecture/12-forecast-overlay.md)
+- [`docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md`](../../../../docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md)
   — cross-cutting overlay design pattern.
-- [`spec/v25-tcn-overlay/feature.md`](../../../../spec/v1/v25-tcn-overlay/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md)
   — v2.5 TCN feature spec; this ADR locks the schema referenced
   there as R8 / D4.
-- [`spec/v25-dl-forecast-overlay/feature.md`](../../../../spec/v1/v25-dl-forecast-overlay/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/feature.md)
   — 4-phase roadmap umbrella.

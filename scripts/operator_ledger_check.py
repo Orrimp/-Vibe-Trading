@@ -24,7 +24,10 @@ Usage:
     python3 scripts/operator_ledger_check.py --self-test              # inline self-test suite
 
 Part of the Pick C Wave 1 orchestrator hygiene compounder trio.
-Per spec/v1/operator-ledger-schema-lint/feature.md § Design D-LED-1..8 + P-LED-1.
+Per _bmad-output/implementation-artifacts/6-5-operator-ledger-schema-lint.md
+§ Design D-LED-1..8 + P-LED-1 (originally spec/v1/operator-ledger-schema-lint/
+feature.md, retired to docs/archive/pre-bmad-spec/ in the 2026-07-25
+BMAD-migration Phase 5b `spec/` retirement).
 """
 from __future__ import annotations
 

@@ -28,7 +28,7 @@ data load, strategy build, engine step loop, report write) lives in
 The `agent::runtime::run` surface that `cockpit_live` consumes is
 explicitly the **live** dependency edge — the architecture's "agent owns
 strategy/exec/models/llm bootstrap" rule lives there (see
-[`06-ui-and-cockpit.md` § UI isolation rule](../../../../spec/architecture/06-ui-and-cockpit.md)).
+[`06-ui-and-cockpit.md` § UI isolation rule](../../../../docs/archive/pre-bmad-spec/architecture/06-ui-and-cockpit.md)).
 There is no equivalent edge for backtest. This ADR opens that edge in
 the smallest possible shape: a single function on `backtest::engine`
 that takes the tuple and returns a `Result<RunReport, RunError>`. The
@@ -83,7 +83,7 @@ build a `ScenarioConfig` from its CLI args and call `engine::run_scenario`,
 then print the report path. **CLI behaviour is byte-identical**:
 existing `cargo run -p backtest --bin backtest -- --scenario …`
 invocations produce the same files in the same locations. The 11
-locked body-SHA-256 anchors in `spec/anchors.toml` stay unchanged
+locked body-SHA-256 anchors in `evidence/anchors.toml` stay unchanged
 (determinism contract: same seed → same body bytes).
 
 The UI invokes the function on a tokio task spawned via the cockpit's

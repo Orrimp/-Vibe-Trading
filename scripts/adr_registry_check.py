@@ -346,7 +346,7 @@ def _run_pre_commit() -> int:
 # ---------------------------------------------------------------------------
 
 class _SelfTest(unittest.TestCase):
-    """In-process self-test suite.  Uses tmpdir fixtures — never mutates spec/."""
+    """In-process self-test suite. Uses tmpdir fixtures — never mutates the real repo tree."""
 
     def _make_readme(self, ids: list[str]) -> str:
         """Build a minimal README.md text with a ## Registry table for the given IDs."""
@@ -600,7 +600,7 @@ def main(argv: list[str]) -> int:
     if args.ci:
         print(
             "adr-registry-check: error: --ci not implemented at v0.1.0; see Q-ADR-WHEN in "
-            "spec/v1/adr-registry-atomic-lint/feature.md",
+            "_bmad-output/implementation-artifacts/6-6-adr-registry-atomic-lint.md",
             file=sys.stderr,
         )
         return 2

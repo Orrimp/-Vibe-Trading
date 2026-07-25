@@ -13,15 +13,15 @@ Captured for the Phase 1 sprint review on 2026-05-04.
 # Fixtures bin
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
-screencapture -W spec/lumen-design-adoption/phase-1-foundation/reports/screenshots/cockpit-fixtures.png
+screencapture -W evidence/lumen-design-adoption/phase-1-foundation/reports/screenshots/cockpit-fixtures.png
 pkill -f "target/release/cockpit"
 
 # Live bin
 cargo run --release --bin cockpit_live --features live -- \
     --config config/agent.toml &
 sleep 8
-screencapture -W spec/lumen-design-adoption/phase-1-foundation/reports/screenshots/cockpit-live.png
+screencapture -W evidence/lumen-design-adoption/phase-1-foundation/reports/screenshots/cockpit-live.png
 pkill -f "target/release/cockpit_live"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../spec/archive/presentations-2026-Q2.tar.gz) (phase-1-foundation section of the consolidated retrospective).
+Referenced from [`evidence/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../docs/archive/presentations-2026-Q2.tar.gz) (phase-1-foundation section of the consolidated retrospective).

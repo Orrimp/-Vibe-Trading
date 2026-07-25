@@ -4,24 +4,31 @@
 # ///
 """queue_staleness_check.py — orchestrator pre-flight: Queue/Active staleness reconciliation.
 
-Reads spec/backlog.md, extracts slugs from MARKER-ONLY patterns within the
-## Active and ## Queue sections, cross-references each slug's feature.md
-frontmatter status, and reports drift (a live Queue/Active entry whose folder
-status is shipped/deprecated/retired).
+Re-founded 2026-07-25 (BMAD-migration Phase 5b `spec/` retirement). Reads the
+BMAD-native forward-looking backlog at
+`_bmad-output/planning-artifacts/backlog.md`, extracts slugs from
+MARKER-ONLY patterns within its `## Active` (optional — the new backlog is
+Queue-only; sprint-status.yaml now owns "what's in flight") and `## Queue`
+sections, cross-references each slug's STORY `Status:` line (was:
+feature.md frontmatter) at
+`_bmad-output/implementation-artifacts/*-<slug>.md`, and reports drift (a
+live Queue/Active entry whose story status is done/retired).
 
 Exit codes:
   0 — clean (zero drift); NO output (silent success)
   1 — drift detected; markdown table on stdout
-  2 — script failure (missing section, unreadable file, bad args); message on stderr
+  2 — script failure (missing `## Queue` section, unreadable file, bad args);
+      message on stderr
 
 Usage:
-    python3 scripts/queue_staleness_check.py                 # live run
-    python3 scripts/queue_staleness_check.py --self-test     # in-process smoke
-    python3 scripts/queue_staleness_check.py --backlog PATH  # override backlog path
-    python3 scripts/queue_staleness_check.py --spec-dir PATH # override spec dir root
+    python3 scripts/queue_staleness_check.py                    # live run
+    python3 scripts/queue_staleness_check.py --self-test        # in-process smoke
+    python3 scripts/queue_staleness_check.py --backlog PATH     # override backlog path
+    python3 scripts/queue_staleness_check.py --stories-dir PATH # override story dir root
 
 Part of the Pick C Wave 1 orchestrator hygiene compounder trio.
-Per spec/v1/queue-staleness-reconciliation/feature.md § Design D-QSR-1..6.
+Per _bmad-output/implementation-artifacts/6-7-queue-staleness-reconciliation.md
+§ Design D-QSR-1..6 (originally spec/v1/queue-staleness-reconciliation/feature.md).
 """
 from __future__ import annotations
 
@@ -39,11 +46,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 
 # Statuses that signal "this feature is done" — a live Queue/Active entry
-# pointing at one of these is drift. Widened from the brief's initial 3 per
-# architect frontmatter survey (D3.2).
-SHIPPED_STATUSES: frozenset[str] = frozenset(
-    {"shipped", "shipped (retired)", "deprecated", "retired", "shipped-partial"}
-)
+# pointing at one of these is drift. Re-keyed 2026-07-25 (BMAD-migration
+# Phase 5b) onto the story `Status:` vocabulary (was: feature.md frontmatter
+# `shipped`/`shipped (retired)`/`deprecated`/`retired`/`shipped-partial` — the
+# Phase-2 retro-generation convention collapses all of those into `done` or
+# `retired`; see every story's own Dev Notes "Status mapping:" line).
+SHIPPED_STATUSES: frozenset[str] = frozenset({"done", "retired"})
 
 # Case-insensitive substrings that indicate the entry ALREADY annotates the
 # shipped/retired state — these are CORRECT post-ship annotations, not drift.
@@ -68,35 +76,6 @@ _H2_RE = re.compile(r"^## ", re.MULTILINE)
 
 # HTML comment strip (D2.3) — strip before slug extraction.
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-
-
-# ---------------------------------------------------------------------------
-# Frontmatter parsing (lifted verbatim from scripts/spec_lint.py lines 127-148)
-# ---------------------------------------------------------------------------
-
-FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
-
-
-def parse_frontmatter(text: str) -> dict[str, str] | None:
-    """Return a flat dict of YAML-style frontmatter keys, or None if absent.
-
-    We deliberately do not pull in PyYAML; spec frontmatter is simple
-    `key: value` lines. Lists/nested objects are not used and would be a
-    design smell here.
-    """
-    m = FRONTMATTER_RE.match(text)
-    if not m:
-        return None
-    out: dict[str, str] = {}
-    for line in m.group(1).splitlines():
-        line = line.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        k, _, v = line.partition(":")
-        out[k.strip()] = v.strip()
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -209,24 +188,38 @@ def _stub_excerpt(entry_text: str, max_len: int = 80) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _read_status(spec_dir: Path, slug: str) -> str | None:
-    """Read the `status` field from spec_dir/<slug>/feature.md.
+_STORY_STATUS_LINE_RE = re.compile(r"^Status:\s*(\S+)", re.MULTILINE)
 
-    Returns None if the file is missing (R6.1) or has no status key (R6.2).
-    Normalises: lowercase, strip, drop inline `# comment` (R6.7).
+
+def _read_status(stories_dir: Path, slug: str) -> str | None:
+    """Read the `Status:` line from the story matching `*-<slug>.md`.
+
+    Re-keyed 2026-07-25 (BMAD-migration Phase 5b): was
+    `spec_dir/<slug>/feature.md` frontmatter `status:`; now the BMAD-native
+    story record, matched by FILENAME SUFFIX (not an exact `<epic>-<story>-`
+    prefix guess — story filenames sometimes sanitize the slug or add a
+    disambiguating prefix, e.g. lumen sub-phases).
+
+    Returns None if no matching story file exists (R6.1) or it has no
+    `Status:` line (R6.2). Normalises: lowercase, strip, drop inline
+    `# comment` (R6.7).
     """
-    feature_path = spec_dir / slug / "feature.md"
-    if not feature_path.exists():
+    if not stories_dir.is_dir():
+        return None
+    matches = sorted(stories_dir.glob(f"*-{slug}.md"))
+    if not matches:
         return None
     try:
-        text = feature_path.read_text(encoding="utf-8", errors="replace")
+        text = matches[0].read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    fm = parse_frontmatter(text)
-    if fm is None or "status" not in fm:
+    m = _STORY_STATUS_LINE_RE.search(text)
+    if m is None:
         return None
-    raw = fm["status"]
-    # Normalize: strip inline # comments (R6.7).
+    raw = m.group(1)
+    # Normalize: strip inline # comments (R6.7) — defensive; the Status:
+    # line is not commented in practice, but the historical feature.md
+    # convention allowed it and this is a cheap carry-over.
     if "#" in raw:
         raw = raw[: raw.index("#")]
     return raw.strip().lower()
@@ -247,26 +240,27 @@ class DriftRow:
 
 def detect_drift(
     backlog_text: str,
-    spec_dir: Path,
+    stories_dir: Path,
 ) -> list[DriftRow]:
     """Run the full reconciliation sweep. Returns a list of DriftRow items.
 
     Raises SystemExit(2) on structural parse failure.
+
+    `## Active` is OPTIONAL as of the 2026-07-25 BMAD-migration Phase 5b
+    re-founding — the new `_bmad-output/planning-artifacts/backlog.md` is
+    Queue-only by design (plan: "keep the prose backlog as forward-only");
+    `sprint-status.yaml`'s `in-progress` rows are now the "what's live" board.
+    A missing `## Active` section degrades to an empty section rather than
+    a structural error; `## Queue` remains required.
     """
     lines = backlog_text.splitlines()
 
-    active_lines = _extract_section(lines, "Active")
-    if active_lines is None:
-        print(
-            "queue-staleness-check: ERROR: spec/backlog.md missing required '## Active' section",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
+    active_lines = _extract_section(lines, "Active") or []
 
     queue_lines = _extract_section(lines, "Queue")
     if queue_lines is None:
         print(
-            "queue-staleness-check: ERROR: spec/backlog.md missing required '## Queue' section",
+            "queue-staleness-check: ERROR: backlog.md missing required '## Queue' section",
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -280,9 +274,9 @@ def detect_drift(
                 continue
             slugs = _extract_slugs(entry)
             for slug in slugs:
-                status = _read_status(spec_dir, slug)
+                status = _read_status(stories_dir, slug)
                 if status is None:
-                    # Missing folder (R6.1) or missing status key (R6.2) — skip.
+                    # No matching story file (R6.1) or no Status: line (R6.2) — skip.
                     continue
                 if status in SHIPPED_STATUSES:
                     rows.append(
@@ -336,7 +330,12 @@ def format_drift_table(rows: list[DriftRow]) -> str:
 
 
 def run_self_test() -> None:
-    """In-process self-test covering SC1-SC6 (D3.5). Exits 0 on all-pass, 1 on any fail."""
+    """In-process self-test covering SC1-SC6 (D3.5). Exits 0 on all-pass, 1 on any fail.
+
+    Re-founded 2026-07-25 (BMAD-migration Phase 5b): fixtures write BMAD-native
+    story stubs (`{fake-epic-story}-<slug>.md`, plain `Status:` line) instead
+    of `feature.md` frontmatter files.
+    """
 
     failures: list[str] = []
 
@@ -344,44 +343,38 @@ def run_self_test() -> None:
         if got != expected:
             failures.append(f"  FAIL [{label}]: got {got!r}, expected {expected!r}")
 
-    # Build a temp spec-dir with mock feature.md files.
+    # Build a temp stories-dir with mock story stubs.
     with tempfile.TemporaryDirectory() as tmpdir:
-        spec_dir = Path(tmpdir)
+        stories_dir = Path(tmpdir)
 
-        def write_feature(slug: str, status: str) -> None:
-            folder = spec_dir / slug
-            folder.mkdir(parents=True, exist_ok=True)
-            (folder / "feature.md").write_text(
-                f"---\nslug: {slug}\nstatus: {status}\n---\n# {slug}\n",
-                encoding="utf-8",
+        def write_story(slug: str, status: str) -> None:
+            (stories_dir / f"9-1-{slug}.md").write_text(
+                f"# Story 9.1: {slug}\n\nStatus: {status}\n", encoding="utf-8",
             )
 
-        # SC1 — clean: Queue entry for feat-a, status: draft → no drift.
-        write_feature("feat-a", "draft")
-        # SC2 — drift: Queue entry for feat-b, status: shipped, no exclude marker.
-        write_feature("feat-b", "shipped")
-        # SC3 — exclude-rule: feat-c shipped but stub contains "RETIRED 2026-05-21; see Recent".
-        write_feature("feat-c", "shipped")
+        # SC1 — clean: Queue entry for feat-a, status: backlog → no drift.
+        write_story("feat-a", "backlog")
+        # SC2 — drift: Queue entry for feat-b, status: done, no exclude marker.
+        write_story("feat-b", "done")
+        # SC3 — exclude-rule: feat-c done but stub contains "RETIRED 2026-05-21; see Recent".
+        write_story("feat-c", "done")
         # SC4 — K4 historical regression: v25-tcn-overlay case.
-        write_feature("v25-tcn-overlay", "shipped")
-        # SC5 — missing folder: feat-ghost has no feature.md on disk.
+        write_story("v25-tcn-overlay", "done")
+        # SC5 — missing story: feat-ghost has no story file on disk.
         # (no write needed)
-        # SC6 — no status key: feat-nofm has frontmatter but no status line.
-        folder_nofm = spec_dir / "feat-nofm"
-        folder_nofm.mkdir(parents=True, exist_ok=True)
-        (folder_nofm / "feature.md").write_text(
-            "---\nslug: feat-nofm\n---\n# feat-nofm\n",
-            encoding="utf-8",
+        # SC6 — no Status: line: feat-nofm has a story file but no Status: line.
+        (stories_dir / "9-1-feat-nofm.md").write_text(
+            "# Story 9.1: feat-nofm\n\n(no Status: line)\n", encoding="utf-8",
         )
 
         # --- SC1 — clean ---
         backlog_sc1 = "## Active\n\n## Queue\n- **feat-a feature** (`feat-a`).\n\n## Recent (shipped)\n"
-        rows_sc1 = detect_drift(backlog_sc1, spec_dir)
+        rows_sc1 = detect_drift(backlog_sc1, stories_dir)
         assert_eq("SC1 drift-count", len(rows_sc1), 0)
 
         # --- SC2 — drift ---
         backlog_sc2 = "## Active\n\n## Queue\n- **feat-b feature** (`feat-b`).\n\n## Recent (shipped)\n"
-        rows_sc2 = detect_drift(backlog_sc2, spec_dir)
+        rows_sc2 = detect_drift(backlog_sc2, stories_dir)
         assert_eq("SC2 drift-count", len(rows_sc2), 1)
         if rows_sc2:
             assert_eq("SC2 slug", rows_sc2[0].slug, "feat-b")
@@ -392,7 +385,7 @@ def run_self_test() -> None:
             "- **feat-c feature** (`feat-c`). **RETIRED 2026-05-21**; see Recent.\n\n"
             "## Recent (shipped)\n"
         )
-        rows_sc3 = detect_drift(backlog_sc3, spec_dir)
+        rows_sc3 = detect_drift(backlog_sc3, stories_dir)
         assert_eq("SC3 drift-count (exclude fired)", len(rows_sc3), 0)
 
         # --- SC4 — K4 historical regression: v25-tcn-overlay ---
@@ -402,7 +395,7 @@ def run_self_test() -> None:
             "- **v2.5 TCN horizon-bump** (`v25-tcn-overlay`).\n\n"
             "## Recent (shipped)\n"
         )
-        rows_sc4a = detect_drift(backlog_sc4a, spec_dir)
+        rows_sc4a = detect_drift(backlog_sc4a, stories_dir)
         assert_eq("SC4a drift-count (no exclude)", len(rows_sc4a), 1)
         if rows_sc4a:
             assert_eq("SC4a slug", rows_sc4a[0].slug, "v25-tcn-overlay")
@@ -414,26 +407,26 @@ def run_self_test() -> None:
             " see Recent (shipped).\n\n"
             "## Recent (shipped)\n"
         )
-        rows_sc4b = detect_drift(backlog_sc4b, spec_dir)
+        rows_sc4b = detect_drift(backlog_sc4b, stories_dir)
         assert_eq("SC4b drift-count (exclude fired on historical real-shape)", len(rows_sc4b), 0)
 
-        # --- SC5 — missing folder ---
+        # --- SC5 — missing story ---
         backlog_sc5 = (
             "## Active\n\n## Queue\n"
             "- **ghost feature** (`feat-ghost`).\n\n"
             "## Recent (shipped)\n"
         )
-        rows_sc5 = detect_drift(backlog_sc5, spec_dir)
-        assert_eq("SC5 drift-count (missing folder → skip)", len(rows_sc5), 0)
+        rows_sc5 = detect_drift(backlog_sc5, stories_dir)
+        assert_eq("SC5 drift-count (missing story → skip)", len(rows_sc5), 0)
 
-        # --- SC6 — no status key ---
+        # --- SC6 — no Status: line ---
         backlog_sc6 = (
             "## Active\n\n## Queue\n"
             "- **feat-nofm feature** (`feat-nofm`).\n\n"
             "## Recent (shipped)\n"
         )
-        rows_sc6 = detect_drift(backlog_sc6, spec_dir)
-        assert_eq("SC6 drift-count (no status key → skip)", len(rows_sc6), 0)
+        rows_sc6 = detect_drift(backlog_sc6, stories_dir)
+        assert_eq("SC6 drift-count (no Status: line → skip)", len(rows_sc6), 0)
 
         # --- Additional: HTML comment suppression ---
         backlog_comment = (
@@ -441,7 +434,7 @@ def run_self_test() -> None:
             "<!-- - **feat-b feature** (`feat-b`). -->\n\n"
             "## Recent (shipped)\n"
         )
-        rows_comment = detect_drift(backlog_comment, spec_dir)
+        rows_comment = detect_drift(backlog_comment, stories_dir)
         assert_eq("HTML-comment suppression: commented entry not extracted", len(rows_comment), 0)
 
         # --- Additional: link marker extraction ---
@@ -450,7 +443,7 @@ def run_self_test() -> None:
             "- **feat-b feature** — see [feature.md](feat-b/feature.md).\n\n"
             "## Recent (shipped)\n"
         )
-        rows_link = detect_drift(backlog_link, spec_dir)
+        rows_link = detect_drift(backlog_link, stories_dir)
         assert_eq("Link-marker extraction drift-count", len(rows_link), 1)
 
         # --- Additional: Active section also checked ---
@@ -460,10 +453,16 @@ def run_self_test() -> None:
             "## Queue\n\n"
             "## Recent (shipped)\n"
         )
-        rows_active = detect_drift(backlog_active, spec_dir)
+        rows_active = detect_drift(backlog_active, stories_dir)
         assert_eq("Active-section drift-count", len(rows_active), 1)
         if rows_active:
             assert_eq("Active-section section label", rows_active[0].section, "Active")
+
+        # --- Additional (Phase 5b): Active section entirely ABSENT (the new
+        # backlog.md shape) degrades to empty rather than SystemExit(2).
+        backlog_no_active = "## Queue\n- **feat-b feature** (`feat-b`).\n\n## Recent (shipped)\n"
+        rows_no_active = detect_drift(backlog_no_active, stories_dir)
+        assert_eq("No-Active-section drift-count", len(rows_no_active), 1)
 
     if failures:
         print("queue-staleness-check --self-test: FAILED", file=sys.stderr)
@@ -493,13 +492,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--backlog",
         metavar="PATH",
         default=None,
-        help="Override the backlog path (default: REPO_ROOT/spec/backlog.md).",
+        help="Override the backlog path (default: REPO_ROOT/_bmad-output/planning-artifacts/backlog.md).",
     )
     parser.add_argument(
-        "--spec-dir",
+        "--stories-dir",
         metavar="PATH",
         default=None,
-        help="Override the spec dir root (default: REPO_ROOT/spec).",
+        help="Override the story dir root (default: REPO_ROOT/_bmad-output/implementation-artifacts).",
     )
     return parser
 
@@ -512,8 +511,14 @@ def main(argv: list[str] | None = None) -> int:
         run_self_test()
         return 0  # run_self_test raises SystemExit on failure.
 
-    backlog_path = Path(args.backlog) if args.backlog else REPO_ROOT / "spec" / "backlog.md"
-    spec_dir = Path(args.spec_dir) if args.spec_dir else REPO_ROOT / "spec"
+    backlog_path = (
+        Path(args.backlog) if args.backlog
+        else REPO_ROOT / "_bmad-output" / "planning-artifacts" / "backlog.md"
+    )
+    stories_dir = (
+        Path(args.stories_dir) if args.stories_dir
+        else REPO_ROOT / "_bmad-output" / "implementation-artifacts"
+    )
 
     # Read backlog.
     try:
@@ -527,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Detect drift (may exit 2 internally on missing sections).
     try:
-        rows = detect_drift(backlog_text, spec_dir)
+        rows = detect_drift(backlog_text, stories_dir)
     except SystemExit as e:
         return int(e.code) if e.code is not None else 2
 

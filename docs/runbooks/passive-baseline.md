@@ -5,8 +5,8 @@
 **Status:** canonical baseline (active-edge search CONCLUDED 2026-06-08)
 **Related code:** the buy-and-hold (BH) control in `crates/backtest` (the
 benchmark every robustness surface is scored against)
-**Decision of record:** [`spec/product.md` § Strategy library — Active-edge-search
-status](../../spec/product.md) (terminal verdict: ship passive)
+**Decision of record:** [`docs/archive/pre-bmad-spec/product.md` § Strategy library — Active-edge-search
+status](../../docs/archive/pre-bmad-spec/product.md) (terminal verdict: ship passive)
 **Evidence:** [`onchain-netflow-spike-2026-06-08.md`](../dev-notes/onchain-netflow-spike-2026-06-08.md),
 [`onchain-vs-conclude-fork-2026-06-08.md`](../dev-notes/onchain-vs-conclude-fork-2026-06-08.md)
 
@@ -33,7 +33,7 @@ paper-trading agent runs by default*.
 > trading is impossible." Untested channels (options/implied-vol, macro, social)
 > remain by lower prior or infeasibility, and the passive benchmark's high Sharpe
 > (+1.74 in 2023) is partly a structural bull-leg artifact of the sample, not a
-> guarantee across regimes. See [`product.md`](../../spec/product.md) for the full bounded
+> guarantee across regimes. See [`product.md`](../../docs/archive/pre-bmad-spec/product.md) for the full bounded
 > statement.
 
 ---
@@ -47,7 +47,7 @@ paper-trading agent runs by default*.
 | Position rule       | Hold the universe; no signal-driven entry/exit. (Equal-weight is the proposed default; cap-weight is an operator option — see Rebalance cadence below.) |
 | Rebalance cadence   | Periodic rebalance to target weights — **monthly is the proposed default** (see decision below). |
 | Mode                | Paper (simulated fills) — this project is paper-terminal per `product.md` § Project scope boundary. No real-money execution. |
-| Benchmark behaviour | Pinned by the BH anchor scenarios in `spec/anchors.toml` (the BH control the sweep scored against). |
+| Benchmark behaviour | Pinned by the BH anchor scenarios in `evidence/anchors.toml` (the BH control the sweep scored against). |
 
 ---
 
@@ -82,7 +82,7 @@ baseline strategy* in paper mode uses the existing harness:
    top-10 USDT large-caps).
 3. Run the agent in paper mode; the baseline holds the universe and rebalances on
    the configured cadence.
-4. Operator success reports (`spec/operator-success-reports/`) already headline
+4. Operator success reports (`docs/archive/pre-bmad-spec/v1/operator-success-reports/`) already headline
    "cumulative return vs BH baseline" — with passive *as* the baseline, that
    headline reads as tracking error ≈ 0 by construction, and the report's value
    becomes drawdown / Sharpe / system-health visibility.
@@ -212,7 +212,7 @@ table + re-runnable harness:
   — consistent: the 2024 actual path had a larger mid-year drawdown than many resampled paths).
   Both within expected single-path vs median-of-200 variance. No surprise; sign match.
 
-  **Anchor gate:** 119/119 PASS. No stray files in `spec/*/reports/`. Run command:
+  **Anchor gate:** 119/119 PASS. No stray files in `docs/archive/pre-bmad-spec/*/reports/`. Run command:
   `cargo run -p backtest --features realdata --example passive_baseline_equity`
 
 - 2026-06-08 (developer): produced the passive-baseline characterization artifact

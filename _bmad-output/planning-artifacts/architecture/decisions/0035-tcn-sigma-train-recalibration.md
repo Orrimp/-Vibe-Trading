@@ -12,8 +12,8 @@ superseded-by: none
 ## Context
 
 The v2.5 TCN alpha-investigation
-([feature.md](../../../../spec/v1/v25-tcn-alpha-investigation/feature.md),
-[presenter deck 2026-05-19](../../../../spec/archive/presentations-2026-Q2.tar.gz))
+([feature.md](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md),
+[presenter deck 2026-05-19](../../../../docs/archive/presentations-2026-Q2.tar.gz))
 shipped a joint **F4 verdict** ("no signal at 1h horizon") across BS-1 +
 BS-2 on real Binance hourly OHLCV. The forensic deep-dive in the
 predecessor's reports surfaced a load-bearing **σ_train units /
@@ -266,9 +266,9 @@ ADR.
 - `crates/forecast/tests/sigma_train_not_in_safetensors.rs` (~40 LoC, T-D-N6).
 - `crates/forecast/checkpoints/anchors/tcn-bs{1,2}-<sha>.metadata.recalibrated.json`
   (output of T-D-N3, byte-identical on 2-run check).
-- `spec/v25-tcn-recalibrate/reports/recalibrate-sigma-train-bs{1,2}-20260521.md`
+- `evidence/v1/v25-tcn-recalibrate/reports/recalibrate-sigma-train-bs{1,2}-20260521.md`
   (output of T-D-N4).
-- `spec/v25-tcn-recalibrate/reports/forecast-distribution-bs{1,2}-realdata-recalibrated-20260521.md`
+- `evidence/v1/v25-tcn-recalibrate/reports/forecast-distribution-bs{1,2}-realdata-recalibrated-20260521.md`
   (output of T-D-N8).
 
 ### Modified files
@@ -279,7 +279,7 @@ ADR.
   `recalibrate_sigma_train`.
 - `_bmad-output/planning-artifacts/architecture/decisions/README.md` (+2 lines): registry row for
   ADR-0035.
-- `spec/anchors.toml` (+2 to +4 rows): new `forecast-distribution-bs{1,2}-realdata-recalibrated`
+- `evidence/anchors.toml` (+2 to +4 rows): new `forecast-distribution-bs{1,2}-realdata-recalibrated`
   anchors under version `v2.6.1-alpha-investigation-recalibrated`
   (additive only; 22 originals stay byte-identical).
 
@@ -362,14 +362,14 @@ training loop, which is not re-run in this feature).
   decision algorithm (§ D3). This ADR does NOT supersede ADR-0033;
   per `v25-tcn-recalibrate` Q4 = (a) the F-verdict algorithm stays
   immutable.
-- [`spec/v25-tcn-recalibrate/feature.md`](../../../../spec/v1/v25-tcn-recalibrate/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-tcn-recalibrate/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-recalibrate/feature.md)
   — analyst R1-R8 + H1-H3 + K1-K5 + Q1-Q5 (operator-resolved
   2026-05-21).
-- [`spec/v25-tcn-recalibrate/decomp.md`](../../../../spec/v1/v25-tcn-recalibrate/decomp.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-tcn-recalibrate/decomp.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-recalibrate/decomp.md)
   — architect M-T1 decomposition (this ADR's wave-level decomposition).
-- [`spec/v25-tcn-alpha-investigation/feature.md`](../../../../spec/v1/v25-tcn-alpha-investigation/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md)
   — predecessor F4 verdict.
-- [`spec/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../../../../spec/archive/presentations-2026-Q2.tar.gz)
+- [`evidence/v1/v25-tcn-alpha-investigation/presentations/v25-tcn-alpha-investigation-2026-05-19.md`](../../../../docs/archive/presentations-2026-Q2.tar.gz)
   — presenter deck where the σ_train calibration anomaly was first
   surfaced as a top-level finding.
 - Bug site: [`crates/forecast/src/bin/train_tcn.rs:606,676-678,733-741`](../../../../crates/forecast/src/bin/train_tcn.rs).
@@ -389,4 +389,4 @@ training loop, which is not re-run in this feature).
   across the v2.5 forecaster family (TCN now; PatchTST + vanilla
   Transformer inherit verbatim when they ship). Cross-refs
   `REQ-V25-TCN-RECALIBRATE-001` in
-  [`spec/trace.toml`](../../../../spec/trace.toml).
+  [`_bmad-output/planning-artifacts/trace.toml`](../../../../_bmad-output/planning-artifacts/trace.toml).

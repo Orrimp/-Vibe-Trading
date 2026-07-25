@@ -15,7 +15,7 @@ The single-coin investment-advisor MVP (product pivot 2026-06-19) journey step 4
 (feature `advisor-forward-plan`, roadmap **F6**) sits **between** the crowned
 bake-off pick (F1–F3, ADR-0059) and the forward paper-trade (F4–F5, ADR-0060).
 It is a **read-only, conditional, reactive decision plan — NOT a price forecast**
-([feature.md](../../../../spec/v1/advisor-forward-plan/feature.md) § The honest definition). For
+([feature.md](../../../../docs/archive/pre-bmad-spec/v1/advisor-forward-plan/feature.md) § The honest definition). For
 the crowned strategy the surface shows:
 
 1. **Current stance** — the latest-bar signal (`FLAT` / `LONG`, plus the most
@@ -207,7 +207,7 @@ explicitly locked OPEN-ENDED. The horizon is a label, not a clock.
 
 **D7 — Anchor-neutral + the day-1 equity-divergence e2e is N/A (both stated for the
 tester).** F6 is a **read-only descriptive surface**: it places no orders, runs no
-new backtest, writes no `spec/*/reports/` body, and changes no `spec/anchors.toml`
+new backtest, writes no `docs/archive/pre-bmad-spec/*/reports/` body, and changes no `evidence/anchors.toml`
 SHA. `scripts/verify_anchors.sh` stays **119/119 by construction** (the gate is run
 before + after). The CLAUDE.md day-1 **baseline-equity-divergence e2e gate is N/A**:
 that gate is for a *strategy overlay or sizing modifier* (it landed on F4 /
@@ -313,7 +313,7 @@ instead made testable by D8's consistency assertion.
   owns the engines); `ForwardPlan` lives in `agent` (which owns the supervisor +
   `ForwardRunConfig`); `ui` mirrors. No `crates/advisor`, no new edge.
 - **This ADR does not add, remove, or mutate any of the 9 anchor SHAs in
-  `spec/anchors.toml`** — F6 produces no anchored artifact; the
+  `evidence/anchors.toml`** — F6 produces no anchored artifact; the
   anchor-mutation-requires-an-ADR rule is untriggered.
 - **Open (none gate the build):** when F5b lands the real per-strategy forward
   ctors, the `describe_plan` rule families for MACD/RSI/Bollinger become

@@ -41,7 +41,7 @@ No mixing with `egui` / `tauri` / `dioxus`. Both binaries (`cockpit`
   directly. No bespoke glue code.
 - **Pure `update` functions** make every state mutation reviewable;
   matches the auditability goal in
-  [`../product.md`](../../../../spec/product.md).
+  [`../product.md`](../../../../docs/archive/pre-bmad-spec/product.md).
 - **Multi-window** lets ops cockpit (real-time) and backtest viewer
   (offline) run as separate top-level apps in the same crate,
   sharing widgets.
@@ -70,7 +70,7 @@ No mixing with `egui` / `tauri` / `dioxus`. Both binaries (`cockpit`
   exists because iced gives us a real theme/styling surface to build
   it against. The detailed UI architecture (cockpit screen routing,
   `audit::query` API, KPI strip, status bar) lives in
-  [`../../../../spec/architecture/06-ui-and-cockpit.md`](../../../../spec/architecture/06-ui-and-cockpit.md), not in this
+  [`../../../../docs/archive/pre-bmad-spec/architecture/06-ui-and-cockpit.md`](../../../../docs/archive/pre-bmad-spec/architecture/06-ui-and-cockpit.md), not in this
   ADR.
 - Framework version gaps (e.g. iced 0.14.2 lacking
   `button::Status::Focused`, ADR-0018 Q11) are addressed via
@@ -79,7 +79,7 @@ No mixing with `egui` / `tauri` / `dioxus`. Both binaries (`cockpit`
 
 ## Changelog
 - 2026-04-17 (architect): initial accept.
-- 2026-05-13 (architect): extracted from `spec/architecture.md` §
+- 2026-05-13 (architect): extracted from `docs/archive/pre-bmad-spec/architecture.md` §
   Foundation libraries — Frontend — iced during Phase 1A Session 11.
   Detailed UI architecture body (cockpit screen routing,
   audit::query API surface, KPI strip widget contracts, etc.) moved

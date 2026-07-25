@@ -16,29 +16,29 @@ Captured for the Phase 5 sprint review on 2026-05-07.
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Control" in the sidebar …
-screencapture -W spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-control.png
+screencapture -W evidence/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-control.png
 pkill -f "target/release/cockpit"
 
 # 2. Strategies-detail with pause + override-veto
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Strategies" → click any strategy row …
-screencapture -W spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-strategies-pause-override.png
+screencapture -W evidence/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-strategies-pause-override.png
 pkill -f "target/release/cockpit"
 
 # 3. Override-risk-veto modal
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Strategies" → click "Override" on a surfaced veto …
-screencapture -W spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-override-modal.png
+screencapture -W evidence/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-override-modal.png
 pkill -f "target/release/cockpit"
 
 # 4. Focus-ring halo (TD-1 closure)
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … Tab to a destructive control (kill / override / pause); halo renders …
-screencapture -W spec/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-focus-ring.png
+screencapture -W evidence/lumen-design-adoption/phase-5-humancontrol-agentfeed/reports/screenshots/cockpit-focus-ring.png
 pkill -f "target/release/cockpit"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../spec/archive/presentations-2026-Q2.tar.gz) (Phase 5 section of the consolidated retrospective).
+Referenced from [`evidence/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../docs/archive/presentations-2026-Q2.tar.gz) (Phase 5 section of the consolidated retrospective).

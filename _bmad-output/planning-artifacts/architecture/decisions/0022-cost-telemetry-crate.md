@@ -13,7 +13,7 @@ superseded-by: none
 
 LLM token costs, infrastructure spend, data-feed fees, and storage
 costs all accrue against the operator's monthly ceiling (per
-[`../product.md` § Cost economics](../../../../spec/product.md#cost-economics--monthly-ceiling)).
+[`../product.md` § Cost economics](../../../../docs/archive/pre-bmad-spec/product.md#cost-economics--monthly-ceiling)).
 v0 has no cost lines (no LLM calls; infra/data/storage shipped at the
 free-tier). Each later release adds another cost dimension. The
 question is where the telemetry surface lives so v0.5+ drop calls in
@@ -93,7 +93,7 @@ The `BudgetedProvider<Inner>` decorator from
 
 ## Changelog
 - 2026-04-17 (architect): initial accept. Crate scaffolded empty at v0.
-- 2026-05-13 (architect): extracted from `spec/architecture.md` §
+- 2026-05-13 (architect): extracted from `docs/archive/pre-bmad-spec/architecture.md` §
   Cost telemetry during Phase 1A Session 11. `LlmProvider` enum
   reference updated to `ProviderKind` per
   [ADR-0019](0019-v2-llm-strategy.md) Q4 rename.

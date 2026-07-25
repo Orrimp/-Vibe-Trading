@@ -6,16 +6,16 @@ date: 2026-05-17
 accepted-on: 2026-05-20
 supersedes: none
 superseded-by: none
-refined-by: spec/audit-tick-consumer-envelope/feature.md
-decomposed-by: spec/audit-tick-consumer-envelope/decomp.md
+refined-by: docs/archive/pre-bmad-spec/v1/audit-tick-consumer-envelope/feature.md
+decomposed-by: docs/archive/pre-bmad-spec/v1/audit-tick-consumer-envelope/decomp.md
 ---
 
 > **Status `accepted` on 2026-05-20.** All five operator-decide
 > questions resolved to analyst defaults via "Autoapprove all"
 > directive. Implementation contract is at
-> [`spec/audit-tick-consumer-envelope/feature.md`](../../../../spec/v1/audit-tick-consumer-envelope/feature.md);
+> [`docs/archive/pre-bmad-spec/v1/audit-tick-consumer-envelope/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/audit-tick-consumer-envelope/feature.md);
 > per-writer change list + ForecastEmitted call-site pin are at
-> [`spec/audit-tick-consumer-envelope/decomp.md`](../../../../spec/v1/audit-tick-consumer-envelope/decomp.md).
+> [`docs/archive/pre-bmad-spec/v1/audit-tick-consumer-envelope/decomp.md`](../../../../docs/archive/pre-bmad-spec/v1/audit-tick-consumer-envelope/decomp.md).
 > ADR remains source-of-truth for the direction; the brief +
 > decomp are source-of-truth for the v0.1.0 contract.
 
@@ -33,8 +33,8 @@ tap-style hooks:
 The pattern is **producer-pushes-to-named-consumer**. Each new consumer
 needs a new tap or read path:
 
-- Phase D Lab `Trail` screen ([spec/ui-rethink-phase-a-lab/feature.md](../../../../spec/v1/ui-rethink-phase-a-lab/feature.md) — UI rethink Section 2 J4) needs to drill from bar → features → signal → fill → P&L.
-- v2.6 bake-off ([spec/v26-forecast-bakeoff/feature.md](../../../../spec/v1/v26-forecast-bakeoff/feature.md)) needs to read trade outcomes per forecast.
+- Phase D Lab `Trail` screen ([docs/archive/pre-bmad-spec/v1/ui-rethink-phase-a-lab/feature.md](../../../../docs/archive/pre-bmad-spec/v1/ui-rethink-phase-a-lab/feature.md) — UI rethink Section 2 J4) needs to drill from bar → features → signal → fill → P&L.
+- v2.6 bake-off ([docs/archive/pre-bmad-spec/v1/v26-forecast-bakeoff/feature.md](../../../../docs/archive/pre-bmad-spec/v1/v26-forecast-bakeoff/feature.md)) needs to read trade outcomes per forecast.
 - v3 continuous-paper + success-reports (terminal milestone) needs to read everything.
 
 Adding a tap per consumer would multiply the number of write call sites
@@ -135,7 +135,7 @@ send is constant-time).
 
 ### Architecture invariants
 
-- `audit` still imports nothing from sibling crates (the invariant from [section 01](../../../../spec/architecture/01-data-flow.md) stays intact). The broadcast channel is internal to `crates/audit`.
+- `audit` still imports nothing from sibling crates (the invariant from [section 01](../../../../docs/archive/pre-bmad-spec/architecture/01-data-flow.md) stays intact). The broadcast channel is internal to `crates/audit`.
 - The architecture edge table at section 01 gains a *read-only* edge: `reflection → audit (via AuditTick stream)`. This is symmetric with the existing `reports → audit` read-only edge.
 
 ## Open questions
@@ -148,7 +148,7 @@ send is constant-time).
 
 - [`docs/dev-notes/external-code-patterns-2026-05-17.md`](../../../../docs/dev-notes/archive/2026-Q2/external-code-patterns-2026-05-17.md) — the survey that led to this ADR.
 - [`barter-rs` engine/audit module](https://github.com/barter-rs/barter-rs/blob/main/barter/src/engine/audit/mod.rs) — pattern source.
-- [`spec/architecture/01-data-flow.md`](../../../../spec/architecture/01-data-flow.md) — edge table this ADR extends.
+- [`docs/archive/pre-bmad-spec/architecture/01-data-flow.md`](../../../../docs/archive/pre-bmad-spec/architecture/01-data-flow.md) — edge table this ADR extends.
 - [`crates/audit/src/journal.rs`](../../../../crates/audit/src/journal.rs) — primary write surface this ADR augments.
 
 ## Phase D amendment (2026-05-20)
@@ -156,9 +156,9 @@ send is constant-time).
 > Closes deferred `T-D-14` from the predecessor
 > `audit-tick-consumer-envelope v0.1.0`. K5 spike outcome
 > documented in
-> [`spec/ui-rethink-phase-d-trail/decomp.md §1`](../../../../spec/v1/ui-rethink-phase-d-trail/decomp.md);
+> [`docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/decomp.md §1`](../../../../docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/decomp.md);
 > per-wave T-D-N rows in
-> [`spec/ui-rethink-phase-d-trail/tasks.md`](../../../../spec/v1/ui-rethink-phase-d-trail/tasks.md).
+> [`docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/tasks.md`](../../../../docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/tasks.md).
 
 ### Context
 
@@ -213,7 +213,7 @@ zero-ledger `build_registry(cfg)` and stay determinism-clean.
   `crates/audit/src/tick.rs:104-107` returns early. Any new
   `tick::emit_public(...)` call inside the TCN runtime path is a
   no-op under backtest. The 22 body-SHA-256 anchors in
-  `spec/anchors.toml` remain byte-identical by construction —
+  `evidence/anchors.toml` remain byte-identical by construction —
   Wave A exit gate is `scripts/verify_anchors.sh → 22/22 PASS`.
 - **Paper-mode tick-bus liveness.** Paper mode uses
   `Ledger::open_with_tick_bus(path, cap)` at `main.rs:103`. The
@@ -236,7 +236,7 @@ NULL-default), 1 `CREATE TABLE IF NOT EXISTS forecast_events`,
 4 `CREATE INDEX IF NOT EXISTS`. The shape mirrors migrations
 008 / 009 / 010 — all three precedents are anchor-safe and the same
 proof carries forward. See
-[`decomp.md §2`](../../../../spec/v1/ui-rethink-phase-d-trail/decomp.md) for the
+[`decomp.md §2`](../../../../docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/decomp.md) for the
 column-level SQL and §5 for the anchor-preservation proof sketch.
 
 ### Consequences (Phase D-specific)
@@ -254,7 +254,7 @@ column-level SQL and §5 for the anchor-preservation proof sketch.
   UI talks to the trail-mirror via a `tokio::sync::mpsc` request
   channel + a `tokio::sync::broadcast` snapshot channel surfaced
   as an iced Subscription — see
-  [`decomp.md §3`](../../../../spec/v1/ui-rethink-phase-d-trail/decomp.md)).
+  [`decomp.md §3`](../../../../docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/decomp.md)).
 - **No new external crates.** The amendment uses
   `tokio::sync::broadcast` (already imported), `audit::Ledger`
   (already in scope), and the existing `with_ledger` builder. LRU
@@ -275,7 +275,7 @@ column-level SQL and §5 for the anchor-preservation proof sketch.
    contradicts the existing trait-object pattern. The builder mirror
    stays type-safe.
 3. **Defer T-D-14 again** (fallback path). Documented in
-   [`decomp.md §1.4`](../../../../spec/v1/ui-rethink-phase-d-trail/decomp.md). Not
+   [`decomp.md §1.4`](../../../../docs/archive/pre-bmad-spec/v1/ui-rethink-phase-d-trail/decomp.md). Not
    exercised — the spike succeeded.
 
 ### Test gates (Phase D)

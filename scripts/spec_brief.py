@@ -4,16 +4,20 @@
 # ///
 """spec_brief.py — assemble a per-feature briefing pack for sub-agents.
 
-Goal: keep sub-agent context windows small. Instead of having a developer
-or architect grep the 296 KB architecture.md, give them a curated brief.
+Re-founded 2026-07-25 (BMAD-migration Phase 5b `spec/` retirement). Goal
+unchanged: keep sub-agent context windows small. Instead of having a
+developer or architect grep the 4700+ line BMAD architecture spine, give
+them a curated brief assembled from the STORY (the BMAD-native per-feature
+record — was: feature.md + tasks.md, now merged into one file), the
+architecture spine + PRD, and the evidence corpus.
 
 Output is a single markdown document containing:
   1. The CLAUDE.md non-negotiables (always).
-  2. The feature.md frontmatter + body.
-  3. The tasks.md.
-  4. Trace.toml rows that mention this feature (when trace.toml exists).
-  5. The most recent test report for this feature (when present).
-  6. Architecture sections that mention this slug (best-effort grep).
+  2. The story file in full (Status, Acceptance Criteria, Tasks/Subtasks,
+     Dev Notes, References — was: feature.md + tasks.md, now one artifact).
+  3. Trace.toml rows that mention this feature (when trace.toml exists).
+  4. The most recent test report for this feature (when present).
+  5. Architecture-spine sections that mention this slug (best-effort grep).
 
 The brief is written to stdout by default, or to --out <path>. Token
 budget is reported on stderr so callers can verify they're under
@@ -34,36 +38,78 @@ from pathlib import Path
 import tomllib  # Python 3.11+ (enforced by PEP-723 header above)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SPEC_DIR = REPO_ROOT / "spec"
-# Byte-immutable reports corpus + anchors.toml `git mv`d here from spec/ in
-# the 2026-07-25 BMAD-migration Phase 3 (layout preserved 1:1). feature.md /
-# tasks.md stay under SPEC_DIR until Phase 5b.
+# `spec/` retired 2026-07-25 (BMAD-migration Phase 5b) — see
+# docs/dev-notes/bmad-migration-plan-2026-07-24.md § Phase 5b. The BMAD-native
+# homes:
 EVIDENCE_DIR = REPO_ROOT / "evidence"
+BMAD_OUTPUT_DIR = REPO_ROOT / "_bmad-output"
+PLANNING_DIR = BMAD_OUTPUT_DIR / "planning-artifacts"
+STORY_DIR = BMAD_OUTPUT_DIR / "implementation-artifacts"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
-ARCHITECTURE_MD = SPEC_DIR / "architecture.md"
-TRACE_TOML = SPEC_DIR / "trace.toml"
+ARCHITECTURE_MD = PLANNING_DIR / "architecture.md"
+TRACE_TOML = PLANNING_DIR / "trace.toml"
 ANCHORS_TOML = EVIDENCE_DIR / "anchors.toml"
-
-NON_FEATURE = {"design", "dev-notes", "runbooks", "archive", "architecture", "v1", "v2", "v3"}
 
 # How many lines of architecture to include around each match. Keep small
 # because the brief should not exceed ~5k tokens / ~20k chars.
 ARCH_CONTEXT_LINES = 30
 ARCH_MAX_MATCHES = 8
 
+STORY_FILENAME_RE = re.compile(r"^\d+-\d+-(.+)\.md$")
+SOURCE_FOLDER_RE = re.compile(r"Source feature folder:\s*`spec/([^`]+?)/?`")
+
 
 def list_slugs() -> list[str]:
-    slugs = []
-    # Feature folders live at spec/ root AND under spec/v1/ + spec/v2/ (2026-06-28 reorg).
-    dirs = list(SPEC_DIR.iterdir())
-    for container in ("v1", "v2", "v3"):
-        sub = SPEC_DIR / container
-        if sub.is_dir():
-            dirs.extend(sub.iterdir())
-    for p in sorted(dirs):
-        if p.is_dir() and p.name not in NON_FEATURE and not p.name.startswith("."):
-            slugs.append(p.name)
-    return slugs
+    """List every resolvable slug: the story-filename form primarily, PLUS
+    the original nested slug (e.g. `phase-1-foundation` for lumen sub-phases)
+    recovered from the "Source feature folder:" Dev Notes line, so either
+    spelling works as a lookup key."""
+    slugs: set[str] = set()
+    if not STORY_DIR.is_dir():
+        return []
+    for p in sorted(STORY_DIR.glob("*.md")):
+        if p.name == "sprint-status.yaml":
+            continue
+        m = STORY_FILENAME_RE.match(p.name)
+        if not m:
+            continue
+        slugs.add(m.group(1))
+        text = p.read_text(encoding="utf-8", errors="replace")
+        sm = SOURCE_FOLDER_RE.search(text)
+        if sm:
+            relpath = sm.group(1).rstrip("/")
+            parts = relpath.split("/")
+            if parts and parts[0] in ("v1", "v2", "v3"):
+                parts = parts[1:]
+            if parts:
+                slugs.add(parts[-1])
+    return sorted(slugs)
+
+
+def find_story(slug: str) -> Path | None:
+    """Resolve `slug` to a story file. Tries, in order: an exact filename
+    suffix match (`*-<slug>.md` — handles the common case directly); then a
+    scan for a story whose "Source feature folder:" line's FINAL path segment
+    equals `slug` (handles nested slugs like lumen sub-phases, whose story
+    filename carries a disambiguating `lumen-` prefix the bare original slug
+    does not)."""
+    if not STORY_DIR.is_dir():
+        return None
+    matches = sorted(STORY_DIR.glob(f"*-{slug}.md"))
+    if matches:
+        return matches[0]
+    for p in sorted(STORY_DIR.glob("*.md")):
+        text = p.read_text(encoding="utf-8", errors="replace")
+        sm = SOURCE_FOLDER_RE.search(text)
+        if not sm:
+            continue
+        relpath = sm.group(1).rstrip("/")
+        parts = relpath.split("/")
+        if parts and parts[0] in ("v1", "v2", "v3"):
+            parts = parts[1:]
+        if parts and parts[-1] == slug:
+            return p
+    return None
 
 
 def extract_non_negotiables(claude_md_text: str) -> str:
@@ -76,41 +122,21 @@ def extract_non_negotiables(claude_md_text: str) -> str:
     return m.group(0).strip() if m else "(no Non-negotiables section found in CLAUDE.md)"
 
 
-def latest_test_report(feature_dir: Path) -> Path | None:
-    # reports/ lives under EVIDENCE_DIR (2026-07-25 Phase 3 move), mirroring
-    # feature_dir's path relative to SPEC_DIR (feature_dir is always a
-    # SPEC_DIR subpath by construction — see render_brief).
-    reports = EVIDENCE_DIR / feature_dir.relative_to(SPEC_DIR) / "reports"
-    if not reports.exists():
-        return None
-    candidates = sorted(reports.glob("test-*.md"))
-    return candidates[-1] if candidates else None
-
-
-def architecture_excerpts(slug: str) -> list[tuple[int, str]]:
-    """Return up to ARCH_MAX_MATCHES windows of architecture.md mentioning the slug.
-
-    Each window is (start_line_1indexed, text). Best-effort: this is a
-    stopgap until architecture.md is split into spec/architecture/*.md.
-    """
-    if not ARCHITECTURE_MD.exists():
-        return []
-    lines = ARCHITECTURE_MD.read_text(encoding="utf-8", errors="replace").splitlines()
-    pat = re.compile(re.escape(slug), re.IGNORECASE)
-    matches: list[int] = [i for i, line in enumerate(lines) if pat.search(line)]
-    # De-duplicate matches that fall within the same window.
-    windowed: list[tuple[int, int]] = []
-    for i in matches:
-        start = max(0, i - ARCH_CONTEXT_LINES // 2)
-        end = min(len(lines), i + ARCH_CONTEXT_LINES // 2)
-        if windowed and start <= windowed[-1][1]:
-            # merge
-            windowed[-1] = (windowed[-1][0], max(windowed[-1][1], end))
-        else:
-            windowed.append((start, end))
-        if len(windowed) >= ARCH_MAX_MATCHES:
-            break
-    return [(start + 1, "\n".join(lines[start:end])) for start, end in windowed]
+def latest_test_report(slug: str) -> Path | None:
+    """`reports/` mirrors the ORIGINAL `spec/`-relative path 1:1 under
+    EVIDENCE_DIR (Phase 3 base-swap). Try the bare slug first, then each
+    v1/v2/v3 container, then the `lumen-design-adoption/<slug>` nesting."""
+    candidates = [EVIDENCE_DIR / slug]
+    for prefix in ("v1", "v2", "v3"):
+        candidates.append(EVIDENCE_DIR / prefix / slug)
+    candidates.append(EVIDENCE_DIR / "lumen-design-adoption" / slug)
+    for base in candidates:
+        reports = base / "reports"
+        if reports.exists():
+            found = sorted(reports.glob("test-*.md"))
+            if found:
+                return found[-1]
+    return None
 
 
 def trace_rows_for(slug: str) -> list[dict]:
@@ -134,25 +160,43 @@ def anchor_rows() -> list[dict]:
     return data.get("anchors", [])
 
 
-def render_brief(slug: str) -> str:
-    # Feature folders may live at spec/<slug>, spec/v1/<slug>, or spec/v2/<slug> (2026-06-28 reorg).
-    feature_dir = next(
-        ((SPEC_DIR / prefix / slug) for prefix in ("", "v1", "v2", "v3")
-         if (SPEC_DIR / prefix / slug).exists()),
-        SPEC_DIR / slug,
-    )
-    if not feature_dir.exists():
-        raise SystemExit(f"error: feature folder not found: {feature_dir}")
+def architecture_excerpts(slug: str) -> list[tuple[int, str]]:
+    """Return up to ARCH_MAX_MATCHES windows of the architecture spine
+    mentioning the slug. Each window is (start_line_1indexed, text)."""
+    if not ARCHITECTURE_MD.exists():
+        return []
+    lines = ARCHITECTURE_MD.read_text(encoding="utf-8", errors="replace").splitlines()
+    pat = re.compile(re.escape(slug), re.IGNORECASE)
+    matches: list[int] = [i for i, line in enumerate(lines) if pat.search(line)]
+    windowed: list[tuple[int, int]] = []
+    for i in matches:
+        start = max(0, i - ARCH_CONTEXT_LINES // 2)
+        end = min(len(lines), i + ARCH_CONTEXT_LINES // 2)
+        if windowed and start <= windowed[-1][1]:
+            windowed[-1] = (windowed[-1][0], max(windowed[-1][1], end))
+        else:
+            windowed.append((start, end))
+        if len(windowed) >= ARCH_MAX_MATCHES:
+            break
+    return [(start + 1, "\n".join(lines[start:end])) for start, end in windowed]
 
-    feature_md = feature_dir / "feature.md"
-    tasks_md = feature_dir / "tasks.md"
+
+def render_brief(slug: str) -> str:
+    story_path = find_story(slug)
+    if story_path is None:
+        raise SystemExit(
+            f"error: no story found for slug {slug!r} under "
+            f"{STORY_DIR.relative_to(REPO_ROOT)}/ (tried '*-{slug}.md' and the "
+            f"'Source feature folder:' nested-slug fallback)"
+        )
 
     parts: list[str] = []
     parts.append(f"# Brief: {slug}\n")
     parts.append(
         "_Generated by scripts/spec_brief.py. "
         "Use this brief as the primary context for your work on this feature. "
-        "Open the full spec only if the brief leaves a question unanswered._\n"
+        "Open the full story / architecture spine only if the brief leaves a "
+        "question unanswered._\n"
     )
 
     # 1. Non-negotiables
@@ -163,25 +207,13 @@ def render_brief(slug: str) -> str:
         parts.append("(CLAUDE.md not found)")
     parts.append("")
 
-    # 2. Feature.md
-    parts.append("## Feature spec\n")
-    parts.append(f"_Source: `{feature_md.relative_to(REPO_ROOT)}`_\n")
-    if feature_md.exists():
-        parts.append(feature_md.read_text())
-    else:
-        parts.append("(missing feature.md — orphan folder)")
+    # 2. Story (merges what used to be feature.md + tasks.md)
+    parts.append("## Story (Status, Acceptance Criteria, Tasks/Subtasks, Dev Notes)\n")
+    parts.append(f"_Source: `{story_path.relative_to(REPO_ROOT)}`_\n")
+    parts.append(story_path.read_text(encoding="utf-8", errors="replace"))
     parts.append("")
 
-    # 3. Tasks.md
-    parts.append("## Task list\n")
-    parts.append(f"_Source: `{tasks_md.relative_to(REPO_ROOT)}`_\n")
-    if tasks_md.exists():
-        parts.append(tasks_md.read_text())
-    else:
-        parts.append("(missing tasks.md — orphan folder)")
-    parts.append("")
-
-    # 4. Trace rows
+    # 3. Trace rows
     trace_rows = trace_rows_for(slug)
     if trace_rows:
         parts.append("## Traceability rows referencing this feature\n")
@@ -198,8 +230,8 @@ def render_brief(slug: str) -> str:
             parts.append("```")
             parts.append("")
 
-    # 5. Latest test report
-    last_test = latest_test_report(feature_dir)
+    # 4. Latest test report
+    last_test = latest_test_report(slug)
     if last_test:
         parts.append("## Most recent test report (head)\n")
         parts.append(f"_Source: `{last_test.relative_to(REPO_ROOT)}`_\n")
@@ -209,7 +241,7 @@ def render_brief(slug: str) -> str:
         parts.append("```")
         parts.append("")
 
-    # 6. Anchors for this slug (best-effort: scenario names often share a prefix)
+    # 5. Anchors for this slug (best-effort: scenario names often share a prefix)
     anchors = anchor_rows()
     if anchors:
         parts.append("## Backtest anchors (full set — locate yours by scenario name)\n")
@@ -221,15 +253,14 @@ def render_brief(slug: str) -> str:
             parts.append(f"| {a.get('scenario', '?')} | {a.get('version', '?')} | `{sha}…` |")
         parts.append("")
 
-    # 7. Architecture excerpts
+    # 6. Architecture excerpts
     excerpts = architecture_excerpts(slug)
     if excerpts:
-        parts.append("## Architecture excerpts mentioning this slug\n")
+        parts.append("## Architecture-spine excerpts mentioning this slug\n")
         parts.append(
             f"_Source: `{ARCHITECTURE_MD.relative_to(REPO_ROOT)}` "
             f"({len(excerpts)} windows, ~{ARCH_CONTEXT_LINES} lines each). "
-            "If you need more, grep the file directly — but this is the path "
-            "that becomes obsolete once architecture.md is split._\n"
+            "If you need more, grep the file directly._\n"
         )
         for start_line, text in excerpts:
             parts.append(f"### Around line {start_line}")
@@ -243,7 +274,7 @@ def render_brief(slug: str) -> str:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("slug", nargs="?", help="feature slug (folder name under spec/)")
+    parser.add_argument("slug", nargs="?", help="feature slug (matches a story filename suffix)")
     parser.add_argument("--list", action="store_true", help="list valid slugs and exit")
     parser.add_argument("--out", type=Path, help="write to file instead of stdout")
     args = parser.parse_args(argv)
@@ -277,7 +308,7 @@ def main(argv: list[str]) -> int:
     if tok_est > 10_000:
         print(
             f"warning: brief exceeds 10k-token soft budget ({tok_est} tokens). "
-            "consider splitting feature.md or filing a spec-auditor task.",
+            "consider splitting the story or filing a spec-auditor task.",
             file=sys.stderr,
         )
     return 0

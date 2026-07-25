@@ -37,7 +37,7 @@ observation-oriented — they pair naturally with positions.
 Architect fixes the panel's column position and the
 Model/Message surface. Final widget composition (column widths, row
 heights, padding) is ui-designer's call — see
-[`../v05-composed-strategies/feature.md#design`](../../../../spec/v1/v05-composed-strategies/feature.md#design).
+[`../v05-composed-strategies/feature.md#design`](../../../../docs/archive/pre-bmad-spec/v1/v05-composed-strategies/feature.md#design).
 
 ## Alternatives considered
 
@@ -66,7 +66,7 @@ heights, padding) is ui-designer's call — see
 
 ## Changelog
 - 2026-04-19 (architect): initial accept. Extracted from
-  `spec/architecture.md` § v0.5 — cockpit strategies panel layout
+  `docs/archive/pre-bmad-spec/architecture.md` § v0.5 — cockpit strategies panel layout
   (Q4) during Phase 1A Session 6 (2026-05-13). Source link
   `features/v05-composed-strategies.md` rewritten to
   `../v05-composed-strategies/feature.md` (post-folder-migration

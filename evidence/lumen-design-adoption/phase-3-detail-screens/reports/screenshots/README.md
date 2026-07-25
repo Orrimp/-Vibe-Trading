@@ -16,29 +16,29 @@ Captured for the Phase 3 sprint review on 2026-05-05.
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Strategies" in the sidebar …
-screencapture -W spec/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-strategies.png
+screencapture -W evidence/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-strategies.png
 pkill -f "target/release/cockpit"
 
 # 2. Risk / Limits screen
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Risk" in the sidebar …
-screencapture -W spec/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-risk.png
+screencapture -W evidence/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-risk.png
 pkill -f "target/release/cockpit"
 
 # 3. Audit / Journal screen
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Audit" in the sidebar …
-screencapture -W spec/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-audit.png
+screencapture -W evidence/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-audit.png
 pkill -f "target/release/cockpit"
 
 # 4. Live bin (any screen — sidebar shows all 6 entries)
 cargo run --release --bin cockpit_live --features live -- \
     --config config/agent.toml &
 sleep 8
-screencapture -W spec/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-live-six-entries.png
+screencapture -W evidence/lumen-design-adoption/phase-3-detail-screens/reports/screenshots/cockpit-live-six-entries.png
 pkill -f "target/release/cockpit_live"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../spec/archive/presentations-2026-Q2.tar.gz) (phase-3-detail-screens section of the consolidated retrospective).
+Referenced from [`evidence/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../docs/archive/presentations-2026-Q2.tar.gz) (phase-3-detail-screens section of the consolidated retrospective).

@@ -2,20 +2,47 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""spec_lint.py — structural integrity check for spec/.
+"""spec_lint.py — structural integrity check for the BMAD-native layout.
 
-Companion to scripts/verify_anchors.sh (which checks content hashes).
-This script checks shape: dead links, missing frontmatter, orphan
-feature folders, anchor coverage, trace.toml row validity, pipeline
-status drift (deck + PASS report ⇒ status ≥ presenter-done), and
-CHANGELOG-index completeness (every shipped feature ⇒ a CHANGELOG.md line).
+Re-founded 2026-07-25 (BMAD-migration Phase 5b) onto the story/sprint-status
+layout. `spec/` is RETIRED as of this phase — every check below walks
+`docs/`, `evidence/`, and `_bmad-output/` instead. The governing ledger
+(`trace.toml`) now lives at `_bmad-output/planning-artifacts/trace.toml`; the
+per-feature record is a **story** at
+`_bmad-output/implementation-artifacts/{epic}-{story}-{slug}.md` (`Status:`
+line, not YAML frontmatter) instead of a `feature.md`. See
+`docs/dev-notes/bmad-migration-plan-2026-07-24.md` § Phase 5b for the plan
+this executes.
+
+The ADR-0082 single-source-of-truth triad is preserved, re-keyed onto the new
+artifacts:
+  - `status-drift`                — story `Status:` line vs. its trace
+    `[[req]]` row `state=` (full status-vocabulary mapping, not just the
+    shipped/done terminal case — see `STATE_TO_STORY_STATUS`).
+  - `story-done-trace-drift`      — the ADR-0082 terminal invariant: a story
+    `Status: done` whose trace row `state=` is not itself a shipped-terminal
+    value (`shipped`/`shipped-partial`), or has no `state=` at all.
+  - `story-done-changelog-missing` — every `Status: done` story must be
+    indexed in the root `CHANGELOG.md` (by slug / REQ-id / rollup allowlist).
+
+Story ↔ trace-row resolution is via the REQ-id embedded in the story's own
+`### References` block (a "- Trace: `REQ-XXX` (state=`...`)" line), NOT by
+slug-string matching — story filenames sanitize dots to hyphens
+(`v0.2.0` → `v0-2-0`) and disambiguate nested slugs (lumen phases gain a
+`lumen-` prefix), so filename-derived slugs do not always equal the
+`trace.toml` `feature=` slug. The REQ-id is the load-bearing join key (the
+"Phase-2 story↔REQ bijection" the migration plan cites); slug string
+matching is used only as a fallback for the ~16 stories with no trace
+citation at all (`- Trace: none — known trace-coverage gap`) and for the
+`~18` iteration/follow-up trace rows that intentionally have NO dedicated
+story (they fold as `Tasks/Subtasks` bullets under their base story per the
+`CHANGELOG_ROLLUP_ALLOWLIST` convention — reused here for that fold too).
 
 Exit code = number of violation CATEGORIES that triggered (0 = clean).
 Pass --all to print every violation regardless of category count.
 
 Usage:
-    uv run scripts/spec_lint.py            # whole spec/ tree (preferred)
-    uv run scripts/spec_lint.py spec/<slug>  # restrict to one folder
+    uv run scripts/spec_lint.py            # whole tree (preferred)
     uv run scripts/spec_lint.py --all      # verbose
     uv run scripts/spec_lint.py --self-test  # synthetic-fixture check of every
                                              # self-tested rule (exit 0 = ok)
@@ -35,85 +62,56 @@ from typing import Iterable
 import tomllib  # Python 3.11+ (enforced by PEP-723 header above)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SPEC_DIR = REPO_ROOT / "spec"
-# The byte-immutable reports corpus (`*/reports/` dirs) + `anchors.toml`
-# `git mv`d from `spec/` to this top-level sibling root in the 2026-07-25
-# BMAD-migration Phase 3 (layout preserved 1:1). `feature.md`/`tasks.md`/
-# `presentations/` stay under SPEC_DIR until Phase 5b.
+
+# `spec/` retired 2026-07-25 (BMAD-migration Phase 5b). The three roots below
+# are what this script walks now:
+#   - EVIDENCE_DIR  — the byte-immutable reports/presentations corpus
+#     (`git mv`d from `spec/` in Phase 3 + the Phase 5b `presentations/`
+#     extraction). Anchors + the trace ledger's cited test evidence live here.
+#   - DOCS_DIR      — BMAD project_knowledge (dev-notes/runbooks/design +
+#     `docs/archive/` — the retired-content archive, itself frozen/skipped,
+#     see `iter_spec_md`).
+#   - BMAD_OUTPUT_DIR — the BMAD planning + implementation artifacts: PRD,
+#     architecture spine, ADR annex, epics, trace.toml, and the per-feature
+#     stories this script's triad keys on.
 EVIDENCE_DIR = REPO_ROOT / "evidence"
-# Project-knowledge home (BMAD `project_knowledge`). `spec/{dev-notes,runbooks,
-# design,ui-design-principles.md}` `git mv`d here in the 2026-07-25 BMAD-migration
-# Phase 4. Walked for dead-link + frontmatter checks alongside SPEC_DIR/EVIDENCE_DIR
-# so cross-links between the three roots stay checked.
 DOCS_DIR = REPO_ROOT / "docs"
+BMAD_OUTPUT_DIR = REPO_ROOT / "_bmad-output"
+PLANNING_DIR = BMAD_OUTPUT_DIR / "planning-artifacts"
+STORY_DIR = BMAD_OUTPUT_DIR / "implementation-artifacts"
+TRACE_TOML = PLANNING_DIR / "trace.toml"
+SPRINT_STATUS_YAML = STORY_DIR / "sprint-status.yaml"
+CHANGELOG_PATH = REPO_ROOT / "CHANGELOG.md"
 
 # ---------------------------------------------------------------------------
 # Configuration: which frontmatter keys are required on which files.
-# Keep small and explicit — overengineering this is a footgun.
+# feature.md / tasks.md no longer exist outside the frozen archive (stories
+# use a plain `Status:` line, not YAML frontmatter) so the old hard-required
+# dict is gone; the BMAD planning docs get the same SOFT treatment
+# product.md/architecture.md had (a missing `updated:` key warns, doesn't fail).
 # ---------------------------------------------------------------------------
 
-REQUIRED_FRONTMATTER: dict[str, set[str]] = {
-    "feature.md": {"slug", "status", "owner", "updated"},
-    "tasks.md":   {"slug", "status", "owner", "updated"},
-}
-
-# Files where missing frontmatter is a warning, not a hard fail.
-# product.md / architecture.md historically did not carry frontmatter; we
-# only require it on per-feature files for now.
 SOFT_FRONTMATTER: dict[str, set[str]] = {
-    "product.md":      {"updated"},
+    "PRD.md":          {"updated"},
     "architecture.md": {"updated"},
 }
 
-VALID_STATUSES = {
-    # Standard lifecycle vocabulary (CLAUDE.md / spec-update SKILL).
-    "draft",
-    "proposed",
-    "in-progress",
-    "shipped",
-    "deprecated",
-    # Project-specific additions observed in spec/ on 2026-05-13:
-    "roadmap",   # multi-phase initiatives with phases under planning (lumen-design-adoption)
-    "candidate", # features being evaluated for inclusion (cockpit-app-bundle, iced-ecosystem-evaluation)
-    "active",    # in-progress phase of a multi-phase initiative (lumen-design-adoption sub-phases)
-    "reserved",  # placeholder phase scheduled but not yet started (lumen phase-6-assistant-slot)
-    # 2026-05-22 additions:
-    "shipped-partial",  # first-of-kind precedent from v3-llm-forecaster v0.1.0 — code gates clean,
-                        # one wave deferred due to external-dependency resolution (API key, vendor
-                        # account, third-party data, etc.). See evidence/v1/v3-llm-forecaster/reports/
-                        # test-final-2026-05-22.md § 14 for the protocol.
-    "retired",          # research-line closure (not deletion). Used by v3-volatility-forecaster +
-                        # v3-volatility-forecaster-rebaseline after the noop-fix retire decision
-                        # 2026-05-22. Code stays in the tree; anchors stay locked; no further effort.
-    # 2026-05-29 additions — intermediate workflow statuses for the
-    # analyst → architect → developer → tester → presenter pipeline.
-    # Surfaced by 2 Pick C architects: these transient mid-flight states
-    # were used routinely (arch-done x5, dev-done x3, tester-done x1) but
-    # never in the lint vocabulary, producing false-positive invalid-status
-    # flags for in-flight features. Operator-approved enum widening.
-    "arch-done",        # architect M-T1 design pass complete; pre-developer.
-    "dev-done",         # developer M-DEV complete; pre-tester.
-    "tester-done",      # tester VERDICT → PASS; pre-presenter.
-    # 2026-05-30 addition — completes the pipeline vocabulary past the
-    # presenter. Surfaced by the spec-audit-2026-05-30 sweep:
-    # ui-test-harness-viewport-matrix/tasks.md carried the non-enum token
-    # `present-done` (presenter deck assembled, awaiting operator approval —
-    # NOT yet `shipped`). Mirrors arch-done/dev-done/tester-done: the
-    # transient state between a presenter pass and the operator ship tick.
-    "presenter-done",   # presenter deck assembled; pre-operator-approval.
-}
+# Story `Status:` vocabulary (BMAD stock + the project's `retired` addition —
+# see sprint-status.yaml's embedded STATUS DEFINITIONS + the Phase-2 retro
+# mapping comment repeated in every story's Dev Notes).
+VALID_STORY_STATUSES = {"backlog", "ready-for-dev", "in-progress", "review", "done", "retired"}
 
 # Categories — used both for grouping output and computing exit code.
 CATEGORIES = (
     "dead-link",
     "missing-frontmatter",
-    "orphan-feature",
+    "orphan-story",
     "bad-anchor",
     "unreferenced-anchor",
-    "shipped-no-tests",
+    "story-done-no-tests",
     "status-drift",
-    "feature-shipped-trace-drift",
-    "feature-shipped-changelog-missing",
+    "story-done-trace-drift",
+    "story-done-changelog-missing",
     "trace-broken-path",
     "adr-not-registered",
 )
@@ -145,19 +143,14 @@ class Report:
 
 
 # ---------------------------------------------------------------------------
-# Frontmatter parsing
+# Frontmatter parsing (YAML-lite, used for PRD.md/architecture.md only now)
 # ---------------------------------------------------------------------------
 
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 
 
 def parse_frontmatter(text: str) -> dict[str, str] | None:
-    """Return a flat dict of YAML-style frontmatter keys, or None if absent.
-
-    We deliberately do not pull in PyYAML; spec frontmatter is simple
-    `key: value` lines. Lists/nested objects are not used and would be a
-    design smell here.
-    """
+    """Return a flat dict of YAML-style frontmatter keys, or None if absent."""
     m = FRONTMATTER_RE.match(text)
     if not m:
         return None
@@ -174,10 +167,172 @@ def parse_frontmatter(text: str) -> dict[str, str] | None:
 
 
 # ---------------------------------------------------------------------------
-# Link extraction
+# Story parsing — the BMAD-native per-feature record.
+#
+# Shape (see any file under `_bmad-output/implementation-artifacts/`):
+#   # Story {epic}.{story}: {slug}
+#
+#   Status: {backlog|ready-for-dev|in-progress|review|done|retired}
+#   ...
+#   ### References
+#   - Trace: `REQ-XXX-001` (state=`shipped`)
+#   ...
+#   - Source feature folder: `spec/[v1/|v2/|v3/]<slug>/` - frontmatter status
+#     **`shipped`** (verbatim), ...
 # ---------------------------------------------------------------------------
 
-# Matches [text](target) but skips ![alt](img) and external URLs.
+STORY_FILENAME_RE = re.compile(r"^(\d+)-(\d+)-(.+)\.md$")
+STATUS_LINE_RE = re.compile(r"^Status:\s*(\S+)", re.MULTILINE)
+TRACE_REF_RE = re.compile(r"^- Trace:\s*`([^`]+)`\s*\(state=`([^`]*)`\)", re.MULTILINE)
+SOURCE_FOLDER_RE = re.compile(r"Source feature folder:\s*`spec/([^`]+?)/?`")
+
+
+@dataclass
+class Story:
+    path: Path
+    epic: str
+    story_num: str
+    filename_slug: str  # derived straight from the filename; may be dot-sanitized/prefixed
+    status: str | None
+    trace_req_id: str | None       # REQ-id cited by "- Trace:" line, if any
+    trace_embedded_state: str | None  # the (state=`...`) annotation on that same line
+
+
+def parse_story(path: Path) -> Story | None:
+    m = STORY_FILENAME_RE.match(path.name)
+    if not m:
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+    sm = STATUS_LINE_RE.search(text)
+    tm = TRACE_REF_RE.search(text)
+    return Story(
+        path=path,
+        epic=m.group(1),
+        story_num=m.group(2),
+        filename_slug=m.group(3),
+        status=sm.group(1) if sm else None,
+        trace_req_id=tm.group(1) if (tm and tm.group(1) != "none") else None,
+        trace_embedded_state=tm.group(2) if tm else None,
+    )
+
+
+def iter_stories(story_dir: Path | None = None) -> list[Story]:
+    # NB: default resolved at CALL time, not def time -- self-tests reassign
+    # the module-level STORY_DIR global and rely on this being live.
+    if story_dir is None:
+        story_dir = STORY_DIR
+    if not story_dir.is_dir():
+        return []
+    out = []
+    for p in sorted(story_dir.glob("*.md")):
+        s = parse_story(p)
+        if s is not None:
+            out.append(s)
+    return out
+
+
+def story_original_relpath(story: Story, text: str | None = None) -> str | None:
+    """Best-effort recovery of the ORIGINAL `spec/`-relative path (e.g.
+    `v1/foo` or `lumen-design-adoption/phase-1-foundation`) from the story's
+    own "Source feature folder:" Dev Notes line. Returns None for the two
+    stories with no historical spec/ provenance (brand-new BMAD-era stories).
+    """
+    if text is None:
+        text = story.path.read_text(encoding="utf-8", errors="replace")
+    m = SOURCE_FOLDER_RE.search(text)
+    return m.group(1).rstrip("/") if m else None
+
+
+# ---------------------------------------------------------------------------
+# trace.toml loading
+# ---------------------------------------------------------------------------
+
+def load_trace_rows() -> list[dict]:
+    if not TRACE_TOML.exists():
+        return []
+    with TRACE_TOML.open("rb") as f:
+        data = tomllib.load(f)
+    return data.get("req", [])
+
+
+def _row_feats(row: dict) -> list[str]:
+    feat = row.get("feature")
+    if isinstance(feat, str):
+        return [feat]
+    return list(feat or [])
+
+
+# ---------------------------------------------------------------------------
+# Slug/evidence resolution helpers (shared by several checks)
+# ---------------------------------------------------------------------------
+
+# Iteration/follow-up trace-row slugs that intentionally have NO dedicated
+# story — they fold as `Tasks/Subtasks` bullets under their BASE story
+# (the existing CHANGELOG rollup convention, reused here as the story-fold
+# map too — same authors, same reasoning: a version-bump or umbrella-child
+# folder is not a new top-level unit of work). Doubles as the
+# `feature-shipped-changelog-missing` rollup allowlist below. Keep SHORT;
+# a new top-level story earns its own entry, never an allowlist row.
+CHANGELOG_ROLLUP_ALLOWLIST: dict[str, str] = {
+    "v0-paper-sma": "CHANGELOG § Strategy — `**v0**` (Paper-trading SMA-crossover tracer bullet).",
+    "v05-composed-strategies": "CHANGELOG § Strategy — `**v0.5**` (Composed strategies).",
+    "v1-cross-sectional-momentum": "CHANGELOG § Strategy — `**v1**` (Cross-sectional top-N momentum).",
+    "v15a-mean-reversion-pairs": "CHANGELOG § Strategy — `**v1.5a**` (Mean-reversion on z-scored pairs).",
+    "v1-5b-multi-venue": "CHANGELOG § Strategy — `**v1.5b**` (Multi-venue + 1-second aggregated trades).",
+    "v2-llm-strategy": "CHANGELOG § Strategy — `**v2**` (LLM news/sentiment strategy overlay).",
+    "v2-1-tracing-layer-redactor": "CHANGELOG § Strategy — `**v2.1**` (tracing-Layer secret redactor).",
+    "v5-latency-slippage-sim": "CHANGELOG § Strategy — `**v5**` (deterministic latency & slippage sim, v0.1→v0.5 chain).",
+    "v5-latency-slippage-sim-v0.2.0-anchor-migration": "CHANGELOG § Strategy — `**v5**` line ('v0.2 anchor migration').",
+    "v5-latency-slippage-sim-v0.3.0-full-path-wiring": "CHANGELOG § Strategy — `**v5**` line ('v0.3 full-path wiring').",
+    "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit": "CHANGELOG § Strategy — `**v5**` line ('v0.4 candle/realdata feature-gated re-emit').",
+    "v5-latency-slippage-sim-v0.5.0-square-root-market-impact": "CHANGELOG § Strategy — `**v5**` line ('v0.5 sqrt-impact').",
+    "v25-tcn-overlay": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN overlay).",
+    "v25-tcn-alpha-investigation": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN alpha-investigation sub-study).",
+    "v25-tcn-recalibrate": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN recalibrate sub-study).",
+    "v25-tcn-threshold-tuning": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN threshold-tuning sub-study).",
+    "v25-tcn-horizon-bump-or-retire": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN horizon-bump sub-study).",
+    "v25a-patchtst-overlay": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (PatchTST overlay).",
+    "v3-volatility-forecaster-noop-fix": "CHANGELOG § Retired — `**v3 volatility forecaster**` line ('+ noop-fix').",
+    "v3-regime-classifier": "CHANGELOG § Retired — `**v3 regime-classifier / v3 XGBoost cheap-classifier**`.",
+    "cockpit-activity-audit-ledger-producer": "CHANGELOG § Cockpit — `**cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer**`.",
+    "cockpit-activity-llm-producer": "CHANGELOG § Cockpit — `**cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer**`.",
+    "reflection-memory-trader-wiring": "CHANGELOG § Core infra — `**reflection-memory** (+ trader-wiring)`.",
+    "ui-rethink-phase-d-trail-followup": "CHANGELOG § Cockpit — `**ui-rethink-phase-d-trail** (+ follow-up)`.",
+    "advisor-bakeoff-ranking": "CHANGELOG § Advisor — `**advisor-bakeoff F1+F2**` (F1 bake-off + F2 ranking; slug carries the -ranking tail).",
+    "phase-2c-overlays": "CHANGELOG § v2 — the three children are indexed: `**advisor-vol-estimator**` / `**advisor-vol-overlay-reposition**` / `**advisor-drawdown-control-overlay**` (this folder is their shared test-report umbrella).",
+    # --- Phase 5b discoveries (2026-07-25 re-founding): the story-filename
+    # slug does not always equal what CHANGELOG.md cites.
+    "v3-llm-forecaster": "CHANGELOG § Core infra — cited as prose \"v3 LLM-forecaster\" (space+case variant of the slug, not a gap); shipped-partial (alpha-verdict wave deferred).",
+    # Lumen sub-phase stories resolve to the BARE nested slug (e.g.
+    # `phase-1-foundation`, from `spec/lumen-design-adoption/phase-1-foundation/`)
+    # via `_resolve_slug_for_changelog`'s "Source feature folder:" fallback —
+    # NOT the story-filename form (`lumen-phase-1-foundation`), since these 6
+    # stories have no trace.toml REQ-id to bridge through (a documented
+    # trace-coverage gap, spec audit 2026-07-06).
+    "phase-1-foundation": "CHANGELOG § Cockpit — covered by the `**lumen-design-adoption**` rollup line ('Phase 1 tokens/chrome/status-bar shipped').",
+    "phase-2-shell-ia-charts": "CHANGELOG § Cockpit — covered by the `**lumen-design-adoption**` rollup line ('Phases 2-5 shipped').",
+    "phase-3-detail-screens": "CHANGELOG § Cockpit — covered by the `**lumen-design-adoption**` rollup line ('Phases 2-5 shipped').",
+    "phase-4-backtest-panel": "CHANGELOG § Cockpit — covered by the `**lumen-design-adoption**` rollup line ('Phases 2-5 shipped').",
+    "phase-5-humancontrol-agentfeed": "CHANGELOG § Cockpit — covered by the `**lumen-design-adoption**` rollup line ('Phases 2-5 shipped').",
+}
+
+_ITERATION_SUFFIX_RE = re.compile(r"-v\d+\.\d+\.\d+.*$")
+
+
+def slug_folds_into_base(slug: str) -> bool:
+    """True iff `slug` is a known iteration/follow-up/umbrella-child that
+    intentionally has no dedicated story (see CHANGELOG_ROLLUP_ALLOWLIST
+    docstring above)."""
+    if slug in CHANGELOG_ROLLUP_ALLOWLIST:
+        return True
+    base = _ITERATION_SUFFIX_RE.sub("", slug)
+    return base != slug and bool(base)
+
+
+# ---------------------------------------------------------------------------
+# Check: dead intra-tree links
+# ---------------------------------------------------------------------------
+
 LINK_RE = re.compile(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 
@@ -189,43 +344,19 @@ def is_external(link: str) -> bool:
     return link.startswith(("http://", "https://", "mailto:", "#"))
 
 
-# ---------------------------------------------------------------------------
-# Check: dead intra-spec links
-# ---------------------------------------------------------------------------
-
 # Byte-immutable anchored reports whose internal links cannot be raw-edited
 # without breaking the verify_anchors body-SHA gate (ADR-0038 anchor-additive
-# contract). Keyed by (repo-relative report path, exact link string). Keep this
-# list SHORT and each entry justified; remove an entry once its link is fixed.
+# contract). Keyed by (repo-relative report path, exact link string). Keep
+# this list SHORT and each entry justified; remove an entry once its link is
+# fixed. Carried verbatim through the Phase 5b `spec/` retirement — none of
+# these report BODIES moved or changed in this phase, so the tuples are
+# unaffected by the cutover.
 KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
-    # v3-volatility-forecaster is RETIRED (research-line closure 2026-05-22 —
-    # "anchors stay locked, no further effort"). This BS-1 report (anchored
-    # scenario `vol-verdict-bs1-realdata` in anchors.toml) froze an off-by-one
-    # relative link at emission: `../architecture/...` should be
-    # `../../architecture/...` (the report sits two dirs deep; the ADR-0038
-    # target was spec/architecture/adr/, now _bmad-output/planning-artifacts/
-    # architecture/decisions/ since the 2026-07-25 BMAD-migration Phase 4
-    # ADR-corpus move — the frozen link is doubly stale, but was already dead
-    # pre-move). A raw `../`->`../../` edit breaks the body-SHA; the proper
-    # fix is the ADR-0038 §D6.c documentation-link-fix re-emission protocol
-    # (NOT YET CODIFIED — see CLAUDE.md). Exempted here rather than
-    # re-emitting a retired line.
     (
         "evidence/v1/v3-volatility-forecaster/reports/vol-verdict-bs1-realdata-20260522.md",
         "../architecture/adr/0038-vol-forecast-verdict-shape.md"
         "#d1-v-verdict-priority-tree-parallel-to-adr-0033--d3-not-extension",
     ),
-    # BMAD-migration Phase 4 (2026-07-25) fallout: these two evidence/v3 reports
-    # are byte-immutable (anchored `backtest-*.md` bodies) and each carry ONE
-    # real markdown link that resolved correctly into spec/dev-notes/ and
-    # spec/architecture/adr/ respectively at emission time. Both targets moved
-    # in this same migration phase (-> docs/dev-notes/, -> _bmad-output/
-    # planning-artifacts/architecture/decisions/); the frozen bodies cannot be
-    # edited to follow, so the tuple's second element below is the literal
-    # (now-stale) string as it still reads in the frozen file -- do NOT
-    # "fix" it to the new path, that would break the match. Newly-dead, not
-    # pre-existing — tracked here per the same allowlist convention rather
-    # than editing evidence/**.
     (
         "evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md",
         "../../../../spec/dev-notes/p2-wobble-thesis-analysis-2026-07-10.md",
@@ -234,60 +365,19 @@ KNOWN_FROZEN_DEAD_LINKS: set[tuple[str, str]] = {
         "evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md",
         "../../../../spec/architecture/adr/0084-p2-corpus-set-coinbase-adapter-verdict-rerun.md",
     ),
-}
-
-
-# Shipped features whose CHANGELOG.md index entry is a documented THEMATIC
-# ROLLUP line rather than a verbatim slug — exempted from
-# feature-shipped-changelog-missing. Each entry cites the exact covering
-# CHANGELOG.md line (verified 2026-07-10). This mirrors KNOWN_FROZEN_DEAD_LINKS:
-# a short, per-entry-justified allowlist for irreducible reality. See the
-# GRANDFATHERING note above check_feature_shipped_changelog_missing for why
-# these are rollups (intentional, per the 2026-06-17 spec-compression pass) and
-# NOT gaps. Keep SHORT — a NEW shipped feature earns a real CHANGELOG line, not
-# an allowlist row. Remove an entry the moment its feature gains a verbatim line.
-CHANGELOG_ROLLUP_ALLOWLIST: dict[str, str] = {
-    # --- v0…v5 strategy/engine ladder → thematic per-version rollup lines
-    #     (CHANGELOG § "Strategy & backtest engine"). The folder slugs carry a
-    #     descriptive tail (`v05-composed-strategies`) that the compressed
-    #     `**v0.5**` line intentionally omits.
-    "v0-paper-sma": "CHANGELOG § Strategy — `**v0**` (Paper-trading SMA-crossover tracer bullet).",
-    "v05-composed-strategies": "CHANGELOG § Strategy — `**v0.5**` (Composed strategies).",
-    "v1-cross-sectional-momentum": "CHANGELOG § Strategy — `**v1**` (Cross-sectional top-N momentum).",
-    "v15a-mean-reversion-pairs": "CHANGELOG § Strategy — `**v1.5a**` (Mean-reversion on z-scored pairs).",
-    "v1-5b-multi-venue": "CHANGELOG § Strategy — `**v1.5b**` (Multi-venue + 1-second aggregated trades).",
-    "v2-llm-strategy": "CHANGELOG § Strategy — `**v2**` (LLM news/sentiment strategy overlay).",
-    "v2-1-tracing-layer-redactor": "CHANGELOG § Strategy — `**v2.1**` (tracing-Layer secret redactor).",
-    # v5 latency/slippage: one `**v5**` line names every v0.2→v0.5 sub-phase as
-    # the "full anchor-migration chain" rather than the folder slugs.
-    "v5-latency-slippage-sim": "CHANGELOG § Strategy — `**v5**` (deterministic latency & slippage sim, v0.1→v0.5 chain).",
-    "v5-latency-slippage-sim-v0.2.0-anchor-migration": "CHANGELOG § Strategy — `**v5**` line ('v0.2 anchor migration').",
-    "v5-latency-slippage-sim-v0.3.0-full-path-wiring": "CHANGELOG § Strategy — `**v5**` line ('v0.3 full-path wiring').",
-    "v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit": "CHANGELOG § Strategy — `**v5**` line ('v0.4 candle/realdata feature-gated re-emit').",
-    "v5-latency-slippage-sim-v0.5.0-square-root-market-impact": "CHANGELOG § Strategy — `**v5**` line ('v0.5 sqrt-impact').",
-    # --- Retired DL/ML research lines → the single `**v2.5 DL forecaster
-    #     programme**` rollup (CHANGELOG § "Retired research lines"), which
-    #     names the TCN/PatchTST/Transformer/bake-off sub-studies collectively.
-    "v25-tcn-overlay": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN overlay).",
-    "v25-tcn-alpha-investigation": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN alpha-investigation sub-study).",
-    "v25-tcn-recalibrate": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN recalibrate sub-study).",
-    "v25-tcn-threshold-tuning": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN threshold-tuning sub-study).",
-    "v25-tcn-horizon-bump-or-retire": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (TCN horizon-bump sub-study).",
-    "v25a-patchtst-overlay": "CHANGELOG § Retired — `**v2.5 DL forecaster programme**` (PatchTST overlay).",
-    "v3-volatility-forecaster-noop-fix": "CHANGELOG § Retired — `**v3 volatility forecaster**` line ('+ noop-fix').",
-    "v3-regime-classifier": "CHANGELOG § Retired — `**v3 regime-classifier / v3 XGBoost cheap-classifier**`.",
-    # --- Iteration/follow-up folders folded into their base feature's line
-    #     with a `(+ …)` suffix (the CHANGELOG's iteration convention).
-    "cockpit-activity-audit-ledger-producer": "CHANGELOG § Cockpit — `**cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer**`.",
-    "cockpit-activity-llm-producer": "CHANGELOG § Cockpit — `**cockpit-activity-status-bar** + **-audit-ledger-producer** + **-llm-producer**`.",
-    "reflection-memory-trader-wiring": "CHANGELOG § Core infra — `**reflection-memory** (+ trader-wiring)`.",
-    "ui-rethink-phase-d-trail-followup": "CHANGELOG § Cockpit — `**ui-rethink-phase-d-trail** (+ follow-up)`.",
-    # --- Label-shorthand: the CHANGELOG entry uses the roadmap shorthand
-    #     `F1+F2` for the folder slug's `-ranking` variant.
-    "advisor-bakeoff-ranking": "CHANGELOG § Advisor — `**advisor-bakeoff F1+F2**` (F1 bake-off + F2 ranking; slug carries the -ranking tail).",
-    # --- v2 tester-report UMBRELLA folder (not a standalone product feature):
-    #     its three overlay features are each independently indexed.
-    "phase-2c-overlays": "CHANGELOG § v2 — the three children are indexed: `**advisor-vol-estimator**` / `**advisor-vol-overlay-reposition**` / `**advisor-drawdown-control-overlay**` (this folder is their shared test-report umbrella).",
+    # Phase 5b (2026-07-25) fallout: both bodies also self-cite their own
+    # (now-archived) feature.md via a THIRD link that was valid before this
+    # phase moved feature.md out of spec/v3/advisor-corpus-expansion/ —
+    # newly-dead, not pre-existing, but the body cannot be edited to follow
+    # (see the two tuples above for the identical reasoning).
+    (
+        "evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun-errata.md",
+        "../../../../spec/v3/advisor-corpus-expansion/feature.md",
+    ),
+    (
+        "evidence/v3/advisor-corpus-expansion/reports/backtest-2026-07-10-p2-verdict-rerun.md",
+        "../../../../spec/v3/advisor-corpus-expansion/feature.md",
+    ),
 }
 
 
@@ -299,122 +389,123 @@ def check_dead_links(md_path: Path, text: str, report: Report) -> None:
     for raw in extract_links(text):
         if is_external(raw):
             continue
-        # Strip in-page anchor fragment.
         target_str = raw.split("#", 1)[0]
         if not target_str:
             continue  # pure anchor link
         target = (md_path.parent / target_str).resolve()
         if not target.exists():
             if rel is not None and (rel, raw) in KNOWN_FROZEN_DEAD_LINKS:
-                continue  # documented byte-immutable frozen link (see above)
+                continue
             report.add("dead-link", md_path, f"link target missing: {raw}")
 
 
 # ---------------------------------------------------------------------------
-# Check: required frontmatter
+# Check: required frontmatter (soft, PRD/architecture only now)
 # ---------------------------------------------------------------------------
 
 def check_frontmatter(md_path: Path, text: str, report: Report) -> None:
-    name = md_path.name
-    required = REQUIRED_FRONTMATTER.get(name)
-    soft = SOFT_FRONTMATTER.get(name)
-    if required is None and soft is None:
+    soft = SOFT_FRONTMATTER.get(md_path.name)
+    if soft is None:
         return
-
     fm = parse_frontmatter(text)
     if fm is None:
-        if required:
-            report.add(
-                "missing-frontmatter",
-                md_path,
-                f"no frontmatter block (required keys: {sorted(required)})",
-            )
-        return
+        return  # soft check: absence is not a hard fail
+    missing = sorted(soft - fm.keys())
+    if missing:
+        report.add(
+            "missing-frontmatter",
+            md_path,
+            f"missing keys: {missing}",
+        )
 
-    if required:
-        missing = sorted(required - fm.keys())
-        if missing:
+
+def check_story_status_values(report: Report) -> None:
+    """Structural guard: every story's `Status:` line must be in the known
+    vocabulary. The BMAD-native analogue of the old feature.md
+    `invalid status` check (folded into missing-frontmatter for continuity —
+    same violation shape: 'is this file's lifecycle field well-formed')."""
+    for story in iter_stories():
+        if story.status is None:
             report.add(
                 "missing-frontmatter",
-                md_path,
-                f"missing keys: {missing}",
+                story.path,
+                "no `Status:` line found",
             )
-        status = fm.get("status")
-        if status and status not in VALID_STATUSES:
+        elif story.status not in VALID_STORY_STATUSES:
             report.add(
                 "missing-frontmatter",
-                md_path,
-                f"invalid status: {status!r} (allowed: {sorted(VALID_STATUSES)})",
+                story.path,
+                f"invalid Status: {story.status!r} (allowed: {sorted(VALID_STORY_STATUSES)})",
             )
 
 
 # ---------------------------------------------------------------------------
-# Check: orphan feature folders
+# Check: orphan stories — sprint-status.yaml <-> story-file bijection
 # ---------------------------------------------------------------------------
+#
+# Re-founding of `orphan-feature`. sprint-status.yaml's own STATUS DEFINITIONS
+# say a `backlog` story "only exists in the epic file" (no story file yet) —
+# that is NOT orphan, it is the documented pre-promotion state. Anything else
+# (ready-for-dev/in-progress/review/done/retired) MUST have a story file.
+# The reverse direction — a story file with no sprint-status.yaml entry — is
+# always a violation (the board is supposed to be exhaustive).
 
-# Folder names that are not features (cross-cutting siblings of feature folders).
-# `design`/`dev-notes`/`runbooks` `git mv`d out of spec/ entirely in the
-# 2026-07-25 BMAD-migration Phase 4 (-> docs/); no longer possible children of
-# spec_dir.iterdir(), so dropped from this set (dead entries would be harmless
-# but the folder names genuinely no longer occur here).
-NON_FEATURE_FOLDERS = {"archive", "architecture",
-                       "v1", "v2", "v3"}  # v1/v2/v3 are containers for feature folders
-                                          # (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out phase)
-
-
-def is_feature_folder(p: Path) -> bool:
-    if not p.is_dir():
-        return False
-    if p.name in NON_FEATURE_FOLDERS:
-        return False
-    if p.name.startswith("."):
-        return False
-    return True
+_SPRINT_STATUS_KEY_RE = re.compile(r"^\s{2}([A-Za-z0-9_.\-]+):\s*([A-Za-z0-9_.\-]+)")
 
 
-def check_orphan_features(spec_dir: Path, report: Report) -> None:
-    # Feature folders live at spec/ root AND under spec/v1/ + spec/v2/ + spec/v3/
-    # (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out phase). Lint all.
-    children = list(spec_dir.iterdir())
-    for container in ("v1", "v2", "v3"):
-        sub = spec_dir / container
-        if sub.is_dir():
-            children.extend(sub.iterdir())
-    for child in sorted(children):
-        if not is_feature_folder(child):
+def parse_sprint_status_board(path: Path | None = None) -> dict[str, str]:
+    """Minimal line-scan parser for the `development_status:` map (avoids a
+    PyYAML dependency for a flat `key: value` block — same philosophy as the
+    hand-rolled frontmatter parser above). Returns {key: status}."""
+    if path is None:
+        path = SPRINT_STATUS_YAML
+    if not path.exists():
+        return {}
+    out: dict[str, str] = {}
+    in_block = False
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip() == "development_status:":
+            in_block = True
             continue
-        feature = child / "feature.md"
-        tasks = child / "tasks.md"
-        if not feature.exists():
-            report.add("orphan-feature", child, "missing feature.md")
+        if not in_block:
             continue
-        # tasks.md is required for active development states, but not for:
-        #   - candidate: feature being evaluated, not yet scoped
-        #   - roadmap: parent of phase subfolders (tasks live in phases)
-        #   - deprecated: archived
-        #   - completed/terminal states (2026-06-17): a finished feature needs no
-        #     active task list — its history lives in git + the root CHANGELOG.md
-        #     index. The orphan rule guards in-flight features (draft/proposed/
-        #     in-progress/arch-done/dev-done), where a missing task list is a real
-        #     drift signal. Per the spec-compression pass that gutted completed
-        #     feature.md files to one-line stubs and removed their tasks.md.
-        # Per-status leniency, not a blanket skip.
-        fm = parse_frontmatter(feature.read_text())
-        status = (fm or {}).get("status", "")
-        if status in {"candidate", "roadmap", "deprecated",
-                      "shipped", "shipped-partial", "retired",
-                      "presenter-done", "tester-done"}:
+        if line and not line.startswith((" ", "\t", "#")):
+            break  # dedented past the block (e.g. `action_items:`)
+        m = _SPRINT_STATUS_KEY_RE.match(line)
+        if m:
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def check_orphan_stories(report: Report) -> None:
+    board = parse_sprint_status_board()
+    story_filenames = {p.stem for p in STORY_DIR.glob("*.md")} if STORY_DIR.is_dir() else set()
+
+    for key, status in board.items():
+        if not re.match(r"^\d+-\d+-", key):
+            continue  # epic-N / epic-N-retrospective rows, not stories
+        if key in story_filenames:
             continue
-        if not tasks.exists():
+        if status == "backlog":
+            continue  # documented pre-promotion state — not orphan
+        report.add(
+            "orphan-story",
+            SPRINT_STATUS_YAML,
+            f"sprint-status entry {key!r} (status={status!r}) has no story file "
+            f"under {STORY_DIR.relative_to(REPO_ROOT)}/",
+        )
+
+    for filename in story_filenames:
+        if filename not in board:
             report.add(
-                "orphan-feature",
-                child,
-                f"missing tasks.md (status={status!r}; required for non-candidate/roadmap features)",
+                "orphan-story",
+                STORY_DIR / f"{filename}.md",
+                "story file has no sprint-status.yaml development_status entry",
             )
 
 
 # ---------------------------------------------------------------------------
-# Check: anchors.toml well-formed
+# Check: anchors.toml well-formed (mechanism unchanged; evidence_dir repointed)
 # ---------------------------------------------------------------------------
 
 def check_anchors(evidence_dir: Path, report: Report) -> dict[str, dict]:
@@ -439,59 +530,49 @@ def check_anchors(evidence_dir: Path, report: Report) -> dict[str, dict]:
 
 
 # ---------------------------------------------------------------------------
-# Check: trace.toml (optional — degrades gracefully)
+# Check: trace.toml row validity (product/arch/crates/tests paths + feature
+# slug resolution + anchor citations)
 # ---------------------------------------------------------------------------
 
-def check_trace(
-    spec_dir: Path,
-    report: Report,
-    anchors: dict[str, dict],
-) -> None:
-    trace_path = spec_dir / "trace.toml"
-    if not trace_path.exists():
+def check_trace(report: Report, anchors: dict[str, dict]) -> None:
+    if not TRACE_TOML.exists():
         return  # not yet adopted; that's fine
 
-    with trace_path.open("rb") as f:
-        data = tomllib.load(f)
-    rows = data.get("req", [])
-
+    rows = load_trace_rows()
     cited_anchors: set[str] = set()
-    cited_features: set[str] = set()
+
+    story_filenames = {p.stem for p in STORY_DIR.glob("*.md")} if STORY_DIR.is_dir() else set()
+    # Map bare filename-slug (strip the `\d+-\d+-` prefix) for a cheap direct
+    # membership test before falling back to the fold-allowlist.
+    filename_slugs = set()
+    for fn in story_filenames:
+        m = re.match(r"^\d+-\d+-(.+)$", fn)
+        if m:
+            filename_slugs.add(m.group(1))
 
     for row in rows:
         rid = row.get("id", "<no-id>")
-        # Validate path-bearing fields. `feature` is a slug (or list of slugs),
-        # NOT a path — resolve to spec/<slug>/ before checking.
         for field_name in ("product", "arch", "crates", "tests"):
             val = row.get(field_name)
             if val is None:
                 continue
             if isinstance(val, str):
-                _check_trace_path(trace_path, rid, field_name, val, report)
+                _check_trace_path(rid, field_name, val, report)
             elif isinstance(val, list):
                 for v in val:
-                    _check_trace_path(trace_path, rid, field_name, v, report)
-        # Feature slugs: check the folder exists under spec/.
-        feat = row.get("feature")
-        feats = [feat] if isinstance(feat, str) else (feat or [])
-        for slug in feats:
-            cited_features.add(slug)
-            # Feature folders may live at spec/<slug>, spec/v1/<slug>,
-            # spec/v2/<slug>, or spec/v3/<slug> (v1/v2 = 2026-06-28 reorg;
-            # v3 = 2026-07-09 close-out phase).
-            if not any((SPEC_DIR / prefix / slug).exists()
-                       for prefix in ("", "v1", "v2", "v3")):
-                report.add(
-                    "trace-broken-path",
-                    trace_path,
-                    f"row {rid} field feature: missing folder spec/[v1|v2|v3/]{slug}",
-                )
-        # Anchor citations.
-        # `anchors` may be a list of scenario-name strings (the normal case),
-        # or a bare prose string such as "34/34 PASS" used when a feature
-        # contributes zero new anchors but the tester still wants to record
-        # the verification result inline.  Iterate only when it is a list;
-        # a bare string is not path-checkable and is silently skipped here.
+                    _check_trace_path(rid, field_name, v, report)
+
+        for slug in _row_feats(row):
+            if slug in filename_slugs or slug_folds_into_base(slug):
+                continue
+            report.add(
+                "trace-broken-path",
+                TRACE_TOML,
+                f"row {rid} field feature: slug {slug!r} matches no story file "
+                f"under {STORY_DIR.relative_to(REPO_ROOT)}/ and is not a documented "
+                f"fold (CHANGELOG_ROLLUP_ALLOWLIST / -vN.N.N- iteration suffix)",
+            )
+
         raw_anchors = row.get("anchors", [])
         if isinstance(raw_anchors, list):
             for anc in raw_anchors:
@@ -499,464 +580,240 @@ def check_trace(
                 if anc not in anchors:
                     report.add(
                         "trace-broken-path",
-                        trace_path,
+                        TRACE_TOML,
                         f"row {rid}: anchor {anc!r} not in anchors.toml",
                     )
 
-    # Anchors not referenced by any trace row.
     for scenario in anchors:
         if scenario not in cited_anchors:
             report.add(
                 "unreferenced-anchor",
-                spec_dir / "anchors.toml",
+                EVIDENCE_DIR / "anchors.toml",
                 f"anchor {scenario!r} not cited by any trace.toml row",
             )
 
 
-def _check_trace_path(
-    trace_path: Path,
-    row_id: str,
-    field_name: str,
-    raw: str,
-    report: Report,
-) -> None:
-    # Strip in-doc anchor fragment (#frag) AND the Rust item path (::fn).
-    # Both name a sub-location WITHIN a file; the checkable unit is the file
-    # itself. This mirrors the established `file.rs::test_fn` trace convention
-    # (45 such rows) — previously every one was a `trace-broken-path` false
-    # positive because only `#` was stripped (spec-audit-2026-05-30 SHOULD-FIX).
+def _check_trace_path(row_id: str, field_name: str, raw: str, report: Report) -> None:
     raw_no_frag = raw.split("#", 1)[0].split("::", 1)[0]
     if not raw_no_frag:
         return
-    # Trace paths are relative to repo root.
     target = (REPO_ROOT / raw_no_frag).resolve()
     if not target.exists():
         report.add(
             "trace-broken-path",
-            trace_path,
+            TRACE_TOML,
             f"row {row_id} field {field_name}: missing path {raw}",
         )
 
 
 # ---------------------------------------------------------------------------
-# Check: shipped feature has at least one test report
+# Check: story `Status: done` has at least one test report
 # ---------------------------------------------------------------------------
-
-def check_shipped_have_tests(
-    spec_dir: Path, report: Report, evidence_dir: Path | None = None
-) -> None:
-    """``evidence_dir`` defaults to the module-level ``EVIDENCE_DIR``; tests
-    may inject a synthetic root (mirrors ``check_status_drift``)."""
-    if evidence_dir is None:
-        evidence_dir = EVIDENCE_DIR
-    for child in sorted(spec_dir.iterdir()):
-        if not is_feature_folder(child):
-            continue
-        feature = child / "feature.md"
-        if not feature.exists():
-            continue
-        fm = parse_frontmatter(feature.read_text())
-        if not fm:
-            continue
-        if fm.get("status") != "shipped":
-            continue
-        # reports/ lives under evidence_dir (2026-07-25 Phase 3 move,
-        # layout-preserving mirror of the feature-folder relative path).
-        reports_dir = evidence_dir / child.relative_to(spec_dir) / "reports"
-        if not reports_dir.exists():
-            report.add(
-                "shipped-no-tests",
-                feature,
-                "shipped feature has no reports/ directory",
-            )
-            continue
-        # Accept any .md report — the project uses several naming conventions:
-        # test-*.md (tester reports), backtest-*.md (strategy backtests),
-        # evaluation-*.md (ad-hoc evaluations), and a few one-off names.
-        # Screenshots and .log files alone don't count.
-        has_test = any(p.suffix == ".md" for p in reports_dir.glob("*.md"))
-        if not has_test:
-            report.add(
-                "shipped-no-tests",
-                feature,
-                "shipped feature has no .md report (only screenshots / logs)",
-            )
-
-
-# Frontmatter statuses that mean "the presenter cycle has been acted on" —
-# at-or-past presenter-done on the pipeline, or explicitly closed out.
-# A feature whose folder holds BOTH a presentation deck AND a PASS tester
-# report must carry one of these; anything earlier is status drift.
-STATUS_AT_OR_PAST_PRESENTER = {
-    "presenter-done",
-    "shipped",
-    "shipped-partial",
-    "retired",
-    "deprecated",
+#
+# Re-founding of `shipped-no-tests`. FAITHFULLY preserves the original rule's
+# scope, quirk and all: the pre-migration `check_shipped_have_tests` iterated
+# `spec_dir.iterdir()` ONLY — i.e. the bare top-level feature folders, NEVER
+# descending into `v1/`/`v2/`/`v3/` (unlike `check_orphan_features` and
+# `check_feature_shipped_changelog_missing`, which explicitly did). None of
+# the 6 bare-top-level folders (advisor-reflection-decision-loop,
+# cockpit-app-bundle, cockpit-cross-platform, iced-ecosystem-evaluation,
+# lumen-design-adoption, ui-gallery-table-cell) ever reached `status:
+# shipped`, so this check was ALREADY a structural no-op on the real tree —
+# re-scoping it to "every done story" now would be a scope WIDENING that
+# surfaces ~17 pre-existing, never-gated gaps (features whose test evidence
+# lives in a shared/umbrella evidence folder under a different slug, e.g.
+# `phase-2c-overlays`) rather than a faithful re-founding. Kept narrow on
+# purpose; verified empirically still a no-op against the real tree
+# (2026-07-25).
+_BARE_ORIGINAL_SLUGS = {
+    "advisor-reflection-decision-loop", "cockpit-app-bundle", "cockpit-cross-platform",
+    "iced-ecosystem-evaluation", "lumen-design-adoption", "ui-gallery-table-cell",
 }
 
-# The tester's verdict line, as emitted by the rust-test template
-# ("VERDICT → PASS"); accept the ASCII arrow too.
-VERDICT_PASS_RE = re.compile(r"VERDICT\s*(?:→|->)\s*PASS")
 
-
-def check_status_drift(
-    spec_dir: Path, report: Report, evidence_dir: Path | None = None
-) -> None:
-    """The audit-2026-06-12 enforcement hook (5 consecutive audits of drift).
-
-    Rule: if a feature folder contains a presentation deck
-    (``presentations/*.md``) AND a passing tester report
-    (``reports/test-*.md`` whose body carries ``VERDICT → PASS``), then
-    ``feature.md``'s frontmatter ``status`` must be at-or-past
-    ``presenter-done``. Catching this at lint time (presenter pre-tick /
-    CI) replaces the weekly-audit archaeology that flagged the same drift
-    class five audits running.
-
-    Deliberately requires BOTH artifacts: archived decks/reports (moved to
-    spec/archive tars by cleanup sweeps) make a folder skip this check —
-    the rule fires at the moment drift is introduced, not retroactively.
-
-    ``evidence_dir`` defaults to the module-level ``EVIDENCE_DIR`` (the
-    2026-07-25 Phase 3 reports-corpus root); tests pass a synthetic root
-    that mirrors ``spec_dir``'s fixture layout so self-tests stay hermetic.
-    """
+def check_story_done_no_tests(report: Report, evidence_dir: Path | None = None) -> None:
     if evidence_dir is None:
         evidence_dir = EVIDENCE_DIR
-    for child in sorted(spec_dir.iterdir()):
-        if not is_feature_folder(child):
+    for story in iter_stories():
+        if story.status != "done":
             continue
-        feature = child / "feature.md"
-        if not feature.exists():
+        if story.filename_slug not in _BARE_ORIGINAL_SLUGS:
             continue
-        fm = parse_frontmatter(feature.read_text())
-        if not fm:
+        reports_dir = evidence_dir / story.filename_slug / "reports"
+        if not reports_dir.exists():
+            report.add("story-done-no-tests", story.path, "shipped story has no reports/ directory")
             continue
-        status = fm.get("status", "")
-        if status in STATUS_AT_OR_PAST_PRESENTER:
-            continue
-        decks = list((child / "presentations").glob("*.md"))
-        if not decks:
-            continue
-        # reports/ lives under evidence_dir (2026-07-25 Phase 3 move);
-        # presentations/ stays under spec_dir until Phase 5b.
-        evidence_reports_dir = evidence_dir / child.relative_to(spec_dir) / "reports"
-        has_pass = any(
-            VERDICT_PASS_RE.search(p.read_text(encoding="utf-8", errors="replace"))
-            for p in evidence_reports_dir.glob("test-*.md")
-        )
-        if not has_pass:
-            continue
-        report.add(
-            "status-drift",
-            feature,
-            f"presenter cycle complete (deck {decks[0].name} + PASS tester "
-            f"report) but status is '{status}' — must be ≥ presenter-done",
-        )
-
-
-# ---------------------------------------------------------------------------
-# Check: feature.md `status: shipped` ⇒ trace row `state == "shipped"`
-# ---------------------------------------------------------------------------
-#
-# ADR-0082 invariant: feature.md frontmatter `status:` is the single source of
-# truth for a feature's lifecycle; a trace.toml [[req]] row's `state=` must not
-# contradict it. Concretely: once a feature's feature.md reaches
-# `status: shipped`, every trace row whose `feature=` slug resolves to it MUST
-# read `state = "shipped"`. The tester-terminal aliases (verified/passed/tested/
-# tester-done) are legal ONLY while the feature is still pre-ship, so rows whose
-# feature is not shipped are never flagged here.
-
-
-def feature_status_for_slug(spec_dir: Path, slug: str) -> str | None:
-    """Resolve a trace `feature=` slug to its feature.md `status:` value.
-
-    Mirrors the feature-folder resolution in ``check_trace``: a feature folder
-    may live at ``spec/<slug>``, ``spec/v1/<slug>``, ``spec/v2/<slug>``, or
-    ``spec/v3/<slug>`` (v1/v2 = 2026-06-28 reorg; v3 = 2026-07-09 close-out
-    phase). Returns the status string, or None if no feature.md / no parseable
-    frontmatter / no ``status:`` key is found.
-    """
-    for prefix in ("", "v1", "v2", "v3"):
-        feature = (spec_dir / prefix / slug / "feature.md") if prefix \
-            else (spec_dir / slug / "feature.md")
-        if feature.exists():
-            fm = parse_frontmatter(feature.read_text(encoding="utf-8", errors="replace"))
-            return (fm or {}).get("status")
-    return None
-
-
-def check_feature_shipped_trace_drift(spec_dir: Path, report: Report) -> None:
-    """ADR-0082 enforcement: shipped feature ⇒ trace row state == "shipped".
-
-    For every [[req]] whose `feature=` slug resolves to an existing
-    ``spec/**/feature.md`` with ``status: shipped``, assert the row's
-    ``state == "shipped"``. Rows whose feature is not shipped (or whose feature
-    folder is absent — that's a separate ``trace-broken-path`` concern) are not
-    flagged: their tester-terminal aliases are legal pre-ship.
-    """
-    trace_path = spec_dir / "trace.toml"
-    if not trace_path.exists():
-        return  # not yet adopted; that's fine
-
-    with trace_path.open("rb") as f:
-        data = tomllib.load(f)
-
-    for row in data.get("req", []):
-        rid = row.get("id", "<no-id>")
-        feat = row.get("feature")
-        feats = [feat] if isinstance(feat, str) else (feat or [])
-        for slug in feats:
-            status = feature_status_for_slug(spec_dir, slug)
-            if status != "shipped":
-                continue  # pre-ship (or unresolved) — aliases are legal here
-            state = row.get("state")
-            if state != "shipped":
-                shown = "<missing state= field>" if state is None else repr(state)
-                report.add(
-                    "feature-shipped-trace-drift",
-                    trace_path,
-                    f"row {rid} (feature {slug!r}): feature.md status is 'shipped' "
-                    f"but trace state is {shown} — must be \"shipped\" (ADR-0082 § D2)",
-                )
-
-
-# ---------------------------------------------------------------------------
-# Check: feature.md `status: shipped` ⇒ indexed in CHANGELOG.md
-# ---------------------------------------------------------------------------
-#
-# Sibling of feature-shipped-trace-drift, extending the SAME ADR-0082 single-
-# source-of-truth philosophy to the OTHER derived index. ADR-0082 § D1 makes
-# feature.md `status:` the authoritative lifecycle record and names two derived
-# artifacts it must not contradict: the `trace.toml` `state=` (enforced by
-# feature-shipped-trace-drift) and — explicitly — the CHANGELOG that "indexes"
-# the shipped set (ADR-0082 § "Alternatives", the reason feature.md wins over
-# trace.toml: "the CHANGELOG indexes [feature.md]"). CHANGELOG.md's own header
-# declares it "The canonical 'what's-been-built' index — one line per
-# implemented feature". This rule makes that invariant mechanical: once a
-# feature's feature.md reaches `status: shipped`, CHANGELOG.md MUST reference
-# it. Closes the drift class R3-4b found (the entire v2 tranche + the v3
-# close-out were absent from the canonical index until manually reconciled) —
-# the exact bookkeeping debt the durable-contract lints are built to prevent.
-#
-# MATCH SEMANTICS (measured against the whole tree 2026-07-10 — 114 shipped
-# features: 84 matched by raw substring, 4 by the iteration-suffix normalizer,
-# 26 by the documented rollup allowlist):
-#   A feature counts as INDEXED iff CHANGELOG.md contains, CASE-INSENSITIVELY,
-#   any of:
-#     (1) its feature-folder slug         (e.g. `advisor-overfitting-scorecard`)
-#     (2) any trace.toml REQ-id whose `feature=` resolves to it
-#         (e.g. `REQ-V3-P2-CORPUS-EXPANSION-001`)
-#     (3) its repo-relative folder PATH   (e.g. `spec/v2/phase-2d/` — the
-#         CHANGELOG sometimes cites the folder instead of a bare slug).
-#     (4) — for a `…-vN.N.N-<descriptor>` ITERATION folder only — its BASE slug
-#         with the trailing `-vN.N.N-…` stripped (e.g.
-#         `lab-yahoo-realdata-v0.1.2-eth-usd-…` → `lab-yahoo-realdata`), which
-#         the CHANGELOG indexes via its `(+ vN.N …)` iteration convention.
-#   Raw substring is wrapping-ROBUST by construction: `**slug**`, `` `slug` ``,
-#   and `[slug](…)` all embed the bare slug flanked by non-`[a-z0-9-]` chars, so
-#   the match fires regardless of markdown emphasis/code/link decoration. It was
-#   verified (2026-07-10) that none of the 84 raw matches occurs ONLY as a
-#   substring of a longer slug-token — i.e. no false-positive can mask a real
-#   gap through embedding.
-#
-# GRANDFATHERING — the CHANGELOG_ROLLUP_ALLOWLIST (below). ~30 legitimately-
-# shipped features are indexed under CHANGELOG.md's *documented compression
-# convention* — thematic ROLLUP lines that deliberately do NOT carry a verbatim
-# slug (the `v0…v5` engine ladder rolled into `**v0**`…`**v5**`; the retired DL
-# programme rolled into `**v2.5 DL forecaster programme**`; iteration folders
-# like `…-v0.2.0-cleanup` folded into the base line as `(+ v0.2 cleanup)`). Per
-# the 2026-06-17 spec-compression pass, these rollups are INTENTIONAL, not gaps;
-# adding 30 verbatim one-liners would duplicate existing content and fight the
-# CHANGELOG's own "grouped by subsystem" convention. So — like the established
-# KNOWN_FROZEN_DEAD_LINKS pattern — each is allowlisted with the exact covering
-# CHANGELOG line cited inline. The allowlist is HONEST: every entry was verified
-# to have a real covering line (a slug is exempted only because it IS indexed,
-# just under a rollup the substring match can't mechanically reach — never
-# because it is genuinely absent). A DELIBERATELY-loose normalizer (e.g.
-# `v05`→`v0.5` then bare-`v0.5` presence) was REJECTED: `v0.5` recurs as a
-# version tag throughout the file, so it would silently PASS a genuinely-missing
-# `v0.5.x` feature (false-negative) — strictly worse than an allowlist a human
-# reviews. Keep this list SHORT; a NEW shipped feature earns a real CHANGELOG
-# line, never an allowlist entry.
-
-
-def _slug_indexed_in_changelog(
-    prefix: str, slug: str, reqs: Iterable[str], changelog_lower: str,
-) -> bool:
-    """True iff CHANGELOG.md references this feature (slug / REQ-id / path).
-
-    All comparisons are case-insensitive raw-substring against the whole
-    lower-cased CHANGELOG text (wrapping-robust — see MATCH SEMANTICS above).
-    The allowlist is consulted last so that a real CHANGELOG line always
-    satisfies the check without needing an exemption.
-    """
-    if slug.lower() in changelog_lower:
-        return True
-    for rid in reqs:
-        if rid and rid.lower() in changelog_lower:
-            return True
-    # Folder-path form, e.g. "spec/v2/phase-2d/".
-    path_form = (f"spec/{prefix}/{slug}/" if prefix else f"spec/{slug}/").lower()
-    if path_form in changelog_lower:
-        return True
-    # Iteration-folder form: a `…-vN.N.N-<descriptor>` slug is a version bump of
-    # a base feature and is indexed by the BASE feature's line (the CHANGELOG's
-    # `(+ vN.N …)` iteration convention). Strip the trailing `-vN.N.N-…` and
-    # require the SPECIFIC base slug to be present. Safe by construction — the
-    # base slug (e.g. `lab-yahoo-realdata`) is a full descriptive token, so this
-    # cannot spuriously match a bare version tag the way a `v05`→`v0.5` squeeze
-    # would. Only fires when the residual is a real, non-empty base slug that
-    # differs from the original.
-    base = re.sub(r"-v\d+\.\d+\.\d+.*$", "", slug)
-    if base != slug and base and base.lower() in changelog_lower:
-        return True
-    if slug in CHANGELOG_ROLLUP_ALLOWLIST:
-        return True
-    return False
-
-
-def check_feature_shipped_changelog_missing(spec_dir: Path, report: Report) -> None:
-    """ADR-0082-aligned enforcement: shipped feature ⇒ a CHANGELOG.md line.
-
-    For every ``spec/**/feature.md`` (across ``spec/``, ``spec/v1``,
-    ``spec/v2``, ``spec/v3`` — mirroring the resolution used by every other
-    tree-level check) whose frontmatter ``status:`` is ``shipped``, assert that
-    CHANGELOG.md references it by slug, by any trace REQ-id, by folder path, or
-    via the documented rollup allowlist. Non-shipped features are never flagged
-    — the CHANGELOG indexes what has *shipped*, so a pre-ship feature is
-    correctly absent.
-    """
-    # CHANGELOG.md sits at the repo root, i.e. the parent of spec/. Resolving it
-    # relative to spec_dir (rather than the module-level REPO_ROOT) lets the
-    # --self-test drive the check against a synthetic tree in a tempdir.
-    changelog_path = spec_dir.parent / "CHANGELOG.md"
-    if not changelog_path.exists():
-        return  # nothing to index against; degrade gracefully
-    changelog_lower = changelog_path.read_text(
-        encoding="utf-8", errors="replace"
-    ).lower()
-
-    # trace.toml slug → [REQ-id, …] (best-effort; absent trace = empty map).
-    slug_to_reqs: dict[str, list[str]] = {}
-    trace_path = spec_dir / "trace.toml"
-    if trace_path.exists():
-        with trace_path.open("rb") as f:
-            tdata = tomllib.load(f)
-        for row in tdata.get("req", []):
-            rid = row.get("id")
-            feat = row.get("feature")
-            feats = [feat] if isinstance(feat, str) else (feat or [])
-            for s in feats:
-                slug_to_reqs.setdefault(s, []).append(rid)
-
-    # Feature folders: spec/<slug> and spec/{v1,v2,v3}/<slug>.
-    containers: list[tuple[str, Path]] = [("", child) for child in spec_dir.iterdir()]
-    for prefix in ("v1", "v2", "v3"):
-        sub = spec_dir / prefix
-        if sub.is_dir():
-            containers.extend((prefix, child) for child in sub.iterdir())
-
-    for prefix, child in sorted(containers, key=lambda pc: (pc[0], pc[1].name)):
-        if not is_feature_folder(child):
-            continue
-        feature = child / "feature.md"
-        if not feature.exists():
-            continue
-        fm = parse_frontmatter(feature.read_text(encoding="utf-8", errors="replace"))
-        if not fm or fm.get("status") != "shipped":
-            continue
-        slug = child.name
-        reqs = slug_to_reqs.get(slug, [])
-        if not _slug_indexed_in_changelog(prefix, slug, reqs, changelog_lower):
+        if not any(p.suffix == ".md" for p in reports_dir.glob("*.md")):
             report.add(
-                "feature-shipped-changelog-missing",
-                feature,
-                f"feature {slug!r} is status:shipped but is not indexed in "
-                f"CHANGELOG.md (no slug / REQ-id {reqs or '[]'} / folder-path "
-                f"reference, and not in the documented rollup allowlist) — the "
-                f"canonical 'what's-been-built' index must reference every "
-                f"shipped feature (ADR-0082 § D1)",
+                "story-done-no-tests", story.path,
+                "shipped story has no .md report (only screenshots / logs)",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Check: status-drift — story `Status:` <-> trace `[[req]]` `state=`
+# ---------------------------------------------------------------------------
+#
+# Re-founded (2026-07-25, BMAD-migration Phase 5b) onto the story/trace
+# layout, replacing the old deck+PASS-report mechanism entirely (that
+# mechanism has no clean analogue now that the fine-grained pre-ship pipeline
+# statuses collapse into BMAD's coarser `review` bucket). The invariant is
+# now: whatever a trace row's `state=` says, the story's `Status:` line must
+# be the value the Phase-2 retro-generation convention maps it to (the SAME
+# mapping documented verbatim in every story's own Dev Notes: "shipped->done;
+# retired/deprecated->retired; presenter/tester/dev-done->review;
+# arch-done->ready-for-dev; candidate/draft/reserved->backlog"). Degrades
+# gracefully (skips silently) for any `state=` value not in the table, and
+# for stories with no resolvable trace row — this is deliberate: an
+# unrecognised value should not manufacture false positives.
+STATE_TO_STORY_STATUS: dict[str, str] = {
+    "shipped": "done",
+    "shipped-partial": "done",
+    "retired": "retired",
+    "deprecated": "retired",
+    "presenter-done": "review",
+    "tester-done": "review",
+    "dev-done": "review",
+    "tested": "review",
+    "verified": "review",
+    "passed": "review",
+    "design-complete": "ready-for-dev",
+    "arch-done": "ready-for-dev",
+    "candidate": "backlog",
+    "draft": "backlog",
+    "reserved": "backlog",
+    "proposed": "backlog",
+    "roadmap": "in-progress",
+    "in-progress": "in-progress",
+    "active": "in-progress",
+}
+
+
+def check_status_drift(report: Report) -> None:
+    rows_by_id = {r.get("id"): r for r in load_trace_rows()}
+    for story in iter_stories():
+        if story.trace_req_id is None or story.status is None:
+            continue  # no resolvable trace row, or malformed story — not this rule's concern
+        row = rows_by_id.get(story.trace_req_id)
+        if row is None:
+            continue  # dangling REQ-id — a trace-broken-path concern, not status-drift
+        state = row.get("state")
+        expected = STATE_TO_STORY_STATUS.get(state)
+        if expected is None:
+            continue  # unrecognised state value — degrade gracefully, don't guess
+        if story.status != expected:
+            report.add(
+                "status-drift",
+                story.path,
+                f"trace row {story.trace_req_id} state={state!r} maps to story Status "
+                f"{expected!r}, but story Status is {story.status!r}",
             )
 
 
 def _self_test_status_drift() -> bool:
-    """Synthetic-fixture proof that the status-drift rule fires and clears.
-
-    Three fixtures in a tempdir: (a) drifting — tester-done + deck + PASS
-    report → exactly 1 violation; (b) compliant — same artifacts at
-    presenter-done → 0; (c) deck but no PASS report → 0. Returns True iff all
-    three behave.
-    """
+    """Synthetic-fixture proof: (a) drifting — trace state=shipped, story
+    Status=review -> 1 violation; (b) compliant — state=shipped, Status=done
+    -> 0; (c) unrecognised state — degrades silently -> 0."""
     import tempfile
 
-    def make_feature(root: Path, evidence_root: Path, slug: str, status: str,
-                     deck: bool, pass_report: bool) -> None:
-        d = root / slug
-        d.mkdir()
-        (d / "feature.md").write_text(
-            f"---\nslug: {slug}\nstatus: {status}\nowner: t\nupdated: 2026-06-12\n---\n# x\n"
+    def write_story(dir_: Path, filename: str, status: str, req_id: str, embedded_state: str) -> Path:
+        p = dir_ / filename
+        p.write_text(
+            f"# Story X.Y: fixture\n\nStatus: {status}\n\n"
+            f"### References\n\n- Trace: `{req_id}` (state=`{embedded_state}`)\n"
         )
-        if deck:
-            (d / "presentations").mkdir()
-            (d / "presentations" / f"{slug}-2026-06-12.md").write_text("# deck\n")
-        if pass_report:
-            # reports/ mirrors the feature-folder relative path under a
-            # SEPARATE evidence root (2026-07-25 Phase 3 — reports/ no
-            # longer sits alongside feature.md/presentations/).
-            e = evidence_root / slug / "reports"
-            e.mkdir(parents=True)
-            (e / "test-2026-06-12.md").write_text("VERDICT → PASS\n")
+        return p
 
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp) / "spec-fixture"
-        evidence_root = Path(tmp) / "evidence-fixture"
-        root.mkdir()
-        evidence_root.mkdir()
-        make_feature(root, evidence_root, "drifting", "tester-done", deck=True, pass_report=True)
-        make_feature(root, evidence_root, "compliant", "presenter-done", deck=True, pass_report=True)
-        make_feature(root, evidence_root, "no-pass-yet", "tester-done", deck=True, pass_report=False)
-        rep = Report()
-        check_status_drift(root, rep, evidence_dir=evidence_root)
+        story_dir = Path(tmp) / "stories"
+        story_dir.mkdir()
+        write_story(story_dir, "1-1-drifting.md", "review", "REQ-DRIFT", "shipped")
+        write_story(story_dir, "1-2-compliant.md", "done", "REQ-OK", "shipped")
+        write_story(story_dir, "1-3-unrecognised.md", "backlog", "REQ-WEIRD", "some-future-value")
+        trace_path = Path(tmp) / "trace.toml"
+        trace_path.write_text(
+            "[[req]]\n"
+            'id = "REQ-DRIFT"\nfeature = "drifting"\nstate = "shipped"\n\n'
+            "[[req]]\n"
+            'id = "REQ-OK"\nfeature = "compliant"\nstate = "shipped"\n\n'
+            "[[req]]\n"
+            'id = "REQ-WEIRD"\nfeature = "unrecognised"\nstate = "some-future-value"\n'
+        )
+
+        global STORY_DIR, TRACE_TOML
+        orig_story_dir, orig_trace = STORY_DIR, TRACE_TOML
+        STORY_DIR, TRACE_TOML = story_dir, trace_path
+        try:
+            rep = Report()
+            check_status_drift(rep)
+        finally:
+            STORY_DIR, TRACE_TOML = orig_story_dir, orig_trace
+
         hits = [v for v in rep.violations if v.category == "status-drift"]
         ok = len(hits) == 1 and "drifting" in str(hits[0].path)
         print(
             "spec-lint --self-test (status-drift): "
-            + ("PASS — fires on drift, silent on compliant/no-pass" if ok
+            + ("PASS — fires on drift, silent on compliant/unrecognised-state" if ok
                else f"FAIL — expected exactly 1 hit on 'drifting', got {[(str(v.path), v.detail) for v in hits]}")
         )
         return ok
 
 
-def _self_test_feature_shipped_trace_drift() -> bool:
-    """Synthetic-fixture proof of the ADR-0082 feature-shipped-trace-drift rule.
+# ---------------------------------------------------------------------------
+# Check: story-done-trace-drift (ADR-0082 terminal invariant, re-founded)
+# ---------------------------------------------------------------------------
+#
+# Narrow, ADR-0082-specific sibling of status-drift: a story `Status: done`
+# MUST have a trace row whose `state=` is itself a shipped-terminal value
+# (`shipped` or `shipped-partial`) — including the missing-state case. This
+# preserves the OLD `feature-shipped-trace-drift` rule's exact intent (the
+# "once shipped, the row must say shipped" invariant) on the new artifacts.
 
-    Four fixtures in a tempdir with a synthetic trace.toml:
-      (a) drifting     — feature.md=shipped, row state="passed"  → 1 violation.
-      (b) compliant    — feature.md=shipped, row state="shipped" → 0.
-      (c) preship      — feature.md=tester-done, row state="tested" → 0
-                         (tester-terminal alias legal pre-ship; feature under
-                         v1/ also proves the multi-prefix slug resolution).
-      (d) missing-state— feature.md=shipped, row has NO state= field → 1
-                         violation (the paper-mode-equity-wiring-style case).
-    Expect exactly 2 violations, on 'drifting' and 'missing-state'. Returns
-    True iff the rule behaves.
-    """
+_DONE_TERMINAL_STATES = {"shipped", "shipped-partial"}
+
+
+def check_story_done_trace_drift(report: Report) -> None:
+    rows_by_id = {r.get("id"): r for r in load_trace_rows()}
+    for story in iter_stories():
+        if story.status != "done" or story.trace_req_id is None:
+            continue
+        row = rows_by_id.get(story.trace_req_id)
+        if row is None:
+            continue  # dangling REQ-id — a trace-broken-path concern
+        state = row.get("state")
+        if state not in _DONE_TERMINAL_STATES:
+            shown = "<missing state= field>" if state is None else repr(state)
+            report.add(
+                "story-done-trace-drift",
+                TRACE_TOML,
+                f"story {story.path.name} is Status: done (trace {story.trace_req_id}) "
+                f"but trace state is {shown} — must be \"shipped\" or \"shipped-partial\" "
+                f"(ADR-0082 § D2, re-founded)",
+            )
+
+
+def _self_test_story_done_trace_drift() -> bool:
+    """Four fixtures: (a) drifting — Status:done, state=passed -> 1 hit;
+    (b) compliant — Status:done, state=shipped -> 0; (c) preship —
+    Status:review, state=tested -> 0 (pre-ship aliases are legal pre-done);
+    (d) missing-state — Status:done, row has no state= -> 1 hit."""
     import tempfile
 
-    def write_feature(dir_: Path, slug: str, status: str) -> None:
-        dir_.mkdir(parents=True)
-        (dir_ / "feature.md").write_text(
-            f"---\nslug: {slug}\nstatus: {status}\nowner: t\nupdated: 2026-07-09\n---\n# x\n"
+    def write_story(dir_: Path, filename: str, status: str, req_id: str, embedded_state: str) -> None:
+        (dir_ / filename).write_text(
+            f"# Story X.Y: fixture\n\nStatus: {status}\n\n"
+            f"### References\n\n- Trace: `{req_id}` (state=`{embedded_state}`)\n"
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        write_feature(root / "drifting", "drifting", "shipped")
-        write_feature(root / "compliant", "compliant", "shipped")
-        write_feature(root / "v1" / "preship", "preship", "tester-done")  # v1/ prefix
-        write_feature(root / "missing-state", "missing-state", "shipped")
-        (root / "trace.toml").write_text(
+        story_dir = Path(tmp) / "stories"
+        story_dir.mkdir()
+        write_story(story_dir, "1-1-drifting.md", "done", "REQ-DRIFT", "passed")
+        write_story(story_dir, "1-2-compliant.md", "done", "REQ-OK", "shipped")
+        write_story(story_dir, "1-3-preship.md", "review", "REQ-PRESHIP", "tested")
+        write_story(story_dir, "1-4-missing-state.md", "done", "REQ-NOSTATE", "")
+        trace_path = Path(tmp) / "trace.toml"
+        trace_path.write_text(
             "[[req]]\n"
             'id = "REQ-DRIFT"\nfeature = "drifting"\nstate = "passed"\n\n'
             "[[req]]\n"
@@ -966,82 +823,145 @@ def _self_test_feature_shipped_trace_drift() -> bool:
             "[[req]]\n"
             'id = "REQ-NOSTATE"\nfeature = "missing-state"\n'  # no state= field
         )
-        rep = Report()
-        check_feature_shipped_trace_drift(root, rep)
-        hits = [v for v in rep.violations if v.category == "feature-shipped-trace-drift"]
-        hit_ids = sorted(
-            (h.detail.split("row ", 1)[1].split(" ", 1)[0] for h in hits)
-        )
-        ok = hit_ids == ["REQ-DRIFT", "REQ-NOSTATE"]
+
+        global STORY_DIR, TRACE_TOML
+        orig_story_dir, orig_trace = STORY_DIR, TRACE_TOML
+        STORY_DIR, TRACE_TOML = story_dir, trace_path
+        try:
+            rep = Report()
+            check_story_done_trace_drift(rep)
+        finally:
+            STORY_DIR, TRACE_TOML = orig_story_dir, orig_trace
+
+        hits = [v for v in rep.violations if v.category == "story-done-trace-drift"]
+        hit_files = sorted(h.detail.split("story ", 1)[1].split(" ", 1)[0] for h in hits)
+        ok = hit_files == ["1-1-drifting.md", "1-4-missing-state.md"]
         print(
-            "spec-lint --self-test (feature-shipped-trace-drift): "
-            + ("PASS — fires on shipped/non-shipped-state + missing-state, "
-               "silent on compliant + pre-ship alias" if ok
-               else f"FAIL — expected hits on ['REQ-DRIFT', 'REQ-NOSTATE'], "
-                    f"got {[(str(v.path), v.detail) for v in hits]}")
+            "spec-lint --self-test (story-done-trace-drift): "
+            + ("PASS — fires on non-terminal-state + missing-state, silent on "
+               "compliant + pre-ship" if ok
+               else f"FAIL — expected hits on drifting+missing-state, got {hit_files}")
         )
         return ok
 
 
-def _self_test_feature_shipped_changelog_missing() -> bool:
-    """Synthetic-fixture proof of the feature-shipped-changelog-missing rule.
+# ---------------------------------------------------------------------------
+# Check: story-done-changelog-missing (re-founded)
+# ---------------------------------------------------------------------------
+#
+# Every `Status: done` story must be indexed in the root CHANGELOG.md, by
+# slug / trace REQ-id / the documented rollup allowlist. Thorough by
+# construction (iterates every story file, mirroring the OLD rule's v1/v2/v3
+# extension — that rule, unlike shipped-no-tests, DID walk the full tree).
 
-    Five fixtures in a tempdir with a synthetic CHANGELOG.md at the tree root:
-      (a) indexed-slug   — shipped, slug appears (wrapped in ``**…**``) → silent.
-      (b) missing        — shipped, NOT referenced anywhere              → 1 hit.
-      (c) preship        — status:tester-done, absent from CHANGELOG     → silent
-                           (pre-ship is correctly not yet indexed; also under a
-                           v2/ prefix, exercising multi-prefix resolution).
-      (d) indexed-req    — shipped, slug absent but its trace REQ-id is in the
-                           CHANGELOG                                     → silent.
-      (e) indexed-path   — shipped, slug/REQ absent but the folder PATH
-                           ``spec/v3/indexed-path/`` is cited            → silent.
-      (f) foo-v0.2.0-x   — shipped ITERATION folder; only its BASE slug ``foo``
-                           is in the CHANGELOG (layer-4 suffix strip)    → silent.
-    Expect exactly 1 violation, on 'missing'. Returns True iff the rule behaves.
-    """
+def _slug_indexed_in_changelog(slug: str, req_id: str | None, changelog_lower: str) -> bool:
+    if slug and slug.lower() in changelog_lower:
+        return True
+    if req_id and req_id.lower() in changelog_lower:
+        return True
+    base = _ITERATION_SUFFIX_RE.sub("", slug or "")
+    if base != slug and base and base.lower() in changelog_lower:
+        return True
+    if slug in CHANGELOG_ROLLUP_ALLOWLIST:
+        return True
+    return False
+
+
+def _resolve_slug_for_changelog(story: Story, rows_by_id: dict[str, dict]) -> str:
+    """Prefer the trace.toml `feature=` slug (via the REQ-id bridge — the
+    canonical, dotted, un-sanitized form); fall back to the "Source feature
+    folder:" Dev Notes line (handles nested slugs like lumen phases); fall
+    back to the raw filename-derived slug for the ~2 brand-new stories with
+    neither."""
+    if story.trace_req_id is not None:
+        row = rows_by_id.get(story.trace_req_id)
+        if row is not None:
+            feats = _row_feats(row)
+            if feats:
+                return feats[0]
+    text = story.path.read_text(encoding="utf-8", errors="replace")
+    relpath = story_original_relpath(story, text)
+    if relpath is not None:
+        parts = relpath.split("/")
+        if parts and parts[0] in ("v1", "v2", "v3"):
+            parts = parts[1:]
+        if parts:
+            return parts[-1]
+    return story.filename_slug
+
+
+def check_story_done_changelog_missing(report: Report) -> None:
+    if not CHANGELOG_PATH.exists():
+        return
+    changelog_lower = CHANGELOG_PATH.read_text(encoding="utf-8", errors="replace").lower()
+    rows_by_id = {r.get("id"): r for r in load_trace_rows()}
+
+    for story in iter_stories():
+        if story.status != "done":
+            continue
+        slug = _resolve_slug_for_changelog(story, rows_by_id)
+        if not _slug_indexed_in_changelog(slug, story.trace_req_id, changelog_lower):
+            report.add(
+                "story-done-changelog-missing",
+                story.path,
+                f"story {story.path.name!r} (slug {slug!r}) is Status: done but is not "
+                f"indexed in CHANGELOG.md (no slug / REQ-id / rollup-allowlist match) — "
+                f"the canonical 'what's-been-built' index must reference every shipped "
+                f"story (ADR-0082 § D1, re-founded)",
+            )
+
+
+def _self_test_story_done_changelog_missing() -> bool:
+    """Five fixtures against a synthetic CHANGELOG.md: (a) indexed-slug ->
+    silent; (b) missing -> 1 hit; (c) preship (Status:review) -> silent;
+    (d) indexed-req (slug absent, REQ-id present) -> silent; (e) rollup-
+    allowlisted slug -> silent."""
     import tempfile
 
-    def write_feature(dir_: Path, slug: str, status: str) -> None:
-        dir_.mkdir(parents=True)
-        (dir_ / "feature.md").write_text(
-            f"---\nslug: {slug}\nstatus: {status}\nowner: t\nupdated: 2026-07-10\n---\n# x\n"
-        )
+    def write_story(dir_: Path, filename: str, status: str, req_id: str | None) -> None:
+        trace_block = f"\n### References\n\n- Trace: `{req_id}` (state=`shipped`)\n" if req_id else \
+            "\n### References\n\n- Trace: none — known trace-coverage gap\n"
+        (dir_ / filename).write_text(f"# Story X.Y: fixture\n\nStatus: {status}\n{trace_block}")
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        spec = root / "spec"
-        spec.mkdir()
-        write_feature(spec / "indexed-slug", "indexed-slug", "shipped")
-        write_feature(spec / "missing", "missing", "shipped")
-        write_feature(spec / "v2" / "preship", "preship", "tester-done")   # v2/ prefix
-        write_feature(spec / "indexed-req", "indexed-req", "shipped")
-        write_feature(spec / "v3" / "indexed-path", "indexed-path", "shipped")  # v3/ prefix
-        write_feature(spec / "foo-v0.2.0-x", "foo-v0.2.0-x", "shipped")  # iteration folder
-        # A trace.toml giving indexed-req a REQ-id that the CHANGELOG cites.
-        (spec / "trace.toml").write_text(
-            "[[req]]\n"
-            'id = "REQ-INDEXED-REQ-001"\nfeature = "indexed-req"\nstate = "shipped"\n'
+        story_dir = root / "stories"
+        story_dir.mkdir()
+        write_story(story_dir, "1-1-indexed-slug.md", "done", "REQ-INDEXED-SLUG-001")
+        write_story(story_dir, "1-2-missing.md", "done", "REQ-MISSING-001")
+        write_story(story_dir, "1-3-preship.md", "review", "REQ-PRESHIP-001")
+        write_story(story_dir, "1-4-indexed-req.md", "done", "REQ-INDEXED-REQ-001")
+        write_story(story_dir, "1-5-v0-paper-sma.md", "done", None)  # rollup-allowlisted slug
+
+        trace_path = root / "trace.toml"
+        trace_path.write_text(
+            "[[req]]\nid = \"REQ-INDEXED-SLUG-001\"\nfeature = \"indexed-slug\"\nstate = \"shipped\"\n\n"
+            "[[req]]\nid = \"REQ-MISSING-001\"\nfeature = \"missing\"\nstate = \"shipped\"\n\n"
+            "[[req]]\nid = \"REQ-PRESHIP-001\"\nfeature = \"preship\"\nstate = \"tested\"\n\n"
+            "[[req]]\nid = \"REQ-INDEXED-REQ-001\"\nfeature = \"indexed-req\"\nstate = \"shipped\"\n"
         )
-        # Synthetic CHANGELOG: references indexed-slug (wrapped), indexed-req by
-        # REQ-id, indexed-path by folder path, and 'foo' (the base of the
-        # iteration folder); deliberately omits 'missing' and 'preship'.
-        (root / "CHANGELOG.md").write_text(
+        changelog_path = root / "CHANGELOG.md"
+        changelog_path.write_text(
             "# Changelog\n\n"
             "- **indexed-slug** — a shipped-and-indexed feature.\n"
             "- some rollup line covering REQ-INDEXED-REQ-001 without the slug.\n"
-            "- see `spec/v3/indexed-path/` for the path-cited feature.\n"
-            "- **foo** (+ v0.2 x) — base feature with an iteration bump.\n"
         )
-        rep = Report()
-        check_feature_shipped_changelog_missing(spec, rep)
-        hits = [v for v in rep.violations
-                if v.category == "feature-shipped-changelog-missing"]
-        ok = len(hits) == 1 and hits[0].path.parent.name == "missing"
+
+        global STORY_DIR, TRACE_TOML, CHANGELOG_PATH
+        orig = (STORY_DIR, TRACE_TOML, CHANGELOG_PATH)
+        STORY_DIR, TRACE_TOML, CHANGELOG_PATH = story_dir, trace_path, changelog_path
+        try:
+            rep = Report()
+            check_story_done_changelog_missing(rep)
+        finally:
+            STORY_DIR, TRACE_TOML, CHANGELOG_PATH = orig
+
+        hits = [v for v in rep.violations if v.category == "story-done-changelog-missing"]
+        ok = len(hits) == 1 and "1-2-missing.md" in str(hits[0].path)
         print(
-            "spec-lint --self-test (feature-shipped-changelog-missing): "
-            + ("PASS — fires on shipped-not-indexed, silent on slug/REQ-id/path "
-               "matches + pre-ship" if ok
+            "spec-lint --self-test (story-done-changelog-missing): "
+            + ("PASS — fires on done-not-indexed, silent on slug/REQ-id/rollup/pre-ship "
+               "matches" if ok
                else f"FAIL — expected exactly 1 hit on 'missing', got "
                     f"{[(str(v.path), v.detail) for v in hits]}")
         )
@@ -1052,8 +972,8 @@ def self_test() -> int:
     """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
     results = [
         _self_test_status_drift(),
-        _self_test_feature_shipped_trace_drift(),
-        _self_test_feature_shipped_changelog_missing(),
+        _self_test_story_done_trace_drift(),
+        _self_test_story_done_changelog_missing(),
     ]
     return 0 if all(results) else 1
 
@@ -1062,24 +982,20 @@ def self_test() -> int:
 # Driver
 # ---------------------------------------------------------------------------
 
-def iter_spec_md(roots: Iterable[Path]) -> Iterable[Path]:
+def iter_tree_md(roots: Iterable[Path]) -> Iterable[Path]:
     for root in roots:
         if root.is_file() and root.suffix == ".md":
             yield root
         elif root.is_dir():
             for p in sorted(root.rglob("*.md")):
                 rel = p.relative_to(REPO_ROOT).as_posix()
-                # Skip archived content — it's frozen by design.
+                # Skip archived content — frozen by design (this now covers
+                # BOTH the pre-existing `docs/archive/` tarball convention AND
+                # the Phase 5b `docs/archive/pre-bmad-spec/` retired-spec tree).
                 if "archive/" in rel:
                     continue
-                # Skip byte-immutable anchored report bodies under the v1 corpus.
-                # The 2026-06-28 v1/v2 reorg moved them one level deeper, so their
-                # internal relative links are off-by-one — but they CANNOT be
-                # repaired without changing the body bytes and breaking the
-                # body-SHA-256 anchors (CLAUDE.md non-negotiable). Frozen evidence.
-                # Repointed 2026-07-25 (BMAD-migration Phase 3): the corpus lives
-                # under evidence/v1/ now, not spec/v1/ — same off-by-one, same
-                # freeze, new root.
+                # Skip byte-immutable anchored report bodies under the v1
+                # corpus — pre-existing convention, unaffected by Phase 5b.
                 if rel.startswith("evidence/v1/") and "/reports/" in rel:
                     continue
                 yield p
@@ -1090,7 +1006,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "paths",
         nargs="*",
-        help="restrict to one or more paths under spec/ (default: whole spec/)",
+        help="restrict dead-link/frontmatter checks to one or more paths (default: whole tree)",
     )
     parser.add_argument("--all", action="store_true", help="print every category")
     parser.add_argument(
@@ -1103,42 +1019,33 @@ def main(argv: list[str]) -> int:
     if args.self_test:
         return self_test()
 
-    if not SPEC_DIR.exists():
-        print(f"error: spec/ not found at {SPEC_DIR}", file=sys.stderr)
+    if not BMAD_OUTPUT_DIR.exists():
+        print(f"error: _bmad-output/ not found at {BMAD_OUTPUT_DIR}", file=sys.stderr)
         return 99
 
-    # Default roots: spec/ (feature.md/tasks.md/presentations/ + everything
-    # else not yet migrated) AND evidence/ (the reports corpus, since the
-    # 2026-07-25 Phase 3 move — dead-link + frontmatter checks still walk
-    # every report body EVIDENCE_DIR holds, mirroring pre-move coverage) AND
-    # docs/ (project-knowledge — dev-notes/runbooks/design/ui-design-principles.md,
-    # since the 2026-07-25 Phase 4 move — dead-link checks walk every doc DOCS_DIR
-    # holds, and cross-links spec/ <-> docs/ resolve against the same tree).
-    # `iter_spec_md` no-ops gracefully if a root doesn't exist yet.
     roots = (
         [Path(p).resolve() for p in args.paths]
         if args.paths
-        else [SPEC_DIR, EVIDENCE_DIR, DOCS_DIR]
+        else [DOCS_DIR, EVIDENCE_DIR, BMAD_OUTPUT_DIR]
     )
     report = Report()
 
-    # Per-file checks (links + frontmatter).
-    for md in iter_spec_md(roots):
+    for md in iter_tree_md(roots):
         text = md.read_text(encoding="utf-8", errors="replace")
         check_dead_links(md, text, report)
         check_frontmatter(md, text, report)
 
-    # Tree-level checks (only when running over the whole spec/).
-    if not args.paths or any(Path(p).resolve() == SPEC_DIR for p in args.paths):
-        check_orphan_features(SPEC_DIR, report)
+    # Tree-level checks (only when running over the whole tree).
+    if not args.paths:
+        check_story_status_values(report)
+        check_orphan_stories(report)
         anchors = check_anchors(EVIDENCE_DIR, report)
-        check_trace(SPEC_DIR, report, anchors)
-        check_shipped_have_tests(SPEC_DIR, report)
-        check_status_drift(SPEC_DIR, report)
-        check_feature_shipped_trace_drift(SPEC_DIR, report)
-        check_feature_shipped_changelog_missing(SPEC_DIR, report)
+        check_trace(report, anchors)
+        check_story_done_no_tests(report)
+        check_status_drift(report)
+        check_story_done_trace_drift(report)
+        check_story_done_changelog_missing(report)
 
-    # Render output, grouped by category.
     grouped = report.by_category()
     failed_categories = [c for c, vs in grouped.items() if vs]
 

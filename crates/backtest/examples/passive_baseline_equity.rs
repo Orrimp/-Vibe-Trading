@@ -29,7 +29,7 @@
 //!
 //! Optional flags (defaults match the sweep harness):
 //!   --data-root   <path>   (default: data/binance)
-//!   --out-dir     <path>   (default: spec/runbooks/artifacts/passive-baseline-2026-06-08)
+//!   --out-dir     <path>   (default: docs/runbooks/artifacts/passive-baseline-2026-06-08)
 //!   --year        <2023|2024|all>  (default: all — runs both years)
 
 // This probe uses float arithmetic throughout the statistical/CSV layer
@@ -75,7 +75,7 @@ const INITIAL_CAPITAL: Decimal = dec!(100_000);
 const DAILY_STRIDE: usize = 24;
 
 // ── Default artifact output directory ─────────────────────────────────────────
-const DEFAULT_OUT_DIR: &str = "spec/runbooks/artifacts/passive-baseline-2026-06-08";
+const DEFAULT_OUT_DIR: &str = "docs/runbooks/artifacts/passive-baseline-2026-06-08";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main

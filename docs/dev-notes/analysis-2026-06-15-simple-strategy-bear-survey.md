@@ -28,9 +28,9 @@ updated: 2026-06-15
 This dev-note records the confirmed numbers from the tester's PASS
 ([`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../../evidence/v1/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md),
 verdict PASS, commit `4585cf9`) and closes the loop on feature
-[`simple-strategy-bear-survey`](../../spec/v1/simple-strategy-bear-survey/feature.md) (AC-BS.7,
+[`simple-strategy-bear-survey`](../../docs/archive/pre-bmad-spec/v1/simple-strategy-bear-survey/feature.md) (AC-BS.7,
 task T-BS.14). It is the `findings`-status companion to the un-anchored `#[ignore]`
-harness -- there is no anchored `spec/*/reports/backtest-*.md` (UN-ANCHORED per
+harness -- there is no anchored `docs/archive/pre-bmad-spec/*/reports/backtest-*.md` (UN-ANCHORED per
 feature section Anchoring / D-BS.4). It is the direct successor to the 2026-06-15
 overfit-guard ([`analysis-2026-06-15-simple-strategy-overfit-guard.md`](analysis-2026-06-15-simple-strategy-overfit-guard.md)),
 generalising its survey-identifies -> bootstrap-guards shape from 2 hand-picked
@@ -289,11 +289,11 @@ winner is path-robust.**" That is a far stronger statement than the overfit-guar
 - **Decision rule (frozen, applied AS-IS):** [`robustness-decision-rule-2026-05-30.md`](robustness-decision-rule-2026-05-30.md) section 0
   (`sharpe.p5 < 0 => FRAGILE` -- the ruler; the 2021-22 numbers are scored against
   it, not the reverse).
-- **Feature + pre-registration:** [`simple-strategy-bear-survey/feature.md`](../../spec/v1/simple-strategy-bear-survey/feature.md)
+- **Feature + pre-registration:** [`simple-strategy-bear-survey/feature.md`](../../docs/archive/pre-bmad-spec/v1/simple-strategy-bear-survey/feature.md)
   (section Design D-BS.2 frozen predicate + cap, section Scope cap).
 - **Confirmed numbers:** [`test-2026-06-15-1200-simple-strategy-bear-survey.md`](../../evidence/v1/simple-strategy-bear-survey/reports/test-2026-06-15-1200-simple-strategy-bear-survey.md)
   (tester PASS, commit `4585cf9`).
-- **Corpus consumed:** [`binance-corpus-expansion/feature.md`](../../spec/v1/binance-corpus-expansion/feature.md)
+- **Corpus consumed:** [`binance-corpus-expansion/feature.md`](../../docs/archive/pre-bmad-spec/v1/binance-corpus-expansion/feature.md)
   (`data/binance-2122/`, pin `4f390622`).
 - **Baseline thesis:** [`passive-baseline.md`](../runbooks/passive-baseline.md).
 
@@ -314,5 +314,5 @@ winner is path-robust.**" That is a far stronger statement than the overfit-guar
   does not prove no strategy can ever work). Cross-referenced the overfit-guard
   predecessor + the section 0 rule. Amended the passive-baseline runbook section
   Real-data validation (a dated 2026-06-15 bear-survey note strengthening the
-  same-day overfit-guard revision). UN-ANCHORED -- no spec/*/reports/ file, no
+  same-day overfit-guard revision). UN-ANCHORED -- no docs/archive/pre-bmad-spec/*/reports/ file, no
   anchors.toml row.

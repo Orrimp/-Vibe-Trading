@@ -14,23 +14,23 @@ Captured for the Phase 4 sprint review on 2026-05-06.
 ```bash
 # 1. Viewer · full backtest report
 cargo run --release --bin viewer \
-    spec/v0-paper-sma/reports/backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md &
+    evidence/v1/v0-paper-sma/reports/backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md &
 sleep 4
-screencapture -W spec/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/viewer-full-report.png
+screencapture -W evidence/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/viewer-full-report.png
 pkill -f "target/release/viewer"
 
 # 2. Viewer · drawdown-rich report
 cargo run --release --bin viewer \
-    spec/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md &
+    evidence/v1/v05-composed-strategies/reports/backtest-20260420-152017-btc-2023-1m-rsi-reversion.md &
 sleep 4
-screencapture -W spec/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/viewer-drawdown.png
+screencapture -W evidence/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/viewer-drawdown.png
 pkill -f "target/release/viewer"
 
 # 3. Cockpit · Strategies-detail sparkline (fixtures)
 cargo run --release --bin cockpit --features fixtures &
 sleep 4
 # … click "Strategies" in the sidebar, then click any strategy row …
-screencapture -W spec/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/cockpit-strategies-sparkline.png
+screencapture -W evidence/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/cockpit-strategies-sparkline.png
 pkill -f "target/release/cockpit"
 
 # 4. Live cockpit · Strategies-detail sparkline
@@ -38,8 +38,8 @@ cargo run --release --bin cockpit_live --features live -- \
     --config config/agent.toml &
 sleep 8
 # … click "Strategies", then click a strategy row …
-screencapture -W spec/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/cockpit-live-strategies-sparkline.png
+screencapture -W evidence/lumen-design-adoption/phase-4-backtest-panel/reports/screenshots/cockpit-live-strategies-sparkline.png
 pkill -f "target/release/cockpit_live"
 ```
 
-Referenced from [`spec/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../spec/archive/presentations-2026-Q2.tar.gz) (phase-4-backtest-panel section of the consolidated retrospective).
+Referenced from [`evidence/lumen-design-adoption/presentations/lumen-design-adoption-2026-05-04-to-05-08.md`](../../../../../docs/archive/presentations-2026-Q2.tar.gz) (phase-4-backtest-panel section of the consolidated retrospective).

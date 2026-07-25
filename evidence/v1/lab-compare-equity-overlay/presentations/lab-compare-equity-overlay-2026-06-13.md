@@ -21,7 +21,7 @@ You can now pick two saved Lab backtests and see both equity curves drawn on one
 
 ## Why
 
-`lab-run-save-compare` (the previous ship) delivered run → save → compare-**KPIs** plus per-run real equity curves, but deferred one half of its asked scope: the **two-run equity OVERLAY** — two runs on one chart for a real visual side-by-side. The overlay drawing widget was already render-proven; the missing piece was a data plumbing + selection-UX wiring job. The block was that the Compare cache stored only a bare equity tail with no timestamps, so it could not feed the timestamped overlay chart. `lab-run-save-compare` already added a timestamped, CSV-backed series loader; this feature threads that series into the cache cell and into the overlay. See [feature.md](../feature.md) § Why and § What was blocking it.
+`lab-run-save-compare` (the previous ship) delivered run → save → compare-**KPIs** plus per-run real equity curves, but deferred one half of its asked scope: the **two-run equity OVERLAY** — two runs on one chart for a real visual side-by-side. The overlay drawing widget was already render-proven; the missing piece was a data plumbing + selection-UX wiring job. The block was that the Compare cache stored only a bare equity tail with no timestamps, so it could not feed the timestamped overlay chart. `lab-run-save-compare` already added a timestamped, CSV-backed series loader; this feature threads that series into the cache cell and into the overlay. See [feature.md](../../../../docs/archive/pre-bmad-spec/v1/lab-compare-equity-overlay/feature.md) § Why and § What was blocking it.
 
 ## What you can do now
 

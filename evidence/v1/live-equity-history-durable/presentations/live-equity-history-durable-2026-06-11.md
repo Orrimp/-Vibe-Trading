@@ -45,7 +45,7 @@ exec-side follow-on to make the series durable. This feature is that follow-on â
 it writes the equity the agent already computes to the store it already runs
 (the audit ledger), gated to paper/live so research replay can't pollute it, and
 reads it back on boot. See
-[`spec/live-equity-history-durable/feature.md`](../feature.md) and
+[`spec/live-equity-history-durable/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/live-equity-history-durable/feature.md) and
 [ADR-0052](../../../../_bmad-output/planning-artifacts/architecture/decisions/0052-durable-live-equity-series.md).
 
 ## What you can do now

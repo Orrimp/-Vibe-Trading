@@ -35,7 +35,7 @@ alpha** — the well-known "backtest-vs-live gap" that kills paper-to-
 live transitions.
 
 The feature brief at
-[`spec/v5-latency-slippage-sim/feature.md`](../../../../spec/v5-latency-slippage-sim/feature.md)
+[`docs/archive/pre-bmad-spec/v5-latency-slippage-sim/feature.md`](../../../../docs/archive/pre-bmad-spec/v5-latency-slippage-sim/feature.md)
 introduces deterministic, optional, default-zero simulation of both
 frictions. This ADR codifies the 5 sub-decisions (D1-D5) that determine
 how the simulator is wired without breaking the 34 SHA-256 anchors in
@@ -255,9 +255,9 @@ the anchor invariant. The seeded sub-stream is non-negotiable.
 
 ## Cross-references
 
-- Feature brief — [`spec/v5-latency-slippage-sim/feature.md`](../../../../spec/v5-latency-slippage-sim/feature.md)
-- Tasks — [`spec/v5-latency-slippage-sim/tasks.md`](../../../../spec/v5-latency-slippage-sim/tasks.md)
-- Trace row — `REQ-V5-LATENCY-SLIPPAGE-001` in [`spec/trace.toml`](../../../../spec/trace.toml)
+- Feature brief — [`docs/archive/pre-bmad-spec/v5-latency-slippage-sim/feature.md`](../../../../docs/archive/pre-bmad-spec/v5-latency-slippage-sim/feature.md)
+- Tasks — [`docs/archive/pre-bmad-spec/v5-latency-slippage-sim/tasks.md`](../../../../docs/archive/pre-bmad-spec/v5-latency-slippage-sim/tasks.md)
+- Trace row — `REQ-V5-LATENCY-SLIPPAGE-001` in [`_bmad-output/planning-artifacts/trace.toml`](../../../../_bmad-output/planning-artifacts/trace.toml)
 - Pattern reference for e2e divergence test —
   `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs`
 - Cross-feature precedent (audit additive variant) — ADR-0042

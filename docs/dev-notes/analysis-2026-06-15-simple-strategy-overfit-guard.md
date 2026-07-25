@@ -23,9 +23,9 @@ updated: 2026-06-15
 This dev-note records the confirmed numbers from the tester's PASS
 ([`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../../evidence/v1/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md),
 verdict PASS, commit `3d843fa`) and closes the loop on feature
-[`simple-strategy-overfit-guard`](../../spec/v1/simple-strategy-overfit-guard/feature.md) (AC-OG.5,
+[`simple-strategy-overfit-guard`](../../docs/archive/pre-bmad-spec/v1/simple-strategy-overfit-guard/feature.md) (AC-OG.5,
 task T-OG.13). It is the `findings`-status companion to the un-anchored `#[ignore]`
-harness — there is no anchored `spec/*/reports/backtest-*.md` (UN-ANCHORED per feature
+harness — there is no anchored `docs/archive/pre-bmad-spec/*/reports/backtest-*.md` (UN-ANCHORED per feature
 § 3 / D-OG.4).
 
 ---
@@ -167,7 +167,7 @@ follow-on the feature § 7 names, not a conclusion of this ship.
   down-market hedge qualifier is downgraded to *path-fragile*; a one-line pointer to this
   note was added there.
 - **Decision rule (frozen, applied AS-IS):** [`robustness-decision-rule-2026-05-30.md`](robustness-decision-rule-2026-05-30.md) § 0.
-- **Feature + pre-registration:** [`simple-strategy-overfit-guard/feature.md`](../../spec/v1/simple-strategy-overfit-guard/feature.md)
+- **Feature + pre-registration:** [`simple-strategy-overfit-guard/feature.md`](../../docs/archive/pre-bmad-spec/v1/simple-strategy-overfit-guard/feature.md)
   (§ 0 method, § 2 deliverable, D-OG.5 scope cap).
 - **Confirmed numbers:** [`test-2026-06-15-1200-simple-strategy-overfit-guard.md`](../../evidence/v1/simple-strategy-overfit-guard/reports/test-2026-06-15-1200-simple-strategy-overfit-guard.md)
   (tester PASS, commit `3d843fa`).
@@ -183,4 +183,4 @@ follow-on the feature § 7 names, not a conclusion of this ship.
   per-symbol-year level (D-OG.5) — does NOT generalize to down-markets in general.
   Revised the survey's Finding 1 (one-line pointer) and amended the passive-baseline
   runbook's Real-data-validation section (ship-passive base now UNQUALIFIED on this
-  evidence). UN-ANCHORED — no spec/*/reports/ file, no anchors.toml row.
+  evidence). UN-ANCHORED — no docs/archive/pre-bmad-spec/*/reports/ file, no anchors.toml row.

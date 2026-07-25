@@ -11,7 +11,7 @@ superseded-by: none
 
 ## Context
 
-Feature [`binance-corpus-expansion`](../../../../spec/v1/binance-corpus-expansion/feature.md)
+Feature [`binance-corpus-expansion`](../../../../docs/archive/pre-bmad-spec/v1/binance-corpus-expansion/feature.md)
 adds **2021–2022 hourly** OHLCV for the existing 10-symbol Binance universe to
 firm up the down-market hedge finding from the
 [2026-06-13 real-data survey](../../../../docs/dev-notes/realdata-simple-strategy-survey-2026-06-13.md)
@@ -157,7 +157,7 @@ strongest anchor guarantee is the one a reviewer cannot forget to check).
   — `--interval` / `--out` / `--emit-revision-manifest` CLI; writes the flat
   `<out>/<SYMBOL>/<YEAR>/<MM>.parquet` layout; zero code change needed for any
   timeframe under this convention.
-- [`spec/binance-corpus-expansion/feature.md`](../../../../spec/v1/binance-corpus-expansion/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/binance-corpus-expansion/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/binance-corpus-expansion/feature.md)
   § Open questions Q1 — the question this ADR resolves.
 
 ## Changelog
@@ -175,4 +175,4 @@ strongest anchor guarantee is the one a reviewer cannot forget to check).
   under D1. Daily v0.2 is unblocked as a new suffixed sibling root with no
   reader change. 119/119 anchors stay byte-identical (no anchor SHA in scope; no
   anchor-mutation ADR required). Resolves Q1 of
-  `spec/binance-corpus-expansion/feature.md`.
+  `docs/archive/pre-bmad-spec/v1/binance-corpus-expansion/feature.md`.

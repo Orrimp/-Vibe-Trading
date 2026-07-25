@@ -32,9 +32,9 @@ accumulator at
 is **not** replicated.
 
 The
-[`v25a-patchtst-overlay v0.1.0`](../../../../spec/v1/v25a-patchtst-overlay/feature.md)
+[`v25a-patchtst-overlay v0.1.0`](../../../../docs/archive/pre-bmad-spec/v1/v25a-patchtst-overlay/feature.md)
 feature.md R1-R10 + the architect M-T1 decomp at
-[`v25a-patchtst-overlay/decomp.md`](../../../../spec/v1/v25a-patchtst-overlay/decomp.md)
+[`v25a-patchtst-overlay/decomp.md`](../../../../docs/archive/pre-bmad-spec/v1/v25a-patchtst-overlay/decomp.md)
 spell the build-out. This ADR is the single citable contract for
 PatchTST that the developer code-reviews against, that the tester gates
 against at M-FINAL, and that v2.5b vanilla Transformer + v2.6 bake-off
@@ -445,7 +445,7 @@ code change in `combine()` is an SHA risk for the existing 4
 - `crates/forecast/checkpoints/anchors/patchtst-bs1-<sha>.{safetensors,metadata.json}` (Wave B output; LFS-tracked).
 - `crates/strategy/src/patchtst_overlay_momentum.rs` + `patchtst_sync.rs` (~250 + ~80 LoC; sibling strategy + sync wrapper).
 - `crates/backtest/src/scenarios/patchtst_overlay_weights.rs` (~180 LoC; sibling backtest scenario).
-- `spec/v25a-patchtst-overlay/reports/{forecast-distribution-patchtst-bs1-realdata,top10-2023-fy-patchtst-overlay-realdata,sharpe-comparison-patchtst-bs1-realdata}-20260521.md` (Wave D outputs).
+- `evidence/v1/v25a-patchtst-overlay/reports/{forecast-distribution-patchtst-bs1-realdata,top10-2023-fy-patchtst-overlay-realdata,sharpe-comparison-patchtst-bs1-realdata}-20260521.md` (Wave D outputs).
 
 ### Modified files
 
@@ -457,7 +457,7 @@ code change in `combine()` is an SHA risk for the existing 4
 - `crates/strategy/src/lib.rs` (+2 lines): 2 new `pub mod` decls.
 - `crates/backtest/src/scenarios/mod.rs` (~5 lines): additive scenario enum arm.
 - `_bmad-output/planning-artifacts/architecture/decisions/README.md` (+2 lines): registry row for ADR-0036 + changelog entry.
-- `spec/anchors.toml` (+2 anchor rows at end-of-file; 28 originals byte-immutable).
+- `evidence/anchors.toml` (+2 anchor rows at end-of-file; 28 originals byte-immutable).
 
 ### Cross-phase implications
 
@@ -552,9 +552,9 @@ code-review check at D3 closes this loop.
 - [ADR-0035](0035-tcn-sigma-train-recalibration.md) § D1 — σ_train
   post-training derivation cross-phase contract (D3 of this ADR
   cites verbatim).
-- [`spec/v25a-patchtst-overlay/feature.md`](../../../../spec/v1/v25a-patchtst-overlay/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25a-patchtst-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25a-patchtst-overlay/feature.md)
   — R1-R10 / H1-H4 / K1-K6 / Q1-Q8 (analyst pass 2026-05-21).
-- [`spec/v25a-patchtst-overlay/decomp.md`](../../../../spec/v1/v25a-patchtst-overlay/decomp.md)
+- [`docs/archive/pre-bmad-spec/v1/v25a-patchtst-overlay/decomp.md`](../../../../docs/archive/pre-bmad-spec/v1/v25a-patchtst-overlay/decomp.md)
   — architect M-T1 decomp (sibling deliverable to this ADR).
 - Nie, Y., Nguyen, N.H., Sinthong, P., Kalagnanam, J. (2022). *A Time
   Series is Worth 64 Words: Long-term Forecasting with Transformers.*
@@ -574,7 +574,7 @@ code-review check at D3 closes this loop.
 - 2026-05-21 (architect, M-T1): initial proposal. Status `proposed`
   pending developer's M-D ship + tester's M-FINAL pass. Cross-refs
   `REQ-V25A-PATCHTST-001` in
-  [`spec/trace.toml`](../../../../spec/trace.toml). Flips to `accepted` at
+  [`_bmad-output/planning-artifacts/trace.toml`](../../../../_bmad-output/planning-artifacts/trace.toml). Flips to `accepted` at
   M-FINAL on the M-FINAL operator-approval tick (mirror of the
   ADR-0035 pattern, which was accepted at `v25-tcn-recalibrate`
   M-FINAL).

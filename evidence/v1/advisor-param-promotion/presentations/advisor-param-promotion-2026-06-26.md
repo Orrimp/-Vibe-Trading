@@ -39,7 +39,7 @@ configs as FRAGILE. That feature deliberately left the "carry it forward" step
 unwired. This feature (ADR-0070) is that step: it lets you paper-trade a config
 **you tuned that at least cleared the gate on its window** — framed honestly as
 "survived resampling on THIS window, not a guarantee, not advice", never as a sure
-thing. See [feature.md](../feature.md) and
+thing. See [feature.md](../../../../docs/archive/pre-bmad-spec/v1/advisor-param-promotion/feature.md) and
 [ADR-0070](../../../../_bmad-output/planning-artifacts/architecture/decisions/0070-promote-tuned-config-into-forward-paper-run.md).
 
 ## What you can do now

@@ -40,10 +40,10 @@ In every operator success report, the `| LLM spend | $X / $Y |` row reads:
   period.
 - **`$Y`** — the configured `cfg.llm.budget_usd_month`. v2.0.0 defaults
   this to **$200** (was $135 in v1.5a; the denominator update is part of
-  Q11 — see [feature.md § Q11](../../spec/v1/v2-llm-strategy/feature.md#q11---operator-success-report-llm-spend-denominator-update-architect-decide)).
+  Q11 — see [feature.md § Q11](../../docs/archive/pre-bmad-spec/v1/v2-llm-strategy/feature.md#q11---operator-success-report-llm-spend-denominator-update-architect-decide)).
 
 The body row is byte-stable across runs (R10.3) — re-anchored in
-`spec/anchors.toml` at `T_FINAL_V2_LLM_STRATEGY`.
+`evidence/anchors.toml` at `T_FINAL_V2_LLM_STRATEGY`.
 
 A new sibling row **`| Cache hit ratio | X.X% |`** lands between
 `LLM spend` and `Funding poll success` (Q5d). Source:

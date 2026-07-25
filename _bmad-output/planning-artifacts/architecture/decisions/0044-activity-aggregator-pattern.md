@@ -45,7 +45,7 @@ audit writers are short-lived (`start → commit → drop`), each spawning
 a fresh handle.
 
 The feature brief at
-[`spec/cockpit-activity-audit-ledger-producer/feature.md`](../../../../spec/v1/cockpit-activity-audit-ledger-producer/feature.md)
+[`docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/feature.md)
 introduces a new producer pattern — an **aggregator** between the
 existing `crates/audit::Ledger::tick_bus` broadcast (ADR-0031) and the
 `EventBus::activity()` channel (ADR-0042). The aggregator absorbs
@@ -334,17 +334,17 @@ Requires cross-crate coupling between `crates/audit` and
   is one new subscriber on the existing `tick_bus` (capacity 1024,
   drop-on-lag). Zero changes to `crates/audit/`.
 - **Feature brief**:
-  [`spec/cockpit-activity-audit-ledger-producer/feature.md`](../../../../spec/v1/cockpit-activity-audit-ledger-producer/feature.md)
+  [`docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/feature.md)
   — R1 (aggregation policy) / R2 (label format) / R3 (lifecycle) /
   R4 (failure handling) / R5 (performance budget) / R6 (placement) /
   R-NR (non-regression) / K1-K6 (risks) / H1-H3 (hypotheses) /
   Q1-Q3 (open Qs) / D1-D4 (design sketch).
 - **Tasks**:
-  [`spec/cockpit-activity-audit-ledger-producer/tasks.md`](../../../../spec/v1/cockpit-activity-audit-ledger-producer/tasks.md)
+  [`docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/tasks.md`](../../../../docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/tasks.md)
   — M-T1 (this ADR) → M-DEV Waves A-D → M-FINAL (R5.2 K3-discharge
   gate) → M-PRESENTER.
 - **Trace row**: `REQ-COCKPIT-ACTIVITY-AUDIT-LEDGER-001` in
-  [`spec/trace.toml`](../../../../spec/trace.toml) (state = `proposed` at
+  [`_bmad-output/planning-artifacts/trace.toml`](../../../../_bmad-output/planning-artifacts/trace.toml) (state = `proposed` at
   architect M-T1 land; tester flips to `passed` at M-FINAL).
 - **Cross-feature precedent**: parent
   `cockpit-activity-status-bar v0.1.0` (shipped 2026-05-26 at commit
@@ -361,4 +361,4 @@ Requires cross-crate coupling between `crates/audit` and
   Failed emission (NOT main-handle `fail()`); D5 idle-end semantics
   (long-lived; drop on first empty window). Anchor-additive by
   construction — 34/34 anchors stay byte-identical. Closes T-AR-4
-  of `spec/cockpit-activity-audit-ledger-producer/tasks.md`.
+  of `docs/archive/pre-bmad-spec/v1/cockpit-activity-audit-ledger-producer/tasks.md`.

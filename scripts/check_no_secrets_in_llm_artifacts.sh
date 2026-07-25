@@ -43,15 +43,18 @@ LOG_DIR="${LOG_DIR:-target/logs}"
 FIXTURES_DIR="${FIXTURES_DIR:-crates/llm/fixtures}"
 AUDIT_DB="${AUDIT_DB:-data/audit.db}"
 # By default the gate scans LLM-written artifacts only. Pass
-# `--scan-spec` to also grep `spec/**.md` + `spec/**.toml` AND
-# `evidence/**.md` + `evidence/**.toml` (used by the standalone CI
-# helper that catches operators pasting real keys into runbooks /
-# reports). `evidence/` joined the scan 2026-07-25 (BMAD-migration
-# Phase 3 — the byte-immutable reports corpus moved out of `spec/`
-# there; flag name kept verbatim). The T1926 integration test passes
-# the artifact set only — spec/evidence files legitimately use
-# `sk-...` / `Bearer ...` as placeholder examples in design / runbook
-# / report docs.
+# `--scan-spec` to also grep `evidence/**.md` + `evidence/**.toml` AND
+# `docs/**.md` + `docs/**.toml` AND `_bmad-output/**.md` +
+# `_bmad-output/**.toml` (used by the standalone CI helper that catches
+# operators pasting real keys into runbooks / reports / stories).
+# `evidence/` joined the scan 2026-07-25 (BMAD-migration Phase 3 — the
+# byte-immutable reports corpus moved out of `spec/` there); `docs/` +
+# `_bmad-output/` joined 2026-07-25 (BMAD-migration Phase 5b `spec/`
+# retirement — flag name kept verbatim, the `spec/` leg is retired since
+# the directory no longer exists). The T1926 integration test passes
+# the artifact set only — these docs legitimately use `sk-...` /
+# `Bearer ...` as placeholder examples in design / runbook / report / story
+# docs.
 SCAN_SPEC=0
 
 while [[ $# -gt 0 ]]; do
@@ -150,19 +153,17 @@ fi
 # 3. Audit ledger.
 scan_binary_file "$AUDIT_DB"
 
-# 4. Any committed docs under spec/ + committed report bodies under
-#    evidence/ (the byte-immutable reports corpus moved there in the
-#    2026-07-25 BMAD-migration Phase 3 `git mv`) + project-knowledge docs
-#    under docs/ (dev-notes/runbooks/design/ui-design-principles.md moved
-#    there in the 2026-07-25 BMAD-migration Phase 4 `git mv`) — opt-in via
-#    `--scan-spec`. Spec/evidence/docs legitimately use placeholder
-#    key shapes (`sk-ant-...`, `Bearer ...`) so the default
-#    integration-test invocation skips this leg.
-if [[ "$SCAN_SPEC" -eq 1 && -d "spec" ]]; then
-  while IFS= read -r f; do
-    scan_text_file "$f"
-  done < <(find spec -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
-fi
+# 4. Committed report bodies under evidence/ (the byte-immutable reports
+#    corpus moved there in the 2026-07-25 BMAD-migration Phase 3 `git mv`)
+#    + project-knowledge docs under docs/ (dev-notes/runbooks/design/
+#    ui-design-principles.md moved there in the 2026-07-25 BMAD-migration
+#    Phase 4 `git mv`, `docs/archive/` retired-spec content moved there in
+#    Phase 5b) + BMAD planning/implementation artifacts under _bmad-output/
+#    (PRD/architecture/ADRs/trace.toml/stories — Phase 5b) — opt-in via
+#    `--scan-spec`. These legitimately use placeholder key shapes
+#    (`sk-ant-...`, `Bearer ...`) so the default integration-test invocation
+#    skips this leg. `spec/` itself is RETIRED (Phase 5b, 2026-07-25) — no
+#    leg for it; the directory no longer exists.
 if [[ "$SCAN_SPEC" -eq 1 && -d "evidence" ]]; then
   while IFS= read -r f; do
     scan_text_file "$f"
@@ -172,6 +173,11 @@ if [[ "$SCAN_SPEC" -eq 1 && -d "docs" ]]; then
   while IFS= read -r f; do
     scan_text_file "$f"
   done < <(find docs -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
+fi
+if [[ "$SCAN_SPEC" -eq 1 && -d "_bmad-output" ]]; then
+  while IFS= read -r f; do
+    scan_text_file "$f"
+  done < <(find _bmad-output -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
 fi
 
 if [[ $hits -gt 0 ]]; then

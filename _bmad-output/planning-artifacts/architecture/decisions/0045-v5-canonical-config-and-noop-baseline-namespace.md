@@ -32,7 +32,7 @@ v0.1.0's R-O1 SHIP path explicitly spawned this v0.2.0 brief per Q5 =
 load-bearing operator decision deserving its own brief.
 
 The v0.2.0 feature brief
-([`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](../../../../spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md))
+([`docs/archive/pre-bmad-spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](../../../../docs/archive/pre-bmad-spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md))
 posed four operator-decide questions Q1-Q4. The operator resolved all
 four on 2026-05-27 at analyst-recommended defaults via standing
 Autoapprove. This ADR codifies those resolutions.
@@ -73,7 +73,7 @@ default.
 
 ### D2 — Two-namespace anchor co-existence (Q2 = (a))
 
-`spec/anchors.toml` carries **both** the OLD 34 (noop) and NEW 34
+`evidence/anchors.toml` carries **both** the OLD 34 (noop) and NEW 34
 (canonical) anchor rows, segregated by namespace. The OLD rows move
 under the `noop-baseline` namespace; the NEW rows land under the
 canonical namespace.
@@ -154,7 +154,7 @@ perpetuity, not just at v0.2.0 ship. The contract is:
   amendment or follow-on brief.
 - Alpha flipped sign → mandatory operator review per D3.
 
-This contract lives in `spec/architecture.md` § Regression gate
+This contract lives in `docs/archive/pre-bmad-spec/architecture.md` § Regression gate
 discipline (developer adds the cross-reference at Wave B per
 [`spec-update`](../../../../.claude/skills/spec-update/SKILL.md)).
 
@@ -171,7 +171,7 @@ engine output. They had silently diverged for ~3 months (the
 `Q-D1=(a)` 0→8 bps synthetic-slippage change at `7e8a7e0`, 2026-05-29,
 moved the engine output; only system (1) was updated):
 
-1. **FILE-anchors** — `spec/anchors.toml`, hashed by
+1. **FILE-anchors** — `evidence/anchors.toml`, hashed by
    `scripts/verify_anchors.sh` against **saved** `.md` report bodies on
    disk. This system is governed by D1-D5 + the ADR-0038 § D6 / § D6.b
    contract. It **cannot detect engine-behaviour drift** — it hashes
@@ -183,11 +183,11 @@ moved the engine output; only system (1) was updated):
    a hardcoded constant. This system **does** detect engine drift — but
    it has no auto-link to system (1) and rotted silently.
 
-**Decision (D6.1) — single source of truth.** `spec/anchors.toml` is
+**Decision (D6.1) — single source of truth.** `evidence/anchors.toml` is
 the **canonical** anchor registry. The `determinism.rs` constants are a
 **derived projection** of it for the synthetic, non-feature-gated
 scenarios. They are never hand-authored against a fresh run; they are
-re-locked **to the matching `spec/anchors.toml` SHA** for the scenario
+re-locked **to the matching `evidence/anchors.toml` SHA** for the scenario
 under the namespace the default (no-feature) `cargo test` binary
 produces. Mapping rule:
 
@@ -197,7 +197,7 @@ produces. Mapping rule:
   every scenario NOT in `REAL_DATA_SCENARIO_IDS` (and ALL scenarios when
   `realdata` is absent) takes the `Linear { bps: 8 }` synthetic
   fallback. Therefore the in-test constant for scenario *S* MUST equal
-  the `spec/anchors.toml` row `scenario = S, version = "… + v5-realdata-medium-2026-05"`
+  the `evidence/anchors.toml` row `scenario = S, version = "… + v5-realdata-medium-2026-05"`
   — the canonical-friction SHA, NOT the `noop-baseline` SHA.
 - A `noop-baseline` SHA may only appear in `determinism.rs` if a test
   is explicitly run with friction forced to zero (none are today).
@@ -209,7 +209,7 @@ the already-committed `v5-realdata-medium-2026-05` SHA is a
 source**, not a new anchor lock. It does NOT require the ADR-0038 § D6.b
 5-step re-emission protocol (no saved file mutates; the canonical
 file-anchor was operator-ratified at `7e8a7e0`). It DOES require
-architect sign-off as a regression-gate edit per the `spec/anchors.toml`
+architect sign-off as a regression-gate edit per the `evidence/anchors.toml`
 owner policy — granted here for the 14-test reconciliation enumerated in
 the engine-drift dev spec.
 
@@ -229,7 +229,7 @@ but not the full synthetic determinism suite let the drift through.
 
 - **D7.1 (primary, option b) — mechanical auto-sync + assert.** Add
   `scripts/check_determinism_anchors.py` (architect-specced; developer
-  implements). It parses `spec/anchors.toml` and the
+  implements). It parses `evidence/anchors.toml` and the
   `const ANCHOR`/`ANCHOR_PREFIX` sites in `determinism.rs`, builds the
   scenario→SHA map for the non-feature-gated synthetic tests, and
   **asserts each in-test constant equals the matching
@@ -259,7 +259,7 @@ but not the full synthetic determinism suite let the drift through.
   `noop-baseline`.** The `noop-baseline` rows stay (D2 already makes
   them the friction-free oracle for the CLAUDE.md ≥ 1 bp non-negotiable).
   The two-system model and the D6.1 mapping rule are documented in
-  `spec/anchors.toml`'s header and `spec/architecture.md` § Regression
+  `evidence/anchors.toml`'s header and `docs/archive/pre-bmad-spec/architecture.md` § Regression
   gate discipline so the next author understands *why* there are two
   systems and *which* is canonical. Option (c) (teach
   `verify_anchors.sh` to regenerate-and-hash) is **rejected**: it would
@@ -397,7 +397,7 @@ file-anchor set.
 
 ### Positive
 
-1. **Every alpha number in `spec/anchors.toml` now represents
+1. **Every alpha number in `evidence/anchors.toml` now represents
    strategy edge UNDER realistic friction.** The backtest-vs-live gap
    closes by construction, not by virtue of having the engine
    compiled in.
@@ -411,7 +411,7 @@ file-anchor set.
 
 ### Negative
 
-1. **`spec/anchors.toml` doubles in row count** from 34 to 68. File
+1. **`evidence/anchors.toml` doubles in row count** from 34 to 68. File
    size and review overhead grow proportionally. Mitigated by
    namespace-grouped comments + a header sentence per D2.
 2. **Strategy alpha disappears for some scenarios under 8 bps
@@ -425,11 +425,11 @@ file-anchor set.
 
 ## Cross-references
 
-- v0.2.0 feature brief — [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](../../../../spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md)
-- v0.2.0 tasks — [`spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md`](../../../../spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md)
+- v0.2.0 feature brief — [`docs/archive/pre-bmad-spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md`](../../../../docs/archive/pre-bmad-spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/feature.md)
+- v0.2.0 tasks — [`docs/archive/pre-bmad-spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md`](../../../../docs/archive/pre-bmad-spec/v5-latency-slippage-sim-v0.2.0-anchor-migration/tasks.md)
 - Parent ADR — [`ADR-0043 simulated-latency-and-slippage`](0043-simulated-latency-and-slippage.md)
 - Anchor-additive precedent — [`ADR-0038 spec-anchor-bounded-set-discipline`](0038-vol-forecast-verdict-shape.md)
-- Trace row — `REQ-V5-ANCHOR-MIGRATION-V0-2-0-001` in [`spec/trace.toml`](../../../../spec/trace.toml)
+- Trace row — `REQ-V5-ANCHOR-MIGRATION-V0-2-0-001` in [`_bmad-output/planning-artifacts/trace.toml`](../../../../_bmad-output/planning-artifacts/trace.toml)
 - Anchors file (target of migration) — [`evidence/anchors.toml`](../../../../evidence/anchors.toml)
 - CLAUDE.md non-negotiable — `crates/strategy/tests/vol_targeting_overlay_end_to_end.rs` pattern reference
 - Verify script — `scripts/verify_anchors.sh`
@@ -450,7 +450,7 @@ file-anchor set.
 - 2026-05-30 (architect): § D6 + § D7 amendment, triggered by the
   engine-drift PAPERWORK finding (diagnosis `1cbe3d4`). D6 names the
   two-anchor-system reality D2 left implicit and makes
-  `spec/anchors.toml` the single source of truth, with the
+  `evidence/anchors.toml` the single source of truth, with the
   `determinism.rs` constants a derived projection re-locked to the
   `v5-realdata-medium-2026-05` SHAs (NOT `noop-baseline`) for the
   no-feature default test binary; reconciling them is NOT a § D6.b

@@ -59,13 +59,13 @@ slippage/fee hook cleanliness.
   market orders, so the simple engine carries us further than the
   v0 brief anticipated. v0.5 LOB-pick decision is therefore on a
   longer timer than originally planned.
-- The 9 backtest anchors in `anchors.toml` ([`../../../../spec/architecture/11-regression-gate.md`](../../../../spec/architecture/11-regression-gate.md))
+- The 9 backtest anchors in `anchors.toml` ([`../../../../docs/archive/pre-bmad-spec/architecture/11-regression-gate.md`](../../../../docs/archive/pre-bmad-spec/architecture/11-regression-gate.md))
   lock against this engine's deterministic output. Swapping in a
   full LOB engine will require re-locking each anchor after
   byte-identical reverification across two `--release` runs.
 
 ## Changelog
 - 2026-04-17 (architect): initial accept.
-- 2026-05-13 (architect): extracted from `spec/architecture.md` §
+- 2026-05-13 (architect): extracted from `docs/archive/pre-bmad-spec/architecture.md` §
   Foundation libraries — Order book & matching engine during Phase
   1A Session 11.

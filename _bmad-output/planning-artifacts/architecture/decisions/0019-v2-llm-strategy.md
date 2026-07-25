@@ -35,7 +35,7 @@ pub trait LlmProvider: Send + Sync {
 ```
 
 Streaming deferred to v3 (additive). Tool-use is mandatory at v2
-per [`../product.md` § LLM strategy](../../../../spec/product.md#llm-strategy);
+per [`../product.md` § LLM strategy](../../../../docs/archive/pre-bmad-spec/product.md#llm-strategy);
 delaying = breaking change later. Batch deferred. Schemas as
 `serde_json::Value` validated by `jsonschema`; typed schemas are a
 consumer-side ergonomic via `schemars`. `LlmError` has 8 variants:
@@ -121,7 +121,7 @@ the two `report-sample-*` anchors re-lock **once** at
 
 ## Changelog
 - 2026-05-10 (architect): initial accept.
-- 2026-05-13 (architect): extracted from `spec/architecture.md` §
+- 2026-05-13 (architect): extracted from `docs/archive/pre-bmad-spec/architecture.md` §
   v2 — LLM strategy resolutions during Phase 1A Session 10.
 - 2026-05-29 (architect): v2.1 tracing-Layer redactor M-T1 ratified
   (`REQ-V2-1-TRACING-LAYER-REDACTOR-001`). Closes the pass-3
@@ -140,5 +140,5 @@ the two `report-sample-*` anchors re-lock **once** at
   the redactor. Anchor contract zero delta — 75/75 byte-identical
   pre/post per R-NR.3 hard gate. NO new ADR; this Changelog row
   is the architectural record. See
-  [`spec/v2-1-tracing-layer-redactor/feature.md ## Design`](../../../../spec/v1/v2-1-tracing-layer-redactor/feature.md#design)
+  [`docs/archive/pre-bmad-spec/v1/v2-1-tracing-layer-redactor/feature.md ## Design`](../../../../docs/archive/pre-bmad-spec/v1/v2-1-tracing-layer-redactor/feature.md#design)
   for D-RED-1..D-RED-9.

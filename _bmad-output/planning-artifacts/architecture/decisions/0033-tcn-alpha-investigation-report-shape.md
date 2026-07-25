@@ -19,7 +19,7 @@ on 2026-05-18 with `dampened=0`, the same finding M3 reported on synthetic
 GBM, falsifying the M3 "out-of-distribution silence" hypothesis since the
 training distribution **is** the real Binance hourly OHLCV.
 
-[`spec/v25-tcn-alpha-investigation/feature.md`](../../../../spec/v1/v25-tcn-alpha-investigation/feature.md)
+[`docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md)
 (analyst-locked 2026-05-18, operator picked MINIMAL scope) asks for a
 read-only investigation across two milestones:
 
@@ -63,7 +63,7 @@ API (`crates/forecast/src/tcn.rs:472`), iterates
 each of the 10 USDT symbols over the requested span, runs
 `TcnModel::forward()` (NOT `TcnForecaster::forecast()` — see D1.b
 below), and emits a markdown report into
-`spec/v25-tcn-alpha-investigation/reports/`.
+`evidence/v1/v25-tcn-alpha-investigation/reports/`.
 
 **(A) bin** chosen over **(B) backtest dispatch extension** for these
 reasons:
@@ -115,8 +115,8 @@ struct Args {
     #[arg(long, default_value = "data/binance/")]
     data_root: PathBuf,
 
-    /// Output directory for the report (default: spec/v25-tcn-alpha-investigation/reports/).
-    #[arg(long, default_value = "spec/v25-tcn-alpha-investigation/reports/")]
+    /// Output directory for the report (default: evidence/v1/v25-tcn-alpha-investigation/reports/).
+    #[arg(long, default_value = "evidence/v1/v25-tcn-alpha-investigation/reports/")]
     out_dir: PathBuf,
 
     /// Evaluation span lower bound (UTC inclusive). Default matches the
@@ -298,8 +298,8 @@ verdict: F1                                      # OR F2 / F3 / F4 — mirror of
 ## Notes
 
 - Read-only against `crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d…safetensors`.
-- ε = 0.0005 per [v25-tcn-overlay/feature.md § R6](../../../../spec/v1/v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6).
-- τ = 0.6 per [v25-tcn-overlay/feature.md § D5](../../../../spec/v1/v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds).
+- ε = 0.0005 per [v25-tcn-overlay/feature.md § R6](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md#r6--output--forecastoverlay-closes-q6).
+- τ = 0.6 per [v25-tcn-overlay/feature.md § D5](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md#d5--tcn_overlay_momentum-strategy-thresholds).
 - Histogram representation: 100 fixed bins over [-3·σ_train, +3·σ_train],
   ASCII-only, LF-only line endings, integer counts, fixed-precision
   floats (%.6f for stats, %.6f for gate fractions, %d for counts).
@@ -347,10 +347,10 @@ host: <hostname>
 git_commit: <40 hex>
 data_revision_sha: 3a8b96c4…
 sources:
-  - spec/backtest-real-binance-data/reports/backtest-…-top10-2023-fy-tcn-overlay-realdata.md
-  - spec/backtest-real-binance-data/reports/backtest-…-top10-2024-fy-tcn-overlay-realdata.md
-  - spec/backtest-real-binance-data/reports/backtest-…-top10-2023-fy-tcn-overlay-weights-realdata.md
-  - spec/backtest-real-binance-data/reports/backtest-…-top10-2024-fy-tcn-overlay-weights-realdata.md
+  - evidence/v1/backtest-real-binance-data/reports/backtest-…-top10-2023-fy-tcn-overlay-realdata.md
+  - evidence/v1/backtest-real-binance-data/reports/backtest-…-top10-2024-fy-tcn-overlay-realdata.md
+  - evidence/v1/backtest-real-binance-data/reports/backtest-…-top10-2023-fy-tcn-overlay-weights-realdata.md
+  - evidence/v1/backtest-real-binance-data/reports/backtest-…-top10-2024-fy-tcn-overlay-weights-realdata.md
 ---
 ```
 
@@ -432,7 +432,7 @@ Three options:
   load-bearing for the F4 verdict in M-R-HAT).
 - Option γ requires touching `write_tcn_overlay_report()` and
   proving that the report-body bytes do not change. The four
-  `-realdata` anchors are byte-locked in `spec/anchors.toml` as of
+  `-realdata` anchors are byte-locked in `evidence/anchors.toml` as of
   2026-05-18; any developer error here flips them all. The cost is
   not worth the savings.
 - Option α's wall-clock cost (~165s once at M-SHARPE close) is
@@ -454,8 +454,8 @@ The M-SHARPE bin's invocation contract:
 //  forecast/src/bin/ to keep the bin family co-located.)
 #[derive(clap::Parser)]
 struct Args {
-    /// Output directory (default: spec/v25-tcn-alpha-investigation/reports/).
-    #[arg(long, default_value = "spec/v25-tcn-alpha-investigation/reports/")]
+    /// Output directory (default: evidence/v1/v25-tcn-alpha-investigation/reports/).
+    #[arg(long, default_value = "evidence/v1/v25-tcn-alpha-investigation/reports/")]
     out_dir: PathBuf,
 
     /// Backtest binary path (default: target/release/backtest).
@@ -673,9 +673,9 @@ own thresholds.
     through to "ship un-anchored with `## Not anchorable` body section"
     if the body fails the two-run byte-identity gate)
 - **Existing 19 anchors stay byte-identical.** The new bin writes
-  only to `spec/v25-tcn-alpha-investigation/reports/`. The Sharpe-
+  only to `evidence/v1/v25-tcn-alpha-investigation/reports/`. The Sharpe-
   comparison bin **does not** invoke `crates/backtest` in any mode
-  that writes to `spec/backtest-real-binance-data/reports/` (re-runs
+  that writes to `evidence/v1/backtest-real-binance-data/reports/` (re-runs
   go through `--out` redirected to a tempdir; the four `-realdata`
   anchors are read by file-pattern matching the existing tempdir
   output filenames).
@@ -744,19 +744,19 @@ Anchor count progression:
   unit test of the F-verdict algorithm)
 - `crates/forecast/tests/forecast_distribution_bin_readonly.rs`
   (~40 LoC, asserts no writes outside `--out-dir`)
-- `spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs1-realdata-20260518.md`
-- `spec/v25-tcn-alpha-investigation/reports/forecast-distribution-bs2-realdata-20260518.md`
-- `spec/v25-tcn-alpha-investigation/reports/sharpe-comparison-realdata-20260518.md`
+- `evidence/v1/v25-tcn-alpha-investigation/reports/forecast-distribution-bs1-realdata-20260518.md`
+- `evidence/v1/v25-tcn-alpha-investigation/reports/forecast-distribution-bs2-realdata-20260518.md`
+- `evidence/v1/v25-tcn-alpha-investigation/reports/sharpe-comparison-realdata-20260518.md`
 
 **Modified files:**
 - `_bmad-output/planning-artifacts/architecture/decisions/README.md` — registry row added for ADR-0033.
-- `spec/anchors.toml` — 2 (or 3) new anchor rows under
+- `evidence/anchors.toml` — 2 (or 3) new anchor rows under
   `v2.6.0-alpha-investigation`.
-- `spec/trace.toml` — `REQ-V25-TCN-ALPHA-001` `arch` / `crates` /
+- `_bmad-output/planning-artifacts/trace.toml` — `REQ-V25-TCN-ALPHA-001` `arch` / `crates` /
   `tests` / `anchors` columns filled.
-- `spec/v25-tcn-alpha-investigation/feature.md` — § Design block
+- `docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md` — § Design block
   added, changelog entry.
-- `spec/v25-tcn-alpha-investigation/tasks.md` — T-D-N decomposition
+- `docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/tasks.md` — T-D-N decomposition
   added under M-R-HAT + M-SHARPE.
 
 **Cross-phase implications:**
@@ -808,9 +808,9 @@ Anchor count progression:
 - [ADR-0032](0032-backtest-realdata-path-and-revision-pin.md) —
   `-realdata` path + frontmatter-vs-body discipline (the precedent
   this ADR's D2 follows).
-- [`spec/v25-tcn-alpha-investigation/feature.md`](../../../../spec/v1/v25-tcn-alpha-investigation/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-alpha-investigation/feature.md)
   — analyst R1-R6 + F1-F4 + operator-locked minimal scope.
-- [`spec/v25-tcn-overlay/feature.md`](../../../../spec/v1/v25-tcn-overlay/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-tcn-overlay/feature.md)
   § R6, § D5 — ε / τ constants this ADR pins into the report body.
 - `crates/forecast/src/tcn.rs:472` — `TcnForecaster::load_anchor`.
 - `crates/forecast/src/tcn.rs:572`, `:322` — `forward()` public API.
@@ -824,4 +824,4 @@ Anchor count progression:
   decisions (read-path placement, report shape + canonicalisation,
   F-verdict decision algorithm, anchor naming). Covers T-AR-2
   decomposition surface for M-R-HAT + M-SHARPE. Cross-refs
-  `REQ-V25-TCN-ALPHA-001` in `spec/trace.toml`.
+  `REQ-V25-TCN-ALPHA-001` in `_bmad-output/planning-artifacts/trace.toml`.

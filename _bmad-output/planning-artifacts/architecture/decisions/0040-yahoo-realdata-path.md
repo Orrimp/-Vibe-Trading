@@ -13,8 +13,8 @@ superseded-by: none
 
 Operator decision 2026-05-24 (verbatim): **"Replace Binance for Lab —
 multi-asset pivot."** Promoted Idea → Active in
-[`spec/backlog.md`](../../../../spec/backlog.md) the same day. The brief at
-[`spec/lab-yahoo-realdata/feature.md`](../../../../spec/v1/lab-yahoo-realdata/feature.md)
+[`docs/archive/pre-bmad-spec/backlog.md`](../../../../docs/archive/pre-bmad-spec/backlog.md) the same day. The brief at
+[`docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md)
 resolves 10 operator-decide questions (Q1-Q10, all closed 2026-05-24)
 and depends on this ADR locking the cross-cutting decisions.
 
@@ -472,11 +472,11 @@ Binance / Coinbase / Kraken rows are untouched.
 
 - [ADR-0032](0032-backtest-realdata-path-and-revision-pin.md) —
   Binance precedent; revision-pin protocol generalisation source.
-- [`spec/lab-yahoo-realdata/feature.md`](../../../../spec/v1/lab-yahoo-realdata/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md)
   — analyst brief; R1-R7 + R-UI-1 + R-NR mapping.
-- [`spec/lab-yahoo-realdata/decomp.md`](../../../../spec/v1/lab-yahoo-realdata/decomp.md)
+- [`docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/decomp.md`](../../../../docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/decomp.md)
   — architect decomp (this ADR's implementation file:line citations).
-- [`spec/lab-end-to-end-v2/feature.md`](../../../../spec/v1/lab-end-to-end-v2/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/lab-end-to-end-v2/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/lab-end-to-end-v2/feature.md)
   — predecessor that extracted single-symbol scenario dispatch arms
   with `bars_override`; D-2c "Binance Lab wiring" SUPERSEDED by this
   feature.
@@ -495,7 +495,7 @@ Binance / Coinbase / Kraken rows are untouched.
   `load_cached`/`fetch_and_cache` split, adaptive cadence
   (Q4 = (c)), boundary ticker conversion (Q6 = (a)), `Venue::Yahoo`
   variant cascade (K7). 34/34 anchors stay byte-identical; closes
-  T-AR3 / T-AR6 of `spec/lab-yahoo-realdata/tasks.md`.
+  T-AR3 / T-AR6 of `docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/tasks.md`.
 - 2026-05-27 (architect, M-T1 lab-yahoo-realdata-v0.1.2): per-ticker
   scaling pattern + aggregate cache-state UI surface. **No new
   architectural decisions** — operationalises existing D3 + D4 + D7
@@ -512,7 +512,7 @@ Binance / Coinbase / Kraken rows are untouched.
   Cross-crate pinned-table test in `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs`
   locks the 10-row mirror to `data::yahoo::binance_to_yahoo_ticker`
   source-of-truth. Three-mirror crate-graph rationale (data → ui →
-  backtest) documented at `spec/lab-yahoo-realdata-v0.1.2-…/feature.md` § D-V0.1.2-2.
+  backtest) documented at `docs/archive/pre-bmad-spec/lab-yahoo-realdata-v0.1.2-…/feature.md` § D-V0.1.2-2.
   (2) **Aggregate cache-state UI surface.** New `cache_state_summary_badge`
   widget (sibling of v0.1.0 per-pair `cache_state_badge`) reads the
   same `REVISION.toml` already pinned by D3. Probe extension
@@ -526,7 +526,7 @@ Binance / Coinbase / Kraken rows are untouched.
   recommendation), independent of `data_source` selection — visible
   whenever Lab is active. 69/69 anchors stay byte-identical;
   v0.1.2 appends row 70 (`eth-yahoo-2024-1d-sma-cross`). Closes
-  T-T1.6 of `spec/lab-yahoo-realdata-v0.1.2-…/tasks.md`.
+  T-T1.6 of `docs/archive/pre-bmad-spec/lab-yahoo-realdata-v0.1.2-…/tasks.md`.
 - 2026-05-28 (architect, M-T1 lab-yahoo-realdata-v0.1.3): body→frontmatter
   migration for the `rev=<sha>` substring in Yahoo report emissions,
   plus registration of `eth-2024-h1-sma-cross` Binance H1 scenario.
@@ -557,7 +557,7 @@ Binance / Coinbase / Kraken rows are untouched.
   Yahoo-daily-vs-Binance-hourly H1 discharge. New anchor row 71 under
   namespace `lab-yahoo-realdata-v0.1.3`. Net anchor count 70 → 71.
   Closes T-T1.4 of
-  `spec/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md`.
+  `docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata-v0.1.3-rev-frontmatter-and-binance-eth-h1/tasks.md`.
 - 2026-05-29 (architect, M-T1 lab-yahoo-realdata-v0.1.4): bulk-ticker
   re-emit of 9 remaining Yahoo crypto-mirror tickers
   (BNB/SOL/XRP/ADA/DOGE/AVAX/DOT/LINK/MATIC) + ETH-daily row 70 migration
@@ -605,7 +605,7 @@ Binance / Coinbase / Kraken rows are untouched.
   unchanged). K3 throttling at 9 successive fetches → H2 ≥ 95% gate +
   § D5 `YahooError::RateLimited` backoff.
   Closes T-T1.5 of
-  `spec/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md`.
+  `docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata-v0.1.4-bulk-ticker-re-emit/tasks.md`.
 - 2026-05-30 (architect, M-T1 lab-yahoo-empty-range-ux v0.1.0): empty-range
   UX surfacing. **No new architectural decisions** — additive refinement of
   § D5 (`YahooBarSource` API surface) + § D6/D7 (dispatch boundary). Three
@@ -633,5 +633,5 @@ Binance / Coinbase / Kraken rows are untouched.
   gate is unaffected. **34/34 anchors stay byte-identical** (synthetic path
   + report-emitting code untouched; no anchor SHA in scope, so no
   anchor-mutation ADR required). Full design at
-  `spec/lab-yahoo-empty-range-ux/feature.md` § D-ER-1..6. Closes M-T1 of
-  `spec/lab-yahoo-empty-range-ux/tasks.md`.
+  `docs/archive/pre-bmad-spec/v1/lab-yahoo-empty-range-ux/feature.md` § D-ER-1..6. Closes M-T1 of
+  `docs/archive/pre-bmad-spec/v1/lab-yahoo-empty-range-ux/tasks.md`.

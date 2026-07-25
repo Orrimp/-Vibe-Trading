@@ -21,7 +21,7 @@ F-verdict thresholds (1e-6, std/sigma_train > 0.1, etc.) cannot drift
 across follow-on ships because they anchor the comparable measurement
 bar the v25-tcn / v25-patchtst chain converged on.
 
-[`spec/v3-volatility-forecaster/feature.md`](../../../../spec/v1/v3-volatility-forecaster/feature.md)
+[`docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md)
 (operator-decide bundle "Autoapprove all" landed 2026-05-22) asks the
 architect to lock the **vol-forecast verdict shape**. The v0.1.0 ship
 uses **GARCH(1,1)-only** (Q2=(a); cheap-first per retrospective lesson
@@ -428,8 +428,8 @@ report (ADR-0033 § D2.b). The dispatch extension to
 
 ```yaml
 sources:
-  - spec/backtest-real-binance-data/reports/backtest-…-top10-2023-1h-momentum-realdata.md  # un-targeted v1 baseline
-  - spec/v3-volatility-forecaster/reports/backtest-…-top10-2023-fy-vol-target-overlay-realdata.md
+  - evidence/v1/backtest-real-binance-data/reports/backtest-…-top10-2023-1h-momentum-realdata.md  # un-targeted v1 baseline
+  - evidence/v1/v3-volatility-forecaster/reports/backtest-…-top10-2023-fy-vol-target-overlay-realdata.md
 ```
 
 The Sharpe-delta table mirrors ADR-0033 § D2.b's columns; the
@@ -607,19 +607,19 @@ Anchor count progression:
 
 ### D6.b — Wiring-bug-fix re-emission protocol (amendment, 2026-05-22)
 
-Adopted under [v3-volatility-forecaster-noop-fix](../../../../spec/v1/v3-volatility-forecaster-noop-fix/feature.md) v0.1.0 (P0). The original D6 contract reads "existing anchors stay byte-identical." That spirit is **don't silently mutate historical evidence**. When the recorded body reflects a demonstrated wiring bug (the contract being witnessed is materially different from what was intended), re-emission is legitimate **under the following protocol**:
+Adopted under [v3-volatility-forecaster-noop-fix](../../../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-noop-fix/feature.md) v0.1.0 (P0). The original D6 contract reads "existing anchors stay byte-identical." That spirit is **don't silently mutate historical evidence**. When the recorded body reflects a demonstrated wiring bug (the contract being witnessed is materially different from what was intended), re-emission is legitimate **under the following protocol**:
 
-1. **Enumerate affected anchors** with current SHA-256 in the feature brief's § Investigation findings. The architect confirms the enumeration is exhaustive at M-T1 (e.g. via cross-grep of the report-body sources for the load-bearing observable; see [v3-volatility-forecaster-noop-fix decomp.md § T-AR-5](../../../../spec/v1/v3-volatility-forecaster-noop-fix/decomp.md) for the worked example — 4 candidates audited, 1 ruled out as GARCH-only).
+1. **Enumerate affected anchors** with current SHA-256 in the feature brief's § Investigation findings. The architect confirms the enumeration is exhaustive at M-T1 (e.g. via cross-grep of the report-body sources for the load-bearing observable; see [v3-volatility-forecaster-noop-fix decomp.md § T-AR-5](../../../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-noop-fix/decomp.md) for the worked example — 4 candidates audited, 1 ruled out as GARCH-only).
 2. **Cite the bug site with `file:line`** in the feature brief's § Smoking gun. The dev-note captures the diagnostic chain that surfaced the bug (cf. [v3-vol-overlay-noop-discovery-2026-05-22.md](../../../../docs/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md) — caveman probe + byte-identical surfacing).
-3. **Include the would-have-caught test** as a feature requirement (e.g. R2 in the worked example). The test MUST be run against the **pre-fix** code BEFORE the fix lands; the architect captures the literal pre-fix FAIL output as evidence the gate is meaningful (cf. [v3-volatility-forecaster-noop-fix decomp.md § T-AR-4 forensic gate](../../../../spec/v1/v3-volatility-forecaster-noop-fix/decomp.md)).
-4. **Architect signs off on the re-emission delta**. The new SHAs land in `spec/anchors.toml` **in-place under the existing namespaces** (Q2=(a) default — never bifurcate the namespace; never silently delete a row). A comment block above the affected rows cites the fix-feature slug + the dev-note slug.
-5. **Negative invariant**: the unchanged rows MUST stay byte-identical. Tester M-FINAL captures the diff at `spec/<fix-feature>/reports/test-final-<date>.md` showing every changed row + the count of unchanged rows. The wave-B verify_anchors.sh output (`ANCHORS PASS (N / N)`) is the gate; a regression to `FAIL` halts the ship.
+3. **Include the would-have-caught test** as a feature requirement (e.g. R2 in the worked example). The test MUST be run against the **pre-fix** code BEFORE the fix lands; the architect captures the literal pre-fix FAIL output as evidence the gate is meaningful (cf. [v3-volatility-forecaster-noop-fix decomp.md § T-AR-4 forensic gate](../../../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-noop-fix/decomp.md)).
+4. **Architect signs off on the re-emission delta**. The new SHAs land in `evidence/anchors.toml` **in-place under the existing namespaces** (Q2=(a) default — never bifurcate the namespace; never silently delete a row). A comment block above the affected rows cites the fix-feature slug + the dev-note slug.
+5. **Negative invariant**: the unchanged rows MUST stay byte-identical. Tester M-FINAL captures the diff at `docs/archive/pre-bmad-spec/<fix-feature>/reports/test-final-<date>.md` showing every changed row + the count of unchanged rows. The wave-B verify_anchors.sh output (`ANCHORS PASS (N / N)`) is the gate; a regression to `FAIL` halts the ship.
 
 **Allowed re-emission scope**: only rows whose body cites the load-bearing observable that the bug perturbed. Rows that cite orthogonal observables (e.g. GARCH-only model diagnostics for an overlay-wiring fix) stay byte-identical and are part of the negative invariant.
 
 **Not in scope of this protocol**: silent mutations (forbidden by D6 spirit), namespace bifurcation (a `*-postfix` namespace was rejected at Q2 — bifurcation invites future readers to consume stale bodies), row deletion (forbidden — historical evidence stays linked even after re-emission via the dev-note + feature.md cross-references).
 
-**Live-exec parity follow-on**: the v0.1.0 vol-target wire-up landed at the **backtest-only** sizing-pipeline site (`crates/backtest/src/scenarios/garch_vol_target_overlay.rs`). Live execution (when wired in `crates/exec/` post-v0.1.1) MUST add an equivalent `Strategy::quantity_scale` query at the live order-construction site. Parity gap is flagged in [v3-volatility-forecaster-noop-fix decomp.md § T-AR-2](../../../../spec/v1/v3-volatility-forecaster-noop-fix/decomp.md) and tracked as a v0.1.1 follow-on item.
+**Live-exec parity follow-on**: the v0.1.0 vol-target wire-up landed at the **backtest-only** sizing-pipeline site (`crates/backtest/src/scenarios/garch_vol_target_overlay.rs`). Live execution (when wired in `crates/exec/` post-v0.1.1) MUST add an equivalent `Strategy::quantity_scale` query at the live order-construction site. Parity gap is flagged in [v3-volatility-forecaster-noop-fix decomp.md § T-AR-2](../../../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-noop-fix/decomp.md) and tracked as a v0.1.1 follow-on item.
 
 **Precedent**: this is the **first** invocation of D6.b. Future wiring-bug discoveries inherit the 5-step protocol verbatim. If the protocol itself needs revision (e.g. multi-overlay wire-up bugs requiring batched re-emissions), the revision lands as **D6.c** (additive amendment subsection, not in-place mutation of D6.b).
 
@@ -698,10 +698,10 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../spec/v1/v3-volatil
 - `crates/backtest/src/scenarios/mod.rs` (additive: `pub mod garch_vol_target_overlay;`).
 - `crates/replay-cache/src/lib.rs` (additive: `CacheNamespace::VolForecast` variant; existing variants byte-identical).
 - `_bmad-output/planning-artifacts/architecture/decisions/README.md` — registry row added for ADR-0038.
-- `spec/anchors.toml` — 3 new anchor rows under `v3.0.0-volatility`.
-- `spec/trace.toml` — `REQ-V3-VOL-FORECASTER-001` `arch` / `crates` / `tests` / `anchors` columns extended.
-- `spec/v3-volatility-forecaster/feature.md` — § Design block added at M-T1 close; changelog entry.
-- `spec/v3-volatility-forecaster/tasks.md` — T-D-N* rows for Wave A-E.
+- `evidence/anchors.toml` — 3 new anchor rows under `v3.0.0-volatility`.
+- `_bmad-output/planning-artifacts/trace.toml` — `REQ-V3-VOL-FORECASTER-001` `arch` / `crates` / `tests` / `anchors` columns extended.
+- `docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md` — § Design block added at M-T1 close; changelog entry.
+- `docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/tasks.md` — T-D-N* rows for Wave A-E.
 
 **Cross-phase implications:**
 - v0.1.1 (if v0.1.0 finishes T-VOL-MARGINAL): DL refinement spawn
@@ -785,7 +785,7 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../spec/v1/v3-volatil
   per Q4=(b), not extension.
 - [ADR-0035](0035-tcn-sigma-train-recalibration.md) — N/A under
   Q2=(a) GARCH-only (GARCH has no σ_train concept).
-- [`spec/v3-volatility-forecaster/feature.md`](../../../../spec/v1/v3-volatility-forecaster/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md)
   R1-R12, H1-H4, K-vol-1..6, Q1-Q6 + Q-anchors-sub + Q3-sub
   operator-decide bundle (autoapproved 2026-05-22).
 - [`docs/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../../../../docs/dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
@@ -817,7 +817,7 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../spec/v1/v3-volatil
   replay-cache namespace additive extension; D5 strategy-side
   composition v0.1.0 + risk-engine deferred to v0.1.1; D6 anchor
   + version naming). Covers T-AR-1 + T-AR-2 + T-AR-3 + T-AR-5
-  + T-AR-6 from `spec/v3-volatility-forecaster/tasks.md`. PARALLEL
+  + T-AR-6 from `docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/tasks.md`. PARALLEL
   to ADR-0033 § D3, NOT extension (Q4=(b) operator default;
   retrospective lesson #2 honored). Cross-refs
-  `REQ-V3-VOL-FORECASTER-001` in `spec/trace.toml`.
+  `REQ-V3-VOL-FORECASTER-001` in `_bmad-output/planning-artifacts/trace.toml`.

@@ -66,7 +66,7 @@ What we are **not**:
   specific has happened. Motion that runs continuously without an event
   behind it stays forbidden. See `Motion` below. (Operator decision Q-O1
   2026-05-13, recorded in
-  [`spec/iced-ecosystem-evaluation/feature.md`](../spec/iced-ecosystem-evaluation/feature.md).)
+  [`docs/archive/pre-bmad-spec/iced-ecosystem-evaluation/feature.md`](../docs/archive/pre-bmad-spec/iced-ecosystem-evaluation/feature.md).)
 - Not dark-mode-only by default of laziness. Both modes are first-class
   (see `Dark / light mode parity`).
 
@@ -502,7 +502,7 @@ The chart is a **read-only surface**: no order entry, no draw
 tools, no annotations. The cockpit's job is to show what the
 agent did and what the market did; tools for "what if I drew
 this trendline" belong in a research surface that this product
-deliberately does not have (see [`../spec/product.md`](../spec/product.md)
+deliberately does not have (see [`../docs/archive/pre-bmad-spec/product.md`](../docs/archive/pre-bmad-spec/product.md)
 non-goals).
 
 ## Information architecture
@@ -572,7 +572,7 @@ sidebar nav writes `Message::SwitchScreen(Screen)`, the cockpit
 mutates `current_screen`, the next `view()` renders the new screen
 body. No bus event, no audit writer, no agent state change. This is
 the same one-way contract that
-[`audit::query`](../spec/architecture.md#cockpit--auditquery) reads have:
+[`audit::query`](../docs/archive/pre-bmad-spec/architecture.md#cockpit--auditquery) reads have:
 the cockpit sees, the cockpit doesn't tell.
 
 ### Right-rail Assistant slot — reserved, hidden by default
@@ -749,9 +749,9 @@ are documented in this file or in `theme.rs`.
   never writes to backend; right-rail Assistant slot reservation for
   Phase 6). Locks the design rules every Phase 2 / 3 / 4 / 5 / 6
   widget plugs into; per-phase R-items live in the per-phase briefs
-  at [features/lumen-phase-2-shell-ia-charts.md](../spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
+  at [features/lumen-phase-2-shell-ia-charts.md](../docs/archive/pre-bmad-spec/lumen-design-adoption/phase-2-shell-ia-charts/feature.md)
   through
-  [features/lumen-phase-6-assistant-slot.md](../spec/lumen-design-adoption/phase-6-assistant-slot/feature.md).
+  [features/lumen-phase-6-assistant-slot.md](../docs/archive/pre-bmad-spec/lumen-design-adoption/phase-6-assistant-slot/feature.md).
 - 2026-05-13 (ui-designer, `iced-aw-cherry-pick` B3/B2): added new
   **"Status pill colors"** subsection under Trading-specific patterns,
   pinning the three-intent palette (`Positive` → `UP_50`/`UP_500`,

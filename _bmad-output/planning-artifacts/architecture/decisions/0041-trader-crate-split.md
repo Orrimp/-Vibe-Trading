@@ -17,11 +17,11 @@ The v3-llm-forecaster ship (REQ-V3-LLM-FORECASTER-001, state =
 inside `crates/strategy/src/llm_forecaster/` across Waves B / C / G
 (commits `8c40ab0` + `97b7c39` + `8dcd72c`). This violates the
 **R8.1 / R10.8 layering invariant** asserted in
-[`spec/v3-llm-forecaster/feature.md`](../../../../spec/v1/v3-llm-forecaster/feature.md)
+[`docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md)
 § R8.1 and § R10.8 — the analyst-layer strategy crate is forbidden from
 consuming reflection-retrieval (memory-aware decision synthesis is a
 trader-layer concern per
-[`spec/product.md`](../../../../spec/product.md) § Trading-time agent roster line 135-139).
+[`docs/archive/pre-bmad-spec/product.md`](../../../../docs/archive/pre-bmad-spec/product.md) § Trading-time agent roster line 135-139).
 
 The defensive substring-grep gate at
 [`crates/reflection/tests/no_strategy_caller.rs`](../../../../crates/reflection/tests/no_strategy_caller.rs)
@@ -227,18 +227,18 @@ non-anchored):
 
 - `crates/reflection/src/lib.rs` doc-comment lines 11-18 (the "Q4 =
   report-only" block that names this brief) — point at trader.
-- `spec/v3-llm-forecaster/feature.md` — append `## Errata` section
+- `docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md` — append `## Errata` section
   acknowledging the R8.1 / R10.8 violation and naming this brief +
   ADR-0041 as the recovery. (Per CLAUDE.md non-negotiables, anchored
-  reports under `spec/v3-llm-forecaster/reports/` are byte-immutable;
+  reports under `evidence/v1/v3-llm-forecaster/reports/` are byte-immutable;
   `feature.md` is NOT a report and takes additive edits per
   spec-update normal protocol.)
-- `spec/product.md` § Trading-time agent roster — optional footnote
+- `docs/archive/pre-bmad-spec/product.md` § Trading-time agent roster — optional footnote
   acknowledging `crates/trader/` is the implementation crate for the
   trader layer. Architect-recommended: yes, one-line footnote.
-- `spec/architecture.md` — module-map subsection adds
+- `docs/archive/pre-bmad-spec/architecture.md` — module-map subsection adds
   `crates/trader/` as the runtime trader-layer crate. Architect-owned.
-- `spec/v3-llm-forecaster/decomp.md` — leaves historical evidence
+- `docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md` — leaves historical evidence
   intact (per K6 mitigation option (iii)). The path references inside
   it are now historical; the trace.toml row carries the forward
   pointer to this ADR.
@@ -423,16 +423,16 @@ non-anchored):
 - [ADR-0039](0039-llm-forecaster-verdict-criteria.md) — L0-L4
   verdict criteria; the `verdict.rs` classifier moves with the rest
   of `llm_forecaster/` under D2. No verdict shape change.
-- [`spec/reflection-memory-trader-wiring/feature.md`](../../../../spec/v1/reflection-memory-trader-wiring/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/reflection-memory-trader-wiring/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/reflection-memory-trader-wiring/feature.md)
   — analyst brief; R1-R7 + K1-K8 + H1-H5 + Q1-Q7.
-- [`spec/reflection-memory-trader-wiring/tasks.md`](../../../../spec/v1/reflection-memory-trader-wiring/tasks.md)
+- [`docs/archive/pre-bmad-spec/v1/reflection-memory-trader-wiring/tasks.md`](../../../../docs/archive/pre-bmad-spec/v1/reflection-memory-trader-wiring/tasks.md)
   — architect M-T1 decomposition into Waves A-D + M-FINAL +
   M-PRESENTER.
-- [`spec/v3-llm-forecaster/feature.md`](../../../../spec/v1/v3-llm-forecaster/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md)
   § R8.1 + § R10.8 — the violated invariants this ADR recovers.
 - [`crates/reflection/tests/no_strategy_caller.rs`](../../../../crates/reflection/tests/no_strategy_caller.rs)
   — gate-test source; t1810 added in the same file under D5.
-- [`spec/product.md`](../../../../spec/product.md) § Trading-time agent roster
+- [`docs/archive/pre-bmad-spec/product.md`](../../../../docs/archive/pre-bmad-spec/product.md) § Trading-time agent roster
   line 135-139 — Trader-agent layer definition.
 
 ## Changelog
@@ -447,4 +447,4 @@ non-anchored):
   subsumes Q4 mechanically), D5 t1810 positive-assertion sibling
   test (R5.3), D6 trader-owns-audit (Q5=(a)), D7 documentation
   surface (Q7=(a) errata append). Cross-refs
-  `REQ-REFLECTION-TRADER-001` in `spec/trace.toml`.
+  `REQ-REFLECTION-TRADER-001` in `_bmad-output/planning-artifacts/trace.toml`.

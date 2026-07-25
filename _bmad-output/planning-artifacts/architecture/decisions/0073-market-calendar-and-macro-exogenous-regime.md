@@ -14,7 +14,7 @@ extends: 0040, 0058, 0059
 
 The Single-Coin Investment Advisor probes one named-but-untested orthogonal
 channel — **cross-asset / macro regime** (DXY / S&P / rates) — as fresh-channel
-probe #4 (`spec/advisor-crossasset-macro-regime/feature.md`). Two code-confirmed
+probe #4 (`docs/archive/pre-bmad-spec/v1/advisor-crossasset-macro-regime/feature.md`). Two code-confirmed
 obstacles forced this design, and the operator funded the **durable** resolution
 of both (NOT the relaxed bypass):
 
@@ -219,8 +219,8 @@ suites (T-CAL); `crates/backtest` `macro_regime` loader unit suite +
 `macro_regime_overlay_end_to_end.rs` (S1–S4); `crates/core` `pit_compile_fail.rs`
 (reused leak guard); `scripts/verify_anchors.sh` (119/119 at M-CAL-4, M-FETCH-1,
 M-CLOSE-1). Full design + the sequenced plan:
-[`spec/advisor-crossasset-macro-regime/feature.md` § Design](../../../../spec/v1/advisor-crossasset-macro-regime/feature.md#design)
-and [`tasks.md`](../../../../spec/v1/advisor-crossasset-macro-regime/tasks.md).
+[`docs/archive/pre-bmad-spec/v1/advisor-crossasset-macro-regime/feature.md` § Design](../../../../docs/archive/pre-bmad-spec/v1/advisor-crossasset-macro-regime/feature.md#design)
+and [`tasks.md`](../../../../docs/archive/pre-bmad-spec/v1/advisor-crossasset-macro-regime/tasks.md).
 
 ## Changelog
 - 2026-06-26 (architect): initial accept. D1 `MarketCalendar` in `crates/data`,

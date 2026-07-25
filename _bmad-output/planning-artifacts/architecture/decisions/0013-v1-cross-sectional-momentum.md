@@ -76,7 +76,7 @@ symbol, batched).
 v1 ships **long-only spot momentum** with `K_long = 3`, `K_short = 0`.
 Spot crypto on Binance / Coinbase / Kraken USDT pairs has no native
 short-sell mechanism; perp-based shorting belongs to v2 per
-[`../product.md` § Universe & data fidelity ladder](../../../../spec/product.md#universe--data-fidelity-ladder).
+[`../product.md` § Universe & data fidelity ladder](../../../../docs/archive/pre-bmad-spec/product.md#universe--data-fidelity-ladder).
 
 `MomentumStrategy::on_bar` constructs `Vec<ProposedOrder>` with at
 most `K_long` `Side::Buy` legs plus `Side::Sell` legs to close
@@ -185,7 +185,7 @@ success report can count rebalance rejections per session.
 ## Changelog
 - 2026-04-29 (architect): initial accept. Six interconnected
   decisions captured as a single ADR.
-- 2026-05-13 (architect): extracted from `spec/architecture.md` §
+- 2026-05-13 (architect): extracted from `docs/archive/pre-bmad-spec/architecture.md` §
   v1 — cross-sectional momentum resolutions during Phase 1A Session 7.
   Link `features/v1-cross-sectional-momentum.md` rewritten to use the
   post-folder-migration path indirectly via the in-line tracking;

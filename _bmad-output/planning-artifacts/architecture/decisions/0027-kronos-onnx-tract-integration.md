@@ -23,7 +23,7 @@ superseded-by: 0028
 
 v2.5 promotes the [Kronos](https://github.com/shiyu-coder/Kronos)
 foundation model from candidate to in-progress per
-[product.md § Strategy library roadmap](../../../../spec/product.md#strategy-library--roadmap)
+[product.md § Strategy library roadmap](../../../../docs/archive/pre-bmad-spec/product.md#strategy-library--roadmap)
 ("v2.5 — DL forecaster — Kronos foundation model primary candidate").
 Kronos is a decoder-only Transformer pre-trained on K-line data from
 45+ exchanges, MIT-licensed, AAAI 2026. The analyst pass landed
@@ -44,7 +44,7 @@ point to Option B; this ADR ratifies it.
 The cross-cutting "what is a forecast overlay" pattern (signal-level
 composition, `ForecastProvider` trait, `ForecastOverlay` type,
 audit-row shape) is documented in
-[architecture/12-forecast-overlay.md](../../../../spec/architecture/12-forecast-overlay.md) so
+[architecture/12-forecast-overlay.md](../../../../docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md) so
 future DL/ML forecasters can re-use it without re-deciding. This ADR
 captures the v2.5 instantiation.
 
@@ -67,7 +67,7 @@ checkpoint from PyTorch to ONNX via `torch.onnx.export`; the resulting
 `.onnx` artifact commits to `crates/forecast/assets/`; runtime loads
 via [`tract`](https://github.com/sonos/tract) (named as the ONNX
 serving default in
-[architecture/10-foundation-libraries.md § Numerics & ML](../../../../spec/architecture/10-foundation-libraries.md#numerics--ml)).
+[architecture/10-foundation-libraries.md § Numerics & ML](../../../../docs/archive/pre-bmad-spec/architecture/10-foundation-libraries.md#numerics--ml)).
 
 **Fallback:** if ONNX conversion fails on unsupported decoder ops, a
 1-day spike either (a) adds the op to `tract` (PR upstream) or (b)
@@ -176,7 +176,7 @@ cost crate's existing posting path absorbs without surfacing in the
 report-sample anchors). Operator opt-in to non-zero energy cost posts
 to `expense:infra:kronos_inference` per operator config; that path is
 already supported by the v0.5 `cost::CostEvent::Infra` scaffolding
-([architecture.md:2891](../../../../spec/architecture.md) — pre-extraction
+([architecture.md:2891](../../../../docs/archive/pre-bmad-spec/architecture.md) — pre-extraction
 reference).
 
 If a future operator wants per-token-style accounting (matching the
@@ -229,7 +229,7 @@ performance budget conventions); the tester confirms or routes back.
   Pure-Kronos is a v2.6 option if overlay composition proves messy.
 - **Risk-level forecast modulation (Q13).** Rejected. Violates
   "strategy proposes, risk disposes"
-  ([architecture/02 § Cross-cutting rules](../../../../spec/architecture/02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters));
+  ([architecture/02 § Cross-cutting rules](../../../../docs/archive/pre-bmad-spec/architecture/02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters));
   contaminates the risk-clamp event taxonomy. Signal-level
   composition matches the v0.5 composed-strategies precedent
   ([ADR-0010](0010-v05-composed-exit-policy.md)). Deferred — not
@@ -249,7 +249,7 @@ performance budget conventions); the tester confirms or routes back.
 
 ## Consequences
 
-- The 9 strategy anchors at `spec/anchors.toml` lines 15–58 stay
+- The 9 strategy anchors at `evidence/anchors.toml` lines 15–58 stay
   byte-identical. Any drift = tester routes back through this ADR
   for an explicit re-lock. No silent mutation.
 - The 2 `report-sample-*` anchors at lines 75–83 stay byte-identical
@@ -261,7 +261,7 @@ performance budget conventions); the tester confirms or routes back.
   side-by-side) — tester confirms count.
 - The `forecast_emitted` audit-row `kind` value becomes a new
   open-set TEXT value per
-  [architecture/02 § Cross-cutting rules](../../../../spec/architecture/02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters).
+  [architecture/02 § Cross-cutting rules](../../../../docs/archive/pre-bmad-spec/architecture/02-strategy-registry.md#cross-cutting-rules-formalised-by-the-strategy-clusters).
   No schema migration; consumers that scan `strategy_events.kind`
   must handle the new value gracefully (most do — they UPPER + match
   on a known set with a default-pass branch).
@@ -279,7 +279,7 @@ performance budget conventions); the tester confirms or routes back.
   milestone reshapes: subprocess + IPC plumbing replaces the
   `tract` glue, and the v2.5 ship window slips ~1–2 weeks.
 - Future DL/ML forecasters consume the
-  [12-forecast-overlay.md](../../../../spec/architecture/12-forecast-overlay.md) pattern as the
+  [12-forecast-overlay.md](../../../../docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md) pattern as the
   default shape. Departing from it requires a superseding ADR.
 
 ## Anchor implications (summary)
@@ -297,4 +297,4 @@ performance budget conventions); the tester confirms or routes back.
   Q6 / Q7 / Q8 resolutions plus the operator's backtest-baseline
   override (2023 + 2024 full-year, not H1/H2). Cross-cutting pattern
   (signal-level overlay, `ForecastProvider` trait, audit-row shape)
-  lives in [architecture/12-forecast-overlay.md](../../../../spec/architecture/12-forecast-overlay.md).
+  lives in [architecture/12-forecast-overlay.md](../../../../docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md).

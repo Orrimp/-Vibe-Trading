@@ -14,7 +14,7 @@ maintained). Notes tagged **LOAD-BEARING** encode a standing decision, contract,
 verification recipe that current work depends on — do not treat them as stale.
 
 > For *what the system is now*, read
-> [`../../spec/architecture/00-current-state.md`](../../spec/architecture/00-current-state.md)
+> [`../../docs/archive/pre-bmad-spec/architecture/00-current-state.md`](../../docs/archive/pre-bmad-spec/architecture/00-current-state.md)
 > (crate map + invariants + advisor spine). For *what shipped*, read
 > [`../../CHANGELOG.md`](../../CHANGELOG.md). This folder is the *working memory*
 > behind those.
@@ -45,18 +45,18 @@ verification recipe that current work depends on — do not treat them as stale.
 
 ## Audits (dated series)
 
-The recurring spec/integrity audit series + one-off buildout/triage audits. Each is
+The recurring governance-integrity audit series + one-off buildout/triage audits. Each is
 an immutable dated record; the newest is the current state of the audit trail.
 
 | Note | One line |
 |---|---|
-| [`audit-2026-07-06.md`](audit-2026-07-06.md) | Weekly spec/integrity audit — trace-lifecycle story closed (ADR-0082 follow-through). |
+| [`audit-2026-07-06.md`](audit-2026-07-06.md) | Weekly governance-integrity audit — trace-lifecycle story closed (ADR-0082 follow-through). |
 | [`audit-2026-06-29.md`](audit-2026-06-29.md) | Weekly audit — surfaced the trace lifecycle-drift finding that became ADR-0082. |
 | [`audit-2026-06-22-post-b1.md`](audit-2026-06-22-post-b1.md) | Post-B1 (benchmark-robustness) follow-up audit. |
-| [`audit-2026-06-22.md`](audit-2026-06-22.md) | Weekly spec/integrity audit. |
-| [`audit-2026-06-15.md`](audit-2026-06-15.md) | Weekly spec/integrity audit. |
+| [`audit-2026-06-22.md`](audit-2026-06-22.md) | Weekly governance-integrity audit. |
+| [`audit-2026-06-15.md`](audit-2026-06-15.md) | Weekly governance-integrity audit. |
 | [`audit-2026-06-12.md`](audit-2026-06-12.md) | Weekly audit — origin of the `spec_lint` status-drift enforcement hook. |
-| [`audit-2026-06-08.md`](audit-2026-06-08.md) | Weekly spec/integrity audit. |
+| [`audit-2026-06-08.md`](audit-2026-06-08.md) | Weekly governance-integrity audit. |
 | [`cockpit-buildout-audit-2026-06-08.md`](cockpit-buildout-audit-2026-06-08.md) | One-off cockpit build-out audit. |
 | [`feature-triage-2026-05-16.md`](feature-triage-2026-05-16.md) | Feature-triage audit (origin of the `shipped-partial` convention). |
 
@@ -81,10 +81,10 @@ Clearly-historical, **unreferenced** one-off notes moved out of the live listing
 2026-07-10 (remediation-plan P6b) — reference-checked to zero across the repo before
 moving. Bodies are preserved verbatim.
 
-- [`../../spec/archive/dev-notes/backlog-staleness-audit-2026-06-15.md`](../../spec/archive/dev-notes/backlog-staleness-audit-2026-06-15.md) — one-off backlog-staleness audit, superseded by the current backlog + later audits.
-- [`../../spec/archive/dev-notes/fetcher-idempotency-fix-2026-06-16.md`](../../spec/archive/dev-notes/fetcher-idempotency-fix-2026-06-16.md) — postmortem of the (shipped) fetcher idempotency fix.
-- [`../../spec/archive/dev-notes/flaky-charts-visual-test-fix-2026-06-15.md`](../../spec/archive/dev-notes/flaky-charts-visual-test-fix-2026-06-15.md) — postmortem of the (shipped) flaky visual-test de-flake.
-- [`../../spec/archive/dev-notes/engine-drift-fix-handoff-2026-05-30.toml`](../../spec/archive/dev-notes/engine-drift-fix-handoff-2026-05-30.toml) — a transient dev handoff envelope.
+- [`../../docs/archive/dev-notes/backlog-staleness-audit-2026-06-15.md`](../../docs/archive/dev-notes/backlog-staleness-audit-2026-06-15.md) — one-off backlog-staleness audit, superseded by the current backlog + later audits.
+- [`../../docs/archive/dev-notes/fetcher-idempotency-fix-2026-06-16.md`](../../docs/archive/dev-notes/fetcher-idempotency-fix-2026-06-16.md) — postmortem of the (shipped) fetcher idempotency fix.
+- [`../../docs/archive/dev-notes/flaky-charts-visual-test-fix-2026-06-15.md`](../../docs/archive/dev-notes/flaky-charts-visual-test-fix-2026-06-15.md) — postmortem of the (shipped) flaky visual-test de-flake.
+- [`../../docs/archive/dev-notes/engine-drift-fix-handoff-2026-05-30.toml`](../../docs/archive/dev-notes/engine-drift-fix-handoff-2026-05-30.toml) — a transient dev handoff envelope.
 
 The earlier bulk archive (session notes, scoping memos, retrospectives from Q2)
 lives in `docs/dev-notes/archive/2026-Q2/` (a few of those are still referenced by
@@ -94,5 +94,5 @@ lives in `docs/dev-notes/archive/2026-Q2/` (a few of those are still referenced 
 - 2026-07-10 (architect): created as the remediation-plan **P6b** dev-notes
   consolidation — categorized index (standing decisions / how-tos / audits /
   analyses / historical); archived 4 unreferenced one-off notes to
-  `spec/archive/dev-notes/` after a whole-repo reference check (all refs: 0). Note
+  `docs/archive/dev-notes/` after a whole-repo reference check (all refs: 0). Note
   bodies untouched; the index is the deliverable.

@@ -12,7 +12,7 @@ superseded-by: none
 ## Context
 
 v2.5 fills the DL-forecaster slot in
-[product.md § Strategy library roadmap](../../../../spec/product.md#strategy-library--roadmap).
+[product.md § Strategy library roadmap](../../../../docs/archive/pre-bmad-spec/product.md#strategy-library--roadmap).
 The original ADR-0027 picked the [Kronos](https://github.com/shiyu-coder/Kronos)
 pre-trained foundation model with ONNX + `tract` in-process serving (Option B
 of the three integration paths originally evaluated).
@@ -83,7 +83,7 @@ Concrete shape (the v2.5 analyst will refine):
   domain value types (`ForecastOverlay`, `Direction`, `ForecastRequest`,
   `ForecastResponse`, `ForecastError`, `OhlcvBar`, `SamplingParams`) are
   model-agnostic; all stay.
-- [`spec/architecture/12-forecast-overlay.md`](../../../../spec/architecture/12-forecast-overlay.md) —
+- [`docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md`](../../../../docs/archive/pre-bmad-spec/architecture/12-forecast-overlay.md) —
   cross-cutting overlay design pattern; stays (lightly genericised — drops
   Kronos-specific clauses).
 - The signal-level overlay composition decision (overlay on v1 momentum;
@@ -98,8 +98,8 @@ Concrete shape (the v2.5 analyst will refine):
 - `scripts/dev/kronos_torch_to_onnx.py` — deleted.
 - `.gitattributes` — LFS rule for `*.onnx` deleted (no longer needed; candle
   weights are small `.safetensors`).
-- `spec/v25-kronos-forecast-overlay/` — renamed to
-  `spec/v25-dl-forecast-overlay/`; body rewritten for the analyst's new pass.
+- `docs/archive/pre-bmad-spec/v25-kronos-forecast-overlay/` — renamed to
+  `docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/`; body rewritten for the analyst's new pass.
 
 ### Anchor implications
 
@@ -131,13 +131,13 @@ new v2.5 analyst owns a fresh set: model size / architecture (Transformer vs
 TCN vs hybrid), tokenisation strategy, training data span, loss function,
 inference horizon, success criterion vs v1 momentum baseline, training
 checkpoint storage, audit integration shape. The new analyst pass at
-[`spec/v25-dl-forecast-overlay/feature.md`](../../../../spec/v1/v25-dl-forecast-overlay/feature.md)
+[`docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/feature.md)
 authors these.
 
 ## References
 
 - ADR-0027 (superseded) — Kronos ONNX + `tract` decision.
-- [`spec/v25-dl-forecast-overlay/feature.md`](../../../../spec/v1/v25-dl-forecast-overlay/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v25-dl-forecast-overlay/feature.md)
   — active v2.5 brief.
 - [`docs/dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md`](../../../../docs/dev-notes/archive/2026-Q2/kronos-evaluation-2026-05-10.md)
   — preserved as "what-not-to-do" reference for the new analyst.

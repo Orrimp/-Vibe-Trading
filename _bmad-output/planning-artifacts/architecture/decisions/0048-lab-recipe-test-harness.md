@@ -189,7 +189,7 @@ source) AND Stop-gating state-machine test.
 
 Harness emits ZERO file output. `progress_tx → progress_rx` events
 are channel-only (same property Bug #64's original ship relied on per
-`bug-log.md#64`). `spec/anchors.toml` not touched.
+`bug-log.md#64`). `evidence/anchors.toml` not touched.
 `scripts/verify_anchors.sh` stays **70/70 PASS** post-merge.
 `YahooBarSource` extraction is API-additive — anchor preservation
 proven by the existing `crates/backtest/tests/determinism.rs` row 70
@@ -207,7 +207,7 @@ SHA assertion.
   S1+S2, `TrailMirrorRecipe` S2, `ActivityRecipe` S1, `TrainingPoller`
   S1+S2) via the same per-Recipe-specific mock pattern v0.1.0's
   `MockLabYahooBarSource` proved (R3 = per-Recipe, NOT a shared trait —
-  see [`spec/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md`](../../../../spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md)
+  see [`docs/archive/pre-bmad-spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/lab-recipe-test-harness-v0.2.0-cross-surface-extension/feature.md)
   § D-V0.2.0-1). Three new API-additive production seams accompany the
   extension: `run_aggregator_loop` extraction from `Aggregator::run`
   (Wave B), `build_subscription_batch_descriptor` extraction from
@@ -225,7 +225,7 @@ SHA assertion.
   `<test>.png` + `<test>-actual.png` triple on visual-assertion FAIL
   only. PASS path byte-identical; 71/71 anchors unaffected (helper
   produces zero output on PASS). No D1-D6 row revised. See
-  [`spec/visual-fail-html-reporter/feature.md`](../../../../spec/v1/visual-fail-html-reporter/feature.md)
+  [`docs/archive/pre-bmad-spec/v1/visual-fail-html-reporter/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/visual-fail-html-reporter/feature.md)
   § Design D-VF-1..D-VF-6. Wave 1 sibling
   `ui-test-harness-viewport-matrix` inherits the
   `.claude/agents/tester.md` "Visual failures — HTML artifact emission"
@@ -250,7 +250,7 @@ SHA assertion.
   FINAL.1/2/3. D6 (anchor-additivity) = zero anchor delta; 75/75
   byte-identical (pure test-infra addition; no production code touch
   per R-NR.1). No new ADR. See
-  [`spec/ui-contrast-asserter/feature.md`](../../../../spec/v1/ui-contrast-asserter/feature.md)
+  [`docs/archive/pre-bmad-spec/v1/ui-contrast-asserter/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/ui-contrast-asserter/feature.md)
   § Design D-CONT-1..D-CONT-7. WARN-mode-default-then-gate-flip pattern
   (D-CONT-6) inherits the env-var-gated DURABLE shape from the Pick A
   test-infra trifecta; v0.2.0 promotion contract requires upstream
@@ -272,7 +272,7 @@ SHA assertion.
   rule: plain `binary` (no `diff=exif` driver present on architect
   host; analyst's driver-availability contract triggered the (b)
   durable fallback). No new ADR. See
-  [`spec/ui-test-harness-viewport-matrix/feature.md`](../../../../spec/v1/ui-test-harness-viewport-matrix/feature.md)
+  [`docs/archive/pre-bmad-spec/v1/ui-test-harness-viewport-matrix/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/ui-test-harness-viewport-matrix/feature.md)
   § Design D-VPM-1..D-VPM-7. `.claude/agents/tester.md` inheritance
   from sibling visual-fail-html-reporter § D-VF-4 (D-VPM-6) — no
   independent amendment.

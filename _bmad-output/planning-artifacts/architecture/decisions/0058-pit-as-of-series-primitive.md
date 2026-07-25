@@ -65,7 +65,7 @@ impossibility, not a debug-assert. A runtime-guarded free function
 (`as_of_join` + `debug_assert!`) was rejected (see Alternatives): the guarantee
 would be debug-time-only and a hand-rolled `partition_point` could still bypass
 it. The full signatures are fixed in
-[`spec/point-in-time-data-discipline/feature.md` § The API surface](../../../../spec/v1/point-in-time-data-discipline/feature.md#the-api-surface-exact-signatures--cratescoresrcpitrs).
+[`docs/archive/pre-bmad-spec/v1/point-in-time-data-discipline/feature.md` § The API surface](../../../../docs/archive/pre-bmad-spec/v1/point-in-time-data-discipline/feature.md#the-api-surface-exact-signatures--cratescoresrcpitrs).
 
 ### D2. Home crate is `crates/core` (new `pit` module); no new dependency edge
 
@@ -105,9 +105,9 @@ reasons: (i) the same `partition_point(t <= q)` predicate and the same `idx-1` /
 `Decimal` is **moved**, never converted — **no `f64` round-trip**, no rescale.
 Therefore every anchored carry/basis/bootstrap surface stays byte-identical and
 **`scripts/verify_anchors.sh` remains 119/119** (the developer re-verifies as the
-load-bearing gate). No anchored `spec/*/reports/*.md` is edited and no
+load-bearing gate). No anchored `docs/archive/pre-bmad-spec/*/reports/*.md` is edited and no
 `anchors.toml` SHA changes, so neither the ADR-0038 § D6 re-emission protocol nor
-the `spec/anchors.toml` anchor-mutation-requires-an-ADR rule is triggered by this
+the `evidence/anchors.toml` anchor-mutation-requires-an-ADR rule is triggered by this
 change.
 
 ### D5. Verification floor — self-proving falsifier + zero anchor delta; equity-divergence gate N/A
@@ -180,8 +180,8 @@ contaminate any anchored surface it feeds. Enforcement and mechanical checks:
 
 Migration scope and the exact per-site plan (all four copies, the tests touched,
 and the bootstrap-input invariance) live in
-[`spec/point-in-time-data-discipline/feature.md` § Design](../../../../spec/v1/point-in-time-data-discipline/feature.md#design)
-and [`tasks.md`](../../../../spec/v1/point-in-time-data-discipline/tasks.md) (5 M-DEV + 5 M-TEST).
+[`docs/archive/pre-bmad-spec/v1/point-in-time-data-discipline/feature.md` § Design](../../../../docs/archive/pre-bmad-spec/v1/point-in-time-data-discipline/feature.md#design)
+and [`tasks.md`](../../../../docs/archive/pre-bmad-spec/v1/point-in-time-data-discipline/tasks.md) (5 M-DEV + 5 M-TEST).
 
 ## Changelog
 - 2026-06-18 (architect): initial accept. Locked D1 type-level `PitSeries`/`AsOf`

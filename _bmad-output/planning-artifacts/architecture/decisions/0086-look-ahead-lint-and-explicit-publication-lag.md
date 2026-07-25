@@ -13,7 +13,7 @@ extends: 0058
 ## Context
 
 The product's credibility is an **honest negative result** ("on the current deep-liquidity era,
-active ≤ passive, measured honestly" — `spec/product.md`). A single signal that reads a value it
+active ≤ passive, measured honestly" — `docs/archive/pre-bmad-spec/product.md`). A single signal that reads a value it
 could not have known at decision time silently manufactures phantom alpha. Look-ahead is the
 most insidious way to lose the *measured-honesty* moat.
 
@@ -52,7 +52,7 @@ data-discipline invariant** (a lint wired into the standard gate + a first-class
 extends ADR-0058.
 
 The DVOL/macro arms run only on the advisor bake-off path with `write_report = false`
-(`engine.rs:302-316`), so no anchored `spec/*/reports/*.md` body is produced by them; the retrofit
+(`engine.rs:302-316`), so no anchored `docs/archive/pre-bmad-spec/*/reports/*.md` body is produced by them; the retrofit
 is **anchor-safe by construction**.
 
 ## Decision
@@ -118,7 +118,7 @@ proven by a **byte-identity test** mirroring the shipped `out_of_span_filter_via
 compute the as-of result the legacy raw-`partition_point` way and the `*_with_lag(_, 0)` way on a
 representative series + bar-open grid and `assert_eq!` element-for-element. `scripts/verify_anchors.sh`
 stays **119/119** (the arms write no report; no anchored body can move — the developer re-runs it
-before AND after as the load-bearing gate). No anchored `spec/*/reports/*.md` is edited and no
+before AND after as the load-bearing gate). No anchored `docs/archive/pre-bmad-spec/*/reports/*.md` is edited and no
 `anchors.toml` SHA changes, so neither the ADR-0038 § D6 re-emission protocol nor the anchor-mutation
 ADR rule is triggered.
 
@@ -188,8 +188,8 @@ data decision on a potentially anchor-feeding path — record it in its own ADR.
 lag *declarable and enforceable*; it does not pre-authorize any specific non-zero value.
 
 Design detail and the exact per-site plan (lint, primitive extension, retrofit, tests) live in
-[`spec/v3/advisor-pit-discipline/feature.md` § Design](../../../../spec/v3/advisor-pit-discipline/feature.md#design)
-and [`tasks.md`](../../../../spec/v3/advisor-pit-discipline/tasks.md) (Milestones A–D).
+[`docs/archive/pre-bmad-spec/v3/advisor-pit-discipline/feature.md` § Design](../../../../docs/archive/pre-bmad-spec/v3/advisor-pit-discipline/feature.md#design)
+and [`tasks.md`](../../../../docs/archive/pre-bmad-spec/v3/advisor-pit-discipline/tasks.md) (Milestones A–D).
 
 ## Changelog
 - 2026-07-10 (architect): initial accept. Delivers the two halves ADR-0058 § D5 deferred to a "v0.2

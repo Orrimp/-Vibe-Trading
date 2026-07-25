@@ -12,7 +12,7 @@ superseded-by: none
 ## Context
 
 The 2026-06-19 product pivot (single-coin investment advisor,
-[`spec/product.md`](../../../../spec/product.md)) makes the **strategy bake-off + ranking**
+[`docs/archive/pre-bmad-spec/product.md`](../../../../docs/archive/pre-bmad-spec/product.md)) makes the **strategy bake-off + ranking**
 (roadmap F1+F2) the first and core feature: run every strategy on one
 `(coin, window)`, rank them, crown the best. The analyst confirmed the bake-off
 is a **loop over the existing per-strategy path** (`backtest::run_scenario`) and
@@ -68,7 +68,7 @@ uniform (every candidate is one `run_scenario` call producing a real equity
 curve through the same path). For a single coin the equal-weight BH is 100% of
 budget held from bar-0 close, marked to market. The arm is anchor-additive: a new
 `match` arm on a new id touches no existing arm; the bake-off runs it with
-`write_report = false` so no `spec/*/reports/` body is created or perturbed; a
+`write_report = false` so no `docs/archive/pre-bmad-spec/*/reports/` body is created or perturbed; a
 new id cannot collide with an existing anchored body. The hard gate is
 `scripts/verify_anchors.sh` → **119/119 byte-identical**, run before the arm
 lands and after.
@@ -141,7 +141,7 @@ ranking contract.
   not the build: OQ-1 (does the single-coin field include the cross-sectional /
   ML arms — analyst) and OQ-2 (robustness-gate interactive cost — operator).
 - This ADR does not add, remove, or mutate any of the 9 anchor SHAs in
-  `spec/anchors.toml`; the `"v0.buyhold"` arm produces no anchored artifact.
+  `evidence/anchors.toml`; the `"v0.buyhold"` arm produces no anchored artifact.
 
 ## Changelog
 - 2026-06-19 (architect): initial accept. Homes the bake-off orchestrator in

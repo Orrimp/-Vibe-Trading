@@ -42,7 +42,7 @@ ship-passive firm? A robust survivor here would have been the most credible
 non-passive signal the program has ever produced and would have **reopened** the
 active-vs-passive question for a v0.2.0 trend-following product line. The whole
 point of testing on the deepest bear is that a survivor *there* should most change
-your mind. (See [`feature.md`](../feature.md) § The single sharp question.)
+your mind. (See [`feature.md`](../../../../docs/archive/pre-bmad-spec/v1/simple-strategy-bear-survey/feature.md) § The single sharp question.)
 
 ## What you can do now
 
@@ -118,7 +118,7 @@ only selects the top-16 candidates for the real test (Stage 2 above).
 
 _n/a — non-UI feature. The deliverable is the harness `--nocapture` stdout (quoted
 in Live demo) + the `findings` dev-note; there is no UI surface and no anchored
-report (UN-ANCHORED per [`feature.md`](../feature.md) § Anchoring / D-BS.4)._
+report (UN-ANCHORED per [`feature.md`](../../../../docs/archive/pre-bmad-spec/v1/simple-strategy-bear-survey/feature.md) § Anchoring / D-BS.4)._
 
 ## Verification
 

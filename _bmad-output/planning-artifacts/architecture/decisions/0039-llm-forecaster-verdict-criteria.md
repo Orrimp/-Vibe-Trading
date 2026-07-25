@@ -30,7 +30,7 @@ that don't translate to LLM forecasts; ADR-0038 § D1 is the precedent
 that *new verdict shapes for new forecaster paradigms get their own
 ADR*.
 
-[`spec/v3-llm-forecaster/feature.md`](../../../../spec/v1/v3-llm-forecaster/feature.md)
+[`docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md)
 asks the architect to lock the **LLM-forecaster verdict shape**. Per
 Q6 = (b) (operator-decided 2026-05-22, analyst-strawman LOCKED — no
 expansion authorization at M-T1; architect cap "≤2 new priorities
@@ -68,7 +68,7 @@ R8.4 + Q6:
    language. Both report families (the 2 anchored realdata
    backtest scenarios) follow the ADR-0032 § D4 + ADR-0033 § D2
    precedent (run-varying fields in frontmatter only). Detailed body
-   shape lives in `spec/v3-llm-forecaster/decomp.md` § T-AR-6; this
+   shape lives in `docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md` § T-AR-6; this
    ADR only locks the **verdict section**.
 3. **L_ALPHA strategy-side gate parallel to F4's M-SHARPE + V_ALPHA's
    T-classifier** — Sharpe-delta vs un-targeted v1 momentum baseline;
@@ -374,7 +374,7 @@ in YAML frontmatter (excluded from body hash via
 
 The full body table layout (per-call cost rows, rating-distribution
 histogram, cache-hit-ratio row, reasoning_trace_sha256 histogram) is
-locked in `spec/v3-llm-forecaster/decomp.md` § T-AR-6 (not here —
+locked in `docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md` § T-AR-6 (not here —
 the body shape is a per-feature anchor target, not a cross-feature
 ADR contract). This ADR only locks the **Verdict section** placement
 + shape:
@@ -403,20 +403,20 @@ extends with a new dispatch arm for the LLM-forecaster scenarios:
 
 ```yaml
 sources:
-  - spec/backtest-real-binance-data/reports/backtest-…-top10-2023-1h-momentum-realdata.md  # un-targeted v1 baseline
-  - spec/v3-llm-forecaster/reports/backtest-…-top10-2023-fy-llm-forecaster-realdata.md
+  - evidence/v1/backtest-real-binance-data/reports/backtest-…-top10-2023-1h-momentum-realdata.md  # un-targeted v1 baseline
+  - evidence/v1/v3-llm-forecaster/reports/backtest-…-top10-2023-fy-llm-forecaster-realdata.md
 ```
 
 The dispatch extension is additive — existing TCN / PatchTST /
 vol-target arms stay byte-identical. The new sharpe-comparison
 report under
-`spec/v3-llm-forecaster/reports/sharpe-comparison-llm-forecaster-bs1-realdata-YYYYMMDD.md`
+`evidence/v1/v3-llm-forecaster/reports/sharpe-comparison-llm-forecaster-bs1-realdata-YYYYMMDD.md`
 mirrors ADR-0038 § D2.b structurally; the L_ALPHA verdict cell
 (LAlphaUnlocked / LMarginal / LNoAlpha) appears in the Verdict
 section with both gross + net columns reported side-by-side.
 
 **Anchor decision for the sharpe-comparison report** — locked in
-`spec/v3-llm-forecaster/decomp.md` § T-AR-6 (analyst-strawman:
+`docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md` § T-AR-6 (analyst-strawman:
 **NOT anchored at v0.1.0** per ADR-0038 § D6 + ADR-0033 precedent
 of "anchor the underlying backtest scenarios but defer the
 sharpe-comparison anchor to v0.2.0 when overlay scenarios join").
@@ -567,9 +567,9 @@ preserved.
   `--scenario llm-forecaster-bs1` dispatch arm; existing TCN /
   PatchTST / vol-target dispatch byte-identical).
 - `_bmad-output/planning-artifacts/architecture/decisions/README.md` — registry row added for ADR-0039.
-- `spec/anchors.toml` — 2 new anchor rows under `v3.0.0-llm-forecaster`
+- `evidence/anchors.toml` — 2 new anchor rows under `v3.0.0-llm-forecaster`
   (at developer M-FINAL — not at ADR-author time).
-- `spec/trace.toml` — `REQ-V3-LLM-FORECASTER-001` `arch` column
+- `_bmad-output/planning-artifacts/trace.toml` — `REQ-V3-LLM-FORECASTER-001` `arch` column
   extended at M-T1 close.
 
 **Cross-phase implications:**
@@ -601,7 +601,7 @@ preserved.
 - `bash scripts/verify_anchors.sh` — must report `36/36` post M-FINAL;
   pre-M-FINAL must report `34/34` (current baseline as of
   2026-05-22, confirmed by architect M-T1 quoted literal in
-  `spec/v3-llm-forecaster/decomp.md` § Baseline).
+  `docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md` § Baseline).
 - 2-run byte-identity determinism gate on the new
   `top10-2023-fy-llm-forecaster-realdata-*.md` report (decomp.md
   § T-AR-5 K4 mitigation: **3-back-to-back identical cache-build
@@ -659,12 +659,12 @@ preserved.
   protocol (the load-bearing sibling precedent; this ADR mirrors the
   ADR-0038 structure verbatim, swapping vol-specific decisions for
   LLM-specific ones).
-- [`spec/v3-llm-forecaster/feature.md`](../../../../spec/v1/v3-llm-forecaster/feature.md)
+- [`docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/feature.md)
   R1-R10, H1-H5, K-llm-1..10, Q1-Q8 + Q-PROMOTE + Q-V2X-SEQ +
   Q-ASSISTANT-WAKE operator-decide bundle (resolved 2026-05-22 —
   Q1/Q2/Q3/Q5/Q7/Q8 + Q-V2X-SEQ + Q-ASSISTANT-WAKE under standing
   Autoapprove; Q4 + Q6 explicit operator-pick).
-- [`spec/v3-llm-forecaster/decomp.md`](../../../../spec/v1/v3-llm-forecaster/decomp.md)
+- [`docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/decomp.md)
   § T-AR-9 — this ADR's authoring spec.
 - [`docs/dev-notes/strategy-reformulation-survey-2026-05-22.md`](../../../../docs/dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md)
   § Candidate 5 — survey-time cost / EV / reuse scoping.
@@ -686,10 +686,10 @@ preserved.
   namespace additive extension; D5 strategy-side + Assistant slot
   composition v0.1.0 + overlay deferred; D6 anchor + version naming
   + re-emission protocol inheritance from ADR-0038 § D6.b). Covers
-  T-AR-9 from `spec/v3-llm-forecaster/tasks.md`. PARALLEL to
+  T-AR-9 from `docs/archive/pre-bmad-spec/v1/v3-llm-forecaster/tasks.md`. PARALLEL to
   ADR-0033 § D3 AND ADR-0038 § D1, NOT extension (Q6=(b) operator
   default 2026-05-22; retrospective lesson #2 honored). Analyst-
   strawman L1-L4 priorities LOCKED per Q6 operator constraint;
   architect cap "≤2 new priorities beyond strawman before
   re-surface" codified inline at D1.b. Cross-refs
-  `REQ-V3-LLM-FORECASTER-001` in `spec/trace.toml`.
+  `REQ-V3-LLM-FORECASTER-001` in `_bmad-output/planning-artifacts/trace.toml`.

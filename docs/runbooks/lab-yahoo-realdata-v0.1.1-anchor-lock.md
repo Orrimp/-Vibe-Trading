@@ -7,9 +7,9 @@
 - `crates/data/src/yahoo.rs` — bar source + REVISION.toml writer
 - `crates/ui/tests/lab_yahoo_anchor.rs` — scaffold integration test (`#[ignore]`-gated until this runbook completes)
 - `data/yahoo/REVISION.toml` — per-file SHA manifest
-- `spec/anchors.toml` — repo-level anchor registry
-- `spec/lab-yahoo-realdata/feature.md` — feature brief (shipped v0.1.0 2026-05-24)
-- `spec/bug-log.md` #61 — partial-fix row for this work
+- `evidence/anchors.toml` — repo-level anchor registry
+- `docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md` — feature brief (shipped v0.1.0 2026-05-24)
+- `docs/dev-notes/bug-log.md` #61 — partial-fix row for this work
 
 ---
 
@@ -26,7 +26,7 @@ populated cache. v0.1.1 closes the loop:
    equity.
 3. Wire those values into the test constants + remove `#[ignore]`.
 4. (Optional, deferred to v0.1.2 by analyst) lock a body-SHA anchor in
-   `spec/anchors.toml`.
+   `evidence/anchors.toml`.
 
 Anchor-additive contract: the 34 existing anchors stay byte-identical
 throughout. Yahoo anchors enter under a future namespace pin
@@ -35,7 +35,7 @@ step; v0.1.2 is the body-SHA promotion.
 
 Closes [H1] (Yahoo vs Binance equity divergence < 30%) and [H2]
 (fetch success rate > 95%) from
-[`spec/lab-yahoo-realdata/feature.md`](../../spec/v1/lab-yahoo-realdata/feature.md).
+[`docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md`](../../docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md).
 
 ---
 
@@ -209,17 +209,17 @@ Expected: all four green (R8.1 still fails pre-existing — separate brief
 
 ## Step 6 — Spec hygiene
 
-1. Update `spec/lab-yahoo-realdata/feature.md` frontmatter:
+1. Update `docs/archive/pre-bmad-spec/v1/lab-yahoo-realdata/feature.md` frontmatter:
    - `version: 0.1.0` → `version: 0.1.1`
    - `status: shipped` → keep `shipped`
    - `updated: <today>`
    - Append a Changelog entry: `- <date> (developer): v0.1.1 anchor lock landed — see runbook docs/runbooks/lab-yahoo-realdata-v0.1.1-anchor-lock.md`.
 
-2. Update `spec/bug-log.md` row for `#61`:
+2. Update `docs/dev-notes/bug-log.md` row for `#61`:
    - `Status: partial-fix` → `Status: fixed`
    - Append the new fix commit hash.
 
-3. Remove the `lab-yahoo-realdata v0.1.1 (live-cache + Yahoo anchor lock)` row from `spec/backlog.md ## Active`.
+3. Remove the `lab-yahoo-realdata v0.1.1 (live-cache + Yahoo anchor lock)` row from `docs/archive/pre-bmad-spec/backlog.md ## Active`.
 
 4. Commit message template:
 
@@ -260,7 +260,7 @@ If the test fails post-merge due to upstream Yahoo data revision:
   REVISION.toml. The cache itself is `.gitignore`-d (per F6 in the
   feature brief); CI must repopulate on cold-start. A future v0.1.2
   task moves the lock from `assert_eq!(trade_count == N)` to a full
-  body-SHA anchored Markdown report in `spec/anchors.toml`.
+  body-SHA anchored Markdown report in `evidence/anchors.toml`.
 - **Why not auto-fetch in CI**: ADR-0040 § K4 — the unofficial Yahoo
   API has no SLA. CI flakiness would block every PR. The committed
   REVISION.toml + a fixtures-mode test path lets CI run hermetically;

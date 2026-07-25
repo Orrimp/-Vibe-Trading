@@ -132,7 +132,7 @@ The existing 4 base TOMLs + their anchored reports
 (`btc-2023-1m-{sma-cross,macd-trend,rsi-reversion,bbands-mean-revert}`) stay
 byte-identical — the 5 new arms are strictly additive new ids/files; the OBV
 evaluator edits are ADDITIVE enum variants + match arms (no existing variant
-changes shape). The 9 anchor SHAs in `spec/anchors.toml` are untouched. The
+changes shape). The 9 anchor SHAs in `evidence/anchors.toml` are untouched. The
 classifier byte-freeze keeps the block-bootstrap θ-surface anchors (which hash
 the sweep-bin `classify_verdict`, not the bake-off) identical.
 
@@ -204,7 +204,7 @@ reachability is UNCHANGED. Not-financial-advice + paper-only disclaimers stand.
 
 ## References
 
-- Feature: [`advisor-signal-library-expansion/feature.md`](../../../../spec/v1/advisor-signal-library-expansion/feature.md)
+- Feature: [`advisor-signal-library-expansion/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/advisor-signal-library-expansion/feature.md)
   (compressed to a CHANGELOG stub 2026-06-26; the full § Design D0–D9 + tasks are in `git log`).
 - Trace: `REQ-ADVISOR-SIGNAL-LIBRARY-EXPANSION-001`.
 - Leans on / relates to: ADR-0067 (pre-registered combination slate), ADR-0068

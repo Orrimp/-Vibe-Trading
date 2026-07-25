@@ -5,21 +5,21 @@ owner: analyst
 updated: 2026-06-08
 tags: [strategic-fork, on-chain, conclude, ship-passive, active-vs-passive, two-domains-exhausted, ohlcv-exhausted, derivatives-positioning-closed, funding-confound, basis-equals-funding, monte-carlo, robustness, pre-registration, evidentiary-threshold, durable-over-quick, go-no-go, exchange-netflows, stablecoin-supply, prior, point-in-time, daily-resolution, passive-baseline, program-thesis]
 related:
-  - spec/perp-basis-mn-spread/feature.md
-  - spec/perp-basis-mn-spread/reports/test-2026-06-08-perp-basis-mn-spread.md
+  - docs/archive/pre-bmad-spec/v1/perp-basis-mn-spread/feature.md
+  - evidence/v1/perp-basis-mn-spread/reports/test-2026-06-08-perp-basis-mn-spread.md
   - docs/dev-notes/basis-reversal-vehicle-vs-signal-fork-2026-06-06.md
   - docs/dev-notes/new-data-domain-scoping-2026-06-05.md
   - docs/dev-notes/robustness-decision-rule-2026-05-30.md
-  - spec/horizon-retest-robustness/presentations/horizon-retest-robustness-2026-06-05.md
-  - spec/product.md
-  - spec/backlog.md
+  - evidence/v1/horizon-retest-robustness/presentations/horizon-retest-robustness-2026-06-05.md
+  - docs/archive/pre-bmad-spec/product.md
+  - docs/archive/pre-bmad-spec/backlog.md
 ---
 
 # On-chain vs conclude — the two-domains-exhausted strategic fork
 
 > **Mandate (analyst decision-support, FILES ONLY — orchestrator commits).** The
 > `perp-basis-mn-spread` market-neutral v0.2.0 feature closed PASS (tester
-> [test report](../../spec/archive/tester-reports-2026-05-to-06.tar.gz),
+> [test report](../../docs/archive/tester-reports-2026-05-to-06.tar.gz),
 > HEAD `8c2e6c4`) with science verdict **FAMILY-UNIFORM-FRAGILE in all 3 arms** and,
 > with it, the ENTIRE derivatives-positioning domain. The research program has now
 > exhausted TWO full data domains (OHLCV/price + derivatives-positioning) with uniform
@@ -499,7 +499,7 @@ passive" means, concretely for this codebase:
    *already-built, already-validated* BH path from "control" to "the strategy the paper-
    trading agent runs." This is a *small* change, not a new build — the passive baseline
    is the most-tested code path in the repo.
-2. **Update `spec/product.md` § Strategy library / success metrics** to record that the
+2. **Update `docs/archive/pre-bmad-spec/product.md` § Strategy library / success metrics** to record that the
    active-edge search concluded NEGATIVE for the reachable universe and the terminal
    strategy is passive (this note already drafts the thesis update — see § 6 and the
    product.md changelog entry landed alongside this note).

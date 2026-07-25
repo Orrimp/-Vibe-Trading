@@ -215,9 +215,9 @@ overlay applies the scale).
 - Bug site: [`crates/strategy/src/vol_targeting_overlay.rs:305-319`](../../crates/strategy/src/vol_targeting_overlay.rs).
 - Existing unit tests (math-only, miss the wire): [`crates/strategy/tests/vol_targeting_overlay.rs`](../../crates/strategy/tests/vol_targeting_overlay.rs).
 - TCN overlay (structurally different — kind-replacement, not quantity-scale): [`crates/strategy/src/tcn_overlay_momentum.rs`](../../crates/strategy/src/tcn_overlay_momentum.rs).
-- Parent feature (invalidated): [`spec/v3-volatility-forecaster/feature.md`](../../spec/v1/v3-volatility-forecaster/feature.md).
-- Sibling rebaseline (invalidated): [`spec/v3-volatility-forecaster-rebaseline/feature.md`](../../spec/v1/v3-volatility-forecaster-rebaseline/feature.md).
-- Fix feature: [`spec/v3-volatility-forecaster-noop-fix/feature.md`](../../spec/v1/v3-volatility-forecaster-noop-fix/feature.md).
+- Parent feature (invalidated): [`docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md`](../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster/feature.md).
+- Sibling rebaseline (invalidated): [`docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-rebaseline/feature.md`](../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-rebaseline/feature.md).
+- Fix feature: [`docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-noop-fix/feature.md`](../../docs/archive/pre-bmad-spec/v1/v3-volatility-forecaster-noop-fix/feature.md).
 - ADR-0038 § D5 (strategy-side composition lock) + § D6 (anchor-additive contract): [`_bmad-output/planning-artifacts/architecture/decisions/0038-vol-forecast-verdict-shape.md`](../../_bmad-output/planning-artifacts/architecture/decisions/0038-vol-forecast-verdict-shape.md).
 
 ## Changelog

@@ -57,8 +57,10 @@
 # The honest NON-DONE exceptions on an otherwise-done board:
 #   - 6-9-cockpit-cross-platform (in-progress): CI matrix ACTIVATED 2026-07-10 (P7); the
 #     run-2 shakeout on Linux/Windows lanes is the open work (fix-forward).
-#   - 6-10-bmad-method-migration (in-progress): this very migration, live at Phase 2
-#     (epics/stories/sprint-status generated; Phases 3-5c pending).
+#   - 6-10-bmad-method-migration (in-progress): this very migration; Phases 0-5b landed
+#     (install, planning docs, epics/stories/sprint-status, evidence/ corpus move,
+#     docs/ knowledge move, personas, spec/ retired + lints re-founded); Phase 5c
+#     (docs cutover: CLAUDE.md/AGENT.md/README.md rewrite + .claude/agents/ retirement) pending.
 #   - 2-63-lab-recipe-test-harness-v0-3-extension (backlog): the one genuinely-open forward
 #     build item (robustness gate cleared, awaiting an analyst spawn).
 #   - 3-18-advisor-reflection-decision-loop (ready-for-dev): C4 architecture done, not built.
@@ -229,7 +231,7 @@ development_status:
   6-7-queue-staleness-reconciliation: done
   6-8-subscription-pipe-server-time-template: done
   6-9-cockpit-cross-platform: in-progress  # the open CI run-2 shakeout (P7 activated 2026-07-10; fix-forward)
-  6-10-bmad-method-migration: in-progress  # THIS migration — Phase 2 of 7 executing now
+  6-10-bmad-method-migration: in-progress  # THIS migration — Phases 0-5b landed, Phase 5c (docs cutover) pending
   epic-6-retrospective: optional
 
   # -- Epic 7: Retired Research Lines (measured-and-retired bets)

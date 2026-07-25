@@ -11,7 +11,7 @@ superseded-by: none
 
 ## Context
 
-[`spec/v3-regime-classifier/feature.md`](../../../../spec/v1/v3-regime-classifier/feature.md)
+[`docs/archive/pre-bmad-spec/v1/v3-regime-classifier/feature.md`](../../../../docs/archive/pre-bmad-spec/v1/v3-regime-classifier/feature.md)
 v0.1.0 M-OD closed 2026-05-28 (commit `6b47027`) with operator going
 bolder than analyst defaults on three load-bearing knobs: **Q1=(b)
 4-state Bull/Bear/Volatile/Calm**, **Q3=(b) Markov-switching regression
@@ -221,12 +221,12 @@ when `max_p ≥ 0.70`. Wave E backtest report logs
   independent sibling.
 - **v0.2.0 follow-on** (`v1.5-mean-reversion-for-regime-dispatcher`)
   fills the D3 dispatcher seam; no v0.1.0 rewrite needed.
-- **`spec/v3-regime-classifier/feature.md` § Design** is populated by
+- **`docs/archive/pre-bmad-spec/v1/v3-regime-classifier/feature.md` § Design** is populated by
   architect with cross-refs to D1-D6.
 - Mechanical enforcement:
   - D2 ordinal contract → `regime_overlay_neutrality_4state.rs`.
   - D6 confidence gate → two named unit tests above.
-  - D5 anchor namespace → pinned in `spec/anchors.toml` at Wave E.
+  - D5 anchor namespace → pinned in `evidence/anchors.toml` at Wave E.
 
 ## Changelog
 

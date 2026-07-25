@@ -17,7 +17,7 @@ The audit crate ([ADR-0008](0008-v05-strategy-event-journal-schema.md))
 persists them; the cockpit ([ADR-0011](0011-v05-cockpit-strategies-panel.md))
 subscribes to them. Where the types live determines who depends on
 whom, and the audit-is-a-sink invariant from
-[01-data-flow.md § Crate dependency edges](../../../../spec/architecture/01-data-flow.md#crate-dependency-edges-runtime-non-test)
+[01-data-flow.md § Crate dependency edges](../../../../docs/archive/pre-bmad-spec/architecture/01-data-flow.md#crate-dependency-edges-runtime-non-test)
 constrains the choice.
 
 ## Decision
@@ -86,7 +86,7 @@ small (32) because publish rate is bounded by file-edit cadence.
 
 - `trading_core` is upstream of every other crate; no cycle.
 - The audit-is-a-sink rule from
-  [01-data-flow.md § Crate dependency edges](../../../../spec/architecture/01-data-flow.md#crate-dependency-edges-runtime-non-test)
+  [01-data-flow.md § Crate dependency edges](../../../../docs/archive/pre-bmad-spec/architecture/01-data-flow.md#crate-dependency-edges-runtime-non-test)
   holds: `audit` imports these types from `trading_core` and writes
   them to `strategy_events`; nothing audit imports imports back to
   audit.
@@ -96,5 +96,5 @@ small (32) because publish rate is bounded by file-edit cadence.
 
 ## Changelog
 - 2026-04-19 (architect): initial accept. Extracted from
-  `spec/architecture.md` § v0.5 — broadcast bus extensions (Q5)
+  `docs/archive/pre-bmad-spec/architecture.md` § v0.5 — broadcast bus extensions (Q5)
   during Phase 1A Session 6 (2026-05-13).

@@ -28,23 +28,28 @@ if [[ -n "$clash" ]]; then
 fi
 
 # 2. Optional slug task summary.
+#
+# Repointed 2026-07-25 (BMAD-migration Phase 5b `spec/` retirement): tasks.md
+# no longer exists — each story's `## Tasks / Subtasks` section (checkbox
+# list, same `- [x]`/`- [ ]` shape) is the BMAD-native replacement, at
+# `_bmad-output/implementation-artifacts/{epic}-{story}-<slug>.md`. Story
+# FILENAMES sometimes sanitize the slug (dots -> hyphens) or add a
+# disambiguating prefix (lumen sub-phases gain a `lumen-` prefix), so match
+# by SUFFIX (`*-<slug>.md`) rather than requiring an exact `<epic>-<story>-`
+# prefix guess.
 slug="${1:-}"
 if [[ -n "$slug" ]]; then
-    # Tasks live under per-feature folders. Lumen phases nest one level
-    # deeper at spec/lumen-design-adoption/<phase>/tasks.md.
-    f="$root/spec/$slug/tasks.md"
-    if [[ ! -f "$f" ]]; then
-        f="$root/spec/lumen-design-adoption/$slug/tasks.md"
-    fi
-    if [[ ! -f "$f" ]]; then
-        echo "FAIL  no task file at spec/$slug/tasks.md (or spec/lumen-design-adoption/$slug/tasks.md)"
+    story_dir="$root/_bmad-output/implementation-artifacts"
+    f="$(find "$story_dir" -maxdepth 1 -name "*-${slug}.md" 2>/dev/null | head -1)"
+    if [[ -z "$f" ]]; then
+        echo "FAIL  no story file matching *-${slug}.md under _bmad-output/implementation-artifacts/"
         exit 1
     fi
     open=$(grep -cE '^- \[ \]'   "$f" || true)
     done=$(grep -cE '^- \[x\]'   "$f" || true)
     final_done=$(grep -cE '^- \[x\][[:space:]]+\**T_FINAL' "$f" || true)
     final_open=$(grep -cE '^- \[ \][[:space:]]+\**T_FINAL' "$f" || true)
-    echo "tasks for $slug: $done done / $open open  (T_FINAL: $final_done done, $final_open open)"
+    echo "tasks for $slug ($(basename "$f")): $done done / $open open  (T_FINAL: $final_done done, $final_open open)"
 fi
 
 echo "PRECHECK PASS"

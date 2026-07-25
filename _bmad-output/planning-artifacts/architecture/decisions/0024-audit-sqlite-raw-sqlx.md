@@ -11,7 +11,7 @@ superseded-by: none
 
 ## Context
 
-The audit goal in [`../product.md`](../../../../spec/product.md) requires every
+The audit goal in [`../product.md`](../../../../docs/archive/pre-bmad-spec/product.md) requires every
 trading decision, intent, order, fill, and P&L attribution to be
 auditable. Double-entry bookkeeping is the right shape: balanced
 debit/credit journal lines per transaction, append-only, with a
@@ -55,7 +55,7 @@ Week 1 wiring discovered that `sqlx-ledger v0.11.14` is
 **Postgres-only** — its `Cargo.toml` gates the store behind
 `sqlx/postgres`; no SQLite path compiles. Adopting it would have
 forced Postgres as an ops dep and broken the single-binary deploy
-goal locked in [`../product.md` § Project scope boundary](../../../../spec/product.md#project-scope-boundary).
+goal locked in [`../product.md` § Project scope boundary](../../../../docs/archive/pre-bmad-spec/product.md#project-scope-boundary).
 A SQLite port would be a multi-week fork job, outside v0 budget.
 
 ## Alternatives considered
@@ -70,10 +70,10 @@ A SQLite port would be a multi-week fork job, outside v0 budget.
 ## Consequences
 
 - Single-binary deploy holds; zero ops cost; fits the `$20/month`
-  hosting line in [`../product.md` § Cost economics](../../../../spec/product.md#cost-economics--monthly-ceiling).
+  hosting line in [`../product.md` § Cost economics](../../../../docs/archive/pre-bmad-spec/product.md#cost-economics--monthly-ceiling).
 - Embedded SQLite WAL handles the v0 write rate (≤ a few hundred
   journal entries per minute at 1m bars) trivially. Backup = copy
-  the file (see [`08-recovery-and-backups.md`](../../../../spec/architecture/08-recovery-and-backups.md)).
+  the file (see [`08-recovery-and-backups.md`](../../../../docs/archive/pre-bmad-spec/architecture/08-recovery-and-backups.md)).
 - Future swap (Postgres-backed ledger, or a revived `sqlx-ledger`
   with SQLite support) is a one-file change inside `audit` because
   the public API exposes only `Decimal` / `Money<C>` / view types,
@@ -83,5 +83,5 @@ A SQLite port would be a multi-week fork job, outside v0 budget.
 ## Changelog
 - 2026-04-19 (architect): initial accept (reconciled after the
   failed `sqlx-ledger` adoption).
-- 2026-05-13 (architect): extracted from `spec/architecture.md` §
+- 2026-05-13 (architect): extracted from `docs/archive/pre-bmad-spec/architecture.md` §
   Foundation libraries — Audit & ledger during Phase 1A Session 11.
