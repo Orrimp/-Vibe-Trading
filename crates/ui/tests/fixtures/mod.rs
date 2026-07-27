@@ -488,7 +488,9 @@ pub fn compare__empty_cell_run_affordance_cockpit() -> ui::state::Cockpit {
                 trade_count: 30 + i as u32,
                 equity_curve_tail: vec![100.0, 101.0, 102.0, 103.0, 104.0],
                 equity_series_ts: Vec::new(),
-                source_report_path: SmolStr::new("evidence/v1.momentum/reports/backtest-fixture.md"),
+                source_report_path: SmolStr::new(
+                    "evidence/v1.momentum/reports/backtest-fixture.md",
+                ),
                 generated_at: SmolStr::new("2026-04-29T19:51:48Z"),
                 is_multi_symbol: true,
             },

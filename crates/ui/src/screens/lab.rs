@@ -350,12 +350,22 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     };
 
     // ── Phase A top-bar row 3: date-range picker (T-D-7 / T-D-8) ───────
-    // lab-yahoo-realdata T-C3.4: when data_source == YahooCache, append a
-    // cadence badge (e.g. "1d", "1h") derived from the selected range.
-    let range_row = if is_yahoo {
-        // Derive cadence from the current date range for the badge.
-        let (start_ms, end_ms) = derive_range_ms_for_badge(&model.lab_state.range);
-        let cadence = cadence_badge::CadenceLabel::derive_from_range(start_ms, end_ms);
+    // lab-yahoo-realdata T-C3.4: when the data source is a REAL-data source,
+    // append a cadence badge derived from the source's actual bar cadence
+    // (simple-strategies-realdata review patch 7 — previously Yahoo-only,
+    // leaving Binance's 60×-coarser hourly bars unsignalled next to the 1m
+    // synthetic default; SMA 20/50 windows are bar-counts, so the cadence
+    // changes their meaning).
+    //   - Yahoo: adaptive cadence from the selected range (1m / 1h / 1d).
+    //   - Binance: PINNED hourly (Q-tf) — always "1h" regardless of range.
+    let range_row = if is_realdata {
+        let cadence = if is_binance {
+            cadence_badge::CadenceLabel::Hours1
+        } else {
+            // Derive cadence from the current date range for the badge.
+            let (start_ms, end_ms) = derive_range_ms_for_badge(&model.lab_state.range);
+            cadence_badge::CadenceLabel::derive_from_range(start_ms, end_ms)
+        };
         Row::new()
             .spacing(space::S)
             .push(date_range::view(&model.lab_state.range, None, mode))
@@ -609,7 +619,13 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         model.lab_state.strategy.as_ref(),
         model.lab_state.pair.as_ref(),
     ) {
-        let current_tuple = LabTuple::new(strategy, *venue, symbol, model.lab_state.range.clone());
+        let current_tuple = LabTuple::new(
+            strategy,
+            *venue,
+            symbol,
+            model.lab_state.range.clone(),
+            model.lab_state.data_source,
+        );
         // lab-run-save-compare T4 / R4 / Q4 — read the two-root union
         // (`lab-runs/` FIRST, then `spec/`) so a persisted Lab run repaints the
         // curve from disk on the next boot / tuple-select (the cold path), not

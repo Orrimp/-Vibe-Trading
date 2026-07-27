@@ -479,7 +479,15 @@ def parse_sprint_status_board(path: Path | None = None) -> dict[str, str]:
 
 def check_orphan_stories(report: Report) -> None:
     board = parse_sprint_status_board()
-    story_filenames = {p.stem for p in STORY_DIR.glob("*.md")} if STORY_DIR.is_dir() else set()
+    # `deferred-work.md` is the bmad-code-review step-04 deferred-findings
+    # ledger (one heading per review), NOT a story file — exclude it from the
+    # story<->board bijection (2026-07-26, first BMAD-native review run).
+    non_story_files = {"deferred-work"}
+    story_filenames = (
+        {p.stem for p in STORY_DIR.glob("*.md") if p.stem not in non_story_files}
+        if STORY_DIR.is_dir()
+        else set()
+    )
 
     for key, status in board.items():
         if not re.match(r"^\d+-\d+-", key):

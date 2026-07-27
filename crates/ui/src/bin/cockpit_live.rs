@@ -1732,6 +1732,7 @@ impl AppState {
                         *venue,
                         symbol,
                         ls.range.clone(),
+                        ls.data_source,
                     ))
                 }
                 _ => None,
@@ -2627,9 +2628,13 @@ mod tests {
         let pre_tuple = {
             let ls = &cockpit.lab_state;
             match (ls.strategy.as_ref(), ls.pair.as_ref()) {
-                (Some(strategy), Some((venue, symbol))) => {
-                    Some(LabTuple::new(strategy, *venue, symbol, ls.range.clone()))
-                }
+                (Some(strategy), Some((venue, symbol))) => Some(LabTuple::new(
+                    strategy,
+                    *venue,
+                    symbol,
+                    ls.range.clone(),
+                    ls.data_source,
+                )),
                 _ => None,
             }
         };
@@ -2687,9 +2692,13 @@ mod tests {
             let summary = make_summary(equity_len);
             let ls = &cockpit.lab_state;
             let pre_tuple = match (ls.strategy.as_ref(), ls.pair.as_ref()) {
-                (Some(strategy), Some((venue, symbol))) => {
-                    Some(LabTuple::new(strategy, *venue, symbol, ls.range.clone()))
-                }
+                (Some(strategy), Some((venue, symbol))) => Some(LabTuple::new(
+                    strategy,
+                    *venue,
+                    symbol,
+                    ls.range.clone(),
+                    ls.data_source,
+                )),
                 _ => None,
             };
             if let Some(tuple) = pre_tuple {

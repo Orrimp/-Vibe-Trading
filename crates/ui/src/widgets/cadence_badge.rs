@@ -1,10 +1,13 @@
 //! Cadence badge widget — lab-yahoo-realdata T-C3.3 / T-AR4 / R-UI-1.4.
 //!
-//! Renders a small chip showing the adaptive bar cadence (`1m` / `1h` / `1d`)
-//! derived from `Interval::derive_from_range(start_ms, end_ms)`.
+//! Renders a small chip showing the bar cadence (`1m` / `1h` / `1d`). For
+//! Yahoo the cadence is adaptive, derived from
+//! `Interval::derive_from_range(start_ms, end_ms)`; for Binance it is the
+//! pinned hourly corpus cadence (`Hours1`, simple-strategies-realdata review
+//! patch 7).
 //!
-//! The badge is only visible when `data_source == YahooCache` — callers
-//! are responsible for conditional rendering.
+//! The badge is visible for REAL-data sources (`YahooCache` / `BinanceCache`)
+//! — callers are responsible for conditional rendering.
 //!
 //! ## Design
 //!

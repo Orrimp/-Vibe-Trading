@@ -133,15 +133,71 @@ async fn binance_cache_accepted_by_sma_arm_label_is_binance() {
         "BinanceCache v0.sma run must produce a non-empty equity series"
     );
 
-    // Verify the written report body contains "binance" as the data_source label.
+    // Verify the written report body contains the actual Summary-table row
+    // labeling the data source as "binance" — a single `contains` of the row
+    // exactly as `report::sma::write` renders it (review patch 8: two
+    // decoupled `contains` could pass on a body that says "binance" anywhere
+    // while the Data source row reads "synthetic").
     let report_path = report
         .report_path
         .expect("write_report = true must produce a report_path");
     let body = std::fs::read_to_string(&report_path)
         .unwrap_or_else(|e| panic!("read report {}: {e}", report_path.display()));
     assert!(
-        body.contains("| Data source") && body.contains("binance"),
-        "report body must contain 'binance' as data_source label; got:\n{body}"
+        body.contains("| Data source          | binance              |"),
+        "report body must contain the rendered `| Data source          | binance              |` \
+         Summary row; got:\n{body}"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Review patch 4 — real-data source WITHOUT preloaded bars is rejected
+//
+// The API-boundary hole: `run_scenario` used to accept a non-Synthetic
+// `data_source` with `bars_override: None` and silently run synthetic GBM
+// bars while the written report was labeled "binance"/"yahoo". The engine
+// entry-point guard now rejects that combination with
+// `RunError::UnsupportedDataSource` (real-data sources never synthesize).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Review patch 4 — single-symbol arm + `BinanceCache` + `bars_override: None`
+/// is rejected up front (no silent synthetic run labeled "binance").
+#[tokio::test]
+async fn binance_cache_without_bars_override_rejected() {
+    let root = workspace_root();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("cwd: {e}"));
+
+    let mut cfg = base_binance_sma_config(Vec::new());
+    cfg.bars_override = None; // the hole: real-data source, no preloaded bars
+
+    let (_handle, cancel_rx) = cancellation_pair();
+    let result = backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled()).await;
+
+    assert!(
+        matches!(result, Err(RunError::UnsupportedDataSource(_))),
+        "BinanceCache + bars_override=None must be rejected (never a synthetic \
+         run labeled 'binance'); got: {result:?}"
+    );
+}
+
+/// Review patch 4 — single-symbol arm + `YahooCache` + `bars_override: None`
+/// is rejected up front (no silent synthetic run labeled "yahoo").
+#[tokio::test]
+async fn yahoo_cache_without_bars_override_rejected() {
+    let root = workspace_root();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("cwd: {e}"));
+
+    let mut cfg = base_binance_sma_config(Vec::new());
+    cfg.data_source = ScenarioDataSource::YahooCache;
+    cfg.bars_override = None;
+
+    let (_handle, cancel_rx) = cancellation_pair();
+    let result = backtest::engine::run_scenario(cfg, cancel_rx, ProgressSender::disabled()).await;
+
+    assert!(
+        matches!(result, Err(RunError::UnsupportedDataSource(_))),
+        "YahooCache + bars_override=None must be rejected (never a synthetic \
+         run labeled 'yahoo'); got: {result:?}"
     );
 }
 

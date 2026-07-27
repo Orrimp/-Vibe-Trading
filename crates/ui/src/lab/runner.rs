@@ -46,6 +46,7 @@ use trading_core::{Bar, Symbol, Venue};
 // Yahoo preload producer wiring inside `spawn_lab_run`. `ActivitySender` is
 // used via the `agent::ActivitySender` path in the parameter type.
 #[cfg(feature = "live")]
+#[cfg(feature = "yahoo")] // sole consumer is the yahoo preload activity
 use agent::activity::ActivityKind;
 
 use crate::lab::equity_loader::LabTuple;
@@ -214,10 +215,13 @@ pub type PreloadFuture<'a> = std::pin::Pin<
 /// one method the spawn helper needs — `preload` returning a `PreloadFuture`.
 ///
 /// `LabYahooBarSource` and `LabBinanceBarSource` are kept as distinct
-/// **marker super-traits** of this base so the injection seams in
-/// `spawn_lab_run` (`yahoo_source_override` / `binance_source_override`) stay
+/// **marker super-traits** of this base so the two injection seams stay
 /// type-distinct and self-documenting, while the spawn helper is generic over
-/// the shared `LabBarSource`.
+/// the shared `LabBarSource`. The seams are NOT symmetric (review patch 5):
+/// Yahoo injects via the real `yahoo_source_override` PARAMETER on
+/// `spawn_lab_run`; Binance has no such parameter — its seam is the pub
+/// [`run_binance_preload_arm`] function (the production arm itself), which
+/// tests call directly with a mock.
 ///
 /// Object-safe via `BoxFuture` return (no async-trait crate needed).
 /// Bounded by `Send + Sync + 'static` so the impl can be moved into
@@ -246,8 +250,9 @@ pub trait LabBarSource: Send + Sync + 'static {
 /// simple-strategies-realdata T-B3 — this is now a **pure marker super-trait
 /// of [`LabBarSource`]**: the `preload` method lives on `LabBarSource`, and
 /// `LabYahooBarSource` only TAGS a type as the Yahoo seam (so the
-/// `yahoo_source_override` injection slot is type-distinct from the Binance
-/// one). Because `dyn LabYahooBarSource: LabBarSource`, the existing
+/// `yahoo_source_override` injection parameter is type-distinct from the
+/// Binance seam, [`run_binance_preload_arm`]). Because
+/// `dyn LabYahooBarSource: LabBarSource`, the existing
 /// `spawn_preload_on_rt(&rt, Box::new(DefaultLabYahooBarSource), ..)` call
 /// site — and the `lab_runner_preload_callthrough_e2e` regression guard —
 /// keep coercing `Box<dyn LabYahooBarSource>` into the generalized spawn
@@ -262,10 +267,14 @@ pub trait LabYahooBarSource: LabBarSource {}
 /// (simple-strategies-realdata T-B3 / A3, sibling to [`LabYahooBarSource`]).
 ///
 /// A pure marker super-trait of [`LabBarSource`]: the `preload` method lives
-/// on `LabBarSource`; this trait only TAGS a type as the Binance seam so the
-/// `binance_source_override` injection slot in `spawn_lab_run` is type-distinct
-/// from the Yahoo one. Production uses `DefaultLabBinanceBarSource`; tests
-/// inject a fake `LabBinanceBarSource` (AC8) without touching the real corpus.
+/// on `LabBarSource`; this trait only TAGS a type as the Binance seam,
+/// type-distinct from the Yahoo one. There is NO `binance_source_override`
+/// parameter on `spawn_lab_run` (review patch 5 corrected the docs that
+/// claimed one) — injection happens by calling the pub production arm
+/// [`run_binance_preload_arm`] with any `Box<dyn LabBinanceBarSource>`.
+/// Production wires `DefaultLabBinanceBarSource` into that arm; the harness
+/// (`crates/ui/tests/spawn_lab_run_binance_harness.rs`) injects a fake
+/// `LabBinanceBarSource` (AC8) without touching the real corpus.
 ///
 /// Gated on `live` only (NOT `binance`) so a `--features live` test can build
 /// a fake Binance source without the `binance` feature — exactly the pattern
@@ -276,9 +285,10 @@ pub trait LabBinanceBarSource: LabBarSource {}
 /// Production `LabBinanceBarSource` implementation — delegates to
 /// `preload_binance_bars` (simple-strategies-realdata T-B3).
 ///
-/// Wired by `spawn_lab_run` when no `binance_source_override` is injected.
-/// Only compiled when both `live` and `binance` features are enabled because
-/// `preload_binance_bars` itself requires `#[cfg(feature = "binance")]`.
+/// Wired by `spawn_lab_run`'s `#[cfg(feature = "binance")]` block into
+/// [`run_binance_preload_arm`] (the Binance seam — review patch 5). Only
+/// compiled when both `live` and `binance` features are enabled because
+/// `preload_binance_bars` itself requires `all(live, binance)`.
 ///
 /// # ADR-0050 § D4 (rt.spawn invariant — inherited)
 ///
@@ -351,9 +361,10 @@ impl LabYahooBarSource for DefaultLabYahooBarSource {}
 /// - the mock Yahoo injection path (`yahoo_source_override = Some(...)`),
 /// - the production Yahoo path (`DefaultLabYahooBarSource` via `#[cfg(feature
 ///   = "yahoo")]`),
-/// - and (simple-strategies-realdata T-B3) the Binance path
-///   (`DefaultLabBinanceBarSource` / `binance_source_override` via
-///   `#[cfg(feature = "binance")]`).
+/// - and (simple-strategies-realdata T-B3) the Binance path — production AND
+///   mock alike via [`run_binance_preload_arm`] (`DefaultLabBinanceBarSource`
+///   under `#[cfg(feature = "binance")]`; there is no
+///   `binance_source_override` parameter — review patch 5).
 ///
 /// This invariant is structural: adding a second inline `rt.spawn` at any
 /// production site is the regression pattern that caused Bug #64 recurrences
@@ -443,7 +454,10 @@ pub fn range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
 /// Called by `spawn_lab_run` when `cfg.data_source == YahooCache`.
 /// Converts the UI Binance-style symbol to Yahoo-native at the dispatch
 /// boundary (Q6 = (a) / D7), derives the adaptive cadence (Q4 = (c) / D6),
-/// and returns `(bars, revision_sha)` for logging / report forensics.
+/// and returns `(bars, revision_sha)`. The revision SHA is verified at load
+/// and logged HERE; `spawn_lab_run` then drops it (`Ok((bars, _sha))`) — it
+/// is NOT carried into reports (review patch 13; the engine-path SMA report
+/// writer passes `rev_sha: None`). Binance-symmetric.
 ///
 /// # Errors
 ///
@@ -570,19 +584,49 @@ async fn preload_yahoo_bars(
 /// Pinned root of the Binance hourly parquet corpus (ADR-0032).
 ///
 /// Layout: `data/binance/<SYM>USDT/<YEAR>/<MM>.parquet`, `interval = "1h"`,
-/// revision `3a8b96c4…`. Gitignored + manually re-fetchable; NO auto-fetch.
-#[cfg(feature = "binance")]
+/// revision `3a8b96c4…`. Bulk parquets gitignored + manually re-fetchable
+/// (only `data/binance/REVISION.toml` is tracked); NO auto-fetch.
+///
+/// Gate note (review patch 10): all four Binance loader items are gated
+/// `all(live, binance)` — their only callers live inside `spawn_lab_run`'s
+/// `#[cfg(feature = "live")]` block, so a `--no-default-features --features
+/// binance` build (no `live`) would otherwise compile them dead and fail
+/// `-D warnings` on `dead_code`.
+#[cfg(all(feature = "live", feature = "binance"))]
 const BINANCE_CORPUS_ROOT: &str = "data/binance";
+
+/// Pinned aggregate revision SHA of the Binance hourly corpus (ADR-0032,
+/// pinned 2026-05-18 — aggregate over all 240 hourly parquets, 10 symbols ×
+/// 24 months, 2023-01-01 .. 2024-12-31). Mirrors the CLI pin literal in
+/// `crates/backtest/src/main.rs` (`expected_revision_sha` of the realdata
+/// scenarios). The Lab loader asserts the on-disk aggregate equals THIS pin
+/// (feature-AC3 pin-assert clause, review patch 3) — manifest
+/// self-consistency alone would accept a consistently re-fetched-divergent
+/// corpus.
+#[cfg(all(feature = "live", feature = "binance"))]
+const BINANCE_PINNED_REVISION_SHA: &str =
+    "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7";
+
+/// Pinned-corpus span start: 2023-01-01T00:00:00Z (ADR-0032).
+#[cfg(all(feature = "live", feature = "binance"))]
+const BINANCE_CORPUS_SPAN_START_MS: i64 = 1_672_531_200_000;
+
+/// Pinned-corpus span end (exclusive): 2025-01-01T00:00:00Z (ADR-0032).
+#[cfg(all(feature = "live", feature = "binance"))]
+const BINANCE_CORPUS_SPAN_END_MS: i64 = 1_735_689_600_000;
 
 /// Map a `backtest::engine::DateRange` to `(start_ms, end_ms)` UTC epoch-millis
 /// for the Binance corpus (simple-strategies-realdata A3).
 ///
-/// Mirrors `range_to_ms_pair` (the Yahoo mapper) but lives behind the
-/// `binance` gate so the two features are independent. The fixed-calendar
-/// presets are deterministic; `Last30d` / `Last90d` are wall-clock-relative;
-/// `Custom` passes through. The corpus spans 2023-01 .. 2024-12, so a `Custom`
-/// 2023 range or `H1_2024` / `H2_2024` all resolve to on-disk months.
-#[cfg(feature = "binance")]
+/// Mirrors `range_to_ms_pair` (the Yahoo mapper) but lives behind its own
+/// gate so the two features are independent. The fixed-calendar presets are
+/// deterministic; `Last30d` / `Last90d` are wall-clock-relative; `Custom`
+/// passes through. The corpus spans 2023-01 .. 2024-12, so a `Custom` 2023
+/// range or `H1_2024` / `H2_2024` all resolve to on-disk months; windows with
+/// NO intersection with that span (e.g. the rolling presets once the wall
+/// clock passes 2025-03) are caught by the out-of-span early check in
+/// `preload_binance_bars` (review patch 2).
+#[cfg(all(feature = "live", feature = "binance"))]
 #[must_use]
 fn binance_range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
     use backtest::engine::DateRange;
@@ -603,16 +647,24 @@ fn binance_range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
 /// Called by `spawn_lab_run` when `cfg.data_source == BinanceCache` (the
 /// production path via `DefaultLabBinanceBarSource`). It:
 ///
-/// 1. Asserts the pinned revision via
-///    `data::revision::read_and_verify_revision_manifest("data/binance")` — a
+/// 1. Rejects windows with NO intersection with the pinned corpus span
+///    (2023-01 .. 2024-12) up front with an honest pick-another-range notice
+///    — re-fetching cannot extend a PINNED corpus (review patch 2).
+/// 2. Verifies the on-disk manifest via
+///    `data::revision::read_and_verify_revision_manifest("data/binance")` AND
+///    asserts the recomputed aggregate equals the pin
+///    [`BINANCE_PINNED_REVISION_SHA`] (review patch 3, mirroring the CLI) — a
 ///    tampered / re-fetched-divergent corpus fails loudly (R6 / AC3), never
-///    producing a silently-wrong report. The returned aggregate SHA is the
-///    second tuple element (report forensics).
-/// 2. Reads single-symbol bars at `Timeframe::OneHour` via
+///    producing a silently-wrong report. The verified SHA is returned as the
+///    second tuple element to satisfy the `LabBarSource::preload` contract
+///    and is logged here; `spawn_lab_run` then DROPS it — it is NOT carried
+///    into reports or any further plumbing (review patch 13; the engine-path
+///    SMA report writer passes `rev_sha: None`).
+/// 3. Reads single-symbol bars at `Timeframe::OneHour` via
 ///    `data::ReplayFeed::merge_symbols(&[(sym, root)], OneHour)` (the exact
 ///    timeframe-parametric read `RealDataBarSource` uses; the CLI's 1m
 ///    single-symbol auto-detect path is deliberately NOT reused — Q-tf).
-/// 3. Clips to the selected range `[start_ms, end_ms)`.
+/// 4. Clips to the selected range `[start_ms, end_ms)`.
 ///
 /// # Timeframe (Q-tf)
 ///
@@ -648,7 +700,7 @@ fn binance_range_to_ms_pair(range: &backtest::engine::DateRange) -> (i64, i64) {
 /// through the same `spawn_preload_on_rt` enforcement point and (b) leaves room
 /// for a future on-demand re-fetch path (mirroring Yahoo) without a
 /// signature-breaking change. The await-free body is correct, not a smell.
-#[cfg(feature = "binance")]
+#[cfg(all(feature = "live", feature = "binance"))]
 #[allow(clippy::unused_async)]
 async fn preload_binance_bars(
     cfg: &LabRunConfig,
@@ -657,9 +709,43 @@ async fn preload_binance_bars(
     use trading_core::{Symbol, Timeframe};
 
     let root = std::path::PathBuf::from(BINANCE_CORPUS_ROOT);
+    let (start_ms, end_ms) = binance_range_to_ms_pair(scenario_range);
 
-    // Step 1: assert the pinned revision SHA. Loud Err on missing/mismatch —
-    // the corpus IS the determinism contract (ADR-0032 / R6).
+    // Step 1 (review patch 2): out-of-corpus-span early check. When the
+    // requested window's intersection with the pinned span (2023-01-01 ..
+    // 2025-01-01) is EMPTY — e.g. Last30d/Last90d once the wall clock passes
+    // 2025-03 — a re-fetch hint would misdirect the operator (the corpus is
+    // PINNED; re-fetching cannot extend it). Emit the honest pick-another-
+    // range notice instead, on the amber notice channel.
+    let intersection_empty =
+        end_ms.min(BINANCE_CORPUS_SPAN_END_MS) <= start_ms.max(BINANCE_CORPUS_SPAN_START_MS);
+    if intersection_empty {
+        tracing::info!(
+            target: "lab.binance",
+            symbol = %cfg.symbol,
+            range = %cfg.range_label,
+            start_ms,
+            end_ms,
+            "requested window has no overlap with the pinned 2023-2024 corpus — \
+             emitting out-of-span notice (NOT a re-fetch hint)"
+        );
+        let window = format_ms_window(start_ms, end_ms);
+        return Err(SmolStr::new(format!(
+            "{}{}",
+            preload_notice::NO_DATA_TAG,
+            crate::strings::LAB_BINANCE_OUT_OF_SPAN_NOTICE
+                .replace("{symbol}", cfg.symbol.as_str())
+                .replace("{window}", &window)
+        )));
+    }
+
+    // Step 2 (review patch 3): verify the manifest AND assert the pin.
+    // `read_and_verify_revision_manifest` proves the on-disk corpus is
+    // self-consistent with its own manifest; comparing the recomputed
+    // aggregate against `BINANCE_PINNED_REVISION_SHA` proves it is THE pinned
+    // corpus (mirrors the CLI's `expected_revision_sha` assert in
+    // `crates/backtest/src/main.rs`). Loud Err on missing/mismatch — the
+    // corpus IS the determinism contract (ADR-0032 / R6).
     let revision_sha = data::revision::read_and_verify_revision_manifest(&root).map_err(|e| {
         tracing::warn!(
             target: "lab.binance",
@@ -668,19 +754,35 @@ async fn preload_binance_bars(
         );
         SmolStr::new(crate::strings::LAB_BINANCE_REVISION_ERROR.replace("{detail}", &e.to_string()))
     })?;
+    if revision_sha != BINANCE_PINNED_REVISION_SHA {
+        tracing::warn!(
+            target: "lab.binance",
+            on_disk = %revision_sha,
+            pinned = BINANCE_PINNED_REVISION_SHA,
+            "Binance corpus aggregate SHA does not match the pinned revision"
+        );
+        return Err(SmolStr::new(
+            crate::strings::LAB_BINANCE_REVISION_ERROR.replace(
+                "{detail}",
+                &format!(
+                    "data revision mismatch: pinned {BINANCE_PINNED_REVISION_SHA} \
+                     but on-disk computed {revision_sha}"
+                ),
+            ),
+        ));
+    }
 
-    // Step 2: read single-symbol HOURLY bars (Q-tf). merge_symbols over a
+    // Step 3: read single-symbol HOURLY bars (Q-tf). merge_symbols over a
     // single-element slice mirrors RealDataBarSource exactly and returns a
     // plain Vec<Bar> (no async stream plumbing). FeedError::Io on a missing
     // symbol dir maps to the operator-friendly cache-miss notice (Q-miss).
     let sym = Symbol::new(cfg.symbol.as_str());
     let feed = data::ReplayFeed::new(&root, true);
     let symbol_paths = [(sym.clone(), root.clone())];
-    let (start_ms, end_ms) = binance_range_to_ms_pair(scenario_range);
 
     let bars = match feed.merge_symbols(&symbol_paths, Timeframe::OneHour) {
         Ok(mut bars) => {
-            // Step 3: clip to the selected range [start_ms, end_ms).
+            // Step 4: clip to the selected range [start_ms, end_ms).
             bars.retain(|b| {
                 let ts_ms = b.open_ts.unix_millis();
                 ts_ms >= start_ms && ts_ms < end_ms
@@ -730,19 +832,40 @@ async fn preload_binance_bars(
     Ok((bars, SmolStr::new(revision_sha)))
 }
 
-/// Build the operator-friendly Binance cache-miss notice with a `{window}`
-/// label derived from the resolved range (simple-strategies-realdata Q-miss).
-#[cfg(feature = "binance")]
+/// Render a `[start_ms, end_ms)` epoch-millis window as
+/// `YYYY-MM-DD..YYYY-MM-DD` (review patch 6 — the old label printed raw
+/// days-since-epoch integers, negative for pre-1970 Custom bounds).
+///
+/// Pre-1970 (negative) millis are valid `time` inputs and render as real
+/// dates (e.g. `1969-12-31`); only values outside `time`'s representable
+/// range (± year 9999) fall back to a labeled raw-millis form — never a
+/// panic.
+#[cfg(all(feature = "live", feature = "binance"))]
+fn format_ms_window(start_ms: i64, end_ms: i64) -> String {
+    let fmt_one = |ms: i64| -> String {
+        time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(ms) * 1_000_000)
+            .map_or_else(|_| format!("{ms}ms(raw)"), |dt| dt.date().to_string())
+    };
+    format!("{}..{}", fmt_one(start_ms), fmt_one(end_ms))
+}
+
+/// Build the operator-friendly Binance cache-miss notice with a
+/// `YYYY-MM-DD..YYYY-MM-DD` `{window}` label derived from the resolved range
+/// (simple-strategies-realdata Q-miss; review patch 6).
+///
+/// The notice is [`preload_notice::NO_DATA_TAG`]-tagged (review patch 11) so
+/// it routes to the amber `last_run_notice` channel like Yahoo's K1 no-data
+/// notice — a missing/short pinned corpus is an expected, actionable state,
+/// not a red-⚠ engine failure. (The revision-check failure stays an untagged
+/// hard error — a tampered corpus IS alarming.)
+#[cfg(all(feature = "live", feature = "binance"))]
 fn binance_cache_miss_notice(symbol: &str, range: &backtest::engine::DateRange) -> SmolStr {
     let (start_ms, end_ms) = binance_range_to_ms_pair(range);
-    // Day-resolution window label — enough for the operator to recognise the
-    // requested span without dragging in a full date formatter.
-    let window = format!("{}..{}", start_ms / 86_400_000, end_ms / 86_400_000);
-    SmolStr::new(
-        crate::strings::LAB_BINANCE_CACHE_MISS_NOTICE
-            .replace("{symbol}", symbol)
-            .replace("{window}", &window),
-    )
+    let window = format_ms_window(start_ms, end_ms);
+    let body = crate::strings::LAB_BINANCE_CACHE_MISS_NOTICE
+        .replace("{symbol}", symbol)
+        .replace("{window}", &window);
+    SmolStr::new(format!("{}{}", preload_notice::NO_DATA_TAG, body))
 }
 
 /// Exponential-backoff retry wrapper around `YahooBarSource::fetch_and_cache`.
@@ -982,20 +1105,36 @@ fn classify_preload_result(
     match preload_result {
         Ok((bars, _sha)) if bars.is_empty() => {
             // Zero bars on a successful preload — either the mock returned empty
-            // or the real Yahoo path returned a NoDataForRange that was caught
-            // upstream and converted. If somehow an empty success slipped through,
-            // build a generic notice now to avoid feeding an empty bars_override
+            // or the real preload path returned a no-data condition that was
+            // caught upstream and converted. If somehow an empty success slipped
+            // through, build a notice now to avoid feeding an empty bars_override
             // to the engine (which would silently produce a zero-equity run).
-            tracing::info!(
-                target: "lab.yahoo",
-                symbol = %cfg.symbol,
-                range = %cfg.range_label,
-                "preload returned 0 bars — emitting no-data notice"
-            );
+            //
+            // Review patch 11: the copy + tracing target are SOURCE-aware — a
+            // Binance run must not ship Yahoo-branded copy under a `lab.yahoo`
+            // target (tracing targets must be literals, hence two macro arms).
             let window = cfg.range_label.as_str();
-            let body = crate::strings::LAB_YAHOO_NO_DATA_NOTICE
-                .replace("{ticker}", cfg.symbol.as_str())
-                .replace("{window}", window);
+            let body = if cfg.data_source == crate::lab::state::LabDataSource::BinanceCache {
+                tracing::info!(
+                    target: "lab.binance",
+                    symbol = %cfg.symbol,
+                    range = %cfg.range_label,
+                    "preload returned 0 bars — emitting no-data notice"
+                );
+                crate::strings::LAB_BINANCE_OUT_OF_SPAN_NOTICE
+                    .replace("{symbol}", cfg.symbol.as_str())
+                    .replace("{window}", window)
+            } else {
+                tracing::info!(
+                    target: "lab.yahoo",
+                    symbol = %cfg.symbol,
+                    range = %cfg.range_label,
+                    "preload returned 0 bars — emitting no-data notice"
+                );
+                crate::strings::LAB_YAHOO_NO_DATA_NOTICE
+                    .replace("{ticker}", cfg.symbol.as_str())
+                    .replace("{window}", window)
+            };
             Err(SmolStr::new(format!(
                 "{}{}",
                 preload_notice::NO_DATA_TAG,
@@ -1003,6 +1142,80 @@ fn classify_preload_result(
             )))
         }
         other => other,
+    }
+}
+
+/// Run the Binance preload arm of `spawn_lab_run` against an injectable
+/// [`LabBinanceBarSource`] — THE Binance test seam (simple-strategies-
+/// realdata review patch 5).
+///
+/// This IS the production glue, not a copy: `spawn_lab_run`'s
+/// `#[cfg(feature = "binance")]` block calls this exact function with
+/// `Box::new(DefaultLabBinanceBarSource)`, and the harness
+/// (`crates/ui/tests/spawn_lab_run_binance_harness.rs`) calls it with a mock
+/// `LabBinanceBarSource`. There is NO `binance_source_override` parameter on
+/// `spawn_lab_run` — Binance injection happens by exercising this seam
+/// directly (the Yahoo seam differs: it has a real `yahoo_source_override`
+/// parameter, and `spawn_lab_run_yahoo_harness.rs` additionally replicates
+/// the preload block inline because `iced::Task` cannot be driven without an
+/// iced runtime).
+///
+/// Behaviour (mirrors the Yahoo arm):
+/// 1. Emit the `Progress { 0, 1, 0 }` sentinel BEFORE the preload await so
+///    the progress label ticks rather than sitting static.
+/// 2. Route the preload through [`spawn_preload_on_rt`] — the single
+///    `rt.spawn` enforcement point (ADR-0050 § D4; no second inline
+///    `rt.spawn`).
+/// 3. Classify via [`classify_preload_result`] (zero-bars → tagged
+///    source-appropriate no-data notice; review patch 11).
+/// 4. On success, set `scenario_cfg.data_source = BinanceCache` and
+///    `scenario_cfg.bars_override = Some(bars)`. The loader-verified revision
+///    SHA is dropped here — verified + logged at load, NOT carried into
+///    reports (review patch 13).
+///
+/// Gated on `live` only (NOT `binance`) so a `--features live` harness can
+/// inject a fake source without the real-corpus feature — the same pattern
+/// as the Yahoo mock path.
+///
+/// # Errors
+///
+/// Returns the classified preload error (tagged amber notice or hard error)
+/// when the run must short-circuit; `scenario_cfg` is left untouched in that
+/// case.
+#[cfg(feature = "live")]
+pub async fn run_binance_preload_arm(
+    rt: &tokio::runtime::Handle,
+    source: Box<dyn LabBinanceBarSource>,
+    cfg: &LabRunConfig,
+    scenario_cfg: &mut backtest::ScenarioConfig,
+    progress_tx: &backtest::progress::ProgressSender,
+) -> Result<(), SmolStr> {
+    // Sentinel emission BEFORE preload (mirrors the Yahoo path).
+    progress_tx.try_send(backtest::progress::Progress {
+        current_bar: 0,
+        total_bars: 1,
+        elapsed_ms: 0,
+    });
+
+    let cfg_for_spawn = cfg.clone();
+    let range_for_spawn = scenario_cfg.range.clone();
+    let preload_result = match spawn_preload_on_rt(rt, source, cfg_for_spawn, range_for_spawn).await
+    {
+        Ok(inner) => inner,
+        Err(join_err) => Err(SmolStr::new(format!(
+            "binance preload join error: {join_err}"
+        ))),
+    };
+    // classify_preload_result guards the empty-bars case (defence-in-depth;
+    // preload_binance_bars already returns Err on zero bars, so this is
+    // belt-and-braces symmetry with the Yahoo path).
+    match classify_preload_result(preload_result, cfg) {
+        Ok((bars, _sha)) => {
+            scenario_cfg.data_source = backtest::engine::ScenarioDataSource::BinanceCache;
+            scenario_cfg.bars_override = Some(bars);
+            Ok(())
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -1142,6 +1355,10 @@ pub fn spawn_lab_run(
         // cockpit-activity-status-bar T-D-N7: clone ActivitySender into the
         // async closure. ActivitySender wraps broadcast::Sender which is
         // Clone + Send — safe to move across the iced::Task::perform boundary.
+        // Consumed only by the yahoo preload activity below; a live build
+        // without `yahoo` (e.g. `--features binance`, which implies `live`)
+        // intentionally leaves it unused.
+        #[cfg_attr(not(feature = "yahoo"), allow(unused_variables))]
         let activity_sender_for_closure = activity_sender;
         iced::Task::perform(
             async move {
@@ -1426,58 +1643,30 @@ pub fn spawn_lab_run(
 
                 // simple-strategies-realdata T-B4 — Binance preload block.
                 // Independent of the Yahoo if/else above (Binance and Yahoo are
-                // mutually exclusive data sources). Routes through the SAME
-                // `spawn_preload_on_rt` enforcement point as Yahoo (ADR-0050
-                // § D4 — no second inline rt.spawn). The production
-                // `DefaultLabBinanceBarSource` performs a pure parquet read; on
-                // miss/coverage-shortfall it returns a typed Err (re-fetch hint)
-                // — NEVER a silent synthetic fallback (the AC4 no-op-source
-                // guard, design-side half). The Binance test seam is exercised
-                // directly via the `LabBinanceBarSource` trait + the generalized
-                // `spawn_preload_on_rt` (mirroring the callthrough guard), so no
-                // injection parameter is threaded through this signature.
+                // mutually exclusive data sources). The whole arm lives in
+                // `run_binance_preload_arm` — THE Binance test seam (review
+                // patch 5): the harness calls the same function with a mock
+                // `LabBinanceBarSource`, so this call site and the harness
+                // exercise identical sentinel → `spawn_preload_on_rt` (ADR-0050
+                // § D4, no second inline rt.spawn) → classify →
+                // `bars_override = Some(bars)` glue. On miss / coverage
+                // shortfall / out-of-span windows the loader returns a typed
+                // tagged notice — NEVER a silent synthetic fallback (the AC4
+                // no-op-source guard, design-side half). There is NO
+                // `binance_source_override` parameter on `spawn_lab_run`;
+                // injection happens at the `run_binance_preload_arm` seam.
                 #[cfg(feature = "binance")]
                 {
                     if cfg_for_preload.data_source == crate::lab::state::LabDataSource::BinanceCache
                     {
-                        // Sentinel emission BEFORE preload (mirrors the Yahoo
-                        // path) so the progress label ticks rather than sitting
-                        // static while the parquet read runs.
-                        progress_tx.try_send(backtest::progress::Progress {
-                            current_bar: 0,
-                            total_bars: 1,
-                            elapsed_ms: 0,
-                        });
-
-                        let cfg_for_spawn = cfg_for_preload.clone();
-                        let range_for_spawn = scenario_cfg.range.clone();
-                        let preload_result = match spawn_preload_on_rt(
+                        run_binance_preload_arm(
                             &rt,
                             Box::new(DefaultLabBinanceBarSource),
-                            cfg_for_spawn,
-                            range_for_spawn,
+                            &cfg_for_preload,
+                            &mut scenario_cfg,
+                            &progress_tx,
                         )
-                        .await
-                        {
-                            Ok(inner) => inner,
-                            Err(join_err) => Err(SmolStr::new(format!(
-                                "binance preload join error: {join_err}"
-                            ))),
-                        };
-                        // classify_preload_result guards the empty-bars case
-                        // (defence-in-depth; preload_binance_bars already returns
-                        // Err on zero bars, so this is belt-and-braces symmetry
-                        // with the Yahoo path).
-                        match classify_preload_result(preload_result, &cfg_for_preload) {
-                            Ok((bars, _sha)) => {
-                                scenario_cfg.data_source =
-                                    backtest::engine::ScenarioDataSource::BinanceCache;
-                                scenario_cfg.bars_override = Some(bars);
-                            }
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        }
+                        .await?;
                     }
                 }
 

@@ -268,7 +268,13 @@ yahoo = ["dep:data", "data/yahoo", "data/yahoo-online"]
 # (un-gated) modules in the `data` crate (only `data/yahoo` is gated there).
 # There is deliberately NO `*-online` variant: the Binance corpus is pinned
 # + manually re-fetchable per ADR-0032; the cockpit never auto-fetches it.
-binance = ["dep:data"]
+#
+# 2026-07-26 (story 1-10 review, P10): `binance` now IMPLIES `live` — the
+# Binance source chip only exists in the live Lab UI, and a `binance`-
+# without-`live` build never compiled anyway (`lab::{activity,runner,trainer}`
+# import the `agent` crate un-gated). Encoding the dependency makes the
+# dead combination unrepresentable instead of a `-D warnings` landmine.
+binance = ["live", "dep:data"]
 
 # `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
 # two surfaces under one flag per architect Q7 resolution

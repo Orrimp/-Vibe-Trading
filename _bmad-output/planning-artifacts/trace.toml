@@ -2938,7 +2938,7 @@ tests       = [
   "crates/ui/tests/lab_runner_preload_callthrough_e2e.rs::direct_await_without_rt_spawn_panics",
 ]
 anchors     = []   # UN-ANCHORED by construction; 119/119 verified (AC6).
-state       = "presenter-done"   # CORRECTED 2026-07-25 (BMAD Phase 5b status-drift re-founding): PRIOR state was "shipped" but feature.md frontmatter status was actually `presenter-done` (verbatim, per story 1-10-simple-strategies-realdata Dev Notes) — the "shipped" bump below was never matched by a feature.md frontmatter flip, an ADR-0082 § D2 drift the re-founded lint now catches. PRIOR comment preserved: operator approved 2026-06-13 (deck same day). Capstone of the post-live-removal Lab strategy-checking arc. Was: tester-done.
+state       = "shipped"   # SHIPPED 2026-07-27 — story 1-10 closed by the first BMAD-native code-review (verdict PASS; 15 review patches applied incl. the vacuous-ui-guard-test HIGH + 3 production bugs the revived tests caught (scenario-name collision, unindented-frontmatter Compare skip, CSV-name test bug); presenter leg formally closed — deck was operator-approved 2026-06-13). PRIOR: CORRECTED 2026-07-25 (BMAD Phase 5b status-drift re-founding): PRIOR state was "shipped" but feature.md frontmatter status was actually `presenter-done` (verbatim, per story 1-10-simple-strategies-realdata Dev Notes) — the "shipped" bump below was never matched by a feature.md frontmatter flip, an ADR-0082 § D2 drift the re-founded lint now catches. PRIOR comment preserved: operator approved 2026-06-13 (deck same day). Capstone of the post-live-removal Lab strategy-checking arc. Was: tester-done.
 
 [[req]]
 id          = "REQ-COCKPIT-CROSS-PLATFORM-001"

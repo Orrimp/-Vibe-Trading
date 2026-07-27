@@ -397,10 +397,14 @@ pub enum RunError {
     #[error("internal backtest error: {0}")]
     Internal(String),
 
-    /// A cross-sectional strategy arm received `data_source == YahooCache`,
-    /// which is unsupported at v0.1.0 (only the 4 single-symbol arms support
-    /// Yahoo bars; cross-sectional arms require Binance hourly universes).
-    #[error("data source YahooCache is not supported for cross-sectional strategy '{0}' at v0.1.0")]
+    /// A strategy arm received a `data_source` it cannot honestly run:
+    /// either a cross-sectional arm was given a single-symbol real-data
+    /// source (`YahooCache` / `BinanceCache` — those arms require the
+    /// multi-symbol Binance universe), or a real-data source arrived with
+    /// `bars_override: None` (simple-strategies-realdata review patch 4 —
+    /// real-data sources never fall back to synthetic GBM bars). The payload
+    /// names the strategy and the violated rule.
+    #[error("unsupported data source: {0}")]
     UnsupportedDataSource(String),
 }
 
@@ -885,6 +889,33 @@ fn write_equity_companion_csv(
 
 // ── run_scenario ─────────────────────────────────────────────────────────────
 
+/// Lab write-seam scenario name (review D1 completion, 2026-07-26).
+///
+/// Carries the actual symbol, range, and data source so per-tuple lab-run
+/// reports (a) never collide across sources at the file layer —
+/// `delete_older_reports` keys on the `-<scenario_name>.md` suffix, so a
+/// shared hardcoded name made a Binance run's report replace the Synthetic
+/// run's on disk — and (b) score correctly against the requested range in
+/// the Compare loader (`ui::lab::equity_loader::range_score`), which the old
+/// `btc-2023-1m-*` constants broke for every 2024-preset run.
+/// CLI/evidence reports never route through this seam (`main.rs` builds its
+/// report inputs directly), so anchored bodies are untouched by construction.
+fn lab_scenario_name(arm_slug: &str, cfg: &ScenarioConfig) -> String {
+    let range_token = match &cfg.range {
+        DateRange::Last30d => "last30d".to_string(),
+        DateRange::Last90d => "last90d".to_string(),
+        DateRange::H1_2024 => "2024-h1".to_string(),
+        DateRange::H2_2024 => "2024-h2".to_string(),
+        DateRange::Custom { start_ms, end_ms } => format!("custom{start_ms}to{end_ms}"),
+    };
+    let source_token = match cfg.data_source {
+        ScenarioDataSource::Synthetic => "synthetic",
+        ScenarioDataSource::YahooCache => "yahoo",
+        ScenarioDataSource::BinanceCache => "binance",
+    };
+    let symbol = cfg.pair.1.to_string().to_ascii_lowercase();
+    format!("{symbol}-{range_token}-{arm_slug}-{source_token}")
+}
 /// Run a backtest for the given `ScenarioConfig` and return an
 /// in-memory `RunReport` (ADR-0030 / T-D-12 / Phase B dispatch).
 ///
@@ -952,6 +983,22 @@ pub async fn run_scenario(
         )));
     }
 
+    // ── 2b. Real-data sources require preloaded bars ─────────────────────────
+    // (simple-strategies-realdata review patch 4 — API-boundary hole.)
+    // A non-Synthetic `data_source` with `bars_override: None` would fall
+    // through to the synthetic GBM generator while the written report is
+    // labeled "binance"/"yahoo" — a silently-wrong report. Every legitimate
+    // caller (Lab runner, bake-off, sweep) preloads real bars and passes
+    // `Some(bars)`; reject the combination up front instead of synthesizing.
+    if cfg.data_source != ScenarioDataSource::Synthetic && cfg.bars_override.is_none() {
+        return Err(RunError::UnsupportedDataSource(format!(
+            "{}: data_source {:?} requires preloaded bars (bars_override was None); \
+             real-data sources never fall back to synthetic bars",
+            cfg.strategy.0.as_str(),
+            cfg.data_source
+        )));
+    }
+
     // ── 3. Seed → u64 ────────────────────────────────────────────────────────
     let seed_u64 = seed_to_u64(&cfg.seed);
 
@@ -977,7 +1024,11 @@ pub async fn run_scenario(
                 cfg.data_source,
                 ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
             ) {
-                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+                return Err(RunError::UnsupportedDataSource(format!(
+                    "{:?} is not supported for cross-sectional strategy '{strategy_str}' \
+                     (requires the multi-symbol Binance universe)",
+                    cfg.data_source
+                )));
             }
             let input = crate::cli_types::MomentumScenarioInput {
                 scenario_name: "v1.momentum".to_string(),
@@ -1022,7 +1073,11 @@ pub async fn run_scenario(
                 cfg.data_source,
                 ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
             ) {
-                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+                return Err(RunError::UnsupportedDataSource(format!(
+                    "{:?} is not supported for cross-sectional strategy '{strategy_str}' \
+                     (requires the multi-symbol Binance universe)",
+                    cfg.data_source
+                )));
             }
             let input = crate::cli_types::PairsScenarioInput {
                 scenario_name: "v1.5a.pairs".to_string(),
@@ -1064,7 +1119,11 @@ pub async fn run_scenario(
                 cfg.data_source,
                 ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
             ) {
-                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+                return Err(RunError::UnsupportedDataSource(format!(
+                    "{:?} is not supported for cross-sectional strategy '{strategy_str}' \
+                     (requires the multi-symbol Binance universe)",
+                    cfg.data_source
+                )));
             }
             let input = crate::cli_types::TcnScenarioInput {
                 scenario_name: "v2.5.tcn_overlay".to_string(),
@@ -1124,7 +1183,11 @@ pub async fn run_scenario(
                 cfg.data_source,
                 ScenarioDataSource::YahooCache | ScenarioDataSource::BinanceCache
             ) {
-                return Err(RunError::UnsupportedDataSource(strategy_str.to_string()));
+                return Err(RunError::UnsupportedDataSource(format!(
+                    "{:?} is not supported for cross-sectional strategy '{strategy_str}' \
+                     (requires the multi-symbol Binance universe)",
+                    cfg.data_source
+                )));
             }
             let input = crate::cli_types::TcnScenarioInput {
                 scenario_name: "v2.5.tcn_overlay_weights".to_string(),
@@ -1226,8 +1289,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-sma-cross".to_string(),
-                body_name: "btc-2023-1m-sma-cross".to_string(),
+                scenario_name: lab_scenario_name("sma-cross", &cfg),
+                body_name: lab_scenario_name("sma-cross", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1306,8 +1369,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-macd-trend".to_string(),
-                body_name: "btc-2023-1m-macd-trend".to_string(),
+                scenario_name: lab_scenario_name("macd-trend", &cfg),
+                body_name: lab_scenario_name("macd-trend", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1384,8 +1447,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-rsi-reversion".to_string(),
-                body_name: "btc-2023-1m-rsi-reversion".to_string(),
+                scenario_name: lab_scenario_name("rsi-reversion", &cfg),
+                body_name: lab_scenario_name("rsi-reversion", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1466,8 +1529,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-bbands-mean-revert".to_string(),
-                body_name: "btc-2023-1m-bbands-mean-revert".to_string(),
+                scenario_name: lab_scenario_name("bbands-mean-revert", &cfg),
+                body_name: lab_scenario_name("bbands-mean-revert", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1545,8 +1608,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-donchian-break".to_string(),
-                body_name: "btc-2023-1m-donchian-break".to_string(),
+                scenario_name: lab_scenario_name("donchian-break", &cfg),
+                body_name: lab_scenario_name("donchian-break", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1615,8 +1678,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-donchian-floor".to_string(),
-                body_name: "btc-2023-1m-donchian-floor".to_string(),
+                scenario_name: lab_scenario_name("donchian-floor", &cfg),
+                body_name: lab_scenario_name("donchian-floor", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1685,8 +1748,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-vol-breakout".to_string(),
-                body_name: "btc-2023-1m-vol-breakout".to_string(),
+                scenario_name: lab_scenario_name("vol-breakout", &cfg),
+                body_name: lab_scenario_name("vol-breakout", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1755,8 +1818,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-roc-momentum".to_string(),
-                body_name: "btc-2023-1m-roc-momentum".to_string(),
+                scenario_name: lab_scenario_name("roc-momentum", &cfg),
+                body_name: lab_scenario_name("roc-momentum", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,
@@ -1825,8 +1888,8 @@ pub async fn run_scenario(
                 ScenarioDataSource::Synthetic => "synthetic",
             };
             let sma_input = crate::cli_types::SmaScenarioInput {
-                scenario_name: "btc-2023-1m-obv".to_string(),
-                body_name: "btc-2023-1m-obv".to_string(),
+                scenario_name: lab_scenario_name("obv", &cfg),
+                body_name: lab_scenario_name("obv", &cfg),
                 body_elapsed_override: None,
                 symbol: cfg.pair.1.clone(),
                 start_year,

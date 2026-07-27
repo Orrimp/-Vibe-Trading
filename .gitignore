@@ -20,6 +20,13 @@
 !/data/yahoo/
 /data/yahoo/*
 !/data/yahoo/REVISION.toml
+# Pinned Binance hourly klines corpus (ADR-0032; simple-strategies-realdata
+# review patch 3): bulk parquets stay gitignored; only the revision-pin
+# manifest is tracked — the Lab/CLI pin-assert (revision 3a8b96c4…) needs the
+# manifest reproducible from a fresh clone, mirroring every sibling corpus.
+!/data/binance/
+/data/binance/*
+!/data/binance/REVISION.toml
 !/data/binance-funding/
 /data/binance-funding/*
 !/data/binance-funding/REVISION.toml

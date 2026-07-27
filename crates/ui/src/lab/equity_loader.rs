@@ -32,7 +32,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 use trading_core::{StrategyId, Symbol, Venue};
 
-use crate::lab::state::{DateRange, Preset};
+use crate::lab::state::{DateRange, LabDataSource, Preset};
 
 // ── Public data shapes ────────────────────────────────────────────────────────
 
@@ -85,23 +85,43 @@ impl LabEquitySeries {
     }
 }
 
-/// Cache key: exact `(strategy_slug, symbol, range)` triple.
+/// Cache key: exact `(strategy_slug, symbol, range, source)` tuple.
+///
+/// `source` was added by the simple-strategies-realdata review (D1 — key
+/// Compare/EquityCache by data source): without it, Binance and
+/// Synthetic/Yahoo runs of the same `(strategy, symbol, range)` shadowed each
+/// other in the cache and in report resolution (newest report won). The
+/// loader resolves reports source-aware via the report frontmatter's
+/// `data_source:` field (see [`load_equity`]).
+///
+/// NOT serialized — the Lab persistence schema (`version: 1`) stores
+/// `strategy`/`pair`/`range`/`data_source` as separate `LabState` fields,
+/// never this struct, so the added field is not a schema change.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LabTuple {
     pub strategy: SmolStr,
     pub symbol: SmolStr,
     pub range: DateRange,
+    /// Data source the run used (`Synthetic` / `YahooCache` / `BinanceCache`).
+    pub source: LabDataSource,
 }
 
 impl LabTuple {
     /// Construct from the typed lab-state fields.
     #[must_use]
-    pub fn new(strategy: &StrategyId, venue: Venue, symbol: &Symbol, range: DateRange) -> Self {
+    pub fn new(
+        strategy: &StrategyId,
+        venue: Venue,
+        symbol: &Symbol,
+        range: DateRange,
+        source: LabDataSource,
+    ) -> Self {
         let _ = venue; // Phase A universe is single-venue; key on symbol only.
         Self {
             strategy: SmolStr::new(&strategy.0),
             symbol: SmolStr::new(symbol.0.as_str()),
             range,
+            source,
         }
     }
 }
@@ -111,11 +131,14 @@ impl LabTuple {
 pub enum EquityLoadError {
     #[error("report directory not found: {0}")]
     ReportDirNotFound(String),
-    #[error("no cached report found for ({strategy}, {symbol}, {range:?})")]
+    #[error("no cached report found for ({strategy}, {symbol}, {range:?}, {data_source:?})")]
     NoReport {
         strategy: SmolStr,
         symbol: SmolStr,
         range: DateRange,
+        // Named `data_source` (not `source`) because thiserror reserves a
+        // field named `source` for the std error-source chain.
+        data_source: LabDataSource,
     },
     #[error("report parse error in {path}: {msg}")]
     ParseError { path: String, msg: String },
@@ -212,6 +235,7 @@ impl EquityCache {
             strategy: tuple.strategy.clone(),
             symbol: tuple.symbol.clone(),
             range: tuple.range.clone(),
+            data_source: tuple.source,
         }))
     }
 
@@ -276,6 +300,12 @@ fn discover_reports(report_root: &std::path::Path, slug: &str) -> Vec<PathBuf> {
 #[derive(Debug)]
 struct ReportMeta {
     scenario: String,
+    /// The `data_source:` frontmatter value ("synthetic" / "yahoo…" /
+    /// "binance"), written by every engine report since commit 93845af.
+    /// `None` for legacy (pre-June) reports without the field — treated as
+    /// source-unknown by [`load_equity`] (review D1: they only match when no
+    /// report tagged with the requested source exists; no on-disk migration).
+    data_source: Option<String>,
     /// The pair symbol extracted from the report (from `## Universe` section
     /// or the `scenario:` field). `None` for multi-symbol reports.
     symbol: Option<String>,
@@ -325,6 +355,13 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
         .find_map(|l| l.strip_prefix("scenario: "))
         .map(|s| s.trim().to_string())?;
 
+    // Review D1 — source-aware resolution: the engine writes `data_source:`
+    // into every report frontmatter (93845af); legacy reports lack it → None.
+    let data_source = fm_lines
+        .iter()
+        .find_map(|l| l.strip_prefix("data_source: "))
+        .map(|s| s.trim().to_string());
+
     // Extract year hint from scenario name.
     let year_hint: Option<i32> = ["2023", "2024", "2025"]
         .iter()
@@ -354,12 +391,28 @@ fn parse_report_meta(content: &str) -> Option<ReportMeta> {
 
     Some(ReportMeta {
         scenario,
+        data_source,
         symbol,
         year_hint,
         has_equity_section,
         initial_capital,
         final_equity,
     })
+}
+
+/// True when a report's frontmatter `data_source:` value denotes the
+/// requested [`LabDataSource`] (review D1).
+///
+/// Prefix-matched because the Yahoo CLI emitters write extended forms like
+/// `yahoo-cache:<TICKER>/<INTERVAL>/2024` (see
+/// `report::yahoo::YahooReportContext::data_source()`), while the engine path
+/// writes the plain `synthetic` / `yahoo` / `binance` tokens.
+fn source_tag_matches(report_data_source: &str, source: LabDataSource) -> bool {
+    match source {
+        LabDataSource::Synthetic => report_data_source.starts_with("synthetic"),
+        LabDataSource::YahooCache => report_data_source.starts_with("yahoo"),
+        LabDataSource::BinanceCache => report_data_source.starts_with("binance"),
+    }
 }
 
 /// Extract a single symbol from the `## Universe` section.
@@ -585,8 +638,18 @@ pub fn load_equity(
         )));
     }
 
-    // Find the best matching report.
-    let mut best: Option<(u32, PathBuf)> = None;
+    // Find the best matching report — source-aware since the review D1 fix.
+    //
+    // Two tiers:
+    //   1. Reports whose frontmatter `data_source:` matches `tuple.source`
+    //      (the honest tier — a Binance tuple resolves a binance report).
+    //   2. Legacy reports WITHOUT the field (pre-93845af) — source-unknown;
+    //      they are eligible ONLY when tier 1 is empty (no on-disk migration).
+    // Reports tagged with a DIFFERENT source never match — that is the
+    // shadowing bug this fix removes (a Synthetic run no longer hijacks a
+    // Binance tuple's resolution and vice versa).
+    let mut best_tagged: Option<(u32, PathBuf)> = None;
+    let mut best_untagged: Option<(u32, PathBuf)> = None;
     for path in &reports {
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
@@ -596,18 +659,24 @@ pub fn load_equity(
         };
         let quality = report_matches(&meta, &tuple.symbol, &tuple.range);
         if let MatchQuality::Match { range_score } = quality {
-            let is_better = best.as_ref().is_none_or(|(s, _)| range_score > *s);
+            let slot = match meta.data_source.as_deref() {
+                Some(ds) if source_tag_matches(ds, tuple.source) => &mut best_tagged,
+                Some(_) => continue, // tagged with a different source — excluded
+                None => &mut best_untagged, // legacy-unknown (tier 2)
+            };
+            let is_better = slot.as_ref().is_none_or(|(s, _)| range_score > *s);
             if is_better {
-                best = Some((range_score, path.clone()));
+                *slot = Some((range_score, path.clone()));
             }
         }
     }
 
-    let Some((_, best_path)) = best else {
+    let Some((_, best_path)) = best_tagged.or(best_untagged) else {
         return Err(EquityLoadError::NoReport {
             strategy: tuple.strategy.clone(),
             symbol: tuple.symbol.clone(),
             range: tuple.range.clone(),
+            data_source: tuple.source,
         });
     };
 
@@ -983,6 +1052,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
 
         let series = load_equity(&tuple, &spec).unwrap();
@@ -1017,6 +1087,7 @@ data_source: synthetic
             strategy: SmolStr::new("v0.sma"),
             symbol: SmolStr::new("BTCUSDT"),
             range: DateRange::Preset(Preset::Last90d),
+            source: LabDataSource::Synthetic,
         };
 
         let series = load_equity(&tuple, &spec).unwrap();
@@ -1040,6 +1111,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
 
         let mut cache = EquityCache::new();
@@ -1061,6 +1133,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
 
         let mut cache = EquityCache::new();
@@ -1094,12 +1167,163 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("SOLUSDT"),
             range: DateRange::Preset(Preset::H2_2024),
+            source: LabDataSource::Synthetic,
         };
 
         let result = load_equity(&tuple, &spec);
         assert!(
             matches!(result, Err(EquityLoadError::NoReport { .. })),
             "expected NoReport error, got: {result:?}"
+        );
+    }
+
+    /// Build a v0-paper-sma report fixture with a parameterized
+    /// `data_source:` frontmatter line (`None` → legacy report without the
+    /// field) and a parameterized equity-point count so two same-tuple
+    /// reports are distinguishable by `samples.len()`.
+    fn sma_2024_h1_report(data_source: Option<&str>, equity_points: usize) -> String {
+        let ds_line = data_source.map_or(String::new(), |ds| format!("data_source: {ds}\n"));
+        let mut equity_rows = String::new();
+        for i in 0..equity_points {
+            equity_rows.push_str(&format!(
+                "| {} | {}.00     |\n",
+                1_704_067_200_000_i64 + (i as i64) * 86_400_000,
+                100_000 + i * 1_000
+            ));
+        }
+        format!(
+            "---\n\
+             scenario: btc-2024-h1-sma-cross\n\
+             seed: 0xC0FFEE\n\
+             generated: 2026-06-01T12:00:00Z\n\
+             wall_clock_s: 0.1\n\
+             {ds_line}\
+             ---\n\
+             \n\
+             # Backtest Report — btc-2024-h1-sma-cross\n\
+             \n\
+             ## Summary\n\
+             \n\
+             | Metric               | Value                         |\n\
+             |----------------------|-------------------------------|\n\
+             | Scenario             | btc-2024-h1-sma-cross         |\n\
+             | Initial capital      | $100000.00 USDT               |\n\
+             | Final equity         | $103000.00 USDT               |\n\
+             \n\
+             ## Universe\n\
+             \n\
+             - BTCUSDT\n\
+             \n\
+             ## Equity curve\n\
+             \n\
+             | Timestamp (ms) | Equity (USDT) |\n\
+             |---------------|---------------|\n\
+             {equity_rows}\
+             \n\
+             ## Notes\n\
+             \n\
+             - source-keying fixture\n"
+        )
+    }
+
+    fn sma_tuple(source: LabDataSource) -> LabTuple {
+        LabTuple {
+            strategy: SmolStr::new("v0.sma"),
+            symbol: SmolStr::new("BTCUSDT"),
+            range: DateRange::Preset(Preset::H1_2024),
+            source,
+        }
+    }
+
+    /// Review D1 — THE shadow-proof: same `(strategy, symbol, range)` with a
+    /// `data_source: binance` report AND a `data_source: synthetic` report in
+    /// the SAME root no longer shadow each other. The Binance tuple resolves
+    /// the binance report (4 points), the Synthetic tuple the synthetic one
+    /// (2 points), and a source with NO tagged report (Yahoo) gets `NoReport`
+    /// — a different-source report never satisfies it.
+    #[test]
+    fn same_tuple_binance_and_synthetic_resolve_own_reports() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("lab-runs");
+        let slug_dir = root.join("v0-paper-sma").join("reports");
+        std::fs::create_dir_all(&slug_dir).unwrap();
+        write_fixture_report(
+            &slug_dir,
+            "backtest-20260601-120000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(Some("binance"), 4),
+        );
+        write_fixture_report(
+            &slug_dir,
+            "backtest-20260601-130000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(Some("synthetic"), 2),
+        );
+
+        let binance = load_equity(&sma_tuple(LabDataSource::BinanceCache), &root)
+            .expect("Binance tuple must resolve the binance-tagged report");
+        assert_eq!(
+            binance.samples.len(),
+            4,
+            "Binance tuple resolved the wrong report (expected the 4-point binance one)"
+        );
+
+        let synthetic = load_equity(&sma_tuple(LabDataSource::Synthetic), &root)
+            .expect("Synthetic tuple must resolve the synthetic-tagged report");
+        assert_eq!(
+            synthetic.samples.len(),
+            2,
+            "Synthetic tuple resolved the wrong report (expected the 2-point synthetic one)"
+        );
+
+        let yahoo = load_equity(&sma_tuple(LabDataSource::YahooCache), &root);
+        assert!(
+            matches!(yahoo, Err(EquityLoadError::NoReport { .. })),
+            "a source with no tagged report must get NoReport, never a \
+             different source's report; got: {yahoo:?}"
+        );
+    }
+
+    /// Review D1 — legacy-unknown rule: a report WITHOUT the `data_source:`
+    /// field matches ONLY when no report tagged with the requested source
+    /// exists (tier-2 fallback, no on-disk migration).
+    #[test]
+    fn legacy_untagged_report_only_matches_when_no_tagged_exists() {
+        // Root A: ONLY a legacy untagged report → any source resolves it.
+        let tmp_a = tempfile::tempdir().unwrap();
+        let root_a = tmp_a.path().join("lab-runs");
+        let slug_a = root_a.join("v0-paper-sma").join("reports");
+        std::fs::create_dir_all(&slug_a).unwrap();
+        write_fixture_report(
+            &slug_a,
+            "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(None, 3),
+        );
+        let via_binance = load_equity(&sma_tuple(LabDataSource::BinanceCache), &root_a).expect(
+            "legacy untagged report must satisfy a Binance tuple when nothing tagged exists",
+        );
+        assert_eq!(via_binance.samples.len(), 3);
+
+        // Root B: legacy untagged + a binance-tagged sibling → the tagged one
+        // wins for a Binance tuple even though both match the range.
+        let tmp_b = tempfile::tempdir().unwrap();
+        let root_b = tmp_b.path().join("lab-runs");
+        let slug_b = root_b.join("v0-paper-sma").join("reports");
+        std::fs::create_dir_all(&slug_b).unwrap();
+        write_fixture_report(
+            &slug_b,
+            "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(None, 3),
+        );
+        write_fixture_report(
+            &slug_b,
+            "backtest-20260601-120000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(Some("binance"), 5),
+        );
+        let tagged_wins = load_equity(&sma_tuple(LabDataSource::BinanceCache), &root_b)
+            .expect("Binance tuple resolves");
+        assert_eq!(
+            tagged_wins.samples.len(),
+            5,
+            "the source-tagged report must win over the legacy untagged one"
         );
     }
 
@@ -1159,6 +1383,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         // lab-runs first; a nonexistent spec/ second — the union still resolves.
         let roots = [lab_runs, PathBuf::from("/nonexistent/spec")];
@@ -1217,6 +1442,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         let samples = vec![
             (0i64, Decimal::from(100_000)),
@@ -1250,11 +1476,13 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         let mirror_tuple = LabTuple {
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("BTCUSDT"), // different pair
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         let mirror = make_mirror(mirror_tuple, vec![(0, Decimal::from(100_000))]);
         let lab_state = lab_state_with_mirror(mirror);
@@ -1283,6 +1511,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         let lab_state = crate::lab::state::LabState::default(); // no last_run_report
         let mut cache = EquityCache::new();
@@ -1328,6 +1557,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         let lab_state = crate::lab::state::LabState::default();
         let mut cache = EquityCache::new();
@@ -1350,6 +1580,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
         // Mirror matches tuple but has empty samples.
         let mirror = make_mirror(tuple.clone(), vec![]);
@@ -1391,6 +1622,7 @@ data_source: synthetic
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source: LabDataSource::Synthetic,
         };
 
         // The existing reports don't have an equity-curve section, so we

@@ -36,7 +36,7 @@ use crate::widgets::training_log::RingBuffer;
 /// The enum is `#[serde(…)]`-ready so it can round-trip through the Lab
 /// persistence schema (version: 1) without breaking existing saved state
 /// (unknown string → falls back to `Synthetic` via `#[serde(default)]`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LabDataSource {
     /// GBM synthetic bars — byte-identical to pre-v0.1.0 default (H5).

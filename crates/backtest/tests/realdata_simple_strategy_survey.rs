@@ -52,22 +52,48 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-async fn load_year_bars(root: &Path, sym: &Symbol, start_ms: u64, end_ms: u64) -> Vec<Bar> {
+/// Load one symbol-year of hourly bars. Returns `(bars, partial)`;
+/// `partial = true` when the stream errored mid-read or bars with
+/// out-of-`u64`-range (negative) timestamps were skipped — the caller marks
+/// the printed row as PARTIAL so a truncated read is never mistaken for a
+/// complete year (review patch 12: the old `while let Some(Ok(b))` silently
+/// stopped at the first `Err`, and `as u64` wrapped negative timestamps).
+async fn load_year_bars(root: &Path, sym: &Symbol, start_ms: u64, end_ms: u64) -> (Vec<Bar>, bool) {
     use data::source::MarketDataSource as _;
     let feed = data::ReplayFeed::new(root.join("data/binance"), true);
     let Ok(mut stream) = feed.subscribe_bars(sym.clone(), Timeframe::OneHour).await else {
-        return Vec::new();
+        return (Vec::new(), false);
     };
     let mut bars = Vec::new();
-    while let Some(Ok(b)) = stream.next().await {
-        let ts = b.open_ts.unix_millis() as u64;
+    let mut partial = false;
+    while let Some(next) = stream.next().await {
+        let b = match next {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!(
+                    "PARTIAL {sym}: bar stream errored mid-read ({e}) — \
+                     row will be marked PARTIAL, results cover only the bars read so far"
+                );
+                partial = true;
+                break;
+            }
+        };
+        let ts_ms = b.open_ts.unix_millis();
+        let Ok(ts) = u64::try_from(ts_ms) else {
+            eprintln!(
+                "PARTIAL {sym}: bar with negative timestamp {ts_ms} ms skipped — \
+                 row will be marked PARTIAL"
+            );
+            partial = true;
+            continue;
+        };
         if ts >= start_ms && ts < end_ms {
             bars.push(b);
         } else if ts >= end_ms {
             break;
         }
     }
-    bars
+    (bars, partial)
 }
 
 fn buy_and_hold_pct(bars: &[Bar]) -> Decimal {
@@ -145,10 +171,14 @@ async fn realdata_simple_strategy_survey() {
     for sym_s in symbols {
         let sym = Symbol::new(sym_s);
         for (yr, s, e) in years {
-            let bars = load_year_bars(&root, &sym, *s, *e).await;
+            let (bars, partial) = load_year_bars(&root, &sym, *s, *e).await;
+            // Review patch 12: a mid-stream Err / skipped negative timestamp
+            // marks the row PARTIAL so truncated data is never presented as a
+            // complete year.
+            let partial_marker = if partial { " ⚠ PARTIAL" } else { "" };
             if bars.len() < 100 {
                 println!(
-                    "| {sym_s} · {yr} | (only {} bars loaded) | {} |",
+                    "| {sym_s} · {yr}{partial_marker} | (only {} bars loaded) | {} |",
                     bars.len(),
                     " | ".repeat(STRATS.len() - 1)
                 );
@@ -175,7 +205,7 @@ async fn realdata_simple_strategy_survey() {
                 cells.push(cell);
             }
             println!(
-                "| {sym_s} · {yr} ({} bars) | **{bh:+.1}%** | {} |",
+                "| {sym_s} · {yr} ({} bars){partial_marker} | **{bh:+.1}%** | {} |",
                 bars.len(),
                 cells.join(" | ")
             );

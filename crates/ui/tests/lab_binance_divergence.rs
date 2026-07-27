@@ -22,11 +22,13 @@
 //!
 //! `#[cfg(all(feature = "live", feature = "binance"))]` — needs the engine
 //! (`live`) + the Binance loader (`binance`). The pinned corpus
-//! (`data/binance/`, revision `3a8b96c4…`) must be present on disk; if it is
-//! absent the loader returns the typed cache-miss `Err` (asserted by
-//! `loader_missing_corpus_returns_typed_err_not_synthetic`), and the
-//! divergence test SKIPS with a logged reason rather than failing CI on a
-//! machine without the gitignored corpus.
+//! (`data/binance/`, revision `3a8b96c4…`) must be present on disk AT THE
+//! WORKSPACE ROOT. Skip policy (review patch 1): the tests pin the process
+//! cwd to the workspace root (cargo runs ui test binaries with
+//! cwd=`crates/ui/`) and probe `data/binance/REVISION.toml` — SKIP only when
+//! the probe is genuinely absent (CI without the gitignored corpus); when the
+//! probe exists, any loader error FAILS loudly. The old cwd-relative
+//! any-Err→skip made every real-data body here vacuous on every machine.
 
 #![cfg(all(feature = "live", feature = "binance"))]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -92,10 +94,48 @@ fn scenario_cfg(
     }
 }
 
+/// Resolve the workspace root (`crates/ui` → `crates` → root) and pin the
+/// process cwd there. The loader's corpus root `data/binance` is cwd-relative,
+/// and cargo runs ui test binaries with cwd = `crates/ui/` — which made every
+/// guard body in this file skip on EVERY machine (review patch 1, empirically
+/// proven 2026-07-26 with the corpus present). Tests in one binary run
+/// multi-threaded; per-test `set_current_dir` to the SAME directory is the
+/// established benign pattern (`crates/backtest/tests/binance_cache_dispatch.rs`).
+fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("locate workspace root from CARGO_MANIFEST_DIR")
+        .to_path_buf();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("set_current_dir({root:?}): {e}"));
+    root
+}
+
+/// Corpus-presence probe at the WORKSPACE root. Skipping is legitimate ONLY
+/// when this is genuinely absent; with the probe present, any loader error is
+/// a hard FAIL (the old any-Err→skip made the tests vacuous).
+fn corpus_probe(root: &std::path::Path) -> bool {
+    root.join("data/binance/REVISION.toml").is_file()
+}
+
 /// Load real Binance bars via the PRODUCTION `DefaultLabBinanceBarSource`
 /// (the trait seam), routed exactly as `spawn_lab_run` routes it. Returns
-/// `None` (test skips) when the gitignored corpus is absent on this machine.
+/// `None` (test skips) ONLY when the workspace-root probe
+/// `data/binance/REVISION.toml` is genuinely absent; when the probe exists
+/// but the loader errors, this PANICS — that is a real regression, not a
+/// missing corpus (review patch 1).
 fn try_load_binance_bars() -> Option<(Vec<trading_core::Bar>, SmolStr)> {
+    let root = pin_cwd_to_workspace_root();
+    if !corpus_probe(&root) {
+        eprintln!(
+            "[skip] data/binance/REVISION.toml not present at the workspace root \
+             ({}) — the gitignored pinned corpus is absent on this machine; \
+             divergence test skipped. (The no-silent-fallback contract is still \
+             proven by loader_missing_corpus_returns_typed_err_not_synthetic.)",
+            root.display()
+        );
+        return None;
+    }
     let cfg = binance_cfg();
     let src = DefaultLabBinanceBarSource;
     // `LabBarSource::preload` is an async fn returning a boxed future; drive it
@@ -108,15 +148,12 @@ fn try_load_binance_bars() -> Option<(Vec<trading_core::Bar>, SmolStr)> {
     let result = rt.block_on(async { src.preload(&cfg, &RANGE_2023_H1).await });
     match result {
         Ok((bars, sha)) => Some((bars, sha)),
-        Err(e) => {
-            eprintln!(
-                "[skip] Binance corpus not loadable on this machine ({e}); \
-                 the gitignored data/binance/ corpus is absent — divergence \
-                 test skipped. (The no-silent-fallback contract is still \
-                 proven by loader_missing_corpus_returns_typed_err_not_synthetic.)"
-            );
-            None
-        }
+        Err(e) => panic!(
+            "corpus PRESENT (data/binance/REVISION.toml exists under {}) but the \
+             Binance loader failed: {e} — hard FAIL, not a skip (review patch 1: \
+             any-Err→skip left this guard vacuous on every machine).",
+            root.display()
+        ),
     }
 }
 
@@ -148,6 +185,13 @@ fn loader_returns_nonempty_hourly_bars_with_revision_sha() {
     assert!(
         !sha.is_empty(),
         "loader must carry the pinned aggregate revision SHA (forensics)"
+    );
+    // Review patch 3 through the seam: the loader pin-asserts, so the carried
+    // SHA IS the pin (mirrors the CLI literal in crates/backtest/src/main.rs).
+    assert_eq!(
+        sha.as_str(),
+        "3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7",
+        "loader-carried SHA must equal the pinned corpus revision (AC3)"
     );
     // Every bar is in the requested window and on the Binance venue.
     for b in &bars {
@@ -240,8 +284,8 @@ fn binance_run_diverges_from_synthetic_baseline() {
     let eq_synth = final_equity(&report_synth);
     let delta = (eq_binance - eq_synth).abs();
 
-    // Epsilon: ≥ 1 USDT on a ~10_000 USDT book is ~10 bp — far above any
-    // floating/rounding noise, and trivially satisfied by two genuinely
+    // Epsilon: ≥ 1 USDT on a ~10_000 USDT book is ~1 bp — above
+    // rounding-noise scale, and trivially satisfied by two genuinely
     // different bar sources. (Real BTC 2023-H1 vs a GBM random walk diverge by
     // orders of magnitude more; 1 USDT is a deliberately conservative floor.)
     let epsilon = Decimal::ONE;
@@ -277,6 +321,11 @@ fn binance_run_diverges_from_synthetic_baseline() {
 /// the divergence guard above trustworthy: a miss is loud, never a random walk.
 #[test]
 fn loader_missing_corpus_returns_typed_err_not_synthetic() {
+    // cwd-pin so the loader resolves the same workspace-root corpus the other
+    // tests use (with the corpus present this exercises the missing-SYMBOL
+    // path; without it, the missing-manifest revision path — both are typed
+    // Errs and both satisfy the assertions below).
+    let _root = pin_cwd_to_workspace_root();
     // A symbol guaranteed absent from the 10-symbol pinned corpus.
     let cfg = LabRunConfig {
         symbol: SmolStr::new("ZZZUSDT"),

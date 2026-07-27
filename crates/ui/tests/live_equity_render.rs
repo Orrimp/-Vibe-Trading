@@ -808,7 +808,7 @@ fn flat_and_single_point_curves_render_without_panic() {
 use std::io::Write;
 
 use ui::lab::equity_loader::{LabTuple, load_equity};
-use ui::lab::state::{DateRange as LabDateRange, Preset};
+use ui::lab::state::{DateRange as LabDateRange, LabDataSource, Preset};
 use ui::test_support::chart_overlay_program;
 
 /// Number of synthetic bars under the overlay. `synthetic_candles` stamps bar
@@ -1064,11 +1064,13 @@ fn load_two_run_scene(
         strategy: smol_str::SmolStr::new("v1.momentum"),
         symbol: smol_str::SmolStr::new("XRPUSDT"),
         range: LabDateRange::Preset(Preset::H1_2024),
+        source: LabDataSource::Synthetic,
     };
     let tuple_b = LabTuple {
         strategy: smol_str::SmolStr::new("v0.sma"),
         symbol: smol_str::SmolStr::new("BTCUSDT"),
         range: LabDateRange::Preset(Preset::Last90d),
+        source: LabDataSource::Synthetic,
     };
     let a = load_equity(&tuple_a, lab_runs).expect("run A loads");
     let b = load_equity(&tuple_b, lab_runs).expect("run B loads");
@@ -1112,6 +1114,7 @@ fn lab_curve_hydrated_from_lab_runs_report_renders() {
         strategy: smol_str::SmolStr::new("v1.momentum"),
         symbol: smol_str::SmolStr::new("XRPUSDT"),
         range: LabDateRange::Preset(Preset::H1_2024),
+        source: LabDataSource::Synthetic,
     };
     let series = load_equity(&tuple, &lab_runs).expect("series loads from lab-runs report");
     assert!(
@@ -1192,6 +1195,7 @@ fn single_run_overlay_draws_no_accent2() {
         strategy: smol_str::SmolStr::new("v1.momentum"),
         symbol: smol_str::SmolStr::new("XRPUSDT"),
         range: LabDateRange::Preset(Preset::H1_2024),
+        source: LabDataSource::Synthetic,
     };
     let series = load_equity(&tuple, &lab_runs).expect("series loads");
 

@@ -203,12 +203,13 @@ mod tests {
         equity_series: Vec<(i64, Decimal)>,
     ) -> RunReportMirror {
         use crate::lab::equity_loader::LabTuple;
-        use crate::lab::state::{DateRange, Preset};
+        use crate::lab::state::{DateRange, LabDataSource, Preset};
         RunReportMirror {
             tuple: LabTuple {
                 strategy: smol_str::SmolStr::new("v1.momentum"),
                 symbol: smol_str::SmolStr::new("XRPUSDT"),
                 range: DateRange::Preset(Preset::H1_2024),
+                source: LabDataSource::Synthetic,
             },
             equity_series: Arc::new(equity_series),
             kpis: BacktestKpis {

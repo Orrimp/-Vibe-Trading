@@ -206,11 +206,38 @@ fn count_accent2(shot: &iced::window::Screenshot) -> usize {
     n
 }
 
+/// Resolve the workspace root (`crates/ui` → `crates` → root) and pin the
+/// process cwd there (review patch 1 — the loader's corpus root is
+/// cwd-relative and cargo runs ui test binaries with cwd=`crates/ui/`).
+/// Per-test `set_current_dir` to the SAME dir is the established benign
+/// pattern (`crates/backtest/tests/binance_cache_dispatch.rs`).
+fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("locate workspace root from CARGO_MANIFEST_DIR")
+        .to_path_buf();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("set_current_dir({root:?}): {e}"));
+    root
+}
+
 /// Load real Binance bars and run `v0.sma` to produce a genuine Binance-sourced
-/// equity series. Returns `(bars, equity_series)` or `None` if the corpus is
-/// absent (test skips — the gitignored corpus may not be present in CI).
+/// equity series. Returns `(bars, equity_series)`, or `None` (skip) ONLY when
+/// the workspace-root probe `data/binance/REVISION.toml` is genuinely absent;
+/// probe present + loader error PANICS (review patch 1 — no more
+/// any-Err→skip vacuity).
 #[allow(clippy::type_complexity)] // return type is clear in context; extracting a type alias adds indirection without benefit
 fn binance_sourced_run() -> Option<(Vec<trading_core::Bar>, Vec<(i64, Decimal)>)> {
+    let root = pin_cwd_to_workspace_root();
+    if !root.join("data/binance/REVISION.toml").is_file() {
+        eprintln!(
+            "[skip] data/binance/REVISION.toml not present at the workspace root \
+             ({}) — the gitignored pinned corpus is absent on this machine; \
+             curve raster proof skipped.",
+            root.display()
+        );
+        return None;
+    }
     let cfg = LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
@@ -232,10 +259,11 @@ fn binance_sourced_run() -> Option<(Vec<trading_core::Bar>, Vec<(i64, Decimal)>)
             .await
     }) {
         Ok((bars, _sha)) => bars,
-        Err(e) => {
-            eprintln!("[skip] Binance corpus absent ({e}); curve raster proof skipped");
-            return None;
-        }
+        Err(e) => panic!(
+            "corpus PRESENT (data/binance/REVISION.toml exists under {}) but the \
+             Binance loader failed: {e} — hard FAIL, not a skip (review patch 1).",
+            root.display()
+        ),
     };
     let scenario = ScenarioConfig {
         strategy: StrategyId("v0.sma".into()),

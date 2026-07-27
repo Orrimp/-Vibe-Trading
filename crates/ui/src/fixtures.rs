@@ -1257,7 +1257,7 @@ pub fn fake_run_report_mirror_pair() -> (
 ) {
     use crate::lab::equity_loader::LabTuple;
     use crate::lab::runner::RunReportMirror;
-    use crate::lab::state::{DateRange, Preset};
+    use crate::lab::state::{DateRange, LabDataSource, Preset};
     use backtest::engine::BacktestKpis;
     use rust_decimal_macros::dec;
     use std::sync::Arc;
@@ -1266,6 +1266,7 @@ pub fn fake_run_report_mirror_pair() -> (
         strategy: SmolStr::new("v1.momentum"),
         symbol: SmolStr::new("XRPUSDT"),
         range: DateRange::Preset(Preset::H1_2024),
+        source: LabDataSource::Synthetic,
     };
 
     // Last run: +$3 200 P&L, 8% max DD, rising equity.

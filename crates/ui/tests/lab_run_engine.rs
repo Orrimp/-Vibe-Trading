@@ -35,7 +35,7 @@ mod inner {
     use trading_core::{StrategyId, Symbol, Venue};
     use ui::lab::defaults::LAB_DEFAULT_SEED;
     use ui::lab::equity_loader::{EquityCache, LabTuple};
-    use ui::lab::state::{DateRange, Preset};
+    use ui::lab::state::{DateRange, LabDataSource, Preset};
 
     /// Build the canonical test `ScenarioConfig`.
     ///
@@ -82,6 +82,7 @@ mod inner {
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::Last90d),
+            source: LabDataSource::Synthetic,
         };
 
         // Step 1: run the backtest. Wave D-3+D-4 added cancel + progress args.

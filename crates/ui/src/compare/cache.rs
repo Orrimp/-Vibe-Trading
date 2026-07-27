@@ -108,7 +108,15 @@ fn parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>> {
             continue;
         }
 
-        // Lines inside the strategy block start with 2 spaces.
+        // Lines inside the strategy block start with 2 spaces — in the
+        // hand-written fixtures. The ENGINE-written reports emit the block
+        // UNINDENTED (the `report::sma` template's `\`-continuations elide
+        // the leading whitespace; the rendered bytes are hash-locked by the
+        // determinism anchors, so the writer cannot be fixed — 2026-07-26
+        // review, discovered when the revived AC5 round-trip test found
+        // `scan_one_root` skipping every engine-written report for lack of
+        // `strategy.id`). Tolerant-reader rule: an unindented `key: value`
+        // whose key is a KNOWN strategy sub-key stays in the block.
         if in_strategy_block {
             if let Some(inner) = line.strip_prefix("  ") {
                 if let Some(sep) = inner.find(": ") {
@@ -116,8 +124,17 @@ fn parse_frontmatter(content: &str) -> Option<BTreeMap<SmolStr, SmolStr>> {
                     let v = SmolStr::new(inner[sep + 2..].trim());
                     map.insert(k, v);
                 }
+            } else if let Some(sep) = line.find(": ")
+                && matches!(
+                    &line[..sep],
+                    "id" | "kind" | "content_hash" | "source" | "signal"
+                )
+            {
+                let k = SmolStr::new(format!("strategy.{}", &line[..sep]));
+                let v = SmolStr::new(line[sep + 2..].trim());
+                map.insert(k, v);
             } else {
-                // Non-indented line → we've exited the strategy block.
+                // Non-indented, non-sub-key line → we've exited the block.
                 in_strategy_block = false;
                 // Fall through to process this line as a top-level key.
                 if let Some(sep) = line.find(": ") {
@@ -556,6 +573,53 @@ strategy:
 "#;
 
     const MALFORMED_FRONTMATTER: &str = "not yaml at all";
+
+    /// The REAL shape the engine writes (verbatim head of an anchored
+    /// `evidence/v1/v0-paper-sma` report): the `strategy:` sub-keys are
+    /// UNINDENTED because the writer template's `\`-continuations elide
+    /// leading whitespace. The parser must still file them as `strategy.*`
+    /// (2026-07-26 review — scan_one_root skipped every engine-written
+    /// report before this tolerant-reader fix).
+    const ENGINE_WRITTEN_FRONTMATTER: &str = r#"---
+scenario: btcusdt-2024-h1-sma-cross-binance
+seed: 0xC0FFEE
+generated: 2026-07-26T10:00:00Z
+wall_clock_s: 0.2
+data_source: binance
+baseline_report: n/a
+ledger_imbalance_total: 0
+llm_spend_usd: 0.00
+strategy:
+id: sma_crossover
+kind: compiled-in
+content_hash: n/a
+source: compiled-in
+signal: sma_crossover(fast=20, slow=50)
+---
+
+# Backtest Report — btcusdt-2024-h1-sma-cross-binance
+
+## Summary
+"#;
+
+    #[test]
+    fn unindented_strategy_block_parses_as_strategy_keys() {
+        let fm = parse_frontmatter(ENGINE_WRITTEN_FRONTMATTER).expect("should parse");
+        assert_eq!(
+            fm.get("strategy.id").map(SmolStr::as_str),
+            Some("sma_crossover"),
+            "engine-written (unindented) strategy sub-keys must file as strategy.*"
+        );
+        assert_eq!(
+            fm.get("strategy.kind").map(SmolStr::as_str),
+            Some("compiled-in")
+        );
+        assert_eq!(fm.get("data_source").map(SmolStr::as_str), Some("binance"));
+        assert!(
+            !fm.contains_key("id"),
+            "sub-keys must not leak into the top-level namespace"
+        );
+    }
 
     #[test]
     fn parses_flat_kv() {

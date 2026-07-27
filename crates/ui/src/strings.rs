@@ -1201,11 +1201,25 @@ pub const LAB_YAHOO_CACHE_MISS_PREFIX: &str = "Yahoo cache miss — run: ";
 // real BTC while seeing a random walk (the v3-vol-overlay-noop failure class).
 
 /// Shown when the Binance parquet corpus is missing / has insufficient
-/// coverage for the selected `(symbol, range)`. `{symbol}` and `{window}`
-/// are substituted by `lab::runner::preload_binance_bars`. Points the
-/// operator at the offline fetch tool (Binance does NOT auto-fetch in-Lab).
+/// coverage for the selected `(symbol, range)` — a window the pinned corpus
+/// SHOULD cover (in-span). `{symbol}` and `{window}` are substituted by
+/// `lab::runner::preload_binance_bars`. Points the operator at the offline
+/// fetch tool (Binance does NOT auto-fetch in-Lab). The re-fetch command is
+/// the truthful `-p data` form — the single unified hint (review patch 2;
+/// `crates/backtest/tests/binance_cache_dispatch.rs` uses the same wording).
 pub const LAB_BINANCE_CACHE_MISS_NOTICE: &str = "No pinned Binance data for {symbol} in {window} \
-     \u{2014} re-fetch the corpus: `cargo run --bin fetch_binance_klines` (see data/binance/REVISION.toml).";
+     \u{2014} re-fetch the corpus: `cargo run -p data --bin fetch_binance_klines` (see data/binance/REVISION.toml).";
+
+/// Shown when the requested window does not intersect the pinned corpus span
+/// AT ALL (2023-01-01 .. 2025-01-01 UTC) — e.g. the Last30d/Last90d rolling
+/// presets on a wall-clock past 2025-03. Re-fetching cannot help here (the
+/// corpus is PINNED, ADR-0032); the honest remedy is picking an in-span range
+/// (review patch 2). Also reused by the shared zero-bars defensive arm in
+/// `classify_preload_result` for Binance runs (review patch 11 — no more
+/// Yahoo-branded copy on a Binance run). `{symbol}` and `{window}` are
+/// substituted by `lab::runner`.
+pub const LAB_BINANCE_OUT_OF_SPAN_NOTICE: &str = "No pinned Binance data for {symbol} in {window} \
+     \u{2014} the pinned corpus covers 2023-01..2024-12. Pick 2024 H1, 2024 H2, or a Custom range inside 2023-2024.";
 
 /// Shown when the on-disk Binance corpus fails its pinned revision-SHA check
 /// (`data/binance/REVISION.toml` mismatch or missing). The corpus is the
@@ -2610,6 +2624,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         (
             "LAB_BINANCE_CACHE_MISS_NOTICE",
             LAB_BINANCE_CACHE_MISS_NOTICE,
+        ),
+        (
+            "LAB_BINANCE_OUT_OF_SPAN_NOTICE",
+            LAB_BINANCE_OUT_OF_SPAN_NOTICE,
         ),
         ("LAB_BINANCE_REVISION_ERROR", LAB_BINANCE_REVISION_ERROR),
         ("LAB_CADENCE_1M", LAB_CADENCE_1M),

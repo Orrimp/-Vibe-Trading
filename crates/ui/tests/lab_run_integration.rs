@@ -53,9 +53,13 @@ fn apply_wrapper(cockpit: &mut Cockpit, summary: &RunSummary) {
     let pre_tuple = {
         let ls = &cockpit.lab_state;
         match (ls.strategy.as_ref(), ls.pair.as_ref()) {
-            (Some(strategy), Some((venue, symbol))) => {
-                Some(LabTuple::new(strategy, *venue, symbol, ls.range.clone()))
-            }
+            (Some(strategy), Some((venue, symbol))) => Some(LabTuple::new(
+                strategy,
+                *venue,
+                symbol,
+                ls.range.clone(),
+                ls.data_source,
+            )),
             _ => None,
         }
     };

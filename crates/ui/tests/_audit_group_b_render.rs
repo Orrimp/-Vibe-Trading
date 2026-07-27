@@ -50,7 +50,13 @@ fn render(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 
 /// Save the RGBA buffer as a PNG for human (and Read-tool) inspection.
 fn save(name: &str, w: u32, h: u32, rgba: &[u8]) {
-    let path = format!("/tmp/ui-audit/group-b/{name}.png");
+    // The debug-dump dir is NOT guaranteed to exist (macOS purges /tmp);
+    // without this, `img.save` panics and takes all five audit tests —
+    // and, via cargo's fail-fast, the alphabetically-later ui suite —
+    // down with it (2026-07-26 story 1-10 review, found during gate re-run).
+    let dir = "/tmp/ui-audit/group-b";
+    std::fs::create_dir_all(dir).expect("create audit dump dir");
+    let path = format!("{dir}/{name}.png");
     if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.to_vec()) {
         img.save(&path).expect("png save");
     }

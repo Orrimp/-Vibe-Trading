@@ -20,8 +20,12 @@
 //! ## Gating + skip
 //!
 //! `#[cfg(all(feature = "live", feature = "binance"))]`. The pinned corpus
-//! (`data/binance/`) must be present; if absent the run's loader returns a
-//! typed `Err` and the test SKIPS (the gitignored corpus may be missing in CI).
+//! (`data/binance/`) must be present AT THE WORKSPACE ROOT. Skip policy
+//! (review patch 1): the test pins the process cwd to the workspace root
+//! (cargo runs ui test binaries with cwd=`crates/ui/`) and probes
+//! `data/binance/REVISION.toml` — SKIP only when the probe is genuinely
+//! absent; probe present + loader error = hard FAIL (the old cwd-relative
+//! any-Err→skip made the body vacuous on every machine).
 
 #![cfg(all(feature = "live", feature = "binance"))]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -43,9 +47,36 @@ use ui::lab::state::{DateRange, LabDataSource, Preset};
 /// UTC, on-disk for BTCUSDT in the pinned corpus.
 const ENG_RANGE: EngDateRange = EngDateRange::H1_2024;
 
+/// Resolve the workspace root (`crates/ui` → `crates` → root) and pin the
+/// process cwd there (review patch 1 — the loader's corpus root is
+/// cwd-relative and cargo runs ui test binaries with cwd=`crates/ui/`).
+/// Per-test `set_current_dir` to the SAME dir is the established benign
+/// pattern (`crates/backtest/tests/binance_cache_dispatch.rs`).
+fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("locate workspace root from CARGO_MANIFEST_DIR")
+        .to_path_buf();
+    std::env::set_current_dir(&root).unwrap_or_else(|e| panic!("set_current_dir({root:?}): {e}"));
+    root
+}
+
 /// Load real Binance bars for `BTCUSDT × H1_2024` via the production seam.
-/// Returns `None` (skip) if the gitignored corpus is absent.
+/// Returns `None` (skip) ONLY when the workspace-root probe
+/// `data/binance/REVISION.toml` is genuinely absent; probe present + loader
+/// error PANICS (review patch 1 — no more any-Err→skip vacuity).
 fn try_load_binance_bars() -> Option<Vec<trading_core::Bar>> {
+    let root = pin_cwd_to_workspace_root();
+    if !root.join("data/binance/REVISION.toml").is_file() {
+        eprintln!(
+            "[skip] data/binance/REVISION.toml not present at the workspace root \
+             ({}) — the gitignored pinned corpus is absent on this machine; \
+             persist/Compare round-trip skipped.",
+            root.display()
+        );
+        return None;
+    }
     let cfg = LabRunConfig {
         strategy_id: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
@@ -63,10 +94,11 @@ fn try_load_binance_bars() -> Option<Vec<trading_core::Bar>> {
         .expect("runtime builds");
     match rt.block_on(async { DefaultLabBinanceBarSource.preload(&cfg, &ENG_RANGE).await }) {
         Ok((bars, _sha)) => Some(bars),
-        Err(e) => {
-            eprintln!("[skip] Binance corpus absent ({e}); persist/Compare round-trip skipped");
-            None
-        }
+        Err(e) => panic!(
+            "corpus PRESENT (data/binance/REVISION.toml exists under {}) but the \
+             Binance loader failed: {e} — hard FAIL, not a skip (review patch 1).",
+            root.display()
+        ),
     }
 }
 
@@ -135,7 +167,14 @@ fn binance_run_persists_and_round_trips_through_compare() {
         "the written report must be a .md file: {report_path:?}"
     );
     // Companion equity CSV lives next to the .md (H3 fidelity fix, ADR-0055).
-    let csv_path = report_path.with_extension("csv");
+    // Naming per engine.rs `write_equity_companion_csv`: `<md-stem>-equity.csv`
+    // (the original `.with_extension("csv")` expectation was a day-1 latent bug,
+    // masked while this test's body skipped vacuously — 2026-07-26 review P1).
+    let md_stem = report_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .expect("report filename is utf-8");
+    let csv_path = report_path.with_file_name(format!("{md_stem}-equity.csv"));
     assert!(
         csv_path.exists(),
         "the companion equity CSV must be written next to the report: {csv_path:?}"
@@ -149,10 +188,13 @@ fn binance_run_persists_and_round_trips_through_compare() {
         .expect("report_path has a lab-runs/<slug>/reports/ shape");
 
     // (ii) EquityCache round-trip — element-by-element equality (H3 for Binance).
+    // Source-keyed tuple (review D1): the engine wrote `data_source: binance`
+    // into the report frontmatter, so the Binance-sourced tuple resolves it.
     let tuple = LabTuple {
         strategy: SmolStr::new("v0.sma"),
         symbol: SmolStr::new("BTCUSDT"),
         range: DateRange::Preset(Preset::H1_2024),
+        source: LabDataSource::BinanceCache,
     };
     let mut cache = EquityCache::new();
     let cached = cache
