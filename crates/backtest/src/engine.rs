@@ -806,6 +806,7 @@ fn maybe_write_report(
 
     // Q5 retention purge: keep the last N = 20 per (strategy, scenario) tuple.
     purge_old_lab_reports(&reports_dir, scenario_name);
+    purge_lab_reports_global_cap(&reports_dir);
 
     Ok(Some(report_path))
 }
@@ -855,6 +856,62 @@ fn purge_old_lab_reports(reports_dir: &std::path::Path, scenario_name: &str) {
             tracing::warn!(path = %path.display(), err = %e, "lab-runs purge: failed to remove old report");
         } else {
             tracing::debug!(path = %path.display(), "lab-runs purge: removed old report");
+        }
+    }
+}
+
+/// Global per-directory cap on lab-run reports (2026-07-27 adversarial-review
+/// hardening). `purge_old_lab_reports` bounds each SCENARIO bucket to 20, but
+/// per-tuple scenario names (symbol + range + source since the story-1-10
+/// review) mean distinct buckets accumulate without bound — every custom range
+/// mints a new one. This second phase bounds the whole `reports/` dir: oldest
+/// `backtest-*.md` (+ companion `-equity.csv`) beyond the newest
+/// [`GLOBAL_KEEP_LAST_N`] are unlinked. Lexicographic sort = chronological
+/// (shared `backtest-<ms-stamp>-` prefix). Lab-runs write path only — the
+/// CLI/evidence path never routes through this seam. Errors are logged and
+/// swallowed (a failed purge never fails a successful run).
+fn purge_lab_reports_global_cap(reports_dir: &std::path::Path) {
+    const GLOBAL_KEEP_LAST_N: usize = 200;
+
+    let Ok(read_dir) = std::fs::read_dir(reports_dir) else {
+        return;
+    };
+    let mut reports: Vec<PathBuf> = read_dir
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                // Reports are always written with a lowercase ".md" extension.
+                .is_some_and(|n| {
+                    n.starts_with("backtest-") && {
+                        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+                        let ok = n.ends_with(".md");
+                        ok
+                    }
+                })
+        })
+        .collect();
+
+    if reports.len() <= GLOBAL_KEEP_LAST_N {
+        return;
+    }
+
+    reports.sort();
+    let to_remove = reports.len() - GLOBAL_KEEP_LAST_N;
+    for path in reports.iter().take(to_remove) {
+        if let Some(stem) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(".md"))
+        {
+            let csv = path.with_file_name(format!("{stem}-equity.csv"));
+            let _ = std::fs::remove_file(&csv);
+        }
+        if let Err(e) = std::fs::remove_file(path) {
+            tracing::warn!(path = %path.display(), err = %e, "lab-runs global cap: failed to remove old report");
+        } else {
+            tracing::debug!(path = %path.display(), "lab-runs global cap: removed old report");
         }
     }
 }
@@ -3111,6 +3168,36 @@ mod tests {
         purge_old_lab_reports(reports_dir, scenario);
         let count = std::fs::read_dir(reports_dir).unwrap().count();
         assert_eq!(count, 5, "purge must not remove files when count <= 20");
+    }
+
+    #[test]
+    fn global_cap_bounds_distinct_scenario_buckets() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path();
+        // 205 DISTINCT scenario names — the per-scenario purge never fires;
+        // only the global cap can bound this.
+        for i in 0..205 {
+            let name = format!("backtest-2026{i:04}-scenario-{i:04}.md");
+            std::fs::write(dir.join(&name), "x").expect("write md");
+            let csv = format!("backtest-2026{i:04}-scenario-{i:04}-equity.csv");
+            std::fs::write(dir.join(&csv), "t,e").expect("write csv");
+        }
+        purge_lab_reports_global_cap(dir);
+        let remaining_md = std::fs::read_dir(dir)
+            .expect("read_dir")
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".md"))
+            .count();
+        assert_eq!(remaining_md, 200, "global cap must keep newest 200 .md");
+        // the 5 oldest (0000..0004) are gone, WITH their companions
+        for i in 0..5 {
+            let md = dir.join(format!("backtest-2026{i:04}-scenario-{i:04}.md"));
+            let csv = dir.join(format!("backtest-2026{i:04}-scenario-{i:04}-equity.csv"));
+            assert!(!md.exists(), "oldest md {i} must be purged");
+            assert!(!csv.exists(), "companion csv {i} must be purged with it");
+        }
+        // the newest survives untouched
+        assert!(dir.join("backtest-20260204-scenario-0204.md").exists());
     }
 
     /// T1 — `strategy_dir_slug` maps known ids to expected directory slugs.

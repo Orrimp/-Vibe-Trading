@@ -106,8 +106,30 @@ cargo clean
 concurrently (background build + foreground test is the usual trigger; the
 orchestrator serializes them).
 
+## 3. Local governance hooks (pre-commit gates)
+
+**Since 2026-07-27** the repo ships committed hooks under `.githooks/`. The
+`pre-commit` hook runs the two constitutional checks — `scripts/spec_lint.py`
+(ADR-0082 triad) and `scripts/verify_anchors.sh` (AD-2, 119/119) — in
+~seconds, no cargo. Until then these gates ran only when an agent remembered
+(bug-log #66 documents the cost of discipline-only enforcement). CI runs the
+same pair on the ubuntu leg ("Governance gates" step), so a bypassed hook is
+still caught at push.
+
+**Enable once per clone** (hooksPath is not clonable state):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+**Bypass in an emergency:** `git commit --no-verify` (CI still gates).
+
 ## Changelog
 
 - 2026-07-09 (orchestrator): created — remediation P0; consolidates the push-wedge
   root cause (vault-locked signing), the deploy-key/HTTPS permanent fixes, the
   probe-then-push interim, and the cargo incremental-cache recovery ladder.
+- 2026-07-27 (orchestrator): § 3 added (committed `.githooks/` + CI governance
+  gates). Wedge status note: a plain `git push` succeeded 2026-07-27 (wedge
+  clear at that moment); the deploy-key fallback remains the resilience
+  recommendation (board action item, owner: operator).

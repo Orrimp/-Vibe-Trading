@@ -72,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-07-27 00:30  # 1-10 review -> done (first BMAD-native code-review)
+last_updated: 2026-07-27 01:30  # hardening pass: Q4 done, retro + push-resilience items added
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -268,5 +268,13 @@ action_items:
     status: open
   - epic: 5
     action: "PRD §13 Q4 - reconcile the stale CHANGELOG 'demo awaiting operator approval' note at (or before) the Phase 5b cutover"
+    owner: "operator"
+    status: done  # 2026-07-27 hardening pass: both stale notes fixed (demo=approved v3 close-out; CI-parked line=ACTIVE since 2026-07-10)
+  - epic: 6
+    action: "Run the first retrospectives - epics 4, 5, 7 are done with 0 retros; include a deferred-work.md revisit in each (the ledger now carries Owner/Revisit fields)"
+    owner: "operator+orchestrator"
+    status: open
+  - epic: 6
+    action: "Push-transport resilience: wedge observed CLEARED 2026-07-27 (plain git push succeeded) but the transport stays single-path - install the deploy-key fallback per docs/runbooks/ops-push-and-cache.md when convenient"
     owner: "operator"
     status: open

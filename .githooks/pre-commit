@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Governance pre-commit gate (2026-07-27 adversarial-review hardening).
+#
+# Runs the two constitutional checks — the ADR-0082 triad lint and the AD-2
+# anchor byte-immutability gate — before every commit. Both are fast
+# (~seconds; pure python3 + bash, no cargo). Until this hook existed, the
+# gates ran only when an agent remembered (bug-log #66 documents what
+# discipline-only enforcement ships).
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Bypass (emergencies):    git commit --no-verify
+# Docs: docs/runbooks/ops-push-and-cache.md § Local governance hooks
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+
+python3 "$root/scripts/spec_lint.py"
+bash "$root/scripts/verify_anchors.sh" | tail -1

@@ -58,6 +58,19 @@ jobs:
           # shakeout finding, run #2 2026-07-12).
           lfs: true
 
+      # ── Ubuntu: repo governance gates (fail fast, before any compile) ──────
+      # The constitutional invariants — AD-2 anchors byte-immutability and the
+      # ADR-0082 story↔trace↔CHANGELOG triad — were previously enforced ONLY by
+      # agent discipline (2026-07-27 adversarial-review hardening; bug-log #66
+      # showed what discipline-only enforcement ships). One leg suffices: these
+      # check repo STATE, not platform behavior. Both scripts are stdlib-only.
+      - name: Governance gates (anchors + spec-lint)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          bash scripts/verify_anchors.sh | tail -1
+          python3 scripts/spec_lint.py
+          python3 scripts/spec_lint.py --self-test
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -109,6 +122,18 @@ jobs:
       - name: Test ui (headless, Linux)
         if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a cargo test -p ui --features fixtures
+
+      # ── Ubuntu: skip-visibility (bug-log #66 class) ────────────────────────
+      # Corpus-gated real-data tests self-skip wherever data/binance is absent
+      # — in CI, always. Surface the skip count so a green run is never read as
+      # "the real-data guards executed" (they run for real on the canonical box
+      # only). Informational: never fails the build.
+      - name: Report corpus-gated skips (informational)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          OUT=$(xvfb-run -a cargo test -p ui --test lab_binance_divergence --test lab_binance_persist_compare -- --nocapture 2>&1 || true)
+          N=$(printf '%s' "$OUT" | grep -c "\[skip\]" || true)
+          echo "corpus-gated [skip] lines: $N (expected >0 in CI — the pinned corpus is machine-local; 0 + green means the corpus was unexpectedly present and the guards ran for real)"
 
       # ── macOS: full ui test suite including the 56 visual baselines ────────
       # This is the canonical visual regression gate (ADR-0057 D1/D2, R-NR.1).
