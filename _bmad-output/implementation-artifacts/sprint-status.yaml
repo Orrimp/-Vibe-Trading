@@ -72,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-07-27 01:30  # hardening pass: Q4 done, retro + push-resilience items added
+last_updated: 2026-07-27 03:00  # Q1/Q3 decided BUILD (stories 3-19, 4-13; epic-4 reopened), Q2 analyst scheduled, 2-1 kept by decision
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -171,7 +171,7 @@ development_status:
   2-60-visual-fail-html-reporter: done
   2-61-iced-ecosystem-evaluation: backlog
   2-62-cockpit-app-bundle: backlog
-  2-63-lab-recipe-test-harness-v0-3-extension: backlog  # the one genuinely-open forward build item (PRD §13 Q2)
+  2-63-lab-recipe-test-harness-v0-3-extension: ready-for-dev  # 2026-07-27 analyst story drafted (PRD §13 Q2 = SCHEDULE)
   epic-2-retrospective: optional
 
   # -- Epic 3: Advisor MVP (F1-F9 + EUR-FX + dynamic data + PIT discipline)
@@ -194,10 +194,11 @@ development_status:
   3-16-advisor-crossasset-macro-regime: review
   3-17-point-in-time-data-discipline: done
   3-18-advisor-reflection-decision-loop: ready-for-dev  # arch-done; build awaits an operator decision
+  3-19-advisor-eur-live-rate: ready-for-dev  # 2026-07-27 operator decision PRD §13 Q1 = BUILD (live-fetched EUR/USD at plan render; static rate stays offline fallback)
   epic-3-retrospective: optional
 
   # -- Epic 4: v2 Research-Driven Credibility Tranche
-  epic-4: done
+  epic-4: in-progress  # reopened 2026-07-27 by the Q3 decision (4-13); was done since the v2 tranche shipped
   4-1-advisor-overfitting-scorecard: done
   4-2-advisor-turnover-and-tail-metrics: done
   4-3-advisor-confidence-not-verdict: done
@@ -210,6 +211,7 @@ development_status:
   4-10-advisor-no-alpha-gate-ci: done
   4-11-phase-2d: done
   4-12-advisor-data-quality-surface: done
+  4-13-advisor-online-fdr-annex: ready-for-dev  # 2026-07-27 operator decision PRD §13 Q3 = BUILD (report-only online-FDR cross-run annex per research-gap-analysis-2026-07-11; scorecard-style additive, FROZEN gate untouched)
   epic-4-retrospective: optional
 
   # -- Epic 5: v3 "Prove It's Done" Close-Out
@@ -257,15 +259,15 @@ action_items:
   - epic: 3
     action: "PRD §13 Q1 - EUR/USD rate source v0.3 fork: live-fetched rate over static fallback - build or leave? (low stakes)"
     owner: "operator"
-    status: open
+    status: done  # 2026-07-27 DECIDED: BUILD -> story 3-19-advisor-eur-live-rate (backlog)
   - epic: 2
     action: "PRD §13 Q2 - lab-recipe-test-harness v0.3.0+: schedule the analyst spawn or retire the backlog entry (story 2-63)"
     owner: "operator"
-    status: open
+    status: in-progress  # 2026-07-27 DECIDED: SCHEDULE -> analyst scoping pass spawned
   - epic: 4
     action: "PRD §13 Q3 - cross-run family-wise multiple-testing report-annex (online-FDR): build as report-annex or record as stated limit"
     owner: "operator"
-    status: open
+    status: done  # 2026-07-27 DECIDED: BUILD -> story 4-13-advisor-online-fdr-annex (backlog; epic-4 reopened)
   - epic: 5
     action: "PRD §13 Q4 - reconcile the stale CHANGELOG 'demo awaiting operator approval' note at (or before) the Phase 5b cutover"
     owner: "operator"

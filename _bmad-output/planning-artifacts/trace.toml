@@ -3530,3 +3530,36 @@ crates      = ["crates/cost", "crates/backtest"]   # developer 2026-07-10: crate
 tests       = ["crates/cost/src/venue_filter.rs", "crates/backtest/src/paper.rs", "crates/backtest/tests/lot_realism_divergence_end_to_end.rs"]   # developer 2026-07-10: cost/src/venue_filter.rs — 15 unit tests incl. round_down_whole_doge_step_one (12.9→12), round_down_btc_five_decimals (0.123456→0.12345 @ step 0.00001), round_down_never_rounds_up, admit_exactly_at_min_notional_admits/admit_one_tick_under_min_notional_rejects, venue_filter_for_unknown_symbol_is_none (`cargo test -p cost --lib venue_filter` → 15 passed). backtest/src/paper.rs — 6 new tests incl. venue_filter_default_is_none + paper_step_none_is_byte_identical (NEVER-DELETE D6 enforcement pair) + venue_filter_rounds_qty_down_when_enabled + venue_filter_rejects_sub_min_notional_order_no_fill_no_error + venue_filter_unknown_symbol_is_noop_when_enabled (`cargo test -p backtest --lib paper` → 9 passed). backtest/tests/lot_realism_divergence_end_to_end.rs — the T6 day-1 divergence gate: DOGEUSDT €100/fixed_fraction(0.1) diverges 57bp (skipped_min_notional=0, pure floor-rounding) vs a BTCUSDT-€200 negative control at 0.21bp (27× smaller); FAIL-before captured pre-wiring (eq_baseline==eq_filtered exactly, 0 relative) and PASS-after captured post-wiring, both verbatim in the file's module doc-comment (`cargo test -p backtest --test lot_realism_divergence_end_to_end` → 2 passed).
 anchors     = []   # EXPECTED NONE by construction — the lot-realism mode is UNREACHABLE from any anchored CLI path (anchored bins construct MatchConfig/LatencySlippageSimConfig::default() → venue_filter=None → the rounding/reject branch is not taken → fill.qty byte-identical; the advisor bake-off runs write_report=false → no anchor SHA produced). 119/119 held BY CONSTRUCTION; verify_anchors.sh MUST stay 119/119 (run BEFORE and AFTER; anchors keyed by NAME not filename). FROZEN gate bakeoff/{robustness,rank}.rs byte-untouched. Developer 2026-07-10: verified 119/119 BEFORE (pre-existing) and AFTER (post-implementation) — tester to tick this field on independent re-verification per ADR-0082 (developer does not own anchors).
 state       = "shipped"   # operator-approved (move on) 2026-07-10; orchestrator-verified (pixel/e2e/golden/negative-control layers). PRIOR: developer 2026-07-10: built T1–T8 per tasks.md build order, T6-before-T5 noop-trap discipline honored (scaffold-only PaperEngine fields landed first, e2e run+FAILED capturing eq_baseline==eq_filtered exactly, THEN the `step` qty-selection wired, e2e re-run+PASSED — both outputs verbatim in the e2e file's doc-comment and cited above). T8 kept spec-only as instructed (doc-comment stub at the seam call-site citing journal.rs:1623 `strategy_event` + the `rebalance_rejected` precedent at journal.rs:1722; NO crates/audit change, NO new AuditEvent variant). Full gate run: `cargo test -p cost --lib` 54 passed; `cargo test -p backtest --lib --features realdata,yahoo,candle` 249 passed/11 pre-existing-ignored; the T6 e2e 2 passed; `cargo test -p strategy --test vol_targeting_overlay_end_to_end` 1 passed (regression, same seam family — NOTE the tasks.md/brief-stated invocation `-p backtest --test vol_targeting_overlay_end_to_end` does not exist, the file lives under crates/strategy/tests/, corrected here); `cargo clippy -p cost -p backtest --tests --features backtest/realdata,backtest/yahoo -- -D warnings` clean; `cargo fmt --check` clean; `bash scripts/verify_anchors.sh` 119/119 BEFORE and AFTER; `python3 scripts/spec_lint.py` PASS(0); `python3 scripts/adr_registry_check.py --pre-commit` exit 0; `bash scripts/check_no_raw_asof_join.sh` PASS. FROZEN gate (bakeoff/{robustness,rank,scorecard}.rs) byte-untouched — verified via `git status --porcelain`. FILES ONLY (orchestrator commits/pushes); no `docs/archive/pre-bmad-spec/**/reports/` edit; no ci.yml.deferred touch; no live exchange calls; Money stayed Decimal throughout (no f64 introduced). SIBLING architect/analyst work on advisor-handoff-export (P5) untouched — their folder and trace row left exactly as found. HANDOFF → tester: verify the gate list above independently, tick `anchors` on this row, and verify every acceptance criterion in tasks.md T1–T8 before flipping state → shipped per ADR-0082.
+
+[[req]]
+id          = "REQ-ADVISOR-EUR-LIVE-RATE-001"
+title       = "Live-fetched EUR/USD rate for the advisor's EUR display/plan annotation (ADR-0065 § D6 v0.3 path, PRD §13 Q1 decided BUILD 2026-07-27): RateSource trait behind a test fake, fetch at plan render/explicit refresh only (no boot network), static config rate (DEFAULT_EUR_USD_RATE) as permanent offline fallback; Decimal-only via checked FxRate::new (AD-9); display/annotation only — ranking FX-invariant, anchored CLI never reads the rate."
+feature     = "advisor-eur-live-rate"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0065-eur-usdt-budget-conversion-seam.md"]
+crates      = ["crates/core", "crates/ui"]
+tests       = []
+anchors     = []
+state       = "scoped"   # analyst story 3-19 drafted 2026-07-27 (operator decision PRD §13 Q1 = BUILD); ready-for-dev
+
+[[req]]
+id          = "REQ-ADVISOR-ONLINE-FDR-ANNEX-001"
+title       = "Report-only cross-run multiple-testing annex (online-FDR / alpha-investing, LORD-family per research gap-analysis B7; Šidák/Holm cheap fallback) over a durable git-ignored append-only run ledger — PRD §13 Q3 decided BUILD 2026-07-27; expected false-'beats-hold' count at α over N runs rendered beside the scorecard; FROZEN gate byte-untouched + identity test (register E-1 honored; the register itself names this the one legitimate build-candidate)."
+feature     = "advisor-online-fdr-annex"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["docs/dev-notes/research-gap-analysis-2026-07-11.md"]
+crates      = ["crates/backtest", "crates/ui"]
+tests       = []
+anchors     = []
+state       = "scoped"   # analyst story 4-13 drafted 2026-07-27 (operator decision PRD §13 Q3 = BUILD; epic-4 reopened); ready-for-dev
+
+[[req]]
+id          = "REQ-LAB-RECIPE-HARNESS-V0-3-001"
+title       = "lab-recipe-test-harness v0.3 cross-surface extension (PRD §13 Q2 decided SCHEDULE 2026-07-27): ADR-0048 pattern applied to post-v0.2 recipe surfaces (ForwardPlan/NarrationOutcome/SweepProgress/BakeoffProgress + fresh inventory) + suite-wide non-vacuity hardening per bug-log #66 (no skip-as-pass; positive execution proof). Test-infra only; zero production behavior change beyond API-additive seams."
+feature     = "lab-recipe-test-harness-v0-3-extension"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0048-lab-recipe-test-harness.md"]
+crates      = ["crates/ui", "crates/agent"]
+tests       = []
+anchors     = []
+state       = "scoped"   # analyst story 2-63 drafted 2026-07-27 (operator decision PRD §13 Q2 = SCHEDULE); ready-for-dev
