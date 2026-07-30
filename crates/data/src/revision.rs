@@ -33,6 +33,11 @@ pub enum RevisionError {
     Missing { path: String },
     #[error("REVISION.toml parse error: {0}")]
     Parse(String),
+    #[error(
+        "refusing to write REVISION.toml: no .parquet files found under {path} — an empty \
+         manifest would pin the vacuous empty-input aggregate SHA and verify forever"
+    )]
+    EmptyRoot { path: String },
     #[error("data revision mismatch for {file}: manifest={manifest_sha}, on-disk={actual_sha}")]
     FileMismatch {
         file: String,
@@ -148,16 +153,36 @@ pub fn write_revision_manifest(root: &Path) -> Result<String, RevisionError> {
 
 /// Like `write_revision_manifest` but allows the caller to specify advisory
 /// metadata so the `REVISION.toml` correctly identifies which tool produced
-/// the data.
+/// the data (callers today: the klines wrapper above plus the funding /
+/// premium / dvol / coinbase fetchers).
 ///
 /// The aggregate SHA is unchanged — only the `[revision.metadata]` block
 /// differs between callers.
+///
+/// # Errors
+///
+/// Returns [`RevisionError::EmptyRoot`] when `root` exists but contains no
+/// `.parquet` files: an empty `[files]` map would pin the well-known
+/// empty-input aggregate SHA (`e3b0c442…`), which then "verifies" forever —
+/// a vacuous gate. A missing `root` fails with the underlying
+/// [`RevisionError::Io`].
+///
+/// The manifest write is atomic (same-dir `REVISION.toml.tmp` + rename), so
+/// a crash mid-write can never leave a truncated manifest at the final path.
 pub fn write_revision_manifest_with_tool(
     root: &Path,
     meta: RevisionMetadataInput<'_>,
 ) -> Result<String, RevisionError> {
     // Collect all parquet files relative to root.
     let files = collect_parquet_files(root)?;
+    if files.is_empty() {
+        // An exists-but-empty root must error loudly: writing `[files]` with
+        // zero entries would pin the empty-input aggregate SHA, which then
+        // verifies against nothing regardless of what later lands under root.
+        return Err(RevisionError::EmptyRoot {
+            path: root.to_string_lossy().into_owned(),
+        });
+    }
     let aggregate = compute_aggregate_sha(&files);
 
     let now = time::OffsetDateTime::now_utc();
@@ -189,7 +214,15 @@ pub fn write_revision_manifest_with_tool(
         toml::to_string_pretty(&manifest).map_err(|e| RevisionError::TomlSer(e.to_string()))?;
 
     let manifest_path = root.join("REVISION.toml");
-    std::fs::write(&manifest_path, toml_str)?;
+    // Atomic write: same-dir tmp + rename so a crash mid-write can never
+    // leave a truncated/corrupt REVISION.toml at the pinned path.
+    let tmp_path = root.join("REVISION.toml.tmp");
+    if let Err(e) = std::fs::write(&tmp_path, toml_str) {
+        // Best-effort cleanup; a stale .tmp would be inert either way.
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e.into());
+    }
+    std::fs::rename(&tmp_path, &manifest_path)?;
 
     Ok(aggregate)
 }
@@ -416,6 +449,84 @@ mod tests {
             matches!(err, RevisionError::Missing { .. }),
             "expected Missing, got: {err}"
         );
+    }
+
+    /// The `_with_tool` seam (used by the funding/premium/dvol/coinbase
+    /// fetchers) was previously untested: verify it records the caller's
+    /// advisory metadata, produces a verifiable aggregate, and leaves no
+    /// atomic-write residue.
+    #[test]
+    fn test_write_with_tool_records_metadata_and_verifies() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+
+        make_fake_parquet(root, "BTCUSDT/2023/01.parquet", b"funding_jan");
+
+        let written = write_revision_manifest_with_tool(
+            root,
+            RevisionMetadataInput {
+                fetch_tool: "fetch_binance_funding",
+                binance_base: "https://fapi.binance.com",
+                interval: None,
+            },
+        )
+        .unwrap();
+
+        // Roundtrip: full verification (per-file SHAs + aggregate recompute).
+        let verified = read_and_verify_revision_manifest(root).unwrap();
+        assert_eq!(written, verified, "with_tool roundtrip SHA must match");
+
+        // Metadata block records the caller's tool identity (advisory, not hashed).
+        let content = fs::read_to_string(root.join("REVISION.toml")).unwrap();
+        let manifest: RevisionManifest = toml::from_str(&content).unwrap();
+        let meta = manifest.revision.metadata.expect("metadata block present");
+        assert_eq!(meta.fetch_tool.as_deref(), Some("fetch_binance_funding"));
+        assert_eq!(
+            meta.binance_base.as_deref(),
+            Some("https://fapi.binance.com")
+        );
+        assert_eq!(meta.interval, None, "funding is event-driven, no interval");
+
+        // Atomic write leaves no tmp sibling behind.
+        assert!(
+            !root.join("REVISION.toml.tmp").exists(),
+            "tmp file must be renamed away"
+        );
+    }
+
+    /// An exists-but-empty root must ERROR loudly — never write a vacuous
+    /// manifest whose empty-input aggregate SHA (`e3b0c442…`) verifies forever.
+    #[test]
+    fn test_write_manifest_refuses_empty_root() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        // Root exists, even has a subtree — but holds zero .parquet files.
+        fs::create_dir_all(root.join("BTCUSDT/2023")).unwrap();
+
+        let err = write_revision_manifest_with_tool(
+            root,
+            RevisionMetadataInput {
+                fetch_tool: "fetch_binance_funding",
+                binance_base: "https://fapi.binance.com",
+                interval: None,
+            },
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, RevisionError::EmptyRoot { .. }),
+            "expected EmptyRoot, got: {err}"
+        );
+
+        // The klines-default wrapper takes the same guard.
+        let err2 = write_revision_manifest(root).unwrap_err();
+        assert!(
+            matches!(err2, RevisionError::EmptyRoot { .. }),
+            "expected EmptyRoot from wrapper, got: {err2}"
+        );
+
+        // Nothing was written — no vacuous manifest, no tmp residue.
+        assert!(!root.join("REVISION.toml").exists());
+        assert!(!root.join("REVISION.toml.tmp").exists());
     }
 
     // ── Step 1: 250-file roundtrip regression test ───────────────────────────────

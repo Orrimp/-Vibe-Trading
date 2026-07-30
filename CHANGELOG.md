@@ -115,6 +115,7 @@ Not a feature program — a **bounded ship-readiness pass** ratified after the v
 - **v5** — Deterministic latency & slippage simulation closing the backtest-vs-live gap, landed across `v0.1`→`v0.5`: canonical medium-friction model (`slippage_bps: 8`, square-root market impact) with the full anchor-migration chain (v0.2 anchor migration, v0.3 full-path wiring, v0.4 candle/realdata feature-gated re-emit, v0.5 sqrt-impact).
 - **backtest-real-binance-data** — Real-Binance-data backtest path (pinned corpus, deterministic seeds).
 - **simple-strategies-realdata** — SMA / MACD / RSI / Bollinger runnable on real Binance data in the Lab.
+- **carry-funding-data-backfill** — pinned Binance funding-rate corpus (10 symbols × 2023-24, revision `bf1ede44…`, 240 parquets byte-verified) + the fetcher tool; the 2026-07-27 review pass hardened the tool for future top-ups (completeness-at-emit, pinned-SHA skip, bounded retry, atomic writes; 146-test suite).
 
 ## Robustness program — CONCLUDED 2026-06-08 → ship passive
 

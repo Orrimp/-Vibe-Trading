@@ -159,7 +159,7 @@ tests       = [
     "crates/data/src/bin/fetch_binance_funding.rs::tests::test_date_to_millis_epoch",
   ]  # 14 unit tests in `mod tests` (2 URL builder + 4 settlements incl. leap-Feb + 3 paginator [tokio::test] + 1 Parquet schema round-trip + 4 date helpers); `cargo test -p data --bin fetch_binance_funding`
 anchors     = []   # data-backfill utility — no backtest scenario / equity curve to lock; the carry EDGE anchors (#88/#89) live on REQ-CARRY-STRATEGY-001, the consumer
-state       = "dev-done"   # feature.md frontmatter status: dev-done (developer 2026-05-31). No reports/ or presentations/ on disk — not tester/presenter advanced. Trace row added 2026-06-08 per audit-2026-06-08 § Trace coverage (carry-over P2 from audit-2026-06-01).
+state       = "shipped"   # SHIPPED 2026-07-27 — story 1-12 closed by code-review burn-down 2/14 (verdict PASS: corpus byte-perfect 240/240 vs manifest, consumers pin the matching SHA; 10 review patches applied hardening the fetcher for future top-ups — completeness-at-emit, pinned-SHA should_skip back-port, retry/atomic-writes; 2 defers Owner/Revisit'd). PRIOR: feature.md frontmatter status: dev-done (developer 2026-05-31). No reports/ or presentations/ on disk — not tester/presenter advanced. Trace row added 2026-06-08 per audit-2026-06-08 § Trace coverage (carry-over P2 from audit-2026-06-01).
 
 [[req]]
 id          = "REQ-TIME-SERIES-MOMENTUM-ROBUSTNESS-001"
