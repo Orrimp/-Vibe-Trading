@@ -61,29 +61,14 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use rayon::prelude::*;
 use tracing::info;
 
+// The fan-out seam (GeneratorKind, seed derivations, run_one_path,
+// run_ensemble) lives in the library (review 1-14) so the R-NR.6/FP-C2.1
+// e2e gates exercise the REAL harness chain. This bin is a thin driver.
+use backtest::mc_harness::{self, GeneratorKind};
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
-
-/// Which path generator to use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-enum GeneratorKind {
-    /// Block-bootstrap generator on real Binance data (headline generator).
-    /// Requires `--features realdata`. The anchored scenario uses this.
-    BlockBootstrapReal,
-    /// GBM smoke-test generator. Does NOT require real data. NOT anchored.
-    GbmSmoke,
-}
-
-impl GeneratorKind {
-    fn label(self) -> &'static str {
-        match self {
-            Self::BlockBootstrapReal => "block-bootstrap-real",
-            Self::GbmSmoke => "gbm-smoke",
-        }
-    }
-}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -129,6 +114,7 @@ struct Args {
     out_dir: PathBuf,
 
     /// Calendar year for the scenario's backtest span (2023 or 2024).
+    /// Any other year is rejected (review 1-14 — no silent 8760 fallback).
     #[arg(long, default_value_t = 2023)]
     year: i32,
 }
@@ -144,13 +130,6 @@ fn parse_seed(s: &str) -> Result<u64> {
         s.parse::<u64>()
             .with_context(|| format!("parse decimal seed: {s}"))
     }
-}
-
-/// ADR-0051 D1: derive per-path seed from master seed and path index.
-/// `path_seed_j = master_seed.wrapping_add((j as u64).wrapping_mul(0x9E3779B9))`
-#[inline]
-fn derive_path_seed(master: u64, j: usize) -> u64 {
-    master.wrapping_add((j as u64).wrapping_mul(0x9E37_79B9))
 }
 
 // ── Git / hostname helpers (mirrors threshold_sweep) ──────────────────────────
@@ -194,14 +173,6 @@ type SourceBars = Vec<(trading_core::Symbol, Vec<trading_core::Bar>)>;
 
 /// Result of loading source bars: bars by symbol + revision SHA string.
 type SourceBarsResult = Result<(SourceBars, String)>;
-
-// ── Per-path metric struct ─────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-struct IndexedPathMetrics {
-    j: usize,
-    metrics: backtest::stats::PathMetrics,
-}
 
 // ── Report renderer (ADR-0051 D3) ─────────────────────────────────────────────
 
@@ -401,14 +372,14 @@ fn main() -> Result<()> {
 
     let ensemble_seed = parse_seed(&args.ensemble_seed).context("parse --ensemble-seed")?;
 
+    // Review 1-14: validate --paths (≥ 2, sane cap) before any heavy work.
+    mc_harness::validate_paths(args.paths)?;
+
     // Fixed fill-tie-break seed (ADR-0051 D1: held constant across all paths).
     const FILL_SEED: u64 = 0xC0FFEE;
 
-    let bar_count = match args.year {
-        2023 => 8760usize,
-        2024 => 8784usize,
-        _ => 8760usize,
-    };
+    // Review 1-14: bail on unmapped years (no silent leap-wrong 8760 fallback).
+    let bar_count = mc_harness::bar_count_for_year(args.year)?;
 
     let symbols_prices = backtest::scenarios::momentum::top10_symbols_with_prices();
     let universe: Vec<(trading_core::Symbol, rust_decimal::Decimal)> = symbols_prices.clone();
@@ -431,51 +402,27 @@ fn main() -> Result<()> {
     let (generator_label, bootstrap_mode, block_length_policy_str, selected_l) =
         prepare_generator_params(args.generator, &real_bars_by_symbol, ensemble_seed)?;
 
-    // ── Fan out over N paths in parallel ─────────────────────────────────────
-    // ADR-0051 D1: path_seed_j = ensemble_seed.wrapping_add(j * 0x9E3779B9).
-    // The seed is bound to index j; rayon completion order does NOT affect seeds.
+    // ── Fan out over N paths in parallel + reduce (ADR-0051 D1/D2) ────────────
+    // The production fan-out → sort-by-j → reduce chain lives in
+    // `backtest::mc_harness::run_ensemble` (review 1-14 seam extraction) so
+    // the e2e gates exercise it directly. Seeds are bound to index j; rayon
+    // completion order affects neither seeds nor reduction order.
     info!(n_paths = args.paths, "fan-out starting");
 
-    let path_indices: Vec<usize> = (0..args.paths).collect();
+    let (_metrics, summary) = mc_pool.install(|| {
+        mc_harness::run_ensemble(
+            args.paths,
+            ensemble_seed,
+            FILL_SEED,
+            &universe,
+            &real_bars_by_symbol,
+            bar_count,
+            args.generator,
+            args.year,
+        )
+    })?;
 
-    let results: Vec<Result<IndexedPathMetrics>> = mc_pool.install(|| {
-        path_indices
-            .into_par_iter()
-            .map(|j| {
-                let path_seed_j = derive_path_seed(ensemble_seed, j);
-                run_one_path(
-                    j,
-                    path_seed_j,
-                    FILL_SEED,
-                    &universe,
-                    &real_bars_by_symbol,
-                    bar_count,
-                    args.generator,
-                    args.year,
-                )
-            })
-            .collect()
-    });
-
-    info!(n_paths = args.paths, "fan-out complete; collecting results");
-
-    // ── Collect indexed results in path-index order ───────────────────────────
-    // ADR-0051 D2: collect into a Vec indexed by j, sort by j so reduction
-    // is in ascending index order (NOT completion order).
-    let mut indexed: Vec<IndexedPathMetrics> = results
-        .into_iter()
-        .collect::<Result<Vec<_>>>()
-        .context("one or more Monte-Carlo paths failed")?;
-
-    // Sort by path index (ascending) — this is the load-bearing step for D2.
-    indexed.sort_by_key(|r| r.j);
-
-    let metrics: Vec<backtest::stats::PathMetrics> =
-        indexed.into_iter().map(|r| r.metrics).collect();
-
-    // ── Reduce (ADR-0051 D2: sequential in index order) ───────────────────────
-    let summary = backtest::stats::DistributionSummary::from_path_metrics(&metrics)
-        .context("build DistributionSummary")?;
+    info!(n_paths = args.paths, "fan-out + reduction complete");
 
     let wall_clock_s = start.elapsed().as_secs_f64();
     info!(
@@ -491,8 +438,10 @@ fn main() -> Result<()> {
     // ── Build param_set string (hashed body — K3: changing θ* changes the SHA)
     let param_set = build_param_set()?;
 
-    // ── Generate timestamp for front-matter ───────────────────────────────────
-    let generated = {
+    // ── Generate timestamps (review 1-14: ONE clock read shared by the
+    //    front-matter `generated` field and the report filename, so the two
+    //    can never straddle midnight/a second boundary) ─────────────────────
+    let (generated, ts_suffix) = {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -504,20 +453,19 @@ fn main() -> Result<()> {
         // Use today's date (approximate from epoch seconds).
         let days_since_epoch = now / 86400;
         let (y, m, d) = days_since_epoch_to_ymd(days_since_epoch);
-        format!("{y:04}-{m:02}-{d:02}T{hours:02}:{mins:02}:{secs:02}Z")
+        (
+            format!("{y:04}-{m:02}-{d:02}T{hours:02}:{mins:02}:{secs:02}Z"),
+            format!("{y:04}{m:02}{d:02}-{hours:02}{mins:02}{secs:02}"),
+        )
     };
     let host = read_hostname();
     let git_commit = read_git_commit();
     let data_rev_frontmatter = read_data_revision_sha(&args.data_root);
     let pid = std::process::id();
-    let scenario_name = format!(
-        "v1-momentum-{}-block-bootstrap-{}-fy-mc",
-        args.year,
-        match args.generator {
-            GeneratorKind::BlockBootstrapReal => "real",
-            GeneratorKind::GbmSmoke => "gbm",
-        }
-    );
+    // Review 1-14: honest scenario naming — the gbm-smoke lane no longer
+    // carries a false "block-bootstrap" token; the anchored lane's NAME is
+    // byte-identical (pinned by a regression test in tests/montecarlo_e2e.rs).
+    let scenario_name = mc_harness::scenario_name(args.generator, args.year);
 
     // ── Render report (ADR-0051 D3) ───────────────────────────────────────────
     let report = render_report(
@@ -544,20 +492,7 @@ fn main() -> Result<()> {
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("create out_dir {:?}", args.out_dir))?;
 
-    // Timestamp suffix (yyyymmdd-HHMMSS) for the filename.
-    let ts_suffix = {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let secs_of_day = now % 86400;
-        let h = secs_of_day / 3600;
-        let m = secs_of_day / 60 % 60;
-        let s = secs_of_day % 60;
-        let days = now / 86400;
-        let (y, mo, d) = days_since_epoch_to_ymd(days);
-        format!("{y:04}{mo:02}{d:02}-{h:02}{m:02}{s:02}")
-    };
+    // Filename timestamp: same single clock read as the front-matter above.
     let report_filename = format!("robustness-{ts_suffix}-{scenario_name}.md");
     let report_path = args.out_dir.join(&report_filename);
     std::fs::write(&report_path, &report)
@@ -635,7 +570,11 @@ fn load_source_bars(
                     .iter()
                     .enumerate()
                     .map(|(idx, (sym, start_price))| {
-                        let sym_seed = 0xC0FFEE_u64.wrapping_add(idx as u64 * 0x9E37_79B9);
+                        // Review 1-14: dedicated source-bar seed base, SplitMix64-mixed —
+                        // the old `0xC0FFEE + idx·0x9E37_79B9` was bit-identical to the
+                        // ADR-0051 D1 path-seed family at the default master seed.
+                        let sym_seed =
+                            mc_harness::derive_gbm_sym_seed(mc_harness::GBM_SOURCE_SEED_BASE, idx);
                         let bars = backtest::scenarios::momentum::synthetic_bars_hourly(
                             sym,
                             bar_count,
@@ -793,155 +732,6 @@ fn build_param_set() -> Result<String> {
         cfg.drift_rebalance_threshold,
         cfg.vol_floor,
     ))
-}
-
-/// Run one Monte-Carlo path (called from rayon par_iter).
-///
-/// Returns `(j, PathMetrics)`. The index `j` is bound at the CALL SITE (before
-/// rayon schedules the task) so completion order cannot affect which seed any
-/// path receives (ADR-0051 D1).
-#[allow(clippy::too_many_arguments)]
-fn run_one_path(
-    j: usize,
-    path_seed_j: u64,
-    fill_seed: u64,
-    universe: &[(trading_core::Symbol, rust_decimal::Decimal)],
-    real_bars_by_symbol: &[(trading_core::Symbol, Vec<trading_core::Bar>)],
-    bar_count: usize,
-    generator: GeneratorKind,
-    year: i32,
-) -> Result<IndexedPathMetrics> {
-    // ── Generate the synthetic path ───────────────────────────────────────────
-    let generated_path = match generator {
-        GeneratorKind::BlockBootstrapReal => {
-            use data::MonteCarloPathGen as _;
-            let source: Vec<(trading_core::Symbol, Vec<trading_core::Bar>)> =
-                real_bars_by_symbol.to_vec();
-            let path_gen = data::BlockBootstrapPathGen::new(source, data::BlockLengthPolicy::Auto)
-                .with_context(|| format!("build BlockBootstrapPathGen for path {j}"))?;
-            path_gen
-                .generate(universe, bar_count, path_seed_j)
-                .with_context(|| format!("generate path {j}"))?
-        }
-        GeneratorKind::GbmSmoke => {
-            // GBM: generate per-symbol synthetic bars and wrap in GeneratedPath.
-            let bars_by_symbol: Vec<Vec<trading_core::Bar>> = universe
-                .iter()
-                .enumerate()
-                .map(|(sym_i, (sym, start_price))| {
-                    // Each symbol within path j gets a per-symbol seed derived
-                    // from the path seed (consistent with the GBM fixture pattern).
-                    let sym_seed = path_seed_j.wrapping_add(sym_i as u64 * 0x9E37_79B9);
-                    backtest::scenarios::momentum::synthetic_bars_hourly(
-                        sym,
-                        bar_count,
-                        sym_seed,
-                        *start_price,
-                        year,
-                    )
-                })
-                .collect();
-            data::GeneratedPath {
-                bars_by_symbol,
-                selected_block_length: None,
-                funding_by_symbol: None,
-                basis_by_symbol: None,
-            }
-        }
-    };
-
-    // ── Merge per-symbol bars into the flat replay feed ───────────────────────
-    let merged_bars = data::ReplayFeed::merge_synthetic(generated_path.bars_by_symbol);
-
-    // ── Build fresh strategy for this path ───────────────────────────────────
-    let rel_path = std::path::PathBuf::from("config/strategies/top10_momentum_h1.toml");
-    let toml_path = backtest::paths::resolve_workspace_path(&rel_path);
-    let cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
-        .with_context(|| format!("load momentum config for path {j}"))?;
-    let strat = strategy::MomentumStrategy::from_config(
-        cfg,
-        smol_str::SmolStr::new(toml_path.to_string_lossy()),
-    );
-
-    // ── Run the backtest on this path ─────────────────────────────────────────
-    let input = backtest::cli_types::TcnScenarioInput {
-        scenario_name: format!("mc-path-{j}"),
-        start_year: year,
-        bar_count: merged_bars.len(),
-        initial_capital: rust_decimal_macros::dec!(100_000),
-        slippage_bps: 2,
-        taker_fee_bps: 4,
-        config_id: "top10_momentum_h1".to_string(),
-        forecaster_id: "montecarlo".to_string(),
-        bars_override: Some(merged_bars),
-        emit_equity_bin: None,
-        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
-        funding_override: None,
-        basis_override: None,
-    };
-
-    let result = pollster::block_on(backtest::scenarios::montecarlo::run_path(
-        input, fill_seed, strat,
-    ))
-    .with_context(|| format!("run_path for MC path {j}"))?;
-
-    // ── Compute per-path metric scalars ───────────────────────────────────────
-    // Guard: clamp equity curve values to a small positive floor before computing
-    // metrics. If equity goes negative (a "ruin" path — the strategy lost more than
-    // the initial capital, which can happen in the GBM smoke test with high volatility),
-    // the log-return computation in compute_sharpe_hourly would produce NaN.
-    // We clamp negative equity to 1e-6 (representing near-zero remnant capital)
-    // so the Sharpe on a ruin path is a finite large-negative number rather than NaN.
-    // This is intentional: ADR-0051 D2 asserts NaN absent; we prevent NaN here.
-    use rust_decimal::Decimal;
-    use rust_decimal_macros::dec;
-    let equity_clamped: Vec<Decimal> = result
-        .equity_curve
-        .iter()
-        .map(|&e| {
-            if e <= Decimal::ZERO {
-                dec!(0.000001)
-            } else {
-                e
-            }
-        })
-        .collect();
-
-    let sharpe = backtest::stats::compute_sharpe_hourly(&equity_clamped);
-    let sortino = backtest::stats::compute_sortino_hourly(&equity_clamped);
-    let calmar = backtest::stats::compute_calmar(&equity_clamped);
-    let max_dd = backtest::stats::compute_max_drawdown_f64(&equity_clamped);
-    let total_ret = backtest::stats::compute_total_return(&equity_clamped);
-
-    // Assert no NaN — if clamping didn't prevent NaN, something is wrong structurally.
-    debug_assert!(sharpe.is_finite(), "Sharpe NaN after clamping at path {j}");
-    debug_assert!(
-        sortino.is_finite(),
-        "Sortino NaN after clamping at path {j}"
-    );
-    debug_assert!(calmar.is_finite(), "Calmar NaN after clamping at path {j}");
-
-    tracing::trace!(
-        j,
-        path_seed_j,
-        sharpe,
-        max_dd,
-        trades = result.trades,
-        "path complete"
-    );
-
-    Ok(IndexedPathMetrics {
-        j,
-        metrics: backtest::stats::PathMetrics {
-            sharpe,
-            sortino,
-            calmar,
-            max_drawdown: max_dd,
-            total_return: total_ret,
-            final_equity: result.final_equity,
-            initial_equity: result.initial_equity,
-        },
-    })
 }
 
 /// Simple Gregorian calendar conversion (days since 1970-01-01 → y/m/d).

@@ -120,7 +120,7 @@ Not a feature program — a **bounded ship-readiness pass** ratified after the v
 ## Robustness program — CONCLUDED 2026-06-08 → ship passive
 
 - **monte-carlo-bootstrap-path-generator** (C1) — stationary-block-bootstrap path generator that resamples real returns (Politis–White auto block length), preserving fat tails and volatility clustering; the 2026-07-31 review pass added the input-validation set + GBM seed-collision fix + honest-tolerance tests (43-test suite) and pinned the shipped PWSD behaviour pending the 1-24 literature-fidelity re-lock.
-- **strategy-robustness-harness** (C2) — distribution-summary backtest mode (Sharpe p5/p50/p95, max-drawdown tail, probability-of-loss) read against the frozen § 0 decision rule (p5 Sharpe < 0 → FRAGILE).
+- **strategy-robustness-harness** (C2) — distribution-summary backtest mode (Sharpe p5/p50/p95, max-drawdown tail, probability-of-loss) read against the frozen § 0 decision rule (p5 Sharpe < 0 → FRAGILE); the 2026-07-31 review re-pointed its e2e gates at the real fan-out and disclosed the cross-symbol fill-mispricing in the harness lanes (bug-log #67 — fix + re-lock owned by story 1-25; advisor gate independent).
 - **momentum-parameter-robustness-sweep** — distribution-per-θ over the momentum family; FAMILY-UNIFORM-FRAGILE.
 - **cross-sectional-mean-reversion-strategy** — first pivot family through the harness; FRAGILE.
 - **time-series-momentum-robustness** — per-asset absolute momentum (long/flat), the thesis-closing OHLCV test; FRAGILE.

@@ -1,9 +1,16 @@
 //! Monte-Carlo robustness harness — `run_path` cell wrapper (M-DEV-3).
 //!
-//! Behaviorally-preserving sibling of
-//! `crates/backtest/src/scenarios/threshold_sweep::run_cell`.
+//! Originally extracted (v0.1.0) as a behaviorally-preserving sibling of
+//! `crates/backtest/src/scenarios/threshold_sweep::run_cell`; the two have
+//! since DIVERGED: from v0.1.1 `run_path` carries the Bug-B long-only
+//! solvency guard (pre-flight cash check + fill-loop guard), which
+//! `run_cell` does NOT — `run_cell` retains the pre-Bug-B unguarded Buy
+//! sizing inside the frozen-anchored threshold-sweep lane. That parity
+//! question (plus the cross-symbol fill-mispricing both wrappers share) is
+//! KNOWN and owned end-to-end by story 1-25-harness-fill-correctness-relock
+//! (bug-log #67); do not re-fix it piecemeal here.
 //!
-//! The key difference: `run_cell` accepts a caller-supplied
+//! The other structural difference: `run_cell` accepts a caller-supplied
 //! `TcnOverlayMomentumStrategy`; `run_path` accepts a caller-supplied
 //! `MomentumStrategy` (plain v1, no TCN overlay) and uses
 //! `input.bars_override` to inject a bootstrap-generated path.
@@ -299,25 +306,28 @@ pub async fn run_path(
                 }
                 trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
                     let fraction = dec!(0.10);
-                    // Bug B fix (v0.1.1): cap notional against AVAILABLE CASH so cash
-                    // can never go negative. Before this fix, notional was sized against
-                    // total equity (cash + positions) without checking whether cash was
-                    // sufficient, driving cash negative on fee-churn paths (up to 5 343
-                    // trades/year) and producing impossible negative equity on a long-only
-                    // book. Per the solvency invariant: cash ≥ 0 AND equity ≥ 0 at ALL
-                    // steps. The strategy's 10%-of-equity intent is preserved when cash is
-                    // sufficient; the buy is SKIPPED when cash cannot cover notional + fee.
-                    // We estimate the fee conservatively as a bps fraction of notional.
-                    let target_notional = equity * fraction;
-                    // Hard cap: do not spend more than cash on hand.
-                    let notional = if target_notional > cash {
-                        cash
-                    } else {
-                        target_notional
-                    };
+                    // Bug B fix (v0.1.1): the buy is SKIPPED when cash cannot cover
+                    // notional + estimated fee, so cash can never go negative. Before
+                    // this fix, notional was sized against total equity (cash +
+                    // positions) without checking whether cash was sufficient, driving
+                    // cash negative on fee-churn paths (up to 5 343 trades/year) and
+                    // producing impossible negative equity on a long-only book. Per the
+                    // solvency invariant: cash ≥ 0 AND equity ≥ 0 at ALL steps. The
+                    // strategy's 10%-of-equity intent is preserved when cash is
+                    // sufficient. TWO guard layers protect solvency: (1) the pre-flight
+                    // skip below; (2) the defensive fill-loop guard on total_cost.
+                    //
+                    // Review 1-14: a former "layer 1" notional cap
+                    // (`min(target_notional, cash)`) was removed as dead code — with
+                    // any positive taker fee a cash-capped buy always failed the
+                    // pre-flight (`cash < cash + fee`), so no downsized buy could ever
+                    // execute; skip-vs-skip is byte-identical. All anchored lanes and
+                    // the harness drivers use taker_fee_bps = 4.
+                    let notional = equity * fraction;
                     // Estimate round-trip fee (taker_fee_bps; conservative).
                     let fee_estimate = notional * Decimal::new(i64::from(taker_fee_bps), 4); // bps → fraction
-                    // Skip buy if cash cannot cover notional + estimated fee.
+                    // Pre-flight solvency check: skip the buy outright if cash cannot
+                    // cover notional + estimated fee (no partial downsizing).
                     if cash < notional + fee_estimate || notional <= Decimal::ZERO {
                         continue;
                     }
@@ -404,8 +414,10 @@ pub async fn run_path(
                     let target_notional = equity * fraction;
                     // Reserve margin = notional / max_leverage (max_leverage=1 → margin=notional).
                     // The short is SKIPPED (not partially filled) if cash < margin + estimated fee
-                    // — the exact structure of the long Bug-B skip, so both solvency paths are
-                    // visibly symmetric (D-MN.2 initial-margin gate).
+                    // — mirroring the long Bug-B pre-flight skip (D-MN.2 initial-margin gate).
+                    // NOTE (review 1-14): this branch deliberately KEEPS its notional cap —
+                    // it is part of the LOCKED MN anchor surface (D-MN.2) and was not in the
+                    // 1-14 dead-cap finding's scope (which covered the long Buy branch only).
                     let notional = if target_notional > cash {
                         cash
                     } else {

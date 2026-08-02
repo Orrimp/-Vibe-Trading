@@ -32,6 +32,13 @@ pub mod paths;
 /// annualization siblings (pure additions; the 1h fns are byte-verbatim).
 pub mod stats;
 
+/// Monte-Carlo ensemble fan-out seam (review 1-14): `GeneratorKind`, the
+/// ADR-0051 D1 seed derivation, `run_one_path` + `run_ensemble` — extracted
+/// VERBATIM from `bin/monte_carlo.rs` so the R-NR.6(a)/(b) + FP-C2.1 e2e
+/// gates exercise the REAL harness chain. Internal seam (like `scenarios`),
+/// not a stable public API surface.
+pub mod mc_harness;
+
 /// OHLCV bar resampler and `Horizon` enum (horizon-retest-robustness M-DEV-2).
 ///
 /// `resample_ohlcv(bars_1h, horizon)` folds 1h bars into coarser (4h/daily)

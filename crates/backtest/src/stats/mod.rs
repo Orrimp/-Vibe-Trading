@@ -284,8 +284,9 @@ pub fn compute_total_return(equity: &[Decimal]) -> f64 {
 ///
 /// All fields are computed by [`reduce_samples`] using the frozen ADR-0051 D2
 /// reduction order: index-order mean/two-pass std + `f64::total_cmp` sort +
-/// type-7 linear percentile. NaN values cause a panic (a NaN metric is a
-/// strategy or data bug, not a tail — fail loudly).
+/// type-7 linear percentile. Non-finite samples (NaN or ±∞) are rejected with
+/// a typed error naming the metric (a non-finite metric is a strategy or data
+/// bug, not a tail — fail loudly).
 #[derive(Debug, Clone)]
 pub struct MetricDistribution {
     pub mean: f64,
@@ -389,16 +390,15 @@ impl DistributionSummary {
     /// is sequential in that order per ADR-0051 D2 — do NOT sort or rearrange
     /// before calling this function.
     ///
-    /// # Panics
-    ///
-    /// Panics if any metric sample is `NaN` (a NaN Sharpe is a strategy/data
-    /// bug, not a tail — fail loudly rather than silently sorting it to an end,
-    /// per ADR-0051 D2 mandate).
-    ///
     /// # Errors
     ///
-    /// Returns [`DistributionError::EmptyMetrics`] if `metrics` is empty, or
-    /// [`DistributionError::NanValue`] if any per-path metric is `NaN`.
+    /// Returns [`DistributionError::EmptyMetrics`] if `metrics` is empty,
+    /// [`DistributionError::NanValue`] if any per-path metric is `NaN`, or
+    /// [`DistributionError::NonFiniteValue`] if any per-path metric is ±∞
+    /// (a non-finite Sharpe is a strategy/data bug, not a tail — fail loudly
+    /// rather than silently printing `inf`/`NaN` into the hashed report body,
+    /// per ADR-0051 D2 mandate; review 1-14 closed the ±∞ hole the
+    /// debug-only asserts left open in release builds).
     pub fn from_path_metrics(metrics: &[PathMetrics]) -> Result<Self, DistributionError> {
         use rust_decimal::prelude::ToPrimitive;
 
@@ -424,11 +424,11 @@ impl DistributionSummary {
         let sharpe_gt_1_count = sharpe_vals.iter().filter(|&&s| s > 1.0).count();
 
         // ── Reduce each metric vector ─────────────────────────────────────────
-        let sharpe_dist = reduce_samples(&sharpe_vals)?;
-        let sortino_dist = reduce_samples(&sortino_vals)?;
-        let calmar_dist = reduce_samples(&calmar_vals)?;
-        let max_dd_dist = reduce_samples(&max_dd_vals)?;
-        let total_ret_dist = reduce_samples(&total_ret_vals)?;
+        let sharpe_dist = reduce_samples(&sharpe_vals, "sharpe")?;
+        let sortino_dist = reduce_samples(&sortino_vals, "sortino")?;
+        let calmar_dist = reduce_samples(&calmar_vals, "calmar")?;
+        let max_dd_dist = reduce_samples(&max_dd_vals, "max_drawdown")?;
+        let total_ret_dist = reduce_samples(&total_ret_vals, "total_return")?;
 
         let max_dd_tail_p50 = max_dd_dist.p50;
         let max_dd_tail_p95 = max_dd_dist.p95;
@@ -494,8 +494,27 @@ pub enum DistributionError {
     #[error("cannot build DistributionSummary from empty metrics slice")]
     EmptyMetrics,
     /// A NaN value was found in the samples — this is a strategy/data bug.
-    #[error("NaN value in metric sample at index {index}")]
-    NanValue { index: usize },
+    /// Carries the metric NAME so the failing lane is identifiable (review 1-14).
+    #[error("NaN value in {metric} sample at index {index}")]
+    NanValue {
+        /// Metric whose sample vector contained the NaN (e.g. `"sharpe"`).
+        metric: &'static str,
+        /// Index of the offending sample within the metric vector.
+        index: usize,
+    },
+    /// A ±∞ value was found in the samples — this is a strategy/data bug.
+    /// Review 1-14: the old NaN-only gate admitted ±∞, which printed
+    /// `inf` mean / `NaN` std into the hashed report body in release builds
+    /// (the `debug_assert!(is_finite())` probes are stripped there).
+    #[error("non-finite value {value} in {metric} sample at index {index}")]
+    NonFiniteValue {
+        /// Metric whose sample vector contained the infinity.
+        metric: &'static str,
+        /// Index of the offending sample within the metric vector.
+        index: usize,
+        /// The offending value (`+inf` or `-inf`).
+        value: f64,
+    },
 }
 
 /// ADR-0051 D2 reduction: index-order mean, two-pass std, `total_cmp` sort,
@@ -508,16 +527,30 @@ pub enum DistributionError {
 /// index order, which is deterministic and byte-stable on the canonical box
 /// (ADR-0051 D5).
 #[allow(clippy::cast_precision_loss)] // N is at most a few thousand — precision is acceptable
-fn reduce_samples(samples: &[f64]) -> Result<MetricDistribution, DistributionError> {
+fn reduce_samples(
+    samples: &[f64],
+    metric: &'static str,
+) -> Result<MetricDistribution, DistributionError> {
     let n = samples.len();
     debug_assert!(n > 0, "reduce_samples called with empty slice — caller bug");
 
-    // ── NaN-absent assertion ──────────────────────────────────────────────────
+    // ── Finite-samples assertion ──────────────────────────────────────────────
     // ADR-0051 D2: assert NaN absent before sorting (a NaN Sharpe is a
-    // strategy/data bug, not a tail value — fail loudly).
+    // strategy/data bug, not a tail value — fail loudly). Review 1-14 extends
+    // the gate to ±∞: an infinite sample would print `inf` mean / `NaN` std
+    // into the hashed body in release builds (debug_asserts stripped). All
+    // locked anchored inputs are finite → bodies unchanged; this is a
+    // new-error-path-only change.
     for (idx, &v) in samples.iter().enumerate() {
         if v.is_nan() {
-            return Err(DistributionError::NanValue { index: idx });
+            return Err(DistributionError::NanValue { metric, index: idx });
+        }
+        if !v.is_finite() {
+            return Err(DistributionError::NonFiniteValue {
+                metric,
+                index: idx,
+                value: v,
+            });
         }
     }
 
@@ -568,7 +601,11 @@ fn reduce_samples(samples: &[f64]) -> Result<MetricDistribution, DistributionErr
 /// Type-7 linear percentile (R default / `NumPy` `linear` method).
 ///
 /// `sorted` must be sorted ascending (enforced by caller via `total_cmp`).
-/// `p` is in [0.0, 100.0].
+/// `p` is clamped into [0.0, 100.0] (review 1-14 release-mode guard: an
+/// out-of-domain `p` used to index out of bounds). An empty slice returns
+/// `f64::NAN` instead of underflowing `n - 1` (the ADR-0051 D2 callers always
+/// pass non-empty slices and constant `p ∈ {5, 25, 50, 75, 95}` — both guards
+/// are release-safety nets, not reachable on any anchored path).
 ///
 /// `h = (N-1) * p/100`; value = `sorted[floor(h)] + (h - floor(h)) * (sorted[ceil(h)] - sorted[floor(h)])`.
 ///
@@ -580,9 +617,16 @@ fn reduce_samples(samples: &[f64]) -> Result<MetricDistribution, DistributionErr
 )]
 fn linear_percentile(sorted: &[f64], p: f64) -> f64 {
     let n = sorted.len();
+    if n == 0 {
+        // Empty input: `(n - 1)` below would underflow `usize` (debug panic /
+        // release wrap → out-of-bounds index). NaN is the honest "no data"
+        // scalar for this f64-returning helper.
+        return f64::NAN;
+    }
     if n == 1 {
         return sorted[0];
     }
+    let p = p.clamp(0.0, 100.0);
     let h = (n - 1) as f64 * p / 100.0;
     let lo = h.floor() as usize;
     let hi = h.ceil() as usize;
@@ -730,7 +774,7 @@ mod tests {
     #[test]
     fn reducer_hand_verified_n9() {
         let samples: Vec<f64> = (1..=9).map(|i| i as f64).collect();
-        let dist = reduce_samples(&samples).unwrap();
+        let dist = reduce_samples(&samples, "test_metric").unwrap();
         assert!((dist.mean - 5.0).abs() < 1e-10, "mean: {}", dist.mean);
         let expected_std = (20.0_f64 / 3.0_f64).sqrt(); // population std = sqrt(60/9)
         assert!((dist.std - expected_std).abs() < 1e-10, "std: {}", dist.std);
@@ -746,22 +790,104 @@ mod tests {
     /// N=1 — must not panic, percentiles = the single value.
     #[test]
     fn reducer_n1() {
-        let dist = reduce_samples(&[42.0]).unwrap();
+        let dist = reduce_samples(&[42.0], "test_metric").unwrap();
         assert_eq!(dist.mean, 42.0);
         assert_eq!(dist.p50, 42.0);
         assert_eq!(dist.min, 42.0);
         assert_eq!(dist.max, 42.0);
     }
 
-    /// NaN causes `DistributionError::NanValue`.
+    /// NaN causes `DistributionError::NanValue` carrying the metric name.
     #[test]
     fn reducer_nan_fails() {
         let samples = vec![1.0, f64::NAN, 3.0];
-        let result = reduce_samples(&samples);
+        let result = reduce_samples(&samples, "sharpe");
         assert!(matches!(
             result,
-            Err(DistributionError::NanValue { index: 1 })
+            Err(DistributionError::NanValue {
+                metric: "sharpe",
+                index: 1
+            })
         ));
+    }
+
+    /// ±∞ causes `DistributionError::NonFiniteValue` (review 1-14 — the old
+    /// NaN-only gate admitted infinities, printing `inf` mean / `NaN` std into
+    /// the hashed body in release builds).
+    #[test]
+    fn reducer_rejects_positive_infinity() {
+        let samples = vec![1.0, f64::INFINITY, 3.0];
+        let result = reduce_samples(&samples, "calmar");
+        match result {
+            Err(DistributionError::NonFiniteValue {
+                metric,
+                index,
+                value,
+            }) => {
+                assert_eq!(metric, "calmar", "error must NAME the failing metric");
+                assert_eq!(index, 1);
+                assert!(value.is_infinite() && value > 0.0);
+            }
+            other => panic!("expected NonFiniteValue, got {other:?}"),
+        }
+    }
+
+    /// −∞ is rejected the same way as +∞.
+    #[test]
+    fn reducer_rejects_negative_infinity() {
+        let samples = vec![f64::NEG_INFINITY, 2.0];
+        let result = reduce_samples(&samples, "total_return");
+        match result {
+            Err(DistributionError::NonFiniteValue {
+                metric,
+                index,
+                value,
+            }) => {
+                assert_eq!(metric, "total_return");
+                assert_eq!(index, 0);
+                assert!(value.is_infinite() && value < 0.0);
+            }
+            other => panic!("expected NonFiniteValue, got {other:?}"),
+        }
+    }
+
+    /// A ±∞ per-path metric surfaces through `from_path_metrics` as a typed
+    /// error (not an `inf` printed into the report body).
+    #[test]
+    fn distribution_summary_rejects_infinite_metric() {
+        let metrics = vec![PathMetrics {
+            sharpe: f64::INFINITY,
+            sortino: 0.0,
+            calmar: 0.0,
+            max_drawdown: 0.1,
+            total_return: 0.1,
+            final_equity: dec!(110000),
+            initial_equity: dec!(100000),
+        }];
+        let result = DistributionSummary::from_path_metrics(&metrics);
+        assert!(matches!(
+            result,
+            Err(DistributionError::NonFiniteValue {
+                metric: "sharpe",
+                ..
+            })
+        ));
+    }
+
+    /// Review 1-14 release-mode guards on `linear_percentile`:
+    /// empty slice → NaN (no usize underflow / OOB), out-of-domain p → clamped.
+    #[test]
+    fn linear_percentile_guards() {
+        // Empty: NaN, no panic.
+        assert!(linear_percentile(&[], 50.0).is_nan());
+        // Out-of-domain p is clamped to the ends, not an OOB index.
+        let sorted = [1.0, 2.0, 3.0];
+        assert_eq!(linear_percentile(&sorted, 150.0), 3.0);
+        assert_eq!(linear_percentile(&sorted, -25.0), 1.0);
+        // In-domain behaviour unchanged.
+        assert_eq!(linear_percentile(&sorted, 0.0), 1.0);
+        assert_eq!(linear_percentile(&sorted, 100.0), 3.0);
+        assert_eq!(linear_percentile(&sorted, 50.0), 2.0);
     }
 
     /// Empty metrics → `DistributionError::EmptyMetrics`.

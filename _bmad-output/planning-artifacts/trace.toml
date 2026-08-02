@@ -2652,7 +2652,7 @@ tests       = [
   "crates/backtest/tests/montecarlo_e2e.rs::solvency_invariant_equity_curve_never_negative_across_paths",  # v0.1.1 Bug B distribution-level invariant: max_dd_tail_p95 ≤ 1.0
 ]
 anchors     = ["v1-momentum-2023-block-bootstrap-real-fy-mc"]   # +1 anchor under mc-robustness-2026-06; SHA 7dbf5628 (v0.1.1 corrected, §D6.b re-emission) — tester locked 2026-05-30 after verify-anchors 85/85 PASS
-state       = "tested"     # tester 2026-05-30 v0.1.1 RE-VERIFY VERDICT → PASS: 58/58 lib + 8/8 e2e (incl 2 new solvency guards); body-SHA 7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20 byte-identical across 2 independent N=500 runs; p50 Sharpe -0.010 = FRAGILE (5/5 primary signals unchanged); p95 MaxDD 91.5% (was 100% artifact — fixed); P(loss) 75.2% (was 86.8%); 85/85 anchors; fmt clean; 0 clippy errors in C2 files. mutation-probe: solvency tests GREEN under revert (arithmetic proof, not run_path call — noted as gap, see test report). Presenter re-do unblocked.
+state       = "shipped"     # SHIPPED 2026-07-31 — story 1-14 closed by code-review burn-down 4/14 (verdict PASS-WITH-FINDINGS; 15 anchor-safe patches applied — e2e gates re-pointed at the real fan-out via mc_harness.rs, ±inf reject, smoke-seed fix; the CRITICAL cross-symbol fill-mispricing cluster is OWNED by story 1-25 + bug-log #67, advisor gate proven independent). PRIOR: tester 2026-05-30 v0.1.1 RE-VERIFY VERDICT → PASS: 58/58 lib + 8/8 e2e (incl 2 new solvency guards); body-SHA 7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20 byte-identical across 2 independent N=500 runs; p50 Sharpe -0.010 = FRAGILE (5/5 primary signals unchanged); p95 MaxDD 91.5% (was 100% artifact — fixed); P(loss) 75.2% (was 86.8%); 85/85 anchors; fmt clean; 0 clippy errors in C2 files. mutation-probe: solvency tests GREEN under revert (arithmetic proof, not run_path call — noted as gap, see test report). Presenter re-do unblocked.
 # analyst M0 2026-05-30: feature.md authored as C2 of the Monte-Carlo robustness lane. R1-R3 + R-NR(6, incl MANDATORY adapted CLAUDE.md distribution-harness gate R-NR.6 = divergence-from-single-path-baseline + two-run byte-identity) + K1-K4 + H1-H3 + Q-RH-1/2 + 4-cell verdict tree. ADR-0051 FLAGGED for the architect (next free number confirmed 0051; this brief does NOT author it). Depends on C1 (REQ-MC-BOOTSTRAP-PATH-GENERATOR-001). Operator Q2 (anchor the summary) + Q3 (harness first) are the locked frame, not re-asked. Reuses the threshold_sweep seam (architect's "~80% built" finding).
 
 [[req]]
@@ -3574,3 +3574,14 @@ crates      = ["crates/data", "crates/backtest"]
 tests       = []
 anchors     = []   # will ADD a new namespace; mc-robustness-2026-06 rows stay frozen
 state       = "scoped"   # story 1-24 created 2026-07-31 by the 1-13 review decision; ready-for-dev
+
+[[req]]
+id          = "REQ-HARNESS-FILL-CORRECTNESS-001"
+title       = "Correct the research-harness lanes' fill arithmetic (orders priced at their own symbol's bar — PaperEngine::step batch pricing had no symbol check, so cross-symbol momentum batches filled at the trigger bar's close; bug-log #67) in BOTH scenarios/montecarlo.rs::run_path and threshold_sweep.rs::run_cell (+ run_cell gains the Bug-B solvency guard), with the √8760 constant + hashed-body verdict vocabulary + 5 anchor-tagged riders fixed-or-ratified in the SAME formal namespace re-lock; affected C2/C3 verdicts RE-DERIVED loud (flip-escalation clause per AD-19 spirit); advisor gate proven independent (bakeoff resamples returns). CRITICAL; one program with REQ-PWSD-FIDELITY-RELOCK-001."
+feature     = "harness-fill-correctness-relock"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["docs/dev-notes/robustness-decision-rule-2026-05-30.md"]
+crates      = ["crates/backtest"]
+tests       = []
+anchors     = []   # will ADD a new namespace; existing mc-robustness/threshold-sweep rows stay frozen
+state       = "scoped"   # story 1-25 created 2026-07-31 by the 1-14 review decision; ready-for-dev

@@ -1,24 +1,31 @@
 //! Monte-Carlo robustness harness — day-1 e2e gate tests (M-DEV-6).
 //!
-//! Implements the MANDATORY two-part R-NR.6 gate:
+//! Implements the MANDATORY two-part R-NR.6 gate — re-pointed at the REAL
+//! harness fan-out (review 1-14): the gates below drive
+//! `backtest::mc_harness::{run_one_path, run_ensemble}` — the exact
+//! per-path + fan-out → sort-by-j → reduce chain `bin/monte_carlo.rs`
+//! executes — over a small-N gbm-smoke ensemble (no corpus needed, no skip
+//! path; #66 rule: execution is asserted, not assumed).
 //!
-//! **(a) Divergence gate (FP-C2.1):** The distribution summary diverges from a
-//! single-path baseline by a testable epsilon. If the harness secretly collapses
-//! to running one path N times (all seeds identical), the spread collapses to 0
-//! and this test FAILS. This is the adaptation of the CLAUDE.md
-//! overlay-e2e non-negotiable to a distribution harness.
+//! **(a) Divergence gate (FP-C2.1):** The ensemble distribution summary has a
+//! non-degenerate spread when path seeds are distinct. If the harness secretly
+//! collapses to running one path N times (a seed-wiring bug in
+//! `run_one_path`/`derive_path_seed`), the spread collapses to 0 and this
+//! test FAILS. This is the adaptation of the CLAUDE.md overlay-e2e
+//! non-negotiable to a distribution harness.
 //!
-//! **(b) Determinism gate (FP-C2.3):** Two runs with the same master seed produce
-//! a byte-identical `DistributionSummary` (same formatted strings at ADR-0051 D3
-//! fixed precision). Catches any unordered fold or unformatted float.
+//! **(b) Determinism gate (FP-C2.3):** Two runs of the REAL ensemble chain at
+//! the same master seed produce a field-by-field bit-identical
+//! `DistributionSummary` (and identical strings at ADR-0051 D3 fixed
+//! precision). Catches any unordered fold or unformatted float.
 //!
-//! ## FP-C2.1 dry-run (developer must run before shipping)
+//! ## FP-C2.1 dry-run (the degenerate falsifier)
 //!
-//! Force all N path seeds to the SAME constant → the divergence test MUST FAIL
-//! (spread → 0). The test `fp_c2_1_degenerate_seeds_fail` does exactly this:
-//! it wires all 5 paths to the same seed and asserts that the divergence gate
-//! CAN detect the collapse. Because the divergence gate is now tested on
-//! BOTH the degenerate AND the real case, the gate itself is falsified.
+//! `fp_c2_1_degenerate_seeds_have_zero_spread` forces ALL paths through the
+//! REAL `run_one_path` with the SAME path seed and asserts the spread
+//! collapses to ≈ 0 — proving the divergence gate can detect the
+//! noop-collapse. Because the gate is tested on BOTH the degenerate AND the
+//! real case, the gate itself is falsified.
 //!
 //! ## Pattern reference
 //!
@@ -26,6 +33,7 @@
 //! analogue, CLAUDE.md § non-negotiable reference).
 
 use backtest::cli_types::TcnScenarioInput;
+use backtest::mc_harness::{self, GeneratorKind};
 use backtest::scenarios::montecarlo::run_path;
 use backtest::stats::{
     DistributionSummary, PathMetrics, compute_calmar, compute_max_drawdown_f64,
@@ -38,9 +46,37 @@ use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
+/// Fill-tie-break seed — the SAME constant `bin/monte_carlo.rs` holds fixed
+/// across all paths (ADR-0051 D1 orthogonality).
+const FILL_SEED: u64 = 0xC0FFEE;
+
 /// ADR-0051 D1 seed derivation (same constant as the production code).
+/// Kept test-local for the reducer-level tests; the real-chain gates use
+/// `mc_harness::derive_path_seed` (the production fn) directly.
 fn path_seed(master: u64, j: usize) -> u64 {
     master.wrapping_add((j as u64).wrapping_mul(0x9E37_79B9))
+}
+
+/// Run the REAL harness ensemble chain (`mc_harness::run_ensemble` — the
+/// exact fan-out → sort-by-j → reduce chain the bin executes) over a small-N
+/// gbm-smoke ensemble. No corpus needed; must NOT skip.
+fn real_gbm_ensemble(
+    n_paths: usize,
+    ensemble_seed: u64,
+    n_bars: usize,
+) -> (Vec<PathMetrics>, DistributionSummary) {
+    let universe = backtest::scenarios::momentum::top10_symbols_with_prices();
+    mc_harness::run_ensemble(
+        n_paths,
+        ensemble_seed,
+        FILL_SEED,
+        &universe,
+        &[], // gbm-smoke needs no real source bars
+        n_bars,
+        GeneratorKind::GbmSmoke,
+        2023,
+    )
+    .expect("run_ensemble (gbm-smoke) must succeed — config/strategies/top10_momentum_h1.toml exists in this repo")
 }
 
 /// Build a small synthetic bar series via GBM (deterministic from seed).
@@ -96,8 +132,8 @@ fn synthetic_bars(seed: u64, n: usize) -> Vec<Bar> {
 }
 
 /// Build a toy `Vec<Decimal>` equity curve from bars (monotone + noise).
-/// This is a thin stand-in for a real backtest equity curve; it uses the
-/// bar close prices multiplied by a fixed "position" to simulate equity growth.
+/// Used ONLY by the reducer-level tests (`fp_c2_2`, `reduction_is_pure`) —
+/// the R-NR.6 gates exercise the real harness chain instead (review 1-14).
 fn fake_equity_curve(bars: &[Bar]) -> Vec<Decimal> {
     let initial = dec!(100_000);
     let mut eq = vec![initial];
@@ -114,177 +150,199 @@ fn fake_equity_curve(bars: &[Bar]) -> Vec<Decimal> {
     eq
 }
 
-/// Build N `PathMetrics` from N independently-seeded bar series.
-///
-/// `seed_override`: if `Some(s)`, ALL paths use seed `s` (degenerate collapse test).
-/// `seed_override`: if `None`, each path uses `path_seed(master, j)` (normal).
-fn build_path_metrics_n(
-    master: u64,
-    n: usize,
-    n_bars: usize,
-    seed_override: Option<u64>,
-) -> Vec<PathMetrics> {
-    (0..n)
-        .map(|j| {
-            let seed = seed_override.unwrap_or_else(|| path_seed(master, j));
-            let bars = synthetic_bars(seed, n_bars);
-            let equity = fake_equity_curve(&bars);
-            let final_eq = *equity.last().unwrap_or(&dec!(100_000));
-            let initial_eq = dec!(100_000);
-            PathMetrics {
-                sharpe: compute_sharpe_hourly(&equity),
-                sortino: compute_sortino_hourly(&equity),
-                calmar: compute_calmar(&equity),
-                max_drawdown: compute_max_drawdown_f64(&equity),
-                total_return: compute_total_return(&equity),
-                final_equity: final_eq,
-                initial_equity: initial_eq,
-            }
-        })
-        .collect()
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Gate (a) — Divergence from single-path baseline (R-NR.6a, FP-C2.1)
+// Gate (a) — Divergence over the REAL fan-out (R-NR.6a, FP-C2.1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// R-NR.6(a) PASS: N=20 ensemble with distinct seeds diverges from a single
-/// baseline. `spread = p95_sharpe − p5_sharpe` must be ≥ epsilon.
+/// R-NR.6(a) PASS: a small-N ensemble through the REAL harness chain
+/// (`mc_harness::run_ensemble` — production seed derivation, `run_one_path`,
+/// sort-by-j, reduce) with distinct per-path seeds produces a non-degenerate
+/// Sharpe spread. `spread = p95_sharpe − p5_sharpe` must be ≥ epsilon.
 ///
-/// This is the live test of the gate — it passes only when the harness
-/// actually runs different paths (seeds are distinct).
+/// A `run_one_path`/`derive_path_seed` seed-wiring bug (all paths identical)
+/// collapses the spread to 0 and FAILS this test — the falsifier
+/// `fp_c2_1_degenerate_seeds_have_zero_spread` below proves that detection
+/// path actually works.
 #[test]
 fn rn6a_divergence_gate_passes_with_distinct_seeds() {
-    const MASTER: u64 = 0xC0FFEE;
-    const N: usize = 20;
-    const N_BARS: usize = 500;
+    const MASTER: u64 = 0xC0FFEE; // the bin's default ensemble seed
+    const N: usize = 5;
+    const N_BARS: usize = 240;
     const EPSILON: f64 = 0.01; // spread must exceed 1 centile point
 
-    let metrics = build_path_metrics_n(MASTER, N, N_BARS, None);
-    let summary =
-        DistributionSummary::from_path_metrics(&metrics).expect("build distribution summary");
+    let (metrics, summary) = real_gbm_ensemble(N, MASTER, N_BARS);
+
+    // Execution proof (#66 rule): the ensemble must actually have traded —
+    // at least one path's final equity moved off the initial capital. If no
+    // path trades, every equity curve is flat 100k and the spread assertion
+    // below would fail anyway; this assert names the root cause.
+    assert!(
+        metrics.iter().any(|m| m.final_equity != m.initial_equity),
+        "R-NR.6(a) execution proof: no path moved equity — the momentum \
+         strategy never traded on any gbm-smoke path (warmup/bar-count bug?)"
+    );
 
     let spread = summary.sharpe.p95 - summary.sharpe.p5;
     assert!(
         spread >= EPSILON,
-        "R-NR.6(a): ensemble Sharpe spread (p95-p5) = {spread:.6} must be ≥ {EPSILON} \
+        "R-NR.6(a): REAL-chain ensemble Sharpe spread (p95-p5) = {spread:.6} must be ≥ {EPSILON} \
          to prove the harness runs distinct paths. Got {spread:.6}."
     );
 }
 
-/// FP-C2.1 FALSIFIER (dry-run): Force ALL N paths to the SAME seed →
-/// the divergence gate's spread collapses to ≈ 0.
+/// FP-C2.1 FALSIFIER (dry-run): force ALL N paths through the REAL
+/// `run_one_path` with the SAME path seed → the divergence gate's spread
+/// collapses to ≈ 0.
 ///
-/// This test asserts that the DEGENERATE case (all seeds identical) DOES produce
-/// a near-zero spread — proving the divergence gate can detect the noop-collapse.
-/// The spread SHOULD be essentially 0 (or below our epsilon) for all-same-seed.
-///
-/// This is FP-C2.1 "run this RED, revert after". We assert the degenerate
-/// spread is LESS than the normal epsilon — if the spread were high even with
-/// same-seed input, the gate would be insensitive (a different kind of bug).
+/// This proves the R-NR.6(a) gate can detect the noop-collapse ON THE REAL
+/// CHAIN: when seeds are equal the real per-path runner produces identical
+/// metrics, the spread collapses, and
+/// `rn6a_divergence_gate_passes_with_distinct_seeds` would FAIL — which is
+/// what we want.
 #[test]
 fn fp_c2_1_degenerate_seeds_have_zero_spread() {
     const MASTER: u64 = 0xC0FFEE;
-    const N: usize = 20;
-    const N_BARS: usize = 500;
-    const EPSILON: f64 = 1e-9; // with same seed, equity curves are identical → spread is exactly 0
+    const N: usize = 4;
+    const N_BARS: usize = 160;
+    const EPSILON: f64 = 1e-9; // same seed → identical paths → spread exactly 0
 
-    // Force all paths to use the SAME seed (the degenerate collapse scenario).
-    let fixed_seed = path_seed(MASTER, 0);
-    let metrics = build_path_metrics_n(MASTER, N, N_BARS, Some(fixed_seed));
+    let universe = backtest::scenarios::momentum::top10_symbols_with_prices();
+    // Force all paths to use the SAME seed (the degenerate collapse scenario),
+    // but run each through the REAL production per-path runner.
+    let fixed_seed = mc_harness::derive_path_seed(MASTER, 0);
+    let metrics: Vec<PathMetrics> = (0..N)
+        .map(|j| {
+            mc_harness::run_one_path(
+                j,
+                fixed_seed, // ← degenerate: every j gets path 0's seed
+                FILL_SEED,
+                &universe,
+                &[],
+                N_BARS,
+                GeneratorKind::GbmSmoke,
+                2023,
+            )
+            .expect("run_one_path (gbm-smoke) must succeed")
+            .metrics
+        })
+        .collect();
+
+    // Same seed ⇒ the REAL runner must produce identical outcomes per path.
+    for m in &metrics[1..] {
+        assert_eq!(
+            m.final_equity, metrics[0].final_equity,
+            "FP-C2.1: same path seed must produce identical final equity from run_one_path"
+        );
+    }
+
     let summary = DistributionSummary::from_path_metrics(&metrics)
         .expect("build degenerate distribution summary");
 
     let spread = summary.sharpe.p95 - summary.sharpe.p5;
     assert!(
         spread.abs() < EPSILON,
-        "FP-C2.1: degenerate (same-seed) ensemble spread={spread:.9} should be ≈ 0 \
+        "FP-C2.1: degenerate (same-seed) REAL-chain ensemble spread={spread:.9} should be ≈ 0 \
          (all paths identical). This proves the divergence gate is not itself a no-op: \
-         when all seeds are equal the spread collapses, and `rn6a_divergence_gate_passes_with_distinct_seeds` \
-         would FAIL — which is what we want."
+         when all seeds are equal the spread collapses, and \
+         `rn6a_divergence_gate_passes_with_distinct_seeds` would FAIL — which is what we want."
     );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Gate (b) — Two-run byte-identity (R-NR.6b, R3.1, FP-C2.3)
+// Gate (b) — Two-run byte-identity over the REAL fan-out (R-NR.6b, R3.1, FP-C2.3)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// R-NR.6(b) / R3.1 PASS: Two ensemble runs at the same master seed produce
-/// byte-identical `DistributionSummary` (formatted at ADR-0051 D3 fixed precision).
+/// R-NR.6(b) / R3.1 PASS: two runs of the REAL ensemble chain at the same
+/// master seed produce a field-by-field bit-identical `DistributionSummary`
+/// (and byte-identical strings at ADR-0051 D3 fixed precision).
 ///
-/// Catches any unordered fold (D2 violation) or unformatted float (D3 violation).
+/// Catches any unordered fold (D2 violation — e.g. reducing in rayon
+/// completion order instead of index order) or unformatted float (D3).
 #[test]
 fn rn6b_two_run_byte_identity() {
     const MASTER: u64 = 0xDEAD_BEEF;
-    const N: usize = 20;
-    const N_BARS: usize = 300;
+    const N: usize = 4;
+    const N_BARS: usize = 200;
 
-    let metrics_run1 = build_path_metrics_n(MASTER, N, N_BARS, None);
-    let metrics_run2 = build_path_metrics_n(MASTER, N, N_BARS, None);
+    let (metrics1, s1) = real_gbm_ensemble(N, MASTER, N_BARS);
+    let (metrics2, s2) = real_gbm_ensemble(N, MASTER, N_BARS);
 
-    let s1 = DistributionSummary::from_path_metrics(&metrics_run1).unwrap();
-    let s2 = DistributionSummary::from_path_metrics(&metrics_run2).unwrap();
+    // Per-path metrics must match bit-for-bit in index order.
+    assert_eq!(metrics1.len(), metrics2.len());
+    for (i, (a, b)) in metrics1.iter().zip(metrics2.iter()).enumerate() {
+        assert_eq!(
+            a.sharpe.to_bits(),
+            b.sharpe.to_bits(),
+            "path {i}: sharpe must be bit-identical across runs"
+        );
+        assert_eq!(
+            a.final_equity, b.final_equity,
+            "path {i}: final_equity must be identical across runs"
+        );
+    }
 
-    // Format at ADR-0051 D3 precision and compare — the formatted strings
-    // must be byte-identical (this is the anchor-stability gate).
+    // Reduced summaries: field-by-field bit identity for every distribution…
+    let dist_fields = |d: &backtest::stats::MetricDistribution| {
+        [
+            ("mean", d.mean),
+            ("std", d.std),
+            ("p5", d.p5),
+            ("p25", d.p25),
+            ("p50", d.p50),
+            ("p75", d.p75),
+            ("p95", d.p95),
+            ("min", d.min),
+            ("max", d.max),
+        ]
+    };
+    let dists = [
+        ("sharpe", &s1.sharpe, &s2.sharpe),
+        ("sortino", &s1.sortino, &s2.sortino),
+        ("calmar", &s1.calmar, &s2.calmar),
+        ("max_drawdown", &s1.max_drawdown, &s2.max_drawdown),
+        ("total_return", &s1.total_return, &s2.total_return),
+    ];
+    for (metric, d1, d2) in dists {
+        for ((name, v1), (_, v2)) in dist_fields(d1).into_iter().zip(dist_fields(d2)) {
+            assert_eq!(
+                v1.to_bits(),
+                v2.to_bits(),
+                "R-NR.6(b): {metric}.{name} must be bit-identical across two same-seed runs \
+                 (got {v1:?} vs {v2:?})"
+            );
+        }
+    }
+
+    // …and for every scalar field.
+    let scalars = [
+        ("prob_loss", s1.prob_loss, s2.prob_loss),
+        ("prob_sharpe_gt_0", s1.prob_sharpe_gt_0, s2.prob_sharpe_gt_0),
+        ("prob_sharpe_gt_1", s1.prob_sharpe_gt_1, s2.prob_sharpe_gt_1),
+        ("max_dd_tail_p50", s1.max_dd_tail_p50, s2.max_dd_tail_p50),
+        ("max_dd_tail_p95", s1.max_dd_tail_p95, s2.max_dd_tail_p95),
+        ("cvar_95", s1.cvar_95, s2.cvar_95),
+        ("cvar_99", s1.cvar_99, s2.cvar_99),
+        (
+            "median_terminal_wealth",
+            s1.median_terminal_wealth,
+            s2.median_terminal_wealth,
+        ),
+        ("skew", s1.skew, s2.skew),
+    ];
+    for (name, v1, v2) in scalars {
+        assert_eq!(
+            v1.to_bits(),
+            v2.to_bits(),
+            "R-NR.6(b): summary.{name} must be bit-identical across two same-seed runs \
+             (got {v1:?} vs {v2:?})"
+        );
+    }
+
+    // ADR-0051 D3 formatted-precision spot checks (the anchor-stability view).
     let fmt6 = |v: f64| format!("{v:.6}");
     let fmt2pct = |v: f64| format!("{:.2}%", v * 100.0);
-
-    assert_eq!(
-        fmt6(s1.sharpe.p50),
-        fmt6(s2.sharpe.p50),
-        "Sharpe p50 must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.sharpe.p5),
-        fmt6(s2.sharpe.p5),
-        "Sharpe p5 must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.sharpe.p95),
-        fmt6(s2.sharpe.p95),
-        "Sharpe p95 must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.sharpe.mean),
-        fmt6(s2.sharpe.mean),
-        "Sharpe mean must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.sharpe.std),
-        fmt6(s2.sharpe.std),
-        "Sharpe std must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.prob_loss),
-        fmt6(s2.prob_loss),
-        "prob_loss must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.prob_sharpe_gt_0),
-        fmt6(s2.prob_sharpe_gt_0),
-        "P(Sharpe>0) must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.prob_sharpe_gt_1),
-        fmt6(s2.prob_sharpe_gt_1),
-        "P(Sharpe>1) must be deterministic"
-    );
-    assert_eq!(
-        fmt2pct(s1.max_dd_tail_p95),
-        fmt2pct(s2.max_dd_tail_p95),
-        "max_dd p95 must be deterministic"
-    );
-    assert_eq!(
-        fmt2pct(s1.max_dd_tail_p50),
-        fmt2pct(s2.max_dd_tail_p50),
-        "max_dd p50 must be deterministic"
-    );
-    assert_eq!(
-        fmt6(s1.total_return.p50),
-        fmt6(s2.total_return.p50),
-        "total_return p50 must be deterministic"
-    );
+    assert_eq!(fmt6(s1.sharpe.p50), fmt6(s2.sharpe.p50));
+    assert_eq!(fmt2pct(s1.max_dd_tail_p95), fmt2pct(s2.max_dd_tail_p95));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -297,6 +355,8 @@ fn rn6b_two_run_byte_identity() {
 ///
 /// In the real harness this is enforced by `param_set` being in the hashed
 /// body. Here we test the reducer itself: different inputs → different outputs.
+/// (Proper θ*-variation e2e is owned by story 1-25's re-verification suite —
+/// see the 1-14 Review Findings Defer item.)
 #[test]
 fn fp_c2_2_anchor_sensitive_to_different_inputs() {
     const MASTER: u64 = 0xC0FFEE;
@@ -367,13 +427,15 @@ fn fp_c2_2_anchor_sensitive_to_different_inputs() {
 // FP-C2.4 — generator label honesty (K4)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// FP-C2.4 / K4: The generator label in the report body reflects the actual
-/// generator used. We test the label strings directly (the binary enforces this;
-/// the unit test verifies the string constants).
+/// FP-C2.4 / K4: the REAL `GeneratorKind::label()` values (the strings the
+/// binary renders into the hashed report body) are distinct and honest.
+///
+/// Review 1-14: this test previously asserted two test-local string literals
+/// (vacuous, #66 class); it now imports the production enum.
 #[test]
 fn fp_c2_4_generator_labels_are_distinct() {
-    let block_label = "block-bootstrap-real";
-    let gbm_label = "gbm-smoke";
+    let block_label = GeneratorKind::BlockBootstrapReal.label();
+    let gbm_label = GeneratorKind::GbmSmoke.label();
 
     // The labels must be different (catches a copy-paste bug where both
     // get "block-bootstrap-real" in the body, accidentally passing K4 visually
@@ -381,6 +443,12 @@ fn fp_c2_4_generator_labels_are_distinct() {
     assert_ne!(
         block_label, gbm_label,
         "FP-C2.4: generator labels must be distinct"
+    );
+
+    // The anchored generator's label is pinned (a hashed body field).
+    assert_eq!(
+        block_label, "block-bootstrap-real",
+        "FP-C2.4: the anchored generator label is a hashed body field — it must not drift"
     );
 
     // The block-bootstrap label must not contain "gbm".
@@ -396,169 +464,196 @@ fn fp_c2_4_generator_labels_are_distinct() {
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Bug B fix — long-only solvency invariant (v0.1.1 regression gate)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Long-only solvency invariant: cash ≥ 0 AND equity ≥ 0 at ALL steps on ALL paths.
+/// Review 1-14: honest scenario naming per lane.
 ///
-/// ## What this catches
-///
-/// Bug B (`crates/backtest/src/scenarios/montecarlo.rs`, v0.1.0): the Buy branch
-/// sized notional against total equity (cash + positions) without checking whether
-/// cash was sufficient to cover `notional_fill + fee`. On fee-churn paths (5343+
-/// trades/year on resampled momentum data) this drove `cash` negative while
-/// position_value was still positive. The engine then clamped equity to 1e-6,
-/// producing a false 100% MaxDD / total_return −100% on paths where no coin fell
-/// more than 52% (mathematically impossible for a long-only book).
-///
-/// ## Proof that this test was RED under the old code
-///
-/// The fix (v0.1.1) adds:
-///   1. `notional = min(equity * 0.10, cash)` — caps target against available cash.
-///   2. Skip if `cash < notional + fee_estimate` (pre-flight solvency check).
-///   3. Defensive guard inside the fill loop (skip fill if `total_cost > cash`).
-///
-/// Without these guards the equity curve CAN go negative on churning paths.
-/// The `solvency_guard_prevents_negative_cash` unit test in `montecarlo.rs`
-/// (added v0.1.1) directly tests the guard logic with forced conditions.
-/// This test verifies the DISTRIBUTION-LEVEL invariant: across N synthetic paths,
-/// ALL equity curves stay non-negative.
-///
-/// ## Red-under-mutation proof
-///
-/// This test would go RED if the solvency cap were removed (reverting to
-/// `notional = equity * fraction` with no cash-floor check), because on paths
-/// where momentum signals fire continuously with no cash to cover them, cash
-/// would go negative and equity would follow.
-/// The `solvency_guard_arithmetic_unit_test` below verifies the core arithmetic
-/// in isolation, providing a fast deterministic RED-on-bug proof.
+/// - The ANCHORED lane's scenario NAME is pinned byte-exact — anchors in
+///   `evidence/anchors.toml` are keyed by scenario NAME, so any drift here
+///   would orphan the locked `mc-robustness-2026-06` anchor.
+/// - The gbm-smoke lane must no longer carry the false "block-bootstrap"
+///   token (no bootstrap runs in that lane).
 #[test]
-fn solvency_invariant_equity_curve_never_negative_across_paths() {
-    // Build N=20 synthetic paths via fake_equity_curve, which simulates price
-    // tracking only (no trading cost). This tests the REDUCER path where we
-    // confirm equity metrics fed to DistributionSummary are all sane.
-    // The full solvency proof (cash >= 0 via the REAL run_path code path) is in
-    // `solvency_guard_run_path_regression_negative_cash_prevented` below.
-    const MASTER: u64 = 0x5017_ACED; // constant for this invariant test — v0.1.1 solvency
-    const N: usize = 20;
-    const N_BARS: usize = 300;
-
-    let metrics = build_path_metrics_n(MASTER, N, N_BARS, None);
-    let summary =
-        DistributionSummary::from_path_metrics(&metrics).expect("build distribution summary");
-
-    // ALL equity curves from `fake_equity_curve` are non-negative by construction.
-    // The key assertion: min total_return must be > -1.0 (equity never went fully negative).
-    assert!(
-        summary.total_return.min > -1.0,
-        "Solvency invariant: min total_return {:.6} must be > -1.0 (equity must never go negative \
-         to below 0). If this fails, the equity curve produced negative values — the solvency guard \
-         is not working.",
-        summary.total_return.min
+fn mc_scenario_names_honest_and_anchored_name_pinned() {
+    assert_eq!(
+        mc_harness::scenario_name(GeneratorKind::BlockBootstrapReal, 2023),
+        "v1-momentum-2023-block-bootstrap-real-fy-mc",
+        "ANCHOR GUARD: the anchored lane's scenario NAME must never drift \
+         (anchors are keyed by NAME, not filename)"
     );
 
-    // Equity curves from fake_equity_curve track price ratios × 100k — all non-negative.
-    // The max_drawdown p95 must be < 1.0 (100%) for a non-negative equity curve.
+    let gbm = mc_harness::scenario_name(GeneratorKind::GbmSmoke, 2023);
     assert!(
-        summary.max_dd_tail_p95 <= 1.0,
-        "Solvency invariant: max_dd p95 {:.4} must be ≤ 1.0 (100%) for a long-only book. \
-         MaxDD > 1.0 is only possible if equity went negative — sign of the pre-v0.1.1 cash bug.",
-        summary.max_dd_tail_p95
+        !gbm.contains("block-bootstrap"),
+        "gbm-smoke scenario name must not claim block-bootstrap: got {gbm:?}"
     );
-}
-
-/// Direct unit test for the solvency guard arithmetic (Bug B regression gate).
-///
-/// Simulates the pre-fix bug: sizing notional against equity when cash is depleted.
-/// Verifies that the v0.1.1 cap (`min(target, cash)` + pre-flight check) prevents
-/// the impossible negative-cash state.
-///
-/// This test is the RED-on-bug proof:
-/// - WITHOUT the cap: `cash -= notional_fill + fee` where notional_fill > cash → cash < 0.
-/// - WITH the cap: the buy is SKIPPED when `cash < notional + fee_estimate` → cash stays ≥ 0.
-#[test]
-fn solvency_guard_arithmetic_unit_test() {
-    use rust_decimal_macros::dec;
-
-    // Scenario: almost all capital is in positions; only $50 cash remains.
-    let cash = dec!(50);
-    let equity = dec!(10_050); // $10,000 in positions + $50 cash
-    let taker_fee_bps: u32 = 4; // 0.04% taker fee
-
-    // Target: 10% of equity = $1,005 — FAR exceeds available cash ($50).
-    let fraction = dec!(0.10);
-    let target_notional = equity * fraction; // = $1,005
-
-    // v0.1.0 BUG: no cap, no check — would go through with notional = $1,005
-    // (cash would become $50 - $1,005 - fee = −$959 → negative, IMPOSSIBLE for long-only).
-    // v0.1.1 FIX: cap at min(target, cash) and check cash >= notional + fee before buying.
-
-    // Apply the v0.1.1 fix logic:
-    let notional = if target_notional > cash {
-        cash
-    } else {
-        target_notional
-    };
-    // Fee estimate: notional * (taker_fee_bps / 10_000)
-    let fee_estimate = notional * rust_decimal::Decimal::new(taker_fee_bps as i64, 4);
-    let should_skip = cash < notional + fee_estimate;
-
-    // With cash=$50 and notional=min($1005,$50)=$50, fee=$50*0.0004=$0.02:
-    // cash($50) >= notional($50) + fee($0.02)?  → No, $50 < $50.02 → skip = true.
     assert!(
-        should_skip,
-        "Solvency guard: with cash={cash} < notional({notional}) + fee({fee_estimate}), \
-         the buy MUST be skipped (should_skip=true). Got should_skip={should_skip}. \
-         Without this guard, cash would go negative on a long-only book."
-    );
-
-    // Verify: if we DID proceed (old bug), cash would go negative.
-    let cash_after_old_bug = cash - target_notional - fee_estimate;
-    assert!(
-        cash_after_old_bug < rust_decimal::Decimal::ZERO,
-        "Bug B proof: old code (no cap, no check) would produce cash={cash_after_old_bug} < 0 \
-         (impossible for long-only book). The v0.1.1 solvency guard prevents this."
-    );
-
-    // Verify: with the cap applied, even if the buy DID go through at the capped notional,
-    // cash would remain >= 0 (though the pre-flight check would skip it anyway).
-    // This shows the TWO-LAYER defence: cap + pre-flight check.
-    let cash_after_capped_fill = cash - notional - fee_estimate;
-    // capped: cash - $50 - $0.02 = -$0.02 → still negative! (hence the pre-flight check is needed)
-    // This is exactly why BOTH layers are needed: the cap reduces risk but the fee can still push
-    // cash negative if cash == notional; the pre-flight check is the final line of defence.
-    assert!(
-        cash_after_capped_fill < rust_decimal::Decimal::ZERO,
-        "Two-layer defence proof: even with the notional cap (={notional}), the fee ({fee_estimate}) \
-         would push cash to {cash_after_capped_fill} < 0. This is why the pre-flight solvency \
-         check (skip if cash < notional + fee_estimate) is also required — not just the cap."
-    );
-
-    // Verify: with a large cash buffer well above target_notional, the buy DOES go through.
-    // When cash >> target_notional, the cap does NOT kick in (notional = target_notional)
-    // and the pre-flight check passes (cash covers notional + fee).
-    let cash_large = dec!(100_000); // $100k cash, $10k target
-    let equity_large = dec!(100_000); // simplified: all cash, no positions
-    let target_large = equity_large * fraction; // $10,000
-    let notional_large = if target_large > cash_large {
-        cash_large
-    } else {
-        target_large
-    };
-    let fee_large = notional_large * rust_decimal::Decimal::new(taker_fee_bps as i64, 4);
-    let should_skip_large = cash_large < notional_large + fee_large;
-    assert!(
-        !should_skip_large,
-        "Solvency guard is not over-conservative: with cash={cash_large} and \
-         notional+fee={} the buy should proceed (should_skip=false). Got {should_skip_large}.",
-        notional_large + fee_large
+        gbm.contains("gbm-smoke"),
+        "gbm-smoke scenario name must name its generator honestly: got {gbm:?}"
     );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bug B — run_path solvency regression (Gate-2 gap closure, v0.1.2)
+// GBM-smoke seed hygiene (review 1-14; the 1-13 GbmPathGen fix idiom)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Anti-diagonal seed-collision regression (the 1-13 `data::GbmPathGen` bug,
+/// which the bin's GbmSmoke branch had re-inlined).
+///
+/// Under the ADR-0051 D1 rule `path_seed_j = master + j·0x9E37_79B9`, the OLD
+/// additive per-symbol derivation `sym_seed = path_seed + sym_i·0x9E37_79B9`
+/// made `seed(path 0, sym 1) == seed(path 1, sym 0)` for EVERY master seed —
+/// symbol 1 of path 0 replayed symbol 0 of path 1 bit-for-bit. The SplitMix64
+/// derivation must make the two streams differ, at the seed level AND at the
+/// generated-bar level (execution asserted, #66 rule).
+#[test]
+fn gbm_sym_seed_no_anti_diagonal_collision() {
+    const GOLDEN_GAMMA: u64 = 0x9E37_79B9; // ADR-0051 D1 path-seed step
+    let master = 0xA11C_E5EE_u64;
+    let ps0 = mc_harness::derive_path_seed(master, 0);
+    let ps1 = mc_harness::derive_path_seed(master, 1);
+    assert_eq!(ps1, ps0.wrapping_add(GOLDEN_GAMMA), "D1 rule sanity");
+
+    // Seed level: the anti-diagonal pair must not collide.
+    let seed_p0_s1 = mc_harness::derive_gbm_sym_seed(ps0, 1);
+    let seed_p1_s0 = mc_harness::derive_gbm_sym_seed(ps1, 0);
+    assert_ne!(
+        seed_p0_s1, seed_p1_s0,
+        "anti-diagonal collision: (path 0, sym 1) and (path 1, sym 0) derive \
+         the same GBM seed — per-symbol seeds must mix (path_seed, sym_i) \
+         non-additively (SplitMix64, the 1-13 fix idiom)"
+    );
+
+    // Bar level: the generated close streams must differ.
+    let sym = Symbol::new("BTCUSDT");
+    let bars_a = backtest::scenarios::momentum::synthetic_bars_hourly(
+        &sym,
+        50,
+        seed_p0_s1,
+        dec!(30_000),
+        2023,
+    );
+    let bars_b = backtest::scenarios::momentum::synthetic_bars_hourly(
+        &sym,
+        50,
+        seed_p1_s0,
+        dec!(30_000),
+        2023,
+    );
+    assert_eq!(bars_a.len(), 50, "generator must actually produce bars");
+    let any_diff = bars_a
+        .iter()
+        .zip(bars_b.iter())
+        .any(|(a, b)| a.close != b.close);
+    assert!(
+        any_diff,
+        "anti-diagonal collision at the bar level: (path 0, sym 1) and \
+         (path 1, sym 0) produced identical close streams"
+    );
+}
+
+/// Review 1-14: the GBM-smoke SOURCE-bar seed family must be domain-separated
+/// from the ADR-0051 D1 path-seed family.
+///
+/// The old inline base (`0xC0FFEE + idx·0x9E37_79B9`) was bit-identical to
+/// the D1 path seeds at the default master seed `0xC0FFEE`, so source-bar
+/// stream `idx` replayed path-seed stream `j = idx` exactly.
+#[test]
+fn gbm_source_bar_seed_base_domain_separated() {
+    // The base itself is a distinct constant (not the default master seed).
+    assert_ne!(
+        mc_harness::GBM_SOURCE_SEED_BASE,
+        0xC0FFEE,
+        "source-bar seed base must not be the default ensemble master seed"
+    );
+
+    // No mixed source-bar seed may equal any D1 path seed on a 10×10 grid
+    // (10 symbols × 10 leading paths at the default master seed).
+    for idx in 0..10usize {
+        let source_seed = mc_harness::derive_gbm_sym_seed(mc_harness::GBM_SOURCE_SEED_BASE, idx);
+        for j in 0..10usize {
+            let path_seed_j = mc_harness::derive_path_seed(0xC0FFEE, j);
+            assert_ne!(
+                source_seed, path_seed_j,
+                "source-bar seed idx={idx} collides with D1 path seed j={j} \
+                 — the two seed families must be domain-separated"
+            );
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLI validation (review 1-14: --year bail; --paths ≥ 2 + cap)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `--year` maps ONLY explicitly supported years; unmapped years bail instead
+/// of silently falling back to a (leap-wrong, mislabeled) 8760-bar span.
+#[test]
+fn year_bar_count_bails_on_unmapped_years() {
+    assert_eq!(
+        mc_harness::bar_count_for_year(2023).expect("2023 supported"),
+        8760
+    );
+    assert_eq!(
+        mc_harness::bar_count_for_year(2024).expect("2024 supported (leap)"),
+        8784
+    );
+    for bad_year in [2022, 2025, 2028, 1970] {
+        let err = mc_harness::bar_count_for_year(bad_year)
+            .expect_err("unmapped year must bail, not silently map to 8760");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("unsupported") && msg.contains("2023"),
+            "error must name the supported years; got: {msg}"
+        );
+    }
+}
+
+/// `--paths` rejects 0 (used to die late with a misleading reducer error),
+/// 1 (degenerate "distribution"), and absurd N (unbounded alloc) — with
+/// clear messages — while accepting the sane range.
+#[test]
+fn paths_validation_rejects_degenerate_and_absurd_n() {
+    for bad in [0usize, 1] {
+        let err = mc_harness::validate_paths(bad).expect_err("paths < 2 must be rejected");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("at least 2"),
+            "paths={bad}: message must explain the ≥2 requirement; got: {msg}"
+        );
+    }
+
+    mc_harness::validate_paths(2).expect("N=2 is the minimum valid ensemble");
+    mc_harness::validate_paths(500).expect("the anchored default N=500 must pass");
+    mc_harness::validate_paths(mc_harness::MAX_PATHS).expect("the cap itself is valid");
+
+    let err = mc_harness::validate_paths(mc_harness::MAX_PATHS + 1)
+        .expect_err("absurd N must be rejected before any allocation");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("cap"),
+        "over-cap message must mention the cap; got: {msg}"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bug B — run_path solvency regression (Gate-2, v0.1.2; extended review 1-14)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// NOTE (review 1-14): two earlier solvency tests were DELETED in favor of the
+// Gate-2 test below:
+//
+// - `solvency_invariant_equity_curve_never_negative_across_paths` asserted
+//   non-negativity of `fake_equity_curve` fixtures that are non-negative BY
+//   CONSTRUCTION (could never go red — #66 class). The invariant is only
+//   genuinely observable at raw `run_path` output (`min_cash_seen`, the
+//   un-clamped equity curve) — the metric layer clamps negative equity to
+//   1e-6 (sentinel semantics owned by story 1-25), so any reducer-level
+//   restatement is structurally incapable of failing. Gate-2 below asserts
+//   the same invariant on the REAL output and now carries the deleted test's
+//   distribution-relevant assertions (total_return > −1, max_dd ≤ 100%).
+// - `solvency_guard_arithmetic_unit_test` re-implemented the guard arithmetic
+//   inside the test body (a tautology: it tested its own copy of the
+//   formula, not the production code). Gate-2 supersedes it by driving the
+//   REAL `run_path` into the exact pre-fix failure state.
 
 /// End-to-end solvency regression gate: calls the REAL `run_path` with a
 /// scenario designed to drive cash NEGATIVE under the old (un-guarded) code.
@@ -588,15 +683,14 @@ fn solvency_guard_arithmetic_unit_test() {
 ///   `notional = equity(≈$9996) × 0.10 ≈ $999.64 > cash($996)`. Old code:
 ///   `cash = $996 - $999.64 - $0.40 ≈ −$3.64` → NEGATIVE (impossible).
 ///   Equity curve contains a negative value → assertions FAIL (RED). ✓
-/// - **With the v0.1.1 guard:** `notional = min($999.64, $996) = $996`.
-///   Check: `$996 < $996 + $0.40` → TRUE → BUY SKIPPED. Cash ≥ 0. PASS. ✓
+/// - **With the v0.1.1 guard:** pre-flight check `$996 < $999.64 + $0.40`
+///   → TRUE → BUY SKIPPED. Cash ≥ 0. PASS. ✓
 ///
 /// ## RED-on-revert proof (developer responsibility per honest-tick rule)
 ///
 /// To prove this test is a genuine guard, the developer must:
 /// 1. Temporarily revert the solvency guard in `montecarlo.rs` (remove the
-///    `min(target_notional, cash)` cap and the pre-flight `cash < notional +
-///    fee_estimate` skip).
+///    pre-flight `cash < notional + fee_estimate` skip).
 /// 2. Run: `cargo test -p backtest --test montecarlo_e2e solvency_guard_run_path_regression_negative_cash_prevented`
 /// 3. Confirm it goes RED (`min_cash_seen < 0` assertion fires).
 /// 4. Restore the guard; confirm GREEN.
@@ -756,8 +850,6 @@ fn solvency_guard_run_path_regression_negative_cash_prevented() {
         basis_override: None,
     };
 
-    const FILL_SEED: u64 = 0x00C0_FFEE;
-
     let result = pollster::block_on(run_path(input, FILL_SEED, strategy));
 
     // run_path should succeed (bars_override is Some; config file exists for this repo).
@@ -770,6 +862,15 @@ fn solvency_guard_run_path_regression_negative_cash_prevented() {
 
     // ── Assertions ────────────────────────────────────────────────────────────
     //
+    // EXECUTION PROOF (#66 rule): the fixture must actually trade (the nine
+    // warmup BUYs at minimum). A zero-trade run would make every assertion
+    // below vacuously green.
+    assert!(
+        path_result.trades > 0,
+        "SOLVENCY REGRESSION execution proof: the adversarial fixture executed \
+         zero fills — the scenario no longer exercises the Buy branch at all."
+    );
+
     // PRIMARY GATE (RED-on-revert): assert min_cash_seen ≥ 0.
     //
     // `min_cash_seen` is tracked in PathRunResult as the minimum cash value
@@ -780,18 +881,20 @@ fn solvency_guard_run_path_regression_negative_cash_prevented() {
     // Under the v0.1.1 guard, the BUY is SKIPPED (cash < notional + fee_est),
     // so cash stays ≥ 0 throughout → min_cash_seen ≥ 0. PASS.
     //
-    // This assertion goes RED when any of the three guard layers is removed:
-    //   Layer 1: notional cap (min(target, cash))
-    //   Layer 2: pre-flight check (skip if cash < notional + fee_est)
-    //   Layer 3: fill-loop guard (skip fill if total_cost > cash)
+    // This assertion goes RED when either of the two guard layers is removed:
+    //   Layer 1: pre-flight check (skip if cash < notional + fee_est)
+    //   Layer 2: fill-loop guard (skip fill if total_cost > cash)
+    // (A former third layer — the notional cap min(target, cash) — was removed
+    // at review 1-14 as dead code: with any positive taker fee the capped buy
+    // always failed the pre-flight, so no downsized buy could ever execute.)
     assert!(
         path_result.min_cash_seen >= Decimal::ZERO,
         "SOLVENCY REGRESSION (RED-ON-REVERT GATE): min_cash_seen={} < 0. \
          The solvency guard in montecarlo.rs (Bug B fix, v0.1.1) was removed or \
          is not covering this scenario. Under the OLD code, BUY AAA fires when \
          cash≈$996 < notional($999.64) + fee($0.40), driving cash to ≈-$3.64. \
-         Restore all three guard layers (notional cap + pre-flight check + fill \
-         loop guard) in the Buy branch of run_path.",
+         Restore both guard layers (pre-flight check + fill loop guard) in the \
+         Buy branch of run_path.",
         path_result.min_cash_seen
     );
 
@@ -812,6 +915,25 @@ fn solvency_guard_run_path_regression_negative_cash_prevented() {
         path_result.final_equity >= Decimal::ZERO,
         "SOLVENCY REGRESSION: final_equity={} < 0. Long-only book cannot have negative equity.",
         path_result.final_equity
+    );
+
+    // DISTRIBUTION-LEVEL RESTATEMENT over the REAL curve (review 1-14 — the
+    // assertions the deleted fixture-based invariant test claimed to make,
+    // now computed from genuine run_path output):
+    // - total_return > −1.0: equity never went below zero end-to-end;
+    // - max_drawdown ≤ 1.0 (100%): only possible to exceed if equity went
+    //   negative — the exact signature of the pre-v0.1.1 cash bug.
+    let total_ret = compute_total_return(&path_result.equity_curve);
+    assert!(
+        total_ret > -1.0,
+        "SOLVENCY REGRESSION: total_return {total_ret:.6} ≤ −1.0 on the REAL \
+         equity curve — equity went to (or below) zero on a long-only book."
+    );
+    let max_dd = compute_max_drawdown_f64(&path_result.equity_curve);
+    assert!(
+        max_dd <= 1.0,
+        "SOLVENCY REGRESSION: max_drawdown {max_dd:.4} > 1.0 (100%) on the REAL \
+         equity curve — only possible if equity went negative (pre-v0.1.1 cash bug)."
     );
 }
 

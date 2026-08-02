@@ -171,6 +171,12 @@ workflow-spine last-mile, NOT new alpha surface
 
 ---
 
+
+### Harness fill-mispricing / `run_cell` parity — OWNED, do not re-litigate per-story
+
+**Tempting framing:** "threshold_sweep::run_cell prices cross-symbol fills at the trigger bar and lacks the Bug-B solvency guard — quick-fix it in my story."
+**Why it must NOT be drive-by fixed:** the lane's reports are FROZEN anchors; any fill-arithmetic change moves bodies and re-derives recorded verdicts. The whole class (both harness lanes + √-constant + verdict vocabulary + 5 riders) is owned by **story 1-25-harness-fill-correctness-relock** (CRITICAL, one re-lock program with 1-24) with a formal namespace re-lock + loud verdict re-derivation + AD-19-spirit flip-escalation. Evidence + verified blast radius (advisor gate INDEPENDENT — bakeoff resamples returns, never fills): bug-log #67; story 1-14 § Review Findings.
+
 ## Changelog
 
 - 2026-07-10 (analyst, P2 efficiency-migration ratification): era-scoped the
