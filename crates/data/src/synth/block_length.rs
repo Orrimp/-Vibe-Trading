@@ -15,18 +15,55 @@
 //!    `M = ceil(sqrt(N)) + K_N`) such that `K_N = max(5, ceil(log10(N)))`
 //!    consecutive autocorrelations `ρ̂(m), …, ρ̂(m+K_N-1)` all satisfy
 //!    `|ρ̂(k)| ≤ 2·sqrt(log10(N)/N)`. If no such `m` is found, use `m̂ = M`.
+//!    (The start-at-`m` window is itself a deviation — see below.)
 //!
 //! 3. **Flat-top lag window** (Politis–Romano 1995):
 //!    `λ(s) = 1` for `|s| ≤ 0.5`, `λ(s) = 2(1-|s|)` for `0.5 < |s| ≤ 1`, else 0.
-//!    Compute spectral-density estimates:
-//!    `Ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/(2m̂+1)) · γ̂(|k|)`   (DC component)
-//!    `ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/(2m̂+1)) · |k| · γ̂(|k|)` (slope component)
+//!    Compute spectral-density estimates with the **shipped window scale
+//!    `s = k/m̂`** (a deviation from the literature — see below):
+//!    `Ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/m̂) · γ̂(|k|)`   (DC component)
+//!    `ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/m̂) · |k| · γ̂(|k|)` (slope component)
+//!    Since `λ(s) = 0` for `|s| > 1`, lags `m̂ < |k| ≤ 2m̂` contribute nothing —
+//!    the effective summation window is `|k| ≤ m̂`.
 //!
 //! 4. **`b̂` (SB corrected, PPW-2009)**:
 //!    `D_SB = 2 · Ĝ²`  (stationary bootstrap constant, PPW-2009 / Nordman 2008).
 //!    `b̂ = (2 · ĝ² / D_SB)^{1/3} · N^{1/3}`
 //!    (simplifies to `(ĝ² / Ĝ²)^{1/3} · N^{1/3}` since `D_SB = 2·Ĝ²`).
 //!    Clamp to `[1, ceil(min(3·sqrt(N), N/3))]`, round to nearest integer ≥ 1.
+//!
+//! ## Known deviations from the literature (pinned; re-lock = story 1-24)
+//!
+//! The 2026-07-31 code review (story 1-13) confirmed the PR-1994 core, the
+//! PPW-2009 `D_SB` constant, and the shared-index wiring are correct, and
+//! identified the following deviations from PW-2004 / the reference
+//! implementations. Selected `L` values flow into **hashed anchored report
+//! bodies** (the `mc-robustness-2026-06` namespace), so fixing them is NOT a
+//! doc patch — it requires an ADR-0045 §D6-class namespace re-lock plus a
+//! verdict re-run. That work is **story 1-24**. Until then the shipped
+//! behaviour below is authoritative and is pinned bit-exactly by the
+//! `fp_c1_6_auto_l_grows_with_serial_dependence` asserts (AR(1) φ=0.6 fixture
+//! → `L = 7`; i.i.d. fixture → `L = 1`). Do NOT change any of these without
+//! story 1-24:
+//!
+//! 1. **Window scale**: the flat-top window runs `λ(k/m̂)` where PW-2004 and
+//!    both reference implementations use `λ(k/(2m̂))`. The shipped window
+//!    therefore truncates at `|k| ≤ m̂` (half the literature's effective
+//!    width) → auto-`L` comes out systematically SHORT. Empirically
+//!    thesis-safe: a longer `L` ⇒ fewer crowns ⇒ the ship-passive conclusion
+//!    only strengthens.
+//! 2. **`m̂` search window**: the in-band check starts at lag `m`
+//!    (`ρ̂(m), …, ρ̂(m+K_N−1)`) where the literature checks
+//!    `ρ̂(m+1), …, ρ̂(m+K_N)`.
+//! 3. **Zero-variance guard**: `ρ̂(0) < f64::EPSILON` is an absolute-ε test —
+//!    scale-dependent (a series with variance genuinely below ~2.2e-16 is
+//!    treated as constant; a relative test is the literature-clean form).
+//!
+//! (The `Auto` policy's choice to run this selector on the cross-symbol mean
+//! of |r| — so the highest-vol symbol dominates and `b_opt` is derived for a
+//! different series than the one resampled — is a
+//! [`super::bootstrap::BlockBootstrapPathGen`] call-site concern in the same
+//! 1-24 cluster; see the `Auto` arm there.)
 //!
 //! ## References
 //!
@@ -45,12 +82,19 @@
 /// Automatic block-length selection via Politis–White (2004) PWSD + PPW-2009
 /// correction for the **stationary bootstrap**.
 ///
+/// Ships with the window-scale / search-window deviations documented in the
+/// module-level "Known deviations" section (pinned by FP-C1.6; re-lock =
+/// story 1-24).
+///
 /// # Parameters
-/// - `returns` — the log-return series `r[0..N]` (length `N`).
+/// - `returns` — the log-return series `r[0..N]` (length `N`). Elements must
+///   be finite; any NaN/±inf input short-circuits to the degenerate `L = 1`
+///   (see the guard below).
 ///
 /// # Returns
 /// - The selected block length `L ∈ [1, ceil(min(3·sqrt(N), N/3))]` as a
-///   `usize`. Returns `1` for series shorter than 4 elements (degenerate case).
+///   `usize`. Returns `1` for series shorter than 4 elements (degenerate
+///   case) and for series containing any non-finite element.
 ///
 /// This is a **pure function**: no RNG, no I/O, no global state.
 #[must_use]
@@ -58,6 +102,19 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
     let n = returns.len();
     if n < 4 {
         // Degenerate — not enough data for spectral estimation.
+        return 1;
+    }
+    // Non-finite guard: a NaN/±inf element poisons the mean, every
+    // autocovariance, and the spectral estimates (NaN comparisons silently
+    // fall through the in-band test). No shipped caller produces non-finite
+    // input — `BlockBootstrapPathGen::new` validates source closes > 0, and
+    // the FROZEN-gate consumer (`bakeoff::bootstrap`) maps equity to finite
+    // log-returns — so this guard is a no-op for every valid input. It
+    // returns the same degenerate L = 1 the NaN-poisoned arithmetic already
+    // collapses to (via the saturating `as usize` cast), just loudly-by-
+    // construction instead of by accident. The `usize` return signature is
+    // frozen: the FROZEN robustness gate calls this fn and cannot change.
+    if returns.iter().any(|r| !r.is_finite()) {
         return 1;
     }
     let n_f = n as f64;
@@ -96,6 +153,8 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
 
     let m_hat: usize = if rho0 < f64::EPSILON {
         // Zero-variance series — block length = 1 (iid).
+        // NOTE: absolute-ε test (scale-dependent) — known deviation #3 in the
+        // module doc; pinned pending story 1-24.
         1
     } else {
         let mut found = m_cap; // default if no m satisfies the criterion.
@@ -123,11 +182,14 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
     };
 
     // ── Step 3: flat-top spectral estimates (Politis–Romano 1995) ────────────
-    // Window width for the sum: [-2m̂, 2m̂].
-    // Use the denominator `(2*m̂ + 1)` as the window scale — this is the
-    // standard PWSD normalisation (the `s/(m̂)` in the original notation maps
-    // to `k/(2*m̂)` when summing over `k=-2m̂..2m̂`).
-    // Flat-top kernel: λ(|s|) where s = |k| / m̂ (normalized by m̂, not 2m̂).
+    // Summation range: k ∈ [-2m̂, 2m̂]. Flat-top kernel λ(s) evaluated at the
+    // SHIPPED window scale s = k/m̂ — a DEVIATION from PW-2004 and both
+    // reference implementations, which use s = k/(2m̂). Because λ(s) = 0 for
+    // |s| > 1, lags m̂ < |k| ≤ 2m̂ contribute 0, so the effective window is
+    // |k| ≤ m̂ (half the literature's width) → auto-L systematically short.
+    // See the module-level "Known deviations" section. Pinned by FP-C1.6;
+    // do NOT change the scale here — the re-lock (anchored-namespace bump +
+    // verdict re-run) is story 1-24.
     let flat_top = |s: f64| -> f64 {
         let abs_s = s.abs();
         if abs_s <= 0.5 {
@@ -225,16 +287,26 @@ mod tests {
             "AR(1) L={l_ar1} should exceed iid L={l_iid} (FP-C1.6)"
         );
 
-        // Pin the small-fixture expected L for the canonical box.
-        // This was computed on Apple-Silicon (2026-05-30).
-        // If this assert fails, it means the PWSD algorithm was changed — update
-        // ONLY after verifying the change is intentional and re-running the
-        // anchored suite.
-        // l_ar1 expected: 5 (empirically — moderate AR(1) on 500 samples)
-        // l_iid expected: 1 (white noise)
+        // ── Canonical-fixture PIN (the algorithm-change tripwire) ─────────────
+        // Computed on the Apple-Silicon canonical box (2026-05-30, re-verified
+        // 2026-07-31): AR(1) φ=0.6 on 500 samples → L = 7; i.i.d. white noise
+        // → L = 1. These asserts pin the CURRENT shipped PWSD behaviour
+        // INTENTIONALLY — including the λ(k/m̂) window-scale deviation from
+        // the literature (module doc, "Known deviations"). If either assert
+        // fails, the PWSD algorithm changed: that is story 1-24 territory
+        // (anchored-namespace re-lock + verdict re-run) — update the pins
+        // ONLY as part of that story, never as a drive-by.
         println!("FP-C1.6 pin: AR(1) L={l_ar1}, iid L={l_iid}");
-        // Pinned fixture: l_iid must be in [1, 3] (white noise → short block).
-        assert!(l_iid <= 3, "iid L={l_iid} should be ≤ 3 for white noise");
+        assert_eq!(
+            l_ar1, 7,
+            "FP-C1.6 PIN: AR(1) φ=0.6 fixture must select L=7 (shipped λ(k/m̂) \
+             PWSD behaviour, pinned pending story 1-24); got L={l_ar1}"
+        );
+        assert_eq!(
+            l_iid, 1,
+            "FP-C1.6 PIN: i.i.d. white-noise fixture must select L=1 (shipped \
+             PWSD behaviour, pinned pending story 1-24); got L={l_iid}"
+        );
     }
 
     #[test]
@@ -250,6 +322,24 @@ mod tests {
         // Constant series → variance = 0 → block length = 1.
         let constant = vec![0.001_f64; 200];
         assert_eq!(politis_white_block_length(&constant), 1);
+    }
+
+    #[test]
+    fn block_length_non_finite_input_returns_degenerate_one() {
+        // NaN / ±inf anywhere in the series → guarded degenerate L = 1
+        // (never a NaN-poisoned spectral estimate). No shipped caller
+        // produces such input; the guard is a no-op for finite series.
+        let mut with_nan = vec![0.01_f64; 100];
+        with_nan[50] = f64::NAN;
+        assert_eq!(politis_white_block_length(&with_nan), 1);
+
+        let mut with_inf = vec![0.01_f64; 100];
+        with_inf[0] = f64::INFINITY;
+        assert_eq!(politis_white_block_length(&with_inf), 1);
+
+        let mut with_neg_inf = vec![0.01_f64; 100];
+        with_neg_inf[99] = f64::NEG_INFINITY;
+        assert_eq!(politis_white_block_length(&with_neg_inf), 1);
     }
 
     #[test]

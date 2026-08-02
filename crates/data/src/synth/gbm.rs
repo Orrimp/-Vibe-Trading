@@ -16,7 +16,9 @@
 //! ## Determinism
 //!
 //! `generate` is a pure function of `(self, universe, n_bars, path_seed)`.
-//! One `ChaCha20Rng::seed_from_u64(path_seed)` per call; draw order is:
+//! One `ChaCha20Rng` per SYMBOL, seeded via `derive_sym_seed(path_seed, sym_i)`
+//! (SplitMix64 mixing — see the fn doc for the anti-diagonal collision the
+//! old additive derivation had); draw order is:
 //! per bar: u1, u2 (Box-Muller) → noise1, noise2 (intrabar) → vol → trade_count.
 
 use rust_decimal::Decimal;
@@ -71,6 +73,56 @@ impl Default for GbmParams {
     }
 }
 
+impl GbmParams {
+    /// Validate the parameter set.
+    ///
+    /// Called by [`GbmPathGen`]'s `generate` before any path work (the struct
+    /// has public fields + `Default`, so construction itself cannot gate).
+    /// Rejects what previously failed silently or loudly-wrong:
+    /// - non-finite `f64` fields — NaN vol/drift used to flatline every bar
+    ///   to `price_lo` silently, and NaN clamp bounds PANIC in `f64::clamp`;
+    /// - inverted clamp bounds (`price_lo > price_hi`) — also a
+    ///   `f64::clamp` PANIC;
+    /// - non-positive `price_lo` — prices must stay strictly positive
+    ///   (`Price::new` rejects `d <= 0`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SynthError::InvalidGbmParams`] naming the offending field.
+    pub fn validate(&self) -> Result<(), SynthError> {
+        let finite_fields = [
+            ("per_bar_vol", self.per_bar_vol),
+            ("per_bar_drift", self.per_bar_drift),
+            ("intrabar_scale", self.intrabar_scale),
+            ("vol_range", self.vol_range),
+            ("vol_min", self.vol_min),
+            ("price_lo", self.price_lo),
+            ("price_hi", self.price_hi),
+        ];
+        for (name, value) in finite_fields {
+            if !value.is_finite() {
+                return Err(SynthError::InvalidGbmParams {
+                    reason: format!("{name} must be finite, got {value}"),
+                });
+            }
+        }
+        if self.price_lo <= 0.0 {
+            return Err(SynthError::InvalidGbmParams {
+                reason: format!("price_lo must be > 0, got {}", self.price_lo),
+            });
+        }
+        if self.price_lo > self.price_hi {
+            return Err(SynthError::InvalidGbmParams {
+                reason: format!(
+                    "inverted price clamp bounds: price_lo {} > price_hi {}",
+                    self.price_lo, self.price_hi
+                ),
+            });
+        }
+        Ok(())
+    }
+}
+
 // ── Generator ─────────────────────────────────────────────────────────────────
 
 /// GBM smoke-test path generator.
@@ -78,15 +130,46 @@ impl Default for GbmParams {
 /// Produces a GBM ensemble for use in the N-path harness smoke-test role.
 /// The headline generator is [`crate::synth::bootstrap::BlockBootstrapPathGen`].
 ///
-/// Per-symbol seeds are derived from `path_seed` via the same constant
-/// `0x9E37_79B9` the project uses on the symbol axis (ADR-0051 D1 / momentum.rs:245):
-/// `sym_seed_i = path_seed.wrapping_add((i as u64).wrapping_mul(0x9E37_79B9))`.
+/// Per-symbol seeds are derived from `(path_seed, sym_i)` via SplitMix64
+/// mixing (see [`derive_sym_seed`]). The previous additive derivation
+/// (`path_seed + sym_i · 0x9E37_79B9`) collided on every anti-diagonal with
+/// the ADR-0051 D1 consumer path-seed rule
+/// (`path_seed_j = master + j · 0x9E37_79B9`): `seed(j, i) == seed(j', i')`
+/// whenever `i + j == i' + j'`, so e.g. ETH-on-path-0 replayed BTC-on-path-1
+/// bit-for-bit. ANCHOR-SAFE change: no anchored report body derives from
+/// `GbmPathGen` (smoke-test role only — verified at review 1-13).
 ///
 /// `selected_block_length` is always `None` — GBM has no block-length concept.
 #[derive(Debug, Clone, Default)]
 pub struct GbmPathGen {
     /// GBM parameters.
     pub params: GbmParams,
+}
+
+/// SplitMix64 finalizer (Steele–Lea–Flood 2014; the `splitmix64` reference
+/// generator's output function). A bijective avalanche mixer on `u64`.
+#[inline]
+#[must_use]
+fn splitmix64(mut z: u64) -> u64 {
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Derive the per-symbol ChaCha20 seed from `(path_seed, sym_i)`.
+///
+/// `splitmix64(splitmix64(path_seed) + sym_i)`: the outer mix breaks the
+/// linear relation between neighbouring `sym_i`, and the inner mix breaks
+/// the linear relation between neighbouring ADR-0051 D1 path seeds — so no
+/// `(path, symbol)` anti-diagonal pair can collide structurally (a collision
+/// would require `splitmix64(ps') - splitmix64(ps) == Δi`, which is not an
+/// identity for any seed family, unlike the previous additive scheme where
+/// it held for EVERY master seed).
+#[inline]
+#[must_use]
+fn derive_sym_seed(path_seed: u64, sym_i: usize) -> u64 {
+    splitmix64(splitmix64(path_seed).wrapping_add(sym_i as u64))
 }
 
 impl GbmPathGen {
@@ -125,6 +208,27 @@ impl MonteCarloPathGen for GbmPathGen {
         if n_bars == 0 {
             return Err(SynthError::ZeroBars);
         }
+        // Bound n_bars (time-crate year-9999 overflow / alloc abort guard —
+        // see `MAX_N_BARS`).
+        if n_bars > crate::synth::MAX_N_BARS {
+            return Err(SynthError::TooManyBars {
+                n_bars,
+                max: crate::synth::MAX_N_BARS,
+            });
+        }
+        // Validate params before any path work (NaN/inverted clamp bounds
+        // would PANIC in f64::clamp; NaN vol/drift silently flatlined).
+        self.params.validate()?;
+        // Start prices must be strictly positive — previously silently
+        // clamped to `price_lo`, producing plausible-shaped garbage.
+        for (symbol, start_price) in universe {
+            if *start_price <= Decimal::ZERO {
+                return Err(SynthError::NonPositiveStartPrice {
+                    symbol: symbol.to_string(),
+                    start_price: *start_price,
+                });
+            }
+        }
 
         let epoch_base = epoch_2023();
 
@@ -140,11 +244,17 @@ impl MonteCarloPathGen for GbmPathGen {
         let mut bars_by_symbol: Vec<Vec<Bar>> = Vec::with_capacity(universe.len());
 
         for (sym_i, (symbol, start_price)) in universe.iter().enumerate() {
-            // Per-symbol seed derived from path_seed (same idiom as momentum.rs:245).
-            #[allow(clippy::cast_possible_truncation)]
-            let sym_seed = path_seed.wrapping_add((sym_i as u64).wrapping_mul(0x9E37_79B9_u64));
+            // Per-symbol seed: SplitMix64 mix over (path_seed, sym_i) — see
+            // `derive_sym_seed` for why the old additive idiom collided on
+            // anti-diagonals with the ADR-0051 D1 path-seed rule.
+            let sym_seed = derive_sym_seed(path_seed, sym_i);
             let mut rng = ChaCha20Rng::seed_from_u64(sym_seed);
 
+            // start_price > 0 was validated above; a positive Decimal's
+            // string form always parses to a positive finite f64 (the
+            // fallback is an unreachable non-panicking last resort). The
+            // `.max(price_lo)` only lifts sub-price_lo positive starts into
+            // the clamp band (documented GbmParams behaviour).
             let mut close: f64 = start_price
                 .to_string()
                 .parse::<f64>()
@@ -310,5 +420,126 @@ mod tests {
             ggen.generate(&universe, 0, 0),
             Err(SynthError::ZeroBars)
         ));
+    }
+
+    // ── Review 1-13 patches ──────────────────────────────────────────────────
+
+    /// Anti-diagonal seed-collision regression proof (review 1-13).
+    ///
+    /// Under the ADR-0051 D1 consumer rule
+    /// `path_seed_j = master + j·0x9E37_79B9`, the OLD additive per-symbol
+    /// derivation `sym_seed = path_seed + sym_i·0x9E37_79B9` made
+    /// `seed(path 0, sym 1) == seed(path 1, sym 0)` for EVERY master seed —
+    /// symbol 1 of path 0 replayed symbol 0 of path 1 bit-for-bit (both
+    /// symbols get the same start price here so the collision would surface
+    /// as identical closes). The SplitMix64 derivation must make the two
+    /// streams differ.
+    #[test]
+    fn gbm_no_anti_diagonal_seed_collision_across_paths() {
+        const GOLDEN_GAMMA: u64 = 0x9E37_79B9; // ADR-0051 D1 path-seed step
+        let ggen = GbmPathGen::new();
+        // SAME start price for both symbols: any seed collision ⇒ identical bars.
+        let universe = vec![
+            (btc(), dec!(30_000)),
+            (Symbol::new("ETHUSDT"), dec!(30_000)),
+        ];
+
+        let master = 0xA11C_E5EE_u64;
+        let path0 = ggen.generate(&universe, 50, master).unwrap(); // j = 0
+        let path1 = ggen
+            .generate(&universe, 50, master.wrapping_add(GOLDEN_GAMMA)) // j = 1
+            .unwrap();
+
+        // seed(j=0, i=1) vs seed(j=1, i=0): the generated return streams must differ.
+        let any_diff = path0.bars_by_symbol[1]
+            .iter()
+            .zip(path1.bars_by_symbol[0].iter())
+            .any(|(a, b)| a.close != b.close);
+        assert!(
+            any_diff,
+            "anti-diagonal collision: (path 0, sym 1) and (path 1, sym 0) \
+             produced identical close streams — per-symbol seed derivation \
+             must mix (path_seed, sym_i) non-additively"
+        );
+    }
+
+    /// Inverted clamp bounds previously PANICKED inside `f64::clamp`;
+    /// now a typed error.
+    #[test]
+    fn gbm_error_on_inverted_price_bounds() {
+        let params = GbmParams {
+            price_lo: 100.0,
+            price_hi: 1.0, // inverted
+            ..GbmParams::default()
+        };
+        let ggen = GbmPathGen::with_params(params);
+        let universe = vec![(btc(), dec!(30_000))];
+        assert!(matches!(
+            ggen.generate(&universe, 10, 42),
+            Err(SynthError::InvalidGbmParams { .. })
+        ));
+    }
+
+    /// NaN vol/drift previously flatlined every bar to `price_lo` silently;
+    /// NaN clamp bounds previously PANICKED. Both are typed errors now.
+    #[test]
+    fn gbm_error_on_non_finite_params() {
+        for params in [
+            GbmParams {
+                per_bar_vol: f64::NAN,
+                ..GbmParams::default()
+            },
+            GbmParams {
+                per_bar_drift: f64::INFINITY,
+                ..GbmParams::default()
+            },
+            GbmParams {
+                price_lo: f64::NAN,
+                ..GbmParams::default()
+            },
+        ] {
+            let ggen = GbmPathGen::with_params(params);
+            let universe = vec![(btc(), dec!(30_000))];
+            assert!(matches!(
+                ggen.generate(&universe, 10, 42),
+                Err(SynthError::InvalidGbmParams { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn gbm_error_on_non_positive_price_lo() {
+        let params = GbmParams {
+            price_lo: 0.0,
+            ..GbmParams::default()
+        };
+        let ggen = GbmPathGen::with_params(params);
+        let universe = vec![(btc(), dec!(30_000))];
+        assert!(matches!(
+            ggen.generate(&universe, 10, 42),
+            Err(SynthError::InvalidGbmParams { .. })
+        ));
+    }
+
+    /// Non-positive start price previously silently clamped to `price_lo`.
+    #[test]
+    fn gbm_error_on_non_positive_start_price() {
+        let ggen = GbmPathGen::new();
+        for bad_start in [dec!(0), dec!(-42)] {
+            let universe = vec![(btc(), bad_start)];
+            assert!(matches!(
+                ggen.generate(&universe, 10, 42),
+                Err(SynthError::NonPositiveStartPrice { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn gbm_error_on_too_many_bars() {
+        let ggen = GbmPathGen::new();
+        let universe = vec![(btc(), dec!(30_000))];
+        // Fires before any allocation.
+        let result = ggen.generate(&universe, crate::synth::MAX_N_BARS + 1, 42);
+        assert!(matches!(result, Err(SynthError::TooManyBars { .. })));
     }
 }

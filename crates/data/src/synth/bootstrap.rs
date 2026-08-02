@@ -98,16 +98,31 @@ pub struct BlockBootstrapPathGen {
 }
 
 impl BlockBootstrapPathGen {
+    /// Minimum source length: ≥ 3 bars ⇒ ≥ 2 log-returns.
+    ///
+    /// A 2-bar source has exactly ONE return, so `random_range(0..1)` always
+    /// yields index 0 — every path replays the same return regardless of
+    /// seed: a seed-INDEPENDENT, dispersion-zero "ensemble" masquerading as
+    /// Monte-Carlo evidence. ≥ 2 returns makes divergence structurally
+    /// possible. (Real consumers resample year-scale series; the shortest
+    /// shipped source is 100 bars.)
+    const MIN_SOURCE_BARS: usize = 3;
+
     /// Create a new generator from real bar series.
     ///
     /// `source_bars` must be non-empty and all inner `Vec<Bar>` must have
-    /// equal length ≥ 2. The order MUST match the `universe` slice passed to
-    /// `generate`.
+    /// equal length ≥ 3 (≥ 2 log-returns), with strictly positive closes.
+    /// The order MUST match the `universe` slice passed to `generate`
+    /// (enforced there by symbol-name + arity validation).
     ///
     /// # Errors
     ///
-    /// Returns `Err` if any source series is too short (< 2 bars) or if the
-    /// sources are ragged (unequal lengths).
+    /// Returns `Err` if any source series is too short (< 3 bars), if the
+    /// sources are ragged (unequal lengths), or if any source close is not
+    /// strictly positive (unreachable via `trading_core::Price` today, which
+    /// already rejects `d <= 0` at construction — enforced here as the
+    /// module-boundary contract so the log-return math can never see a
+    /// zero/negative close).
     pub fn new(
         source_bars: Vec<(Symbol, Vec<Bar>)>,
         block_length_policy: BlockLengthPolicy,
@@ -117,7 +132,7 @@ impl BlockBootstrapPathGen {
         }
         let expected_len = source_bars[0].1.len();
         for (sym, bars) in &source_bars {
-            if bars.len() < 2 {
+            if bars.len() < Self::MIN_SOURCE_BARS {
                 return Err(SynthError::SeriesTooShort {
                     symbol: sym.to_string(),
                     len: bars.len(),
@@ -129,6 +144,20 @@ impl BlockBootstrapPathGen {
                     actual: bars.len(),
                     expected: expected_len,
                 });
+            }
+            // Finite-positive close validation: `Decimal` has no NaN/inf, so
+            // "finite-positive" at this layer is exactly `close > 0`. This
+            // guarantees `ln(c1/c0)` downstream is always finite (a positive
+            // Decimal's string form always parses to a positive finite f64).
+            for (bar_index, bar) in bars.iter().enumerate() {
+                let close = bar.close.get();
+                if close <= Decimal::ZERO {
+                    return Err(SynthError::NonPositiveSourcePrice {
+                        symbol: sym.to_string(),
+                        bar_index,
+                        close,
+                    });
+                }
             }
         }
         Ok(Self {
@@ -208,6 +237,49 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
         if n_bars == 0 {
             return Err(SynthError::ZeroBars);
         }
+        // Bound n_bars: unbounded requests panic in the `time` crate
+        // (year-9999 overflow at ≈ 70M hourly bars) or abort on allocation
+        // long before producing anything useful. See `MAX_N_BARS` for the
+        // bound's rationale (largest legitimate shipped request: 8,784).
+        if n_bars > crate::synth::MAX_N_BARS {
+            return Err(SynthError::TooManyBars {
+                n_bars,
+                max: crate::synth::MAX_N_BARS,
+            });
+        }
+        // ── Universe ↔ source pairing validation ─────────────────────────────
+        // The pairing is positional. Previously a longer universe silently
+        // fell back to symbol 0's returns and names were never cross-checked;
+        // both are now loud errors. Every shipped consumer builds `universe`
+        // from the same series (same symbols, same order) as `source_bars`,
+        // so this is behaviour-neutral for all valid callers. The funding /
+        // basis sidecar arrays are indexed by the same `sym_i`, so they are
+        // covered by the same 1:1 contract.
+        if universe.len() != self.source_bars.len() {
+            return Err(SynthError::UniverseSourceArityMismatch {
+                universe_len: universe.len(),
+                source_len: self.source_bars.len(),
+            });
+        }
+        for (index, ((uni_sym, start_price), (src_sym, _))) in
+            universe.iter().zip(self.source_bars.iter()).enumerate()
+        {
+            if uni_sym != src_sym {
+                return Err(SynthError::UniverseSymbolMismatch {
+                    index,
+                    universe_symbol: uni_sym.to_string(),
+                    source_symbol: src_sym.to_string(),
+                });
+            }
+            // Start prices must be strictly positive — previously clamped
+            // silently to 1e-6, producing plausible-shaped garbage paths.
+            if *start_price <= Decimal::ZERO {
+                return Err(SynthError::NonPositiveStartPrice {
+                    symbol: uni_sym.to_string(),
+                    start_price: *start_price,
+                });
+            }
+        }
 
         // ── Build per-symbol log-return series ────────────────────────────────
         // Returns T-1 log-returns from T bars.
@@ -217,7 +289,9 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
         // Build log-return matrix: returns_by_sym[s][k] = ln(close[k+1]/close[k]).
         let mut returns_by_sym: Vec<Vec<f64>> = Vec::with_capacity(self.source_bars.len());
         for (sym, bars) in &self.source_bars {
-            if bars.len() < 2 {
+            // Defensive re-check only — `new()` already enforces the ≥ 3-bar
+            // minimum, so this cannot fire through the public API.
+            if bars.len() < Self::MIN_SOURCE_BARS {
                 return Err(SynthError::SeriesTooShort {
                     symbol: sym.to_string(),
                     len: bars.len(),
@@ -238,8 +312,23 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
         // For shared-index, we need ONE L for the whole universe.
         // Rule (D-C1.4): compute PWSD on the universe-average absolute log-return
         // series r̄[t] = mean_sym |r_sym[t]|.
+        // KNOWN DEVIATION (1-24 cluster): running the selector on the
+        // cross-symbol MEAN of |r| lets the highest-vol symbol dominate, so
+        // b_opt is derived for a different series than any single resampled
+        // one. Pinned as shipped — L feeds hashed anchored bodies; the fix is
+        // story 1-24 (namespace re-lock + verdict re-run). See
+        // `block_length.rs` § "Known deviations".
         let selected_l = match self.block_length_policy {
-            BlockLengthPolicy::Fixed(l) => l.max(1),
+            BlockLengthPolicy::Fixed(l) => {
+                // Loud validation (was: silent `.max(1)` promotion of 0, and
+                // no upper bound — L ≫ n_returns drives p = 1/L ≈ 0, i.e. a
+                // circular replay of the source with zero dispersion
+                // masquerading as an ensemble).
+                if l == 0 || l > n_returns {
+                    return Err(SynthError::InvalidFixedBlockLength { l, n_returns });
+                }
+                l
+            }
             BlockLengthPolicy::Auto => {
                 // Universe-average absolute return series.
                 let avg_abs: Vec<f64> = (0..n_returns)
@@ -314,16 +403,14 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
             .map(|_| Vec::with_capacity(universe.len()));
 
         for (sym_i, (out_sym, start_price)) in universe.iter().enumerate() {
-            // Map output universe symbol to source series by index.
-            // The caller must pass universe in the same order as source_bars.
-            let source_rets = if sym_i < returns_by_sym.len() {
-                &returns_by_sym[sym_i]
-            } else {
-                // Fallback to first symbol if universe is longer than source
-                // (shouldn't happen — validated in new(); defensive only).
-                &returns_by_sym[0]
-            };
+            // Map output universe symbol to source series by index. The
+            // universe ↔ source 1:1 pairing (arity + symbol names) was
+            // validated above, so direct indexing is always in bounds — the
+            // old silent fallback-to-symbol-0 is gone.
+            let source_rets = &returns_by_sym[sym_i];
 
+            // start_price > 0 was validated above; the `.max` only guards the
+            // sub-1e-6 positive corner (no shipped consumer passes one).
             let start_f = decimal_to_f64(*start_price).max(0.000_001_f64);
             let mut close: f64 = start_f;
             let mut sym_bars: Vec<Bar> = Vec::with_capacity(n_bars);
@@ -469,7 +556,14 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-/// f64-safe extraction of a `Decimal` value (fallback: 1.0).
+/// f64-safe extraction of a `Decimal` value.
+///
+/// The `unwrap_or(1.0)` fallback is unreachable for `Decimal` input: its
+/// `Display` form is always a plain numeric literal that `f64::from_str`
+/// accepts (rounding, never failing). It exists only as a non-panicking
+/// last resort. Source closes / start prices are additionally validated
+/// strictly positive upstream (`new()` / `generate()`), so price conversions
+/// through this fn are always positive and finite.
 #[allow(clippy::float_arithmetic)]
 fn decimal_to_f64(d: Decimal) -> f64 {
     d.to_string().parse::<f64>().unwrap_or(1.0)
@@ -584,7 +678,7 @@ mod tests {
     #[test]
     fn fp_c1_2_different_seed_diverges() {
         let bgen = make_gen_fixed(5);
-        let universe = vec![(btc(), dec!(30_000))];
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
         let path1 = bgen.generate(&universe, 50, 0xAAAA_AAAA).unwrap();
         let path2 = bgen.generate(&universe, 50, 0xBBBB_BBBB).unwrap();
 
@@ -605,7 +699,7 @@ mod tests {
         // With L=1, p=1/1=1 → every step restarts a new block → i.i.d. resampling.
         // The lag-1 autocorrelation of the resulting returns should be ≈ 0.
         let bgen = make_gen_fixed(1);
-        let universe = vec![(btc(), dec!(30_000))];
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
         // Use a long path to get a stable autocorrelation estimate.
         let path = bgen.generate(&universe, 500, 0xDEAD_BEEF).unwrap();
         let bars = &path.bars_by_symbol[0];
@@ -644,10 +738,16 @@ mod tests {
     }
 
     /// FP-C1.4 — moment preservation (resampled mean/var ≈ source).
+    ///
+    /// Tolerances are honest standard-error multiples computed from the
+    /// fixture itself (fixed seeds ⇒ deterministic), NOT the old vacuous
+    /// bounds (mean floor ≈ 158 SE; var floor 7× the source — the #66
+    /// vacuous-test pattern on the story's headline statistical guarantee).
     #[test]
     fn fp_c1_4_moment_preservation() {
-        let bgen = make_gen_fixed(5);
-        let universe = vec![(btc(), dec!(30_000))];
+        const FIXTURE_L: usize = 5;
+        let bgen = make_gen_fixed(FIXTURE_L);
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
         let path = bgen.generate(&universe, 1000, 0x1234_5678).unwrap();
         let bars = &path.bars_by_symbol[0];
 
@@ -682,19 +782,34 @@ mod tests {
         let src_var = var_of(&source_rets);
         let out_mean = mean_of(&out_rets);
         let out_var = var_of(&out_rets);
+        let n_out = out_rets.len() as f64; // 999 output returns
 
-        // Tolerance: allow ±5× the source variance as a generous bound
-        // (the bootstrap preserves moments statistically, not sample-exactly).
-        let tol_mean = (src_var.sqrt() * 5.0).max(0.01);
-        let tol_var = (src_var * 5.0).max(0.001);
+        // Honest mean tolerance: the bootstrap mean estimates the SOURCE
+        // sample mean. With expected block length L the effective number of
+        // independent blocks is ≈ n_out / L, so
+        //   SE(mean) ≈ sqrt(src_var · L / n_out)
+        // (the blocked SE upper-bounds the iid SE by √L — conservative for
+        // this iid-source fixture). Allow 5 SE; deterministic under the
+        // fixed seeds. For this fixture: SE ≈ 8.1e-4 → tol ≈ 4.1e-3, versus
+        // the old floor of 0.01 (≈ 28 blocked SE / ≈ 158 iid SE — vacuous).
+        let se_mean = (src_var * FIXTURE_L as f64 / n_out).sqrt();
+        let tol_mean = 5.0 * se_mean;
 
         assert!(
             (out_mean - src_mean).abs() < tol_mean,
-            "FP-C1.4: resampled mean {out_mean:.6} ≈ source mean {src_mean:.6} (tol {tol_mean:.6})"
+            "FP-C1.4: resampled mean {out_mean:.6} must be within 5 SE of source \
+             mean {src_mean:.6} (SE {se_mean:.6}, tol {tol_mean:.6})"
         );
+        // Honest variance tolerance: the resampled variance must be within
+        // [0.5, 2.0]× the source variance — a band ≈ 8-16 SD of the sample
+        // variance wide for this fixture (safely deterministic), yet it
+        // catches both a dispersion collapse and a blow-up. The old bound
+        // (|Δvar| < 5·src_var) accepted anything up to 6× the source.
         assert!(
-            (out_var - src_var).abs() < tol_var,
-            "FP-C1.4: resampled var {out_var:.6} ≈ source var {src_var:.6} (tol {tol_var:.6})"
+            out_var >= 0.5 * src_var && out_var <= 2.0 * src_var,
+            "FP-C1.4: resampled var {out_var:.8} must be within [0.5, 2.0]x \
+             source var {src_var:.8} (ratio {:.4})",
+            out_var / src_var
         );
         // Non-collapse: output variance must be non-trivial.
         assert!(
@@ -705,23 +820,36 @@ mod tests {
 
     /// FP-C1.5 — shared-index co-movement preserved.
     /// Two positively correlated source series → resampled correlation stays positive.
+    ///
+    /// Fixture honesty (review 1-13): the two symbols share the SAME
+    /// common-shock stream (seed `0xC0BB_7E57`) but carry GENUINELY DISTINCT
+    /// idiosyncratic noise (per-symbol noise sub-seeds), so the source
+    /// correlation is high (> 0.8 — the common shocks dominate) but strictly
+    /// < 1. The previous fixture reused identical RNG seeds for both symbols
+    /// (source corr exactly 1.0), making the "idiosyncratic noise" common to
+    /// both and the comment fictional. The mutation-catching property is
+    /// preserved: re-wiring `generate` to per-symbol-independent index
+    /// sequences collapses the resampled correlation to ≈ -0.08 (verified at
+    /// the original tester pass), far below the 0.5 assert.
     #[test]
     fn fp_c1_5_shared_index_co_movement() {
         // Build two series that move together: ETH ≈ BTC with small noise.
         let n_src = 300;
         let epoch_base = epoch_2023();
 
-        let make_correlated_bars = |sym: &Symbol, offset: f64| -> Vec<Bar> {
+        let make_correlated_bars = |sym: &Symbol, offset: f64, noise_seed: u64| -> Vec<Bar> {
             use rand::Rng;
             use rand::SeedableRng;
             use rand_chacha::ChaCha20Rng;
 
+            // Common-shock stream: SAME seed for both symbols (the shared
+            // market factor). Idiosyncratic noise: per-symbol `noise_seed`.
             let mut rng = ChaCha20Rng::seed_from_u64(0xC0BB_7E57_u64);
-            let mut rng2 = ChaCha20Rng::seed_from_u64(0xFEED_CAFE_u64);
+            let mut rng2 = ChaCha20Rng::seed_from_u64(noise_seed);
             let mut close = 1000.0_f64 + offset;
             let mut bars = Vec::with_capacity(n_src);
-            // First 150 bars: common shock + small idiosyncratic noise.
-            // Second 150 bars: same pattern, same common shocks.
+            // Every bar: one common shock (±2%, dominates) + one small
+            // per-symbol idiosyncratic noise term (±0.1%).
             let mut common_shocks = Vec::with_capacity(n_src);
             for _ in 0..n_src {
                 common_shocks.push(rng.random::<f64>() * 0.04 - 0.02);
@@ -764,11 +892,49 @@ mod tests {
             bars
         };
 
-        // Silence unused-variable warnings from the non-literal seeds above.
-        let _ = 0_u64;
+        // DISTINCT noise sub-seeds per symbol — the idiosyncratic noise is real.
+        let btc_bars = make_correlated_bars(&btc(), 0.0, 0xFEED_CAFE_u64);
+        let eth_bars = make_correlated_bars(&eth(), 500.0, 0x0DD5_EED5_u64);
 
-        let btc_bars = make_correlated_bars(&btc(), 0.0);
-        let eth_bars = make_correlated_bars(&eth(), 500.0);
+        // Fixture-honesty guard: the SOURCE correlation must be high (common
+        // shocks dominate) but strictly < 1 (the noise is genuinely
+        // idiosyncratic). Catches a regression back to shared noise seeds.
+        {
+            let src_rets = |bars: &[Bar]| -> Vec<f64> {
+                bars.windows(2)
+                    .map(|w| {
+                        let c0 = decimal_to_f64(w[0].close.get());
+                        let c1 = decimal_to_f64(w[1].close.get());
+                        (c1 / c0).ln()
+                    })
+                    .collect()
+            };
+            let b = src_rets(&btc_bars);
+            let e = src_rets(&eth_bars);
+            let n = b.len() as f64;
+            let mb = b.iter().sum::<f64>() / n;
+            let me = e.iter().sum::<f64>() / n;
+            let cov: f64 = b
+                .iter()
+                .zip(e.iter())
+                .map(|(x, y)| (x - mb) * (y - me))
+                .sum::<f64>()
+                / n;
+            let sb = (b.iter().map(|v| (v - mb).powi(2)).sum::<f64>() / n).sqrt();
+            let se = (e.iter().map(|v| (v - me).powi(2)).sum::<f64>() / n).sqrt();
+            let src_corr = cov / (sb * se);
+            assert!(
+                src_corr > 0.8,
+                "FP-C1.5 fixture: source corr={src_corr:.6} must be > 0.8 \
+                 (common shocks must dominate)"
+            );
+            assert!(
+                src_corr < 0.999_99,
+                "FP-C1.5 fixture: source corr={src_corr:.6} must be < 1 — \
+                 idiosyncratic noise must be genuinely per-symbol \
+                 (distinct sub-seeds), not a shared stream"
+            );
+        }
 
         let bgen = BlockBootstrapPathGen::new(
             vec![(btc(), btc_bars.clone()), (eth(), eth_bars.clone())],
@@ -872,7 +1038,7 @@ mod tests {
     #[test]
     fn selected_block_length_is_some_and_matches_fixed() {
         let bgen = make_gen_fixed(7);
-        let universe = vec![(btc(), dec!(30_000))];
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
         let path = bgen.generate(&universe, 20, 42).unwrap();
         assert_eq!(path.selected_block_length, Some(7));
     }
@@ -887,6 +1053,199 @@ mod tests {
         let l = path.selected_block_length.unwrap();
         assert!(l >= 1, "auto L must be ≥ 1, got {l}");
         assert!(l < 200, "auto L must be < source length, got {l}");
+    }
+
+    /// Build a bar series whose log-returns follow AR(1) with the given `phi`
+    /// (uniform innovations, ~1%/bar scale) — a serially-DEPENDENT source for
+    /// the Auto-policy e2e below.
+    fn make_ar1_bars(symbol: &Symbol, n: usize, seed: u64, phi: f64) -> Vec<Bar> {
+        use rand::Rng;
+        use rand::SeedableRng;
+        use rand_chacha::ChaCha20Rng;
+
+        let mut rng = ChaCha20Rng::seed_from_u64(seed);
+        let epoch_base = epoch_2023();
+        let mut close = 30_000.0_f64;
+        let mut r_prev = 0.0_f64;
+        let mut bars = Vec::with_capacity(n);
+        for i in 0..n {
+            let eps: f64 = rng.random::<f64>() * 2.0 - 1.0;
+            let r = phi * r_prev + (1.0 - phi * phi).sqrt() * eps;
+            r_prev = r;
+            let next = (close * (0.01 * r).exp()).max(0.01);
+            #[allow(clippy::cast_possible_wrap)]
+            let open_ts = Timestamp::new(epoch_base + time::Duration::hours(i as i64));
+            #[allow(clippy::cast_possible_wrap)]
+            let close_ts = Timestamp::new(
+                epoch_base + time::Duration::hours(i as i64 + 1) - time::Duration::seconds(1),
+            );
+            let to_price = |v: f64| {
+                Price::new(Decimal::try_from(v.max(0.01)).unwrap_or(dec!(0.01))).unwrap_or_else(
+                    |_| Price::new(dec!(0.01)).unwrap_or_else(|e| unreachable!("dec!(0.01): {e}")),
+                )
+            };
+            bars.push(Bar {
+                symbol: symbol.clone(),
+                tf: Timeframe::OneHour,
+                open_ts,
+                close_ts,
+                open: to_price(close),
+                high: to_price(close.max(next) * 1.001),
+                low: to_price(close.min(next) * 0.999),
+                close: to_price(next),
+                volume: Quantity::new(dec!(100)).unwrap_or_else(|e| unreachable!("dec!(100): {e}")),
+                trade_count: 10,
+                local_recv_ts: close_ts,
+                venue: Venue::Binance,
+            });
+            close = next;
+        }
+        bars
+    }
+
+    /// Review 1-13 regression guard: `BlockLengthPolicy::Auto` driven through
+    /// `generate()` on a serially-DEPENDENT source must select `L > 1`.
+    ///
+    /// Before this test, a regression hard-wiring Auto → L=1 (the hunted
+    /// silent-IID degradation — every synthetic path loses its volatility
+    /// clustering) passed the entire suite: `auto_block_length_is_some` only
+    /// asserts `L ≥ 1` on a near-iid fixture, and FP-C1.6 exercises the
+    /// selector fn directly, not the generate() wiring.
+    #[test]
+    fn auto_e2e_dependent_series_selects_block_length_above_one() {
+        // AR(1) φ=0.8 log-returns: |r| inherits strong positive serial
+        // dependence, so the PWSD selector (run by Auto on the cross-symbol
+        // mean of |r| — here a single symbol) must pick L > 1.
+        let bars = make_ar1_bars(&btc(), 500, 0xA07_0E2E, 0.8);
+        let bgen =
+            BlockBootstrapPathGen::new(vec![(btc(), bars)], BlockLengthPolicy::Auto).unwrap();
+        let universe = vec![(btc(), dec!(30_000))];
+        let path = bgen.generate(&universe, 200, 0xD31E_C7ED).unwrap();
+        let l = path
+            .selected_block_length
+            .expect("Auto policy must report the selected L");
+        assert!(
+            l > 1,
+            "Auto e2e: dependent AR(1) source must select L > 1 (silent-IID \
+             degradation guard), got L={l}"
+        );
+        assert!(l < 500, "Auto e2e: L={l} must be < source length");
+    }
+
+    // ── Review 1-13 validation-set tests ──────────────────────────────────────
+
+    #[test]
+    fn error_on_two_bar_source() {
+        // 2 bars = 1 log-return → every resample index is forced to 0 → a
+        // seed-independent zero-dispersion "ensemble". Must be rejected.
+        let btc_bars = make_bars(&btc(), 2, 7);
+        let result =
+            BlockBootstrapPathGen::new(vec![(btc(), btc_bars)], BlockLengthPolicy::Fixed(1));
+        assert!(matches!(
+            result,
+            Err(SynthError::SeriesTooShort { len: 2, .. })
+        ));
+    }
+
+    #[test]
+    fn error_on_universe_arity_mismatch() {
+        let bgen = make_gen_fixed(5); // 2-symbol source
+        // Shorter universe (1 symbol) — previously a silent prefix run.
+        let result = bgen.generate(&[(btc(), dec!(30_000))], 10, 42);
+        assert!(matches!(
+            result,
+            Err(SynthError::UniverseSourceArityMismatch {
+                universe_len: 1,
+                source_len: 2
+            })
+        ));
+        // Longer universe (3 symbols) — previously reused symbol-0's returns
+        // silently for the excess symbol.
+        let result = bgen.generate(
+            &[
+                (btc(), dec!(30_000)),
+                (eth(), dec!(1_200)),
+                (Symbol::new("SOLUSDT"), dec!(20)),
+            ],
+            10,
+            42,
+        );
+        assert!(matches!(
+            result,
+            Err(SynthError::UniverseSourceArityMismatch {
+                universe_len: 3,
+                source_len: 2
+            })
+        ));
+    }
+
+    #[test]
+    fn error_on_universe_symbol_mismatch() {
+        let bgen = make_gen_fixed(5); // source order: (btc, eth)
+        // Swapped order → positional pairing would resample the wrong series.
+        let result = bgen.generate(&[(eth(), dec!(1_200)), (btc(), dec!(30_000))], 10, 42);
+        assert!(matches!(
+            result,
+            Err(SynthError::UniverseSymbolMismatch { index: 0, .. })
+        ));
+    }
+
+    #[test]
+    fn error_on_non_positive_start_price() {
+        let bgen = make_gen_fixed(5);
+        // Zero start price — previously silently clamped to 1e-6.
+        let result = bgen.generate(&[(btc(), dec!(0)), (eth(), dec!(1_200))], 10, 42);
+        assert!(matches!(
+            result,
+            Err(SynthError::NonPositiveStartPrice { .. })
+        ));
+        // Negative start price.
+        let result = bgen.generate(&[(btc(), dec!(30_000)), (eth(), dec!(-1))], 10, 42);
+        assert!(matches!(
+            result,
+            Err(SynthError::NonPositiveStartPrice { .. })
+        ));
+    }
+
+    #[test]
+    fn error_on_fixed_block_length_zero() {
+        // Fixed(0) — previously silently promoted to 1.
+        let bgen = make_gen_fixed(0);
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let result = bgen.generate(&universe, 10, 42);
+        assert!(matches!(
+            result,
+            Err(SynthError::InvalidFixedBlockLength { l: 0, .. })
+        ));
+    }
+
+    #[test]
+    fn error_on_fixed_block_length_exceeding_source_returns() {
+        // 200-bar source ⇒ 199 log-returns. Fixed(200) ⇒ p = 1/200 ≈ 0 with
+        // more L than data — the circular-replay degeneracy. Must error.
+        let bgen = make_gen_fixed(200);
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        let result = bgen.generate(&universe, 10, 42);
+        assert!(matches!(
+            result,
+            Err(SynthError::InvalidFixedBlockLength {
+                l: 200,
+                n_returns: 199
+            })
+        ));
+        // Boundary: Fixed(199) == n_returns is valid.
+        let bgen = make_gen_fixed(199);
+        let path = bgen.generate(&universe, 10, 42);
+        assert!(path.is_ok(), "Fixed(n_returns) must be accepted");
+    }
+
+    #[test]
+    fn error_on_too_many_bars() {
+        let bgen = make_gen_fixed(5);
+        let universe = vec![(btc(), dec!(30_000)), (eth(), dec!(1_200))];
+        // The check fires before any allocation — no OOM risk in this test.
+        let result = bgen.generate(&universe, crate::synth::MAX_N_BARS + 1, 42);
+        assert!(matches!(result, Err(SynthError::TooManyBars { .. })));
     }
 
     // ── M-DEV-3 carry-strategy co-resampling tests (ADR-0051 § D6.6) ─────────

@@ -68,11 +68,11 @@
 #   - 3-18-advisor-reflection-decision-loop (ready-for-dev): C4 architecture done, not built.
 #   - 2-64..: none - candidates/drafts (cockpit-app-bundle, iced-ecosystem-evaluation,
 #     ui-gallery-table-cell, lumen-phase-6 reservation) stay backlog by decision.
-#   - 12 review-status stories: frontmatter frozen at presenter-/tester-/dev-done (was 14; 1-10 + 1-12 closed by code-review 2026-07-27).
+#   - 11 review-status stories: frontmatter frozen at presenter-/tester-/dev-done (was 14; 1-10/1-12/1-13 closed by the code-review burn-down).
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-07-27 07:55  # 1-12 review -> done (burn-down 2/14)  # Q1/Q3 decided BUILD (stories 3-19, 4-13; epic-4 reopened), Q2 analyst scheduled, 2-1 kept by decision
+last_updated: 2026-07-31 12:30  # 1-13 review -> done (burn-down 3/14)  # Q1/Q3 decided BUILD (stories 3-19, 4-13; epic-4 reopened), Q2 analyst scheduled, 2-1 kept by decision
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -94,7 +94,7 @@ development_status:
   1-10-simple-strategies-realdata: done  # 2026-07-27 first BMAD-native code-review PASS — 15 patches + 3 discovered bugs fixed; triad flipped same pass
   1-11-binance-corpus-expansion: done
   1-12-carry-funding-data-backfill: done  # 2026-07-27 code-review burn-down 2/14 PASS — corpus byte-perfect; 10 fetcher-hardening patches applied; triad flipped same pass
-  1-13-monte-carlo-bootstrap-path-generator: review
+  1-13-monte-carlo-bootstrap-path-generator: done  # 2026-07-31 code-review burn-down 3/14 PASS — 14 patches applied; PWSD math owned by 1-24; triad flipped same pass
   1-14-strategy-robustness-harness: review
   1-15-momentum-parameter-robustness-sweep: review
   1-16-cross-sectional-mean-reversion-strategy: review
@@ -105,6 +105,7 @@ development_status:
   1-21-perp-basis-mn-spread: review
   1-22-simple-strategy-overfit-guard: done
   1-23-simple-strategy-bear-survey: done
+  1-24-pwsd-fidelity-relock: ready-for-dev  # 2026-07-31 created by the 1-13 review decision (doc-now + re-lock story): PWSD literature fidelity + volume proxy under a formal ADR-0045 §D6 namespace re-lock
   epic-1-retrospective: optional
 
   # -- Epic 2: Cockpit & UI (Lumen shell, Live, Lab, charts, quality gates)

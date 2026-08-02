@@ -5,7 +5,10 @@
 //! the [`GbmPathGen`] (GBM smoke-test impl), and [`BlockLengthPolicy`].
 //!
 //! All generators are **pure functions** of their stated inputs:
-//! identical `(universe, n_bars, path_seed)` ⇒ byte-identical output.
+//! identical `(universe, n_bars, path_seed)` ⇒ byte-identical output **on a
+//! given platform/toolchain**. The return-space `f64` math (`ln`/`exp` via
+//! libm) may differ by 1 ulp across platforms; the byte-identical determinism
+//! scope is the Apple-Silicon canonical box (ADR-0051 D5).
 //! Randomness flows exclusively from [`rand_chacha::ChaCha20Rng`] (ADR-0002).
 //! Money is `rust_decimal::Decimal` at `Bar` boundaries (ADR-0003).
 
@@ -20,6 +23,20 @@ use trading_core::{Bar, Symbol};
 
 pub use bootstrap::BlockBootstrapPathGen;
 pub use gbm::GbmPathGen;
+
+// ── Global bounds ─────────────────────────────────────────────────────────────
+
+/// Upper bound on `n_bars` accepted by [`MonteCarloPathGen::generate`].
+///
+/// Why 2,000,000: hourly bars overflow the `time` crate's year-9999 ceiling at
+/// ≈ 69.9M bars from the 2023 epoch (a panic), and unbounded `n_bars` can abort
+/// on allocation long before that. 2M hourly bars ≈ 228 years (epoch 2023 →
+/// year ≈ 2251) — comfortably inside the `time` range while > 200× the largest
+/// legitimate shipped request (one year of hourly bars: 8,784 in the
+/// `monte_carlo` / `param_robustness_sweep` binaries; the integration-test
+/// ensembles use the real-series length, ≤ a few×10⁴). Requests above this
+/// bound are rejected with [`SynthError::TooManyBars`] instead of panicking.
+pub const MAX_N_BARS: usize = 2_000_000;
 
 // ── Core types ────────────────────────────────────────────────────────────────
 
@@ -94,7 +111,11 @@ pub struct GeneratedPath {
 /// - `Fixed(L)` — use `L` as the expected block length for every draw.
 ///   `L = 1` degenerates to i.i.d. resampling (every step restarts a block).
 ///   Useful for tests and the GBM smoke-test where a trivially checkable `L`
-///   is preferred.
+///   is preferred. Valid domain: `1 ≤ L ≤ n_returns` (the source's log-return
+///   count); `Fixed(0)` and `Fixed(L) > n_returns` are rejected by `generate`
+///   with [`SynthError::InvalidFixedBlockLength`] — an `L ≫ n_returns` makes
+///   the restart probability `p = 1/L ≈ 0`, degenerating the "ensemble" into
+///   a circular replay of the source with zero dispersion.
 /// - `Auto` — select `L` automatically via the Politis–White (2004) / Patton–
 ///   Politis–White (2009) spectral-density (PWSD) method (see
 ///   [`block_length::politis_white_block_length`] for the algorithm).
@@ -122,16 +143,36 @@ pub trait MonteCarloPathGen {
     ///
     /// # Parameters
     /// - `universe` — `(symbol, start_price)` pairs; the generator rebuilds
-    ///   the price path starting at `start_price` for each symbol.
-    ///   All source series MUST have equal length (rectangular universe);
-    ///   ragged input is an error.
-    /// - `n_bars` — number of output bars (the synthetic path length).
+    ///   the price path starting at `start_price` for each symbol. For source-
+    ///   backed generators the universe must correspond 1:1 (same arity, same
+    ///   symbol at each index) to the source series the generator was built
+    ///   from. Start prices must be strictly positive.
+    /// - `n_bars` — number of output bars (the synthetic path length),
+    ///   `1 ..= MAX_N_BARS`.
     /// - `path_seed` — the single `u64` that seeds all randomness for this path.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if the source series are ragged (unequal lengths) or
-    /// if any source series is too short to resample (< 2 bars).
+    /// Returns `Err` on request-validation failure. Which conditions apply is
+    /// implementation-specific; the shipped implementations reject:
+    /// - an empty universe ([`SynthError::EmptyUniverse`]), `n_bars == 0`
+    ///   ([`SynthError::ZeroBars`]), or `n_bars > MAX_N_BARS`
+    ///   ([`SynthError::TooManyBars`]) — both generators;
+    /// - a non-positive `start_price`
+    ///   ([`SynthError::NonPositiveStartPrice`]) — both generators;
+    /// - a universe that does not match the generator's source series 1:1
+    ///   ([`SynthError::UniverseSourceArityMismatch`] /
+    ///   [`SynthError::UniverseSymbolMismatch`]) or an out-of-range
+    ///   `BlockLengthPolicy::Fixed` ([`SynthError::InvalidFixedBlockLength`])
+    ///   — [`BlockBootstrapPathGen`];
+    /// - invalid [`gbm::GbmParams`] ([`SynthError::InvalidGbmParams`]) —
+    ///   [`GbmPathGen`].
+    ///
+    /// Ragged (unequal-length) or too-short source series are rejected at
+    /// **construction** ([`BlockBootstrapPathGen::new`]:
+    /// [`SynthError::RaggedUniverse`] / [`SynthError::SeriesTooShort`]);
+    /// `generate` cannot raise them through the public API (it re-checks
+    /// series length defensively).
     fn generate(
         &self,
         universe: &[(Symbol, Decimal)],
@@ -157,9 +198,13 @@ pub enum SynthError {
         expected: usize,
     },
 
-    /// The source series is too short to produce a meaningful bootstrap
-    /// (need ≥ 2 bars to compute at least one log-return).
-    #[error("source series too short: {symbol} has {len} bars (need ≥ 2)")]
+    /// The source series is too short to produce a meaningful bootstrap.
+    ///
+    /// ≥ 3 bars (≥ 2 log-returns) are required: a 2-bar source has a single
+    /// return, so every resampling index is forced to 0 and the "ensemble" is
+    /// seed-independent with zero dispersion — divergence must be structurally
+    /// possible.
+    #[error("source series too short: {symbol} has {len} bars (need ≥ 3 bars / ≥ 2 log-returns)")]
     SeriesTooShort {
         /// Name of the offending symbol.
         symbol: String,
@@ -171,7 +216,101 @@ pub enum SynthError {
     #[error("n_bars must be ≥ 1, got 0")]
     ZeroBars,
 
+    /// `n_bars` exceeds [`MAX_N_BARS`] (guards `time`-crate year-9999
+    /// overflow panics and allocation aborts — see the constant's doc).
+    #[error("n_bars {n_bars} exceeds the maximum of {max} (MAX_N_BARS)")]
+    TooManyBars {
+        /// Requested output bar count.
+        n_bars: usize,
+        /// The enforced upper bound ([`MAX_N_BARS`]).
+        max: usize,
+    },
+
     /// Universe is empty.
     #[error("universe is empty — nothing to generate")]
     EmptyUniverse,
+
+    /// The universe passed to `generate` has a different symbol count than
+    /// the source series the generator was constructed from. The pairing is
+    /// positional — a longer universe would previously fall back to symbol
+    /// 0's returns silently; now it is a loud error.
+    #[error(
+        "universe/source arity mismatch: universe has {universe_len} symbols, \
+         source has {source_len}"
+    )]
+    UniverseSourceArityMismatch {
+        /// Symbol count of the universe passed to `generate`.
+        universe_len: usize,
+        /// Symbol count of the source series the generator holds.
+        /// (Named `source_len`, not `source` — a `source` field would be
+        /// picked up by thiserror as the error-source chain.)
+        source_len: usize,
+    },
+
+    /// The universe symbol at `index` does not match the source symbol at the
+    /// same index. The shared-index bootstrap pairs universe and source
+    /// positionally; a name mismatch means the caller would resample the
+    /// wrong series under the requested symbol's name.
+    #[error(
+        "universe symbol mismatch at index {index}: universe has '{universe_symbol}', \
+         source has '{source_symbol}' (pairing is positional)"
+    )]
+    UniverseSymbolMismatch {
+        /// Position in the universe / source ordering.
+        index: usize,
+        /// Symbol name supplied in the universe.
+        universe_symbol: String,
+        /// Symbol name held in the source series at that index.
+        source_symbol: String,
+    },
+
+    /// A source bar's close price is not strictly positive. (Unreachable
+    /// through `trading_core::Price` today — `Price::new` rejects `d <= 0` —
+    /// but enforced here so the log-return math can never see a zero/negative
+    /// close even if `Bar` construction changes.)
+    #[error("non-positive source close for {symbol} at bar {bar_index}: {close}")]
+    NonPositiveSourcePrice {
+        /// Name of the offending symbol.
+        symbol: String,
+        /// Index of the offending bar within the source series.
+        bar_index: usize,
+        /// The offending close value.
+        close: Decimal,
+    },
+
+    /// A universe `start_price` is not strictly positive. Previously clamped
+    /// silently (bootstrap → 1e-6, GBM → `price_lo`), producing plausible-
+    /// shaped garbage paths; now a loud error.
+    #[error("non-positive start_price for {symbol}: {start_price}")]
+    NonPositiveStartPrice {
+        /// Symbol whose start price is invalid.
+        symbol: String,
+        /// The offending start price.
+        start_price: Decimal,
+    },
+
+    /// `BlockLengthPolicy::Fixed(L)` is out of range for the source series.
+    /// `L = 0` was previously promoted to 1 silently; `L > n_returns` drives
+    /// the restart probability `p = 1/L` toward 0 and degenerates the
+    /// ensemble into a zero-dispersion circular replay of the source.
+    #[error(
+        "invalid fixed block length L={l}: must be in 1..={n_returns} \
+         (the source's log-return count)"
+    )]
+    InvalidFixedBlockLength {
+        /// The requested fixed block length.
+        l: usize,
+        /// Number of log-returns available in the source.
+        n_returns: usize,
+    },
+
+    /// The [`gbm::GbmParams`] are invalid (non-finite fields or inverted /
+    /// non-positive price clamp bounds). Previously `f64::clamp` would panic
+    /// on inverted or NaN bounds and non-finite vol/drift would silently
+    /// flatline the path to `price_lo`.
+    #[error("invalid GbmParams: {reason}")]
+    InvalidGbmParams {
+        /// Human-readable description of the failed validation.
+        reason: String,
+    },
 }
