@@ -39,6 +39,15 @@ pub mod stats;
 /// not a stable public API surface.
 pub mod mc_harness;
 
+/// θ-sweep seam (review 1-15): the θ-grid definitions, sweep-axis enums,
+/// per-cell config injection (`cell_config`), grid-def formatters, the
+/// θ-surface renderer (`render_surface_report`), the family-verdict single
+/// source, and the scenario-identity builder — extracted VERBATIM from
+/// `bin/param_robustness_sweep.rs` so the FP-C3.2 / FP-C3.5 / M1 e2e gates
+/// exercise the REAL production chain. Internal seam (like `mc_harness`),
+/// not a stable public API surface.
+pub mod sweep_harness;
+
 /// OHLCV bar resampler and `Horizon` enum (horizon-retest-robustness M-DEV-2).
 ///
 /// `resample_ohlcv(bars_1h, horizon)` folds 1h bars into coarser (4h/daily)

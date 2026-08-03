@@ -140,8 +140,10 @@ fn synthetic_bars(sym_name: &str, seed: u64, n: usize) -> Vec<Bar> {
 /// Each symbol gets a per-symbol seed derived from the path seed (same pattern as
 /// the GBM path generator in the production bin).
 fn build_merged_bars_2sym(path_seed_j: u64, n_bars: usize) -> Vec<Bar> {
-    let seed_a = path_seed_j;
-    let seed_b = path_seed_j.wrapping_add(0x9E37_79B9);
+    // Review 1-15 L1: per-symbol seeds via the production splitmix idiom —
+    // the old additive scheme collided path j's sym-B with path j+1's sym-A.
+    let seed_a = backtest::mc_harness::derive_gbm_sym_seed(path_seed_j, 0);
+    let seed_b = backtest::mc_harness::derive_gbm_sym_seed(path_seed_j, 1);
 
     let mut bars_a = synthetic_bars("AAUSDT", seed_a, n_bars);
     let mut bars_b = synthetic_bars("BBUSDT", seed_b, n_bars);
@@ -632,5 +634,269 @@ fn d6_2_rejected_two_axis_composition_has_seed_collision() {
         d6_1_g1_j0, d6_1_g0_j1,
         "D6.1 (SAME-paths) must NOT confuse different j values. \
          j=0 seed={d6_1_g1_j0} must not equal j=1 seed={d6_1_g0_j1}."
+    );
+}
+
+// ── Review 1-15 H2/H3/M1: gates through the PRODUCTION seam (sweep_harness) ──
+// These replace the vacuous local-proxy versions (#66 class): every assert
+// below reads output of the real renderer / config wiring / seed fn.
+
+/// Build a small finite DistributionSummary for renderer-under-test fixtures.
+fn tiny_summary(base: f64) -> backtest::stats::DistributionSummary {
+    let metrics: Vec<PathMetrics> = (0..3)
+        .map(|i| {
+            let x = base + f64::from(i) * 0.01;
+            PathMetrics {
+                sharpe: x,
+                sortino: x,
+                calmar: x.abs(),
+                max_drawdown: 0.10,
+                total_return: x / 10.0,
+                final_equity: dec!(100_000) + Decimal::from(i),
+                initial_equity: dec!(100_000),
+            }
+        })
+        .collect();
+    backtest::stats::DistributionSummary::from_path_metrics(&metrics)
+        .expect("tiny fixture summary builds")
+}
+
+fn tiny_cell_result(
+    cell: backtest::sweep_harness::ThetaCell,
+    base: f64,
+    verdict: backtest::bakeoff::robustness::ParamRobustnessVerdict,
+) -> backtest::sweep_harness::CellResult {
+    backtest::sweep_harness::CellResult {
+        cell,
+        summary: tiny_summary(base),
+        verdict,
+        total_trades: 42,
+        total_funding_harvested: Decimal::ZERO,
+        total_time_in_market_bars: 0,
+        total_bars_run: 0,
+        total_liquidations: 0,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_with_grid(
+    grid: &[backtest::sweep_harness::ThetaCell],
+    cell_results: &[backtest::sweep_harness::CellResult],
+) -> String {
+    backtest::sweep_harness::render_surface_report(
+        "2026-08-03T00:00:00Z",
+        1.0,
+        "testhost",
+        1,
+        "deadbeef",
+        "test-revision-sha",
+        "test-scenario",
+        0xC0FFEE,
+        0xC0FFEE,
+        3,
+        "block-bootstrap-real",
+        "stationary",
+        "auto",
+        Some(7),
+        "test-source-sha",
+        grid,
+        cell_results,
+        &tiny_summary(1.5),
+        backtest::sweep_harness::SweepDirection::Momentum,
+        backtest::sweep_harness::SweepScoreSource::VolAdjustedReturn,
+        None,
+        backtest::sweep_harness::SweepSelectionMode::CrossSectionalTopK,
+        backtest::resample::Horizon::OneHour,
+        4,
+        2,
+    )
+}
+
+/// FP-C3.2 (REAL): two renders differing ONLY in grid produce different
+/// bodies, and each body carries its own grid-definition line.
+#[test]
+fn fp_c3_2_real_renderer_grid_sensitivity() {
+    use backtest::sweep_harness::{GridKind, grid_def_string, grid_for_kind};
+    let tier1 = grid_for_kind(GridKind::Tier1);
+    let twocell = grid_for_kind(GridKind::TwoCell);
+
+    let results_t1: Vec<_> = tier1
+        .iter()
+        .map(|c| {
+            tiny_cell_result(
+                *c,
+                -0.02,
+                backtest::bakeoff::robustness::ParamRobustnessVerdict::Fragile,
+            )
+        })
+        .collect();
+    let results_tc: Vec<_> = twocell
+        .iter()
+        .map(|c| {
+            tiny_cell_result(
+                *c,
+                -0.02,
+                backtest::bakeoff::robustness::ParamRobustnessVerdict::Fragile,
+            )
+        })
+        .collect();
+
+    let body_t1 = render_with_grid(tier1, &results_t1);
+    let body_tc = render_with_grid(twocell, &results_tc);
+
+    assert!(
+        body_t1.contains(&grid_def_string(tier1)),
+        "tier1 render must embed its own grid-definition line (K3/D6.3)"
+    );
+    assert!(
+        body_tc.contains(&grid_def_string(twocell)),
+        "twocell render must embed its own grid-definition line"
+    );
+    assert_ne!(
+        body_t1, body_tc,
+        "different grids must produce different rendered bodies (FP-C3.2, real renderer)"
+    );
+}
+
+/// FP-C3.5 (REAL): the family line is ALWAYS one of the two §R2.3 values, and
+/// every non-FRAGILE row carries the C5 deflation flag — asserted on real
+/// renderer output, not a local re-implementation.
+#[test]
+fn fp_c3_5_real_renderer_family_line_and_c5_flags() {
+    use backtest::bakeoff::robustness::ParamRobustnessVerdict as V;
+    use backtest::sweep_harness::{GridKind, family_verdict_line, grid_for_kind};
+    let grid = grid_for_kind(GridKind::TwoCell);
+
+    // Mixed surface: one FRAGILE + one MARGINAL.
+    let mixed = vec![
+        tiny_cell_result(grid[0], -0.05, V::Fragile),
+        tiny_cell_result(grid[1], 0.30, V::Marginal),
+    ];
+    let body_mixed = render_with_grid(grid, &mixed);
+    assert!(
+        body_mixed.contains(family_verdict_line(true)),
+        "mixed surface must render the non-uniform family line (§R2.3)"
+    );
+    assert!(
+        body_mixed.contains("C5 DEFLATION REQUIRED"),
+        "the non-FRAGILE row must carry the C5 deflation flag"
+    );
+
+    // All-FRAGILE surface.
+    let uniform = vec![
+        tiny_cell_result(grid[0], -0.05, V::Fragile),
+        tiny_cell_result(grid[1], -0.04, V::Fragile),
+    ];
+    let body_uniform = render_with_grid(grid, &uniform);
+    assert!(
+        body_uniform.contains("FAMILY-UNIFORM-FRAGILE"),
+        "uniform surface must render FAMILY-UNIFORM-FRAGILE"
+    );
+    assert!(
+        !body_uniform.contains("C5 DEFLATION REQUIRED"),
+        "an all-FRAGILE surface must carry no C5 flags"
+    );
+    assert_eq!(
+        body_uniform.contains(family_verdict_line(false)),
+        true,
+        "uniform family line must come from the single production source"
+    );
+}
+
+/// M1 (REAL): the θ-injection wiring — two different grid cells produce
+/// configs that differ on BOTH varied axes, via the production cell_config.
+#[test]
+fn theta_injection_real_cell_config_differs_both_axes() {
+    use backtest::sweep_harness::{GridKind, cell_config, grid_for_kind};
+    let grid = grid_for_kind(GridKind::Tier1);
+    // Pick two cells that differ in BOTH lookback and k_long per the locked grid.
+    let (a, b) = {
+        let mut pair = None;
+        'outer: for x in grid {
+            for y in grid {
+                if x.lookback_minutes != y.lookback_minutes && x.k_long != y.k_long {
+                    pair = Some((x, y));
+                    break 'outer;
+                }
+            }
+        }
+        pair.expect("tier1 grid must contain cells differing on both axes")
+    };
+    let base = make_config(24, 3, dec!(0.05));
+    let cfg_a = cell_config(
+        &base,
+        a,
+        backtest::sweep_harness::SweepDirection::Momentum,
+        backtest::sweep_harness::SweepScoreSource::VolAdjustedReturn,
+        backtest::sweep_harness::SweepSelectionMode::CrossSectionalTopK,
+    );
+    let cfg_b = cell_config(
+        &base,
+        b,
+        backtest::sweep_harness::SweepDirection::Momentum,
+        backtest::sweep_harness::SweepScoreSource::VolAdjustedReturn,
+        backtest::sweep_harness::SweepSelectionMode::CrossSectionalTopK,
+    );
+    assert_eq!(cfg_a.lookback_minutes, a.lookback_minutes);
+    assert_eq!(cfg_b.lookback_minutes, b.lookback_minutes);
+    assert_ne!(
+        cfg_a.lookback_minutes, cfg_b.lookback_minutes,
+        "injection must carry the lookback axis"
+    );
+    assert_ne!(
+        cfg_a.k_long, cfg_b.k_long,
+        "injection must carry the k_long axis"
+    );
+}
+
+/// Seeding invariant via the PRODUCTION fn only (no local formula copy).
+#[test]
+fn seeding_invariant_via_production_fn() {
+    let m = 0xC0FFEE_u64;
+    assert_eq!(
+        backtest::sweep_harness::derive_path_seed(m, 7),
+        backtest::mc_harness::derive_path_seed(m, 7),
+        "sweep_harness must delegate to the one production D1 formula"
+    );
+    assert_ne!(
+        backtest::sweep_harness::derive_path_seed(m, 0),
+        backtest::sweep_harness::derive_path_seed(m, 1),
+        "distinct j must produce distinct path seeds"
+    );
+}
+
+/// M2: the anchored tier-1 scenario identity is byte-unchanged; the twocell
+/// probe grid gets a distinct, discriminated identity.
+#[test]
+fn tier1_scenario_name_byte_unchanged_twocell_distinct() {
+    use backtest::sweep_harness::{GridKind, build_scenario_name};
+    let tier1 = build_scenario_name(
+        GridKind::Tier1,
+        backtest::sweep_harness::SweepDirection::Momentum,
+        backtest::sweep_harness::SweepScoreSource::VolAdjustedReturn,
+        backtest::sweep_harness::SweepSelectionMode::CrossSectionalTopK,
+        backtest::resample::Horizon::OneHour,
+        2023,
+        "block-bootstrap-real",
+        4,
+    );
+    assert_eq!(
+        tier1, "v1-momentum-theta-surface-2023-block-bootstrap-real-fy",
+        "the anchored tier-1 identity must remain byte-identical (anchor #86)"
+    );
+    let twocell = build_scenario_name(
+        GridKind::TwoCell,
+        backtest::sweep_harness::SweepDirection::Momentum,
+        backtest::sweep_harness::SweepScoreSource::VolAdjustedReturn,
+        backtest::sweep_harness::SweepSelectionMode::CrossSectionalTopK,
+        backtest::resample::Horizon::OneHour,
+        2023,
+        "block-bootstrap-real",
+        4,
+    );
+    assert_ne!(twocell, tier1);
+    assert!(
+        twocell.ends_with("-grid-twocell"),
+        "probe grids must carry the discriminator (M2): {twocell}"
     );
 }
