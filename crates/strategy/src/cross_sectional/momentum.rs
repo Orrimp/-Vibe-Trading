@@ -872,6 +872,24 @@ impl Strategy for MomentumStrategy {
 
 // ── Config hash ───────────────────────────────────────────────────────────────
 
+/// SHA-256 over the canonicalized config string — the strategy's K3 identity.
+///
+/// # Hash-domain continuity note (review 1-16)
+///
+/// The canonical string's DOMAIN has migrated as axes were added: story 1-16
+/// (D-MR.0) appended `;direction=…` for ALL configs — including every pre-1-16
+/// momentum config — and M-DEV-5/M-DEV-1 later appended
+/// `;score_source=…`, `;selection_mode=…`, and `;entry_threshold=…`. A config
+/// hashed before an append therefore has a DIFFERENT hash today than when it
+/// shipped, even though its behavior is pinned (anchors byte-identical):
+/// identity migrated, behavior did not. Consumers of this hash — the strategy
+/// lifecycle events (`audit::journal::strategy_event` `old_hash`/`new_hash`,
+/// written via `crates/agent/src/watcher.rs` from `MomentumStrategy::hash`) and
+/// the `core::strategy_events` broadcast/read-side views — must NOT compare a
+/// stored historical hash against a freshly computed one across such a domain
+/// migration. Forward continuity from 1-16 onward is pinned by
+/// `config_hash_momentum_default_pinned` below; extending the canonical string
+/// again is a deliberate migration — update that pin and this note together.
 fn compute_config_hash(cfg: &CrossSectionalMomentumConfig) -> [u8; 32] {
     // Canonicalized: sort universe alphabetically, then hash the joined fields.
     let mut universe_sorted = cfg.universe.clone();
@@ -1098,9 +1116,13 @@ size = "equal_weight"
     /// M-DEV-2: With a 3-symbol universe and K=1, Momentum picks the top winner
     /// and Reversion picks the worst loser — the two selected-symbol sets are disjoint.
     ///
-    /// BTCUSDT trends strongly up (+5% per bar): highest momentum score.
+    /// BTCUSDT trends strongly up (+5.0 absolute price step per bar from 100):
+    /// highest momentum score.
     /// ETHUSDT is flat.
-    /// BNBUSDT trends strongly down (−5% per bar): lowest momentum score / highest MR score.
+    /// BNBUSDT trends strongly down (−1.5 absolute price step per bar from 30):
+    /// lowest momentum score / highest MR score.
+    /// (Review 1-16 truthfix: the fixture applies LINEAR absolute per-bar steps,
+    /// not constant-percentage moves — the old comment claimed ±5%/bar.)
     ///
     /// Momentum K=1 → BTCUSDT.
     /// Reversion K=1 → BNBUSDT (negated score floats it to the top).
@@ -1992,6 +2014,57 @@ selection_mode = "long_short"
         assert_ne!(
             strat_basis.hash, strat_residual.hash,
             "M-DEV-4: BasisReversal and BasisFundingResidual must hash differently (K3)"
+        );
+    }
+
+    /// Review 1-16: config-hash forward-continuity pin.
+    ///
+    /// Pins the EXACT hash of the canonical momentum default — the field values
+    /// of the one checked-in production TOML
+    /// (`config/strategies/top10_momentum_h1.toml`) — as computed TODAY (post
+    /// the 1-16 `;direction=` + M-DEV-5/M-DEV-1 domain appends). The hash flows
+    /// into strategy lifecycle events and the agent watcher's reload identity,
+    /// so silently extending `compute_config_hash`'s canonical string re-keys
+    /// every stored identity (the 1-16 migration did exactly that for all
+    /// pre-1-16 configs, without a note). If this test fails, you are migrating
+    /// the hash domain: do it deliberately — update this pin AND the continuity
+    /// note at `compute_config_hash` in the same change.
+    #[test]
+    fn config_hash_momentum_default_pinned() {
+        use crate::cross_sectional::config::CrossSectionalMomentumConfig;
+
+        // The canonical momentum default (mirrors config/strategies/top10_momentum_h1.toml).
+        let cfg = CrossSectionalMomentumConfig::from_str(
+            r#"
+id     = "top10_momentum_h1"
+kind   = "cross_sectional_momentum"
+stage  = "research"
+universe = [
+    "ADAUSDT", "AVAXUSDT", "BNBUSDT", "BTCUSDT", "DOGEUSDT",
+    "DOTUSDT", "ETHUSDT", "LINKUSDT", "SOLUSDT", "XRPUSDT",
+]
+lookback_minutes      = 60
+rebalance_minutes     = 60
+k_long                = 3
+k_short               = 0
+exposure_cap          = "0.50"
+drift_rebalance_threshold = "0.10"
+vol_floor             = "0.000001"
+size                  = "equal_weight"
+"#,
+        )
+        .expect("canonical momentum default must parse");
+        let strat = MomentumStrategy::from_config(cfg, SmolStr::new("test"));
+
+        let hex: String = strat.hash.iter().fold(String::new(), |mut s, b| {
+            use std::fmt::Write as _;
+            let _ = write!(s, "{b:02x}");
+            s
+        });
+        assert_eq!(
+            hex, "52ba625567f18c9b4d3eeb2f104520bcd9ba4c4709eb04da56983a41d098ac2f",
+            "review 1-16 continuity pin: the canonical momentum-default config hash moved — \
+             the hash domain has been migrated (see compute_config_hash's continuity note)"
         );
     }
 }

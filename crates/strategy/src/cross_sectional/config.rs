@@ -144,6 +144,19 @@ pub enum CrossSectionalLoadError {
     UnsupportedSizing,
     #[error("[unsupported_kind] kind must be 'cross_sectional_momentum'")]
     UnsupportedKind,
+    #[error(
+        "[inert_direction] direction = \"reversion\" is behaviorally INERT with \
+         score_source = {score_source:?} / selection_mode = {selection_mode:?}: the D-MR.1 score \
+         inversion applies ONLY to the vol_adjusted_return score under a cross-sectional \
+         selection mode (cross_sectional_top_k / long_short); this combination would run \
+         identity-direction (momentum-equivalent) behavior while still hashing as a distinct \
+         \"reversion\" config — two K3 identities for one behavior. Drop `direction` or switch \
+         to the inverting arm."
+    )]
+    InertDirection {
+        score_source: ScoreSource,
+        selection_mode: SelectionMode,
+    },
     #[error("[toml_parse] TOML parse error: {0}")]
     TomlParse(String),
     #[error("[io_read] could not read file: {0}")]
@@ -164,6 +177,7 @@ impl CrossSectionalLoadError {
             Self::InvalidDriftThreshold => "invalid_drift_threshold",
             Self::UnsupportedSizing => "unsupported_sizing",
             Self::UnsupportedKind => "unsupported_kind",
+            Self::InertDirection { .. } => "inert_direction",
             Self::TomlParse(_) => "toml_parse",
             Self::IoRead(_) => "io_read",
         }
@@ -220,7 +234,15 @@ pub struct CrossSectionalMomentumConfig {
 }
 
 /// Raw deserializable form before validation.
+///
+/// Review 1-16: `deny_unknown_fields` — a typo'd KEY (e.g. `direcion = "reversion"`)
+/// previously deserialized cleanly (the real field fell back to its serde default)
+/// and silently ran Momentum: unknown VALUES failed loudly, unknown KEYS did not.
+/// No checked-in config carries unknown keys — the one production TOML of this
+/// kind, `config/strategies/top10_momentum_h1.toml`, uses only declared fields
+/// (as do all `crates/strategy/tests/fixtures/bad_v1_strategies/*.toml` fixtures).
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawConfig {
     pub id: SmolStr,
     pub kind: SmolStr,
@@ -350,6 +372,25 @@ impl CrossSectionalMomentumConfig {
         // sizing
         if raw.size.as_str() != "equal_weight" {
             return Err(CrossSectionalLoadError::UnsupportedSizing);
+        }
+
+        // Review 1-16: `direction = "reversion"` requires the inverting arm.
+        // The D-MR.1 negation lives ONLY on the VolAdjustedReturn score path
+        // under a cross-sectional selection mode (`on_bar` inverts at the score
+        // cache boundary for CrossSectionalTopK/LongShort; carry/basis/residual
+        // signs live inside their score fns and ignore `direction`;
+        // TimeSeriesLongFlat ignores `direction` entirely). Any other
+        // combination is behaviorally INERT yet hash-distinguishing (two K3
+        // identities for one behavior — e.g. "carry reversion" silently runs
+        // identity-direction carry) — reject loudly instead.
+        if raw.direction == Direction::Reversion
+            && (raw.score_source != ScoreSource::VolAdjustedReturn
+                || raw.selection_mode == SelectionMode::TimeSeriesLongFlat)
+        {
+            return Err(CrossSectionalLoadError::InertDirection {
+                score_source: raw.score_source,
+                selection_mode: raw.selection_mode,
+            });
         }
 
         Ok(Self {
@@ -965,5 +1006,131 @@ selection_mode = "long_short"
             "CrossSectionalTopK (k_short=0) and LongShort (k_short=3) configs MUST produce \
              different hashes (K3 — the config hash distinguishes strategy variants)"
         );
+    }
+
+    // ── Review 1-16: deny_unknown_fields + inert-direction cross-field checks ──
+
+    /// Review 1-16: a typo'd KEY must fail loudly instead of silently running
+    /// the field's default. `direcion` (sic) previously deserialized cleanly
+    /// and ran Momentum.
+    #[test]
+    fn review_1_16_unknown_key_rejected() {
+        let toml = r#"
+id    = "test_typo"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+direcion = "reversion"
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "toml_parse",
+            "an unknown key must be rejected at parse (deny_unknown_fields), got: {err}"
+        );
+        assert!(
+            err.to_string().contains("direcion"),
+            "the parse error must name the offending key: {err}"
+        );
+    }
+
+    /// Review 1-16: the one checked-in production TOML of this kind
+    /// (`config/strategies/top10_momentum_h1.toml`) still parses under
+    /// `deny_unknown_fields` — its field set is mirrored by VALID_TOML plus the
+    /// two commented production-only fields it does not carry.
+    #[test]
+    fn review_1_16_production_toml_still_parses() {
+        // Resolve the workspace root from this crate's manifest dir (crates/strategy).
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../config/strategies/top10_momentum_h1.toml");
+        let cfg = CrossSectionalMomentumConfig::from_file(&path)
+            .expect("checked-in production TOML must keep parsing under deny_unknown_fields");
+        assert_eq!(cfg.id.as_str(), "top10_momentum_h1");
+        assert_eq!(cfg.universe.len(), 10);
+        assert_eq!(cfg.direction, Direction::Momentum);
+    }
+
+    /// Review 1-16 (REQUIRED): reversion + funding_carry is behaviorally inert
+    /// (identity-direction carry) — must be rejected with `inert_direction`.
+    #[test]
+    fn review_1_16_reversion_plus_funding_carry_rejected() {
+        let toml = r#"
+id    = "test_inert"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+direction = "reversion"
+score_source = "funding_carry"
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "inert_direction",
+            "reversion + funding_carry must be rejected as inert, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("FundingCarry"),
+            "the error must name the inert combination: {err}"
+        );
+    }
+
+    /// Review 1-16: reversion + time_series_long_flat is inert too (`direction`
+    /// is ignored entirely on the TS path) — must be rejected.
+    #[test]
+    fn review_1_16_reversion_plus_time_series_rejected() {
+        let toml = r#"
+id    = "test_inert_ts"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+direction = "reversion"
+selection_mode = "time_series_long_flat"
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "inert_direction",
+            "reversion + time_series_long_flat must be rejected as inert, got: {err}"
+        );
+    }
+
+    /// Review 1-16 boundary: the INVERTING arm still parses — reversion +
+    /// vol_adjusted_return + cross_sectional_top_k is the MR family (anchored
+    /// #87 lane) and must remain accepted.
+    #[test]
+    fn review_1_16_reversion_inverting_arm_still_accepted() {
+        let toml = r#"
+id    = "test_mr_ok"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+direction = "reversion"
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml)
+            .expect("the MR inverting arm must remain accepted");
+        assert_eq!(cfg.direction, Direction::Reversion);
+        assert_eq!(cfg.score_source, ScoreSource::VolAdjustedReturn);
+        assert_eq!(cfg.selection_mode, SelectionMode::CrossSectionalTopK);
+    }
+
+    /// Review 1-16 boundary: reversion under LongShort × vol_adjusted_return is
+    /// NOT inert (the negation applies on that path and swaps the books) — it
+    /// stays accepted; only the inert combinations are rejected.
+    #[test]
+    fn review_1_16_reversion_long_short_not_rejected() {
+        let toml = r#"
+id    = "test_ls_rev"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+direction = "reversion"
+selection_mode = "long_short"
+k_long = 1
+k_short = 1
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml)
+            .expect("reversion under LongShort inverts (not inert) and must stay accepted");
+        assert_eq!(cfg.direction, Direction::Reversion);
+        assert_eq!(cfg.selection_mode, SelectionMode::LongShort);
     }
 }

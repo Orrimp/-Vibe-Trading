@@ -280,6 +280,69 @@ impl GridKind {
             | Self::MnTier1 => "",
         }
     }
+
+    /// The strategy-family direction each grid was designed for (review 1-16).
+    ///
+    /// Read off each grid's LOCKED doc block:
+    /// - [`Self::MrTier1`] is the ONLY grid designed for `--direction reversion`
+    ///   (§ D-MR.2-LOCKED: "identical to C3 except direction=Reversion").
+    /// - [`Self::Tier1`] is the momentum grid (§ D-C3.2-LOCKED).
+    /// - The carry grids ([`Self::CarryTier1`]/[`Self::Carry4h`]/[`Self::CarryDaily`],
+    ///   § D-CARRY.2-LOCKED / § D-HR.4-LOCKED), the TS grids
+    ///   ([`Self::TsTier1`]/[`Self::Ts4h`]/[`Self::TsDaily`], § D-TSM.3-LOCKED /
+    ///   § D-HR.4-LOCKED), the basis grid ([`Self::BasisTier1`], § D-BR.2-LOCKED)
+    ///   and the MN grid ([`Self::MnTier1`], § D-MN.8-LOCKED) all hold
+    ///   `direction=momentum` (identity — their signs live in the score fns).
+    /// - [`Self::TwoCell`] is the FP-C3.2-only momentum probe grid.
+    #[must_use]
+    pub fn required_direction(self) -> SweepDirection {
+        match self {
+            Self::MrTier1 => SweepDirection::Reversion,
+            Self::Tier1
+            | Self::CarryTier1
+            | Self::TsTier1
+            | Self::TwoCell
+            | Self::Ts4h
+            | Self::TsDaily
+            | Self::Carry4h
+            | Self::CarryDaily
+            | Self::BasisTier1
+            | Self::MnTier1 => SweepDirection::Momentum,
+        }
+    }
+}
+
+/// Validate the `--direction` × `--grid` pairing (review 1-16).
+///
+/// An unvalidated cross-product can FORGE the OTHER family's anchored scenario
+/// NAME: `--direction momentum --grid mr-tier1` emits momentum's anchored
+/// identity (anchor #86's name) over the MR grid, and `--direction reversion
+/// --grid tier1` emits MR's anchored identity (anchor #87's name) over momentum
+/// cells under a false LOCKED header — either way the forged report shadows the
+/// real one as "latest matching" and turns the anchors gate falsely RED via a
+/// single misinvocation. Every checked-in config/invocation uses a correctly
+/// paired direction×grid, so bailing on mismatches rejects ONLY misinvocations
+/// — correct pairs are byte-unchanged.
+///
+/// # Errors
+///
+/// On a mismatch, returns a message naming BOTH the requested direction and the
+/// grid's required direction.
+pub fn validate_direction_grid_pairing(
+    grid: GridKind,
+    direction: SweepDirection,
+) -> Result<(), String> {
+    let required = grid.required_direction();
+    if direction == required {
+        Ok(())
+    } else {
+        Err(format!(
+            "--direction {direction:?} does not pair with --grid {grid:?}: that grid is the \
+             {required:?}-family grid and requires --direction {required:?}. A mismatched pair \
+             would forge the other family's anchored scenario name over the wrong cells \
+             (anchors-gate false RED) — refusing to run."
+        ))
+    }
 }
 
 /// Build the grid slice for a given kind.
@@ -339,6 +402,12 @@ pub const TWO_CELL_GRID: &[ThetaCell] = &[
 /// `rebalance_minutes=60`, `exposure_cap=0.50`, `vol_floor=0.000001`,
 /// `size=equal_weight`, `k_short=0`, 10-symbol universe, year=2023, N=200,
 /// `ensemble_seed=0xC0FFEE`, `fill_seed=0xC0FFEE`, generator=block-bootstrap-real.
+///
+/// Units gloss (review 1-16): the "1w"/"1mo" role glosses in this table (and the
+/// momentum Tier-1 table it mirrors) read `lookback_minutes` as BARS under the
+/// native 1-bar=1-hour ladder (168 bars ≈ 1 week, 720 bars ≈ 1 month), while the
+/// rebalance cadence is real wall-minutes — this doc-level assumption is stated
+/// here only and never enters the hashed `grid_def_string`.
 ///
 /// | g | lookback | k_long | drift | role / turnover |
 /// |---|----------|--------|-------|-----------------|

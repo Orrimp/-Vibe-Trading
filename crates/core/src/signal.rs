@@ -105,7 +105,14 @@ impl SignalEvidence {
     /// Create evidence for a momentum signal (v1).
     ///
     /// `action` is a human-readable tag: `"open"`, `"close"`, `"resize"`.
-    /// `score` is the vol-adjusted momentum score.
+    /// `score` is the strategy's cached selection score — for the
+    /// cross-sectional family this is the vol-adjusted momentum score AS
+    /// CACHED, which under `Direction::Reversion` (D-MR.1, review 1-16) is the
+    /// SIGN-FLIPPED (negated) momentum score. Neither this evidence nor the
+    /// enclosing [`Signal`] carries a direction marker, so the stored value is
+    /// not interpretable as "the momentum score" on its own: consumers must
+    /// consult the emitting strategy's config (or its config hash) to know
+    /// whether the sign was flipped.
     #[must_use]
     pub fn momentum(action: &str, score: Decimal) -> Self {
         Self {

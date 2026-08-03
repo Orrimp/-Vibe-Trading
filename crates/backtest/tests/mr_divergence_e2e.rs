@@ -6,11 +6,15 @@
 //! (K < universe size) → equity curves diverge by ≥ 1 bp (ε).
 //! Proves the inversion is not a no-op — different symbols are selected.
 //!
-//! ## R-MR.1(b) — degenerate inversion-no-op RED-on-revert (MANDATORY falsifier)
+//! ## R-MR.1(b) — same-config determinism / noise-floor control
 //!
-//! Force the inversion to a no-op by running Reversion with Direction::Momentum
-//! (same as `Reversion => score` drop-negation): the divergence check now FAILS
-//! (Δ < ε). This proves the gate DETECTS an inversion no-op.
+//! Runs Momentum-vs-Momentum (two IDENTICAL configs over the identical path)
+//! and asserts ZERO divergence. Review 1-16 truthfix: this is a CONTROL, not a
+//! detector — it establishes that the harness has no noise floor (identical
+//! configs ⇒ identical curves), so the divergence observed in (a) is
+//! attributable to the direction flip alone. The dropped-negation DETECTOR is
+//! (a): if the D-MR.1 negation were dropped, Reversion would degenerate to
+//! Momentum and (a)'s ≥ 1 bp divergence assert would go RED.
 //!
 //! BOTH (a) and (b) ship per the spec (D-MR.5-GATE).
 //!
@@ -19,10 +23,13 @@
 //! Same grid + same seeds twice → byte-identical formatted summaries.
 //! Catches any unordered fold in the θ-loop or reducer.
 //!
-//! ## FP-MR.5 — anti-cherry-pick (reuse C3 FP-C3.5 pattern)
+//! ## FP-MR.5 — anti-cherry-pick through the REAL renderer (review 1-16)
 //!
-//! Family summary ∈ {FAMILY-UNIFORM-FRAGILE, FAMILY-HAS-NON-FRAGILE-CELLS};
-//! non-FRAGILE cells carry `→ C5 DEFLATION REQUIRED`; never "best θ ROBUST".
+//! The Reversion-arm render over the LOCKED MR grid carries the MR family
+//! labeling and the family line from the production single source
+//! (`family_verdict_line`). The generic family-line/C5-flag invariants are
+//! gated by `tests/param_sweep_e2e.rs::fp_c3_5_real_renderer_family_line_and_c5_flags`
+//! on the SAME shared renderer.
 //!
 //! ## Pattern references
 //!
@@ -211,22 +218,24 @@ fn r_mr_1a_momentum_vs_reversion_diverge() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// R-MR.1(b) — degenerate inversion-no-op RED-on-revert (MANDATORY falsifier)
+// R-MR.1(b) — same-config determinism / noise-floor control
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// R-MR.1(b) RED-ON-REVERT: Force the inversion to a no-op.
+/// R-MR.1(b) CONTROL: same config + same path ⇒ byte-identical curves.
 ///
-/// We simulate the "dropped negation" bug by running BOTH strategies with
-/// `Direction::Momentum`. This is equivalent to the `Reversion => score`
-/// (no-negation) code path — both strategies select identical top-K symbols
-/// → identical equity curves → divergence check FAILS.
+/// Review 1-16 truthfix: this test runs Momentum-vs-Momentum — two IDENTICAL
+/// configs over the identical path — and asserts ZERO divergence. That makes
+/// it a same-config determinism / noise-floor control, NOT a dropped-negation
+/// detector: it cannot see whether the D-MR.1 negation exists, because no
+/// Reversion config is involved. What it establishes is that the harness has
+/// no noise floor — identical configs produce identical curves — so the ≥ 1 bp
+/// divergence observed in R-MR.1(a) is attributable to the direction flip
+/// alone.
 ///
-/// This proves the divergence gate in R-MR.1(a) IS meaningful: it goes RED
-/// when the inversion is absent. The falsifier is the MANDATORY proof that
-/// the gate detects the no-op.
-///
-/// Note: This test asserts the degenerate case produces ZERO divergence
-/// (curves are byte-identical because same config + same path).
+/// The dropped-negation DETECTOR is (a): if the `Reversion => -score` negation
+/// were dropped (the `Reversion => score` bug), Reversion would degenerate to
+/// Momentum, both runs in (a) would produce identical curves, and (a)'s ≥ 1 bp
+/// divergence assert would go RED.
 #[test]
 fn r_mr_1b_degenerate_noop_produces_identical_curves() {
     const N_BARS: usize = 50;
@@ -234,7 +243,9 @@ fn r_mr_1b_degenerate_noop_produces_identical_curves() {
 
     let bars = build_3sym_trending_bars(N_BARS);
 
-    // Both configs use Momentum — simulates the dropped-negation bug.
+    // Both configs use Momentum — the same-config control pair (review 1-16
+    // truthfix: this pair contains NO Reversion config, so it exercises the
+    // noise floor, not the negation).
     let cfg_mom_1 = make_config_mr(Direction::Momentum);
     let cfg_mom_2 = make_config_mr(Direction::Momentum); // same config, not Reversion
 
@@ -247,15 +258,16 @@ fn r_mr_1b_degenerate_noop_produces_identical_curves() {
     // With same config + same path, curves MUST be byte-identical.
     assert!(
         delta < epsilon,
-        "R-MR.1(b) falsification: degenerate (both Momentum) curves MUST be identical. \
+        "R-MR.1(b) control: same-config (both Momentum) curves MUST be identical. \
          Got |Δfinal_equity| = {delta} (must be < {epsilon}). \
          Same config + same path = byte-identical results.\n\
          eq_1 = {eq_1}, eq_2 = {eq_2}\n\n\
-         PROOF: the R-MR.1(a) gate correctly detects the inversion no-op:\n\
-         - When Reversion ≠ Momentum (real case): R-MR.1(a) PASSES (curves diverge).\n\
-         - When both run Momentum (no-op): R-MR.1(a) would FAIL (curves identical).\n\
-         This falsifier GOES RED if the dropped-negation bug is present, proving\n\
-         the gate in R-MR.1(a) is not itself decorative."
+         What this control establishes (review 1-16 truthfix):\n\
+         - The harness has NO noise floor: identical configs ⇒ identical curves,\n\
+           so R-MR.1(a)'s ≥1bp divergence is attributable to the direction flip alone.\n\
+         - This test CANNOT detect a dropped negation (no Reversion config runs here);\n\
+           the dropped-negation detector is R-MR.1(a): with the negation dropped,\n\
+           Reversion degenerates to Momentum and (a)'s divergence assert goes RED."
     );
 }
 
@@ -380,91 +392,151 @@ fn fp_mr_3_two_run_byte_identity() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FP-MR.5 — anti-cherry-pick (reuse C3 FP-C3.5 pattern)
+// FP-MR.5 — anti-cherry-pick through the REAL renderer
 // ─────────────────────────────────────────────────────────────────────────────
+// Review 1-16: the two fp_mr_5_* tests that lived here
+// (`fp_mr_5_family_summary_always_valid_value`,
+// `fp_mr_5_non_fragile_mr_cell_carries_c5_flag`) were DECORATIVE — the #66
+// vacuous-test class: local re-implementations of the family-line / C5-flag
+// literals that never invoked the renderer, so they could not go RED on a
+// renderer regression. The REAL coverage is the shared production-seam gate in
+// `crates/backtest/tests/param_sweep_e2e.rs`
+// (`fp_c3_5_real_renderer_family_line_and_c5_flags`), which asserts the § R2.3
+// family line + C5 flags on actual `render_surface_report` output — the MR arm
+// rides the SAME renderer and the SAME `family_verdict_line` single source.
+// The MR-SPECIFIC renderer surface (family labeling + single-source family
+// line under direction=Reversion over the LOCKED MR grid) is asserted below.
 
-/// FP-MR.5: The family-summary line is always one of the two § R2.3 values.
-///
-/// MR inherits the same anti-cherry-pick renderer as momentum C3 (FP-C3.5).
-/// This test verifies the invariant holds for MR: the family verdict is
-/// ALWAYS one of the two pre-registered values, never a "best θ is ROBUST" claim.
-#[test]
-fn fp_mr_5_family_summary_always_valid_value() {
-    // Scenario 1: all MR cells FRAGILE → FAMILY-UNIFORM-FRAGILE.
-    let all_fragile = true;
-    let any_non_fragile_1 = !all_fragile;
-    let family_line_1 = if any_non_fragile_1 {
-        "FAMILY-HAS-NON-FRAGILE-CELLS"
-    } else {
-        "FAMILY-UNIFORM-FRAGILE"
-    };
+/// Build a small finite DistributionSummary for renderer-under-test fixtures
+/// (mirrors `param_sweep_e2e.rs::tiny_summary`).
+fn tiny_summary(base: f64) -> DistributionSummary {
+    let metrics: Vec<PathMetrics> = (0..3)
+        .map(|i| {
+            let x = base + f64::from(i) * 0.01;
+            PathMetrics {
+                sharpe: x,
+                sortino: x,
+                calmar: x.abs(),
+                max_drawdown: 0.10,
+                total_return: x / 10.0,
+                final_equity: dec!(100_000) + Decimal::from(i),
+                initial_equity: dec!(100_000),
+            }
+        })
+        .collect();
+    DistributionSummary::from_path_metrics(&metrics).expect("tiny fixture summary builds")
+}
 
-    assert_eq!(
-        family_line_1, "FAMILY-UNIFORM-FRAGILE",
-        "FP-MR.5: when all MR cells are FRAGILE, family line must be FAMILY-UNIFORM-FRAGILE"
-    );
-
-    // Scenario 2: some MR cell is MARGINAL → FAMILY-HAS-NON-FRAGILE-CELLS.
-    let any_non_fragile_2 = true;
-    let family_line_2 = if any_non_fragile_2 {
-        "FAMILY-HAS-NON-FRAGILE-CELLS"
-    } else {
-        "FAMILY-UNIFORM-FRAGILE"
-    };
-
-    assert_eq!(
-        family_line_2, "FAMILY-HAS-NON-FRAGILE-CELLS",
-        "FP-MR.5: when any MR cell is non-FRAGILE, family line must be FAMILY-HAS-NON-FRAGILE-CELLS"
-    );
-
-    // Verify neither line contains a "best θ is ROBUST" claim.
-    for line in &[family_line_1, family_line_2] {
-        assert!(
-            !line.contains("best θ"),
-            "FP-MR.5: MR family line must NEVER contain 'best θ' claim (anti-cherry-pick). Got: {line}"
-        );
-        assert!(
-            !line.contains("is ROBUST"),
-            "FP-MR.5: MR family line must NEVER contain 'is ROBUST' claim (anti-cherry-pick). Got: {line}"
-        );
-        assert!(
-            *line == "FAMILY-UNIFORM-FRAGILE" || *line == "FAMILY-HAS-NON-FRAGILE-CELLS",
-            "FP-MR.5: MR family line must be one of the two § R2.3 values. Got: {line}"
-        );
+/// Mirror of `param_sweep_e2e.rs::tiny_cell_result` for the MR renderer gate.
+fn tiny_cell_result(
+    cell: backtest::sweep_harness::ThetaCell,
+    base: f64,
+    verdict: backtest::bakeoff::robustness::ParamRobustnessVerdict,
+) -> backtest::sweep_harness::CellResult {
+    backtest::sweep_harness::CellResult {
+        cell,
+        summary: tiny_summary(base),
+        verdict,
+        total_trades: 42,
+        total_funding_harvested: Decimal::ZERO,
+        total_time_in_market_bars: 0,
+        total_bars_run: 0,
+        total_liquidations: 0,
     }
 }
 
-/// FP-MR.5 (additional): every non-FRAGILE MR cell carries the `→ C5` flag.
-///
-/// The MR renderer reuses the C3 anti-cherry-pick logic verbatim.
-/// This test verifies the flag assignment is correct for MR cells.
+/// Render a θ-surface through the REAL production renderer with
+/// `direction = Reversion` (mirrors `param_sweep_e2e.rs::render_with_grid`,
+/// Reversion arm).
+fn render_reversion_with_grid(
+    grid: &[backtest::sweep_harness::ThetaCell],
+    cell_results: &[backtest::sweep_harness::CellResult],
+) -> String {
+    backtest::sweep_harness::render_surface_report(
+        "2026-08-03T00:00:00Z",
+        1.0,
+        "testhost",
+        1,
+        "deadbeef",
+        "test-revision-sha",
+        "test-mr-scenario",
+        0xC0FFEE,
+        0xC0FFEE,
+        3,
+        "block-bootstrap-real",
+        "stationary",
+        "auto",
+        Some(7),
+        "test-source-sha",
+        grid,
+        cell_results,
+        &tiny_summary(1.5),
+        backtest::sweep_harness::SweepDirection::Reversion,
+        backtest::sweep_harness::SweepScoreSource::VolAdjustedReturn,
+        None,
+        backtest::sweep_harness::SweepSelectionMode::CrossSectionalTopK,
+        backtest::resample::Horizon::OneHour,
+        4,
+        2,
+    )
+}
+
+/// FP-MR.5 (REAL renderer, review 1-16): a Reversion-arm render over the LOCKED
+/// MR Tier-1 grid carries the MR family labeling AND the family line from the
+/// production single source (`family_verdict_line`) — asserted on actual
+/// `render_surface_report` output, not a local re-implementation.
 #[test]
-fn fp_mr_5_non_fragile_mr_cell_carries_c5_flag() {
-    let is_non_fragile_cell = |verdict: &str| verdict == "MARGINAL" || verdict == "ROBUST";
+fn fp_mr_5_reversion_renderer_carries_mr_family_labeling() {
+    use backtest::bakeoff::robustness::ParamRobustnessVerdict as V;
+    use backtest::sweep_harness::{GridKind, family_verdict_line, grid_for_kind};
 
-    let cell_verdicts = ["FRAGILE", "MARGINAL", "FRAGILE", "ROBUST"];
+    let grid = grid_for_kind(GridKind::MrTier1);
+    // All-FRAGILE MR surface (the anchored #87 shape).
+    let results: Vec<_> = grid
+        .iter()
+        .map(|c| tiny_cell_result(*c, -0.02, V::Fragile))
+        .collect();
 
-    for verdict in &cell_verdicts {
-        let c5_flag = if is_non_fragile_cell(verdict) {
-            "→ C5 DEFLATION REQUIRED"
-        } else {
-            ""
-        };
+    let body = render_reversion_with_grid(grid, &results);
 
-        match *verdict {
-            "FRAGILE" => assert_eq!(
-                c5_flag, "",
-                "FP-MR.5: FRAGILE MR cell must NOT carry C5 flag"
-            ),
-            "MARGINAL" => assert_eq!(
-                c5_flag, "→ C5 DEFLATION REQUIRED",
-                "FP-MR.5: MARGINAL MR cell MUST carry C5 flag"
-            ),
-            "ROBUST" => assert_eq!(
-                c5_flag, "→ C5 DEFLATION REQUIRED",
-                "FP-MR.5: ROBUST MR cell MUST carry C5 flag"
-            ),
-            _ => unreachable!(),
-        }
-    }
+    // MR family labeling: slug, heading label, MR grid header, held_constant direction.
+    assert!(
+        body.contains("slug: cross-sectional-mean-reversion-strategy"),
+        "Reversion render must carry the MR slug"
+    );
+    assert!(
+        body.contains("# Mean-Reversion (MR) θ-Surface"),
+        "Reversion render must carry the MR family heading"
+    );
+    assert!(
+        body.contains("## MR θ-grid definition (6-cell, 2026-05-31 LOCKED § D-MR.2-LOCKED"),
+        "Reversion render must carry the LOCKED MR grid header"
+    );
+    assert!(
+        body.contains("direction=reversion"),
+        "Reversion render must carry direction=reversion in the held_constant line"
+    );
+    // R-MR.3 turnover legibility: the MR-only trades column is rendered.
+    assert!(
+        body.contains("Trades = total trade count across all N paths"),
+        "Reversion render must carry the MR trades column gloss (R-MR.3)"
+    );
+    // The family line comes from the SINGLE production source (review 1-15 L6).
+    assert!(
+        body.contains(family_verdict_line(false)),
+        "all-FRAGILE MR surface must render the family line from the single source"
+    );
+    assert!(
+        body.contains("Conclusion: v1 cross-sectional mean-reversion is structurally fragile"),
+        "all-FRAGILE MR surface must carry the MR conclusion text"
+    );
+    // Negative control: NOT the momentum family labeling.
+    assert!(
+        !body.contains("slug: momentum-parameter-robustness-sweep"),
+        "Reversion render must NOT carry the momentum slug"
+    );
+    assert!(
+        !body.contains(family_verdict_line(true)),
+        "all-FRAGILE surface must NOT carry the non-uniform family line"
+    );
 }

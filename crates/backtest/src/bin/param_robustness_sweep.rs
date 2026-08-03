@@ -105,6 +105,7 @@ pub use backtest::sweep_harness::{
     CellResult, GridKind, SweepDirection, SweepScoreSource, SweepSelectionMode, TIER1_GRID,
     ThetaCell, build_scenario_name, cell_config, derive_path_seed, family_any_non_fragile,
     family_verdict_line, grid_def_string, grid_for_kind, render_surface_report,
+    validate_direction_grid_pairing,
 };
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -1336,6 +1337,57 @@ fn load_mn_path_gen(
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// ── Effective out-dir resolution ──────────────────────────────────────────────
+
+/// Resolve the effective report output directory (review 1-16: extracted from
+/// `main` verbatim so the family→dir routing is unit-testable, + the MR arm).
+///
+/// For carry: if the user did not override `--out-dir`, default to the carry reports dir.
+/// For TS: if the user did not override `--out-dir`, default to the TS reports dir.
+/// For horizon retest (horizon != 1h): default to the horizon-retest-robustness reports dir.
+/// For basis: default to the perp-basis-signal-robustness reports dir (D-BR.9).
+/// For MR (review 1-16): default to the cross-sectional-mean-reversion-strategy
+/// reports dir — MR was the only family lane with NO arm here, so a default MR
+/// rerun wrote into the FROZEN momentum reports dir, where a stale rerun could
+/// shadow the anchored reports as "latest matching" from the wrong directory.
+/// We detect "was the default changed?" by checking if it's still the momentum
+/// default; an explicit `--out-dir` always wins.
+fn resolve_effective_out_dir(
+    out_dir: &std::path::Path,
+    is_horizon_run: bool,
+    selection_mode: SweepSelectionMode,
+    score_source: SweepScoreSource,
+    direction: SweepDirection,
+) -> PathBuf {
+    let momentum_default_out_dir =
+        PathBuf::from("evidence/v1/momentum-parameter-robustness-sweep/reports/");
+    if out_dir != momentum_default_out_dir {
+        // Explicit --out-dir override: honored verbatim for every family.
+        return out_dir.to_path_buf();
+    }
+    if is_horizon_run {
+        // M-DEV-3: horizon runs default to the horizon-retest-robustness reports dir (D-HR.8).
+        PathBuf::from("evidence/v1/horizon-retest-robustness/reports/")
+    } else if selection_mode.is_ts() {
+        PathBuf::from("evidence/v1/time-series-momentum-robustness/reports/")
+    } else if score_source == SweepScoreSource::Carry {
+        PathBuf::from("evidence/v1/carry-strategy/reports/")
+    } else if score_source == SweepScoreSource::BasisReversal {
+        // M-DEV-5 (D-BR.9): basis-reversal reports live in the dedicated namespace dir.
+        PathBuf::from("evidence/v1/perp-basis-signal-robustness/reports/")
+    } else if score_source.is_mn() {
+        // M-DEV-5 (D-MN.8): MN-spread reports live in the MN namespace dir (§ D6.10).
+        PathBuf::from("evidence/v1/perp-basis-mn-spread/reports/")
+    } else if direction == SweepDirection::Reversion {
+        // Review 1-16: MR reports live in the MR evidence namespace (where the
+        // anchored v1-mr-theta-surface report already lives) — never in the
+        // frozen momentum dir.
+        PathBuf::from("evidence/v1/cross-sectional-mean-reversion-strategy/reports/")
+    } else {
+        out_dir.to_path_buf()
+    }
+}
+
 fn main() -> Result<()> {
     let sweep_pool = rayon::ThreadPoolBuilder::new()
         .build()
@@ -1345,6 +1397,16 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
     let start = std::time::Instant::now();
+
+    // Review 1-16: bail EARLY on a mismatched --direction × --grid pairing.
+    // A mismatch forges the OTHER family's anchored scenario name over the
+    // wrong grid (e.g. momentum + mr-tier1 emits anchor #86's name over the MR
+    // cells; reversion + tier1 emits anchor #87's name over momentum cells) —
+    // the forged report then shadows the real one as "latest matching" and the
+    // anchors gate goes falsely RED. Correct pairs are byte-unchanged.
+    if let Err(msg) = validate_direction_grid_pairing(args.grid, args.direction) {
+        anyhow::bail!("{msg}");
+    }
 
     info!(
         generator = args.generator.label(),
@@ -1827,34 +1889,14 @@ fn main() -> Result<()> {
         args.slippage_bps,
     );
 
-    // ── Resolve effective out_dir ─────────────────────────────────────────────
-    // For carry: if the user did not override --out-dir, default to the carry reports dir.
-    // For TS: if the user did not override --out-dir, default to the TS reports dir.
-    // For horizon retest (horizon != 1h): default to the horizon-retest-robustness reports dir.
-    // For basis: default to the perp-basis-signal-robustness reports dir (D-BR.9).
-    // We detect "was the default changed?" by checking if it's still the momentum default.
-    let momentum_default_out_dir =
-        PathBuf::from("evidence/v1/momentum-parameter-robustness-sweep/reports/");
-    let effective_out_dir = if is_horizon_run && args.out_dir == momentum_default_out_dir {
-        // M-DEV-3: horizon runs default to the horizon-retest-robustness reports dir (D-HR.8).
-        PathBuf::from("evidence/v1/horizon-retest-robustness/reports/")
-    } else if args.selection_mode.is_ts() && args.out_dir == momentum_default_out_dir {
-        PathBuf::from("evidence/v1/time-series-momentum-robustness/reports/")
-    } else if args.score_source == SweepScoreSource::Carry
-        && args.out_dir == momentum_default_out_dir
-    {
-        PathBuf::from("evidence/v1/carry-strategy/reports/")
-    } else if args.score_source == SweepScoreSource::BasisReversal
-        && args.out_dir == momentum_default_out_dir
-    {
-        // M-DEV-5 (D-BR.9): basis-reversal reports live in the dedicated namespace dir.
-        PathBuf::from("evidence/v1/perp-basis-signal-robustness/reports/")
-    } else if args.score_source.is_mn() && args.out_dir == momentum_default_out_dir {
-        // M-DEV-5 (D-MN.8): MN-spread reports live in the MN namespace dir (§ D6.10).
-        PathBuf::from("evidence/v1/perp-basis-mn-spread/reports/")
-    } else {
-        args.out_dir.clone()
-    };
+    // ── Resolve effective out_dir (review 1-16: extracted into a unit-tested fn) ─
+    let effective_out_dir = resolve_effective_out_dir(
+        &args.out_dir,
+        is_horizon_run,
+        args.selection_mode,
+        args.score_source,
+        args.direction,
+    );
 
     // ── Write report ──────────────────────────────────────────────────────────
     std::fs::create_dir_all(&effective_out_dir)
@@ -1892,14 +1934,12 @@ fn main() -> Result<()> {
     };
 
     // ── Family verdict summary ────────────────────────────────────────────────
-    let any_non_fragile = cell_results
-        .iter()
-        .any(|cr| cr.verdict != ParamRobustnessVerdict::Fragile);
-    let family_verdict = if any_non_fragile {
-        "FAMILY-HAS-NON-FRAGILE-CELLS"
-    } else {
-        "FAMILY-UNIFORM-FRAGILE"
-    };
+    // Review 1-15 L6 / review 1-16: consume the SAME single source the renderer
+    // hashes (`family_any_non_fragile` → `family_verdict_line`) instead of
+    // duplicating the two literals here — the console line and the hashed
+    // family line structurally cannot desync. Output is byte-identical.
+    let any_non_fragile = family_any_non_fragile(&cell_results);
+    let family_verdict = family_verdict_line(any_non_fragile);
 
     info!(
         scenario = %scenario_name,
@@ -2193,5 +2233,195 @@ mod tests {
             seed_g0, seed_g5,
             "SAME-paths: seed must be identical for all g at the same j"
         );
+    }
+
+    // ── Review 1-16: --direction × --grid pairing validation ─────────────────
+
+    /// All 11 grid kinds, for exhaustive pairing coverage.
+    const ALL_GRIDS: [GridKind; 11] = [
+        GridKind::Tier1,
+        GridKind::MrTier1,
+        GridKind::CarryTier1,
+        GridKind::TsTier1,
+        GridKind::TwoCell,
+        GridKind::Ts4h,
+        GridKind::TsDaily,
+        GridKind::Carry4h,
+        GridKind::CarryDaily,
+        GridKind::BasisTier1,
+        GridKind::MnTier1,
+    ];
+
+    /// Review 1-16: every correctly-paired direction×grid passes validation —
+    /// no checked-in invocation is rejected (anchored lanes byte-unchanged).
+    #[test]
+    fn direction_grid_pairing_every_valid_pair_passes() {
+        for grid in ALL_GRIDS {
+            let required = grid.required_direction();
+            assert!(
+                validate_direction_grid_pairing(grid, required).is_ok(),
+                "valid pair must pass: {grid:?} × {required:?}"
+            );
+        }
+        // Spot-check the two anchored price-family lanes explicitly.
+        assert!(validate_direction_grid_pairing(GridKind::Tier1, SweepDirection::Momentum).is_ok());
+        assert!(
+            validate_direction_grid_pairing(GridKind::MrTier1, SweepDirection::Reversion).is_ok()
+        );
+        // MrTier1 is the ONLY grid that requires Reversion.
+        for grid in ALL_GRIDS {
+            let expected = if grid == GridKind::MrTier1 {
+                SweepDirection::Reversion
+            } else {
+                SweepDirection::Momentum
+            };
+            assert_eq!(
+                grid.required_direction(),
+                expected,
+                "required direction mapping drifted for {grid:?}"
+            );
+        }
+    }
+
+    /// Review 1-16: the two name-forging mismatches bail with a message naming
+    /// both the requested direction and the grid's required direction.
+    #[test]
+    fn direction_grid_pairing_mismatches_bail() {
+        // momentum + mr-tier1 would emit anchor #86's momentum name over the MR grid.
+        let err = validate_direction_grid_pairing(GridKind::MrTier1, SweepDirection::Momentum)
+            .expect_err("momentum × mr-tier1 must bail");
+        assert!(
+            err.contains("Momentum") && err.contains("MrTier1") && err.contains("Reversion"),
+            "bail message must name both directions and the grid: {err}"
+        );
+
+        // reversion + tier1 would emit anchor #87's MR name over momentum cells.
+        let err = validate_direction_grid_pairing(GridKind::Tier1, SweepDirection::Reversion)
+            .expect_err("reversion × tier1 must bail");
+        assert!(
+            err.contains("Reversion") && err.contains("Tier1") && err.contains("Momentum"),
+            "bail message must name both directions and the grid: {err}"
+        );
+    }
+
+    // ── Review 1-16: effective out-dir routing ────────────────────────────────
+
+    const MOMENTUM_DEFAULT_OUT_DIR: &str =
+        "evidence/v1/momentum-parameter-robustness-sweep/reports/";
+
+    fn default_dir() -> PathBuf {
+        PathBuf::from(MOMENTUM_DEFAULT_OUT_DIR)
+    }
+
+    /// Review 1-16: an MR run (direction=Reversion) with the default --out-dir
+    /// routes to the MR evidence namespace — never the frozen momentum dir.
+    #[test]
+    fn mr_default_out_dir_routes_to_mr_reports_dir() {
+        let dir = resolve_effective_out_dir(
+            &default_dir(),
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepDirection::Reversion,
+        );
+        assert_eq!(
+            dir,
+            PathBuf::from("evidence/v1/cross-sectional-mean-reversion-strategy/reports/"),
+            "MR default runs must write into the MR evidence namespace"
+        );
+    }
+
+    /// The momentum lane keeps its default dir (passthrough — byte-unchanged),
+    /// and every other family lane keeps its pre-1-16 routing.
+    #[test]
+    fn existing_family_out_dir_routing_unchanged() {
+        // Momentum default: passthrough.
+        let mom = resolve_effective_out_dir(
+            &default_dir(),
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(mom, default_dir());
+        // Horizon retest.
+        let hz = resolve_effective_out_dir(
+            &default_dir(),
+            true,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(
+            hz,
+            PathBuf::from("evidence/v1/horizon-retest-robustness/reports/")
+        );
+        // TS.
+        let ts = resolve_effective_out_dir(
+            &default_dir(),
+            false,
+            SweepSelectionMode::TimeSeriesLongFlat,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(
+            ts,
+            PathBuf::from("evidence/v1/time-series-momentum-robustness/reports/")
+        );
+        // Carry.
+        let carry = resolve_effective_out_dir(
+            &default_dir(),
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::Carry,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(carry, PathBuf::from("evidence/v1/carry-strategy/reports/"));
+        // Basis.
+        let basis = resolve_effective_out_dir(
+            &default_dir(),
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::BasisReversal,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(
+            basis,
+            PathBuf::from("evidence/v1/perp-basis-signal-robustness/reports/")
+        );
+        // MN.
+        let mn = resolve_effective_out_dir(
+            &default_dir(),
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::MnBasisSpread,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(
+            mn,
+            PathBuf::from("evidence/v1/perp-basis-mn-spread/reports/")
+        );
+    }
+
+    /// An explicit --out-dir override wins for EVERY family, including MR.
+    #[test]
+    fn explicit_out_dir_override_always_wins() {
+        let custom = PathBuf::from("/tmp/custom-sweep-out/");
+        let mr = resolve_effective_out_dir(
+            &custom,
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepDirection::Reversion,
+        );
+        assert_eq!(mr, custom, "explicit --out-dir must win for MR");
+        let carry = resolve_effective_out_dir(
+            &custom,
+            false,
+            SweepSelectionMode::CrossSectionalTopK,
+            SweepScoreSource::Carry,
+            SweepDirection::Momentum,
+        );
+        assert_eq!(carry, custom, "explicit --out-dir must win for carry");
     }
 }
