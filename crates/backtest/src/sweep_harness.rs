@@ -310,6 +310,69 @@ impl GridKind {
             | Self::MnTier1 => SweepDirection::Momentum,
         }
     }
+
+    /// The CLI-level selection mode each grid was designed for (review 1-17).
+    ///
+    /// Read off each grid's LOCKED doc block + the anchored reports' recorded
+    /// `held_constant` rows:
+    /// - The TS grids ([`Self::TsTier1`]/[`Self::Ts4h`]/[`Self::TsDaily`],
+    ///   § D-TSM.3-LOCKED / § D-HR.4-LOCKED) run
+    ///   `selection_mode=time_series_long_flat` — anchors #90/#91 and the TS
+    ///   horizon surfaces (#92+) record exactly that in their hashed
+    ///   `held_constant` row.
+    /// - EVERY other grid runs the default `cross-sectional-top-k` at the CLI
+    ///   level. The MN grid's `LongShort` selection is applied per-cell INSIDE
+    ///   [`cell_config`] from the MN score source (D-MN.5) — the anchored MN
+    ///   invocations pass the default `--selection-mode`, so that is what this
+    ///   guard requires.
+    #[must_use]
+    pub fn required_selection_mode(self) -> SweepSelectionMode {
+        match self {
+            Self::TsTier1 | Self::Ts4h | Self::TsDaily => SweepSelectionMode::TimeSeriesLongFlat,
+            Self::Tier1
+            | Self::MrTier1
+            | Self::CarryTier1
+            | Self::TwoCell
+            | Self::Carry4h
+            | Self::CarryDaily
+            | Self::BasisTier1
+            | Self::MnTier1 => SweepSelectionMode::CrossSectionalTopK,
+        }
+    }
+
+    /// The score-source family (families) each grid was designed for (review 1-17).
+    ///
+    /// Read off each grid's LOCKED doc block + the anchored reports' recorded
+    /// `held_constant` rows:
+    /// - Price grids ([`Self::Tier1`]/[`Self::TwoCell`]/[`Self::MrTier1`]) and
+    ///   the TS grids ([`Self::TsTier1`]/[`Self::Ts4h`]/[`Self::TsDaily`]) run
+    ///   `score_source=vol_adjusted_return` (the TS surfaces #90/#91 hash that
+    ///   exact `held_constant` field; the TS arm computes its own trend score
+    ///   and must NOT load a carry/basis sidecar under the TS name).
+    /// - Carry grids ([`Self::CarryTier1`]/[`Self::Carry4h`]/[`Self::CarryDaily`],
+    ///   § D-CARRY.2-LOCKED / § D-HR.4-LOCKED) run `score_source=funding_carry`
+    ///   (CLI `carry`).
+    /// - [`Self::BasisTier1`] (§ D-BR.2-LOCKED) runs `score_source=basis_reversal`.
+    /// - [`Self::MnTier1`] (§ D-MN.8-LOCKED) runs one of the three MN arms
+    ///   (`mn-basis-spread` / `mn-funding-spread` / `mn-basis-funding-residual`).
+    #[must_use]
+    pub fn allowed_score_sources(self) -> &'static [SweepScoreSource] {
+        match self {
+            Self::Tier1
+            | Self::TwoCell
+            | Self::MrTier1
+            | Self::TsTier1
+            | Self::Ts4h
+            | Self::TsDaily => &[SweepScoreSource::VolAdjustedReturn],
+            Self::CarryTier1 | Self::Carry4h | Self::CarryDaily => &[SweepScoreSource::Carry],
+            Self::BasisTier1 => &[SweepScoreSource::BasisReversal],
+            Self::MnTier1 => &[
+                SweepScoreSource::MnBasisSpread,
+                SweepScoreSource::MnFundingSpread,
+                SweepScoreSource::MnBasisFundingResidual,
+            ],
+        }
+    }
 }
 
 /// Validate the `--direction` × `--grid` pairing (review 1-16).
@@ -341,6 +404,56 @@ pub fn validate_direction_grid_pairing(
              {required:?}-family grid and requires --direction {required:?}. A mismatched pair \
              would forge the other family's anchored scenario name over the wrong cells \
              (anchors-gate false RED) — refusing to run."
+        ))
+    }
+}
+
+/// Validate the FULL `--direction` × `--selection-mode` × `--score-source` ×
+/// `--grid` tuple (review 1-17 — extends the 1-16 direction-only guard).
+///
+/// The 1-16 guard closed the direction axis but left the selection_mode and
+/// score_source axes open:
+/// - `--grid ts-tier1` + the default `cross-sectional-top-k` passes the
+///   direction check yet forges anchor #86's momentum identity over the TS
+///   grid (and the converse, `--grid tier1 --selection-mode
+///   time-series-long-flat`, forges the TS anchors' names #90/#91 over
+///   momentum cells);
+/// - `--grid ts-tier1 --score-source carry` loads the funding sidecar and runs
+///   behaviorally-different equity under the TS anchored name.
+///
+/// Every checked-in invocation pairs all three axes exactly as its grid's
+/// LOCKED doc block and anchored `held_constant` row record (see
+/// [`GridKind::required_direction`], [`GridKind::required_selection_mode`],
+/// [`GridKind::allowed_score_sources`]), so bailing on mismatches rejects ONLY
+/// misinvocations — correct tuples are byte-unchanged.
+///
+/// # Errors
+///
+/// On any mismatch, returns a message naming ALL THREE requested axes
+/// (direction, selection mode, score source) and the grid's required tuple.
+pub fn validate_grid_axis_pairing(
+    grid: GridKind,
+    direction: SweepDirection,
+    selection_mode: SweepSelectionMode,
+    score_source: SweepScoreSource,
+) -> Result<(), String> {
+    let required_direction = grid.required_direction();
+    let required_mode = grid.required_selection_mode();
+    let allowed_sources = grid.allowed_score_sources();
+    let direction_ok = direction == required_direction;
+    let mode_ok = selection_mode == required_mode;
+    let source_ok = allowed_sources.contains(&score_source);
+    if direction_ok && mode_ok && source_ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "requested axis tuple (--direction {direction:?}, --selection-mode \
+             {selection_mode:?}, --score-source {score_source:?}) does not pair with --grid \
+             {grid:?}: that grid requires (direction={required_direction:?}, \
+             selection_mode={required_mode:?}, score_source ∈ {allowed_sources:?}). A \
+             mismatched tuple would run one family's behavior under another family's anchored \
+             scenario name — the forged report shadows the real one as \"latest matching\" and \
+             turns the anchors gate falsely RED — refusing to run."
         ))
     }
 }

@@ -6,30 +6,47 @@
 //!
 //! ## F-TSM.1 — Baseline-equity-divergence e2e (headline anti-no-op)
 //!
-//! TS-momentum equity diverges ≥ 1 bp from passive buy-and-hold on a path
-//! that contains a sustained downtrend the TS rule exits and BH sits through.
-//! RED-on-revert: an always-long (no-op) TS rule produces Δ≈0 vs BH → fails.
+//! TS-momentum equity diverges ≥ 1 bp from the LIKE-SIZED always-long control
+//! (review 1-17: the old primary compared against full-capital buy-and-hold, so
+//! an always-long no-op passed on the sizing gap alone — the gate is now
+//! against a control with the identical `run_path` 10%-of-equity sizing, so a
+//! no-op TS rule produces Δ≈0 and FAILS). BH kept as a secondary info assert.
 //!
 //! ## F-TSM.2 — Signal-non-no-op
 //!
 //! Force the trend signal degenerate (entry_threshold below every score →
-//! always-long) → equity collapses to BH case (Δ < ε). Proves the long/flat
-//! DECISION (not a sizing artifact) produces the divergence.
+//! always-long) → equity collapses to the like-sized always-long case with an
+//! honest fee-free expectation of EXACTLY zero (identical signal streams →
+//! identical fills at zero fee/slippage; tolerance is a 0.1 bp slack, review
+//! 1-17 — was a ~500× loose 5% band). Proves the long/flat DECISION (not a
+//! sizing artifact) produces the divergence.
 //!
-//! ## F-TSM.3 — No-look-ahead
+//! ## F-TSM.3 — No-look-ahead (prefix-invariance form, review 1-17)
 //!
-//! Shifting the price series one bar into the future changes the equity →
-//! the trailing window is causal (bar t uses only data at-or-before t).
+//! Run the full series, truncate the last K bars, re-run: every pre-truncation
+//! equity point (= every rebalance decision) must be IDENTICAL. A strategy
+//! whose bar-t decision reads any bar > t changes its prefix when the future is
+//! removed → RED. (The old form fed two different series and asserted they
+//! differ — it could not fail on an actual look-ahead.)
 //!
 //! ## F-TSM.4 — Goes-flat (TS-specific, the must-actually-exit gate)
 //!
 //! On a series with a clear sustained downtrend, the strategy EXITS to FLAT
-//! (zero position) on ≥ 1 bar. RED-on-revert: always-long rule fails.
+//! on ≥ 1 POST-WARMUP bar: headline asserts post-warmup time-in-market strictly
+//! below the post-warmup total (review 1-17 — warmup bars excluded from BOTH
+//! sides via the degenerate always-long control, whose tim IS the post-warmup
+//! total; the old `tim < total_bars` form was warmup-satisfiable).
 //!
-//! ## F-TSM.5 — Two-run byte-identity of the TS surface body-SHA
+//! ## F-TSM.5 — Two-run byte-identity of the TS surface body (review 1-17)
 //!
-//! Same seed → identical formatted DistributionSummary. Catches any
-//! unordered fold in the per-asset score loop or selector (D-TSM.6).
+//! Drive a REAL small-N seeded TS sweep (production seams: `derive_path_seed`
+//! per path, seeded ChaCha20 synthetic bars, `run_path` per cell,
+//! `DistributionSummary` reduction, `classify_verdict`,
+//! `render_surface_report`) twice with the same master seed and assert the two
+//! RENDERED BODIES are byte-identical; a different master seed must change the
+//! body (proves the seed parameter is USED — the pre-1-17 helper ignored it).
+//! Catches any unordered fold in the per-asset score loop, selector, reducer,
+//! or renderer (D-TSM.6).
 //!
 //! ## Pattern references
 //!
@@ -232,43 +249,63 @@ fn run_buyhold(bars: &[Bar]) -> Decimal {
 // F-TSM.1 — Baseline-equity-divergence e2e (CLAUDE.md non-negotiable)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// F-TSM.1 PASS: TS-momentum equity diverges ≥ 1 bp from passive BH.
+/// F-TSM.1 PASS: TS-momentum equity diverges ≥ 1 bp from the LIKE-SIZED
+/// always-long control (review 1-17).
 ///
-/// Universe: AAAUSD with uptrend (+1%/bar × 10 bars) then sustained downtrend
-/// (−2%/bar × 20 bars). TS rule (lookback=5, threshold=0.00) goes long during
-/// uptrend, exits to FLAT when trend flips → avoids downtrend losses.
-/// Buy-and-hold sits through the full downtrend.
+/// Universe: AAAUSD with uptrend (+1%/bar × 15 bars) then sustained downtrend
+/// (−2%/bar × 25 bars). TS rule (lookback=5, threshold=0.00) goes long during
+/// the uptrend and exits to FLAT when the trend flips → avoids downtrend
+/// losses. The like-sized control (CrossSectionalTopK over the same 1-symbol
+/// universe, identical exposure_cap and `run_path` 10%-of-equity sizing) sits
+/// long through the downtrend.
 ///
-/// Construction guarantees divergence: the downtrend is large enough (20×−2%)
-/// that the TS exit avoids significant capital loss.
-///
-/// **RED-on-revert:** replacing TS with always-long (CrossSectionalTopK, K=10)
-/// collapses the divergence to ≈0 (no exit → tracks BH). This proves the
-/// divergence is driven by the long/flat exit mechanism, not a sizing artifact.
+/// **Why the like-sized control is the primary gate:** the old primary compared
+/// against FULL-CAPITAL buy-and-hold, so an always-long no-op TS still passed
+/// via the 10%-sizing gap alone. Against the like-sized control, a no-op TS
+/// (always-long) produces the SAME fills → Δ≈0 → this test FAILS (RED-on-revert
+/// demonstrated by `f_tsm_1_red_on_revert_always_long_tracks_bh`).
 #[test]
 fn f_tsm_1_baseline_divergence() {
     const N_UP: usize = 15; // uptrend bars (warmup + several long bars)
-    const N_DOWN: usize = 25; // sustained downtrend — TS exits; BH suffers
+    const N_DOWN: usize = 25; // sustained downtrend — TS exits; always-long suffers
 
     let bars = build_up_then_down_bars(N_UP, N_DOWN);
 
     let result_ts = run_to_result(make_ts_config(dec!(0.00)), bars.clone());
-    let bh_equity = run_buyhold(&bars);
+    let result_always_long = run_to_result(make_always_long_config(), bars.clone());
 
     let ts_equity = result_ts.final_equity;
-    let delta = ts_equity - bh_equity; // should be positive (TS avoided downtrend)
+    let control_equity = result_always_long.final_equity;
+    // Positive when the TS exit avoided downtrend loss the control sat through.
+    let delta = ts_equity - control_equity;
 
-    // We assert absolute divergence ≥ 1 bp of initial capital (100_000 × 0.0001 = 10).
-    // TS avoids the downtrend; BH does not — the delta should be substantially > 0.
+    // PRIMARY GATE: ≥ 1 bp of initial capital (100_000 × 0.0001 = 10) vs the
+    // LIKE-SIZED control — a no-op (always-long) TS produces delta ≈ 0 → FAILS.
     const EPSILON_1BP: Decimal = dec!(10); // 1 bp of initial 100_000
 
     assert!(
         delta.abs() > EPSILON_1BP,
-        "F-TSM.1 DIVERGENCE VIOLATION: TS equity ({ts_equity}) must diverge from BH equity \
-         ({bh_equity}) by ≥ 1 bp ({EPSILON_1BP}). Actual |delta| = {}. \
-         If delta ≈ 0, the TS long/flat exit is not triggering on the downtrend — \
+        "F-TSM.1 DIVERGENCE VIOLATION: TS equity ({ts_equity}) must diverge from the \
+         LIKE-SIZED always-long control ({control_equity}) by ≥ 1 bp ({EPSILON_1BP}). \
+         Actual |delta| = {}. If delta ≈ 0, the TS long/flat exit is a no-op (always-long) — \
          check SelectionMode::TimeSeriesLongFlat + score_trailing_log_return wiring.",
         delta.abs()
+    );
+    assert!(
+        delta > Decimal::ZERO,
+        "F-TSM.1 DIRECTION: on an up-then-down path the TS exit must BEAT the like-sized \
+         always-long control (ts={ts_equity}, control={control_equity}) — a negative delta \
+         means the exit fired on the wrong side."
+    );
+
+    // SECONDARY (info only, not the anti-no-op gate): TS also diverges from
+    // full-capital BH — kept for continuity with the original headline framing.
+    let bh_equity = run_buyhold(&bars);
+    assert!(
+        (ts_equity - bh_equity).abs() > EPSILON_1BP,
+        "F-TSM.1 secondary: TS ({ts_equity}) should also diverge from full-capital BH \
+         ({bh_equity}) on this path (info assert — the primary gate above is the \
+         like-sized control)."
     );
 }
 
@@ -339,14 +376,22 @@ fn f_tsm_2_signal_non_no_op() {
     let delta_degen_vs_always_long =
         (result_degenerate.final_equity - result_always_long.final_equity).abs();
 
-    // Both are always-long → very close results (small delta from config differences).
-    // Use a generous 5% of initial capital as tolerance.
-    let tolerance = dec!(5_000); // 5% of 100_000
+    // Honest fee-free expectation (review 1-17 — was a ~500× loose 5% band):
+    // both configs share lookback=5 (same warmup bar), rebalance every bar, the
+    // same 1-symbol universe, and `run_path`'s fixed 10%-of-equity sizing. The
+    // degenerate TS selects the symbol whenever score > −999999 (i.e. always
+    // once warmed); TopK selects the single warmed symbol regardless of score.
+    // Identical membership on every rebalance bar → identical signal stream →
+    // identical fills at zero fee/slippage → the expected delta is EXACTLY 0.
+    // Allow a 0.1 bp slack (1 unit on 100_000) purely as defensive headroom.
+    let tolerance = dec!(1); // 0.1 bp of 100_000 (expectation: exactly 0)
     assert!(
         delta_degen_vs_always_long < tolerance,
-        "F-TSM.2 NON-NO-OP: degenerate TS (threshold=−∞, always-long) should track \
-         always-long (CrossSectionalTopK) closely. delta={delta_degen_vs_always_long}. \
-         If they differ substantially, the degenerate threshold is not triggering always-long behavior."
+        "F-TSM.2 NON-NO-OP: degenerate TS (threshold=−∞, always-long) must track the \
+         like-sized always-long (CrossSectionalTopK) EXACTLY at zero fees (expected delta 0, \
+         slack 0.1 bp). delta={delta_degen_vs_always_long}. \
+         If they differ, the degenerate threshold is not triggering always-long behavior \
+         or the two selection paths no longer share sizing."
     );
 
     // Normal TS must diverge significantly from degenerate TS (the exit makes the difference).
@@ -364,78 +409,86 @@ fn f_tsm_2_signal_non_no_op() {
 // F-TSM.3 — No-look-ahead
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// F-TSM.3: Shifting the price series one bar into the future changes the equity.
+/// F-TSM.3: Prefix-invariance — truncating FUTURE bars must not change any
+/// PAST decision (review 1-17 rebuild).
 ///
-/// If bar t used data from bar t+1 (look-ahead), the future-shifted series would
-/// produce a DIFFERENT result from the causal series. We confirm they differ → the
-/// window is causal.
+/// Run the strategy on the full series, then on the same series with the last
+/// `K_TRUNC` bars removed, and assert the entire pre-truncation equity curve is
+/// Decimal-EXACT identical. Equity after bar t is a faithful decision probe: any
+/// changed rebalance decision changes fills → cash/positions → equity.
 ///
-/// **RED-on-revert:** a strategy that always uses the last bar close (no ring buffer
-/// lookback) would produce the same result regardless of the shift → the test
-/// would FAIL, catching the look-ahead bug.
+/// **Why this is the non-vacuous form:** a causal strategy (bar-t decision reads
+/// only bars ≤ t) is prefix-invariant BY CONSTRUCTION; a look-ahead strategy
+/// (bar-t decision reads any bar > t) sees different "future" data once the tail
+/// is truncated and changes at least one pre-truncation decision → the prefix
+/// differs → RED. The pre-1-17 form fed two DIFFERENT series and asserted the
+/// results differ — which holds for causal and look-ahead strategies alike, so
+/// it could never fail on an actual look-ahead.
 #[test]
-fn f_tsm_3_no_look_ahead() {
-    // We need a series where bar t and bar t+1 have noticeably different prices,
-    // so a 1-bar future shift changes the score at bar t.
-    // Use alternating prices: large up/down oscillation with net positive trend.
-    const N_BARS: usize = 30;
+fn f_tsm_3_no_look_ahead_prefix_invariance() {
+    // Up-then-down with the trend flip INSIDE the kept prefix so real decisions
+    // (entry ~bar 5, exit ~bar 18) happen before the truncation point (bar 32).
+    const N_UP: usize = 15;
+    const N_DOWN: usize = 25;
+    const K_TRUNC: usize = 8; // truncate the last 8 bars
 
-    // Build causal bars: alternating up/down (strongly oscillating).
-    let mut causal_bars: Vec<Bar> = Vec::new();
-    let mut price = dec!(1000);
-    for hour in 0..N_BARS {
-        causal_bars.push(make_bar("AAAUSD", price, hour as i64));
-        if hour % 2 == 0 {
-            price *= dec!(1.05); // +5% on even bars
-        } else {
-            price *= dec!(0.97); // −3% on odd bars
-        }
-    }
-    causal_bars.sort_by(|a, b| a.open_ts.cmp(&b.open_ts).then(a.symbol.0.cmp(&b.symbol.0)));
+    let full_bars = build_up_then_down_bars(N_UP, N_DOWN);
+    let n_full = full_bars.len();
+    let n_prefix = n_full - K_TRUNC;
+    let prefix_bars: Vec<Bar> = full_bars[..n_prefix].to_vec();
 
-    // Build future-shifted bars: shift all bar prices by 1 position (bar 0 gets bar 1's price).
-    // This simulates a look-ahead: position at bar t uses price from bar t+1.
-    let mut shifted_bars: Vec<Bar> = causal_bars.clone();
-    // Shift: bar k gets the price of bar k+1 (the future).
-    for k in 0..(N_BARS - 1) {
-        let next_price = causal_bars[k + 1].close.get();
-        shifted_bars[k] = make_bar("AAAUSD", next_price, k as i64);
-    }
-    // Last bar keeps its own price (no data for bar N_BARS).
+    let result_full = run_to_result(make_ts_config(dec!(0.00)), full_bars);
+    let result_prefix = run_to_result(make_ts_config(dec!(0.00)), prefix_bars);
 
-    let result_causal = run_to_result(make_ts_config(dec!(0.00)), causal_bars);
-    let result_shifted = run_to_result(make_ts_config(dec!(0.00)), shifted_bars);
-
-    let delta = (result_causal.final_equity - result_shifted.final_equity).abs();
-    let epsilon_1bp = dec!(10); // 1 bp of 100_000
-
+    // Non-vacuity guard: the kept prefix must contain real rebalance decisions
+    // (the long entry AND the goes-flat exit), otherwise prefix equality would
+    // hold trivially for an all-cash run.
     assert!(
-        delta > epsilon_1bp,
-        "F-TSM.3 NO-LOOK-AHEAD VIOLATION: causal series ({}) and future-shifted series ({}) \
-         must produce DIFFERENT equity (delta ≥ 1 bp = {epsilon_1bp}). actual delta = {delta}. \
-         If delta ≈ 0, the score at bar t is insensitive to the shift — the trailing window \
-         may not be using the ring buffer correctly, or all bars have the same price.",
-        result_causal.final_equity,
-        result_shifted.final_equity,
+        result_prefix.trades >= 2,
+        "F-TSM.3 non-vacuity: the kept prefix must contain the entry and the exit \
+         (≥ 2 fills), got {} — enlarge the prefix or the trend phases.",
+        result_prefix.trades
     );
+
+    // Prefix invariance: equity_curve is [initial, after bar 0, …]; the first
+    // n_prefix+1 points of the full run must equal the truncated run EXACTLY.
+    assert_eq!(
+        result_prefix.equity_curve.len(),
+        n_prefix + 1,
+        "equity curve length must be n_bars + 1"
+    );
+    for (t, (full_eq, prefix_eq)) in result_full.equity_curve[..=n_prefix]
+        .iter()
+        .zip(result_prefix.equity_curve.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            full_eq, prefix_eq,
+            "F-TSM.3 LOOK-AHEAD VIOLATION at equity index {t}: the full-series run \
+             ({full_eq}) and the future-truncated run ({prefix_eq}) diverge BEFORE the \
+             truncation point — some bar-t decision is reading data from a bar > t \
+             (ring-buffer indexing or rebalance gating is non-causal)."
+        );
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // F-TSM.4 — Goes-flat (TS-specific, must-actually-exit gate)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// F-TSM.4: On a series with a sustained downtrend, the strategy holds FLAT on ≥ 1 bar.
+/// F-TSM.4: On a series with a sustained downtrend, the strategy holds FLAT on
+/// ≥ 1 POST-WARMUP bar (review 1-17 headline).
 ///
-/// We verify this at the strategy level by checking `time_in_market_bars < total_bars`
-/// (the strategy is not always long) AND that the final equity is HIGHER than BH
-/// (the exit avoided some downtrend loss).
+/// **Warmup bars are excluded from BOTH sides:** the degenerate always-long TS
+/// control (same config, unreachable threshold) is long on EVERY post-warmup
+/// bar, so its `time_in_market_bars` IS the post-warmup in-market capacity of
+/// this exact path/config. The headline asserts `tim(TS) < tim(degenerate)` —
+/// strictly below the post-warmup total. The pre-1-17 form asserted
+/// `tim < total_bars`, which warmup alone satisfies (an always-long rule has
+/// `tim = total − warmup < total`) — vacuously green for the degenerate case.
 ///
-/// The construction is: 10 bars uptrend, 20 bars downtrend (L=5 lookback).
-/// After 5 downtrend bars, the trailing log-return over L=5 bars becomes negative →
-/// the strategy exits to flat. BH holds through.
-///
-/// **RED-on-revert:** an always-long rule has time_in_market == total_active_bars →
-/// the fraction test fails, proving the gate detects the degenerate case.
+/// **RED-on-revert:** an always-long rule has `tim == tim(degenerate)` → the
+/// strict inequality fails, proving the gate detects the degenerate case.
 #[test]
 fn f_tsm_4_goes_flat() {
     const N_UP: usize = 10;
@@ -445,24 +498,38 @@ fn f_tsm_4_goes_flat() {
     let total_bars = bars.len();
 
     let result_ts = run_to_result(make_ts_config(dec!(0.00)), bars.clone());
+    let result_degen = run_to_result(make_degenerate_ts_config(), bars.clone());
 
-    // time_in_market_bars should be LESS than total_bars (the strategy goes flat
-    // during the downtrend). Specifically: after L=5 downtrend bars, the score
-    // is negative, so the strategy should be flat for the last (N_DOWN - L) bars.
     let tim = result_ts.time_in_market_bars;
+    // The degenerate control's tim = the post-warmup in-market total (it is long
+    // on every bar its warmup allows).
+    let post_warmup_total = result_degen.time_in_market_bars;
+
+    // Sanity on the denominator: warmup must exist (post-warmup total < total
+    // bars) and the control must actually be in the market post-warmup.
     assert!(
-        tim < total_bars as u64,
-        "F-TSM.4 GOES-FLAT VIOLATION: time_in_market_bars ({tim}) must be < total_bars ({total_bars}). \
-         The TS strategy should exit to FLAT during the sustained downtrend. \
-         If time_in_market == total_bars, the strategy is always-long — \
-         check SelectionMode::TimeSeriesLongFlat and select_above_threshold."
+        post_warmup_total > 0 && post_warmup_total < total_bars as u64,
+        "F-TSM.4 control sanity: the degenerate always-long control must be long on \
+         every POST-WARMUP bar (0 < tim < total_bars), got tim={post_warmup_total}, \
+         total={total_bars}."
+    );
+
+    // HEADLINE: post-warmup tim strictly below the post-warmup total — the TS
+    // rule must actually exit on ≥ 1 bar it COULD have been long on.
+    assert!(
+        tim < post_warmup_total,
+        "F-TSM.4 GOES-FLAT VIOLATION: post-warmup time_in_market ({tim}) must be strictly \
+         below the post-warmup total ({post_warmup_total} = the degenerate always-long \
+         control's tim; warmup excluded from both sides). If equal, the strategy never \
+         exits to FLAT post-warmup — always-long — check SelectionMode::TimeSeriesLongFlat \
+         and select_above_threshold."
     );
 
     // Also assert: the TS strategy beats BH on this path (exits avoided some loss).
     let bh_equity = run_buyhold(&bars);
     assert!(
         result_ts.final_equity > bh_equity,
-        "F-TSM.4: TS strategy ({}) should beat BH ({}) on the down-then-up series \
+        "F-TSM.4: TS strategy ({}) should beat BH ({}) on the up-then-down series \
          because it exits during the downtrend. If TS <= BH, the exit is not happening \
          or happening too late.",
         result_ts.final_equity,
@@ -500,125 +567,114 @@ fn f_tsm_4_red_on_revert_always_long_does_not_exit() {
 // F-TSM.5 — Two-run byte-identity of the TS surface metrics
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// F-TSM.5: Same seed → identical formatted DistributionSummary across two runs.
+/// F-TSM.5: Same master seed → byte-identical RENDERED surface bodies across
+/// two REAL seeded TS sweep runs (review 1-17 rebuild).
 ///
-/// Runs the same small-N TS "surface" (2 cells, N=6 paths each) twice with the
-/// same ensemble_seed and asserts byte-identical formatted metrics at D3 precision.
-/// Catches any unordered fold in the per-asset score loop or selector (D-TSM.6).
+/// The pre-1-17 helper ignored its `master_seed`/`n_bars` parameters and ran
+/// fixed deterministic bars — the seeded ensemble was never exercised. This
+/// rebuild drives the PRODUCTION seams end to end:
+/// `sweep_harness::derive_path_seed(master, j)` per path (ADR-0051 D1) →
+/// ChaCha20-seeded synthetic bars → `montecarlo::run_path` per cell →
+/// `DistributionSummary::from_path_metrics` → `classify_verdict` →
+/// `sweep_harness::render_surface_report` — then asserts the two rendered
+/// bodies are BYTE-IDENTICAL (assert_eq on the full rendered string; the
+/// run-varying front-matter inputs are pinned constants).
 ///
-/// Pattern: `param_sweep_e2e.rs::fp_c3_3_two_run_byte_identity`.
-///
-/// Cell design: use DIFFERENT lookbacks (5 vs 20) so the cells produce structurally
-/// different results on the same price paths.
+/// A DIFFERENT master seed must change the body — proving the seed parameter is
+/// USED (the anti-vacuity control for the pre-1-17 defect class #66).
 #[test]
 fn f_tsm_5_two_run_byte_identity() {
     const MASTER: u64 = 0xDEAD_BEEF_C0FF_EE00;
-    const N: usize = 6;
-    const N_BARS: usize = 80; // enough for both lookbacks (max=20 bars)
+    const N_PATHS: usize = 3;
+    const N_BARS: usize = 120; // enough for both probe lookbacks (max L=20)
 
-    // Cell a: short lookback L=5, threshold=0.00 (whipsaw-prone).
-    let cfg_a = make_ts_config_custom(5, dec!(0.00));
-    // Cell b: long lookback L=20, threshold=0.02 (slow, decisive).
-    // These have structurally different warmup lengths and threshold filtering
-    // → guaranteed to produce different distribution summaries on the same paths.
-    let cfg_b = make_ts_config_custom(20, dec!(0.02));
+    let render_1 = run_seeded_ts_sweep_render(MASTER, N_PATHS, N_BARS);
+    let render_2 = run_seeded_ts_sweep_render(MASTER, N_PATHS, N_BARS);
 
-    let (s1a, trades_a1) = run_ts_cell_summary(&cfg_a, MASTER, N, N_BARS);
-    let (s1b, trades_b1) = run_ts_cell_summary(&cfg_b, MASTER, N, N_BARS);
-
-    // Run 2: SAME seeds, SAME configs.
-    let (s2a, trades_a2) = run_ts_cell_summary(&cfg_a, MASTER, N, N_BARS);
-    let (s2b, trades_b2) = run_ts_cell_summary(&cfg_b, MASTER, N, N_BARS);
-
-    let fmt6 = |v: f64| format!("{v:.6}");
-
-    // Cell a: both runs must be byte-identical.
     assert_eq!(
-        fmt6(s1a.sharpe.p50),
-        fmt6(s2a.sharpe.p50),
-        "F-TSM.5: cell_a Sharpe p50 must be deterministic across two runs (D-TSM.6)"
-    );
-    assert_eq!(
-        fmt6(s1a.prob_loss),
-        fmt6(s2a.prob_loss),
-        "F-TSM.5: cell_a prob_loss must be deterministic across two runs"
-    );
-    assert_eq!(
-        fmt6(s1a.max_dd_tail_p95),
-        fmt6(s2a.max_dd_tail_p95),
-        "F-TSM.5: cell_a p95 MaxDD must be deterministic across two runs"
+        render_1, render_2,
+        "F-TSM.5: two same-seed seeded TS sweep runs must render BYTE-IDENTICAL bodies \
+         (D-TSM.6) — an unordered fold has crept into the score loop, selector, reducer, \
+         or renderer."
     );
 
-    // Cell b: both runs must be byte-identical.
-    assert_eq!(
-        fmt6(s1b.sharpe.p50),
-        fmt6(s2b.sharpe.p50),
-        "F-TSM.5: cell_b Sharpe p50 must be deterministic across two runs"
-    );
-    assert_eq!(
-        fmt6(s1b.prob_loss),
-        fmt6(s2b.prob_loss),
-        "F-TSM.5: cell_b prob_loss must be deterministic across two runs"
-    );
-    assert_eq!(
-        fmt6(s1b.max_dd_tail_p95),
-        fmt6(s2b.max_dd_tail_p95),
-        "F-TSM.5: cell_b p95 MaxDD must be deterministic across two runs"
-    );
-
-    // Two-run identity for trade counts as well.
-    assert_eq!(
-        trades_a1, trades_a2,
-        "F-TSM.5: cell_a trade count must be identical across two runs (determinism check)"
-    );
-    assert_eq!(
-        trades_b1, trades_b2,
-        "F-TSM.5: cell_b trade count must be identical across two runs (determinism check)"
-    );
-
-    // Sanity: cells a and b must differ on AT LEAST the trade count.
-    // With L=5 vs L=20, the warmup lengths differ (5 vs 20 bars) and the
-    // trend-detection horizons differ → structurally different trade counts.
-    assert!(
-        trades_a1 != trades_b1 || fmt6(s1a.max_dd_tail_p95) != fmt6(s1b.max_dd_tail_p95),
-        "F-TSM.5 sanity: cells a (L=5, thr=0.00) and b (L=20, thr=0.02) must differ \
-         in trade count or max_dd. If identical, the lookback/threshold is not affecting \
-         behavior. trades_a={trades_a1}, trades_b={trades_b1}, \
-         max_dd_a={:.6}, max_dd_b={:.6}",
-        s1a.max_dd_tail_p95,
-        s1b.max_dd_tail_p95,
+    // Seed-usage control: a different master seed must produce a different body.
+    // If this fails, the seed is not reaching the path generator (the pre-1-17
+    // vacuity: seed params accepted but ignored).
+    let render_other_seed = run_seeded_ts_sweep_render(MASTER ^ 0xFFFF_FFFF, N_PATHS, N_BARS);
+    assert_ne!(
+        render_1, render_other_seed,
+        "F-TSM.5 seed-usage control: a DIFFERENT master seed must change the rendered \
+         body — the ensemble seed parameter is being ignored by the path generation."
     );
 }
 
-// ── Helper: run one TS cell (N paths of deterministic trend-reversion bars) ────
+// ── Helper: run one REAL seeded small-N TS sweep and render its surface ───────
 //
-// Each path j uses build_up_then_down_bars with j-varied lengths, guaranteeing
-// both positive and negative scores → non-trivial trade counts.
+// Production seams (reviews 1-14/1-15 extractions), reused verbatim:
+// - `backtest::sweep_harness::derive_path_seed` (ADR-0051 D1 seed derivation —
+//   delegates to `mc_harness::derive_path_seed`, the ONE production formula);
+// - `backtest::scenarios::montecarlo::run_path` (per-path engine, via
+//   `run_to_result`);
+// - `backtest::bakeoff::robustness::classify_verdict` (frozen verdict);
+// - `backtest::bakeoff::buyhold::run_buyhold_path` (control row);
+// - `backtest::sweep_harness::render_surface_report` (the anchored renderer).
 //
-// Pattern mirrors `param_sweep_e2e.rs::run_cell_summary`.
+// The 2-cell probe grid is NEVER anchored (a probe scenario name + gbm-style
+// seeded bars); the LOCKED TS_TIER1_GRID is untouched.
 
-fn run_ts_cell_summary(
-    cfg: &strategy::CrossSectionalMomentumConfig,
-    _master_seed: u64,
-    n_paths: usize,
-    _n_bars: usize,
-) -> (DistributionSummary, u64) {
-    let mut all_metrics: Vec<PathMetrics> = Vec::with_capacity(n_paths);
-    let mut total_trades = 0u64;
+/// Seeded synthetic single-symbol random-walk bars (ChaCha20 — stable across
+/// platforms/versions). Steps quantized to whole basis points so all math stays
+/// Decimal-exact inside `run_path`.
+fn seeded_random_walk_bars(seed: u64, n: usize) -> Vec<Bar> {
+    use rand::{Rng, SeedableRng};
+    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed);
+    let mut price = dec!(1000);
+    let mut bars = Vec::with_capacity(n);
+    for hour in 0..n {
+        bars.push(make_bar("AAAUSD", price, hour as i64));
+        // ±3% per bar in whole-bp steps → trends and reversals both occur.
+        let step_bp: i64 = rng.random_range(-300..=300);
+        price = (price * (Decimal::ONE + Decimal::new(step_bp, 4))).max(dec!(0.01));
+    }
+    bars
+}
 
-    // Each path j uses a deterministically-varied up/down length.
-    // Base: enough up bars for the longer lookback (L=20) to warm up (need ≥21 up bars).
-    // Variation per j: adds j bars to n_up so paths differ structurally.
-    for j in 0..n_paths {
-        let n_up = 25 + j; // 25..30 up bars (L=20 warms up after 21 up bars)
-        let n_down = 20 + j; // 20..25 down bars (triggers exit for both L=5 and L=20)
-        let bars = build_up_then_down_bars(n_up, n_down);
+fn run_seeded_ts_sweep_render(master_seed: u64, n_paths: usize, n_bars: usize) -> String {
+    use backtest::bakeoff::robustness::classify_verdict;
+    use backtest::sweep_harness::{
+        CellResult, SweepDirection, SweepScoreSource, SweepSelectionMode, ThetaCell,
+        derive_path_seed, render_surface_report,
+    };
 
-        let result = run_to_result(cfg.clone(), bars);
-        total_trades += result.trades as u64;
+    // 2-cell TS probe grid (never anchored — probe roles, probe scenario name).
+    const PROBE_TS_GRID: &[ThetaCell] = &[
+        ThetaCell {
+            g: 0,
+            lookback_minutes: 5,
+            k_long: 10,
+            drift_threshold_num: 10,
+            drift_threshold_den: 2,
+            rebalance_minutes_override: 0,
+            entry_threshold_num: 0,
+            entry_threshold_den: 0,
+            role: "probe: short lookback, thr=0.00 (F-TSM.5 two-run identity)",
+        },
+        ThetaCell {
+            g: 1,
+            lookback_minutes: 20,
+            k_long: 10,
+            drift_threshold_num: 10,
+            drift_threshold_den: 2,
+            rebalance_minutes_override: 0,
+            entry_threshold_num: 2,
+            entry_threshold_den: 2,
+            role: "probe: long lookback, thr=0.02 (F-TSM.5 two-run identity)",
+        },
+    ];
 
-        let equity_clamped: Vec<Decimal> = result
-            .equity_curve
+    let clamp = |curve: &[Decimal]| -> Vec<Decimal> {
+        curve
             .iter()
             .map(|&e| {
                 if e <= Decimal::ZERO {
@@ -627,21 +683,99 @@ fn run_ts_cell_summary(
                     e
                 }
             })
-            .collect();
+            .collect()
+    };
 
-        let pm = PathMetrics {
+    let mut cell_results: Vec<CellResult> = Vec::with_capacity(PROBE_TS_GRID.len());
+    for cell in PROBE_TS_GRID {
+        let cfg = make_ts_config_custom(cell.lookback_minutes, cell.entry_threshold());
+        let mut metrics: Vec<PathMetrics> = Vec::with_capacity(n_paths);
+        let mut total_trades = 0u64;
+        let mut total_tim = 0u64;
+        let mut total_bars_run = 0u64;
+        for j in 0..n_paths {
+            // ADR-0051 D1 production seed derivation — the master seed is USED.
+            let seed_j = derive_path_seed(master_seed, j);
+            let bars = seeded_random_walk_bars(seed_j, n_bars);
+            let result = run_to_result(cfg.clone(), bars);
+            total_trades += result.trades as u64;
+            total_tim += result.time_in_market_bars;
+            total_bars_run += n_bars as u64;
+
+            let equity_clamped = clamp(&result.equity_curve);
+            metrics.push(PathMetrics {
+                sharpe: compute_sharpe_hourly(&equity_clamped),
+                sortino: compute_sortino_hourly(&equity_clamped),
+                calmar: compute_calmar(&equity_clamped),
+                max_drawdown: compute_max_drawdown_f64(&equity_clamped),
+                total_return: compute_total_return(&equity_clamped),
+                final_equity: result.final_equity,
+                initial_equity: result.initial_equity,
+            });
+        }
+        let summary = DistributionSummary::from_path_metrics(&metrics)
+            .expect("build DistributionSummary for seeded TS probe cell");
+        let verdict = classify_verdict(&summary);
+        cell_results.push(CellResult {
+            cell: *cell,
+            summary,
+            verdict,
+            total_trades,
+            total_funding_harvested: Decimal::ZERO,
+            total_time_in_market_bars: total_tim,
+            total_bars_run,
+            total_liquidations: 0,
+        });
+    }
+
+    // Buy-and-hold control over the SAME seeded paths (production helper).
+    let mut bh_metrics: Vec<PathMetrics> = Vec::with_capacity(n_paths);
+    for j in 0..n_paths {
+        let seed_j = derive_path_seed(master_seed, j);
+        let bars = seeded_random_walk_bars(seed_j, n_bars);
+        let (equity, final_eq) =
+            backtest::bakeoff::buyhold::run_buyhold_path(&bars, dec!(100_000), 1);
+        let equity_clamped = clamp(&equity);
+        bh_metrics.push(PathMetrics {
             sharpe: compute_sharpe_hourly(&equity_clamped),
             sortino: compute_sortino_hourly(&equity_clamped),
             calmar: compute_calmar(&equity_clamped),
             max_drawdown: compute_max_drawdown_f64(&equity_clamped),
             total_return: compute_total_return(&equity_clamped),
-            final_equity: result.final_equity,
-            initial_equity: result.initial_equity,
-        };
-        all_metrics.push(pm);
+            final_equity: final_eq,
+            initial_equity: dec!(100_000),
+        });
     }
+    let buyhold_summary = DistributionSummary::from_path_metrics(&bh_metrics)
+        .expect("build BH DistributionSummary for seeded TS probe");
 
-    let summary = DistributionSummary::from_path_metrics(&all_metrics)
-        .expect("build DistributionSummary for ts cell");
-    (summary, total_trades)
+    // Render through the PRODUCTION renderer. Front-matter inputs are pinned
+    // constants so the full rendered string is comparable byte-for-byte.
+    render_surface_report(
+        "1970-01-01T00:00:00Z", // generated (pinned)
+        0.0,                    // wall_clock_s (pinned)
+        "f-tsm5-test-host",     // host (pinned)
+        0,                      // pid (pinned)
+        "f-tsm5-test-commit",   // git_commit (pinned)
+        "f-tsm5-test-revision", // data_revision_sha (pinned)
+        "ts-fp5-two-run-probe", // scenario (probe — never anchored)
+        master_seed,
+        0xC0FFEE, // fill_seed (ADR-0051 D1 constant)
+        n_paths,
+        "seeded-synthetic", // generator label (probe)
+        "n/a",              // bootstrap mode (probe)
+        "fixed",            // block-length policy (probe)
+        None,               // selected block length
+        "f-tsm5-source-revision",
+        PROBE_TS_GRID,
+        &cell_results,
+        &buyhold_summary,
+        SweepDirection::Momentum,
+        SweepScoreSource::VolAdjustedReturn,
+        None, // funding revision (TS: none)
+        SweepSelectionMode::TimeSeriesLongFlat,
+        backtest::resample::Horizon::OneHour,
+        0, // taker_fee_bps (matches run_to_result's zero-friction input)
+        0, // slippage_bps
+    )
 }

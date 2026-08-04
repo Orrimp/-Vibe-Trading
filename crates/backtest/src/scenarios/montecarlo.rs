@@ -72,10 +72,16 @@ pub struct PathRunResult {
     /// Number of bars where at least one long position was held (time-in-market counter).
     ///
     /// Pure observability counter — does NOT affect equity/sizing/accrual paths.
-    /// `0` for momentum/MR/carry runs by default (the counter is only enabled when
-    /// `track_time_in_market = true`, which is set by the TS-momentum path in the
-    /// sweep driver). The 89 existing anchors are byte-identical because this counter
-    /// does not alter any signal, order, or equity computation (M-DEV-4 / D-TSM.6.4).
+    /// The counter increments UNCONDITIONALLY (there is no enable flag): it is
+    /// non-zero for momentum/MR/carry/basis runs too, since they hold long
+    /// positions. Anchor-neutrality comes from RENDER GATING ONLY — the sweep
+    /// renderer (`sweep_harness::render_surface_report`) emits the
+    /// `time_in_market` column only under `selection_mode.is_ts()` (the TS
+    /// lane), so this counter never reaches the hashed body of any other
+    /// family's report. Rendering it unconditionally WOULD change the
+    /// momentum/MR/carry/basis hashed bodies — a four-family anchor break — so
+    /// do not un-gate the renderer. The counter itself does not alter any
+    /// signal, order, or equity computation (M-DEV-4 / D-TSM.6.4, review 1-17).
     pub time_in_market_bars: u64,
     /// Number of maintenance-margin liquidation events on this path (M-DEV-3).
     ///

@@ -763,9 +763,35 @@ impl Strategy for MomentumStrategy {
                     rb.push(bar.close.get());
                 }
                 // Compute raw trailing log-return. None → warmup (excluded from selection).
-                self.histories
-                    .get(&bar.symbol)
-                    .and_then(|rb| score_trailing_log_return(rb, self.lookback_minutes).ok())
+                match self.histories.get(&bar.symbol).map(|rb| {
+                    (
+                        score_trailing_log_return(rb, self.lookback_minutes),
+                        rb.is_full(),
+                    )
+                }) {
+                    Some((Ok(score), _)) => Some(score),
+                    Some((Err(err), ring_full)) => {
+                        // Review 1-17: a POST-warmup score error on a HELD symbol
+                        // silently force-exits (None → absent from
+                        // select_above_threshold → Sell at the next rebalance;
+                        // recovery → Buy = a fee-paying round-trip on a data
+                        // glitch). Trace it loudly; behavior is UNCHANGED (the
+                        // score stays None). Warmup Nones (ring not yet full)
+                        // are expected and stay silent.
+                        if ring_full && *self.held_symbols.get(&bar.symbol).unwrap_or(&false) {
+                            tracing::warn!(
+                                symbol = %bar.symbol,
+                                bar_ts = %bar.close_ts,
+                                error = %err,
+                                "TS trend-score error on a held symbol post-warmup — \
+                                 the symbol will be force-exited at the next rebalance \
+                                 (score = None → absent from selection)"
+                            );
+                        }
+                        None
+                    }
+                    None => None,
+                }
                 // Direction is ignored under TimeSeriesLongFlat (no inversion — the
                 // threshold comparison IS the direction signal, D-TSM.1).
             }

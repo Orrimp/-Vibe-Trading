@@ -745,7 +745,7 @@ sha256   = "fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199"
 # NO new RNG, NO co-resampled series; simpler than carry's § D6.6).
 # Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
 # TS-momentum does NOT beat buy-and-hold net of fees on 2023 real Binance universe.
-# g=0 (baseline θ*): p5=-0.054, p50=+0.011, p95=+0.052, direction=time_series_long_flat
+# g=0 (baseline θ*): p5=-0.054, p50=+0.011, p95=+0.052, selection_mode=time_series_long_flat
 # g=3 (wide band): p50=+0.004 — nearest to non-FRAGILE but still FRAGILE (p5=-0.051)
 # BuyHold control: p50 Sharpe=+1.74, P(loss)=4.5%, p95 MaxDD=51.2% (same SAME-paths as C3 momentum/MR/carry).
 # Grid: 6 cells g∈{0..5}, lookback={168,24,720,168,720,24}, threshold={0.00,0.00,0.00,0.02,0.02,0.02},
@@ -768,7 +768,7 @@ sha256   = "c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57"
 # Verdict: FAMILY-UNIFORM-FRAGILE — all 6 cells FRAGILE.
 # 2024 is a harder regime: BuyHold control p50=+1.10, P(loss)=16.5%, p95 MaxDD=64.8%
 # (tail-negative vs 2023's bull regime). TS-momentum still cannot clear the bar.
-# g=0 (baseline TS θ*): p5=-0.032, p50=+0.016, p95=+0.072, direction=time_series_long_flat
+# g=0 (baseline TS θ*): p5=-0.032, p50=+0.016, p95=+0.072, selection_mode=time_series_long_flat
 # g=4 (best p50): p50=+0.041, p5=-0.041 — still FRAGILE (p5 < 0, p95_maxdd=81.4%)
 # Data: OHLCV revision 3a8b96c4…
 # Wall-clock: 35.6s on Apple-Silicon M-series (canonical box).

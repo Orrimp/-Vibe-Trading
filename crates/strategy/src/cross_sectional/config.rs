@@ -157,6 +157,36 @@ pub enum CrossSectionalLoadError {
         score_source: ScoreSource,
         selection_mode: SelectionMode,
     },
+    #[error(
+        "[inert_score_source] score_source = {score_source:?} is behaviorally INERT with \
+         selection_mode = \"time_series_long_flat\": the TS arm computes its own trailing \
+         log-return trend score and NEVER reads score_source — this combination would silently \
+         run price-TS behavior while still hashing as a distinct {score_source:?} config (two \
+         K3 identities for one behavior), and any carry/basis sidecar loaded for it would be \
+         dead weight under a misleading identity. Drop `score_source` (the default \
+         vol_adjusted_return) or switch to a cross-sectional selection mode."
+    )]
+    InertScoreSource { score_source: ScoreSource },
+    #[error(
+        "[inert_threshold] entry_threshold = {entry_threshold} is behaviorally INERT with \
+         selection_mode = {selection_mode:?}: the threshold is read ONLY under \
+         \"time_series_long_flat\" — a nonzero value here is ignored at runtime yet still \
+         hashes as a distinct config (two K3 identities for one behavior). Drop \
+         `entry_threshold` or switch selection_mode to \"time_series_long_flat\"."
+    )]
+    InertThreshold {
+        entry_threshold: Decimal,
+        selection_mode: SelectionMode,
+    },
+    #[error(
+        "[invalid_entry_threshold] entry_threshold = {0} is out of range: must be <= 1.0. The \
+         threshold is compared against a trailing LOG-return, so 1.0 already demands a ~172% \
+         price rise over the lookback before entering — values above it are almost certainly a \
+         units mistake (every shipped TS cell uses 0.00 or 0.02). Negative values ARE allowed: \
+         a negative threshold widens the entry band (enter on a mild downtrend), and falsifier \
+         fixtures use deeply-negative thresholds deliberately to force always-long behavior."
+    )]
+    InvalidEntryThreshold(Decimal),
     #[error("[toml_parse] TOML parse error: {0}")]
     TomlParse(String),
     #[error("[io_read] could not read file: {0}")]
@@ -178,6 +208,9 @@ impl CrossSectionalLoadError {
             Self::UnsupportedSizing => "unsupported_sizing",
             Self::UnsupportedKind => "unsupported_kind",
             Self::InertDirection { .. } => "inert_direction",
+            Self::InertScoreSource { .. } => "inert_score_source",
+            Self::InertThreshold { .. } => "inert_threshold",
+            Self::InvalidEntryThreshold(_) => "invalid_entry_threshold",
             Self::TomlParse(_) => "toml_parse",
             Self::IoRead(_) => "io_read",
         }
@@ -227,8 +260,12 @@ pub struct CrossSectionalMomentumConfig {
     pub selection_mode: SelectionMode,
     /// Flat/entry threshold for `TimeSeriesLongFlat` selection (D-TSM.1).
     /// Default = `Decimal::ZERO` → inert for all existing momentum/MR/carry runs.
-    /// Only read under `SelectionMode::TimeSeriesLongFlat`; ignored by `CrossSectionalTopK`.
-    /// A negative value permits entry on a mild downtrend (wider-than-zero band).
+    /// Only read under `SelectionMode::TimeSeriesLongFlat`; the loader rejects a
+    /// nonzero value under any other mode (`inert_threshold`, review 1-17) and
+    /// values > 1.0 (`invalid_entry_threshold` — a 100% log-return entry bar is
+    /// a units mistake). A negative value permits entry on a mild downtrend
+    /// (wider-than-zero band) and stays allowed — falsifier fixtures use
+    /// deeply-negative thresholds deliberately to force always-long behavior.
     #[serde(default)]
     pub entry_threshold: Decimal,
 }
@@ -372,6 +409,45 @@ impl CrossSectionalMomentumConfig {
         // sizing
         if raw.size.as_str() != "equal_weight" {
             return Err(CrossSectionalLoadError::UnsupportedSizing);
+        }
+
+        // Review 1-17: entry_threshold bounds. The threshold is compared against
+        // a trailing LOG-return, so 1.0 (~172% price rise over the lookback) is
+        // the generous upper sanity bound — every sibling numeric field is
+        // range-checked and this was the one unvalidated numeric in the loader.
+        // NEGATIVE values stay ALLOWED deliberately: a negative threshold widens
+        // the entry band (enter on a mild downtrend, documented on the field),
+        // and falsifier fixtures use deeply-negative thresholds to force
+        // always-long behavior (F-TSM.2's degenerate control).
+        if raw.entry_threshold > Decimal::ONE {
+            return Err(CrossSectionalLoadError::InvalidEntryThreshold(
+                raw.entry_threshold,
+            ));
+        }
+
+        // Review 1-17: score_source is NEVER read under TimeSeriesLongFlat (the
+        // TS arm computes its own trailing log-return trend score) — any non-
+        // default score_source there is behaviorally inert yet hash-distinct
+        // ("TS carry" would silently run price-TS under a carry identity).
+        // Mirrors the 1-16 InertDirection guard one field over.
+        if raw.selection_mode == SelectionMode::TimeSeriesLongFlat
+            && raw.score_source != ScoreSource::VolAdjustedReturn
+        {
+            return Err(CrossSectionalLoadError::InertScoreSource {
+                score_source: raw.score_source,
+            });
+        }
+
+        // Review 1-17: entry_threshold is read ONLY under TimeSeriesLongFlat —
+        // a nonzero value under CrossSectionalTopK/LongShort is behaviorally
+        // inert yet hash-distinct (two K3 identities for one behavior).
+        if raw.entry_threshold != Decimal::ZERO
+            && raw.selection_mode != SelectionMode::TimeSeriesLongFlat
+        {
+            return Err(CrossSectionalLoadError::InertThreshold {
+                entry_threshold: raw.entry_threshold,
+                selection_mode: raw.selection_mode,
+            });
         }
 
         // Review 1-16: `direction = "reversion"` requires the inverting arm.
@@ -1132,5 +1208,164 @@ k_short = 1
             .expect("reversion under LongShort inverts (not inert) and must stay accepted");
         assert_eq!(cfg.direction, Direction::Reversion);
         assert_eq!(cfg.selection_mode, SelectionMode::LongShort);
+    }
+
+    // ── Review 1-17: InertScoreSource / InertThreshold / entry_threshold bounds ─
+
+    /// Review 1-17: TS × funding_carry is behaviorally inert (the TS arm never
+    /// reads score_source — it would silently run price-TS under a carry
+    /// identity) — must be rejected with `inert_score_source`.
+    #[test]
+    fn review_1_17_ts_plus_funding_carry_rejected() {
+        let toml = r#"
+id    = "test_ts_carry"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+score_source = "funding_carry"
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "inert_score_source",
+            "TS × funding_carry must be rejected as inert, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("FundingCarry"),
+            "the error must name the inert score source: {err}"
+        );
+    }
+
+    /// Review 1-17: TS × basis_reversal is inert for the same reason.
+    #[test]
+    fn review_1_17_ts_plus_basis_reversal_rejected() {
+        let toml = r#"
+id    = "test_ts_basis"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+score_source = "basis_reversal"
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "inert_score_source",
+            "TS × basis_reversal must be rejected as inert, got: {err}"
+        );
+    }
+
+    /// Review 1-17 boundary: the shipped TS lane (TS × default
+    /// vol_adjusted_return) must remain accepted.
+    #[test]
+    fn review_1_17_ts_with_default_score_source_still_accepted() {
+        let toml = r#"
+id    = "test_ts_ok"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+entry_threshold = 0.02
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml)
+            .expect("the shipped TS lane must remain accepted");
+        assert_eq!(cfg.selection_mode, SelectionMode::TimeSeriesLongFlat);
+        assert_eq!(cfg.score_source, ScoreSource::VolAdjustedReturn);
+        assert_eq!(cfg.entry_threshold, Decimal::new(2, 2));
+    }
+
+    /// Review 1-17: a nonzero entry_threshold under CrossSectionalTopK is
+    /// ignored at runtime yet hash-distinct — rejected with `inert_threshold`.
+    #[test]
+    fn review_1_17_nonzero_threshold_under_top_k_rejected() {
+        let toml = r#"
+id    = "test_thr_topk"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+entry_threshold = 0.02
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "inert_threshold",
+            "nonzero entry_threshold under CrossSectionalTopK must be rejected, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("CrossSectionalTopK"),
+            "the error must name the mode the threshold is inert under: {err}"
+        );
+    }
+
+    /// Review 1-17: the threshold is inert under LongShort too — same rejection.
+    #[test]
+    fn review_1_17_nonzero_threshold_under_long_short_rejected() {
+        let toml = r#"
+id    = "test_thr_ls"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+selection_mode = "long_short"
+k_long = 1
+k_short = 1
+entry_threshold = 0.01
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "inert_threshold",
+            "nonzero entry_threshold under LongShort must be rejected, got: {err}"
+        );
+    }
+
+    /// Review 1-17: entry_threshold > 1.0 (a 100% log-return entry bar) is a
+    /// units mistake — rejected with `invalid_entry_threshold`.
+    #[test]
+    fn review_1_17_entry_threshold_above_one_rejected() {
+        let toml = r#"
+id    = "test_thr_500pct"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+entry_threshold = 5.0
+"#;
+        let err = CrossSectionalMomentumConfig::from_str(toml).unwrap_err();
+        assert_eq!(
+            err.error_code(),
+            "invalid_entry_threshold",
+            "entry_threshold = 5.0 (500%) must be rejected, got: {err}"
+        );
+    }
+
+    /// Review 1-17 boundary: exactly 1.0 is the inclusive upper bound (still
+    /// accepted); negative thresholds stay allowed (falsifier fixtures rely on
+    /// deeply-negative thresholds to force always-long behavior).
+    #[test]
+    fn review_1_17_entry_threshold_boundary_and_negative_accepted() {
+        let toml_one = r#"
+id    = "test_thr_one"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+entry_threshold = 1.0
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml_one)
+            .expect("entry_threshold = 1.0 is the inclusive bound and must parse");
+        assert_eq!(cfg.entry_threshold, Decimal::new(10, 1));
+
+        let toml_neg = r#"
+id    = "test_thr_neg"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT"]
+selection_mode = "time_series_long_flat"
+entry_threshold = -999999.0
+"#;
+        let cfg = CrossSectionalMomentumConfig::from_str(toml_neg)
+            .expect("negative entry_threshold must stay accepted (falsifier fixture pattern)");
+        assert!(cfg.entry_threshold < Decimal::ZERO);
     }
 }

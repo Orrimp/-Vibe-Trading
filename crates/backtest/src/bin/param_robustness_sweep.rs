@@ -105,7 +105,7 @@ pub use backtest::sweep_harness::{
     CellResult, GridKind, SweepDirection, SweepScoreSource, SweepSelectionMode, TIER1_GRID,
     ThetaCell, build_scenario_name, cell_config, derive_path_seed, family_any_non_fragile,
     family_verdict_line, grid_def_string, grid_for_kind, render_surface_report,
-    validate_direction_grid_pairing,
+    validate_direction_grid_pairing, validate_grid_axis_pairing,
 };
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -1398,13 +1398,22 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let start = std::time::Instant::now();
 
-    // Review 1-16: bail EARLY on a mismatched --direction × --grid pairing.
-    // A mismatch forges the OTHER family's anchored scenario name over the
-    // wrong grid (e.g. momentum + mr-tier1 emits anchor #86's name over the MR
-    // cells; reversion + tier1 emits anchor #87's name over momentum cells) —
-    // the forged report then shadows the real one as "latest matching" and the
-    // anchors gate goes falsely RED. Correct pairs are byte-unchanged.
-    if let Err(msg) = validate_direction_grid_pairing(args.grid, args.direction) {
+    // Review 1-16/1-17: bail EARLY on a mismatched axis tuple × --grid pairing.
+    // The 1-16 guard covered --direction only (momentum + mr-tier1 emits anchor
+    // #86's name over the MR cells; reversion + tier1 emits anchor #87's name
+    // over momentum cells). Review 1-17 extends it to the FULL tuple: --grid
+    // ts-tier1 + the default top-K passed the direction-only check yet forged
+    // anchor #86's name into the frozen momentum dir (converse forges #90/#91),
+    // and ts-tier1 + carry loaded the funding sidecar for behaviorally-different
+    // equity under the TS name. Any forged report shadows the real one as
+    // "latest matching" and the anchors gate goes falsely RED. Correct tuples
+    // are byte-unchanged.
+    if let Err(msg) = validate_grid_axis_pairing(
+        args.grid,
+        args.direction,
+        args.selection_mode,
+        args.score_source,
+    ) {
         anyhow::bail!("{msg}");
     }
 
@@ -2301,6 +2310,219 @@ mod tests {
         assert!(
             err.contains("Reversion") && err.contains("Tier1") && err.contains("Momentum"),
             "bail message must name both directions and the grid: {err}"
+        );
+    }
+
+    // ── Review 1-17: full (direction × selection_mode × score_source) × grid tuple ─
+
+    /// Review 1-17: every anchored-family axis tuple passes the FULL guard —
+    /// no checked-in invocation is rejected (anchored lanes byte-unchanged).
+    /// The tuples below are read off the anchored reports' `held_constant` rows.
+    #[test]
+    fn grid_axis_pairing_every_anchored_family_tuple_passes() {
+        use SweepScoreSource as S;
+        use SweepSelectionMode as M;
+        let anchored_tuples: &[(GridKind, SweepDirection, M, S)] = &[
+            // momentum #86 (+ the FP-C3.2 two-cell probe lane, same defaults)
+            (
+                GridKind::Tier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::VolAdjustedReturn,
+            ),
+            (
+                GridKind::TwoCell,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::VolAdjustedReturn,
+            ),
+            // MR #87
+            (
+                GridKind::MrTier1,
+                SweepDirection::Reversion,
+                M::CrossSectionalTopK,
+                S::VolAdjustedReturn,
+            ),
+            // carry #88/#89 + horizon carry surfaces
+            (
+                GridKind::CarryTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::Carry,
+            ),
+            (
+                GridKind::Carry4h,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::Carry,
+            ),
+            (
+                GridKind::CarryDaily,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::Carry,
+            ),
+            // TS #90/#91 + horizon TS surfaces
+            (
+                GridKind::TsTier1,
+                SweepDirection::Momentum,
+                M::TimeSeriesLongFlat,
+                S::VolAdjustedReturn,
+            ),
+            (
+                GridKind::Ts4h,
+                SweepDirection::Momentum,
+                M::TimeSeriesLongFlat,
+                S::VolAdjustedReturn,
+            ),
+            (
+                GridKind::TsDaily,
+                SweepDirection::Momentum,
+                M::TimeSeriesLongFlat,
+                S::VolAdjustedReturn,
+            ),
+            // basis-reversal fee ladder
+            (
+                GridKind::BasisTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::BasisReversal,
+            ),
+            // the three MN arms (CLI-level selection mode stays the default;
+            // LongShort is applied per-cell inside cell_config per D-MN.5)
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::MnBasisSpread,
+            ),
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::MnFundingSpread,
+            ),
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::MnBasisFundingResidual,
+            ),
+        ];
+        for &(grid, dir, mode, source) in anchored_tuples {
+            assert!(
+                validate_grid_axis_pairing(grid, dir, mode, source).is_ok(),
+                "anchored tuple must pass: {grid:?} × {dir:?} × {mode:?} × {source:?}"
+            );
+        }
+        // Exhaustive: every grid × its own required tuple × each allowed source passes.
+        for grid in ALL_GRIDS {
+            for &source in grid.allowed_score_sources() {
+                assert!(
+                    validate_grid_axis_pairing(
+                        grid,
+                        grid.required_direction(),
+                        grid.required_selection_mode(),
+                        source
+                    )
+                    .is_ok(),
+                    "required tuple must pass for {grid:?} with {source:?}"
+                );
+            }
+        }
+    }
+
+    /// Review 1-17: forged axis tuples bail, and the message names all three
+    /// requested axes plus the grid's required tuple.
+    #[test]
+    fn grid_axis_pairing_forged_combos_bail() {
+        use SweepScoreSource as S;
+        use SweepSelectionMode as M;
+
+        // Forge 1: ts-tier1 + default top-K — would forge anchor #86's momentum
+        // name over the TS grid into the frozen momentum dir.
+        let err = validate_grid_axis_pairing(
+            GridKind::TsTier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::VolAdjustedReturn,
+        )
+        .expect_err("ts-tier1 × top-K must bail");
+        assert!(
+            err.contains("TsTier1")
+                && err.contains("CrossSectionalTopK")
+                && err.contains("TimeSeriesLongFlat")
+                && err.contains("Momentum")
+                && err.contains("VolAdjustedReturn"),
+            "bail message must name all three axes and the grid: {err}"
+        );
+
+        // Forge 2: tier1 + time-series-long-flat — the converse: forges the TS
+        // anchors' names (#90/#91) over momentum cells.
+        let err = validate_grid_axis_pairing(
+            GridKind::Tier1,
+            SweepDirection::Momentum,
+            M::TimeSeriesLongFlat,
+            S::VolAdjustedReturn,
+        )
+        .expect_err("tier1 × time-series-long-flat must bail");
+        assert!(
+            err.contains("Tier1") && err.contains("TimeSeriesLongFlat"),
+            "bail message must name the forged selection mode and the grid: {err}"
+        );
+
+        // Forge 3: ts-tier1 + carry score source — loads the funding sidecar and
+        // runs behaviorally-different equity under the TS anchored name.
+        let err = validate_grid_axis_pairing(
+            GridKind::TsTier1,
+            SweepDirection::Momentum,
+            M::TimeSeriesLongFlat,
+            S::Carry,
+        )
+        .expect_err("ts-tier1 × carry must bail");
+        assert!(
+            err.contains("Carry") && err.contains("VolAdjustedReturn"),
+            "bail message must name the requested and required score sources: {err}"
+        );
+
+        // Forge 4: carry-tier1 without the carry score source — would run the
+        // price signal under the carry anchored name.
+        let err = validate_grid_axis_pairing(
+            GridKind::CarryTier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::VolAdjustedReturn,
+        )
+        .expect_err("carry-tier1 × vol-adjusted-return must bail");
+        assert!(
+            err.contains("CarryTier1") && err.contains("Carry"),
+            "bail message must name the carry grid's required source: {err}"
+        );
+
+        // Forge 5: mn-tier1 with a non-MN source — the MN grid requires one of
+        // the three MN arms.
+        let err = validate_grid_axis_pairing(
+            GridKind::MnTier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::BasisReversal,
+        )
+        .expect_err("mn-tier1 × basis-reversal must bail");
+        assert!(
+            err.contains("MnTier1") && err.contains("MnBasisSpread"),
+            "bail message must name the MN grid's allowed sources: {err}"
+        );
+
+        // Direction mismatches still bail through the full guard (1-16 preserved).
+        assert!(
+            validate_grid_axis_pairing(
+                GridKind::MrTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::VolAdjustedReturn,
+            )
+            .is_err(),
+            "the 1-16 direction mismatch must still bail through the full guard"
         );
     }
 
