@@ -921,7 +921,8 @@ mod leaderboard_tuning_divergence {
 
         // 24 × 1h bars → 6 × 4h bars (24 / 4 = 6).
         let bars_1h: Vec<Bar> = (0..24).map(make_1h_bar).collect();
-        let bars_h4 = resample_ohlcv(&bars_1h, Horizon::FourHours);
+        let bars_h4 = resample_ohlcv(&bars_1h, Horizon::FourHours)
+            .expect("resample_ohlcv must succeed on well-formed test bars");
 
         assert_eq!(
             bars_1h.len(),
@@ -937,7 +938,8 @@ mod leaderboard_tuning_divergence {
         );
 
         // H1 identity — same length, no fold.
-        let bars_h1_identity = resample_ohlcv(&bars_1h, Horizon::OneHour);
+        let bars_h1_identity = resample_ohlcv(&bars_1h, Horizon::OneHour)
+            .expect("resample_ohlcv must succeed on well-formed test bars");
         assert_eq!(
             bars_h1_identity.len(),
             24,
@@ -1014,7 +1016,8 @@ mod leaderboard_tuning_divergence {
             .collect();
 
         // Resample to H4: 96 / 4 = 24 bars
-        let bars_h4 = resample_ohlcv(&bars_1h, Horizon::FourHours);
+        let bars_h4 = resample_ohlcv(&bars_1h, Horizon::FourHours)
+            .expect("resample_ohlcv must succeed on well-formed test bars");
         assert_eq!(bars_h4.len(), 24, "96÷4=24 H4 bars");
 
         let mut seed = [0u8; 32];

@@ -941,8 +941,13 @@ pub async fn run_bakeoff(
     // (H4/D1), we fold the preloaded 1h bars into coarser bars ONCE and pass
     // the resampled slice to EVERY arm — apples-to-apples invariant preserved.
     // `Horizon::OneHour` → identity pass-through (same Vec, no copy).
-    let preloaded_bars: Option<Vec<trading_core::Bar>> =
-        preloaded_1h_bars.map(|bars_1h| crate::resample::resample_ohlcv(&bars_1h, req.timeframe));
+    // Review 1-18: `resample_ohlcv` is fallible (the three `panic!`s inside the
+    // bucket emitter became a `ResampleError`); a corrupt-OHLCV fold now fails
+    // the bake-off loudly instead of aborting the process.
+    let preloaded_bars: Option<Vec<trading_core::Bar>> = preloaded_1h_bars
+        .map(|bars_1h| crate::resample::resample_ohlcv(&bars_1h, req.timeframe))
+        .transpose()
+        .map_err(|e| crate::engine::RunError::Internal(e.to_string()))?;
 
     // ── Initial capital (leaderboard-timeframe-capital knob) ─────────────────
     // Thread the operator-chosen capital through to each arm's ScenarioConfig.

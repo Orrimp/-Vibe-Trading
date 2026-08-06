@@ -930,15 +930,19 @@ mod tests {
 
     // ── F-HR.1 — anchor-byte-identity of the 1h Sharpe path (R-HR.LOAD gate, half 1) ──
     //
-    // This test asserts that `compute_sharpe_hourly` returns its KNOWN byte-value on a
-    // fixed reference series. RED-on-revert: if the 1h fn is folded into / derived
-    // from the periodic fn, the value moves and the test fails — proving the guard
-    // detects any 1h-path mutation.
+    // WHAT THIS ASSERTS (review 1-18 doc-truth pass): that `compute_sharpe_hourly`
+    // annualizes with the hand-entered constant SQRT_HPY = 92.601_295_098_46 — NOT
+    // a literal byte-value of the function's output, which the old header claimed
+    // ("returns its KNOWN byte-value on a fixed reference series") but which no
+    // assertion in the test ever made. The check is structural: recompute
+    // mean/std of the log-returns and require `got == mean/std * SQRT_HPY` to
+    // 1e-12 absolute. That is what makes it RED-on-revert for the mutation that
+    // matters — folding the 1h fn into the periodic one, or re-deriving the
+    // constant as √8760 (the constant is √8574.9998…, ~2.1 % away).
     //
-    // Reference value captured from the function as-implemented on 2026-06-03.
-    // SQRT_HPY = 92.601_295_098_46  (a hand-entered constant, NOT √8760 exactly).
-    // DO NOT change this asserted value without re-running `scripts/verify_anchors.sh`
-    // and confirming 91/91 PASS.
+    // SQRT_HPY is anchor-load-bearing: every 1h θ-surface Sharpe scales with it.
+    // DO NOT change the asserted constant without re-running
+    // `scripts/verify_anchors.sh` and confirming 119/119 PASS.
     #[test]
     fn f_hr_1_compute_sharpe_hourly_value_unchanged() {
         // The 1h constant SQRT_HPY is anchor-load-bearing.
@@ -1009,67 +1013,85 @@ mod tests {
 
     // ── F-HR.2 — annualization correctness at 4h + daily (R-HR.LOAD gate, half 2) ──
     //
-    // Asserts that compute_sharpe_periodic annualizes by sqrt(ppy) for 4h and daily
-    // cadences, including leap-year values. RED-on-revert: wiring the periodic fn to
-    // the 1h sqrt(8575) constant inflates 4h ≈2.0× / daily ≈4.9× → asserted value mismatches.
+    // Asserts that the periodic metric fns annualize by sqrt(ppy) for the 4h and
+    // daily cadences, including leap-year values.
+    //
+    // ## Review 1-18 rebuild
+    //
+    // These tests used to compare each production fn against a LOCAL helper
+    // (`expected_sharpe_at_ppy` / `expected_sortino_at_ppy` /
+    // `expected_calmar_at_ppy`) that re-implemented the production formula
+    // line-for-line — a self-comparison that stays green under any change made
+    // in both places, and green today under changes that alter the production
+    // value (e.g. swapping population for sample variance in BOTH). That is the
+    // bug-log #66 vacuous-test class.
+    //
+    // The primaries now assert **captured literal values** on an exact-integer
+    // reference curve (`make_exact_equity`, no Decimal rounding anywhere, so
+    // `to_f64` is lossless and the literals are reproducible), and the
+    // load-bearing ratio cross-checks — which pin the sqrt(ppy) SCALAR
+    // independently of the mean/std machinery — are kept verbatim.
+    //
+    // RED-on-revert for the primaries: population→sample variance (×1.005 at
+    // n=100), log→simple returns, a dropped or wrong sqrt, wiring the periodic
+    // fn to the 1h SQRT_HPY constant (4h inflates ≈2.0×, daily ≈4.9×).
 
-    /// Helper: compute the "expected" Sharpe from a fixed equity curve given `ppy`.
-    /// Uses the same arithmetic as `compute_sharpe_periodic` so the test can derive
-    /// the reference without round-trip ambiguity.
-    fn expected_sharpe_at_ppy(eq: &[Decimal], ppy: f64) -> f64 {
-        let rets: Vec<f64> = eq
-            .windows(2)
-            .map(|w| {
-                let prev = w[0].to_f64().unwrap();
-                let curr = w[1].to_f64().unwrap();
-                (curr / prev).ln()
-            })
-            .collect();
-        let mean = rets.iter().sum::<f64>() / rets.len() as f64;
-        let var = rets.iter().map(|&r| (r - mean).powi(2)).sum::<f64>() / rets.len() as f64;
-        let std = var.sqrt();
-        if std < 1e-15 {
-            0.0
-        } else {
-            mean / std * ppy.sqrt()
-        }
+    /// Exact-integer reference equity curve — 101 points, 100 returns.
+    ///
+    /// 1000 → 1060 in +1 steps (61 points), then 1060 → 1020 in −1 steps (40
+    /// points). Every value is an exact integer, so `Decimal::to_f64` is lossless
+    /// and the captured literals below are byte-reproducible. The shape gives a
+    /// non-zero downside (Sortino well-defined) and a max drawdown of
+    /// 40/1060 = 0.037_735_849_056_603_77 (Calmar well-defined).
+    fn make_exact_equity() -> Vec<Decimal> {
+        let mut eq: Vec<Decimal> = (0..=60_i64).map(|i| Decimal::from(1000 + i)).collect();
+        eq.extend((1..=40_i64).map(|i| Decimal::from(1060 - i)));
+        debug_assert_eq!(eq.len(), 101);
+        eq
     }
 
-    fn expected_sortino_at_ppy(eq: &[Decimal], ppy: f64) -> f64 {
-        let rets: Vec<f64> = eq
-            .windows(2)
-            .map(|w| {
-                let prev = w[0].to_f64().unwrap();
-                let curr = w[1].to_f64().unwrap();
-                (curr / prev).ln()
-            })
-            .collect();
-        let mean = rets.iter().sum::<f64>() / rets.len() as f64;
-        let down_sq = rets.iter().map(|&r| r.min(0.0).powi(2)).sum::<f64>() / rets.len() as f64;
-        let down_std = down_sq.sqrt();
-        if down_std < 1e-15 {
-            0.0
-        } else {
-            mean / down_std * ppy.sqrt()
-        }
+    /// Captured reference values for [`make_exact_equity`] — the metric each
+    /// production fn returns, recorded 2026-08-06 from the fns as-implemented.
+    ///
+    /// Recompute with `cargo test -p backtest --lib f_hr_2` and read the value
+    /// out of the failure message; changing one of these is a claim that the
+    /// metric's DEFINITION changed, which is an ADR-0051 D3 matter (the 1h
+    /// anchors' Sharpe column scales with the same machinery).
+    mod exact_curve_reference {
+        /// `compute_sharpe_periodic(make_exact_equity(), 2190.0)` — 4h non-leap.
+        pub const SHARPE_4H: f64 = 9.785_911_720_583_08;
+        /// `… 2196.0` — 4h leap (2024).
+        pub const SHARPE_4H_LEAP: f64 = 9.799_307_909_908_26;
+        /// `… 365.0` — daily non-leap.
+        pub const SHARPE_DAILY: f64 = 3.995_081_730_558_322;
+        /// `… 366.0` — daily leap (2024).
+        pub const SHARPE_DAILY_LEAP: f64 = 4.000_550_701_949_058_5;
+        /// `compute_sortino_periodic(…, 2190.0)`.
+        pub const SORTINO_4H: f64 = 15.235_892_885_633_522;
+        /// `compute_sortino_periodic(…, 365.0)`.
+        pub const SORTINO_DAILY: f64 = 6.220_027_224_250_417;
+        /// `compute_calmar_periodic(…, 2190.0)`.
+        pub const CALMAR_4H: f64 = 14.387_413_233_301_16;
+        /// `compute_calmar_periodic(…, 365.0)`.
+        pub const CALMAR_DAILY: f64 = 1.986_329_986_892_632;
     }
 
-    fn expected_calmar_at_ppy(eq: &[Decimal], ppy: f64) -> f64 {
-        let n = eq.len();
-        let initial = eq[0].to_f64().unwrap();
-        let final_eq = eq[n - 1].to_f64().unwrap();
-        let years = (n as f64 - 1.0) / ppy;
-        let cagr = (final_eq / initial).powf(1.0 / years) - 1.0;
-        let max_dd = compute_max_drawdown_f64(eq);
-        if max_dd.abs() < 1e-15 {
-            0.0
-        } else {
-            cagr / max_dd.abs()
-        }
+    /// Relative-difference helper for the captured literals.
+    ///
+    /// The tolerance (1e-12 relative ≈ a few thousand ULP) absorbs any
+    /// evaluation-order noise in the reference capture while staying orders of
+    /// magnitude tighter than every revert listed above, the smallest of which
+    /// (population→sample variance at n=100) moves the value by ~5e-3 relative.
+    fn rel_diff(got: f64, expected: f64) -> f64 {
+        ((got - expected) / expected).abs()
     }
 
     /// Build a reference equity curve with a mixed up-then-down shape so that
     /// Sortino/Calmar are well-defined (non-trivial downside and drawdown).
+    ///
+    /// Used only by the RATIO cross-checks, which are scale-free — they compare
+    /// two annualizations of the SAME curve, so the curve's exact float values
+    /// cancel and no literal is needed.
     fn make_mixed_equity(n_up: usize, n_down: usize) -> Vec<Decimal> {
         let mut eq = vec![dec!(1000)];
         let mut cur = dec!(1000);
@@ -1088,20 +1110,22 @@ mod tests {
     fn f_hr_2_sharpe_4h_scalar() {
         // 4h (non-leap year): periods_per_year = 2190 = 8760/4
         // sqrt(2190) = 46.797_435_827_2…
-        let eq = make_mixed_equity(200, 100);
-        let ppy = 2190.0_f64;
-        let got = compute_sharpe_periodic(&eq, ppy);
-        let expected = expected_sharpe_at_ppy(&eq, ppy);
+        let eq = make_exact_equity();
+        let got = compute_sharpe_periodic(&eq, 2190.0_f64);
         assert!(
-            (got - expected).abs() < 1e-12,
-            "f_hr_2_sharpe_4h: got={got}, expected={expected}"
+            rel_diff(got, exact_curve_reference::SHARPE_4H) < 1e-12,
+            "f_hr_2_sharpe_4h: got={got}, captured reference={expected}. \
+             A change here means the 4h Sharpe DEFINITION moved (population→sample \
+             variance, log→simple returns, or a wrong annualization scalar).",
+            expected = exact_curve_reference::SHARPE_4H
         );
         // Verify the scalar sqrt(2190) is used (not the 1h constant sqrt(8575)).
         // The ratio of 4h Sharpe to 1h Sharpe must be sqrt(2190)/sqrt(8575) ≈ 0.505.
-        let hourly = compute_sharpe_hourly(&eq);
-        let ratio = got / hourly;
+        // Scale-free: the mean/std of the curve cancels, so this pins the SCALAR
+        // alone — it stays load-bearing independently of the literal above.
+        let mixed = make_mixed_equity(200, 100);
+        let ratio = compute_sharpe_periodic(&mixed, 2190.0_f64) / compute_sharpe_hourly(&mixed);
         let expected_ratio = (2190.0_f64 / 8575.0_f64).sqrt();
-        // The ratio of sqrt(ppy1) / sqrt(ppy2) must match to 1e-6 relative.
         // Note: 1h fn uses SQRT_HPY=92.601... (≈sqrt(8575)); 4h uses sqrt(2190).
         assert!(
             (ratio - expected_ratio).abs() < 1e-5,
@@ -1119,17 +1143,25 @@ mod tests {
     fn f_hr_2_sharpe_daily_scalar() {
         // daily (non-leap year): periods_per_year = 365
         // sqrt(365) = 19.104_973_174_5…
-        let eq = make_mixed_equity(200, 100);
-        let ppy = 365.0_f64;
-        let got = compute_sharpe_periodic(&eq, ppy);
-        let expected = expected_sharpe_at_ppy(&eq, ppy);
+        let eq = make_exact_equity();
+        let got = compute_sharpe_periodic(&eq, 365.0_f64);
         assert!(
-            (got - expected).abs() < 1e-12,
-            "f_hr_2_sharpe_daily: got={got}, expected={expected}"
+            rel_diff(got, exact_curve_reference::SHARPE_DAILY) < 1e-12,
+            "f_hr_2_sharpe_daily: got={got}, captured reference={expected}",
+            expected = exact_curve_reference::SHARPE_DAILY
+        );
+        // The 4h and daily Sharpes of the SAME curve must differ by exactly
+        // sqrt(2190/365) — the scalar, isolated from the mean/std machinery.
+        let ratio_4h_daily = compute_sharpe_periodic(&eq, 2190.0_f64) / got;
+        let expected_ratio_4h_daily = (2190.0_f64 / 365.0_f64).sqrt();
+        assert!(
+            (ratio_4h_daily - expected_ratio_4h_daily).abs() < 1e-9,
+            "f_hr_2_sharpe: 4h/daily annualization ratio must be sqrt(2190/365); \
+             got={ratio_4h_daily}, expected={expected_ratio_4h_daily}"
         );
         // Verify the ratio vs 1h is sqrt(365)/sqrt(8575) ≈ 0.206.
-        let hourly = compute_sharpe_hourly(&eq);
-        let ratio = got / hourly;
+        let mixed = make_mixed_equity(200, 100);
+        let ratio = compute_sharpe_periodic(&mixed, 365.0_f64) / compute_sharpe_hourly(&mixed);
         let expected_ratio = (365.0_f64 / 8575.0_f64).sqrt();
         assert!(
             (ratio - expected_ratio).abs() < 1e-5,
@@ -1146,51 +1178,61 @@ mod tests {
     #[test]
     fn f_hr_2_sortino_periodic() {
         // Verify Sortino uses sqrt(ppy) at 4h and daily.
-        let eq = make_mixed_equity(150, 80);
-        // 4h
-        let ppy_4h = 2190.0_f64;
-        let got_4h = compute_sortino_periodic(&eq, ppy_4h);
-        let expected_4h = expected_sortino_at_ppy(&eq, ppy_4h);
+        let eq = make_exact_equity();
+        let got_4h = compute_sortino_periodic(&eq, 2190.0_f64);
         assert!(
-            (got_4h - expected_4h).abs() < 1e-12,
-            "f_hr_2_sortino_4h: got={got_4h}, expected={expected_4h}"
+            rel_diff(got_4h, exact_curve_reference::SORTINO_4H) < 1e-12,
+            "f_hr_2_sortino_4h: got={got_4h}, captured reference={expected}. \
+             RED here also covers the downside-deviation denominator (mean of \
+             min(r,0)² over ALL returns, not just the negative ones).",
+            expected = exact_curve_reference::SORTINO_4H
         );
-        // daily
-        let ppy_daily = 365.0_f64;
-        let got_daily = compute_sortino_periodic(&eq, ppy_daily);
-        let expected_daily = expected_sortino_at_ppy(&eq, ppy_daily);
+        let got_daily = compute_sortino_periodic(&eq, 365.0_f64);
         assert!(
-            (got_daily - expected_daily).abs() < 1e-12,
-            "f_hr_2_sortino_daily: got={got_daily}, expected={expected_daily}"
+            rel_diff(got_daily, exact_curve_reference::SORTINO_DAILY) < 1e-12,
+            "f_hr_2_sortino_daily: got={got_daily}, captured reference={expected}",
+            expected = exact_curve_reference::SORTINO_DAILY
         );
-        // Ratio check: 4h/daily = sqrt(2190)/sqrt(365)
+        // Ratio check (scale-free): 4h/daily = sqrt(2190)/sqrt(365).
         let ratio = got_4h / got_daily;
         let expected_ratio = (2190.0_f64 / 365.0_f64).sqrt();
         assert!(
             (ratio - expected_ratio).abs() < 1e-6,
             "f_hr_2_sortino ratio 4h/daily: got={ratio}, expected={expected_ratio}"
         );
+        // Sortino must exceed Sharpe on this curve: the downside deviation
+        // (0.000_608) is smaller than the full std (0.000_947).
+        assert!(
+            got_4h > compute_sharpe_periodic(&eq, 2190.0_f64),
+            "f_hr_2_sortino: on a curve with more upside than downside dispersion, \
+             Sortino must exceed Sharpe; sortino={got_4h}"
+        );
     }
 
     #[test]
     fn f_hr_2_calmar_periodic() {
         // Verify Calmar uses years = (n-1)/ppy at 4h and daily.
-        let eq = make_mixed_equity(200, 100);
-        // 4h
-        let ppy_4h = 2190.0_f64;
-        let got_4h = compute_calmar_periodic(&eq, ppy_4h);
-        let expected_4h = expected_calmar_at_ppy(&eq, ppy_4h);
+        let eq = make_exact_equity();
+        let got_4h = compute_calmar_periodic(&eq, 2190.0_f64);
         assert!(
-            (got_4h - expected_4h).abs() < 1e-10,
-            "f_hr_2_calmar_4h: got={got_4h}, expected={expected_4h}"
+            rel_diff(got_4h, exact_curve_reference::CALMAR_4H) < 1e-12,
+            "f_hr_2_calmar_4h: got={got_4h}, captured reference={expected}. \
+             RED here covers years=(n−1)/ppy, the CAGR exponent, and the \
+             MaxDD denominator (40/1060 on this curve).",
+            expected = exact_curve_reference::CALMAR_4H
         );
-        // daily
-        let ppy_daily = 365.0_f64;
-        let got_daily = compute_calmar_periodic(&eq, ppy_daily);
-        let expected_daily = expected_calmar_at_ppy(&eq, ppy_daily);
+        let got_daily = compute_calmar_periodic(&eq, 365.0_f64);
         assert!(
-            (got_daily - expected_daily).abs() < 1e-10,
-            "f_hr_2_calmar_daily: got={got_daily}, expected={expected_daily}"
+            rel_diff(got_daily, exact_curve_reference::CALMAR_DAILY) < 1e-12,
+            "f_hr_2_calmar_daily: got={got_daily}, captured reference={expected}",
+            expected = exact_curve_reference::CALMAR_DAILY
+        );
+        // Independent cross-check of the MaxDD denominator: the curve peaks at
+        // 1060 and bottoms at 1020 → 40/1060.
+        let max_dd = compute_max_drawdown_f64(&eq);
+        assert!(
+            (max_dd - (40.0_f64 / 1060.0_f64)).abs() < 1e-15,
+            "f_hr_2_calmar: reference curve MaxDD must be 40/1060; got={max_dd}"
         );
         // Calmar is CAGR/MaxDD. For the same equity curve, years_4h < years_daily
         // (ppy_4h > ppy_daily) → CAGR_4h > CAGR_daily (same return, fewer years)
@@ -1204,37 +1246,76 @@ mod tests {
 
     #[test]
     fn f_hr_2_leap_year_scalars() {
-        // 2024 is a leap year: 8784h, 2196 4h-bars, 366 days.
-        // Verify the periodic fn produces the correct sqrt factors.
-        let eq = make_mixed_equity(200, 100);
-        // 4h leap: ppy = 2196
-        let ppy_4h_leap = 2196.0_f64;
-        let got_4h_leap = compute_sharpe_periodic(&eq, ppy_4h_leap);
-        let expected_4h_leap = expected_sharpe_at_ppy(&eq, ppy_4h_leap);
-        assert!(
-            (got_4h_leap - expected_4h_leap).abs() < 1e-12,
-            "f_hr_2_leap_4h: got={got_4h_leap}, expected={expected_4h_leap}"
+        // The leap-year scalars must come from the PRODUCTION table, not from
+        // literals re-typed in the test.
+        //
+        // Review 1-18: this test used to pass 2196.0 / 366.0 as bare literals and
+        // never call `Horizon::periods_per_year` at all — so it could not have
+        // gone RED if the production leap table were wrong, which is the ONE
+        // thing its name promises. (The table has since become leap-aware for
+        // every year, not just 2024 — see `bars_per_year_1h`.)
+        use crate::resample::Horizon;
+
+        // Non-leap (2023) and leap (2024) — exact values off the real fn.
+        assert_eq!(
+            Horizon::FourHours.periods_per_year(2023),
+            2190.0,
+            "4h non-leap ppy must be 8760/4"
         );
-        // daily leap: ppy = 366
-        let ppy_daily_leap = 366.0_f64;
-        let got_daily_leap = compute_sharpe_periodic(&eq, ppy_daily_leap);
-        let expected_daily_leap = expected_sharpe_at_ppy(&eq, ppy_daily_leap);
+        assert_eq!(
+            Horizon::FourHours.periods_per_year(2024),
+            2196.0,
+            "4h leap ppy must be 8784/4"
+        );
+        assert_eq!(
+            Horizon::OneDay.periods_per_year(2023),
+            365.0,
+            "daily non-leap ppy must be 365"
+        );
+        assert_eq!(
+            Horizon::OneDay.periods_per_year(2024),
+            366.0,
+            "daily leap ppy must be 366"
+        );
+        assert_eq!(
+            Horizon::OneHour.periods_per_year(2023),
+            8760.0,
+            "1h non-leap ppy must be 8760"
+        );
+        assert_eq!(
+            Horizon::OneHour.periods_per_year(2024),
+            8784.0,
+            "1h leap ppy must be 8784"
+        );
+
+        // Feed the REAL scalars into the metric fns and pin the results.
+        let eq = make_exact_equity();
+        let got_4h_leap = compute_sharpe_periodic(&eq, Horizon::FourHours.periods_per_year(2024));
         assert!(
-            (got_daily_leap - expected_daily_leap).abs() < 1e-12,
-            "f_hr_2_leap_daily: got={got_daily_leap}, expected={expected_daily_leap}"
+            rel_diff(got_4h_leap, exact_curve_reference::SHARPE_4H_LEAP) < 1e-12,
+            "f_hr_2_leap_4h: got={got_4h_leap}, captured reference={expected}",
+            expected = exact_curve_reference::SHARPE_4H_LEAP
+        );
+        let got_daily_leap = compute_sharpe_periodic(&eq, Horizon::OneDay.periods_per_year(2024));
+        assert!(
+            rel_diff(got_daily_leap, exact_curve_reference::SHARPE_DAILY_LEAP) < 1e-12,
+            "f_hr_2_leap_daily: got={got_daily_leap}, captured reference={expected}",
+            expected = exact_curve_reference::SHARPE_DAILY_LEAP
         );
         // Cross-checks: sqrt(2196) > sqrt(2190); sqrt(366) > sqrt(365).
         assert!(
-            got_4h_leap > compute_sharpe_periodic(&eq, 2190.0_f64),
+            got_4h_leap > compute_sharpe_periodic(&eq, Horizon::FourHours.periods_per_year(2023)),
             "f_hr_2_leap: sharpe(leap 4h) > sharpe(non-leap 4h)"
         );
         assert!(
-            got_daily_leap > compute_sharpe_periodic(&eq, 365.0_f64),
+            got_daily_leap > compute_sharpe_periodic(&eq, Horizon::OneDay.periods_per_year(2023)),
             "f_hr_2_leap: sharpe(leap daily) > sharpe(non-leap daily)"
         );
         // The Calmar leap check: years are smaller → CAGR is larger.
-        let calmar_daily_leap = compute_calmar_periodic(&eq, 366.0_f64);
-        let calmar_daily_nonleap = compute_calmar_periodic(&eq, 365.0_f64);
+        let calmar_daily_leap =
+            compute_calmar_periodic(&eq, Horizon::OneDay.periods_per_year(2024));
+        let calmar_daily_nonleap =
+            compute_calmar_periodic(&eq, Horizon::OneDay.periods_per_year(2023));
         assert!(
             calmar_daily_leap > calmar_daily_nonleap,
             "f_hr_2_leap: calmar(leap daily) > calmar(non-leap daily); \

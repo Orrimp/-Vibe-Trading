@@ -52,7 +52,9 @@ pub mod sweep_harness;
 ///
 /// `resample_ohlcv(bars_1h, horizon)` folds 1h bars into coarser (4h/daily)
 /// bars. `Horizon::OneHour` → identity pass-through (the existing 91 anchors
-/// are byte-untouched by construction).
+/// are byte-untouched by construction). Fallible since review 1-18 (a corrupt
+/// OHLCV bucket returns `ResampleError` rather than panicking);
+/// `resample_ohlcv_detailed` additionally reports incomplete buckets.
 pub mod resample;
 
 /// Shared CLI-scenario types used by `main.rs` and the extracted modules.

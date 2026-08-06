@@ -796,9 +796,8 @@ fn fp_c3_5_real_renderer_family_line_and_c5_flags() {
         !body_uniform.contains("C5 DEFLATION REQUIRED"),
         "an all-FRAGILE surface must carry no C5 flags"
     );
-    assert_eq!(
+    assert!(
         body_uniform.contains(family_verdict_line(false)),
-        true,
         "uniform family line must come from the single production source"
     );
 }

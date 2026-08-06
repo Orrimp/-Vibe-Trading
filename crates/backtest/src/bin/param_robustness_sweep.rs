@@ -273,17 +273,50 @@ fn parse_seed(s: &str) -> Result<u64> {
 
 /// Horizon-aware periods-per-year (M-DEV-3, D-HR.1.2).
 ///
-/// Returns the `periods_per_year` scalar for `compute_*_periodic` at the given
-/// `(horizon, year)`. Leap-year aware: 2024 is a leap year (8784h / 4 = 2196 at 4h;
-/// 8784h / 24 = 366 at daily).
+/// A pure pass-through to [`backtest::resample::Horizon::periods_per_year`],
+/// kept as a named local seam so the sweep's call sites read in sweep terms.
+/// It enforces NOTHING (review 1-18 doc-truth pass: the previous doc said the
+/// sweep "MUST NOT" pass the 1h value, which reads like a checked
+/// precondition — this function has no branch and no assertion, and would
+/// happily return 8760.0 for `Horizon::OneHour`).
 ///
-/// **The 1h value is provided for completeness ONLY.** The sweep MUST NOT call
-/// `compute_sharpe_periodic` with the 1h value — instead it calls the verbatim
-/// `compute_sharpe_hourly` (the 1h anchors are byte-identical by construction,
-/// D-HR.1 / D-HR.7). Use this only for 4h and daily.
+/// The actual 1h/coarse split is enforced at the CALL SITES, which select
+/// `compute_sharpe_hourly` (the verbatim 1h fn, D-HR.1 / D-HR.7 — that is what
+/// keeps the 1h anchors byte-identical) for `Horizon::OneHour` and the
+/// `compute_*_periodic` family for 4h/daily.
+///
+/// Leap-year aware via the single [`backtest::resample::bars_per_year_1h`]
+/// table: 2024 is a leap year (8784h / 4 = 2196 at 4h; 8784h / 24 = 366 daily).
 #[must_use]
 fn sweep_periods_per_year(horizon: backtest::resample::Horizon, year: i32) -> f64 {
     horizon.periods_per_year(year)
+}
+
+/// Expected total bar count for the real-data loader's ≥ 99.5% coverage gate.
+///
+/// **Horizon-INVARIANT by construction** (review 1-18 coverage-gate fix).
+/// `RealDataBarSource::load` reads `Timeframe::OneHour` parquet rows and counts
+/// RAW 1h bars — the [`backtest::resample::resample_ohlcv`] fold runs AFTER the
+/// gate — so the expected total must be the 1h count at every horizon. The old
+/// call site passed the COARSE `bar_count`, which at `--horizon daily` set the
+/// bar for a full year of ten symbols to 3 650 instead of 87 600: the gate
+/// passed with ~4 % of the corpus present, i.e. it was inert exactly where a
+/// missing-data check matters most.
+///
+/// The `horizon` parameter is accepted but deliberately unused — it exists so
+/// the invariance is a testable property of THIS function rather than an
+/// unwritten rule about its caller.
+#[must_use]
+// The only production caller is the `realdata`-gated loader; the unit test
+// below exercises it in every build.
+#[cfg(any(feature = "realdata", test))]
+fn coverage_expected_total(
+    year: i32,
+    horizon: backtest::resample::Horizon,
+    n_symbols: usize,
+) -> usize {
+    let _ = horizon; // see doc: the loader counts 1h bars at EVERY horizon.
+    backtest::resample::bars_per_year_1h(year) * n_symbols
 }
 
 // ── Git / hostname helpers (mirrors monte_carlo.rs) ────────────────────────────
@@ -396,10 +429,13 @@ fn days_since_epoch_to_ymd(days: u64) -> (u32, u32, u32) {
 
 // ── Load source bars ───────────────────────────────────────────────────────────
 
+// Review 1-18: the coarse `bar_count` used to be threaded in here purely to
+// size the loader's coverage gate — wrongly (see `coverage_expected_total`).
+// The gate is now derived from (year, symbols) at the load site, so the loaders
+// no longer take a bar count at all.
 fn load_source_bars(
     args: &Args,
     symbols_prices: &[(trading_core::Symbol, Decimal)],
-    bar_count: usize,
 ) -> SourceBarsResult {
     match args.generator {
         GeneratorKind::GbmSmoke => {
@@ -412,7 +448,7 @@ fn load_source_bars(
             // that also ignored `--ensemble-seed`. Return an empty source.
             Ok((Vec::new(), "N/A".to_string()))
         }
-        GeneratorKind::BlockBootstrapReal => load_real_bars(args, symbols_prices, bar_count),
+        GeneratorKind::BlockBootstrapReal => load_real_bars(args, symbols_prices),
     }
 }
 
@@ -420,7 +456,6 @@ fn load_source_bars(
 fn load_real_bars(
     args: &Args,
     symbols_prices: &[(trading_core::Symbol, Decimal)],
-    bar_count: usize,
 ) -> SourceBarsResult {
     use backtest::realdata::{RealDataBarSource, TimeSpan as RealDataTimeSpan};
 
@@ -428,7 +463,11 @@ fn load_real_bars(
         symbols_prices.iter().map(|(s, _)| s.clone()).collect();
     let src = RealDataBarSource::new(args.data_root.clone(), symbols.clone());
     let span = RealDataTimeSpan::full_year(args.year);
-    let expected_total = bar_count * symbols.len();
+    // Review 1-18: the coverage gate is on the RAW 1h count, NOT the coarse
+    // `bar_count` — the loader reads 1h parquet rows and the resample below
+    // happens after the gate. Passing the coarse count made the 99.5% check
+    // pass on ~4% of the corpus at --horizon daily.
+    let expected_total = coverage_expected_total(args.year, args.horizon, symbols.len());
     let scenario_name = format!("param-robustness-sweep-load-{}", args.year);
     let loaded = src
         .load(span, expected_total, &scenario_name)
@@ -464,15 +503,31 @@ fn load_real_bars(
 
     // M-DEV-3: apply horizon resample per symbol (D-HR.2).
     // For Horizon::OneHour (default) → identity pass-through → byte-untouched 1h load path.
-    // For 4h/daily → fold into coarse bars. The coverage check above stays on the 1h count.
-    let bars_by_symbol: SourceBars = symbols_prices
-        .iter()
-        .map(|(sym, _)| {
-            let bars_1h = by_symbol.remove(&sym.to_string()).unwrap_or_default();
-            let bars = backtest::resample::resample_ohlcv(&bars_1h, args.horizon);
-            (sym.clone(), bars)
-        })
-        .collect();
+    // For 4h/daily → fold into coarse bars.
+    //
+    // Review 1-18: the coverage check above IS on the 1h count now — it is
+    // computed by `coverage_expected_total`, which is 1h by construction and
+    // runs BEFORE this fold (the old comment claimed the same thing while the
+    // call site passed the coarse count). The fold is fallible: a corrupt OHLCV
+    // bucket returns a `ResampleError` instead of aborting the process.
+    let mut bars_by_symbol: SourceBars = Vec::with_capacity(symbols_prices.len());
+    for (sym, _) in symbols_prices {
+        let bars_1h = by_symbol.remove(&sym.to_string()).unwrap_or_default();
+        let resampled = backtest::resample::resample_ohlcv_detailed(&bars_1h, args.horizon)
+            .with_context(|| format!("resample {sym} to {}", args.horizon))?;
+        if !resampled.is_complete() {
+            // Visibility only — partial buckets are EMITTED (dropping them would
+            // change the coarse source series and move the locked anchors).
+            tracing::warn!(
+                symbol = %sym,
+                horizon = %args.horizon,
+                partial_buckets = resampled.partial_buckets.len(),
+                first_partial_open_ts_ms = resampled.partial_buckets.first().map(|p| p.open_ts_ms),
+                "resampled series contains incomplete coarse buckets"
+            );
+        }
+        bars_by_symbol.push((sym.clone(), resampled.bars));
+    }
 
     Ok((bars_by_symbol, revision_sha))
 }
@@ -481,7 +536,6 @@ fn load_real_bars(
 fn load_real_bars(
     _args: &Args,
     _symbols_prices: &[(trading_core::Symbol, Decimal)],
-    _bar_count: usize,
 ) -> SourceBarsResult {
     anyhow::bail!(
         "load_real_bars called without --features realdata. \
@@ -1408,11 +1462,16 @@ fn main() -> Result<()> {
     // equity under the TS name. Any forged report shadows the real one as
     // "latest matching" and the anchors gate goes falsely RED. Correct tuples
     // are byte-unchanged.
+    // Review 1-18 adds the FOURTH axis, --horizon: `--grid ts-4h` at the
+    // default `--horizon 1h` forges the 1h TS anchors' names (#90/#91) with
+    // 4h-tuned lookbacks, and `--grid ts-tier1 --horizon 4h` forges the horizon
+    // anchors' names (#92/#93); the carry pair forges #96..#99 identically.
     if let Err(msg) = validate_grid_axis_pairing(
         args.grid,
         args.direction,
         args.selection_mode,
         args.score_source,
+        args.horizon,
     ) {
         anyhow::bail!("{msg}");
     }
@@ -1452,16 +1511,13 @@ fn main() -> Result<()> {
     // For 1h (default) this is byte-identical to the previous fixed 8760/8784.
     // For 4h: divide by 4 (exact integer: 8760/4=2190, 8784/4=2196).
     // For daily: divide by 24 (exact integer: 8760/24=365, 8784/24=366).
-    let bars_per_year_1h: usize = match args.year {
-        2023 => 8760,
-        2024 => 8784,
-        _ => 8760,
-    };
-    let bar_count = match args.horizon {
-        backtest::resample::Horizon::OneHour => bars_per_year_1h,
-        backtest::resample::Horizon::FourHours => bars_per_year_1h / 4,
-        backtest::resample::Horizon::OneDay => bars_per_year_1h / 24,
-    };
+    //
+    // Review 1-18: the 1h table is now `resample::bars_per_year_1h` — the SAME
+    // source `Horizon::periods_per_year` divides. The old local `match` had a
+    // non-leap-aware `_ => 8760` catch-all, so a future `--year 2028` (leap)
+    // would have generated 365 daily bars while annualizing at ppy=366.
+    // 2023/2024 are byte-unchanged (8760 / 8784).
+    let bar_count = backtest::resample::bars_per_year_1h(args.year) / args.horizon.ratio() as usize;
 
     let symbols_prices = backtest::scenarios::momentum::top10_symbols_with_prices();
     let universe: Vec<(trading_core::Symbol, Decimal)> = symbols_prices.clone();
@@ -1475,8 +1531,7 @@ fn main() -> Result<()> {
         );
     }
 
-    let (real_bars_by_symbol, source_revision_sha) =
-        load_source_bars(&args, &symbols_prices, bar_count)?;
+    let (real_bars_by_symbol, source_revision_sha) = load_source_bars(&args, &symbols_prices)?;
 
     // ── Pre-build BlockBootstrapPathGen ONCE (shared across all rayon tasks) ────
     // Performance fix: build once, reuse for all N × G parallel tasks
@@ -1801,73 +1856,37 @@ fn main() -> Result<()> {
     // M-DEV-4: TS-momentum gets its own scenario slug (distinct from momentum/MR/carry).
     // M-DEV-3: horizon retest runs get a horizon-specific slug (§ D-HR.5).
     let is_horizon_run = args.horizon != backtest::resample::Horizon::OneHour;
-    let horizon_label = match args.horizon {
-        backtest::resample::Horizon::OneHour => "",
-        backtest::resample::Horizon::FourHours => "4h",
-        backtest::resample::Horizon::OneDay => "daily",
+    //
+    // Review 1-18 (H3): the scenario identity is built by the ONE production
+    // seam, `sweep_harness::build_scenario_name`. Until now this bin carried an
+    // inline `format!` chain that duplicated every arm of that function and
+    // never called it — so BOTH anchor-safety fixes the seam owns were INERT in
+    // production while their tests passed against the library fn:
+    //   * the 1-15 M2 grid discriminator (`--grid two-cell` could still emit the
+    //     anchored tier-1 identity and shadow anchor #86's report), and
+    //   * the 1-15 L3 honest generator token (the gbm lane still wrote the false
+    //     `block-bootstrap-gbm` segment).
+    // Anchor-safety of the switch: for `--generator block-bootstrap-real` the
+    // token is the literal `block-bootstrap-real` — byte-identical to the old
+    // `block-bootstrap-{gen}` with gen="real" — and every LOCKED production
+    // grid's discriminator is `""`, so all 34 anchored `*-theta-surface-*`
+    // names are unchanged (asserted literally in `scenario_name_anchored_*`).
+    // The only names that MOVE are the never-anchored gbm-smoke and two-cell
+    // probe lanes, which is exactly the intent of L3/M2.
+    let generator_token = match args.generator {
+        GeneratorKind::BlockBootstrapReal => "block-bootstrap-real",
+        GeneratorKind::GbmSmoke => "gbm-smoke",
     };
-    let gen_label = match args.generator {
-        GeneratorKind::BlockBootstrapReal => "real",
-        GeneratorKind::GbmSmoke => "gbm",
-    };
-    let scenario_name = if is_horizon_run && args.selection_mode.is_ts() {
-        // Horizon TS run: e.g. "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
-        format!(
-            "v1-ts-horizon-{horizon}-theta-surface-{year}-block-bootstrap-{gen}-fy",
-            horizon = horizon_label,
-            year = args.year,
-            gen = gen_label,
-        )
-    } else if is_horizon_run && args.score_source == SweepScoreSource::Carry {
-        // Horizon carry run: e.g. "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
-        format!(
-            "v1-carry-horizon-{horizon}-theta-surface-{year}-block-bootstrap-{gen}-fy",
-            horizon = horizon_label,
-            year = args.year,
-            gen = gen_label,
-        )
-    } else if args.selection_mode.is_ts() {
-        format!(
-            "v1-ts-momentum-theta-surface-{year}-block-bootstrap-{gen}-fy",
-            year = args.year,
-            gen = gen_label,
-        )
-    } else {
-        match args.score_source {
-            SweepScoreSource::Carry => format!(
-                "v1-carry-theta-surface-{year}-block-bootstrap-{gen}-fy",
-                year = args.year,
-                gen = gen_label,
-            ),
-            // M-DEV-5 (D-BR.9): basis-reversal scenario name carries the fee level
-            // as a zero-padded two-digit number so the four fee × two regime surfaces
-            // are DISTINCT anchors (§ D-BR.2-LOCKED / § D-BR.9).
-            SweepScoreSource::BasisReversal => format!(
-                "v1-basis-reversal-fee{fee:02}bps-theta-surface-{year}-block-bootstrap-{gen}-fy",
-                fee = args.taker_fee_bps,
-                year = args.year,
-                gen = gen_label,
-            ),
-            // M-DEV-5 (D-MN.8): MN scenario name carries the arm label + fee level.
-            // Format: "v2-mn-{arm}-fee{NN}bps-theta-surface-{year}-block-bootstrap-real-fy"
-            // The three arms × two fee levels × two years → 12 DISTINCT anchors (§ D6.10).
-            SweepScoreSource::MnBasisSpread
-            | SweepScoreSource::MnFundingSpread
-            | SweepScoreSource::MnBasisFundingResidual => format!(
-                "v2-mn-{arm}-fee{fee:02}bps-theta-surface-{year}-block-bootstrap-{gen}-fy",
-                arm = args.score_source.mn_arm_label(),
-                fee = args.taker_fee_bps,
-                year = args.year,
-                gen = gen_label,
-            ),
-            SweepScoreSource::VolAdjustedReturn => format!(
-                "v1-{family}-theta-surface-{year}-block-bootstrap-{gen}-fy",
-                family = args.direction.label(),
-                year = args.year,
-                gen = gen_label,
-            ),
-        }
-    };
+    let scenario_name = build_scenario_name(
+        args.grid,
+        args.direction,
+        args.score_source,
+        args.selection_mode,
+        args.horizon,
+        args.year,
+        generator_token,
+        args.taker_fee_bps,
+    );
 
     // ── Render report (ADR-0051 D3 / § D6.4) ─────────────────────────────────
     let report = render_surface_report(
@@ -2315,26 +2334,32 @@ mod tests {
 
     // ── Review 1-17: full (direction × selection_mode × score_source) × grid tuple ─
 
-    /// Review 1-17: every anchored-family axis tuple passes the FULL guard —
-    /// no checked-in invocation is rejected (anchored lanes byte-unchanged).
-    /// The tuples below are read off the anchored reports' `held_constant` rows.
+    /// Review 1-17 (+1-18 horizon axis): every anchored-family axis tuple passes
+    /// the FULL guard — no checked-in invocation is rejected (anchored lanes
+    /// byte-unchanged). The tuples below are read off the anchored reports'
+    /// `held_constant` rows; the 4th element is the `--horizon` each anchored
+    /// family ran at (1h for every 1h surface; 4h/daily for the eight horizon
+    /// surfaces #92..#99).
     #[test]
     fn grid_axis_pairing_every_anchored_family_tuple_passes() {
         use SweepScoreSource as S;
         use SweepSelectionMode as M;
-        let anchored_tuples: &[(GridKind, SweepDirection, M, S)] = &[
+        use backtest::resample::Horizon as H;
+        let anchored_tuples: &[(GridKind, SweepDirection, M, S, H)] = &[
             // momentum #86 (+ the FP-C3.2 two-cell probe lane, same defaults)
             (
                 GridKind::Tier1,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
+                H::OneHour,
             ),
             (
                 GridKind::TwoCell,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
+                H::OneHour,
             ),
             // MR #87
             (
@@ -2342,44 +2367,51 @@ mod tests {
                 SweepDirection::Reversion,
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
+                H::OneHour,
             ),
-            // carry #88/#89 + horizon carry surfaces
+            // carry #88/#89 + horizon carry surfaces #96..#99
             (
                 GridKind::CarryTier1,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::Carry,
+                H::OneHour,
             ),
             (
                 GridKind::Carry4h,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::Carry,
+                H::FourHours,
             ),
             (
                 GridKind::CarryDaily,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::Carry,
+                H::OneDay,
             ),
-            // TS #90/#91 + horizon TS surfaces
+            // TS #90/#91 + horizon TS surfaces #92..#95
             (
                 GridKind::TsTier1,
                 SweepDirection::Momentum,
                 M::TimeSeriesLongFlat,
                 S::VolAdjustedReturn,
+                H::OneHour,
             ),
             (
                 GridKind::Ts4h,
                 SweepDirection::Momentum,
                 M::TimeSeriesLongFlat,
                 S::VolAdjustedReturn,
+                H::FourHours,
             ),
             (
                 GridKind::TsDaily,
                 SweepDirection::Momentum,
                 M::TimeSeriesLongFlat,
                 S::VolAdjustedReturn,
+                H::OneDay,
             ),
             // basis-reversal fee ladder
             (
@@ -2387,6 +2419,7 @@ mod tests {
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::BasisReversal,
+                H::OneHour,
             ),
             // the three MN arms (CLI-level selection mode stays the default;
             // LongShort is applied per-cell inside cell_config per D-MN.5)
@@ -2395,24 +2428,32 @@ mod tests {
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::MnBasisSpread,
+                H::OneHour,
             ),
             (
                 GridKind::MnTier1,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::MnFundingSpread,
+                H::OneHour,
             ),
             (
                 GridKind::MnTier1,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::MnBasisFundingResidual,
+                H::OneHour,
             ),
         ];
-        for &(grid, dir, mode, source) in anchored_tuples {
+        assert_eq!(
+            anchored_tuples.len(),
+            13,
+            "the 13 anchored-family tuples must all be exercised WITH their horizon"
+        );
+        for &(grid, dir, mode, source, horizon) in anchored_tuples {
             assert!(
-                validate_grid_axis_pairing(grid, dir, mode, source).is_ok(),
-                "anchored tuple must pass: {grid:?} × {dir:?} × {mode:?} × {source:?}"
+                validate_grid_axis_pairing(grid, dir, mode, source, horizon).is_ok(),
+                "anchored tuple must pass: {grid:?} × {dir:?} × {mode:?} × {source:?} × {horizon}"
             );
         }
         // Exhaustive: every grid × its own required tuple × each allowed source passes.
@@ -2423,13 +2464,409 @@ mod tests {
                         grid,
                         grid.required_direction(),
                         grid.required_selection_mode(),
-                        source
+                        source,
+                        grid.required_horizon(),
                     )
                     .is_ok(),
                     "required tuple must pass for {grid:?} with {source:?}"
                 );
             }
         }
+    }
+
+    /// Review 1-18: the `--horizon` axis is a real forge vector — the four
+    /// combinations below each emit an EXISTING anchor's scenario name at the
+    /// wrong cadence, and each must bail naming the offending axis and the
+    /// required value.
+    #[test]
+    fn grid_axis_pairing_horizon_forged_combos_bail() {
+        use SweepScoreSource as S;
+        use SweepSelectionMode as M;
+        use backtest::resample::Horizon as H;
+
+        // Forge H1: ts-4h at the DEFAULT --horizon 1h. The 4h-tuned lookbacks
+        // {42,180,540} run against 1h bars and the name collapses to
+        // "v1-ts-momentum-theta-surface-{year}-…" — anchors #90/#91.
+        let err = validate_grid_axis_pairing(
+            GridKind::Ts4h,
+            SweepDirection::Momentum,
+            M::TimeSeriesLongFlat,
+            S::VolAdjustedReturn,
+            H::OneHour,
+        )
+        .expect_err("ts-4h × --horizon 1h must bail");
+        assert!(
+            err.contains("--horizon") && err.contains("Ts4h") && err.contains("required 4h"),
+            "bail message must name the horizon axis and the grid's required 4h: {err}"
+        );
+
+        // Forge H2: ts-tier1 at --horizon 4h. The converse — the 1h-tuned grid
+        // emits "v1-ts-horizon-4h-theta-surface-{year}-…" (anchors #92/#93).
+        let err = validate_grid_axis_pairing(
+            GridKind::TsTier1,
+            SweepDirection::Momentum,
+            M::TimeSeriesLongFlat,
+            S::VolAdjustedReturn,
+            H::FourHours,
+        )
+        .expect_err("ts-tier1 × --horizon 4h must bail");
+        assert!(
+            err.contains("--horizon") && err.contains("TsTier1") && err.contains("required 1h"),
+            "bail message must name the horizon axis and the grid's required 1h: {err}"
+        );
+
+        // Forge H3: carry-4h at --horizon daily → forges the carry-daily
+        // anchors' names (#98/#99) with the 4h grid.
+        let err = validate_grid_axis_pairing(
+            GridKind::Carry4h,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::Carry,
+            H::OneDay,
+        )
+        .expect_err("carry-4h × --horizon daily must bail");
+        assert!(
+            err.contains("--horizon")
+                && err.contains("Carry4h")
+                && err.contains("requested daily")
+                && err.contains("required 4h"),
+            "bail message must name both the requested and required horizon: {err}"
+        );
+
+        // Forge H4: carry-daily at the default --horizon 1h → forges the 1h
+        // carry anchors' names (#88/#89) with the daily grid.
+        let err = validate_grid_axis_pairing(
+            GridKind::CarryDaily,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::Carry,
+            H::OneHour,
+        )
+        .expect_err("carry-daily × --horizon 1h must bail");
+        assert!(
+            err.contains("--horizon")
+                && err.contains("CarryDaily")
+                && err.contains("requested 1h")
+                && err.contains("required daily"),
+            "bail message must name both the requested and required horizon: {err}"
+        );
+
+        // ts-daily at 4h and every other cross-horizon pair bails too.
+        for grid in ALL_GRIDS {
+            for wrong in [H::OneHour, H::FourHours, H::OneDay] {
+                if wrong == grid.required_horizon() {
+                    continue;
+                }
+                assert!(
+                    validate_grid_axis_pairing(
+                        grid,
+                        grid.required_direction(),
+                        grid.required_selection_mode(),
+                        grid.allowed_score_sources()[0],
+                        wrong,
+                    )
+                    .is_err(),
+                    "{grid:?} at --horizon {wrong} must bail (required {})",
+                    grid.required_horizon()
+                );
+            }
+        }
+    }
+
+    // ── Review 1-18 H3: the scenario identity comes from the ONE seam ─────────
+
+    /// The anchored scenario names, as LITERAL strings copied from
+    /// `evidence/anchors.toml`.
+    ///
+    /// This is the byte-identity proof for the H3 seam switch: the bin used to
+    /// build these with its own inline `format!` chain (which never called
+    /// `build_scenario_name` and therefore carried ZERO `scenario_discriminator`
+    /// calls). Every string below is the anchor's `scenario = "…"` value pasted
+    /// verbatim — NOT re-derived from the production code — so a drift in the
+    /// seam, in the discriminator, or in the generator token fails this test
+    /// instead of silently orphaning an anchored report.
+    #[test]
+    fn scenario_name_anchored_families_are_byte_identical() {
+        use backtest::resample::Horizon as H;
+        const REAL: &str = "block-bootstrap-real";
+        // (grid, direction, score_source, selection_mode, horizon, expected)
+        let cases: &[(
+            GridKind,
+            SweepDirection,
+            SweepScoreSource,
+            SweepSelectionMode,
+            H,
+            &str,
+        )] = &[
+            (
+                GridKind::Tier1,
+                SweepDirection::Momentum,
+                SweepScoreSource::VolAdjustedReturn,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::OneHour,
+                "v1-momentum-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::TsTier1,
+                SweepDirection::Momentum,
+                SweepScoreSource::VolAdjustedReturn,
+                SweepSelectionMode::TimeSeriesLongFlat,
+                H::OneHour,
+                "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::Ts4h,
+                SweepDirection::Momentum,
+                SweepScoreSource::VolAdjustedReturn,
+                SweepSelectionMode::TimeSeriesLongFlat,
+                H::FourHours,
+                "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::TsDaily,
+                SweepDirection::Momentum,
+                SweepScoreSource::VolAdjustedReturn,
+                SweepSelectionMode::TimeSeriesLongFlat,
+                H::OneDay,
+                "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::CarryTier1,
+                SweepDirection::Momentum,
+                SweepScoreSource::Carry,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::OneHour,
+                "v1-carry-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::Carry4h,
+                SweepDirection::Momentum,
+                SweepScoreSource::Carry,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::FourHours,
+                "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::CarryDaily,
+                SweepDirection::Momentum,
+                SweepScoreSource::Carry,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::OneDay,
+                "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            // The remaining anchored families (MR / basis fee ladder / MN arms)
+            // — all 1h, all built by the same seam.
+            (
+                GridKind::MrTier1,
+                SweepDirection::Reversion,
+                SweepScoreSource::VolAdjustedReturn,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::OneHour,
+                "v1-mr-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::BasisTier1,
+                SweepDirection::Momentum,
+                SweepScoreSource::BasisReversal,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::OneHour,
+                "v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                SweepScoreSource::MnBasisSpread,
+                SweepSelectionMode::CrossSectionalTopK,
+                H::OneHour,
+                "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy",
+            ),
+        ];
+        for &(grid, direction, score_source, selection_mode, horizon, expected) in cases {
+            // The fee only appears in the basis/MN names; read it back off the
+            // expected string so each case stays a single literal.
+            let fee: u32 = if expected.contains("fee02bps") {
+                2
+            } else if expected.contains("fee00bps") {
+                0
+            } else {
+                4 // the default; unused by the non-fee families
+            };
+            let got = build_scenario_name(
+                grid,
+                direction,
+                score_source,
+                selection_mode,
+                horizon,
+                2023,
+                REAL,
+                fee,
+            );
+            assert_eq!(
+                got, expected,
+                "anchored scenario identity drifted for {grid:?} at {horizon}: \
+                 the seam must emit the anchors.toml string byte-identically"
+            );
+        }
+    }
+
+    /// The 2024 horizon surfaces (#93/#95/#97/#99) — the year segment is the
+    /// only difference, and it must stay so.
+    #[test]
+    fn scenario_name_anchored_2024_horizon_surfaces_byte_identical() {
+        use backtest::resample::Horizon as H;
+        const REAL: &str = "block-bootstrap-real";
+        let cases: &[(GridKind, SweepSelectionMode, SweepScoreSource, H, &str)] = &[
+            (
+                GridKind::Ts4h,
+                SweepSelectionMode::TimeSeriesLongFlat,
+                SweepScoreSource::VolAdjustedReturn,
+                H::FourHours,
+                "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::TsDaily,
+                SweepSelectionMode::TimeSeriesLongFlat,
+                SweepScoreSource::VolAdjustedReturn,
+                H::OneDay,
+                "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::Carry4h,
+                SweepSelectionMode::CrossSectionalTopK,
+                SweepScoreSource::Carry,
+                H::FourHours,
+                "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy",
+            ),
+            (
+                GridKind::CarryDaily,
+                SweepSelectionMode::CrossSectionalTopK,
+                SweepScoreSource::Carry,
+                H::OneDay,
+                "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy",
+            ),
+        ];
+        for &(grid, selection_mode, score_source, horizon, expected) in cases {
+            let got = build_scenario_name(
+                grid,
+                SweepDirection::Momentum,
+                score_source,
+                selection_mode,
+                horizon,
+                2024,
+                REAL,
+                4,
+            );
+            assert_eq!(got, expected, "2024 horizon identity drifted for {grid:?}");
+        }
+    }
+
+    /// The two NEVER-anchored probe lanes are the ONLY names the H3 seam switch
+    /// moves — and they must now be distinguishable from every anchored name.
+    #[test]
+    fn scenario_name_probe_lanes_are_discriminated() {
+        use backtest::resample::Horizon as H;
+        // gbm-smoke lane (1-15 L3): the honest token, NOT `block-bootstrap-gbm`.
+        let gbm = build_scenario_name(
+            GridKind::Tier1,
+            SweepDirection::Momentum,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepSelectionMode::CrossSectionalTopK,
+            H::OneHour,
+            2023,
+            "gbm-smoke",
+            4,
+        );
+        assert_eq!(
+            gbm, "v1-momentum-theta-surface-2023-gbm-smoke-fy",
+            "the gbm lane must carry the honest generator token (1-15 L3), \
+             which was INERT until the bin started calling the seam (1-18 H3)"
+        );
+        assert!(
+            !gbm.contains("block-bootstrap"),
+            "the gbm lane must not claim a bootstrap it never runs: {gbm}"
+        );
+        // two-cell probe grid (1-15 M2): discriminated so it cannot shadow #86.
+        let twocell = build_scenario_name(
+            GridKind::TwoCell,
+            SweepDirection::Momentum,
+            SweepScoreSource::VolAdjustedReturn,
+            SweepSelectionMode::CrossSectionalTopK,
+            H::OneHour,
+            2023,
+            "block-bootstrap-real",
+            4,
+        );
+        assert_eq!(
+            twocell, "v1-momentum-theta-surface-2023-block-bootstrap-real-fy-grid-twocell",
+            "the two-cell probe lane must carry the M2 discriminator — the fix \
+             was INERT in production until the bin started calling the seam"
+        );
+        assert_ne!(
+            twocell, "v1-momentum-theta-surface-2023-block-bootstrap-real-fy",
+            "the probe lane must never emit anchor #86's identity"
+        );
+    }
+
+    // ── Review 1-18: the loader coverage gate is horizon-invariant ────────────
+
+    /// The ≥99.5% coverage gate counts RAW 1h bars at EVERY horizon.
+    ///
+    /// RED-on-revert: re-introducing the coarse division (`/ 4`, `/ 24`) into
+    /// `coverage_expected_total` — which is exactly what the old call site did
+    /// by passing `bar_count` — makes the daily expectation 3 650 instead of
+    /// 87 600 and fails this test. Before the fix, `--horizon daily` passed the
+    /// gate with ~4 % of the corpus present.
+    #[test]
+    fn coverage_expected_total_is_horizon_invariant() {
+        use backtest::resample::Horizon as H;
+        const N_SYMBOLS: usize = 10; // the top-10 universe
+        for year in [2023, 2024, 2028] {
+            let at_1h = coverage_expected_total(year, H::OneHour, N_SYMBOLS);
+            for horizon in [H::FourHours, H::OneDay] {
+                assert_eq!(
+                    coverage_expected_total(year, horizon, N_SYMBOLS),
+                    at_1h,
+                    "the loader reads 1h bars at every horizon — the expected total \
+                     must not shrink at {horizon} (year {year})"
+                );
+            }
+        }
+        // Literal values: 8760 × 10 non-leap, 8784 × 10 leap.
+        assert_eq!(
+            coverage_expected_total(2023, H::OneDay, N_SYMBOLS),
+            87_600,
+            "2023 daily run must still demand a full year of 1h bars"
+        );
+        assert_eq!(
+            coverage_expected_total(2024, H::FourHours, N_SYMBOLS),
+            87_840,
+            "2024 (leap) 4h run must demand 8784 × 10 1h bars"
+        );
+    }
+
+    /// Review 1-18 leap-table consistency: the bar-count table and the
+    /// annualization scalar come from ONE source, so they cannot disagree for
+    /// ANY year — including the years the old `_ => 8760` catch-all got wrong.
+    #[test]
+    fn bar_count_and_periods_per_year_agree_for_every_year() {
+        use backtest::resample::{Horizon as H, bars_per_year_1h};
+        for year in [2023, 2024, 2025, 2027, 2028, 2100, 2400] {
+            for horizon in [H::OneHour, H::FourHours, H::OneDay] {
+                let bar_count = bars_per_year_1h(year) / horizon.ratio() as usize;
+                #[allow(clippy::cast_precision_loss)]
+                let ppy_as_count = horizon.periods_per_year(year) as usize;
+                assert_eq!(
+                    bar_count, ppy_as_count,
+                    "bar count and periods_per_year disagree at {horizon} for {year}: \
+                     {bar_count} bars vs ppy {ppy_as_count}"
+                );
+            }
+        }
+        // The anchored years are byte-unchanged.
+        assert_eq!(bars_per_year_1h(2023), 8760);
+        assert_eq!(bars_per_year_1h(2024), 8784);
+        // 2028 is the leap year the old `_ => 8760` catch-all got wrong.
+        assert_eq!(bars_per_year_1h(2028), 8784);
     }
 
     /// Review 1-17: forged axis tuples bail, and the message names all three
@@ -2446,6 +2883,7 @@ mod tests {
             SweepDirection::Momentum,
             M::CrossSectionalTopK,
             S::VolAdjustedReturn,
+            backtest::resample::Horizon::OneHour,
         )
         .expect_err("ts-tier1 × top-K must bail");
         assert!(
@@ -2464,6 +2902,7 @@ mod tests {
             SweepDirection::Momentum,
             M::TimeSeriesLongFlat,
             S::VolAdjustedReturn,
+            backtest::resample::Horizon::OneHour,
         )
         .expect_err("tier1 × time-series-long-flat must bail");
         assert!(
@@ -2478,6 +2917,7 @@ mod tests {
             SweepDirection::Momentum,
             M::TimeSeriesLongFlat,
             S::Carry,
+            backtest::resample::Horizon::OneHour,
         )
         .expect_err("ts-tier1 × carry must bail");
         assert!(
@@ -2492,6 +2932,7 @@ mod tests {
             SweepDirection::Momentum,
             M::CrossSectionalTopK,
             S::VolAdjustedReturn,
+            backtest::resample::Horizon::OneHour,
         )
         .expect_err("carry-tier1 × vol-adjusted-return must bail");
         assert!(
@@ -2506,6 +2947,7 @@ mod tests {
             SweepDirection::Momentum,
             M::CrossSectionalTopK,
             S::BasisReversal,
+            backtest::resample::Horizon::OneHour,
         )
         .expect_err("mn-tier1 × basis-reversal must bail");
         assert!(
@@ -2520,6 +2962,7 @@ mod tests {
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
+                backtest::resample::Horizon::OneHour,
             )
             .is_err(),
             "the 1-16 direction mismatch must still bail through the full guard"

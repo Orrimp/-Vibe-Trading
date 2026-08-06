@@ -103,6 +103,14 @@ now a question every review must ask.
 - Validation additions may reject **only** combinations no checked-in config or
   anchored invocation uses — prove it by enumerating the accept-set in a test.
 - Report **error lines verbatim**, never counts (`grep -c` hides the diagnosis).
+- **Apply the vacuity probe to YOUR OWN patch, not just to the diff under
+  review.** Story 1-18 found that the 1-15 review's own grid-discriminator fix
+  was inert in production — the binary kept an inline copy of the naming logic
+  and never called the extracted seam, while the test asserted the library
+  function nobody used. A fix that lands in a seam MUST be proven to bind at the
+  call site: assert the production output (literal expected strings), not the
+  helper's return value. Extracting a seam and testing the seam proves nothing
+  about the binary.
 - Expect the agent to die on a session limit mid-pass. That is routine: its
   edits are on disk, and the orchestrator finishes inline. Always re-verify
   yourself regardless of how complete the agent's report looks.

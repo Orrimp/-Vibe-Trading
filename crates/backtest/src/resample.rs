@@ -30,10 +30,19 @@
 //!   order, no f64); volume summed as `Decimal` (ADR-0003 / R-HR.5).
 //! - No look-ahead — bucket `t` is closed and emitted only when the first
 //!   bar with a bucket key `> t` is encountered (or at EOF). No future bar is
-//!   included in the current bucket.
+//!   included in the current bucket. Enforced by the prefix-invariance test
+//!   (`f_hr_3_prefix_invariance_no_look_ahead`): a COMPLETE bucket is
+//!   field-for-field unchanged when later source bars arrive.
 //! - Gap handling — a rare missing 1h bar degrades that bucket's volume
 //!   contribution but does not corrupt boundaries; each bucket accumulates
-//!   whatever bars fall within it.
+//!   whatever bars fall within it. Such a bucket is still EMITTED (dropping it
+//!   would change the coarse series and move the locked anchors) and, since
+//!   review 1-18, is no longer invisible: it is counted, reported on
+//!   [`ResampledBars::partial_buckets`], and logged at `WARN`.
+//! - Fallible, never panicking — a corrupt bucket returns [`ResampleError`]
+//!   (review 1-18; the previous code panicked on two paths and SILENTLY fell
+//!   back to `UNIX_EPOCH` on the third). One `(symbol, venue)` per call is a
+//!   hard guard; sorted input is a `debug_assert`.
 //! - Clap-compatible [`Horizon`] enum with `#[value(name)]` annotations so
 //!   the sweep can accept `--horizon 1h`, `--horizon 4h`, `--horizon daily`.
 //!
@@ -44,7 +53,11 @@
 //!   2024 leap (8 784 h) → 2 196 at 4h, 366 at daily.
 //! - Correct OHLCV rollup on a hand-verified 6-bar / 24-bar fixture.
 //! - BH total-return invariant (resampled BH return ≈ 1h BH return).
-//! - Causality: a forward-shifted source changes the resampled bar.
+//! - Prefix-invariance (the real no-look-ahead property) — plus the weaker
+//!   forward-shift responsiveness check it supersedes.
+//! - Leap-awareness of [`bars_per_year_1h`] for every year, and its agreement
+//!   with [`Horizon::periods_per_year`].
+//! - The mixed-instrument guard and the partial-bucket census.
 
 use rust_decimal::Decimal;
 use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
@@ -118,33 +131,31 @@ impl Horizon {
     ///
     /// The 1h value is provided for completeness but the sweep uses the
     /// verbatim 1h fn (`compute_sharpe_hourly`) for 1h runs — NOT this.
+    ///
+    /// Derived from [`bars_per_year_1h`] so the annualization scalar and the
+    /// sweep's expected bar count can never disagree (review 1-18: they used to
+    /// be two independent tables — the bar-count one had a non-leap-aware
+    /// `_ => 8760` catch-all, so a `--year 2028` run would have counted 365
+    /// daily bars against a `periods_per_year` of 366).
     #[must_use]
     pub fn periods_per_year(self, year: i32) -> f64 {
-        let is_leap = is_leap_year(year);
-        match self {
-            Horizon::OneHour => {
-                if is_leap {
-                    8784.0
-                } else {
-                    8760.0
-                }
-            }
-            Horizon::FourHours => {
-                if is_leap {
-                    2196.0
-                } else {
-                    2190.0
-                }
-            }
-            Horizon::OneDay => {
-                if is_leap {
-                    366.0
-                } else {
-                    365.0
-                }
-            }
+        // Exact for every value in range: bars_per_year_1h ∈ {8760, 8784} and
+        // ratio ∈ {1, 4, 24}, and 8760/8784 divide exactly by both 4 and 24.
+        #[allow(clippy::cast_precision_loss)]
+        {
+            (bars_per_year_1h(year) / self.ratio() as usize) as f64
         }
     }
+}
+
+/// The number of 1h bars in `year` — 8784 for a leap year, 8760 otherwise.
+///
+/// THE single source for both the sweep's expected-bar-count arithmetic and
+/// [`Horizon::periods_per_year`] (review 1-18 leap-table consistency). Divides
+/// exactly by every [`Horizon::ratio`] (1 / 4 / 24) for both values.
+#[must_use]
+pub fn bars_per_year_1h(year: i32) -> usize {
+    if is_leap_year(year) { 8784 } else { 8760 }
 }
 
 /// Returns true if `year` is a proleptic Gregorian leap year.
@@ -168,6 +179,72 @@ impl std::fmt::Display for Horizon {
 // resample_ohlcv
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Why a resample could not produce a well-formed coarse bar.
+///
+/// Every variant is an upstream **data-integrity** violation, not a user error:
+/// the OHLCV newtypes ([`Price`] > 0, [`Quantity`] ≥ 0) make all three
+/// unreachable for well-formed input. Review 1-18 turned them from `panic!`s
+/// into a `Result` because `resample_ohlcv` is library code (CLAUDE.md: no
+/// panics outside tests) and because the timestamp case used to fail SILENTLY
+/// — it fell back to `UNIX_EPOCH`, which would have re-dated the whole surface
+/// to 1970 instead of stopping the run.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ResampleError {
+    /// The accumulated bucket volume was negative (impossible on well-formed
+    /// OHLCV: every constituent [`Quantity`] is ≥ 0).
+    #[error(
+        "resample_ohlcv: negative accumulated volume {volume} in bucket at open_ts_ms {open_ts_ms}"
+    )]
+    NegativeVolume {
+        /// The offending sum.
+        volume: Decimal,
+        /// Bucket-aligned open timestamp (ms since epoch).
+        open_ts_ms: i64,
+    },
+    /// The accumulated `high`/`low` was non-positive (impossible on well-formed
+    /// OHLCV: every constituent [`Price`] is > 0).
+    #[error("resample_ohlcv: non-positive {field} {value} in bucket at open_ts_ms {open_ts_ms}")]
+    NonPositivePrice {
+        /// `"high"` or `"low"`.
+        field: &'static str,
+        /// The offending value.
+        value: Decimal,
+        /// Bucket-aligned open timestamp (ms since epoch).
+        open_ts_ms: i64,
+    },
+    /// The bucket-aligned `open_ts_ms` is not a representable timestamp.
+    ///
+    /// Pre-1-18 this silently became `UNIX_EPOCH` — a corrupt bar that looked
+    /// perfectly valid downstream.
+    #[error("resample_ohlcv: bucket open_ts_ms {open_ts_ms} is not a representable timestamp")]
+    InvalidTimestamp {
+        /// The un-representable value.
+        open_ts_ms: i64,
+    },
+    /// Two bars with different `(symbol, venue)` landed in the same bucket.
+    ///
+    /// The caller contract is one symbol+venue per call (the sweep splits by
+    /// symbol before resampling). A violation would silently merge two
+    /// instruments' OHLCV into one bar.
+    #[error(
+        "resample_ohlcv: bucket at open_ts_ms {open_ts_ms} mixes instruments — \
+         bucket is {bucket_symbol}@{bucket_venue:?} but got {bar_symbol}@{bar_venue:?}; \
+         resample one (symbol, venue) series per call"
+    )]
+    MixedInstrument {
+        /// Bucket-aligned open timestamp (ms since epoch).
+        open_ts_ms: i64,
+        /// The symbol the bucket was opened with.
+        bucket_symbol: String,
+        /// The venue the bucket was opened with.
+        bucket_venue: Venue,
+        /// The offending bar's symbol.
+        bar_symbol: String,
+        /// The offending bar's venue.
+        bar_venue: Venue,
+    },
+}
+
 /// Accumulated state for one coarse-bar bucket.
 struct BucketAcc {
     key: i64,
@@ -182,6 +259,15 @@ struct BucketAcc {
     local_recv_ts: Timestamp,
     volume: Decimal,
     trade_count: u64,
+    /// How many source (1h) bars were folded into this bucket.
+    ///
+    /// Review 1-18 partial-bucket visibility: a bucket built from fewer than
+    /// [`Horizon::ratio`] source bars (a gap in the corpus, or a truncated
+    /// first/last bucket) used to be byte-indistinguishable from a complete
+    /// one. Partials are still EMITTED — dropping them would change the coarse
+    /// source series and move the locked anchors — but they are now counted,
+    /// exposed on [`ResampledBars::partial_buckets`], and logged loudly.
+    source_bar_count: u32,
 }
 
 impl BucketAcc {
@@ -200,11 +286,28 @@ impl BucketAcc {
             local_recv_ts: bar.local_recv_ts,
             volume: bar.volume.get(),
             trade_count: u64::from(bar.trade_count),
+            source_bar_count: 1,
         }
     }
 
     /// Accumulate another bar into this bucket (same key).
-    fn accumulate(&mut self, bar: &Bar) {
+    ///
+    /// # Errors
+    ///
+    /// [`ResampleError::MixedInstrument`] if `bar` carries a different
+    /// `(symbol, venue)` than the bar that opened the bucket.
+    fn accumulate(&mut self, bar: &Bar) -> Result<(), ResampleError> {
+        // Bucket homogeneity guard (review 1-18): silently folding two
+        // instruments into one bar would corrupt the surface with no signal.
+        if bar.symbol.0.as_str() != self.symbol.0.as_str() || bar.venue != self.venue {
+            return Err(ResampleError::MixedInstrument {
+                open_ts_ms: self.open_ts_ms,
+                bucket_symbol: self.symbol.to_string(),
+                bucket_venue: self.venue,
+                bar_symbol: bar.symbol.to_string(),
+                bar_venue: bar.venue,
+            });
+        }
         self.high = self.high.max(bar.high.get());
         self.low = self.low.min(bar.low.get());
         self.close = bar.close;
@@ -212,31 +315,53 @@ impl BucketAcc {
         self.local_recv_ts = bar.local_recv_ts;
         self.volume += bar.volume.get();
         self.trade_count = self.trade_count.saturating_add(u64::from(bar.trade_count));
+        self.source_bar_count = self.source_bar_count.saturating_add(1);
+        Ok(())
     }
 
     /// Emit this bucket as a [`Bar`].
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `volume` is negative (a data integrity violation — negative
-    /// volume is impossible on well-formed OHLCV data). Also panics if
-    /// `open_ts_ms` cannot be converted to a valid timestamp (would require
-    /// a date beyond ±9 quadrillion years from the Unix epoch).
-    fn emit(self, target_tf: Timeframe) -> Bar {
+    /// - [`ResampleError::NegativeVolume`] if the accumulated volume is < 0.
+    /// - [`ResampleError::NonPositivePrice`] if `high`/`low` is ≤ 0.
+    /// - [`ResampleError::InvalidTimestamp`] if the bucket-aligned `open_ts_ms`
+    ///   is not representable (previously a SILENT `UNIX_EPOCH` fallback — the
+    ///   contradiction review 1-18 closed: the doc claimed a panic while the
+    ///   code produced a 1970-dated bar).
+    ///
+    /// All three are unreachable for well-formed OHLCV input (`Price` > 0,
+    /// `Quantity` ≥ 0, real-corpus timestamps).
+    fn emit(self, target_tf: Timeframe) -> Result<Bar, ResampleError> {
         // Convert bucket-aligned open_ts_ms to an OffsetDateTime.
+        // open_ts_ms is derived from a bucket key computed from a real 1h bar's
+        // unix_millis, so the i128 nanos multiplication cannot overflow for any
+        // calendar date; an out-of-range value is a corrupt-input signal and is
+        // now reported instead of silently collapsing to UNIX_EPOCH.
         let open_nanos = i128::from(self.open_ts_ms) * 1_000_000_i128;
-        // SAFETY: open_ts_ms is derived from a bucket key computed from a
-        // real 1h bar's unix_millis, which is always within the valid i64
-        // range. The nanos multiplication is safe because milliseconds since
-        // 1970 fit in i128 without overflow for any calendar date.
-        let open_dt = time::OffsetDateTime::from_unix_timestamp_nanos(open_nanos)
-            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+        let open_dt =
+            time::OffsetDateTime::from_unix_timestamp_nanos(open_nanos).map_err(|_| {
+                ResampleError::InvalidTimestamp {
+                    open_ts_ms: self.open_ts_ms,
+                }
+            })?;
         let open_ts = Timestamp::new(open_dt);
         // volume is the sum of non-negative 1h bar volumes (OHLCV invariant).
-        // A negative sum would indicate a data corruption — panic loudly.
-        let volume = Quantity::new(self.volume)
-            .unwrap_or_else(|_| panic!("resample_ohlcv: negative volume {}", self.volume));
-        Bar {
+        let volume = Quantity::new(self.volume).map_err(|_| ResampleError::NegativeVolume {
+            volume: self.volume,
+            open_ts_ms: self.open_ts_ms,
+        })?;
+        let high = Price::new(self.high).map_err(|_| ResampleError::NonPositivePrice {
+            field: "high",
+            value: self.high,
+            open_ts_ms: self.open_ts_ms,
+        })?;
+        let low = Price::new(self.low).map_err(|_| ResampleError::NonPositivePrice {
+            field: "low",
+            value: self.low,
+            open_ts_ms: self.open_ts_ms,
+        })?;
+        Ok(Bar {
             symbol: self.symbol,
             tf: target_tf,
             open_ts,
@@ -244,15 +369,54 @@ impl BucketAcc {
             local_recv_ts: self.local_recv_ts,
             venue: self.venue,
             open: self.open,
-            high: Price::new(self.high)
-                .unwrap_or_else(|_| panic!("resample_ohlcv: non-positive high {}", self.high)),
-            low: Price::new(self.low)
-                .unwrap_or_else(|_| panic!("resample_ohlcv: non-positive low {}", self.low)),
+            high,
+            low,
             close: self.close,
             volume,
             trade_count: u32::try_from(self.trade_count).unwrap_or(u32::MAX),
-        }
+        })
     }
+}
+
+/// The coarse bars plus the partial-bucket census (review 1-18).
+///
+/// `bars` is exactly what [`resample_ohlcv`] returns; `partial_buckets` names
+/// the buckets that were folded from FEWER than [`Horizon::ratio`] source
+/// bars. Partials are **never dropped** — dropping them would change the
+/// coarse source series and move every locked horizon anchor — so this is
+/// visibility only.
+///
+/// (No `PartialEq`: `trading_core::Bar` does not implement it. Compare the
+/// fields you care about, as the prefix-invariance tests do.)
+#[derive(Debug, Clone)]
+pub struct ResampledBars {
+    /// One `Bar` per coarse bucket, in ascending `open_ts` order.
+    pub bars: Vec<Bar>,
+    /// `(output_index, open_ts_ms, source_bar_count)` for every incomplete
+    /// bucket, in output order. Empty on a gap-free full-year corpus whose span
+    /// is bucket-aligned.
+    pub partial_buckets: Vec<PartialBucket>,
+}
+
+impl ResampledBars {
+    /// True when every emitted bucket was folded from a full `ratio` bars.
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.partial_buckets.is_empty()
+    }
+}
+
+/// One incomplete coarse bucket (see [`ResampledBars::partial_buckets`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartialBucket {
+    /// Index into [`ResampledBars::bars`].
+    pub index: usize,
+    /// Bucket-aligned open timestamp (ms since epoch) — names the bucket.
+    pub open_ts_ms: i64,
+    /// How many source (1h) bars actually landed in it.
+    pub source_bar_count: u32,
+    /// How many the horizon's ratio requires for a complete bucket.
+    pub expected_bar_count: u32,
 }
 
 /// Resample a sorted (`open_ts` ASC) slice of 1h bars into coarser bars.
@@ -265,29 +429,92 @@ impl BucketAcc {
 /// - [`Horizon::OneDay`] → 24:1 fold; UTC-bucket key =
 ///   `open_ts_ms.div_euclid(86_400_000)`.
 ///
-/// **Input contract:** `bars_1h` MUST be sorted by `open_ts` ASC (the caller
-/// sorts per symbol before calling). A misordered input produces incorrect
-/// bucket assignments.
+/// **Input contract:** `bars_1h` MUST be sorted by `open_ts` ASC and carry ONE
+/// `(symbol, venue)` (the caller splits per symbol and sorts before calling).
+/// The sort is `debug_assert`ed; a mixed instrument is a hard
+/// [`ResampleError::MixedInstrument`].
 ///
 /// **Output:** one `Bar` per coarse bucket; see module-level doc for the
-/// rollup rule and field assignments.
+/// rollup rule and field assignments. Use [`resample_ohlcv_detailed`] when the
+/// caller needs the partial-bucket census.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if an accumulated bucket has a negative total volume or a
-/// non-positive `high`/`low` — these would indicate upstream data corruption
-/// (OHLCV invariant: volume ≥ 0, high ≥ low > 0).
-#[must_use]
-pub fn resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar> {
+/// See [`ResampleError`] — all variants signal upstream data corruption and
+/// are unreachable for well-formed OHLCV input.
+pub fn resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Result<Vec<Bar>, ResampleError> {
+    resample_ohlcv_detailed(bars_1h, horizon).map(|r| r.bars)
+}
+
+/// [`resample_ohlcv`] plus the partial-bucket census (review 1-18).
+///
+/// Identical fold, identical output bars — the only difference is that the
+/// incomplete buckets are reported to the caller instead of being
+/// byte-indistinguishable from complete ones. Each partial is also logged at
+/// `WARN` (target `backtest.resample`) naming the bucket.
+///
+/// # Errors
+///
+/// See [`ResampleError`].
+pub fn resample_ohlcv_detailed(
+    bars_1h: &[Bar],
+    horizon: Horizon,
+) -> Result<ResampledBars, ResampleError> {
+    // Input contract: sorted by open_ts ASC. A misordered input silently
+    // produces wrong bucket assignments (the fold is single-pass and monotone),
+    // so assert it in debug builds rather than let it corrupt a surface.
+    debug_assert!(
+        bars_1h.windows(2).all(|w| w[0].open_ts <= w[1].open_ts),
+        "resample_ohlcv input contract violated: bars_1h must be sorted by open_ts ASC"
+    );
+
     // Identity pass-through for 1h — the 91 anchors depend on this path being
-    // byte-untouched (R-HR.6 / D-HR.2 / D-HR.7).
+    // byte-untouched (R-HR.6 / D-HR.2 / D-HR.7). Every 1h bar is its own
+    // complete bucket (ratio 1), so there is nothing to report.
     let Some(bucket_ms) = horizon.bucket_ms() else {
-        return bars_1h.to_vec();
+        return Ok(ResampledBars {
+            bars: bars_1h.to_vec(),
+            partial_buckets: Vec::new(),
+        });
     };
 
     let target_tf = horizon.to_timeframe();
+    let expected_bar_count = horizon.ratio();
     let mut out: Vec<Bar> = Vec::with_capacity(bars_1h.len() / horizon.ratio() as usize + 1);
+    let mut partials: Vec<PartialBucket> = Vec::new();
     let mut acc: Option<BucketAcc> = None;
+
+    // Emit one completed bucket, recording it if it was partial.
+    // Partials are EMITTED, never dropped (dropping would change the coarse
+    // source series and move the locked anchors) — visibility only.
+    let finish = |completed: BucketAcc,
+                  out: &mut Vec<Bar>,
+                  partials: &mut Vec<PartialBucket>|
+     -> Result<(), ResampleError> {
+        let source_bar_count = completed.source_bar_count;
+        let open_ts_ms = completed.open_ts_ms;
+        let bar = completed.emit(target_tf)?;
+        let index = out.len();
+        out.push(bar);
+        if source_bar_count < expected_bar_count {
+            tracing::warn!(
+                target: "backtest.resample",
+                horizon = %horizon,
+                bucket_open_ts_ms = open_ts_ms,
+                source_bar_count,
+                expected_bar_count,
+                "partial coarse bucket: folded from fewer than `ratio` source bars \
+                 (emitted anyway — a dropped bucket would change the coarse series)"
+            );
+            partials.push(PartialBucket {
+                index,
+                open_ts_ms,
+                source_bar_count,
+                expected_bar_count,
+            });
+        }
+        Ok(())
+    };
 
     for bar in bars_1h {
         let ts_ms = bar.open_ts.unix_millis();
@@ -296,13 +523,13 @@ pub fn resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar> {
         match &mut acc {
             Some(a) if a.key == key => {
                 // Same bucket — accumulate.
-                a.accumulate(bar);
+                a.accumulate(bar)?;
             }
             Some(_) => {
                 // New bucket — emit the old one, start fresh.
                 let old = acc.replace(BucketAcc::new(key, bucket_ms, bar));
                 if let Some(completed) = old {
-                    out.push(completed.emit(target_tf));
+                    finish(completed, &mut out, &mut partials)?;
                 }
             }
             None => {
@@ -314,10 +541,13 @@ pub fn resample_ohlcv(bars_1h: &[Bar], horizon: Horizon) -> Vec<Bar> {
 
     // Emit the final bucket (if any).
     if let Some(completed) = acc {
-        out.push(completed.emit(target_tf));
+        finish(completed, &mut out, &mut partials)?;
     }
 
-    out
+    Ok(ResampledBars {
+        bars: out,
+        partial_buckets: partials,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -426,7 +656,7 @@ mod tests {
         let bars = make_year_bars(2023);
         assert_eq!(bars.len(), 8760, "2023 should have 8760 1h bars");
 
-        let resampled_4h = resample_ohlcv(&bars, Horizon::FourHours);
+        let resampled_4h = resample_ohlcv(&bars, Horizon::FourHours).expect("well-formed");
         assert_eq!(
             resampled_4h.len(),
             2190,
@@ -434,7 +664,7 @@ mod tests {
             resampled_4h.len()
         );
 
-        let resampled_daily = resample_ohlcv(&bars, Horizon::OneDay);
+        let resampled_daily = resample_ohlcv(&bars, Horizon::OneDay).expect("well-formed");
         assert_eq!(
             resampled_daily.len(),
             365,
@@ -450,7 +680,7 @@ mod tests {
         let bars = make_year_bars(2024);
         assert_eq!(bars.len(), 8784, "2024 (leap) should have 8784 1h bars");
 
-        let resampled_4h = resample_ohlcv(&bars, Horizon::FourHours);
+        let resampled_4h = resample_ohlcv(&bars, Horizon::FourHours).expect("well-formed");
         assert_eq!(
             resampled_4h.len(),
             2196,
@@ -458,7 +688,7 @@ mod tests {
             resampled_4h.len()
         );
 
-        let resampled_daily = resample_ohlcv(&bars, Horizon::OneDay);
+        let resampled_daily = resample_ohlcv(&bars, Horizon::OneDay).expect("well-formed");
         assert_eq!(
             resampled_daily.len(),
             366,
@@ -500,7 +730,7 @@ mod tests {
             })
             .collect();
 
-        let resampled = resample_ohlcv(&bars, Horizon::FourHours);
+        let resampled = resample_ohlcv(&bars, Horizon::FourHours).expect("well-formed");
         assert_eq!(
             resampled.len(),
             1,
@@ -562,7 +792,7 @@ mod tests {
             })
             .collect();
 
-        let resampled = resample_ohlcv(&bars, Horizon::OneDay);
+        let resampled = resample_ohlcv(&bars, Horizon::OneDay).expect("well-formed");
         assert_eq!(resampled.len(), 1, "24 bars → 1 daily bucket");
 
         let b = &resampled[0];
@@ -618,7 +848,7 @@ mod tests {
         let bh_1h = (close_last_1h - open_first) / open_first;
 
         // Resample to daily (1 bucket since n=24 bars in one UTC day).
-        let resampled = resample_ohlcv(&bars_1h, Horizon::OneDay);
+        let resampled = resample_ohlcv(&bars_1h, Horizon::OneDay).expect("well-formed");
         let close_last_daily = resampled[resampled.len() - 1].close.get();
         let bh_daily = (close_last_daily - resampled[0].open.get()) / resampled[0].open.get();
 
@@ -630,7 +860,7 @@ mod tests {
         );
     }
 
-    // ── F-HR.3.d — Causality: forward-shifted source changes the resampled bar ─
+    // ── F-HR.3.d — bucket boundaries are UTC-aligned, not input-relative ──────
 
     /// F-HR.3.d — A forward-shifted source series changes the resampled bar.
     ///
@@ -638,6 +868,16 @@ mod tests {
     /// the same 4h bucket as bars 0-2) to h+1=4, which starts a new bucket.
     /// The first bucket now has only 3 bars (shifted h=0-2), so its close
     /// differs from the unshifted case (where the first bucket had bars 0-3).
+    ///
+    /// ## What this does and does NOT prove (review 1-18 doc-truth pass)
+    ///
+    /// It proves the bucket key is derived from the bar's absolute UTC
+    /// timestamp rather than from its position in the input slice — a
+    /// position-keyed fold would produce the SAME first bucket after the shift.
+    /// It does NOT prove the absence of look-ahead: "output changes when input
+    /// changes" holds for any function that reads its input, including one that
+    /// reaches forward. `f_hr_3_prefix_invariance_no_look_ahead` is the test
+    /// that carries the causality claim.
     #[test]
     fn f_hr_3_causality_forward_shift_changes_bar() {
         // 8 bars covering hours 0-7; original true-4h-cadence bucketing:
@@ -657,7 +897,7 @@ mod tests {
             })
             .collect();
 
-        let resampled_orig = resample_ohlcv(&bars, Horizon::FourHours);
+        let resampled_orig = resample_ohlcv(&bars, Horizon::FourHours).expect("well-formed");
         assert_eq!(
             resampled_orig.len(),
             2,
@@ -687,7 +927,8 @@ mod tests {
             .collect();
         let _ = base_dt; // suppress unused warning on base_dt
 
-        let resampled_shifted = resample_ohlcv(&bars_shifted, Horizon::FourHours);
+        let resampled_shifted =
+            resample_ohlcv(&bars_shifted, Horizon::FourHours).expect("well-formed");
 
         // Original bucket 0: bars h=0..3, close = closes[3] = 105 + 3*10 = 135.
         // Shifted bucket 0: bars h=1..3 (shifted), close = closes[2] = 105 + 2*10 = 125.
@@ -706,7 +947,7 @@ mod tests {
     #[test]
     fn resample_1h_identity() {
         let bars = make_year_bars(2023);
-        let resampled = resample_ohlcv(&bars, Horizon::OneHour);
+        let resampled = resample_ohlcv(&bars, Horizon::OneHour).expect("identity path");
         assert_eq!(
             resampled.len(),
             bars.len(),
@@ -745,5 +986,266 @@ mod tests {
         assert!(is_leap_year(2000));
         assert!(!is_leap_year(1900));
         assert!(is_leap_year(1600));
+    }
+
+    /// Review 1-18: the bar-count table is leap-aware for EVERY year, and
+    /// `periods_per_year` is derived from it — one source, no drift.
+    ///
+    /// RED-on-revert: restoring a non-leap-aware catch-all (the sweep bin used
+    /// to carry `_ => 8760`) makes 2028 report 8760 here, and the derived daily
+    /// ppy 365 while the fold produces 366 buckets.
+    #[test]
+    fn bars_per_year_1h_is_leap_aware_for_every_year() {
+        assert_eq!(bars_per_year_1h(2023), 8760, "2023 is not a leap year");
+        assert_eq!(bars_per_year_1h(2024), 8784, "2024 is a leap year");
+        // The years the old `_ => 8760` catch-all got wrong.
+        assert_eq!(bars_per_year_1h(2028), 8784, "2028 is a leap year");
+        assert_eq!(bars_per_year_1h(2032), 8784, "2032 is a leap year");
+        assert_eq!(bars_per_year_1h(2100), 8760, "2100 is NOT a leap year");
+        assert_eq!(bars_per_year_1h(2400), 8784, "2400 IS a leap year");
+        // Every horizon divides both values exactly, and ppy agrees with the
+        // bucket count the fold would produce.
+        for year in [2023, 2024, 2028, 2100, 2400] {
+            for horizon in [Horizon::OneHour, Horizon::FourHours, Horizon::OneDay] {
+                let ratio = horizon.ratio() as usize;
+                assert_eq!(
+                    bars_per_year_1h(year) % ratio,
+                    0,
+                    "{horizon} must divide {year}'s 1h bar count exactly"
+                );
+                assert_eq!(
+                    horizon.periods_per_year(year) as usize,
+                    bars_per_year_1h(year) / ratio,
+                    "periods_per_year must equal the bucket count at {horizon} in {year}"
+                );
+            }
+        }
+    }
+
+    // ── Review 1-18 — resampler hardening ────────────────────────────────────
+
+    /// Two instruments in one bucket are REJECTED, not silently merged.
+    ///
+    /// RED-on-revert: dropping the homogeneity guard makes this return
+    /// `Ok(_)` with one bar whose OHLCV mixes both symbols' prices — a
+    /// corruption that no downstream consumer could detect.
+    #[test]
+    fn mixed_instrument_in_one_bucket_is_rejected() {
+        let mut bars = vec![
+            make_bar_hour(
+                "AAABBB",
+                0,
+                dec!(100),
+                dec!(110),
+                dec!(95),
+                dec!(101),
+                dec!(1),
+            ),
+            make_bar_hour(
+                "AAABBB",
+                1,
+                dec!(101),
+                dec!(111),
+                dec!(96),
+                dec!(102),
+                dec!(1),
+            ),
+        ];
+        // Third bar in the SAME 4h bucket but a different symbol.
+        bars.push(make_bar_hour(
+            "ZZZYYY",
+            2,
+            dec!(500),
+            dec!(510),
+            dec!(490),
+            dec!(505),
+            dec!(1),
+        ));
+        let err = resample_ohlcv(&bars, Horizon::FourHours)
+            .expect_err("a bucket mixing two symbols must be rejected");
+        match &err {
+            ResampleError::MixedInstrument {
+                bucket_symbol,
+                bar_symbol,
+                ..
+            } => {
+                assert_eq!(bucket_symbol, "AAABBB");
+                assert_eq!(bar_symbol, "ZZZYYY");
+            }
+            other => panic!("expected MixedInstrument, got {other:?}"),
+        }
+        // The message must name both instruments so the corpus bug is findable.
+        let msg = err.to_string();
+        assert!(
+            msg.contains("AAABBB") && msg.contains("ZZZYYY"),
+            "error must name both instruments: {msg}"
+        );
+        // Same symbol, different VENUE is equally rejected.
+        let mut cross_venue = vec![make_bar_hour(
+            "AAABBB",
+            0,
+            dec!(100),
+            dec!(110),
+            dec!(95),
+            dec!(101),
+            dec!(1),
+        )];
+        let mut other_venue = make_bar_hour(
+            "AAABBB",
+            1,
+            dec!(101),
+            dec!(111),
+            dec!(96),
+            dec!(102),
+            dec!(1),
+        );
+        other_venue.venue = Venue::Kraken;
+        cross_venue.push(other_venue);
+        assert!(
+            resample_ohlcv(&cross_venue, Horizon::FourHours).is_err(),
+            "the same symbol on two venues must not be folded into one bar"
+        );
+    }
+
+    /// Partial buckets are EMITTED but reported (review 1-18 visibility).
+    ///
+    /// RED-on-revert (both directions): dropping the partial changes
+    /// `bars.len()` — that would move the coarse source series and the locked
+    /// horizon anchors — and silencing the census empties `partial_buckets`,
+    /// restoring the state where a gap-shortened bucket was
+    /// byte-indistinguishable from a complete one.
+    #[test]
+    fn partial_buckets_are_emitted_and_reported() {
+        // 30 hourly bars at daily → one 24-bar bucket + one 6-bar partial.
+        let bars: Vec<Bar> = (0..30_i64)
+            .map(|h| {
+                make_bar_hour(
+                    "AAABBB",
+                    h,
+                    dec!(100),
+                    dec!(110),
+                    dec!(95),
+                    dec!(101),
+                    dec!(1),
+                )
+            })
+            .collect();
+        let out = resample_ohlcv_detailed(&bars, Horizon::OneDay).expect("well-formed input");
+        assert_eq!(
+            out.bars.len(),
+            2,
+            "the partial bucket must still be emitted"
+        );
+        assert!(!out.is_complete());
+        assert_eq!(out.partial_buckets.len(), 1);
+        assert_eq!(out.partial_buckets[0].index, 1);
+        assert_eq!(out.partial_buckets[0].source_bar_count, 6);
+        assert_eq!(out.partial_buckets[0].expected_bar_count, 24);
+        assert_eq!(
+            out.partial_buckets[0].open_ts_ms,
+            out.bars[1].open_ts.unix_millis(),
+            "the census names the bucket by its open timestamp"
+        );
+        // The partial's volume reflects only its 6 constituent bars.
+        assert_eq!(out.bars[1].volume.get(), dec!(6));
+
+        // A gap in the MIDDLE of a bucket is caught too (23 of 24 bars).
+        let with_gap: Vec<Bar> = (0..24_i64)
+            .filter(|h| *h != 5)
+            .map(|h| {
+                make_bar_hour(
+                    "AAABBB",
+                    h,
+                    dec!(100),
+                    dec!(110),
+                    dec!(95),
+                    dec!(101),
+                    dec!(1),
+                )
+            })
+            .collect();
+        let gapped = resample_ohlcv_detailed(&with_gap, Horizon::OneDay).expect("well-formed");
+        assert_eq!(gapped.bars.len(), 1);
+        assert_eq!(
+            gapped.partial_buckets.len(),
+            1,
+            "a single missing 1h bar must be visible, not silently absorbed"
+        );
+        assert_eq!(gapped.partial_buckets[0].source_bar_count, 23);
+
+        // A whole number of complete buckets reports nothing.
+        let full = resample_ohlcv_detailed(&make_year_bars(2023), Horizon::OneDay)
+            .expect("well-formed year");
+        assert!(
+            full.is_complete(),
+            "a gap-free full year has no partial buckets: {:?}",
+            full.partial_buckets
+        );
+        // 1h identity has no buckets to be partial.
+        let identity = resample_ohlcv_detailed(&make_year_bars(2023), Horizon::OneHour)
+            .expect("identity path");
+        assert!(identity.is_complete());
+        assert_eq!(identity.bars.len(), 8760);
+    }
+
+    /// Prefix-invariance: a COMPLETE bucket never changes when later 1h bars
+    /// arrive. This is the causality property the fold actually has to satisfy.
+    ///
+    /// RED-on-revert: any fold that reads forward — `open = last`, a centred
+    /// high/low window, a borrowed next-bucket close — changes an
+    /// already-complete bucket when the input grows, and the field comparison
+    /// fails at that bucket's index.
+    ///
+    /// (`f_hr_3_causality_forward_shift_changes_bar` below is a WEAKER,
+    /// complementary check: it only shows the output responds to a shifted
+    /// input, which is true of any function that reads its input.)
+    #[test]
+    fn f_hr_3_prefix_invariance_no_look_ahead() {
+        let bars: Vec<Bar> = (0..48_i64)
+            .map(|h| {
+                make_bar_hour(
+                    "AAABBB",
+                    h,
+                    Decimal::from(100 + h),
+                    Decimal::from(120 + h * 2),
+                    Decimal::from(90 + h),
+                    Decimal::from(105 + h),
+                    Decimal::from(h + 1),
+                )
+            })
+            .collect();
+
+        for horizon in [Horizon::FourHours, Horizon::OneDay] {
+            let ratio = horizon.ratio() as usize;
+            let full = resample_ohlcv(&bars, horizon).expect("well-formed");
+            for k in 1..=bars.len() {
+                let prefix = resample_ohlcv(&bars[..k], horizon).expect("well-formed");
+                let complete = k / ratio;
+                for i in 0..complete.min(prefix.len()).min(full.len()) {
+                    let (p, f) = (&prefix[i], &full[i]);
+                    assert_eq!(
+                        (
+                            p.open_ts.unix_millis(),
+                            p.open.get(),
+                            p.high.get(),
+                            p.low.get(),
+                            p.close.get(),
+                            p.volume.get()
+                        ),
+                        (
+                            f.open_ts.unix_millis(),
+                            f.open.get(),
+                            f.high.get(),
+                            f.low.get(),
+                            f.close.get(),
+                            f.volume.get()
+                        ),
+                        "prefix-invariance violated at {horizon} bucket {i}: it changed when \
+                         the input grew from {k} to {n} source bars — the fold reads forward",
+                        n = bars.len()
+                    );
+                }
+            }
+        }
     }
 }

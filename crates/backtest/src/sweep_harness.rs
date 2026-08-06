@@ -24,8 +24,13 @@
 //!   anchored tier-1 surface (which shadowed anchor #86's report as "latest
 //!   matching" and turned the anchors gate falsely RED). Every LOCKED
 //!   production grid returns the EMPTY discriminator — all anchored
-//!   `*-theta-surface-*` scenario names are byte-identical (unit-tested in the
-//!   bin: `m2_*` tests).
+//!   `*-theta-surface-*` scenario names are byte-identical. Proven by
+//!   `tests/param_sweep_e2e.rs::tier1_scenario_name_byte_unchanged_twocell_distinct`
+//!   and the bin's `scenario_name_*` literal-string tests, both of which call
+//!   [`build_scenario_name`] — the ONE production builder (review 1-18 H3: the
+//!   bin used to carry an inline `format!` copy that never reached this seam,
+//!   so both the M2 discriminator and the L3 `gbm-smoke` token were INERT in
+//!   production while their tests passed against the library fn).
 //! - **L3 honest gbm naming + VOID banner**: the gbm lane's scenario token is
 //!   `gbm-smoke` (the old name embedded `block-bootstrap-gbm` although no
 //!   bootstrap runs in that lane), and gbm-lane report bodies carry an explicit
@@ -262,8 +267,11 @@ impl GridKind {
     /// #86's report as "latest matching" and turned the anchors gate falsely
     /// RED. Non-production grids now append a discriminator to the scenario
     /// name; every LOCKED production grid returns the EMPTY string so all
-    /// anchored scenario names stay byte-identical (proven by the bin's
-    /// `m2_*` unit tests).
+    /// anchored scenario names stay byte-identical — proven by
+    /// `tests/param_sweep_e2e.rs::tier1_scenario_name_byte_unchanged_twocell_distinct`
+    /// and the bin's `scenario_name_anchored_*` literal-string tests (review
+    /// 1-18 H3 corrected the old "`m2_*` unit tests" citation: no test by that
+    /// name has ever existed).
     #[must_use]
     pub fn scenario_discriminator(self) -> &'static str {
         match self {
@@ -373,6 +381,45 @@ impl GridKind {
             ],
         }
     }
+
+    /// The decision cadence (`--horizon`) each grid was LOCKED at (review 1-18).
+    ///
+    /// The 1-17 guard closed direction × selection_mode × score_source but left
+    /// the FOURTH forge axis — `--horizon` — wide open. Two live forgeries:
+    ///
+    /// - `--grid ts-4h` with the DEFAULT `--horizon 1h` runs the 4h-tuned
+    ///   lookbacks {42,180,540} against 1h bars and emits
+    ///   `v1-ts-momentum-theta-surface-{year}-…` — anchor #90/#91's identity —
+    ///   into the frozen TS dir.
+    /// - `--grid ts-tier1 --horizon 4h` is the converse: the 1h-tuned grid emits
+    ///   `v1-ts-horizon-4h-theta-surface-{year}-…` — anchor #92/#93's identity.
+    ///   The carry pair (`carry-4h`/`carry-daily`/`carry-tier1`) forges
+    ///   #96..#99 the same way.
+    ///
+    /// The horizon is a HASHED body row (`| horizon |`, gated to coarse runs)
+    /// AND a scenario-name segment, so a mismatched pair produces a
+    /// wrong-cadence surface under a locked anchor's name; the forged report
+    /// then shadows the real one as "latest matching" and the anchors gate goes
+    /// falsely RED.
+    ///
+    /// Read off each grid's LOCKED doc block (§ D-HR.4-LOCKED for the horizon
+    /// grids; every other grid is 1h by construction — its anchored reports
+    /// carry NO `| horizon |` row, which is exactly what
+    /// `Horizon::OneHour` renders).
+    #[must_use]
+    pub fn required_horizon(self) -> crate::resample::Horizon {
+        match self {
+            Self::Ts4h | Self::Carry4h => crate::resample::Horizon::FourHours,
+            Self::TsDaily | Self::CarryDaily => crate::resample::Horizon::OneDay,
+            Self::Tier1
+            | Self::MrTier1
+            | Self::CarryTier1
+            | Self::TsTier1
+            | Self::TwoCell
+            | Self::BasisTier1
+            | Self::MnTier1 => crate::resample::Horizon::OneHour,
+        }
+    }
 }
 
 /// Validate the `--direction` × `--grid` pairing (review 1-16).
@@ -409,7 +456,8 @@ pub fn validate_direction_grid_pairing(
 }
 
 /// Validate the FULL `--direction` × `--selection-mode` × `--score-source` ×
-/// `--grid` tuple (review 1-17 — extends the 1-16 direction-only guard).
+/// `--horizon` × `--grid` tuple (review 1-17, extended to the horizon axis by
+/// review 1-18 — itself extending the 1-16 direction-only guard).
 ///
 /// The 1-16 guard closed the direction axis but left the selection_mode and
 /// score_source axes open:
@@ -421,41 +469,64 @@ pub fn validate_direction_grid_pairing(
 /// - `--grid ts-tier1 --score-source carry` loads the funding sidecar and runs
 ///   behaviorally-different equity under the TS anchored name.
 ///
-/// Every checked-in invocation pairs all three axes exactly as its grid's
+/// Review 1-18 adds the FOURTH axis, `--horizon` (see
+/// [`GridKind::required_horizon`]): `--grid ts-4h` at the default `--horizon
+/// 1h` forges the 1h TS anchors' names (#90/#91) with 4h-tuned lookbacks, and
+/// `--grid ts-tier1 --horizon 4h` forges the horizon anchors' names
+/// (#92/#93) — the carry pair forges #96..#99 identically.
+///
+/// Every checked-in invocation pairs all four axes exactly as its grid's
 /// LOCKED doc block and anchored `held_constant` row record (see
 /// [`GridKind::required_direction`], [`GridKind::required_selection_mode`],
-/// [`GridKind::allowed_score_sources`]), so bailing on mismatches rejects ONLY
-/// misinvocations — correct tuples are byte-unchanged.
+/// [`GridKind::allowed_score_sources`], [`GridKind::required_horizon`]), so
+/// bailing on mismatches rejects ONLY misinvocations — correct tuples are
+/// byte-unchanged.
 ///
 /// # Errors
 ///
-/// On any mismatch, returns a message naming ALL THREE requested axes
-/// (direction, selection mode, score source) and the grid's required tuple.
+/// On any mismatch, returns a message naming ALL FOUR requested axes
+/// (direction, selection mode, score source, horizon) and the grid's required
+/// tuple, plus an explicit `offending axis: …` line naming the first axis that
+/// failed and the value the grid requires there.
 pub fn validate_grid_axis_pairing(
     grid: GridKind,
     direction: SweepDirection,
     selection_mode: SweepSelectionMode,
     score_source: SweepScoreSource,
+    horizon: crate::resample::Horizon,
 ) -> Result<(), String> {
     let required_direction = grid.required_direction();
     let required_mode = grid.required_selection_mode();
     let allowed_sources = grid.allowed_score_sources();
+    let required_horizon = grid.required_horizon();
     let direction_ok = direction == required_direction;
     let mode_ok = selection_mode == required_mode;
     let source_ok = allowed_sources.contains(&score_source);
-    if direction_ok && mode_ok && source_ok {
-        Ok(())
-    } else {
-        Err(format!(
-            "requested axis tuple (--direction {direction:?}, --selection-mode \
-             {selection_mode:?}, --score-source {score_source:?}) does not pair with --grid \
-             {grid:?}: that grid requires (direction={required_direction:?}, \
-             selection_mode={required_mode:?}, score_source ∈ {allowed_sources:?}). A \
-             mismatched tuple would run one family's behavior under another family's anchored \
-             scenario name — the forged report shadows the real one as \"latest matching\" and \
-             turns the anchors gate falsely RED — refusing to run."
-        ))
+    let horizon_ok = horizon == required_horizon;
+    if direction_ok && mode_ok && source_ok && horizon_ok {
+        return Ok(());
     }
+    // Name the FIRST offending axis explicitly (review 1-18): the full-tuple
+    // dump alone made a horizon-only mismatch hard to read at the console.
+    let offending = if !direction_ok {
+        format!("--direction (requested {direction:?}, required {required_direction:?})")
+    } else if !mode_ok {
+        format!("--selection-mode (requested {selection_mode:?}, required {required_mode:?})")
+    } else if !source_ok {
+        format!("--score-source (requested {score_source:?}, required one of {allowed_sources:?})")
+    } else {
+        format!("--horizon (requested {horizon}, required {required_horizon})")
+    };
+    Err(format!(
+        "requested axis tuple (--direction {direction:?}, --selection-mode \
+         {selection_mode:?}, --score-source {score_source:?}, --horizon {horizon}) does not \
+         pair with --grid {grid:?}: that grid requires (direction={required_direction:?}, \
+         selection_mode={required_mode:?}, score_source ∈ {allowed_sources:?}, \
+         horizon={required_horizon}). offending axis: {offending}. A mismatched tuple would \
+         run one family's behavior under another family's anchored scenario name — the forged \
+         report shadows the real one as \"latest matching\" and turns the anchors gate falsely \
+         RED — refusing to run."
+    ))
 }
 
 /// Build the grid slice for a given kind.
@@ -1871,6 +1942,17 @@ pub fn render_surface_report(
     );
     // M-DEV-3: render the real horizon in the hashed body (D-HR.5 / K3).
     // GATED to horizon runs so the 1h body-SHAs are byte-identical.
+    //
+    // ⚠ DO NOT "FIX" THE RAGGED COLUMN ALIGNMENT BELOW (review 1-18).
+    // The literal padding is INSIDE the hashed body: "4h" (2 chars) and "daily"
+    // (5 chars) are followed by a FIXED-width run of spaces, so the closing `|`
+    // does not line up with the neighbouring rows and the daily row is 3 columns
+    // narrower than the 4h row. That raggedness is baked into the locked
+    // body-SHA-256 of FOUR anchors — #92/#93 (ts-horizon-4h 2023/2024) and
+    // #94/#95 (ts-horizon-daily) — plus #96..#99 on the carry side. Re-padding
+    // to a tidy table changes those bytes and turns `scripts/verify_anchors.sh`
+    // RED with no way to re-lock short of the ADR-0038 § D6.b re-emission
+    // protocol. Cosmetics are not worth eight anchors.
     if is_horizon_run {
         let _ = std::fmt::Write::write_fmt(
             &mut body,
