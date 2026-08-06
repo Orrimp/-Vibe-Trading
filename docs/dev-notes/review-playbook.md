@@ -131,7 +131,16 @@ Then: `python3 scripts/spec_lint.py` (exit 0) and commit with `--no-gpg-sign`
 - `#[ignore]`d tests (real-corpus probes) do not gate — call them out, don't
   treat them as failures.
 
-## 9. What good looks like
+## 9. Application-level reviews (different from story reviews)
+
+A review of *the product* rather than a diff starts from
+[`product-review-2026-08-04.md`](product-review-2026-08-04.md) — 14 standing
+findings plus an explicit "what is solid" list. Confirm or kill each, add new
+ones, and re-date the note. Sources worth re-reading first: `CHANGELOG.md`
+(the feature index), `PRD.md` §13 (open questions), the do-not-build register,
+and the bug-log's open entries. Do not re-derive the standing set.
+
+## 10. What good looks like
 
 A finished review produces: a story `### Review Findings` block whose every
 line cites `file:line`, a triage split that names its owner for each

@@ -66,6 +66,7 @@ an immutable dated record; the newest is the current state of the audit trail.
 
 | Note | One line |
 |---|---|
+| [`product-review-2026-08-04.md`](product-review-2026-08-04.md) | Adversarial review of the APPLICATION + features (not process): 14 findings on the gap between the honesty machinery and what the user is shown; also records what is solid so future passes don't re-litigate it. Baseline for the next product review. |
 | [`p2-wobble-thesis-analysis-2026-07-10.md`](p2-wobble-thesis-analysis-2026-07-10.md) | P2 corpus-expansion wobble decomposition + thesis-framing options → the era-qualified thesis. |
 | [`robustness-gate-allfragile-analysis-2026-06-22.md`](robustness-gate-allfragile-analysis-2026-06-22.md) | Why the gate returned `AllFragile` on real crypto → the ADR-0066 benchmark exemption. |
 | [`robustness-gate-allfragile-technical-2026-06-22.md`](robustness-gate-allfragile-technical-2026-06-22.md) | Technical companion to the `AllFragile` analysis (the `rank.rs` mechanics). |
