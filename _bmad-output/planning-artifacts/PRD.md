@@ -481,7 +481,17 @@ There is **no add-more-features roadmap**: the v3 scoping found no coherent feat
 3. **Cross-run family-wise multiple-testing report-annex (online-FDR):** the single build-candidate in the post-remediation gap analysis (everything else is stated-limit/leave). Build as a report-annex, or record as a stated limit?
 4. **Demo-runbook approval bookkeeping:** `CHANGELOG.md` still records the end-to-end demo as "awaiting operator approval" while the v3 close-out records it approved — reconcile the stale note at (or before) the Phase 5b cutover.
 
-### Live (opened 2026-08-04 by the product review)
+### Decided (2026-08-04, same day they were opened)
+
+> Q5 = **BUILD/SHIPPED** — `LatencySlippageSimConfig::advisor_default()` turns venue
+> realism ON for the advisor path while the plain `Default` stays `None` (the ADR-0087
+> byte-identity arm every anchored body depends on). Q6 = **BUILD** → story
+> 6-11-operator-session-log. Q7 = **BUILD** → story 6-12-evidence-reproducibility-sample.
+> Q8 = **BUILD** → story 3-20-advisor-honesty-surface, sequenced behind story 6-9's
+> embedded-font fix (its AD-10 pixel proof is impossible while the baseline gate is red).
+> Product-review finding 12 → story 3-21-paper-portfolio-durability (inventory done: the
+> money side is structurally sound via atomic SQLite double-entry; the real defect is the
+> silent cold-start reset in `lab::persistence::decode`).
 
 5. **Lot-realism default (product finding 3):** minimum-notional rejection and lot
    rounding (`VenueFilter`, ADR-0087) are OPT-IN, so the default advisor path can emit

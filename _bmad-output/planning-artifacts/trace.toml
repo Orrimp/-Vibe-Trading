@@ -3607,3 +3607,25 @@ crates      = ["crates/ui", "crates/audit"]
 tests       = []
 anchors     = []
 state       = "scoped"   # created 2026-08-04 by the product review; operator prioritisation pending
+
+[[req]]
+id          = "REQ-OPERATOR-SESSION-LOG-001"
+title       = "A local, inspectable, append-only record of what the application ACTUALLY did per session (PRD §13 Q6, operator decision BUILD 2026-08-04): operator-visible actions + outcomes + DENOMINATORS (the acceptance gate is a replay of bug-log #66 A.4 — 'opened Compare -> 0 cells from N discovered reports' must be legible in the log). JSONL under a git-ignored state dir; no network, no telemetry service, no third party; off-switch + bounded retention + a stated what-is-recorded line. Five defects (#65-#69) shipped past green tests because nothing independent of the tests recorded behaviour; this is that record, at one-operator scale."
+feature     = "operator-session-log"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["docs/dev-notes/product-review-2026-08-04.md"]
+crates      = ["crates/ui", "crates/agent"]
+tests       = []
+anchors     = []
+state       = "scoped"   # created 2026-08-04 by the product review; operator decision BUILD
+
+[[req]]
+id          = "REQ-EVIDENCE-REPRODUCIBILITY-SAMPLE-001"
+title       = "Make ONE real-data claim reproducible from a fresh clone by a second party (PRD §13 Q7, operator decision BUILD 2026-08-04): a small committed sample corpus + its REVISION.toml under the sibling-corpus gitignore convention, one documented command producing a named figure against a committed expected value + tolerance, an HONEST limits paragraph (the sample reproduces one claim; full corpora stay machine-local; the 119 anchored BODIES are already repo-verifiable but the runs behind them are not third-party re-executable), and CI wiring so the recipe cannot rot. Anchors 119/119 before AND after — the sample must not disturb any existing anchored resolution."
+feature     = "evidence-reproducibility-sample"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["docs/runbooks/corpus-restore.md"]
+crates      = ["crates/data", "crates/backtest"]
+tests       = []
+anchors     = []
+state       = "scoped"   # created 2026-08-04 by the product review; operator decision BUILD

@@ -115,6 +115,34 @@ impl Default for LatencySlippageSimConfig {
 }
 
 impl LatencySlippageSimConfig {
+    /// The ADVISOR-path default: identical to [`Self::default`] except that
+    /// venue realism is ON (`venue_filter = Some(LotSizeAndMinNotional)`).
+    ///
+    /// # Why a separate constructor and not a changed `Default`
+    ///
+    /// PRD §13 Q5 (operator decision 2026-08-04, from the 2026-08-04 product
+    /// review's finding 3): the advisor's headline promise is a specific small
+    /// budget (€200) and it was being planned WITHOUT lot-size rounding or
+    /// min-notional rejection — so the default path could emit a plan whose
+    /// legs are unexecutable at the venue the plan names. The advisor path
+    /// now opts in by construction.
+    ///
+    /// `Default` stays `venue_filter: None` deliberately: the anchored CLI
+    /// scenarios (`main.rs`) and the frozen research lanes take that default,
+    /// and ADR-0087 § D6 makes `None` the byte-identity arm — flipping the
+    /// global default would move every anchored report body. The split is the
+    /// point: **user-facing plans get realism; frozen evidence keeps its
+    /// recorded arithmetic.**
+    #[must_use]
+    pub fn advisor_default() -> Self {
+        Self {
+            venue_filter: Some(VenueFilterMode::LotSizeAndMinNotional),
+            ..Self::default()
+        }
+    }
+}
+
+impl LatencySlippageSimConfig {
     /// Returns `true` when the config is the noop default (all zeros, linear
     /// bps=0, no venue filter). Used by callers to skip RNG construction on
     /// the hot path.
@@ -307,6 +335,28 @@ mod latency_slippage_config_tests {
 
     /// ADR-0087 § D6 (`venue_filter_default_is_none` precedent): the config
     /// default carries no venue filter — the mode is opt-in-forever.
+    /// PRD §13 Q5: the advisor path opts INTO venue realism; the plain
+    /// `Default` (anchored CLI + frozen research lanes) must stay `None`.
+    #[test]
+    fn advisor_default_enables_venue_filter_while_plain_default_stays_none() {
+        let advisor = LatencySlippageSimConfig::advisor_default();
+        assert_eq!(
+            advisor.venue_filter,
+            Some(super::VenueFilterMode::LotSizeAndMinNotional),
+            "the advisor path must plan with lot-size + min-notional realism"
+        );
+        let plain = LatencySlippageSimConfig::default();
+        assert!(
+            plain.venue_filter.is_none(),
+            "the plain default is the ADR-0087 byte-identity arm — anchored \
+             bodies depend on it staying None"
+        );
+        // Everything else must match, so the advisor arm changes exactly one thing.
+        assert_eq!(advisor.latency_ms_min, plain.latency_ms_min);
+        assert_eq!(advisor.latency_ms_max, plain.latency_ms_max);
+        assert_eq!(advisor.slippage_model, plain.slippage_model);
+    }
+
     #[test]
     fn venue_filter_defaults_to_none() {
         assert!(LatencySlippageSimConfig::default().venue_filter.is_none());

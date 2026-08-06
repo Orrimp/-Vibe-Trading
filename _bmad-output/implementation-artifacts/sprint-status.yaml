@@ -72,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-08-04 18:00  # product review actioned: 3-20/3-21 scoped; PRD §13 Q5-Q8 opened
+last_updated: 2026-08-04 20:00  # product review CLOSED: Q5 shipped, Q6/Q7/Q8 decided -> stories 6-11, 6-12, 3-20, 3-21 all ready-for-dev
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -197,8 +197,8 @@ development_status:
   3-17-point-in-time-data-discipline: done
   3-18-advisor-reflection-decision-loop: ready-for-dev  # arch-done; build awaits an operator decision
   3-19-advisor-eur-live-rate: ready-for-dev  # 2026-07-27 operator decision PRD §13 Q1 = BUILD (live-fetched EUR/USD at plan render; static rate stays offline fallback)
-  3-20-advisor-honesty-surface: backlog  # 2026-08-04 product review (PRD §13 Q8) — verdict surface shows what was searched, the report-only scorecard label, the standing qualifier, and a next step; pixel proof blocked on 6-9's embedded font
-  3-21-paper-portfolio-durability: backlog  # 2026-08-04 product review (finding 12) — survival contract + crash-consistency + versioned state for the user's paper €200
+  3-20-advisor-honesty-surface: ready-for-dev  # 2026-08-04 operator: BUILD, sequenced behind 6-9's embedded-font fix (AD-10 pixel proof impossible until the baseline gate is green) — 2026-08-04 product review (PRD §13 Q8) — verdict surface shows what was searched, the report-only scorecard label, the standing qualifier, and a next step; pixel proof blocked on 6-9's embedded font
+  3-21-paper-portfolio-durability: ready-for-dev  # 2026-08-04 operator: inventory-first DONE (money side sound via atomic SQLite double-entry; REAL defect = silent cold-start reset on version/parse failure) — 2026-08-04 product review (finding 12) — survival contract + crash-consistency + versioned state for the user's paper €200
   epic-3-retrospective: optional
 
   # -- Epic 4: v2 Research-Driven Credibility Tranche
@@ -240,6 +240,8 @@ development_status:
   6-8-subscription-pipe-server-time-template: done
   6-9-cockpit-cross-platform: in-progress  # the open CI run-2 shakeout (P7 activated 2026-07-10; fix-forward)
   6-10-bmad-method-migration: done  # COMPLETE 2026-07-25 — all 7 phases (0..5c); spec/ retired, gates ported intact, docs cutover shipped
+  6-11-operator-session-log: ready-for-dev  # 2026-08-04 product review PRD §13 Q6 = BUILD — the independent record of what the app DID (gate: replays bug-log #66 A.4)
+  6-12-evidence-reproducibility-sample: ready-for-dev  # 2026-08-04 product review PRD §13 Q7 = BUILD — one real-data claim reproducible from a fresh clone by a second party
   epic-6-retrospective: optional
 
   # -- Epic 7: Retired Research Lines (measured-and-retired bets)
@@ -279,15 +281,15 @@ action_items:
   - epic: 3
     action: "PRD §13 Q5 - lot-realism default: flip VenueFilter ON for the advisor path (the €200 headline) or keep opt-in and state the limit in the UI? BEHAVIOUR CHANGE - operator call"
     owner: "operator"
-    status: open
+    status: done  # 2026-08-04 DECIDED+SHIPPED: LatencySlippageSimConfig::advisor_default() (venue filter ON) at the 6 advisor sites; plain Default stays None (ADR-0087 byte-identity arm) so anchored bodies are untouched
   - epic: 6
     action: "PRD §13 Q6 - usage evidence: add a minimal local session log the operator can inspect, or accept 'tests are the only evidence' as a stated limit? (a shipped feature was silently broken for weeks - bug-log #66 A.4)"
     owner: "operator"
-    status: open
+    status: done  # 2026-08-04 DECIDED: BUILD -> story 6-11-operator-session-log (ready-for-dev)
   - epic: 5
     action: "PRD §13 Q7 - evidence reproducibility: publish a small committed sample corpus + a reproduce-this-figure path, or record irreproducibility-by-others as an explicit PRD stated limit?"
     owner: "operator"
-    status: open
+    status: done  # 2026-08-04 DECIDED: BUILD -> story 6-12-evidence-reproducibility-sample (ready-for-dev)
   - epic: 6
     action: "Run the first retrospectives - epics 4, 5, 7 are done with 0 retros; include a deferred-work.md revisit in each (the ledger now carries Owner/Revisit fields)"
     owner: "operator+orchestrator"

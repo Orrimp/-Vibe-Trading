@@ -69,7 +69,7 @@
 
 use backtest::MatchingEngine;
 use backtest::PaperEngine;
-use backtest::cli_types::{BacktestState, VenueFilterMode};
+use backtest::cli_types::{BacktestState, LatencySlippageSimConfig, VenueFilterMode};
 use backtest::paper::{MatchConfig, SimFilterStats};
 use risk::{FixedFractionSizer, size_and_validate};
 use rust_decimal::Decimal;
@@ -364,5 +364,70 @@ async fn btcusdt_major_at_200_is_negative_control() {
     eprintln!(
         "btcusdt_major_at_200: eq_baseline={eq_baseline} eq_filtered={eq_filtered} \
          relative_divergence={relative} doge_relative_divergence={doge_relative}"
+    );
+}
+
+/// PRD §13 Q5 (operator decision 2026-08-04) — the ADVISOR path's day-1
+/// divergence gate.
+///
+/// The advisor now plans with venue realism ON via
+/// [`LatencySlippageSimConfig::advisor_default`], while the plain `Default`
+/// stays `venue_filter: None` (the ADR-0087 byte-identity arm every anchored
+/// body depends on). A unit test pins those two VALUES — but this project has
+/// learned five times over (bug-log #65-#69) that a configured parameter is
+/// not an executed one. This test closes that gap: it sources the two filter
+/// settings FROM THE TWO CONSTRUCTORS and proves they produce a REAL,
+/// measurable fill difference on the product's headline budget.
+///
+/// If someone ever "simplifies" `advisor_default()` back to `Self::default()`,
+/// this test goes red — which is the whole point.
+#[tokio::test]
+async fn advisor_default_constructor_diverges_from_plain_default_at_the_fill_seam() {
+    let symbol = Symbol::new("DOGEUSDT");
+    let bars = doge_bars();
+    let initial_capital = dec!(200); // the product's headline budget
+    let fraction = dec!(0.1);
+
+    // The values under test come from the CONSTRUCTORS, not hand-written.
+    let advisor_filter = LatencySlippageSimConfig::advisor_default().venue_filter;
+    let plain_filter = LatencySlippageSimConfig::default().venue_filter;
+    assert!(
+        plain_filter.is_none(),
+        "the plain Default must stay the byte-identity arm (anchored bodies depend on it)"
+    );
+
+    let (eq_plain, stats_plain) =
+        run_scripted(&symbol, &bars, initial_capital, fraction, 6, plain_filter).await;
+    let (eq_advisor, stats_advisor) =
+        run_scripted(&symbol, &bars, initial_capital, fraction, 6, advisor_filter).await;
+
+    let divergence = (eq_plain - eq_advisor).abs();
+    let relative = divergence / eq_plain;
+
+    assert!(
+        relative >= dec!(0.0001),
+        "ADVISOR-PATH GATE FAIL — advisor_default() is behaviourally a no-op!\n\
+         eq_plain(default)   = {eq_plain}\n\
+         eq_advisor          = {eq_advisor}\n\
+         divergence          = {divergence} ({relative} relative)\n\
+         required (>= 1 bp)  = 0.0001\n\
+         \n\
+         The advisor path plans WITH lot-size rounding + min-notional reject\n\
+         (PRD §13 Q5). Red here means either advisor_default() lost its\n\
+         venue_filter or the filter stopped biting at PaperEngine::step."
+    );
+    assert!(
+        eq_advisor <= eq_plain,
+        "direction violated: the realistic (advisor) path can only deploy less \
+         capital than the un-filtered baseline, never more"
+    );
+    assert_eq!(
+        stats_plain.skipped_min_notional, 0,
+        "the plain default must never skip orders"
+    );
+    eprintln!(
+        "advisor-path gate: eq_plain={eq_plain} eq_advisor={eq_advisor} \
+         relative_divergence={relative} skipped_min_notional(advisor)={}",
+        stats_advisor.skipped_min_notional
     );
 }

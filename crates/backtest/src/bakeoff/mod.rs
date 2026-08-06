@@ -1081,7 +1081,7 @@ pub async fn run_bakeoff(
             bars_override: preloaded_bars.clone(),
             sma_fast_len: None,
             sma_slow_len: None,
-            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+            latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::advisor_default(),
             reports_dir: None,
             params: None,
             short_enabled,
