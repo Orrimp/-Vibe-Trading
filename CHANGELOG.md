@@ -14,8 +14,11 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 **`_bmad-output/planning-artifacts/`** (`PRD.md`, `architecture.md` +
 `architecture/decisions/` ADRs) and **`docs/runbooks/`**.
 
-> **Program status — "The Honest Advisor" (single-coin paper advisor), FEATURE-COMPLETE
-> (2026-07-09).** The terminal deliverable is the **advisor loop**: pick a coin + budget
+> **Program status — "The Honest Advisor" (single-coin paper advisor): FEATURE LIST
+> COMPLETE (2026-07-09); PRODUCT STATE mid-hardening (review burn-down since
+> 2026-07-26 — 7/14 stories closed, bug-log #65-#69 disclosed, re-lock stories
+> 1-24/1-25 open; the advisor bakeoff gate is verified independent of the
+> contaminated research surfaces).** The terminal deliverable is the **advisor loop**: pick a coin + budget
 > (e.g. €200 XRPUSDT) → bake off *every* strategy over a configurable 2-week-to-4-year
 > window → rank & select the best by risk-adjusted Sharpe under a robustness gate → emit a
 > forward buy/sell plan → **paper-trade the budget forward** in the Live view with real P/L.

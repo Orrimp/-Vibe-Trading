@@ -18,7 +18,15 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
 2. **Both lanes**: `scenarios/montecarlo.rs::run_path` AND `threshold_sweep.rs::run_cell` fixed (run_cell additionally gains the Bug-B solvency guard it never received); the FROZEN gate files stay byte-untouched (identity test discharged).
 3. **The riders land in the same regeneration**: √8760 annualization (or a formal ratification of √8575 with the doc corrected to match), hashed-body verdict vocabulary aligned to the frozen 5-signal rule, sentinel-zero pooling policy, negative-final Calmar guard, slippage-aware solvency pre-flight, FILL_SEED domain separation, real portfolio-exposure-cap enforcement decision (enforce or delete the decorative limit) — each either fixed or explicitly ratified-as-is in the story record.
 4. **Formal re-lock per the ADR-0038/0045 §D6 family**: affected reports regenerated under a NEW namespace; old rows byte-frozen; an errata/decision note records per-scenario old-vs-new headline numbers and the RE-DERIVED verdicts. The C2 FRAGILE and the sweep FAMILY-UNIFORM-FRAGILE conclusions are re-stated from clean arithmetic — whichever way they land. Any flip that would touch the era-qualified thesis's supporting narrative escalates to the operator BEFORE publication (AD-19 spirit).
-5. Standing floor: anchors green (old + new rows); spec-lint PASS; advisor-gate independence re-proven (bakeoff/bootstrap.rs resamples returns — assert its inputs/outputs unchanged by this story).
+5. **Band re-examination (product-review finding 2, 2026-08-04):** `classify_verdict` /
+   `verdict_bands` thresholds were calibrated against the very surfaces this story
+   regenerates. After the re-derivation, the story must state explicitly — with numbers —
+   whether the frozen bands would classify the CLEAN surfaces the same way they classified
+   the contaminated ones. The gate stays byte-frozen either way (AD-1); the deliverable is
+   the ANSWER, recorded in the errata, plus an operator escalation if the clean numbers sit
+   near a band edge. A frozen gate whose calibration is never re-examined is an assumption,
+   not a guarantee.
+6. Standing floor: anchors green (old + new rows); spec-lint PASS; advisor-gate independence re-proven (bakeoff/bootstrap.rs resamples returns — assert its inputs/outputs unchanged by this story).
 
 ## Tasks / Subtasks
 

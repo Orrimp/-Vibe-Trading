@@ -6,10 +6,23 @@ This README is the human entry point. AI agents should start at **[CLAUDE.md](CL
 
 ---
 
-## Status (2026-07-09) — FEATURE-COMPLETE
+## Status — FEATURE-COMPLETE (2026-07-09) · UNDER REVIEW HARDENING (since 2026-07-26)
 
-**The product is "The Honest Advisor" — a single-coin paper/sim investment advisor —
-and it is feature-complete.** The honest arc that got here:
+**The product is "The Honest Advisor" — a single-coin paper/sim investment advisor.
+Its FEATURE LIST is complete; its PRODUCT STATE is mid-hardening.** Both halves are
+true and the second one is easy to lose: a code-review burn-down over the frozen
+`review`-status stories (7 of 14 closed) has disclosed five defects of the
+"declared ≠ executed" family (bug-log #65-#69) — including cross-symbol fill
+mispricing that makes several anchored RESEARCH surfaces execution-artifact noise
+(#67) — and opened two CRITICAL re-lock stories (1-24, 1-25) plus three scoped
+builds. **What that does NOT touch:** the advisor's bakeoff gate resamples returns
+and never re-executes fills (verified three times adversarially), so crowns,
+verdicts and the era-qualified ship-passive conclusion stand independently. The
+active-trading-thesis closure currently reads *direction-preserved pending re-lock*.
+Current honest state: `_bmad-output/implementation-artifacts/sprint-status.yaml`,
+`docs/dev-notes/bug-log.md`, `docs/dev-notes/product-review-2026-08-04.md`.
+
+The honest arc that got here:
 
 1. **The active-vs-passive research program CONCLUDED (2026-06-08): SHIP PASSIVE (current era).** Across
    all three reachable channels — price/OHLCV, derivatives-positioning, and on-chain — no

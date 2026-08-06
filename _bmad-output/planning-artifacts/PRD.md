@@ -468,10 +468,44 @@ There is **no add-more-features roadmap**: the v3 scoping found no coherent feat
 
 ## 13. Open Questions
 
+> **Q1-Q4 were DECIDED by the operator on 2026-07-27** and are retained below as the
+> decision record: Q1 = BUILD (story 3-19-advisor-eur-live-rate); Q2 = SCHEDULE
+> (story 2-63, analyst pass done); Q3 = BUILD (story 4-13-advisor-online-fdr-annex,
+> epic-4 reopened); Q4 = reconciled. Q5-Q8 below are the live set, opened by the
+> 2026-08-04 adversarial product review (`docs/dev-notes/product-review-2026-08-04.md`).
+
+### Decided (2026-07-27)
+
 1. **EUR/USD rate source, v0.3 fork (from D4/FR-2):** the shipped rate is a configurable static default; a live-fetched rate layered on the static value as fallback is the noted v0.3 upgrade. Build or leave? (Operator fork, low stakes.)
 2. **`lab-recipe-test-harness` v0.3.0+:** the one genuinely-open forward build item in the backlog (robustness gate cleared, awaiting an analyst spawn). Schedule or retire?
 3. **Cross-run family-wise multiple-testing report-annex (online-FDR):** the single build-candidate in the post-remediation gap analysis (everything else is stated-limit/leave). Build as a report-annex, or record as a stated limit?
 4. **Demo-runbook approval bookkeeping:** `CHANGELOG.md` still records the end-to-end demo as "awaiting operator approval" while the v3 close-out records it approved — reconcile the stale note at (or before) the Phase 5b cutover.
+
+### Live (opened 2026-08-04 by the product review)
+
+5. **Lot-realism default (product finding 3):** minimum-notional rejection and lot
+   rounding (`VenueFilter`, ADR-0087) are OPT-IN, so the default advisor path can emit
+   a €200 plan whose legs are unexecutable at the venue it names. Flip the default to
+   ON for the advisor path (the product's headline promise is this exact small budget),
+   or keep opt-in and state the limit in the UI? **Behaviour change — operator call.**
+
+6. **Usage evidence (product finding 6):** there is no telemetry, session log, or
+   second user; a shipped "done" feature (Compare's report scanner) was silently broken
+   for weeks and only a review found it. Add a minimal local session/usage log the
+   operator can inspect after a session, or accept "tests are the only evidence" as a
+   stated limit?
+
+7. **Evidence reproducibility (product finding 8):** every pinned corpus is
+   machine-local and gitignored, so no second party can reproduce a single real-data
+   claim. Publish a small committed sample corpus + a reproduce-this-figure path, or
+   record irreproducibility-by-others as an explicit stated limit in the PRD?
+
+8. **Advisor honesty surface (product findings 1, 5, 9, 10, 13):** the verdict screen
+   does not enumerate what was searched, does not distinguish "the null won" from "the
+   search failed", presents the report-only scorecard as if it gates the crown, omits
+   the current *direction-preserved pending re-lock* qualifier, and offers no in-app
+   "why" or re-check cadence after telling the user to hold. Scoped as story
+   3-20-advisor-honesty-surface (backlog) — build, trim, or reject?
 
 ## 14. Assumptions Index
 

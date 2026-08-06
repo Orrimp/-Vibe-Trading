@@ -43,3 +43,18 @@ Historical stub - implementation predates BMAD story tracking; see git history v
 ### Completion Notes List
 
 ### File List
+
+## Product-review fold-in (2026-08-04)
+
+- **The macOS pixel gate is currently red at clean HEAD (62 baseline comparisons)** —
+  glyph-localized system-font rasterization drift, proven change-independent by a stash
+  A/B (`docs/dev-notes/visual-baseline-drift-2026-07-27.md`). Practical consequence: the
+  application's appearance is unverified and a genuine regression would land invisibly.
+- **Fix ORDER is load-bearing:** enable the embedded default font (the `fira-sans` feature
+  exists but is not in defaults) FIRST — that makes glyph rasterization repo-deterministic
+  and independent of the OS font DB — and only THEN re-baseline once, with per-screen human
+  approval per `docs/dev-notes/iced-ui-render-verification.md`. Re-baselining on the OS font
+  re-arms the same bomb for the next OS update, and would also block the cross-OS baseline
+  work this story wants.
+- This is H1 of the cross-platform program: the embedded font is the prerequisite for ever
+  having Linux/Windows baselines at all, not just for un-sticking macOS.

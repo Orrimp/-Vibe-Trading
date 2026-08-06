@@ -3585,3 +3585,25 @@ crates      = ["crates/backtest"]
 tests       = []
 anchors     = []   # will ADD a new namespace; existing mc-robustness/threshold-sweep rows stay frozen
 state       = "scoped"   # story 1-25 created 2026-07-31 by the 1-14 review decision; ready-for-dev
+
+[[req]]
+id          = "REQ-ADVISOR-HONESTY-SURFACE-001"
+title       = "Make the advisor's honesty VISIBLE on the verdict surface (product review 2026-08-04, PRD §13 Q8): enumerate the arms actually searched from the live registry; render a positive search-completeness statement so the honest null is never visually identical to a silent search failure (negative-control render test); label the DSR/N_eff/MinBTL block report-only (E-1 stands — it does not gate the crown); surface standing qualifiers from a single in-repo constant (today: the active-trading closure is direction-preserved pending the 1-25 re-lock); give the user a why-this-lost summary + a re-check cadence after 'hold'. Presentation only — FROZEN gate byte-untouched, crown unchanged by construction; AD-10 pixel proof BLOCKED on story 6-9's embedded-font fix."
+feature     = "advisor-honesty-surface"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["docs/dev-notes/product-review-2026-08-04.md"]
+crates      = ["crates/ui"]
+tests       = []
+anchors     = []
+state       = "scoped"   # created 2026-08-04 by the product review; PRD §13 Q8 operator go/no-go pending
+
+[[req]]
+id          = "REQ-PAPER-PORTFOLIO-DURABILITY-001"
+title       = "Give the user's simulated portfolio the durability ceremony every other durable artifact in this repo already has (product review 2026-08-04 finding 12): a documented survival contract naming what persists across a kill; a crash-consistency test asserting the double-entry ledger reconciles exactly on reload (no half-applied fill, no position without its cash leg); a version on persisted paper state with migrate-or-fail-loud (never silent field-drop); and a 'restored from <ts>' surfacing in the Live view. Decimal money throughout (AD-9); paper-only; scope guard — if the contract is already met, the story reduces to document-and-surface and must say so."
+feature     = "paper-portfolio-durability"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = ["docs/dev-notes/product-review-2026-08-04.md"]
+crates      = ["crates/ui", "crates/audit"]
+tests       = []
+anchors     = []
+state       = "scoped"   # created 2026-08-04 by the product review; operator prioritisation pending
