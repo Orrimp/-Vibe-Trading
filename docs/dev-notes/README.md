@@ -35,6 +35,8 @@ verification recipe that current work depends on — do not treat them as stale.
 
 | Note | One line |
 |---|---|
+| [`review-playbook.md`](review-playbook.md) | **LOAD-BEARING.** The code-review burn-down's accumulated knowledge: `scripts/review_prep.sh` start, the 3-layer prompt contract, the known-and-owned routing table (#67/#68/#69/PWSD → stories 1-24/1-25), the 7 mandatory probes, and the triad close-out checklist. Auto-loaded by `bmad-code-review` via `_bmad/custom/`. |
+| [`visual-baseline-drift-2026-07-27.md`](visual-baseline-drift-2026-07-27.md) | Why 62 pixel tests are red at clean HEAD (system-font rasterization drift, stash-A/B proven change-independent) + the fix ORDER: embed fira-sans BEFORE re-baselining. |
 | [`iced-ui-render-verification.md`](iced-ui-render-verification.md) | **LOAD-BEARING.** How to verify cockpit/UI at the rendered-PIXEL layer (`iced_test::Emulator::screenshot` harnesses + negative control). Cited by CLAUDE.md. |
 | [`v3-vol-overlay-noop-discovery-2026-05-22.md`](v3-vol-overlay-noop-discovery-2026-05-22.md) | **LOAD-BEARING.** The computed-but-never-applied overlay no-op → the day-1 baseline-equity-divergence e2e non-negotiable. Cited by CLAUDE.md. |
 | [`codegraph.md`](codegraph.md) | CodeGraph setup + the opt-in MCP wiring (dev/agent code-navigation aid; zero product/build effect). |
