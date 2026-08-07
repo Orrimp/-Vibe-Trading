@@ -870,6 +870,15 @@ fn run_one_path_with_config(
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override,
         basis_override: None,
+        // Carry-surface fix (2026-08-04): the funding-accrual rule must be told
+        // how much simulated market time ONE generated bar represents, because
+        // the generator stamps every path on a cosmetic 1-hour ladder whatever
+        // the source cadence (bug-log #72). 1h → 1, 4h → 4, daily → 24.
+        bar_span_hours: match horizon {
+            backtest::resample::Horizon::OneHour => 1,
+            backtest::resample::Horizon::FourHours => 4,
+            backtest::resample::Horizon::OneDay => 24,
+        },
     };
 
     let result = pollster::block_on(backtest::scenarios::montecarlo::run_path(

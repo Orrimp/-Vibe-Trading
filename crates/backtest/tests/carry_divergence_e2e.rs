@@ -213,6 +213,7 @@ fn run_to_result(
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override,
         basis_override: None,
+        bar_span_hours: 1,
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))
         .expect("run_path must succeed in carry divergence e2e test")
@@ -727,4 +728,120 @@ fn build_synthetic_funding(n_hours: usize) -> BTreeMap<(Symbol, Timestamp), Deci
         funding.insert((sym_b.clone(), ts), rate_b);
     }
     funding
+}
+
+// ── Carry-surface fix (2026-08-04): funding-accrual regression gates ────────
+//
+// Two defects were found by MEASUREMENT here and fixed in
+// `scenarios::montecarlo::run_path`. These tests are the experiments that found
+// them, kept as gates.
+//
+//  (1) MULTIPLICITY — `merged_bars` interleaves every symbol's series, and the
+//      accrual block was gated only on the bar timestamp, so the whole position
+//      book accrued once per SYMBOL-BAR. Measured: holding ONE position and
+//      varying only the universe size gave -5 / -7 / -9 units for N = 2 / 3 / 4.
+//      Correct behaviour is INVARIANT to universe size.
+//
+//  (2) CADENCE — the settlement test counted bars on the generator's cosmetic
+//      1-hour ladder (bug-log #72), so a 4h path settled every 32 real hours and
+//      a daily path every 8 real days. `bar_span_hours` now supplies the real
+//      span and the boundaries inside it are counted explicitly.
+
+/// Total realized funding for a universe of `size`, holding exactly ONE
+/// position, with every symbol flat and carrying the same funding rate.
+/// The ONLY variable is how many bar events share each timestamp.
+fn carry_funding_total(size: usize, bar_span_hours: u32, n_bars: i64) -> Decimal {
+    let syms: Vec<String> = (0..size)
+        .map(|i| {
+            let c = (b'A' + u8::try_from(i).unwrap_or(0)) as char;
+            format!("{c}{c}USDT")
+        })
+        .collect();
+    let rate = dec!(0.0001);
+
+    let mut bars: Vec<Bar> = Vec::new();
+    for h in 0..n_bars {
+        for sym in &syms {
+            bars.push(make_bar(sym, dec!(100), h));
+        }
+    }
+    bars.sort_by(|x, y| {
+        x.open_ts
+            .cmp(&y.open_ts)
+            .then_with(|| x.symbol.0.cmp(&y.symbol.0))
+    });
+
+    let mut funding: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+    for h in 0..n_bars {
+        for sym in &syms {
+            funding.insert((Symbol::new(sym), make_ts(h)), rate);
+        }
+    }
+
+    let mut cfg = make_carry_config();
+    cfg.universe = syms.iter().map(SmolStr::new).collect();
+    cfg.k_long = 1;
+
+    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("carry_span_test"));
+    let input = TcnScenarioInput {
+        scenario_name: "carry-span".to_string(),
+        start_year: 2023,
+        bar_count: bars.len(),
+        initial_capital: dec!(100_000),
+        slippage_bps: 0,
+        taker_fee_bps: 0,
+        config_id: "test_carry".to_string(),
+        forecaster_id: "test".to_string(),
+        bars_override: Some(bars),
+        emit_equity_bin: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        funding_override: Some(funding),
+        basis_override: None,
+        bar_span_hours,
+    };
+    pollster::block_on(run_path(input, 0xC0FFEE, strat))
+        .expect("run_path must succeed")
+        .realized_funding
+}
+
+/// (1) Funding must not depend on how many symbols happen to share a timestamp.
+/// This is the exact experiment that exposed the multiplicity bug.
+#[test]
+fn funding_accrual_is_invariant_to_universe_size() {
+    let f2 = carry_funding_total(2, 1, 24);
+    let f3 = carry_funding_total(3, 1, 24);
+    let f4 = carry_funding_total(4, 1, 24);
+    assert_eq!(
+        f2, f3,
+        "funding must not scale with universe size (2 vs 3): {f2} vs {f3} — \
+         the accrual is firing once per SYMBOL-BAR instead of once per settlement"
+    );
+    assert_eq!(
+        f3, f4,
+        "funding must not scale with universe size (3 vs 4): {f3} vs {f4}"
+    );
+    assert!(
+        f2 != Decimal::ZERO,
+        "probe inconclusive: no funding accrued at all"
+    );
+}
+
+/// (2) A bar spanning more market time must settle proportionally more funding.
+/// 24 hourly bars = 24 h; 24 four-hour bars = 96 h (4x); 24 daily bars = 576 h (24x).
+/// Same universe, same rate, same position — only the declared span changes.
+#[test]
+fn funding_accrual_scales_with_declared_bar_span() {
+    let hourly = carry_funding_total(3, 1, 24);
+    let four_h = carry_funding_total(3, 4, 24);
+    let daily = carry_funding_total(3, 24, 24);
+    assert!(
+        four_h.abs() > hourly.abs(),
+        "a 4h bar covers 4x the market time of a 1h bar, so 24 of them must \
+         settle more funding: 1h={hourly} 4h={four_h}"
+    );
+    assert!(
+        daily.abs() > four_h.abs(),
+        "a daily bar covers 6x the market time of a 4h bar: 4h={four_h} daily={daily}"
+    );
+    eprintln!("span scaling: 1h={hourly} 4h={four_h} daily={daily}");
 }

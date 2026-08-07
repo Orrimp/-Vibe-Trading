@@ -1797,6 +1797,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         // Keep a report-only copy of the input (without the moved bars/equity_bin).
         let tcn_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1819,6 +1820,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
         let (_h, t_cancel) = backtest::cancel::cancellation_pair();
@@ -1927,6 +1929,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let tcn_w_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -1948,6 +1951,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result = backtest::scenarios::tcn_overlay_weights::run(tcn_w_input, seed).await?;
 
@@ -2052,6 +2056,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let patchtst_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -2073,6 +2078,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result =
             backtest::scenarios::patchtst_overlay_weights::run(patchtst_input, seed).await?;
@@ -2175,6 +2181,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
             scenario_name: scenario.name.clone(),
@@ -2196,6 +2203,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result =
             backtest::scenarios::garch_vol_target_overlay::run(vol_target_input, seed).await?;
@@ -2293,6 +2301,7 @@ async fn main() -> Result<()> {
             },
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result =
             backtest::scenarios::regime_dispatcher::run(regime_input.clone(), seed).await?;

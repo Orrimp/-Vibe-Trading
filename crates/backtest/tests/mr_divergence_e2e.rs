@@ -173,6 +173,7 @@ fn run_to_final_equity(cfg: strategy::CrossSectionalMomentumConfig, bars: Vec<Ba
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override: None,
         basis_override: None,
+        bar_span_hours: 1,
     };
     let result = pollster::block_on(run_path(input, 0xC0FFEE, strat))
         .expect("run_path must succeed in MR divergence test");
@@ -323,6 +324,7 @@ fn run_cell_summary_mr(
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
 
         let result = pollster::block_on(run_path(input, 0xC0FFEE, strat))

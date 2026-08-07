@@ -259,6 +259,7 @@ fn run_to_result(
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override: None, // accrual not needed for pure signal tests
         basis_override: None,
+        bar_span_hours: 1,
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))
         .expect("run_path must succeed in MN divergence e2e test")

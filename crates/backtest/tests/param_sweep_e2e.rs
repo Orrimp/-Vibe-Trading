@@ -195,6 +195,7 @@ fn run_cell_summary(
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
 
         let result = pollster::block_on(run_path(input, 0xC0FFEE, strat))

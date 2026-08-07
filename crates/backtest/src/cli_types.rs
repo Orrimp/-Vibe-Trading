@@ -433,6 +433,7 @@ mod latency_slippage_config_tests {
             latency_slippage_sim: LatencySlippageSimConfig::default(),
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         assert!(
             input.latency_slippage_sim.is_noop(),
@@ -515,6 +516,7 @@ mod latency_slippage_config_tests {
             latency_slippage_sim: cfg.clone(),
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         assert!(!input.latency_slippage_sim.is_noop());
         assert_eq!(
@@ -687,6 +689,18 @@ pub struct TcnScenarioInput {
     /// `None` for every non-MN run → byte-identical to pre-M-DEV-1 code.
     pub basis_override:
         Option<std::collections::BTreeMap<(Symbol, trading_core::Timestamp), Decimal>>,
+    /// Simulated market hours represented by ONE generated bar (carry-surface
+    /// fix, 2026-08-04).
+    ///
+    /// `BlockBootstrapPathGen` stamps every generated path on a cosmetic 1-hour
+    /// ladder whatever the source cadence (bug-log #72), so a time-derived rule
+    /// cannot infer the real span from the timestamps. Funding accrual therefore
+    /// takes it explicitly: `1` for a native-hourly path, `4` for a 4h-resampled
+    /// path, `24` for a daily one. `1` is the default and reproduces the
+    /// native-hourly settlement rhythm exactly (one settlement every 8 bars).
+    ///
+    /// Used ONLY by the funding-accrual block in `scenarios::montecarlo::run_path`.
+    pub bar_span_hours: u32,
 }
 
 // ── BacktestState (SMA / Composed run state) ──────────────────────────────────

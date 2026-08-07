@@ -276,6 +276,7 @@ pub fn run_one_path(
         latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         funding_override: None,
         basis_override: None,
+        bar_span_hours: 1,
     };
 
     let result = pollster::block_on(crate::scenarios::montecarlo::run_path(

@@ -232,6 +232,30 @@ pub async fn run_path(
     let mut peak_equity = initial_capital;
     let mut max_drawdown_tracking = Decimal::ZERO;
 
+    // ── Funding-accrual bookkeeping (2026-08-04 carry-surface fix) ───────────
+    //
+    // TWO defects were fixed here; both were measured, not inferred.
+    //
+    // (1) MULTIPLICITY. `merged_bars` interleaves EVERY symbol's series sorted
+    //     by (ts, symbol), and the accrual block used to be gated only on the
+    //     bar's timestamp — so at a settlement timestamp shared by N symbols the
+    //     entire position book accrued N times. Measured directly by holding ONE
+    //     position and varying only the universe size: totals came out −5 / −7 /
+    //     −9 units for N = 2 / 3 / 4 (see
+    //     `carry_divergence_e2e::funding_accrual_is_invariant_to_universe_size`).
+    //     `last_accrual_ts` collapses a timestamp's symbol-bars to ONE accrual.
+    //
+    // (2) CADENCE. The settlement test counts BARS on a cosmetic 1-hour ladder
+    //     that `BlockBootstrapPathGen` stamps regardless of the source cadence
+    //     (bug-log #72), so a 4h path settled every 32 real hours and a daily
+    //     path every 8 real days. The rule no longer infers cadence from a
+    //     timestamp the generator invented: `bar_span_hours` is supplied by the
+    //     caller (1 for native-hourly runs) and the number of 8h settlement
+    //     boundaries inside each bar's span is counted explicitly.
+    let bar_span_hours: i128 = i128::from(input.bar_span_hours.max(1));
+    let mut last_accrual_ts: Option<trading_core::Timestamp> = None;
+    let mut settled_boundaries: i128 = 0;
+
     for bar in &merged_bars {
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
 
@@ -495,10 +519,32 @@ pub async fn run_path(
             const EPOCH_2023_NS: i128 = 1_672_531_200_000_000_000_i128;
             const HOUR_NS: i128 = 3_600_000_000_000_i128;
             let open_ns = bar.open_ts.inner().unix_timestamp_nanos();
-            let hours_since_epoch = (open_ns - EPOCH_2023_NS) / HOUR_NS;
-            // Bar 0 (epoch_2023 itself) is a settlement boundary; every 8th bar after.
-            // We DO settle at bar 0 (inclusive convention — the design lock in D-CARRY.7).
-            if hours_since_epoch >= 0 && hours_since_epoch % 8 == 0 {
+            let ladder_hours = (open_ns - EPOCH_2023_NS) / HOUR_NS;
+            // The ladder index counts BARS (the generator's cosmetic 1h stamps);
+            // `bar_span_hours` converts it to the simulated market time this bar
+            // actually represents.
+            let elapsed_hours = ladder_hours * bar_span_hours;
+            // Settlement boundaries strictly inside (previous bar, this bar],
+            // plus the inclusive bar-0 boundary (D-CARRY.7 convention).
+            let boundaries_through_now = if elapsed_hours < 0 {
+                0
+            } else {
+                elapsed_hours / 8 + 1 // +1 for the boundary at hour 0 itself
+            };
+            let is_new_ts = last_accrual_ts != Some(bar.open_ts);
+            let n_settlements = if is_new_ts {
+                let n = boundaries_through_now - settled_boundaries;
+                if n > 0 {
+                    settled_boundaries = boundaries_through_now;
+                }
+                n.max(0)
+            } else {
+                0 // this timestamp already accrued — a sibling symbol's bar event
+            };
+            if is_new_ts {
+                last_accrual_ts = Some(bar.open_ts);
+            }
+            if n_settlements > 0 {
                 // For each held position (long OR short), look up the funding rate and accrue.
                 // Iterate in sorted order (BTreeMap) for determinism.
                 // M-DEV-3: the `qty <= 0 continue` skip is replaced by a branch that also
@@ -525,7 +571,15 @@ pub async fn run_path(
                     // R-CARRY.2 sign: long earns on negative funding, pays on positive.
                     // Short: notional < 0 → notional × (−rate) is negative when rate > 0
                     // (short pays positive funding — a cost). Formula is correct for BOTH.
-                    let cashflow = notional * (-rate);
+                    // One cashflow per settlement boundary inside this bar's
+                    // span (1 at native hourly cadence; 3 for a daily bar).
+                    // `n_settlements` is a small non-negative count (1 at hourly
+                    // cadence, 3 for a daily bar); i64::try_from cannot fail for
+                    // any realistic bar span, and a saturating fallback keeps the
+                    // money path total rather than panicking.
+                    let settlements_dec =
+                        Decimal::from(i64::try_from(n_settlements.max(0)).unwrap_or(i64::MAX));
+                    let cashflow = notional * (-rate) * settlements_dec;
                     cash += cashflow;
                     realized_funding_total += cashflow;
                     tracing::trace!(
@@ -695,6 +749,7 @@ mod tests {
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result = pollster::block_on(run_path(input, 0x00C0_FFEE, strat));
         assert!(
@@ -826,6 +881,7 @@ score_source = "funding_carry"
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: Some(funding_nonzero),
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result_with = pollster::block_on(run_path(input_with, 0x00C0_FFEE, make_carry_strat()))
             .expect("run_path with funding must succeed");
@@ -845,6 +901,7 @@ score_source = "funding_carry"
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: Some(funding_zero),
             basis_override: None,
+            bar_span_hours: 1,
         };
         let result_zero = pollster::block_on(run_path(input_zero, 0x00C0_FFEE, make_carry_strat()))
             .expect("run_path with zero funding must succeed");
@@ -942,6 +999,7 @@ score_source = "funding_carry"
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override,
                 basis_override: None,
+                bar_span_hours: 1,
             };
             pollster::block_on(run_path(input, 0x00C0_FFEE, make_strat())).expect("run_path ok")
         };
@@ -1064,6 +1122,7 @@ score_source = "vol_adjusted_return"
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override: None,
                 basis_override: None,
+                bar_span_hours: 1,
             };
             pollster::block_on(run_path(input, 0x00C0_FFEE, make_long_only_strat()))
                 .expect("run_path ok for k_short=0 neutrality test")

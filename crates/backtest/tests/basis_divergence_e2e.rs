@@ -229,6 +229,7 @@ fn run_to_result(
 ) -> backtest::scenarios::montecarlo::PathRunResult {
     let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("basis_e2e_test"));
     let input = TcnScenarioInput {
+        bar_span_hours: 1,
         scenario_name: "basis-e2e".to_string(),
         start_year: 2023,
         bar_count: bars.len(),
