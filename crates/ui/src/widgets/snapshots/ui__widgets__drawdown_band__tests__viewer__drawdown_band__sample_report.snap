@@ -8,7 +8,8 @@ gridlines: 5
 y_axis: inverted (0 top, max_dd bottom)
 state: ready
 points: 60
-max_dd: 0.57805
+max_dd_frac: 0.57805
+axis_labels: 0.0% 15.2% 30.3% 45.5% 60.7%
 line_color: DOWN_500
 fill_color: DOWN_500
 fill_alpha: 0.18

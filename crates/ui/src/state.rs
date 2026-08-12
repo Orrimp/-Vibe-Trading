@@ -230,6 +230,27 @@ pub enum BaselineYear {
     Y2024,
 }
 
+impl BaselineYear {
+    /// The calendar year as it is written in the UI copy and in the
+    /// characterization document's §7.1 table (`"2023"` / `"2024"`).
+    ///
+    /// Single source for the year token so the chip label, the caption
+    /// substitutions and the characterization-parsing re-sync test cannot
+    /// drift apart.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Y2023 => crate::strings::BASELINE_YEAR_2023_LABEL,
+            Self::Y2024 => crate::strings::BASELINE_YEAR_2024_LABEL,
+        }
+    }
+
+    /// Both years, oldest first — so tests and loaders iterate one list
+    /// instead of re-typing the pair (which is how a screen ends up
+    /// exercising only the default year).
+    pub const ALL: [Self; 2] = [Self::Y2023, Self::Y2024];
+}
+
 /// Phase C — Settings rollup sub-tab selector. Renders the three
 /// existing screen bodies (Risk / Control / Debug) unchanged inside
 /// `screens::settings::view`. Cold-start default `Risk` per Q2a.
@@ -1072,11 +1093,20 @@ pub struct Cockpit {
 
     /// cockpit-baseline-panel v0.1.0 — Baseline-screen per-session state.
     /// Sibling of `compare_screen_state`. Holds the two realized BH equity
-    /// curves (loaded once at boot via `baseline::state::load_into`) + the
-    /// active-year toggle. Metrics are NOT stored here — they are pulled
-    /// from the `const` `baseline::baseline_metrics(active_year)` at view
-    /// time (D1=c). Cold-start: `active_year = Y2024`, both curves
-    /// `Loading`.
+    /// curves (loaded once at boot via `baseline::state::load_into`), the two
+    /// §7.1 KPI-metrics blocks, and the active-year toggle.
+    ///
+    /// The metrics ARE stored there (as `Ready`-wrapped values materialized
+    /// at boot from the `const` `baseline::baseline_metrics(year)`), because
+    /// `kpi_strip::view` ties its element to the input ref's lifetime. This
+    /// comment previously claimed the opposite — "Metrics are NOT stored
+    /// here" — which was true only of the original D1=c sketch, not of the
+    /// shipped `BaselineScreenState` (story-2-18 review L4). The `const`
+    /// remains the single source of truth; the fields are its boot-time
+    /// materialization.
+    ///
+    /// Cold-start: `active_year = Y2024`, both curves `Loading`, both
+    /// metrics blocks already `Ready`.
     pub baseline_screen_state: crate::baseline::BaselineScreenState,
 
     /// cockpit-reports-viewer v0.1.0 — Reports-screen per-session state (D1).
@@ -1736,14 +1766,17 @@ impl Cockpit {
         let points: Vec<(Timestamp, Money<Usdt>)> =
             self.live_equity_buffer.iter().copied().collect();
         if let Ok(series) = EquitySeries::from_points(points) {
-            // `EquitySeries::max_drawdown_pct` is a FRACTION (0.40 = 40 %);
+            // `EquitySeries::max_drawdown_frac` is a FRACTION (0.40 = 40 %);
             // `BacktestMetrics.max_drawdown_pct` carries PERCENT units (the
             // baseline const stores `34.57` to render "−34.57%", and the
             // kpi_strip's `format_pct_max_dd` appends `%` to the value
             // verbatim). Scale ×100 at this wiring seam so the live Max-DD
             // card reads "−40.00%", not "−0.40%"
-            // (cockpit-live-kpi-units-fix, 2026-06-10).
-            let max_drawdown_pct = series.max_drawdown_pct * Decimal::ONE_HUNDRED;
+            // (cockpit-live-kpi-units-fix, 2026-06-10 — bug-log #77). The
+            // `_frac` / `_pct` field names now make the units visible at the
+            // assignment; before the story-2-18 rename both sides read
+            // `max_drawdown_pct` and the bug type-checked silently.
+            let max_drawdown_pct = series.max_drawdown_frac * Decimal::ONE_HUNDRED;
             self.live_equity_curve = PanelState::Ready(series);
 
             // (4) Rebuild the KPI strip — Loading until ≥2 points (trap).
@@ -4499,7 +4532,7 @@ mod tests {
                 assert_eq!(a.points, b.points, "curve points must match exactly");
                 assert_eq!(a.peak, b.peak);
                 assert_eq!(a.trough, b.trough);
-                assert_eq!(a.max_drawdown_pct, b.max_drawdown_pct);
+                assert_eq!(a.max_drawdown_frac, b.max_drawdown_frac);
                 assert_eq!(a.inception_ts.unix_millis(), b.inception_ts.unix_millis());
                 assert_eq!(a.as_of_ts.unix_millis(), b.as_of_ts.unix_millis());
             }

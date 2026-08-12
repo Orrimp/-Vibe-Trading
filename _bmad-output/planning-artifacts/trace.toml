@@ -2754,11 +2754,12 @@ tests       = [
   "crates/ui/tests/panel_snapshots.rs",
   "crates/ui/tests/baseline_error_state.rs",
   "crates/ui/tests/headless_emulator_smoke.rs",
+  "crates/ui/tests/_audit_group_a_render.rs",     # ⚠ BACKFILLED 2026-08-12 by the code-review burn-down (supersession probe, mirror form). THE AD-10 PROOF for this screen: `audit_baseline_populated_renders_curve` (positive — >1000 curve-hue px, BOTH years, driven through the production `baseline::load_into` + the full shell) and `audit_baseline_error_draws_no_curve` (NEGATIVE CONTROL, <600 px). NOT written by this story — added 2026-06-18 by `151073a`, whose own header records "Baseline — NO pixel-render test existed … had NEVER been pixel-verified", and cited in ZERO trace rows anywhere until this line. Records propagate forward, never backward.
   "crates/ui/src/baseline/loader.rs",
   "crates/ui/src/baseline/state.rs",
 ]
 anchors     = []   # read-only UI feature, no new backtest anchors; verification floor is the panel-snapshot suite + the unchanged 119/119 regression gate
-state       = "tester-done"   # tester 2026-06-08 — VERDICT PASS. 428 unit + all integration suites GREEN. AC1–AC7 all pass. verify-anchors 119/119. One pre-existing lab_run_engine failure confirmed pre-existing on parent commit. Report: docs/archive/tester-reports-2026-05-to-06.tar.gz
+state       = "tester-done"   # ⚠ VERIFICATION CLAIM CORRECTED 2026-08-12 (code-review burn-down 12/14, verdict PASS-WITH-FINDINGS). TWO corrections to the line below. (1) "all integration suites GREEN" was FALSE WHEN WRITTEN: the tester report's suite table omits `visual_snapshots` and `render_snapshots` entirely, folding them into "All other suites" — 56 tests in them were RED, broken by this story's own T7 sidebar entry. Timeline: implement f1c1bf3 19:23 → VERDICT PASS 19:53 → repair 8dbe6ae next morning 07:11, which updated ZERO story records; the claim stood uncorrected for two months. (2) The AD-10 claim rested on a text mirror that never calls `screens::baseline::view`, a `Widget::layout` probe, and (originally) `!screenshot.rgba.is_empty()` — none a populated-state pixel test with a negative control. The real proof is `_audit_group_a_render.rs`, backfilled above. The CODE delivered all 7 requirements and all 10 tasks and is correct at HEAD; what was false is the record. PRIOR: tester 2026-06-08 — VERDICT PASS. 428 unit + all integration suites GREEN. AC1–AC7 all pass. verify-anchors 119/119. One pre-existing lab_run_engine failure confirmed pre-existing on parent commit. Report: docs/archive/tester-reports-2026-05-to-06.tar.gz
 
 # REQ-COCKPIT-REPORTS-001 → cockpit-reports-viewer (proposed 2026-06-08) — audit #2, the general-case follow-on to #1 Baseline
 [[req]]

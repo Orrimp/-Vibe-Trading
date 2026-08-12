@@ -5,7 +5,7 @@ expression: "baseline_summary(&c, ThemeMode::Light)"
 screen: baseline
 theme: Light
 headline: Passive baseline
-caption: Equal-weight buy-and-hold across 10 large-cap pairs, bought once at year-open and never rebalanced. Passive baseline; active ≤ passive in the reachable universe, this sample.
+caption: Equal-weight buy-and-hold across 10 large-cap pairs, bought once at year-open and never rebalanced. Gross of costs — no fees, no slippage, no funding — so a tradeable buy-and-hold would have kept less. Passive baseline; active ≤ passive in the reachable universe, this sample.
 year_chips:
   [2023] inactive color=fg_muted
   [2024] active color=accent(light) bg=panel_raised
@@ -16,6 +16,7 @@ kpi_strip:
   max_dd: −48.95% color=neg
   win_rate: —
   trades: 0
+sharpe_note: Sharpe 0.89 is the realized single-path figure for 2024 — the one actual price sequence this curve draws. The published passive bar is the bootstrap median (p50) 1.10 over 200 block-resampled paths.
 curve+band:
   state: error body=Equity curve unavailable: Baseline equity data isn't bundled in this build. The realized buy-and-hold curves live at docs/runbooks/artifacts/passive-baseline-2026-06-08/.
-risk_detail: Sortino 2.51 / Calmar 5.68 (2023)  ·  Sortino 1.20 / Calmar 1.85 (2024)
+risk_detail: Sortino 1.20 / Calmar 1.85 (2024)

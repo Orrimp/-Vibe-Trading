@@ -21,5 +21,9 @@
 pub mod loader;
 pub mod state;
 
-pub use loader::{baseline_csv_path, baseline_metrics, load_baseline_curve};
+pub use loader::{
+    BaselineRiskFacts, baseline_csv_path, baseline_metrics, baseline_risk_detail,
+    baseline_risk_facts, baseline_sampling_note, baseline_sharpe_note, curve_max_drawdown_pct,
+    load_baseline_curve,
+};
 pub use state::{BaselineScreenState, load_into};

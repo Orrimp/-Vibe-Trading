@@ -1217,7 +1217,13 @@ fn viewer_full_view_summary(
     out.push_str(&format!("equity_points: {}\n", series.points.len()));
     out.push_str(&format!("equity_peak: {}\n", series.peak.amount()));
     out.push_str(&format!("equity_trough: {}\n", series.trough.amount()));
-    out.push_str(&format!("max_drawdown_pct: {}\n", series.max_drawdown_pct));
+    // Key renamed with the field (story-2-18): the value is a FRACTION, and
+    // labelling it `_pct` in an artifact readers trust is how the 100× family
+    // of bugs kept finding new homes. The VALUE is unchanged.
+    out.push_str(&format!(
+        "max_drawdown_frac: {}\n",
+        series.max_drawdown_frac
+    ));
     out
 }
 
@@ -2653,11 +2659,19 @@ mod live_screen {
     /// Mirror the rendered Live equity-curve panel for a given model-backed
     /// `PanelState` (cockpit-live-dashboard-wiring — the curve is bound to
     /// `c.live_equity_curve`, no longer a hard-wired `Loading`). The widget
-    /// renders `VIEWER_NO_EQUITY_DATA` for Loading/Empty, the muted error body
-    /// for Error, and the growing curve (point count) for Ready.
+    /// renders `VIEWER_EQUITY_LOADING` for Loading, `VIEWER_NO_EQUITY_DATA`
+    /// for Empty (they were the same string until the story-2-18 review split
+    /// them), the muted error body for Error, and the growing curve (point
+    /// count) for Ready.
     fn equity_curve_line(c: &Cockpit) -> String {
         match &c.live_equity_curve {
-            PanelState::Loading | PanelState::Empty => {
+            PanelState::Loading => {
+                format!(
+                    "equity_curve: {} placeholder\n",
+                    ui::strings::VIEWER_EQUITY_LOADING
+                )
+            }
+            PanelState::Empty => {
                 format!(
                     "equity_curve: {} placeholder\n",
                     ui::strings::VIEWER_NO_EQUITY_DATA
@@ -3447,6 +3461,23 @@ mod baseline_screen {
 
     /// Plain-text summary of the Baseline screen body, mirroring what
     /// `screens::baseline::view` composes (top → bottom).
+    ///
+    /// **Every branch decision and every derived string is read from a
+    /// PRODUCTION seam** (story-2-18 review M-mirror), the same rule the
+    /// Live mirror adopted in the 2-15 pass. This summary used to re-derive
+    /// the whole composition from model state, so it could not go red on any
+    /// view-layer defect: deleting `.push(kpi)` from the screen's `Column`,
+    /// hard-wiring the view to the 2023 metrics, or rendering
+    /// `max_drawdown_pct` through `format_sharpe` all left it green. It now
+    /// asks `screens::baseline` for the strings `view` renders
+    /// (`sharpe_note_text` / `sampling_note_text` / `risk_detail_text`) and
+    /// `kpi_strip::renders_unavailable` for the strip's own branch.
+    ///
+    /// It is still a text mirror, not a render: the pixel proof that the
+    /// screen draws lives in `_audit_group_a_render.rs` (populated curve for
+    /// BOTH years + an Error negative control + a year-difference assertion),
+    /// and the layout proof in `layout_invariants.rs`. What this file adds is
+    /// the card/caption TEXT, which a hue-count cannot read.
     fn baseline_summary(c: &Cockpit, mode: ThemeMode) -> String {
         let st = &c.baseline_screen_state;
         let mut out = String::new();
@@ -3472,12 +3503,32 @@ mod baseline_screen {
             }
         }
 
-        // KPI strip — sourced from the §7.1 const for the active year.
+        // KPI strip — sourced from the §7.1 const for the active year. The
+        // Ready-vs-unavailable branch is the WIDGET's own predicate, not a
+        // copy of it (the 2-15 M4 rule).
         out.push_str("kpi_strip:\n");
-        match st.active_metrics() {
-            PanelState::Ready(m) => out.push_str(&kpi_lines(m, mode)),
-            _ => out.push_str("  state: unavailable\n"),
+        if ui::widgets::kpi_strip::renders_unavailable(st.active_metrics()) {
+            out.push_str(&format!(
+                "  state: {}\n",
+                strings::VIEWER_METRICS_UNAVAILABLE
+            ));
+        } else {
+            match st.active_metrics() {
+                PanelState::Ready(m) => out.push_str(&kpi_lines(m, mode)),
+                // Dead by construction: `renders_unavailable` is false only
+                // for `Ready`. Kept for exhaustiveness, no `unreachable!()`.
+                _ => out.push_str(&format!(
+                    "  state: {}\n",
+                    strings::VIEWER_METRICS_UNAVAILABLE
+                )),
+            }
         }
+
+        // Sharpe provenance (review H3) — the string `view` renders.
+        out.push_str(&format!(
+            "sharpe_note: {}\n",
+            ui::screens::baseline::sharpe_note_text(st.active_year)
+        ));
 
         // Equity curve + drawdown band — both from the active year's curve.
         out.push_str("curve+band:\n");
@@ -3485,59 +3536,76 @@ mod baseline_screen {
             PanelState::Ready(s) => {
                 out.push_str(&format!("  state: ready points={}\n", s.points.len()));
                 out.push_str(&format!(
-                    "  peak: {} trough: {} max_dd: {}\n",
+                    "  peak: {} trough: {} max_dd_frac: {}\n",
                     s.peak.amount(),
                     s.trough.amount(),
-                    s.max_drawdown_pct
+                    s.max_drawdown_frac
+                ));
+                // The band's axis is labelled in PERCENT (review H1) — the
+                // summary carries the converted figure next to the fraction so
+                // a future reader cannot re-read the raw value as a percentage
+                // the way the pre-fix axis did.
+                out.push_str(&format!(
+                    "  band_axis_max_pct: {}\n",
+                    ui::baseline::curve_max_drawdown_pct(s)
                 ));
                 out.push_str("  curve_line=ACCENT curve_fill=UP_500\n");
                 out.push_str("  band_line=DOWN_500 band_fill=DOWN_500\n");
             }
-            PanelState::Loading => out.push_str("  state: loading\n"),
-            PanelState::Empty => out.push_str("  state: empty\n"),
-            PanelState::Error(_) => out.push_str(&format!(
-                "  state: error body={}{}\n",
-                strings::VIEWER_EQUITY_UNAVAILABLE_PREFIX,
-                strings::BASELINE_DATA_UNAVAILABLE
+            PanelState::Loading => out.push_str(&format!(
+                "  state: loading body={}\n",
+                strings::VIEWER_EQUITY_LOADING
+            )),
+            PanelState::Empty => out.push_str(&format!(
+                "  state: empty body={}\n",
+                strings::VIEWER_NO_EQUITY_DATA
+            )),
+            PanelState::Error(msg) => out.push_str(&format!(
+                "  state: error body={}{msg}\n",
+                strings::VIEWER_EQUITY_UNAVAILABLE_PREFIX
             )),
         }
 
-        // Caption-only Sortino / Calmar detail (A2 — no KPI slot).
-        out.push_str(&format!("risk_detail: {}\n", strings::BASELINE_RISK_DETAIL));
+        // Sampling provenance (review H2) — present only when a curve is
+        // drawn; the presence branch is the SCREEN's, read from its seam.
+        if let Some(note) = ui::screens::baseline::sampling_note_text(c) {
+            out.push_str(&format!("sampling_note: {note}\n"));
+        }
+
+        // Caption-only Sortino / Calmar detail for the ACTIVE year (A2 — no
+        // KPI slot; review M-static made it year-specific).
+        out.push_str(&format!(
+            "risk_detail: {}\n",
+            ui::screens::baseline::risk_detail_text(st.active_year)
+        ));
         out
     }
 
-    /// Boot a Baseline cockpit with both curves forced `Ready` from the
-    /// committed CSVs. Falls back to synthetic curves so the snapshot is
-    /// deterministic even in a minimal checkout missing the runbook CSVs.
+    /// Boot a Baseline cockpit with both curves loaded from the committed
+    /// CSVs via the production boot path.
+    ///
+    /// **No synthetic fallback** (story-2-18 review M-skips). It used to swap
+    /// in a 4-point synthetic curve when the CSVs were absent, which silently
+    /// changed what these snapshots depict (`points=367` → `points=4`) — a
+    /// snapshot that quietly describes a different screen is worse than a red
+    /// one. The CSVs are committed; their absence is a defect to surface.
     fn baseline_cockpit_ready() -> Cockpit {
         let mut c = Cockpit::new();
         c.current_screen = Screen::Baseline;
         ui::baseline::load_into(&mut c);
-        if !matches!(c.baseline_screen_state.curve_2024, PanelState::Ready(_)) {
-            // Minimal checkout — synthesize a tiny monotone-up curve so the
-            // Ready snapshot stays deterministic regardless of CSV presence.
-            c.baseline_screen_state.curve_2023 = PanelState::Ready(synthetic_curve());
-            c.baseline_screen_state.curve_2024 = PanelState::Ready(synthetic_curve());
+        for (label, state) in [
+            ("2023", &c.baseline_screen_state.curve_2023),
+            ("2024", &c.baseline_screen_state.curve_2024),
+        ] {
+            assert!(
+                matches!(state, PanelState::Ready(_)),
+                "committed BH curve for {label} did not load (state = {}) — \
+                 these snapshots depict the REAL curve",
+                state.variant_name()
+            );
         }
         c
     }
-
-    /// Deterministic 4-point monotone-up curve (snapshot fallback only).
-    fn synthetic_curve() -> trading_core::EquitySeries {
-        use trading_core::{Money, Timestamp, Usdt};
-        let pts: Vec<(Timestamp, Money<Usdt>)> = (0..4i64)
-            .map(|i| {
-                (
-                    Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(i)),
-                    Money::<Usdt>::from_decimal(dec!(100000) + dec!(1000) * Decimal::from(i)),
-                )
-            })
-            .collect();
-        trading_core::EquitySeries::from_points(pts).expect("synthetic curve")
-    }
-
-    use rust_decimal::Decimal;
 
     /// AC6 — Ready snapshot, 2024 default (dark theme).
     #[test]
@@ -3642,6 +3710,71 @@ mod baseline_screen {
                 !lower.contains(banned),
                 "caption overclaims the bounded result with {banned:?}: {caption}"
             );
+        }
+    }
+
+    /// **The fee disclosure** (story-2-18 review M-fees). The BH construction
+    /// is explicitly gross — characterization §7: "Construction: … no fees" —
+    /// and this screen headlines "+196.22%". A reader who takes that as
+    /// net-of-cost overstates the bar active strategies must clear, so the
+    /// caption has to carry the qualification next to the number.
+    #[test]
+    fn baseline_caption_discloses_gross_of_costs() {
+        let caption = strings::BASELINE_CAPTION;
+        let lower = caption.to_lowercase();
+        assert!(
+            lower.contains("gross"),
+            "caption must name the construction as gross: {caption}"
+        );
+        for term in ["fee", "slippage"] {
+            assert!(
+                lower.contains(term),
+                "caption must disclose {term}: {caption}"
+            );
+        }
+        // Still bounded — the disclosure must not become its own claim.
+        assert!(
+            !lower.contains("would have beaten") && !lower.contains("risk-free"),
+            "fee disclosure must not smuggle in a new claim: {caption}"
+        );
+    }
+
+    /// **The provenance captions reach the operator** (review H2 / H3) — via
+    /// the same seams `screens::baseline::view` renders, so this cannot pass
+    /// on copy the screen does not show.
+    #[test]
+    fn baseline_provenance_notes_are_on_screen() {
+        let c = baseline_cockpit_ready();
+
+        // H3 — the Sharpe is NAMED and the published bar is cited.
+        let note = ui::screens::baseline::sharpe_note_text(BaselineYear::Y2024);
+        assert!(note.contains("0.89") && note.contains("1.10"), "{note}");
+        let lower = note.to_lowercase();
+        for word in ["realized", "single-path", "bootstrap", "median", "p50"] {
+            assert!(lower.contains(word), "sharpe note lacks {word:?}: {note}");
+        }
+
+        // H2 — the card/curve sampling gap is disclosed with BOTH figures.
+        let sampling =
+            ui::screens::baseline::sampling_note_text(&c).expect("2024 curve is Ready → note");
+        assert!(
+            sampling.contains("48.95%") && sampling.contains("41.82%"),
+            "sampling note must reconcile the card against the drawn curve: {sampling}"
+        );
+        let s_lower = sampling.to_lowercase();
+        assert!(
+            s_lower.contains("hourly") && s_lower.contains("daily"),
+            "{sampling}"
+        );
+
+        // Neither note may overclaim either.
+        for text in [&note, &sampling] {
+            for banned in ["optimal", "unbeatable", "guaranteed", "best possible"] {
+                assert!(
+                    !text.to_lowercase().contains(banned),
+                    "provenance copy overclaims with {banned:?}: {text}"
+                );
+            }
         }
     }
 

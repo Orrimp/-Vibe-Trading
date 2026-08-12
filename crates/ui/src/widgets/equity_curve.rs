@@ -28,7 +28,9 @@ use super::canvas_chart::{
 use super::chart::{format_time_axis_label, local_offset_or_utc, time_axis_tick_count};
 use super::frame::muted_body;
 use crate::state::PanelState;
-use crate::strings::{VIEWER_EQUITY_UNAVAILABLE_PREFIX, VIEWER_NO_EQUITY_DATA};
+use crate::strings::{
+    VIEWER_EQUITY_LOADING, VIEWER_EQUITY_UNAVAILABLE_PREFIX, VIEWER_NO_EQUITY_DATA,
+};
 use crate::theme::layout::{AXIS_GUTTER_PRICE_PX, AXIS_GUTTER_RIGHT_PX, AXIS_GUTTER_TIME_PX};
 use crate::theme::{ThemeMode, color, space, text};
 use crate::viewer::ViewerMessage;
@@ -37,14 +39,39 @@ use crate::viewer::ViewerMessage;
 /// curve, contrasting with the drawdown band's ~100 px).
 const CURVE_HEIGHT_PX: f32 = 240.0;
 
+/// **Production seam** — the placeholder copy a non-drawing panel state
+/// renders, or `None` when the state draws a curve / its own error body.
+///
+/// 2-18 review M-state-collapse: `Loading` and `Empty` used to render the
+/// IDENTICAL "No equity data" body, so "still reading the artifact" and "the
+/// artifact was read and holds zero rows" were indistinguishable on an honesty
+/// surface. Both `equity_curve::view` and `drawdown_band::view` route their
+/// placeholder arms through this one function, so the state→copy mapping is
+/// assertable against literals instead of living twice inside two `match`es.
+#[must_use]
+pub fn placeholder_label(series: &PanelState<EquitySeries>) -> Option<&'static str> {
+    match series {
+        PanelState::Loading => Some(VIEWER_EQUITY_LOADING),
+        PanelState::Empty => Some(VIEWER_NO_EQUITY_DATA),
+        // A `Ready` curve with zero points cannot be drawn — same body as Empty,
+        // because that is exactly what it is.
+        PanelState::Ready(s) if s.points.is_empty() => Some(VIEWER_NO_EQUITY_DATA),
+        PanelState::Ready(_) | PanelState::Error(_) => None,
+    }
+}
+
 /// Render the equity-curve canvas over a `PanelState<EquitySeries>`.
 #[must_use]
 pub fn view<'a>(
     series: &'a PanelState<EquitySeries>,
     mode: ThemeMode,
 ) -> iced::Element<'a, ViewerMessage> {
+    if let Some(label) = placeholder_label(series) {
+        return empty_with_label(label, mode);
+    }
     match series {
-        PanelState::Loading => empty_with_label(VIEWER_NO_EQUITY_DATA, mode),
+        // Handled by the seam above; kept for exhaustiveness.
+        PanelState::Loading => empty_with_label(VIEWER_EQUITY_LOADING, mode),
         PanelState::Empty => empty_with_label(VIEWER_NO_EQUITY_DATA, mode),
         PanelState::Error(msg) => {
             let body = format!("{VIEWER_EQUITY_UNAVAILABLE_PREFIX}{msg}");
@@ -249,6 +276,17 @@ fn money_label_decimals(span: f32) -> usize {
     }
 }
 
+/// One money-axis gridline label (2-18 review L3).
+///
+/// The axis used to format with a bare `format!("{v:.decimals$}")`, so the
+/// Baseline / Reports / Live curves printed `306032` where **every other money
+/// surface in the cockpit** (`num::fmt_usdt`, `num::fmt_price`, `num::fmt_eur`)
+/// prints `306,032`. Same separator helper as those, so a six-figure equity
+/// axis now reads consistently with the cards above it.
+fn money_axis_label(v: f32, decimals: usize) -> String {
+    crate::widgets::num::with_thousands_sep(&format!("{v:.decimals$}"))
+}
+
 /// T3019 — viewer-side price-axis draw pass.  Mirrors the cockpit
 /// chart's `draw_price_axis` shape; label precision adapts to the rendered
 /// range via [`money_label_decimals`] (whole dollars on a multi-thousand
@@ -291,7 +329,7 @@ fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode:
         );
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
-            content: format!("{v:.decimals$}"),
+            content: money_axis_label(v, decimals),
             position: Point::new(inner.x - tick_len - label_gap, y),
             color: axis_color,
             size: micro.into(),
@@ -425,7 +463,7 @@ mod tests {
                     s.peak.amount(),
                     s.trough.amount()
                 ));
-                out.push_str(&format!("max_dd: {}\n", s.max_drawdown_pct));
+                out.push_str(&format!("max_dd: {}\n", s.max_drawdown_frac));
                 out.push_str("line_color: ACCENT\n");
                 out.push_str("fill_color: UP_500\n");
                 out.push_str("fill_alpha: 0.18\n");
@@ -492,7 +530,9 @@ mod tests {
                 #[allow(clippy::cast_precision_loss)]
                 let frac = i as f32 / denom;
                 let v = max_v - frac * (max_v - min_v);
-                format!("{v:.decimals$}")
+                // The PRODUCTION seam `draw_price_axis` formats with — not a
+                // re-implementation of it.
+                money_axis_label(v, decimals)
             })
             .collect();
         let unique: std::collections::BTreeSet<&String> = labels.iter().collect();
@@ -504,5 +544,58 @@ mod tests {
         );
         assert!(labels.contains(&"200.60".to_string()), "{labels:?}");
         assert!(labels.contains(&"200.10".to_string()), "{labels:?}");
+    }
+
+    /// **2-18 review M-state-collapse — Loading and Empty must not read the
+    /// same.** Both states rendered the identical "No equity data" body, so a
+    /// 0-byte artifact and an unread one looked alike on an honesty surface.
+    ///
+    /// Asserts the state→copy mapping through the PRODUCTION seam both chart
+    /// widgets call, against literals taken from the requirement ("still
+    /// loading" vs "there is no data"), not from the implementation.
+    #[test]
+    fn loading_and_empty_render_different_placeholder_copy() {
+        use crate::strings::{VIEWER_EQUITY_LOADING, VIEWER_NO_EQUITY_DATA};
+
+        let loading: PanelState<EquitySeries> = PanelState::Loading;
+        let empty: PanelState<EquitySeries> = PanelState::Empty;
+
+        assert_eq!(placeholder_label(&loading), Some(VIEWER_EQUITY_LOADING));
+        assert_eq!(placeholder_label(&empty), Some(VIEWER_NO_EQUITY_DATA));
+        assert_ne!(
+            placeholder_label(&loading),
+            placeholder_label(&empty),
+            "'still reading the artifact' and 'the artifact holds zero rows' \
+             are different facts and must not render the same body"
+        );
+        // The copy says what it means.
+        assert!(VIEWER_EQUITY_LOADING.to_lowercase().contains("loading"));
+        assert!(!VIEWER_NO_EQUITY_DATA.to_lowercase().contains("loading"));
+
+        // A drawn curve has no placeholder; a zero-point `Ready` is Empty in
+        // substance and reads that way.
+        let drawn = PanelState::Ready(fixture_series());
+        assert_eq!(placeholder_label(&drawn), None);
+        assert_eq!(
+            placeholder_label(&PanelState::Error("x".into())),
+            None,
+            "Error renders its own diagnosis, not a placeholder"
+        );
+    }
+
+    /// 2-18 review L3 — money-axis labels carry the same thousands separator
+    /// every other money surface uses. Literals hand-derived from the
+    /// separator rule (groups of three from the decimal point), not read off
+    /// the implementation.
+    #[test]
+    fn money_axis_labels_carry_thousands_separators() {
+        assert_eq!(money_axis_label(306_032.0, 0), "306,032");
+        assert_eq!(money_axis_label(100_000.0, 0), "100,000");
+        assert_eq!(money_axis_label(1_234_567.0, 0), "1,234,567");
+        // Sub-thousand and fractional scales are untouched.
+        assert_eq!(money_axis_label(200.6, 2), "200.60");
+        assert_eq!(money_axis_label(999.0, 0), "999");
+        // Negative equity keeps its sign outside the grouping.
+        assert_eq!(money_axis_label(-12_345.0, 0), "-12,345");
     }
 }

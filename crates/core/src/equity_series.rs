@@ -23,10 +23,14 @@ use crate::{Money, Timestamp, Usdt};
 pub struct EquityPoint {
     pub ts: Timestamp,
     pub equity: Money<Usdt>,
-    /// `(running_peak - equity) / running_peak`, in fractional units
+    /// `(running_peak - equity) / |running_peak|`, in **FRACTIONAL** units
     /// (0.0 = at peak; 0.10 = 10 % below peak). Always non-negative;
     /// monotone-up runs leave this at `Decimal::ZERO`.
-    pub drawdown_pct: Decimal,
+    ///
+    /// **Named `_frac`, not `_pct`, deliberately** — see the unit-collision
+    /// note on [`EquitySeries::max_drawdown_frac`]. A consumer that renders
+    /// this with a `%` suffix must multiply by 100 first.
+    pub drawdown_frac: Decimal,
 }
 
 /// Equity history with precomputed peak / trough / max-DD metadata.
@@ -40,11 +44,29 @@ pub struct EquitySeries {
     pub as_of_ts: Timestamp,
     pub peak: Money<Usdt>,
     pub trough: Money<Usdt>,
-    /// Max of `points[i].drawdown_pct`; `Decimal::ZERO` for monotone-up
-    /// inputs. Stored separately from a per-point lookup so KPI
-    /// consumers (the viewer's strip) can render `Max DD` without
-    /// re-walking the vector.
-    pub max_drawdown_pct: Decimal,
+    /// Max of `points[i].drawdown_frac`, in **FRACTIONAL** units (0.4182 =
+    /// 41.82 %); `Decimal::ZERO` for monotone-up inputs. Stored separately
+    /// from a per-point lookup so KPI consumers (the viewer's strip) can
+    /// render `Max DD` without re-walking the vector.
+    ///
+    /// # The unit collision this name exists to prevent
+    ///
+    /// This field used to be called `max_drawdown_pct` — the *same name* as
+    /// [`BacktestMetrics::max_drawdown_pct`] two structs below, which carries
+    /// **percentage points** (41.82 = 41.82 %). That collision produced two
+    /// separate 100×-too-small money bugs on the operator's screen:
+    ///
+    /// * bug-log #77 — the Live KPI strip assigned this field straight into
+    ///   `BacktestMetrics.max_drawdown_pct`, so a 25 % drawdown rendered
+    ///   "−0.25%" (fixed 2026-06-11 by scaling ×100 at the assignment);
+    /// * story-2-18 review H1 — `widgets::drawdown_band` formatted this field
+    ///   with a `%` suffix, so the Baseline band's axis read "0.0% … 0.4%"
+    ///   directly beneath a KPI card reading "−48.95%".
+    ///
+    /// The `_frac` suffix makes the third instance a **compile error** rather
+    /// than a silent 100× understatement: `series.max_drawdown_pct` no longer
+    /// resolves, and a cross-assignment no longer type-checks by name-match.
+    pub max_drawdown_frac: Decimal,
 }
 
 /// Errors constructing an [`EquitySeries`].
@@ -54,6 +76,19 @@ pub enum EquitySeriesError {
     Empty,
     #[error("timestamps must be monotone non-decreasing")]
     NonMonotoneTimestamps,
+    /// The drawdown walk could not be evaluated in `Decimal` range —
+    /// `peak − value` or its division by `|peak|` overflowed (story-2-18
+    /// review L1).
+    ///
+    /// `Decimal`'s `Sub`/`Div` **panic** on overflow, and this walk runs on
+    /// the cockpit's pre-first-frame boot path (`baseline::load_into`), so a
+    /// CSV carrying `7.9e28` next to `-7.9e28` used to abort the process
+    /// before the first frame — contradicting the "never panics" contract the
+    /// loader documents. Callers surface this as a corrupt-artifact `Error`
+    /// panel, which is the honest reading: the numbers cannot be computed, so
+    /// the screen must not show a number.
+    #[error("equity values exceed the range drawdown arithmetic can represent")]
+    ValueOutOfRange,
 }
 
 impl EquitySeries {
@@ -65,6 +100,14 @@ impl EquitySeries {
     /// - [`EquitySeriesError::Empty`] when `points.is_empty()`.
     /// - [`EquitySeriesError::NonMonotoneTimestamps`] on the first
     ///   non-monotone-non-decreasing timestamp pair.
+    /// - [`EquitySeriesError::ValueOutOfRange`] when the drawdown
+    ///   subtraction/division overflows `Decimal` (never for realistic
+    ///   equity; see the variant's note).
+    ///
+    /// # Panics
+    ///
+    /// Never — every arithmetic step is checked (story-2-18 review L1). This
+    /// runs pre-first-frame on the cockpit boot path.
     pub fn from_points(points: Vec<(Timestamp, Money<Usdt>)>) -> Result<Self, EquitySeriesError> {
         if points.is_empty() {
             return Err(EquitySeriesError::Empty);
@@ -105,11 +148,22 @@ impl EquitySeries {
             // `points[0].equity > 0` (every backtest, every funded account)
             // and `|peak| == peak` there — byte-identical output, anchors
             // included.
+            //
+            // Both steps are CHECKED (story-2-18 review L1): `Decimal`'s
+            // `Sub`/`Div` panic on overflow, and this walk runs pre-first-frame
+            // on the cockpit boot path, so an out-of-range CSV must degrade to
+            // an honest `Error` panel — never abort the process, and never be
+            // silently clamped to a wrong (smaller) drawdown.
             let peak_denom = running_peak.abs();
             let dd = if peak_denom.is_zero() {
                 Decimal::ZERO
             } else {
-                ((running_peak - amt) / peak_denom).max(Decimal::ZERO)
+                let gap = running_peak
+                    .checked_sub(amt)
+                    .ok_or(EquitySeriesError::ValueOutOfRange)?;
+                gap.checked_div(peak_denom)
+                    .ok_or(EquitySeriesError::ValueOutOfRange)?
+                    .max(Decimal::ZERO)
             };
             if dd > max_dd {
                 max_dd = dd;
@@ -117,7 +171,7 @@ impl EquitySeries {
             out.push(EquityPoint {
                 ts,
                 equity,
-                drawdown_pct: dd,
+                drawdown_frac: dd,
             });
         }
 
@@ -127,7 +181,7 @@ impl EquitySeries {
             as_of_ts,
             peak: Money::<Usdt>::from_decimal(running_peak),
             trough: Money::<Usdt>::from_decimal(running_trough),
-            max_drawdown_pct: max_dd,
+            max_drawdown_frac: max_dd,
         })
     }
 
@@ -170,7 +224,7 @@ impl EquitySeries {
             as_of_ts: self.as_of_ts,
             peak: self.peak,
             trough: self.trough,
-            max_drawdown_pct: self.max_drawdown_pct,
+            max_drawdown_frac: self.max_drawdown_frac,
         }
     }
 }
@@ -261,13 +315,13 @@ mod tests {
         assert_eq!(s.points.len(), 5);
         assert_eq!(s.peak.amount(), dec!(100));
         assert_eq!(s.trough.amount(), dec!(60));
-        assert_eq!(s.max_drawdown_pct, dec!(0.40));
+        assert_eq!(s.max_drawdown_frac, dec!(0.40));
         // Drawdown vector: [0, 0.20, 0.40, 0.25, 0.10].
-        assert_eq!(s.points[0].drawdown_pct, Decimal::ZERO);
-        assert_eq!(s.points[1].drawdown_pct, dec!(0.20));
-        assert_eq!(s.points[2].drawdown_pct, dec!(0.40));
-        assert_eq!(s.points[3].drawdown_pct, dec!(0.25));
-        assert_eq!(s.points[4].drawdown_pct, dec!(0.10));
+        assert_eq!(s.points[0].drawdown_frac, Decimal::ZERO);
+        assert_eq!(s.points[1].drawdown_frac, dec!(0.20));
+        assert_eq!(s.points[2].drawdown_frac, dec!(0.40));
+        assert_eq!(s.points[3].drawdown_frac, dec!(0.25));
+        assert_eq!(s.points[4].drawdown_frac, dec!(0.10));
     }
 
     #[test]
@@ -280,10 +334,10 @@ mod tests {
             (ts(240), m(dec!(140))),
         ];
         let s = EquitySeries::from_points(pts).expect("ok");
-        assert_eq!(s.max_drawdown_pct, Decimal::ZERO);
+        assert_eq!(s.max_drawdown_frac, Decimal::ZERO);
         assert_eq!(s.trough.amount(), dec!(100));
         for p in &s.points {
-            assert_eq!(p.drawdown_pct, Decimal::ZERO);
+            assert_eq!(p.drawdown_frac, Decimal::ZERO);
         }
     }
 
@@ -298,7 +352,7 @@ mod tests {
             (ts(300), m(dec!(220))),
         ];
         let s = EquitySeries::from_points(pts).expect("ok");
-        assert_eq!(s.max_drawdown_pct, dec!(0.50));
+        assert_eq!(s.max_drawdown_frac, dec!(0.50));
         assert_eq!(s.trough.amount(), dec!(100));
     }
 
@@ -340,13 +394,13 @@ mod tests {
         let s = EquitySeries::from_points(pts).expect("ok");
         let peak_before = s.peak.amount();
         let trough_before = s.trough.amount();
-        let max_dd_before = s.max_drawdown_pct;
+        let max_dd_before = s.max_drawdown_frac;
         let down = s.downsample(2000);
         assert!(down.points.len() <= 2000);
         // Peak / trough metadata survives.
         assert_eq!(down.peak.amount(), peak_before);
         assert_eq!(down.trough.amount(), trough_before);
-        assert_eq!(down.max_drawdown_pct, max_dd_before);
+        assert_eq!(down.max_drawdown_frac, max_dd_before);
     }
 
     #[test]
@@ -393,10 +447,10 @@ mod tests {
         assert_eq!(s.peak.amount(), dec!(-100));
         assert_eq!(s.trough.amount(), dec!(-200));
         // (−100 − −200) / |−100| = 1.00 → 100 % below the (negative) peak.
-        assert_eq!(s.max_drawdown_pct, dec!(1.00));
-        assert_eq!(s.points[0].drawdown_pct, Decimal::ZERO);
-        assert_eq!(s.points[1].drawdown_pct, dec!(0.50));
-        assert_eq!(s.points[2].drawdown_pct, dec!(1.00));
+        assert_eq!(s.max_drawdown_frac, dec!(1.00));
+        assert_eq!(s.points[0].drawdown_frac, Decimal::ZERO);
+        assert_eq!(s.points[1].drawdown_frac, dec!(0.50));
+        assert_eq!(s.points[2].drawdown_frac, dec!(1.00));
     }
 
     /// The fix is INERT for a positive-peak series — the anchored corpus and
@@ -413,8 +467,46 @@ mod tests {
         let s = EquitySeries::from_points(pts).expect("ok");
         assert_eq!(s.peak.amount(), dec!(100));
         // (100 − −50)/100 = 1.50 — the same value the signed denominator gave.
-        assert_eq!(s.max_drawdown_pct, dec!(1.50));
-        assert_eq!(s.points[1].drawdown_pct, dec!(0.50));
+        assert_eq!(s.max_drawdown_frac, dec!(1.50));
+        assert_eq!(s.points[1].drawdown_frac, dec!(0.50));
+    }
+
+    // ── 2-18 review L1 — the boot path must not panic on Decimal overflow ───
+
+    /// A CSV carrying a huge positive equity followed by a huge negative one
+    /// makes `peak − value` exceed `Decimal`'s range. `Decimal: Sub` PANICS
+    /// there, and this walk runs pre-first-frame (`baseline::load_into`), so
+    /// the pre-fix code aborted the cockpit before it drew anything.
+    ///
+    /// Expected value derived by hand, not from the implementation:
+    /// `Decimal::MAX ≈ 7.9228e28`. peak = 7.9e28, value = −7.9e28, so
+    /// `peak − value = 1.58e29 > Decimal::MAX` ⇒ unrepresentable ⇒ the
+    /// constructor must REJECT (an honest "corrupt artifact"), not panic and
+    /// not silently report a smaller drawdown.
+    #[test]
+    fn from_points_overflowing_drawdown_returns_err_instead_of_panicking() {
+        let huge = Decimal::from_str_exact("79000000000000000000000000000").expect("in range");
+        let pts = vec![(ts(0), m(huge)), (ts(60), m(-huge))];
+        let res = EquitySeries::from_points(pts);
+        assert!(
+            matches!(res, Err(EquitySeriesError::ValueOutOfRange)),
+            "overflowing drawdown must be rejected, got {res:?}"
+        );
+    }
+
+    /// The guard is INERT for every representable series — the ordinary walk
+    /// still produces the same numbers (identity check against the hand-
+    /// computed drawdown vector of `from_points_computes_drawdown_correctly`).
+    #[test]
+    fn checked_drawdown_is_identical_for_in_range_series() {
+        let pts = vec![
+            (ts(0), m(dec!(100))),
+            (ts(60), m(dec!(80))),
+            (ts(120), m(dec!(60))),
+        ];
+        let s = EquitySeries::from_points(pts).expect("ok");
+        assert_eq!(s.max_drawdown_frac, dec!(0.40));
+        assert_eq!(s.points[1].drawdown_frac, dec!(0.20));
     }
 
     // ── 2-15 review H2 — the all-absent sentinel is a DATA predicate ────────

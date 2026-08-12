@@ -1007,6 +1007,15 @@ pub const VIEWER_METRICS_UNAVAILABLE: &str = "Backtest metrics unavailable";
 /// has zero data points (R4.7 / R7.5).
 pub const VIEWER_NO_EQUITY_DATA: &str = "No equity data";
 
+/// Centred label rendered while the equity curve / drawdown band is still
+/// `PanelState::Loading` (story-2-18 review).
+///
+/// Distinct from [`VIEWER_NO_EQUITY_DATA`] on purpose: both states used to
+/// render "No equity data", so "the artifact has not been read yet" and "the
+/// artifact was read and holds zero rows" were indistinguishable on an
+/// honesty surface. They are different facts about the data.
+pub const VIEWER_EQUITY_LOADING: &str = "Loading equity data\u{2026}";
+
 /// Prefix rendered when the equity curve / drawdown band can't be
 /// drawn because the underlying read failed (R4.7 / R7.5 error
 /// branch). Combined with the underlying error message via
@@ -1543,7 +1552,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("BASELINE_YEAR_2023_LABEL", BASELINE_YEAR_2023_LABEL),
         ("BASELINE_YEAR_2024_LABEL", BASELINE_YEAR_2024_LABEL),
         ("BASELINE_DATA_UNAVAILABLE", BASELINE_DATA_UNAVAILABLE),
-        ("BASELINE_RISK_DETAIL", BASELINE_RISK_DETAIL),
+        ("BASELINE_DATA_CORRUPT", BASELINE_DATA_CORRUPT),
+        ("BASELINE_RISK_DETAIL_FMT", BASELINE_RISK_DETAIL_FMT),
+        ("BASELINE_SHARPE_NOTE_FMT", BASELINE_SHARPE_NOTE_FMT),
+        ("BASELINE_SAMPLING_NOTE_FMT", BASELINE_SAMPLING_NOTE_FMT),
         // cockpit-reports-viewer v0.1.0
         ("REPORTS_SIDEBAR_LABEL", REPORTS_SIDEBAR_LABEL),
         ("REPORTS_PICKER_TITLE", REPORTS_PICKER_TITLE),
@@ -2337,6 +2349,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LAB_KPI_NET_DELTA_LABEL", LAB_KPI_NET_DELTA_LABEL),
         ("VIEWER_METRICS_UNAVAILABLE", VIEWER_METRICS_UNAVAILABLE),
         ("VIEWER_NO_EQUITY_DATA", VIEWER_NO_EQUITY_DATA),
+        ("VIEWER_EQUITY_LOADING", VIEWER_EQUITY_LOADING),
         (
             "VIEWER_EQUITY_UNAVAILABLE_PREFIX",
             VIEWER_EQUITY_UNAVAILABLE_PREFIX,
@@ -2673,9 +2686,15 @@ pub const BASELINE_HEADLINE: &str = "Passive baseline";
 /// construction (equal-weight buy-and-hold, bought once, never rebalanced)
 /// and the honest bounded finding. MUST NOT overclaim — see the binding
 /// constraint at the top of this block + the AC5 no-overclaim test.
+/// The construction is **gross** — `run_buyhold_path` applies no fee, no
+/// slippage and no funding (characterization §7, "Construction: … no fees").
+/// The screen headlines "+196.22%", so the disclosure has to travel with the
+/// number (story-2-18 review M-fees): a reader who takes the figure as
+/// net-of-cost overstates the bar that active strategies must clear.
 pub const BASELINE_CAPTION: &str = "Equal-weight buy-and-hold across 10 large-cap pairs, \
-    bought once at year-open and never rebalanced. Passive baseline; active \u{2264} passive \
-    in the reachable universe, this sample.";
+    bought once at year-open and never rebalanced. Gross of costs \u{2014} no fees, no slippage, \
+    no funding \u{2014} so a tradeable buy-and-hold would have kept less. Passive baseline; \
+    active \u{2264} passive in the reachable universe, this sample.";
 
 /// Year toggle chip label — 2023 (R2).
 pub const BASELINE_YEAR_2023_LABEL: &str = "2023";
@@ -2683,17 +2702,69 @@ pub const BASELINE_YEAR_2023_LABEL: &str = "2023";
 /// Year toggle chip label — 2024 (R2).
 pub const BASELINE_YEAR_2024_LABEL: &str = "2024";
 
-/// Error-state copy when the equity CSV is absent (R4 / R7). Tells the
+/// Error-state copy when the equity CSV is **absent** (R4 / R7). Tells the
 /// operator what is missing and where it lives — never a bare "no data".
+///
+/// Only used when the file could not be opened. A file that IS present but
+/// malformed gets [`BASELINE_DATA_CORRUPT`] instead — telling an operator the
+/// artifact "isn't bundled" when it is bundled and broken sends them looking
+/// in the wrong place (story-2-18 review M-states).
 pub const BASELINE_DATA_UNAVAILABLE: &str = "Baseline equity data isn't bundled in this build. \
     The realized buy-and-hold curves live at \
     docs/runbooks/artifacts/passive-baseline-2026-06-08/.";
 
-/// Caption-only risk-detail line (A2 / D1=c). Surfaces the §7.1 Sortino +
-/// Calmar metrics, which have no KPI card in the six-card strip. Rendered
-/// `FG_3` below the drawdown band.
-pub const BASELINE_RISK_DETAIL: &str =
-    "Sortino 2.51 / Calmar 5.68 (2023)  \u{00b7}  Sortino 1.20 / Calmar 1.85 (2024)";
+/// Error-state copy when the equity CSV **is** present but does not parse:
+/// a truncated/0-byte file, a missing or reordered header, a bad timestamp,
+/// a non-decimal equity value, or values outside `Decimal` range.
+///
+/// The distinction is the diagnosis the operator acts on: "fetch the
+/// artifacts" vs "this artifact is damaged — regenerate it".
+pub const BASELINE_DATA_CORRUPT: &str = "Baseline equity data is present but unreadable \
+    \u{2014} the CSV under docs/runbooks/artifacts/passive-baseline-2026-06-08/ is truncated \
+    or does not match the expected bar_index,timestamp_utc,equity_usd columns. Re-run the \
+    characterization to regenerate it.";
+
+/// Caption-only risk-detail line (A2 / D1=c) for the **active year** —
+/// `{year}` / `{sortino}` / `{calmar}` are substituted by
+/// `baseline::baseline_risk_detail`. Surfaces the §7.1 Sortino + Calmar
+/// metrics, which have no KPI card in the six-card strip. Rendered `FG_3`
+/// below the drawdown band.
+///
+/// Year-parameterized since the story-2-18 review: the previous constant was
+/// STATIC and printed *both* years' figures regardless of the year toggle,
+/// so half the line always described the year the operator was not looking
+/// at, next to a KPI strip that had switched.
+pub const BASELINE_RISK_DETAIL_FMT: &str = "Sortino {sortino} / Calmar {calmar} ({year})";
+
+/// Sharpe-provenance line (story-2-18 review H3). `{year}` / `{realized}` /
+/// `{p50}` are substituted by `baseline::baseline_sharpe_note`.
+///
+/// **Why this exists.** The KPI card shows the *realized single-path* Sharpe
+/// (1.8417 / 0.8925 — the metric of the one actual price sequence, which is
+/// what the drawn curve is), while the PRD/README headline the passive bar as
+/// the *bootstrap p50* (+1.74 / +1.10 — the median over 200 block-resampled
+/// paths). Both are legitimate and §7.3 reconciles them, but the words
+/// "realized", "single-path", "bootstrap" and "median" appeared **nowhere** in
+/// the UI — so the screen whose entire purpose is "this is the bar active must
+/// clear" showed a number ~6 % above the published bar for 2023 and ~19 %
+/// below it for 2024, unlabelled.
+pub const BASELINE_SHARPE_NOTE_FMT: &str = "Sharpe {realized} is the realized single-path \
+    figure for {year} \u{2014} the one actual price sequence this curve draws. The published \
+    passive bar is the bootstrap median (p50) {p50} over 200 block-resampled paths.";
+
+/// Sampling-provenance line (story-2-18 review H2). `{card}` / `{curve}` /
+/// `{rows}` are substituted by `baseline::baseline_sampling_note`.
+///
+/// **Why this exists.** The KPI cards carry the §7.1 metrics computed on the
+/// full **hourly** series (8,759 / 8,784 bars); the curve and band are drawn
+/// from the committed **daily-sampled** CSV (stride 24, ~366 rows). Their max
+/// drawdowns therefore differ by up to 7.13 points — 48.95 % on the card
+/// against 41.82 % in the line directly beneath it — and nothing on screen
+/// said why. The `{curve}` value is computed from the loaded series at view
+/// time, so it cannot go stale if the CSV is regenerated.
+pub const BASELINE_SAMPLING_NOTE_FMT: &str = "Cards are hourly-resolution metrics; the curve \
+    and band are drawn from the daily-sampled CSV ({rows} rows), which misses intraday \
+    extremes \u{2014} its deepest visible drawdown is {curve} against the card's {card}.";
 
 // ── cockpit-reports-viewer v0.1.0 — browse + render backtest reports ─────────
 // All Reports-screen copy lives here (R5 / AC6 — no inline literals). The

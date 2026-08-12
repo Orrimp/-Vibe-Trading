@@ -51,7 +51,7 @@
 // tests would not match the 56 macOS-captured PNGs. Gate the entire file to
 // compile only on macOS; on Linux/Windows the file compiles to nothing (tests
 // are skipped, never re-baselined). CI needs no --skip filter — the source gate
-// IS the filter. See ADR-0057 D2 and spec/runbooks/cockpit-cross-platform.md.
+// IS the filter. See ADR-0057 D2 and docs/runbooks/cockpit-cross-platform.md.
 #![cfg(target_os = "macos")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 // The snapshot fn names use double-underscore separators that match the

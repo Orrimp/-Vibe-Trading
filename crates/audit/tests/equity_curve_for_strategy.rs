@@ -131,7 +131,7 @@ async fn equity_curve_for_strategy_multi_day_round_trip() {
     // vs the index-29 running.
     assert!(series.peak.amount() >= series.points[29].equity.amount());
     assert!(series.trough.amount() <= series.peak.amount());
-    assert!(series.max_drawdown_pct >= Decimal::ZERO);
+    assert!(series.max_drawdown_frac >= Decimal::ZERO);
 
     // Downsample to 120 — points already < 120, must short-circuit
     // to no-op.
@@ -146,7 +146,7 @@ async fn equity_curve_for_strategy_multi_day_round_trip() {
     assert!(down30.points.len() <= 31);
     assert_eq!(down30.peak.amount(), series.peak.amount());
     assert_eq!(down30.trough.amount(), series.trough.amount());
-    assert_eq!(down30.max_drawdown_pct, series.max_drawdown_pct);
+    assert_eq!(down30.max_drawdown_frac, series.max_drawdown_frac);
     assert_eq!(
         down30.points[0].equity.amount(),
         series.points[0].equity.amount(),

@@ -19,24 +19,32 @@
 //! the widget tree.
 
 use iced::Element;
+use iced::advanced::layout::Node;
 use iced::advanced::widget::Tree;
 
 use ui::baseline;
 use ui::state::{BaselineYear, Cockpit, Message, PanelState, Screen};
-use ui::strings::BASELINE_DATA_UNAVAILABLE;
+use ui::strings::{BASELINE_DATA_CORRUPT, BASELINE_DATA_UNAVAILABLE};
 use ui::theme::ThemeMode;
 
-/// Drive `Widget::layout` on a screen body and confirm the root node has a
-/// positive area — proof the render pass ran end-to-end without panicking.
-fn render_layout_ok(element: Element<'_, Message>) {
+/// Lay out a screen body and return the root `Node` (the pass where a render
+/// panic actually surfaces — constructing the `Element` alone does not walk
+/// the widget tree).
+fn layout_body(element: Element<'_, Message>) -> Node {
     let mut element = element;
     let mut tree = Tree::new(element.as_widget());
     let renderer = iced::Renderer::new(iced::Font::DEFAULT, iced::Pixels(16.0));
     let limits =
         iced::advanced::layout::Limits::new(iced::Size::ZERO, iced::Size::new(1440.0, 900.0));
-    let node = element
+    element
         .as_widget_mut()
-        .layout(&mut tree, &renderer, &limits);
+        .layout(&mut tree, &renderer, &limits)
+}
+
+/// Drive `Widget::layout` on a screen body and confirm the root node has a
+/// positive area — proof the render pass ran end-to-end without panicking.
+fn render_layout_ok(element: Element<'_, Message>) {
+    let node = layout_body(element);
     let size = node.size();
     assert!(
         size.width > 0.0 && size.height > 0.0,
@@ -44,6 +52,16 @@ fn render_layout_ok(element: Element<'_, Message>) {
         size.width,
         size.height
     );
+}
+
+/// Walk down single-child wrappers (the `Scrollable` shell, containers) to the
+/// first node that actually branches — the screen's composed `Column`.
+fn composed_column(root: &Node) -> &Node {
+    let mut cursor = root;
+    while cursor.children().len() == 1 {
+        cursor = &cursor.children()[0];
+    }
+    cursor
 }
 
 /// The loader at a missing path yields `Error(BASELINE_DATA_UNAVAILABLE)`
@@ -109,22 +127,29 @@ fn baseline_error_state_renders_without_panic() {
 
 /// The happy path renders too: when the committed CSVs are present they load
 /// to `Ready` and the full screen (curve + band + strip) lays out in both
-/// themes. Skipped in a minimal checkout that omits the runbook artifacts —
-/// the Error path above is the unconditional gate.
+/// themes.
+///
+/// **No skip-if-absent** (story-2-18 review M-skips): the CSVs are committed,
+/// the artifacts directory has already moved once, and a `return` here was
+/// counted nowhere — a silently-skipped gate is indistinguishable from a
+/// passing one in every report anybody reads.
 #[test]
 fn baseline_ready_state_renders_when_csvs_present() {
     let mut cockpit = Cockpit::new();
     cockpit.current_screen = Screen::Baseline;
     baseline::load_into(&mut cockpit);
 
-    let has_data = matches!(
-        cockpit.baseline_screen_state.curve_2024,
-        PanelState::Ready(_)
+    assert!(
+        matches!(
+            cockpit.baseline_screen_state.curve_2024,
+            PanelState::Ready(_)
+        ),
+        "the committed 2024 BH curve must load Ready (state = {}) — it lives at \
+         {}; if the artifacts moved again, fix the path rather than skipping \
+         this gate",
+        cockpit.baseline_screen_state.curve_2024.variant_name(),
+        baseline::baseline_csv_path(BaselineYear::Y2024).display()
     );
-    if !has_data {
-        // Minimal checkout — runbook CSVs absent. Error path covers this.
-        return;
-    }
 
     // 2024 default, then toggle to 2023 — both render in both themes.
     for year in [BaselineYear::Y2024, BaselineYear::Y2023] {
@@ -133,4 +158,116 @@ fn baseline_ready_state_renders_when_csvs_present() {
             render_layout_ok(ui::shell::screen_body(Screen::Baseline, &cockpit, mode));
         }
     }
+}
+
+/// **The composition gate** (story-2-18 review M-mirror).
+///
+/// The panel-snapshot mirror re-derives the screen from model state, so it
+/// cannot notice a row that stopped being composed: deleting `.push(kpi)` from
+/// `screens::baseline::view` left every snapshot green. This test lays out the
+/// PRODUCTION body through `shell::screen_body` and asserts the composed
+/// column's shape — how many rows, in what order, at what heights — so a
+/// dropped or reordered panel is a red test rather than a missing screen.
+///
+/// The two fixed heights are the widgets' own contracts: `equity_curve` is
+/// 240 px (`CURVE_HEIGHT_PX`, R9.4) and `drawdown_band` is 100 px
+/// (`BAND_HEIGHT_PX`, R7.3) — independently specified, not read back from the
+/// implementation.
+#[test]
+fn baseline_body_composes_every_row_in_order() {
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = Screen::Baseline;
+    baseline::load_into(&mut cockpit);
+    assert!(
+        matches!(
+            cockpit.baseline_screen_state.curve_2024,
+            PanelState::Ready(_)
+        ),
+        "composition gate needs the committed curve"
+    );
+
+    let root = layout_body(ui::shell::screen_body(
+        Screen::Baseline,
+        &cockpit,
+        ThemeMode::Dark,
+    ));
+    let column = composed_column(&root);
+    let rows = column.children();
+
+    // headline_row · caption · kpi_strip · sharpe_note · curve · band ·
+    // sampling_note · risk_detail
+    assert_eq!(
+        rows.len(),
+        8,
+        "Baseline composes 8 rows when a curve is drawn; got {} — a panel was \
+         dropped from or added to screens::baseline::view",
+        rows.len()
+    );
+
+    let curve_h = rows[4].size().height;
+    let band_h = rows[5].size().height;
+    assert!(
+        (curve_h - 240.0).abs() < 1.0,
+        "row 4 must be the 240 px equity curve, got {curve_h} px — the stack \
+         was reordered or a row was dropped above it"
+    );
+    assert!(
+        (band_h - 100.0).abs() < 1.0,
+        "row 5 must be the 100 px drawdown band, got {band_h} px"
+    );
+
+    // The KPI strip sits between the caption and the Sharpe note and is a real
+    // band of cards, not a collapsed slot.
+    let kpi_h = rows[2].size().height;
+    assert!(
+        kpi_h > 40.0,
+        "row 2 must be the populated KPI strip, got {kpi_h} px"
+    );
+
+    // Without a drawn curve there is nothing to reconcile, so the sampling
+    // note is absent — one row fewer, and the curve/band shift up by one.
+    let bogus = std::path::Path::new("/__definitely_missing__/bh.csv");
+    cockpit.baseline_screen_state.curve_2024 = baseline::load_baseline_curve(bogus);
+    let root = layout_body(ui::shell::screen_body(
+        Screen::Baseline,
+        &cockpit,
+        ThemeMode::Dark,
+    ));
+    let column = composed_column(&root);
+    assert_eq!(
+        column.children().len(),
+        7,
+        "with no curve loaded the sampling note must not be composed"
+    );
+}
+
+/// A **corrupt** (present-but-unreadable) CSV must reach the operator as a
+/// different statement from an absent one — and must still lay out (review
+/// M-states).
+#[test]
+fn corrupt_csv_reports_corruption_not_absence() {
+    let dir = std::env::temp_dir().join(format!("baseline_corrupt_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("bh-truncated.csv");
+    // A file that exists and is bundled — but is truncated mid-header.
+    std::fs::write(&path, "bar_ind").expect("write");
+
+    match baseline::load_baseline_curve(&path) {
+        PanelState::Error(msg) => assert_eq!(
+            msg.as_str(),
+            BASELINE_DATA_CORRUPT,
+            "a bundled-but-damaged CSV must not claim it 'isn't bundled in \
+             this build' — that sends the operator to the wrong fix"
+        ),
+        other => panic!("expected Error(corrupt), got {}", other.variant_name()),
+    }
+
+    let mut cockpit = Cockpit::new();
+    cockpit.current_screen = Screen::Baseline;
+    cockpit.baseline_screen_state.curve_2024 = baseline::load_baseline_curve(&path);
+    for mode in [ThemeMode::Dark, ThemeMode::Light] {
+        render_layout_ok(ui::shell::screen_body(Screen::Baseline, &cockpit, mode));
+    }
+
+    let _ = std::fs::remove_file(&path);
 }

@@ -6,7 +6,7 @@ screen: Live
 theme: dark
 headline: Live
 system_health_label: System health
-equity_curve: No equity data placeholder
+equity_curve: Loading equity data… placeholder
 kpi_strip: Backtest metrics unavailable
 session_caption: Session to date
 llm_spend_label: LLM spend

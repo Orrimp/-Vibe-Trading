@@ -124,13 +124,22 @@ fn assert_root_not_zero_dim(node: &Node, path: &str) -> Result<(), String> {
 /// We instantiate one per call to keep the test stateless; the
 /// renderer is consulted indirectly during layout (text shaping
 /// queries) and otherwise idle.
-fn check_element_layout<'a>(mut element: Element<'a, Message>) -> Result<(), String> {
+fn check_element_layout<'a>(element: Element<'a, Message>) -> Result<(), String> {
+    check_element_layout_with(element, default_limits())
+}
+
+/// Same check under caller-supplied limits — used by the Baseline property to
+/// fuzz the viewport HEIGHT (a screen whose fixed-height panels overflow a
+/// short window is the defect that motivated its `Scrollable`).
+fn check_element_layout_with<'a>(
+    mut element: Element<'a, Message>,
+    limits: Limits,
+) -> Result<(), String> {
     // `Tree::new` borrows the widget; `as_widget()` returns the
     // `&dyn Widget`. Construct the tree before grabbing the mutable
     // widget reference — borrow-checker friendly ordering.
     let mut tree = Tree::new(element.as_widget());
     let renderer = iced::Renderer::new(iced::Font::DEFAULT, iced::Pixels(16.0));
-    let limits = default_limits();
     let node = element
         .as_widget_mut()
         .layout(&mut tree, &renderer, &limits);
@@ -512,6 +521,85 @@ proptest! {
         let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
         check_element_layout(element).map_err(TestCaseError::fail)?;
     }
+}
+
+// ─── story-2-18 review — Baseline-screen layout invariant ───────────────
+
+proptest! {
+    // Shell-composition cap, same reason as the sibling screen properties.
+    #![proptest_config({
+        let mut cfg = proptest_config();
+        cfg.cases = 64;
+        cfg
+    })]
+
+    /// **`screens::baseline::view` layout-invariant.**
+    ///
+    /// The screen list in this file is enumerated BY HAND, and `Screen::
+    /// Baseline` was never in it — so the project's "layout green" claim was
+    /// vacuous for the one screen that carries the passive comparator. This
+    /// property routes the real shell through every Baseline state.
+    ///
+    /// Fuzzed axes:
+    /// - the active year (both curves are boot-loaded, so both are exercised);
+    /// - the curve `PanelState` (Ready from the committed CSV · Loading ·
+    ///   Empty · Error) — the four bodies the curve + band can render;
+    /// - the viewport HEIGHT, down to 400 px. The body is ~600 px of
+    ///   fixed-height panels plus four caption blocks; it is now wrapped in a
+    ///   `Scrollable`, and a short viewport is exactly where an unwrapped
+    ///   column clips its honesty captions away.
+    #[test]
+    fn baseline_screen_layout_never_zero_dim(
+        year_idx in 0u8..=1,
+        state_idx in 0u8..=3,
+        viewport_h in 400.0f32..=1080.0,
+    ) {
+        let cockpit = build_baseline_cockpit(year_idx, state_idx);
+        let element = ui::shell::view(&cockpit, ui::theme::ThemeMode::Dark);
+        check_element_layout_with(
+            element,
+            Limits::new(Size::ZERO, Size::new(1920.0, viewport_h)),
+        )
+        .map_err(TestCaseError::fail)?;
+    }
+}
+
+/// Build a Baseline-screen cockpit for the layout invariant.
+///
+/// `year_idx`: 0 = 2023, 1 = 2024 (the toggle).
+/// `state_idx`: 0 = Ready (boot-loaded committed CSVs), 1 = Loading,
+///              2 = Empty, 3 = Error.
+fn build_baseline_cockpit(year_idx: u8, state_idx: u8) -> ui::Cockpit {
+    use ui::state::{BaselineYear, PanelState};
+
+    let mut cockpit = ui::fixtures::fake_cockpit_ready();
+    cockpit.current_screen = ui::Screen::Baseline;
+    // The PRODUCTION boot path — same call `cockpit_live` makes.
+    ui::baseline::load_into(&mut cockpit);
+    cockpit.baseline_screen_state.active_year = if year_idx.is_multiple_of(2) {
+        BaselineYear::Y2023
+    } else {
+        BaselineYear::Y2024
+    };
+
+    match state_idx % 4 {
+        // 0 keeps the boot-loaded `Ready` curves.
+        1 => {
+            cockpit.baseline_screen_state.curve_2023 = PanelState::Loading;
+            cockpit.baseline_screen_state.curve_2024 = PanelState::Loading;
+        }
+        2 => {
+            cockpit.baseline_screen_state.curve_2023 = PanelState::Empty;
+            cockpit.baseline_screen_state.curve_2024 = PanelState::Empty;
+        }
+        3 => {
+            let bogus = std::path::Path::new("/__definitely_missing__/bh.csv");
+            cockpit.baseline_screen_state.curve_2023 = ui::baseline::load_baseline_curve(bogus);
+            cockpit.baseline_screen_state.curve_2024 = ui::baseline::load_baseline_curve(bogus);
+        }
+        _ => {}
+    }
+    cockpit
 }
 
 // ─── Cockpit builder helpers ────────────────────────────────────────────

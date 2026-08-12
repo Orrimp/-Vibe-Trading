@@ -369,6 +369,25 @@ The fixer's own commit message states it (`3f9fd63`, verbatim): *"the wiring tes
 
 **Moral**: when a change alters a number a human will read, the assertion must be an **independently-derived literal** — computed by hand, taken from the spec, or read off the requirement — never a regenerated baseline and never a value copied from the implementation's output. Regenerating a baseline is how you *record* a change; it is never how you *verify* one. Corollary for reviews: ask of every green baseline, "was this file regenerated in the commit it is guarding?" If yes, it is documentation, not a gate.
 
+**RIDER (2026-08-12, story-2-18 review) — the harness removes the last friction: the visual gate MANUFACTURES its own expected value when the expectation is absent.** `crates/ui/tests/fixtures/visual_diff.rs`:
+
+```rust
+if !baseline.exists() {
+    // First-run: persist the baseline so subsequent runs have something to compare.
+    // Operator reviews the PNG before committing (H2 falsifier in feature.md).
+    actual.save(baseline)?;
+    return Ok(());
+}
+```
+
+Delete a baseline PNG and the test **writes it and returns green**. `visual_snapshots.rs` documents that as the sanctioned accept-a-change workflow ("delete the baseline + rerun — helper auto-rewrites"). So the only thing standing between a silent visual regression and a green suite is a human remembering to open the PNG — a step no gate enforces and no artifact records.
+
+Two consequences of record:
+1. **A mass regeneration is a one-command operation with no per-file evidence.** Story 2-18's 56-file re-baseline was, on inspection, *rigorous* — orchestrator-verified pixel-by-pixel across all 56: content area byte-identical, the rest a pure one-nav-row translation. But the harness gave it no help; the rigor lived entirely in a dev-note nobody was required to write, and **nine subsequent re-baselines in this repo imitated none of it**.
+2. **It is the live exposure for the pending ~62-file font-drift re-baseline** (story 6-9). That regeneration will pass green by construction whether or not the screens are correct.
+
+**Rider moral**: a gate that supplies its own expected value when the expectation is missing is not a gate — it is a recorder with an assertion-shaped API. Absence of a baseline must FAIL loudly and require an explicit, recorded accept step; "first run writes it" is the same authority failure as "regenerate to make it pass", just earlier in the lifecycle. Relatedly: this is the vacuity class (#66) reaching the *harness* rather than a test — the missing expectation is auto-satisfied, so nothing can go red.
+
 ## Changelog
 
 - 2026-08-11 (orchestrator): **#76 added (OPEN, CRITICAL)** — the basis⊥funding RESIDUAL arm ranks the basis axis inverted vs its own spec (longs the HIGHEST basis; rank 1 = lowest basis, and `top_k_long` takes the highest residual). With #75 this means **no anchored MN surface tested the basis in its documented direction**, so "the residual carries no orthogonal alpha" cannot be read off #116-#119 at all. Every residual test asserts difference, never direction. Story-1-21 review; fix + re-run → 1-25.

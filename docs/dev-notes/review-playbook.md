@@ -102,6 +102,22 @@ reader trusts first; a contradiction there outlives every dev-note that
 resolved it. **Ask of every conclusion in an anchored body: does the project
 still believe this?**
 
+**On mass re-baselining — the protocol exists, it just isn't binding.** Per
+bug-log #77 a regenerated baseline cannot witness the code it guards, so a
+56-file re-baseline is where an unrelated change hides. But 2-18's `8dbe6ae`
+showed it can be done right, and its method is the standard to hold future
+regenerations to: **classify before regenerating** (localize every diff to a
+bounding box; prove the same diff appears across unrelated fixtures, which
+identifies it as shared chrome; refute competing causes by controlled
+experiment), **prove no content rode along** (re-diff with the changed region
+masked — it must be 0 pixels across every file), **re-prove the gate still
+bites** (mutate one pixel; every baseline must go red), and **record the
+environment**. Nine later re-baselines in this repo imitated none of it, most
+buried inside ordinary feature commits with no note at all. No ADR governs
+this; ADR-0057 fixes determinism *scope* and predates none of the practice.
+**Codifying `8dbe6ae`'s protocol as an ADR is an operator call — flag it, do
+not mint it during a review.**
+
 **And ask the mirror question, which fires just as often: is this story's
 proof sitting in a LATER story's record?** In 2-15 the only AD-10-compliant
 harness for the Live view (`live_equity_render.rs`) was written two days later

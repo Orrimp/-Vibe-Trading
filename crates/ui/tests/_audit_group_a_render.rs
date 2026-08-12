@@ -206,35 +206,45 @@ fn audit_live_cold_draws_no_curve() {
 /// **Baseline populated render — the audit's primary new guard.** Boot-load
 /// the committed realized buy-and-hold curves via the PRODUCTION
 /// `baseline::load_into` path (reads the committed
-/// `spec/runbooks/artifacts/passive-baseline-2026-06-08/bh-equity-curve-*.csv`),
+/// `docs/runbooks/artifacts/passive-baseline-2026-06-08/bh-equity-curve-*.csv`),
 /// render the REAL Baseline screen for BOTH years through the full shell, save
 /// each PNG, and assert the realized BH polyline actually rasterized.
 ///
-/// Skip-if-absent: a minimal checkout that prunes the runbook CSVs leaves the
-/// curve in `Error` (the `baseline_error_state.rs` gate covers that path);
-/// this guard targets the populated path that nothing else pixel-verified.
+/// **No skip-if-absent** (story-2-18 review M-skips). This was the only pixel
+/// proof the Baseline screen has, and it self-skipped GREEN on a missing CSV
+/// — with the skip counted nowhere. The artifacts directory has already moved
+/// once (`spec/runbooks/…` → `docs/runbooks/…`, and the stale reference in
+/// this very doc-comment survived that move), which is precisely the failure
+/// a silent skip absorbs. The CSVs are committed; their absence is a defect.
+///
+/// The year toggle is asserted to change what is DRAWN, not merely to keep
+/// drawing something: two renders that both clear the hue threshold prove
+/// nothing about a view hard-wired to one year.
 #[test]
 fn audit_baseline_populated_renders_curve() {
     let mut c = Cockpit::new();
     c.current_screen = Screen::Baseline;
     ui::baseline::load_into(&mut c);
 
-    // Precondition: at least the 2024 (default) curve loaded Ready. If the
-    // committed CSVs were pruned, skip (Error path is covered elsewhere).
-    let ready_2024 = matches!(
-        c.baseline_screen_state.curve_2024,
-        ui::state::PanelState::Ready(_)
-    );
-    if !ready_2024 {
-        eprintln!("baseline 2024 CSV pruned/absent — skipping populated render guard");
-        return;
+    for (year, state) in [
+        (BaselineYear::Y2024, &c.baseline_screen_state.curve_2024),
+        (BaselineYear::Y2023, &c.baseline_screen_state.curve_2023),
+    ] {
+        assert!(
+            matches!(state, ui::state::PanelState::Ready(_)),
+            "committed BH curve for {year:?} did not load (state = {}) — \
+             expected at {}. Fix the path; do not skip the only pixel proof \
+             this screen has.",
+            state.variant_name(),
+            ui::baseline::baseline_csv_path(year).display()
+        );
     }
 
     // Default year (2024) — the cold-start screen.
     c.baseline_screen_state.active_year = BaselineYear::Y2024;
-    let (w, h, rgba) = render_shell(c.clone());
-    let path_2024 = save_png("baseline-2024-populated", w, h, &rgba);
-    let hits_2024 = curve_pixels_right(w, h, &rgba);
+    let (w, h, rgba_2024) = render_shell(c.clone());
+    let path_2024 = save_png("baseline-2024-populated", w, h, &rgba_2024);
+    let hits_2024 = curve_pixels_right(w, h, &rgba_2024);
     assert!(
         hits_2024 > 1000,
         "Baseline 2024 populated: the realized BH curve did NOT rasterize \
@@ -245,20 +255,35 @@ fn audit_baseline_populated_renders_curve() {
 
     // Toggle to 2023 (the other data-bearing curve) — proves the year switch
     // re-renders a populated curve, not a stale/blank one.
-    if matches!(
-        c.baseline_screen_state.curve_2023,
-        ui::state::PanelState::Ready(_)
-    ) {
-        c.baseline_screen_state.active_year = BaselineYear::Y2023;
-        let (w, h, rgba) = render_shell(c);
-        let path_2023 = save_png("baseline-2023-populated", w, h, &rgba);
-        let hits_2023 = curve_pixels_right(w, h, &rgba);
-        assert!(
-            hits_2023 > 1000,
-            "Baseline 2023 populated: the realized BH curve did NOT rasterize \
-             after the year toggle (expected >1000 px, got {hits_2023}). PNG: {path_2023}"
-        );
-    }
+    c.baseline_screen_state.active_year = BaselineYear::Y2023;
+    let (w2, h2, rgba_2023) = render_shell(c);
+    let path_2023 = save_png("baseline-2023-populated", w2, h2, &rgba_2023);
+    let hits_2023 = curve_pixels_right(w2, h2, &rgba_2023);
+    assert!(
+        hits_2023 > 1000,
+        "Baseline 2023 populated: the realized BH curve did NOT rasterize \
+         after the year toggle (expected >1000 px, got {hits_2023}). PNG: {path_2023}"
+    );
+
+    // ── The year toggle must change the PICTURE (review M-toggle) ───────────
+    //
+    // Both renders clearing the hue threshold is satisfied just as well by a
+    // view wired to a single year. The two years' curves are different shapes
+    // (2023 ends at $296k with a 34.6 % max drawdown; 2024 ends at $191k with
+    // 49.0 %), so a real toggle repaints a large share of the frame.
+    assert_eq!((w, h), (w2, h2), "both renders use the same viewport");
+    let differing = rgba_2024
+        .chunks_exact(4)
+        .zip(rgba_2023.chunks_exact(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    let total = (w as usize) * (h as usize);
+    assert!(
+        differing > total / 100,
+        "the 2023 and 2024 Baseline renders differ in only {differing} of \
+         {total} pixels (<1 %) — the year toggle is not reaching the drawn \
+         curve/cards. PNGs: {path_2024} vs {path_2023}"
+    );
 }
 
 /// **Baseline negative control.** Force both curves into `Error` (loader on a

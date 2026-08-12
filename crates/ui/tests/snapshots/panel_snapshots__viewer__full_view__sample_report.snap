@@ -17,4 +17,4 @@ kpi_trades: 14118
 equity_points: 60
 equity_peak: 100000
 equity_trough: 42195
-max_drawdown_pct: 0.57805
+max_drawdown_frac: 0.57805

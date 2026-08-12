@@ -72,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-08-12 03:40  # 1-21 review -> FAIL (burn-down 10/14, stays `review`, BLOCKED on 1-25): bug-log #75 + #76, both CRITICAL — no anchored MN surface tested the basis in its documented direction; closure SUSPENDED. Earlier this session: 1-20 -> done (9/14), bug-log #74
+last_updated: 2026-08-12 09:20  # 2-18 review -> PASS-with-findings (burn-down 12/14, stays `review` pending the clean ui sweep, as does 2-15): bug-log #77 RIDER (visual gate auto-writes missing baselines); drawdown band was 100x understated, fixed by a compiler-enforced rename. Earlier: 1-20 done (9/14), 1-21 FAIL (10/14), 2-15 pass-with-findings (11/14); bug-log #74/#75/#76/#77
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -128,7 +128,7 @@ development_status:
   2-15-cockpit-live-dashboard-wiring: review  # 2026-08-12 code-review burn-down 11/14 **PASS-WITH-FINDINGS; close-out PENDING the full `cargo test -p ui` sweep** (108 binaries, ~3h on this box — the render suites 144, lib 629, trading_core 48 and audit 113 ARE green; the rest is unverified for this change and the triad is deliberately NOT flipped until it is). The feature works at HEAD; the VERIFICATION RECORD was false — the AD-10 claim rested on a test count, and no test in the implementing commit would have gone red if the wiring were reverted. Its real pixel proof (live_equity_render.rs) was written 2 days later by another story and is now backfilled into the trace row. 14 patches incl. a NEW un-gated KPI-strip pixel harness (RED-proven: 130 pre-existing tests stayed green under the revert mutation), the flat-feed "unavailable" lie, and the rolling-window caption lie. 1 finding correctly REJECTED as wrong. bug-log #77 disclosed. All findings anchor-impacting: NO.
   2-16-live-equity-history-durable: done
   2-17-paper-mode-equity-wiring: done
-  2-18-cockpit-baseline-panel: review
+  2-18-cockpit-baseline-panel: review  # 2026-08-12 code-review burn-down 12/14 **PASS-WITH-FINDINGS; close-out PENDING the same clean `cargo test -p ui` sweep as 2-15** (triad deliberately NOT flipped until it lands). Code delivered all 7 reqs + all 10 tasks and is correct at HEAD; the RECORD was false twice — "all integration suites GREEN" was untrue when written (56 red from this story's own T7 nav entry; repaired 11.5h later with zero record updates), and the AD-10 claim rested on a text mirror + a layout probe. 14 patches, none skipped: the drawdown band rendered a FRACTION with a % suffix (100x understated — fixed structurally by renaming EquitySeries::max_drawdown_pct -> max_drawdown_frac across 3 crates so instance #3 is a compile error); the Max-DD card and its own curve disagreed by 7.13pp; the displayed Sharpe is realized single-path vs the PRD's bootstrap p50 (2024 shown ~19% LOW) — now qualified on screen. bug-log #77 RIDER disclosed: the visual gate auto-writes a missing baseline and returns green (live exposure for story 6-9's ~62-file font re-baseline). The 56-snapshot re-baseline was VERIFIED CLEAN pixel-by-pixel — not a finding. All 21 findings anchor-impacting: NO; √8575 routed to 1-25 as a re-sync obligation.
   2-19-cockpit-reports-viewer: done
   2-20-backtest-equity-companion: done
   2-21-cockpit-activity-status-bar: done

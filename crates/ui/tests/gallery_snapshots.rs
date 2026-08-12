@@ -46,7 +46,7 @@
 // the per-OS system font DB, producing different glyph rasterization — these
 // tests would not match the macOS-captured gallery PNGs. Gate the entire file
 // to compile only on macOS; on Linux/Windows it compiles to nothing (skipped,
-// never re-baselined). See ADR-0057 D2 and spec/runbooks/cockpit-cross-platform.md.
+// never re-baselined). See ADR-0057 D2 and docs/runbooks/cockpit-cross-platform.md.
 #![cfg(target_os = "macos")]
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
