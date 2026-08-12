@@ -194,7 +194,6 @@ fn run_cell_summary(
             emit_equity_bin: None,
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
 

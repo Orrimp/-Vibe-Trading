@@ -275,7 +275,6 @@ pub fn run_one_path(
         emit_equity_bin: None,
         latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
         funding_override: None,
-        basis_override: None,
         bar_span_hours: 1,
     };
 

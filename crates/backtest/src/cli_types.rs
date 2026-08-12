@@ -432,7 +432,6 @@ mod latency_slippage_config_tests {
             emit_equity_bin: None,
             latency_slippage_sim: LatencySlippageSimConfig::default(),
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         assert!(
@@ -515,7 +514,6 @@ mod latency_slippage_config_tests {
             emit_equity_bin: None,
             latency_slippage_sim: cfg.clone(),
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         assert!(!input.latency_slippage_sim.is_noop());
@@ -677,17 +675,21 @@ pub struct TcnScenarioInput {
     /// At Stage 2 (this commit): `run_path` RECEIVES the field but does NOT yet
     /// use it for signal/cashflow — that is Stage 3 (M-DEV-5 + M-DEV-4 signal).
     /// Threading it now keeps the seam additive and anchor-neutral.
+    /// # This field is the ONLY sidecar `run_path` reads (review 1-21)
+    ///
+    /// There used to be a sibling `basis_override` here, documented as "used by
+    /// the MN-spread arm for basis-score injection". It was **never read** — no
+    /// field access, no destructuring, anywhere in the workspace — and every one
+    /// of its ~36 construction sites, production included, passed `None`. The MN
+    /// arm injects its basis at the DRIVER level
+    /// (`MomentumStrategy::with_basis_score`), not through `TcnScenarioInput`.
+    /// It was deleted rather than ratified because an unread field that reads as
+    /// a wired channel is exactly the hole bug-log **#75** fell through: had the
+    /// basis ridden a second field that `run_path` read symmetrically to this
+    /// one, the score map could not have been clobbered by the accrual map.
+    /// When 1-25 separates the two channels it will add a field that is READ in
+    /// the same commit. Deletion was anchor-neutral: all sites were `None`.
     pub funding_override:
-        Option<std::collections::BTreeMap<(Symbol, trading_core::Timestamp), Decimal>>,
-    /// MN-spread basis lookup (ADR-0051 § D6.10, M-DEV-1).
-    ///
-    /// When `Some`, maps `(Symbol, Timestamp)` → the co-resampled basis value
-    /// for that bar. Built from `GeneratedPath.basis_by_symbol` + synthetic
-    /// `open_ts`. Used by the MN-spread arm for basis-score injection AND as
-    /// the second sidecar alongside `funding_override`.
-    ///
-    /// `None` for every non-MN run → byte-identical to pre-M-DEV-1 code.
-    pub basis_override:
         Option<std::collections::BTreeMap<(Symbol, trading_core::Timestamp), Decimal>>,
     /// Simulated market hours represented by ONE generated bar (carry-surface
     /// fix, 2026-08-04).

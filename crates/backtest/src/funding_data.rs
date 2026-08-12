@@ -74,9 +74,64 @@ pub enum FundingDataError {
         source: rust_decimal::Error,
     },
 
+    /// A symbol's settlement count for the span is below the coverage floor
+    /// (review 1-21, mirroring `BasisDataError::InsufficientCoverage`).
+    ///
+    /// The basis sidecar got this gate in review 1-20 M; the funding sidecar — which is
+    /// the OLDER of the two and carries more weight — had only a revision-SHA check. A
+    /// SHA proves the bytes are the ones that were locked; it says nothing about whether
+    /// those bytes cover the span.
+    ///
+    /// What it catches, on the funding side specifically:
+    ///
+    /// - `carry_score` / `basis_reversal_score` return `None` for a symbol with no ring
+    ///   entries, forever, so the symbol silently drops out of the cross-sectional rank
+    ///   and the θ-surface renders a plausible verdict over a SMALLER universe than its
+    ///   `held_constant` row claims (the basis-gate rationale, unchanged); and
+    /// - on the MN lane the funding map is also the ACCRUAL channel, so a symbol with
+    ///   thin funding coverage under-accrues its short-leg carry — the cost the MN trace
+    ///   row calls binding — while every rendered number still looks well-formed.
+    #[error(
+        "funding coverage below floor for {symbol} in [{span_start}..{span_end}): got \
+         {actual} settlements, expected ~{expected} ({pct:.2}% present, floor \
+         {floor_pct:.2}%). A symbol with missing funding scores None forever and silently \
+         drops out of the cross-sectional rank, and on the MN lane it also under-accrues \
+         the short-leg funding cost — refusing to run on a corpus that would render a \
+         plausible surface over a smaller universe than it reports."
+    )]
+    InsufficientCoverage {
+        symbol: String,
+        expected: usize,
+        actual: usize,
+        /// Percentage present — human-readable only; the decision uses integer
+        /// arithmetic (see `load()`).
+        #[allow(clippy::float_arithmetic)]
+        pct: f64,
+        #[allow(clippy::float_arithmetic)]
+        floor_pct: f64,
+        span_start: String,
+        span_end: String,
+    },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+/// Minimum fraction of the span's 8-hourly settlements each symbol must supply, in
+/// per-mille (review 1-21).
+///
+/// Deliberately the SAME number as [`crate::basis_data::MIN_SYMBOL_COVERAGE_PERMILLE`]
+/// and the OHLCV loader's R3 tolerance (995‰ = 99.5%) — one tolerance for every sidecar,
+/// so an operator does not have to remember three. Integer per-mille so the comparison
+/// never touches a float.
+///
+/// The UNIT is what differs and it is the thing to get right: funding settles every 8
+/// hours, not hourly (bug-log #70 was exactly a coarse-vs-raw unit mix-up in a coverage
+/// gate), so the expected count for a span is `span_hours / 8`.
+pub const MIN_SYMBOL_COVERAGE_PERMILLE: usize = 995;
+
+/// Hours between Binance funding settlements. The funding series' native cadence.
+const SETTLEMENT_INTERVAL_MS: i64 = 8 * 3_600_000;
 
 // ── FundingRow ────────────────────────────────────────────────────────────────
 
@@ -114,6 +169,10 @@ pub struct FundingDataSource {
     funding_root: PathBuf,
     /// Universe of symbols to load (must match the carry scenario universe).
     universe: Vec<Symbol>,
+    /// Aggregate SHA the corpus must recompute to. Always
+    /// [`EXPECTED_FUNDING_REVISION_SHA`] in production — [`Self::new`] is the only
+    /// constructor outside `cfg(test)`, so the revision lock is unconditional.
+    expected_revision_sha: String,
 }
 
 impl FundingDataSource {
@@ -126,7 +185,22 @@ impl FundingDataSource {
         Self {
             funding_root,
             universe,
+            expected_revision_sha: EXPECTED_FUNDING_REVISION_SHA.to_string(),
         }
+    }
+
+    /// Point the revision lock at a different aggregate SHA — **tests only**.
+    ///
+    /// Compiled ONLY under `cfg(test)`, so it does not exist in any shipped build and
+    /// cannot be reached from the sweep binary. Mirrors
+    /// `BasisDataSource::with_expected_revision_sha`, added in review 1-20 for exactly
+    /// the same reason: without it, step 3 rejects every temp-dir fixture before the
+    /// parquet is ever opened, so the ONLY test that could exercise the real `load()`
+    /// had to be `#[ignore]`d against the shipped corpus — and therefore gated nothing.
+    #[cfg(test)]
+    fn with_expected_revision_sha(mut self, sha: &str) -> Self {
+        self.expected_revision_sha = sha.to_string();
+        self
     }
 
     /// Load + REVISION-verify + parse funding rows for the given span.
@@ -139,12 +213,16 @@ impl FundingDataSource {
     ///    `EXPECTED_FUNDING_REVISION_SHA`.
     /// 4. Read parquet files; parse `funding_rate` as `Decimal`.
     /// 5. Filter rows to `[span.start_ms, span.end_ms)`.
-    /// 6. Sort `(funding_time_ms ASC, symbol ASC)`.
+    /// 6. Enforce the PER-SYMBOL coverage floor
+    ///    ([`MIN_SYMBOL_COVERAGE_PERMILLE`]) → `InsufficientCoverage` (review 1-21,
+    ///    mirroring `BasisDataSource::load` step 6 from review 1-20 M).
+    /// 7. Sort `(funding_time_ms ASC, symbol ASC)`.
     ///
     /// # Errors
     ///
     /// Returns `FundingDataError` on manifest missing / SHA mismatch,
-    /// parquet read errors, or Decimal parse failure.
+    /// parquet read errors, a Decimal parse failure, or a symbol whose settlement
+    /// count for the span is below the coverage floor.
     #[allow(clippy::too_many_lines)]
     pub fn load(
         &self,
@@ -175,7 +253,7 @@ impl FundingDataSource {
                         file: relpath.clone(),
                         manifest_sha: "(not in manifest)".to_string(),
                         actual_sha: "n/a".to_string(),
-                        expected: EXPECTED_FUNDING_REVISION_SHA.to_string(),
+                        expected: self.expected_revision_sha.clone(),
                         recomputed: "(not computed)".to_string(),
                     })?;
             let abs_path = self.funding_root.join(relpath);
@@ -186,7 +264,7 @@ impl FundingDataSource {
                     file: relpath.clone(),
                     manifest_sha: manifest_sha.clone(),
                     actual_sha,
-                    expected: EXPECTED_FUNDING_REVISION_SHA.to_string(),
+                    expected: self.expected_revision_sha.clone(),
                     recomputed: "(not computed)".to_string(),
                 });
             }
@@ -194,12 +272,12 @@ impl FundingDataSource {
 
         // Step 3: recompute aggregate SHA and verify against the locked constant.
         let recomputed = data::revision::compute_aggregate_sha(&files_map);
-        if recomputed != EXPECTED_FUNDING_REVISION_SHA {
+        if recomputed != self.expected_revision_sha {
             return Err(FundingDataError::RevisionMismatch {
                 file: "(aggregate)".to_string(),
                 manifest_sha: "(n/a)".to_string(),
                 actual_sha: "(n/a)".to_string(),
-                expected: EXPECTED_FUNDING_REVISION_SHA.to_string(),
+                expected: self.expected_revision_sha.clone(),
                 recomputed: recomputed.clone(),
             });
         }
@@ -280,7 +358,45 @@ impl FundingDataSource {
             }
         }
 
-        // Step 6: sort (funding_time_ms ASC, symbol ASC).
+        // Step 6: PER-SYMBOL coverage gate (review 1-21).
+        //
+        // Modelled line-for-line on `basis_data::BasisDataSource::load` step 6 (review
+        // 1-20 M), with ONE difference that is the whole point of the patch: the expected
+        // count is in 8-HOURLY SETTLEMENTS, not hours. Funding settles every 8h; using
+        // the hourly divisor here would demand 8× the rows that exist and reject the
+        // shipped corpus outright — the mirror image of bug-log #70, where a gate
+        // compared a coarse count against a raw expectation and passed a corpus missing
+        // 95.9% of its hours.
+        //
+        // Checked PER SYMBOL, not in aggregate, precisely because a total-row check
+        // passes happily while one member is empty.
+        //
+        // Integer arithmetic only in the comparison — the float is for the message.
+        let expected_per_symbol =
+            usize::try_from((span.end_ms - span.start_ms) / SETTLEMENT_INTERVAL_MS).unwrap_or(0);
+        if expected_per_symbol > 0 {
+            let threshold = (expected_per_symbol * MIN_SYMBOL_COVERAGE_PERMILLE).div_ceil(1000);
+            for sym in &self.universe {
+                let actual = rows.iter().filter(|r| &r.symbol == sym).count();
+                if actual < threshold {
+                    #[allow(clippy::cast_precision_loss, clippy::float_arithmetic)]
+                    let pct = actual as f64 / expected_per_symbol as f64 * 100.0;
+                    #[allow(clippy::cast_precision_loss, clippy::float_arithmetic)]
+                    let floor_pct = MIN_SYMBOL_COVERAGE_PERMILLE as f64 / 10.0;
+                    return Err(FundingDataError::InsufficientCoverage {
+                        symbol: sym.0.to_string(),
+                        expected: expected_per_symbol,
+                        actual,
+                        pct,
+                        floor_pct,
+                        span_start: span.start_label.to_string(),
+                        span_end: span.end_label.to_string(),
+                    });
+                }
+            }
+        }
+
+        // Step 7: sort (funding_time_ms ASC, symbol ASC).
         rows.sort_unstable_by(|a, b| {
             a.funding_time_ms
                 .cmp(&b.funding_time_ms)
@@ -586,6 +702,280 @@ mod tests {
         let round_tripped = parsed.to_string();
         let reparsed = Decimal::from_str(&round_tripped).expect("reparse");
         assert_eq!(parsed, reparsed);
+    }
+
+    // ── Review 1-21: PER-SYMBOL coverage gate ─────────────────────────────────
+    //
+    // Fixture helpers, mirroring `basis_data::tests` (review 1-20 M). These drive the
+    // REAL `load()` end-to-end over a temp-dir corpus, which is only possible because of
+    // the `cfg(test)` revision-SHA override — without it, step 3 rejects every fixture
+    // before the parquet is opened and the gate could only be "tested" by an `#[ignore]`d
+    // probe that gates nothing.
+
+    /// Write a funding parquet at `<root>/<sym>/<year>/<month>.parquet` using the
+    /// PRODUCTION column names (`symbol`, `funding_time`, `funding_rate`).
+    fn write_funding_parquet(
+        root: &std::path::Path,
+        sym: &str,
+        year: i32,
+        month: u32,
+        rows: &[(i64, &str)],
+    ) -> String {
+        use polars::prelude::*;
+
+        let dir = root.join(format!("{sym}/{year}"));
+        std::fs::create_dir_all(&dir).expect("create symbol dir");
+        let path = dir.join(format!("{month:02}.parquet"));
+
+        let symbols: Vec<&str> = rows.iter().map(|_| sym).collect();
+        let times: Vec<i64> = rows.iter().map(|&(t, _)| t).collect();
+        let rates: Vec<&str> = rows.iter().map(|&(_, r)| r).collect();
+        let mut df = df![
+            "symbol" => symbols,
+            "funding_time" => times,
+            "funding_rate" => rates,
+        ]
+        .expect("build fixture DataFrame");
+
+        let mut file = std::fs::File::create(&path).expect("create parquet");
+        ParquetWriter::new(&mut file)
+            .finish(&mut df)
+            .expect("write parquet");
+
+        format!("{sym}/{year}/{month:02}.parquet")
+    }
+
+    /// Write `REVISION.toml` for the given relpaths; returns the aggregate SHA.
+    fn write_manifest(root: &std::path::Path, relpaths: &[String]) -> String {
+        use std::collections::BTreeMap;
+
+        let mut files_map: BTreeMap<String, String> = BTreeMap::new();
+        for rel in relpaths {
+            let sha = data::revision::file_sha256(&root.join(rel)).expect("sha256");
+            files_map.insert(rel.clone(), sha);
+        }
+        let aggregate = data::revision::compute_aggregate_sha(&files_map);
+
+        let mut toml = format!("[revision]\nsha256 = \"{aggregate}\"\n\n[files]\n");
+        for (rel, sha) in &files_map {
+            toml.push_str(&format!("\"{rel}\" = \"{sha}\"\n"));
+        }
+        std::fs::write(root.join("REVISION.toml"), toml).expect("write REVISION.toml");
+        aggregate
+    }
+
+    /// A 24-hour span on 2023-01-01 → exactly ONE month file per symbol, and the
+    /// coverage floor expects 24 / 8 = **3 settlements** per symbol.
+    fn one_day_span_2023() -> crate::realdata::TimeSpan {
+        let start = 1_672_531_200_000_i64; // 2023-01-01T00:00:00Z
+        crate::realdata::TimeSpan {
+            start_ms: start,
+            end_ms: start + 24 * 3_600_000,
+            start_label: "2023-01-01T00:00:00Z",
+            end_label: "2023-01-02T00:00:00Z",
+        }
+    }
+
+    /// The 3 in-span settlements of 2023-01-01 (00:00, 08:00, 16:00 UTC).
+    fn day_settlements(rate: &'static str) -> Vec<(i64, &'static str)> {
+        let start = 1_672_531_200_000_i64;
+        (0..3_i64)
+            .map(|k| (start + k * 8 * 3_600_000, rate))
+            .collect()
+    }
+
+    /// The gate is a FLOOR, not a tax: a fully-covered corpus loads unchanged.
+    #[test]
+    fn load_accepts_full_funding_coverage() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        let rel_a = write_funding_parquet(root, "AAAUSDT", 2023, 1, &day_settlements("0.0001"));
+        let rel_b = write_funding_parquet(root, "BBBUSDT", 2023, 1, &day_settlements("-0.0002"));
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = FundingDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let loaded = src
+            .load(&span, "full-coverage")
+            .expect("a fully-covered funding corpus must pass the coverage gate");
+        assert_eq!(loaded.rows.len(), 6, "3 settlements × 2 symbols");
+        // The negative rate must survive with its sign — the accrual depends on it.
+        assert!(
+            loaded.rows.iter().any(|r| r.funding_rate == dec!(-0.0002)),
+            "a NEGATIVE funding rate must load with its sign intact"
+        );
+    }
+
+    /// One thin symbol must be rejected, and NAMED.
+    #[test]
+    fn load_rejects_a_symbol_with_missing_funding_coverage() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        // AAAUSDT complete (3/3); BBBUSDT has 1 of 3.
+        let a_rows = day_settlements("0.0001");
+        let b_rows: Vec<(i64, &str)> = day_settlements("0.0002").into_iter().take(1).collect();
+
+        let rel_a = write_funding_parquet(root, "AAAUSDT", 2023, 1, &a_rows);
+        let rel_b = write_funding_parquet(root, "BBBUSDT", 2023, 1, &b_rows);
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = FundingDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "deficient-symbol")
+            .expect_err("a symbol below the funding coverage floor must fail the load");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, FundingDataError::InsufficientCoverage { .. }),
+            "expected InsufficientCoverage, got: {msg}"
+        );
+        assert!(
+            msg.contains("BBBUSDT"),
+            "the failure must NAME the deficient symbol so the operator knows which one \
+             to backfill. Got: {msg}"
+        );
+        assert!(
+            !msg.contains("AAAUSDT"),
+            "the complete symbol must not be blamed. Got: {msg}"
+        );
+    }
+
+    /// A completely ABSENT symbol is the worst case: it must fail loudly rather than
+    /// silently shrink the universe (and, on the MN lane, silently zero its short-leg
+    /// funding cost).
+    #[test]
+    fn load_rejects_a_symbol_with_zero_funding_rows() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        let a_rows = day_settlements("0.0001");
+        // BBBUSDT's file exists but holds only OUT-OF-SPAN settlements.
+        let b_rows: Vec<(i64, &str)> = vec![
+            (span.start_ms - 16 * 3_600_000, "0.001"),
+            (span.start_ms - 8 * 3_600_000, "0.002"),
+        ];
+
+        let rel_a = write_funding_parquet(root, "AAAUSDT", 2023, 1, &a_rows);
+        let rel_b = write_funding_parquet(root, "BBBUSDT", 2023, 1, &b_rows);
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = FundingDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "absent-symbol")
+            .expect_err("a symbol with ZERO in-span settlements must fail the load");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("BBBUSDT") && msg.contains("got 0 settlements"),
+            "the failure must name the empty symbol and say it has zero settlements. \
+             Got: {msg}"
+        );
+    }
+
+    /// The UNIT guard (bug-log #70's lesson, applied before it can bite).
+    ///
+    /// Funding settles every 8 hours. If the expected count were computed on the HOURLY
+    /// divisor — the same coarse-vs-raw mix-up that made the R3 gate demand 3 632 bars
+    /// against 87 600 loaded — the gate would demand 8× the settlements that exist and
+    /// reject every complete corpus. This pins the divisor by asserting that a corpus
+    /// with EXACTLY the 8-hourly settlement count passes.
+    #[test]
+    fn coverage_expectation_is_in_settlements_not_hours() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+        let span_hours = (span.end_ms - span.start_ms) / 3_600_000;
+        let expected_settlements = (span.end_ms - span.start_ms) / SETTLEMENT_INTERVAL_MS;
+        assert_eq!(span_hours, 24);
+        assert_eq!(
+            expected_settlements, 3,
+            "a 24h span holds 3 settlements, not 24 — that ratio IS the patch"
+        );
+
+        let rel = write_funding_parquet(root, "AAAUSDT", 2023, 1, &day_settlements("0.0001"));
+        let aggregate = write_manifest(root, &[rel]);
+        let src = FundingDataSource::new(root.to_path_buf(), vec![Symbol::new("AAAUSDT")])
+            .with_expected_revision_sha(&aggregate);
+
+        let loaded = src.load(&span, "unit-guard").unwrap_or_else(|e| {
+            panic!(
+                "a corpus with the exact 8-hourly settlement count must PASS. It did not: \
+                 {e}\nThat means the expected count is being computed on the wrong cadence \
+                 (hours instead of 8h settlements) — the bug-log #70 class."
+            )
+        });
+        assert_eq!(loaded.rows.len(), 3);
+    }
+
+    /// Review 1-21: the SHIPPED corpus must PASS the per-symbol funding coverage gate.
+    ///
+    /// A validation addition may reject only combinations no checked-in corpus uses, so
+    /// the floor has to be MEASURED against the real data, not assumed. This drives the
+    /// production `load()` over the full anchored universe for BOTH anchored years and
+    /// prints the per-symbol settlement counts. `#[ignore]`d because it needs
+    /// `data/binance-funding/` on disk; it is a MEASUREMENT, and the fixture tests above
+    /// are what gate CI. Mirrors `basis_data::tests::real_corpus_passes_the_coverage_gate`.
+    ///
+    /// Run:
+    /// `cargo test -p backtest --features realdata --lib funding_data -- --include-ignored --nocapture`
+    #[test]
+    #[ignore = "requires real data/binance-funding/ parquet files on disk"]
+    fn real_corpus_passes_the_funding_coverage_gate() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("workspace root");
+        let funding_root = workspace_root.join("data/binance-funding");
+
+        let universe: Vec<Symbol> = crate::scenarios::momentum::top10_symbols_with_prices()
+            .into_iter()
+            .map(|(s, _)| s)
+            .collect();
+
+        for year in [2023, 2024] {
+            let span = crate::realdata::TimeSpan::full_year(year);
+            let src = FundingDataSource::new(funding_root.clone(), universe.clone());
+            let loaded = src.load(&span, "coverage-probe").unwrap_or_else(|e| {
+                panic!(
+                    "COVERAGE GATE REJECTED THE SHIPPED CORPUS for {year}: {e}\n\
+                     The gate must not reject data the anchored surfaces were built on — \
+                     either the floor (MIN_SYMBOL_COVERAGE_PERMILLE) is too high or the \
+                     corpus really is deficient."
+                )
+            });
+
+            let expected = (span.end_ms - span.start_ms) / SETTLEMENT_INTERVAL_MS;
+            for sym in &universe {
+                let n = loaded.rows.iter().filter(|r| &r.symbol == sym).count();
+                println!("{year} {sym:>10}: {n} / {expected} settlements");
+            }
+        }
     }
 
     // ── REVISION-mismatch rejection test (M-DEV-1) ────────────────────────────

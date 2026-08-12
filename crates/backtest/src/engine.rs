@@ -1196,7 +1196,6 @@ pub async fn run_scenario(
                 // engine dispatch: noop sim (Lab UI does not expose sim flags).
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override: None,
-                basis_override: None,
                 bar_span_hours: 1,
             };
             // Bug #63 — cancel + progress.
@@ -1261,7 +1260,6 @@ pub async fn run_scenario(
                 // engine dispatch: noop sim (Lab UI does not expose sim flags).
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override: None,
-                basis_override: None,
                 bar_span_hours: 1,
             };
             let result = crate::scenarios::tcn_overlay_weights::run(input.clone(), seed_u64)

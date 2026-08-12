@@ -179,6 +179,20 @@ pub enum CrossSectionalLoadError {
         selection_mode: SelectionMode,
     },
     #[error(
+        "[degenerate_residual_arm] score_source = \"basis_funding_residual\" DEGENERATES with \
+         selection_mode = {selection_mode:?}: the rank-residual is computed ONLY under \
+         \"long_short\" (`build_rebalance_signals` derives `effective_scores` behind \
+         `selection_mode == LongShort && score_source == BasisFundingResidual`). Under any \
+         other mode the cached `self.scores` are used instead — and for this arm those hold \
+         the plain trailing basis mean, i.e. a BasisReversal-shaped score. So the config \
+         would SILENTLY run a different arm than the one it names, while hashing as a \
+         distinct \"basis_funding_residual\" identity: two K3 identities for one behavior, \
+         and a θ-surface labelled `score_source=basis_funding_residual` whose numbers came \
+         from the basis-reversal signal. Switch selection_mode to \"long_short\" or pick the \
+         score_source you actually want."
+    )]
+    DegenerateResidualArm { selection_mode: SelectionMode },
+    #[error(
         "[invalid_entry_threshold] entry_threshold = {0} is out of range: must be <= 1.0. The \
          threshold is compared against a trailing LOG-return, so 1.0 already demands a ~172% \
          price rise over the lookback before entering — values above it are almost certainly a \
@@ -210,6 +224,7 @@ impl CrossSectionalLoadError {
             Self::InertDirection { .. } => "inert_direction",
             Self::InertScoreSource { .. } => "inert_score_source",
             Self::InertThreshold { .. } => "inert_threshold",
+            Self::DegenerateResidualArm { .. } => "degenerate_residual_arm",
             Self::InvalidEntryThreshold(_) => "invalid_entry_threshold",
             Self::TomlParse(_) => "toml_parse",
             Self::IoRead(_) => "io_read",
@@ -450,6 +465,30 @@ impl CrossSectionalMomentumConfig {
             });
         }
 
+        // Review 1-21: `basis_funding_residual` is COMPUTED only under LongShort.
+        //
+        // `build_rebalance_signals` builds `effective_scores` behind
+        // `selection_mode == LongShort && score_source == BasisFundingResidual`; under
+        // any other selection mode it falls back to `self.scores`, which for this arm
+        // holds `basis_trailing_mean_for_residual` — a plain −mean(basis), i.e. the
+        // BasisReversal signal. A config naming the residual arm would therefore run the
+        // basis arm and still hash as a distinct identity. Same failure class, and the
+        // same remedy, as the 1-16 `InertDirection` and 1-17 `InertScoreSource` guards
+        // sitting either side of this one.
+        //
+        // Accept-set impact: NONE. No checked-in TOML sets `score_source` at all (the
+        // sweep driver mutates the field on a loaded struct), and every anchored MN
+        // residual surface (#116-#119) ran `selection_mode = long_short`. This rejects
+        // only combinations nothing uses — proven by
+        // `tests::degenerate_residual_arm_rejects_only_non_long_short`.
+        if raw.score_source == ScoreSource::BasisFundingResidual
+            && raw.selection_mode != SelectionMode::LongShort
+        {
+            return Err(CrossSectionalLoadError::DegenerateResidualArm {
+                selection_mode: raw.selection_mode,
+            });
+        }
+
         // Review 1-16: `direction = "reversion"` requires the inverting arm.
         // The D-MR.1 negation lives ONLY on the VolAdjustedReturn score path
         // under a cross-sectional selection mode (`on_bar` inverts at the score
@@ -488,6 +527,23 @@ impl CrossSectionalMomentumConfig {
     }
 
     /// JSON schema for `Strategy::config_schema()`.
+    ///
+    /// # Kept in step with [`Self::from_str`] (review 1-21)
+    ///
+    /// This schema had gone stale: it still declared `"k_short": {"minimum": 0,
+    /// "maximum": 0}` — the v1 spot-only rule — although M-DEV-2 lifted that gate and the
+    /// loader has accepted `k_short > 0` under `selection_mode = "long_short"` ever since
+    /// (every anchored MN surface, #108-#119, ran `k_long = k_short = 3`). A schema that
+    /// forbids the axis the shipped configs use is worse than no schema: it is a
+    /// confident, wrong answer to "what may I write here?".
+    ///
+    /// The three axes the loader validates (`direction`, `score_source`,
+    /// `selection_mode`) were missing entirely and are declared here now. The
+    /// CROSS-FIELD rules — `k_short > 0` ⇒ `long_short`, `entry_threshold ≠ 0` ⇒
+    /// `time_series_long_flat`, `basis_funding_residual` ⇒ `long_short`,
+    /// `reversion` ⇒ `vol_adjusted_return` + a cross-sectional mode — are NOT expressible
+    /// in this flat property list; they live in `from_str`, which is the authority.
+    /// `tests::json_schema_matches_the_loader_on_k_short` pins the one that regressed.
     pub fn json_schema() -> serde_json::Value {
         serde_json::json!({
             "type": "object",
@@ -500,11 +556,34 @@ impl CrossSectionalMomentumConfig {
                 "lookback_minutes": { "type": "integer", "minimum": 1, "default": 60 },
                 "rebalance_minutes": { "type": "integer", "minimum": 1, "default": 60 },
                 "k_long": { "type": "integer", "minimum": 1, "default": 3 },
-                "k_short": { "type": "integer", "minimum": 0, "maximum": 0, "default": 0 },
+                // M-DEV-2: > 0 requires selection_mode = "long_short" (enforced in from_str).
+                "k_short": { "type": "integer", "minimum": 0, "default": 0 },
                 "exposure_cap": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "default": 0.5 },
                 "drift_rebalance_threshold": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1, "default": 0.1 },
                 "vol_floor": { "type": "number", "exclusiveMinimum": 0, "default": 0.000001 },
-                "size": { "type": "string", "const": "equal_weight" }
+                "size": { "type": "string", "const": "equal_weight" },
+                "direction": {
+                    "type": "string",
+                    "enum": ["momentum", "reversion"],
+                    "default": "momentum"
+                },
+                "score_source": {
+                    "type": "string",
+                    "enum": [
+                        "vol_adjusted_return",
+                        "funding_carry",
+                        "basis_reversal",
+                        "basis_funding_residual"
+                    ],
+                    "default": "vol_adjusted_return"
+                },
+                "selection_mode": {
+                    "type": "string",
+                    "enum": ["cross_sectional_top_k", "time_series_long_flat", "long_short"],
+                    "default": "cross_sectional_top_k"
+                },
+                // Read ONLY under time_series_long_flat (enforced in from_str).
+                "entry_threshold": { "type": "number", "maximum": 1.0, "default": 0 }
             }
         })
     }
@@ -1367,5 +1446,117 @@ entry_threshold = -999999.0
         let cfg = CrossSectionalMomentumConfig::from_str(toml_neg)
             .expect("negative entry_threshold must stay accepted (falsifier fixture pattern)");
         assert!(cfg.entry_threshold < Decimal::ZERO);
+    }
+
+    // ── Review 1-21 ───────────────────────────────────────────────────────────
+
+    /// Review 1-21 MEDIUM: `basis_funding_residual` must be LOUD outside `long_short`,
+    /// and the rejection must be NARROW.
+    ///
+    /// The degeneration: `build_rebalance_signals` computes the rank residual only when
+    /// `selection_mode == LongShort`; otherwise the cached `self.scores` are used, which
+    /// for this arm hold the plain trailing basis mean. A config saying
+    /// `basis_funding_residual` under `cross_sectional_top_k` silently ran the
+    /// basis-reversal signal under a residual identity.
+    ///
+    /// The test enumerates the FULL accept-set of the new guard, per the patch-pass
+    /// contract: `long_short` is accepted, and the two other modes are the only things
+    /// rejected. `time_series_long_flat` is rejected by the OLDER `InertScoreSource`
+    /// guard, which fires first — that is fine, both are loud; this asserts the
+    /// specific code for the mode that reaches the new one.
+    #[test]
+    fn degenerate_residual_arm_rejects_only_non_long_short() {
+        let toml_for = |mode: &str, extra: &str| {
+            format!(
+                r#"
+id    = "test_residual_mode"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+score_source = "basis_funding_residual"
+selection_mode = "{mode}"
+{extra}
+"#
+            )
+        };
+
+        // ACCEPTED — the one mode that actually computes the residual.
+        let ok = CrossSectionalMomentumConfig::from_str(&toml_for("long_short", "k_short = 3"))
+            .expect("basis_funding_residual under long_short is the shipped MN residual arm");
+        assert_eq!(ok.score_source, ScoreSource::BasisFundingResidual);
+        assert_eq!(ok.selection_mode, SelectionMode::LongShort);
+        // …and k_short = 0 under long_short stays legal (the falsifiers use it).
+        CrossSectionalMomentumConfig::from_str(&toml_for("long_short", "k_short = 0"))
+            .expect("long_short with k_short = 0 is the un-shorted control arm");
+
+        // REJECTED — the mode that silently ran a different arm.
+        let err = CrossSectionalMomentumConfig::from_str(&toml_for("cross_sectional_top_k", ""))
+            .expect_err("basis_funding_residual under cross_sectional_top_k must be rejected");
+        assert_eq!(err.error_code(), "degenerate_residual_arm", "got: {err}");
+        assert!(
+            err.to_string().contains("DEGENERATES"),
+            "the message must say WHAT degenerates, not just that something is invalid. \
+             Got: {err}"
+        );
+
+        // REJECTED by the older sibling guard (also loud) — recorded so a future edit
+        // that reorders the checks does not mistake this for an acceptance.
+        let err_ts = CrossSectionalMomentumConfig::from_str(&toml_for("time_series_long_flat", ""))
+            .expect_err("basis_funding_residual under time_series_long_flat must be rejected");
+        assert!(
+            matches!(
+                err_ts.error_code(),
+                "inert_score_source" | "degenerate_residual_arm"
+            ),
+            "expected one of the two loud guards, got: {err_ts}"
+        );
+    }
+
+    /// Review 1-21 LOW: the JSON schema must not forbid the axis the loader accepts.
+    ///
+    /// `"k_short": {"minimum": 0, "maximum": 0}` outlived the v1 spot-only rule by the
+    /// whole MN story: every anchored MN surface ran `k_long = k_short = 3`. This pins
+    /// the schema against the loader so the two cannot drift apart again silently.
+    #[test]
+    fn json_schema_matches_the_loader_on_k_short() {
+        let schema = CrossSectionalMomentumConfig::json_schema();
+        let k_short = &schema["properties"]["k_short"];
+        assert_eq!(k_short["minimum"], serde_json::json!(0));
+        assert!(
+            k_short.get("maximum").is_none(),
+            "the schema must not cap k_short at 0 — the loader accepts k_short > 0 under \
+             selection_mode = \"long_short\" (M-DEV-2), which is what every anchored MN \
+             surface ran. Schema said: {k_short}"
+        );
+
+        // The loader really does accept the value the schema now permits (the vacuity
+        // check on this very fix: asserting a JSON literal proves nothing about the
+        // parser).
+        let cfg = CrossSectionalMomentumConfig::from_str(
+            r#"
+id    = "test_schema_k_short"
+kind  = "cross_sectional_momentum"
+stage = "research"
+universe = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+selection_mode = "long_short"
+k_short = 3
+"#,
+        )
+        .expect("k_short = 3 under long_short must parse");
+        assert_eq!(cfg.k_short, 3);
+
+        // The three axes the loader validates are now declared.
+        for axis in ["direction", "score_source", "selection_mode"] {
+            assert!(
+                schema["properties"][axis].is_object(),
+                "the schema must declare `{axis}` — it is a validated, hash-bearing field"
+            );
+        }
+        assert!(
+            schema["properties"]["score_source"]["enum"]
+                .as_array()
+                .is_some_and(|v| v.iter().any(|s| s == "basis_funding_residual")),
+            "every ScoreSource variant must appear in the schema enum"
+        );
     }
 }

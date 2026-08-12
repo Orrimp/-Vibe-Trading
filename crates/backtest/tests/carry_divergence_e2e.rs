@@ -212,7 +212,6 @@ fn run_to_result(
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override,
-        basis_override: None,
         bar_span_hours: 1,
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))
@@ -796,7 +795,6 @@ fn carry_funding_total(size: usize, bar_span_hours: u32, n_bars: i64) -> Decimal
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override: Some(funding),
-        basis_override: None,
         bar_span_hours,
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))

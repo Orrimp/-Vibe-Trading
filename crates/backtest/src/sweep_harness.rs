@@ -481,7 +481,70 @@ impl GridKind {
     pub fn required_slippage_bps(self) -> u32 {
         LEGACY_SLIPPAGE_BPS
     }
+
+    /// The `--paths` (N) each ANCHORED grid was locked at (review 1-21).
+    ///
+    /// The SEVENTH forge axis, and the last identity-bearing CLI value that was neither
+    /// in the scenario name nor in the pairing guard. `--paths` reaches the hashed body
+    /// (`| n_paths |`) and every fill, but the scenario NAME is a pure function of
+    /// `(grid, direction, score_source, selection_mode, horizon, year, generator, fee)`
+    /// — so `--grid mn-tier1 --paths 10` re-emits anchor #108's exact identity into the
+    /// frozen MN directory over a 10-path run.
+    ///
+    /// It differs from the 1-20 fee axis in ONE respect that lowers its severity and is
+    /// worth being precise about: `n_paths` IS printed in the body, so the forged report
+    /// is *distinguishable by inspection* and the anchors gate goes falsely RED rather
+    /// than silently green. A loud false-RED, not a silent forge — but still a wedge
+    /// that costs an investigation, and still trivially reachable from one flag.
+    ///
+    /// Read off the anchored bodies' `| n_paths |` rows (measured, not assumed — all 35
+    /// sweep reports under `evidence/**/reports/` were enumerated):
+    /// - [`Self::TsDaily`] and [`Self::CarryDaily`] — anchors #94/#95 and #98/#99 ran
+    ///   **1000**;
+    /// - every other anchored grid ran **200**;
+    /// - [`Self::TwoCell`] is `None` — it is the never-anchored probe grid, it mints its
+    ///   own `-grid-twocell` scenario name, and it is the escape hatch that keeps the
+    ///   review-1-15 ratified rule intact ("small-N runs stay LEGAL, warn — never bail").
+    ///   Small-N probing goes through it.
+    #[must_use]
+    pub fn required_paths(self) -> Option<usize> {
+        match self {
+            Self::TwoCell => None,
+            Self::TsDaily | Self::CarryDaily => Some(1000),
+            Self::Tier1
+            | Self::MrTier1
+            | Self::CarryTier1
+            | Self::TsTier1
+            | Self::Ts4h
+            | Self::Carry4h
+            | Self::BasisTier1
+            | Self::MnTier1 => Some(200),
+        }
+    }
+
+    /// The `--ensemble-seed` each ANCHORED grid was locked at (review 1-21).
+    ///
+    /// The in-lane twin of [`Self::required_paths`]: the master seed selects WHICH 200
+    /// bootstrap paths run (`path_seed_j = derive_path_seed(ensemble_seed, j)`), so a
+    /// different seed is a different experiment under the same name. Every one of the 35
+    /// sweep reports in `evidence/**/reports/` records `| master_seed | 0xC0FFEE |` —
+    /// there is no second value anywhere in the corpus.
+    ///
+    /// `None` for the never-anchored probe grid, as above.
+    #[must_use]
+    pub fn required_ensemble_seed(self) -> Option<u64> {
+        match self {
+            Self::TwoCell => None,
+            _ => Some(ANCHORED_ENSEMBLE_SEED),
+        }
+    }
 }
+
+/// The master ensemble seed EVERY anchored surface ran at (review 1-21).
+///
+/// `0xC0FFEE`. Identical to the fill-tie-break seed by convention (ADR-0051 D1 keeps the
+/// two orthogonal in ROLE, not in value).
+pub const ANCHORED_ENSEMBLE_SEED: u64 = 0x00C0_FFEE;
 
 /// The legacy hardcoded taker fee every pre-basis anchored surface ran at, and
 /// the `--taker-fee-bps` CLI default (review 1-20).
@@ -579,6 +642,8 @@ pub fn validate_grid_axis_pairing(
     horizon: crate::resample::Horizon,
     taker_fee_bps: u32,
     slippage_bps: u32,
+    paths: usize,
+    ensemble_seed: u64,
 ) -> Result<(), String> {
     let required_direction = grid.required_direction();
     let required_mode = grid.required_selection_mode();
@@ -586,13 +651,26 @@ pub fn validate_grid_axis_pairing(
     let required_horizon = grid.required_horizon();
     let allowed_fees = grid.allowed_taker_fee_bps();
     let required_slippage = grid.required_slippage_bps();
+    let required_paths = grid.required_paths();
+    let required_seed = grid.required_ensemble_seed();
     let direction_ok = direction == required_direction;
     let mode_ok = selection_mode == required_mode;
     let source_ok = allowed_sources.contains(&score_source);
     let horizon_ok = horizon == required_horizon;
     let fee_ok = allowed_fees.contains(&taker_fee_bps);
     let slippage_ok = slippage_bps == required_slippage;
-    if direction_ok && mode_ok && source_ok && horizon_ok && fee_ok && slippage_ok {
+    // `None` = the never-anchored probe grid → the axis is free there (review 1-21).
+    let paths_ok = required_paths.is_none_or(|n| n == paths);
+    let seed_ok = required_seed.is_none_or(|s| s == ensemble_seed);
+    if direction_ok
+        && mode_ok
+        && source_ok
+        && horizon_ok
+        && fee_ok
+        && slippage_ok
+        && paths_ok
+        && seed_ok
+    {
         return Ok(());
     }
     // Name the FIRST offending axis explicitly (review 1-18): the full-tuple
@@ -607,20 +685,37 @@ pub fn validate_grid_axis_pairing(
         format!("--horizon (requested {horizon}, required {required_horizon})")
     } else if !fee_ok {
         format!("--taker-fee-bps (requested {taker_fee_bps}, required one of {allowed_fees:?})")
-    } else {
+    } else if !slippage_ok {
         format!("--slippage-bps (requested {slippage_bps}, required {required_slippage})")
+    } else if !paths_ok {
+        format!(
+            "--paths (requested {paths}, required {required} — that is the N this grid's \
+             anchored bodies record in their `| n_paths |` row). For a small-N probe use \
+             `--grid two-cell`, which mints its own `-grid-twocell` scenario name and \
+             cannot shadow an anchored report (review 1-15 keeps small N legal THERE)",
+            required = required_paths.unwrap_or_default()
+        )
+    } else {
+        format!(
+            "--ensemble-seed (requested {ensemble_seed:#x}, required {required:#x} — the \
+             master seed selects WHICH paths run, so a different seed is a different \
+             experiment under the same name)",
+            required = required_seed.unwrap_or_default()
+        )
     };
     Err(format!(
         "requested axis tuple (--direction {direction:?}, --selection-mode \
          {selection_mode:?}, --score-source {score_source:?}, --horizon {horizon}, \
-         --taker-fee-bps {taker_fee_bps}, --slippage-bps {slippage_bps}) does not \
+         --taker-fee-bps {taker_fee_bps}, --slippage-bps {slippage_bps}, --paths {paths}, \
+         --ensemble-seed {ensemble_seed:#x}) does not \
          pair with --grid {grid:?}: that grid requires (direction={required_direction:?}, \
          selection_mode={required_mode:?}, score_source ∈ {allowed_sources:?}, \
          horizon={required_horizon}, taker_fee_bps ∈ {allowed_fees:?}, \
-         slippage_bps={required_slippage}). offending axis: {offending}. A mismatched tuple \
-         would run one family's behavior — or one fee regime's fills — under another \
-         family's anchored scenario name; the forged report shadows the real one as \
-         \"latest matching\" and turns the anchors gate falsely RED — refusing to run."
+         slippage_bps={required_slippage}, paths={required_paths:?}, \
+         ensemble_seed={required_seed:?}). offending axis: {offending}. A mismatched tuple \
+         would run one family's behavior — or one fee regime's fills, or one path-set — \
+         under another family's anchored scenario name; the forged report shadows the real \
+         one as \"latest matching\" and turns the anchors gate falsely RED — refusing to run."
     ))
 }
 

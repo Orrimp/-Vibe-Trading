@@ -102,10 +102,11 @@ pub use backtest::bakeoff::robustness::{ParamRobustnessVerdict, classify_verdict
 // them — output is byte-identical for every anchored lane (the M2/L3 deltas
 // are gated to the never-anchored two-cell/gbm lanes).
 pub use backtest::sweep_harness::{
-    CellResult, GridKind, LEGACY_SLIPPAGE_BPS, LEGACY_TAKER_FEE_BPS, SweepDirection,
-    SweepScoreSource, SweepSelectionMode, TIER1_GRID, ThetaCell, build_scenario_name, cell_config,
-    derive_path_seed, family_any_non_fragile, family_verdict_line, grid_def_string, grid_for_kind,
-    render_surface_report, validate_direction_grid_pairing, validate_grid_axis_pairing,
+    ANCHORED_ENSEMBLE_SEED, CellResult, GridKind, LEGACY_SLIPPAGE_BPS, LEGACY_TAKER_FEE_BPS,
+    SweepDirection, SweepScoreSource, SweepSelectionMode, TIER1_GRID, ThetaCell,
+    build_scenario_name, cell_config, derive_path_seed, family_any_non_fragile,
+    family_verdict_line, grid_def_string, grid_for_kind, render_surface_report,
+    validate_direction_grid_pairing, validate_grid_axis_pairing,
 };
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -879,7 +880,6 @@ fn run_one_path_with_config(
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
         funding_override,
-        basis_override: None,
         // Carry-surface fix (2026-08-04): the funding-accrual rule must be told
         // how much simulated market time ONE generated bar represents, because
         // the generator stamps every path on a cosmetic 1-hour ladder whatever
@@ -1571,9 +1571,10 @@ fn resolve_effective_out_dir(
 ///
 /// Two independent checks:
 ///
-/// 1. **Axis pairing** ([`validate_grid_axis_pairing`]) — the SIX-axis tuple
+/// 1. **Axis pairing** ([`validate_grid_axis_pairing`]) — the EIGHT-axis tuple
 ///    `--direction × --selection-mode × --score-source × --horizon ×
-///    --taker-fee-bps × --slippage-bps` must match the grid's LOCKED values.
+///    --taker-fee-bps × --slippage-bps × --paths × --ensemble-seed` must match the
+///    grid's LOCKED values.
 ///    - 1-16 closed `--direction`: `--direction momentum --grid mr-tier1` emits
 ///      anchor #86's name over the MR cells (and the converse #87).
 ///    - 1-17 closed `--selection-mode` and `--score-source`: `--grid ts-tier1`
@@ -1589,6 +1590,15 @@ fn resolve_effective_out_dir(
 ///      identity at 20 bps with no fee row anywhere in the body, and `--grid
 ///      basis-tier1 --taker-fee-bps 5 --slippage-bps 7` reproduced anchor #104's
 ///      identity — and its `taker_fee_bps` row — at a different fill price.
+///    - 1-21 closes `--paths` and `--ensemble-seed`, the last two identity-bearing
+///      values that reached the hashed body and the fills but appeared in neither
+///      the scenario name nor the guard. `--grid mn-tier1 --paths 10` re-emits
+///      anchor #108's exact name into the frozen MN directory. UNLIKE the 1-20 fee
+///      axis, both ARE printed in the body (`| n_paths |`, `| master_seed |`), so
+///      this is a loud false-RED rather than a silent forge — still one flag away
+///      from an investigation. The never-anchored `two-cell` grid stays UNPINNED on
+///      both axes, which is where review 1-15's ratified "small N stays legal"
+///      lives.
 ///
 /// 2. **Sidecar × generator** — the funding/basis/MN sidecar loaders below are
 ///    `&&`-gated on `GeneratorKind::BlockBootstrapReal` with a SILENT
@@ -1603,6 +1613,13 @@ fn resolve_effective_out_dir(
 /// Returns the guard's message verbatim, naming the offending axis and the
 /// value the grid requires.
 fn validate_cli_axes(args: &Args) -> Result<()> {
+    // Review 1-21: `--ensemble-seed` is a String on the CLI (hex or decimal), so the
+    // guard needs it PARSED. Parsing here rather than in `main` keeps the guard's input
+    // identical to the value `main` later derives the path seeds from — a guard that
+    // validates a different value than the run uses is worth nothing (review 1-18).
+    let ensemble_seed = parse_seed(&args.ensemble_seed)
+        .with_context(|| format!("parse --ensemble-seed {:?}", args.ensemble_seed))?;
+
     if let Err(msg) = validate_grid_axis_pairing(
         args.grid,
         args.direction,
@@ -1611,6 +1628,8 @@ fn validate_cli_axes(args: &Args) -> Result<()> {
         args.horizon,
         args.taker_fee_bps,
         args.slippage_bps,
+        args.paths,
+        ensemble_seed,
     ) {
         anyhow::bail!("{msg}");
     }
@@ -2710,6 +2729,9 @@ mod tests {
                     horizon,
                     fee,
                     LEGACY_SLIPPAGE_BPS,
+                    grid.required_paths().unwrap_or(200),
+                    grid.required_ensemble_seed()
+                        .unwrap_or(ANCHORED_ENSEMBLE_SEED),
                 )
                 .is_ok(),
                 "anchored tuple must pass: {grid:?} × {dir:?} × {mode:?} × {source:?} × \
@@ -2730,6 +2752,9 @@ mod tests {
                             grid.required_horizon(),
                             fee,
                             grid.required_slippage_bps(),
+                            grid.required_paths().unwrap_or(200),
+                            grid.required_ensemble_seed()
+                                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
                         )
                         .is_ok(),
                         "required tuple must pass for {grid:?} with {source:?} at {fee}bps"
@@ -2958,6 +2983,11 @@ mod tests {
                 "daily",
                 "--generator",
                 "block-bootstrap-real",
+                // Review 1-21: anchors #98/#99 record `| n_paths | 1000 |`, not 200 —
+                // measured from the bodies, not assumed. The CLI default (200) is now
+                // REJECTED on this grid, which is the point of the pin.
+                "--paths",
+                "1000",
             ],
             &[
                 "--grid",
@@ -2980,12 +3010,145 @@ mod tests {
                 "time-series-long-flat",
                 "--horizon",
                 "daily",
+                // Anchors #94/#95 record `| n_paths | 1000 |` (review 1-21).
+                "--paths",
+                "1000",
             ],
         ];
         for cli in anchored_cli {
             let args = parse_cli(cli);
             validate_cli_axes(&args)
                 .unwrap_or_else(|e| panic!("anchored invocation {cli:?} must pass: {e}"));
+        }
+    }
+
+    /// Review 1-21: `--paths` and `--ensemble-seed` are forge axes — end-to-end.
+    ///
+    /// Both reach the hashed body and every fill, and neither reached the scenario NAME
+    /// or the guard: `--grid mn-tier1 --paths 10` re-emitted anchor #108's exact identity
+    /// into the frozen MN directory over a 10-path run. Because both values ARE printed
+    /// in the body, the result is a loud false-RED on the anchors gate rather than a
+    /// silent forge — the 1-20 fee axis was worse in that respect — but it is still one
+    /// flag away from an investigation, so it is pinned.
+    ///
+    /// The test drives the PRODUCTION path (real clap → `validate_cli_axes`) and covers
+    /// all four cases that matter:
+    ///
+    /// 1. the forged small-N MN run is REJECTED, naming the axis;
+    /// 2. a foreign ensemble seed is REJECTED, naming the axis;
+    /// 3. the never-anchored `two-cell` grid stays FREE on both axes — that is where
+    ///    review 1-15's ratified "small-N runs stay LEGAL, warn — never bail" now lives,
+    ///    and it cannot shadow an anchored report because it mints its own
+    ///    `-grid-twocell` scenario name; and
+    /// 4. the per-grid N actually matches what each anchored body records (200
+    ///    everywhere except the two DAILY grids, which ran 1000).
+    #[test]
+    fn cli_paths_and_ensemble_seed_are_pinned_on_anchored_grids() {
+        // 1. The forged small-N MN run.
+        let args = parse_cli(&[
+            "--grid",
+            "mn-tier1",
+            "--score-source",
+            "mn-basis-spread",
+            "--generator",
+            "block-bootstrap-real",
+            "--taker-fee-bps",
+            "0",
+            "--paths",
+            "10",
+        ]);
+        assert_eq!(
+            args.paths, 10,
+            "clap must map --paths onto the field the guard reads"
+        );
+        let err = validate_cli_axes(&args)
+            .expect_err("`--grid mn-tier1 --paths 10` must be rejected")
+            .to_string();
+        assert!(
+            err.contains("--paths") && err.contains("requested 10") && err.contains("200"),
+            "the bail must name the offending axis, the requested N and the required N: {err}"
+        );
+        assert!(
+            err.contains("two-cell"),
+            "the bail must point at the escape hatch for legitimate small-N probes: {err}"
+        );
+
+        // 2. A foreign ensemble seed under an anchored identity.
+        let args = parse_cli(&[
+            "--grid",
+            "mn-tier1",
+            "--score-source",
+            "mn-basis-spread",
+            "--generator",
+            "block-bootstrap-real",
+            "--taker-fee-bps",
+            "0",
+            "--ensemble-seed",
+            "0xDEADBEEF",
+        ]);
+        let err = validate_cli_axes(&args)
+            .expect_err("a foreign --ensemble-seed on an anchored grid must be rejected")
+            .to_string();
+        assert!(
+            err.contains("--ensemble-seed") && err.contains("0xdeadbeef"),
+            "the bail must name the offending axis and the requested seed: {err}"
+        );
+
+        // The seed is parsed, not string-compared: the decimal spelling of 0xC0FFEE
+        // must PASS (12648430 == 0xC0FFEE).
+        let args = parse_cli(&[
+            "--grid",
+            "mn-tier1",
+            "--score-source",
+            "mn-basis-spread",
+            "--generator",
+            "block-bootstrap-real",
+            "--taker-fee-bps",
+            "0",
+            "--ensemble-seed",
+            "12648430",
+        ]);
+        validate_cli_axes(&args).expect(
+            "the DECIMAL spelling of the anchored seed must pass — the guard compares \
+             parsed u64s, not strings",
+        );
+
+        // 3. The probe grid stays free on both axes (review 1-15 stays intact).
+        for n in ["3", "10", "200", "1000"] {
+            let args = parse_cli(&["--grid", "two-cell", "--paths", n]);
+            validate_cli_axes(&args).unwrap_or_else(|e| {
+                panic!(
+                    "the never-anchored two-cell probe grid must accept --paths {n} \
+                     (review 1-15: small N stays LEGAL, warn — never bail): {e}"
+                )
+            });
+        }
+        let args = parse_cli(&["--grid", "two-cell", "--ensemble-seed", "0x1234"]);
+        validate_cli_axes(&args).expect("the two-cell probe grid must accept any --ensemble-seed");
+        assert_eq!(
+            GridKind::TwoCell.scenario_discriminator(),
+            "-grid-twocell",
+            "the probe grid may only stay unpinned because its scenario name cannot \
+             collide with an anchored one"
+        );
+
+        // 4. The per-grid N matches what the anchored bodies record.
+        assert_eq!(GridKind::TsDaily.required_paths(), Some(1000));
+        assert_eq!(GridKind::CarryDaily.required_paths(), Some(1000));
+        assert_eq!(GridKind::MnTier1.required_paths(), Some(200));
+        assert_eq!(GridKind::BasisTier1.required_paths(), Some(200));
+        assert_eq!(GridKind::Tier1.required_paths(), Some(200));
+        assert_eq!(GridKind::TwoCell.required_paths(), None);
+        for grid in ALL_GRIDS {
+            assert_eq!(
+                grid.required_ensemble_seed(),
+                if grid == GridKind::TwoCell {
+                    None
+                } else {
+                    Some(0x00C0_FFEE)
+                },
+                "every anchored body records `| master_seed | 0xC0FFEE |`: {grid:?}"
+            );
         }
     }
 
@@ -3020,6 +3183,8 @@ mod tests {
             "args.horizon",
             "args.taker_fee_bps",
             "args.slippage_bps",
+            "args.paths",
+            "args.ensemble_seed",
             "args.generator",
         ] {
             assert!(
@@ -3058,6 +3223,10 @@ mod tests {
             H::OneHour,
             20,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::Tier1.required_paths().unwrap_or(200),
+            GridKind::Tier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("tier1 × --taker-fee-bps 20 must bail");
         assert!(
@@ -3082,6 +3251,10 @@ mod tests {
             H::OneHour,
             5,
             7,
+            GridKind::BasisTier1.required_paths().unwrap_or(200),
+            GridKind::BasisTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("basis-tier1 × --slippage-bps 7 must bail");
         assert!(
@@ -3103,6 +3276,10 @@ mod tests {
             H::OneHour,
             0,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::TsTier1.required_paths().unwrap_or(200),
+            GridKind::TsTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("ts-tier1 × --taker-fee-bps 0 must bail");
         assert!(
@@ -3124,6 +3301,10 @@ mod tests {
             H::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::MnTier1.required_paths().unwrap_or(200),
+            GridKind::MnTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("mn-tier1 × --taker-fee-bps 4 must bail");
         assert!(
@@ -3141,6 +3322,10 @@ mod tests {
             H::OneHour,
             LEGACY_TAKER_FEE_BPS,
             9,
+            GridKind::Tier1.required_paths().unwrap_or(200),
+            GridKind::Tier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("tier1 × --slippage-bps 9 must bail");
         assert!(
@@ -3166,6 +3351,9 @@ mod tests {
                     grid.required_horizon(),
                     fee,
                     grid.required_slippage_bps(),
+                    grid.required_paths().unwrap_or(200),
+                    grid.required_ensemble_seed()
+                        .unwrap_or(ANCHORED_ENSEMBLE_SEED),
                 )
                 .is_ok();
                 assert_eq!(
@@ -3186,6 +3374,9 @@ mod tests {
                         grid.required_horizon(),
                         grid.allowed_taker_fee_bps()[0],
                         slip,
+                        grid.required_paths().unwrap_or(200),
+                        grid.required_ensemble_seed()
+                            .unwrap_or(ANCHORED_ENSEMBLE_SEED),
                     )
                     .is_err(),
                     "{grid:?} at --slippage-bps {slip} must bail (required {})",
@@ -3216,6 +3407,10 @@ mod tests {
             H::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::Ts4h.required_paths().unwrap_or(200),
+            GridKind::Ts4h
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("ts-4h × --horizon 1h must bail");
         assert!(
@@ -3233,6 +3428,10 @@ mod tests {
             H::FourHours,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::TsTier1.required_paths().unwrap_or(200),
+            GridKind::TsTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("ts-tier1 × --horizon 4h must bail");
         assert!(
@@ -3250,6 +3449,10 @@ mod tests {
             H::OneDay,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::Carry4h.required_paths().unwrap_or(200),
+            GridKind::Carry4h
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("carry-4h × --horizon daily must bail");
         assert!(
@@ -3270,6 +3473,10 @@ mod tests {
             H::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::CarryDaily.required_paths().unwrap_or(200),
+            GridKind::CarryDaily
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("carry-daily × --horizon 1h must bail");
         assert!(
@@ -3295,6 +3502,9 @@ mod tests {
                         wrong,
                         grid.allowed_taker_fee_bps()[0],
                         grid.required_slippage_bps(),
+                        grid.required_paths().unwrap_or(200),
+                        grid.required_ensemble_seed()
+                            .unwrap_or(ANCHORED_ENSEMBLE_SEED),
                     )
                     .is_err(),
                     "{grid:?} at --horizon {wrong} must bail (required {})",
@@ -3617,6 +3827,10 @@ mod tests {
             backtest::resample::Horizon::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::TsTier1.required_paths().unwrap_or(200),
+            GridKind::TsTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("ts-tier1 × top-K must bail");
         assert!(
@@ -3638,6 +3852,10 @@ mod tests {
             backtest::resample::Horizon::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::Tier1.required_paths().unwrap_or(200),
+            GridKind::Tier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("tier1 × time-series-long-flat must bail");
         assert!(
@@ -3655,6 +3873,10 @@ mod tests {
             backtest::resample::Horizon::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::TsTier1.required_paths().unwrap_or(200),
+            GridKind::TsTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("ts-tier1 × carry must bail");
         assert!(
@@ -3672,6 +3894,10 @@ mod tests {
             backtest::resample::Horizon::OneHour,
             LEGACY_TAKER_FEE_BPS,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::CarryTier1.required_paths().unwrap_or(200),
+            GridKind::CarryTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("carry-tier1 × vol-adjusted-return must bail");
         assert!(
@@ -3689,6 +3915,10 @@ mod tests {
             backtest::resample::Horizon::OneHour,
             0,
             LEGACY_SLIPPAGE_BPS,
+            GridKind::MnTier1.required_paths().unwrap_or(200),
+            GridKind::MnTier1
+                .required_ensemble_seed()
+                .unwrap_or(ANCHORED_ENSEMBLE_SEED),
         )
         .expect_err("mn-tier1 × basis-reversal must bail");
         assert!(
@@ -3706,6 +3936,10 @@ mod tests {
                 backtest::resample::Horizon::OneHour,
                 LEGACY_TAKER_FEE_BPS,
                 LEGACY_SLIPPAGE_BPS,
+                GridKind::MrTier1.required_paths().unwrap_or(200),
+                GridKind::MrTier1
+                    .required_ensemble_seed()
+                    .unwrap_or(ANCHORED_ENSEMBLE_SEED),
             )
             .is_err(),
             "the 1-16 direction mismatch must still bail through the full guard"

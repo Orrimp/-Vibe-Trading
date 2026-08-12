@@ -153,6 +153,36 @@ impl MomentumStrategy {
             })
             .collect();
 
+        // Review 1-21: the struct-literal seam bypasses every loader guard.
+        //
+        // `CrossSectionalMomentumConfig`'s fields are all `pub`, so the sweep driver
+        // (`cell_config`) and every e2e fixture build configs WITHOUT going through
+        // `from_str` — which is where `DegenerateResidualArm` and its sibling guards
+        // live. `from_config` is the one funnel every construction path passes through,
+        // so the seam that a loader guard cannot see gets a warning here.
+        //
+        // Behaviour is UNCHANGED (no bail, no panic — `from_config` returns `Self`, and
+        // a panic in library code violates CLAUDE.md). The combination never occurs in
+        // production: every anchored MN residual surface ran `long_short`. This exists so
+        // that if it ever DOES occur, the run says so instead of quietly emitting a
+        // θ-surface labelled `basis_funding_residual` whose numbers came from the
+        // basis-reversal signal.
+        if cfg.score_source == ScoreSource::BasisFundingResidual
+            && cfg.selection_mode != SelectionMode::LongShort
+        {
+            tracing::warn!(
+                strategy_id = %cfg.id,
+                score_source = ?cfg.score_source,
+                selection_mode = ?cfg.selection_mode,
+                "DEGENERATE ARM: score_source=basis_funding_residual computes its rank \
+                 residual ONLY under selection_mode=long_short. Under this mode the cached \
+                 trailing basis mean is used instead — this run will behave like \
+                 basis_reversal while identifying (and hashing) as basis_funding_residual. \
+                 `CrossSectionalMomentumConfig::from_str` rejects this combination; it was \
+                 reached through the struct-literal seam."
+            );
+        }
+
         Self {
             id: StrategyId::new(cfg.id.as_str()),
             universe_symbols,
@@ -299,6 +329,17 @@ impl MomentumStrategy {
         // LongShort → top_k_long (long book) + bottom_k_short (short book).
         //   For BasisFundingResidual: the residual scores override self.scores at rebalance
         //   time — compute them fresh and use them for both top_k_long and bottom_k_short.
+        //
+        // DEGENERATION NOTE (review 1-21 — the fallback is DOCUMENTED, not silent):
+        // when `score_source == BasisFundingResidual` but the mode is NOT LongShort, the
+        // `unwrap_or(&self.scores)` below falls back to the per-bar cache, which for this
+        // arm holds `basis_trailing_mean_for_residual` — a plain −mean(basis), i.e. the
+        // BasisReversal signal, NOT a residual. That combination is rejected outright by
+        // `CrossSectionalMomentumConfig::from_str`
+        // (`CrossSectionalLoadError::DegenerateResidualArm`) and warned about once in
+        // `from_config` for the struct-literal seam that bypasses the loader. Reaching
+        // this fallback with the residual score source therefore means someone built the
+        // config by hand and ignored a warning.
         let effective_scores: Option<BTreeMap<Symbol, Option<Decimal>>> = if self.selection_mode
             == SelectionMode::LongShort
             && self.score_source == ScoreSource::BasisFundingResidual
@@ -2298,6 +2339,18 @@ selection_mode = "long_short"
         // The residual ranking must differ from the raw basis ranking.
         // Raw basis: AA (rank 1) > BB > CC (rank 3), so long AA short CC.
         // Residual: CC (residual +2) > BB > AA (residual −2), so long CC short AA.
+        //
+        // READ THE NEXT TWO ASSERTION MESSAGES WITH CARE (review 1-21). They say
+        // "AA has high basis and low funding" and "CC has low basis and high funding".
+        // Both are FACTUALLY BACKWARDS for this fixture: AA's basis is −0.02 (the LOWEST)
+        // and CC's is +0.02 (the HIGHEST). bug-log #76 quotes the AA line verbatim as
+        // evidence, so the strings are left EXACTLY as written rather than quietly
+        // corrected — a fixed quote would make the bug-log entry unverifiable. The
+        // assertions themselves are true (they only test the SIGN of the residual); it is
+        // the prose that is wrong, and prose that contradicts its own fixture is how the
+        // direction defect stayed invisible. The direction is now pinned by value in
+        // `characterization_bug76_residual_arm_longs_the_highest_basis_name`; these
+        // messages get rewritten at the 1-25 re-lock, with the code.
         assert!(
             cc_res.unwrap() > aa_res.unwrap(),
             "M-DEV-4: when funding is inverted vs basis, CC must have higher residual than AA. \
@@ -2351,6 +2404,133 @@ selection_mode = "long_short"
         assert_eq!(
             r1, r2,
             "M-DEV-4: two runs on the same input must produce byte-identical residual scores"
+        );
+    }
+
+    /// **DOCUMENTS A KNOWN DEFECT — bug-log #76. MUST BE INVERTED AT THE 1-25 RE-LOCK.**
+    ///
+    /// # Intended behaviour (what `build_residual_scores`' own doc promises)
+    ///
+    /// > "Long = highest residual (**low-basis** RELATIVE to its funding level).
+    /// >  Short = lowest residual (high-basis relative to its funding level)."
+    ///
+    /// The same claim appears on `ScoreSource::BasisFundingResidual` in `config.rs`. Under
+    /// that intent, the arm should LONG the name whose basis is LOW for its funding level.
+    ///
+    /// # Actual behaviour today (what this test pins, with literal values)
+    ///
+    /// The basis half is ranked with `rank = 1` for the HIGHEST basis-reversal score,
+    /// i.e. the LOWEST basis. `residual = rank(basis) − rank(funding)`, and `top_k_long`
+    /// takes the HIGHEST residual — which needs a LARGE `rank(basis)`, i.e. a HIGH basis.
+    /// So the arm longs the **highest-basis** name: the basis axis is inverted relative to
+    /// the specification, and to the long-only `BasisReversal` arm built from the same
+    /// convention.
+    ///
+    /// Fixture (the story's own numbers, from
+    /// `m_dev4_residual_differs_from_raw_basis_when_funding_diverges`):
+    ///
+    /// | sym | basis  | rank(basis) | funding | rank(funding) | residual |
+    /// |-----|--------|-------------|---------|---------------|----------|
+    /// | AA  | −0.02  | 1 (lowest basis)  | +0.03 | 3 | **−2** |
+    /// | CC  | +0.02  | 3 (highest basis) | −0.03 | 1 | **+2** |
+    ///
+    /// `top_k_long` ⇒ **CC**, whose basis is +0.02, the HIGHEST in the cross-section.
+    /// Plain `BasisReversal` on the identical basis values longs **AA**. The two arms
+    /// disagree on the basis axis by construction, not by residualisation.
+    ///
+    /// This is asserted on VALUES, in the shape of the long-only arm's sign guards
+    /// (`r_br2_sign_assertion_longs_low_basis_name`), because every existing residual test
+    /// asserts a DIFFERENCE — and a difference is satisfied just as well by the inverse as
+    /// by the intended construction. That is precisely why the inversion survived.
+    ///
+    /// # At the 1-25 re-lock
+    ///
+    /// Decide the intended direction, make code and doc agree, then INVERT this test
+    /// (long = lowest-basis-for-its-funding = AAUSDT here) and re-run anchors #116-#119.
+    /// Do not delete it — the flip is the record that the direction was chosen, not
+    /// inherited.
+    #[test]
+    fn characterization_bug76_residual_arm_longs_the_highest_basis_name() {
+        use time::OffsetDateTime;
+        let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let aaa = Symbol::new("AAUSDT");
+        let bbb = Symbol::new("BBUSDT");
+        let ccc = Symbol::new("CCUSDT");
+
+        // basis: AA = −0.02 (LOWEST basis), BB = 0.00, CC = +0.02 (HIGHEST basis)
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        basis_map.insert((aaa.clone(), ts0), dec!(-0.02));
+        basis_map.insert((bbb.clone(), ts0), dec!(0.00));
+        basis_map.insert((ccc.clone(), ts0), dec!(0.02));
+
+        // funding: inverted versus the basis order, so the residual is non-degenerate.
+        let mut funding_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        funding_map.insert((aaa.clone(), ts0), dec!(0.03));
+        funding_map.insert((bbb.clone(), ts0), dec!(0.00));
+        funding_map.insert((ccc.clone(), ts0), dec!(-0.03));
+
+        let mut strat =
+            make_residual_strategy_with_maps(1, 1, 1, basis_map.clone(), funding_map.clone());
+        let prices = [
+            ("AAUSDT", dec!(100)),
+            ("BBUSDT", dec!(200)),
+            ("CCUSDT", dec!(300)),
+        ];
+        for (sym, p) in &prices {
+            strat.on_bar(&make_bar(sym, *p, 0));
+        }
+
+        let residuals = strat.build_residual_scores();
+        let aa_res = residuals.get(&aaa).copied().flatten().expect("AA warmed");
+        let cc_res = residuals.get(&ccc).copied().flatten().expect("CC warmed");
+
+        // LITERAL residual values — not an inequality (bug-log #76's moral).
+        assert_eq!(
+            aa_res,
+            dec!(-2),
+            "bug-log #76 characterization: AAUSDT (basis −0.02, the LOWEST) must currently \
+             score residual = rank(basis)1 − rank(funding)3 = −2. Got {aa_res}."
+        );
+        assert_eq!(
+            cc_res,
+            dec!(2),
+            "bug-log #76 characterization: CCUSDT (basis +0.02, the HIGHEST) must currently \
+             score residual = rank(basis)3 − rank(funding)1 = +2. Got {cc_res}."
+        );
+
+        // The selection that follows from those values, asserted through the PUBLIC
+        // selector the strategy actually calls — so this pins behaviour, not arithmetic.
+        let longs = crate::cross_sectional::selector::top_k_long(&residuals, 1, dec!(0.5));
+        let shorts = crate::cross_sectional::selector::bottom_k_short(&residuals, 1, dec!(0.5));
+        assert!(
+            longs.contains_key(&ccc),
+            "bug-log #76 CHARACTERIZATION (KNOWN DEFECT): the residual arm currently LONGS \
+             CCUSDT — the HIGHEST-basis name (+0.02) — while its own doc and config.rs both \
+             say 'Long = highest residual (LOW-basis relative to its funding level)'. \
+             longs={longs:?}. If this FAILS, the direction was fixed (story 1-25): invert \
+             this test and re-run anchors #116-#119."
+        );
+        assert!(
+            shorts.contains_key(&aaa),
+            "bug-log #76 CHARACTERIZATION (KNOWN DEFECT): the residual arm currently SHORTS \
+             AAUSDT — the LOWEST-basis name (−0.02). shorts={shorts:?}"
+        );
+
+        // The contrast that makes it a defect rather than a choice: the long-only
+        // BasisReversal arm, on the SAME basis values, longs the opposite name.
+        let basis_scores: BTreeMap<Symbol, Option<Decimal>> = [
+            (aaa.clone(), Some(dec!(0.02))),  // −mean(−0.02)
+            (bbb.clone(), Some(dec!(0.00))),  // −mean(0.00)
+            (ccc.clone(), Some(dec!(-0.02))), // −mean(+0.02)
+        ]
+        .into_iter()
+        .collect();
+        let basis_longs = crate::cross_sectional::selector::top_k_long(&basis_scores, 1, dec!(0.5));
+        assert!(
+            basis_longs.contains_key(&aaa),
+            "control: plain BasisReversal longs AAUSDT (the LOWEST basis) on the same \
+             values — the residual arm longs CCUSDT. The two arms disagree on the basis \
+             axis itself, which is bug-log #76. basis_longs={basis_longs:?}"
         );
     }
 

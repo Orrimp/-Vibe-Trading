@@ -108,16 +108,32 @@ pub const MAX_LEVERAGE: rust_decimal::Decimal = rust_decimal::Decimal::ONE;
 /// gross short notional. Conservative half-notional floor.
 /// This constant is a hashed body field of the MN anchor; changing it = a new surface.
 ///
-/// NOTE: `dec!(0.5)` is not a valid const expression in stable Rust.
-#[must_use]
-pub fn maintenance_margin_frac() -> rust_decimal::Decimal {
-    rust_decimal_macros::dec!(0.5)
-}
-
-/// Re-export for the sweep harness's `mn_grid_def_string` (anchor body field).
-/// `Decimal::from_parts(5, 0, 0, false, 1)` = 5 × 10^{−1} = 0.5 exactly.
+/// `Decimal::from_parts(5, 0, 0, false, 1)` = 5 × 10^{−1} = 0.5 exactly. A `const` is
+/// needed because `dec!(0.5)` is not a valid const expression in stable Rust, and the
+/// sweep harness embeds this value in the HASHED grid-def body
+/// (`sweep_harness::mn_grid_def_string`) where it must render as `0.5`.
+///
+/// # One definition, two readers (review 1-21)
+///
+/// This used to be TWO independent definitions: this `const` (read by the renderer,
+/// so it reached the hashed body) and a separate `maintenance_margin_frac()` returning
+/// its own `dec!(0.5)` (read by the liquidation rule in `run_path`). Editing one made
+/// the anchored body claim a margin the engine did not use — a silent divergence
+/// between what a surface SAYS it ran at and what it ran at. The function is now a
+/// thin accessor over this constant, and
+/// `tests::maintenance_margin_frac_has_exactly_one_definition` pins both the equality
+/// and the rendered literal.
 pub const MAINTENANCE_MARGIN_FRAC: rust_decimal::Decimal =
     rust_decimal::Decimal::from_parts(5, 0, 0, false, 1);
+
+/// Accessor for [`MAINTENANCE_MARGIN_FRAC`] — the value the liquidation rule uses.
+///
+/// Kept as a function purely for call-site ergonomics; it returns the SAME constant
+/// the hashed body renders. See [`MAINTENANCE_MARGIN_FRAC`] for why that matters.
+#[must_use]
+pub fn maintenance_margin_frac() -> rust_decimal::Decimal {
+    MAINTENANCE_MARGIN_FRAC
+}
 
 // ── run_path ───────────────────────────────────────────────────────────────────
 
@@ -296,7 +312,17 @@ pub async fn run_path(
                     let pos_snap = Position::empty(sig.symbol.clone());
                     if let Ok(qty) = Quantity::new(cover_qty)
                         && let Ok(price) = Price::new(mark)
-                        && let Ok(ord) = Order::new(
+                    {
+                        // Review 1-21: the order-construction and engine-step Err arms used
+                        // to be swallowed by an `if let Ok(..) && let Ok(..)` chain — a
+                        // risk-limit REJECTION was indistinguishable from a no-fill, with no
+                        // log and no counter. On the MN lane an unfilled cover leaves a short
+                        // open that the book believes is closed → a directionally-biased
+                        // book that no output records. The behaviour is UNCHANGED (both arms
+                        // still skip); only the diagnosis is now loud. Trace-only by
+                        // construction: a counter would need a new report COLUMN, which is
+                        // anchor-impacting (D-MN.8 hashed body) — see the story's triage.
+                        match Order::new(
                             sig.strategy_id.clone(),
                             sig.symbol.clone(),
                             Side::Buy,
@@ -307,30 +333,62 @@ pub async fn run_path(
                             price,
                             &risk_limits,
                             equity,
-                        )
-                        && let Ok(fills) = engine.step(bar, vec![ord]).await
-                    {
-                        for fill in fills {
-                            let notional_fill = fill.qty.get() * fill.price.get();
-                            let total_cost = notional_fill + fill.fee.amount();
-                            if total_cost > cash {
-                                // Solvency guard: skip rather than go negative.
-                                tracing::warn!(
+                        ) {
+                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                                Ok(fills) => {
+                                    for fill in fills {
+                                        let notional_fill = fill.qty.get() * fill.price.get();
+                                        let total_cost = notional_fill + fill.fee.amount();
+                                        if total_cost > cash {
+                                            // Solvency guard: skip rather than go negative.
+                                            // NOTE: abandoning a cover leaves the short OPEN
+                                            // while the strategy's `held_short_symbols` says
+                                            // it is closed — the book is now directionally
+                                            // biased and nothing but this line records it.
+                                            tracing::warn!(
+                                                symbol = %sig.symbol,
+                                                cash = %cash,
+                                                total_cost = %total_cost,
+                                                abandoned_qty = %fill.qty.get(),
+                                                "short cover solvency guard triggered — the short \
+                                                 stays OPEN while the strategy believes it is flat"
+                                            );
+                                            continue;
+                                        }
+                                        cash -= total_cost;
+                                        if cash < min_cash_seen {
+                                            min_cash_seen = cash;
+                                        }
+                                        *position_book
+                                            .entry(sig.symbol.clone())
+                                            .or_insert(Decimal::ZERO) += fill.qty.get();
+                                        trades += 1;
+                                    }
+                                }
+                                Err(err) => tracing::warn!(
                                     symbol = %sig.symbol,
-                                    cash = %cash,
-                                    total_cost = %total_cost,
-                                    "short cover solvency guard triggered"
-                                );
-                                continue;
-                            }
-                            cash -= total_cost;
-                            if cash < min_cash_seen {
-                                min_cash_seen = cash;
-                            }
-                            *position_book
-                                .entry(sig.symbol.clone())
-                                .or_insert(Decimal::ZERO) += fill.qty.get();
-                            trades += 1;
+                                    side = "Buy",
+                                    intent = "cover_short",
+                                    notional = %(cover_qty * mark),
+                                    %equity,
+                                    error = %err,
+                                    "engine REJECTED the buy-to-cover order — the short stays \
+                                     OPEN (silently, before review 1-21)"
+                                ),
+                            },
+                            Err(err) => tracing::warn!(
+                                symbol = %sig.symbol,
+                                side = "Buy",
+                                intent = "cover_short",
+                                notional = %(cover_qty * mark),
+                                %equity,
+                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
+                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
+                                price_sanity_band = %risk_limits.price_sanity_band,
+                                error = %err,
+                                "risk limits REJECTED the buy-to-cover order — the short stays \
+                                 OPEN (silently, before review 1-21)"
+                            ),
                         }
                     }
                 }
@@ -368,7 +426,10 @@ pub async fn run_path(
                     let pos_snap = Position::empty(sig.symbol.clone());
                     if let Ok(qty) = Quantity::new(qty_raw)
                         && let Ok(price) = Price::new(mark)
-                        && let Ok(ord) = Order::new(
+                    {
+                        // Review 1-21: see the cover arm above — a rejected order used to be
+                        // silent. Behaviour unchanged (skip), diagnosis now loud.
+                        match Order::new(
                             sig.strategy_id.clone(),
                             sig.symbol.clone(),
                             Side::Buy,
@@ -379,32 +440,58 @@ pub async fn run_path(
                             price,
                             &risk_limits,
                             equity,
-                        )
-                        && let Ok(fills) = engine.step(bar, vec![ord]).await
-                    {
-                        for fill in fills {
-                            let notional_fill = fill.qty.get() * fill.price.get();
-                            let total_cost = notional_fill + fill.fee.amount();
-                            // Solvency guard (defensive): if somehow fill cost exceeds
-                            // cash (edge case from price movement between estimate and fill),
-                            // skip updating rather than going negative.
-                            if total_cost > cash {
-                                tracing::warn!(
+                        ) {
+                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                                Ok(fills) => {
+                                    for fill in fills {
+                                        let notional_fill = fill.qty.get() * fill.price.get();
+                                        let total_cost = notional_fill + fill.fee.amount();
+                                        // Solvency guard (defensive): if somehow fill cost exceeds
+                                        // cash (edge case from price movement between estimate and fill),
+                                        // skip updating rather than going negative.
+                                        if total_cost > cash {
+                                            tracing::warn!(
+                                                symbol = %sig.symbol,
+                                                cash = %cash,
+                                                total_cost = %total_cost,
+                                                "solvency guard triggered — skipping fill to prevent negative cash"
+                                            );
+                                            continue;
+                                        }
+                                        cash -= total_cost;
+                                        if cash < min_cash_seen {
+                                            min_cash_seen = cash;
+                                        }
+                                        *position_book
+                                            .entry(sig.symbol.clone())
+                                            .or_insert(Decimal::ZERO) += fill.qty.get();
+                                        trades += 1;
+                                    }
+                                }
+                                Err(err) => tracing::warn!(
                                     symbol = %sig.symbol,
-                                    cash = %cash,
-                                    total_cost = %total_cost,
-                                    "solvency guard triggered — skipping fill to prevent negative cash"
-                                );
-                                continue;
-                            }
-                            cash -= total_cost;
-                            if cash < min_cash_seen {
-                                min_cash_seen = cash;
-                            }
-                            *position_book
-                                .entry(sig.symbol.clone())
-                                .or_insert(Decimal::ZERO) += fill.qty.get();
-                            trades += 1;
+                                    side = "Buy",
+                                    intent = "open_long",
+                                    %notional,
+                                    %equity,
+                                    error = %err,
+                                    "engine REJECTED the long-open order — the leg is absent from \
+                                     the book (silently, before review 1-21)"
+                                ),
+                            },
+                            Err(err) => tracing::warn!(
+                                symbol = %sig.symbol,
+                                side = "Buy",
+                                intent = "open_long",
+                                %notional,
+                                %equity,
+                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
+                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
+                                price_sanity_band = %risk_limits.price_sanity_band,
+                                error = %err,
+                                "risk limits REJECTED the long-open order — the leg is absent from \
+                                 the book (silently, before review 1-21)"
+                            ),
                         }
                     }
                 }
@@ -412,7 +499,12 @@ pub async fn run_path(
                     let pos_snap = Position::empty(sig.symbol.clone());
                     if let Ok(qty) = Quantity::new(current_qty)
                         && let Ok(price) = Price::new(mark)
-                        && let Ok(ord) = Order::new(
+                    {
+                        // Review 1-21: see the cover arm above — a rejected order used to be
+                        // silent. Behaviour unchanged (skip), diagnosis now loud. A rejected
+                        // CLOSE is the worst of the four: the position stays on while the
+                        // strategy's `held_symbols` records it as flat.
+                        match Order::new(
                             sig.strategy_id.clone(),
                             sig.symbol.clone(),
                             Side::Sell,
@@ -423,16 +515,44 @@ pub async fn run_path(
                             price,
                             &risk_limits,
                             equity,
-                        )
-                        && let Ok(fills) = engine.step(bar, vec![ord]).await
-                    {
-                        for fill in fills {
-                            let notional_fill = fill.qty.get() * fill.price.get();
-                            cash += notional_fill - fill.fee.amount();
-                            *position_book
-                                .entry(sig.symbol.clone())
-                                .or_insert(Decimal::ZERO) -= fill.qty.get();
-                            trades += 1;
+                        ) {
+                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                                Ok(fills) => {
+                                    for fill in fills {
+                                        let notional_fill = fill.qty.get() * fill.price.get();
+                                        cash += notional_fill - fill.fee.amount();
+                                        *position_book
+                                            .entry(sig.symbol.clone())
+                                            .or_insert(Decimal::ZERO) -= fill.qty.get();
+                                        trades += 1;
+                                    }
+                                }
+                                Err(err) => tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    side = "Sell",
+                                    intent = "close_long",
+                                    notional = %(current_qty * mark),
+                                    %equity,
+                                    error = %err,
+                                    "engine REJECTED the long-close order — the position stays \
+                                     OPEN while the strategy believes it is flat (silently, \
+                                     before review 1-21)"
+                                ),
+                            },
+                            Err(err) => tracing::warn!(
+                                symbol = %sig.symbol,
+                                side = "Sell",
+                                intent = "close_long",
+                                notional = %(current_qty * mark),
+                                %equity,
+                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
+                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
+                                price_sanity_band = %risk_limits.price_sanity_band,
+                                error = %err,
+                                "risk limits REJECTED the long-close order — the position stays \
+                                 OPEN while the strategy believes it is flat (silently, before \
+                                 review 1-21)"
+                            ),
                         }
                     }
                 }
@@ -465,7 +585,13 @@ pub async fn run_path(
                     let pos_snap = Position::empty(sig.symbol.clone());
                     if let Ok(qty) = Quantity::new(qty_raw)
                         && let Ok(price) = Price::new(mark)
-                        && let Ok(ord) = Order::new(
+                    {
+                        // Review 1-21: see the cover arm above — a rejected order used to be
+                        // silent. Behaviour unchanged (skip), diagnosis now loud. This is the
+                        // arm the MN finding is about: a rejected SHORT-open leaves the long
+                        // book standing alone, i.e. a directionally-biased "market-neutral"
+                        // run that no column of the θ-surface would reveal.
+                        match Order::new(
                             sig.strategy_id.clone(),
                             sig.symbol.clone(),
                             Side::Sell,
@@ -476,22 +602,50 @@ pub async fn run_path(
                             price,
                             &risk_limits,
                             equity,
-                        )
-                        && let Ok(fills) = engine.step(bar, vec![ord]).await
-                    {
-                        for fill in fills {
-                            let notional_fill = fill.qty.get() * fill.price.get();
-                            // Open short: sell proceeds in, qty goes negative.
-                            // cash += notional − fee (proceeds in, fee out).
-                            cash += notional_fill - fill.fee.amount();
-                            if cash < min_cash_seen {
-                                min_cash_seen = cash;
-                            }
-                            // qty goes NEGATIVE (short position).
-                            *position_book
-                                .entry(sig.symbol.clone())
-                                .or_insert(Decimal::ZERO) -= fill.qty.get();
-                            trades += 1;
+                        ) {
+                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                                Ok(fills) => {
+                                    for fill in fills {
+                                        let notional_fill = fill.qty.get() * fill.price.get();
+                                        // Open short: sell proceeds in, qty goes negative.
+                                        // cash += notional − fee (proceeds in, fee out).
+                                        cash += notional_fill - fill.fee.amount();
+                                        if cash < min_cash_seen {
+                                            min_cash_seen = cash;
+                                        }
+                                        // qty goes NEGATIVE (short position).
+                                        *position_book
+                                            .entry(sig.symbol.clone())
+                                            .or_insert(Decimal::ZERO) -= fill.qty.get();
+                                        trades += 1;
+                                    }
+                                }
+                                Err(err) => tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    side = "Sell",
+                                    intent = "open_short",
+                                    %notional,
+                                    %margin,
+                                    %equity,
+                                    error = %err,
+                                    "engine REJECTED the short-open order — the MN book is now \
+                                     LONG-BIASED for this rebalance (silently, before review 1-21)"
+                                ),
+                            },
+                            Err(err) => tracing::warn!(
+                                symbol = %sig.symbol,
+                                side = "Sell",
+                                intent = "open_short",
+                                %notional,
+                                %margin,
+                                %equity,
+                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
+                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
+                                price_sanity_band = %risk_limits.price_sanity_band,
+                                error = %err,
+                                "risk limits REJECTED the short-open order — the MN book is now \
+                                 LONG-BIASED for this rebalance (silently, before review 1-21)"
+                            ),
                         }
                     }
                 }
@@ -549,10 +703,19 @@ pub async fn run_path(
                 // Iterate in sorted order (BTreeMap) for determinism.
                 // M-DEV-3: the `qty <= 0 continue` skip is replaced by a branch that also
                 // accrues for held shorts (qty < 0). The existing formula is ALREADY CORRECT
-                // for shorts: notional = qty * mark < 0, so notional × (−rate) = positive
-                // cashflow when rate > 0 (short PAYS positive funding, which is a COST to the
-                // long-only lender — the −rate sign makes it negative for the short payer).
+                // for shorts — see the four-case sign table on the `cashflow` line below.
                 // Still gated on `funding_map_for_accrual` being Some → non-MN runs unchanged.
+                //
+                // COMMENT CORRECTION (review 1-21). Both comment blocks here used to say
+                // that a short's cashflow "is negative when rate > 0 (short pays positive
+                // funding)". That is arithmetically FALSE and it contradicted the other
+                // block three lines away. The CODE was and is right; only the prose was
+                // wrong. The hazard of leaving it was a future editor "fixing" the code to
+                // match the comment and silently inverting every MN short-leg cashflow.
+                // The convention is now ENFORCED, not described:
+                // `montecarlo::tests::funding_accrual_four_sign_cases_pinned` pins all four
+                // (side × rate-sign) cells against literal ±100 expectations through the
+                // production `run_path`.
                 for (sym, &qty) in &position_book {
                     if qty == Decimal::ZERO {
                         continue; // flat — no accrual
@@ -568,9 +731,25 @@ pub async fn run_path(
                         continue;
                     }
                     let notional = qty * mark;
-                    // R-CARRY.2 sign: long earns on negative funding, pays on positive.
-                    // Short: notional < 0 → notional × (−rate) is negative when rate > 0
-                    // (short pays positive funding — a cost). Formula is correct for BOTH.
+                    // SIGN TABLE for `cashflow = notional × (−rate)` (review 1-21 — the
+                    // prose that used to sit here was arithmetically false; the code is
+                    // unchanged). `notional = qty × mark`, so its sign is the sign of qty:
+                    //
+                    //   | side          | qty | rate | notional | cashflow = n×(−r) | meaning        |
+                    //   |---------------|-----|------|----------|-------------------|----------------|
+                    //   | long          |  >0 |  >0  |    >0    | NEGATIVE          | long PAYS      |
+                    //   | long          |  >0 |  <0  |    >0    | POSITIVE          | long RECEIVES  |
+                    //   | short         |  <0 |  >0  |    <0    | POSITIVE          | short RECEIVES |
+                    //   | short         |  <0 |  <0  |    <0    | NEGATIVE          | short PAYS     |
+                    //
+                    // Row 3 is the one the old comment got backwards: (−|n|)·(−r) = +|n|·r.
+                    // A short RECEIVING on positive funding IS the correct perp mechanic —
+                    // longs pay shorts when funding is positive — and it matches
+                    // `backtest::short_exec::accrue_funding`'s documented convention and its
+                    // `funding_short_position_receives_positive_funding` unit test.
+                    // R-CARRY.2 sign (long-only framing) is the same formula: the long earns
+                    // on negative funding and pays on positive.
+                    // Enforced end-to-end by `tests::funding_accrual_four_sign_cases_pinned`.
                     // One cashflow per settlement boundary inside this bar's
                     // span (1 at native hourly cadence; 3 for a daily bar).
                     // `n_settlements` is a small non-negative count (1 at hourly
@@ -748,7 +927,6 @@ mod tests {
             emit_equity_bin: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result = pollster::block_on(run_path(input, 0x00C0_FFEE, strat));
@@ -880,7 +1058,6 @@ score_source = "funding_carry"
             emit_equity_bin: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: Some(funding_nonzero),
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result_with = pollster::block_on(run_path(input_with, 0x00C0_FFEE, make_carry_strat()))
@@ -900,7 +1077,6 @@ score_source = "funding_carry"
             emit_equity_bin: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
             funding_override: Some(funding_zero),
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result_zero = pollster::block_on(run_path(input_zero, 0x00C0_FFEE, make_carry_strat()))
@@ -931,6 +1107,280 @@ score_source = "funding_carry"
             "R-CARRY.10b: WITH negative-funding carry, equity_with ({equity_with}) should be \
              GREATER than equity_zero ({equity_zero}) — longs earn on negative-funding names."
         );
+    }
+
+    /// Review 1-21 LOW: the maintenance-margin fraction has exactly ONE definition.
+    ///
+    /// It used to have two — a `const MAINTENANCE_MARGIN_FRAC` read by
+    /// `sweep_harness::mn_grid_def_string` (so it reached the HASHED anchor body) and a
+    /// `maintenance_margin_frac()` returning its own `dec!(0.5)` read by the liquidation
+    /// rule in `run_path`. Both said 0.5, so nothing was wrong — but editing either one
+    /// alone would have made every MN anchored body claim a margin the engine did not
+    /// use, with no test anywhere to notice. The function is now an accessor over the
+    /// constant; this test pins BOTH legs of the contract:
+    ///
+    /// 1. the engine's value equals the rendered value, and
+    /// 2. the rendered literal is still exactly `0.5` — i.e. the unification did not
+    ///    change one byte of the hashed body (`Decimal` renders by scale, so a value
+    ///    equality alone would not have caught a `0.50` vs `0.5` render change).
+    #[test]
+    fn maintenance_margin_frac_has_exactly_one_definition() {
+        assert_eq!(
+            maintenance_margin_frac(),
+            MAINTENANCE_MARGIN_FRAC,
+            "the liquidation rule and the hashed grid-def body must read the SAME \
+             maintenance-margin fraction — two definitions is how a surface starts \
+             claiming a margin the engine never used"
+        );
+        assert_eq!(
+            format!("{MAINTENANCE_MARGIN_FRAC}"),
+            "0.5",
+            "the MN anchored bodies (#108-#119) render `maintenance_margin_frac=0.5` \
+             literally; any change to the rendered form re-prices every MN anchor"
+        );
+        assert_eq!(
+            format!("{}", maintenance_margin_frac()),
+            "0.5",
+            "the accessor must render identically to the constant (scale-preserving)"
+        );
+        // The unification replaced a `dec!(0.5)` body with the constant. Pin that the
+        // two are identical in REPRESENTATION, not merely in value: same mantissa, same
+        // scale. (A value-only equality would pass for `0.50` too, and Decimal's Display
+        // is scale-driven — that is how a hashed body row changes without the number
+        // changing.)
+        let old_literal = rust_decimal_macros::dec!(0.5);
+        assert_eq!(maintenance_margin_frac(), old_literal);
+        assert_eq!(
+            maintenance_margin_frac().scale(),
+            old_literal.scale(),
+            "the constant must carry the SAME scale as the `dec!(0.5)` it replaced, or \
+             the rendered `maintenance_margin_frac=` row in every MN body changes"
+        );
+        assert_eq!(
+            maintenance_margin_frac().mantissa(),
+            old_literal.mantissa(),
+            "same mantissa as the literal it replaced"
+        );
+    }
+
+    /// Review 1-21 MEDIUM: the funding-accrual SIGN CONVENTION, enforced not described.
+    ///
+    /// Two comment blocks in the accrual loop used to state the short case BACKWARDS
+    /// ("notional × (−rate) is negative when rate > 0 — short pays positive funding")
+    /// while the code did the arithmetically correct — and conventionally correct —
+    /// thing: with `qty < 0, rate > 0`, `(−|n|)·(−r) = +|n|·r > 0`, so the SHORT
+    /// **receives**. Longs pay shorts on positive funding; that is the perp mechanic and
+    /// it matches `short_exec::accrue_funding`. The comments were fixed; this test exists
+    /// so the convention can never again be carried only by prose — a future editor who
+    /// "corrects" the code to match a wrong comment goes RED here with literal numbers.
+    ///
+    /// # Construction (exact by design — no epsilon anywhere)
+    ///
+    /// - Two symbols, prices `AAUSDT: 800 → 900 → 1000` then FLAT at 1000, and
+    ///   `BBUSDT: 1250 → 1100 → 1000` then FLAT at 1000. The early move exists only to
+    ///   give `VolAdjustedReturn` a deterministic ranking (AA rising ⇒ long, BB falling
+    ///   ⇒ short); the flat tail makes every notional exact.
+    /// - Both symbols CONVERGE to the same 1000 before the first rebalance, deliberately:
+    ///   `run_path` hands every order to `engine.step(bar, …)` with the CURRENT bar, so a
+    ///   fill is priced at whatever symbol's bar is being processed (bug-log **#67**,
+    ///   owned by 1-25). With equal marks that mispricing is a no-op, and this sign test
+    ///   measures the accrual instead of measuring #67. A first draft of this fixture
+    ///   used 1000/500 and came out at 105 000 — #67, caught by the control assertion.
+    /// - `selection_mode = LongShort`, `k_long = k_short = 1`, `rebalance_minutes` huge
+    ///   ⇒ exactly ONE rebalance (at warm-up completion, hour 2), so the book is fixed
+    ///   for the rest of the run and cannot be perturbed by a score tie later.
+    /// - Zero fees, zero slippage ⇒ the long books 10% of 100 000 = **+10 000** notional
+    ///   (10 units @ 1000) and the short books **−10 000** (20 units @ 500), both exact.
+    /// - 9 hours ⇒ the only settlement boundary with a live book is hour 8, so exactly
+    ///   ONE accrual event: `realized_funding = 10 000·(−r_AA) + (−10 000)·(−r_BB)`.
+    /// - The score source is `VolAdjustedReturn`, which never reads the funding map, so
+    ///   the four cases vary the RATES without moving the selection. (That also keeps the
+    ///   test independent of bug-log #75: the map is used only for accrual here.)
+    ///
+    /// # The four pinned cells (rate = ±0.01, notional = ±10 000 ⇒ ±100 exactly)
+    ///
+    /// | case | long leg rate | short leg rate | expected `realized_funding` | meaning        |
+    /// |------|---------------|----------------|-----------------------------|----------------|
+    /// | 1    | +0.01         | 0              | **−100**                    | long PAYS      |
+    /// | 2    | −0.01         | 0              | **+100**                    | long RECEIVES  |
+    /// | 3    | 0             | +0.01          | **+100**                    | short RECEIVES |
+    /// | 4    | 0             | −0.01          | **−100**                    | short PAYS     |
+    ///
+    /// Cases 3 and 4 also go RED if the short-side branch is removed from `run_path`
+    /// (no short ⇒ no short notional ⇒ `realized_funding == 0`).
+    #[test]
+    fn funding_accrual_four_sign_cases_pinned() {
+        use std::collections::BTreeMap;
+
+        use rust_decimal_macros::dec;
+        use time::OffsetDateTime;
+        use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
+
+        let epoch = OffsetDateTime::from_unix_timestamp(1_672_531_200).expect("epoch_2023");
+        let make_ts = |h: i64| Timestamp::new(epoch + time::Duration::hours(h));
+        let make_bar = |sym: &str, close: Decimal, hour: i64| Bar {
+            symbol: Symbol::new(sym),
+            tf: Timeframe::OneHour,
+            open_ts: make_ts(hour),
+            close_ts: make_ts(hour),
+            local_recv_ts: make_ts(hour),
+            venue: Venue::Binance,
+            open: Price::new(close).expect("price"),
+            high: Price::new(close).expect("price"),
+            low: Price::new(close).expect("price"),
+            close: Price::new(close).expect("price"),
+            volume: Quantity::new(dec!(100)).expect("qty"),
+            trade_count: 1,
+        };
+
+        // Hours 0..=8. AA rises into a round 1000 and stays; BB falls into the SAME round
+        // 1000 and stays. Equal, round marks ⇒ integral quantities, exact notionals, and
+        // no exposure to the #67 cross-symbol fill mispricing.
+        let price_a = [
+            dec!(800),
+            dec!(900),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+        ];
+        let price_b = [
+            dec!(1250),
+            dec!(1100),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+            dec!(1000),
+        ];
+        // 9 hourly bars per symbol, indices carried as i64 without a lossy cast.
+        let n_hours = i64::try_from(price_a.len()).expect("fixture length fits i64");
+        let mut bars: Vec<Bar> = Vec::new();
+        for (idx, (&pa, &pb)) in price_a.iter().zip(price_b.iter()).enumerate() {
+            let hour = i64::try_from(idx).expect("fixture index fits i64");
+            bars.push(make_bar("AAUSDT", pa, hour));
+            bars.push(make_bar("BBUSDT", pb, hour));
+        }
+        bars.sort_by(|a, b| a.open_ts.cmp(&b.open_ts).then(a.symbol.0.cmp(&b.symbol.0)));
+
+        let make_strat = || {
+            let toml = r#"
+id = "sign_table_test"
+kind = "cross_sectional_momentum"
+stage = "research"
+universe = ["AAUSDT", "BBUSDT"]
+lookback_minutes = 2
+rebalance_minutes = 100000
+k_long = 1
+k_short = 1
+exposure_cap = 0.50
+drift_rebalance_threshold = 0.10
+vol_floor = 0.000001
+size = "equal_weight"
+selection_mode = "long_short"
+"#;
+            let cfg = strategy::CrossSectionalMomentumConfig::from_str(toml)
+                .expect("valid long-short config");
+            assert_eq!(cfg.k_short, 1, "the sign table needs a live short leg");
+            strategy::MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("sign_table_test"))
+        };
+
+        // (rate_AA = long leg, rate_BB = short leg) → expected realized_funding.
+        let run_case = |rate_a: Decimal, rate_b: Decimal| -> PathRunResult {
+            let mut map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+            for h in 0..n_hours {
+                map.insert((Symbol::new("AAUSDT"), make_ts(h)), rate_a);
+                map.insert((Symbol::new("BBUSDT"), make_ts(h)), rate_b);
+            }
+            let input = TcnScenarioInput {
+                scenario_name: "funding-sign-table".to_string(),
+                start_year: 2023,
+                bar_count: bars.len(),
+                initial_capital: dec!(100_000),
+                slippage_bps: 0,
+                taker_fee_bps: 0,
+                config_id: "sign_table_test".to_string(),
+                forecaster_id: "test".to_string(),
+                bars_override: Some(bars.clone()),
+                emit_equity_bin: None,
+                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                funding_override: Some(map),
+                bar_span_hours: 1,
+            };
+            pollster::block_on(run_path(input, 0x00C0_FFEE, make_strat()))
+                .expect("run_path must succeed for the sign table")
+        };
+
+        // Control: with BOTH rates zero the book is unchanged and nothing accrues. This
+        // pins the fixture itself (2 fills = 1 long + 1 short) so a later case that reads
+        // 0 cannot be mistaken for "the fixture never traded".
+        let control = run_case(Decimal::ZERO, Decimal::ZERO);
+        assert_eq!(
+            control.trades, 2,
+            "fixture check: exactly one long open + one short open must fill \
+             (trades={}); without both legs the sign table proves nothing",
+            control.trades
+        );
+        assert_eq!(
+            control.realized_funding,
+            Decimal::ZERO,
+            "zero rates must accrue exactly zero (the documented negative control)"
+        );
+        assert_eq!(
+            control.final_equity,
+            dec!(100_000),
+            "flat prices + zero rates ⇒ equity is untouched; if this moved, the fixture \
+             is not the exact ±10 000 book the sign table's literals assume"
+        );
+
+        // Case 1 — LONG × POSITIVE rate ⇒ the long PAYS.
+        let c1 = run_case(dec!(0.01), Decimal::ZERO);
+        assert_eq!(
+            c1.realized_funding,
+            dec!(-100),
+            "LONG × rate>0 must PAY: +10 000 notional × (−0.01) = −100, got {}",
+            c1.realized_funding
+        );
+        assert_eq!(c1.final_equity, dec!(99_900), "equity = 100 000 − 100");
+
+        // Case 2 — LONG × NEGATIVE rate ⇒ the long RECEIVES.
+        let c2 = run_case(dec!(-0.01), Decimal::ZERO);
+        assert_eq!(
+            c2.realized_funding,
+            dec!(100),
+            "LONG × rate<0 must RECEIVE: +10 000 × (+0.01) = +100, got {}",
+            c2.realized_funding
+        );
+        assert_eq!(c2.final_equity, dec!(100_100), "equity = 100 000 + 100");
+
+        // Case 3 — SHORT × POSITIVE rate ⇒ the short RECEIVES.
+        // THIS is the cell the old comments described backwards.
+        let c3 = run_case(Decimal::ZERO, dec!(0.01));
+        assert_eq!(
+            c3.realized_funding,
+            dec!(100),
+            "SHORT × rate>0 must RECEIVE: (−10 000) × (−0.01) = +100 — longs pay shorts \
+             on positive funding (the perp mechanic; see short_exec::accrue_funding). \
+             got {}. If this reads −100, someone 'fixed' the code to match the old \
+             wrong comment and every MN short-leg cashflow just inverted.",
+            c3.realized_funding
+        );
+        assert_eq!(c3.final_equity, dec!(100_100), "equity = 100 000 + 100");
+
+        // Case 4 — SHORT × NEGATIVE rate ⇒ the short PAYS.
+        let c4 = run_case(Decimal::ZERO, dec!(-0.01));
+        assert_eq!(
+            c4.realized_funding,
+            dec!(-100),
+            "SHORT × rate<0 must PAY: (−10 000) × (+0.01) = −100, got {}",
+            c4.realized_funding
+        );
+        assert_eq!(c4.final_equity, dec!(99_900), "equity = 100 000 − 100");
     }
 
     /// Anchor-neutrality: `run_path` with `funding_override=None` produces identical equity
@@ -998,7 +1448,6 @@ score_source = "funding_carry"
                 emit_equity_bin: None,
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override,
-                basis_override: None,
                 bar_span_hours: 1,
             };
             pollster::block_on(run_path(input, 0x00C0_FFEE, make_strat())).expect("run_path ok")
@@ -1014,30 +1463,75 @@ score_source = "funding_carry"
         );
     }
 
-    /// M-DEV-3 NEUTRALITY UNIT TEST (D-MN.3 layer 2 — MANDATORY).
+    /// Long-only (`k_short == 0`) REGRESSION PIN + determinism check.
     ///
-    /// `run_path` with `k_short == 0` strategy must produce a BYTE-IDENTICAL equity
-    /// curve to the same path with the short-side code compiled but never entered.
+    /// # What this test is, and what it is NOT (review 1-21 — renamed and re-documented)
     ///
-    /// This test goes RED the instant any short statement leaks out of its `k_short > 0`
-    /// gate. It is the formal proof of the "by-construction" neutrality claim (D-MN.3 layer 1):
-    /// every short branch is provably dead code when k_short == 0 → the executed path is
-    /// byte-for-byte HEAD's run_path code.
+    /// It was called `run_path_k_short_zero_byte_identical_to_head` and its doc claimed
+    /// it "goes RED the instant any short statement leaks out of its `k_short > 0` gate",
+    /// calling itself "the formal proof of the by-construction neutrality claim". It was
+    /// neither. It ran ONE configuration twice and asserted the two runs matched each
+    /// other — a **determinism** check, which a gate leak passes trivially because the
+    /// leak corrupts both runs identically. Its `liquidations == 0` assertion was
+    /// unfalsifiable for the same reason plus one more: with no shorts,
+    /// `gross_short_notional == 0` short-circuits the liquidation rule before the counter
+    /// can move, so the assertion holds whatever the gate does.
     ///
-    /// # Construction
+    /// Worse, **no** `k_short == 0` unit test can catch a short-gate leak in general:
+    /// `MomentumStrategy::build_rebalance_signals` gates the short book on
+    /// `selection_mode == LongShort && k_short > 0`, so at `k_short == 0` no
+    /// `open_short` signal is ever emitted and the short arms in `run_path` are
+    /// unreachable no matter what their own guards say. A guard on unreachable code
+    /// cannot be observed from the outside.
     ///
-    /// Run the SAME fixed synthetic bars twice: once with a k_short=0 strategy (long-only),
-    /// and once with the IDENTICAL bars but explicitly asserting k_short=0 in the strategy.
-    /// Both must produce an identical equity curve. A third run with identical params must
-    /// also match (determinism sub-check).
+    /// So this test now makes the honest, falsifiable claim it CAN support:
     ///
-    /// # RED-on-revert: the test goes RED if
-    /// - Any short signal is somehow emitted when k_short == 0 (strategy bug), OR
-    /// - Any short-side statement runs unconditionally inside run_path (gate leak).
+    /// 1. **Golden pin** — the long-only equity curve for a fixed fixture is checked in
+    ///    literally. ANY edit to `run_path` that moves the long-only path by one digit —
+    ///    including a short-side rule that starts acting on the long book, which is the
+    ///    dangerous leak — turns this RED with a readable diff.
+    /// 2. **Determinism** — two runs of the same configuration match.
+    /// 3. `liquidations == 0` is kept but labelled: it is IMPLIED by "no shorts", not
+    ///    evidence about the gate.
     ///
-    /// See: `run_path_funding_none_is_anchor_neutral` (the funding analogue).
+    /// **The real neutrality proof is `bash scripts/verify_anchors.sh` (the 107 pre-MN
+    /// anchors byte-identical after the MN work landed), plus the by-construction
+    /// argument in D-MN.3 layer 1.** This unit test is a fast local tripwire under it,
+    /// not a substitute for it.
+    ///
+    /// # Measured, not argued (review 1-21, two temporary mutations, both reverted)
+    ///
+    /// | mutation | this test |
+    /// |---|---|
+    /// | short-open arm UNGATED (`&& k_short > 0` deleted) — the exact leak the old doc claimed to catch | **GREEN** — no `open_short` signal exists at `k_short == 0`, so the arm is unreachable either way |
+    /// | long-open `fraction` 0.10 → 0.11 — a change to the long-only path | **RED**, with a readable curve diff |
+    ///
+    /// That is the whole finding in two rows: the assertion the test used to make was
+    /// unfalsifiable, and the assertion it makes now is falsifiable.
+    ///
+    /// See: `run_path_funding_none_is_anchor_neutral` (the funding analogue, which has
+    /// exactly the same shape and the same limits).
     #[test]
-    fn run_path_k_short_zero_byte_identical_to_head() {
+    fn run_path_k_short_zero_long_only_equity_curve_is_pinned() {
+        // ── (1) THE GOLDEN PIN — the falsifiable half of this test ────────────
+        //
+        // Captured from this exact fixture at the story-1-21 review commit, on the
+        // canonical box (ADR-0051 D5). It is 24 bars + the initial-capital seed = 25
+        // points, rendered with `Decimal::to_string` so scale changes are visible too
+        // (`101000.00` and `101000` are DIFFERENT strings and both are meaningful:
+        // Decimal scale tracks the arithmetic that produced the number).
+        //
+        // Re-baselining this literal is legitimate ONLY together with an explanation of
+        // what changed in the long-only path — the same contract as `evidence/anchors.toml`,
+        // at unit-test scale and unit-test speed.
+        const GOLDEN_LONG_ONLY_EQUITY_CURVE: &str = "100000,100000,100000,100000,100000,\
+             100000,101000.00,101000.00,101000.00,101000.00,101000.00,101000.00,101000.00,\
+             101000.00,101000.00,101918.18181818181818181818182,101918.18181818181818181818182,\
+             101918.18181818181818181818182,101918.18181818181818181818182,\
+             101000.00000000000000000000000,101000.00000000000000000000000,\
+             101000.00000000000000000000000,101000.00000000000000000000000,\
+             101000.00000000000000000000000,101000.00000000000000000000000";
+
         use rust_decimal_macros::dec;
         use time::OffsetDateTime;
         use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
@@ -1121,7 +1615,6 @@ score_source = "vol_adjusted_return"
                 emit_equity_bin: None,
                 latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
                 funding_override: None,
-                basis_override: None,
                 bar_span_hours: 1,
             };
             pollster::block_on(run_path(input, 0x00C0_FFEE, make_long_only_strat()))
@@ -1131,32 +1624,56 @@ score_source = "vol_adjusted_return"
         let r1 = run();
         let r2 = run();
 
-        // The equity curves must be bit-identical across two runs (determinism).
+        // ── (1) The golden pin (the constant is declared at the top of this fn) ──
+        let rendered = r1
+            .equity_curve
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        assert_eq!(
+            rendered, GOLDEN_LONG_ONLY_EQUITY_CURVE,
+            "LONG-ONLY REGRESSION: run_path's long-only equity curve moved. Every anchored \
+             non-MN surface (#86..#107) is produced by this code path, so a change here is a \
+             change to all of them — `bash scripts/verify_anchors.sh` is about to go RED. If \
+             the move is intended, re-baseline this literal IN THE SAME COMMIT as the anchor \
+             re-lock and say why in the commit message."
+        );
+
+        // ── (2) Determinism — two runs of the same config agree ───────────────
+        // NOTE: this is the assertion the test USED to make on its own. It cannot see a
+        // gate leak (a leak corrupts both runs identically); it only catches an unordered
+        // fold / a HashMap iteration / an RNG draw sneaking into the loop.
         assert_eq!(
             r1.equity_curve, r2.equity_curve,
-            "run_path_k_short_zero_byte_identical_to_head: two runs with k_short=0 must be \
-             deterministic (bit-identical equity curve). If they differ, there is a non-determinism \
-             bug in the long-only path — unrelated to shorts."
+            "two runs with k_short=0 must be deterministic (bit-identical equity curve). \
+             If they differ, there is a non-determinism bug in the long-only path — \
+             unrelated to shorts."
         );
 
-        // No shorts should ever have been opened (liquidations = 0).
+        // ── (3) IMPLIED, not proof ────────────────────────────────────────────
+        // At k_short == 0 the strategy emits no short signals, so no short can be opened,
+        // so `gross_short_notional` is 0 and the liquidation rule short-circuits before
+        // the counter. This assertion therefore holds whatever the `k_short > 0` gate
+        // does — it documents the expected state, it does NOT gate the gate. The
+        // by-construction neutrality claim is carried by verify_anchors.sh (107/107).
         assert_eq!(
             r1.liquidations, 0,
-            "k_short=0 LEAK: liquidations must be 0 when k_short==0. \
-             If > 0, the short-open branch leaked its gate — FIX IMMEDIATELY."
+            "k_short=0 must record no liquidations (implied by 'no shorts exist', not \
+             evidence about the gate — see this test's doc comment)"
         );
-
-        // No short positions → final equity must reflect a long-only run.
-        // We do not assert specific equity values (they depend on the exact strategy).
-        // The anchor-neutrality contract is: same inputs → same outputs. The test
-        // confirms the loop is deterministic and shorts are never entered.
+        // Liveness companion (the bug-log #74 lesson): a pinned curve on an arm that
+        // never traded would pin a flat line and prove nothing.
         assert!(
-            r1.final_equity > dec!(0),
-            "k_short=0: final equity must be > 0 (not crashed by a short-side leak)"
+            r1.trades > 0,
+            "the fixture must actually TRADE for the golden pin to mean anything; \
+             trades={}",
+            r1.trades
         );
-
-        // The two runs are already asserted equal above. The test PASSES when:
-        // (a) equity curves are identical, (b) liquidations = 0, (c) final equity > 0.
-        // It goes RED when any short statement leaks out of its k_short > 0 gate.
+        assert!(
+            r1.min_cash_seen >= Decimal::ZERO,
+            "the Bug-B solvency guard must hold on the long-only path; min_cash_seen={}",
+            r1.min_cash_seen
+        );
     }
 }

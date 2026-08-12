@@ -762,7 +762,6 @@ fn main() -> Result<()> {
             // v5-latency-slippage-sim: threshold_sweep has no equity surface; noop per ADR-0047 D2.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
-            basis_override: None,
         };
         let passthrough_base = {
             let toml_path = PathBuf::from("config/strategies/top10_momentum_h1.toml");
@@ -828,7 +827,6 @@ fn main() -> Result<()> {
             // v5-latency-slippage-sim: threshold_sweep has no equity surface; noop per ADR-0047 D2.
             latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
             funding_override: None,
-            basis_override: None,
         };
         let result = pollster::block_on(backtest::scenarios::threshold_sweep::run_cell(
             input,
@@ -908,7 +906,6 @@ fn main() -> Result<()> {
                     // sim is structurally noop here. Noop config per ADR-0047 D2.
                     latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
                     funding_override: None,
-                    basis_override: None,
                 };
 
                 // Use pollster::block_on — a minimal future poller with no executor-context

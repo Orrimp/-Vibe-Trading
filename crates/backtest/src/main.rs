@@ -1796,7 +1796,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: tcn_volume_map.clone(),
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         // Keep a report-only copy of the input (without the moved bars/equity_bin).
@@ -1819,7 +1818,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: tcn_volume_map,
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         // Bug #63 — CLI uses no-op cancel + progress so byte-identical to pre-fix.
@@ -1928,7 +1926,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: tcnw_volume_map.clone(),
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let tcn_w_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -1950,7 +1947,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: tcnw_volume_map,
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result = backtest::scenarios::tcn_overlay_weights::run(tcn_w_input, seed).await?;
@@ -2055,7 +2051,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: ptst_volume_map.clone(),
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let patchtst_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -2077,7 +2072,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: ptst_volume_map,
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result =
@@ -2180,7 +2174,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: vt_volume_map.clone(),
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let vol_target_input_for_report = backtest::cli_types::TcnScenarioInput {
@@ -2202,7 +2195,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: vt_volume_map,
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result =
@@ -2300,7 +2292,6 @@ async fn main() -> Result<()> {
                 volume_usd_per_symbol: regime_volume_map,
             },
             funding_override: None,
-            basis_override: None,
             bar_span_hours: 1,
         };
         let result =

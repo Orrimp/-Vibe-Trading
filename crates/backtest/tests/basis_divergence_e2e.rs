@@ -255,7 +255,6 @@ fn run_to_result(
         // the strategy's funding_map (line 155: `strategy.with_funding(funding_override)`).
         // The accrual block will run but its effect is minor for these selection tests.
         funding_override: basis_override,
-        basis_override: None, // M-DEV-1: second sidecar; not used in this test
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))
         .expect("run_path must succeed in basis divergence e2e test")
@@ -305,7 +304,6 @@ fn run_to_result_production_wiring(
         // PRODUCTION: None — the basis rides the strategy, not the input, and
         // the accrual block stays unreachable (D-BR.1, no cashflow).
         funding_override: None,
-        basis_override: None,
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))
         .expect("run_path must succeed in basis divergence e2e test")
