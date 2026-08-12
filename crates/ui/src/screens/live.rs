@@ -11,8 +11,8 @@
 //!    v0.1.0 / D1=(a)). `Loading` until the first bar; grows per bar.
 //! 3. **Mid-bottom:** KPI strip (`widgets::kpi_strip`) bound to
 //!    `model.live_kpi` (live session Total-return + Max-DD; Sharpe/CAGR/Win
-//!    `—`; Trades 0 — D2) + LLM-spend text tile (Design § A9 / Q4b — a
-//!    separate Phase-F placeholder, untouched here).
+//!    `—`; Trades = the session fill count) + LLM-spend text tile (Design
+//!    § A9 / Q4b — a separate Phase-F placeholder, untouched here).
 //! 4. **Bottom:** 2-column row — `widgets::positions` LEFT,
 //!    `widgets::agent_feed` RIGHT.
 //!
@@ -35,11 +35,12 @@ use rust_decimal_macros::dec;
 
 use trading_core::FxNote;
 
-use crate::state::{Cockpit, Message, PanelState};
+use crate::state::{Cockpit, LiveEquityWindow, Message, PanelState};
 use crate::strings::{
-    LIVE_FORWARD_BUDGET_LABEL, LIVE_FORWARD_DISCLAIMER, LIVE_FORWARD_FX_NOTE_FMT,
-    LIVE_FORWARD_PNL_LABEL, LIVE_FORWARD_RUNNING_FMT, LIVE_HEADLINE, LIVE_LLM_SPEND_LABEL,
-    LIVE_LLM_SPEND_PLACEHOLDER, LIVE_SESSION_RETURN_CAPTION, LIVE_SINCE_INCEPTION_CAPTION,
+    LIVE_EQUITY_AS_OF_AGE_FMT, LIVE_EQUITY_AS_OF_FMT, LIVE_FORWARD_BUDGET_LABEL,
+    LIVE_FORWARD_DISCLAIMER, LIVE_FORWARD_FX_NOTE_FMT, LIVE_FORWARD_PNL_LABEL,
+    LIVE_FORWARD_RUNNING_FMT, LIVE_HEADLINE, LIVE_LLM_SPEND_LABEL, LIVE_LLM_SPEND_PLACEHOLDER,
+    LIVE_ROLLING_WINDOW_CAPTION, LIVE_SESSION_RETURN_CAPTION, LIVE_SINCE_INCEPTION_CAPTION,
     LIVE_SYSTEM_HEALTH_LABEL, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, layout, space, text};
@@ -77,8 +78,10 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
 
     // ── KPI strip + LLM spend tile ──────────────────────────────────────────
     // cockpit-live-dashboard-wiring — bound to the model-cached live KPI strip
-    // (Loading until ≥2 points per the `is_all_absent` trap, D2). Total-return
-    // (session) + Max-DD are live; Sharpe/CAGR/Win-rate render `—`; Trades 0.
+    // (Loading until ≥2 points, D2 — a 1-point series carries no return
+    // interval). Total-return (session) + Max-DD are live; Sharpe/CAGR/Win-rate
+    // render `—`; Trades is the session fill count. From 2 points on a flat
+    // feed renders `0.00% / 0.00% / 0`, NOT six dashes (2-15 review H2).
     let kpi_state = &model.live_kpi;
     let kpi = kpi_strip::view(kpi_state, mode).map(|_| Message::ChartMarkerHoverEnded);
 
@@ -99,22 +102,18 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(kpi)
         .push(Container::new(llm_tile).width(Length::Fixed(120.0)));
 
-    // cockpit-live-dashboard-wiring (R5 / AC5) + live-equity-history-durable
-    // (R6) — honest scope caption for the strip's Total-return card. When a
-    // durable paper/live history has been hydrated (`live_equity_hydrated`), the
-    // figure is measured from the first persisted point (account inception) and
-    // may span sessions/days → "Since inception"; otherwise (research mode, or a
-    // paper boot with no prior history) it is session-to-date → "Session to
-    // date". Both are honest scope labels — never an annualized / characterized
-    // result, never a fabricated number.
-    let caption_text = if model.live_equity_hydrated {
-        LIVE_SINCE_INCEPTION_CAPTION
-    } else {
-        LIVE_SESSION_RETURN_CAPTION
-    };
-    let session_caption = Text::new(caption_text)
+    let session_caption = Text::new(return_scope_caption(model))
         .size(text::SMALL)
         .color(color::FG_3.current(mode));
+
+    // 2-15 review M8 — the "as of" marker. Only rendered once at least one
+    // snapshot has been delivered (so the fresh-boot Loading screen is
+    // unchanged); see `live_equity_as_of_label`.
+    let as_of_caption = live_equity_as_of_label(model).map(|label| {
+        Text::new(label)
+            .size(text::SMALL)
+            .color(color::FG_3.current(mode))
+    });
 
     // ── F5 — Forward paper-trade P/L framing ────────────────────────────────
     // Rendered only when `model.forward_budget` is `Some(budget)`.
@@ -163,6 +162,10 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .push(kpi_row)
         .push(session_caption);
 
+    if let Some(caption) = as_of_caption {
+        col = col.push(caption);
+    }
+
     if let Some(block) = forward_pnl_block {
         col = col.push(block);
     }
@@ -171,6 +174,72 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+}
+
+/// The scope caption rendered under the Live KPI strip — **the** statement
+/// about what window the Total-return / Max-DD cards actually cover.
+///
+/// This is the shared seam: `view` renders exactly this string, and the
+/// `panel_snapshots.rs` mirror asserts through this function rather than
+/// re-deriving the conditional (2-15 review M4's drift lesson applied
+/// pre-emptively).
+///
+/// Precedence, most-honest-first:
+///
+/// 1. `live_equity_window == Rolling` → [`LIVE_ROLLING_WINDOW_CAPTION`]. The
+///    ring evicted its head (or the boot hydrate was capped at the reader's
+///    `LIMIT`), so `live_equity_buffer[0]` — the Total-return denominator, and
+///    the series the Max-DD peak is scanned over — is neither the session open
+///    nor account inception. Both other captions would be false, so this wins
+///    over the hydrate switch (2-15 review H3).
+/// 2. `live_equity_hydrated` → [`LIVE_SINCE_INCEPTION_CAPTION`]: a durable
+///    history was loaded whole and its first row IS the first persisted point.
+/// 3. otherwise → [`LIVE_SESSION_RETURN_CAPTION`]: the buffer starts at this
+///    session's first bar.
+#[must_use]
+pub fn return_scope_caption(model: &Cockpit) -> &'static str {
+    if model.live_equity_window == LiveEquityWindow::Rolling {
+        LIVE_ROLLING_WINDOW_CAPTION
+    } else if model.live_equity_hydrated {
+        LIVE_SINCE_INCEPTION_CAPTION
+    } else {
+        LIVE_SESSION_RETURN_CAPTION
+    }
+}
+
+/// The Live equity "as of" line, or `None` when no snapshot has ever been
+/// delivered (a fresh boot renders the Loading bodies and no marker — there is
+/// nothing to be stale about yet).
+///
+/// **Why this exists (2-15 review M8).** If the P&L producer dies *without*
+/// closing its channel, no `PnlError` ever arrives: both panels stay `Ready`
+/// on the last series forever, and a stopped feed is pixel-identical to a flat
+/// market. The health strip does not cover it — its `last_tick` age tracks the
+/// MARKET-DATA feed (`Cockpit::last_tick_ts`, set by `Message::Tick`), which
+/// keeps ticking merrily while the equity feed is dead. So the equity panels
+/// carry their own stamp, from `live_equity_last_as_of` (the wallclock stamp of
+/// the last ACCEPTED snapshot — the same key the delivery guard uses).
+///
+/// When the server clock is known the age is stated outright; otherwise the
+/// bare timestamp is rendered next to the health strip's server-time badge, in
+/// the same `HH:MM:SS UTC` shape, so the comparison is one glance. A
+/// thresholded "STALE" badge is deliberately NOT added here: the threshold
+/// would be a guess (bar intervals run from 1 m to 1 d) and thresholded
+/// liveness is the health strip's job — this is the fact, not a verdict.
+#[must_use]
+pub fn live_equity_as_of_label(model: &Cockpit) -> Option<String> {
+    let as_of = model.live_equity_last_as_of?;
+    let dt = as_of.inner();
+    let time = format!("{:02}:{:02}:{:02}", dt.hour(), dt.minute(), dt.second());
+    Some(match model.server_time_now {
+        Some(now) => {
+            let age_s = (now.unix_millis() - as_of.unix_millis()).max(0) / 1_000;
+            LIVE_EQUITY_AS_OF_AGE_FMT
+                .replace("{time}", &time)
+                .replace("{age}", &age_s.to_string())
+        }
+        None => LIVE_EQUITY_AS_OF_FMT.replace("{time}", &time),
+    })
 }
 
 /// `true` when the forward paper-trade is currently holding a SHORT — any open

@@ -59,7 +59,16 @@ pub fn load_report(path: &Path) -> Result<ReportLoadResult, std::io::Error> {
     // KPI metrics — graceful fallback to `PanelState::Error(msg)` when the
     // parser hits a malformed body (R3.5 / Q3 graceful fallback). The strip
     // then renders the unavailable state with the muted body.
+    // A parse that found a `## Summary` but recognised NO metric rows returns
+    // the `BacktestMetrics::all_absent()` sentinel — genuinely-no-data. Since
+    // the 2-15 review H2 fix that is carried by the STATE (`Empty`), not by a
+    // zero-shaped `Ready`: `kpi_strip::view` now renders every `Ready` payload
+    // verbatim, so a healthy-but-flat live strip can no longer be mistaken for
+    // an empty one. Classifying here — at the seam that actually knows the
+    // parse found nothing — keeps the viewer/Reports strip rendering its
+    // honest "Backtest metrics unavailable" body for such a report.
     let metrics: PanelState<BacktestMetrics> = match reports::parse::parse_from_report(path) {
+        Ok(m) if m.is_all_absent() => PanelState::Empty,
         Ok(m) => PanelState::Ready(m),
         Err(e) => PanelState::Error(smol_str::SmolStr::new(e.to_string())),
     };
@@ -520,6 +529,36 @@ mod tests {
         // Body has the front-matter stripped.
         assert!(r.body_markdown.starts_with("# Report"));
         assert!(!r.body_markdown.contains("scenario: fixture"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **2-15 review H2.** A `## Summary` whose rows the parser recognises
+    /// NONE of yields the `all_absent` sentinel — genuinely-no-data — and must
+    /// surface as `metrics: Empty`, the state `kpi_strip::view` renders as
+    /// "Backtest metrics unavailable". This is the seam that keeps the
+    /// honest-dashes render alive now that a `Ready` payload always draws its
+    /// values (so a healthy flat LIVE strip is no longer swallowed by it).
+    #[test]
+    fn load_report_unrecognised_summary_yields_metrics_empty() {
+        let dir =
+            std::env::temp_dir().join(format!("reports_loader_absent_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("backtest-20260101-000002-absent.md");
+        let body = "---\nscenario: fixture\n---\n\
+                    # Report\n\n\
+                    ## Summary\n\n\
+                    | Metric | Value |\n\
+                    |--------|-------|\n\
+                    | Scenario | btc-2023 |\n\n\
+                    ## Notes\n\nno numeric rows at all\n";
+        std::fs::write(&path, body).expect("write fixture");
+
+        let r = load_report(&path).expect("load must succeed for a readable file");
+        assert!(
+            matches!(r.metrics, PanelState::Empty),
+            "an all-absent parse → metrics Empty (not a zero-shaped Ready), got {}",
+            r.metrics.variant_name()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

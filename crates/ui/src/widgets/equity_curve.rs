@@ -62,7 +62,7 @@ pub fn view<'a>(
             if s.points.is_empty() {
                 empty_with_label(VIEWER_NO_EQUITY_DATA, mode)
             } else {
-                canvas_view(s.clone(), mode)
+                canvas_view(s, mode)
             }
         }
     }
@@ -79,9 +79,17 @@ fn empty_with_label<'a>(label: &'a str, mode: ThemeMode) -> iced::Element<'a, Vi
         .into()
 }
 
-fn canvas_view<'a>(series: EquitySeries, mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
+/// 2-15 review M7 — the program BORROWS the series for the element's
+/// lifetime. It used to take an owned `EquitySeries`, so `view()` deep-cloned
+/// every point (up to `LIVE_EQUITY_BUFFER_CAP` = 2 880 `EquityPoint`s, each
+/// carrying three `Decimal`s) on **every** frame — and `view` runs on every
+/// message: ticks, latency updates, toasts, hovers. Borrowing removes the
+/// clone outright; the tessellation itself still happens per frame (there is
+/// no `canvas::Cache` — one would have to live on the model, since the program
+/// is rebuilt each `view`).
+fn canvas_view<'a>(series: &'a EquitySeries, mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
     let program = EquityCurveProgram { series, mode };
-    let canvas: Canvas<EquityCurveProgram, ViewerMessage> = Canvas::new(program)
+    let canvas: Canvas<EquityCurveProgram<'a>, ViewerMessage> = Canvas::new(program)
         .width(Length::Fill)
         .height(Length::Fixed(CURVE_HEIGHT_PX));
     Container::new(canvas)
@@ -95,12 +103,12 @@ fn canvas_view<'a>(series: EquitySeries, mode: ThemeMode) -> iced::Element<'a, V
         .into()
 }
 
-struct EquityCurveProgram {
-    series: EquitySeries,
+struct EquityCurveProgram<'a> {
+    series: &'a EquitySeries,
     mode: ThemeMode,
 }
 
-impl canvas::Program<ViewerMessage> for EquityCurveProgram {
+impl canvas::Program<ViewerMessage> for EquityCurveProgram<'_> {
     type State = ();
 
     fn draw(
@@ -180,7 +188,7 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
         // Price axis (USD labels in the LEFT gutter — T3019 / Q7).
         draw_price_axis(&mut frame, inner, (y_min, y_max), self.mode);
         // Time axis (wall-clock labels in the BOTTOM gutter — T3019).
-        draw_time_axis(&mut frame, inner, &self.series, self.mode);
+        draw_time_axis(&mut frame, inner, self.series, self.mode);
 
         // Index-based X coordinates.
         let n = self.series.points.len();
@@ -215,12 +223,39 @@ impl canvas::Program<ViewerMessage> for EquityCurveProgram {
     }
 }
 
+/// Decimal places for a money axis label, chosen so that ADJACENT gridlines
+/// read as different numbers (2-15 review L12).
+///
+/// The old fixed `{v:.0}` was sized for a multi-thousand-dollar backtest
+/// equity range and is wrong for this product's headline scale: on the €200
+/// forward budget a typical intraday range (200.10 → 200.60) rendered five
+/// gridlines all reading "200"/"201" — an axis that carries no information at
+/// exactly the scale the advisor ships with.
+///
+/// The step between gridlines is `span / (GRIDLINE_COUNT − 1)`; pick the
+/// smallest precision that resolves it, capped at 3 (below which the label
+/// stops fitting the 48 px gutter).
+fn money_label_decimals(span: f32) -> usize {
+    #[allow(clippy::cast_precision_loss)]
+    let step = span.abs() / (GRIDLINE_COUNT - 1).max(1) as f32;
+    if !step.is_finite() || step >= 10.0 {
+        0
+    } else if step >= 1.0 {
+        1
+    } else if step >= 0.1 {
+        2
+    } else {
+        3
+    }
+}
+
 /// T3019 — viewer-side price-axis draw pass.  Mirrors the cockpit
-/// chart's `draw_price_axis` shape but formats labels as
-/// `{value:.0}` (USD whole-dollar precision is more readable than
-/// `{:.2}` on a multi-thousand-dollar equity range).
+/// chart's `draw_price_axis` shape; label precision adapts to the rendered
+/// range via [`money_label_decimals`] (whole dollars on a multi-thousand
+/// backtest curve, cents on a €200 forward budget).
 fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode: ThemeMode) {
     let (min_v, max_v) = range;
+    let decimals = money_label_decimals(max_v - min_v);
     #[allow(clippy::cast_precision_loss)]
     let denom = (GRIDLINE_COUNT - 1) as f32;
     let axis_color = color::FG_3.current(mode);
@@ -256,7 +291,7 @@ fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode:
         );
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
-            content: format!("{v:.0}"),
+            content: format!("{v:.decimals$}"),
             position: Point::new(inner.x - tick_len - label_gap, y),
             color: axis_color,
             size: micro.into(),
@@ -422,5 +457,52 @@ mod tests {
             "viewer__equity_curve__no_equity_data",
             curve_summary(&state)
         );
+    }
+
+    /// **2-15 review L12.** The money-axis label precision must adapt to the
+    /// rendered range, or the €200 forward budget draws five gridlines that
+    /// all read "200".
+    #[test]
+    fn money_label_decimals_adapt_to_range() {
+        // A multi-thousand backtest equity range keeps whole dollars.
+        assert_eq!(money_label_decimals(60_000.0), 0);
+        assert_eq!(money_label_decimals(40.1), 0); // step ≈ 10.03
+        // A ~€200 forward budget's typical intraday range → cents.
+        assert_eq!(money_label_decimals(0.5), 2); // step 0.125 → 200.10 … 200.60
+        // Mid ranges resolve to tenths…
+        assert_eq!(money_label_decimals(20.0), 1); // step 5.0
+        // …and a pathologically tight range gets the 3-decimal cap.
+        assert_eq!(money_label_decimals(0.004), 3);
+        // Degenerate input must not panic or produce a silly precision.
+        assert_eq!(money_label_decimals(f32::NAN), 0);
+        assert_eq!(money_label_decimals(0.0), 3);
+    }
+
+    /// The rendered label STRINGS at the €200 scale are distinct — the actual
+    /// operator-visible symptom, asserted on the same expression
+    /// `draw_price_axis` formats with (not on the helper's return value).
+    #[test]
+    fn forward_budget_scale_gridlines_are_distinguishable() {
+        let (min_v, max_v) = (200.10_f32, 200.60_f32);
+        let decimals = money_label_decimals(max_v - min_v);
+        #[allow(clippy::cast_precision_loss)]
+        let denom = (GRIDLINE_COUNT - 1) as f32;
+        let labels: Vec<String> = (0..GRIDLINE_COUNT)
+            .map(|i| {
+                #[allow(clippy::cast_precision_loss)]
+                let frac = i as f32 / denom;
+                let v = max_v - frac * (max_v - min_v);
+                format!("{v:.decimals$}")
+            })
+            .collect();
+        let unique: std::collections::BTreeSet<&String> = labels.iter().collect();
+        assert_eq!(
+            unique.len(),
+            labels.len(),
+            "every gridline label must be distinct at the €200 forward-budget \
+             scale; got {labels:?}"
+        );
+        assert!(labels.contains(&"200.60".to_string()), "{labels:?}");
+        assert!(labels.contains(&"200.10".to_string()), "{labels:?}");
     }
 }

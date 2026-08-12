@@ -91,10 +91,25 @@ impl EquitySeries {
             if amt < running_trough {
                 running_trough = amt;
             }
-            let dd = if running_peak.is_zero() {
+            // Drawdown = (peak − value) / |peak|.
+            //
+            // The denominator is the ABSOLUTE peak (2-15 review L11): with a
+            // NEGATIVE `running_peak` (an all-underwater series — reachable
+            // now that LIVE equity is routed through here, e.g. a short gone
+            // wrong past zero) the signed denominator flips the ratio's sign,
+            // `.max(ZERO)` clamps it, and a series 50 % further underwater
+            // reports "Max DD 0.00 %" — a silent lie on the honesty surface.
+            // Taking `|peak|` keeps the fraction positive and monotone in the
+            // loss. INERT for every non-negative series: `running_peak` is a
+            // running max, so it is > 0 for the whole walk whenever
+            // `points[0].equity > 0` (every backtest, every funded account)
+            // and `|peak| == peak` there — byte-identical output, anchors
+            // included.
+            let peak_denom = running_peak.abs();
+            let dd = if peak_denom.is_zero() {
                 Decimal::ZERO
             } else {
-                ((running_peak - amt) / running_peak).max(Decimal::ZERO)
+                ((running_peak - amt) / peak_denom).max(Decimal::ZERO)
             };
             if dd > max_dd {
                 max_dd = dd;
@@ -192,6 +207,28 @@ impl BacktestMetrics {
             win_rate_present: false,
             trades: 0,
         }
+    }
+
+    /// `true` when this value is indistinguishable from the
+    /// [`Self::all_absent`] sentinel — every present-flag false, both
+    /// percentages zero, zero trades.
+    ///
+    /// **This is a statement about the DATA, not about the screen.** A
+    /// producer that genuinely parsed no metrics (`reports::parse` on a
+    /// `## Summary` with no recognised rows) uses it to route to
+    /// `PanelState::Empty`, which is what renders the honest "Backtest
+    /// metrics unavailable" strip. A producer holding real, healthy,
+    /// flat-at-zero numbers (a live session with no fills yet) must NOT:
+    /// `Ready(zeros)` renders `0.00 % / 0.00 % / 0`, because "no data" and
+    /// "data is fine and flat" must not look identical (2-15 review H2).
+    #[must_use]
+    pub fn is_all_absent(&self) -> bool {
+        !self.cagr_present
+            && !self.sharpe_present
+            && !self.win_rate_present
+            && self.total_return_pct.is_zero()
+            && self.max_drawdown_pct.is_zero()
+            && self.trades == 0
     }
 }
 
@@ -333,5 +370,67 @@ mod tests {
         let down = s.downsample(120);
         assert_eq!(down.points[0].equity.amount(), first_amt);
         assert_eq!(down.points[down.points.len() - 1].equity.amount(), last_amt);
+    }
+
+    // ── 2-15 review L11 — the negative-equity drawdown sign trap ────────────
+
+    /// An ALL-UNDERWATER series (equity never above zero) must report a REAL
+    /// drawdown, not `0.00 %`.
+    ///
+    /// Before the `|peak|` denominator fix: `running_peak = −100` (the
+    /// least-negative value), `(−100 − −200)/−100 = −1`, `.max(ZERO)` clamps
+    /// to `0` — an account that halved *again* below zero rendered "Max DD
+    /// 0.00 %" on the KPI strip. This story is the first to route LIVE equity
+    /// into this walk, so the trap became reachable from the product surface.
+    #[test]
+    fn negative_equity_reports_a_real_drawdown_not_zero() {
+        let pts = vec![
+            (ts(0), m(dec!(-100))),
+            (ts(60), m(dec!(-150))),
+            (ts(120), m(dec!(-200))),
+        ];
+        let s = EquitySeries::from_points(pts).expect("ok");
+        assert_eq!(s.peak.amount(), dec!(-100));
+        assert_eq!(s.trough.amount(), dec!(-200));
+        // (−100 − −200) / |−100| = 1.00 → 100 % below the (negative) peak.
+        assert_eq!(s.max_drawdown_pct, dec!(1.00));
+        assert_eq!(s.points[0].drawdown_pct, Decimal::ZERO);
+        assert_eq!(s.points[1].drawdown_pct, dec!(0.50));
+        assert_eq!(s.points[2].drawdown_pct, dec!(1.00));
+    }
+
+    /// The fix is INERT for a positive-peak series — the anchored corpus and
+    /// every funded account live here. A series that crosses INTO negative
+    /// territory keeps its positive `running_peak`, so the denominator is
+    /// unchanged and the numbers are byte-identical to the pre-fix walk.
+    #[test]
+    fn positive_peak_drawdown_unchanged_even_when_equity_goes_negative() {
+        let pts = vec![
+            (ts(0), m(dec!(100))),
+            (ts(60), m(dec!(50))),
+            (ts(120), m(dec!(-50))),
+        ];
+        let s = EquitySeries::from_points(pts).expect("ok");
+        assert_eq!(s.peak.amount(), dec!(100));
+        // (100 − −50)/100 = 1.50 — the same value the signed denominator gave.
+        assert_eq!(s.max_drawdown_pct, dec!(1.50));
+        assert_eq!(s.points[1].drawdown_pct, dec!(0.50));
+    }
+
+    // ── 2-15 review H2 — the all-absent sentinel is a DATA predicate ────────
+
+    #[test]
+    fn all_absent_sentinel_is_recognised_and_real_zeros_are_not() {
+        assert!(BacktestMetrics::all_absent().is_all_absent());
+
+        // A live session that is genuinely flat with one fill is NOT absent.
+        let mut flat_with_a_fill = BacktestMetrics::all_absent();
+        flat_with_a_fill.trades = 1;
+        assert!(!flat_with_a_fill.is_all_absent());
+
+        // …nor is a session with a real (non-zero) return.
+        let mut moved = BacktestMetrics::all_absent();
+        moved.total_return_pct = dec!(0.01);
+        assert!(!moved.is_all_absent());
     }
 }

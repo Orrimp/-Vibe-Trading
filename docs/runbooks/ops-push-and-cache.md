@@ -142,6 +142,12 @@ git config core.hooksPath .githooks
   the permanent fix was NOT half-applied: recipe (a) step 2 adds a deploy key to
   GitHub repo settings, which is an operator-owned account change. Commits are
   safe on local `main` and accumulate without loss — the burn-down continued.
+  **RESOLVED ~06:56 the same night without intervention** — a later `git push`
+  succeeded and carried all three queued commits (`8298697`, `46dd71d`,
+  `ed36766`) in one go, consistent with the vault having been unlocked in the
+  interim. Nothing was lost by waiting, which is the point worth keeping: the
+  correct response to this wedge is to keep committing locally and retry later,
+  NOT to fight the agent.
   **Standing status: the permanent fix (a) or (b) has still never been applied**;
-  this is now the third recorded recurrence and remains the only thing between a
-  green local tree and a pushed one. Owner: operator.
+  this is now the third recorded recurrence. Each time it has cleared on its own,
+  which is exactly why it keeps not getting fixed. Owner: operator.

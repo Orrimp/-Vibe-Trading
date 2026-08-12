@@ -351,6 +351,24 @@ Under plain `ScoreSource::BasisReversal` on the identical inputs the arm longs *
 **Fix (1-25)**: decide the intended direction, make the code match the doc (or the doc match a deliberately-chosen code), and add a **literal-value direction gate** in the shape of the long-only arm's sign guards — an inequality test cannot hold a sign.
 **Moral**: when a requirement is declared load-bearing for one arm, the declaration does not travel to the arm that derives from it. A derived signal needs its own direction gate, asserting a *value*, not a *difference* — "differs from the raw arm" is satisfied just as well by the inverse as by the intended construction.
 
+### `#77` — A snapshot baseline regenerated in the same commit as the code it depicts cannot witness that code: it ratifies whatever the code produced
+**Status**: the instance was FIXED 2026-06-11 (`3f9fd63`); the CLASS is disclosed here 2026-08-11 by the story-2-15 review, because nothing prevents its recurrence.
+**Discovery**: found by two review layers independently while auditing story 2-15; both commit messages quoted below were verified verbatim by the orchestrator.
+
+**The instance.** Story 2-15 wired the cockpit's Live KPI strip. `EquitySeries::max_drawdown_pct` is a **fraction** (0.40 = 40%); `BacktestMetrics.*_pct` are **percentage points**, and the formatter appends `%` verbatim. The wiring assigned fraction → percent field with no scaling, so a +10% session rendered **"0.10%"** and a 25% drawdown rendered **"−0.25%"** — money displayed 100× too small.
+
+**Why four separate gates all went green on it:**
+- two unit tests asserted the values the implementation produced (`dec!(0.10)`, `dec!(0.25)`) — i.e. they asserted the bug;
+- two snapshot baselines were **regenerated in the same commit** and committed containing `card Total return: 0.10%` / `card Max DD: 0.00%`.
+
+The fixer's own commit message states it (`3f9fd63`, verbatim): *"the wiring test had **encoded the bug as fact** (0.10) — corrected to 10/-10/25 + added `live_kpi_units_render_percent_not_fraction` pinning the rendered card text."*
+
+**The class, stated generally**: a baseline or golden file regenerated from the code under test has **no independent authority over that code**. It cannot disagree with it. Committing it converts whatever the code currently does into the contract — so the next reviewer sees a green snapshot gate and a matching unit test, and both are circular. The defect was ultimately caught by the operator *looking at the screen*, which is the one oracle that was not derived from the implementation.
+
+**This is why AD-10 says what it says.** "A passing proxy is not proof the screen draws" is usually read as "unit tests are weaker than pixels". The sharper reading is about **authority**: a test is only a gate if its expected value comes from somewhere the implementation cannot reach. A regenerated baseline, a test written by reading the implementation, and a text mirror that re-implements the view all fail that test regardless of how many of them there are.
+
+**Moral**: when a change alters a number a human will read, the assertion must be an **independently-derived literal** — computed by hand, taken from the spec, or read off the requirement — never a regenerated baseline and never a value copied from the implementation's output. Regenerating a baseline is how you *record* a change; it is never how you *verify* one. Corollary for reviews: ask of every green baseline, "was this file regenerated in the commit it is guarding?" If yes, it is documentation, not a gate.
+
 ## Changelog
 
 - 2026-08-11 (orchestrator): **#76 added (OPEN, CRITICAL)** — the basis⊥funding RESIDUAL arm ranks the basis axis inverted vs its own spec (longs the HIGHEST basis; rank 1 = lowest basis, and `top_k_long` takes the highest residual). With #75 this means **no anchored MN surface tested the basis in its documented direction**, so "the residual carries no orthogonal alpha" cannot be read off #116-#119 at all. Every residual test asserts difference, never direction. Story-1-21 review; fix + re-run → 1-25.

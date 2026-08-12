@@ -45,15 +45,12 @@ pub fn view<'a>(
     mode: ThemeMode,
 ) -> iced::Element<'a, ViewerMessage> {
     let body: iced::Element<'a, ViewerMessage> = match metrics {
-        PanelState::Loading | PanelState::Empty => unavailable_strip(mode),
-        PanelState::Error(_) => unavailable_strip(mode),
-        PanelState::Ready(m) => {
-            if is_all_absent(m) {
-                unavailable_strip(mode)
-            } else {
-                ready_strip(m, mode)
-            }
-        }
+        // THE branch decision. `renders_unavailable` is the shared seam — any
+        // mirror/test that wants to know which strip draws must call IT, not
+        // re-implement this match (2-15 review M4: the `panel_snapshots.rs`
+        // mirror had silently drifted from this very branch).
+        PanelState::Loading | PanelState::Empty | PanelState::Error(_) => unavailable_strip(mode),
+        PanelState::Ready(m) => ready_strip(m, mode),
     };
 
     // Tier-1 PANEL chrome — bare container (no header — Q-resolved
@@ -74,15 +71,31 @@ pub fn view<'a>(
         .into()
 }
 
-/// Treat a `BacktestMetrics` value where every present-flag is false
-/// AND every numeric field is zero AS the all-absent sentinel.
-fn is_all_absent(m: &BacktestMetrics) -> bool {
-    !m.cagr_present
-        && !m.sharpe_present
-        && !m.win_rate_present
-        && m.total_return_pct.is_zero()
-        && m.max_drawdown_pct.is_zero()
-        && m.trades == 0
+/// `true` when [`view`] renders the six-dash **"Backtest metrics
+/// unavailable"** strip for `metrics`, `false` when it renders the six real
+/// cards. The single source of truth for that branch — [`view`] itself is
+/// written in terms of the same match, and every mirror/test asserts through
+/// this function so it cannot drift from the screen (2-15 review M4).
+///
+/// # The rule (2-15 review H2)
+///
+/// `Ready` **always** renders its values. A `Ready` strip whose numbers happen
+/// to all be zero is a healthy flat feed — a fresh `cockpit_live` in
+/// `ExecutionMode::Observe` places no orders, so no fills, so flat equity —
+/// and it must read `0.00 % / 0.00 % / 0`. Rendering six dashes there made
+/// "the data is fine and flat" indistinguishable from "there is no data", on
+/// precisely the default first-run screen.
+///
+/// A producer that genuinely has **no** metrics says so with the state, not
+/// with a zero-shaped payload: `reports::parse` yielding
+/// `BacktestMetrics::all_absent()` is routed to `PanelState::Empty` by
+/// `crate::reports::loader`, which lands on the unavailable arm below.
+#[must_use]
+pub fn renders_unavailable(metrics: &PanelState<BacktestMetrics>) -> bool {
+    matches!(
+        metrics,
+        PanelState::Loading | PanelState::Empty | PanelState::Error(_)
+    )
 }
 
 fn ready_strip<'a>(m: &'a BacktestMetrics, mode: ThemeMode) -> iced::Element<'a, ViewerMessage> {
@@ -424,7 +437,8 @@ mod tests {
         let mut out = String::new();
         out.push_str("widget: kpi_strip\n");
         match state {
-            PanelState::Ready(m) if !is_all_absent(m) => {
+            // Branch through the production seam — never a re-implementation.
+            PanelState::Ready(m) if !renders_unavailable(state) => {
                 out.push_str("state: ready\n");
                 let mode = ThemeMode::Dark;
                 let (tr, _) = format_pct_sentiment(m.total_return_pct, mode);
@@ -464,13 +478,45 @@ mod tests {
         assert_snapshot!("viewer__kpi_strip__sample_report", strip_summary(&state));
     }
 
+    /// The genuinely-absent case. Since the 2-15 review H2 fix it is carried
+    /// by the *state* (`PanelState::Empty`, which is what
+    /// `reports::loader` produces for an all-absent parse), not by a
+    /// zero-shaped `Ready` payload. Same rendered strip, honest provenance.
     #[test]
     fn kpi_strip__metrics_unavailable() {
-        let state: PanelState<BacktestMetrics> = PanelState::Ready(BacktestMetrics::all_absent());
+        let state: PanelState<BacktestMetrics> = PanelState::Empty;
         assert_snapshot!(
             "viewer__kpi_strip__metrics_unavailable",
             strip_summary(&state)
         );
+    }
+
+    /// **2-15 review H2.** A `Ready` strip whose numbers are all zero is a
+    /// healthy FLAT feed (a fresh `cockpit_live` in `Observe` — no orders, no
+    /// fills, flat equity), and it must render its real values. Before the fix
+    /// `is_all_absent` swallowed exactly this state into six dashes, so the
+    /// product's default first-run screen said "Backtest metrics unavailable"
+    /// about a feed that was working perfectly.
+    #[test]
+    fn ready_flat_zero_metrics_render_values_not_dashes() {
+        let flat: PanelState<BacktestMetrics> = PanelState::Ready(BacktestMetrics::all_absent());
+        assert!(
+            !renders_unavailable(&flat),
+            "a Ready strip must render its values even when every number is zero"
+        );
+        let summary = strip_summary(&flat);
+        assert!(summary.contains("state: ready"), "{summary}");
+        assert!(summary.contains("total_return: 0.00%"), "{summary}");
+        assert!(summary.contains("max_dd: 0.00%"), "{summary}");
+        assert!(summary.contains("trades: 0"), "{summary}");
+        assert!(
+            !summary.contains(VIEWER_METRICS_UNAVAILABLE),
+            "a healthy flat feed must not claim its metrics are unavailable: {summary}"
+        );
+        // …and the genuinely-absent state still renders the honest advisory.
+        let absent: PanelState<BacktestMetrics> = PanelState::Empty;
+        assert!(renders_unavailable(&absent));
+        assert!(strip_summary(&absent).contains(VIEWER_METRICS_UNAVAILABLE));
     }
 
     // ── view_for_lab tests (lab-end-to-end-v2 Wave D-1.1 F8 / T-D-14a) ───────

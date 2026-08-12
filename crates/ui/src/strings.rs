@@ -4297,6 +4297,31 @@ pub const LIVE_SESSION_RETURN_CAPTION: &str = "Session to date";
 /// so it keeps `LIVE_SESSION_RETURN_CAPTION`.
 pub const LIVE_SINCE_INCEPTION_CAPTION: &str = "Since inception";
 
+/// 2-15 review H3 — honest scope caption for the Live KPI strip once the
+/// bounded ring (`LIVE_EQUITY_BUFFER_CAP`) has slid: the buffer head is no
+/// longer the session open **or** account inception, so both of the captions
+/// above would be false claims about the very figures beside them
+/// (Total-return's denominator IS `live_equity_buffer[0]`, and a drawdown whose
+/// peak was evicted disappears from the Max-DD card entirely). Latched by
+/// `Cockpit::live_equity_window` = `Rolling` — set on the first eviction, and at
+/// boot when the durable hydrate came back saturated at the reader's `LIMIT`
+/// (older rows may exist behind it). Overrides BOTH captions above.
+pub const LIVE_ROLLING_WINDOW_CAPTION: &str =
+    "Rolling window — measured from the oldest retained point, not the session open";
+
+/// 2-15 review M8 — the Live equity panels' "as of" marker. Rendered from
+/// `Cockpit::live_equity_last_as_of` (the WALLCLOCK delivery stamp of the last
+/// accepted snapshot), so a producer that dies without closing its channel
+/// leaves a visibly frozen timestamp instead of a `Ready` curve that looks
+/// exactly like a flat market. `{time}` → `HH:MM:SS`, matching the health
+/// strip's server-time badge format so the two are directly comparable.
+pub const LIVE_EQUITY_AS_OF_FMT: &str = "Last equity update {time} UTC";
+
+/// Age-annotated variant of [`LIVE_EQUITY_AS_OF_FMT`], used when the server
+/// clock is known so the staleness can be stated outright instead of left to
+/// the operator's subtraction. `{age}` → whole seconds.
+pub const LIVE_EQUITY_AS_OF_AGE_FMT: &str = "Last equity update {time} UTC ({age}s ago)";
+
 /// Panel title for the Strategy registry screen (R7.2).
 pub const STRATEGY_REGISTRY_PANEL_TITLE: &str = "Strategy registry";
 

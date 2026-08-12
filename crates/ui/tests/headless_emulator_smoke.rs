@@ -7,6 +7,25 @@
 //! [`spec/v1/ui-headless-emulator/feature.md`](../../spec/v1/ui-headless-emulator/feature.md)
 //! for what this unlocks vs. the existing
 //! [`visual_snapshots.rs`](visual_snapshots.rs) free-function pattern.
+//!
+//! ## What these tests are, and are NOT (2-15 review L14)
+//!
+//! They are **smoke** tests: the route boots, `view` runs, the first frame
+//! rasterizes without a panic, and the frame is not blank. That is all.
+//!
+//! They used to close with `assert!(!screenshot.rgba.is_empty())`, which no
+//! failure mode could trip — a 1280×720 RGBA buffer is non-empty the moment it
+//! is allocated, whether or not a single pixel was drawn. Those four
+//! assertions are now [`assert_frame_painted`], which checks the buffer is
+//! fully sized AND carries more than one colour: a screen that laid out
+//! nothing (uniform background) fails it.
+//!
+//! Even so, **this file is not AD-10 proof for any feature.** "Something was
+//! painted" is not "the equity curve drew" or "the KPI strip shows its
+//! values" — those need a colour-population assertion against a negative
+//! control, which lives in `live_equity_render.rs` and
+//! `live_kpi_strip_render.rs`. Do not cite a green run here as evidence that
+//! a screen renders correctly.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
@@ -17,6 +36,42 @@ use iced_test::futures::futures::executor;
 
 use ui::state::Screen;
 use ui::test_support::{charts_screen_cockpit, program_from_cockpit};
+
+/// Assert a first-frame screenshot was actually PAINTED — the honest
+/// replacement for the vacuous `!rgba.is_empty()` (2-15 review L14).
+///
+/// Two cheap checks that can genuinely fail:
+/// 1. the buffer is exactly `width × height × 4` bytes (a fully-formed frame,
+///    not a truncated readback), and
+/// 2. it carries at least 4 distinct RGBA values. A cockpit screen paints a
+///    canvas, panels, borders and text, so a real frame has dozens; a frame
+///    where `view` laid out nothing is a single flat colour and fails here.
+///
+/// Deliberately colour-agnostic and metric-agnostic, so it holds on every OS
+/// (this file is not `cfg(target_os)`-gated).
+fn assert_frame_painted(screenshot: &iced::window::Screenshot, label: &str) {
+    let w = screenshot.size.width as usize;
+    let h = screenshot.size.height as usize;
+    assert_eq!(
+        screenshot.rgba.len(),
+        w * h * 4,
+        "{label}: screenshot buffer must be a complete {w}x{h} RGBA frame, got {} bytes",
+        screenshot.rgba.len()
+    );
+    let mut distinct = std::collections::HashSet::new();
+    for px in screenshot.rgba.chunks_exact(4) {
+        distinct.insert([px[0], px[1], px[2], px[3]]);
+        if distinct.len() >= 4 {
+            break;
+        }
+    }
+    assert!(
+        distinct.len() >= 4,
+        "{label}: first frame carries only {} distinct colour(s) — the screen \
+         is blank/uniform, so `view` painted nothing beyond a background fill",
+        distinct.len()
+    );
+}
 
 /// Bounded number of event-loop ticks before we give up waiting for
 /// `Event::Ready`. The cockpit's boot is single-shot (no async data
@@ -69,10 +124,7 @@ fn headless_emulator_boots_cockpit_and_renders() {
         "expected floor viewport height 720, got {}",
         screenshot.size.height
     );
-    assert!(
-        !screenshot.rgba.is_empty(),
-        "screenshot rgba buffer must be non-empty (boot + view loop ran)"
-    );
+    assert_frame_painted(&screenshot, "cockpit boot");
 }
 
 /// cockpit-baseline-panel v0.1.0 (AC3) — the fixtures cockpit paints the
@@ -120,10 +172,7 @@ fn headless_emulator_paints_baseline_route() {
     let screenshot = emulator.screenshot(&program, &theme, 1.0);
     assert_eq!(screenshot.size.width, 1280);
     assert_eq!(screenshot.size.height, 720);
-    assert!(
-        !screenshot.rgba.is_empty(),
-        "Baseline route first-frame screenshot must be non-empty (boot + view ran, no panic)"
-    );
+    assert_frame_painted(&screenshot, "Baseline route");
 }
 
 /// cockpit-reports-viewer v0.1.0 (AC4) — the fixtures cockpit paints the
@@ -172,10 +221,7 @@ fn headless_emulator_paints_reports_route() {
     let screenshot = emulator.screenshot(&program, &theme, 1.0);
     assert_eq!(screenshot.size.width, 1280);
     assert_eq!(screenshot.size.height, 720);
-    assert!(
-        !screenshot.rgba.is_empty(),
-        "Reports route first-frame screenshot must be non-empty (boot + view ran, no panic)"
-    );
+    assert_frame_painted(&screenshot, "Reports route");
 }
 
 /// cockpit-live-dashboard-wiring v0.1.0 (AC3 / R7) — the fixtures cockpit
@@ -228,8 +274,5 @@ fn headless_emulator_paints_live_route() {
     let screenshot = emulator.screenshot(&program, &theme, 1.0);
     assert_eq!(screenshot.size.width, 1280);
     assert_eq!(screenshot.size.height, 720);
-    assert!(
-        !screenshot.rgba.is_empty(),
-        "Live route first-frame screenshot must be non-empty (boot + view ran, Loading panels, no panic)"
-    );
+    assert_frame_painted(&screenshot, "Live route (Loading panels)");
 }

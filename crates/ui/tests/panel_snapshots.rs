@@ -2670,16 +2670,31 @@ mod live_screen {
         }
     }
 
-    /// Mirror the rendered Live KPI strip for `c.live_kpi`. Loading/Empty/Error
-    /// render `VIEWER_METRICS_UNAVAILABLE` (the unavailable six-dash strip);
-    /// Ready renders the six cards honestly (Total-return + Max-DD live;
-    /// Sharpe/CAGR/Win-rate `—`; Trades 0). Card text is theme-independent;
-    /// the per-snapshot `theme:` line distinguishes the dark/light baselines.
+    /// Mirror the rendered Live KPI strip for `c.live_kpi`.
+    ///
+    /// **The branch decision is NOT re-implemented here** (2-15 review M4).
+    /// This mirror used to carry its own copy of the widget's match — minus
+    /// the `is_all_absent` arm the widget applied — so for a flat-but-Ready
+    /// feed it asserted six rendered cards while the screen drew six dashes: a
+    /// green claim about a screen it did not model. It now asks the production
+    /// seam, `kpi_strip::renders_unavailable`, exactly what `kpi_strip::view`
+    /// asks. Only the per-card VALUE STRINGS are mirrored, and those come from
+    /// the same `widgets::num` formatters the widget calls.
+    ///
+    /// The pixel-layer proof that the populated strip actually draws lives in
+    /// `tests/live_kpi_strip_render.rs` (un-gated, all three CI legs); this
+    /// mirror covers the card text, which a colour-population assertion cannot
+    /// cheaply read.
     fn kpi_strip_lines(c: &Cockpit, mode: ThemeMode) -> String {
+        let unavailable = || format!("kpi_strip: {}\n", ui::strings::VIEWER_METRICS_UNAVAILABLE);
+        if ui::widgets::kpi_strip::renders_unavailable(&c.live_kpi) {
+            return unavailable();
+        }
         match &c.live_kpi {
-            PanelState::Loading | PanelState::Empty | PanelState::Error(_) => {
-                format!("kpi_strip: {}\n", ui::strings::VIEWER_METRICS_UNAVAILABLE)
-            }
+            // `renders_unavailable` is false only for `Ready`; the other arms
+            // are dead by construction, kept for exhaustiveness without an
+            // `unreachable!()`.
+            PanelState::Loading | PanelState::Empty | PanelState::Error(_) => unavailable(),
             PanelState::Ready(m) => {
                 let (tr_text, _) = ui::widgets::num::format_pct_sentiment(m.total_return_pct, mode);
                 let (mdd_text, _) = ui::widgets::num::format_pct_max_dd(m.max_drawdown_pct, mode);
@@ -2733,17 +2748,17 @@ mod live_screen {
         // live states (no longer hard-wired Loading).
         out.push_str(&equity_curve_line(c));
         out.push_str(&kpi_strip_lines(c, mode));
-        // R5 / AC5 + live-equity-history-durable R6 — honest scope caption for
-        // the Total-return card. "Since inception" once a durable history is
-        // hydrated (`live_equity_hydrated`); "Session to date" otherwise. Mirror
-        // the same conditional `screens/live.rs` uses so the summary tracks the
-        // rendered caption.
-        let caption = if c.live_equity_hydrated {
-            ui::strings::LIVE_SINCE_INCEPTION_CAPTION
-        } else {
-            ui::strings::LIVE_SESSION_RETURN_CAPTION
-        };
+        // R5 / AC5 + live-equity-history-durable R6 + 2-15 review H3 — the
+        // honest scope caption. Read from the PRODUCTION seam
+        // (`screens::live::return_scope_caption`, the function `view` renders),
+        // never a mirrored conditional — the same anti-drift rule as
+        // `kpi_strip_lines` above.
+        let caption = ui::screens::live::return_scope_caption(c);
         out.push_str(&format!("session_caption: {caption}\n"));
+        // 2-15 review M8 — the staleness marker, when a snapshot has landed.
+        if let Some(as_of) = ui::screens::live::live_equity_as_of_label(c) {
+            out.push_str(&format!("as_of_caption: {as_of}\n"));
+        }
         out.push_str(&format!(
             "llm_spend_label: {}\n",
             ui::strings::LIVE_LLM_SPEND_LABEL
@@ -2950,6 +2965,121 @@ mod live_screen {
             !summary.contains(ui::strings::LIVE_SINCE_INCEPTION_CAPTION),
             "the since-inception caption must NOT appear without a durable \
              history; summary:\n{summary}"
+        );
+    }
+
+    /// **2-15 review H3 — the caption must not outlive its window.** Once the
+    /// ring has evicted (or the boot hydrate came back capped at the reader's
+    /// `LIMIT`), `live_equity_buffer[0]` is neither the session open nor
+    /// account inception — it is just the oldest point still retained. Both
+    /// prior captions would then be false statements about the Total-return
+    /// figure sitting beside them, so the rolling-window caption overrides
+    /// BOTH, including the hydrated one.
+    #[test]
+    fn live_caption_is_rolling_window_when_truncated() {
+        // Hydrated AND truncated — the harder case: the truncation must win.
+        let mut c = Cockpit::new();
+        c.current_screen = Screen::Live;
+        hydrate_live(&mut c);
+        c.live_equity_window = ui::state::LiveEquityWindow::Rolling;
+
+        let summary = live_screen_summary(&c, ThemeMode::Dark);
+        assert!(
+            summary.contains(&format!(
+                "session_caption: {}",
+                ui::strings::LIVE_ROLLING_WINDOW_CAPTION
+            )),
+            "a slid window must render the rolling-window caption; summary:\n{summary}"
+        );
+        assert!(
+            !summary.contains(ui::strings::LIVE_SINCE_INCEPTION_CAPTION),
+            "the since-inception caption must NOT survive an evicted head; \
+             summary:\n{summary}"
+        );
+        assert!(
+            !summary.contains(ui::strings::LIVE_SESSION_RETURN_CAPTION),
+            "the session-scoped caption must NOT survive an evicted head; \
+             summary:\n{summary}"
+        );
+    }
+
+    /// **2-15 review H3 — the honesty of the new copy.** It must name the
+    /// window it actually measures and must not smuggle in an overclaim.
+    #[test]
+    fn rolling_window_caption_is_honest_no_overclaim() {
+        let caption = ui::strings::LIVE_ROLLING_WINDOW_CAPTION;
+        let lower = caption.to_lowercase();
+        assert!(
+            lower.contains("rolling window"),
+            "caption must name the window it covers; got: {caption}"
+        );
+        assert!(
+            !lower.contains("inception") && !lower.contains("session to date"),
+            "caption must not re-assert the scopes it exists to retract: {caption}"
+        );
+        for banned in [
+            "annualized",
+            "annualised",
+            "characterized",
+            "characterised",
+            "baseline",
+            "cagr",
+            "guaranteed",
+            "expected",
+        ] {
+            assert!(
+                !lower.contains(banned),
+                "rolling-window caption overclaims with {banned:?}: {caption}"
+            );
+        }
+    }
+
+    /// **2-15 review M8 — the staleness marker is on screen.** A stopped
+    /// producer that never closes its channel leaves both panels `Ready`
+    /// forever; the "as of" line is what tells the operator the numbers are
+    /// frozen. It appears once a snapshot has landed, and carries the LAST
+    /// accepted delivery stamp — so it stops advancing exactly when the feed
+    /// does.
+    #[test]
+    fn live_screen_renders_last_equity_update_marker() {
+        let mut fresh = Cockpit::new();
+        fresh.current_screen = Screen::Live;
+        assert!(
+            !live_screen_summary(&fresh, ThemeMode::Dark).contains("as_of_caption:"),
+            "a fresh boot has nothing to be stale about — no marker"
+        );
+
+        seed_ready_live(&mut fresh);
+        let summary = live_screen_summary(&fresh, ThemeMode::Dark);
+        // `seed_ready_live` stamps as_of at epoch+0 s and epoch+60 s → 00:01:00.
+        assert!(
+            summary.contains("as_of_caption: Last equity update 00:01:00 UTC"),
+            "the Live screen must stamp its last accepted equity delivery; \
+             summary:\n{summary}"
+        );
+
+        // A later snapshot advances it — and a dead feed therefore does not.
+        let advanced = {
+            let mut c = fresh.clone();
+            update(
+                &mut c,
+                Message::PnlRefreshed(trading_core::PnlSnapshot {
+                    cash: Money::from_decimal(dec!(1200)),
+                    unrealized: Money::from_decimal(dec!(0)),
+                    realized: Money::from_decimal(dec!(0)),
+                    total_equity: Money::from_decimal(dec!(1200)),
+                    daily_return: Money::from_decimal(dec!(0)),
+                    as_of: Timestamp::new(
+                        time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(3_723),
+                    ),
+                    bar_ts: None,
+                }),
+            );
+            live_screen_summary(&c, ThemeMode::Dark)
+        };
+        assert!(
+            advanced.contains("as_of_caption: Last equity update 01:02:03 UTC"),
+            "the marker must track the newest accepted delivery; summary:\n{advanced}"
         );
     }
 

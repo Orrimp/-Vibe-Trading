@@ -841,10 +841,25 @@ pub mod layout {
     /// cockpit-live-dashboard-wiring v0.1.0 (D-buffer) — bounded ring cap
     /// for the session-scoped live equity buffer
     /// (`Cockpit::live_equity_buffer`). `2_880` = 48 h of 1-min bars at full
-    /// resolution before any eviction; a longer session quietly slides a
-    /// 48 h window. This governs **retention/memory** only
-    /// (`2_880` × ~48 B ≈ 140 KB worst case) — the chart consumer still
-    /// `downsample`s to `SPARKLINE_POINT_CAP` for pixels.
+    /// resolution before any eviction.
+    ///
+    /// **The window slide is not silent** (2-15 review H3): the first eviction
+    /// latches `Cockpit::live_equity_window` to `Rolling`, and the Live caption
+    /// switches to `strings::LIVE_ROLLING_WINDOW_CAPTION` — because after an
+    /// eviction `live_equity_buffer[0]` is no longer the session open, so the
+    /// Total-return denominator and the Max-DD peak describe a rolling window,
+    /// not the session (a drawdown whose peak was evicted vanishes outright).
+    ///
+    /// Memory cost is `2_880` × ~48 B ≈ 140 KB worst case. **The live curve
+    /// does NOT downsample** (2-15 review M7 — the previous claim that "the
+    /// chart consumer still `downsample`s to `SPARKLINE_POINT_CAP` for pixels"
+    /// was false; the only `EquitySeries::downsample` call sites are the
+    /// Strategies-detail sparkline and the reports viewer). `widgets::
+    /// equity_curve` lays out up to `LIVE_EQUITY_BUFFER_CAP` raw points and
+    /// re-tessellates them on every `view()`; it borrows the series rather
+    /// than deep-cloning it, but there is no `canvas::Cache`, so the cost is
+    /// per-frame. At 2 880 points that is a bounded line-strip build, not a
+    /// downsampled one — size any change to this cap accordingly.
     pub const LIVE_EQUITY_BUFFER_CAP: usize = 2_880;
 
     // ── Chart canvas overhaul (v1.10.0) — axis gutters + legend chrome ───

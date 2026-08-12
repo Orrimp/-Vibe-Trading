@@ -288,6 +288,25 @@ pub enum AgentMode {
     Halted,
 }
 
+/// Whether the live equity buffer still starts where the account/session did
+/// (2-15 review H3).
+///
+/// `live_equity_buffer[0]` is the Total-return denominator and the first point
+/// the Max-DD peak scan sees, so the answer decides which scope caption the
+/// Live screen may honestly render (`screens::live::return_scope_caption`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LiveEquityWindow {
+    /// The head is the first point ever appended — the figures really are
+    /// session-to-date (or since-inception, after a complete hydrate).
+    #[default]
+    Anchored,
+    /// The head has slid: the bounded ring evicted it, or the boot hydrate came
+    /// back saturated at the reader's `LIMIT` (older durable rows may exist
+    /// behind it). The figures now describe a rolling window, and a drawdown
+    /// whose peak was evicted has left the Max-DD card entirely.
+    Rolling,
+}
+
 /// Generic panel state — **every** panel renders one of these four variants.
 /// "No data" is never a valid state; use `Empty` with an explanatory copy.
 #[derive(Debug, Clone)]
@@ -1194,19 +1213,51 @@ pub struct Cockpit {
     /// buffer). **NOT serialized.**
     pub live_equity_hydrated: bool,
 
+    /// 2-15 review H3 — whether `live_equity_buffer[0]` is still the first
+    /// point ever appended, or the head has slid.
+    ///
+    /// It is the second honesty switch for the Live caption, and
+    /// [`LiveEquityWindow::Rolling`] OVERRIDES `live_equity_hydrated`:
+    /// `live_equity_buffer[0]` is what the Total-return denominator and the
+    /// Max-DD peak are measured from, so once the head has slid, neither
+    /// "Session to date" nor "Since inception" is a true statement about the
+    /// rendered figures — the caption reads `LIVE_ROLLING_WINDOW_CAPTION`
+    /// instead. Latch-only (never returns to `Anchored` while the session
+    /// runs); reset on each boot. **NOT serialized.**
+    ///
+    /// A two-variant enum rather than a `bool` on purpose: it is the state
+    /// clippy's `struct_excessive_bools` asks for, and it reads at the call
+    /// site as the fact it encodes rather than as an unlabelled flag.
+    pub live_equity_window: LiveEquityWindow,
+
     /// Derived-on-append (D5) render state for the Live equity curve.
     /// `Loading` until the first point; `Ready(series)` from ≥1 point;
-    /// `Error(msg)` on `PnlError`; `Empty` only if the channel closes with
-    /// 0 points. Built via `EquitySeries::from_points` — the view reads this
-    /// cached state, it does not recompute per frame.
+    /// `Error(msg)` on `PnlError`. Built via `EquitySeries::from_points` — the
+    /// view reads this cached state, it does not recompute per frame.
+    ///
+    /// **`Empty` is unreachable on the live path, by design** (2-15 review
+    /// M5 — the previous "`Empty` only if the channel closes with 0 points"
+    /// was simply false: a closed/failed `pnl` channel routes through
+    /// `Message::PnlError` → `Error(msg)`, and no other arm ever assigns
+    /// these two fields). Nothing was changed to *make* it reachable, because
+    /// the only candidate producer — the closed channel — is an error the
+    /// operator must see: rendering the muted "No equity data" body there
+    /// would HIDE a broken feed behind a "nothing happened yet" face, which is
+    /// the exact honesty failure this story's other findings are about. The
+    /// widget's `Empty` arm is not dead code: `crate::reports::loader` uses it
+    /// for the genuinely-absent viewer/Reports case, and it is the negative
+    /// control in `tests/live_kpi_strip_render.rs`.
     pub live_equity_curve: PanelState<EquitySeries>,
 
     /// Derived-on-append (D5) render state for the Live KPI strip.
-    /// `Loading` until ≥2 points (the `kpi_strip::is_all_absent` bootstrap
-    /// trap — a 1-point series is byte-identical to the all-absent sentinel,
-    /// D2); `Ready(metrics)` after; `Error(msg)` on `PnlError`; `Empty`
-    /// mirrors the curve. Total-return + Max-DD are live; Sharpe/CAGR/Win-rate
-    /// render `—`; Trades = 0 (no live counter — D2 / follow-on).
+    /// `Loading` until ≥2 points (the bootstrap trap — a 1-point series
+    /// carries no return interval and is byte-identical to
+    /// `BacktestMetrics::all_absent()`, D2); `Ready(metrics)` after;
+    /// `Error(msg)` on `PnlError`; `Empty` unreachable here for the same
+    /// reason as the curve above. Total-return + Max-DD are live;
+    /// Sharpe/CAGR/Win-rate render `—`; Trades renders `live_fill_count` (the
+    /// session fill total — wired by cockpit-live-trades-counter; the old
+    /// "Trades = 0 (no live counter)" note was stale).
     pub live_kpi: PanelState<BacktestMetrics>,
 
     // ── Phase 5 — HumanControl panel + per-strategy pause + override ───
@@ -1330,6 +1381,7 @@ impl std::fmt::Debug for Cockpit {
             .field("live_equity_buffer_len", &self.live_equity_buffer.len())
             .field("live_equity_last_as_of", &self.live_equity_last_as_of)
             .field("live_equity_hydrated", &self.live_equity_hydrated)
+            .field("live_equity_window", &self.live_equity_window)
             .field("live_fill_count", &self.live_fill_count)
             .field("live_equity_curve", &self.live_equity_curve)
             .field("live_kpi", &self.live_kpi)
@@ -1406,6 +1458,7 @@ impl Default for Cockpit {
             live_equity_last_as_of: None,
             // live-equity-history-durable — no history hydrated yet on boot.
             live_equity_hydrated: false,
+            live_equity_window: LiveEquityWindow::Anchored,
             live_fill_count: 0,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
@@ -1533,6 +1586,7 @@ impl Cockpit {
             live_equity_last_as_of: None,
             // live-equity-history-durable — fixtures never hydrate durable history.
             live_equity_hydrated: false,
+            live_equity_window: LiveEquityWindow::Anchored,
             live_fill_count: 0,
             live_equity_curve: PanelState::Loading,
             live_kpi: PanelState::Loading,
@@ -1589,27 +1643,59 @@ impl Cockpit {
     ///    the buffer's `ts` sequence monotone *by construction* — `from_points`
     ///    can never error on it — without ever panicking the rasterizer or
     ///    dropping a delivered point. (No-op in practice; pure defense.)
-    /// 3. **`is_all_absent` 1-point trap** — a single point yields
+    /// 3. **1-point all-absent trap** — a single point yields
     ///    `total_return = max_dd = 0` (and `trades = 0` until the first fill
     ///    lands), byte-identical to the all-absent sentinel
-    ///    (`kpi_strip::is_all_absent`), which would render six dashes. The
-    ///    KPI strip therefore stays `Loading` until ≥2 points; the curve
-    ///    renders from ≥1 (a 1-point curve is valid).
+    ///    (`BacktestMetrics::is_all_absent`). The KPI strip therefore stays
+    ///    `Loading` until ≥2 points — honest ("waiting for the second bar"),
+    ///    since a return needs an interval. The curve renders from ≥1 (a
+    ///    1-point curve is valid). From 2 points on, a genuinely flat session
+    ///    renders `0.00 % / 0.00 % / 0` and NOT six dashes (2-15 review H2 —
+    ///    `kpi_strip::renders_unavailable`).
     fn push_live_equity_point(
         &mut self,
         as_of: Timestamp,
         x_coord: Timestamp,
         equity: Money<Usdt>,
     ) {
+        if self.stage_live_equity_point(as_of, x_coord, equity) {
+            self.rebuild_live_equity_derived();
+        }
+    }
+
+    /// Buffer half of [`Self::push_live_equity_point`] — the delivery guard,
+    /// the monotone-x clamp, the append, and the ring eviction. Returns
+    /// `false` when the point was dropped by the delivery guard (nothing
+    /// changed, so nothing needs rebuilding).
+    ///
+    /// Split out for the boot hydrate (2-15 review M6): seeding N rows must
+    /// derive the curve + KPI strip ONCE at the end, not once per row. The
+    /// per-row rebuild made the hydrate O(N²) — 2 880 rows ⇒ ~4.15 M
+    /// `EquityPoint` constructions (each with a `Decimal` divide) and 2 880
+    /// `Vec` allocations inside a single `update()`, freezing the iced thread
+    /// at boot.
+    fn stage_live_equity_point(
+        &mut self,
+        as_of: Timestamp,
+        x_coord: Timestamp,
+        equity: Money<Usdt>,
+    ) -> bool {
         // (1) Delivery guard — drop a snapshot delivered strictly out of order
         // (earlier wallclock `as_of` than the last delivered point). `as_of` is
         // monotone on the live path, so this only fires on a genuine late /
         // duplicate delivery. The guard keys on `as_of` per the architect's
         // pin, NOT on the plotted `x_coord`.
+        //
+        // The comparison is STRICTLY-earlier (`<`, not `<=`) by design — see
+        // the `Message::PnlHydrated` arm's note. An EQUAL `as_of` is accepted:
+        // during a fast replay the reconciler can publish several genuinely
+        // distinct bars inside one wallclock millisecond, and dropping them
+        // would resurrect the "no graph" class of bug this guard exists to
+        // prevent (2-15 review L9).
         if let Some(back_as_of) = self.live_equity_last_as_of
             && as_of.unix_millis() < back_as_of.unix_millis()
         {
-            return;
+            return false;
         }
         self.live_equity_last_as_of = Some(as_of);
 
@@ -1624,12 +1710,25 @@ impl Cockpit {
         };
         self.live_equity_buffer.push_back((stored_ts, equity));
 
-        // (2) Ring bound — evict oldest past the cap.
+        // (3) Ring bound — evict oldest past the cap. An eviction means the
+        // buffer's head is NO LONGER the session open / account inception, so
+        // the Total-return + Max-DD denominators now describe a rolling
+        // window. Latch that fact for the caption (2-15 review H3) — the
+        // screen may not claim "Session to date" / "Since inception" once the
+        // window it measures has slid.
         while self.live_equity_buffer.len() > LIVE_EQUITY_BUFFER_CAP {
             self.live_equity_buffer.pop_front();
+            self.live_equity_window = LiveEquityWindow::Rolling;
         }
+        true
+    }
 
-        // (3) Rebuild the curve (≥1 point). `from_points` only errors on the
+    /// Derived half of [`Self::push_live_equity_point`] — rebuild the cached
+    /// curve + KPI-strip `PanelState`s from the CURRENT buffer. A pure
+    /// function of `live_equity_buffer` + `live_fill_count`, which is why the
+    /// hydrate can call it once after seeding instead of once per row.
+    fn rebuild_live_equity_derived(&mut self) {
+        // Rebuild the curve (≥1 point). `from_points` only errors on the
         // guarded-empty case (impossible here — we just pushed) or a
         // non-monotone pair (impossible — the append guard enforces order),
         // so on the unexpected `Err` we leave the curve `Loading` rather than
@@ -1661,6 +1760,13 @@ impl Cockpit {
                 // (cockpit-live-kpi-units-fix, 2026-06-10). The first
                 // accumulated point is the session open. Guard first ≠ 0 (the
                 // agent's starting equity is non-zero, but divide-guard anyway).
+                //
+                // The denominator is `|first|` (2-15 review L11 — the sibling
+                // of the `EquitySeries` drawdown sign trap): with a NEGATIVE
+                // opening equity a signed denominator flips the sign, so a
+                // recovery from −100 to −50 would render as "−50.00%" — a loss
+                // badge on a gain. INERT for every non-negative open (every
+                // funded account, every backtest), where `|first| == first`.
                 let first = self.live_equity_buffer[0].1.amount();
                 let latest = self.live_equity_buffer[self.live_equity_buffer.len() - 1]
                     .1
@@ -1668,7 +1774,7 @@ impl Cockpit {
                 let total_return_pct = if first.is_zero() {
                     Decimal::ZERO
                 } else {
-                    (latest - first) / first * Decimal::ONE_HUNDRED
+                    (latest - first) / first.abs() * Decimal::ONE_HUNDRED
                 };
                 self.live_kpi = PanelState::Ready(BacktestMetrics {
                     total_return_pct,
@@ -1694,6 +1800,37 @@ impl Cockpit {
             // than panic.
             self.live_equity_curve = PanelState::Loading;
             self.live_kpi = PanelState::Loading;
+        }
+    }
+
+    /// live-equity-history-durable (A4 / A5) — seed the buffer from a durable
+    /// boot tail and derive the curve + KPI strip **once**.
+    ///
+    /// Behaviourally identical to calling [`Self::push_live_equity_point`] per
+    /// row with `max_as_of` as the delivery key (pinned by
+    /// `hydrate_batch_matches_per_point_path` in this file's tests) — the
+    /// derived states are a pure function of the final buffer, so deriving
+    /// after the loop cannot differ from deriving inside it. It is only the
+    /// COST that changes: O(N) instead of O(N²) (2-15 review M6).
+    ///
+    /// `truncated` is `true` when the reader's `LIMIT` may have cut older
+    /// history off the front of the tail — the caption must then not claim
+    /// "Since inception" (2-15 review H3).
+    fn hydrate_live_equity_points(
+        &mut self,
+        rows: Vec<(Timestamp, Timestamp, Money<Usdt>)>,
+        max_as_of: Timestamp,
+        truncated: bool,
+    ) {
+        let mut staged = false;
+        for (bar_ts, _row_as_of, equity) in rows {
+            staged |= self.stage_live_equity_point(max_as_of, bar_ts, equity);
+        }
+        if truncated {
+            self.live_equity_window = LiveEquityWindow::Rolling;
+        }
+        if staged {
+            self.rebuild_live_equity_derived();
         }
     }
 }
@@ -2604,10 +2741,10 @@ pub fn update(model: &mut Cockpit, msg: Message) {
         Message::PnlHydrated(rows) => {
             // live-equity-history-durable (A4 / A5) — boot-time batch hydrate of
             // the durable paper/live equity series. Seeds the buffer through the
-            // SAME `push_live_equity_point` guard a live tick uses (so the
-            // monotone-x clamp + ring + `is_all_absent` ≥2-point KPI trap all
-            // apply identically), then reconciles the delivery guard per the
-            // pinned `as_of` contract.
+            // SAME guard a live tick uses (`stage_live_equity_point`: monotone-x
+            // clamp + ring + delivery guard), then derives the curve + KPI strip
+            // ONCE (2-15 review M6 — the per-row derive was O(N²) on the iced
+            // thread), with the ≥2-point KPI trap applying identically.
             //
             // An empty hydrate (no durable history — fresh ledger, or the
             // fail-soft `Ok(vec![])` path) is a no-op: the buffer stays empty,
@@ -2615,17 +2752,30 @@ pub fn update(model: &mut Cockpit, msg: Message) {
             if rows.is_empty() {
                 return;
             }
+            let row_count = rows.len();
 
             // THE pinned guard contract (A4): after this hydrate,
             // `live_equity_last_as_of` MUST equal the MAX hydrated `as_of`, so
             // the FIRST live `PnlRefreshed(now())` (fresh wallclock ≥ every
             // prior-session `as_of`) passes the delivery guard and lands — while
-            // a late/duplicate re-delivery of an already-hydrated row is dropped.
+            // a re-delivery of an already-hydrated row whose `as_of` is
+            // STRICTLY EARLIER than that max is dropped.
             //
-            // We seed every row through the SAME `push_live_equity_point` used by
-            // a live tick (so its monotone-x clamp, ring bound, and the
-            // `is_all_absent` ≥2-point KPI trap all apply identically) — but we
-            // pass the batch's MAX `as_of` as the delivery key for EVERY row.
+            // A re-delivery carrying the *equal* max `as_of` is NOT dropped: the
+            // guard is `<`, not `<=` (2-15 review L9). That is deliberate and
+            // load-bearing — during a fast replay several genuinely distinct
+            // bars can be published inside one wallclock millisecond, and `<=`
+            // would silently drop every one after the first, which is exactly
+            // the dropped-points "no graph" failure `live_equity_render.rs`
+            // guards. Exact-duplicate suppression would need a delivery id, not
+            // a coarser timestamp comparison; appending a duplicate point is the
+            // cheaper, non-lossy failure mode, and the ≥-equal case is pinned by
+            // `live_equity_accepts_equal_as_of_redelivery` below.
+            //
+            // We seed every row through the SAME buffer guard a live tick uses
+            // (its monotone-x clamp, ring bound, and the ≥2-point KPI trap all
+            // apply identically) — but we pass the batch's MAX `as_of` as the
+            // delivery key for EVERY row.
             // This is the correct semantics for a boot batch: all rows arrived
             // together at boot, so none is "out of order" relative to another,
             // and the per-point `as_of` guard must therefore never drop a hydrate
@@ -2644,16 +2794,24 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 // flipping the hydrate switch.
                 return;
             };
-            for (bar_ts, _row_as_of, equity) in rows {
-                model.push_live_equity_point(max_as_of, bar_ts, equity);
-            }
+            // The reader (`bin/cockpit_live.rs`) issues
+            // `equity_snapshot_tail(LIMIT = LIVE_EQUITY_BUFFER_CAP)` and the
+            // query returns the NEWEST rows — so a full-length tail means the
+            // durable history may extend further back than what we hold, and
+            // `live_equity_buffer[0]` is then NOT account inception. The
+            // caption must not claim it is (2-15 review H3): a saturated tail
+            // latches the rolling-window flag, exactly as an in-session
+            // eviction does.
+            let truncated = row_count >= LIVE_EQUITY_BUFFER_CAP;
+            model.hydrate_live_equity_points(rows, max_as_of, truncated);
 
-            // The hydrated buffer is a continuous *since-inception* paper/live
-            // history (may span sessions/days) — flip the honesty switch so the
-            // Live screen's return caption reads "Since inception", not the
-            // session-scoped "Session to date" (R6). `push_live_equity_point`
-            // already built the curve `Ready` (≥1 row) and the KPI strip `Ready`
-            // (≥2 rows) / `Loading` (1 row) — the `is_all_absent` trap is intact.
+            // The hydrated buffer is a continuous paper/live history (may span
+            // sessions/days) — flip the honesty switch so the Live screen's
+            // return caption reads "Since inception" rather than the
+            // session-scoped "Session to date" (R6) … unless the window slid,
+            // in which case a `Rolling` `live_equity_window` overrides both.
+            // `hydrate_live_equity_points` already built the curve `Ready` (≥1
+            // row) and the KPI strip `Ready` (≥2 rows) / `Loading` (1 row).
             model.live_equity_hydrated = true;
         }
         Message::PositionsRefreshed(list) => {
@@ -3918,7 +4076,7 @@ mod tests {
         assert_eq!(c.live_kpi.variant_name(), "loading");
 
         // Point 1 — curve goes Ready (1-point curve is valid); strip stays
-        // Loading (the is_all_absent 1-point trap).
+        // Loading (the 1-point trap — no return interval yet).
         update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(1000))));
         assert_eq!(c.live_equity_buffer.len(), 1);
         assert_eq!(c.live_equity_curve.variant_name(), "ready");
@@ -4021,7 +4179,7 @@ mod tests {
         );
     }
 
-    /// AC2 (the `is_all_absent` proof) — the KPI strip stays Loading at 1 point
+    /// AC2 (the 1-point-trap proof) — the KPI strip stays Loading at 1 point
     /// and becomes Ready only at ≥2 points, with live Total-return + Max-DD
     /// and absent Sharpe/CAGR/Win-rate + Trades = 0.
     #[test]
@@ -4054,9 +4212,10 @@ mod tests {
             other => panic!("expected Ready strip, got {}", other.variant_name()),
         }
 
-        // A non-zero session metric makes the strip distinguishable from the
-        // all-absent sentinel — the kpi_strip widget's `is_all_absent` guard
-        // would not mask it.
+        // A non-zero session metric is distinguishable from the all-absent
+        // sentinel at the DATA layer. (Since 2-15 review H2 that no longer
+        // decides the render: `kpi_strip::view` draws every `Ready` payload,
+        // zeros included — see `flat_session_kpi_is_ready_with_honest_zeros`.)
         assert!(!matches!(c.live_kpi, PanelState::Loading));
     }
 
@@ -4207,10 +4366,254 @@ mod tests {
         assert_eq!(c.live_equity_buffer.len(), 2);
         assert_eq!(c.live_equity_curve.variant_name(), "ready");
 
-        // Equal-timestamp (120 == 120) — allowed by `from_points`'s `<` check.
+        // Equal-timestamp (120 == 120) — allowed, because the DELIVERY GUARD
+        // is `as_of < back_as_of` (strictly-earlier), not `<=`. See
+        // `equal_as_of_redelivery_is_accepted_by_design` below for why that is
+        // deliberate rather than an off-by-one.
         update(&mut c, Message::PnlRefreshed(pnl_snap_at(120, dec!(1020))));
         assert_eq!(c.live_equity_buffer.len(), 3);
         assert_eq!(c.live_equity_curve.variant_name(), "ready");
+    }
+
+    /// **2-15 review L9 — code, doc and test reconciled.**
+    ///
+    /// The finding was that the guard uses `<` while the `PnlHydrated` arm's
+    /// comment claimed "a late/duplicate re-delivery of an already-hydrated row
+    /// is dropped". Both cannot be true for an EQUAL `as_of`. The conclusion:
+    /// **the code is right and the comment was wrong** (now corrected in that
+    /// arm), because `as_of` is a wallclock stamp, not a delivery identity:
+    /// during a fast replay the reconciler publishes several genuinely distinct
+    /// bars inside one millisecond, so `<=` would silently drop every one after
+    /// the first — resurrecting exactly the dropped-points "no graph" failure
+    /// the render harness exists to catch. Dropping real data to suppress a
+    /// hypothetical duplicate is the worse trade; real duplicate suppression
+    /// would need a delivery id.
+    ///
+    /// This test pins the accepted behaviour on the hydrate path too, so the
+    /// `<` can never be "tidied" into `<=` without a red test.
+    #[test]
+    fn equal_as_of_redelivery_is_accepted_by_design() {
+        let mut c = Cockpit::new();
+        let tail = hydrate_tail();
+        let seeded = tail.len();
+        let max_as_of = tail
+            .iter()
+            .map(|(_, a, _)| *a)
+            .max_by_key(Timestamp::unix_millis)
+            .expect("non-empty tail");
+        let last_bar = tail[seeded - 1].0;
+        update(&mut c, Message::PnlHydrated(tail));
+        assert_eq!(c.live_equity_buffer.len(), seeded);
+
+        // A re-delivery carrying the EXACT max hydrated `as_of` → appended.
+        update(
+            &mut c,
+            Message::PnlRefreshed(PnlSnapshot {
+                cash: Money::<Usdt>::from_decimal(dec!(103100)),
+                unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+                realized: Money::<Usdt>::from_decimal(dec!(0)),
+                total_equity: Money::<Usdt>::from_decimal(dec!(103100)),
+                daily_return: Money::<Usdt>::from_decimal(dec!(0)),
+                as_of: max_as_of,
+                bar_ts: Some(last_bar),
+            }),
+        );
+        assert_eq!(
+            c.live_equity_buffer.len(),
+            seeded + 1,
+            "an EQUAL-`as_of` delivery must be accepted — the guard is `<`, and \
+             distinct fast-replay bars share a wallclock millisecond"
+        );
+
+        // …while a STRICTLY-EARLIER one is still dropped (the guard's actual job).
+        let earlier = Timestamp::new(
+            time::OffsetDateTime::UNIX_EPOCH
+                + time::Duration::milliseconds(max_as_of.unix_millis() - 1),
+        );
+        update(
+            &mut c,
+            Message::PnlRefreshed(PnlSnapshot {
+                cash: Money::<Usdt>::from_decimal(dec!(9999)),
+                unrealized: Money::<Usdt>::from_decimal(dec!(0)),
+                realized: Money::<Usdt>::from_decimal(dec!(0)),
+                total_equity: Money::<Usdt>::from_decimal(dec!(9999)),
+                daily_return: Money::<Usdt>::from_decimal(dec!(0)),
+                as_of: earlier,
+                bar_ts: Some(last_bar),
+            }),
+        );
+        assert_eq!(
+            c.live_equity_buffer.len(),
+            seeded + 1,
+            "a strictly-earlier `as_of` is still dropped"
+        );
+    }
+
+    /// **2-15 review M6 — the O(N²) hydrate fix is BEHAVIOUR-IDENTICAL.**
+    ///
+    /// The batch hydrate now stages every row and derives the curve + KPI strip
+    /// once at the end, instead of rebuilding the whole series per row. Because
+    /// the derived states are a pure function of the final buffer, that must be
+    /// indistinguishable from the per-point path — this test is the proof, and
+    /// it compares EVERY observable: buffer contents, both panel states, the
+    /// curve's points/peak/trough/max-DD, the KPI numbers, and the delivery
+    /// guard.
+    #[test]
+    fn hydrate_batch_matches_per_point_path() {
+        let tail = hydrate_tail();
+        let max_as_of = tail
+            .iter()
+            .map(|(_, a, _)| *a)
+            .max_by_key(Timestamp::unix_millis)
+            .expect("non-empty tail");
+
+        // Reference: the OLD shape — one full derive per row.
+        let mut per_point = Cockpit::new();
+        for (bar_ts, _as_of, equity) in tail.clone() {
+            per_point.push_live_equity_point(max_as_of, bar_ts, equity);
+        }
+
+        // Under test: the batch path through the production `update` arm.
+        let mut batched = Cockpit::new();
+        update(&mut batched, Message::PnlHydrated(tail));
+
+        assert_eq!(
+            per_point.live_equity_buffer, batched.live_equity_buffer,
+            "the seeded buffer must be identical"
+        );
+        assert_eq!(
+            per_point.live_equity_last_as_of.map(|t| t.unix_millis()),
+            batched.live_equity_last_as_of.map(|t| t.unix_millis()),
+            "the delivery guard must be pinned identically"
+        );
+        assert_eq!(
+            per_point.live_equity_curve.variant_name(),
+            batched.live_equity_curve.variant_name()
+        );
+        assert_eq!(
+            per_point.live_kpi.variant_name(),
+            batched.live_kpi.variant_name()
+        );
+        match (&per_point.live_equity_curve, &batched.live_equity_curve) {
+            (PanelState::Ready(a), PanelState::Ready(b)) => {
+                assert_eq!(a.points, b.points, "curve points must match exactly");
+                assert_eq!(a.peak, b.peak);
+                assert_eq!(a.trough, b.trough);
+                assert_eq!(a.max_drawdown_pct, b.max_drawdown_pct);
+                assert_eq!(a.inception_ts.unix_millis(), b.inception_ts.unix_millis());
+                assert_eq!(a.as_of_ts.unix_millis(), b.as_of_ts.unix_millis());
+            }
+            other => panic!("expected two Ready curves, got {other:?}"),
+        }
+        match (&per_point.live_kpi, &batched.live_kpi) {
+            (PanelState::Ready(a), PanelState::Ready(b)) => assert_eq!(a, b),
+            other => panic!("expected two Ready strips, got {other:?}"),
+        }
+    }
+
+    /// **2-15 review H3 (boot half).** The durable reader `LIMIT`s to
+    /// `LIVE_EQUITY_BUFFER_CAP` and returns the NEWEST rows, so a tail that
+    /// comes back saturated may have older history behind it — "Since
+    /// inception" would be a false claim from the very first frame. A short
+    /// tail is genuinely complete and keeps the inception caption.
+    #[test]
+    fn saturated_hydrate_latches_window_truncated() {
+        let short = Cockpit::new();
+        let mut short = short;
+        update(&mut short, Message::PnlHydrated(hydrate_tail()));
+        assert!(
+            short.live_equity_window == LiveEquityWindow::Anchored,
+            "a short tail is the whole history"
+        );
+        assert_eq!(
+            crate::screens::live::return_scope_caption(&short),
+            crate::strings::LIVE_SINCE_INCEPTION_CAPTION
+        );
+
+        let mut saturated = Cockpit::new();
+        let bar_base: i64 = 1_673_789_400;
+        let wall_base: i64 = 1_746_000_000;
+        #[allow(clippy::cast_possible_wrap)] // test-only: cap is tiny, no wrap risk
+        let rows: Vec<(Timestamp, Timestamp, Money<Usdt>)> = (0..LIVE_EQUITY_BUFFER_CAP as i64)
+            .map(|i| {
+                (
+                    Timestamp::new(
+                        time::OffsetDateTime::UNIX_EPOCH
+                            + time::Duration::seconds(bar_base + i * 60),
+                    ),
+                    Timestamp::new(
+                        time::OffsetDateTime::UNIX_EPOCH
+                            + time::Duration::seconds(wall_base + i * 60),
+                    ),
+                    Money::<Usdt>::from_decimal(dec!(100000) + Decimal::from(i)),
+                )
+            })
+            .collect();
+        update(&mut saturated, Message::PnlHydrated(rows));
+        assert!(
+            saturated.live_equity_window == LiveEquityWindow::Rolling,
+            "a tail saturated at the reader's LIMIT must not claim inception"
+        );
+        assert_eq!(
+            crate::screens::live::return_scope_caption(&saturated),
+            crate::strings::LIVE_ROLLING_WINDOW_CAPTION
+        );
+    }
+
+    /// **2-15 review H2 (model half).** A ≥2-point FLAT session is `Ready` with
+    /// real zeros — not `Loading`, and not the all-absent sentinel's face. The
+    /// widget renders those zeros verbatim
+    /// (`kpi_strip::renders_unavailable(&Ready(_)) == false`), so "no data" and
+    /// "data is fine and flat" no longer look identical.
+    #[test]
+    fn flat_session_kpi_is_ready_with_honest_zeros() {
+        let mut c = Cockpit::new();
+        for secs in [0i64, 60, 120] {
+            update(&mut c, Message::PnlRefreshed(pnl_snap_at(secs, dec!(200))));
+        }
+        match &c.live_kpi {
+            PanelState::Ready(m) => {
+                assert_eq!(m.total_return_pct, Decimal::ZERO);
+                assert_eq!(m.max_drawdown_pct, Decimal::ZERO);
+                assert_eq!(m.trades, 0);
+                // Shaped exactly like the absent sentinel …
+                assert!(m.is_all_absent());
+            }
+            other => panic!("a flat feed is Ready, got {}", other.variant_name()),
+        }
+        // … and yet the strip renders its VALUES, because the state says the
+        // data is here.
+        assert!(
+            !crate::widgets::kpi_strip::renders_unavailable(&c.live_kpi),
+            "a healthy flat feed must not render the 'metrics unavailable' strip"
+        );
+    }
+
+    /// **2-15 review L11 (model half) — the negative-open sign trap.** With a
+    /// negative opening equity a signed denominator turns a RECOVERY into a
+    /// reported loss. `|first|` keeps the sign of the change.
+    #[test]
+    fn negative_opening_equity_reports_a_gain_as_a_gain() {
+        let mut c = Cockpit::new();
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(0, dec!(-100))));
+        update(&mut c, Message::PnlRefreshed(pnl_snap_at(60, dec!(-50))));
+        match &c.live_kpi {
+            PanelState::Ready(m) => assert_eq!(
+                m.total_return_pct,
+                dec!(50),
+                "−100 → −50 is a +50 % move on the opening magnitude, not −50 %"
+            ),
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
+
+        // The positive-open path is unchanged (the fix is inert there).
+        let mut pos = Cockpit::new();
+        update(&mut pos, Message::PnlRefreshed(pnl_snap_at(0, dec!(100))));
+        update(&mut pos, Message::PnlRefreshed(pnl_snap_at(60, dec!(150))));
+        match &pos.live_kpi {
+            PanelState::Ready(m) => assert_eq!(m.total_return_pct, dec!(50)),
+            other => panic!("expected Ready strip, got {}", other.variant_name()),
+        }
     }
 
     /// AC2 (Error, no panic) — `PnlError` drives BOTH the live curve and the
@@ -4233,13 +4636,48 @@ mod tests {
     /// R3 / D-buffer — the buffer is a bounded ring: past
     /// `LIVE_EQUITY_BUFFER_CAP` it evicts the oldest (`pop_front`), so the
     /// length never exceeds the cap and the newest point survives.
+    ///
+    /// **2-15 review H3 rider:** the first eviction also latches
+    /// `live_equity_window` to `Rolling`, because from that moment
+    /// `live_equity_buffer[0]` is no longer the session open — it is merely
+    /// the oldest retained point — so the Total-return denominator and the
+    /// Max-DD peak describe a rolling window and the caption must say so. (The
+    /// rendered proof is `tests/live_kpi_strip_render.rs`; this is the model
+    /// half. Folded into this test rather than a second one so the expensive
+    /// cap-length loop runs once.)
     #[test]
     fn live_equity_buffer_is_bounded_ring() {
         let mut c = Cockpit::new();
-        // Push cap + 5 monotone points; assert the buffer caps and the oldest
-        // evicts (front advances past ts=0).
+        assert_eq!(
+            c.live_equity_window,
+            LiveEquityWindow::Anchored,
+            "clean at boot"
+        );
+
+        // Fill exactly to the cap — nothing evicted yet, so the head is still
+        // the session open and the session-scoped caption is still true.
         #[allow(clippy::cast_possible_wrap)] // test-only: cap is tiny, no wrap risk
-        for i in 0..(LIVE_EQUITY_BUFFER_CAP as i64 + 5) {
+        for i in 0..(LIVE_EQUITY_BUFFER_CAP as i64) {
+            update(
+                &mut c,
+                Message::PnlRefreshed(pnl_snap_at(i * 60, dec!(1000) + Decimal::from(i))),
+            );
+        }
+        assert_eq!(c.live_equity_buffer.len(), LIVE_EQUITY_BUFFER_CAP);
+        assert_eq!(
+            c.live_equity_window,
+            LiveEquityWindow::Anchored,
+            "at exactly the cap nothing has been evicted — the head is still the \
+             session open"
+        );
+        assert_eq!(
+            crate::screens::live::return_scope_caption(&c),
+            crate::strings::LIVE_SESSION_RETURN_CAPTION
+        );
+
+        // Five more → the ring evicts, and the caption must retract its claim.
+        #[allow(clippy::cast_possible_wrap)]
+        for i in LIVE_EQUITY_BUFFER_CAP as i64..(LIVE_EQUITY_BUFFER_CAP as i64 + 5) {
             update(
                 &mut c,
                 Message::PnlRefreshed(pnl_snap_at(i * 60, dec!(1000) + Decimal::from(i))),
@@ -4250,6 +4688,16 @@ mod tests {
         let front_ts = c.live_equity_buffer.front().expect("non-empty").0;
         assert!(front_ts.unix_millis() > 0);
         assert_eq!(c.live_equity_curve.variant_name(), "ready");
+        assert_eq!(
+            c.live_equity_window,
+            LiveEquityWindow::Rolling,
+            "the first eviction must latch the rolling-window state"
+        );
+        assert_eq!(
+            crate::screens::live::return_scope_caption(&c),
+            crate::strings::LIVE_ROLLING_WINDOW_CAPTION,
+            "and the caption the screen renders must follow it"
+        );
     }
 
     /// R1 / D5 — the live panels are session-scoped: a fresh `Cockpit` (a new
@@ -4342,7 +4790,7 @@ mod tests {
             stored_ms, expect_bar_ms,
             "hydrate must plot each row's bar_ts on the x-axis"
         );
-        // Curve + strip both Ready (≥2 rows clears the is_all_absent trap),
+        // Curve + strip both Ready (≥2 rows clears the 1-point trap),
         // with zero live ticks delivered.
         assert_eq!(c.live_equity_curve.variant_name(), "ready");
         assert_eq!(c.live_kpi.variant_name(), "ready");
@@ -4419,7 +4867,7 @@ mod tests {
     }
 
     /// A single-row hydrate brings the curve `Ready` (1-point curve is valid)
-    /// but keeps the KPI strip `Loading` — the `is_all_absent` ≥2-point trap is
+    /// but keeps the KPI strip `Loading` — the ≥2-point trap is
     /// intact through the hydrate path, identical to the live append path.
     #[test]
     fn pnl_hydrated_one_row_curve_ready_strip_loading() {
@@ -4437,7 +4885,7 @@ mod tests {
         assert_eq!(
             c.live_kpi.variant_name(),
             "loading",
-            "a 1-row hydrate keeps the strip Loading (is_all_absent trap intact)"
+            "a 1-row hydrate keeps the strip Loading (1-point trap intact)"
         );
         // Still flips the honesty switch: a durable single-row history is a real
         // since-inception series, even if the strip waits for the 2nd point.

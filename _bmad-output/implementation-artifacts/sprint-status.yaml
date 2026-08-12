@@ -125,7 +125,7 @@ development_status:
   2-12-ui-rethink-phase-e-compare: done
   2-13-ui-rethink-phase-f-memory-models-assistant: done
   2-14-live-cockpit-unified: done
-  2-15-cockpit-live-dashboard-wiring: review
+  2-15-cockpit-live-dashboard-wiring: review  # 2026-08-12 code-review burn-down 11/14 **PASS-WITH-FINDINGS; close-out PENDING the full `cargo test -p ui` sweep** (108 binaries, ~3h on this box — the render suites 144, lib 629, trading_core 48 and audit 113 ARE green; the rest is unverified for this change and the triad is deliberately NOT flipped until it is). The feature works at HEAD; the VERIFICATION RECORD was false — the AD-10 claim rested on a test count, and no test in the implementing commit would have gone red if the wiring were reverted. Its real pixel proof (live_equity_render.rs) was written 2 days later by another story and is now backfilled into the trace row. 14 patches incl. a NEW un-gated KPI-strip pixel harness (RED-proven: 130 pre-existing tests stayed green under the revert mutation), the flat-feed "unavailable" lie, and the rolling-window caption lie. 1 finding correctly REJECTED as wrong. bug-log #77 disclosed. All findings anchor-impacting: NO.
   2-16-live-equity-history-durable: done
   2-17-paper-mode-equity-wiring: done
   2-18-cockpit-baseline-panel: review

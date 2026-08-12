@@ -16,6 +16,7 @@ kpi_strip: ready
   card Win rate: —
   card Trades: 0
 session_caption: Session to date
+as_of_caption: Last equity update 00:01:00 UTC
 llm_spend_label: LLM spend
 llm_spend_tile: —
 bottom_left: positions (state=loading)

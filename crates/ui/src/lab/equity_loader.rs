@@ -919,7 +919,11 @@ pub fn route_equity_overlay(
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,
-    clippy::needless_raw_string_hashes
+    clippy::needless_raw_string_hashes,
+    // Fixture builders only: a `format!` into a growing fixture string and a
+    // `usize as i64` bar index. Both are test-local and cannot wrap.
+    clippy::format_push_string,
+    clippy::cast_possible_wrap
 )]
 mod tests {
     use super::*;

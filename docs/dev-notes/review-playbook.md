@@ -88,7 +88,7 @@ now a question every review must ask.
 | **Loop-scope** | A rule inside a per-bar loop: what is the loop ITERATING? With multi-symbol merged bars, "once per bar" and "once per instant" differ — and the difference is invisible in every aggregate the report prints. | #73 (funding × universe size) |
 | **Seed-collision** | Any additive seed derivation (`base + i·CONST`) collides on anti-diagonals. Must be splitmix-mixed. | 1-13, 1-14, 1-15 (three instances) |
 | **Channel** | Does the test inject the thing under test through the SAME channel production uses? If not: does the *test* channel have an effect of its own that could account for the difference the assertion measures? A signal injected through a channel that also moves equity directly gives you a gate that passes with the signal fully destroyed. | #74 (basis via `funding_override`) |
-| **Supersession** | Did later work FALSIFY a conclusion this story froze into an anchored body? Read the successor story's trace row and any adjudication dev-note. Propagation runs forward into the next story's rationale automatically — backward into the evidence, never. | 1-20 H4 (fee-bleed) |
+| **Supersession** | Did later work FALSIFY a conclusion this story froze — **or SUPPLY the proof this story lacked**? Both directions. Read the successor story's trace row, its test list, and any adjudication dev-note. Propagation runs forward into the next story's record automatically — backward into this one, never. | 1-20 H4 (fee-bleed); 2-15 F6 (the AD-10 harness) |
 
 **On the supersession probe.** In 1-20 the anchored bodies asserted "fee-bleed
 consumes the edge" while the adjudication written *the same day from those same
@@ -101,6 +101,17 @@ nobody does it unless a reviewer asks. The corpus is the artifact a future
 reader trusts first; a contradiction there outlives every dev-note that
 resolved it. **Ask of every conclusion in an anchored body: does the project
 still believe this?**
+
+**And ask the mirror question, which fires just as often: is this story's
+proof sitting in a LATER story's record?** In 2-15 the only AD-10-compliant
+harness for the Live view (`live_equity_render.rs`) was written two days later
+by a different story — because the operator kept seeing no graph — and it is
+cited in the trace rows for 2-16, 2-17 and Lab/Compare while appearing **zero**
+times in 2-15's own row. So 2-15's record still offers a test COUNT where a
+pixel is required, and the artifact that would vindicate it sits three rows
+away. Same asymmetry: records propagate forward, never backward. When you find
+the real proof living downstream, **backfill the upstream row** — that is the
+finding, not a footnote.
 
 **On the identity-forge probe — enumerate, do not spot-check.** It has now fired
 in *four consecutive* stories, each time on an axis added by that story and never

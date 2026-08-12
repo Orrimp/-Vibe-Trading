@@ -3438,6 +3438,55 @@ mod tests {
         );
     }
 
+    /// **2-15 review L10 — the tie-order the KPI denominators depend on.**
+    ///
+    /// The review suspected that `ORDER BY bar_ts DESC, rowid DESC` followed by
+    /// `.rev()` left duplicate-`bar_ts` rows in DESCENDING rowid order, which
+    /// would make `buffer[0]` / `buffer[len−1]` — the Total-return and Max-DD
+    /// denominators — the wrong rows of a tied bar. It does not: `.rev()`
+    /// reverses the WHOLE sequence, so both keys flip together and the result
+    /// is ascending in `bar_ts` **and** ascending in `rowid` within a tie. The
+    /// existing round-trip test only checked `bar_ts`, so nothing pinned the
+    /// secondary key.
+    ///
+    /// This test pins it, so a future "fix" toward `ORDER BY bar_ts DESC, rowid
+    /// ASC` (which really would invert insertion order within a tie) goes red.
+    #[tokio::test]
+    async fn equity_snapshot_tail_preserves_insertion_order_within_a_tied_bar() {
+        let ledger = Ledger::in_memory().await.expect("in-memory ledger");
+
+        // Bar 1, then THREE rows all stamped bar 2 (a restart re-emitting the
+        // same bar, or two symbols settling on one bar), then bar 3.
+        let equities = [
+            (1i64, dec!(100_100)),
+            (2, dec!(100_201)), // first write for bar 2
+            (2, dec!(100_202)), // second
+            (2, dec!(100_203)), // third — chronologically last
+            (3, dec!(100_300)),
+        ];
+        for (bar, eq) in equities {
+            post_equity_snapshot(&ledger, &make_snapshot_row(bar, eq))
+                .await
+                .expect("write must succeed");
+        }
+
+        let tail = equity_snapshot_tail(&ledger, 10).await.expect("read");
+        let got: Vec<Decimal> = tail.iter().map(|r| r.total_equity.amount()).collect();
+        assert_eq!(
+            got,
+            vec![
+                dec!(100_100),
+                dec!(100_201),
+                dec!(100_202),
+                dec!(100_203),
+                dec!(100_300)
+            ],
+            "the tail must be ascending in bar_ts AND in insertion (rowid) order \
+             within the tied bar — buffer[0]/buffer[len-1] are the live KPI \
+             denominators"
+        );
+    }
+
     /// AC8 — Retention purge: rows past the horizon are deleted; rows within
     /// the horizon survive.
     #[tokio::test]

@@ -578,7 +578,7 @@ strategy:
     /// `evidence/v1/v0-paper-sma` report): the `strategy:` sub-keys are
     /// UNINDENTED because the writer template's `\`-continuations elide
     /// leading whitespace. The parser must still file them as `strategy.*`
-    /// (2026-07-26 review — scan_one_root skipped every engine-written
+    /// (2026-07-26 review — `scan_one_root` skipped every engine-written
     /// report before this tolerant-reader fix).
     const ENGINE_WRITTEN_FRONTMATTER: &str = r#"---
 scenario: btcusdt-2024-h1-sma-cross-binance
