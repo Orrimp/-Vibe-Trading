@@ -478,6 +478,30 @@ impl MomentumStrategy {
     /// Before that, returns `None` (excluded from the rank — same as a warming-up
     /// momentum or carry score). Warm-up count is in BARS (the basis is native 1h),
     /// not 8h settlements — every bar pushes a basis value via the map.
+    ///
+    /// # Averaging window — `(t−L, t]`, INCLUSIVE of the current bar (review 1-20 M)
+    ///
+    /// The current bar's value is pushed into the ring BEFORE the mean is taken,
+    /// so the window is `(t−L, t]` — the last `L` values ending at and including
+    /// `t`. It is **not** "the L values strictly before `t`", which is what the
+    /// spec prose said. Two consequences worth knowing:
+    ///
+    /// - At `L = 1` the mean degenerates to the identity (`sum/len` over one
+    ///   element) and the eviction loop never evicts, so an `L = 1` test cannot
+    ///   observe the trailing-mean or ring logic at all. The production grid runs
+    ///   `L ∈ {24, 60, 168}` (§ D-BR.2-LOCKED); the coverage for that lives in
+    ///   `r_br_trailing_mean_ring_at_production_lookback`.
+    /// - The value at `t` is the one `basis_data::basis_as_of` returned for `t`,
+    ///   which on the aligned 1h grid is `basis_close[t]` — a value realised at
+    ///   that bar's CLOSE, not its open. That is causal in the anchored lane only
+    ///   because `PaperEngine` fills at the bar close too
+    ///   (`FillPriceMode::BarClose`), so the score is priced at the instant its
+    ///   inputs are realised. It would be a one-bar look-ahead in any consumer
+    ///   that fills earlier than the bar close. The full argument, and the
+    ///   correction of the old (wrong) `basis_close[t-1]` claim, is in the
+    ///   "Join key and causality" block on `backtest::basis_data::basis_as_of`.
+    ///   Changing the join re-prices every anchored basis/MN surface and is owned
+    ///   by story 1-25, not by this signal.
     fn basis_reversal_score(&mut self, symbol: &Symbol, open_ts: Timestamp) -> Option<Decimal> {
         // Fetch the basis value for this (symbol, bar_ts) pair.
         // The basis map is keyed for EVERY bar (the co-resampled value is the
@@ -503,7 +527,18 @@ impl MomentumStrategy {
 
         // Compute the trailing mean only when the ring is full (warm-up guard).
         let ring = self.funding_rings.get(symbol)?;
-        if ring.len() < self.funding_lookback {
+        // `is_empty` guards the DIVISION below (review 1-20 wave-2 L).
+        // `funding_lookback == 0` makes the drain loop above empty the ring the
+        // instant it is pushed, and `0 < 0` is false — so control reaches
+        // `sum / Decimal::from(0)`, which PANICS. `lookback_minutes = 0` is
+        // rejected by `CrossSectionalMomentumConfig::from_str`, but every field
+        // on that struct is `pub`, so the struct-literal seam (which the e2e
+        // tests use) bypasses that check entirely. A panic in library code is a
+        // CLAUDE.md violation; return the same `None` the warm-up path returns.
+        // For every `funding_lookback >= 1` this is a strict no-op: a ring
+        // entry only exists after a push, and a push leaves at least one
+        // element, so `is_empty()` is unreachable there.
+        if ring.is_empty() || ring.len() < self.funding_lookback {
             return None;
         }
         let sum: Decimal = ring.iter().copied().sum();
@@ -568,7 +603,18 @@ impl MomentumStrategy {
 
         // Compute the trailing mean only when the ring is full (warm-up guard).
         let ring = self.funding_rings.get(symbol)?;
-        if ring.len() < self.funding_lookback {
+        // `is_empty` guards the DIVISION below (review 1-20 wave-2 L).
+        // `funding_lookback == 0` makes the drain loop above empty the ring the
+        // instant it is pushed, and `0 < 0` is false — so control reaches
+        // `sum / Decimal::from(0)`, which PANICS. `lookback_minutes = 0` is
+        // rejected by `CrossSectionalMomentumConfig::from_str`, but every field
+        // on that struct is `pub`, so the struct-literal seam (which the e2e
+        // tests use) bypasses that check entirely. A panic in library code is a
+        // CLAUDE.md violation; return the same `None` the warm-up path returns.
+        // For every `funding_lookback >= 1` this is a strict no-op: a ring
+        // entry only exists after a push, and a push leaves at least one
+        // element, so `is_empty()` is unreachable there.
+        if ring.is_empty() || ring.len() < self.funding_lookback {
             return None;
         }
         let sum: Decimal = ring.iter().copied().sum();
@@ -624,7 +670,9 @@ impl MomentumStrategy {
     /// (a non-None value = warmed, a None = still warming).
     fn basis_trailing_mean_for_residual(&self, symbol: &Symbol) -> Option<Decimal> {
         let ring = self.basis_score_rings.get(symbol)?;
-        if ring.len() < self.funding_lookback {
+        // See `basis_reversal_score`: `is_empty` guards the division when
+        // `funding_lookback == 0` (review 1-20 wave-2 L). No-op for lookback >= 1.
+        if ring.is_empty() || ring.len() < self.funding_lookback {
             return None;
         }
         let sum: Decimal = ring.iter().copied().sum();
@@ -653,7 +701,8 @@ impl MomentumStrategy {
             .keys()
             .filter_map(|sym| {
                 let ring = self.basis_score_rings.get(sym)?;
-                if ring.len() < self.funding_lookback {
+                // Division guard — see `basis_reversal_score` (1-20 wave-2 L).
+                if ring.is_empty() || ring.len() < self.funding_lookback {
                     return None;
                 }
                 let sum: Decimal = ring.iter().copied().sum();
@@ -668,7 +717,8 @@ impl MomentumStrategy {
             .keys()
             .filter_map(|sym| {
                 let ring = self.funding_rings.get(sym)?;
-                if ring.len() < self.funding_lookback {
+                // Division guard — see `basis_reversal_score` (1-20 wave-2 L).
+                if ring.is_empty() || ring.len() < self.funding_lookback {
                     return None;
                 }
                 let sum: Decimal = ring.iter().copied().sum();
@@ -1725,6 +1775,305 @@ score_source = "basis_reversal"
             dec!(-0.02),
             "R-BR.2: BTCUSDT score must be −0.02 (−(+0.02))"
         );
+    }
+
+    /// Review 1-20 M: the trailing-mean ring at a PRODUCTION-realistic `L`.
+    ///
+    /// Every other basis test in the tree runs `L = 1`, where
+    /// `basis_reversal_score` degenerates: `sum/len` over a 1-element ring is
+    /// the identity, and the `while ring.len() > L { pop_front() }` eviction
+    /// loop is exercised only in its most trivial form. The anchored production
+    /// grid runs `L ∈ {24, 60, 168}` (§ D-BR.2-LOCKED), so the averaging and
+    /// eviction that actually price the surface had NO coverage at all.
+    ///
+    /// This test runs `L = 24` over 48 bars with a REGIME FLIP at bar 24 and
+    /// asserts three separate things the `L = 1` tests cannot see:
+    ///
+    /// 1. **Warm-up counts bars, not settlements** — `None` at bar 22 (ring has
+    ///    23 of 24), `Some` at bar 23 (ring full).
+    /// 2. **The mean is a real trailing mean, not the last value** — measured
+    ///    mid-flip at bar 30, where 17 pre-flip and 7 post-flip values are in
+    ///    the ring and the score differs from `−last_value`.
+    /// 3. **The ring EVICTS** — at bar 47 the ring must hold bars 24..=47 ONLY,
+    ///    so the score is exactly `−(post-flip value)`. If the eviction loop
+    ///    regressed (ring grows unbounded), the score would be the mean over
+    ///    all 48 bars instead, and the cross-sectional ORDER would flip too:
+    ///    BTCUSDT would still outscore ETHUSDT, so this also catches a
+    ///    selection-level regression, not just an arithmetic one.
+    #[test]
+    fn r_br_trailing_mean_ring_at_production_lookback() {
+        use time::OffsetDateTime;
+
+        const L: u32 = 24; // the smallest production rung (§ D-BR.2-LOCKED)
+        const N_BARS: i64 = 48;
+        const FLIP_BAR: i64 = 24;
+
+        let btc = Symbol::new("BTCUSDT");
+        let eth = Symbol::new("ETHUSDT");
+
+        // BTCUSDT: −0.02 for bars 0..23, then +0.01 for bars 24..47.
+        // ETHUSDT: +0.01 for bars 0..23, then −0.005 for bars 24..47.
+        // The cross-sectional winner therefore FLIPS from BTC to ETH at the
+        // moment the ring has fully rolled over — but only if it evicts.
+        let btc_pre = dec!(-0.02);
+        let btc_post = dec!(0.01);
+        let eth_pre = dec!(0.01);
+        let eth_post = dec!(-0.005);
+
+        let mut basis_map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        for i in 0..N_BARS {
+            let ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(i));
+            let (b, e) = if i < FLIP_BAR {
+                (btc_pre, eth_pre)
+            } else {
+                (btc_post, eth_post)
+            };
+            basis_map.insert((btc.clone(), ts), b);
+            basis_map.insert((eth.clone(), ts), e);
+        }
+
+        let mut strat = make_basis_reversal_strategy_with_map(L, basis_map);
+
+        // ── (1) Warm-up: the ring must hold L bars before ANY score exists ────
+        for i in 0..23_i64 {
+            strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), i));
+            strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), i));
+        }
+        assert_eq!(
+            strat.scores.get(&btc).copied().flatten(),
+            None,
+            "L={L}: after 23 bars the ring holds 23 < {L} values — the score must \
+             still be None (warm-up counts BARS)"
+        );
+
+        strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), 23));
+        strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), 23));
+        assert_eq!(
+            strat.scores.get(&btc).copied().flatten(),
+            Some(-btc_pre),
+            "L={L}: at bar 23 the ring is exactly full of the pre-flip value, so \
+             the score is −mean = −({btc_pre})"
+        );
+
+        // ── (2) Mid-flip: the mean must differ from −last_value ───────────────
+        for i in 24..=30_i64 {
+            strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), i));
+            strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), i));
+        }
+        // Ring now holds bars 7..=30: 17 pre-flip values and 7 post-flip ones.
+        let expected_mid = -((Decimal::from(17_u32) * btc_pre + Decimal::from(7_u32) * btc_post)
+            / Decimal::from(24_u32));
+        let mid = strat
+            .scores
+            .get(&btc)
+            .copied()
+            .flatten()
+            .expect("score must exist once warm");
+        assert_eq!(
+            mid, expected_mid,
+            "L={L}: at bar 30 the ring holds 17×{btc_pre} + 7×{btc_post}; the score \
+             must be the −MEAN of that window"
+        );
+        assert_ne!(
+            mid, -btc_post,
+            "L={L} VACUITY GUARD: the score must NOT equal −last_value. If it does, \
+             the trailing mean has collapsed to the identity and every L>1 cell on \
+             the anchored grid is silently running L=1"
+        );
+
+        // ── (3) Full roll-over: the ring must have EVICTED every pre-flip bar ─
+        for i in 31..N_BARS {
+            strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), i));
+            strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), i));
+        }
+        let btc_end = strat
+            .scores
+            .get(&btc)
+            .copied()
+            .flatten()
+            .expect("BTCUSDT score");
+        let eth_end = strat
+            .scores
+            .get(&eth)
+            .copied()
+            .flatten()
+            .expect("ETHUSDT score");
+
+        // If eviction works the ring holds bars 24..=47 only → the mean is the
+        // post-flip constant. If it does NOT, the ring holds all 48 bars and
+        // the score would be −(24·pre + 24·post)/48 = +0.005 for BTC.
+        assert_eq!(
+            btc_end, -btc_post,
+            "L={L} EVICTION REGRESSION: after 24 post-flip bars the ring must hold \
+             bars 24..=47 ONLY, so the score is −({btc_post}). Getting −mean over all \
+             48 bars instead means `while ring.len() > funding_lookback` stopped \
+             evicting and the window grows without bound"
+        );
+        assert_eq!(
+            eth_end, -eth_post,
+            "L={L} EVICTION REGRESSION: ETHUSDT score must be −({eth_post}) after full \
+             roll-over"
+        );
+
+        // The cross-sectional ORDER must have flipped with the regime. Under a
+        // broken eviction the un-evicted means are BTC +0.005 vs ETH −0.0025,
+        // i.e. BTC still wins — so this assertion is RED on that regression too.
+        assert!(
+            eth_end > btc_end,
+            "L={L}: after the regime flip ETHUSDT (now the LOW-basis name) must \
+             outscore BTCUSDT. eth={eth_end}, btc={btc_end}. If BTCUSDT still wins, \
+             the ring never evicted the pre-flip regime and the arm is trading a \
+             stale window"
+        );
+    }
+
+    // ── Review 1-20 wave-2 L: zero-lookback must not PANIC ───────────────────
+    //
+    // `funding_lookback = cfg.lookback_minutes as usize`. The TOML loader
+    // rejects `lookback_minutes < 1` (`config.rs`: `InvalidLookback`), but
+    // `CrossSectionalMomentumConfig` has all-`pub` fields, so a struct literal
+    // reaches `MomentumStrategy::from_config` with `lookback_minutes: 0` and
+    // never sees that check — and the e2e suites build their configs exactly
+    // that way. At `lookback_minutes == 0` the ring is pushed and then drained
+    // empty by `while ring.len() > 0`, `0 < 0` is false, and the trailing mean
+    // divides by `Decimal::from(0)` → panic. A panic in library code is a
+    // CLAUDE.md violation. Each arm must return `None` instead.
+    //
+    // Each test below PANICS on the un-guarded code and passes on the guarded
+    // code; there is one per score arm because each arm has its own division.
+
+    /// Build a config by STRUCT LITERAL — the seam that bypasses the TOML
+    /// validation — with an arbitrary lookback and score source.
+    fn struct_literal_cfg(
+        lookback: u32,
+        score_source: crate::cross_sectional::config::ScoreSource,
+    ) -> crate::cross_sectional::config::CrossSectionalMomentumConfig {
+        crate::cross_sectional::config::CrossSectionalMomentumConfig {
+            id: smol_str::SmolStr::new("zero_lookback_probe"),
+            universe: vec![
+                smol_str::SmolStr::new("BTCUSDT"),
+                smol_str::SmolStr::new("ETHUSDT"),
+            ],
+            lookback_minutes: lookback,
+            rebalance_minutes: 1,
+            k_long: 1,
+            k_short: 0,
+            exposure_cap: dec!(0.5),
+            drift_rebalance_threshold: dec!(0.10),
+            vol_floor: dec!(0.000001),
+            stage: smol_str::SmolStr::new("research"),
+            direction: crate::cross_sectional::config::Direction::Momentum,
+            score_source,
+            selection_mode: crate::cross_sectional::config::SelectionMode::CrossSectionalTopK,
+            entry_threshold: Decimal::ZERO,
+        }
+    }
+
+    /// A sidecar map with a value for both symbols at bar 0, so the ring IS
+    /// pushed (and therefore drained empty when the lookback is 0).
+    fn two_symbol_sidecar(value: Decimal) -> BTreeMap<(Symbol, Timestamp), Decimal> {
+        use time::OffsetDateTime;
+        let ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
+        let mut m: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+        m.insert((Symbol::new("BTCUSDT"), ts), value);
+        m.insert((Symbol::new("ETHUSDT"), ts), value);
+        m
+    }
+
+    /// BASIS arm: `lookback_minutes = 0` must return `None`, not divide by zero.
+    #[test]
+    fn zero_lookback_basis_arm_returns_none_instead_of_panicking() {
+        use crate::cross_sectional::config::ScoreSource;
+
+        let cfg = struct_literal_cfg(0, ScoreSource::BasisReversal);
+        let mut strat = MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test"))
+            .with_funding(Some(two_symbol_sidecar(dec!(-0.005))));
+
+        // Drives basis_reversal_score for both symbols. UN-GUARDED: panics with
+        // "Division by zero" inside `sum / Decimal::from(ring.len())`.
+        strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+
+        assert_eq!(
+            strat.scores.get(&Symbol::new("BTCUSDT")).copied().flatten(),
+            None,
+            "at lookback 0 the basis ring drains empty, so there is no trailing mean to \
+             report — the score must be None (never warm), NOT a division by zero"
+        );
+    }
+
+    /// CARRY arm: same seam, same requirement.
+    #[test]
+    fn zero_lookback_carry_arm_returns_none_instead_of_panicking() {
+        use crate::cross_sectional::config::ScoreSource;
+
+        let cfg = struct_literal_cfg(0, ScoreSource::FundingCarry);
+        let mut strat = MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test"))
+            .with_funding(Some(two_symbol_sidecar(dec!(0.0001))));
+
+        strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+
+        assert_eq!(
+            strat.scores.get(&Symbol::new("BTCUSDT")).copied().flatten(),
+            None,
+            "at lookback 0 the carry settlement ring drains empty — the score must be None"
+        );
+    }
+
+    /// RESIDUAL arm: three separate divisions live on this path
+    /// (`basis_trailing_mean_for_residual` plus the two inline `filter_map`
+    /// closures that build the rank vectors). Driving `on_bar` exercises all of
+    /// them.
+    #[test]
+    fn zero_lookback_residual_arm_returns_none_instead_of_panicking() {
+        use crate::cross_sectional::config::ScoreSource;
+
+        let cfg = struct_literal_cfg(0, ScoreSource::BasisFundingResidual);
+        let mut strat = MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test"))
+            .with_funding(Some(two_symbol_sidecar(dec!(0.0001))))
+            .with_basis_score(Some(two_symbol_sidecar(dec!(-0.005))));
+
+        strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), 0));
+        strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), 0));
+
+        assert_eq!(
+            strat.scores.get(&Symbol::new("BTCUSDT")).copied().flatten(),
+            None,
+            "at lookback 0 both residual rings drain empty — the score must be None"
+        );
+    }
+
+    /// The guard must be a strict NO-OP at every production lookback: the
+    /// anchored grid runs L ∈ {24, 60, 168} and the `is_empty()` disjunct can
+    /// never fire there (a ring entry exists only after a push, and a push
+    /// leaves at least one element when the lookback is >= 1).
+    #[test]
+    fn zero_lookback_guard_is_a_no_op_at_production_lookbacks() {
+        use crate::cross_sectional::config::ScoreSource;
+        use time::OffsetDateTime;
+
+        for lookback in [1_u32, 24, 60, 168] {
+            let cfg = struct_literal_cfg(lookback, ScoreSource::BasisReversal);
+            let mut map: BTreeMap<(Symbol, Timestamp), Decimal> = BTreeMap::new();
+            for i in 0..i64::from(lookback) {
+                let ts = Timestamp::new(OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(i));
+                map.insert((Symbol::new("BTCUSDT"), ts), dec!(-0.005));
+                map.insert((Symbol::new("ETHUSDT"), ts), dec!(0.02));
+            }
+            let mut strat = MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("test"))
+                .with_funding(Some(map));
+            for i in 0..i64::from(lookback) {
+                strat.on_bar(&make_bar("BTCUSDT", dec!(50_000), i));
+                strat.on_bar(&make_bar("ETHUSDT", dec!(3_000), i));
+            }
+            assert_eq!(
+                strat.scores.get(&Symbol::new("BTCUSDT")).copied().flatten(),
+                Some(dec!(0.005)),
+                "L={lookback}: once the ring is full the score is unchanged by the \
+                 division guard (−mean of a constant −0.005 series)"
+            );
+        }
     }
 
     /// R-BR.7 #5 no-look-ahead test (strategy level, M-DEV-3).

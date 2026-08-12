@@ -93,21 +93,55 @@ loader's key choice. Additive and behaviour-preserving:
   `AsOf<T>` stays proof-carrying (private fields; `as_of_ts()` returns the record's ts, proven
   `≤ query − lag ≤ query`).
 
-**Publication-lag table (grounded — all current lags are 0 because each key already encodes
-availability):**
+**Publication-lag table (grounded — the lags are 0 because each key already encodes
+availability, with ONE known exception corrected below):**
 
 | Series | Channel | Current key | `publication_lag_ms` | Effect |
 |--------|---------|-------------|----------------------|--------|
 | DVOL daily close | `v0.dvol_regime` | `day_open + 86_400_000 − 1` (EOD close) | **0** | byte-identical |
 | Macro `^GSPC`/`DX-Y.NYB`/`^TNX` | `v0.macro_riskon` | `bar.close_ts` ≈ EOD UTC | **0** | byte-identical |
 | Funding | (basis/carry, ADR-0058) | `funding_time_ms` (settlement) | **0** | unchanged |
-| Basis | (basis-reversal, ADR-0058) | observation `ts` | **0** | unchanged |
+| Basis | (basis-reversal, ADR-0058) | premium-kline **`open_time`**, carrying that kline's **close** value | **0 — DECLARED, NOT GROUNDED** (see correction) | unchanged; *understated by 3_600_000* |
 | *future* monthly macro print (CPI/NFP) | *not built* | release-date key | *the real release lag* | N/A — now *declarable* |
 
-The value of D2 is not to move any current number (all lags are 0) but to make the lag a **named,
+The value of D2 is not to move any current number but to make the lag a **named,
 per-series, audited** quantity recorded in the feature's lag table and asserted at the loader, so a
 future channel cannot be joined without an explicit, reviewable lag decision — closing the "silently
 baked into the key" fragility.
+
+> **Correction 2026-08-11 (story 1-20 review, Edge Case Hunter M3 — orchestrator-verified).**
+> The Basis row's justification as originally written ("the key already encodes availability") is
+> **false for this series, and the row above is corrected to say so.** `basis_close` is the Binance
+> premium-index kline's **close** (`crates/data/src/bin/fetch_binance_premium.rs` — "premium index
+> close = the basis at this bar"), but the loader keys it on that kline's **`open_time`**
+> (`crates/backtest/src/basis_data.rs`; `close_time` is in the schema and ignored). A value keyed at
+> `t` is therefore not realized until `t + 1h`, so the key does **not** encode availability and the
+> grounded lag is `3_600_000`, not `0`.
+>
+> Two consequences, stated separately because they have different severities:
+>
+> 1. **The documented causal margin is fictitious.** `basis_as_of`'s doc block claimed the `≤` join
+>    at query `t` returns `basis_close[t−1]` "when the query timestamp is exactly `t` (bar `t`'s open
+>    = bar `t−1`'s close)". It does not: Binance sets `close_time = open_time + 3_599_999`, so no
+>    kline ever closes exactly at `t`, and the largest key `≤ t` on the aligned 1h grid is the row
+>    keyed at `t` itself — the bar *opening* at `t`. The join returns `basis_close[t]`. The doc's
+>    appeal to the `funding_as_of` precedent does not transfer: funding keys on the **settlement
+>    instant**, a quantity genuinely known at its own key. (Code doc corrected under 1-20; the join
+>    itself was NOT changed — see 2.)
+> 2. **It is not, on the anchored lane, a look-ahead — but it has zero margin, not an hour.** The
+>    harness scores at bar open and fills at bar close (`FillPriceMode::BarClose`), so the decision
+>    executes contemporaneously with the realization of its own input rather than an hour after it.
+>    That is the harness's standing signal-at-close/fill-at-close convention, not a new violation.
+>    The defect of record is the **claim**, which asserted a full-bar safety margin that never existed.
+>
+> **The lag decision itself is deferred to story 1-25** (`REQ-HARNESS-FILL-CORRECTNESS-001`) and is
+> **anchor-impacting**: declaring `3_600_000` shifts every basis score by one bar and re-prices
+> anchors #100–#107, plus the MN surfaces that consume this join — **#108–#111 (MN-Basis) and
+> #116–#119 (MN-BasisPerp)**. It does **not** reach #112–#115 (MN-Funding), which key on the
+> settlement instant and are correct as declared. Until 1-25 rules, the declared `0` stands as a
+> *known-understated* lag, recorded here rather than left implied. Per D2's own rationale, an
+> unreviewed lag baked into a key is the fragility this ADR exists to close — so the honest state is
+> a declared exception, not a silent one.
 
 ### D3. Retrofit DVOL + macro onto the explicit-lag path, proven byte-identical
 

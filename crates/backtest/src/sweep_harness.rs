@@ -420,7 +420,76 @@ impl GridKind {
             | Self::MnTier1 => crate::resample::Horizon::OneHour,
         }
     }
+
+    /// The `--taker-fee-bps` ladder each grid was LOCKED at (review 1-20).
+    ///
+    /// The FIFTH forge axis. `--taker-fee-bps` reaches `MatchConfig` (every fill
+    /// is re-priced) but it enters the hashed body ONLY for the basis/MN
+    /// families (`render_surface_report` gates the `| taker_fee_bps |` row on
+    /// `is_basis_run || is_mn_run`) and the scenario NAME only for those same
+    /// families (`build_scenario_name`). So on every OTHER grid the fee is
+    /// invisible in both the identity and the body:
+    ///
+    /// - `--grid tier1 --score-source vol-adjusted-return --taker-fee-bps 20`
+    ///   runs 20 bps fills and emits `v1-momentum-theta-surface-{year}-…` —
+    ///   anchor #86's EXACT identity — into the frozen momentum dir with NO fee
+    ///   row anywhere in the body. The forged report is indistinguishable from
+    ///   the real one by inspection, shadows it as "latest matching", and turns
+    ///   `scripts/verify_anchors.sh` falsely RED.
+    ///
+    /// Read off the anchored bodies' `| taker_fee_bps |` rows:
+    /// - [`Self::BasisTier1`] — anchors #100..#107 record 0 / 2 / 5 / 10.
+    /// - [`Self::MnTier1`] — anchors #108..#119 record 0 / 5. The full
+    ///   `{0,2,5,10}` ladder is accepted (§ D-MN.8 shares the basis fee ladder);
+    ///   the two un-anchored rungs mint their OWN `fee02`/`fee10` names, so they
+    ///   cannot collide with an anchored identity.
+    /// - EVERY other grid — no fee row exists in any of its anchored bodies
+    ///   because each ran at the legacy hardcoded literal, which is exactly the
+    ///   CLI default: **4**.
+    #[must_use]
+    pub fn allowed_taker_fee_bps(self) -> &'static [u32] {
+        match self {
+            // § D-BR.LOAD / § D-MN.8 fee ladder.
+            Self::BasisTier1 | Self::MnTier1 => &[0, 2, 5, 10],
+            // The legacy hardcoded literal that every pre-basis anchor ran at.
+            Self::Tier1
+            | Self::MrTier1
+            | Self::CarryTier1
+            | Self::TsTier1
+            | Self::TwoCell
+            | Self::Ts4h
+            | Self::TsDaily
+            | Self::Carry4h
+            | Self::CarryDaily => &[LEGACY_TAKER_FEE_BPS],
+        }
+    }
+
+    /// The `--slippage-bps` value each grid was LOCKED at (review 1-20).
+    ///
+    /// **Every** anchored surface in `evidence/anchors.toml` ran at slippage
+    /// **2** — the basis/MN bodies record `| slippage_bps | 2 |` literally, and
+    /// every other family ran at the same legacy hardcoded literal (no row).
+    /// The § D-BR.LOAD fee sweep is explicitly the TAKER leg only.
+    ///
+    /// This is the in-lane half of the fifth forge axis: `--grid basis-tier1
+    /// --taker-fee-bps 5 --slippage-bps 7` reproduces anchor #104's exact
+    /// scenario name (`v1-basis-reversal-fee05bps-…`) and its exact
+    /// `| taker_fee_bps | 5 |` row while filling at a different price — the
+    /// only body difference is the `| slippage_bps |` row, which is precisely
+    /// the row a reader trusts to be constant.
+    #[must_use]
+    pub fn required_slippage_bps(self) -> u32 {
+        LEGACY_SLIPPAGE_BPS
+    }
 }
+
+/// The legacy hardcoded taker fee every pre-basis anchored surface ran at, and
+/// the `--taker-fee-bps` CLI default (review 1-20).
+pub const LEGACY_TAKER_FEE_BPS: u32 = 4;
+
+/// The slippage EVERY anchored surface ran at, and the `--slippage-bps` CLI
+/// default (review 1-20).
+pub const LEGACY_SLIPPAGE_BPS: u32 = 2;
 
 /// Validate the `--direction` × `--grid` pairing (review 1-16).
 ///
@@ -475,35 +544,55 @@ pub fn validate_direction_grid_pairing(
 /// `--grid ts-tier1 --horizon 4h` forges the horizon anchors' names
 /// (#92/#93) — the carry pair forges #96..#99 identically.
 ///
-/// Every checked-in invocation pairs all four axes exactly as its grid's
-/// LOCKED doc block and anchored `held_constant` row record (see
-/// [`GridKind::required_direction`], [`GridKind::required_selection_mode`],
-/// [`GridKind::allowed_score_sources`], [`GridKind::required_horizon`]), so
-/// bailing on mismatches rejects ONLY misinvocations — correct tuples are
-/// byte-unchanged.
+/// Review 1-20 adds the FIFTH and SIXTH axes, `--taker-fee-bps` and
+/// `--slippage-bps` (see [`GridKind::allowed_taker_fee_bps`] and
+/// [`GridKind::required_slippage_bps`]). Both reach `MatchConfig` and re-price
+/// every fill, but neither reaches the scenario NAME or the hashed body outside
+/// the basis/MN families — so they were the most invisible forge axis of all:
+/// - `--grid tier1 --score-source vol-adjusted-return --taker-fee-bps 20`
+///   passed all four earlier legs, ran 20 bps fills, and emitted anchor #86's
+///   EXACT identity into the frozen momentum dir with no fee row in the body.
+/// - `--grid basis-tier1 --taker-fee-bps 5 --slippage-bps 7` is the in-lane
+///   variant: anchor #104's exact name and exact `taker_fee_bps` row, filled at
+///   a different price.
+///
+/// Every checked-in invocation pairs all six axes exactly as its grid's LOCKED
+/// doc block and anchored `held_constant` / `taker_fee_bps` / `slippage_bps`
+/// rows record (see [`GridKind::required_direction`],
+/// [`GridKind::required_selection_mode`], [`GridKind::allowed_score_sources`],
+/// [`GridKind::required_horizon`], [`GridKind::allowed_taker_fee_bps`],
+/// [`GridKind::required_slippage_bps`]), so bailing on mismatches rejects ONLY
+/// misinvocations — correct tuples are byte-unchanged.
 ///
 /// # Errors
 ///
-/// On any mismatch, returns a message naming ALL FOUR requested axes
-/// (direction, selection mode, score source, horizon) and the grid's required
-/// tuple, plus an explicit `offending axis: …` line naming the first axis that
-/// failed and the value the grid requires there.
+/// On any mismatch, returns a message naming ALL SIX requested axes (direction,
+/// selection mode, score source, horizon, taker fee, slippage) and the grid's
+/// required tuple, plus an explicit `offending axis: …` line naming the first
+/// axis that failed and the value the grid requires there.
+#[allow(clippy::too_many_arguments)] // the guard IS the full CLI axis tuple; splitting it re-opens a forge axis
 pub fn validate_grid_axis_pairing(
     grid: GridKind,
     direction: SweepDirection,
     selection_mode: SweepSelectionMode,
     score_source: SweepScoreSource,
     horizon: crate::resample::Horizon,
+    taker_fee_bps: u32,
+    slippage_bps: u32,
 ) -> Result<(), String> {
     let required_direction = grid.required_direction();
     let required_mode = grid.required_selection_mode();
     let allowed_sources = grid.allowed_score_sources();
     let required_horizon = grid.required_horizon();
+    let allowed_fees = grid.allowed_taker_fee_bps();
+    let required_slippage = grid.required_slippage_bps();
     let direction_ok = direction == required_direction;
     let mode_ok = selection_mode == required_mode;
     let source_ok = allowed_sources.contains(&score_source);
     let horizon_ok = horizon == required_horizon;
-    if direction_ok && mode_ok && source_ok && horizon_ok {
+    let fee_ok = allowed_fees.contains(&taker_fee_bps);
+    let slippage_ok = slippage_bps == required_slippage;
+    if direction_ok && mode_ok && source_ok && horizon_ok && fee_ok && slippage_ok {
         return Ok(());
     }
     // Name the FIRST offending axis explicitly (review 1-18): the full-tuple
@@ -514,18 +603,24 @@ pub fn validate_grid_axis_pairing(
         format!("--selection-mode (requested {selection_mode:?}, required {required_mode:?})")
     } else if !source_ok {
         format!("--score-source (requested {score_source:?}, required one of {allowed_sources:?})")
-    } else {
+    } else if !horizon_ok {
         format!("--horizon (requested {horizon}, required {required_horizon})")
+    } else if !fee_ok {
+        format!("--taker-fee-bps (requested {taker_fee_bps}, required one of {allowed_fees:?})")
+    } else {
+        format!("--slippage-bps (requested {slippage_bps}, required {required_slippage})")
     };
     Err(format!(
         "requested axis tuple (--direction {direction:?}, --selection-mode \
-         {selection_mode:?}, --score-source {score_source:?}, --horizon {horizon}) does not \
+         {selection_mode:?}, --score-source {score_source:?}, --horizon {horizon}, \
+         --taker-fee-bps {taker_fee_bps}, --slippage-bps {slippage_bps}) does not \
          pair with --grid {grid:?}: that grid requires (direction={required_direction:?}, \
          selection_mode={required_mode:?}, score_source ∈ {allowed_sources:?}, \
-         horizon={required_horizon}). offending axis: {offending}. A mismatched tuple would \
-         run one family's behavior under another family's anchored scenario name — the forged \
-         report shadows the real one as \"latest matching\" and turns the anchors gate falsely \
-         RED — refusing to run."
+         horizon={required_horizon}, taker_fee_bps ∈ {allowed_fees:?}, \
+         slippage_bps={required_slippage}). offending axis: {offending}. A mismatched tuple \
+         would run one family's behavior — or one fee regime's fills — under another \
+         family's anchored scenario name; the forged report shadows the real one as \
+         \"latest matching\" and turns the anchors gate falsely RED — refusing to run."
     ))
 }
 
@@ -1451,18 +1546,13 @@ impl SweepScoreSource {
         }
     }
 
-    /// Short label for scenario name.
-    pub fn label(self) -> &'static str {
-        match self {
-            // Merged arms (identical strings; the VolAdjustedReturn value is
-            // unused for non-carry — kept for exhaustiveness).
-            Self::VolAdjustedReturn | Self::Carry => "carry-fy",
-            Self::BasisReversal => "basis-reversal-fy",
-            Self::MnBasisSpread => "mn-basis-spread",
-            Self::MnFundingSpread => "mn-funding-spread",
-            Self::MnBasisFundingResidual => "mn-basis-funding-residual",
-        }
-    }
+    // Review 1-20 L: a `label()` arm used to live here. It was DEAD — no caller
+    // anywhere in the workspace — and it was also WRONG in a dangerous way: it
+    // mapped `VolAdjustedReturn | Carry => "carry-fy"`, i.e. it claimed the
+    // momentum/MR default source was the carry family. Scenario identity comes
+    // from ONE seam, [`build_scenario_name`] (review 1-18 H3), which never
+    // called it. Deleted rather than wired: a second, disagreeing naming source
+    // is exactly the 1-15 M2 / 1-18 H3 failure mode.
 }
 
 /// Which selection mode to use (M-DEV-4, D-TSM.1).

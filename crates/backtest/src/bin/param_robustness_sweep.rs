@@ -102,10 +102,10 @@ pub use backtest::bakeoff::robustness::{ParamRobustnessVerdict, classify_verdict
 // them — output is byte-identical for every anchored lane (the M2/L3 deltas
 // are gated to the never-anchored two-cell/gbm lanes).
 pub use backtest::sweep_harness::{
-    CellResult, GridKind, SweepDirection, SweepScoreSource, SweepSelectionMode, TIER1_GRID,
-    ThetaCell, build_scenario_name, cell_config, derive_path_seed, family_any_non_fragile,
-    family_verdict_line, grid_def_string, grid_for_kind, render_surface_report,
-    validate_direction_grid_pairing, validate_grid_axis_pairing,
+    CellResult, GridKind, LEGACY_SLIPPAGE_BPS, LEGACY_TAKER_FEE_BPS, SweepDirection,
+    SweepScoreSource, SweepSelectionMode, TIER1_GRID, ThetaCell, build_scenario_name, cell_config,
+    derive_path_seed, family_any_non_fragile, family_verdict_line, grid_def_string, grid_for_kind,
+    render_surface_report, validate_direction_grid_pairing, validate_grid_axis_pairing,
 };
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -233,7 +233,12 @@ struct Args {
     /// existing anchors are unchanged. The basis arm sweeps this over {0,2,5,10} bps to
     /// produce the fee-sensitivity surface (R-BR.LOAD). Slippage is swept separately via
     /// `--slippage-bps` (default 2).
-    #[arg(long, default_value_t = 4)]
+    ///
+    /// Review 1-20: this axis is GUARDED by `validate_grid_axis_pairing` — the basis/MN
+    /// grids accept the locked `{0,2,5,10}` ladder, every other grid accepts only the
+    /// legacy default, because on those grids the fee reaches neither the scenario name
+    /// nor the hashed body (see [`GridKind::allowed_taker_fee_bps`]).
+    #[arg(long, default_value_t = LEGACY_TAKER_FEE_BPS)]
     taker_fee_bps: u32,
 
     /// Slippage in basis points (M-DEV-4, D-BR.LOAD).
@@ -241,7 +246,12 @@ struct Args {
     /// Default = **2** (the legacy hardcoded literal). Held at the default across the fee
     /// ladder (the LOAD-BEARING fee sweep varies the taker leg only, per § D-BR.LOAD).
     /// Changing this on a non-basis run would break the existing anchors.
-    #[arg(long, default_value_t = 2)]
+    ///
+    /// Review 1-20: EVERY anchored surface — basis/MN included — ran at 2, so
+    /// `validate_grid_axis_pairing` pins this to the default on every grid. Changing it
+    /// on a BASIS run is the in-lane forge: same anchored name, same `taker_fee_bps`
+    /// row, different fills (see [`GridKind::required_slippage_bps`]).
+    #[arg(long, default_value_t = LEGACY_SLIPPAGE_BPS)]
     slippage_bps: u32,
 
     /// Root directory for basis parquets (basis-reversal only).
@@ -1031,7 +1041,31 @@ fn load_carry_path_gen(
                     .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
                     .collect()
             })
-            .unwrap_or_default();
+            // Review 1-20 wave-2 M: this used to end in `.unwrap_or_default()`,
+            // so a symbol-name MISS produced an EMPTY timestamp vector instead of
+            // an error. Empty timestamps ⇒ no sidecar map entries for that symbol
+            // ⇒ it never warms — and `MomentumStrategy::all_warmed` requires EVERY
+            // universe symbol to be warm before the ranker selects anything, so ONE
+            // missed name silently makes the WHOLE arm never trade while the
+            // renderer still emits a full θ-surface whose flat cells read as a
+            // FRAGILE verdict. `symbols_prices` and `real_bars_by_symbol` agree
+            // today only BY CONSTRUCTION (both derive from `symbols_prices` inside
+            // `load_source_bars`) and nothing asserted it. Fail loudly instead.
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "sidecar load: symbol {sym} is in the scenario universe but has NO entry \
+                     in the loaded OHLCV bars ({} symbols present: {}). An empty bar-timestamp \
+                     series would leave {sym} permanently un-warm, and because the ranker \
+                     requires every universe symbol to be warm the whole arm would never \
+                     trade while still rendering a full θ-surface — refusing to run.",
+                    real_bars_by_symbol.len(),
+                    real_bars_by_symbol
+                        .iter()
+                        .map(|(s, _)| s.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            })?;
         bar_ts_by_symbol_raw.push(bar_ts);
     }
 
@@ -1158,7 +1192,31 @@ fn load_basis_path_gen(
                     .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
                     .collect()
             })
-            .unwrap_or_default();
+            // Review 1-20 wave-2 M: this used to end in `.unwrap_or_default()`,
+            // so a symbol-name MISS produced an EMPTY timestamp vector instead of
+            // an error. Empty timestamps ⇒ no sidecar map entries for that symbol
+            // ⇒ it never warms — and `MomentumStrategy::all_warmed` requires EVERY
+            // universe symbol to be warm before the ranker selects anything, so ONE
+            // missed name silently makes the WHOLE arm never trade while the
+            // renderer still emits a full θ-surface whose flat cells read as a
+            // FRAGILE verdict. `symbols_prices` and `real_bars_by_symbol` agree
+            // today only BY CONSTRUCTION (both derive from `symbols_prices` inside
+            // `load_source_bars`) and nothing asserted it. Fail loudly instead.
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "sidecar load: symbol {sym} is in the scenario universe but has NO entry \
+                     in the loaded OHLCV bars ({} symbols present: {}). An empty bar-timestamp \
+                     series would leave {sym} permanently un-warm, and because the ranker \
+                     requires every universe symbol to be warm the whole arm would never \
+                     trade while still rendering a full θ-surface — refusing to run.",
+                    real_bars_by_symbol.len(),
+                    real_bars_by_symbol
+                        .iter()
+                        .map(|(s, _)| s.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            })?;
         bar_ts_by_symbol_raw.push(bar_ts);
     }
 
@@ -1166,7 +1224,8 @@ fn load_basis_path_gen(
         basis_by_symbol_rows.iter().map(|v| v.as_slice()).collect();
     let bar_ts_refs: Vec<&[i64]> = bar_ts_by_symbol_raw.iter().map(|v| v.as_slice()).collect();
 
-    let basis_at_return = build_basis_at_return(&basis_refs, &bar_ts_refs);
+    let basis_at_return = build_basis_at_return(&basis_refs, &bar_ts_refs)
+        .map_err(|e| anyhow::anyhow!("build basis_at_return: {e}"))?;
     info!(
         n_symbols = basis_at_return.len(),
         first_sym_len = basis_at_return.first().map_or(0, Vec::len),
@@ -1306,14 +1365,39 @@ fn load_mn_path_gen(
                     .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
                     .collect()
             })
-            .unwrap_or_default();
+            // Review 1-20 wave-2 M: this used to end in `.unwrap_or_default()`,
+            // so a symbol-name MISS produced an EMPTY timestamp vector instead of
+            // an error. Empty timestamps ⇒ no sidecar map entries for that symbol
+            // ⇒ it never warms — and `MomentumStrategy::all_warmed` requires EVERY
+            // universe symbol to be warm before the ranker selects anything, so ONE
+            // missed name silently makes the WHOLE arm never trade while the
+            // renderer still emits a full θ-surface whose flat cells read as a
+            // FRAGILE verdict. `symbols_prices` and `real_bars_by_symbol` agree
+            // today only BY CONSTRUCTION (both derive from `symbols_prices` inside
+            // `load_source_bars`) and nothing asserted it. Fail loudly instead.
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "sidecar load: symbol {sym} is in the scenario universe but has NO entry \
+                     in the loaded OHLCV bars ({} symbols present: {}). An empty bar-timestamp \
+                     series would leave {sym} permanently un-warm, and because the ranker \
+                     requires every universe symbol to be warm the whole arm would never \
+                     trade while still rendering a full θ-surface — refusing to run.",
+                    real_bars_by_symbol.len(),
+                    real_bars_by_symbol
+                        .iter()
+                        .map(|(s, _)| s.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            })?;
         bar_ts_by_symbol_raw.push(bar_ts);
     }
 
     let basis_refs: Vec<&[(i64, Decimal)]> =
         basis_by_symbol_rows.iter().map(|v| v.as_slice()).collect();
     let bar_ts_refs_b: Vec<&[i64]> = bar_ts_by_symbol_raw.iter().map(|v| v.as_slice()).collect();
-    let basis_at_return = build_basis_at_return(&basis_refs, &bar_ts_refs_b);
+    let basis_at_return = build_basis_at_return(&basis_refs, &bar_ts_refs_b)
+        .map_err(|e| anyhow::anyhow!("build basis_at_return (MN): {e}"))?;
 
     // ── Build funding_at_return ───────────────────────────────────────────────
     let mut funding_by_symbol_rows: Vec<Vec<(i64, Decimal)>> = Vec::with_capacity(symbols.len());
@@ -1336,7 +1420,31 @@ fn load_mn_path_gen(
                     .map(|b| b.open_ts.inner().unix_timestamp() * 1000)
                     .collect()
             })
-            .unwrap_or_default();
+            // Review 1-20 wave-2 M: this used to end in `.unwrap_or_default()`,
+            // so a symbol-name MISS produced an EMPTY timestamp vector instead of
+            // an error. Empty timestamps ⇒ no sidecar map entries for that symbol
+            // ⇒ it never warms — and `MomentumStrategy::all_warmed` requires EVERY
+            // universe symbol to be warm before the ranker selects anything, so ONE
+            // missed name silently makes the WHOLE arm never trade while the
+            // renderer still emits a full θ-surface whose flat cells read as a
+            // FRAGILE verdict. `symbols_prices` and `real_bars_by_symbol` agree
+            // today only BY CONSTRUCTION (both derive from `symbols_prices` inside
+            // `load_source_bars`) and nothing asserted it. Fail loudly instead.
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "sidecar load: symbol {sym} is in the scenario universe but has NO entry \
+                     in the loaded OHLCV bars ({} symbols present: {}). An empty bar-timestamp \
+                     series would leave {sym} permanently un-warm, and because the ranker \
+                     requires every universe symbol to be warm the whole arm would never \
+                     trade while still rendering a full θ-surface — refusing to run.",
+                    real_bars_by_symbol.len(),
+                    real_bars_by_symbol
+                        .iter()
+                        .map(|(s, _)| s.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )
+            })?;
         bar_ts_by_symbol_raw2.push(bar_ts);
     }
 
@@ -1451,6 +1559,88 @@ fn resolve_effective_out_dir(
     }
 }
 
+/// Reject every misinvocation that could FORGE an anchored surface.
+///
+/// This is the single seam `main` calls before it touches any data. It is a
+/// function rather than an inline block for one reason: it can then be driven
+/// from tests through REAL `clap` parsing (`Args::try_parse_from`), which proves
+/// the CLI flags land on the fields the guard actually reads. A guard that
+/// validates a value `main` never passes it is worth nothing — see review 1-18,
+/// where the 1-15 grid-discriminator fix turned out to be inert in production
+/// because the binary never called the seam its test asserted.
+///
+/// Two independent checks:
+///
+/// 1. **Axis pairing** ([`validate_grid_axis_pairing`]) — the SIX-axis tuple
+///    `--direction × --selection-mode × --score-source × --horizon ×
+///    --taker-fee-bps × --slippage-bps` must match the grid's LOCKED values.
+///    - 1-16 closed `--direction`: `--direction momentum --grid mr-tier1` emits
+///      anchor #86's name over the MR cells (and the converse #87).
+///    - 1-17 closed `--selection-mode` and `--score-source`: `--grid ts-tier1`
+///      at the default top-K forges #86; `+ --score-source carry` runs
+///      behaviorally different equity under the TS name.
+///    - 1-18 closed `--horizon`: `--grid ts-4h` at the default `1h` forges
+///      #90/#91 with 4h-tuned lookbacks; the converse forges #92/#93; the carry
+///      pair forges #96..#99.
+///    - 1-20 closes `--taker-fee-bps` and `--slippage-bps`, the most invisible
+///      pair of all: both re-price every fill through `MatchConfig`, but neither
+///      reaches the scenario name OR the hashed body outside the basis/MN
+///      families. `--grid tier1 --taker-fee-bps 20` emitted anchor #86's EXACT
+///      identity at 20 bps with no fee row anywhere in the body, and `--grid
+///      basis-tier1 --taker-fee-bps 5 --slippage-bps 7` reproduced anchor #104's
+///      identity — and its `taker_fee_bps` row — at a different fill price.
+///
+/// 2. **Sidecar × generator** — the funding/basis/MN sidecar loaders below are
+///    `&&`-gated on `GeneratorKind::BlockBootstrapReal` with a SILENT
+///    `else => (None, None)` fallthrough. So `--score-source basis-reversal
+///    --generator gbm-smoke` loaded no basis at all: every
+///    `basis_reversal_score` returned `None`, nothing was ranked, nothing
+///    traded — and the run still rendered a complete θ-surface whose flat equity
+///    reads as a verdict.
+///
+/// # Errors
+///
+/// Returns the guard's message verbatim, naming the offending axis and the
+/// value the grid requires.
+fn validate_cli_axes(args: &Args) -> Result<()> {
+    if let Err(msg) = validate_grid_axis_pairing(
+        args.grid,
+        args.direction,
+        args.selection_mode,
+        args.score_source,
+        args.horizon,
+        args.taker_fee_bps,
+        args.slippage_bps,
+    ) {
+        anyhow::bail!("{msg}");
+    }
+
+    if (args.score_source.needs_basis()
+        || args.score_source.needs_funding()
+        || args.score_source.is_mn())
+        && args.generator != GeneratorKind::BlockBootstrapReal
+    {
+        anyhow::bail!(
+            "--score-source {:?} requires --generator block-bootstrap-real: the {} sidecar is \
+             loaded ONLY on the real lane (the loader is gated on BlockBootstrapReal). Under \
+             --generator {}, no sidecar is loaded, every score is None, nothing is ranked and \
+             nothing trades — the run would still render a full θ-surface whose flat equity \
+             reads as a verdict. Refusing to emit a zero-signal surface.",
+            args.score_source,
+            if args.score_source.needs_funding() {
+                "funding"
+            } else if args.score_source.needs_basis() {
+                "basis"
+            } else {
+                "basis+funding"
+            },
+            args.generator.label(),
+        );
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let sweep_pool = rayon::ThreadPoolBuilder::new()
         .build()
@@ -1461,29 +1651,9 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let start = std::time::Instant::now();
 
-    // Review 1-16/1-17: bail EARLY on a mismatched axis tuple × --grid pairing.
-    // The 1-16 guard covered --direction only (momentum + mr-tier1 emits anchor
-    // #86's name over the MR cells; reversion + tier1 emits anchor #87's name
-    // over momentum cells). Review 1-17 extends it to the FULL tuple: --grid
-    // ts-tier1 + the default top-K passed the direction-only check yet forged
-    // anchor #86's name into the frozen momentum dir (converse forges #90/#91),
-    // and ts-tier1 + carry loaded the funding sidecar for behaviorally-different
-    // equity under the TS name. Any forged report shadows the real one as
-    // "latest matching" and the anchors gate goes falsely RED. Correct tuples
-    // are byte-unchanged.
-    // Review 1-18 adds the FOURTH axis, --horizon: `--grid ts-4h` at the
-    // default `--horizon 1h` forges the 1h TS anchors' names (#90/#91) with
-    // 4h-tuned lookbacks, and `--grid ts-tier1 --horizon 4h` forges the horizon
-    // anchors' names (#92/#93); the carry pair forges #96..#99 identically.
-    if let Err(msg) = validate_grid_axis_pairing(
-        args.grid,
-        args.direction,
-        args.selection_mode,
-        args.score_source,
-        args.horizon,
-    ) {
-        anyhow::bail!("{msg}");
-    }
+    // Review 1-16/1-17/1-18/1-20: bail EARLY on a misinvocation. See
+    // `validate_cli_axes` for the full axis inventory and why each one forges.
+    validate_cli_axes(&args)?;
 
     info!(
         generator = args.generator.label(),
@@ -2343,18 +2513,26 @@ mod tests {
 
     // ── Review 1-17: full (direction × selection_mode × score_source) × grid tuple ─
 
-    /// Review 1-17 (+1-18 horizon axis): every anchored-family axis tuple passes
-    /// the FULL guard — no checked-in invocation is rejected (anchored lanes
-    /// byte-unchanged). The tuples below are read off the anchored reports'
-    /// `held_constant` rows; the 4th element is the `--horizon` each anchored
-    /// family ran at (1h for every 1h surface; 4h/daily for the eight horizon
-    /// surfaces #92..#99).
+    /// Review 1-17 (+1-18 horizon axis, +1-20 fee/slippage axes): every
+    /// anchored-family axis tuple passes the FULL guard — no checked-in
+    /// invocation is rejected (anchored lanes byte-unchanged). The tuples below
+    /// are read off the anchored reports themselves: the `held_constant` row
+    /// (direction / selection_mode / score_source), the `| horizon |` row
+    /// (present only on the eight coarse surfaces #92..#99), and the
+    /// `| taker_fee_bps |` / `| slippage_bps |` rows (present only on the
+    /// basis #100..#107 and MN #108..#119 bodies — every other family ran at
+    /// the legacy hardcoded 4/2 and therefore renders no fee rows at all).
     #[test]
     fn grid_axis_pairing_every_anchored_family_tuple_passes() {
         use SweepScoreSource as S;
         use SweepSelectionMode as M;
         use backtest::resample::Horizon as H;
-        let anchored_tuples: &[(GridKind, SweepDirection, M, S, H)] = &[
+        use backtest::sweep_harness::{LEGACY_SLIPPAGE_BPS, LEGACY_TAKER_FEE_BPS};
+
+        // (grid, direction, selection_mode, score_source, horizon, taker_fee_bps).
+        // Slippage is 2 on EVERY anchored surface without exception, so it is
+        // asserted once, below, rather than repeated in each row.
+        let anchored_tuples: &[(GridKind, SweepDirection, M, S, H, u32)] = &[
             // momentum #86 (+ the FP-C3.2 two-cell probe lane, same defaults)
             (
                 GridKind::Tier1,
@@ -2362,6 +2540,7 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
                 H::OneHour,
+                LEGACY_TAKER_FEE_BPS,
             ),
             (
                 GridKind::TwoCell,
@@ -2369,6 +2548,7 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
                 H::OneHour,
+                LEGACY_TAKER_FEE_BPS,
             ),
             // MR #87
             (
@@ -2377,6 +2557,7 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
                 H::OneHour,
+                LEGACY_TAKER_FEE_BPS,
             ),
             // carry #88/#89 + horizon carry surfaces #96..#99
             (
@@ -2385,6 +2566,7 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::Carry,
                 H::OneHour,
+                LEGACY_TAKER_FEE_BPS,
             ),
             (
                 GridKind::Carry4h,
@@ -2392,6 +2574,7 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::Carry,
                 H::FourHours,
+                LEGACY_TAKER_FEE_BPS,
             ),
             (
                 GridKind::CarryDaily,
@@ -2399,6 +2582,7 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::Carry,
                 H::OneDay,
+                LEGACY_TAKER_FEE_BPS,
             ),
             // TS #90/#91 + horizon TS surfaces #92..#95
             (
@@ -2407,6 +2591,7 @@ mod tests {
                 M::TimeSeriesLongFlat,
                 S::VolAdjustedReturn,
                 H::OneHour,
+                LEGACY_TAKER_FEE_BPS,
             ),
             (
                 GridKind::Ts4h,
@@ -2414,6 +2599,7 @@ mod tests {
                 M::TimeSeriesLongFlat,
                 S::VolAdjustedReturn,
                 H::FourHours,
+                LEGACY_TAKER_FEE_BPS,
             ),
             (
                 GridKind::TsDaily,
@@ -2421,23 +2607,60 @@ mod tests {
                 M::TimeSeriesLongFlat,
                 S::VolAdjustedReturn,
                 H::OneDay,
+                LEGACY_TAKER_FEE_BPS,
             ),
-            // basis-reversal fee ladder
+            // basis-reversal fee ladder — anchors #100..#107, one surface per
+            // rung per year. The fee is read off each body's `| taker_fee_bps |`.
             (
                 GridKind::BasisTier1,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::BasisReversal,
                 H::OneHour,
+                0,
+            ),
+            (
+                GridKind::BasisTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::BasisReversal,
+                H::OneHour,
+                2,
+            ),
+            (
+                GridKind::BasisTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::BasisReversal,
+                H::OneHour,
+                5,
+            ),
+            (
+                GridKind::BasisTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::BasisReversal,
+                H::OneHour,
+                10,
             ),
             // the three MN arms (CLI-level selection mode stays the default;
-            // LongShort is applied per-cell inside cell_config per D-MN.5)
+            // LongShort is applied per-cell inside cell_config per D-MN.5),
+            // each at the two anchored rungs 0 and 5 — anchors #108..#119.
             (
                 GridKind::MnTier1,
                 SweepDirection::Momentum,
                 M::CrossSectionalTopK,
                 S::MnBasisSpread,
                 H::OneHour,
+                0,
+            ),
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::MnBasisSpread,
+                H::OneHour,
+                5,
             ),
             (
                 GridKind::MnTier1,
@@ -2445,6 +2668,15 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::MnFundingSpread,
                 H::OneHour,
+                0,
+            ),
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::MnFundingSpread,
+                H::OneHour,
+                5,
             ),
             (
                 GridKind::MnTier1,
@@ -2452,32 +2684,512 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::MnBasisFundingResidual,
                 H::OneHour,
+                0,
+            ),
+            (
+                GridKind::MnTier1,
+                SweepDirection::Momentum,
+                M::CrossSectionalTopK,
+                S::MnBasisFundingResidual,
+                H::OneHour,
+                5,
             ),
         ];
         assert_eq!(
             anchored_tuples.len(),
-            13,
-            "the 13 anchored-family tuples must all be exercised WITH their horizon"
+            19,
+            "the 19 anchored-family tuples must all be exercised WITH their horizon AND fee"
         );
-        for &(grid, dir, mode, source, horizon) in anchored_tuples {
+        for &(grid, dir, mode, source, horizon, fee) in anchored_tuples {
             assert!(
-                validate_grid_axis_pairing(grid, dir, mode, source, horizon).is_ok(),
-                "anchored tuple must pass: {grid:?} × {dir:?} × {mode:?} × {source:?} × {horizon}"
+                validate_grid_axis_pairing(
+                    grid,
+                    dir,
+                    mode,
+                    source,
+                    horizon,
+                    fee,
+                    LEGACY_SLIPPAGE_BPS,
+                )
+                .is_ok(),
+                "anchored tuple must pass: {grid:?} × {dir:?} × {mode:?} × {source:?} × \
+                 {horizon} × taker={fee}bps × slippage={LEGACY_SLIPPAGE_BPS}bps"
             );
         }
-        // Exhaustive: every grid × its own required tuple × each allowed source passes.
+        // Exhaustive: every grid × its own required tuple × each allowed source
+        // × each allowed fee rung passes.
         for grid in ALL_GRIDS {
             for &source in grid.allowed_score_sources() {
+                for &fee in grid.allowed_taker_fee_bps() {
+                    assert!(
+                        validate_grid_axis_pairing(
+                            grid,
+                            grid.required_direction(),
+                            grid.required_selection_mode(),
+                            source,
+                            grid.required_horizon(),
+                            fee,
+                            grid.required_slippage_bps(),
+                        )
+                        .is_ok(),
+                        "required tuple must pass for {grid:?} with {source:?} at {fee}bps"
+                    );
+                }
+            }
+        }
+        // The anchored slippage is 2 EVERYWHERE — assert that directly so a
+        // future grid added with a different required slippage is caught here.
+        for grid in ALL_GRIDS {
+            assert_eq!(
+                grid.required_slippage_bps(),
+                LEGACY_SLIPPAGE_BPS,
+                "every anchored surface renders `| slippage_bps | 2 |` (or no row \
+                 at all, having run at the same legacy literal): {grid:?}"
+            );
+        }
+    }
+
+    // ── Review 1-20 H1: the guard must BIND AT THE CALL SITE ─────────────────
+    //
+    // `validate_grid_axis_pairing` is a `sweep_harness` seam. Unit-testing the
+    // seam proves the seam is right; it proves NOTHING about whether the binary
+    // calls it, or whether it passes the PARSED arguments rather than
+    // constants. Story 1-18 found exactly that failure: the 1-15 review's own
+    // grid-discriminator fix was inert in production because the binary kept an
+    // inline copy of the naming logic and never called the extracted seam, while
+    // the test asserted the library function nobody used.
+    //
+    // The three tests below close that gap end-to-end without running the
+    // binary as a subprocess (a ~160 s exec penalty on this platform):
+    //
+    //   1. real `clap` parsing → the exact `validate_cli_axes` that `main` calls
+    //      (proves the flags reach the fields the guard reads);
+    //   2. the anchored invocation parses and PASSES (accept-set);
+    //   3. a source-level assertion that `main` still calls the seam and still
+    //      hands it the parsed `args.*` fields rather than literals.
+
+    /// Parse a real command line exactly as the shipped binary does.
+    fn parse_cli(extra: &[&str]) -> Args {
+        use clap::Parser as _;
+        let mut argv: Vec<&str> = vec!["param_robustness_sweep"];
+        argv.extend_from_slice(extra);
+        Args::try_parse_from(argv).expect("command line must parse")
+    }
+
+    /// The forged command lines must be rejected through the PRODUCTION path:
+    /// real clap parsing → `validate_cli_axes` → error.
+    #[test]
+    fn cli_forged_fee_invocations_are_rejected_end_to_end() {
+        // Forge F1 (headline): anchor #86's EXACT identity at 20 bps, with no
+        // fee row anywhere in the body because the momentum lane renders none.
+        let args = parse_cli(&[
+            "--grid",
+            "tier1",
+            "--score-source",
+            "vol-adjusted-return",
+            "--taker-fee-bps",
+            "20",
+        ]);
+        assert_eq!(
+            args.taker_fee_bps, 20,
+            "clap must map --taker-fee-bps onto the field the guard reads"
+        );
+        let err = validate_cli_axes(&args)
+            .expect_err("`--grid tier1 --taker-fee-bps 20` must be rejected")
+            .to_string();
+        assert!(
+            err.contains("--taker-fee-bps")
+                && err.contains("requested 20")
+                && err.contains("Tier1"),
+            "the bail must name the offending axis, requested value and grid: {err}"
+        );
+
+        // Forge F2 (in-lane): anchor #104's identity and its taker_fee_bps row,
+        // filled at a different price. Proves the SEPARATE slippage field flows.
+        let args = parse_cli(&[
+            "--grid",
+            "basis-tier1",
+            "--score-source",
+            "basis-reversal",
+            "--taker-fee-bps",
+            "5",
+            "--slippage-bps",
+            "7",
+        ]);
+        assert_eq!(
+            (args.taker_fee_bps, args.slippage_bps),
+            (5, 7),
+            "clap must map BOTH fee flags onto the fields the guard reads"
+        );
+        let err = validate_cli_axes(&args)
+            .expect_err("`--slippage-bps 7` on the basis grid must be rejected")
+            .to_string();
+        assert!(
+            err.contains("--slippage-bps") && err.contains("requested 7"),
+            "the bail must name the offending slippage axis: {err}"
+        );
+
+        // Forge F3 (review 1-20 wave-2 L): the decimal-point typo. `--taker-fee-bps
+        // 500` means "5.00" to a human and 5% PER FILL to the engine, and it
+        // would have minted a scenario name `…fee500bps…`. No separate upper
+        // bound was added: the fee axis is an ALLOWLIST ({0,2,5,10} on
+        // basis/MN, {4} everywhere else), so 500 is already rejected on every
+        // grid — a bound would be unreachable code guarding a case the
+        // allowlist has closed. This locks that.
+        let args = parse_cli(&[
+            "--grid",
+            "basis-tier1",
+            "--score-source",
+            "basis-reversal",
+            "--taker-fee-bps",
+            "500",
+        ]);
+        let err = validate_cli_axes(&args)
+            .expect_err("`--taker-fee-bps 500` (the 5.00 typo) must be rejected")
+            .to_string();
+        assert!(
+            err.contains("--taker-fee-bps")
+                && err.contains("requested 500")
+                && err.contains("required one of [0, 2, 5, 10]"),
+            "the bail must name the typo'd value and the legal ladder: {err}"
+        );
+
+        // Forge F4: the sidecar × generator combination.
+        let args = parse_cli(&[
+            "--grid",
+            "basis-tier1",
+            "--score-source",
+            "basis-reversal",
+            "--generator",
+            "gbm-smoke",
+            "--taker-fee-bps",
+            "5",
+        ]);
+        let err = validate_cli_axes(&args)
+            .expect_err("basis-reversal on the gbm lane must be rejected")
+            .to_string();
+        assert!(
+            err.contains("block-bootstrap-real") && err.contains("gbm-smoke"),
+            "the bail must name the required generator and the requested one: {err}"
+        );
+    }
+
+    /// ACCEPT-SET at the CLI level: the invocations that produced the anchored
+    /// surfaces must still parse and pass. An over-tight fee whitelist — one
+    /// that rejected the very ladder the anchors ran at — fails here.
+    #[test]
+    fn cli_anchored_invocations_still_pass_end_to_end() {
+        // Defaults alone are the momentum anchored lane (#86).
+        let args = parse_cli(&[]);
+        assert_eq!(
+            (args.taker_fee_bps, args.slippage_bps),
+            (LEGACY_TAKER_FEE_BPS, LEGACY_SLIPPAGE_BPS),
+            "the CLI defaults ARE the legacy literals every pre-basis anchor ran at"
+        );
+        validate_cli_axes(&args).expect("the default momentum invocation must pass");
+
+        // The basis fee ladder (#100..#107), as actually invoked.
+        for fee in ["0", "2", "5", "10"] {
+            let args = parse_cli(&[
+                "--grid",
+                "basis-tier1",
+                "--score-source",
+                "basis-reversal",
+                "--generator",
+                "block-bootstrap-real",
+                "--taker-fee-bps",
+                fee,
+            ]);
+            validate_cli_axes(&args).unwrap_or_else(|e| {
+                panic!("the anchored basis rung --taker-fee-bps {fee} must pass: {e}")
+            });
+        }
+
+        // The MN arms at their two anchored rungs (#108..#119).
+        for arm in [
+            "mn-basis-spread",
+            "mn-funding-spread",
+            "mn-basis-funding-residual",
+        ] {
+            for fee in ["0", "5"] {
+                let args = parse_cli(&[
+                    "--grid",
+                    "mn-tier1",
+                    "--score-source",
+                    arm,
+                    "--generator",
+                    "block-bootstrap-real",
+                    "--taker-fee-bps",
+                    fee,
+                ]);
+                validate_cli_axes(&args).unwrap_or_else(|e| {
+                    panic!("the anchored MN invocation {arm} at {fee}bps must pass: {e}")
+                });
+            }
+        }
+
+        // The carry + TS + horizon families at their locked tuples.
+        let anchored_cli: &[&[&str]] = &[
+            &["--grid", "mr-tier1", "--direction", "reversion"],
+            &[
+                "--grid",
+                "carry-tier1",
+                "--score-source",
+                "carry",
+                "--generator",
+                "block-bootstrap-real",
+            ],
+            &[
+                "--grid",
+                "carry-4h",
+                "--score-source",
+                "carry",
+                "--horizon",
+                "4h",
+                "--generator",
+                "block-bootstrap-real",
+            ],
+            &[
+                "--grid",
+                "carry-daily",
+                "--score-source",
+                "carry",
+                "--horizon",
+                "daily",
+                "--generator",
+                "block-bootstrap-real",
+            ],
+            &[
+                "--grid",
+                "ts-tier1",
+                "--selection-mode",
+                "time-series-long-flat",
+            ],
+            &[
+                "--grid",
+                "ts-4h",
+                "--selection-mode",
+                "time-series-long-flat",
+                "--horizon",
+                "4h",
+            ],
+            &[
+                "--grid",
+                "ts-daily",
+                "--selection-mode",
+                "time-series-long-flat",
+                "--horizon",
+                "daily",
+            ],
+        ];
+        for cli in anchored_cli {
+            let args = parse_cli(cli);
+            validate_cli_axes(&args)
+                .unwrap_or_else(|e| panic!("anchored invocation {cli:?} must pass: {e}"));
+        }
+    }
+
+    /// `main` must still CALL the guard, and still hand it the PARSED fields.
+    ///
+    /// The two tests above drive `validate_cli_axes` directly, so they cannot
+    /// see a `main` that stopped calling it or that started passing literals
+    /// (`4, 2`) instead of `args.taker_fee_bps, args.slippage_bps` — the precise
+    /// shape of the 1-18 inert-fix finding. This asserts both properties against
+    /// the source of this very file.
+    #[test]
+    fn main_still_binds_the_axis_guard_to_the_parsed_args() {
+        let src = include_str!("param_robustness_sweep.rs");
+
+        assert!(
+            src.contains("    validate_cli_axes(&args)?;"),
+            "main() must call validate_cli_axes(&args) before it touches any data. If this \
+             call was removed or moved after the data load, every forge vector the guard \
+             closes is open again in the shipped binary."
+        );
+
+        // The guard's own body must read the parsed fee fields, not constants.
+        let body_start = src
+            .find("fn validate_cli_axes(args: &Args) -> Result<()> {")
+            .expect("validate_cli_axes must exist");
+        let body = &src[body_start..];
+        for field in [
+            "args.grid",
+            "args.direction",
+            "args.selection_mode",
+            "args.score_source",
+            "args.horizon",
+            "args.taker_fee_bps",
+            "args.slippage_bps",
+            "args.generator",
+        ] {
+            assert!(
+                body.contains(field),
+                "validate_cli_axes must pass the PARSED `{field}` to the guard. Passing a \
+                 literal instead makes the guard validate a value the run never uses — an \
+                 inert fix (the 1-18 finding), not a closed forge axis."
+            );
+        }
+    }
+
+    /// Review 1-20: the `--taker-fee-bps` / `--slippage-bps` axes are real forge
+    /// vectors — and the most invisible ones yet, because on the non-basis
+    /// grids the fee reaches NEITHER the scenario name NOR the hashed body.
+    /// Each combination below emits an EXISTING anchor's scenario name while
+    /// filling at a fee/slippage that anchor never ran at, and each must bail
+    /// naming the offending axis and the required value.
+    #[test]
+    fn grid_axis_pairing_fee_forged_combos_bail() {
+        use SweepScoreSource as S;
+        use SweepSelectionMode as M;
+        use backtest::resample::Horizon as H;
+
+        // Forge F1 (the headline): `--grid tier1 --score-source
+        // vol-adjusted-return --taker-fee-bps 20`. Passes all four earlier
+        // legs, runs 20 bps fills, and emits
+        // "v1-momentum-theta-surface-{year}-block-bootstrap-real-fy" — anchor
+        // #86's EXACT name — into the frozen momentum dir. `is_basis_run ||
+        // is_mn_run` is false, so NO fee row is rendered: the forged body is
+        // indistinguishable from the real one by inspection.
+        let err = validate_grid_axis_pairing(
+            GridKind::Tier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::VolAdjustedReturn,
+            H::OneHour,
+            20,
+            LEGACY_SLIPPAGE_BPS,
+        )
+        .expect_err("tier1 × --taker-fee-bps 20 must bail");
+        assert!(
+            err.contains("--taker-fee-bps")
+                && err.contains("Tier1")
+                && err.contains("requested 20")
+                && err.contains("required one of [4]"),
+            "bail message must name the fee axis, the grid, and the required fee: {err}"
+        );
+
+        // Forge F2 (in-lane): `--grid basis-tier1 --taker-fee-bps 5
+        // --slippage-bps 7` reproduces anchor #104's exact identity
+        // ("v1-basis-reversal-fee05bps-theta-surface-…") AND its exact
+        // `| taker_fee_bps | 5 |` row, while filling at a different price. The
+        // only body difference is the `| slippage_bps |` row — precisely the
+        // row a reader trusts to be constant across the fee ladder.
+        let err = validate_grid_axis_pairing(
+            GridKind::BasisTier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::BasisReversal,
+            H::OneHour,
+            5,
+            7,
+        )
+        .expect_err("basis-tier1 × --slippage-bps 7 must bail");
+        assert!(
+            err.contains("--slippage-bps")
+                && err.contains("BasisTier1")
+                && err.contains("requested 7")
+                && err.contains("required 2"),
+            "bail message must name the slippage axis and the required 2: {err}"
+        );
+
+        // Forge F3: `--grid ts-tier1 --taker-fee-bps 0`. The 0 bps rung is legal
+        // on the basis/MN ladder but NOT on the TS grid; it forges anchors
+        // #90/#91's identity at gross-of-fee fills with no fee row.
+        let err = validate_grid_axis_pairing(
+            GridKind::TsTier1,
+            SweepDirection::Momentum,
+            M::TimeSeriesLongFlat,
+            S::VolAdjustedReturn,
+            H::OneHour,
+            0,
+            LEGACY_SLIPPAGE_BPS,
+        )
+        .expect_err("ts-tier1 × --taker-fee-bps 0 must bail");
+        assert!(
+            err.contains("--taker-fee-bps")
+                && err.contains("TsTier1")
+                && err.contains("requested 0"),
+            "bail message must name the fee axis and the TS grid: {err}"
+        );
+
+        // Forge F4: `--grid mn-tier1 --taker-fee-bps 4`. The LEGACY default is
+        // NOT on the MN ladder; it would mint "v2-mn-basis-fee04bps-…" —
+        // un-anchored, but the fee row would read 4 while every MN body in the
+        // corpus reads 0 or 5, so the surface silently leaves the ladder.
+        let err = validate_grid_axis_pairing(
+            GridKind::MnTier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::MnBasisSpread,
+            H::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
+        )
+        .expect_err("mn-tier1 × --taker-fee-bps 4 must bail");
+        assert!(
+            err.contains("--taker-fee-bps") && err.contains("MnTier1"),
+            "bail message must name the fee axis and the MN grid: {err}"
+        );
+
+        // Forge F5: slippage is pinned on EVERY grid, basis or not — the
+        // momentum grid at slippage 9 forges anchor #86 with different fills.
+        let err = validate_grid_axis_pairing(
+            GridKind::Tier1,
+            SweepDirection::Momentum,
+            M::CrossSectionalTopK,
+            S::VolAdjustedReturn,
+            H::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            9,
+        )
+        .expect_err("tier1 × --slippage-bps 9 must bail");
+        assert!(
+            err.contains("--slippage-bps") && err.contains("requested 9"),
+            "bail message must name the slippage axis: {err}"
+        );
+
+        // Exhaustive: on EVERY grid, every fee rung outside that grid's ladder
+        // bails, and every slippage but the locked 2 bails.
+        for grid in ALL_GRIDS {
+            // 50/500/1000 are the "5.00 typo" magnitudes (review 1-20
+            // wave-2 L): `--taker-fee-bps 500` reads as 5% per fill. No
+            // separate upper bound is needed — the ladder is an ALLOWLIST,
+            // so every out-of-ladder value is already rejected on every
+            // grid. This pins that property against a future widening.
+            for fee in [0_u32, 1, 2, 3, 4, 5, 10, 20, 50, 100, 500, 1000] {
+                let expect_ok = grid.allowed_taker_fee_bps().contains(&fee);
+                let got_ok = validate_grid_axis_pairing(
+                    grid,
+                    grid.required_direction(),
+                    grid.required_selection_mode(),
+                    grid.allowed_score_sources()[0],
+                    grid.required_horizon(),
+                    fee,
+                    grid.required_slippage_bps(),
+                )
+                .is_ok();
+                assert_eq!(
+                    got_ok,
+                    expect_ok,
+                    "{grid:?} at --taker-fee-bps {fee}: expected ok={expect_ok} \
+                     (ladder {:?})",
+                    grid.allowed_taker_fee_bps()
+                );
+            }
+            for slip in [0_u32, 1, 3, 7, 20] {
                 assert!(
                     validate_grid_axis_pairing(
                         grid,
                         grid.required_direction(),
                         grid.required_selection_mode(),
-                        source,
+                        grid.allowed_score_sources()[0],
                         grid.required_horizon(),
+                        grid.allowed_taker_fee_bps()[0],
+                        slip,
                     )
-                    .is_ok(),
-                    "required tuple must pass for {grid:?} with {source:?}"
+                    .is_err(),
+                    "{grid:?} at --slippage-bps {slip} must bail (required {})",
+                    grid.required_slippage_bps()
                 );
             }
         }
@@ -2502,6 +3214,8 @@ mod tests {
             M::TimeSeriesLongFlat,
             S::VolAdjustedReturn,
             H::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("ts-4h × --horizon 1h must bail");
         assert!(
@@ -2517,6 +3231,8 @@ mod tests {
             M::TimeSeriesLongFlat,
             S::VolAdjustedReturn,
             H::FourHours,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("ts-tier1 × --horizon 4h must bail");
         assert!(
@@ -2532,6 +3248,8 @@ mod tests {
             M::CrossSectionalTopK,
             S::Carry,
             H::OneDay,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("carry-4h × --horizon daily must bail");
         assert!(
@@ -2550,6 +3268,8 @@ mod tests {
             M::CrossSectionalTopK,
             S::Carry,
             H::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("carry-daily × --horizon 1h must bail");
         assert!(
@@ -2573,6 +3293,8 @@ mod tests {
                         grid.required_selection_mode(),
                         grid.allowed_score_sources()[0],
                         wrong,
+                        grid.allowed_taker_fee_bps()[0],
+                        grid.required_slippage_bps(),
                     )
                     .is_err(),
                     "{grid:?} at --horizon {wrong} must bail (required {})",
@@ -2893,6 +3615,8 @@ mod tests {
             M::CrossSectionalTopK,
             S::VolAdjustedReturn,
             backtest::resample::Horizon::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("ts-tier1 × top-K must bail");
         assert!(
@@ -2912,6 +3636,8 @@ mod tests {
             M::TimeSeriesLongFlat,
             S::VolAdjustedReturn,
             backtest::resample::Horizon::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("tier1 × time-series-long-flat must bail");
         assert!(
@@ -2927,6 +3653,8 @@ mod tests {
             M::TimeSeriesLongFlat,
             S::Carry,
             backtest::resample::Horizon::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("ts-tier1 × carry must bail");
         assert!(
@@ -2942,6 +3670,8 @@ mod tests {
             M::CrossSectionalTopK,
             S::VolAdjustedReturn,
             backtest::resample::Horizon::OneHour,
+            LEGACY_TAKER_FEE_BPS,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("carry-tier1 × vol-adjusted-return must bail");
         assert!(
@@ -2957,6 +3687,8 @@ mod tests {
             M::CrossSectionalTopK,
             S::BasisReversal,
             backtest::resample::Horizon::OneHour,
+            0,
+            LEGACY_SLIPPAGE_BPS,
         )
         .expect_err("mn-tier1 × basis-reversal must bail");
         assert!(
@@ -2972,6 +3704,8 @@ mod tests {
                 M::CrossSectionalTopK,
                 S::VolAdjustedReturn,
                 backtest::resample::Horizon::OneHour,
+                LEGACY_TAKER_FEE_BPS,
+                LEGACY_SLIPPAGE_BPS,
             )
             .is_err(),
             "the 1-16 direction mismatch must still bail through the full guard"

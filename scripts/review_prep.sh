@@ -98,8 +98,17 @@ cat <<'EOF'
      (the feature.md at HEAD is a compressed stub — useless for an audit)
    - known-and-owned (#67 fills, #68 inert axis, #69 inert cap, PWSD, √8575):
      route with a verified chain, never re-report -> stories 1-24 / 1-25
-   - mandatory probes: axis-execution, binding-limit, vacuity, skip-visibility,
-     chain, identity-forge, seed-collision
+   - mandatory probes (10): axis-execution, binding-limit, vacuity, skip-visibility,
+     chain, identity-forge, seed-collision, loop-scope (#73), channel (#74),
+     supersession
+   - supersession: did LATER work falsify a conclusion this story froze into an
+     anchored body? Read the successor story's trace row + adjudication notes.
+     Propagation runs forward automatically, backward never.
+   - identity-forge: ENUMERATE every CLI flag reaching the fills or the hashed
+     body and check each against BOTH the scenario name and the pairing guard.
+     It has fired in four consecutive stories, always on that story's new axis.
+   - channel: does the test inject through the SAME channel production uses?
+     If not, does the test channel have its own effect on the assertion?
    - infra reds that are NOT your diff: 62 visual baselines (font drift), 6-9 CI
    - re-run verify_anchors AFTER the last edit too (the double gate)
 EOF

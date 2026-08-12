@@ -56,7 +56,11 @@ scratchpad, prints the baseline gates, and prints the story's triad legs
 | PWSD window `λ(k/m̂)` vs literature `λ(k/(2m̂))` + m̂ range + `|r|`-mean target | 1-13 decision | story **1-24** |
 | Inert drift/hold-band swept axis (hashed + printed + dead field) | bug-log #68 | **1-25** |
 | `portfolio_exposure_cap` inert engine-wide (`Order::new` checks only the per-symbol cap) | bug-log #69 | **1-25** |
-| Contaminated anchors: #86, #87, #90, #91 (+ #92-#99 expected) | #67 blast radius | **1-25** inventory |
+| Contaminated anchors: #86, #87, #90, #91, #92-#99, **#100-#107** (basis; clear of #72/#73 — verified, not assumed) — **and #88/#89** (carry 1h, via #73) | #67/#73 blast radius | **1-25** inventory |
+| R3 coverage gate compared COARSE expected vs RAW loaded (a 95.9%-missing corpus passed) | bug-log #70 | FIXED 2026-08-04 |
+| `Order::new` exposure cap is SIDE-BLIND — rejects position-CLOSING sells, silently | bug-log #71 | **1-25** |
+| Cosmetic 1h timestamp ladder made funding accrual horizon-blind | bug-log #72 | code FIXED; anchors → **1-25** |
+| Funding accrued once per SYMBOL-BAR, not per settlement (universe-size dependent) | bug-log #73 | code FIXED; anchors → **1-25** |
 
 **The reviewer's job on these:** verify the consumption chain for THIS story's
 artifacts and state it (that grows 1-25's inventory), then move on. A re-report
@@ -81,7 +85,36 @@ now a question every review must ask.
 | **Skip-visibility** | Any corpus/fixture-gated test: does it self-skip green? Is the skip *counted* anywhere? | #66 (cwd-relative root) |
 | **Chain** | Does this story's anchored evidence consume a known-contaminated path? Which rows? | #67 |
 | **Identity-forge** | Can any CLI combination emit an *existing anchor's* scenario name or land in its directory? (`--direction`/`--grid`/`--selection-mode`/`--score-source`/out-dir) | 1-15 M2, 1-16 H1, 1-17 H |
+| **Loop-scope** | A rule inside a per-bar loop: what is the loop ITERATING? With multi-symbol merged bars, "once per bar" and "once per instant" differ — and the difference is invisible in every aggregate the report prints. | #73 (funding × universe size) |
 | **Seed-collision** | Any additive seed derivation (`base + i·CONST`) collides on anti-diagonals. Must be splitmix-mixed. | 1-13, 1-14, 1-15 (three instances) |
+| **Channel** | Does the test inject the thing under test through the SAME channel production uses? If not: does the *test* channel have an effect of its own that could account for the difference the assertion measures? A signal injected through a channel that also moves equity directly gives you a gate that passes with the signal fully destroyed. | #74 (basis via `funding_override`) |
+| **Supersession** | Did later work FALSIFY a conclusion this story froze into an anchored body? Read the successor story's trace row and any adjudication dev-note. Propagation runs forward into the next story's rationale automatically — backward into the evidence, never. | 1-20 H4 (fee-bleed) |
+
+**On the supersession probe.** In 1-20 the anchored bodies asserted "fee-bleed
+consumes the edge" while the adjudication written *the same day from those same
+eight surfaces* concluded "the fee-sweep falsified the fee-bleed hypothesis —
+the killer is BETA, not fees." That finding was carried forward into the next
+story's trace row and became the entire rationale for building it; it was never
+carried back. Anchored bodies are byte-immutable, so a superseded conclusion
+inside one can only be corrected by an errata or at a re-lock — which means
+nobody does it unless a reviewer asks. The corpus is the artifact a future
+reader trusts first; a contradiction there outlives every dev-note that
+resolved it. **Ask of every conclusion in an anchored body: does the project
+still believe this?**
+
+**On the identity-forge probe — enumerate, do not spot-check.** It has now fired
+in *four consecutive* stories, each time on an axis added by that story and never
+added to the pairing guard. Do not ask "is there a forge?"; list every CLI flag
+that reaches either the fill arithmetic or the hashed body, and check each one
+against both the scenario NAME and the guard. 1-20's fee axis was the worst
+instance precisely because it left no visible token — the forged body renders
+*identically* to the real one.
+
+**On the vacuity + channel probes — the gate itself is in scope.** The AD-16
+day-1 divergence e2e is mandated by CLAUDE.md, which makes it the single
+artifact most likely to be written to satisfy a checklist. In 1-20 it was
+satisfied by a test that stayed green with the signal returning a constant
+zero. Run the mutation; a gate you have not seen go RED is a claim, not a gate.
 
 ## 5. Triage rules
 

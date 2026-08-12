@@ -120,9 +120,19 @@ fn build_divergence_universe(n_hours: usize) -> (Vec<Bar>, BTreeMap<(Symbol, Tim
     let mut price_c = 200.0_f64;
 
     for hour in 0..n_hours {
-        let p_a = Decimal::try_from(price_a).unwrap_or(dec!(1000));
-        let p_b = Decimal::try_from(price_b).unwrap_or(dec!(500));
-        let p_c = Decimal::try_from(price_c).unwrap_or(dec!(200));
+        // Review 1-20 wave-2 L: `unwrap_or(dec!(1000))` silently RESET the
+        // series to its start value if the f64→Decimal conversion ever failed,
+        // which would flatten the "strong uptrend" premise every assertion in
+        // this file rests on — and every test would still pass, on a fixture
+        // that no longer means what its doc-comment says. Safe at N_HOURS = 30,
+        // but raise the bar count far enough and 1000·1.05^n leaves Decimal's
+        // range. A panic in a TEST fixture is the correct behaviour: it is a
+        // broken premise, not a runtime condition to absorb.
+        let p_a = Decimal::try_from(price_a)
+            .expect("AAUSDT price must stay inside Decimal's range — raise nothing, lower N_HOURS");
+        let p_b = Decimal::try_from(price_b).expect("BBUSDT price must convert (flat series)");
+        let p_c = Decimal::try_from(price_c)
+            .expect("CCUSDT price must stay inside Decimal's range — lower N_HOURS");
         bars.push(make_bar("AAUSDT", p_a, hour as i64));
         bars.push(make_bar("BBUSDT", p_b, hour as i64));
         bars.push(make_bar("CCUSDT", p_c, hour as i64));
@@ -233,7 +243,7 @@ fn run_to_result(
         scenario_name: "basis-e2e".to_string(),
         start_year: 2023,
         bar_count: bars.len(),
-        initial_capital: dec!(100_000),
+        initial_capital: INITIAL_CAPITAL,
         slippage_bps: 0, // zero friction to isolate signal effects
         taker_fee_bps: 0,
         config_id: "test_basis".to_string(),
@@ -251,6 +261,59 @@ fn run_to_result(
         .expect("run_path must succeed in basis divergence e2e test")
 }
 
+/// Run one path with the **PRODUCTION** basis wiring (review 1-20 H2).
+///
+/// This is the inverse of [`run_to_result`] and it is the wiring the anchored
+/// surfaces actually ran:
+///
+/// - the basis map is pre-injected into the STRATEGY (`.with_funding(Some(map))`)
+///   by the sweep driver, exactly as `param_robustness_sweep.rs` does before it
+///   calls `run_path`; and
+/// - `TcnScenarioInput.funding_override` is **`None`**, so the `run_path`
+///   accrual block is never entered — the basis is a selection signal with NO
+///   cashflow (D-BR.1).
+///
+/// Why this helper had to exist: every falsifier in this file used to inject the
+/// basis through `funding_override`, which makes `run_path` call
+/// `strategy.with_funding(funding_override)` itself. Under that wiring the
+/// preservation branch at `scenarios/montecarlo.rs` — the story's ONLY
+/// production `run_path` change — is never taken, so reverting it to an
+/// unconditional `with_funding(None)` left the whole suite green while
+/// production clobbered the pre-injected map and scored `None` for every
+/// symbol on every bar. Tests built on this helper go RED on that revert.
+fn run_to_result_production_wiring(
+    cfg: strategy::CrossSectionalMomentumConfig,
+    bars: Vec<Bar>,
+    // The basis sidecar, pre-injected into the STRATEGY (never into the input).
+    basis_map: Option<BTreeMap<(Symbol, Timestamp), Decimal>>,
+) -> backtest::scenarios::montecarlo::PathRunResult {
+    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("basis_e2e_test"))
+        .with_funding(basis_map);
+    let input = TcnScenarioInput {
+        bar_span_hours: 1,
+        scenario_name: "basis-e2e-production-wiring".to_string(),
+        start_year: 2023,
+        bar_count: bars.len(),
+        initial_capital: INITIAL_CAPITAL,
+        slippage_bps: 0, // zero friction to isolate signal effects
+        taker_fee_bps: 0,
+        config_id: "test_basis".to_string(),
+        forecaster_id: "test".to_string(),
+        bars_override: Some(bars),
+        emit_equity_bin: None,
+        latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
+        // PRODUCTION: None — the basis rides the strategy, not the input, and
+        // the accrual block stays unreachable (D-BR.1, no cashflow).
+        funding_override: None,
+        basis_override: None,
+    };
+    pollster::block_on(run_path(input, 0xC0FFEE, strat))
+        .expect("run_path must succeed in basis divergence e2e test")
+}
+
+/// Initial capital for every run in this file (mirrors `run_to_result`).
+const INITIAL_CAPITAL: Decimal = dec!(100_000);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // R-BR.7 #3 — baseline equity divergence (CLAUDE.md non-negotiable)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +327,29 @@ fn run_to_result(
 ///
 /// The equity curves must diverge by ≥ 1 bp — the CLAUDE.md non-negotiable guard
 /// against a v3-vol-overlay-style no-op where the signal is computed but never applied.
+///
+/// # Which reverts this gate catches (review 1-20 H3)
+///
+/// The price-baseline comparison ALONE was **vacuous** against the exact failure
+/// class the CLAUDE.md non-negotiable exists to catch. Under the canonical no-op
+/// — `basis_reversal_score` returning `None` for every symbol on every bar, the
+/// v3-vol-overlay "computed but never applied" shape — the basis arm never ranks
+/// anything, never trades, and its equity stays pinned at the initial capital,
+/// while the price baseline compounds the +5%/bar uptrend to roughly +165 k. The
+/// two are maximally far apart, so `|Δ| > 10` PASSED on a completely inert arm.
+///
+/// The gate now additionally requires:
+///
+/// 1. **the basis arm actually TRADED** — non-zero fills. A no-op scores `None`
+///    everywhere, emits no signals, and lands here at `trades == 0`; and
+/// 2. **its equity differs from a basis-DISABLED but otherwise IDENTICAL arm** —
+///    same `ScoreSource::BasisReversal` config, same bars, same seed, only the
+///    sidecar withheld. A no-op collapses the armed run onto that control
+///    exactly, because both then score `None` for every symbol.
+///
+/// Together these two are RED under the no-op and GREEN only when the basis is
+/// genuinely load-bearing. The price-baseline leg is kept as the literal AD-16
+/// "diverges from the un-targeted baseline" statement.
 #[test]
 fn r_br_baseline_equity_divergence() {
     const N_HOURS: usize = 30; // enough for warmup (L=1) + multiple rebalances
@@ -274,13 +360,51 @@ fn r_br_baseline_equity_divergence() {
     // Basis-reversal: injects basis via with_funding (score-only), funding_override=None.
     let result_basis = run_to_result(make_basis_config(), bars.clone(), Some(basis_map));
     // Price-only: no basis sidecar.
-    let result_price = run_to_result(make_price_config(), bars, None);
+    let result_price = run_to_result(make_price_config(), bars.clone(), None);
+    // Basis-DISABLED control: byte-identical config to `result_basis` — same
+    // ScoreSource::BasisReversal, same universe, same K, same L, same seed,
+    // same bars — with ONLY the sidecar withheld.
+    let result_basis_disabled = run_to_result(make_basis_config(), bars, None);
 
     let eq_basis = result_basis.final_equity;
     let eq_price = result_price.final_equity;
+    let eq_disabled = result_basis_disabled.final_equity;
     let delta = (eq_basis - eq_price).abs();
-    let epsilon = Decimal::try_from(EPSILON_BPS * 100_000.0).unwrap_or(dec!(10));
+    // A silent fallback here would swap the 1 bp threshold for a magic 10 and
+    // nobody would know which one the assertion used (1-20 wave-2 L).
+    let epsilon = Decimal::try_from(EPSILON_BPS * 100_000.0)
+        .expect("1 bp of the initial capital must convert to Decimal");
 
+    // ── (1) NON-VACUITY: the basis arm must actually have traded ─────────────
+    assert!(
+        result_basis.trades > 0,
+        "R-BR.7 #3 VACUITY VIOLATION: the basis arm executed {} fills — it never traded. \
+         An arm that never trades trivially 'diverges' from the compounding price \
+         baseline, which is exactly how the v3-vol-overlay no-op class slips through a \
+         divergence gate. If basis_reversal_score returns None for every symbol (no \
+         sidecar reaching the ring, or the score wired but never consumed), this is \
+         where it must stop.",
+        result_basis.trades
+    );
+
+    // ── (2) NON-VACUITY: differ from the basis-DISABLED, otherwise-identical arm ─
+    assert_ne!(
+        eq_basis, eq_disabled,
+        "R-BR.7 #3 VACUITY VIOLATION: the basis arm ({eq_basis}) produced the SAME equity \
+         as the basis-DISABLED control ({eq_disabled}) — identical config, identical bars, \
+         identical seed, sidecar withheld. Withholding the signal changed nothing, so the \
+         signal is decorative: it is computed and then not applied. This is the AD-16 \
+         no-op the CLAUDE.md non-negotiable exists to catch."
+    );
+    assert_eq!(
+        result_basis_disabled.trades, 0,
+        "control sanity: with no sidecar every basis_reversal_score is None, nothing is \
+         ranked and nothing trades. Got {} fills — if this is non-zero the control is not \
+         a basis-disabled arm and assertion (2) above proves nothing.",
+        result_basis_disabled.trades
+    );
+
+    // ── (3) AD-16 literal: diverge from the un-targeted price baseline ───────
     assert!(
         delta > epsilon,
         "R-BR.7 #3 DIVERGENCE VIOLATION: basis equity ({eq_basis}) must differ from \
@@ -289,6 +413,83 @@ fn r_br_baseline_equity_divergence() {
          Universe design: BBUSDT (most-negative basis = −0.015) should be selected by BasisReversal; \
          AAUSDT (strong uptrend +5%/bar) should be selected by VolAdjustedReturn. \
          Check ScoreSource::BasisReversal and the with_funding injection."
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Review 1-20 H2 — the PRODUCTION run_path wiring (the only production change)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The story's only production `run_path` change, under test at last.
+///
+/// `scenarios/montecarlo.rs` replaced an unconditional
+/// `strategy.with_funding(funding_override)` with a preservation branch:
+///
+/// ```ignore
+/// let mut strategy = if let Some(map) = funding_override {
+///     strategy.with_funding(Some(map))
+/// } else {
+///     strategy            // do NOT clobber a pre-injected sidecar
+/// };
+/// ```
+///
+/// That `else` arm is the ONLY thing stopping `run_path` from wiping the basis
+/// map the sweep driver pre-injects into the strategy. Every other falsifier in
+/// this file passes the basis through `funding_override` — the INVERSE of the
+/// production wiring — so all of them take the `if` arm and none of them can
+/// observe the `else` arm at all. Reverting the branch to an unconditional
+/// `with_funding(None)` left this entire suite green while every production
+/// surface scored `None` for every symbol on every bar.
+///
+/// This test drives the production wiring directly: the map goes into the
+/// STRATEGY, `funding_override` stays `None`, and the run must still trade and
+/// still diverge from a no-sidecar control. Under the revert, `armed` is handed
+/// `funding_map = None`, scores `None` everywhere, trades zero times, and lands
+/// exactly on the control — both assertions below go RED.
+#[test]
+fn r_br_production_wiring_preserves_pre_injected_basis_map() {
+    const N_HOURS: usize = 30;
+
+    let (bars, basis_map) = build_divergence_universe(N_HOURS);
+
+    // PRODUCTION: basis pre-injected into the strategy; funding_override = None.
+    let armed = run_to_result_production_wiring(make_basis_config(), bars.clone(), Some(basis_map));
+    // Control: same wiring, no sidecar at all.
+    let control = run_to_result_production_wiring(make_basis_config(), bars, None);
+
+    assert!(
+        armed.trades > 0,
+        "PRODUCTION-WIRING REGRESSION: with the basis map pre-injected into the strategy \
+         and TcnScenarioInput.funding_override = None, run_path must PRESERVE the map — \
+         got {} fills, i.e. the arm never traded. This is exactly what an unconditional \
+         `strategy.with_funding(funding_override)` produces: the pre-injected sidecar is \
+         overwritten with None, every basis_reversal_score returns None, nothing is ranked. \
+         See the preservation branch in crates/backtest/src/scenarios/montecarlo.rs.",
+        armed.trades
+    );
+    assert_eq!(
+        control.trades, 0,
+        "control sanity: with no sidecar anywhere the basis arm cannot rank or trade. \
+         Got {} fills.",
+        control.trades
+    );
+    assert_ne!(
+        armed.final_equity, control.final_equity,
+        "PRODUCTION-WIRING REGRESSION: the pre-injected basis map made NO difference to \
+         equity (armed={}, control={}). Under the production wiring the map reaches the \
+         score ONLY via the run_path preservation branch; if it is clobbered, the armed \
+         run degenerates to the control exactly, which is what this equality means.",
+        armed.final_equity, control.final_equity
+    );
+    // D-BR.1: the basis is a SELECTION signal — the accrual block must stay
+    // unreachable under the production wiring (funding_override = None).
+    assert_eq!(
+        armed.realized_funding,
+        Decimal::ZERO,
+        "D-BR.1 VIOLATION: the basis arm must accrue ZERO cashflow — the run_path accrual \
+         block is entered only when TcnScenarioInput.funding_override is Some, and the \
+         production basis wiring leaves it None. Got {}.",
+        armed.realized_funding
     );
 }
 
@@ -436,8 +637,28 @@ fn r_br_basis_non_no_op() {
 /// The two runs produce DIFFERENT equity because they select DIFFERENT symbols with
 /// very different price trajectories.
 ///
-/// A wrong sign (the basis-MOMENTUM payer case) would select AAUSDT when the correct
-/// basis selects BBUSDT — producing the flipped-sign equity instead. The guard catches it.
+/// # Why "different" is not enough (review 1-20 H4)
+///
+/// This test used to assert only `|Δ| > 1` between the correct-sign and
+/// flipped-sign runs. That assertion is **symmetric**, so it cannot see a sign
+/// flip at all: mutate `basis_reversal_score` from `Some(-mean)` to
+/// `Some(mean)` and the two runs simply swap roles — the correct-basis run now
+/// picks AAUSDT and the flipped-basis run picks BBUSDT. `|Δ|` is bit-for-bit
+/// the same and the test stays GREEN. The only genuine sign guards in the tree
+/// were the two `momentum.rs` unit tests, which assert literal score values;
+/// nothing at the integration level could go RED on a `+mean` mutant.
+///
+/// The assertions below are now **directional**. The universe is built so the
+/// held symbol is readable straight off the final equity: BBUSDT is flat at 500
+/// for all 30 bars, AAUSDT compounds +5%/bar, friction is zero, and the run
+/// uses the production wiring (`funding_override = None`) so there is no
+/// accrual term muddying the reading. Therefore
+///
+/// - holding the LOW-basis name (BBUSDT, flat) ⇒ final equity ≈ initial; and
+/// - holding the HIGH-basis name (AAUSDT, +5%/bar) ⇒ final equity ≫ initial.
+///
+/// The correct sign must produce the FIRST outcome and the flipped basis the
+/// SECOND. Under a `+mean` mutant every one of the three assertions inverts.
 #[test]
 fn r_br_sign_assertion_integration() {
     const N_HOURS: usize = 30;
@@ -449,7 +670,11 @@ fn r_br_sign_assertion_integration() {
     let mut bars: Vec<Bar> = Vec::new();
     let mut price_a = 1000.0_f64;
     for hour in 0..N_HOURS {
-        let pa = Decimal::try_from(price_a).unwrap_or(dec!(1000));
+        // See build_divergence_universe: a silent reset here would flatten the
+        // +5%/bar uptrend that the DIRECTION assertions below use to identify
+        // which symbol the arm held (review 1-20 wave-2 L).
+        let pa = Decimal::try_from(price_a)
+            .expect("AAUSDT uptrend must stay inside Decimal's range at N_HOURS bars");
         bars.push(make_bar("AAUSDT", pa, hour as i64));
         bars.push(make_bar("BBUSDT", dec!(500), hour as i64));
         price_a *= 1.05; // +5% per bar
@@ -493,26 +718,68 @@ fn r_br_sign_assertion_integration() {
         entry_threshold: Decimal::ZERO,
     };
 
-    // Correct sign selects BBUSDT (flat) → smaller equity gain.
-    // Flipped sign selects AAUSDT (strong uptrend) → larger equity gain.
-    // The two runs must produce DIFFERENT equity.
-    let result_correct = run_to_result(two_sym_cfg.clone(), bars.clone(), Some(basis_correct));
-    let result_flipped = run_to_result(two_sym_cfg, bars, Some(basis_flipped));
+    // Production wiring: the basis rides the strategy, not `funding_override`,
+    // so there is NO accrual term and final equity reads purely as "which
+    // symbol did the arm hold".
+    let result_correct =
+        run_to_result_production_wiring(two_sym_cfg.clone(), bars.clone(), Some(basis_correct));
+    let result_flipped = run_to_result_production_wiring(two_sym_cfg, bars, Some(basis_flipped));
 
-    let delta = (result_correct.final_equity - result_flipped.final_equity).abs();
-    let epsilon = dec!(1);
+    let eq_correct = result_correct.final_equity;
+    let eq_flipped = result_flipped.final_equity;
 
+    // Both arms must actually have traded — otherwise the comparison below is
+    // between two inert runs and proves nothing about the sign.
     assert!(
-        delta > epsilon,
-        "R-BR.2 sign assertion (integration): correct-sign basis must produce different \
-         equity than flipped-sign basis. eq_correct={}, eq_flipped={}, delta={}. \
-         If delta ≈ 0, the sign convention is not active — the arm may be selecting the \
-         SAME names regardless of the sign flip. \
-         Check ScoreSource::BasisReversal → basis_reversal_score (the SIGN must be −mean). \
-         Expected: correct-sign selects flat BBUSDT; flipped-sign selects trending AAUSDT.",
-        result_correct.final_equity,
-        result_flipped.final_equity,
-        delta,
+        result_correct.trades > 0 && result_flipped.trades > 0,
+        "R-BR.2 sign assertion (integration) VACUITY: both arms must trade. \
+         correct={} fills, flipped={} fills. Two inert arms compare equal and would \
+         mask any sign behaviour whatsoever.",
+        result_correct.trades,
+        result_flipped.trades,
+    );
+
+    // ── DIRECTION 1: correct sign LONGS the LOW-basis name (BBUSDT, flat) ────
+    // Holding a flat asset with zero friction leaves equity at initial capital.
+    // Riding AAUSDT's +5%/bar for 30 bars cannot land inside this band.
+    let flat_band = INITIAL_CAPITAL + dec!(100);
+    assert!(
+        eq_correct <= flat_band,
+        "R-BR.2 SIGN VIOLATION (integration): with the CORRECT sign (−mean) the arm must \
+         long the LOW-basis name — BBUSDT at basis −0.02 — which is FLAT at 500 for all \
+         {N_HOURS} bars, so final equity must stay at ~{INITIAL_CAPITAL} (≤ {flat_band} \
+         with zero friction). Got {eq_correct}, which is the signature of holding AAUSDT \
+         (+5%/bar, basis +0.01 — the HIGH-basis, crowded-long name). \
+         basis_reversal_score is returning +mean: the arm is a basis-MOMENTUM payer."
+    );
+
+    // ── DIRECTION 2: flipped basis LONGS AAUSDT (the +5%/bar trend) ──────────
+    // With the signs on the map inverted, AAUSDT becomes the low-basis name and
+    // the SAME correct `−mean` score must now pick it up.
+    // Observed at 30 bars, K=1, exposure_cap 0.5, zero friction: ~136 k when
+    // AAUSDT is held, exactly 100 k when flat BBUSDT is held. The 1.10×
+    // threshold sits far from BOTH — flat can never reach it (the price never
+    // moves), and the trend clears it with a wide margin.
+    let trend_floor = INITIAL_CAPITAL * dec!(1.10);
+    assert!(
+        eq_flipped > trend_floor,
+        "R-BR.2 SIGN VIOLATION (integration): with the basis MAP flipped, AAUSDT becomes \
+         the LOW-basis name (−0.01) and the correct −mean score must select it. AAUSDT \
+         compounds +5%/bar over {N_HOURS} bars, so final equity must clear {trend_floor}. \
+         Got {eq_flipped} — at/near {INITIAL_CAPITAL} the arm is still holding flat \
+         BBUSDT, so the score is not responding to the basis sign at all."
+    );
+
+    // ── DIRECTION 3: the ORDERING itself (what a symmetric |Δ| could never see) ─
+    assert!(
+        eq_correct < eq_flipped,
+        "R-BR.2 SIGN VIOLATION (integration): correct-sign equity ({eq_correct}) must be \
+         BELOW flipped-basis equity ({eq_flipped}) — the correct sign deliberately buys \
+         the un-crowded, flat name and forgoes the crowded name's trend. If this ordering \
+         inverts, `basis_reversal_score` returns +mean and the two runs have swapped \
+         roles: the arm now longs the crowded-long names that subsequently underperform. \
+         NOTE: an `|eq_correct − eq_flipped| > ε` assertion is symmetric and stays GREEN \
+         under exactly that mutation — which is why this test asserts the ORDER."
     );
 }
 
@@ -549,8 +816,11 @@ fn r_br_no_look_ahead_integration() {
     let mut price_a = 1000.0_f64;
     let mut price_b = 500.0_f64;
     for hour in 0..N_HOURS {
-        let pa = Decimal::try_from(price_a).unwrap_or(dec!(1000));
-        let pb = Decimal::try_from(price_b).unwrap_or(dec!(500));
+        // Same fixture landmine as above (review 1-20 wave-2 L): a silent reset
+        // would flatten both trends and the causal/shifted runs would compare
+        // equal for the wrong reason.
+        let pa = Decimal::try_from(price_a).expect("AAUSDT uptrend must convert");
+        let pb = Decimal::try_from(price_b).expect("BBUSDT downtrend must convert");
         bars.push(make_bar("AAUSDT", pa, hour as i64));
         bars.push(make_bar("BBUSDT", pb, hour as i64));
         price_a *= 1.05; // +5% per bar (strong uptrend)
@@ -747,8 +1017,10 @@ fn build_synthetic_bars_2sym(seed: u64, n: usize) -> Vec<Bar> {
         let next_a = (close_a * (1.0 + z_a)).max(0.01);
         let next_b = (close_b * (1.0 + z_b)).max(0.01);
 
-        let pa = Decimal::try_from(next_a).unwrap_or(dec!(1));
-        let pb = Decimal::try_from(next_b).unwrap_or(dec!(1));
+        // Silent resets here would make the two determinism runs agree for the
+        // wrong reason — both pinned to 1 (1-20 wave-2 L).
+        let pa = Decimal::try_from(next_a).expect("synthetic AAUSDT close must convert");
+        let pb = Decimal::try_from(next_b).expect("synthetic BBUSDT close must convert");
 
         bars.push(make_bar("AAUSDT", pa, hour as i64));
         bars.push(make_bar("BBUSDT", pb, hour as i64));

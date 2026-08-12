@@ -263,8 +263,31 @@ Funding that depends on how many *other* symbols exist is not funding. (The offs
 **Fix**: `last_accrual_ts` collapses a timestamp's symbol-bars to ONE accrual. Gate: `funding_accrual_is_invariant_to_universe_size` (the experiment above, inverted into an assertion).
 **Moral**: when a rule lives inside a loop, ask what the loop is actually iterating. "Once per bar" and "once per instant" are different statements whenever bars are multi-symbol — and the difference is invisible in every aggregate the report prints.
 
+### `#74` — The mandated AD-16 divergence gate was satisfied by a test that cannot fail: the signal was injected through a channel that moves equity by itself
+**Status**: FIXED 2026-08-11 (story-1-20 review patch pass) — the falsifiers re-pointed at the production wiring, plus a `trades > 0` companion assertion.
+**Discovery**: derived independently by two review layers (Blind Hunter H2, Edge Case Hunter H4) and verified at source by the orchestrator against the committed revision.
+**The mechanism** — and why this one is not just "another vacuous test" (#66): the basis e2e falsifiers inject the signal via `funding_override`, which `run_path` uses for **two** unrelated purposes — it feeds the strategy's score map *and* it is the accrual channel. So the injected map settles as 8-hourly cashflow at ±0.5-2% of notional, roughly **60× the 1 bp epsilon the assertions test**. The difference the gate measures therefore comes from the accrual, not from the signal. Destroy the signal completely — return `Some(Decimal::ZERO)` instead of `Some(-mean)` — and the suite stays green, because the two compared runs still carry different cashflows.
+**The test said so itself.** The committed helper carries this comment, verbatim:
+> `// The accrual block will run but its effect is minor for these selection tests.`
+
+The effect was asserted to be minor and never measured. It was ~60× the threshold.
+**Compounding it**: `r_br_baseline_equity_divergence` compared the basis arm against a *price* baseline with no `trades > 0` companion — so an arm that never trades sits at exactly its initial capital and "diverges" from a compounding baseline by far more than 1 bp. A dead arm passes the liveness gate by being dead.
+**Why it matters more than its severity suggests**: AD-16 — "every strategy overlay or sizing-modifier ships with a baseline-equity-divergence e2e from day 1" — exists *because of* the v3-vol-overlay no-op (#65). This is that exact failure class, reproduced **inside the gate written to catch it**. The non-negotiable was honoured in form and void in substance, and it stayed that way through a VERDICT→PASS.
+**Confirmed by mutation, three ways** (temporary mutations, each observed, each reverted):
+
+| mutation | old suite | new suite |
+|---|---|---|
+| `basis_reversal_score` → always `None` (the #65 no-op class) | **6/6 green** — basis arm pinned at 100 000 while the price baseline compounds, so `\|Δ\| > 10` passes | RED: *"the basis arm executed 0 fills — it never traded"* |
+| preserve-branch → unconditional `with_funding(funding_override)` | **all 5 `funding_override`-wired tests green** | RED: *"got 0 fills, i.e. the arm never traded"* |
+| `Some(-mean)` → `Some(mean)` (sign flip) | green — the two equities merely **swap** (100 000 ↔ 136 161), so a symmetric `\|Δ\| > 1` cannot see it | RED on selection **order** |
+
+The middle row is the finding in one line: under the revert, the five tests wired through the *test* channel all stayed green while only the production-wired test failed.
+**Fix**: falsifiers drive the production wiring (strategy pre-loaded via `with_funding`, `funding_override: None`, matching `param_robustness_sweep.rs`), assert the arm actually traded, and assert the *direction* of selection so a sign flip goes RED.
+**Moral**: a divergence test proves nothing unless the signal reaches the strategy through the **same channel production uses**. If the test channel has any independent effect on the measured quantity, the test measures the channel, not the signal — and "its effect is minor" is a measurement, never an assumption. Ask of every gate: *which* difference is this assertion actually seeing? (Now the ninth mandatory probe — the **channel probe** — in `review-playbook.md` § 4.)
+
 ## Changelog
 
+- 2026-08-11 (orchestrator): **#74 added+FIXED** — the AD-16 day-1 divergence gate for the basis arm was vacuous because the signal was injected through `funding_override`, which is also the accrual channel (~60× the test epsilon); the suite stayed green with the signal returning constant zero. Derived independently by two review layers, verified at source. Story-1-20 review (burn-down 9/14). Spawned the ninth mandatory probe (**channel**) in the review playbook. Also this pass: anchors #100-#107 routed to 1-25; ADR-0086's basis publication-lag justification corrected (declared 0, grounded 3_600_000 — ruling deferred to 1-25 as anchor-impacting).
 - 2026-05-25 (orchestrator): file created. Backfilled #54–#63 from `git log` + inline `Bug #N` comments.
 - 2026-05-25 (orchestrator): #64 added — progress bar short-run starvation fix.
 - 2026-05-26 (orchestrator): #65 added — vol_killswitch_overlay no-op discovered by Wave 1 overlay-e2e test; 2 tests `#[ignore]`-gated pending source fix.

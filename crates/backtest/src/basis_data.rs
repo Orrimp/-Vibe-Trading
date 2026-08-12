@@ -17,8 +17,12 @@
 //! - `basis_as_of` is a pure function (M-DEV-2): given a sorted basis series
 //!   and a slice of bar open-timestamps (ms), it finds the most-recent
 //!   basis_close at-or-before each bar. Returns `None` for bars before the
-//!   first available basis (warm-up). On the native 1h grid, this is
-//!   effectively `basis_close[t-1]` (the basis settled in the bar ending at `t`).
+//!   first available basis (warm-up). On the native 1h grid a query at `t`
+//!   returns **`basis_close[t]`** — the value realised at the CLOSE of the bar
+//!   that OPENS at `t` — because the key is the bar's OPEN time and the join
+//!   predicate is `≤`. See the "Join key and causality" block on
+//!   [`basis_as_of`] for why that is still causal in the anchored lane and
+//!   where it would stop being so.
 //!
 //! # Feature gate
 //!
@@ -84,9 +88,73 @@ pub enum BasisDataError {
         source: rust_decimal::Error,
     },
 
+    /// A row carried a NULL `open_time` (review 1-20 L).
+    ///
+    /// This used to be swallowed: `open_times_col.get(i).unwrap_or(0)` mapped a
+    /// NULL to epoch-0, which the span filter then silently dropped. A row
+    /// vanishing without a diagnostic is exactly the shape of the R3
+    /// coverage-gate bug (bug-log #70). `basis_close` NULLs already errored
+    /// loudly (`""` fails `Decimal::from_str`); the timestamp column now does
+    /// too.
+    #[error("basis parquet {path} row {row}: open_time is NULL — refusing to guess a timestamp")]
+    NullOpenTime { path: String, row: usize },
+
+    /// A symbol's row count for the span is below the coverage floor
+    /// (review 1-20 M, modelled on `RealDataError::MissingData`).
+    ///
+    /// The failure this catches: ONE symbol with zero (or near-zero) rows makes
+    /// `basis_reversal_score` return `None` for that symbol forever. On a
+    /// long-only top-K arm the symbol simply never ranks, so the θ-surface stays
+    /// plausible while silently running a smaller universe than its
+    /// `held_constant` row claims — and if the deficit is wide enough the whole
+    /// surface goes inert while still rendering a verdict.
+    #[error(
+        "basis coverage below floor for {symbol} in [{span_start}..{span_end}): got {actual} \
+         rows, expected ~{expected} ({pct:.2}% present, floor {floor_pct:.2}%). A symbol \
+         with missing basis scores None forever and silently drops out of the \
+         cross-sectional rank — refusing to run on a corpus that would render a \
+         plausible surface over a smaller universe than it reports."
+    )]
+    InsufficientCoverage {
+        symbol: String,
+        expected: usize,
+        actual: usize,
+        /// Percentage present — human-readable only; the decision uses integer
+        /// arithmetic (see `load()`).
+        #[allow(clippy::float_arithmetic)]
+        pct: f64,
+        #[allow(clippy::float_arithmetic)]
+        floor_pct: f64,
+        span_start: String,
+        span_end: String,
+    },
+
+    /// The two per-symbol collections handed to [`build_basis_at_return`]
+    /// disagree in length (review 1-20 wave-2 M).
+    ///
+    /// They are assembled in the same loop in the sweep driver and are equal
+    /// only by construction. A `zip` would truncate to the shorter one and drop
+    /// the tail symbols in silence.
+    #[error(
+        "basis/bar-timestamp collections disagree: {basis_len} symbols of basis vs \
+         {bar_ts_len} symbols of bar timestamps. A zip here would silently truncate to \
+         the shorter one; the dropped symbols would never warm, and because the ranker \
+         requires EVERY universe symbol to be warm the whole arm would render flat cells \
+         under a plausible verdict — refusing to run."
+    )]
+    LengthMismatch { basis_len: usize, bar_ts_len: usize },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+/// Minimum fraction of the span's hourly rows each symbol must supply, in
+/// per-mille (review 1-20 M).
+///
+/// Mirrors the OHLCV loader's R3 tolerance (`realdata.rs`, 995‰ = 99.5%), which
+/// review 1-18 hardened after bug-log #70. Integer per-mille so the comparison
+/// never touches a float.
+pub const MIN_SYMBOL_COVERAGE_PERMILLE: usize = 995;
 
 // ── BasisRow ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +194,10 @@ pub struct BasisDataSource {
     basis_root: PathBuf,
     /// Universe of symbols to load (must match the basis scenario universe).
     universe: Vec<Symbol>,
+    /// Aggregate SHA the corpus must recompute to. Always
+    /// [`EXPECTED_BASIS_REVISION_SHA`] in production — [`Self::new`] is the only
+    /// constructor outside `cfg(test)`, so the revision lock is unconditional.
+    expected_revision_sha: String,
 }
 
 impl BasisDataSource {
@@ -138,7 +210,23 @@ impl BasisDataSource {
         Self {
             basis_root,
             universe,
+            expected_revision_sha: EXPECTED_BASIS_REVISION_SHA.to_string(),
         }
+    }
+
+    /// Point the revision lock at a different aggregate SHA — **tests only**.
+    ///
+    /// Compiled ONLY under `cfg(test)`, so it does not exist in any shipped
+    /// build and cannot be reached from the sweep binary. It exists so the
+    /// acceptance test can drive the REAL [`Self::load`] end-to-end against a
+    /// small temp-dir corpus: without it, step 3 rejects every fixture before
+    /// the parquet is ever opened, which is why the only test that exercised
+    /// the column names and the symbol-from-relpath derivation had to be
+    /// `#[ignore]`d against the real corpus (and therefore gated nothing).
+    #[cfg(test)]
+    fn with_expected_revision_sha(mut self, sha: &str) -> Self {
+        self.expected_revision_sha = sha.to_string();
+        self
     }
 
     /// Load + REVISION-verify + parse basis rows for the given span.
@@ -149,14 +237,19 @@ impl BasisDataSource {
     ///    manifest → `RevisionMismatch`.
     /// 3. Recompute aggregate SHA and verify it equals
     ///    `EXPECTED_BASIS_REVISION_SHA`.
-    /// 4. Read parquet files; parse `basis_close` as `Decimal`.
+    /// 4. Read parquet files; parse `basis_close` as `Decimal`. A NULL
+    ///    `open_time` is an error, never a guessed timestamp (review 1-20 L).
     /// 5. Filter rows to `[span.start_ms, span.end_ms)`.
-    /// 6. Sort `(open_time_ms ASC, symbol ASC)`.
+    /// 6. Enforce the PER-SYMBOL coverage floor
+    ///    ([`MIN_SYMBOL_COVERAGE_PERMILLE`]) → `InsufficientCoverage`
+    ///    (review 1-20 M).
+    /// 7. Sort `(open_time_ms ASC, symbol ASC)`.
     ///
     /// # Errors
     ///
-    /// Returns `BasisDataError` on manifest missing / SHA mismatch,
-    /// parquet read errors, or Decimal parse failure.
+    /// Returns `BasisDataError` on manifest missing / SHA mismatch, parquet read
+    /// errors, a NULL `open_time`, a Decimal parse failure, or a symbol whose
+    /// row count for the span is below the coverage floor.
     #[allow(clippy::too_many_lines)]
     pub fn load(
         &self,
@@ -188,7 +281,7 @@ impl BasisDataSource {
                         file: relpath.clone(),
                         manifest_sha: "(not in manifest)".to_string(),
                         actual_sha: "n/a".to_string(),
-                        expected: EXPECTED_BASIS_REVISION_SHA.to_string(),
+                        expected: self.expected_revision_sha.clone(),
                         recomputed: "(not computed)".to_string(),
                     })?;
             let abs_path = self.basis_root.join(relpath);
@@ -199,7 +292,7 @@ impl BasisDataSource {
                     file: relpath.clone(),
                     manifest_sha: manifest_sha.clone(),
                     actual_sha,
-                    expected: EXPECTED_BASIS_REVISION_SHA.to_string(),
+                    expected: self.expected_revision_sha.clone(),
                     recomputed: "(not computed)".to_string(),
                 });
             }
@@ -207,12 +300,12 @@ impl BasisDataSource {
 
         // Step 3: recompute aggregate SHA and verify against the locked constant.
         let recomputed = data::revision::compute_aggregate_sha(&files_map);
-        if recomputed != EXPECTED_BASIS_REVISION_SHA {
+        if recomputed != self.expected_revision_sha {
             return Err(BasisDataError::RevisionMismatch {
                 file: "(aggregate)".to_string(),
                 manifest_sha: "(n/a)".to_string(),
                 actual_sha: "(n/a)".to_string(),
-                expected: EXPECTED_BASIS_REVISION_SHA.to_string(),
+                expected: self.expected_revision_sha.clone(),
                 recomputed: recomputed.clone(),
             });
         }
@@ -260,7 +353,18 @@ impl BasisDataSource {
 
             let n_rows = df.height();
             for i in 0..n_rows {
-                let open_time_ms = open_times_col.get(i).unwrap_or(0);
+                // Review 1-20 L: a NULL `open_time` used to become epoch-0 via
+                // `unwrap_or(0)`, which the span filter below then dropped with
+                // no diagnostic anywhere — a silently shrinking corpus. Fail
+                // loudly instead, matching how a NULL `basis_close` already
+                // behaves (it yields "" and blows up in `Decimal::from_str`).
+                let open_time_ms =
+                    open_times_col
+                        .get(i)
+                        .ok_or_else(|| BasisDataError::NullOpenTime {
+                            path: path_str.clone(),
+                            row: i,
+                        })?;
                 let basis_str = basis_close_col.get(i).unwrap_or("");
 
                 // Step 5: filter to span [start_ms, end_ms).
@@ -284,7 +388,45 @@ impl BasisDataSource {
             }
         }
 
-        // Step 6: sort (open_time_ms ASC, symbol ASC).
+        // Step 6: PER-SYMBOL coverage gate (review 1-20 M).
+        //
+        // The OHLCV loader got an equivalent gate in review 1-18 after bug-log
+        // #70; the basis sidecar had none. Without it, one symbol contributing
+        // zero rows is completely silent: `basis_reversal_score` returns `None`
+        // for that symbol on every bar forever, so it never enters the
+        // cross-sectional rank, and the θ-surface renders a full, plausible
+        // verdict over a universe smaller than its own `held_constant` row
+        // claims. Checked PER SYMBOL, not in aggregate, precisely because a
+        // total-row check passes happily while one member is empty.
+        //
+        // Integer arithmetic only in the comparison — the float is for the
+        // message. The basis series is native hourly, so the expected row count
+        // for a span is its length in hours.
+        let expected_per_symbol =
+            usize::try_from((span.end_ms - span.start_ms) / 3_600_000).unwrap_or(0);
+        if expected_per_symbol > 0 {
+            let threshold = (expected_per_symbol * MIN_SYMBOL_COVERAGE_PERMILLE).div_ceil(1000);
+            for sym in &self.universe {
+                let actual = rows.iter().filter(|r| &r.symbol == sym).count();
+                if actual < threshold {
+                    #[allow(clippy::cast_precision_loss, clippy::float_arithmetic)]
+                    let pct = actual as f64 / expected_per_symbol as f64 * 100.0;
+                    #[allow(clippy::cast_precision_loss, clippy::float_arithmetic)]
+                    let floor_pct = MIN_SYMBOL_COVERAGE_PERMILLE as f64 / 10.0;
+                    return Err(BasisDataError::InsufficientCoverage {
+                        symbol: sym.0.to_string(),
+                        expected: expected_per_symbol,
+                        actual,
+                        pct,
+                        floor_pct,
+                        span_start: span.start_label.to_string(),
+                        span_end: span.end_label.to_string(),
+                    });
+                }
+            }
+        }
+
+        // Step 7: sort (open_time_ms ASC, symbol ASC).
         rows.sort_unstable_by(|a, b| {
             a.open_time_ms
                 .cmp(&b.open_time_ms)
@@ -357,12 +499,13 @@ fn month_start_ms(year: i32, month: time::Month) -> i64 {
 /// Find the basis at each bar open timestamp using an as-of join.
 ///
 /// For each bar open timestamp `bar_open_ts_ms[i]`, finds the `basis_close`
-/// from the bar whose `open_time_ms` is the most-recent one **at-or-before**
+/// from the row whose `open_time_ms` is the most-recent one **at-or-before**
 /// `bar_open_ts_ms[i]`.
 ///
-/// On the native 1h grid: the basis at bar `t`'s open is `basis_close[t-1]`
-/// (the basis settled at the close of bar `t-1`, which is only known at `t`).
-/// This is `basis_close[t-1]` on the aligned 1h grid (D-BR.5, R-BR.5).
+/// On the aligned native 1h grid a query at `t` therefore returns
+/// **`basis_close[t]`** — the basis row that OPENS at `t`, carrying the value
+/// realised at that row's CLOSE (`t + 1h`). It is NOT `basis_close[t-1]`; see
+/// "Join key and causality" below, which is the load-bearing part of this doc.
 ///
 /// Returns `None` for bars before the first available basis (warm-up).
 ///
@@ -378,21 +521,49 @@ fn month_start_ms(year: i32, month: time::Month) -> i64 {
 /// `Vec<Option<Decimal>>` of length `bar_open_ts_ms.len()`.
 /// `None` = no basis bar has opened yet (warm-up).
 ///
-/// # Invariant (no look-ahead)
+/// # Invariant (monotone in the series)
 ///
-/// Only basis settled at-or-before the bar's `open_ts` is used.
-/// Future-shifting the basis series (e.g. by +1h) WILL produce a
-/// different result — verified by the unit test `no_look_ahead_falsifier`.
+/// No basis row with `open_time_ms > q` can ever be returned for a query `q`.
+/// Future-shifting the basis series (e.g. by +1h) WILL produce a different
+/// result — verified by the unit test `no_look_ahead_falsifier`.
 ///
-/// # Note on the join key
+/// # Join key and causality (corrected by review 1-20 M)
 ///
-/// The basis parquet schema uses `open_time` (not `close_time`) for the bar
-/// timestamp. The as-of join uses `open_time_ms` as the key: the basis from
-/// bar `[t-1, t)` (whose `open_time` is `t-1h`) is available at `t`.
-/// Binary-searching for the largest `open_time_ms ≤ bar_open_ts_ms` gives
-/// the most-recent completed basis bar, which is the basis from bar `t-1`
-/// when the query timestamp is exactly `t` (bar `t`'s open = bar `t-1`'s
-/// close on the 1h grid). This is the strict no-look-ahead convention (D-BR.5).
+/// **What the code does.** The basis parquet keys each row by `open_time`, not
+/// `close_time`, while the VALUE it carries (`basis_close`) is realised at that
+/// row's CLOSE. The join predicate is `≤` on that OPEN-time key. So for a query
+/// at `t` on the aligned 1h grid the largest key `≤ t` is `t` itself, and the
+/// function returns `basis_close[t]` — a value realised at `t + 1h`. The
+/// previous version of this block claimed the opposite (`basis_close[t-1]`,
+/// "strict no-look-ahead") and justified it by analogy to
+/// [`crate::funding_data`]'s `funding_as_of`. **That analogy is false and has
+/// been deleted:** `funding_as_of` keys on SETTLEMENT time — the instant the
+/// value becomes known — where `≤` genuinely is causal. Keying on OPEN time
+/// while carrying a CLOSE-realised value is a different join, and `≤` does not
+/// mean the same thing on it. The unit tests immediately below this module's
+/// `basis_as_of` (`bar_at_basis_open_uses_that_bar`,
+/// `step_function_one_hour_correctness`) assert the ACTUAL behaviour and always
+/// did; only the prose disagreed.
+///
+/// **Why the anchored lane is nonetheless causal.** In the anchored basis
+/// surfaces the join output never touches a replayed bar. It is folded into
+/// `basis_at_return[sym][k]` (see [`build_basis_at_return`]) and co-resampled by
+/// the block bootstrap, and the strategy consumes it as a SCORE at the synthetic
+/// bar's open while `PaperEngine` fills every order at that same bar's CLOSE
+/// (`FillPriceMode::BarClose`). The decision is therefore priced at the instant
+/// the basis value itself is realised — the value is known no later than the
+/// price the trade gets. Nothing scored at `t` is executed before `t`'s close.
+///
+/// **The latent hazard — read this before reusing the function.** The causality
+/// argument above is a property of the CALLER, not of this join. Joined onto
+/// real replayed bars in a path that decides at a bar's OPEN and fills at that
+/// same bar's open (or at any price struck before the bar closes), this would be
+/// a genuine **one-bar look-ahead**: the score would embed a value not yet
+/// realised at decision time. Any new consumer must either shift the key by one
+/// bar or re-derive the fill-timing argument for itself. Correcting the join
+/// here would re-price all eight anchored basis surfaces plus the twelve MN
+/// surfaces, so the fix is owned by the re-lock program (story 1-25), not by
+/// this documentation pass (ADR-0038 § D6).
 ///
 /// Routes through `trading_core::pit::PitSeries` (ADR-0058 / M-DEV-3).
 /// The public signature is kept byte-stable (existing callers and tests
@@ -437,12 +608,33 @@ pub fn basis_as_of(basis: &[(i64, Decimal)], bar_open_ts_ms: &[i64]) -> Vec<Opti
 /// # Returns
 ///
 /// `basis_at_return[sym_i][k]` = `Option<Decimal>` for k in 0..T-1.
-#[must_use]
+///
+/// # Errors
+///
+/// Returns `LengthMismatch` when the two outer slices differ in length
+/// (review 1-20 wave-2 M).
+///
+/// This used to be a `zip`, which **silently truncates to the shorter slice**.
+/// The two inputs are built in the same loop in the sweep driver and agree only
+/// BY CONSTRUCTION — nothing asserted it. Any future divergence would drop the
+/// tail symbols from `basis_at_return` entirely, so those symbols get no map
+/// entries, never warm, and — because `MomentumStrategy::all_warmed` requires
+/// EVERY universe symbol to be warm before it will rank anything — the WHOLE
+/// arm never trades. All six θ-cells then render flat equity under a
+/// normal-looking FRAGILE verdict. One missing symbol silently kills the entire
+/// surface, and nothing in the report says so. A truncating `zip` is not an
+/// acceptable way to discover that.
 pub fn build_basis_at_return(
     basis_by_symbol: &[&[(i64, Decimal)]],
     bar_open_ts_ms_by_symbol: &[&[i64]],
-) -> Vec<Vec<Option<Decimal>>> {
-    basis_by_symbol
+) -> Result<Vec<Vec<Option<Decimal>>>, BasisDataError> {
+    if basis_by_symbol.len() != bar_open_ts_ms_by_symbol.len() {
+        return Err(BasisDataError::LengthMismatch {
+            basis_len: basis_by_symbol.len(),
+            bar_ts_len: bar_open_ts_ms_by_symbol.len(),
+        });
+    }
+    Ok(basis_by_symbol
         .iter()
         .zip(bar_open_ts_ms_by_symbol.iter())
         .map(|(basis, bar_ts)| {
@@ -451,7 +643,7 @@ pub fn build_basis_at_return(
             let return_bar_ts = &bar_ts[..n_returns];
             basis_as_of(basis, return_bar_ts)
         })
-        .collect()
+        .collect())
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -508,8 +700,13 @@ mod tests {
 
     /// Step-function correctness: a sequence of bars on the 1h grid.
     ///
-    /// The basis bar at open_time=T has its basis_close known at T+1h (the next bar's open).
-    /// So querying at T+1h returns the T basis. This is `basis_close[t-1]` (D-BR.5).
+    /// Review 1-20 M: the assertions here have always been right; the prose
+    /// around them was not. A query at `T` returns the row whose `open_time` is
+    /// `T` — i.e. `basis_close[T]`, realised at `T+1h` — NOT `basis_close[T-1]`.
+    /// The old comment claimed the latter and then argued with itself in-line
+    /// about whether `≤` or `<` was correct. See the "Join key and causality"
+    /// block on `basis_as_of` for what makes this causal in the anchored lane
+    /// (score at open, fill at close) and where it would stop being causal.
     #[test]
     fn step_function_one_hour_correctness() {
         let one_hour_ms: i64 = 3_600_000;
@@ -523,22 +720,13 @@ mod tests {
         let bars: Vec<i64> = (0..5).map(|h| h * one_hour_ms).collect();
         let result = basis_as_of(&basis, &bars);
 
-        // Bar at t=0: basis bar with open_time=0 ≤ 0 → uses basis[0] = 0.001.
+        // Bar at t=0: basis row with open_time=0 ≤ 0 → uses basis[0] = 0.001.
         assert_eq!(result[0], Some(dec!(0.001)));
-        // Bar at t=1h: basis bar with open_time=1h ≤ 1h → uses basis[1] = 0.002.
-        // (This is the no-look-ahead convention: at bar t=1h, we use the basis
-        //  from the bar whose open was at t=0, whose close was at t=1h — i.e., `t-1`.)
-        // Wait — on the 1h grid, open_time[t] is the open of bar t, which is t*1h.
-        // The basis from bar t-1 has open_time=(t-1)*1h = open_time=t_bar-1h.
-        // So querying at open_time=t_bar should return basis at open_time < t_bar.
-        // Here querying at 1h returns basis at open_time=1h (not strictly < 1h).
-        // This is correct for the as-of join — the bar that OPENED at 1h is available
-        // at 1h because its open_time IS 1h. But for pure no-look-ahead we should
-        // use bars whose open_time is STRICTLY BEFORE the query. The basis_as_of
-        // is `≤` (at-or-before), which is the correct causal convention per D-BR.5
-        // (the funding_as_of pattern, proven causal in the spike).
+        // Bar at t=1h: the largest key ≤ 1h is 1h itself → basis[1] = 0.002.
+        // This is `basis_close[t]`, whose value is realised at t+1h — NOT
+        // `basis_close[t-1]`. The window is (t−L, t], not "strictly before t".
         assert_eq!(result[1], Some(dec!(0.002)));
-        // Bar at t=2h: basis bar with open_time=2h ≤ 2h → uses basis[2] = 0.003.
+        // Bar at t=2h: largest key ≤ 2h is 2h → basis[2] = 0.003.
         assert_eq!(result[2], Some(dec!(0.003)));
         // Bar at t=3h: no basis bar beyond 2h → uses basis[2] = 0.003 (forward-fill).
         assert_eq!(result[3], Some(dec!(0.003)));
@@ -597,7 +785,8 @@ mod tests {
         // 5 bars → 4 return steps.
         let bar_ts: Vec<i64> = (0..5).map(|h| h * one_hour_ms).collect();
 
-        let result = build_basis_at_return(&[basis.as_slice()], &[bar_ts.as_slice()]);
+        let result = build_basis_at_return(&[basis.as_slice()], &[bar_ts.as_slice()])
+            .expect("equal-length inputs must build");
 
         // Should have length T-1 = 4 for the one symbol.
         assert_eq!(result.len(), 1);
@@ -608,6 +797,64 @@ mod tests {
         assert_eq!(result[0][1], Some(dec!(-0.002)));
         // Bar 3 (t=3h): no basis beyond 1h → forward-fill Some(-0.002).
         assert_eq!(result[0][3], Some(dec!(-0.002)));
+    }
+
+    /// Review 1-20 wave-2 M: mismatched per-symbol collections must ERROR, not
+    /// silently truncate to the shorter one.
+    ///
+    /// The old body was a bare `zip`. The two inputs are assembled in the same
+    /// loop in the sweep driver and are equal only BY CONSTRUCTION — nothing
+    /// asserted it. Under a truncation the tail symbols get no basis entries at
+    /// all, so they never warm; `MomentumStrategy::all_warmed` requires EVERY
+    /// universe symbol to be warm before the ranker selects anything, so the
+    /// whole arm stops trading and all six θ-cells render flat equity under a
+    /// plausible FRAGILE verdict — with nothing in the report to say a symbol
+    /// went missing.
+    #[test]
+    fn build_basis_at_return_rejects_mismatched_symbol_counts() {
+        let one_hour_ms: i64 = 3_600_000;
+        let basis_a: Vec<(i64, Decimal)> = vec![(0, dec!(0.001))];
+        let basis_b: Vec<(i64, Decimal)> = vec![(0, dec!(0.002))];
+        let bar_ts: Vec<i64> = (0..5).map(|h| h * one_hour_ms).collect();
+
+        // TWO symbols of basis, ONE of bar timestamps. A `zip` would return a
+        // single row and drop the second symbol without a word.
+        let err = build_basis_at_return(
+            &[basis_a.as_slice(), basis_b.as_slice()],
+            &[bar_ts.as_slice()],
+        )
+        .expect_err("mismatched symbol counts must be rejected");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, BasisDataError::LengthMismatch { .. }),
+            "expected LengthMismatch, got: {msg}"
+        );
+        assert!(
+            msg.contains('2') && msg.contains('1'),
+            "the failure must report BOTH lengths so the operator can see which side \
+             is short. Got: {msg}"
+        );
+
+        // The converse orientation must be rejected too.
+        assert!(
+            build_basis_at_return(
+                &[basis_a.as_slice()],
+                &[bar_ts.as_slice(), bar_ts.as_slice()]
+            )
+            .is_err(),
+            "the mismatch check must be symmetric"
+        );
+
+        // And the equal-length case must still succeed — the guard is a floor,
+        // not a tax (this is the shape every anchored invocation uses).
+        assert!(
+            build_basis_at_return(
+                &[basis_a.as_slice(), basis_b.as_slice()],
+                &[bar_ts.as_slice(), bar_ts.as_slice()],
+            )
+            .is_ok(),
+            "equal-length inputs — the anchored shape — must still build"
+        );
     }
 
     /// Decimal precision is preserved — no f64 round-trip.
@@ -624,10 +871,15 @@ mod tests {
         assert_eq!(parsed, reparsed);
     }
 
-    /// Signed/negative basis parses correctly (negative basis = perp below spot).
+    /// `Decimal::from_str` round-trips a signed basis string.
     ///
-    /// This is a load-bearing test: the basis CAN be negative and the parse
-    /// must NOT discard the sign (ADR-0003, R-BR.3).
+    /// **Scope note (review 1-20 M):** this test calls `Decimal::from_str`
+    /// DIRECTLY. It is a property check on `rust_decimal`, not on this loader —
+    /// it would stay green if `load()` dropped the sign, ignored the column, or
+    /// never ran. It was previously described as "load-bearing"; it is not. The
+    /// loader-level guarantee that a negative basis survives the real parse path
+    /// is `load_end_to_end_pins_columns_symbol_and_negative_sign`, which drives
+    /// `BasisDataSource::load` over an actual parquet and is not `#[ignore]`d.
     #[test]
     fn signed_negative_basis_parse() {
         let negative_str = "-0.0012";
@@ -668,6 +920,413 @@ mod tests {
             result[1],
             Some(dec!(0.0001)),
             "bar at first basis must be Some"
+        );
+    }
+
+    // ── Review 1-20 M: END-TO-END loader acceptance (NOT skip-gated) ──────────
+    //
+    // Before this block, the loader's two named acceptance tests gated nothing:
+    //
+    //   * `real_parquet_parses_to_expected_rows` is `#[ignore]`d (it needs the
+    //     real corpus), so NOTHING in CI pinned the `open_time` / `basis_close`
+    //     column names or the symbol-from-relpath derivation. Rename a column in
+    //     a future schema bump and every gate stays green.
+    //   * `signed_negative_basis_parse` calls `Decimal::from_str` directly — it
+    //     is a property test for `rust_decimal`, not for this loader, and would
+    //     stay green if `load()` dropped the sign entirely.
+    //
+    // The tests below write a real (tiny) parquet to a temp dir and drive the
+    // production `BasisDataSource::load` over it end to end.
+
+    /// Write a basis parquet at `<root>/<sym>/<year>/<month>.parquet`.
+    ///
+    /// Columns are named EXACTLY as the production schema
+    /// (`open_time` Int64, `basis_close` Utf8) — that is the point of the test:
+    /// `load()` must find them under these names.
+    fn write_basis_parquet(
+        root: &std::path::Path,
+        sym: &str,
+        year: i32,
+        month: u32,
+        rows: &[(i64, &str)],
+    ) -> String {
+        use polars::prelude::*;
+
+        let dir = root.join(format!("{sym}/{year}"));
+        std::fs::create_dir_all(&dir).expect("create symbol dir");
+        let path = dir.join(format!("{month:02}.parquet"));
+
+        let open_times: Vec<i64> = rows.iter().map(|&(t, _)| t).collect();
+        let basis: Vec<&str> = rows.iter().map(|&(_, b)| b).collect();
+        let mut df = df![
+            "open_time" => open_times,
+            "basis_close" => basis,
+        ]
+        .expect("build fixture DataFrame");
+
+        let mut file = std::fs::File::create(&path).expect("create parquet");
+        ParquetWriter::new(&mut file)
+            .finish(&mut df)
+            .expect("write parquet");
+
+        format!("{sym}/{year}/{month:02}.parquet")
+    }
+
+    /// Write `REVISION.toml` for the given relpaths and return the aggregate SHA
+    /// the loader will recompute.
+    fn write_manifest(root: &std::path::Path, relpaths: &[String]) -> String {
+        use std::collections::BTreeMap;
+
+        let mut files_map: BTreeMap<String, String> = BTreeMap::new();
+        for rel in relpaths {
+            let sha = data::revision::file_sha256(&root.join(rel)).expect("sha256");
+            files_map.insert(rel.clone(), sha);
+        }
+        let aggregate = data::revision::compute_aggregate_sha(&files_map);
+
+        let mut toml = format!("[revision]\nsha256 = \"{aggregate}\"\n\n[files]\n");
+        for (rel, sha) in &files_map {
+            toml.push_str(&format!("\"{rel}\" = \"{sha}\"\n"));
+        }
+        std::fs::write(root.join("REVISION.toml"), toml).expect("write REVISION.toml");
+        aggregate
+    }
+
+    /// A 24-hour span on 2023-01-01, so `files_for_span` asks for exactly ONE
+    /// month file per symbol and the coverage floor expects 24 rows per symbol.
+    fn one_day_span_2023() -> crate::realdata::TimeSpan {
+        let start = 1_672_531_200_000_i64; // 2023-01-01T00:00:00Z
+        crate::realdata::TimeSpan {
+            start_ms: start,
+            end_ms: start + 24 * 3_600_000,
+            start_label: "2023-01-01T00:00:00Z",
+            end_label: "2023-01-02T00:00:00Z",
+        }
+    }
+
+    const HOUR_MS: i64 = 3_600_000;
+
+    /// Build 24 in-span hourly rows for a symbol. `neg_at` gets a NEGATIVE
+    /// basis; everything else is positive.
+    fn day_rows(neg_at: usize, neg_value: &'static str) -> Vec<(i64, &'static str)> {
+        let start = 1_672_531_200_000_i64;
+        (0..24_usize)
+            .map(|h| {
+                let ts = start + (h as i64) * HOUR_MS;
+                let v = if h == neg_at { neg_value } else { "0.0034" };
+                (ts, v)
+            })
+            .collect()
+    }
+
+    /// END-TO-END: `BasisDataSource::load` over a real parquet.
+    ///
+    /// Pins, in the production call path and with no `#[ignore]`:
+    /// - the `open_time` and `basis_close` COLUMN NAMES;
+    /// - the symbol-from-relpath derivation (`<SYM>/<YEAR>/<MM>.parquet`);
+    /// - that a NEGATIVE basis survives the load **with its sign**;
+    /// - the `[start_ms, end_ms)` span filter; and
+    /// - the `(open_time ASC, symbol ASC)` sort.
+    #[test]
+    fn load_end_to_end_pins_columns_symbol_and_negative_sign() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        // Two symbols. AAAUSDT carries a negative basis at hour 5; BBBUSDT at
+        // hour 0 (so the negative value is also the FIRST row after sorting).
+        let mut a_rows = day_rows(5, "-0.0012");
+        let b_rows = day_rows(0, "-0.05");
+
+        // Two OUT-OF-SPAN rows in the same file: one before the span start and
+        // one at/after the span end. Both must be filtered out.
+        a_rows.push((span.start_ms - HOUR_MS, "9.9999"));
+        a_rows.push((span.end_ms, "8.8888"));
+
+        let rel_a = write_basis_parquet(root, "AAAUSDT", 2023, 1, &a_rows);
+        let rel_b = write_basis_parquet(root, "BBBUSDT", 2023, 1, &b_rows);
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = BasisDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let loaded = src.load(&span, "e2e-fixture").expect(
+            "load must succeed on a well-formed fixture — if this fails on a column \
+             lookup, the production schema names changed",
+        );
+
+        // Span filter: 24 in-span rows per symbol, the two out-of-span rows gone.
+        assert_eq!(
+            loaded.rows.len(),
+            48,
+            "24 in-span rows per symbol × 2 symbols; the two out-of-span AAAUSDT \
+             rows must be filtered by [start_ms, end_ms)"
+        );
+        assert!(
+            !loaded
+                .rows
+                .iter()
+                .any(|r| r.basis_close == dec!(9.9999) || r.basis_close == dec!(8.8888)),
+            "out-of-span sentinel values must not survive the span filter"
+        );
+
+        // Symbol-from-relpath: the symbol comes from the path prefix, nowhere else.
+        let a_count = loaded
+            .rows
+            .iter()
+            .filter(|r| r.symbol == Symbol::new("AAAUSDT"))
+            .count();
+        let b_count = loaded
+            .rows
+            .iter()
+            .filter(|r| r.symbol == Symbol::new("BBBUSDT"))
+            .count();
+        assert_eq!(
+            (a_count, b_count),
+            (24, 24),
+            "each symbol's rows must be attributed to the symbol in its relpath prefix"
+        );
+
+        // THE load-bearing one: a negative basis must survive with its sign.
+        let a_neg: Vec<Decimal> = loaded
+            .rows
+            .iter()
+            .filter(|r| r.symbol == Symbol::new("AAAUSDT") && r.basis_close < Decimal::ZERO)
+            .map(|r| r.basis_close)
+            .collect();
+        assert_eq!(
+            a_neg,
+            vec![dec!(-0.0012)],
+            "AAAUSDT's hour-5 basis of -0.0012 must come back NEGATIVE and exact. \
+             If the sign is gone the arm inverts: negative basis is the \
+             reversal-favored leg the whole signal is built to buy."
+        );
+        let b_neg: Vec<Decimal> = loaded
+            .rows
+            .iter()
+            .filter(|r| r.symbol == Symbol::new("BBBUSDT") && r.basis_close < Decimal::ZERO)
+            .map(|r| r.basis_close)
+            .collect();
+        assert_eq!(b_neg, vec![dec!(-0.05)], "BBBUSDT's hour-0 basis of -0.05");
+
+        // Sort: (open_time ASC, symbol ASC).
+        let mut sorted = loaded.rows.clone();
+        sorted.sort_by(|a, b| {
+            a.open_time_ms
+                .cmp(&b.open_time_ms)
+                .then_with(|| a.symbol.0.as_str().cmp(b.symbol.0.as_str()))
+        });
+        assert_eq!(
+            loaded.rows, sorted,
+            "rows must be (ts ASC, symbol ASC) sorted"
+        );
+        assert_eq!(loaded.revision_sha, aggregate);
+    }
+
+    /// The column names are LOAD-BEARING: renaming either one must fail the
+    /// load, not silently yield an empty/garbage series.
+    #[test]
+    fn load_rejects_a_renamed_basis_column() {
+        use polars::prelude::*;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        // Same data, but `basis_close` renamed to `basis` — a plausible schema
+        // drift. `load()` must error on the column lookup.
+        let dir = root.join("AAAUSDT/2023");
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let rows = day_rows(3, "-0.0012");
+        let open_times: Vec<i64> = rows.iter().map(|&(t, _)| t).collect();
+        let basis: Vec<&str> = rows.iter().map(|&(_, b)| b).collect();
+        let mut df = df![
+            "open_time" => open_times,
+            "basis" => basis,
+        ]
+        .expect("build DataFrame");
+        let mut file = std::fs::File::create(dir.join("01.parquet")).expect("create");
+        ParquetWriter::new(&mut file)
+            .finish(&mut df)
+            .expect("write parquet");
+
+        let aggregate = write_manifest(root, &["AAAUSDT/2023/01.parquet".to_string()]);
+        let src = BasisDataSource::new(root.to_path_buf(), vec![Symbol::new("AAAUSDT")])
+            .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "renamed-column")
+            .expect_err("a parquet without a `basis_close` column must fail the load");
+        assert!(
+            matches!(err, BasisDataError::Parquet { .. }),
+            "expected a Parquet column-lookup error, got: {err}"
+        );
+    }
+
+    /// Review 1-20 M: the PER-SYMBOL coverage gate.
+    ///
+    /// One symbol with (near-)zero rows is the failure this exists for: it
+    /// scores `None` forever, silently drops out of the cross-sectional rank,
+    /// and the surface still renders a plausible verdict over a smaller
+    /// universe than its `held_constant` row claims.
+    #[test]
+    fn load_rejects_a_symbol_with_missing_coverage() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        // AAAUSDT is complete (24/24). BBBUSDT has 2 of 24 rows.
+        let a_rows = day_rows(5, "-0.0012");
+        let b_rows: Vec<(i64, &str)> = day_rows(0, "-0.05").into_iter().take(2).collect();
+
+        let rel_a = write_basis_parquet(root, "AAAUSDT", 2023, 1, &a_rows);
+        let rel_b = write_basis_parquet(root, "BBBUSDT", 2023, 1, &b_rows);
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = BasisDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "deficient-symbol")
+            .expect_err("a symbol below the coverage floor must fail the load");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, BasisDataError::InsufficientCoverage { .. }),
+            "expected InsufficientCoverage, got: {msg}"
+        );
+        assert!(
+            msg.contains("BBBUSDT"),
+            "the failure must NAME the deficient symbol so the operator knows which \
+             one to backfill. Got: {msg}"
+        );
+        assert!(
+            !msg.contains("AAAUSDT"),
+            "the complete symbol must not be blamed. Got: {msg}"
+        );
+    }
+
+    /// A completely ABSENT symbol (zero rows) is the worst case — it must fail
+    /// with the same loud, symbol-naming error, not silently shrink the universe.
+    #[test]
+    fn load_rejects_a_symbol_with_zero_rows() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        let a_rows = day_rows(5, "-0.0012");
+        // BBBUSDT's file exists but holds only OUT-OF-SPAN rows → zero in-span.
+        let b_rows: Vec<(i64, &str)> = vec![
+            (span.start_ms - 2 * HOUR_MS, "0.001"),
+            (span.start_ms - HOUR_MS, "0.002"),
+        ];
+
+        let rel_a = write_basis_parquet(root, "AAAUSDT", 2023, 1, &a_rows);
+        let rel_b = write_basis_parquet(root, "BBBUSDT", 2023, 1, &b_rows);
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = BasisDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "absent-symbol")
+            .expect_err("a symbol with ZERO in-span rows must fail the load");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("BBBUSDT") && msg.contains("got 0 rows"),
+            "the failure must name the empty symbol and say it has zero rows. Got: {msg}"
+        );
+    }
+
+    /// A fully-covered corpus must NOT be rejected — the gate is a floor, not a
+    /// tax. (The shipped corpus is verified separately by
+    /// `real_corpus_passes_the_coverage_gate`, which needs the real parquets.)
+    #[test]
+    fn load_accepts_full_coverage() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        let rel_a = write_basis_parquet(root, "AAAUSDT", 2023, 1, &day_rows(5, "-0.0012"));
+        let rel_b = write_basis_parquet(root, "BBBUSDT", 2023, 1, &day_rows(9, "-0.05"));
+        let aggregate = write_manifest(root, &[rel_a, rel_b]);
+
+        let src = BasisDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("AAAUSDT"), Symbol::new("BBBUSDT")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let loaded = src
+            .load(&span, "full-coverage")
+            .expect("a fully-covered corpus must pass the coverage gate");
+        assert_eq!(loaded.rows.len(), 48);
+    }
+
+    /// Review 1-20 L: a NULL `open_time` must be LOUD, not mapped to epoch-0 and
+    /// then dropped by the span filter with no diagnostic anywhere.
+    #[test]
+    fn load_rejects_a_null_open_time() {
+        use polars::prelude::*;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = one_day_span_2023();
+
+        let dir = root.join("AAAUSDT/2023");
+        std::fs::create_dir_all(&dir).expect("create dir");
+
+        // 24 well-formed rows, with hour 7's open_time set to NULL.
+        let rows = day_rows(5, "-0.0012");
+        let open_times: Vec<Option<i64>> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, &(t, _))| if i == 7 { None } else { Some(t) })
+            .collect();
+        let basis: Vec<&str> = rows.iter().map(|&(_, b)| b).collect();
+        let mut df = df![
+            "open_time" => open_times,
+            "basis_close" => basis,
+        ]
+        .expect("build DataFrame");
+        let mut file = std::fs::File::create(dir.join("01.parquet")).expect("create");
+        ParquetWriter::new(&mut file)
+            .finish(&mut df)
+            .expect("write parquet");
+
+        let aggregate = write_manifest(root, &["AAAUSDT/2023/01.parquet".to_string()]);
+        let src = BasisDataSource::new(root.to_path_buf(), vec![Symbol::new("AAAUSDT")])
+            .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "null-open-time")
+            .expect_err("a NULL open_time must fail the load, not vanish silently");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, BasisDataError::NullOpenTime { .. }),
+            "expected NullOpenTime, got: {msg}"
+        );
+        assert!(
+            msg.contains("row 7"),
+            "the failure must name the offending row. Got: {msg}"
         );
     }
 
@@ -723,6 +1382,50 @@ mod tests {
     // This test is ignored by default because it requires the real basis
     // parquet files at data/binance-basis/. Run with:
     //   cargo test -p backtest --features "candle realdata" --lib basis_data -- --include-ignored
+    /// Review 1-20 M: the shipped corpus must PASS the per-symbol coverage gate.
+    ///
+    /// A validation addition may reject only combinations no checked-in corpus
+    /// uses, so the gate has to be measured against the real data, not just
+    /// against fixtures. This drives the production `load()` over the full
+    /// anchored universe for BOTH anchored years and prints the per-symbol row
+    /// counts. `#[ignore]`d because it needs `data/binance-basis/` on disk (the
+    /// same reason as the sibling below); it is a MEASUREMENT, and the fixture
+    /// tests above are what gate CI.
+    #[test]
+    #[ignore = "requires real data/binance-basis/ parquet files on disk"]
+    fn real_corpus_passes_the_coverage_gate() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("workspace root");
+        let basis_root = workspace_root.join("data/binance-basis");
+
+        let universe: Vec<Symbol> = crate::scenarios::momentum::top10_symbols_with_prices()
+            .into_iter()
+            .map(|(s, _)| s)
+            .collect();
+
+        for year in [2023, 2024] {
+            let span = crate::realdata::TimeSpan::full_year(year);
+            let src = BasisDataSource::new(basis_root.clone(), universe.clone());
+            let loaded = src.load(&span, "coverage-probe").unwrap_or_else(|e| {
+                panic!(
+                    "COVERAGE GATE REJECTED THE SHIPPED CORPUS for {year}: {e}\n\
+                     The gate must not reject data the anchored surfaces were built on — \
+                     either the floor (MIN_SYMBOL_COVERAGE_PERMILLE) is too high or the \
+                     corpus really is deficient."
+                )
+            });
+
+            let expected = (span.end_ms - span.start_ms) / 3_600_000;
+            for sym in &universe {
+                let n = loaded.rows.iter().filter(|r| &r.symbol == sym).count();
+                println!("{year} {sym:>10}: {n} / {expected} rows");
+            }
+        }
+    }
+
     #[test]
     #[ignore = "requires real data/binance-basis/ parquet files on disk"]
     fn real_parquet_parses_to_expected_rows() {
