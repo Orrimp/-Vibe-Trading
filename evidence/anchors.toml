@@ -968,7 +968,19 @@ version  = "perp-basis-signal-robustness"
 sha256   = "ab4b53a90ed5d9d1533b9445dcbeb521cae27fd260efa55d016556cacafb847d"
 
 # Anchors #108-#119 — MN Spread v0.2.0 (perp-basis-mn-spread), 3 arms × 2 fees × 2 years
-# Arms: mn-basis (BasisReversal+accrual), mn-funding (FundingAccrual), mn-basisperp (BasisFundingResidual+accrual)
+# Arms AS RUN (corrected 2026-08-11, bug-log #75 — the labels below are what the
+# code ACTUALLY executed, not what was intended):
+#   mn-basis      (#108-#111) — INTENDED BasisReversal+accrual; ACTUALLY ran the FUNDING
+#                  score. `run_path` overwrote the pre-injected basis score map with the
+#                  accrual map, so these four are DUPLICATE mn-funding runs (verified:
+#                  bodies differ from mn-funding only in title, score_source label and one
+#                  prose word — zero numeric differences). NOT basis evidence.
+#   mn-funding    (#112-#115) — FundingAccrual, as intended.
+#   mn-basisperp  (#116-#119) — BasisFundingResidual+accrual, as intended (its basis rides
+#                  `basis_score_map`, a different field, so it escaped the overwrite —
+#                  which is why it differs from mn-funding in every number).
+# These SHAs remain the correct anchors for the bytes on disk; the defect is in what was
+# computed, not in the hashing. Fix + re-run → story 1-25.
 # Grid: MN_TIER1_GRID (2 cells: lookback∈{60,168}, k_long=k_short=3, rebalance=480m)
 # All 12 cells FRAGILE — MN v0.2.0 first-pass, expected FRAGILE per analyst forecast.
 # Wall-clock: <30s Apple-Silicon M-series. git stage: M-DEV-8.

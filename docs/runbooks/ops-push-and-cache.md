@@ -133,3 +133,15 @@ git config core.hooksPath .githooks
   gates). Wedge status note: a plain `git push` succeeded 2026-07-27 (wedge
   clear at that moment); the deploy-key fallback remains the resilience
   recommendation (board action item, owner: operator).
+- 2026-08-11 (orchestrator): **wedge RECURRED** blocking the 1-20 close-out push
+  (commit `8298697`). Symptom reproduced verbatim per § 1, and the § 1 diagnosis
+  held exactly: `ssh-add -l` listed both ED25519 keys while `ssh -T git@github.com`
+  returned `sign_and_send_pubkey: signing failed … communication with agent failed`
+  → locked vault, not a key problem. **No retry loop was attempted** (§ 1 records
+  that the vault auto-relocks within seconds, so agent-toggling races lose), and
+  the permanent fix was NOT half-applied: recipe (a) step 2 adds a deploy key to
+  GitHub repo settings, which is an operator-owned account change. Commits are
+  safe on local `main` and accumulate without loss — the burn-down continued.
+  **Standing status: the permanent fix (a) or (b) has still never been applied**;
+  this is now the third recorded recurrence and remains the only thing between a
+  green local tree and a pushed one. Owner: operator.

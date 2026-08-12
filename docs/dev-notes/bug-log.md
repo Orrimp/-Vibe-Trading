@@ -285,8 +285,76 @@ The middle row is the finding in one line: under the revert, the five tests wire
 **Fix**: falsifiers drive the production wiring (strategy pre-loaded via `with_funding`, `funding_override: None`, matching `param_robustness_sweep.rs`), assert the arm actually traded, and assert the *direction* of selection so a sign flip goes RED.
 **Moral**: a divergence test proves nothing unless the signal reaches the strategy through the **same channel production uses**. If the test channel has any independent effect on the measured quantity, the test measures the channel, not the signal — and "its effect is minor" is a measurement, never an assumption. Ask of every gate: *which* difference is this assertion actually seeing? (Now the ninth mandatory probe — the **channel probe** — in `review-playbook.md` § 4.)
 
+### `#75` — `run_path` overwrites the pre-injected SCORE map with the ACCRUAL map: the market-neutral BASIS arm silently ran the FUNDING score, and a headline scientific closure rests on the artifact
+**Status**: OPEN (code fix + re-run are anchor-impacting → story 1-25). Disclosure and record-correction issued 2026-08-11 with the story-1-21 review.
+**Severity**: the highest of the lineage so far — it does not distort a number, it **silently substitutes one experiment for another** and the substitution was then read as a scientific result.
+
+**The mechanism.** `MomentumStrategy` uses ONE field, `funding_map`, for two semantically different things: the **score** sidecar and the **accrual** sidecar. The MN lane needs both — basis for the score, real funding for the short-leg cost — so the sweep driver injects the basis map via `.with_funding(basis_map)` and passes the funding map as `TcnScenarioInput::funding_override`. Then `run_path` does:
+
+```rust
+let funding_map_for_accrual = funding_override.clone();
+let mut strategy = if let Some(map) = funding_override {
+    strategy.with_funding(Some(map))   // ← REPLACES the pre-injected basis map
+} else {
+    strategy                            // ← preserve-branch: only when override is None
+};
+```
+
+`with_funding` is `self.funding_map = funding;` — a full replacement. For the MN lane `funding_override` is always `Some`, so the basis map is **always** clobbered. The driver's own comment states the intent it does not achieve: *"Basis → score (via with_funding, BasisReversal arm). Real funding → accrual (via funding_override)."*
+
+And `basis_reversal_score` and `carry_score` are the **same function modulo comments** — same `funding_map`, same shared `funding_rings`, same lookback, both returning `−mean`. Fed the same map they are bit-identical. So `mn-basis` ≡ `mn-funding`, exactly.
+
+**Confirmed empirically with a control** (orchestrator, at source and in the anchored bodies):
+
+| pair | numeric differences |
+|---|---|
+| `mn-basis` vs `mn-funding` (0bps 2023, 0bps 2024, 5bps 2023) | **ZERO** — bodies differ only in title, `score_source=` label, and one prose word |
+| **control:** `mn-basisperp` vs `mn-funding` (0bps 2023) | **every cell** — p50 −0.064156 vs +0.013327, liquidations 328 vs 148, p95_maxdd 100.00% vs 99.78% |
+
+The control is what proves the mechanism: `mn-basisperp` routes its basis through a **different field** (`basis_score_map`, via `with_basis_score`), so it escaped the overwrite and produced genuinely different numbers. Perp basis and funding correlate ~+0.47/+0.66, not +1.0 — two real series cannot produce bit-identical output across 200 bootstrap paths including identical integer liquidation counts.
+
+**What this invalidates**: anchors **#108-#111** (`mn-basis`) are duplicate funding runs, not basis evidence. The pre-registered **k2** kill-criterion ("if arm 1 ≈ arm 2, the basis IS the funding mirror") fired on a wiring artifact. **R-MN.6**, the three-arm confound resolver that was the feature's headline requirement, delivered **two** distinct arms. The claim *"the derivatives-positioning domain is CLOSED with finality"* does not follow: the market-neutral basis spread — the exact thing the story was built to test — never ran.
+
+**What SURVIVES, stated so the correction is not over-read**: `mn-basisperp` (the basis⊥funding residual) genuinely consumed the basis and came back negative (p50 −0.064/−0.043, 100% p95 MaxDD, 328/210 liquidations across 200 paths). So real evidence stands that the basis carries no orthogonal alpha *as a residual*. The closure is **weakened and re-scoped, not annihilated** — but it can no longer be stated as final, and it was never era-qualified as the thesis requires.
+
+**Why it survived every gate**: the story's own falsifier suite sets `funding_override: None` in its harness, so **every test takes the preserve-branch while production takes the overwrite branch** — the test channel differs from the production channel in precisely the way that hides the defect. That is bug-log #74's mechanism, one story later, now in production rather than in a test.
+
+**Process note of record (mine).** I reviewed these exact lines hours earlier during the story-1-20 review, wrote about the preserve-branch, and had a test built for it — but only ever asked what happens when `funding_override` is `None`. I never asked what happens when it is `Some` *and* a map is already injected. The **channel probe** I added to the playbook that same session is exactly the probe that catches this. A probe you write and do not then apply to the neighbouring lane is not yet a habit.
+
+**Fix (1-25)**: give the score sidecar and the accrual sidecar **separate fields** so neither can clobber the other, then re-run the `mn-basis` arm and re-derive k2, R-MN.6 and the closure language. A guard asserting "never overwrite a non-None score map" is the minimum; separate channels are the real fix.
+**Moral**: one field serving two meanings is a silent substitution waiting for the first caller that needs both. When two callers write the same field for different reasons, the second write is not a configuration — it is a bug with a delay fuse. Name the channels apart.
+
+### `#76` — The basis⊥funding RESIDUAL arm ranks the basis axis INVERTED relative to its own specification: it longs the HIGHEST basis
+**Status**: OPEN (fix + re-run are anchor-impacting → story 1-25). Found by the story-1-21 Edge Case Hunter; chain re-verified at source by the orchestrator.
+**Why it compounds #75 into something worse**: #75 established that `mn-basis` (#108-#111) never saw the basis. #112-#115 are funding by design. That leaves **#116-#119 (`mn-basisperp`) as the only anchored MN surfaces that consumed the basis at all** — and they consumed it backwards. **No anchored MN surface tested the basis in its documented direction.**
+
+**The chain** (`crates/strategy/src/cross_sectional/momentum.rs`, `selector.rs`):
+1. `basis_warmed` holds `(symbol, −mean(basis))`, so a **high** score means a **low** basis (the basis-reversal convention: long the uncrowded name).
+2. Ranks are assigned after a **descending** sort: `rank = i + 1` ⇒ **rank 1 = highest score = LOWEST basis = best**.
+3. `residual = rank(basis) − rank(funding)`.
+4. `top_k_long` sorts **descending** and takes the top k — the **highest** residual.
+5. Highest residual ⇒ **large** `rank(basis)` ⇒ **worst** basis-reversal score ⇒ **HIGHEST basis**.
+
+The doc block three lines above the function says the opposite: *"Long = highest residual (**low-basis** RELATIVE to its funding level)."* Same claim in `config.rs`. Low-basis-relative-to-funding is the **lowest** residual, not the highest.
+
+**Worked example** (the story's own unit-test fixture): basis AA = −0.02, CC = +0.02; funding AA = +0.03, CC = −0.03.
+- basis scores: AA = +0.02, CC = −0.02 ⇒ `rank(AA)=1`, `rank(CC)=2`
+- funding scores: AA = −0.03, CC = +0.03 ⇒ `rank(CC)=1`, `rank(AA)=2`
+- residual: AA = 1−2 = **−1**; CC = 2−1 = **+1** ⇒ `top_k_long` longs **CC**, whose basis is **+0.02, the highest**.
+
+Under plain `ScoreSource::BasisReversal` on the identical inputs the arm longs **AA**. The residual arm is the basis-reversal direction **inverted on the basis axis**.
+
+**Why no test caught it**: every residual test asserts *difference* or *inequality* — that the residual arm diverges from the raw basis arm — and none pins its **direction**. The nearest test bakes the confusion in: its own assertion message reads *"AA has high basis and low funding → residual must be negative"* while AA's basis is −0.02, the **lowest** in the fixture. A test whose prose contradicts its fixture cannot be a direction gate. (Compare the long-only basis arm, which has TWO literal-value sign guards precisely because R-BR.2 named the sign load-bearing; the residual arm inherited the requirement's importance but none of its guards.)
+
+**What it does to the conclusion**: the recorded finding is *"residual arm: negative median Sharpe (2023 g0 p50 = −0.064) → basis carries no orthogonal alpha → derivatives-positioning domain CLOSED with finality."* If the arm ran inverted, a negative median is **consistent with** the basis carrying a real edge in the documented direction — the exact opposite reading. This does not establish that an edge exists (costs, the #73 10× over-accrual, the liquidation regime and ordinary noise all sit in the same number), but it does mean **the negative result cannot be read as "no orthogonal alpha" at all.** The honest status is: unknown, pending a correctly-signed re-run.
+
+**Fix (1-25)**: decide the intended direction, make the code match the doc (or the doc match a deliberately-chosen code), and add a **literal-value direction gate** in the shape of the long-only arm's sign guards — an inequality test cannot hold a sign.
+**Moral**: when a requirement is declared load-bearing for one arm, the declaration does not travel to the arm that derives from it. A derived signal needs its own direction gate, asserting a *value*, not a *difference* — "differs from the raw arm" is satisfied just as well by the inverse as by the intended construction.
+
 ## Changelog
 
+- 2026-08-11 (orchestrator): **#76 added (OPEN, CRITICAL)** — the basis⊥funding RESIDUAL arm ranks the basis axis inverted vs its own spec (longs the HIGHEST basis; rank 1 = lowest basis, and `top_k_long` takes the highest residual). With #75 this means **no anchored MN surface tested the basis in its documented direction**, so "the residual carries no orthogonal alpha" cannot be read off #116-#119 at all. Every residual test asserts difference, never direction. Story-1-21 review; fix + re-run → 1-25.
+- 2026-08-11 (orchestrator): **#75 added (OPEN, CRITICAL)** — `run_path` overwrites the pre-injected SCORE map with the ACCRUAL map (one `funding_map` field, two meanings), so the market-neutral BASIS arm silently ran the FUNDING score. Anchors #108-#111 are duplicate funding runs; the k2 kill-criterion and the "domain CLOSED with finality" claim rest on the artifact. Confirmed with a control (`mn-basisperp`, whose basis rides a different field, differs in every number while `mn-basis` differs in none). Story-1-21 review (burn-down 10/14). Fix + re-run → 1-25. Live records corrected same pass; the anchored bodies cannot be.
 - 2026-08-11 (orchestrator): **#74 added+FIXED** — the AD-16 day-1 divergence gate for the basis arm was vacuous because the signal was injected through `funding_override`, which is also the accrual channel (~60× the test epsilon); the suite stayed green with the signal returning constant zero. Derived independently by two review layers, verified at source. Story-1-20 review (burn-down 9/14). Spawned the ninth mandatory probe (**channel**) in the review playbook. Also this pass: anchors #100-#107 routed to 1-25; ADR-0086's basis publication-lag justification corrected (declared 0, grounded 3_600_000 — ruling deferred to 1-25 as anchor-impacting).
 - 2026-05-25 (orchestrator): file created. Backfilled #54–#63 from `git log` + inline `Bug #N` comments.
 - 2026-05-25 (orchestrator): #64 added — progress bar short-run starvation fix.
