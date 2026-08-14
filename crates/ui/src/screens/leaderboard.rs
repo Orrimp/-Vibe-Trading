@@ -83,10 +83,10 @@ use crate::strings::{
     LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
     LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_EXPLAIN_BUTTON,
     LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
-    LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE,
-    LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
-    LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
-    LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
+    LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT,
+    LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
+    LEADERBOARD_HEADLINE_ALL_FRAGILE, LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING,
+    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
     LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
     LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
     LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE,
@@ -266,8 +266,20 @@ fn budget_context_line(
     // The arm-count note — how many strategies the bake-off ranks head-to-head.
     // Sourced from the real `advisor_field()` size (+1 for the appended
     // buy-and-hold benchmark) so it can never drift from the field that runs.
-    let arm_count = crate::leaderboard::runner::advisor_field_arm_count();
-    let arm_note = LEADERBOARD_FIELD_ARM_COUNT_FMT.replace("{count}", &arm_count.to_string());
+    //
+    // Review 3-15 LOW: the count is now resolved FOR THE SELECTED COIN. It was
+    // symbol-blind, so a SOLUSDT operator read "20 strategies head-to-head" while
+    // 19 ran — the ADR-0072 D8 DVOL arm is BTC/ETH-only. On a non-BTC/ETH coin
+    // the note also carries the ADR-required "available for BTC/ETH only" copy,
+    // which was ratified and never built.
+    let coin_str = st.coin.0.as_str();
+    let dvol_ok = backtest::bakeoff::dvol_supported(coin_str);
+    let arm_count = crate::leaderboard::runner::advisor_field_arm_count_for(coin_str);
+    let arm_note = if dvol_ok {
+        LEADERBOARD_FIELD_ARM_COUNT_FMT.replace("{count}", &arm_count.to_string())
+    } else {
+        LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT.replace("{count}", &arm_count.to_string())
+    };
     Column::new()
         .spacing(space::XXS)
         .push(

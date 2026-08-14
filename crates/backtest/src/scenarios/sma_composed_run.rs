@@ -454,7 +454,15 @@ pub async fn run(
         maker_fee_bps: 2,
         fill_price_mode: crate::paper::FillPriceMode::BarClose,
     };
-    let mut engine = crate::PaperEngine::new(match_config, seed);
+    // bug-log #79 — APPLY the venue-filter realism the input already carries.
+    // Before this line the config reached the scenario (it is read below for
+    // `sim_slippage_cost`) but never reached the engine, so `venue_filter`
+    // stayed `None` for every arm — €200 lot realism (PRD §13 Q5) was inert on
+    // the whole advisor bake-off. `None` (every CLI/Lab/anchored caller, and
+    // `LatencySlippageSimConfig::default()`) is the byte-identical
+    // pre-ADR-0087 path; only `advisor_default()` turns it on.
+    let mut engine = crate::PaperEngine::new(match_config, seed)
+        .with_venue_filter_mode(input.latency_slippage_sim.venue_filter.clone());
 
     let mut state = BacktestState::new(input.initial_capital);
     let mut position = Position::empty(input.symbol.clone());
@@ -956,7 +964,10 @@ pub async fn run_with_strategy(
         maker_fee_bps: 2,
         fill_price_mode: crate::paper::FillPriceMode::BarClose,
     };
-    let mut engine = crate::PaperEngine::new(match_config, seed);
+    // bug-log #79 — same fix as `run` above: APPLY the venue-filter realism the
+    // input carries (`v0.dvol_regime` is the only arm on this entry point).
+    let mut engine = crate::PaperEngine::new(match_config, seed)
+        .with_venue_filter_mode(input.latency_slippage_sim.venue_filter.clone());
     let mut state = BacktestState::new(input.initial_capital);
     let mut position = Position::empty(input.symbol.clone());
     let tolerance = dec!(0.01);

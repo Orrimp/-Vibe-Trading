@@ -115,8 +115,11 @@ fn make_causal_and_shifted_dvol(n_bars: usize) -> (Vec<Option<Decimal>>, Vec<Opt
 }
 
 /// Run `DvolRegimeStrategy` with the given DVOL series and bars.
-/// Returns the final equity `Decimal`.
-async fn run_dvol(dvol_series: Vec<Option<Decimal>>, bars: Vec<Bar>) -> Decimal {
+/// Returns the full run result (equity + fill counts).
+async fn run_dvol_full(
+    dvol_series: Vec<Option<Decimal>>,
+    bars: Vec<Bar>,
+) -> backtest::scenarios::sma_composed_run::SmaComposedRunResult {
     let symbol = Symbol::new("BTCUSDT");
     let strategy = Box::new(DvolRegimeStrategy::new(
         symbol.clone(),
@@ -146,7 +149,7 @@ async fn run_dvol(dvol_series: Vec<Option<Decimal>>, bars: Vec<Bar>) -> Decimal 
     };
 
     let (_h, cancel_rx) = cancellation_pair();
-    let result = run_with_strategy(
+    run_with_strategy(
         &input,
         Some(bars),
         seed_u64,
@@ -155,9 +158,12 @@ async fn run_dvol(dvol_series: Vec<Option<Decimal>>, bars: Vec<Bar>) -> Decimal 
         ProgressSender::disabled(),
     )
     .await
-    .expect("run_with_strategy must succeed in leak check");
+    .expect("run_with_strategy must succeed in leak check")
+}
 
-    result.final_equity
+/// Convenience wrapper: final equity only.
+async fn run_dvol(dvol_series: Vec<Option<Decimal>>, bars: Vec<Bar>) -> Decimal {
+    run_dvol_full(dvol_series, bars).await.final_equity
 }
 
 /// T7b — Future-shifted DVOL produces different equity from causal DVOL.
@@ -231,35 +237,80 @@ async fn future_shifted_dvol_changes_decisions() {
     );
 }
 
-/// Sanity: causal DVOL strategy matches buyhold during warm-up (no signals).
+/// Warm-up holds the COIN, not cash — on a RISING price fixture.
 ///
-/// When dvol_series is all `None`, the strategy is in warm-up mode → weight=1
-/// (HOLD). On a flat price series this means: no Buy/Sell transitions →
-/// equity stays at initial_capital. BuyHold on the same flat bars also stays flat.
-/// Assert divergence < 1 bp.
+/// # Why the fixture changed (review 3-15 CRITICAL)
+///
+/// This test used to run on a **flat** price series and assert that the all-`None`
+/// (permanent warm-up) arm stayed within 1 bp of buy-and-hold. On a flat price
+/// path cash and coin are indistinguishable: an arm holding 100% cash produces
+/// exactly `initial_capital`, and so does buy-and-hold. The test therefore passed
+/// with the arm sitting in cash for the entire window — which is precisely what
+/// the shipped implementation did (`weight: 1, is_long: false` + transition-only
+/// emission → `(1,1,false)` → `Hold` forever). It was a vacuous assertion about
+/// the one price path that cannot distinguish the two states.
+///
+/// The fixture now RISES, which separates them:
+/// - holding the coin at `FixedFractionSizer(0.10)` → equity climbs above
+///   `initial_capital`;
+/// - holding cash → equity is EXACTLY `initial_capital`.
+///
+/// ADR-0072 D3 requires warm-up to be "HOLD = benchmark behaviour ... so the arm
+/// only ever *subtracts* exposure and never diverges from buy-and-hold before the
+/// signal is defined". This is the assertion that holds it to that.
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 #[tokio::test]
-async fn warmup_no_dvol_matches_buyhold_on_flat_bars() {
+async fn warmup_no_dvol_holds_the_coin_on_rising_bars() {
     const N_BARS: usize = 20;
     let initial_capital = dec!(100_000);
 
-    // Flat bars throughout (no price change).
+    // RISING bars: 1% per bar. Cash and coin now have different equity.
     let bars: Vec<Bar> = (0..N_BARS as i64)
-        .map(|h| make_bar(h, dec!(50_000)))
+        .map(|h| {
+            let mut price = dec!(50_000);
+            for _ in 0..h {
+                price *= dec!(1.01);
+            }
+            make_bar(h, price)
+        })
         .collect();
 
-    // DVOL series: all None → permanent warm-up → strategy holds (no trades).
-    let none_dvol: Vec<Option<Decimal>> = vec![None; N_BARS];
-
-    let dvol_equity = run_dvol(none_dvol, bars.clone()).await;
+    // DVOL series: all None → permanent warm-up → the arm must HOLD THE COIN.
+    // (This is exactly the series `cfg.dvol_override.unwrap_or_default()` hands
+    // the arm when the DVOL corpus is missing — bug-log #78's default state.)
+    let result = run_dvol_full(vec![None; N_BARS], bars.clone()).await;
     let (_curve, buyhold_equity) = run_buyhold_path(&bars, initial_capital, 1);
 
-    let one_bp = initial_capital / dec!(10_000);
-    let divergence = (dvol_equity - buyhold_equity).abs();
+    println!(
+        "warmup_holds_coin: equity={} buys={} sells={} | buyhold(100%)={buyhold_equity}",
+        result.final_equity, result.buys, result.sells
+    );
 
     assert!(
-        divergence < one_bp,
-        "Warm-up sanity: DVOL (all-None) should approximate buyhold on flat bars; \
-        dvol={dvol_equity}, buyhold={buyhold_equity}, divergence={divergence}"
+        result.buys >= 1,
+        "warm-up must ENTER the coin: buys={} (zero buys = the arm is in 100% CASH, \
+         the ADR-0072 D3 violation found by the 3-15 review)",
+        result.buys
+    );
+    assert_eq!(
+        result.sells, 0,
+        "warm-up never has a defined signal, so it must never exit: sells={}",
+        result.sells
+    );
+    assert!(
+        result.final_equity > initial_capital,
+        "on a RISING window a coin-holding arm must gain: equity={}, initial={}. \
+         Equality with initial capital is the exact signature of an arm in cash — \
+         the state the old flat-price fixture could not tell apart.",
+        result.final_equity,
+        initial_capital
+    );
+    // And it must never gain MORE than the 100%-invested benchmark: the arm is
+    // long at 10%, so it "only ever subtracts exposure" (ADR-0072 D3).
+    assert!(
+        result.final_equity < buyhold_equity,
+        "the warm-up arm is long at FixedFractionSizer(0.10), so it must gain LESS \
+         than the 100%-invested benchmark: equity={}, buyhold={buyhold_equity}",
+        result.final_equity
     );
 }

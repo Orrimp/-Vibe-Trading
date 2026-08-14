@@ -1,6 +1,6 @@
 # Story 2.18: cockpit-baseline-panel
 
-Status: review
+Status: done
 
 <!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->

@@ -21,6 +21,17 @@
 //! Warm-up (< W=30 distinct daily closes available): weight=1 (HOLD = buy-and-hold
 //! behavior — never diverge from benchmark before the signal is defined).
 //!
+//! **HOLD means holding the COIN, not cash (review 3-15 CRITICAL, bug-log #78).**
+//! The first shipped implementation started from `weight: 1, is_long: false` and
+//! emitted signals only on weight *transitions*, so warm-up produced the tuple
+//! `(1, 1, false)` → `Hold` forever: the arm sat in **cash** through warm-up and
+//! could not enter until a post-warm-up stress episode ENDED. In a persistently
+//! calm window it never traded at all. That is the exact opposite of ADR-0072 D3,
+//! which requires the arm to "only ever *subtract* exposure and never diverge from
+//! buy-and-hold before the signal is defined". The emission rule below is now
+//! stated over the TARGET STATE (`new_weight` vs the position), not over the
+//! weight transition, which makes warm-up genuinely long from bar 0.
+//!
 //! # Rationale for hand-written `Strategy` (NOT a DSL `ComposedStrategy`)
 //!
 //! The composed-DSL `Expr` (`crates/strategy/src/composed/ast.rs`) reads only
@@ -74,16 +85,22 @@ pub const DVOL_REGIME_WINDOW: usize = 30;
 ///
 /// The strategy holds the coin (HOLD = weight 1) when DVOL is calm (below the
 /// trailing 30-day median) and steps to cash (CASH = weight 0) when vol is
-/// elevated. Warm-up → HOLD (the benchmark behavior).
+/// elevated. Warm-up → HOLD (the benchmark behavior) — and "hold" means holding
+/// the COIN, so the very first warm-up bar emits a `Buy`.
 ///
 /// # Long-only operation
 ///
-/// Signal emission:
-/// - `0 → 1` weight transition (regime flip: stress → calm) while currently
-///   FLAT → emit `SignalKind::Buy`.
-/// - `1 → 0` weight transition (regime flip: calm → stress) while currently
-///   LONG → emit `SignalKind::Sell`.
-/// - No transition → emit `SignalKind::Hold`.
+/// Signal emission is a function of the TARGET state and the current position
+/// (review 3-15 CRITICAL — it used to be a function of the weight *transition*,
+/// which left the arm in cash for the whole warm-up):
+/// - target weight 1 (calm **or warm-up**) while currently FLAT → `SignalKind::Buy`.
+/// - target weight 0 (stress) while currently LONG → `SignalKind::Sell`.
+/// - target already matches the position → `SignalKind::Hold`.
+///
+/// On every regime *flip* this is identical to the old transition rule; it
+/// differs only where the prior weight equalled the new weight while the
+/// position disagreed — which is exactly the warm-up bug (and any future case
+/// where the arm's intent and its position have fallen out of sync).
 ///
 /// The bar-loop's long-only clamp (`sma_composed_run.rs:534`) ensures these
 /// signals only result in orders when in the right position state.
@@ -103,9 +120,11 @@ pub struct DvolRegimeStrategy {
     ring: Vec<Decimal>,
     /// The most-recent DVOL close seen (to detect when the day changes).
     last_close: Option<Decimal>,
-    /// Current regime weight (0 = cash, 1 = hold).
-    weight: u8,
-    /// Whether currently in a long position (for signal-edge detection).
+    /// Whether currently in a long position (the arm's own model of its state).
+    ///
+    /// This is the ONLY state the signal rule reads besides the freshly-computed
+    /// target weight. The old `weight` field (the PRIOR bar's target) was deleted
+    /// with the transition rule it belonged to — see the type-level docs.
     is_long: bool,
 }
 
@@ -118,9 +137,26 @@ impl DvolRegimeStrategy {
     /// - `as_of_dvol`: Pre-resolved as-of DVOL closes, one per bar in order.
     ///   `as_of_dvol[i] = None` means the DVOL series hasn't started yet (warm-up).
     /// - `w`: Lookback window in distinct daily closes. Use `DVOL_REGIME_WINDOW`.
+    ///
+    /// # Degenerate window
+    ///
+    /// A median needs at least two order statistics, so `w < 2` is meaningless.
+    /// This used to `assert!` — a **panic in library code**, which CLAUDE.md
+    /// forbids (review 3-15 LOW). It now clamps to 2 and logs a `warn!`. Every
+    /// production construction passes the [`DVOL_REGIME_WINDOW`] constant, so the
+    /// clamp is unreachable outside a caller bug; the clamp exists so a caller
+    /// bug degrades a probe arm instead of aborting the operator's bake-off.
     #[must_use]
     pub fn new(symbol: Symbol, as_of_dvol: Vec<Option<Decimal>>, w: usize) -> Self {
-        assert!(w >= 2, "window w must be >= 2 to compute a median");
+        let w = if w < 2 {
+            tracing::warn!(
+                requested_w = w,
+                "DvolRegimeStrategy: window w must be >= 2 to compute a median — clamping to 2"
+            );
+            2
+        } else {
+            w
+        };
         Self {
             id: StrategyId::new("dvol_regime"),
             symbol,
@@ -129,8 +165,9 @@ impl DvolRegimeStrategy {
             idx: 0,
             ring: Vec::with_capacity(w),
             last_close: None,
-            // Warm-up default: weight=1 (HOLD = benchmark behavior, ADR-0072 D3 M-T1.4).
-            weight: 1,
+            // Warm-up default: HOLD THE COIN (ADR-0072 D3 M-T1.4). `is_long: false`
+            // is the FACTUAL starting position (nothing bought yet); the first
+            // `on_bar` sees target weight 1 while flat and emits the entering Buy.
             is_long: false,
         }
     }
@@ -167,8 +204,9 @@ impl Strategy for DvolRegimeStrategy {
     /// 2. If changed vs `last_close` (or is the first close), push to ring
     ///    (capped at `w` — oldest evicted first).
     /// 3. If ring has `w` distinct closes: compute median, classify regime.
-    ///    Else: warm-up → weight=1 (HOLD).
-    /// 4. Emit signal based on weight transition vs current position.
+    ///    Else: warm-up → weight=1 (HOLD the coin).
+    /// 4. Emit the signal that moves the position TO the target weight
+    ///    (review 3-15: target-state, not weight-transition — see the type docs).
     fn on_bar(&mut self, bar: &Bar) -> Vec<Signal> {
         // Retrieve the as-of DVOL close for this bar.
         let dvol_t = self.as_of_dvol.get(self.idx).copied().flatten();
@@ -203,22 +241,28 @@ impl Strategy for DvolRegimeStrategy {
             1u8
         };
 
-        // Determine signal from weight transition + position state.
-        let kind = match (self.weight, new_weight, self.is_long) {
-            // 0 → 1 while flat: regime flipped calm, go long.
-            (0, 1, false) => {
+        // Determine the signal that moves the CURRENT position to the TARGET
+        // weight. Review 3-15 CRITICAL / bug-log #78: this used to key off the
+        // weight TRANSITION `(prev_weight, new_weight, is_long)`, which made the
+        // warm-up tuple `(1, 1, false)` fall through to `Hold` — the arm sat in
+        // cash for the entire warm-up and could only enter after a post-warm-up
+        // stress episode ended. Keying off the target state makes warm-up hold
+        // the COIN, as ADR-0072 D3 requires, and is identical to the old rule on
+        // every genuine regime flip.
+        let kind = match (new_weight, self.is_long) {
+            // Target = hold the coin (calm regime OR warm-up) while FLAT → enter.
+            (1, false) => {
                 self.is_long = true;
                 SignalKind::Buy
             }
-            // 1 → 0 while long: regime flipped stress, go flat.
-            (1, 0, true) => {
+            // Target = cash (stress regime or tie) while LONG → exit.
+            (0, true) => {
                 self.is_long = false;
                 SignalKind::Sell
             }
-            // No transition, or transition that doesn't match position state.
+            // Position already matches the target → nothing to do.
             _ => SignalKind::Hold,
         };
-        self.weight = new_weight;
 
         vec![Signal {
             strategy_id: self.id.clone(),
@@ -301,26 +345,78 @@ mod tests {
 
     // ── Warm-up ───────────────────────────────────────────────────────────────
 
-    /// During warm-up (< W distinct closes), the strategy emits HOLD.
+    /// **Review 3-15 CRITICAL — the RED-before test.**
+    ///
+    /// ADR-0072 D3 M-T1.4: warm-up is `weight = 1` = "HOLD = benchmark
+    /// behaviour", so that the arm "only ever *subtracts* exposure and never
+    /// diverges from buy-and-hold before the signal is defined". Holding the
+    /// benchmark means holding the **coin**. The shipped implementation held
+    /// **cash**: it started from `weight: 1, is_long: false` and keyed emission
+    /// off the weight *transition*, so warm-up produced `(1, 1, false)` → `Hold`
+    /// on every bar and the arm never entered.
+    ///
+    /// This test fails on that implementation (bar 0 was `Hold`, and no bar in a
+    /// warm-up-only window was ever `Buy`). It is the single assertion that
+    /// distinguishes "hold the coin" from "hold cash" — every other warm-up
+    /// assertion in this file is satisfied by both.
     #[test]
-    fn warm_up_emits_hold() {
-        // Only 5 distinct DVOL values — much less than W=30 → always warm-up.
+    fn warm_up_enters_the_coin_on_the_first_bar() {
+        // Only 10 distinct DVOL values — far below W=30 → warm-up on every bar.
         let dvol: Vec<Option<Decimal>> =
             (0..10).map(|i| Some(dec!(50) + Decimal::from(i))).collect();
         let signals = run_strategy(dvol, 10, 30);
-        for s in signals {
-            assert_eq!(s, SignalKind::Hold, "warm-up must emit Hold");
+        assert_eq!(
+            signals[0],
+            SignalKind::Buy,
+            "warm-up = HOLD THE COIN: the first bar must ENTER (Buy). A `Hold` here \
+             means the arm is sitting in cash for the whole warm-up — the ADR-0072 D3 \
+             violation found by the 3-15 review."
+        );
+        for (i, s) in signals.iter().enumerate().skip(1) {
+            assert_eq!(
+                *s,
+                SignalKind::Hold,
+                "bar {i}: already long and still in warm-up → Hold (no repeated Buys)"
+            );
         }
     }
 
-    /// None as-of DVOL (series not started) → warm-up → HOLD.
+    /// None as-of DVOL (series not started) → warm-up → hold the COIN.
+    ///
+    /// This is the shape the bake-off's degraded path produces when the DVOL
+    /// corpus is missing (`unwrap_or_default()` → empty series → every `as_of`
+    /// is `None`). Bug-log #78: five code comments called that state a
+    /// "buy-and-hold proxy" while it was in fact 100% cash. With the fix the
+    /// description is finally true — the arm is long the coin from bar 0.
     #[test]
-    fn none_dvol_emits_hold() {
+    fn none_dvol_holds_the_coin() {
         let dvol: Vec<Option<Decimal>> = vec![None; 10];
         let signals = run_strategy(dvol, 10, 30);
-        for s in signals {
-            assert_eq!(s, SignalKind::Hold, "None DVOL must emit Hold");
+        assert_eq!(
+            signals[0],
+            SignalKind::Buy,
+            "an all-None DVOL series is permanent warm-up — the arm must hold the COIN"
+        );
+        for (i, s) in signals.iter().enumerate().skip(1) {
+            assert_eq!(*s, SignalKind::Hold, "bar {i}: stays long, emits Hold");
         }
+    }
+
+    /// A degenerate `w` must NOT panic (CLAUDE.md: no panics in library code).
+    ///
+    /// Review 3-15 LOW — `new()` used to `assert!(w >= 2)`. It now clamps.
+    #[test]
+    fn degenerate_window_clamps_instead_of_panicking() {
+        for w in [0_usize, 1] {
+            let strat = DvolRegimeStrategy::new(Symbol::new("BTCUSDT"), vec![Some(dec!(50)); 4], w);
+            assert_eq!(
+                strat.w, 2,
+                "w={w} must clamp to the minimum median window 2"
+            );
+        }
+        // And the clamped strategy still runs a full bar loop without panicking.
+        let signals = run_strategy(vec![Some(dec!(50)), Some(dec!(60)), Some(dec!(40))], 3, 0);
+        assert_eq!(signals.len(), 3);
     }
 
     // ── Regime classification ─────────────────────────────────────────────────
@@ -337,26 +433,24 @@ mod tests {
         // After 3 distinct closes, ring is full. Next bar: dvol=55 < 60 → calm → Buy.
         dvol.push(Some(dec!(55)));
         let signals = run_strategy(dvol, 4, w);
-        // Bars 0,1,2: warm-up → Hold.
-        assert_eq!(signals[0], SignalKind::Hold, "bar 0 warm-up");
-        assert_eq!(signals[1], SignalKind::Hold, "bar 1 warm-up");
+        // Exact trace under the target-state rule (review 3-15):
+        // bar0: ring=[50], len=1 < 3 → warm-up → target 1, is_long=false → BUY (enter),
+        //       is_long=true. (Pre-fix this was `Hold` and the arm stayed in cash.)
+        // bar1: ring=[50,60], len=2 < 3 → warm-up → target 1, already long → Hold.
+        // bar2: ring=[50,60,70] full. dvol=70, median=60 → 70>=60 → target 0, long → SELL.
+        // bar3: dvol=55 changed → evict 50 → ring=[60,70,55], median=60.
+        //       55 < 60 → target 1, flat → BUY.
+        assert_eq!(
+            signals[0],
+            SignalKind::Buy,
+            "bar 0 warm-up must ENTER the coin (ADR-0072 D3 = benchmark behaviour)"
+        );
+        assert_eq!(signals[1], SignalKind::Hold, "bar 1 warm-up, already long");
         assert_eq!(
             signals[2],
-            SignalKind::Hold,
-            "bar 2 warm-up (ring just full)"
+            SignalKind::Sell,
+            "bar 2 (ring just full, dvol=70 ≥ median 60) → stress → exit to cash"
         );
-        // Bar 3: ring=[50,60,70], median=60, dvol=55 < 60 → weight=1→1 (first time full).
-        // Actually on bar 2 the ring becomes full; weight computed for bar 2 = dvol=70 >= 60 → cash=0.
-        // Bar 3: dvol=55 < 60 → weight should be 1 (calm), but is_long=false → Buy.
-        // Wait: let's trace the exact state:
-        // bar0: ring=[50], len=1 < 3 → warm-up → weight=1, is_long=false → Hold (no 0→1 from flat).
-        //   Actually weight starts at 1, new_weight=1, old=1 → no transition → Hold.
-        // bar1: ring=[50,60], len=2 < 3 → warm-up → weight=1 → Hold.
-        // bar2: ring=[50,60,70], len=3 == 3 → full! dvol=70, median=60 → 70>=60 → weight=0.
-        //   transition: 1→0 while is_long=false → no Sell → Hold; weight=0.
-        // bar3: ring=[50,60,70] (dvol=55 < 70, changed, evicts 50) → ring=[60,70,55].
-        //   median([55,60,70])=60. dvol=55 < 60 → weight=1.
-        //   transition: 0→1 while is_long=false → Buy; is_long=true.
         assert_eq!(signals[3], SignalKind::Buy, "calm after stress → Buy");
     }
 

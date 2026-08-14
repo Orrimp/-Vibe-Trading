@@ -1933,6 +1933,10 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_FIELD_ARM_COUNT_FMT",
             LEADERBOARD_FIELD_ARM_COUNT_FMT,
         ),
+        (
+            "LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT",
+            LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT,
+        ),
         ("LEADERBOARD_LOOKBACK_2W", LEADERBOARD_LOOKBACK_2W),
         ("LEADERBOARD_LOOKBACK_1M", LEADERBOARD_LOOKBACK_1M),
         ("LEADERBOARD_LOOKBACK_3M", LEADERBOARD_LOOKBACK_3M),
@@ -3541,6 +3545,17 @@ pub const LEADERBOARD_CONTEXT_NO_BUDGET_FMT: &str = "Ranking strategies in {coin
 /// `ui`-side field count — no engine string crosses the seam).
 pub const LEADERBOARD_FIELD_ARM_COUNT_FMT: &str =
     "{count} strategies head-to-head: rule engines, vote ensembles, and buy-and-hold.";
+
+/// Same note for a coin OUTSIDE {BTCUSDT, ETHUSDT}, where the ADR-0072
+/// implied-vol (DVOL) regime arm is not in the field at all.
+///
+/// ADR-0072 D5 required "DVOL-regime arm available for BTC/ETH only" copy on the
+/// leaderboard; it was ratified and never built, while the arm-count note said
+/// 20 unconditionally — so a SOLUSDT operator was told 20 strategies ran when 19
+/// did (review 3-15 LOW). Carried on the existing note rather than as a new
+/// element, so the BTC/ETH rendering is byte-unchanged.
+pub const LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT: &str = "{count} strategies head-to-head: rule engines, vote ensembles, and buy-and-hold. \
+     The implied-vol (DVOL) regime arm is available for BTC/ETH only — it did not run for this coin.";
 
 // ── Lookback chip labels (F3) — one per `LeaderboardLookback` ──────────────────
 

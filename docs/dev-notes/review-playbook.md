@@ -102,6 +102,17 @@ reader trusts first; a contradiction there outlives every dev-note that
 resolved it. **Ask of every conclusion in an anchored body: does the project
 still believe this?**
 
+**Verify with `--all-features`, not the one feature you think matters.** A
+feature-gated binary does not compile under a narrower flag set, so a struct
+field added to a shared type can break a caller that no gate in your pass ever
+builds. This bit the burn-down itself: the `bar_span_hours` field added by the
+#72/#73 carry fix left three call sites in `threshold_sweep.rs` uncompiled for
+two weeks, because that bin is `required-features = ["candle", "realdata"]` and
+the verification ran `--features backtest/realdata` — realdata but no candle,
+so the bin was silently skipped. `cargo clippy --all-targets` does **not** save
+you here: `--all-targets` selects targets, not features. When a patch touches a
+shared type, run `cargo check -p <crate> --all-features` before claiming green.
+
 **On mass re-baselining — the protocol exists, it just isn't binding.** Per
 bug-log #77 a regenerated baseline cannot witness the code it guards, so a
 56-file re-baseline is where an unrelated change hides. But 2-18's `8dbe6ae`

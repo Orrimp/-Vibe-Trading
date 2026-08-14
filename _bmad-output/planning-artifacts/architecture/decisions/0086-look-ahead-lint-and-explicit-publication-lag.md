@@ -32,10 +32,11 @@ Two fresh exogenous channels have since landed and are exactly the trigger ADR-0
 **DVOL** (`v0.dvol_regime`, ADR-0072) and **macro** (`v0.macro_riskon`, ADR-0073). Grounding both
 (feature.md § What we found):
 
-- **DVOL** — `crates/backtest/src/dvol_data.rs::dvol_as_of` (dvol_data.rs:375-390) already builds a
+- **DVOL** — `crates/backtest/src/dvol_data.rs::dvol_as_of` already builds a
   `PitSeries` and queries `as_of_value`; the key is `day_close_ts_ms = day_open + 86_400_000 − 1`
-  (dvol_data.rs:108,113), the fully-observed close instant. Unit tests `bar_on_day2_sees_day1_close`
-  et al. pin the no-look-ahead property. **Already as-of-correct.**
+  (the last millisecond of the DVOL day). Unit tests `bar_on_day2_sees_day1_close`
+  et al. pin the no-look-ahead property. **Already as-of-correct** — see the 1 ms
+  qualification recorded against the DVOL row in the lag table below.
 - **Macro** — `crates/backtest/src/macro_regime.rs::load_macro_regime_series` builds a
   `PitSeries<bool>` (macro_regime.rs:209), keyed on `bar.close_ts` ≈ EOD UTC (macro_regime.rs:135),
   SMAs trailing/past-only, warm-up excluded. **Already as-of-correct.**
@@ -98,7 +99,7 @@ availability, with ONE known exception corrected below):**
 
 | Series | Channel | Current key | `publication_lag_ms` | Effect |
 |--------|---------|-------------|----------------------|--------|
-| DVOL daily close | `v0.dvol_regime` | `day_open + 86_400_000 − 1` (EOD close) | **0** | byte-identical |
+| DVOL daily close | `v0.dvol_regime` | `day_open + 86_400_000 − 1` (EOD close) | **0 — GROUNDED, with a 1 ms qualification** (see correction) | byte-identical; *understated by 1* |
 | Macro `^GSPC`/`DX-Y.NYB`/`^TNX` | `v0.macro_riskon` | `bar.close_ts` ≈ EOD UTC | **0** | byte-identical |
 | Funding | (basis/carry, ADR-0058) | `funding_time_ms` (settlement) | **0** | unchanged |
 | Basis | (basis-reversal, ADR-0058) | premium-kline **`open_time`**, carrying that kline's **close** value | **0 — DECLARED, NOT GROUNDED** (see correction) | unchanged; *understated by 3_600_000* |
@@ -142,6 +143,41 @@ baked into the key" fragility.
 > *known-understated* lag, recorded here rather than left implied. Per D2's own rationale, an
 > unreviewed lag baked into a key is the fragility this ADR exists to close — so the honest state is
 > a declared exception, not a silent one.
+
+> **Correction 2026-08-13 (story 3-15 review, MEDIUM — orchestrator-verified). DVOL row only.**
+> Unlike the Basis row above, the DVOL row is **substantially grounded**: the fetcher aggregates the
+> day's 12h candles and stores the LATEST candle's close
+> (`crates/data/src/bin/fetch_deribit_dvol.rs::aggregate_to_daily`), the loader keys that value on
+> `day_close_ts_ms`, and the join is `≤` on that key — so the stored number really is an
+> end-of-day close and no bar can consume it before the day is over. The Basis-row failure mode
+> (value realized an hour after its key) does **not** apply here.
+>
+> The row is nonetheless off by **one candle boundary**, and the ADR's blanket sentence — "the lags
+> are 0 because each key already encodes availability" — is literally inaccurate for it:
+>
+> - The key is stamped `day_open + 86_400_000 − 1`, i.e. the last millisecond of the day. The
+>   closing 12h candle *covers* `[day_open + 43_200_000, day_open + 86_400_000)`, so its close value
+>   is determined at the instant that interval ends — `day_open + 86_400_000` — which is **1 ms
+>   after** the key. The key therefore precedes availability by 1 ms; the grounded lag is `1`, not
+>   `0`.
+>
+> **Equity impact: none, and this is a proof rather than an estimate.** The only queries are bar
+> OPEN timestamps on the 1h (or coarser) grid, which are multiples of `3_600_000` ms. The half-open
+> interval `(day_open + 86_400_000 − 1, day_open + 86_400_000]` — the entire window in which a
+> query could exploit the 1 ms — contains no such multiple, because both endpoints are themselves
+> multiples of `86_400_000` and the interval is 1 ms wide. No bar opens inside it, so declaring
+> `publication_lag_ms = 1` would return the identical value for every query the product makes. The
+> row's `0` is therefore **byte-equivalent, not merely close**; it is corrected here as a statement
+> of record, not as a defect to re-price. No anchored surface is involved either way — the DVOL arm
+> runs `write_report = false` and owns zero rows in `evidence/anchors.toml`.
+>
+> **The related present-and-ignored pattern IS fixed in code.** The loader read `day_close_ts_ms`
+> while ignoring `day_open_ts_ms`, even though both are on disk — the same shape that made the Basis
+> row wrong (there, `close_time` was in the schema and ignored). `DvolDataSource::load` now asserts
+> `day_close_ts_ms == day_open_ts_ms + 86_400_000 − 1` per row and fails with
+> `DvolDataError::KeyingInvariant` otherwise, so a regenerated parquet written under a different
+> keying convention cannot be silently accepted. Pinned by
+> `dvol_data.rs::tests::load_rejects_a_foreign_keying_convention`.
 
 ### D3. Retrofit DVOL + macro onto the explicit-lag path, proven byte-identical
 

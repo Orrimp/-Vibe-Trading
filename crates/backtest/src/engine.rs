@@ -1144,8 +1144,12 @@ pub async fn run_scenario(
                 slippage_bps: 2,
                 taker_fee_bps: 4,
                 config_id: "pairs_mr_h1".to_string(),
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
             };
             // Bug #63 — cancel + progress.
             let result = crate::scenarios::pairs::run(&input, seed_u64, cancel_rx, progress_tx)
@@ -1193,8 +1197,12 @@ pub async fn run_scenario(
                 forecaster_id: "passthrough".to_string(),
                 bars_override: None,
                 emit_equity_bin: None,
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 funding_override: None,
                 bar_span_hours: 1,
             };
@@ -1257,8 +1265,12 @@ pub async fn run_scenario(
                 forecaster_id: "tcn-bs1".to_string(),
                 bars_override: None,
                 emit_equity_bin: None,
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 funding_override: None,
                 bar_span_hours: 1,
             };
@@ -1310,8 +1322,12 @@ pub async fn run_scenario(
                 // byte-identity. Lab UI sets them to user-typed values.
                 sma_fast_len: cfg.sma_fast_len,
                 sma_slow_len: cfg.sma_slow_len,
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 // Long-only arms have short_enabled=false (default); _ls arms set true.
                 short_enabled: cfg.short_enabled,
@@ -1395,8 +1411,12 @@ pub async fn run_scenario(
                 // anchored byte-identity. Lab override happens at the runner.
                 sma_fast_len: None,
                 sma_slow_len: None,
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 short_enabled: cfg.short_enabled,
                 // ADR-0069 T7 — forward in-memory TOML override if set by the sweep.
@@ -1475,8 +1495,12 @@ pub async fn run_scenario(
                 // anchored byte-identity. Lab override happens at the runner.
                 sma_fast_len: None,
                 sma_slow_len: None,
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 short_enabled: cfg.short_enabled,
                 // ADR-0069 T7 — forward in-memory TOML override if set by the sweep.
@@ -1557,8 +1581,12 @@ pub async fn run_scenario(
                 // anchored byte-identity. Lab override happens at the runner.
                 sma_fast_len: None,
                 sma_slow_len: None,
-                // engine dispatch: noop sim (Lab UI does not expose sim flags).
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 // ADR-0068 D1: thread short_enabled from ScenarioConfig.
                 short_enabled: cfg.short_enabled,
                 // ADR-0069 T7 — forward in-memory TOML override if set by the sweep.
@@ -1640,7 +1668,12 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 sma_fast_len: None,
                 sma_slow_len: None,
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 short_enabled: cfg.short_enabled,
                 composed_toml_override: None,
             };
@@ -1710,7 +1743,12 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 sma_fast_len: None,
                 sma_slow_len: None,
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 short_enabled: cfg.short_enabled,
                 composed_toml_override: None,
             };
@@ -1780,7 +1818,12 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 sma_fast_len: None,
                 sma_slow_len: None,
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 short_enabled: cfg.short_enabled,
                 composed_toml_override: None,
             };
@@ -1850,7 +1893,12 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 sma_fast_len: None,
                 sma_slow_len: None,
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 short_enabled: cfg.short_enabled,
                 composed_toml_override: None,
             };
@@ -1920,7 +1968,12 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 sma_fast_len: None,
                 sma_slow_len: None,
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 short_enabled: cfg.short_enabled,
                 composed_toml_override: None,
             };
@@ -1985,8 +2038,16 @@ pub async fn run_scenario(
         // other symbols → arm absent from field (D-DVOL.6), never panics.
         //
         // The arm reads `cfg.dvol_override` — the pre-resolved as-of DVOL series
-        // (one entry per bar) injected by the bake-off loop. If `dvol_override`
-        // is None (arm skipped for unsupported symbol), this arm is never dispatched.
+        // (one entry per bar) injected by the bake-off loop.
+        //
+        // bug-log #78: on the BAKE-OFF path `dvol_override` is now never `None`
+        // here — `run_bakeoff` drops the arm from the ranked field when the series
+        // is missing or does not cover the window, exactly as it drops it for an
+        // unsupported coin. `unwrap_or_default()` remains only for direct
+        // `run_scenario` callers (Lab/CLI/tests) that construct a `ScenarioConfig`
+        // by hand; with the review-3-15 warm-up fix an empty series now genuinely
+        // does hold the coin from bar 0 (it used to sit in 100% CASH while five
+        // code comments called it a "buy-and-hold proxy").
         "v0.dvol_regime" => {
             use strategy::DvolRegimeStrategy;
 
@@ -2002,7 +2063,12 @@ pub async fn run_scenario(
                 taker_fee_bps: 4,
                 sma_fast_len: None,
                 sma_slow_len: None,
-                latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
+                // bug-log #79 — thread the ScenarioConfig sim config (incl.
+                // `venue_filter`) into the arm. The advisor bake-off/sweep pass
+                // `advisor_default()` (lot realism ON, PRD §13 Q5); every other
+                // caller (Lab UI, CLI, tests) passes the all-noop `Default`
+                // (`venue_filter: None`) -> byte-identical to HEAD.
+                latency_slippage_sim: cfg.latency_slippage_sim.clone(),
                 short_enabled: false, // long-only; no short path
                 composed_toml_override: None,
             };
@@ -2311,7 +2377,9 @@ pub async fn run_scenario(
         // `PitSeries<bool>` — none yahoo-gated). When `yahoo` is OFF the macro
         // corpus loader (yahoo-gated, in `bakeoff::run_bakeoff`) never runs, so
         // `macro_regime_series` stays `None` → empty PitSeries → arm holds flat
-        // the whole window (graceful degradation = buy-and-hold proxy). The
+        // the whole window — i.e. 100% CASH, **not** a "buy-and-hold proxy"
+        // (bug-log #78; the mislabel was inherited from `v0.dvol_regime`, where it
+        // was false and has since been fixed). Owned by story 3-16. The
         // MEANINGFUL (non-vacuous) macro verdict requires `--features yahoo`
         // so the real `data/yahoo-macro/` corpus is fed; the day-1
         // baseline-divergence e2e (`macro_regime_overlay_end_to_end.rs`) proves
@@ -2335,10 +2403,12 @@ pub async fn run_scenario(
             };
 
             // Resolve the macro regime series.
-            // If None (corpus absent, warm-up-only path), use an empty series
-            // → as_of_value always returns None → arm runs flat the whole window
-            // (equivalent to a warm-up-only buy-and-hold proxy — same graceful
-            // degradation discipline as the v0.dvol_regime arm).
+            // If None (corpus absent), use an empty series → as_of_value always
+            // returns None → the arm runs FLAT (100% cash) for the whole window.
+            // bug-log #78: this is NOT "a warm-up-only buy-and-hold proxy" and it
+            // is no longer "the same discipline as the v0.dvol_regime arm" — that
+            // arm now degrades to ABSENCE. Story 3-16 owns bringing this one into
+            // line; until then the honest description is the one written here.
             let regime = cfg.macro_regime_series.clone().unwrap_or_else(|| {
                 // Empty PitSeries: all as_of_value queries return None → arm stays flat.
                 // PitSeries::from_sorted on an empty vec is guaranteed Ok (the invariant
@@ -2517,7 +2587,12 @@ pub async fn run_scenario(
                 maker_fee_bps: 2,
                 fill_price_mode: FillPriceMode::BarClose,
             };
-            let mut engine = crate::PaperEngine::new(match_cfg, seed_u64);
+            // bug-log #79 — the 8 `v0.8.vote.*` arms are advisor bake-off arms
+            // that build their engine inline here instead of going through
+            // `sma_composed_run`; they need the same venue-filter application
+            // or lot realism stays inert for a third of the ranked field.
+            let mut engine = crate::PaperEngine::new(match_cfg, seed_u64)
+                .with_venue_filter_mode(cfg.latency_slippage_sim.venue_filter.clone());
 
             let mut state = BacktestState::new(initial_capital);
             let mut position = Position::empty(cfg.pair.1.clone());

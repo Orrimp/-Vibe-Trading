@@ -89,9 +89,9 @@ use std::path::{Path, PathBuf};
 use backtest::{
     ScenarioConfig,
     bakeoff::bootstrap::{compute_robustness_flag, derive_master_seed},
-    bakeoff::resolve_dvol_override,
     bakeoff::scorecard::{Scorecard, compute_scorecard},
     bakeoff::{BakeoffConfig, CandidateResult, derive_candidate_kpis},
+    bakeoff::{dvol_supported, resolve_dvol_override},
     cancel::cancellation_pair,
     cli_types::LatencySlippageSimConfig,
     engine::{DateRange, ScenarioDataSource},
@@ -317,7 +317,12 @@ async fn run_field_and_rank(
     let (start_ms, end_ms) = bar_span_ms(bars);
     let range = DateRange::Custom { start_ms, end_ms };
     let symbol_str = symbol.0.as_str();
-    let dvol_sym_ok = matches!(symbol_str, "BTCUSDT" | "ETHUSDT");
+    // Review 3-15 MEDIUM: this used to be a third independent copy of the
+    // BTC/ETH allowlist (`matches!(symbol_str, "BTCUSDT" | "ETHUSDT")`). It now
+    // calls the same `dvol_supported()` predicate production calls, so the
+    // harness cannot silently disagree with the bake-off about which coins the
+    // arm is even defined for.
+    let dvol_sym_ok = dvol_supported(symbol_str);
 
     let mut strategy_ids: Vec<(String, bool)> = field
         .iter()
@@ -342,6 +347,19 @@ async fn run_field_and_rank(
         } else {
             None
         };
+        // bug-log #78 parity with production: an unresolvable DVOL series means
+        // the arm is ABSENT, never a 100%-cash stub carrying the probe's label.
+        // This harness's whole premise is "never run a warm-up-only proxy arm and
+        // call it evaluated" (see the R4 matrix in the module docs) — that promise
+        // was previously enforced only for the SYMBOL, not for a failed load.
+        if is_dvol_arm && dvol_override.is_none() {
+            eprintln!(
+                "  [p2_verdict_rerun] v0.dvol_regime DROPPED — the DVOL series could not \
+                 be resolved for this corpus/window (the arm is reported as ABSENT, \
+                 never as an evaluated candidate)"
+            );
+            continue;
+        }
 
         let is_macro_arm = strategy_id == "v0.macro_riskon";
         let macro_regime_series = if is_macro_arm {

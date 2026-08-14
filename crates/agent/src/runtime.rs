@@ -584,22 +584,27 @@ pub fn build_registry_for(
         //
         // `DvolRegimeStrategy` is a proper `Strategy` impl. In the forward run
         // the DVOL corpus is not loaded (no real-time feed), so we construct it
-        // with an empty `as_of_dvol` vec → warm-up-only (flat) behaviour for
-        // every bar. This is honest: the forward paper loop starts flat and waits
-        // for real bars; the DVOL-gating only activates when a preloaded series
-        // is injected (bakeoff path). The symbol is read from the forward config.
+        // with an empty `as_of_dvol` vec → permanent warm-up.
+        //
+        // Review 3-15: warm-up means HOLD THE COIN (ADR-0072 D3) — the arm enters
+        // long on its first bar and stays there while no DVOL is available. That
+        // is what `plan.rs` has always DESCRIBED (it falls back to
+        // `AlwaysLongStrategy` as the plan describer) and, until the 3-15 fix,
+        // NOT what the arm did: it emitted only on weight transitions and sat in
+        // 100% cash. The description and the behaviour now agree. DVOL gating
+        // only activates when a preloaded series is injected (bake-off path).
         "v0.dvol_regime" => {
             let symbol = fwd.symbol.clone();
             let dvol_strategy = strategy::DvolRegimeStrategy::new(
                 symbol.clone(),
-                vec![], // empty as_of → warm-up flat (no DVOL corpus in forward run)
+                vec![], // empty as_of → permanent warm-up → hold the coin
                 strategy::DVOL_REGIME_WINDOW,
             );
             registry.register(Box::new(dvol_strategy));
             tracing::info!(
                 strategy = id,
                 %symbol,
-                "build_registry_for: DvolRegimeStrategy registered (empty as_of — forward warm-up only)"
+                "build_registry_for: DvolRegimeStrategy registered (empty as_of — warm-up holds the coin)"
             );
         }
 

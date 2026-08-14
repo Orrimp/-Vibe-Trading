@@ -115,14 +115,47 @@ const YAHOO_MACRO_CORPUS_ROOT: &str = "data/yahoo-macro";
 
 /// Map a bake-off `symbol` (e.g. `"BTCUSDT"`) to the DVOL corpus symbol
 /// (e.g. `"BTC"`). Returns `None` for unsupported symbols.
-#[cfg(feature = "realdata")]
-fn dvol_corpus_symbol(symbol_str: &str) -> Option<&'static str> {
+///
+/// **The single source of truth for the ADR-0072 D5/D8 BTC/ETH allowlist.**
+/// Review 3-15 MEDIUM found it encoded in THREE independent places (this fn, an
+/// inline `matches!` in `run_bakeoff`, and a copy in `tests/p2_verdict_rerun.rs`)
+/// while [`dvol_supported`] — referenced by ADR-0072 D5, the ADR Registry row,
+/// the trace row, CHANGELOG and two code doc-comments — did not exist at all.
+/// Not feature-gated: the mapping is pure and every caller (including the
+/// non-`realdata` dispatch path and the integration tests) must agree on it.
+#[must_use]
+pub fn dvol_corpus_symbol(symbol_str: &str) -> Option<&'static str> {
     match symbol_str {
         "BTCUSDT" => Some("BTC"),
         "ETHUSDT" => Some("ETH"),
         _ => None,
     }
 }
+
+/// Is the Deribit DVOL implied-vol channel available for this bake-off symbol?
+///
+/// ADR-0072 D5/D8: DVOL exists only for BTC and ETH. For every other coin the
+/// `v0.dvol_regime` arm is **ABSENT** from the ranked field — never dispatched,
+/// never degraded into a stub that wears the arm's label (bug-log #78).
+///
+/// Derived from [`dvol_corpus_symbol`] so the allowlist can never fork.
+#[must_use]
+pub fn dvol_supported(symbol_str: &str) -> bool {
+    dvol_corpus_symbol(symbol_str).is_some()
+}
+
+/// Calendar days of DVOL history to load BEFORE the requested window so the
+/// trailing-median ring is warm at the first evaluated bar (review 3-15 MEDIUM).
+///
+/// The load span used to be *exactly* the backtest range, so the W=30 ring
+/// filled INSIDE the evaluation window — roughly 16% of a 6-month window was
+/// structurally pre-signal — while 2021-2026 of history sat unused on disk.
+/// The repo's own [`crate::macro_regime::load_macro_regime_series`] pre-extends
+/// its span by 100 days for exactly this reason (SMA(50) over daily bars); this
+/// mirrors that discipline at 2× the W=30 window so a run of missing days
+/// cannot leave the ring short. `files_for_span` already iterates
+/// `start_year..=end_year`, so crossing a year boundary needs no other change.
+pub const DVOL_WARMUP_DAYS: i64 = 60;
 
 /// Load the as-of DVOL series for a BTC/ETH bake-off arm and return it as
 /// `Some(Vec<Option<Decimal>>)` aligned to `bar_open_ts_ms`.
@@ -133,17 +166,28 @@ fn dvol_corpus_symbol(symbol_str: &str) -> Option<&'static str> {
 /// # Algorithm
 ///
 /// 1. Map `symbol` (`BTCUSDT`/`ETHUSDT`) → DVOL corpus symbol (`BTC`/`ETH`).
-/// 2. Build `TimeSpan` from `(start_ms, end_ms)` derived from `range`.
-/// 3. Load + SHA-verify the DVOL corpus via `DvolDataSource::load`.
+/// 2. Build `TimeSpan` from `(start_ms, end_ms)` derived from `range`,
+///    **pre-extended by [`DVOL_WARMUP_DAYS`]** so the 30-day median ring is warm
+///    at the first evaluated bar instead of filling inside the window
+///    (review 3-15 MEDIUM).
+/// 3. Load + SHA-verify + coverage-verify the DVOL corpus via
+///    `DvolDataSource::load`.
 /// 4. Build `dvol: Vec<(i64, Decimal)>` from the rows filtered to the mapped symbol.
 /// 5. Run `dvol_as_of(&dvol, &bar_open_ts_ms)` → `Some(series)`.
 ///
-/// # Graceful degradation (MANDATORY)
+/// # `None` means ABSENCE, not a substitute (bug-log #78)
 ///
-/// If the corpus is missing (`RevisionMissing`) or the load fails for any reason
-/// (e.g. a CI machine without the gitignored parquets), emits `tracing::warn!`
-/// and returns `None` — the engine falls back to an empty DVOL series (warm-up-only
-/// = buy-and-hold proxy). The bake-off NEVER crashes on a best-effort probe arm.
+/// If the corpus is missing (`RevisionMissing`), fails its SHA pin, or does not
+/// COVER the requested window (`InsufficientCoverage` — the loader's daily
+/// coverage floor, which is what catches a pinned corpus joined to a NOW-anchored
+/// lookback), this emits `tracing::warn!` and returns `None`.
+///
+/// **The caller must then drop the arm from the ranked field**, exactly as it is
+/// dropped for an unsupported coin. It must NOT dispatch the arm with an empty
+/// series: per review 3-15 the resulting run is a 100%-cash arm wearing the label
+/// "Implied-vol regime (hold when DVOL < 30-day median)", and — because the
+/// parquets are gitignored — that was the DEFAULT state of every fresh clone.
+/// `run_bakeoff` enforces this; see the `dvol_override.is_none()` guard there.
 ///
 /// # Compile-time gate
 ///
@@ -165,12 +209,21 @@ pub fn resolve_dvol_override(
     let corpus_sym = trading_core::Symbol::new(corpus_sym_str);
 
     let (start_ms, end_ms) = date_range_to_ms_pair(range);
+    // Review 3-15 MEDIUM: pre-extend the LOAD span so the W=30 median ring is
+    // warm at the first EVALUATED bar. The as-of series returned below is still
+    // aligned to `bar_open_ts_ms` (the evaluation window) — only the history fed
+    // into the ring grows. Mirrors `macro_regime::WARMUP_DAYS`.
+    let load_start_ms = start_ms - DVOL_WARMUP_DAYS * 86_400_000;
     let span = TimeSpan {
-        start_ms,
+        start_ms: load_start_ms,
         end_ms,
-        // Labels are only used for report output (write_report=false on bakeoff path).
-        start_label: Box::leak(format!("{start_ms}").into_boxed_str()),
-        end_label: Box::leak(format!("{end_ms}").into_boxed_str()),
+        // Labels are only used for report output (write_report=false on the
+        // bake-off path) and are `&'static str`. Review 3-15 LOW: these were
+        // `Box::leak(format!(...))` — an unbounded leak on EVERY resolve call in
+        // a long-lived cockpit. Diagnostics that need the bounds format them
+        // from `span.start_ms` / `span.end_ms` instead.
+        start_label: "(dvol bake-off span, warm-up-extended)",
+        end_label: "(dvol bake-off span)",
     };
 
     let src = DvolDataSource::new(
@@ -184,8 +237,12 @@ pub fn resolve_dvol_override(
             tracing::warn!(
                 symbol = symbol_str,
                 corpus_sym = corpus_sym_str,
+                load_start_ms,
+                end_ms,
                 error = %e,
-                "v0.dvol_regime: DVOL corpus load failed — arm will run warm-up-only (arm skipped gracefully)"
+                "v0.dvol_regime: DVOL corpus unavailable or does not cover the requested \
+                 span — the arm will be DROPPED from the ranked field (bug-log #78: never \
+                 degrade a probe into a stub that keeps the probe's label)"
             );
             return None;
         }
@@ -195,7 +252,8 @@ pub fn resolve_dvol_override(
         tracing::warn!(
             symbol = symbol_str,
             corpus_sym = corpus_sym_str,
-            "v0.dvol_regime: DVOL corpus returned 0 rows for the requested span — arm will run warm-up-only"
+            "v0.dvol_regime: DVOL corpus returned 0 rows for the requested span — \
+             the arm will be DROPPED from the ranked field"
         );
         return None;
     }
@@ -213,7 +271,8 @@ pub fn resolve_dvol_override(
         tracing::warn!(
             symbol = symbol_str,
             corpus_sym = corpus_sym_str,
-            "v0.dvol_regime: no DVOL rows found for corpus symbol — arm will run warm-up-only"
+            "v0.dvol_regime: no DVOL rows found for corpus symbol — \
+             the arm will be DROPPED from the ranked field"
         );
         return None;
     }
@@ -231,7 +290,10 @@ pub fn resolve_dvol_override(
 }
 
 /// Fallback when `realdata` feature is disabled: DVOL loading requires polars.
-/// Returns `None` always; the engine arm runs warm-up-only (buy-and-hold proxy).
+///
+/// Returns `None` always — which, per the ABSENCE contract above, means the
+/// `v0.dvol_regime` arm is DROPPED from the ranked field in a non-`realdata`
+/// build rather than dispatched with an empty series (bug-log #78).
 #[cfg(not(feature = "realdata"))]
 #[must_use]
 pub fn resolve_dvol_override(
@@ -957,9 +1019,17 @@ pub async fn run_bakeoff(
     //
     // If the field contains `v0.macro_riskon`, preload the macro daily regime
     // series from `data/yahoo-macro/` ONCE. Graceful skip (warn + None) when the
-    // corpus is absent (e.g. CI without the fetched parquets). The arm still
-    // appears in the ranked field but runs warm-up-only (= buy-and-hold proxy,
-    // identical to the `v0.dvol_regime` graceful-degradation precedent).
+    // corpus is absent (e.g. CI without the fetched parquets).
+    //
+    // ⚠ bug-log #78 (OPEN for this arm): when the corpus is absent the macro arm
+    // still appears in the ranked field and runs warm-up-only. It is NOT a
+    // "buy-and-hold proxy" — that description was copied from `v0.dvol_regime`,
+    // where it was false, and `v0.dvol_regime` has since been fixed to degrade to
+    // ABSENCE (see the `dvol_override.is_none()` guard in the arm loop below).
+    // The macro arm's own degenerate path is a DIFFERENT mechanism
+    // (`run_macro_gated_buyhold_path` with an empty `PitSeries` → flat/cash) and
+    // is owned by story 3-16; do not cite this block as a precedent for keeping a
+    // probe in the field when its channel is unavailable.
     //
     // The macro corpus root is relative to the workspace root (NOT `data/yahoo/`
     // — the two corpora must stay separated to avoid the pre-existing operator
@@ -1033,44 +1103,65 @@ pub async fn run_bakeoff(
         let short_enabled = BakeoffConfig::is_short_enabled(strategy.0.as_str());
 
         // ADR-0072 D8: filter v0.dvol_regime for unsupported symbols.
-        // `dvol_supported` = {BTCUSDT, ETHUSDT}. For other symbols, the arm
-        // is removed from the field before dispatching (arm ABSENT, never crash).
+        // `dvol_supported()` = {BTCUSDT, ETHUSDT} — the single source of truth
+        // (review 3-15 MEDIUM: the allowlist used to be encoded in three places
+        // while the `dvol_supported()` all the docs referenced did not exist).
+        // For other symbols the arm is removed from the field before dispatching
+        // (arm ABSENT, never crash).
         let symbol_str = req.symbol.0.as_str();
         let is_dvol_arm = strategy.0.as_str() == "v0.dvol_regime";
-        let dvol_sym_ok = matches!(symbol_str, "BTCUSDT" | "ETHUSDT");
-        if is_dvol_arm && !dvol_sym_ok {
+        if is_dvol_arm && !dvol_supported(symbol_str) {
             tracing::debug!(symbol = %req.symbol, "v0.dvol_regime skipped — DVOL not available for this symbol");
             continue;
         }
 
         // ADR-0072 Task 2 core fix: resolve the real DVOL as-of series for BTC/ETH.
         //
-        // For the v0.dvol_regime arm on BTC/ETH, load + SHA-verify the DVOL corpus
-        // and run dvol_as_of() aligned to the preloaded bar timestamps.
-        //
-        // If the corpus is missing (e.g. a CI machine without the gitignored parquets)
-        // or the load fails for any reason, `resolve_dvol_override` emits a warn! and
-        // returns None — the arm gracefully runs warm-up-only (= buy-and-hold proxy).
-        // The bake-off NEVER crashes on this best-effort probe arm.
+        // For the v0.dvol_regime arm on BTC/ETH, load + SHA-verify + coverage-verify
+        // the DVOL corpus and run dvol_as_of() aligned to the preloaded bar timestamps.
         //
         // For non-DVOL arms, dvol_override is always None (ignored by the engine).
         let dvol_override = if is_dvol_arm {
             // Build the bar_open_ts_ms slice from the preloaded bars.
-            // If preloaded_bars is None (synthetic / Yahoo path), we cannot resolve
-            // DVOL — skip gracefully (the engine arm will run warm-up-only).
+            // If preloaded_bars is None (synthetic / Yahoo path), there is no grid
+            // to join onto and the probe cannot run.
             if let Some(bars) = preloaded_bars.as_deref() {
                 let bar_ts: Vec<i64> = bars.iter().map(|b| b.open_ts.unix_millis()).collect();
                 resolve_dvol_override(symbol_str, &req.range, &bar_ts, strategy.0.as_str())
             } else {
                 tracing::warn!(
                     symbol = %req.symbol,
-                    "v0.dvol_regime: no preloaded bars available (synthetic/Yahoo path) — arm will run warm-up-only"
+                    "v0.dvol_regime: no preloaded bars available (synthetic/Yahoo path) — \
+                     the arm will be DROPPED from the ranked field"
                 );
                 None
             }
         } else {
             None
         };
+
+        // ── bug-log #78: degrade to ABSENCE, never to a substitute ────────────
+        //
+        // The arm used to be dropped ONLY for an unsupported coin. On a load
+        // failure `resolve_dvol_override` returned `None`, the arm was dispatched
+        // anyway, and `cfg.dvol_override.clone().unwrap_or_default()` handed the
+        // engine an EMPTY series — an arm that never sees a DVOL value, sitting in
+        // the ranked field under the label "Implied-vol regime (hold when DVOL <
+        // 30-day median)". The parquets are gitignored, so that was the default
+        // state of every fresh clone and CI box; and because the corpus is a frozen
+        // pin joined to NOW-anchored lookbacks, the TwoWeeks/OneMonth windows had
+        // drifted entirely past its last row while the SHA pin still reported
+        // healthy. A probe that could not run has exactly one honest rendering:
+        // NOT RUN. Same `continue` as the unsupported-coin path.
+        if is_dvol_arm && dvol_override.is_none() {
+            tracing::warn!(
+                symbol = %req.symbol,
+                "v0.dvol_regime DROPPED from the ranked field — the DVOL series is \
+                 missing or does not cover the requested window. The arm is reported as \
+                 absent, never as a 100%-cash stub wearing the probe's label (bug-log #78)."
+            );
+            continue;
+        }
 
         let scenario_cfg = ScenarioConfig {
             strategy: strategy.clone(),

@@ -96,9 +96,112 @@ pub enum DvolDataError {
         source: rust_decimal::Error,
     },
 
+    /// A row carried a NULL timestamp column (review 3-15 HIGH).
+    ///
+    /// This used to be swallowed: `close_ts_col.get(i).unwrap_or(0)` mapped a
+    /// NULL to epoch-0, which the span filter below then dropped with no
+    /// diagnostic anywhere — a silently shrinking corpus, the same shape as the
+    /// R3 coverage-gate bug (bug-log #70). `basis_data.rs` fixed the identical
+    /// defect in review 1-20 (`BasisDataError::NullOpenTime`); this is the
+    /// mirror for both DVOL timestamp columns.
+    #[error(
+        "DVOL parquet {path} row {row}: {column} is NULL — refusing to guess a timestamp \
+         (a NULL here silently becomes epoch-0 and the row vanishes past the span filter)"
+    )]
+    NullTimestamp {
+        path: String,
+        row: usize,
+        column: &'static str,
+    },
+
+    /// A row carried a NULL `dvol_close` (review 3-15 HIGH).
+    ///
+    /// **Worse here than in `basis_data.rs`**: basis's value column is a Utf8
+    /// string, so a NULL yields `""` and blows up in `Decimal::from_str`. DVOL's
+    /// value column is Float64, so `unwrap_or(0.0)` produced a *plausible*
+    /// number — a DVOL of 0.0 is below every median, so the day is scored CALM
+    /// and, worse, the 0.0 enters the trailing-median ring and drags the whole
+    /// 30-day cut down. Silent, directional corruption of the signal.
+    #[error(
+        "DVOL parquet {path} row {row}: dvol_close is NULL — refusing to coalesce to 0.0 \
+         (0.0 is below every median: the day would score CALM and the 30-day median ring \
+         would be dragged down)"
+    )]
+    NullDvolClose { path: String, row: usize },
+
+    /// `day_close_ts_ms != day_open_ts_ms + 86_400_000 - 1` (review 3-15 MEDIUM).
+    ///
+    /// The loader keys the as-of join on `day_close_ts_ms` and never looked at
+    /// `day_open_ts_ms`, even though both are on disk — the same
+    /// present-and-ignored pattern that made ADR-0086's Basis publication-lag
+    /// row wrong. A regenerated parquet written under a different keying
+    /// convention (e.g. keyed at the day OPEN, or at `open + 86_400_000`) would
+    /// be accepted silently and shift every decision by up to a day.
+    #[error(
+        "DVOL parquet {path} row {row}: keying invariant violated — \
+         day_close_ts_ms={day_close_ts_ms} but day_open_ts_ms={day_open_ts_ms} implies \
+         {expected} (= day_open_ts_ms + 86_400_000 - 1). The as-of join keys on \
+         day_close_ts_ms and assumes it is the FULLY-observed instant of that day; a \
+         corpus written under a different convention would silently shift every \
+         regime decision."
+    )]
+    KeyingInvariant {
+        path: String,
+        row: usize,
+        day_open_ts_ms: i64,
+        day_close_ts_ms: i64,
+        expected: i64,
+    },
+
+    /// A symbol's row count for the span is below the coverage floor
+    /// (review 3-15 HIGH — the third sibling; basis got one 2026-08-11,
+    /// funding 2026-08-12).
+    ///
+    /// The failure this catches: the loader did manifest → per-file SHA →
+    /// aggregate SHA → parse → span filter → sort and returned whatever
+    /// survived. A corpus that lost 95% of its rows loaded clean, and the only
+    /// downstream check was `is_empty()`, which a ONE-row corpus passes. A
+    /// thinned DVOL series does not fail loudly — it produces a stale
+    /// forward-filled median (the ring only advances when the value *changes*),
+    /// so the regime decision quietly freezes while every integrity signal
+    /// reports healthy. That is precisely bug-log #78's second trigger.
+    #[error(
+        "DVOL coverage below floor for {symbol} in [{span_start}..{span_end}): got {actual} \
+         daily rows, expected ~{expected} ({pct:.2}% present, floor {floor_pct:.2}%). The \
+         30-day median ring only advances when the as-of close CHANGES, so a thinned \
+         corpus silently freezes the regime cut instead of failing — refusing to run."
+    )]
+    InsufficientCoverage {
+        symbol: String,
+        expected: usize,
+        actual: usize,
+        /// Percentage present — human-readable only; the decision uses integer
+        /// arithmetic (see `load()`).
+        #[allow(clippy::float_arithmetic)]
+        pct: f64,
+        #[allow(clippy::float_arithmetic)]
+        floor_pct: f64,
+        span_start: String,
+        span_end: String,
+    },
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+// ── Coverage floor + cadence constants ────────────────────────────────────────
+
+/// Minimum fraction of the span's DAILY rows each symbol must supply, in
+/// per-mille (review 3-15 HIGH).
+///
+/// Mirrors `basis_data::MIN_SYMBOL_COVERAGE_PERMILLE` and the OHLCV loader's R3
+/// tolerance (`realdata.rs`, 995‰ = 99.5%), which review 1-18 hardened after
+/// bug-log #70. Integer per-mille so the comparison never touches a float.
+pub const MIN_SYMBOL_COVERAGE_PERMILLE: usize = 995;
+
+/// One UTC day in milliseconds — the DVOL corpus cadence (one row per day),
+/// which is what makes the expected row count trivially derivable.
+pub const ONE_DAY_MS: i64 = 86_400_000;
 
 // ── DvolRow ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +240,10 @@ pub struct DvolDataSource {
     /// Universe of symbols to load. Only `Symbol::new("BTC")` and
     /// `Symbol::new("ETH")` are supported (DVOL exists only for BTC+ETH).
     universe: Vec<Symbol>,
+    /// Aggregate SHA the corpus must recompute to. Always
+    /// [`EXPECTED_DVOL_REVISION_SHA`] in production — [`Self::new`] is the only
+    /// constructor outside `cfg(test)`, so the revision lock is unconditional.
+    expected_revision_sha: String,
 }
 
 impl DvolDataSource {
@@ -149,7 +256,22 @@ impl DvolDataSource {
         Self {
             dvol_root,
             universe,
+            expected_revision_sha: EXPECTED_DVOL_REVISION_SHA.to_string(),
         }
+    }
+
+    /// Point the revision lock at a different aggregate SHA — **tests only**.
+    ///
+    /// Compiled ONLY under `cfg(test)`, so it does not exist in any shipped
+    /// build. Copied verbatim in intent from `basis_data.rs`: without it, step 3
+    /// rejects every temp-dir fixture before the parquet is ever opened, which
+    /// is why the only DVOL test that exercised the column names and the
+    /// symbol-from-relpath derivation had to be `#[ignore]`d against the real
+    /// corpus — and therefore gated nothing (review 3-15 MEDIUM, skip-visibility).
+    #[cfg(test)]
+    fn with_expected_revision_sha(mut self, sha: &str) -> Self {
+        self.expected_revision_sha = sha.to_string();
+        self
     }
 
     /// Load + REVISION-verify + parse DVOL rows for the given span.
@@ -160,14 +282,23 @@ impl DvolDataSource {
     ///    manifest → `RevisionMismatch`.
     /// 3. Recompute aggregate SHA and verify it equals
     ///    `EXPECTED_DVOL_REVISION_SHA`.
-    /// 4. Read parquet files; parse `dvol_close` as `Decimal`.
+    /// 4. Read parquet files; parse `dvol_close` as `Decimal`. A NULL timestamp
+    ///    or a NULL `dvol_close` is an ERROR, never a coalesced 0 / 0.0
+    ///    (review 3-15 HIGH). The keying invariant
+    ///    `day_close_ts_ms == day_open_ts_ms + 86_400_000 - 1` is asserted per
+    ///    row (review 3-15 MEDIUM).
     /// 5. Filter rows to `[span.start_ms, span.end_ms)` by `day_close_ts_ms`.
-    /// 6. Sort `(day_close_ts_ms ASC, symbol ASC)`.
+    /// 6. Enforce the PER-SYMBOL daily coverage floor
+    ///    ([`MIN_SYMBOL_COVERAGE_PERMILLE`]) → `InsufficientCoverage`
+    ///    (review 3-15 HIGH).
+    /// 7. Sort `(day_close_ts_ms ASC, symbol ASC)`.
     ///
     /// # Errors
     ///
-    /// Returns `DvolDataError` on manifest missing / SHA mismatch,
-    /// parquet read errors, or Decimal parse failure.
+    /// Returns `DvolDataError` on manifest missing / SHA mismatch, parquet read
+    /// errors, a NULL timestamp or value cell, a violated keying invariant, a
+    /// Decimal parse failure, or a symbol whose daily row count for the span is
+    /// below the coverage floor.
     #[allow(clippy::too_many_lines)]
     pub fn load(
         &self,
@@ -198,7 +329,7 @@ impl DvolDataSource {
                         file: relpath.clone(),
                         manifest_sha: "(not in manifest)".to_string(),
                         actual_sha: "n/a".to_string(),
-                        expected: EXPECTED_DVOL_REVISION_SHA.to_string(),
+                        expected: self.expected_revision_sha.clone(),
                         recomputed: "(not computed)".to_string(),
                     })?;
             let abs_path = self.dvol_root.join(relpath);
@@ -209,7 +340,7 @@ impl DvolDataSource {
                     file: relpath.clone(),
                     manifest_sha: manifest_sha.clone(),
                     actual_sha,
-                    expected: EXPECTED_DVOL_REVISION_SHA.to_string(),
+                    expected: self.expected_revision_sha.clone(),
                     recomputed: "(not computed)".to_string(),
                 });
             }
@@ -217,12 +348,12 @@ impl DvolDataSource {
 
         // Step 3: recompute aggregate SHA and verify against the locked constant.
         let recomputed = data::revision::compute_aggregate_sha(&files_map);
-        if recomputed != EXPECTED_DVOL_REVISION_SHA {
+        if recomputed != self.expected_revision_sha {
             return Err(DvolDataError::RevisionMismatch {
                 file: "(aggregate)".to_string(),
                 manifest_sha: "(n/a)".to_string(),
                 actual_sha: "(n/a)".to_string(),
-                expected: EXPECTED_DVOL_REVISION_SHA.to_string(),
+                expected: self.expected_revision_sha.clone(),
                 recomputed: recomputed.clone(),
             });
         }
@@ -242,6 +373,22 @@ impl DvolDataSource {
 
             // The symbol is encoded in the file path: <SYM>/<YEAR>.parquet
             let sym_str = relpath.split('/').next().unwrap_or("");
+
+            // Review 3-15 MEDIUM: `day_open_ts_ms` used to be present on disk and
+            // IGNORED — the same present-and-ignored pattern that made ADR-0086's
+            // Basis publication-lag row wrong. It is now READ and used to assert
+            // the keying invariant the as-of join depends on.
+            let open_ts_col = df
+                .column("day_open_ts_ms")
+                .map_err(|e| DvolDataError::Parquet {
+                    path: path_str.clone(),
+                    source: e,
+                })?
+                .i64()
+                .map_err(|e| DvolDataError::Parquet {
+                    path: path_str.clone(),
+                    source: e,
+                })?;
 
             let close_ts_col = df
                 .column("day_close_ts_ms")
@@ -269,8 +416,51 @@ impl DvolDataSource {
 
             let n_rows = df.height();
             for i in 0..n_rows {
-                let day_close_ts_ms = close_ts_col.get(i).unwrap_or(0);
-                let dvol_f64 = dvol_close_col.get(i).unwrap_or(0.0);
+                // Review 3-15 HIGH: these three cells used to be
+                // `close_ts_col.get(i).unwrap_or(0)` and
+                // `dvol_close_col.get(i).unwrap_or(0.0)`. A NULL timestamp became
+                // epoch-0 and the row silently vanished past the span filter; a
+                // NULL value became a *plausible* DVOL of 0.0 — below every
+                // median — so the day scored CALM and the median ring was dragged
+                // down. Both are now loud.
+                let day_open_ts_ms =
+                    open_ts_col
+                        .get(i)
+                        .ok_or_else(|| DvolDataError::NullTimestamp {
+                            path: path_str.clone(),
+                            row: i,
+                            column: "day_open_ts_ms",
+                        })?;
+                let day_close_ts_ms =
+                    close_ts_col
+                        .get(i)
+                        .ok_or_else(|| DvolDataError::NullTimestamp {
+                            path: path_str.clone(),
+                            row: i,
+                            column: "day_close_ts_ms",
+                        })?;
+                let dvol_f64 =
+                    dvol_close_col
+                        .get(i)
+                        .ok_or_else(|| DvolDataError::NullDvolClose {
+                            path: path_str.clone(),
+                            row: i,
+                        })?;
+
+                // Keying invariant (review 3-15 MEDIUM): the as-of key must be the
+                // FULLY-observed instant of the same day the row describes. Checked
+                // BEFORE the span filter so a mis-keyed corpus cannot hide by
+                // falling outside the window.
+                let expected_close = day_open_ts_ms + ONE_DAY_MS - 1;
+                if day_close_ts_ms != expected_close {
+                    return Err(DvolDataError::KeyingInvariant {
+                        path: path_str.clone(),
+                        row: i,
+                        day_open_ts_ms,
+                        day_close_ts_ms,
+                        expected: expected_close,
+                    });
+                }
 
                 // Step 5: filter to span [start_ms, end_ms) by day_close_ts_ms.
                 if day_close_ts_ms < span.start_ms || day_close_ts_ms >= span.end_ms {
@@ -299,7 +489,44 @@ impl DvolDataSource {
             }
         }
 
-        // Step 6: sort (day_close_ts_ms ASC, symbol ASC).
+        // Step 6: PER-SYMBOL daily coverage gate (review 3-15 HIGH).
+        //
+        // The third sibling: `basis_data.rs` got one on 2026-08-11 and
+        // `funding_data.rs` on 2026-08-12; DVOL had none, so a corpus that lost
+        // 95% of its rows loaded clean and the only downstream check was
+        // `is_empty()` — which a ONE-row corpus passes. The DVOL cadence is
+        // DAILY, so the expected count is simply the span's length in days.
+        //
+        // Integer arithmetic only in the comparison — the float is for the message.
+        let expected_per_symbol =
+            usize::try_from((span.end_ms - span.start_ms) / ONE_DAY_MS).unwrap_or(0);
+        if expected_per_symbol > 0 {
+            let threshold = (expected_per_symbol * MIN_SYMBOL_COVERAGE_PERMILLE).div_ceil(1000);
+            for sym in &self.universe {
+                let actual = rows.iter().filter(|r| &r.symbol == sym).count();
+                if actual < threshold {
+                    #[allow(clippy::cast_precision_loss, clippy::float_arithmetic)]
+                    let pct = actual as f64 / expected_per_symbol as f64 * 100.0;
+                    #[allow(clippy::cast_precision_loss, clippy::float_arithmetic)]
+                    let floor_pct = MIN_SYMBOL_COVERAGE_PERMILLE as f64 / 10.0;
+                    return Err(DvolDataError::InsufficientCoverage {
+                        symbol: sym.0.to_string(),
+                        expected: expected_per_symbol,
+                        actual,
+                        pct,
+                        floor_pct,
+                        // Formatted from the numeric bounds, NOT from the
+                        // `&'static str` labels — the bake-off path passes static
+                        // placeholder labels (review 3-15 LOW removed the
+                        // per-call `Box::leak`).
+                        span_start: span.start_ms.to_string(),
+                        span_end: span.end_ms.to_string(),
+                    });
+                }
+            }
+        }
+
+        // Step 7: sort (day_close_ts_ms ASC, symbol ASC).
         rows.sort_unstable_by(|a, b| {
             a.day_close_ts_ms
                 .cmp(&b.day_close_ts_ms)
@@ -605,6 +832,481 @@ mod tests {
         assert_eq!(parsed, dec!(52.1234));
     }
 
+    // ── Review 3-15: END-TO-END loader acceptance (NOT skip-gated) ────────────
+    //
+    // Before this block every test that drove the production `load()` was
+    // `#[ignore]`d against the real (gitignored) corpus, so NOTHING in CI pinned
+    // the column names, the NULL handling, the keying invariant or the coverage
+    // floor. These write a real (tiny) parquet to a temp dir and drive
+    // `DvolDataSource::load` end to end, mirroring `basis_data.rs`'s 1-20 block.
+
+    /// Write a DVOL parquet at `<root>/<sym>/<year>.parquet`.
+    ///
+    /// Columns are named EXACTLY as the production schema — that is part of what
+    /// these tests pin. `rows` are `(day_open_ts_ms, dvol_close)`; the
+    /// `day_close_ts_ms` key is derived so fixtures obey the keying invariant
+    /// unless a test deliberately breaks it.
+    fn write_dvol_parquet(
+        root: &std::path::Path,
+        sym: &str,
+        year: i32,
+        rows: &[(i64, f64)],
+    ) -> String {
+        write_dvol_parquet_raw(
+            root,
+            sym,
+            year,
+            &rows
+                .iter()
+                .map(|&(open, close)| (Some(open), Some(open + ONE_DAY_MS - 1), Some(close)))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Nullable/free-form variant — lets a test inject NULL cells or a broken key.
+    fn write_dvol_parquet_raw(
+        root: &std::path::Path,
+        sym: &str,
+        year: i32,
+        rows: &[(Option<i64>, Option<i64>, Option<f64>)],
+    ) -> String {
+        use polars::prelude::*;
+
+        let dir = root.join(sym);
+        std::fs::create_dir_all(&dir).expect("create symbol dir");
+        let path = dir.join(format!("{year}.parquet"));
+
+        let opens: Vec<Option<i64>> = rows.iter().map(|r| r.0).collect();
+        let closes_ts: Vec<Option<i64>> = rows.iter().map(|r| r.1).collect();
+        let values: Vec<Option<f64>> = rows.iter().map(|r| r.2).collect();
+        let mut df = df![
+            "day_open_ts_ms" => opens,
+            "day_close_ts_ms" => closes_ts,
+            "dvol_close" => values,
+        ]
+        .expect("build fixture DataFrame");
+
+        let mut file = std::fs::File::create(&path).expect("create parquet");
+        ParquetWriter::new(&mut file)
+            .finish(&mut df)
+            .expect("write parquet");
+
+        format!("{sym}/{year}.parquet")
+    }
+
+    /// Write `REVISION.toml` for the given relpaths and return the aggregate SHA.
+    fn write_manifest(root: &std::path::Path, relpaths: &[String]) -> String {
+        use std::collections::BTreeMap;
+
+        let mut files_map: BTreeMap<String, String> = BTreeMap::new();
+        for rel in relpaths {
+            let sha = data::revision::file_sha256(&root.join(rel)).expect("sha256");
+            files_map.insert(rel.clone(), sha);
+        }
+        let aggregate = data::revision::compute_aggregate_sha(&files_map);
+
+        let mut toml = format!("[revision]\nsha256 = \"{aggregate}\"\n\n[files]\n");
+        for (rel, sha) in &files_map {
+            toml.push_str(&format!("\"{rel}\" = \"{sha}\"\n"));
+        }
+        std::fs::write(root.join("REVISION.toml"), toml).expect("write REVISION.toml");
+        aggregate
+    }
+
+    /// 2023-01-01T00:00:00Z.
+    const Y2023_START_MS: i64 = 1_672_531_200_000;
+
+    /// A 10-day span in 2023, so `files_for_span` asks for exactly ONE file per
+    /// symbol and the coverage floor expects 10 daily rows per symbol.
+    fn ten_day_span_2023() -> crate::realdata::TimeSpan {
+        crate::realdata::TimeSpan {
+            start_ms: Y2023_START_MS,
+            end_ms: Y2023_START_MS + 10 * ONE_DAY_MS,
+            start_label: "2023-01-01T00:00:00Z",
+            end_label: "2023-01-11T00:00:00Z",
+        }
+    }
+
+    /// `n` in-span daily rows starting at 2023-01-01.
+    fn day_rows(n: usize) -> Vec<(i64, f64)> {
+        (0..n)
+            .map(|d| {
+                #[allow(clippy::cast_precision_loss)]
+                let v = 50.0 + d as f64;
+                (Y2023_START_MS + (d as i64) * ONE_DAY_MS, v)
+            })
+            .collect()
+    }
+
+    /// END-TO-END: `DvolDataSource::load` over a real parquet, not `#[ignore]`d.
+    ///
+    /// Pins, in the production call path: the three COLUMN NAMES, the
+    /// symbol-from-relpath derivation (`<SYM>/<YEAR>.parquet`), the
+    /// `[start_ms, end_ms)` span filter on `day_close_ts_ms`, the exact Decimal
+    /// value, and the `(day_close_ts_ms ASC, symbol ASC)` sort.
+    #[test]
+    fn load_end_to_end_pins_columns_symbol_and_span_filter() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = ten_day_span_2023();
+
+        let mut btc = day_rows(10);
+        // Two OUT-OF-SPAN rows in the same file: one whose day closes before the
+        // span starts, one whose day closes at/after the span ends.
+        btc.push((Y2023_START_MS - ONE_DAY_MS, 999.5));
+        btc.push((span.end_ms, 888.5));
+        let eth = day_rows(10);
+
+        let rel_btc = write_dvol_parquet(root, "BTC", 2023, &btc);
+        let rel_eth = write_dvol_parquet(root, "ETH", 2023, &eth);
+        let aggregate = write_manifest(root, &[rel_btc, rel_eth]);
+
+        let src = DvolDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("BTC"), Symbol::new("ETH")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let loaded = src.load(&span, "e2e-fixture").expect(
+            "load must succeed on a well-formed fixture — if this fails on a column \
+             lookup, the production schema names changed",
+        );
+
+        assert_eq!(
+            loaded.rows.len(),
+            20,
+            "10 in-span daily rows per symbol × 2 symbols; the two out-of-span BTC \
+             rows must be filtered by [start_ms, end_ms) on day_close_ts_ms"
+        );
+        assert!(
+            !loaded
+                .rows
+                .iter()
+                .any(|r| r.dvol_close == dec!(999.5) || r.dvol_close == dec!(888.5)),
+            "out-of-span sentinel values must not survive the span filter"
+        );
+        // The value survives EXACTLY (4dp round-trip through the Decimal parse).
+        assert_eq!(
+            loaded
+                .rows
+                .iter()
+                .find(|r| r.symbol == Symbol::new("BTC"))
+                .map(|r| r.dvol_close),
+            Some(dec!(50.0)),
+            "the first BTC daily close must survive as an exact Decimal"
+        );
+        // Symbol-from-relpath.
+        for sym in ["BTC", "ETH"] {
+            assert_eq!(
+                loaded
+                    .rows
+                    .iter()
+                    .filter(|r| r.symbol == Symbol::new(sym))
+                    .count(),
+                10,
+                "each symbol's rows must be attributed to the symbol in its relpath prefix"
+            );
+        }
+        // Sort order.
+        let mut sorted = loaded.rows.clone();
+        sorted.sort_by(|a, b| {
+            a.day_close_ts_ms
+                .cmp(&b.day_close_ts_ms)
+                .then_with(|| a.symbol.0.as_str().cmp(b.symbol.0.as_str()))
+        });
+        assert_eq!(
+            loaded.rows, sorted,
+            "rows must be (ts ASC, symbol ASC) sorted"
+        );
+        assert_eq!(loaded.revision_sha, aggregate);
+    }
+
+    /// The column names are LOAD-BEARING: renaming one must fail the load, not
+    /// silently yield an empty/garbage series.
+    #[test]
+    fn load_rejects_a_renamed_dvol_column() {
+        use polars::prelude::*;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = ten_day_span_2023();
+
+        let dir = root.join("BTC");
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let rows = day_rows(10);
+        let opens: Vec<i64> = rows.iter().map(|&(t, _)| t).collect();
+        let closes_ts: Vec<i64> = opens.iter().map(|&t| t + ONE_DAY_MS - 1).collect();
+        let values: Vec<f64> = rows.iter().map(|&(_, v)| v).collect();
+        let mut df = df![
+            "day_open_ts_ms" => opens,
+            "day_close_ts_ms" => closes_ts,
+            // Plausible schema drift: `dvol_close` renamed to `dvol`.
+            "dvol" => values,
+        ]
+        .expect("build DataFrame");
+        let mut file = std::fs::File::create(dir.join("2023.parquet")).expect("create");
+        ParquetWriter::new(&mut file)
+            .finish(&mut df)
+            .expect("write parquet");
+
+        let aggregate = write_manifest(root, &["BTC/2023.parquet".to_string()]);
+        let src = DvolDataSource::new(root.to_path_buf(), vec![Symbol::new("BTC")])
+            .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "renamed-column")
+            .expect_err("a parquet without a `dvol_close` column must fail the load");
+        assert!(
+            matches!(err, DvolDataError::Parquet { .. }),
+            "expected a Parquet column-lookup error, got: {err}"
+        );
+    }
+
+    /// Review 3-15 HIGH: a NULL `dvol_close` must ERROR, never coalesce to 0.0.
+    ///
+    /// This is the worst of the three NULL cells: 0.0 is a *plausible* DVOL that
+    /// is below every median, so the day scores CALM **and** the 0.0 enters the
+    /// 30-day median ring and drags the cut down for the next 30 distinct closes.
+    #[test]
+    fn load_rejects_a_null_dvol_close() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = ten_day_span_2023();
+
+        let mut raw: Vec<(Option<i64>, Option<i64>, Option<f64>)> = day_rows(10)
+            .into_iter()
+            .map(|(open, v)| (Some(open), Some(open + ONE_DAY_MS - 1), Some(v)))
+            .collect();
+        raw[4].2 = None; // NULL value cell, mid-span
+
+        let rel = write_dvol_parquet_raw(root, "BTC", 2023, &raw);
+        let aggregate = write_manifest(root, &[rel]);
+        let src = DvolDataSource::new(root.to_path_buf(), vec![Symbol::new("BTC")])
+            .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "null-value")
+            .expect_err("a NULL dvol_close must fail the load, not become 0.0");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, DvolDataError::NullDvolClose { row: 4, .. }),
+            "expected NullDvolClose at row 4, got: {msg}"
+        );
+        assert!(
+            msg.contains("0.0"),
+            "the diagnostic must say WHY coalescing is unsafe. Got: {msg}"
+        );
+    }
+
+    /// Review 3-15 HIGH: a NULL timestamp must ERROR, never become epoch-0.
+    ///
+    /// Under `unwrap_or(0)` the row became epoch-0 and then vanished past the
+    /// span filter — a silently shrinking corpus with no diagnostic anywhere.
+    #[test]
+    fn load_rejects_a_null_timestamp() {
+        use tempfile::TempDir;
+
+        for (col_idx, col_name) in [(0_usize, "day_open_ts_ms"), (1, "day_close_ts_ms")] {
+            let tmp = TempDir::new().expect("tempdir");
+            let root = tmp.path();
+            let span = ten_day_span_2023();
+
+            let mut raw: Vec<(Option<i64>, Option<i64>, Option<f64>)> = day_rows(10)
+                .into_iter()
+                .map(|(open, v)| (Some(open), Some(open + ONE_DAY_MS - 1), Some(v)))
+                .collect();
+            if col_idx == 0 {
+                raw[2].0 = None;
+            } else {
+                raw[2].1 = None;
+            }
+
+            let rel = write_dvol_parquet_raw(root, "BTC", 2023, &raw);
+            let aggregate = write_manifest(root, &[rel]);
+            let src = DvolDataSource::new(root.to_path_buf(), vec![Symbol::new("BTC")])
+                .with_expected_revision_sha(&aggregate);
+
+            let err = src
+                .load(&span, "null-ts")
+                .expect_err("a NULL timestamp must fail the load, not become epoch-0");
+            let msg = err.to_string();
+            assert!(
+                matches!(err, DvolDataError::NullTimestamp { row: 2, column, .. } if column == col_name),
+                "expected NullTimestamp({col_name}) at row 2, got: {msg}"
+            );
+        }
+    }
+
+    /// Review 3-15 MEDIUM: `day_close_ts_ms` must equal
+    /// `day_open_ts_ms + 86_400_000 - 1`.
+    ///
+    /// `day_open_ts_ms` was present on disk and ignored. A regenerated corpus
+    /// written under a different keying convention (here: keyed at the day OPEN)
+    /// would have loaded silently and shifted every regime decision by a day.
+    #[test]
+    fn load_rejects_a_foreign_keying_convention() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = ten_day_span_2023();
+
+        // Every row keyed at the day OPEN instead of the fully-observed close.
+        let raw: Vec<(Option<i64>, Option<i64>, Option<f64>)> = day_rows(10)
+            .into_iter()
+            .map(|(open, v)| (Some(open), Some(open), Some(v)))
+            .collect();
+
+        let rel = write_dvol_parquet_raw(root, "BTC", 2023, &raw);
+        let aggregate = write_manifest(root, &[rel]);
+        let src = DvolDataSource::new(root.to_path_buf(), vec![Symbol::new("BTC")])
+            .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "foreign-keying")
+            .expect_err("a corpus keyed at the day OPEN must be rejected");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, DvolDataError::KeyingInvariant { row: 0, .. }),
+            "expected KeyingInvariant at row 0, got: {msg}"
+        );
+
+        // And the correct convention must still load — the guard is a floor,
+        // not a tax (this is the shape the shipped corpus uses).
+        let tmp_ok = TempDir::new().expect("tempdir");
+        let root_ok = tmp_ok.path();
+        let rel_ok = write_dvol_parquet(root_ok, "BTC", 2023, &day_rows(10));
+        let agg_ok = write_manifest(root_ok, &[rel_ok]);
+        assert!(
+            DvolDataSource::new(root_ok.to_path_buf(), vec![Symbol::new("BTC")])
+                .with_expected_revision_sha(&agg_ok)
+                .load(&span, "correct-keying")
+                .is_ok(),
+            "the shipped `day_open + 86_400_000 - 1` convention must still load"
+        );
+    }
+
+    /// Review 3-15 HIGH: the PER-SYMBOL daily coverage floor.
+    ///
+    /// One symbol at 2 of 10 days is the failure this exists for: the arm's
+    /// median ring only advances when the as-of close CHANGES, so a thinned
+    /// corpus freezes the regime cut and renders a plausible verdict instead of
+    /// failing. Nothing downstream but `is_empty()` looked, and a 1-row corpus
+    /// passes that.
+    #[test]
+    fn load_rejects_a_symbol_with_missing_coverage() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        let span = ten_day_span_2023();
+
+        let btc = day_rows(10);
+        let eth: Vec<(i64, f64)> = day_rows(10).into_iter().take(2).collect();
+
+        let rel_btc = write_dvol_parquet(root, "BTC", 2023, &btc);
+        let rel_eth = write_dvol_parquet(root, "ETH", 2023, &eth);
+        let aggregate = write_manifest(root, &[rel_btc, rel_eth]);
+
+        let src = DvolDataSource::new(
+            root.to_path_buf(),
+            vec![Symbol::new("BTC"), Symbol::new("ETH")],
+        )
+        .with_expected_revision_sha(&aggregate);
+
+        let err = src
+            .load(&span, "deficient-symbol")
+            .expect_err("a symbol below the coverage floor must fail the load");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, DvolDataError::InsufficientCoverage { .. }),
+            "expected InsufficientCoverage, got: {msg}"
+        );
+        assert!(
+            msg.contains("ETH") && !msg.contains("BTC"),
+            "the failure must NAME the deficient symbol and not blame the complete \
+             one. Got: {msg}"
+        );
+    }
+
+    /// A completely ABSENT symbol (zero rows in span) is the worst case — it
+    /// must fail with the same loud, symbol-naming error.
+    ///
+    /// **This is bug-log #78's second trigger in miniature**: the corpus is
+    /// present, its SHA verifies, and the requested window simply has no rows.
+    /// Before the floor this returned `Ok(rows_for_the_other_symbol)` and the
+    /// arm degenerated in silence.
+    #[test]
+    fn load_rejects_a_span_the_corpus_does_not_cover() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+
+        // Corpus holds 2023-01-01..2023-01-10; ask for 2023-06-01..2023-06-11.
+        let rel = write_dvol_parquet(root, "BTC", 2023, &day_rows(10));
+        let aggregate = write_manifest(root, &[rel]);
+        let stale_span = crate::realdata::TimeSpan {
+            start_ms: Y2023_START_MS + 151 * ONE_DAY_MS,
+            end_ms: Y2023_START_MS + 161 * ONE_DAY_MS,
+            start_label: "2023-06-01T00:00:00Z",
+            end_label: "2023-06-11T00:00:00Z",
+        };
+
+        let err = DvolDataSource::new(root.to_path_buf(), vec![Symbol::new("BTC")])
+            .with_expected_revision_sha(&aggregate)
+            .load(&stale_span, "stale-window")
+            .expect_err(
+                "a window the corpus does not cover must FAIL, not return an empty \
+                 series that degenerates into a mislabelled arm (bug-log #78)",
+            );
+        assert!(
+            matches!(
+                err,
+                DvolDataError::InsufficientCoverage {
+                    actual: 0,
+                    expected: 10,
+                    ..
+                }
+            ),
+            "expected InsufficientCoverage(0 of 10), got: {err}"
+        );
+    }
+
+    /// The floor must not be a tax: a corpus with a single missing day inside a
+    /// LONG span still loads (995‰), while the deficient case above fails.
+    #[test]
+    fn coverage_floor_tolerates_a_single_gap_in_a_long_span() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path();
+        // 300-day span, kept inside 2023 (a span ENDING exactly on a year
+        // boundary makes `files_for_span` demand the next year's parquet too).
+        // 995‰ → threshold = ceil(300 * 995 / 1000) = 299.
+        let span = crate::realdata::TimeSpan {
+            start_ms: Y2023_START_MS,
+            end_ms: Y2023_START_MS + 300 * ONE_DAY_MS,
+            start_label: "2023-01-01T00:00:00Z",
+            end_label: "2023-10-28T00:00:00Z",
+        };
+        let mut rows = day_rows(300);
+        rows.remove(100); // one missing day
+        let rel = write_dvol_parquet(root, "BTC", 2023, &rows);
+        let aggregate = write_manifest(root, &[rel]);
+
+        let loaded = DvolDataSource::new(root.to_path_buf(), vec![Symbol::new("BTC")])
+            .with_expected_revision_sha(&aggregate)
+            .load(&span, "one-gap")
+            .expect("299 of 300 days is above the 995‰ floor — must still load");
+        assert_eq!(loaded.rows.len(), 299);
+    }
+
     // ── Real-corpus smoke test (on-machine only) ──────────────────────────────
 
     /// Smoke test: load from the real DVOL corpus and verify rows exist.
@@ -647,6 +1349,97 @@ mod tests {
         assert_eq!(
             loaded.revision_sha, EXPECTED_DVOL_REVISION_SHA,
             "revision SHA mismatch"
+        );
+    }
+
+    /// **Review 3-15 HIGH — the coverage-floor MEASUREMENT against the shipped
+    /// corpus.** A floor that rejects the corpus it is supposed to protect is a
+    /// regression, so this prints per-symbol counts for every span the product
+    /// actually loads and asserts the load SUCCEEDS.
+    ///
+    /// On-machine only (the parquets are gitignored). Run:
+    ///
+    /// ```sh
+    /// cargo test -p backtest --features realdata --lib \
+    ///   dvol_data::tests::real_corpus_coverage_floor_accepts_shipped_corpus \
+    ///   -- --include-ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "on-machine: requires data/deribit-dvol corpus + SHA match"]
+    fn real_corpus_coverage_floor_accepts_shipped_corpus() {
+        use std::path::PathBuf;
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("canonicalize workspace root");
+        let dvol_root = workspace_root.join("data/deribit-dvol");
+
+        // H1-2024 (the story's evaluation window) and the PRE-EXTENDED span the
+        // bake-off now loads (review 3-15 MEDIUM: warm-up burn-in must not be
+        // charged to the evaluation window).
+        let h1_start = 1_704_067_200_000_i64; // 2024-01-01T00:00:00Z
+        let h1_end = 1_719_792_000_000_i64; // 2024-07-01T00:00:00Z
+        let warmup_ms = crate::bakeoff::DVOL_WARMUP_DAYS * ONE_DAY_MS;
+
+        let spans: Vec<(&str, crate::realdata::TimeSpan)> = vec![
+            (
+                "H1-2024 (raw evaluation window)",
+                crate::realdata::TimeSpan {
+                    start_ms: h1_start,
+                    end_ms: h1_end,
+                    start_label: "2024-01-01T00:00:00Z",
+                    end_label: "2024-07-01T00:00:00Z",
+                },
+            ),
+            (
+                "H1-2024 pre-extended by DVOL_WARMUP_DAYS (crosses 2023/2024)",
+                crate::realdata::TimeSpan {
+                    start_ms: h1_start - warmup_ms,
+                    end_ms: h1_end,
+                    start_label: "(warm-up-extended)",
+                    end_label: "2024-07-01T00:00:00Z",
+                },
+            ),
+            (
+                "H2-2024",
+                crate::realdata::TimeSpan {
+                    start_ms: 1_719_792_000_000 - warmup_ms,
+                    end_ms: 1_735_689_600_000,
+                    start_label: "(warm-up-extended)",
+                    end_label: "2025-01-01T00:00:00Z",
+                },
+            ),
+        ];
+
+        let mut failures: Vec<String> = Vec::new();
+        for (label, span) in &spans {
+            let expected = usize::try_from((span.end_ms - span.start_ms) / ONE_DAY_MS).unwrap_or(0);
+            let threshold = (expected * MIN_SYMBOL_COVERAGE_PERMILLE).div_ceil(1000);
+            for sym in ["BTC", "ETH"] {
+                let src = DvolDataSource::new(dvol_root.clone(), vec![Symbol::new(sym)]);
+                match src.load(span, "coverage-measurement") {
+                    Ok(loaded) => {
+                        #[allow(clippy::cast_precision_loss)]
+                        let pct = loaded.rows.len() as f64 / expected as f64 * 100.0;
+                        eprintln!(
+                            "[coverage] {label:<58} {sym}: {:>4} / {expected:>4} daily rows \
+                             ({pct:6.2}%, floor {threshold} rows) OK",
+                            loaded.rows.len()
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("[coverage] {label:<58} {sym}: FAILED — {e}");
+                        failures.push(format!("{label} / {sym}: {e}"));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "the coverage floor must NOT reject the shipped corpus on any span the \
+             product loads. Failures:\n  {}",
+            failures.join("\n  ")
         );
     }
 

@@ -332,8 +332,11 @@ pub fn build_forward_plan_from_registry(
         // `describe_plan` on a `PlanDescribe` implementor, and
         // `DvolRegimeStrategy` does NOT implement `PlanDescribe`, we fall back
         // to `AlwaysLongStrategy` as the honest plan describer: the DVOL arm in
-        // the forward paper loop runs warm-up-only (flat) because no corpus is
-        // loaded, which is equivalent to buy-and-hold at the plan level.
+        // the forward paper loop runs warm-up-only because no corpus is loaded,
+        // and warm-up = HOLD THE COIN (ADR-0072 D3), which is buy-and-hold at the
+        // plan level. (Review 3-15: this description was *aspirational* until the
+        // warm-up fix — the arm actually sat in 100% cash, so `AlwaysLongStrategy`
+        // described a plan the runtime never executed. Both agree now.)
         "v0.dvol_regime" => {
             let describer = strategy::AlwaysLongStrategy::new();
             Some(build_forward_plan(

@@ -68,9 +68,36 @@ fn advisor_field() -> Vec<trading_core::StrategyId> {
 /// filtered → 19 arms. Single-sourced from `advisor_field()` so it can never drift
 /// from the real field; surfaced in the leaderboard header context (OQ-2).
 /// `+ 1` is the appended benchmark.
+///
+/// **Symbol-blind — prefer [`advisor_field_arm_count_for`].** Review 3-15 LOW:
+/// this returns 20 unconditionally, so a SOLUSDT operator was told 20 strategies
+/// ran when 19 did (the ADR-0072 D8 DVOL arm is dropped for non-BTC/ETH coins).
 #[must_use]
 pub fn advisor_field_arm_count() -> usize {
     advisor_field().len() + 1
+}
+
+/// The number of arms the bake-off actually puts head-to-head **for this coin**.
+///
+/// ADR-0072 D8: `v0.dvol_regime` is dropped from the field for any coin outside
+/// {BTCUSDT, ETHUSDT} (DVOL exists only for BTC and ETH), so the honest count is
+/// one lower there. Routed through `backtest::bakeoff::dvol_supported` — the same
+/// predicate the bake-off loop uses — so the screen can never disagree with the
+/// field that runs (review 3-15 MEDIUM: that allowlist used to be copied in three
+/// places).
+///
+/// Note this is the count the field DECLARES. The DVOL arm can additionally be
+/// dropped at run time when its corpus is missing or does not cover the requested
+/// window (bug-log #78); that is reported by the arm's absence from the
+/// leaderboard rows, which is the honest rendering of "did not run".
+#[must_use]
+pub fn advisor_field_arm_count_for(symbol_str: &str) -> usize {
+    let full = advisor_field_arm_count();
+    if backtest::bakeoff::dvol_supported(symbol_str) {
+        full
+    } else {
+        full - 1
+    }
 }
 
 /// The advisor robustness mode: the real moving-block bootstrap gate (ADR-0063
@@ -234,6 +261,35 @@ pub fn spawn_bakeoff(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review 3-15 LOW: the arm count must be resolved FOR THE COIN.
+    ///
+    /// It used to be symbol-blind, so a SOLUSDT operator read "20 strategies
+    /// head-to-head" while 19 ran — the ADR-0072 D8 DVOL arm is BTC/ETH-only.
+    #[test]
+    fn arm_count_drops_the_dvol_arm_for_unsupported_coins() {
+        let full = advisor_field_arm_count();
+        for supported in ["BTCUSDT", "ETHUSDT"] {
+            assert_eq!(
+                advisor_field_arm_count_for(supported),
+                full,
+                "{supported} runs the full field including v0.dvol_regime"
+            );
+        }
+        for unsupported in ["SOLUSDT", "DOGEUSDT", "XRPUSDT"] {
+            assert_eq!(
+                advisor_field_arm_count_for(unsupported),
+                full - 1,
+                "{unsupported} has no DVOL corpus, so the v0.dvol_regime arm is \
+                 ABSENT from the field and the operator must be told {} — not {full}",
+                full - 1
+            );
+        }
+        // And the predicate is the SAME one the bake-off dispatch loop uses —
+        // not a fourth copy of the allowlist.
+        assert!(backtest::bakeoff::dvol_supported("BTCUSDT"));
+        assert!(!backtest::bakeoff::dvol_supported("SOLUSDT"));
+    }
 
     /// The default config targets the default coin + H1 2024 over the four
     /// rule engines + the two F8 vote ensembles, real Binance data, and the

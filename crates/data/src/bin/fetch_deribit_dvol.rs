@@ -287,13 +287,22 @@ pub async fn paginate_dvol(
         all.extend(in_window);
 
         // Advance cursor: prefer the Deribit `continuation` field (the next page's
-        // start timestamp). Fall back to last candle's open + resolution.
+        // start timestamp). Fall back to the MAXIMUM `open_ts_ms` seen so far.
+        //
+        // Review 3-15 HIGH: this fallback used to read `all.last()` — the last
+        // candle in INSERTION order. Nothing in the fetcher asserted that Deribit
+        // returns pages ascending, and if a page ever arrived newest-first the
+        // cursor would jump to the OLDEST candle's timestamp + one resolution,
+        // fail the `next_cursor <= cursor` guard, and break after page 1 —
+        // silently truncating the year to a single page while the run reported
+        // success. `max()` is order-independent by construction.
         let next_cursor = match continuation {
             Some(cont) if cont > cursor => cont,
             _ => {
-                // Derive from the last candle's open_ts.
-                match all.last() {
-                    Some(last) => last.open_ts_ms + RESOLUTION_MS,
+                // Derive from the newest candle's open_ts, whatever order the
+                // pages arrived in.
+                match all.iter().map(|c| c.open_ts_ms).max() {
+                    Some(max_open) => max_open + RESOLUTION_MS,
                     None => break, // no candles at all
                 }
             }
@@ -342,32 +351,59 @@ const ONE_DAY_MS: i64 = 86_400_000;
 
 /// Aggregate 12h DVOL candles into daily rows (one per UTC day).
 ///
-/// For each UTC day, takes the FIRST candle's open as `dvol_open`, the max
-/// high, the min low, and the LAST candle's close as `dvol_close`. Candles
+/// For each UTC day, takes the EARLIEST candle's open as `dvol_open`, the max
+/// high, the min low, and the LATEST candle's close as `dvol_close`. Candles
 /// are grouped by their UTC day (floor to midnight).
 ///
 /// Returns rows sorted by `day_open_ts_ms ASC`.
+///
+/// # Candle order is asserted, not assumed (review 3-15 HIGH)
+///
+/// This function used to take `day_candles.first()` / `.last()` in **insertion**
+/// order and nothing anywhere checked that the API returned candles ascending.
+/// `dvol_close = last.close` is the single field the `v0.dvol_regime` signal
+/// consumes, so if Deribit ever returned a page newest-first, `dvol_close` would
+/// become the 00:00 candle's close instead of the 12:00 one — a systematic 12h
+/// look-back **baked into the parquet and then SHA-pinned forever**, invisible to
+/// every downstream check because the value is perfectly plausible.
+///
+/// Candles are now sorted by `open_ts_ms` within each day and de-duplicated on
+/// that key, so the output is a pure function of the SET of candles and is
+/// independent of the order (and of page-seam repeats) the paginator saw them in.
+/// The existing `test_aggregate_two_candles_one_day` feeds already-ascending
+/// candles and therefore could never have caught this; see
+/// `test_aggregate_is_order_independent` and
+/// `test_aggregate_deduplicates_page_seam_repeats`.
 #[must_use]
 pub fn aggregate_to_daily(candles: &[DvolCandle]) -> Vec<DailyDvolRow> {
     use std::collections::BTreeMap;
 
-    // Group candles by UTC-midnight day key.
-    let mut days: BTreeMap<i64, Vec<&DvolCandle>> = BTreeMap::new();
+    // Group candles by UTC-midnight day key, keyed WITHIN the day by
+    // `open_ts_ms`. A BTreeMap gives ascending order by construction and makes a
+    // page-seam duplicate (the same candle returned at the end of one page and
+    // the start of the next) collapse to one entry instead of skewing the day.
+    let mut days: BTreeMap<i64, BTreeMap<i64, &DvolCandle>> = BTreeMap::new();
     for c in candles {
         let day_key = (c.open_ts_ms / ONE_DAY_MS) * ONE_DAY_MS;
-        days.entry(day_key).or_default().push(c);
+        days.entry(day_key).or_default().insert(c.open_ts_ms, c);
     }
 
     let mut rows = Vec::with_capacity(days.len());
     for (day_start, day_candles) in &days {
-        let first = day_candles.first().expect("non-empty group");
-        let last = day_candles.last().expect("non-empty group");
+        // `values()` is ascending by `open_ts_ms` — the earliest candle of the
+        // day opens it, the latest closes it, whatever order they arrived in.
+        let Some(first) = day_candles.values().next() else {
+            continue; // unreachable: a day key only exists once a candle inserted
+        };
+        let Some(last) = day_candles.values().next_back() else {
+            continue;
+        };
         let high = day_candles
-            .iter()
+            .values()
             .map(|c| c.high)
             .fold(f64::NEG_INFINITY, f64::max);
         let low = day_candles
-            .iter()
+            .values()
             .map(|c| c.low)
             .fold(f64::INFINITY, f64::min);
 
@@ -733,7 +769,140 @@ mod tests {
 
     // ── Daily aggregation ────────────────────────────────────────────────────
 
+    /// **Review 3-15 HIGH — the RED-before test for candle ordering.**
+    ///
+    /// `dvol_close = last.close` used to take the LAST candle in *insertion*
+    /// order. Feeding the same day's two candles newest-first therefore produced
+    /// `dvol_close = 52.0` (the 00:00 candle) instead of `57.0` (the 12:00 one) —
+    /// a systematic 12h look-back written into the parquet and SHA-pinned forever.
+    /// Note `test_aggregate_two_candles_one_day` below feeds them already
+    /// ascending, so it cannot catch this.
+    #[test]
+    fn test_aggregate_is_order_independent() {
+        let day_start: i64 = 1_672_531_200_000; // 2023-01-01T00:00Z
+        let c_00 = DvolCandle {
+            open_ts_ms: day_start,
+            open: 50.0,
+            high: 55.0,
+            low: 48.0,
+            close: 52.0,
+        };
+        let c_12 = DvolCandle {
+            open_ts_ms: day_start + HALF_DAY_MS,
+            open: 52.0,
+            high: 58.0,
+            low: 50.0,
+            close: 57.0,
+        };
+
+        let ascending = aggregate_to_daily(&[c_00.clone(), c_12.clone()]);
+        // A page returned NEWEST-FIRST.
+        let descending = aggregate_to_daily(&[c_12, c_00]);
+
+        assert_eq!(ascending.len(), 1);
+        assert_eq!(descending.len(), 1);
+        assert!(
+            (descending[0].dvol_close - 57.0).abs() < 1e-9,
+            "dvol_close must be the 12:00 candle's close (57.0) regardless of page \
+             order — got {}. Taking `last()` in insertion order yields 52.0, the \
+             00:00 close: a silent 12h look-back baked into the corpus.",
+            descending[0].dvol_close
+        );
+        assert!(
+            (descending[0].dvol_open - 50.0).abs() < 1e-9,
+            "dvol_open must be the 00:00 candle's open (50.0), got {}",
+            descending[0].dvol_open
+        );
+        assert!(
+            (ascending[0].dvol_close - descending[0].dvol_close).abs() < 1e-9
+                && (ascending[0].dvol_open - descending[0].dvol_open).abs() < 1e-9
+                && (ascending[0].dvol_high - descending[0].dvol_high).abs() < 1e-9
+                && (ascending[0].dvol_low - descending[0].dvol_low).abs() < 1e-9,
+            "the daily row must be a pure function of the SET of candles"
+        );
+    }
+
+    /// A candle repeated at a page seam must not change the day (review 3-15 HIGH).
+    ///
+    /// Deribit's `continuation` is the NEXT page's start timestamp, but a
+    /// boundary candle showing up twice is exactly the kind of thing a paginator
+    /// hits. De-duplicating on `open_ts_ms` makes the fold idempotent.
+    #[test]
+    fn test_aggregate_deduplicates_page_seam_repeats() {
+        let day_start: i64 = 1_672_531_200_000;
+        let c_00 = make_candle(day_start, 50.0);
+        let c_12 = make_candle(day_start + HALF_DAY_MS, 57.0);
+
+        let clean = aggregate_to_daily(&[c_00.clone(), c_12.clone()]);
+        // The 12:00 candle arrives at the end of page 1 AND the start of page 2,
+        // and the pages are stitched newest-first for good measure.
+        let seamed = aggregate_to_daily(&[c_12.clone(), c_00, c_12]);
+
+        assert_eq!(
+            seamed.len(),
+            1,
+            "a seam repeat must not create a second day"
+        );
+        assert!(
+            (clean[0].dvol_close - seamed[0].dvol_close).abs() < 1e-9
+                && (clean[0].dvol_open - seamed[0].dvol_open).abs() < 1e-9,
+            "a duplicated seam candle must leave the daily row byte-identical: \
+             clean={clean:?} seamed={seamed:?}"
+        );
+    }
+
+    /// The paginator's cursor fallback must not assume ascending pages
+    /// (review 3-15 HIGH).
+    ///
+    /// With `continuation: None` the cursor used to advance from
+    /// `all.last().open_ts_ms` — the last candle in insertion order. On a
+    /// newest-first page that is the OLDEST candle, so `next_cursor <= cursor`
+    /// and the loop breaks after page 1: the rest of the year is silently
+    /// dropped while the run reports success. The cursor now advances from the
+    /// MAXIMUM `open_ts_ms` seen.
+    #[tokio::test]
+    async fn test_paginator_cursor_survives_a_descending_page() {
+        let start_ms: i64 = 1_672_531_200_000; // 2023-01-01
+        let end_ms = start_ms + 10 * ONE_DAY_MS_T;
+
+        // Page 1 returns 4 half-day candles NEWEST-FIRST and no continuation.
+        let page1: Vec<DvolCandle> = (0..4)
+            .rev()
+            .map(|i| make_candle(start_ms + i * HALF_DAY_MS, 50.0 + i as f64))
+            .collect();
+        // Page 2 continues from where page 1 really ended.
+        let page2: Vec<DvolCandle> = (4..6)
+            .map(|i| make_candle(start_ms + i * HALF_DAY_MS, 50.0 + i as f64))
+            .collect();
+
+        let fetcher = MockDvolFetcher::new(vec![(page1, None), (page2, None), (vec![], None)]);
+        let result = paginate_dvol(&fetcher, "BTC", 43200, start_ms, end_ms, 0)
+            .await
+            .expect("pagination must succeed");
+
+        assert_eq!(
+            result.len(),
+            6,
+            "the paginator must keep advancing past a newest-first page; it \
+             collected {} candle(s) — truncating after page 1 is the defect",
+            result.len()
+        );
+        let calls = fetcher.recorded_calls();
+        assert!(calls.len() >= 2, "at least 2 requests, got {}", calls.len());
+        let expected_cursor = start_ms + 3 * HALF_DAY_MS + RESOLUTION_MS;
+        assert!(
+            calls[1].contains(&format!("start_timestamp={expected_cursor}")),
+            "the second request must advance from the NEWEST candle of page 1 \
+             ({expected_cursor}); got: {}",
+            calls[1]
+        );
+    }
+
     /// Two 12h candles on the same day → one daily row.
+    ///
+    /// **Scope note (review 3-15):** this test feeds candles ALREADY ascending,
+    /// so it pins the OHLC fold but says nothing about ordering. The ordering
+    /// guarantee is `test_aggregate_is_order_independent`.
     #[test]
     fn test_aggregate_two_candles_one_day() {
         let day_start: i64 = 1_672_531_200_000; // 2023-01-01T00:00Z

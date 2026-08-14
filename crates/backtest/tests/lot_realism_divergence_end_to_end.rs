@@ -62,15 +62,43 @@
 //! BTC-major-€200 negative control diverges by ~0.21 bps — ~27× smaller than
 //! the DOGE corpus and comfortably inside the golden-path "near-inert" bound.
 //!
+//! # Layer 2 — the PRODUCTION-PATH gate (bug-log #79, added 2026-08-13)
+//!
+//! Everything above this line exercises `PaperEngine::step` through an engine
+//! **this test builds itself**. That is a seam test, and on 2026-08-12 the
+//! story-1-18/3-15 review proved exactly what a seam test cannot see: the
+//! §"ADVISOR-PATH GATE" test in this file passed for eight days while €200 lot
+//! realism was **inert in production**. `run_scenario` threaded
+//! `cfg.latency_slippage_sim` for 1 of ~15 arms, and
+//! `sma_composed_run::{run, run_with_strategy}` built the engine as
+//! `PaperEngine::new(match_config, seed)` — so `with_venue_filter_mode` had
+//! **zero** production call sites workspace-wide.
+//!
+//! The `advisor_bakeoff_path_*` tests below therefore call the real entry
+//! point — `backtest::engine::run_scenario`, the function `run_bakeoff` loops
+//! once per arm — with the ScenarioConfig the bake-off actually builds
+//! (`latency_slippage_sim: LatencySlippageSimConfig::advisor_default()`,
+//! `bakeoff/mod.rs`), and assert on the RETURNED fills/equity. They go RED if
+//! either link is cut:
+//!
+//! - cut the threading (an arm hard-codes `LatencySlippageSimConfig::default()`)
+//!   → that arm stops diverging → `advisor_bakeoff_path_every_arm_diverges` red;
+//! - cut the application (`PaperEngine::new(..)` without
+//!   `.with_venue_filter_mode(..)`) → no arm diverges → every gate red.
+//!
 //! # Cross-references
 //!
 //! - ADR-0087 § D5 (day-1 divergence e2e), § D1 (the `PaperEngine::step` seam).
+//! - `docs/dev-notes/bug-log.md` § `#79` — why layer 2 exists.
 //! - `spec/v3/advisor-lot-realism/{feature.md,tasks.md}` — T6.
 
 use backtest::MatchingEngine;
 use backtest::PaperEngine;
+use backtest::cancel::cancellation_pair;
 use backtest::cli_types::{BacktestState, LatencySlippageSimConfig, VenueFilterMode};
+use backtest::engine::{DateRange, RunReport, ScenarioConfig, ScenarioDataSource, run_scenario};
 use backtest::paper::{MatchConfig, SimFilterStats};
+use backtest::progress::ProgressSender;
 use risk::{FixedFractionSizer, size_and_validate};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -84,6 +112,13 @@ use trading_core::{
 /// Build a minimal 1h bar at a fixed close price (open == high == low ==
 /// close — sizing/fill math only reads `close` on this path).
 fn make_bar(symbol: &Symbol, idx: i64, close: Decimal) -> Bar {
+    make_bar_with_volume(symbol, idx, close, dec!(1.0))
+}
+
+/// As [`make_bar`], with an explicit bar volume — the composed arms
+/// (`bbands`, `vol_breakout`, `obv`) gate on `volume` vs `avg(volume, 20)`,
+/// so a constant-volume corpus silently never trades them.
+fn make_bar_with_volume(symbol: &Symbol, idx: i64, close: Decimal, volume: Decimal) -> Bar {
     let ts = Timestamp::new(time::OffsetDateTime::UNIX_EPOCH + time::Duration::hours(idx));
     Bar {
         symbol: symbol.clone(),
@@ -96,7 +131,7 @@ fn make_bar(symbol: &Symbol, idx: i64, close: Decimal) -> Bar {
         high: Price::new(close).expect("positive close"),
         low: Price::new(close).expect("positive close"),
         close: Price::new(close).expect("positive close"),
-        volume: Quantity::new(dec!(1.0)).expect("positive volume"),
+        volume: Quantity::new(volume).expect("positive volume"),
         trade_count: 1,
     }
 }
@@ -367,20 +402,15 @@ async fn btcusdt_major_at_200_is_negative_control() {
     );
 }
 
-/// PRD §13 Q5 (operator decision 2026-08-04) — the ADVISOR path's day-1
-/// divergence gate.
+/// Seam-level companion to the production gates below: the two CONSTRUCTORS
+/// (`advisor_default()` vs `Default`) must produce a measurable fill
+/// difference when handed to `PaperEngine` directly.
 ///
-/// The advisor now plans with venue realism ON via
-/// [`LatencySlippageSimConfig::advisor_default`], while the plain `Default`
-/// stays `venue_filter: None` (the ADR-0087 byte-identity arm every anchored
-/// body depends on). A unit test pins those two VALUES — but this project has
-/// learned five times over (bug-log #65-#69) that a configured parameter is
-/// not an executed one. This test closes that gap: it sources the two filter
-/// settings FROM THE TWO CONSTRUCTORS and proves they produce a REAL,
-/// measurable fill difference on the product's headline budget.
-///
-/// If someone ever "simplifies" `advisor_default()` back to `Self::default()`,
-/// this test goes red — which is the whole point.
+/// **This test alone proves nothing about the advisor** — it builds its own
+/// engine. It is kept only because it pins the two constructor values against
+/// a "simplification" of `advisor_default()` back to `Self::default()`. The
+/// claim "lot realism is ON for the advisor path" is owned exclusively by the
+/// `advisor_bakeoff_path_*` tests further down, which call `run_scenario`.
 #[tokio::test]
 async fn advisor_default_constructor_diverges_from_plain_default_at_the_fill_seam() {
     let symbol = Symbol::new("DOGEUSDT");
@@ -406,15 +436,14 @@ async fn advisor_default_constructor_diverges_from_plain_default_at_the_fill_sea
 
     assert!(
         relative >= dec!(0.0001),
-        "ADVISOR-PATH GATE FAIL — advisor_default() is behaviourally a no-op!\n\
+        "CONSTRUCTOR SEAM FAIL — advisor_default() is behaviourally a no-op!\n\
          eq_plain(default)   = {eq_plain}\n\
          eq_advisor          = {eq_advisor}\n\
          divergence          = {divergence} ({relative} relative)\n\
          required (>= 1 bp)  = 0.0001\n\
          \n\
-         The advisor path plans WITH lot-size rounding + min-notional reject\n\
-         (PRD §13 Q5). Red here means either advisor_default() lost its\n\
-         venue_filter or the filter stopped biting at PaperEngine::step."
+         Red here means advisor_default() lost its venue_filter or the filter\n\
+         stopped biting at PaperEngine::step."
     );
     assert!(
         eq_advisor <= eq_plain,
@@ -426,8 +455,367 @@ async fn advisor_default_constructor_diverges_from_plain_default_at_the_fill_sea
         "the plain default must never skip orders"
     );
     eprintln!(
-        "advisor-path gate: eq_plain={eq_plain} eq_advisor={eq_advisor} \
+        "constructor seam: eq_plain={eq_plain} eq_advisor={eq_advisor} \
          relative_divergence={relative} skipped_min_notional(advisor)={}",
         stats_advisor.skipped_min_notional
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LAYER 2 — the PRODUCTION-PATH advisor gate (bug-log #79)
+//
+//  Everything below calls `backtest::engine::run_scenario` — the function
+//  `run_bakeoff` loops once per arm — and asserts on the fills/equity it
+//  RETURNS. Nothing below constructs a `PaperEngine`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Fixed non-zero ChaCha seed (`[0u8; 32]` is rejected by `run_scenario`).
+const GATE_SEED: [u8; 32] = {
+    let mut s = [0u8; 32];
+    s[0] = 0xC0;
+    s[1] = 0xFF;
+    s[2] = 0xEE;
+    s
+};
+
+/// The product's headline budget (PRD §13 Q5).
+const GATE_CAPITAL: Decimal = dec!(200);
+
+/// Number of bars in the production-path corpus (6 × 60-bar regime cycles).
+const GATE_BARS: i64 = 360;
+
+/// DOGEUSDT regime-cycle bars — the corpus that makes the whole bake-off field
+/// trade.
+///
+/// DOGE is the ADR-0087 § D5 divergence corpus: `step_size = 1` (whole units),
+/// so a €20 clip (10 % of the €200 budget) buys ~50-100 DOGE and the lot floor
+/// always bites. Each 60-bar cycle walks four regimes so that every signal
+/// family in the bake-off fires at least once:
+///
+/// | bars  | regime           | fires                                     |
+/// |-------|------------------|-------------------------------------------|
+/// | 0-14  | steady uptrend   | SMA cross, MACD, donchian break, ROC, OBV |
+/// | 15-28 | quiet drift      | (compresses the Bollinger bands)          |
+/// | 29    | crash + vol spike| `close < bollinger_lower(20,2)`, vol breakout |
+/// | 30-49 | slide            | `rsi(14) < 30`                            |
+/// | 50-59 | recovery         | the RSI/BB re-entry edge                  |
+///
+/// An arm that never trades cannot witness lot realism, so the gates assert
+/// `fills` is non-empty rather than skipping.
+fn doge_production_bars() -> Vec<Bar> {
+    let symbol = Symbol::new("DOGEUSDT");
+    let mut price = dec!(0.2013);
+    let mut out = Vec::with_capacity(GATE_BARS as usize);
+    for i in 0..GATE_BARS {
+        let (step, volume) = match i % 60 {
+            14 => (dec!(0.0075), dec!(9)),     // breakout bar: new high + volume
+            0..=13 => (dec!(0.0075), dec!(1)), // steady uptrend
+            15..=28 => (dec!(0.0002), dec!(0.6)), // quiet: bands compress
+            29 => (dec!(-0.0700), dec!(12)),   // crash: pierces the lower band
+            30..=49 => (dec!(-0.0011), dec!(1.1)), // slide: drives RSI < 30
+            _ => (dec!(0.0035), dec!(2)),      // recovery
+        };
+        price += step;
+        out.push(make_bar_with_volume(&symbol, i, price, volume));
+    }
+    out
+}
+
+/// Synthetic as-of DVOL series for the `v0.dvol_regime` arm, one entry per bar.
+///
+/// Bars 0-29 carry 30 DISTINCT closes (50…79) to fill the strategy's ring;
+/// thereafter the series alternates 40 (calm → weight 1) / 90 (stress →
+/// weight 0) in 10-bar blocks, which straddles the trailing median in both
+/// directions and drives a Buy/Sell round trip every 20 bars.
+fn dvol_regime_series() -> Vec<Option<Decimal>> {
+    (0..GATE_BARS)
+        .map(|i| {
+            if i < 30 {
+                Some(Decimal::from(50 + i))
+            } else if ((i - 30) / 10) % 2 == 0 {
+                Some(dec!(40))
+            } else {
+                Some(dec!(90))
+            }
+        })
+        .collect()
+}
+
+/// Build the ScenarioConfig for `arm` exactly as `bakeoff/mod.rs` does, with
+/// `latency_slippage_sim` supplied by the caller — the ONLY difference between
+/// the two runs each gate performs.
+fn gate_config(arm: &str, sim: LatencySlippageSimConfig) -> ScenarioConfig {
+    ScenarioConfig {
+        strategy: StrategyId(arm.into()),
+        pair: (Venue::Binance, Symbol::new("DOGEUSDT")),
+        range: DateRange::Last30d, // ignored — bars_override supplies the data
+        params: None,
+        seed: GATE_SEED,
+        write_report: false, // anchor-safe: no report body is ever written
+        data_source: ScenarioDataSource::BinanceCache,
+        bars_override: Some(doge_production_bars()),
+        sma_fast_len: None,
+        sma_slow_len: None,
+        latency_slippage_sim: sim,
+        reports_dir: None,
+        // Mirrors `BakeoffConfig::is_short_enabled` (bakeoff/mod.rs).
+        short_enabled: matches!(
+            arm,
+            "v0.sma_cross_ls" | "v0.macd_ls" | "v0.rsi_ls" | "v0.bbands_ls" | "v0.always_short"
+        ),
+        initial_capital: Some(GATE_CAPITAL),
+        composed_toml_override: None,
+        dvol_override: if arm == "v0.dvol_regime" {
+            Some(dvol_regime_series())
+        } else {
+            None
+        },
+        macro_regime_series: None,
+    }
+}
+
+/// Run one arm through the PRODUCTION entry point.
+///
+/// `sim` is sourced from a constructor, never hand-written: the advisor run
+/// passes `LatencySlippageSimConfig::advisor_default()` — the literal value
+/// `bakeoff/mod.rs` and `bakeoff/sweep.rs` put on every bake-off arm.
+async fn run_arm(arm: &str, sim: LatencySlippageSimConfig) -> RunReport {
+    let (_handle, cancel_rx) = cancellation_pair();
+    run_scenario(gate_config(arm, sim), cancel_rx, ProgressSender::disabled())
+        .await
+        .unwrap_or_else(|e| panic!("run_scenario({arm}) must succeed on the gate corpus: {e:?}"))
+}
+
+/// DOGEUSDT's checked-in venue step, read from the production table (never
+/// hard-coded here) so a table edit cannot silently defeat the gate.
+fn doge_step() -> Decimal {
+    cost::venue_filter_for(&Symbol::new("DOGEUSDT"))
+        .expect("DOGEUSDT must be in the venue-filter table")
+        .step_size
+}
+
+fn final_equity(report: &RunReport) -> Decimal {
+    report
+        .equity_series
+        .last()
+        .expect("equity_series is never empty")
+        .1
+        .amount()
+}
+
+/// Count fills whose qty is NOT an exact multiple of the venue `step_size`,
+/// i.e. fills the lot filter demonstrably did not touch.
+fn unrounded_fills(report: &RunReport, step: Decimal) -> Vec<Decimal> {
+    report
+        .fills
+        .iter()
+        .map(|f| f.qty.get())
+        .filter(|q| !(q % step).is_zero())
+        .collect()
+}
+
+/// Arms whose fills are NOT all produced by `PaperEngine::step`.
+///
+/// The long/short arms route Sell-when-flat (open short) and Buy-when-short
+/// (cover) through `short_exec::{try_open_short, try_cover_short}`, which
+/// `continue`s past the matching engine and synthesizes a `FillView` directly
+/// (`scenarios/sma_composed_run.rs`). Those legs therefore cannot be
+/// lot-filtered by any amount of `venue_filter` wiring — a SIBLING of bug-log
+/// #79 at a different site, reported 2026-08-13 and deliberately NOT fixed in
+/// the #79 patch-pass. For these arms the gate asserts the engine-routed
+/// portion got filtered (strictly fewer unrounded fills) instead of demanding
+/// that every fill did.
+fn has_engine_bypassing_short_legs(arm: &str) -> bool {
+    matches!(
+        arm,
+        "v0.sma_cross_ls" | "v0.macd_ls" | "v0.rsi_ls" | "v0.bbands_ls" | "v0.always_short"
+    )
+}
+
+/// The per-arm assertion bundle. Returns `(eq_plain, eq_advisor)`.
+///
+/// Three independent witnesses, each of which alone fails the "inert feature"
+/// state:
+///
+/// 1. **Both runs traded.** A silent zero-trade arm proves nothing.
+/// 2. **Mechanism.** The plain-default path emits fills that are NOT multiples
+///    of the venue `step_size`; the advisor path emits strictly fewer such
+///    fills — zero, for every arm whose fills all come from
+///    `PaperEngine::step`. The filter demonstrably reached the fill seam on
+///    one path and demonstrably did not on the other.
+/// 3. **Effect.** The rounding propagated into cash/equity bookkeeping:
+///    terminal equities differ.
+async fn assert_arm_diverges(arm: &str) -> (Decimal, Decimal) {
+    let step = doge_step();
+
+    let plain = run_arm(arm, LatencySlippageSimConfig::default()).await;
+    let advisor = run_arm(arm, LatencySlippageSimConfig::advisor_default()).await;
+
+    assert!(
+        !plain.fills.is_empty() && !advisor.fills.is_empty(),
+        "{arm}: the gate corpus must make this arm TRADE on both paths \
+         (plain fills={}, advisor fills={}) — a zero-trade arm cannot witness \
+         lot realism and would let bug-log #79 pass unnoticed",
+        plain.fills.len(),
+        advisor.fills.len()
+    );
+
+    let plain_unrounded = unrounded_fills(&plain, step);
+    assert!(
+        !plain_unrounded.is_empty(),
+        "{arm}: the PLAIN default produced {} fills and every one of them was \
+         already a multiple of step_size={step} — this gate cannot discriminate \
+         on this corpus (or `LatencySlippageSimConfig::default()` grew a \
+         venue_filter, which would move every anchored report body — ADR-0087 § D6)",
+        plain.fills.len()
+    );
+
+    let advisor_unrounded = unrounded_fills(&advisor, step);
+    let inert_diagnosis = format!(
+        "ADVISOR-PATH GATE FAIL ({arm}) — €200 lot realism is INERT in production!\n\
+         advisor-path fills NOT multiples of step_size={step}: {}/{} {:?}\n\
+         plain-default unrounded fills: {}/{} (so the corpus IS discriminating)\n\
+         \n\
+         `advisor_default()` sets venue_filter=Some(LotSizeAndMinNotional). For it to\n\
+         BITE, two links must both hold (bug-log #79 — both were broken):\n\
+           (a) engine.rs `run_scenario` must thread `cfg.latency_slippage_sim` into\n\
+               THIS arm's scenario input (not `LatencySlippageSimConfig::default()`);\n\
+           (b) the runner must APPLY it — `PaperEngine::new(..)\n\
+               .with_venue_filter_mode(input.latency_slippage_sim.venue_filter)` in\n\
+               `scenarios/sma_composed_run.rs` `run`/`run_with_strategy`, or the\n\
+               inline `v0.8.vote.*` engine in engine.rs.\n\
+         A green `with_venue_filter_mode` unit test proves NEITHER.",
+        advisor_unrounded.len(),
+        advisor.fills.len(),
+        advisor_unrounded,
+        plain_unrounded.len(),
+        plain.fills.len(),
+    );
+
+    if has_engine_bypassing_short_legs(arm) {
+        assert!(
+            advisor_unrounded.len() < plain_unrounded.len(),
+            "{inert_diagnosis}\n(this arm's short legs bypass PaperEngine::step, so \
+             the gate only requires the engine-routed portion to be filtered)"
+        );
+    } else {
+        assert!(advisor_unrounded.is_empty(), "{inert_diagnosis}");
+    }
+
+    let eq_plain = final_equity(&plain);
+    let eq_advisor = final_equity(&advisor);
+    let relative = (eq_plain - eq_advisor).abs() / eq_plain;
+    assert_ne!(
+        eq_plain, eq_advisor,
+        "ADVISOR-PATH GATE FAIL ({arm}) — lot realism reached the fills but moved \
+         no equity: the rounded qty never propagated into cash/position bookkeeping \
+         (eq={eq_plain})"
+    );
+
+    eprintln!(
+        "advisor-path [{arm}]: eq_plain={eq_plain} eq_advisor={eq_advisor} \
+         relative={relative} fills={} unrounded_plain={} unrounded_advisor={}",
+        advisor.fills.len(),
+        plain_unrounded.len(),
+        advisor_unrounded.len()
+    );
+    (eq_plain, eq_advisor)
+}
+
+/// The headline gate: the flagship bake-off arm, through `run_scenario`.
+///
+/// This is the test bug-log #79 says did not exist. It fails if EITHER link
+/// (a) threading or (b) application is cut.
+#[tokio::test]
+async fn advisor_bakeoff_path_v0_sma_diverges_from_plain_default() {
+    let (eq_plain, eq_advisor) = assert_arm_diverges("v0.sma").await;
+    // The two runs differ ONLY in ScenarioConfig.latency_slippage_sim, so on
+    // the ADR-0087 § D5 coarse-lot corpus the €200 budget must move by a
+    // materially visible amount, not merely a rounding whisker.
+    let relative = (eq_plain - eq_advisor).abs() / eq_plain;
+    assert!(
+        relative >= dec!(0.0001),
+        "v0.sma: expected >= 1 bp of terminal-equity divergence on the DOGE \
+         coarse-lot corpus; got {relative} (eq_plain={eq_plain} eq_advisor={eq_advisor})"
+    );
+}
+
+/// Every `sma_composed_run`-shaped bake-off arm — the ~13 arms bug-log #79
+/// found hard-coding `LatencySlippageSimConfig::default()` in `run_scenario`.
+///
+/// Reverting the threading for ONE arm turns this RED (that is mutation 2 in
+/// the #79 patch-pass); the single-arm test above would stay green.
+#[tokio::test]
+async fn advisor_bakeoff_path_every_sma_shaped_arm_diverges() {
+    for arm in [
+        "v0.sma",
+        "v0.5.macd",
+        "v0.5.rsi",
+        "v0.5.bbands",
+        "v0.donchian_break",
+        "v0.donchian_floor",
+        "v0.vol_breakout",
+        "v0.roc_momentum",
+        "v0.obv",
+        "v0.sma_cross_ls",
+        "v0.macd_ls",
+        "v0.rsi_ls",
+        "v0.bbands_ls",
+    ] {
+        assert_arm_diverges(arm).await;
+    }
+}
+
+/// `v0.dvol_regime` is the only arm dispatched through
+/// `sma_composed_run::run_with_strategy` — the SECOND of the two engine
+/// constructors bug-log #79 found unwired. Without this case a fix that
+/// touched only `run` would ship half-inert.
+#[tokio::test]
+async fn advisor_bakeoff_path_dvol_arm_diverges_via_run_with_strategy() {
+    assert_arm_diverges("v0.dvol_regime").await;
+}
+
+/// The 8 `v0.8.vote.*` ensemble arms build their `PaperEngine` INLINE in
+/// `run_scenario` rather than going through `sma_composed_run` — a third
+/// construction site, and a third of the ranked bake-off field.
+///
+/// All 8 ids share ONE `run_scenario` match arm and ONE engine construction,
+/// so the four exercised here cover that site completely. The other four
+/// (`majority`, `unanimous`, `tr_mr_macd_rsi`, `k3of4`) need MACD **and** RSI
+/// **and** Bollinger to hold a Long stance on the same bar; they stay flat on
+/// this synthetic corpus, and a zero-trade arm is exactly the kind of silent
+/// pass this gate exists to refuse — so they are named here rather than
+/// listed and skipped.
+#[tokio::test]
+async fn advisor_bakeoff_path_every_vote_arm_diverges() {
+    for arm in [
+        "v0.8.vote.trend_pair",
+        "v0.8.vote.tr_mr_sma_bb",
+        "v0.8.vote.any1of4",
+        "v0.8.vote.k2of4",
+    ] {
+        assert_arm_diverges(arm).await;
+    }
+}
+
+/// ADR-0087 § D6 byte-identity guard, asserted through the PRODUCTION path:
+/// a ScenarioConfig carrying `LatencySlippageSimConfig::default()` must reach
+/// the fill seam with the filter OFF.
+///
+/// This is the anchor contract. Every anchored CLI lane builds its config with
+/// `venue_filter: None`; if threading ever started forcing the filter on, the
+/// fills below would all be lot-rounded and this test goes red BEFORE
+/// `verify_anchors.sh` has to.
+#[tokio::test]
+async fn plain_default_config_still_reaches_the_engine_with_the_filter_off() {
+    let step = doge_step();
+    let plain = run_arm("v0.sma", LatencySlippageSimConfig::default()).await;
+    assert!(!plain.fills.is_empty(), "the corpus must trade");
+    assert!(
+        plain.fills.iter().any(|f| !(f.qty.get() % step).is_zero()),
+        "ANCHOR CONTRACT BREACH — a plain-`Default` ScenarioConfig produced only \
+         lot-rounded fills. `LatencySlippageSimConfig::default()` MUST stay \
+         `venue_filter: None` (ADR-0087 § D6): every anchored report body depends \
+         on that arm being byte-identical to the pre-ADR-0087 fill path."
     );
 }
