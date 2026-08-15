@@ -293,8 +293,24 @@ pub fn build_registry_with_ledger(
         }
     }
 
-    // When `forecast-audit-tick` is not enabled, the TCN arm is elided and the
-    // `ledger` param is unused. Suppress the unused-variable lint.
+    // When `forecast-audit-tick` is not enabled, the TCN arm is elided. Do NOT
+    // degrade silently: if the operator has set the documented opt-in flag, the
+    // build cannot honour it, and saying nothing is what made bug-log #87 a
+    // defect rather than a design choice. This is the SAME shape the enabled arm
+    // uses when it skips for any other reason (checkpoint / config load failure),
+    // and it fires only when the flag is actually set — no noise otherwise.
+    #[cfg(not(feature = "forecast-audit-tick"))]
+    if cfg.strategies.tcn_overlay_momentum.enabled {
+        tracing::warn!(
+            "strategy registry: TcnOverlayMomentum skipped — \
+             `[strategies.tcn_overlay_momentum] enabled = true` is set, but this build \
+             lacks the `forecast-audit-tick` feature, so the overlay was compiled out and \
+             the flag has NO effect. Rebuild with `--features agent/forecast-audit-tick` \
+             to honour it."
+        );
+    }
+
+    // The `ledger` param is unused when the TCN arm is elided.
     #[cfg(not(feature = "forecast-audit-tick"))]
     let _ = ledger;
 
@@ -2057,6 +2073,24 @@ pub fn spawn_trading_loop(
         portfolio_exposure_cap: None,  // no portfolio cap in research mode
     };
 
+    // bug-log #80 (forward-loop half, reachability-map N-2) — limits used to
+    // construct a buy-to-COVER order. Mirrors `sma_composed_run.rs`'s
+    // `cover_limits` exactly and for the same reason:
+    //
+    // `per_symbol_exposure_cap` is an ENTRY gate — it bounds the notional a
+    // single order may *take on*, measured against equity. A buy-to-cover takes
+    // on nothing; it closes an existing short to flat. Validating it against the
+    // entry cap would mean a short that extended past 40 % of equity could never
+    // be closed, stranding the position until maintenance-margin liquidation —
+    // i.e. a change in WHAT this loop trades. #80 is a friction finding: the
+    // pre-fix trading decisions (sizing, when to open, cover-the-whole-position,
+    // and the cash solvency guard, now applied post-fill on the ACTUAL fill
+    // price) are preserved verbatim and ONLY the execution model moves.
+    let cover_limits = RiskLimits {
+        per_symbol_exposure_cap: Decimal::MAX,
+        ..risk_limits.clone()
+    };
+
     // F5 initial capital: `Some(b)` → start cash at the budget amount so the
     // published equity IS the budget equity (every downstream consumer —
     // LiveEquityStore, EventBus PnL, the Live screen — naturally tracks the
@@ -2140,14 +2174,25 @@ pub fn spawn_trading_loop(
 
                     let signals = registry.on_bar(&bar);
                     let mut orders: Vec<Order> = Vec::new();
+                    // bug-log #80 (N-2): fills produced by the short legs, which
+                    // are stepped INLINE through `PaperEngine::step` (rather than
+                    // appended to the batched `orders` vec) so the intra-bar
+                    // ordering of the pre-fix code is preserved exactly — a short
+                    // leg's fill still lands on the tape before any long-leg fill
+                    // of the same bar. They are merged into the single fill tape
+                    // below and accounted for by the SAME block as the long legs.
+                    let mut short_leg_fills: Vec<trading_core::Fill> = Vec::new();
+                    // Strategy attribution for a bar whose only order was a short
+                    // leg (the batched `orders` vec is empty in that case).
+                    let mut short_leg_strategy_id: Option<trading_core::StrategyId> = None;
 
                     for sig in &signals {
                         // ADR-0068 D6 T-D5: position-aware interpretation gate.
                         // When short_enabled=false (all existing arms): long-only clamp #4.
                         // Byte-identical to HEAD for all pre-ADR-0068 callers.
                         // When short_enabled=true (_ls / always_short arms only):
-                        //   - Sell-when-flat-or-short → handled by short_exec (below)
-                        //   - Buy-when-short → handled by short_exec cover (below)
+                        //   - Sell-when-flat-or-short → open short (below)
+                        //   - Buy-when-short → cover (below)
                         let desired_side: Option<Side> = if short_enabled {
                             match sig.kind {
                                 SignalKind::Buy if position.base_qty < Decimal::ZERO => {
@@ -2183,84 +2228,92 @@ pub fn spawn_trading_loop(
                         };
 
                         if let Some(side) = desired_side {
-                            // ADR-0068 D6: for short operations, call short_exec helpers
-                            // directly (same as sma_composed_run.rs and bake-off) rather
-                            // than routing through the matching engine (which assumes long).
+                            // ADR-0068 D6 (Q-SS-6): short operations cannot go
+                            // through `risk::size_and_validate` (which sizes a long
+                            // entry), so the open-short leg sizes itself via
+                            // `short_exec::plan_open_short` — the SAME sizing seam
+                            // the bake-off uses, so the two can never disagree about
+                            // WHAT to trade.
+                            //
+                            // bug-log #80, forward-loop half (reachability-map N-2)
+                            // — but they DO go through `PaperEngine::step`, like
+                            // every other order. Until this fix both branches called
+                            // the self-accounting `short_exec::try_{open,cover}_short`
+                            // and `continue`d past the engine with a hand-synthesized
+                            // `Fill` priced at `bar.close`: the taker fee was charged,
+                            // but slippage (`MatchConfig.slippage_bps`), the venue
+                            // filter and the fill-price model were not. This is the
+                            // path that executes the operator's ACTUAL plan, so a
+                            // short leg whose fills were cheaper than the backtest
+                            // that justified it drifted optimistic against its own
+                            // recommendation. The comment that used to sit here
+                            // claimed parity with `sma_composed_run.rs`; the #80
+                            // ranking-side fix made that claim false, and this is the
+                            // patch that makes it true again.
+                            //
+                            // NOTE (F-3, deliberately unchanged): this engine is
+                            // built WITHOUT `.with_venue_filter_mode`, so neither leg
+                            // family is lot-rounded here. That is a separate finding
+                            // about the forward loop as a whole; it is symmetric, so
+                            // it does not reopen #80's asymmetry.
                             if short_enabled {
                                 match (side, position.base_qty.cmp(&Decimal::ZERO)) {
                                     // Cover short: Buy when currently short.
                                     (Side::Buy, std::cmp::Ordering::Less) => {
-                                        let res = short_exec::try_cover_short(
-                                            cash,
-                                            position.base_qty,
-                                            mark,
-                                            taker_fee_bps_owned,
-                                        );
-                                        if res.executed {
-                                            let covered_qty = position.base_qty - res.position_qty; // positive
-                                            let notional = covered_qty.abs() * mark;
-                                            cash = res.cash;
-                                            position.base_qty = res.position_qty;
-                                            let fee_amount = notional * Decimal::new(i64::from(taker_fee_bps_owned), 4);
-                                            if let Ok(fq) = Quantity::new(covered_qty.abs()) {
-                                                let cover_fill = trading_core::Fill {
-                                                    id: trading_core::FillId::new(),
-                                                    order_id: trading_core::OrderId::new(),
-                                                    symbol: sig.symbol.clone(),
-                                                    side: Side::Buy,
-                                                    qty: fq,
-                                                    price: bar.close,
-                                                    fee: Money::<Usdt>::from_decimal(fee_amount),
-                                                    fee_tier: trading_core::FeeTier::Taker,
-                                                    venue_ts: bar.close_ts,
-                                                    local_ts: bar.close_ts,
-                                                    liquidity: trading_core::Liquidity::Taker,
-                                                    transaction_id: None,
-                                                };
-                                                publisher.on_fill(&cover_fill, &position);
-                                                fill_count += 1;
-                                            }
-                                            // P&L: cover at lower price = profit (positive delta on downtrend)
-                                            realized_pnl += -notional - fee_amount;
+                                        // Cover the ENTIRE short — `try_cover_short`'s
+                                        // rule, preserved verbatim.
+                                        let cover_qty = -position.base_qty; // > 0 in this arm
+                                        if let Ok(fq) = Quantity::new(cover_qty)
+                                            && let Some(ord) = Order::new(
+                                                sig.strategy_id.clone(),
+                                                sig.symbol.clone(),
+                                                Side::Buy,
+                                                fq,
+                                                OrderKind::Market,
+                                                TimeInForce::Ioc,
+                                                &position,
+                                                bar.close,
+                                                &cover_limits,
+                                                equity,
+                                            )
+                                            .ok()
+                                            && let Ok(fills) = engine.step(&bar, vec![ord]).await
+                                        {
+                                            short_leg_strategy_id
+                                                .get_or_insert_with(|| sig.strategy_id.clone());
+                                            short_leg_fills.extend(fills);
                                         }
-                                        continue; // handled; skip matching-engine path
+                                        continue; // stepped inline above; not batched below
                                     }
                                     // Open/extend short: Sell when flat or already short.
                                     (Side::Sell, std::cmp::Ordering::Equal)
                                     | (Side::Sell, std::cmp::Ordering::Less) => {
-                                        let res = short_exec::try_open_short(
+                                        if let Some(plan) = short_exec::plan_open_short(
                                             cash,
-                                            position.base_qty,
                                             mark,
                                             taker_fee_bps_owned,
                                             equity,
-                                        );
-                                        if res.executed {
-                                            let delta_qty = position.base_qty - res.position_qty; // positive: shares sold short
-                                            let notional = delta_qty * mark;
-                                            let fee_amount = notional * Decimal::new(i64::from(taker_fee_bps_owned), 4);
-                                            cash = res.cash;
-                                            position.base_qty = res.position_qty;
-                                            if let Ok(fq) = Quantity::new(delta_qty) {
-                                                let open_short_fill = trading_core::Fill {
-                                                    id: trading_core::FillId::new(),
-                                                    order_id: trading_core::OrderId::new(),
-                                                    symbol: sig.symbol.clone(),
-                                                    side: Side::Sell,
-                                                    qty: fq,
-                                                    price: bar.close,
-                                                    fee: Money::<Usdt>::from_decimal(fee_amount),
-                                                    fee_tier: trading_core::FeeTier::Taker,
-                                                    venue_ts: bar.close_ts,
-                                                    local_ts: bar.close_ts,
-                                                    liquidity: trading_core::Liquidity::Taker,
-                                                    transaction_id: None,
-                                                };
-                                                publisher.on_fill(&open_short_fill, &position);
-                                                fill_count += 1;
-                                            }
+                                        ) && let Ok(fq) = Quantity::new(plan.qty)
+                                            && let Some(ord) = Order::new(
+                                                sig.strategy_id.clone(),
+                                                sig.symbol.clone(),
+                                                Side::Sell,
+                                                fq,
+                                                OrderKind::Market,
+                                                TimeInForce::Ioc,
+                                                &position,
+                                                bar.close,
+                                                &risk_limits,
+                                                equity,
+                                            )
+                                            .ok()
+                                            && let Ok(fills) = engine.step(&bar, vec![ord]).await
+                                        {
+                                            short_leg_strategy_id
+                                                .get_or_insert_with(|| sig.strategy_id.clone());
+                                            short_leg_fills.extend(fills);
                                         }
-                                        continue; // handled; skip matching-engine path
+                                        continue; // stepped inline above; not batched below
                                     }
                                     // All other combinations (Buy-long, Sell-long) fall through
                                     // to the matching-engine path below.
@@ -2308,53 +2361,133 @@ pub fn spawn_trading_loop(
                     // lesson-card-wiring: capture strategy_ids before orders are moved.
                     // There is at most one order per bar (SMA crossover); we take
                     // the first strategy_id (or "(unattributed)" if absent).
+                    // bug-log #80 (N-2): fall back to the short leg's id, because a
+                    // bar whose only order was a short leg leaves `orders` empty.
                     let orders_strategy_id: Option<trading_core::StrategyId> = orders
                         .first()
-                        .map(|o| o.strategy_id().clone());
+                        .map(|o| o.strategy_id().clone())
+                        .or(short_leg_strategy_id);
 
+                    // bug-log #80 (N-2) — ONE fill tape, ONE accounting site.
+                    // The short legs (stepped inline above) and the long legs
+                    // (stepped in the batch here) both land in `fills`, and the
+                    // single block below is the ONLY place in this loop where a
+                    // fill moves cash, position, cost basis, realized P&L or the
+                    // fill counter. Combined with both families obtaining their
+                    // fills from `PaperEngine::step`, that makes it structurally
+                    // impossible for a future friction change to land on one path
+                    // only: friction lives in the engine, accounting lives here,
+                    // and neither has a second copy. It also means the short legs
+                    // now get the journal post and the lesson-card tracking that
+                    // the bypass skipped.
+                    let mut fills: Vec<trading_core::Fill> = short_leg_fills;
                     if !orders.is_empty()
-                        && let Ok(fills) = engine.step(&bar, orders).await
+                        && let Ok(long_fills) = engine.step(&bar, orders).await
+                    {
+                        fills.extend(long_fills);
+                    }
+
                     {
                         for fill in &fills {
                             // lesson-card-wiring: capture pre-update position qty
                             // to detect position-close on sell fills.
                             let pre_fill_qty = position.base_qty;
 
-                            // Update cash + position (mirror of sma_composed_run.rs).
+                            // bug-log #80 (N-2) — the Buy/Sell interpretation is
+                            // POSITION-AWARE: a Buy while `base_qty < 0` is a
+                            // buy-to-COVER, and a Sell while `base_qty <= 0` is an
+                            // open/extend-short. On the long-only path
+                            // (`short_enabled == false`) `base_qty` is clamped at
+                            // zero and can never be negative, and Sell-when-flat is
+                            // never even given a side, so both short arms below are
+                            // unreachable and the behaviour is byte-identical to the
+                            // pre-fix code.
+                            let is_cover = matches!(fill.side, Side::Buy)
+                                && pre_fill_qty < Decimal::ZERO;
+                            let is_open_short = short_enabled
+                                && matches!(fill.side, Side::Sell)
+                                && pre_fill_qty <= Decimal::ZERO;
+
+                            if is_cover {
+                                // Voluntary-cover solvency guard —
+                                // `short_exec::try_cover_short`'s rule, now measured
+                                // on the ACTUAL fill (slippage included) instead of
+                                // the raw mark. A forced cover (maintenance-margin
+                                // liquidation, below) is a different path and is
+                                // deliberately allowed to drive cash negative.
+                                let total_cost = fill.qty.get() * fill.price.get()
+                                    + fill.fee.amount();
+                                if total_cost > cash {
+                                    warn!(
+                                        mode = mode_label,
+                                        %cash,
+                                        %total_cost,
+                                        abandoned_qty = %fill.qty.get(),
+                                        "trading_loop: cover solvency guard triggered — the short stays OPEN"
+                                    );
+                                    continue;
+                                }
+                            }
+
+                            // Update cash + position (mirror of sma_composed_run.rs
+                            // `apply_engine_fill` — the same single accounting seam).
                             match fill.side {
                                 Side::Buy => {
                                     let cost = fill.qty.get() * fill.price.get();
                                     cash -= cost + fill.fee.amount();
                                     position.base_qty += fill.qty.get();
-                                    cost_basis += cost;
+                                    if is_cover {
+                                        // Buy-to-cover: the pre-#80 P&L convention,
+                                        // preserved verbatim (`realized_pnl +=
+                                        // -notional - fee`, the open-short leg
+                                        // crediting nothing) so this fix moves
+                                        // FRICTION and nothing else — the only
+                                        // change is that `notional` is now the
+                                        // engine's fill price, not the raw mark.
+                                        // A cover must NOT accumulate into the long
+                                        // cost basis.
+                                        realized_pnl += -cost - fill.fee.amount();
+                                    } else {
+                                        cost_basis += cost;
+                                    }
                                 }
                                 Side::Sell => {
                                     let proceeds = fill.qty.get() * fill.price.get();
                                     cash += proceeds - fill.fee.amount();
-                                    let closed =
-                                        fill.qty.get().min(position.base_qty);
-                                    // ADR-0068 D6 T-D5: long-only clamp #4 gated.
-                                    // When short_enabled=false: clamp to zero (long-only, byte-identical).
-                                    // When short_enabled=true: allow negative base_qty (the
-                                    // short-exec handler already `continue`d past this for
-                                    // actual short ops; this path only fires for long closes).
-                                    if short_enabled {
-                                        position.base_qty -= closed;
+                                    if is_open_short {
+                                        // Open/extend short: qty goes MORE negative
+                                        // and no long cost basis is consumed. The
+                                        // `closed = qty.min(base_qty)` arm below
+                                        // would evaluate to 0 from flat and silently
+                                        // leave the position flat — the hole the
+                                        // pre-fix `continue` used to hide.
+                                        position.base_qty -= fill.qty.get();
                                     } else {
-                                        position.base_qty =
-                                            (position.base_qty - closed).max(Decimal::ZERO);
+                                        let closed =
+                                            fill.qty.get().min(position.base_qty);
+                                        // ADR-0068 D6 T-D5: long-only clamp #4 gated.
+                                        // When short_enabled=false: clamp to zero (long-only, byte-identical).
+                                        // When short_enabled=true: allow negative base_qty (an
+                                        // actual short op is handled by the arm above;
+                                        // this path only fires for long closes).
+                                        if short_enabled {
+                                            position.base_qty -= closed;
+                                        } else {
+                                            position.base_qty =
+                                                (position.base_qty - closed).max(Decimal::ZERO);
+                                        }
+                                        // Proportional cost-basis reduction.
+                                        let avg_cost = if position.base_qty == Decimal::ZERO {
+                                            cost_basis
+                                        } else {
+                                            cost_basis
+                                                * (closed / (position.base_qty + closed))
+                                        };
+                                        realized_pnl +=
+                                            proceeds - avg_cost - fill.fee.amount();
+                                        cost_basis =
+                                            (cost_basis - avg_cost).max(Decimal::ZERO);
                                     }
-                                    // Proportional cost-basis reduction.
-                                    let avg_cost = if position.base_qty == Decimal::ZERO {
-                                        cost_basis
-                                    } else {
-                                        cost_basis
-                                            * (closed / (position.base_qty + closed))
-                                    };
-                                    realized_pnl +=
-                                        proceeds - avg_cost - fill.fee.amount();
-                                    cost_basis =
-                                        (cost_basis - avg_cost).max(Decimal::ZERO);
                                 }
                             }
                             // Publish fill + position → Live tape / positions panels.

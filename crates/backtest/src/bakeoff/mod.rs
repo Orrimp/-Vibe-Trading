@@ -173,11 +173,40 @@ pub fn macro_arm_compiled() -> bool {
     cfg!(feature = "yahoo")
 }
 
+/// Can the DVOL arm load its corpus at all in this build?
+///
+/// The exact twin of [`macro_arm_compiled`], and it was **missed** when that
+/// one was added (bug-log #81 was written as if `yahoo` were a one-off; the
+/// 2026-08-15 reachability sweep found the second instance). `dvol_data` and
+/// `resolve_dvol_override` are `#[cfg(feature = "realdata")]` on **backtest's**
+/// feature; the `cfg(not(...))` variant of `resolve_dvol_override` returns a
+/// bare `None` unconditionally. Nothing in the workspace enables
+/// `backtest/realdata` — `ui` declares `backtest` with no `features`, its whole
+/// `[features]` section never mentions `backtest`, `backtest` has no `default`
+/// stanza, and the documented run commands pass nothing through. The
+/// `required-features = ["realdata"]` markers on backtest's own **bins** gate
+/// those binaries and propagate nothing to library consumers — that is the trap
+/// that hid this.
+///
+/// So in every shipped cockpit build the DVOL arm is dropped at dispatch, and
+/// the operator must not be told it was raced.
+#[must_use]
+pub fn dvol_arm_compiled() -> bool {
+    cfg!(feature = "realdata")
+}
+
 /// Can this bake-off arm id run at all in this build?
 ///
-/// Currently only `v0.macro_riskon` can be structurally impossible (bug-log
-/// #81 — see [`macro_arm_compiled`]). Every other id is always dispatchable;
-/// per-coin availability is a separate question answered by [`dvol_supported`].
+/// TWO ids can be structurally impossible, both for the same reason (bug-log
+/// #81 and its 2026-08-15 extension): `v0.macro_riskon` behind `backtest/yahoo`
+/// (see [`macro_arm_compiled`]) and `v0.dvol_regime` behind `backtest/realdata`
+/// (see [`dvol_arm_compiled`]) — neither feature is enabled by anything that
+/// ships. Every other id is always dispatchable; per-coin availability is a
+/// separate question answered by [`dvol_supported`].
+///
+/// **Do not assume this list is complete when adding an arm.** The rule is:
+/// if an arm's data path sits behind a `cfg(feature = …)` whose `cfg(not(...))`
+/// arm returns a plausible value rather than failing loudly, it belongs here.
 ///
 /// Callers that DECLARE a field to the operator (the cockpit's "N strategies
 /// head-to-head" note) must filter through this, so the number on screen counts
@@ -186,6 +215,11 @@ pub fn macro_arm_compiled() -> bool {
 pub fn arm_runs_in_this_build(strategy_id: &str) -> bool {
     match strategy_id {
         "v0.macro_riskon" => macro_arm_compiled(),
+        // Added 2026-08-15 (reachability sweep, N-1). The #81 fix populated this
+        // predicate for the macro arm only, so the cockpit declared 19 arms while
+        // 18 ran — the exact miscount this predicate exists to prevent, left in
+        // place because #81 was written as if `yahoo` were the only offender.
+        "v0.dvol_regime" => dvol_arm_compiled(),
         _ => true,
     }
 }

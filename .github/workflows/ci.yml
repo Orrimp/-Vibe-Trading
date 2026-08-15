@@ -66,6 +66,17 @@ jobs:
       # check repo STATE, not platform behavior. Both scripts are stdlib-only.
       - name: Governance gates (anchors + spec-lint)
         if: matrix.os == 'ubuntu-latest'
+        # `shell: bash` is LOAD-BEARING, not style (bug-log #84, 2026-08-15).
+        # GitHub's default `run:` shell is `bash -e {0}` — WITHOUT `pipefail` — so
+        # `verify_anchors.sh | tail -1` exited with *tail's* status (always 0) and
+        # this gate could not fail. AD-2's only remote enforcement was inert from
+        # activation until now. `shell: bash` makes Actions use
+        # `bash --noprofile --norc -eo pipefail {0}`, so the pipeline's failing head
+        # propagates. Demonstrated: `bash -e -c 'false | tail -1'` → 0 versus
+        # `bash -eo pipefail -c 'false | tail -1'` → 1.
+        # Do NOT remove this line, and do not add a `| tail`-style pipe to any other
+        # gate step without it.
+        shell: bash
         run: |
           bash scripts/verify_anchors.sh | tail -1
           python3 scripts/spec_lint.py

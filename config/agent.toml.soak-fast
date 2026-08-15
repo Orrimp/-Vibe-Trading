@@ -41,6 +41,13 @@ slow_len = 3
 
 [risk]
 per_symbol_exposure_cap = 0.40
+# ⚠️  daily_loss_stop_pct / max_drawdown_stop_pct are NOT ENFORCED (bug-log #85).
+# Both values are parsed and then read by NOTHING — there is no read site in the
+# workspace and `KillSwitch`'s HaltReason enum has no variant for either, so no
+# code path can act on them. Setting them does NOT arm a stop. They are left here
+# because the enforcement seam exists and wiring is modest; until then, treat
+# these two lines as intent, not protection. `per_symbol_exposure_cap` above IS
+# enforced (entry gate on per-order notional).
 daily_loss_stop_pct     = -5.0
 max_drawdown_stop_pct   = -15.0
 

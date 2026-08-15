@@ -35,6 +35,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # (AD-18 one-atomic-commit rule: "the lint defines the home").
 ADR_DIR = REPO_ROOT / "_bmad-output" / "planning-artifacts" / "architecture" / "decisions"
 README_PATH = ADR_DIR / "README.md"
+# Repo-relative form, used in invariant (d) drift rows where there is no real
+# file to report a path for (the whole point of (d) is that it is missing).
+ADR_DIR_NAME = "_bmad-output/planning-artifacts/architecture/decisions"
 
 # Canonical status enum per architect.md § ADR registry + README.md § Format.
 # Module-level named constant so v0.2.0 can extend with 'withdrawn' in one place.
@@ -230,65 +233,26 @@ def _check_invariants(
     staged_adr_paths: list[str] | None,   # None = git unavailable (b skipped)
     readme_is_staged: bool,
 ) -> list[DriftRow]:
-    """Run invariants (a), (b), (c).  Returns a list of drift rows (empty = clean)."""
-    drifts: list[DriftRow] = []
+    """Run invariants (a), (b), (c), (d).  Returns a list of drift rows (empty = clean).
 
-    # --- Invariant (a) — every ADR file has a registry row ---
-    for adr_path in adr_files:
-        num = _adr_number(adr_path)
-        rel = str(adr_path.relative_to(REPO_ROOT))
-        if num not in registered_ids:
-            drifts.append(DriftRow(
-                invariant="(a) registry-row-missing",
-                file=rel,
-                observed="no row in README.md ## Registry table",
-                expected=f"add row to README.md ## Registry table for ADR-{num}",
-            ))
+    Thin delegation to `_check_invariants_raw` with the real REPO_ROOT.
 
-    # --- Invariant (b) — if any ADR staged, README must also be staged ---
-    if staged_adr_paths is not None and staged_adr_paths:
-        # Any staged numbered ADR requires the README to be staged too.
-        if not readme_is_staged:
-            # Emit ONE (b) row (per D-ADR-4: "ONE drift row").
-            example_file = staged_adr_paths[0]
-            drifts.append(DriftRow(
-                invariant="(b) updated-not-bumped",
-                file=example_file,
-                observed="README.md not staged in this commit",
-                expected="stage _bmad-output/planning-artifacts/architecture/decisions/README.md with bumped frontmatter updated:",
-            ))
-
-    # --- Invariant (c) — status in enum ---
-    for adr_path in adr_files:
-        rel = str(adr_path.relative_to(REPO_ROOT))
-        try:
-            text = adr_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            drifts.append(DriftRow(
-                invariant="(c) status-out-of-enum",
-                file=rel,
-                observed=f"cannot read file: {exc}",
-                expected=f"set status: one of {{{', '.join(sorted(STATUS_ENUM))}}}",
-            ))
-            continue
-
-        status = _parse_status(text)
-        if status is None:
-            drifts.append(DriftRow(
-                invariant="(c) status-out-of-enum",
-                file=rel,
-                observed="no status: frontmatter",
-                expected=f"set status: one of {{{', '.join(sorted(STATUS_ENUM))}}}",
-            ))
-        elif status not in STATUS_ENUM:
-            drifts.append(DriftRow(
-                invariant="(c) status-out-of-enum",
-                file=rel,
-                observed=f"status: {status}",
-                expected=f"set status: one of {{{', '.join(sorted(STATUS_ENUM))}}}",
-            ))
-
-    return drifts
+    This function used to carry its own full copy of every invariant, with
+    `_check_invariants_raw` holding a second near-identical copy for the
+    self-test.  That meant `--self-test` exercised the COPY and never the
+    function `_run_pre_commit` actually calls: an invariant added or changed
+    here alone would have stayed green.  That is precisely the defect shape
+    bug-log #77 names (a gate that does not guard the code it claims to), so
+    the two were collapsed into one implementation on 2026-08-15 when
+    invariant (d) landed.  Keep it delegating — do not re-inline the body.
+    """
+    return _check_invariants_raw(
+        adr_files=adr_files,
+        registered_ids=registered_ids,
+        staged_adr_paths=staged_adr_paths,
+        readme_is_staged=readme_is_staged,
+        repo_root=REPO_ROOT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -416,9 +380,15 @@ class _SelfTest(unittest.TestCase):
 
     # --- Case 1: (a) missing row ---
     def test_case1_missing_row(self) -> None:
+        # NOTE (2026-08-15): this fixture used to register id "0001" while
+        # providing only the file "0099-foo.md" — a registry row with no
+        # decision file, i.e. the very drift invariant (d) now detects.  It was
+        # invisible while only direction (a) was enforced, and the new check
+        # flagged it the moment it landed.  Registering nothing isolates (a);
+        # the mixed case is covered explicitly by case 7.
         drifts = self._check(
             adr_texts={"0099-foo.md": self._make_adr("0099")},
-            registered_ids=["0001"],  # 0099 absent
+            registered_ids=[],  # 0099 has no row → (a) only
             staged_adr_paths=None,
             readme_is_staged=False,
         )
@@ -475,6 +445,36 @@ class _SelfTest(unittest.TestCase):
             readme_is_staged=True,
         )
         self.assertEqual(len(drifts), 0)
+
+    # --- Case 6: (d) decision-file-missing — the converse of (a), bug-log #86 ---
+    def test_case6_decision_file_missing(self) -> None:
+        # Registry announces 0001 AND 0079; only 0001 exists on disk.
+        drifts = self._check(
+            adr_texts={"0001-foo.md": self._make_adr("0001")},
+            registered_ids=["0001", "0079"],
+            staged_adr_paths=None,
+            readme_is_staged=False,
+        )
+        self.assertEqual(len(drifts), 1)
+        self.assertEqual(drifts[0].invariant, "(d) decision-file-missing")
+        self.assertIn("0079", drifts[0].file)
+
+    # --- Case 7: (a) and (d) are INDEPENDENT directions, not one check ---
+    # Guards against a future "simplification" that collapses them: a file with
+    # no row and a row with no file must produce one drift EACH.
+    def test_case7_both_directions_are_independent(self) -> None:
+        drifts = self._check(
+            adr_texts={"0002-orphan-file.md": self._make_adr("0002")},  # file, no row
+            registered_ids=["0003"],                                    # row, no file
+            staged_adr_paths=None,
+            readme_is_staged=False,
+        )
+        kinds = sorted(d.invariant for d in drifts)
+        self.assertEqual(
+            kinds,
+            ["(a) registry-row-missing", "(d) decision-file-missing"],
+            "each direction must be reported separately",
+        )
 
 
 def _check_invariants_raw(
@@ -549,6 +549,23 @@ def _check_invariants_raw(
                 observed=f"status: {status}",
                 expected=f"set status: one of {{{', '.join(sorted(STATUS_ENUM))}}}",
             ))
+
+    # --- Invariant (d) — every registry row has a decision FILE (the converse of (a)) ---
+    # AD-18 is bidirectional: "a numbered ADR ... PLUS its Registry row".  Until
+    # 2026-08-15 only direction (a) was enforced, so a decision could be
+    # *announced without being made* — and one had been: row 0079 was `accepted`
+    # and cited by shipped source and by ADR-0078's "Consumes:" line, while
+    # `0079-*.md` did not exist (86 files against 87 rows).  See bug-log #86.
+    # "Every A has a B" and "every B has an A" are different checks; enforcing
+    # only the cheap direction leaves the expensive one to discipline.
+    file_ids = {_adr_number(p) for p in adr_files}
+    for num in sorted(registered_ids - file_ids):
+        drifts.append(DriftRow(
+            invariant="(d) decision-file-missing",
+            file=f"{ADR_DIR_NAME}/{num}-*.md",
+            observed=f"README.md ## Registry has a row for ADR-{num}, but no matching file exists",
+            expected=f"write {num}-<slug>.md, or delete the ADR-{num} row (numbers are never reused)",
+        ))
 
     return drifts
 

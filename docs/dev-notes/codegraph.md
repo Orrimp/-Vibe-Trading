@@ -83,3 +83,43 @@ and Claude Code prompts to approve the server before it runs. Prerequisite: the
   (Cursor/Codex/Gemini/etc.) it can auto-detect.
 - The graph also picked up the 7 `scripts/*.py` and 1 Swift file — harmless; the
   723-file index is overwhelmingly the Rust tree.
+
+---
+
+## Calibration — measured 2026-08-15: caller lists are a LOWER BOUND
+
+CodeGraph is applied and healthy on this repo (801 files · 18,945 nodes · 65,242 edges · 773 Rust +
+20 Python; the daemon keeps it synced — `codegraph sync` reported *"Already up to date"* against a
+tree edited minutes earlier, and the index contained both a file and a function created that day).
+**Freshness is not the caveat. Completeness is.**
+
+**The measurement.** Two calls inside `crates/agent/src/runtime.rs` — `short_exec::plan_open_short`
+(`:2275`) and `short_exec::check_and_liquidate` (`:2616`) — are **absent** from `codegraph callers`,
+while `grep` finds both. The same commands return correct, complete answers for the sibling call
+sites in `crates/backtest/`. Scope was then bounded by experiment:
+
+| probe | result |
+|---|---|
+| Is the index stale? | **No** — it contains that day's new file (`short_long_friction_parity_forward_e2e.rs`, 45 symbols) and new fn (`dvol_arm_compiled`, `bakeoff/mod.rs:194`). |
+| Is `runtime.rs` excluded? | **No** — indexed, 71 symbols. |
+| Does *any* caller in `runtime.rs` resolve? | **Yes** — a 4-space-indented call at `:1648` correctly resolves to enclosing fn `run` (`:817`). |
+| Is it "very large functions"? | **No** — `run` also spans 800+ lines and resolves fine. |
+| What do the two misses share? | Both sit ~24–40 spaces deep, inside nested `async`/closure blocks within `spawn_trading_loop` (`:1993-2692`). |
+
+**The rule that follows:** treat `codegraph callers` as a **lower bound**, not a census. It is
+excellent for *finding* call sites (that is its job, and it is far faster than grep at it). It is not
+sufficient for *proving absence* — and "this symbol has no production callers" is exactly the claim
+this project keeps needing, because the whole declared-vs-executed defect family (#65 → #91) turns on
+reachability.
+
+**The near-miss that motivated this note.** Bug-log **#90**'s census concluded that
+`check_and_liquidate` has one caller per side — `agent` and `backtest` — and is therefore *symmetric*,
+not a repeat of #80's asymmetry. Codegraph alone reports only the `backtest` caller. Had the census
+been taken from it, #90 would have read "only the ranking side liquidates," which is **false**, and
+the entry would have been wrong in precisely the way **#82** was wrong: asserting reachability without
+tracing the caller graph. The grep cross-check is what prevented it.
+
+**Working rule.** Lead with CodeGraph to orient and to find candidates. When a conclusion depends on a
+caller set being *complete* — a reachability claim, a dead-code claim, a "no production callers"
+claim — confirm with `grep -rn --include='*.rs'` before writing it down. The two tools disagree
+exactly where this codebase's defects live: deep inside the async loops that execute real plans.

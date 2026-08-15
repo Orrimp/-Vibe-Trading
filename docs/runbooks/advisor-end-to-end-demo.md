@@ -176,7 +176,7 @@ across every arm-class on the same H1-2024 window and 1000-path bootstrap gate:
 | Combination search (13-arm field, ADR-0067, `9420965`) | no combination cleared the gate — all Fragile | **`BenchmarkWins`** |
 | Benchmark-robustness fix (ADR-0066, `ab13407`) | all 7 active Fragile; buy-and-hold crowned Sharpe 1.486 +47.78% | **`BenchmarkWins`** |
 | DVOL implied-vol regime (ADR-0072) | `v0.dvol_regime` FRAGILE on BTC + ETH | **`BenchmarkWins`** |
-| Macro cross-asset regime (ADR-0073) | `v0.macro_riskon` FRAGILE (Sharpe −0.041, 6 flips) | **`BenchmarkWins`** |
+| Macro cross-asset regime (ADR-0073) | ⚠ **WITHDRAWN 2026-08-14** — was recorded as `v0.macro_riskon` FRAGILE (Sharpe −0.041, 6 flips). The arm's loader is `#![cfg(feature="yahoo")]` on backtest's feature, which nothing in the workspace enables, so it has run **100% cash in every build** and never evaluated the macro channel (bug-log #81). The "6 flips" is additionally cadence-inflated. It is now dropped to ABSENCE rather than ranked. | **no verdict — the experiment did not run** |
 
 **This is the product doing its job.** Every active arm is Fragile under resampling, so
 buy-and-hold — the benchmark the candidates are scored *against*, exempt from the

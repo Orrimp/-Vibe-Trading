@@ -505,9 +505,34 @@ impl Default for SizingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskConfig {
+    /// **ENFORCED.** Converted at `runtime.rs:2070` and passed to the exec
+    /// limits as an entry gate bounding per-order notional.
     pub per_symbol_exposure_cap: f64,
+
+    /// ⚠️ **NOT ENFORCED — deserialized and never read (bug-log #85).**
+    ///
+    /// There is **no** read site for this field anywhere in the workspace.
+    /// `KillSwitch::trip` takes a [`kill_switch::HaltReason`], and that enum has
+    /// no daily-loss variant — so nothing can act on this value. Setting it does
+    /// not arm a stop.
+    ///
+    /// Kept (rather than deleted) because the enforcement seam already exists and
+    /// wiring it is modest: `HaltReason` gains a variant, and the forward loop in
+    /// `spawn_trading_loop` already computes `cur_equity` on every bar. Until
+    /// that happens this doc comment is the only thing preventing the field from
+    /// reading as a guarantee. **Do not remove this warning without either
+    /// wiring the stop or deleting the field.**
     pub daily_loss_stop_pct: f64,
+
+    /// ⚠️ **NOT ENFORCED — deserialized and never read (bug-log #85).**
+    ///
+    /// Same status as [`Self::daily_loss_stop_pct`]: no read site, no
+    /// `HaltReason` variant, no comparison anywhere. ADR-0010 refers to this as
+    /// "the portfolio-level floor" — that describes the intended design, not the
+    /// shipped behaviour. Paper/sim only, so nothing is at risk today; the
+    /// hazard is that the value *looks* like protection.
     pub max_drawdown_stop_pct: f64,
+
     #[serde(default)]
     pub sizing: SizingConfig,
 }

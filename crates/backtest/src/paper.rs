@@ -64,7 +64,20 @@ pub struct SimFilterStats {
 /// Simple paper matching engine.
 pub struct PaperEngine {
     config: MatchConfig,
-    /// Seeded RNG for deterministic tie-breaking (T24 will use it more extensively).
+    /// ⚠️ **INERT — constructed and never read (bug-log #89).**
+    ///
+    /// Seeded from `PaperEngine::new`'s `seed` parameter for deterministic
+    /// tie-breaking that T24 was expected to use "more extensively". It never
+    /// arrived: `grep 'self.rng'` over this file returns nothing, and the
+    /// `#[allow(dead_code)]` below is the compiler's finding, silenced.
+    ///
+    /// Consequence: the engine's determinism is a property of having **no**
+    /// randomness, not of seeding. The `seed` parameter therefore cannot change
+    /// any outcome, and `t24_deterministic_across_runs` asserts exactly that
+    /// (seed-independence) rather than the tautology it used to assert.
+    ///
+    /// Wire it or delete it — but do not leave a seeded-and-unread RNG, which
+    /// is what made this a defect rather than an unused field.
     #[allow(dead_code)]
     rng: ChaCha20Rng,
     /// Opt-in venue-filter realism mode (ADR-0087). `None` (the default,
@@ -356,14 +369,36 @@ mod tests {
         let order1 = make_order(Side::Buy, dec!(0.5));
         let order2 = make_order(Side::Buy, dec!(0.5));
 
+        // Bug-log #89 — this test used to pass the SAME seed (42, 42) to both
+        // engines and assert the fills matched. That could not fail: nothing in
+        // the fill path is stochastic, so the assertion held for any seeds, and
+        // for no RNG at all. Proven 2026-08-15 by mutating one seed to 999_999
+        // — the test still passed.
+        //
+        // It now asserts the invariant that is actually true and actually
+        // falsifiable: fills are **seed-INDEPENDENT**, because `PaperEngine`'s
+        // `rng` is constructed and never read. Deliberately different seeds.
+        //
+        // IF THIS GOES RED, the fill path has become stochastic — someone wired
+        // `self.rng`. That is a legitimate change, but it invalidates the
+        // "seedless determinism" that the anchors rely on, so update the anchor
+        // story in the same pass rather than re-pinning the seeds to match.
         let mut eng1 = PaperEngine::new(config.clone(), 42);
-        let mut eng2 = PaperEngine::new(config, 42);
+        let mut eng2 = PaperEngine::new(config, 999_999);
 
         let fills1 = eng1.step(&bar, vec![order1]).await.unwrap();
         let fills2 = eng2.step(&bar, vec![order2]).await.unwrap();
 
-        assert_eq!(fills1[0].price.get(), fills2[0].price.get());
-        assert_eq!(fills1[0].fee.amount(), fills2[0].fee.amount());
+        assert_eq!(
+            fills1[0].price.get(),
+            fills2[0].price.get(),
+            "fills must not depend on the engine seed (see bug-log #89)"
+        );
+        assert_eq!(
+            fills1[0].fee.amount(),
+            fills2[0].fee.amount(),
+            "fees must not depend on the engine seed (see bug-log #89)"
+        );
     }
 
     // ── ADR-0087 § D6 — anchor-safety enforcement (T7, NEVER DELETE) ────────

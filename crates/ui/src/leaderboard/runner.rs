@@ -108,10 +108,18 @@ pub fn advisor_field_arm_count() -> usize {
 #[must_use]
 pub fn advisor_field_arm_count_for(symbol_str: &str) -> usize {
     let full = advisor_field_arm_count();
-    if backtest::bakeoff::dvol_supported(symbol_str) {
-        full
-    } else {
+    // The DVOL arm can be absent for TWO INDEPENDENT reasons and they must not
+    // both be charged (2026-08-15): the build filter inside
+    // `advisor_field_arm_count` already removes it when `backtest/realdata` is
+    // off (bug-log #81 extension — it is off in every shipped build), and this
+    // branch removes it for coins outside {BTC, ETH} (ADR-0072 D8). Subtracting
+    // here unconditionally would double-count on a SOLUSDT run in the shipped
+    // build and under-report the field by one. Only charge the per-coin reason
+    // if the arm survived the build filter.
+    if backtest::bakeoff::dvol_arm_compiled() && !backtest::bakeoff::dvol_supported(symbol_str) {
         full - 1
+    } else {
+        full
     }
 }
 
@@ -291,13 +299,19 @@ mod tests {
                 "{supported} runs the full field including v0.dvol_regime"
             );
         }
+        // 2026-08-15: the per-coin drop only applies when the arm survived the
+        // BUILD filter. With `backtest/realdata` off (every shipped build) the
+        // arm is already excluded from `full`, so the honest expectation for an
+        // unsupported coin is `full`, not `full - 1` — asserting the literal
+        // unconditionally is what let the count drift from the field.
+        let per_coin_drop = usize::from(backtest::bakeoff::dvol_arm_compiled());
         for unsupported in ["SOLUSDT", "DOGEUSDT", "XRPUSDT"] {
             assert_eq!(
                 advisor_field_arm_count_for(unsupported),
-                full - 1,
+                full - per_coin_drop,
                 "{unsupported} has no DVOL corpus, so the v0.dvol_regime arm is \
                  ABSENT from the field and the operator must be told {} — not {full}",
-                full - 1
+                full - per_coin_drop
             );
         }
         // And the predicate is the SAME one the bake-off dispatch loop uses —
@@ -332,21 +346,31 @@ mod tests {
             "the arm count must drop every declared arm that cannot run, + 1 benchmark"
         );
 
-        // The macro arm is the one that can be structurally impossible, and the
-        // predicate must agree with the feature that gates its loader.
-        assert!(
-            declared.iter().any(|id| id.0.as_str() == "v0.macro_riskon"),
-            "the macro arm is still DECLARED (ADR-0073) — it is the RUN that is gated"
-        );
-        assert_eq!(
-            backtest::bakeoff::arm_runs_in_this_build("v0.macro_riskon"),
-            backtest::bakeoff::macro_arm_compiled(),
-            "the macro arm runs iff its loader was compiled (backtest/yahoo)"
-        );
-        // Every other declared arm is always dispatchable.
+        // TWO arms can be structurally impossible, each behind the feature that
+        // gates its own loader. 2026-08-15: this block previously named only the
+        // macro arm and then asserted "every OTHER declared arm is always
+        // dispatchable" — which was false for `v0.dvol_regime` behind
+        // `backtest/realdata`, so the screen said 19 while 18 ran. The pairing is
+        // data-driven now so adding a third gated arm forces this list to grow.
+        let gated: [(&str, bool); 2] = [
+            ("v0.macro_riskon", backtest::bakeoff::macro_arm_compiled()),
+            ("v0.dvol_regime", backtest::bakeoff::dvol_arm_compiled()),
+        ];
+        for (id, compiled) in gated {
+            assert!(
+                declared.iter().any(|d| d.0.as_str() == id),
+                "{id} is still DECLARED — it is the RUN that is gated"
+            );
+            assert_eq!(
+                backtest::bakeoff::arm_runs_in_this_build(id),
+                compiled,
+                "{id} runs iff its loader was compiled into this build"
+            );
+        }
+        // Every arm that is NOT feature-gated is always dispatchable.
         for id in declared
             .iter()
-            .filter(|i| i.0.as_str() != "v0.macro_riskon")
+            .filter(|i| !gated.iter().any(|(g, _)| *g == i.0.as_str()))
         {
             assert!(
                 backtest::bakeoff::arm_runs_in_this_build(id.0.as_str()),
@@ -355,15 +379,23 @@ mod tests {
             );
         }
 
-        // And in the SHIPPED build (no backtest/yahoo) the honest number is 19,
-        // not the 20 the field declares.
-        if !backtest::bakeoff::macro_arm_compiled() {
-            assert_eq!(
-                advisor_field_arm_count(),
-                19,
-                "shipped build: 18 runnable arms + buy-and-hold (the macro arm is ABSENT)"
-            );
-        }
+        // And the number on screen must be DERIVED, never a literal. 2026-08-15:
+        // this asserted the literal `19` under a macro-only condition, so when the
+        // DVOL arm turned out to be gated too the assertion kept passing while
+        // production computed 18 — a hard-coded expectation is exactly how a count
+        // drifts away from the field it claims to describe (bug-log #77's moral:
+        // an expected value copied from one side proves nothing about the other).
+        let runnable = declared
+            .iter()
+            .filter(|id| backtest::bakeoff::arm_runs_in_this_build(id.0.as_str()))
+            .count();
+        assert_eq!(
+            advisor_field_arm_count(),
+            runnable + 1,
+            "the screen must report exactly the arms that can run, + buy-and-hold: \
+             {} declared, {runnable} runnable in this build",
+            declared.len()
+        );
     }
 
     /// The default config targets the default coin + H1 2024 over the four

@@ -371,6 +371,31 @@ pub struct LiquidationResult {
 /// - `mark`: current mark price.
 /// - `equity`: current equity (`cash + position_qty × mark`).
 /// - `taker_fee_bps`: fee in basis points.
+///
+/// # ⚠️ Deliberate carve-out: this path is INVISIBLE to both friction-parity gates (bug-log #90)
+///
+/// This function force-covers at the **raw `mark`** with the taker fee only —
+/// no slippage, no engine — and emits **no `Fill`**. Both short/long friction
+/// parity gates (`backtest/tests/short_long_friction_parity_e2e.rs` and
+/// `agent/tests/short_long_friction_parity_forward_e2e.rs`) measure the **fill
+/// tape**, so a path that produces no fill cannot appear in their input, in
+/// either direction. The gates are sound about what they see; this is outside
+/// what they can see.
+///
+/// **This is not a repeat of #80's asymmetry.** Both production callers —
+/// `agent/src/runtime.rs` (forward loop) and `scenarios/sma_composed_run.rs`
+/// (ranking) — call it identically, so it is symmetric, and long positions have
+/// no analogous forced-exit path to be cheaper than.
+///
+/// **Why it was not engine-routed with #80:** doing so would change *what* is
+/// liquidated and *when*, not merely what it costs — slippage moves the cover
+/// price, which moves the equity that triggered the liquidation. That is a
+/// feedback loop, not a friction correction. `apply_engine_fill`'s own docs
+/// record that the #80 fix scoped forced liquidation out on purpose ("a forced
+/// cover … is deliberately allowed to drive cash negative").
+///
+/// **If you add a caller, or start routing other exits through here, say so in
+/// bug-log #90 first** — the parity gates will not tell you, by construction.
 #[must_use]
 pub fn check_and_liquidate(
     cash: Decimal,
