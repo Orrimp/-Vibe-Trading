@@ -227,9 +227,23 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Finance parquet cache reader for the Lab Source toggle). This means
 # `cargo run -p ui --bin cockpit_live` Just Works without `--features` flags.
 #
-# Builds that explicitly want a minimal surface can opt out with
-# `--no-default-features` and then re-enable individual features as needed
-# (e.g. `--no-default-features --features fixtures` for the gallery-only bin).
+# ⚠️ `--no-default-features` DOES NOT BUILD TODAY (bug-log #92, measured
+# 2026-08-15). `cargo check -p ui --no-default-features --features fixtures`
+# fails with 3 E0432 errors: `agent` is a `live`-only dependency, but
+# `src/state.rs`, `src/lab/activity.rs` and `src/widgets/activity_tape.rs`
+# import it unconditionally. The real surface is small — the activity types
+# plus `HaltReason`; most of state.rs's `agent::` mentions are doc comments —
+# but it is unfixed, and nothing in CI, scripts, skills, README or the runbooks
+# builds this configuration, which is why it rotted unnoticed (most likely at
+# the 2026-05-25 promotion below, after which every routine build carried
+# `agent`).
+#
+# This comment previously advertised the opt-out as supported. It is not.
+# `ui-gallery` and `cockpit` both build fine with defaults on, so no shipping
+# target needs it. Three resolutions are open (see #92): delete the option,
+# fix the cfg gating, or fix it AND add a CI leg — only the last actually stops
+# it rotting again. Until one is chosen, do not present this as a supported
+# build.
 #
 # 2026-05-25: promoted from explicit-opt-in to default per operator request.
 # 2026-06-13 (simple-strategies-realdata T-B5): `binance` added to default so
