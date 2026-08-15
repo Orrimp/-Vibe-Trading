@@ -61,20 +61,32 @@ fn advisor_field() -> Vec<trading_core::StrategyId> {
 }
 
 /// The total number of arms the advisor bake-off puts head-to-head — the
-/// `advisor_field()` size **plus the buy-and-hold benchmark** that `run_bakeoff`
-/// always appends. Post-ADR-0073 this is 20 for BTC/ETH (10 single rule engines +
-/// 8 vote ensembles + 1 ADR-0073 macro arm + buy-and-hold; the 10 = 4 original +
-/// 5 ADR-0071 arms + 1 ADR-0072 DVOL arm). For other symbols the DVOL arm is
-/// filtered → 19 arms. Single-sourced from `advisor_field()` so it can never drift
-/// from the real field; surfaced in the leaderboard header context (OQ-2).
-/// `+ 1` is the appended benchmark.
+/// `advisor_field()` entries **that can actually run in this build**, plus the
+/// buy-and-hold benchmark that `run_bakeoff` always appends.
+///
+/// Single-sourced from `advisor_field()` filtered through
+/// `backtest::bakeoff::arm_runs_in_this_build` — the same predicate the bake-off
+/// dispatch loop uses — so the number on screen can never claim an arm the loop
+/// drops.
+///
+/// Lineage: 13 (4 singles + 8 ensembles + buy-and-hold) → 18 (+5 ADR-0071) →
+/// 19 (+1 ADR-0072 DVOL) → 20 declared (+1 ADR-0073 macro). **Today it returns
+/// 19**, because the macro arm cannot run in the shipped build (bug-log #81:
+/// `macro_regime` is `#![cfg(feature = "yahoo")]` and nothing enables
+/// `backtest/yahoo`, so the loop drops it to ABSENCE on every run). With
+/// `backtest/yahoo` on it returns 20 again — the count follows the field that
+/// runs, not the field that was declared.
 ///
 /// **Symbol-blind — prefer [`advisor_field_arm_count_for`].** Review 3-15 LOW:
-/// this returns 20 unconditionally, so a SOLUSDT operator was told 20 strategies
+/// this used to be unconditional, so a SOLUSDT operator was told 20 strategies
 /// ran when 19 did (the ADR-0072 D8 DVOL arm is dropped for non-BTC/ETH coins).
 #[must_use]
 pub fn advisor_field_arm_count() -> usize {
-    advisor_field().len() + 1
+    advisor_field()
+        .iter()
+        .filter(|id| backtest::bakeoff::arm_runs_in_this_build(id.0.as_str()))
+        .count()
+        + 1
 }
 
 /// The number of arms the bake-off actually puts head-to-head **for this coin**.
@@ -86,10 +98,13 @@ pub fn advisor_field_arm_count() -> usize {
 /// field that runs (review 3-15 MEDIUM: that allowlist used to be copied in three
 /// places).
 ///
-/// Note this is the count the field DECLARES. The DVOL arm can additionally be
-/// dropped at run time when its corpus is missing or does not cover the requested
-/// window (bug-log #78); that is reported by the arm's absence from the
-/// leaderboard rows, which is the honest rendering of "did not run".
+/// Note this is the count the field declares **for arms that can run at all in
+/// this build** (see [`advisor_field_arm_count`] — the ADR-0073 macro arm is
+/// excluded outright while `backtest/yahoo` is off, bug-log #81). Both remaining
+/// corpus-backed arms can *additionally* be dropped at run time when their
+/// corpus is missing or does not cover the requested window (bug-log #78/#81);
+/// that is reported by the arm's absence from the leaderboard rows, which is the
+/// honest rendering of "did not run".
 #[must_use]
 pub fn advisor_field_arm_count_for(symbol_str: &str) -> usize {
     let full = advisor_field_arm_count();
@@ -289,6 +304,66 @@ mod tests {
         // not a fourth copy of the allowlist.
         assert!(backtest::bakeoff::dvol_supported("BTCUSDT"));
         assert!(!backtest::bakeoff::dvol_supported("SOLUSDT"));
+    }
+
+    /// bug-log #81 / review 3-16 CRITICAL: the operator-facing arm count must
+    /// count arms that CAN RUN, not arms that were declared.
+    ///
+    /// `v0.macro_riskon` is declared in `advisor_field()` but its regime loader
+    /// is `#![cfg(feature = "yahoo")]` on the `backtest` crate, which nothing in
+    /// the workspace enables — so `run_bakeoff` drops it to ABSENCE on every
+    /// run of the shipped build. The count must follow the drop, or the screen
+    /// tells a retail operator that a strategy was tried when it never ran.
+    ///
+    /// This asserts the RELATION (declared − not-runnable == counted), so it
+    /// stays true under either feature setting and cannot rot into a stale
+    /// literal.
+    #[test]
+    fn arm_count_excludes_arms_that_cannot_run_in_this_build() {
+        let declared = advisor_field();
+        let not_runnable = declared
+            .iter()
+            .filter(|id| !backtest::bakeoff::arm_runs_in_this_build(id.0.as_str()))
+            .count();
+
+        assert_eq!(
+            advisor_field_arm_count(),
+            declared.len() - not_runnable + 1,
+            "the arm count must drop every declared arm that cannot run, + 1 benchmark"
+        );
+
+        // The macro arm is the one that can be structurally impossible, and the
+        // predicate must agree with the feature that gates its loader.
+        assert!(
+            declared.iter().any(|id| id.0.as_str() == "v0.macro_riskon"),
+            "the macro arm is still DECLARED (ADR-0073) — it is the RUN that is gated"
+        );
+        assert_eq!(
+            backtest::bakeoff::arm_runs_in_this_build("v0.macro_riskon"),
+            backtest::bakeoff::macro_arm_compiled(),
+            "the macro arm runs iff its loader was compiled (backtest/yahoo)"
+        );
+        // Every other declared arm is always dispatchable.
+        for id in declared
+            .iter()
+            .filter(|i| i.0.as_str() != "v0.macro_riskon")
+        {
+            assert!(
+                backtest::bakeoff::arm_runs_in_this_build(id.0.as_str()),
+                "{} must be dispatchable in every build",
+                id.0.as_str()
+            );
+        }
+
+        // And in the SHIPPED build (no backtest/yahoo) the honest number is 19,
+        // not the 20 the field declares.
+        if !backtest::bakeoff::macro_arm_compiled() {
+            assert_eq!(
+                advisor_field_arm_count(),
+                19,
+                "shipped build: 18 runnable arms + buy-and-hold (the macro arm is ABSENT)"
+            );
+        }
     }
 
     /// The default config targets the default coin + H1 2024 over the four

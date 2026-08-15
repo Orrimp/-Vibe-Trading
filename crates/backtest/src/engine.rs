@@ -714,6 +714,14 @@ fn strategy_dir_slug(strategy_id: &str) -> &str {
         | "v0.obv" | "btc_obv" => "v0-signal-library",
         // ADR-0072: DVOL implied-vol regime probe.
         "v0.dvol_regime" => "v0-dvol-probe",
+        // ADR-0073: cross-asset macro regime probe. Review 3-16 LOW: this case
+        // was missing, so the id fell through to `other => other` and the arm
+        // would have written under a raw-id directory (`v0.macro_riskon/`)
+        // unlike every sibling. `write_report=false` on the bake-off path makes
+        // it unreachable there, but the arm's writer now refuses loudly rather
+        // than returning a path to a file it never creates — see the
+        // `v0.macro_riskon` dispatch arm.
+        "v0.macro_riskon" => "v0-macro-regime-probe",
         "v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => "v15a-mean-reversion-pairs",
         "v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",
         "v2.5.tcn.weights" | "v2.5.tcn_overlay_weights" => "v2.5.tcn_overlay_weights",
@@ -2491,20 +2499,47 @@ pub async fn run_scenario(
                 initial_equity: Money::<Usdt>::from_decimal(initial_capital),
                 max_drawdown: rust_decimal::Decimal::try_from(max_dd)
                     .unwrap_or(rust_decimal::Decimal::ZERO),
-                trade_count: sells,                // completed round trips
-                total_fees: Money::<Usdt>::zero(), // v0: no fee model (same as v0.buyhold)
+                trade_count: sells, // completed round trips
+                // ⚠ review 3-16 HIGH — a pre-registration DEPARTURE, not a
+                // convention. The feature spec locked "transition trades pay the
+                // standard taker fee … the macro arm is NOT cost-advantaged vs
+                // the always-long benchmark", and this ships zero fee and zero
+                // slippage while the 18 arms it is ranked against pay 4 bps a leg
+                // through `PaperEngine` (plus lot rounding since bug-log #79).
+                // Unlike `v0.buyhold` — which is a BENCHMARK and legitimately
+                // frictionless — this arm TRADES (it has round trips) and is
+                // ranked. The departure flatters it, so charging the fee would
+                // strengthen the null rather than reverse it; changing it is a
+                // measured product decision, not a review patch. Until then no
+                // verdict from this arm is "net of costs".
+                total_fees: Money::<Usdt>::zero(),
                 buys,
                 sells,
                 total_return_pct: total_return_pct(initial_capital, final_eq),
             };
 
             // write_report = false on bake-off path → anchor-safe (ADR-0073 D4).
+            //
+            // Review 3-16 LOW: the writer used to be `|_path| Ok(())`, so a
+            // caller that set `write_report = true` got back `Some(path)` for a
+            // `.md` that was never written — a report path pointing at nothing.
+            // No such caller exists (the arm is bake-off-only), so rather than
+            // invent a report format for a probe arm, the writer REFUSES: the
+            // request fails loudly instead of returning a phantom artifact.
             let report_path = maybe_write_report(
                 &cfg,
                 "v0.macro_riskon",
                 "v0.macro_riskon",
                 &equity_series,
-                |_path| Ok(()), // No-op writer: write_report=false in bake-off.
+                |path| {
+                    anyhow::bail!(
+                        "v0.macro_riskon has no report renderer — refusing to report \
+                         success for {} without writing it. The arm is bake-off-only \
+                         (write_report=false); if a write path is ever needed, render a \
+                         real body here first.",
+                        path.display()
+                    )
+                },
             )?;
 
             Ok(RunReport {

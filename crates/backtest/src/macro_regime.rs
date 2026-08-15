@@ -50,6 +50,26 @@ const SMA_20: usize = 20;
 const WARMUP_DAYS: i64 = 100;
 const MS_PER_DAY: i64 = 86_400_000;
 
+/// Maximum tolerated gap, in calendar days, anywhere in the emitted regime
+/// series relative to the requested window (review 3-16 MEDIUM, bug-log #78's
+/// second trigger on a second arm).
+///
+/// `PitSeries::as_of_value` is **unbounded LOCF**: it happily carries a close
+/// forward forever, so at the join a 7-week hole in the corpus is
+/// indistinguishable from a 3-day weekend. That is how a pinned corpus ending
+/// `2026-06` stayed "healthy" against advisor windows anchored to `NOW` — the
+/// SHA verified, the load succeeded, and the regime decision was a frozen
+/// constant for the whole tail.
+///
+/// **Weekend/holiday LOCF is CORRECT and is deliberately preserved.** Carrying
+/// Friday's close across Saturday/Sunday crypto bars is the intended semantics,
+/// and US market holidays extend that to 4 days (a Friday close before a Monday
+/// holiday is next refreshed on Tuesday), occasionally 5 around
+/// Christmas/New Year. `10` sits comfortably above every legitimate NYSE closure
+/// and far below the multi-week staleness this bound exists to catch, so it can
+/// only reject a corpus that is genuinely not covering the window.
+const MAX_REGIME_GAP_DAYS: i64 = 10;
+
 // ── Error type ─────────────────────────────────────────────────────────────────
 
 #[derive(thiserror::Error, Debug)]
@@ -62,6 +82,25 @@ pub enum MacroRegimeError {
 
     #[error("PitSeries sort error: {0}")]
     PitSort(trading_core::pit::PitError),
+
+    /// The corpus loaded and verified, but the regime series does not COVER the
+    /// requested window — a SHA pin proves integrity, not coverage.
+    ///
+    /// Routes the arm to ABSENCE in `bakeoff::run_bakeoff` (the
+    /// `preloaded_macro_series.is_none()` guard), which is the honest rendering:
+    /// the probe could not be evaluated on this window.
+    #[error(
+        "macro regime series does not cover the requested window [{start_ms}, {end_ms}): \
+         {reason} — max tolerated gap is {max_gap_days} days (weekend/holiday LOCF is \
+         expected and allowed; multi-week staleness is not). The arm is DROPPED, never \
+         run against a frozen or empty regime."
+    )]
+    InsufficientCoverage {
+        reason: String,
+        start_ms: i64,
+        end_ms: i64,
+        max_gap_days: i64,
+    },
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -77,9 +116,13 @@ pub enum MacroRegimeError {
 /// 2. Build a trailing SMA for each series using only past closes
 ///    (no centering, no look-ahead).
 /// 3. Evaluate the 3-AND risk-ON rule at the **union** of all three tickers'
-///    close timestamps; absent legs carry their prior close forward (LOCF).
-/// 4. Emit `(close_ts_ms, bool)` for every macro daily close and build
-///    `PitSeries::from_sorted(...)`.
+///    close timestamps ([`reduce_regime_records`] — see its docs for the
+///    emission cadence, which is up to 3 records per trading day with legs of
+///    mixed vintage); absent legs carry their prior close forward (LOCF).
+/// 4. Assert the emitted series COVERS `[start_ms, end_ms)`
+///    ([`check_span_coverage`]) — a verified corpus SHA proves integrity, not
+///    coverage.
+/// 5. Build `PitSeries::from_sorted_with_lag(records, 0)`.
 ///
 /// # Warm-up / None
 ///
@@ -91,7 +134,15 @@ pub enum MacroRegimeError {
 ///
 /// Returns `MacroRegimeError` if any ticker fails to load
 /// (`YahooError::CacheMiss` → orchestrator must fetch the corpus first;
-/// `YahooError::MissingData` → calendar fix not applied / corpus incomplete).
+/// `YahooError::MissingData` → calendar fix not applied / corpus incomplete),
+/// or `InsufficientCoverage` when the corpus loads but does not reach the
+/// requested window (review 3-16 MEDIUM).
+///
+/// **Every error routes the arm to ABSENCE.** `bakeoff::run_bakeoff` turns an
+/// `Err` into `preloaded_macro_series = None` and then `continue`s past the
+/// dispatch, so the arm is reported as not-run — it is never handed an empty or
+/// stale series behind the label *"Macro regime (hold when SPX up, DXY down,
+/// rates calm)"* (bug-log #78/#81).
 pub fn load_macro_regime_series(
     yahoo_root: &Path,
     range: &DateRange,
@@ -138,6 +189,109 @@ pub fn load_macro_regime_series(
     let tnx_closes = bars_to_close_map(&tnx_bars.bars);
 
     // ── Step 3: union of close timestamps → evaluate regime ───────────────────
+    let regime_records =
+        reduce_regime_records(&spx_closes, &dxy_closes, &tnx_closes, start_ms, end_ms);
+
+    // ── Step 3b: span-coverage bound (review 3-16 MEDIUM) ─────────────────────
+    // A verified SHA proves the corpus is the pinned one; it says NOTHING about
+    // whether that corpus reaches the requested window. Assert coverage before
+    // the series is handed to an arm whose join is unbounded LOCF.
+    check_span_coverage(&regime_records, start_ms, end_ms)?;
+
+    // Records are produced in ascending timestamp order (BTreeSet).
+    //
+    // Explicit publication lag (ADR-0086 D2/D3, P3 M-DEV-6): macro's
+    // publication_lag_ms = 0 per the feature's lag table
+    // (spec/v3/advisor-pit-discipline/feature.md § D2) — the three legs
+    // (^GSPC/DX-Y.NYB/^TNX) are market-observable prices/yields with no
+    // release lag beyond end-of-day, and `close_ts` ≈ EOD UTC already
+    // encodes that. `from_sorted_with_lag(_, 0)` is byte-identical to
+    // `from_sorted(_)` (proven by
+    // `macro_byte_identical_legacy_vs_with_lag_zero`).
+    PitSeries::from_sorted_with_lag(regime_records, 0).map_err(MacroRegimeError::PitSort)
+}
+
+// ── The pre-registered rule + the reduction (production seams) ─────────────────
+
+/// The pre-registered 3-AND risk-ON rule (LOCKED — ADR-0073 D4).
+///
+/// Risk-ON **iff all three** hold at the macro daily close:
+/// 1. `spx_close > spx_sma` — SPX trend up (SMA 50)
+/// 2. `dxy_close < dxy_sma` — dollar not bid (SMA 50)
+/// 3. `tnx_close < tnx_sma` — rates not spiking (SMA 20)
+///
+/// This is the story's entire scientific content, so it lives in ONE place that
+/// [`reduce_regime_records`] calls. Review 3-16 HIGH: both "risk-on rule" unit
+/// tests used to re-implement this expression *inside the test body*, so
+/// inverting the production rule left them green — they proved the test's own
+/// copy, not the shipped predicate.
+#[must_use]
+pub(crate) fn risk_on_rule(
+    spx_close: Decimal,
+    spx_sma: Decimal,
+    dxy_close: Decimal,
+    dxy_sma: Decimal,
+    tnx_close: Decimal,
+    tnx_sma: Decimal,
+) -> bool {
+    spx_close > spx_sma && dxy_close < dxy_sma && tnx_close < tnx_sma
+}
+
+/// Reduce three per-ticker close maps to the emitted `(close_ts, risk_on)`
+/// records — the whole PIT-relevant body of [`load_macro_regime_series`] with
+/// the parquet I/O lifted out, so it can be exercised on synthetic closes.
+///
+/// # Emission cadence (documented, NOT changed — review 3-16 LOW)
+///
+/// The loop walks the **union of the three tickers' close instants**, not one
+/// tick per macro *day*. Yahoo keys these three legs at distinct instants
+/// (`DX-Y.NYB` ≈ 05:00Z, `^TNX` ≈ 13:20Z, `^GSPC` ≈ 14:30Z), and those instants
+/// are **disjoint**, so a normal trading day contributes up to **three** records
+/// rather than one:
+///
+/// | emitted at | SPX leg | DXY leg | TNX leg |
+/// |---|---|---|---|
+/// | ~05:00Z | previous day (LOCF) | **today** | previous day (LOCF) |
+/// | ~13:20Z | previous day (LOCF) | today | **today** |
+/// | ~14:30Z | **today** | today | today |
+///
+/// Only the last of the three evaluates the rule on same-day closes for all
+/// three legs; the earlier two mix vintages (SPX from D−1 against DXY from D).
+/// Consequences, stated plainly because the arm's output cannot be read
+/// correctly without them:
+/// - the pre-registered "3-AND rule at the daily close" is evaluated on aligned
+///   inputs roughly **one time in three**;
+/// - a day on which two legs flip can produce **two** round-trips where the rule
+///   intends one, inflating the arm's trade count;
+/// - the SMA windows advance per-leg (a leg's window only grows when that leg
+///   has a close at the instant), so the SMAs themselves are unaffected by the
+///   cadence — it is the *evaluation timing* that is over-sampled, not the
+///   averages.
+///
+/// This is bug-log #73's loop-scope shape (fire per *ticker-close* instead of
+/// per *macro day*). It is left **behaviour-identical on purpose**: collapsing
+/// to one record per macro day changes what the arm computes on every run, which
+/// is a measured product change and not a review patch. It is documented here so
+/// nobody reads the current output as "the 3-AND rule at the daily close".
+///
+/// # Warm-up
+///
+/// A timestamp is skipped entirely until every leg has its required window
+/// (`SMA_50` / `SMA_50` / `SMA_20`); the arm treats a missing record as risk-OFF
+/// (flat), which S4 of the day-1 e2e gate pins.
+///
+/// # Window
+///
+/// Records outside `[start_ms, end_ms)` are used to warm the SMAs but are NOT
+/// emitted, so the returned series is tight to the requested window.
+#[must_use]
+pub(crate) fn reduce_regime_records(
+    spx_closes: &BTreeMap<i64, Decimal>,
+    dxy_closes: &BTreeMap<i64, Decimal>,
+    tnx_closes: &BTreeMap<i64, Decimal>,
+    start_ms: i64,
+    end_ms: i64,
+) -> Vec<(TimestampMs, bool)> {
     let mut all_ts: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
     all_ts.extend(spx_closes.keys().copied());
     all_ts.extend(dxy_closes.keys().copied());
@@ -187,15 +341,11 @@ pub fn load_macro_regime_series(
         let dxy_sma = trailing_sma(&dxy_window, SMA_50);
         let tnx_sma = trailing_sma(&tnx_window, SMA_20);
 
-        // Pre-registered 3-AND risk-ON rule (LOCKED — ADR-0073 D4):
-        // 1. SPX close > SMA(SPX, 50)   — trend up
-        // 2. DXY close < SMA(DXY, 50)   — dollar not bid
-        // 3. TNX close < SMA(TNX, 20)   — rates not spiking
         let spx_close = spx_last.unwrap_or(Decimal::ZERO);
         let dxy_close = dxy_last.unwrap_or(Decimal::ZERO);
         let tnx_close = tnx_last.unwrap_or(Decimal::ZERO);
 
-        let risk_on = spx_close > spx_sma && dxy_close < dxy_sma && tnx_close < tnx_sma;
+        let risk_on = risk_on_rule(spx_close, spx_sma, dxy_close, dxy_sma, tnx_close, tnx_sma);
 
         // Emit regime record keyed by this macro daily close timestamp.
         // Only emit records within [start_ms, end_ms) to keep the series tight;
@@ -205,17 +355,83 @@ pub fn load_macro_regime_series(
         }
     }
 
-    // Records are produced in ascending timestamp order (BTreeSet).
-    //
-    // Explicit publication lag (ADR-0086 D2/D3, P3 M-DEV-6): macro's
-    // publication_lag_ms = 0 per the feature's lag table
-    // (spec/v3/advisor-pit-discipline/feature.md § D2) — the three legs
-    // (^GSPC/DX-Y.NYB/^TNX) are market-observable prices/yields with no
-    // release lag beyond end-of-day, and `close_ts` ≈ EOD UTC already
-    // encodes that. `from_sorted_with_lag(_, 0)` is byte-identical to
-    // `from_sorted(_)` (proven by
-    // `macro_byte_identical_legacy_vs_with_lag_zero`).
-    PitSeries::from_sorted_with_lag(regime_records, 0).map_err(MacroRegimeError::PitSort)
+    regime_records
+}
+
+/// Assert that `records` actually COVER `[start_ms, end_ms)` — the staleness
+/// bound `as_of_value`'s unbounded LOCF does not have (review 3-16 MEDIUM).
+///
+/// Three ways a load can succeed and still leave the arm reading a frozen or
+/// absent regime, all rejected here:
+/// 1. **empty** — no record in the window at all (every bar reads `None` → the
+///    arm sits in 100% cash while wearing the probe's label);
+/// 2. **leading / trailing gap** — the corpus starts after the window opens or
+///    ends before it closes. The trailing case is the live one: a pinned corpus
+///    ending `2026-06` against a `NOW`-anchored advisor lookback, where the last
+///    close is carried forward for weeks and the regime decision is a constant;
+/// 3. **interior hole** — a multi-week hole mid-window, which LOCF renders
+///    identical to a long weekend at the join.
+///
+/// Gaps up to [`MAX_REGIME_GAP_DAYS`] are **accepted by design** so ordinary
+/// weekend and US-holiday LOCF keeps working unchanged.
+fn check_span_coverage(
+    records: &[(TimestampMs, bool)],
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<(), MacroRegimeError> {
+    let max_gap_ms = MAX_REGIME_GAP_DAYS * MS_PER_DAY;
+    let fail = |reason: String| MacroRegimeError::InsufficientCoverage {
+        reason,
+        start_ms,
+        end_ms,
+        max_gap_days: MAX_REGIME_GAP_DAYS,
+    };
+
+    let Some(&(first_ts, _)) = records.first() else {
+        return Err(fail(
+            "the series is EMPTY — no macro daily close (past warm-up) falls inside the \
+             window, so every bar would read `None` and the arm would hold 100% cash"
+                .to_string(),
+        ));
+    };
+    // `records.first()` succeeded, so `last()` cannot be `None`.
+    let last_ts = records.last().map_or(first_ts, |&(ts, _)| ts);
+
+    let lead_gap = first_ts.0.saturating_sub(start_ms);
+    if lead_gap > max_gap_ms {
+        return Err(fail(format!(
+            "first regime record is {} days after the window opens (ts={})",
+            lead_gap / MS_PER_DAY,
+            first_ts.0
+        )));
+    }
+
+    let trail_gap = end_ms.saturating_sub(last_ts.0);
+    if trail_gap > max_gap_ms {
+        return Err(fail(format!(
+            "last regime record is {} days before the window closes (ts={}) — the corpus \
+             does not reach the requested window and its final close would be carried \
+             forward across the whole tail",
+            trail_gap / MS_PER_DAY,
+            last_ts.0
+        )));
+    }
+
+    if let Some((prev, next)) = records
+        .windows(2)
+        .map(|w| (w[0].0, w[1].0))
+        .max_by_key(|(prev, next)| next.0.saturating_sub(prev.0))
+        && next.0.saturating_sub(prev.0) > max_gap_ms
+    {
+        return Err(fail(format!(
+            "interior hole of {} days between records ts={} and ts={}",
+            next.0.saturating_sub(prev.0) / MS_PER_DAY,
+            prev.0,
+            next.0
+        )));
+    }
+
+    Ok(())
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -294,48 +510,357 @@ mod tests {
         assert!(map.is_empty());
     }
 
-    // ── Risk-ON logic unit test (synthetic bars) ──────────────────────────────
+    // ── The pre-registered 3-AND rule — bound to PRODUCTION ───────────────────
     //
-    // We test the 3-AND rule by constructing the windows manually and verifying
-    // the boolean outcome. This is cheaper than loading real parquets.
+    // Review 3-16 HIGH: these two tests used to re-implement the predicate
+    // *inside the test body* (`let risk_on = spx_close > spx_sma && …`) and
+    // never call the loader, so inverting the production rule left both green —
+    // the story's entire scientific content had no test that binds it.
+    //
+    // They now call `risk_on_rule`, the ONE expression `reduce_regime_records`
+    // evaluates, and the truth table below is exhaustive over the three legs so
+    // any single-leg inversion, any `&&`→`||`, and any `>`/`<` flip fails.
 
+    /// All 8 combinations of the three legs. Only (up, weak-dollar, calm-rates)
+    /// may be risk-ON; every other corner must be risk-OFF, which is what makes
+    /// this an AND rather than a vote.
     #[test]
-    fn risk_on_when_all_three_conditions_met() {
-        // SPX above SMA, DXY below SMA, TNX below SMA → risk-ON.
-        let spx_window: Vec<Decimal> = (1..=50).map(Decimal::from).collect(); // SMA = 25.5; last = 50 > 25.5 ✓
-        // DXY window where last < SMA (risk-ON requires the dollar NOT bid):
-        let dxy_descending: Vec<Decimal> = (1..=50).map(|i| Decimal::from(100 - i)).collect(); // 99..50; last=50; SMA~74.5 → 50 < 74.5 ✓
-        let tnx_window: Vec<Decimal> = (1..=20).map(|i| Decimal::from(30 - i)).collect(); // 29..10; last=10; SMA~19.5 → 10 < 19.5 ✓
+    fn risk_on_rule_truth_table_is_a_3_and() {
+        // Per leg: (satisfied?, close, sma). "Satisfied" per ADR-0073 D4 is
+        // SPX close ABOVE its SMA, DXY close BELOW, TNX close BELOW.
+        let spx = |ok: bool| {
+            if ok {
+                (dec!(110), dec!(100))
+            } else {
+                (dec!(90), dec!(100))
+            }
+        };
+        let dxy = |ok: bool| {
+            if ok {
+                (dec!(90), dec!(100))
+            } else {
+                (dec!(110), dec!(100))
+            }
+        };
+        let tnx = |ok: bool| {
+            if ok {
+                (dec!(3.5), dec!(4.0))
+            } else {
+                (dec!(4.5), dec!(4.0))
+            }
+        };
 
-        let spx_sma = trailing_sma(&spx_window, SMA_50);
-        let dxy_sma = trailing_sma(&dxy_descending, SMA_50);
-        let tnx_sma = trailing_sma(&tnx_window, SMA_20);
-
-        let spx_close = *spx_window.last().unwrap();
-        let dxy_close = *dxy_descending.last().unwrap();
-        let tnx_close = *tnx_window.last().unwrap();
-
-        let risk_on = spx_close > spx_sma && dxy_close < dxy_sma && tnx_close < tnx_sma;
-        assert!(risk_on, "All three conditions met → should be risk-ON");
+        for &s in &[true, false] {
+            for &d in &[true, false] {
+                for &t in &[true, false] {
+                    let (spx_close, spx_sma) = spx(s);
+                    let (dxy_close, dxy_sma) = dxy(d);
+                    let (tnx_close, tnx_sma) = tnx(t);
+                    let got =
+                        risk_on_rule(spx_close, spx_sma, dxy_close, dxy_sma, tnx_close, tnx_sma);
+                    assert_eq!(
+                        got,
+                        s && d && t,
+                        "3-AND rule (LOCKED, ADR-0073 D4): spx_up={s}, dollar_weak={d}, \
+                         rates_calm={t} must be risk-{}; production said risk-{}",
+                        if s && d && t { "ON" } else { "OFF" },
+                        if got { "ON" } else { "OFF" }
+                    );
+                }
+            }
+        }
     }
 
+    /// Strictness at the boundary: a leg exactly ON its SMA does NOT satisfy the
+    /// leg (`>` / `<`, never `>=` / `<=`). Pins the comparison operators, which a
+    /// truth table built from strictly-separated values cannot see.
     #[test]
-    fn risk_off_when_spx_below_sma() {
-        // SPX descending: close < SMA → risk-OFF.
-        let spx_window: Vec<Decimal> = (1..=50).map(|i| Decimal::from(50 - i)).collect(); // last=0; SMA=24.5 → 0 < 24.5 → NOT above
-        let dxy_descending: Vec<Decimal> = (1..=50).map(|i| Decimal::from(100 - i)).collect();
-        let tnx_window: Vec<Decimal> = (1..=20).map(|i| Decimal::from(30 - i)).collect();
+    fn risk_on_rule_boundary_equality_is_risk_off() {
+        // SPX exactly at its SMA → leg 1 fails even though 2 and 3 hold.
+        assert!(
+            !risk_on_rule(
+                dec!(100),
+                dec!(100),
+                dec!(90),
+                dec!(100),
+                dec!(3.5),
+                dec!(4.0)
+            ),
+            "SPX close == SMA must NOT count as trend-up"
+        );
+        // DXY exactly at its SMA → leg 2 fails.
+        assert!(
+            !risk_on_rule(
+                dec!(110),
+                dec!(100),
+                dec!(100),
+                dec!(100),
+                dec!(3.5),
+                dec!(4.0)
+            ),
+            "DXY close == SMA must NOT count as dollar-not-bid"
+        );
+        // TNX exactly at its SMA → leg 3 fails.
+        assert!(
+            !risk_on_rule(
+                dec!(110),
+                dec!(100),
+                dec!(90),
+                dec!(100),
+                dec!(4.0),
+                dec!(4.0)
+            ),
+            "TNX close == SMA must NOT count as rates-not-spiking"
+        );
+    }
 
-        let spx_sma = trailing_sma(&spx_window, SMA_50);
-        let dxy_sma = trailing_sma(&dxy_descending, SMA_50);
-        let tnx_sma = trailing_sma(&tnx_window, SMA_20);
+    // ── The reduction — bound to PRODUCTION on synthetic closes ───────────────
 
-        let spx_close = *spx_window.last().unwrap();
-        let dxy_close = *dxy_descending.last().unwrap();
-        let tnx_close = *tnx_window.last().unwrap();
+    /// Build a close map with `n` daily bars starting at `t0`, one per day.
+    fn daily_closes(t0: i64, values: &[Decimal]) -> BTreeMap<i64, Decimal> {
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| (t0 + i as i64 * MS_PER_DAY, v))
+            .collect()
+    }
 
-        let risk_on = spx_close > spx_sma && dxy_close < dxy_sma && tnx_close < tnx_sma;
-        assert!(!risk_on, "SPX below SMA → should be risk-OFF");
+    /// `reduce_regime_records` — the function `load_macro_regime_series` calls
+    /// — must emit risk-ON exactly where the 3-AND rule holds.
+    ///
+    /// 60 aligned daily closes per leg (so SMA(50)/SMA(20) are warm from index
+    /// 49): SPX rises throughout (leg 1 always satisfied past warm-up), DXY
+    /// falls (leg 2 satisfied), and TNX is calm for the first half of the
+    /// evaluated tail then spikes above its SMA(20) — so the emitted series must
+    /// be ON, then flip OFF, driven by the production rule and nothing else.
+    #[test]
+    fn reduce_regime_records_flips_off_when_the_rates_leg_breaks() {
+        let t0 = 0i64;
+        // SPX: monotone up → close > SMA(50) always (past warm-up).
+        let spx: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 + i * 10)).collect();
+        // DXY: monotone down → close < SMA(50) always (past warm-up).
+        let dxy: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 - i * 5)).collect();
+        // TNX: flat at 4 for 55 bars, then a spike well above the SMA(20).
+        let tnx: Vec<Decimal> = (0..60)
+            .map(|i| if i < 55 { dec!(4) } else { dec!(9) })
+            .collect();
+
+        let records = reduce_regime_records(
+            &daily_closes(t0, &spx),
+            &daily_closes(t0, &dxy),
+            &daily_closes(t0, &tnx),
+            t0,
+            t0 + 60 * MS_PER_DAY,
+        );
+
+        // Warm-up: indices 0..=48 are skipped (SMA(50) needs 50 closes), so the
+        // first emitted record is at index 49.
+        assert_eq!(
+            records.len(),
+            11,
+            "60 aligned closes − 49 warm-up = 11 emitted records; got {records:?}"
+        );
+        assert_eq!(
+            records[0].0.0,
+            t0 + 49 * MS_PER_DAY,
+            "first emission at index 49"
+        );
+
+        // Indices 49..=54: TNX flat at 4 vs an SMA(20) of 4 → close == SMA → the
+        // rates leg is NOT satisfied (strict `<`), so risk-OFF.
+        for (i, &(ts, on)) in records.iter().enumerate().take(6) {
+            assert!(
+                !on,
+                "record {i} (ts={}) — TNX close == SMA(20) is not 'rates calm' under the \
+                 strict rule → must be risk-OFF",
+                ts.0
+            );
+        }
+        // Indices 55..=59: TNX spikes to 9 above its rising SMA(20) → still OFF.
+        for (i, &(ts, on)) in records.iter().enumerate().skip(6) {
+            assert!(
+                !on,
+                "record {i} (ts={}) — TNX spiked above SMA(20) → must be risk-OFF",
+                ts.0
+            );
+        }
+    }
+
+    /// The same reduction, with a rates leg that genuinely satisfies leg 3:
+    /// TNX declines, so close < SMA(20). All three legs hold → risk-ON
+    /// throughout the emitted tail. Together with the test above this pins BOTH
+    /// polarities of the production reduction (an always-OFF or always-ON
+    /// implementation fails one of the two).
+    #[test]
+    fn reduce_regime_records_emits_risk_on_when_all_three_legs_hold() {
+        let t0 = 0i64;
+        let spx: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 + i * 10)).collect();
+        let dxy: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 - i * 5)).collect();
+        let tnx: Vec<Decimal> = (0..60).map(|i| Decimal::from(500 - i * 3)).collect();
+
+        let records = reduce_regime_records(
+            &daily_closes(t0, &spx),
+            &daily_closes(t0, &dxy),
+            &daily_closes(t0, &tnx),
+            t0,
+            t0 + 60 * MS_PER_DAY,
+        );
+
+        assert_eq!(records.len(), 11);
+        assert!(
+            records.iter().all(|&(_, on)| on),
+            "all three legs satisfied → every emitted record must be risk-ON; got {records:?}"
+        );
+    }
+
+    /// Warm-up is per-leg and gates emission: with only 30 SPX closes the
+    /// SMA(50) is never warm, so NOTHING is emitted (the arm then reads `None`
+    /// → flat, which S4 of the e2e gate pins).
+    #[test]
+    fn reduce_regime_records_emits_nothing_until_every_leg_is_warm() {
+        let t0 = 0i64;
+        let spx: Vec<Decimal> = (0..30).map(|i| Decimal::from(1000 + i * 10)).collect();
+        let dxy: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 - i * 5)).collect();
+        let tnx: Vec<Decimal> = (0..60).map(|i| Decimal::from(500 - i * 3)).collect();
+
+        let records = reduce_regime_records(
+            &daily_closes(t0, &spx),
+            &daily_closes(t0, &dxy),
+            &daily_closes(t0, &tnx),
+            t0,
+            t0 + 60 * MS_PER_DAY,
+        );
+        assert!(
+            records.is_empty(),
+            "SPX never reaches 50 closes → SMA(50) never warm → no emission; got {records:?}"
+        );
+    }
+
+    /// Records outside `[start_ms, end_ms)` warm the SMAs but are not emitted.
+    #[test]
+    fn reduce_regime_records_emits_only_inside_the_requested_window() {
+        let t0 = 0i64;
+        let spx: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 + i * 10)).collect();
+        let dxy: Vec<Decimal> = (0..60).map(|i| Decimal::from(1000 - i * 5)).collect();
+        let tnx: Vec<Decimal> = (0..60).map(|i| Decimal::from(500 - i * 3)).collect();
+
+        // Window opens at day 55 → only days 55..59 may be emitted.
+        let records = reduce_regime_records(
+            &daily_closes(t0, &spx),
+            &daily_closes(t0, &dxy),
+            &daily_closes(t0, &tnx),
+            t0 + 55 * MS_PER_DAY,
+            t0 + 60 * MS_PER_DAY,
+        );
+        assert_eq!(records.len(), 5, "days 55..=59; got {records:?}");
+        assert!(
+            records
+                .iter()
+                .all(|&(ts, _)| ts.0 >= t0 + 55 * MS_PER_DAY && ts.0 < t0 + 60 * MS_PER_DAY)
+        );
+    }
+
+    // ── Span coverage (review 3-16 MEDIUM) ────────────────────────────────────
+
+    /// Weekend and holiday LOCF must keep working: Friday→Monday (3 days) and a
+    /// Friday-before-Monday-holiday→Tuesday (4 days) are CORRECT, not staleness.
+    #[test]
+    fn coverage_accepts_weekend_and_holiday_gaps() {
+        let start = 0i64;
+        let end = 20 * MS_PER_DAY;
+        // Records with 1-day gaps, one 3-day weekend gap and one 4-day holiday gap.
+        let day = |d: i64| (TimestampMs(d * MS_PER_DAY), true);
+        let records = vec![
+            day(0),
+            day(1),
+            day(2),
+            day(5), // 3-day weekend
+            day(6),
+            day(10), // 4-day holiday weekend
+            day(11),
+            day(19),
+        ];
+        assert!(
+            check_span_coverage(&records, start, end).is_ok(),
+            "weekend/holiday LOCF is the intended semantics and must NOT be rejected"
+        );
+    }
+
+    /// The live failure: a pinned corpus whose last close is weeks before the
+    /// window closes. The load succeeds, the SHA verifies, and the regime would
+    /// be a frozen constant across the whole tail.
+    #[test]
+    fn coverage_rejects_a_stale_tail() {
+        let start = 0i64;
+        let end = 60 * MS_PER_DAY;
+        let records = vec![
+            (TimestampMs(0), true),
+            (TimestampMs(MS_PER_DAY), true),
+            (TimestampMs(2 * MS_PER_DAY), false),
+        ];
+        let err = check_span_coverage(&records, start, end)
+            .expect_err("a 58-day stale tail must be rejected");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("does not cover the requested window"),
+            "error must name the coverage failure; got: {msg}"
+        );
+        // Window closes at day 60; last record is at day 2 → 58 days stale.
+        assert!(
+            msg.contains("58 days before the window closes"),
+            "error must quantify the staleness; got: {msg}"
+        );
+    }
+
+    /// A multi-week hole mid-window is indistinguishable from a weekend at the
+    /// join — that is exactly what this bound exists to catch.
+    #[test]
+    fn coverage_rejects_an_interior_hole() {
+        let start = 0i64;
+        let end = 60 * MS_PER_DAY;
+        let records = vec![
+            (TimestampMs(0), true),
+            (TimestampMs(MS_PER_DAY), true),
+            // 49-day hole (the 7-week corpus gap class).
+            (TimestampMs(50 * MS_PER_DAY), false),
+            (TimestampMs(59 * MS_PER_DAY), false),
+        ];
+        let err = check_span_coverage(&records, start, end)
+            .expect_err("a 49-day interior hole must be rejected");
+        assert!(
+            format!("{err}").contains("interior hole of 49 days"),
+            "error must locate and quantify the hole; got: {err}"
+        );
+    }
+
+    /// A corpus that starts after the window opens leaves the head of the window
+    /// with no regime at all.
+    #[test]
+    fn coverage_rejects_a_late_start() {
+        let start = 0i64;
+        let end = 60 * MS_PER_DAY;
+        let records = vec![
+            (TimestampMs(30 * MS_PER_DAY), true),
+            (TimestampMs(59 * MS_PER_DAY), true),
+        ];
+        let err = check_span_coverage(&records, start, end)
+            .expect_err("a 30-day leading gap must be rejected");
+        assert!(
+            format!("{err}").contains("30 days after the window opens"),
+            "error must quantify the leading gap; got: {err}"
+        );
+    }
+
+    /// An empty series is the corpus-absent / all-warm-up case: it must be an
+    /// ERROR, never a series handed to the arm (that is the 100%-cash stub).
+    #[test]
+    fn coverage_rejects_an_empty_series() {
+        let err = check_span_coverage(&[], 0, 60 * MS_PER_DAY)
+            .expect_err("an empty regime series must be rejected");
+        assert!(
+            format!("{err}").contains("EMPTY"),
+            "error must say the series is empty; got: {err}"
+        );
     }
 
     // ── Byte-identity test (ADR-0086 D3 / P3 M-TEST-3) ────────────────────────

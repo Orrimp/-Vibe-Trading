@@ -268,6 +268,135 @@ mod bakeoff_progress {
     }
 }
 
+/// bug-log #81 / review 3-16 CRITICAL — the macro arm degrades to **ABSENCE**.
+///
+/// This is the production-binding gate for the drop-to-ABSENCE guard in
+/// `run_bakeoff`. It calls the real `run_bakeoff` (not a helper, not a
+/// constructor) and asserts on the RANKED OUTPUT the cockpit renders.
+///
+/// The defect it pins: `v0.macro_riskon` used to be dispatched unconditionally.
+/// With no regime series the engine arm builds an EMPTY `PitSeries`,
+/// `as_of_value` returns `None` at every bar, and the arm holds **100% cash**
+/// for the whole window — a ranked row, under the label *"Macro regime (hold
+/// when SPX up, DXY down, rates calm)"*, for an experiment that never ran. The
+/// DVOL sibling got this guard; the macro arm did not.
+///
+/// The assertion is an **iff against the real precondition**, evaluated
+/// independently of the bake-off: the arm appears in the ranked field exactly
+/// when `load_macro_regime_series` succeeds for the same corpus root and range.
+/// In the shipped build the loader is not even compiled
+/// (`#![cfg(feature = "yahoo")]`, nothing enables `backtest/yahoo`), so the
+/// right-hand side is `false` by construction and the arm must NEVER appear.
+///
+/// Non-vacuity witness: the test also asserts the rest of the field DID run, so
+/// it cannot pass by the bake-off returning an empty/failed report.
+#[cfg(test)]
+mod macro_arm_absence {
+    use backtest::{
+        BakeoffConfig as BakeoffCfg, BakeoffRequest, DateRange, RobustnessMode,
+        cancel::cancellation_pair,
+        engine::ScenarioDataSource,
+        progress::{BakeoffProgressSender, ProgressSender},
+        resample::Horizon,
+        run_bakeoff,
+    };
+    use rust_decimal_macros::dec;
+    use trading_core::{StrategyId, Symbol};
+
+    /// Would the macro regime series actually load for this range, from the same
+    /// corpus root `run_bakeoff` uses? `false` by construction when the loader
+    /// module is not compiled — which is the shipped build (bug-log #81).
+    #[cfg(feature = "yahoo")]
+    fn macro_series_loads_for(range: &DateRange) -> bool {
+        backtest::macro_regime::load_macro_regime_series(
+            std::path::Path::new("data/yahoo-macro"),
+            range,
+        )
+        .is_ok()
+    }
+    #[cfg(not(feature = "yahoo"))]
+    fn macro_series_loads_for(_range: &DateRange) -> bool {
+        false
+    }
+
+    #[allow(clippy::expect_used)]
+    #[tokio::test]
+    async fn macro_arm_is_absent_from_the_ranked_field_when_its_series_is_unavailable() {
+        let seed = {
+            let mut s = [0u8; 32];
+            s[0] = 0x5A;
+            s
+        };
+        let range = DateRange::Last30d; // Synthetic ignores the window
+        let field = vec![
+            StrategyId("v0.sma".into()),
+            StrategyId("v0.macro_riskon".into()),
+        ];
+
+        let cfg = BakeoffCfg {
+            request: BakeoffRequest {
+                symbol: Symbol::new("BTCUSDT"),
+                range: range.clone(),
+                seed,
+                field,
+                timeframe: Horizon::OneHour,
+                initial_capital: dec!(100_000),
+            },
+            data_source: ScenarioDataSource::Synthetic,
+            robustness: RobustnessMode::Skip,
+        };
+
+        let (_handle, cancel_rx) = cancellation_pair();
+        let report = run_bakeoff(
+            cfg,
+            cancel_rx,
+            ProgressSender::disabled(),
+            BakeoffProgressSender::disabled(),
+        )
+        .await
+        .expect("run_bakeoff must succeed — dropping an arm is not an error");
+
+        let ids: Vec<&str> = report
+            .candidates
+            .iter()
+            .map(|c| c.strategy.0.as_str())
+            .collect();
+
+        // Non-vacuity: the bake-off really ran the rest of the field.
+        assert!(
+            ids.contains(&"v0.sma"),
+            "the non-macro arm must still run — otherwise this test proves nothing \
+             about the macro arm's absence; got {ids:?}"
+        );
+        assert!(
+            ids.contains(&"v0.buyhold"),
+            "the appended benchmark must be present; got {ids:?}"
+        );
+
+        // The gate.
+        let has_macro = ids.contains(&"v0.macro_riskon");
+        let series_available = macro_series_loads_for(&range);
+        assert_eq!(
+            has_macro, series_available,
+            "v0.macro_riskon must appear in the ranked field IFF its regime series \
+             loaded (available={series_available}, present={has_macro}). A present-but-\
+             unavailable arm is the 100%-cash stub wearing the probe's label \
+             (bug-log #81); an absent-but-available arm silently loses a real result. \
+             Ranked ids: {ids:?}"
+        );
+
+        // And in the SHIPPED build the loader is not compiled at all, so the arm
+        // can never appear no matter what corpus is on disk.
+        if !backtest::bakeoff::macro_arm_compiled() {
+            assert!(
+                !has_macro,
+                "the macro regime loader is not compiled in this build \
+                 (`backtest/yahoo` off) — the arm must be ABSENT, not ranked as cash"
+            );
+        }
+    }
+}
+
 /// T7.1 — full wired advisor bake-off on real BTCUSDT H1_2024 data.
 ///
 /// Runs `run_bakeoff` with the EXACT config the live cockpit uses — 20 arms
@@ -300,11 +429,12 @@ mod bakeoff_full_wired_advisor {
             .to_path_buf()
     }
 
-    /// T7.1 — full 20-arm advisor bake-off on real BTCUSDT H1_2024 data.
+    /// T7.1 — full advisor bake-off on real BTCUSDT H1_2024 data.
     ///
     /// Replicates `ui::leaderboard::runner::default_bakeoff_config` exactly:
     /// - field = `default_field()` ∪ `default_ensemble_field()` ∪ `default_macro_field()`
-    ///   (19 arms before buyhold; ADR-0073 adds v0.macro_riskon).
+    ///   (19 DECLARED arms before buyhold; ADR-0073 adds v0.macro_riskon, which
+    ///   only runs when `--features yahoo` compiled its loader — bug-log #81).
     /// - seed  = `LAB_DEFAULT_SEED` = `[0xC0, 0xFF, 0xEE, 0, …]`.
     /// - robustness = Bootstrap { paths: 1000, seed: u64_from_le_bytes(seed[0..8]) }.
     /// - data_source = BinanceCache.
@@ -312,7 +442,8 @@ mod bakeoff_full_wired_advisor {
     ///
     /// Prints the full ranked leaderboard and asserts:
     /// 1. buy-and-hold total_return > +20% (proves real data, not synthetic GBM).
-    /// 2. All 20 arms produce results (no missing candidate).
+    /// 2. Every arm that CAN run in this build produces a result, and the ones
+    ///    that cannot are ABSENT rather than degenerate (bug-log #81).
     /// 3. Ensembles (`v0.8.vote.*`) are present and distinct from the members.
     #[ignore]
     #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
@@ -441,14 +572,35 @@ mod bakeoff_full_wired_advisor {
 
         // ── Sanity assertions ─────────────────────────────────────────────────
 
-        // 1. All 20 arms present: 19 field entries + 1 buy-and-hold (BTC/ETH: includes
-        //    the ADR-0072 v0.dvol_regime arm + ADR-0073 v0.macro_riskon macro arm;
-        //    ADR-0071 added the 5 signal-library arms).
+        // 1. Every arm that CAN run produced a row. The field declares 19 entries
+        //    + 1 appended buy-and-hold; the ADR-0073 `v0.macro_riskon` arm is
+        //    dropped to ABSENCE unless `--features yahoo` compiled its regime
+        //    loader (bug-log #81), so the honest expectation is 19 here and 20
+        //    under `--features yahoo` with a covering `data/yahoo-macro/` corpus.
+        //    Asserting the literal 20 unconditionally is what let an arm that
+        //    never ran be counted as one that did.
+        let macro_can_run = backtest::bakeoff::macro_arm_compiled();
+        let expected_candidates = if macro_can_run { 20 } else { 19 };
         assert_eq!(
             report.candidates.len(),
-            20,
-            "T7.1: expected 20 candidates (19 field + 1 buyhold), got {}",
+            expected_candidates,
+            "T7.1: expected {expected_candidates} candidates (18 always-runnable field arms \
+             + DVOL + {} macro + 1 buyhold), got {}",
+            usize::from(macro_can_run),
             report.candidates.len()
+        );
+
+        // …and the absence is REAL, not a silent stub: with the loader
+        // uncompiled the macro id must not appear among the ranked rows at all.
+        let has_macro_row = report
+            .candidates
+            .iter()
+            .any(|c| c.strategy.0.as_str() == "v0.macro_riskon");
+        assert_eq!(
+            has_macro_row, macro_can_run,
+            "T7.1: v0.macro_riskon must be ABSENT from the ranked field when its \
+             regime loader is not compiled (bug-log #81) — a 100%-cash row wearing \
+             the macro label is worse than no row"
         );
 
         // 2. buy-and-hold total_return > +20% on the known-bull H1_2024 window.

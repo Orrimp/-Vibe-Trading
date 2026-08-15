@@ -348,21 +348,33 @@ pub fn build_forward_plan_from_registry(
             ))
         }
 
-        // ── R1 (ADR-0077): ADR-0073 macro risk-on arm ────────────────────────
+        // ── R1 (ADR-0077): ADR-0073 macro risk-on arm — NO PLAN ──────────────
         //
-        // `v0.macro_riskon` uses `run_macro_gated_buyhold_path` (not a Strategy).
-        // In the forward paper loop the macro corpus is not loaded; graceful
-        // degradation = buy-and-hold (same as an empty regime series).
-        // `AlwaysLongStrategy` is the honest plan describer.
+        // `v0.macro_riskon` uses `run_macro_gated_buyhold_path` (not a Strategy),
+        // and the macro regime corpus is not loaded in the forward run.
+        //
+        // This used to describe the arm with `AlwaysLongStrategy`, on the claim
+        // that the forward degradation equals "the same as an empty regime
+        // series". **False in both directions** (bug-log #81, review 3-16): with
+        // an empty series the bake-off path holds **100% CASH**;
+        // `AlwaysLongStrategy` holds **100% COIN**. Emitting a buy-and-hold plan
+        // under the macro label would hand the operator a plan for a strategy
+        // that is not the named one — the presentational half of the same defect.
+        //
+        // `build_registry_for` now `bail!`s for this id, so the forward run never
+        // starts and this branch is unreachable in practice; it stays explicit so
+        // the refusal is stated where a reader looks for the description, and so
+        // the id is never silently re-routed into the `unknown` warning.
         "v0.macro_riskon" => {
-            let describer = strategy::AlwaysLongStrategy::new();
-            Some(build_forward_plan(
-                &describer,
-                fwd,
-                last_close,
-                last_bar_ts,
-                horizon_days,
-            ))
+            tracing::warn!(
+                strategy = id,
+                "build_forward_plan_from_registry: no forward plan for the macro \
+                 regime arm — it is an equity-path overlay with no Strategy impl and \
+                 no regime corpus in the forward run. Refusing to describe it as \
+                 buy-and-hold: the bake-off's degenerate path is 100% CASH, not \
+                 100% coin (bug-log #81)."
+            );
+            None
         }
 
         unknown => {

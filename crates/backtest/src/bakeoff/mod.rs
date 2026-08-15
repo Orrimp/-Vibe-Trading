@@ -144,6 +144,52 @@ pub fn dvol_supported(symbol_str: &str) -> bool {
     dvol_corpus_symbol(symbol_str).is_some()
 }
 
+/// Can the `v0.macro_riskon` arm's regime loader run **in this build at all**?
+///
+/// bug-log #81: `crate::macro_regime` — the ONLY producer of the macro regime
+/// series — opens with `#![cfg(feature = "yahoo")]`, and `yahoo` is **off by
+/// default** on this crate (`backtest/Cargo.toml` declares the feature but has
+/// no `default = [...]` stanza, and nothing in the workspace asks for
+/// `backtest/yahoo`; `ui`'s own `yahoo` feature enables `data/yahoo`, a
+/// DIFFERENT crate's feature, which Cargo does not unify). So in the shipped
+/// build `preloaded_macro_series` is unconditionally `None`, the arm can never
+/// see a regime value, and it would hold **100% cash** for the whole window
+/// while wearing the label *"Macro regime (hold when SPX up, DXY down, rates
+/// calm)"*.
+///
+/// This is a **build-time** fact, not a runtime one: no corpus, no fetch and no
+/// coin makes the arm work when this returns `false`. It is the macro sibling
+/// of [`dvol_supported`] and it exists so the leaderboard's declared arm count
+/// and the field that actually runs are driven by the SAME predicate — the
+/// review-3-15 discipline that stopped the DVOL allowlist forking into three
+/// copies.
+///
+/// `true` does **not** promise the arm runs: with the feature on, the corpus can
+/// still be missing or fail the span-coverage bound, in which case
+/// [`run_bakeoff`] drops the arm to ABSENCE at dispatch (see the
+/// `preloaded_macro_series.is_none()` guard there).
+#[must_use]
+pub fn macro_arm_compiled() -> bool {
+    cfg!(feature = "yahoo")
+}
+
+/// Can this bake-off arm id run at all in this build?
+///
+/// Currently only `v0.macro_riskon` can be structurally impossible (bug-log
+/// #81 — see [`macro_arm_compiled`]). Every other id is always dispatchable;
+/// per-coin availability is a separate question answered by [`dvol_supported`].
+///
+/// Callers that DECLARE a field to the operator (the cockpit's "N strategies
+/// head-to-head" note) must filter through this, so the number on screen counts
+/// arms that can actually produce a row.
+#[must_use]
+pub fn arm_runs_in_this_build(strategy_id: &str) -> bool {
+    match strategy_id {
+        "v0.macro_riskon" => macro_arm_compiled(),
+        _ => true,
+    }
+}
+
 /// Calendar days of DVOL history to load BEFORE the requested window so the
 /// trailing-median ring is warm at the first evaluated bar (review 3-15 MEDIUM).
 ///
@@ -723,8 +769,12 @@ impl BakeoffConfig {
     /// (see `crates/ui/src/leaderboard/runner.rs`). `default_field()` and
     /// `default_ensemble_field()` stay UNCHANGED (anchor-safe).
     ///
-    /// The arm needs the `data/yahoo-macro/` corpus preloaded by `run_bakeoff`
-    /// (graceful skip if absent). `write_report = false` → anchor-additive.
+    /// The arm needs the `data/yahoo-macro/` corpus preloaded by `run_bakeoff`,
+    /// which in turn needs `--features yahoo`. When either is missing the arm is
+    /// **dropped from the ranked field** (ABSENT — bug-log #81), it is never
+    /// dispatched with an empty series. So this list DECLARES the arm; whether
+    /// it can produce a row is [`super::arm_runs_in_this_build`].
+    /// `write_report = false` → anchor-additive.
     #[must_use]
     pub fn default_macro_field() -> Vec<StrategyId> {
         vec![
@@ -1021,15 +1071,19 @@ pub async fn run_bakeoff(
     // series from `data/yahoo-macro/` ONCE. Graceful skip (warn + None) when the
     // corpus is absent (e.g. CI without the fetched parquets).
     //
-    // ⚠ bug-log #78 (OPEN for this arm): when the corpus is absent the macro arm
-    // still appears in the ranked field and runs warm-up-only. It is NOT a
+    // bug-log #78 / #81 — CLOSED for this arm (story 3-16): a `None` here no
+    // longer leaves a stub in the ranked field. `None` means the macro channel
+    // is unavailable, and the arm loop below drops it to ABSENCE on the same
+    // `continue` the DVOL sibling uses. Do NOT reintroduce a degenerate
+    // dispatch: with an empty `PitSeries` the arm holds 100% CASH (it is NOT a
     // "buy-and-hold proxy" — that description was copied from `v0.dvol_regime`,
-    // where it was false, and `v0.dvol_regime` has since been fixed to degrade to
-    // ABSENCE (see the `dvol_override.is_none()` guard in the arm loop below).
-    // The macro arm's own degenerate path is a DIFFERENT mechanism
-    // (`run_macro_gated_buyhold_path` with an empty `PitSeries` → flat/cash) and
-    // is owned by story 3-16; do not cite this block as a precedent for keeping a
-    // probe in the field when its channel is unavailable.
+    // where it was equally false).
+    //
+    // ⚠ In the SHIPPED build this is `None` unconditionally: `macro_regime` is
+    // `#![cfg(feature = "yahoo")]` and nothing enables `backtest/yahoo`
+    // (bug-log #81). So the macro arm is currently always absent — the honest
+    // rendering of an experiment that cannot run, and the reason
+    // `bakeoff::arm_runs_in_this_build` exists for the cockpit's arm count.
     //
     // The macro corpus root is relative to the workspace root (NOT `data/yahoo/`
     // — the two corpora must stay separated to avoid the pre-existing operator
@@ -1163,6 +1217,39 @@ pub async fn run_bakeoff(
             continue;
         }
 
+        // ── bug-log #81: the SAME guard for the macro arm (story 3-16) ────────
+        //
+        // The DVOL sibling above got this `continue` and the macro arm did not,
+        // so `v0.macro_riskon` was dispatched unconditionally: with no regime
+        // series the engine arm builds an EMPTY `PitSeries`, `as_of_value`
+        // returns `None` at every bar, `prev_on` never leaves `false`, and the
+        // arm sits in **100% cash** for the whole window — ranked, and rendered
+        // as *"Macro regime (hold when SPX up, DXY down, rates calm)"*.
+        //
+        // The series is `None` in two distinct situations and BOTH must degrade
+        // to absence:
+        //   1. `backtest/yahoo` is off (the shipped build) — the loader module
+        //      is not compiled at all, so `None` is unconditional and no data
+        //      can fix it. See `macro_arm_compiled()`.
+        //   2. the feature is on but the corpus is missing, unreadable, or does
+        //      not COVER the requested window (the span-coverage bound in
+        //      `macro_regime::load_macro_regime_series`) — the pinned corpus
+        //      ends 2026-06 while advisor lookbacks are anchored to NOW.
+        //
+        // A probe that could not run has exactly one honest rendering: NOT RUN.
+        let is_macro_arm = strategy.0.as_str() == "v0.macro_riskon";
+        if is_macro_arm && preloaded_macro_series.is_none() {
+            tracing::warn!(
+                symbol = %req.symbol,
+                yahoo_feature = macro_arm_compiled(),
+                "v0.macro_riskon DROPPED from the ranked field — no macro regime series \
+                 (feature off, corpus missing, or corpus does not cover the requested \
+                 window). The arm is reported as absent, never as a 100%-cash stub \
+                 wearing the probe's label (bug-log #81)."
+            );
+            continue;
+        }
+
         let scenario_cfg = ScenarioConfig {
             strategy: strategy.clone(),
             pair: (trading_core::Venue::Binance, req.symbol.clone()),
@@ -1191,9 +1278,11 @@ pub async fn run_bakeoff(
             dvol_override,
             // ADR-0073: pre-loaded macro regime series for the macro arm ONLY.
             // `None` for every other arm → byte-identical existing paths.
-            // `Some(series)` only when strategy == "v0.macro_riskon" and the
-            // corpus loaded successfully; graceful-skip (None) if corpus absent.
-            macro_regime_series: if strategy.0.as_str() == "v0.macro_riskon" {
+            // For the macro arm this is now guaranteed `Some` — the
+            // `preloaded_macro_series.is_none()` guard above already `continue`d
+            // past this dispatch otherwise (bug-log #81), so the engine can no
+            // longer be handed an empty series behind the arm's label.
+            macro_regime_series: if is_macro_arm {
                 preloaded_macro_series.clone()
             } else {
                 None

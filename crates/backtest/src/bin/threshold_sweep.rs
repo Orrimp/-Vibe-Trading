@@ -909,13 +909,13 @@ fn main() -> Result<()> {
                     ),
                     start_year: scenario.start_year(),
                     bar_count: scenario.bar_count(),
-            // Added 2026-08-13: `bar_span_hours` became a required field in the
-            // bug-log #72 carry fix (commit b1d96e7). This lane is 1h and, more
-            // to the point, sets `funding_override: None` below — so the accrual
-            // block that reads this value is never entered here and the field is
-            // inert. It is set truthfully rather than arbitrarily so a future
-            // lane that DOES enable funding inherits the right cadence.
-            bar_span_hours: 1,
+                    // Added 2026-08-13: `bar_span_hours` became a required field in the
+                    // bug-log #72 carry fix (commit b1d96e7). This lane is 1h and, more
+                    // to the point, sets `funding_override: None` below — so the accrual
+                    // block that reads this value is never entered here and the field is
+                    // inert. It is set truthfully rather than arbitrarily so a future
+                    // lane that DOES enable funding inherits the right cadence.
+                    bar_span_hours: 1,
                     initial_capital: rust_decimal_macros::dec!(100_000),
                     slippage_bps: 2,
                     taker_fee_bps: 4,

@@ -256,6 +256,62 @@ async fn run_arm(arm: &ArmDef, bars: Vec<Bar>, candidate_index: usize) -> Option
     }
     let report = run_result.ok()?;
 
+    // ── Short-leg census (bug-log #80, added 2026-08-15) ──────────────────
+    //
+    // The table below reports Sharpe/return/trades but says NOTHING about
+    // whether a "long/short" arm ever went short. It does not always: on both
+    // of this harness's real windows every `_ls` arm runs its ENTIRE course
+    // with a non-negative position, so the short branch of
+    // `scenarios/sma_composed_run.rs` never executes and the arms are ranked as
+    // long-only strategies under long/short labels. That is why the #80
+    // execution-friction fix moved these numbers by exactly zero, and it is
+    // worth seeing every time this harness runs rather than rediscovering it.
+    //
+    // `short_legs` counts fills that move the position at or below zero (a Sell
+    // from flat/short, or a Buy while short); `minpos` is the most negative the
+    // reconstructed position ever got. `short_legs = 0` and `minpos = 0` mean
+    // the arm never shorted.
+    let (short_legs, minpos, buys, sells, maxpos) = {
+        let mut pos = Decimal::ZERO;
+        let (mut short_legs, mut buys, mut sells) = (0usize, 0usize, 0usize);
+        let (mut minpos, mut maxpos) = (Decimal::ZERO, Decimal::ZERO);
+        for f in &report.fills {
+            let before = pos;
+            match f.side {
+                trading_core::Side::Buy => {
+                    pos += f.qty.get();
+                    buys += 1;
+                }
+                trading_core::Side::Sell => {
+                    pos -= f.qty.get();
+                    sells += 1;
+                }
+            }
+            if (matches!(f.side, trading_core::Side::Sell) && before <= Decimal::ZERO)
+                || (matches!(f.side, trading_core::Side::Buy) && before < Decimal::ZERO)
+            {
+                short_legs += 1;
+            }
+            if pos < minpos {
+                minpos = pos;
+            }
+            if pos > maxpos {
+                maxpos = pos;
+            }
+        }
+        (short_legs, minpos, buys, sells, maxpos)
+    };
+    println!(
+        "[SHORT-CENSUS] {engine_id}: fills={} buys={buys} sells={sells} \
+         short_legs={short_legs} min_pos={minpos} max_pos={maxpos}{}",
+        report.fills.len(),
+        if arm.short_enabled && short_legs == 0 {
+            "   <-- short_enabled arm that NEVER SHORTED on this window"
+        } else {
+            ""
+        }
+    );
+
     let kpis = derive_candidate_kpis(&report);
     let equity_decimals: Vec<Decimal> = report
         .equity_series
@@ -303,6 +359,17 @@ fn print_table(label: &str, results: &[ArmResult]) {
             r.max_drawdown,
             r.trade_count,
         );
+    }
+    println!();
+    // Full-precision terminal equity. The table above rounds `Return%` to two
+    // decimals, which hides anything smaller than ~50 bps — including an entire
+    // execution-friction model. bug-log #80 (short legs bypassing
+    // `PaperEngine::step`, so paying no slippage and no lot-rounding) moved
+    // these arms by single-digit bps: invisible at 2 dp, decisive in a ranked
+    // comparison. Print the raw Decimal so a before/after is actually legible.
+    println!("--- terminal equity (full precision) ---");
+    for r in results {
+        println!("  {:<20} {}", r.id, r.final_equity);
     }
     println!();
 

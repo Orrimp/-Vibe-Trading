@@ -608,22 +608,42 @@ pub fn build_registry_for(
             );
         }
 
-        // ── R1 (ADR-0077): ADR-0073 macro risk-on arm ────────────────────────
+        // ── R1 (ADR-0077): ADR-0073 macro risk-on arm — REFUSED ──────────────
         //
-        // `v0.macro_riskon` in the bakeoff is driven by `run_macro_gated_buyhold_path`
-        // (a standalone function, NOT a `Strategy` impl). In the forward paper loop
-        // `Box<dyn Strategy>` is required.  `AlwaysLongStrategy` is the honest
-        // proxy: the macro gating relies on external corpus data (`data/yahoo-macro/`)
-        // that is not loaded in the forward run, so the arm degrades to buy-and-hold
-        // exactly as `run_macro_gated_buyhold_path` does with an empty regime series
-        // (ADR-0073 graceful-degradation precedent).  This prevents the `bail!` and
-        // lets the forward plan emit an honest "BuyAndHold" description.
+        // `v0.macro_riskon` in the bake-off is driven by
+        // `run_macro_gated_buyhold_path` (a standalone function, NOT a `Strategy`
+        // impl), and the forward paper loop needs a `Box<dyn Strategy>`. There is
+        // no macro-gated `Strategy` to hand it, and the regime corpus
+        // (`data/yahoo-macro/`) is not loaded in the forward run either.
+        //
+        // This used to register `AlwaysLongStrategy`, justified by the claim that
+        // the arm "degrades to buy-and-hold exactly as `run_macro_gated_buyhold_path`
+        // does with an empty regime series". **That equivalence was false in both
+        // directions** (bug-log #81, review 3-16 CRITICAL): with an empty series
+        // `run_macro_gated_buyhold_path` starts `prev_on = false`, the flat→ON
+        // branch never fires, `coin_qty` stays 0 and the arm holds **100% CASH**,
+        // while `AlwaysLongStrategy` holds **100% COIN**. So the context that
+        // RANKED the arm and the context that EXECUTED it substituted OPPOSITE
+        // wrong strategies under the same label — *"Macro regime (hold when SPX
+        // up, DXY down, rates calm)"* — and whichever number the operator saw came
+        // from a strategy that was not the named one.
+        //
+        // It also defeated the F5b anti-fake gate below, which exists precisely to
+        // refuse a silent proxy: the gate bailed for an *unknown* arm and waved
+        // through a *known* arm wearing a substitute. A probe that cannot run in
+        // this context has one honest rendering — refuse to start it — which is
+        // the same discipline `bakeoff::run_bakeoff` now applies by dropping the
+        // arm to ABSENCE instead of ranking a 100%-cash stub.
         "v0.macro_riskon" => {
-            registry.register(Box::new(strategy::AlwaysLongStrategy::new()));
-            tracing::info!(
-                strategy = id,
-                "build_registry_for: AlwaysLongStrategy registered for macro_riskon \
-                 (macro corpus not available in forward run — graceful degradation to buy-and-hold)"
+            anyhow::bail!(
+                "build_registry_for: '{}' cannot run in the forward paper loop — \
+                 it is an equity-path overlay (`run_macro_gated_buyhold_path`), not a \
+                 `Strategy`, and the macro regime corpus is not loaded here. Refusing to \
+                 substitute AlwaysLongStrategy: the bake-off's degenerate path holds 100% \
+                 CASH and AlwaysLong holds 100% COIN, so the substitute is not a \
+                 degradation of this arm but a different experiment wearing its label \
+                 (F5b anti-fake gate; bug-log #81).",
+                id
             );
         }
 

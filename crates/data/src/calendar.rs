@@ -417,65 +417,142 @@ mod tests {
         assert_eq!(classify_ticker(""), MarketCalendar::Crypto24x7);
     }
 
-    // ── T-CAL: Crypto24x7 equivalence to expected_bars_for_range ─────────────
+    // ── T-CAL: the anchor-safety invariant, bound to PRODUCTION ──────────────
     //
-    // ADR-0073 D2 anchor-safety proof: for any range,
-    // `MarketCalendar::Crypto24x7.trading_days_in_range(s, e)` must equal
-    // `s/e wall-clock day count` = `(e - s).max(0) / 86_400_000`.
-    // This is the IDENTICAL formula in `expected_bars_for_range(Days1, s, e)`.
+    // ADR-0073 names this the diff's top risk: the new calendar layer must not
+    // perturb the expected-bar count any existing crypto `load_cached` caller
+    // sees. The invariant is
+    //
+    //     expected_bars_for_calendar(Crypto24x7, Days1, s, e)
+    //         == expected_bars_for_range(Days1, s, e)
+    //         == Crypto24x7.trading_days_in_range(s, e)
+    //
+    // Review 3-16 MEDIUM: every T-CAL assertion used to compare
+    // `trading_days_in_range` against a `wall_clock_days` helper **re-declared
+    // inside this test module** — a character-for-character copy of the
+    // production formula — and `expected_bars_for_range` had ZERO test call
+    // sites anywhere. Mutating either production function left all of them
+    // green: the tests proved the copy, not the code. The copy is deleted; the
+    // equivalence tests now call BOTH production functions, and the
+    // calendar-only tests assert independent literals (a hand-counted number of
+    // days) rather than re-deriving the formula under test.
 
-    fn wall_clock_days(start_ms: i64, end_ms: i64) -> usize {
-        let range_ms = (end_ms - start_ms).max(0) as u64;
-        (range_ms / 86_400_000) as usize
-    }
-
+    /// Independent oracle: hand-computed day counts for known windows. Nothing
+    /// here re-implements `trading_days_in_range` — the expected values are
+    /// literals, so a mutated production formula cannot agree with them.
     #[test]
-    fn t_cal_crypto_matches_wallclock_zero_range() {
+    fn t_cal_crypto_day_counts_match_hand_computed_literals() {
         let s = 1_700_000_000_000i64;
-        let e = s;
-        assert_eq!(
-            MarketCalendar::Crypto24x7.trading_days_in_range(s, e),
-            wall_clock_days(s, e),
-        );
-    }
-
-    #[test]
-    fn t_cal_crypto_matches_wallclock_one_day() {
-        let s = 1_700_000_000_000i64;
-        let e = s + 86_400_000;
-        assert_eq!(
-            MarketCalendar::Crypto24x7.trading_days_in_range(s, e),
-            wall_clock_days(s, e),
-        );
-        assert_eq!(MarketCalendar::Crypto24x7.trading_days_in_range(s, e), 1,);
-    }
-
-    #[test]
-    fn t_cal_crypto_matches_wallclock_90_days() {
-        // 90-day window: 2024-01-01 .. 2024-04-01 (approximately)
-        let s = 1_704_067_200_000i64; // 2024-01-01 00:00:00 UTC in ms
-        let e = s + 90 * 86_400_000;
-        assert_eq!(
-            MarketCalendar::Crypto24x7.trading_days_in_range(s, e),
-            wall_clock_days(s, e),
-        );
-        assert_eq!(MarketCalendar::Crypto24x7.trading_days_in_range(s, e), 90,);
-    }
-
-    #[test]
-    fn t_cal_crypto_matches_wallclock_range_sweep() {
-        // Sweep multiple windows to ensure byte-identical behaviour everywhere.
-        let base_ms = 1_640_995_200_000i64; // 2022-01-01 00:00:00 UTC
-        for days in [1, 7, 30, 90, 180, 365, 730] {
-            let s = base_ms;
-            let e = base_ms + days * 86_400_000;
-            let cal_count = MarketCalendar::Crypto24x7.trading_days_in_range(s, e);
-            let expected = wall_clock_days(s, e);
+        for &(days, expected) in &[
+            (0i64, 0usize),
+            (1, 1),
+            (7, 7),
+            (30, 30),
+            (90, 90),
+            (180, 180),
+            (365, 365),
+            (730, 730),
+        ] {
+            let e = s + days * 86_400_000;
             assert_eq!(
-                cal_count, expected,
-                "Mismatch for {days} days: cal={cal_count}, expected={expected}"
+                MarketCalendar::Crypto24x7.trading_days_in_range(s, e),
+                expected,
+                "Crypto24x7 must count every wall-clock day: {days}-day window"
             );
         }
+        // Sub-day remainders floor, and a reversed range is 0 (not negative).
+        assert_eq!(
+            MarketCalendar::Crypto24x7.trading_days_in_range(s, s + 86_399_999),
+            0,
+            "a window one ms short of a day contains no complete day"
+        );
+        assert_eq!(
+            MarketCalendar::Crypto24x7.trading_days_in_range(s, s + 129_600_000),
+            1,
+            "36 hours = 1 complete day"
+        );
+        assert_eq!(
+            MarketCalendar::Crypto24x7.trading_days_in_range(s, s - 86_400_000),
+            0,
+            "end before start must clamp to 0"
+        );
+    }
+
+    /// **The ADR-0073 anchor-safety proof itself**, on the production functions.
+    ///
+    /// `expected_bars_for_calendar` is what `load_cached` calls; its
+    /// `Crypto24x7` + `Days1` result must equal the untouched
+    /// `expected_bars_for_range(Days1, …)` that every pre-ADR-0073 caller relied
+    /// on. Mutating either one — or the `Days1` dispatch between them — fails
+    /// here.
+    ///
+    /// Feature-gated because `crate::yahoo` (where both live) is
+    /// `#[cfg(feature = "yahoo")]`; run with `cargo test -p data --features yahoo`.
+    #[cfg(feature = "yahoo")]
+    #[test]
+    fn t_cal_calendar_dispatch_is_byte_identical_to_the_legacy_range_fn_for_crypto() {
+        use crate::yahoo::{Interval, expected_bars_for_calendar, expected_bars_for_range};
+
+        let base_ms = 1_640_995_200_000i64; // 2022-01-01 00:00:00 UTC
+        for days in [0i64, 1, 7, 30, 90, 180, 365, 730] {
+            let s = base_ms;
+            let e = base_ms + days * 86_400_000;
+
+            let via_calendar =
+                expected_bars_for_calendar(MarketCalendar::Crypto24x7, Interval::Days1, s, e);
+            let legacy = expected_bars_for_range(Interval::Days1, s, e);
+            let direct = MarketCalendar::Crypto24x7.trading_days_in_range(s, e);
+
+            assert_eq!(
+                via_calendar, legacy,
+                "ANCHOR-SAFETY BREAK: the calendar dispatch changed the expected-bar \
+                 count a crypto caller sees for a {days}-day window \
+                 (calendar={via_calendar}, legacy={legacy})"
+            );
+            assert_eq!(
+                direct, legacy,
+                "Crypto24x7.trading_days_in_range must equal expected_bars_for_range \
+                 for a {days}-day window (direct={direct}, legacy={legacy})"
+            );
+        }
+
+        // Intraday intervals must delegate to the legacy function UNCHANGED for
+        // BOTH calendars — the macro arm only ever loads Days1, and nothing may
+        // start applying a trading-day calendar to hourly/minute bars.
+        for cal in [MarketCalendar::Crypto24x7, MarketCalendar::UsEquity] {
+            for interval in [Interval::Hours1, Interval::Minutes1] {
+                let e = base_ms + 30 * 86_400_000;
+                assert_eq!(
+                    expected_bars_for_calendar(cal, interval, base_ms, e),
+                    expected_bars_for_range(interval, base_ms, e),
+                    "{cal:?} + {interval:?} must delegate to expected_bars_for_range unchanged"
+                );
+            }
+        }
+    }
+
+    /// The other half of the dispatch: `UsEquity` + `Days1` must NOT be the
+    /// wall-clock count — otherwise the F-2 unblock for the macro tickers never
+    /// happened and the two branches are interchangeable.
+    #[cfg(feature = "yahoo")]
+    #[test]
+    fn t_cal_us_equity_dispatch_differs_from_the_legacy_range_fn() {
+        use crate::yahoo::{Interval, expected_bars_for_calendar, expected_bars_for_range};
+
+        let s = 1_704_067_200_000i64; // 2024-01-01 UTC
+        let e = 1_735_689_600_000i64; // 2025-01-01 UTC
+        let us = expected_bars_for_calendar(MarketCalendar::UsEquity, Interval::Days1, s, e);
+        let legacy = expected_bars_for_range(Interval::Days1, s, e);
+        assert!(
+            us < legacy,
+            "UsEquity Days1 must route to the trading-day calendar (got {us}) and not the \
+             {legacy}-day wall-clock count"
+        );
+        assert_eq!(
+            us,
+            MarketCalendar::UsEquity.trading_days_in_range(s, e),
+            "the Days1 branch must be exactly cal.trading_days_in_range"
+        );
     }
 
     // ── UsEquity sanity tests ──────────────────────────────────────────────────

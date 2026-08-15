@@ -614,23 +614,23 @@ fn unrounded_fills(report: &RunReport, step: Decimal) -> Vec<Decimal> {
         .collect()
 }
 
-/// Arms whose fills are NOT all produced by `PaperEngine::step`.
-///
-/// The long/short arms route Sell-when-flat (open short) and Buy-when-short
-/// (cover) through `short_exec::{try_open_short, try_cover_short}`, which
-/// `continue`s past the matching engine and synthesizes a `FillView` directly
-/// (`scenarios/sma_composed_run.rs`). Those legs therefore cannot be
-/// lot-filtered by any amount of `venue_filter` wiring — a SIBLING of bug-log
-/// #79 at a different site, reported 2026-08-13 and deliberately NOT fixed in
-/// the #79 patch-pass. For these arms the gate asserts the engine-routed
-/// portion got filtered (strictly fewer unrounded fills) instead of demanding
-/// that every fill did.
-fn has_engine_bypassing_short_legs(arm: &str) -> bool {
-    matches!(
-        arm,
-        "v0.sma_cross_ls" | "v0.macd_ls" | "v0.rsi_ls" | "v0.bbands_ls" | "v0.always_short"
-    )
-}
+// bug-log #80 — the `has_engine_bypassing_short_legs` exemption that used to
+// live here is GONE (2026-08-15).
+//
+// While #80 was open, the long/short arms routed Sell-when-flat (open short)
+// and Buy-when-short (cover) through `short_exec::{try_open_short,
+// try_cover_short}`, which `continue`d past the matching engine and
+// synthesized a `FillView` directly. Those legs could not be lot-filtered by
+// any amount of `venue_filter` wiring, so this gate WEAKENED its assertion for
+// the five `_ls`/`always_short` arms — demanding only "strictly fewer
+// unrounded fills" instead of "none". `v0.sma_cross_ls` passed that weakened
+// bar with 20 of its 194 advisor-path fills still un-rounded.
+//
+// The short legs now go through `PaperEngine::step` like every other order, so
+// every arm faces the full-strength assertion below: ZERO un-rounded fills on
+// the advisor path. Re-introducing an exemption here would re-open #80 in
+// silence — the friction-parity gate that pins it is
+// `short_long_friction_parity_e2e.rs`.
 
 /// The per-arm assertion bundle. Returns `(eq_plain, eq_advisor)`.
 ///
@@ -692,15 +692,9 @@ async fn assert_arm_diverges(arm: &str) -> (Decimal, Decimal) {
         plain.fills.len(),
     );
 
-    if has_engine_bypassing_short_legs(arm) {
-        assert!(
-            advisor_unrounded.len() < plain_unrounded.len(),
-            "{inert_diagnosis}\n(this arm's short legs bypass PaperEngine::step, so \
-             the gate only requires the engine-routed portion to be filtered)"
-        );
-    } else {
-        assert!(advisor_unrounded.is_empty(), "{inert_diagnosis}");
-    }
+    // bug-log #80 — no arm is exempt: EVERY advisor-path fill, long leg or
+    // short leg, must be a multiple of `step_size`.
+    assert!(advisor_unrounded.is_empty(), "{inert_diagnosis}");
 
     let eq_plain = final_equity(&plain);
     let eq_advisor = final_equity(&advisor);

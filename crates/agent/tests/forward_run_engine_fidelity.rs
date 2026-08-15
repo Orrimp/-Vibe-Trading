@@ -590,27 +590,40 @@ fn r1_dvol_regime_builds_not_bails() {
     );
 }
 
-/// ADR-0073 macro risk-on arm: `v0.macro_riskon` must build (not bail).
-/// Registers `AlwaysLongStrategy` (graceful degradation — no macro corpus
-/// available in the forward run).
+/// ADR-0073 macro risk-on arm: `v0.macro_riskon` must **BAIL**, not substitute.
+///
+/// This test previously asserted the opposite — that the arm builds and
+/// registers `AlwaysLongStrategy` "for graceful degradation". **It was asserting
+/// the defect** (bug-log #81, review 3-16 CRITICAL): the bake-off path that
+/// RANKS this arm degrades to 100% CASH and `AlwaysLongStrategy` is 100% COIN,
+/// so the substitute is not a degradation of the macro arm but the opposite
+/// strategy wearing its label. The F5b anti-fake gate in `build_registry_for`
+/// exists to refuse exactly that, and it was being waved through because the id
+/// was *known*.
+///
+/// The gate must now fire, and the error must name the arm — a silent `Err` that
+/// says nothing is only marginally better than the substitution.
 #[test]
-fn r1_macro_riskon_builds_not_bails() {
+fn r1_macro_riskon_bails_rather_than_substituting_a_different_strategy() {
     let cfg = default_cfg();
     let fwd = fwd_cfg("v0.macro_riskon");
     let result = build_registry_for(&cfg, Some(&fwd));
+    let err = match result {
+        Ok(registry) => panic!(
+            "v0.macro_riskon must NOT build a registry — it has no Strategy impl and no \
+             regime corpus in the forward run, so any registration is a substitute. \
+             Registered {} strategy/strategies instead of bailing.",
+            registry.len()
+        ),
+        Err(e) => format!("{e:#}"),
+    };
     assert!(
-        result.is_ok(),
-        "v0.macro_riskon must build — got Err: {:?}",
-        result.err()
+        err.contains("v0.macro_riskon"),
+        "the refusal must name the arm; got: {err}"
     );
-    let registry = result.unwrap();
-    assert_eq!(registry.len(), 1, "exactly one strategy registered");
-    let events = registry.drain_pending_events();
-    assert_eq!(events.len(), 1, "exactly one Load event");
-    assert_eq!(
-        events[0].strategy_id.0.as_str(),
-        "always_long",
-        "v0.macro_riskon must register AlwaysLongStrategy (id='always_long') for graceful degradation"
+    assert!(
+        err.contains("CASH") && err.contains("COIN"),
+        "the refusal must state WHY a substitute is not a degradation (cash vs coin); got: {err}"
     );
 }
 

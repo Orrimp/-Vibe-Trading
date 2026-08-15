@@ -136,6 +136,30 @@ pub fn run_buyhold_path(
 ///   `coin_qty = 0`. Realistic: the regime flip is observed at the daily close
 ///   ≤ `t`, the trade executes at the coin bar `t` — look-ahead-free.
 ///
+/// # ⚠ Costs: this path trades for FREE — a pre-registration departure
+///
+/// Every transition above executes at the bar's own close with **no taker fee,
+/// no slippage, no lot rounding and no min-notional filter**; the arm's
+/// `total_fees` is `Money::zero()`. The transition is therefore
+/// equity-*neutral* at the instant it happens (selling at the mark neither gains
+/// nor loses), which is also why a regime flip on the final bar is invisible in
+/// the equity curve.
+///
+/// This **contradicts the feature's own pre-registered clause** — *"transition
+/// trades pay the standard taker fee … the macro arm is NOT cost-advantaged vs
+/// the always-long benchmark"* — and ADR-0073 records no decision to drop it
+/// (review 3-16 HIGH). The 18 sibling arms this one is RANKED AGAINST pay 4 bps
+/// a leg through `PaperEngine`, plus lot rounding since bug-log #79, so this is
+/// bug-log #80's shape — asymmetric friction inside a ranked comparison — on a
+/// new axis.
+///
+/// Direction, stated fairly: the departure **flatters** this arm, so charging
+/// the pre-registered fee would strengthen the recorded null rather than
+/// reverse it. It is left unchanged here deliberately: changing the economics of
+/// a ranked arm is a measured product change, not a review patch. Until it is
+/// decided, **no verdict computed on this path may be described as "net of
+/// costs"** — that phrase is literally false for this arm.
+///
 /// # Returns
 ///
 /// `(equity_curve, final_equity)` where:

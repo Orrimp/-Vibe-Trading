@@ -9,10 +9,12 @@
 //!   implementation (regime computed but never applied).
 //! - **S2 (no-op control):** regime pinned risk-ON whole window → gated equity
 //!   ≈ buy-and-hold (equal, because the first bar buy is the same step in both).
-//! - **S3 (look-ahead leak-check):** forward-shifting the regime series by one
-//!   day CHANGES the gated equity (`assert_ne!`) — proves the arm routes through
-//!   `core::pit::PitSeries::as_of_value` and does NOT peek at future regime
-//!   values.
+//! - **S3 (causality falsifier):** two regime series that AGREE up to hour 47
+//!   and differ only afterwards must produce an IDENTICAL equity prefix over
+//!   bars 0..47 (`assert_eq!`) — future information cannot change the past.
+//!   Rewritten by review 3-16: the previous S3 asserted only that two DIFFERENT
+//!   regimes give different equity, which is input-sensitivity (already covered
+//!   by S1) and which a forward-peeking implementation passes unchanged.
 //! - **S4 (warm-up flat):** coin bars arrive BEFORE the first regime timestamp
 //!   → `as_of_value → None` → arm holds FLAT at initial capital. Guards against
 //!   treating warm-up `None` as risk-ON (spurious early exposure).
@@ -216,27 +218,48 @@ fn s2_always_risk_on_equals_buyhold() {
     );
 }
 
-// ── S3: Look-ahead leak-check (belt-and-suspenders) ─────────────────────────
+// ── S3: Causality falsifier (a REAL leak-check) ──────────────────────────────
 
-/// S3 — forward-shifting the regime series by one day CHANGES the gated equity.
+/// S3 — **information that does not exist yet cannot change the past.**
 ///
-/// **Self-proving falsifier (ADR-0058 § D5 discipline):**
-/// Build two regime series that are identical EXCEPT one is shifted 24 hours
-/// into the future. If the arm correctly reads `as_of_value(bar.open_ts)` with
-/// no look-ahead:
-///   - Unshifted: bar at hour 24 sees the risk-OFF record → sells there.
-///   - Shifted:   bar at hour 24 still sees the prior risk-ON record (risk-OFF
-///     doesn't arrive until hour 48) → holds through hour 47.
+/// # Why this test was rewritten (review 3-16 HIGH)
 ///
-/// The two equity paths MUST differ (divergence ≥ 1 bp) on an up-trending coin.
+/// S3 used to assert only `final_a != final_b` for two *different* regime
+/// series: input-sensitivity, which S1 already establishes, and which **a
+/// forward-peeking implementation passes unchanged** — peeking still yields two
+/// different numbers. It was named "look-ahead leak-check" and could not detect
+/// a look-ahead leak.
 ///
-/// If they're the same, the arm is looking ahead (using the future value).
+/// # The falsifier
+///
+/// Two regime series that **AGREE on every record up to hour 47** and differ
+/// only afterwards:
+///
+/// | | ≤ h47 | h48 | h60 |
+/// |---|---|---|---|
+/// | A | ON from h0 | **OFF** | — |
+/// | B | ON from h0 | — | **OFF** |
+///
+/// A causal (`as_of_value(bar.open_ts)`) arm cannot see either flip while
+/// pricing bars 0..47, so the two equity curves must be **identical over that
+/// prefix** — the assertion below. An arm that peeks forward by ≥ 24 h reads A's
+/// h48 flip at bar 24 and B's (nothing yet) at bar 24, sells in A and holds in
+/// B, and the prefixes diverge → RED.
+///
+/// Mutation-proven: changing the production join in
+/// `run_macro_gated_buyhold_path` to `as_of_value(TimestampMs(ts_ms + 86_400_000))`
+/// turns this test RED with a prefix mismatch at bar 24; reverting turns it
+/// green.
+///
+/// The old input-sensitivity content is retained below the causality assertion
+/// (the suffix, where the two series legitimately differ, MUST diverge) so the
+/// test still fails against a regime-ignoring no-op.
 #[test]
-fn s3_forward_shift_changes_equity() {
+fn s3_causality_future_regime_cannot_change_the_past() {
     let n_bars: i64 = 72;
     let initial_capital = dec!(100_000);
 
-    // Monotone up-trend: 1% per bar.
+    // Monotone up-trend: 1% per bar (so any change in exposure moves equity).
     let bars: Vec<Bar> = (0..n_bars)
         .map(|h| {
             let mut price = dec!(50_000);
@@ -247,40 +270,59 @@ fn s3_forward_shift_changes_equity() {
         })
         .collect();
 
-    // Regime A (unshifted): risk-ON from 0, risk-OFF from hour 24.
+    // Identical through hour 47; they diverge only in the FUTURE of that prefix.
     let regime_a = PitSeries::from_sorted(vec![
-        (TimestampMs(epoch_ms(0)), true),
-        (TimestampMs(epoch_ms(24)), false),
-    ])
-    .expect("sorted regime_a is valid");
-
-    // Regime B (shifted forward 24h): risk-ON from 0, risk-OFF from hour 48.
-    // A look-ahead-free arm uses regime_a's risk-OFF at hour 24 for bars ≥ 24;
-    // with regime_b it keeps risk-ON until hour 48.
-    let regime_b = PitSeries::from_sorted(vec![
         (TimestampMs(epoch_ms(0)), true),
         (TimestampMs(epoch_ms(48)), false),
     ])
+    .expect("sorted regime_a is valid");
+    let regime_b = PitSeries::from_sorted(vec![
+        (TimestampMs(epoch_ms(0)), true),
+        (TimestampMs(epoch_ms(60)), false),
+    ])
     .expect("sorted regime_b is valid");
 
-    let (_, final_a) = run_macro_gated_buyhold_path(&bars, &regime_a, initial_capital);
-    let (_, final_b) = run_macro_gated_buyhold_path(&bars, &regime_b, initial_capital);
+    let (curve_a, final_a) = run_macro_gated_buyhold_path(&bars, &regime_a, initial_capital);
+    let (curve_b, final_b) = run_macro_gated_buyhold_path(&bars, &regime_b, initial_capital);
 
-    // The shifted regime keeps the arm invested 24 extra bars of rising price
-    // → final_b > final_a on an up-trending coin.
+    // ── Causality assertion ──────────────────────────────────────────────────
+    // curve[0] is the pre-trade initial capital; curve[i+1] is bar i. The two
+    // regimes agree on bars 0..=47, so those 49 entries must match exactly.
+    const AGREE_THROUGH_BAR: usize = 47;
+    assert!(
+        curve_a.len() > AGREE_THROUGH_BAR + 1 && curve_b.len() > AGREE_THROUGH_BAR + 1,
+        "fixture error: curves must cover bar {AGREE_THROUGH_BAR} \
+         (len_a={}, len_b={})",
+        curve_a.len(),
+        curve_b.len()
+    );
+    for i in 0..=AGREE_THROUGH_BAR + 1 {
+        assert_eq!(
+            curve_a[i],
+            curve_b[i],
+            "S3 FAIL (LOOK-AHEAD LEAK): the two regimes are byte-identical for every \
+             record at or before hour 47, so equity at curve index {i} (bar {}) cannot \
+             depend on which of them is supplied — unless the arm is reading a regime \
+             value from the FUTURE. a={}, b={}",
+            i.saturating_sub(1),
+            curve_a[i],
+            curve_b[i]
+        );
+    }
+
+    // ── Retained input-sensitivity (the old S3 content) ─────────────────────
+    // After hour 47 the series genuinely differ, so the equity must too — this
+    // is what fails against a regime-ignoring no-op.
     assert_ne!(
         final_a, final_b,
-        "S3 FAIL (look-ahead leak): forward-shifting the regime by 24h produced \
-        identical equity ({final_a} == {final_b}). The arm must be leaking future \
-        regime values into earlier bars."
+        "S3 FAIL (no-op signature): the regimes differ from hour 48 on (OFF at h48 vs \
+         OFF at h60), so the final equity must differ. Identical ({final_a}) means the \
+         regime is not applied at all."
     );
-
-    // Direction: regime_b holds longer on an up-trend → higher equity.
     assert!(
         final_b > final_a,
-        "S3 direction: with the shifted (later risk-OFF) regime on an up-trend, \
-        the arm holds longer → must produce higher equity. \
-        final_a={final_a}, final_b={final_b}"
+        "S3 direction: B stays risk-ON 12 bars longer on an up-trend → must end higher. \
+         final_a={final_a}, final_b={final_b}"
     );
 }
 
@@ -339,22 +381,26 @@ fn s4_warmup_before_first_regime_timestamp_is_flat() {
 
 // ── S5: T-CAL — Crypto24x7 calendar inertness (calendar anchor safety) ────────
 
-/// S5 (T-CAL) — the `MarketCalendar::Crypto24x7.trading_days_in_range` method
-/// is byte-identical to the legacy wall-clock day count for any range.
+/// S5 (T-CAL) — the calendar layer does not perturb the crypto path.
 ///
-/// This is the ADR-0073 D1.anchor proof: the new calendar layer must not
-/// perturb existing crypto coverage calculations. `Crypto24x7` uses the same
-/// wall-clock day division as the original `expected_bars_for_range(Days1, …)`.
-/// If this test fails, the calendar module has regressed the crypto path.
+/// Two independent claims, neither of which re-implements the code under test
+/// (review 3-16 MEDIUM: this test used to re-declare the wall-clock formula
+/// inline as `legacy_count`, so mutating production left it green):
 ///
-/// Additionally verifies `classify_ticker` correctly maps the 3 macro tickers
-/// to `UsEquity` and BTC-USD → `Crypto24x7`.
+/// 1. **Classification** — the 3 macro tickers resolve to `UsEquity` and the
+///    crypto mirrors to `Crypto24x7`. This is what makes the whole change inert
+///    for the corpus: all 12 corpus tickers end `-USD`.
+/// 2. **Day count** — `Crypto24x7.trading_days_in_range` equals a
+///    hand-computed literal for each window. A literal is an oracle; a re-derived
+///    formula is not.
 ///
-/// Note: this test is in the `backtest` integration test suite (not `data`)
-/// so it runs in the same `cargo test -p backtest` invocation as S1–S4.
-/// The primary T-CAL tests live in `crates/data/src/calendar.rs` unit tests.
+/// The full anchor-safety equivalence (`expected_bars_for_calendar` vs
+/// `expected_bars_for_range`, both production) lives in
+/// `crates/data/src/calendar.rs`'s unit tests, where `crate::yahoo` is reachable
+/// — those functions are behind `data/yahoo` and cannot be called from this
+/// suite in the default `cargo test -p backtest` build.
 #[test]
-fn s5_t_cal_crypto24x7_matches_wallclock_range_sweep() {
+fn s5_t_cal_crypto24x7_day_count_and_classification() {
     use data::calendar::{MarketCalendar, classify_ticker};
 
     // Verify classify_ticker for the 3 macro tickers → UsEquity.
@@ -365,24 +411,24 @@ fn s5_t_cal_crypto24x7_matches_wallclock_range_sweep() {
     assert_eq!(classify_ticker("BTC-USD"), MarketCalendar::Crypto24x7);
     assert_eq!(classify_ticker("ETH-USD"), MarketCalendar::Crypto24x7);
 
-    // Range sweep: for any window, Crypto24x7's trading_days_in_range must
-    // equal the raw wall-clock day count (= (e - s).max(0) / 86_400_000).
-    // This IS the same formula as expected_bars_for_range(Days1, s, e).
+    // Hand-computed expectations — NOT a copy of the production formula.
     let base_ms: i64 = 1_640_995_200_000; // 2022-01-01 UTC
-    for &days in &[1i64, 7, 30, 90, 180, 365, 730] {
+    for &(days, expected) in &[
+        (1i64, 1usize),
+        (7, 7),
+        (30, 30),
+        (90, 90),
+        (180, 180),
+        (365, 365),
+        (730, 730),
+    ] {
         let s = base_ms;
         let e = base_ms + days * 86_400_000;
-
         let calendar_count = MarketCalendar::Crypto24x7.trading_days_in_range(s, e);
-        let legacy_count = {
-            let range_ms = (e - s).max(0) as u64;
-            (range_ms / 86_400_000) as usize
-        };
-
         assert_eq!(
-            calendar_count, legacy_count,
-            "T-CAL FAIL: Crypto24x7 calendar={calendar_count} ≠ legacy={legacy_count} \
-            for {days}-day window. The calendar layer must not change crypto coverage."
+            calendar_count, expected,
+            "T-CAL FAIL: Crypto24x7 counted {calendar_count} days in a {days}-day window. \
+             The calendar layer must leave every wall-clock day a trading day for crypto."
         );
     }
 }

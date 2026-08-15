@@ -3,9 +3,18 @@
 //! This module is the **single source of truth** for the signed open/cover/fund/
 //! liquidate state transition for the single-coin directional short-selling
 //! feature. Both the bake-off (`run_scenario` / `sma_composed_run`) AND the
-//! agent forward loop (`spawn_trading_loop`) call this helper — so the forward
-//! paper run is consistent-by-construction with the ranked bake-off (the F5/F5b
-//! discipline, Q-SS-6 resolution).
+//! agent forward loop (`spawn_trading_loop`) call it — the F5/F5b discipline,
+//! Q-SS-6 resolution.
+//!
+//! **Scope of that claim, tightened by bug-log #80 (2026-08-15).** The two
+//! lanes share the *sizing and solvency* decisions (see the caller-shapes
+//! section below) but they no longer share the *execution model*: the bake-off
+//! now routes its short opens/covers through `PaperEngine::step`, so they pay
+//! slippage, the lot-size/min-notional venue filter and the fill-price model,
+//! while the forward loop still fills at `mark` charging only the taker fee.
+//! Do not read "single source of truth" as "the two lanes produce identical
+//! fills" — they do not, and the same is already true of their LONG legs since
+//! bug-log #79 wired the venue filter into the bake-off alone.
 //!
 //! ## Design
 //!
@@ -18,6 +27,28 @@
 //! - **No I/O constraint**: the helper accepts and returns plain `Decimal`
 //!   values; no `Order`, no `Fill`, no async. The caller owns the matching
 //!   engine step; this helper owns only the P&L accounting after a fill.
+//!
+//! ## Two caller shapes — sizing is shared, accounting is not (bug-log #80)
+//!
+//! [`plan_open_short`] is the **sizing + initial-margin gate**; it touches no
+//! state. Two kinds of caller consume it:
+//!
+//! 1. **Engine-routed** (`scenarios/sma_composed_run.rs`, the advisor/bake-off
+//!    lane): takes the planned qty, submits a real [`trading_core::Order`]
+//!    through `PaperEngine::step`, and does its accounting from the returned
+//!    `Fill`. It therefore pays slippage, the lot-size / min-notional venue
+//!    filter and the fill-price model — the same friction the long legs pay.
+//!    This is the shape bug-log #80 required: a ranked comparison must not
+//!    span two friction models.
+//! 2. **Self-accounting** ([`try_open_short`] / [`try_cover_short`], used by
+//!    the agent forward loop in `crates/agent/src/runtime.rs`): does the cash
+//!    arithmetic itself at `mark`. It charges the taker fee but models no
+//!    slippage, no lot filter and no fill-price mode.
+//!
+//! [`try_open_short`] delegates its sizing to [`plan_open_short`], so the two
+//! shapes cannot drift on *what* is traded — only on the friction charged for
+//! it. The forward loop is deliberately out of scope for #80 (it is not a
+//! ranked comparison); routing it through an engine is a separate change.
 //!
 //! ## Honest unbounded-loss (ADR-0068 D5)
 //!
@@ -53,6 +84,67 @@ pub fn maintenance_margin_frac() -> Decimal {
 }
 
 // ── Open-short accounting ─────────────────────────────────────────────────────
+
+/// A sized short-open intent that cleared the initial-margin gate.
+///
+/// Returned by [`plan_open_short`]. Carries BOTH the qty and the notional it
+/// was derived from: `qty = notional / mark` is a `Decimal` division and is
+/// therefore not exactly invertible, so a caller that needs the pre-trade
+/// notional (e.g. [`try_open_short`]'s own cash arithmetic) must read it here
+/// rather than recompute `qty * mark`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShortOpenPlan {
+    /// Base-asset quantity to sell short (> 0).
+    pub qty: Decimal,
+    /// Quote-currency notional the qty was sized from (> 0).
+    pub notional: Decimal,
+}
+
+/// Size a short open and apply the initial-margin gate — **no state change**.
+///
+/// This is the sizing half of [`try_open_short`], split out (bug-log #80) so
+/// that a caller which routes the order through `PaperEngine::step` applies
+/// exactly the same 10 %-of-equity clip and the same solvency gate as the
+/// caller which does its own accounting. [`try_open_short`] delegates here, so
+/// the two cannot drift.
+///
+/// - Sizes as 10% of equity (D-MN.2 fraction), capped at available `cash`.
+/// - Reserves `margin = notional / MAX_LEVERAGE`.
+/// - Returns `None` when `cash < margin + fee_estimate`, when the notional or
+///   `mark` is non-positive, or when the resulting qty rounds to zero — the
+///   exact skip-set of the pre-#80 `try_open_short` gate.
+#[must_use]
+pub fn plan_open_short(
+    cash: Decimal,
+    mark: Decimal,
+    taker_fee_bps: u32,
+    equity: Decimal,
+) -> Option<ShortOpenPlan> {
+    let fraction = dec!(0.10);
+    let target_notional = equity * fraction;
+    let notional = if target_notional > cash {
+        cash
+    } else {
+        target_notional
+    };
+    let margin = notional / MAX_LEVERAGE;
+    let fee_bps_decimal = Decimal::new(i64::from(taker_fee_bps), 4); // bps → fraction
+    let fee_estimate = notional * fee_bps_decimal;
+
+    if cash < margin + fee_estimate || notional <= Decimal::ZERO || mark <= Decimal::ZERO {
+        return None;
+    }
+
+    let qty_raw = notional / mark;
+    if qty_raw <= Decimal::ZERO {
+        return None;
+    }
+
+    Some(ShortOpenPlan {
+        qty: qty_raw,
+        notional,
+    })
+}
 
 /// Result of [`try_open_short`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,33 +193,21 @@ pub fn try_open_short(
     );
     debug_assert!(mark > Decimal::ZERO, "try_open_short: mark must be > 0");
 
-    let fraction = dec!(0.10);
-    let target_notional = equity * fraction;
-    let notional = if target_notional > cash {
-        cash
-    } else {
-        target_notional
+    // bug-log #80 — sizing + gate delegated to `plan_open_short` so the
+    // engine-routed caller and this self-accounting caller can never disagree
+    // about WHAT to trade. `plan.notional` (not `plan.qty * mark`) preserves
+    // the pre-split arithmetic exactly: `qty = notional / mark` is a Decimal
+    // division and re-multiplying does not round-trip.
+    let Some(plan) = plan_open_short(cash, mark, taker_fee_bps, equity) else {
+        return OpenShortResult {
+            cash,
+            position_qty,
+            executed: false,
+        };
     };
-    let margin = notional / MAX_LEVERAGE;
+    let notional = plan.notional;
+    let qty_raw = plan.qty;
     let fee_bps_decimal = Decimal::new(i64::from(taker_fee_bps), 4); // bps → fraction
-    let fee_estimate = notional * fee_bps_decimal;
-
-    if cash < margin + fee_estimate || notional <= Decimal::ZERO || mark <= Decimal::ZERO {
-        return OpenShortResult {
-            cash,
-            position_qty,
-            executed: false,
-        };
-    }
-
-    let qty_raw = notional / mark;
-    if qty_raw <= Decimal::ZERO {
-        return OpenShortResult {
-            cash,
-            position_qty,
-            executed: false,
-        };
-    }
 
     // Execute: proceeds in (notional), fee out, qty goes negative.
     let fee = notional * fee_bps_decimal;
@@ -376,6 +456,47 @@ mod tests {
             "short must have negative qty"
         );
         assert!(res.cash > dec!(100), "proceeds must increase cash");
+    }
+
+    /// bug-log #80 — `plan_open_short` and `try_open_short` must agree on the
+    /// SKIP-SET and on the traded qty, or the engine-routed bake-off caller and
+    /// the self-accounting forward-loop caller would size differently.
+    ///
+    /// Sweeps the gate boundary in both directions plus the degenerate inputs.
+    #[test]
+    fn plan_and_try_open_short_agree_on_skip_set_and_qty() {
+        let cases: [(Decimal, Decimal, Decimal); 8] = [
+            (dec!(100), dec!(50), dec!(100)),      // normal execute
+            (Decimal::ZERO, dec!(50), dec!(100)),  // no cash → skip
+            (dec!(100), dec!(50), Decimal::ZERO),  // zero equity → skip
+            (dec!(100), dec!(50), dec!(-10)),      // negative equity → skip
+            (dec!(0.001), dec!(50), dec!(100)),    // cash < margin+fee → skip
+            (dec!(100), dec!(0.0001), dec!(100)),  // dust mark → executes
+            (dec!(1_000_000), dec!(50), dec!(10)), // target < cash → execute
+            (dec!(10), dec!(50), dec!(1_000_000)), // target > cash → clipped
+        ];
+        for (cash, mark, equity) in cases {
+            let plan = plan_open_short(cash, mark, FEE_BPS, equity);
+            let res = try_open_short(cash, Decimal::ZERO, mark, FEE_BPS, equity);
+            assert_eq!(
+                plan.is_some(),
+                res.executed,
+                "skip-set drift at cash={cash} mark={mark} equity={equity}: \
+                 plan={plan:?} executed={}",
+                res.executed
+            );
+            if let Some(plan) = plan {
+                assert_eq!(
+                    -res.position_qty, plan.qty,
+                    "qty drift at cash={cash} mark={mark} equity={equity}"
+                );
+                assert_eq!(
+                    res.cash,
+                    cash + plan.notional - plan.notional * Decimal::new(i64::from(FEE_BPS), 4),
+                    "cash arithmetic must be derived from plan.notional, not qty*mark"
+                );
+            }
+        }
     }
 
     #[test]

@@ -808,7 +808,10 @@ fn leaderboard_arm_count_note_paints_in_context_band() {
     //   - 13 (4 singles + 8 ensembles + buy-and-hold) — the original v0.8 set.
     //   - +5 signal-library arms (ADR-0071) → 18.
     //   - +1 DVOL regime arm (ADR-0072) → 19.
-    //   - +1 macro regime arm (ADR-0073) → 20.
+    //   - +1 macro regime arm (ADR-0073) → 20 DECLARED, but 19 RUN: the macro
+    //     arm's regime loader is `#![cfg(feature = "yahoo")]` and nothing
+    //     enables `backtest/yahoo`, so `run_bakeoff` drops it to ABSENCE and
+    //     `advisor_field_arm_count` no longer counts it (bug-log #81).
     // Assert the CURRENT real arm count rather than a stale literal so the
     // count test tracks the field as it grows (the commit d3a9a4a discipline).
     let arm_count = ui::leaderboard::runner::advisor_field_arm_count();
