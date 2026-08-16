@@ -36,7 +36,10 @@ Two things follow, and they decide the seam:
 
 ---
 
-## 2. Seam decision — **RECOMMEND: engine guard** (AC1 option A)
+## 2. Seam decision — **RATIFIED 2026-08-16: engine guard** (AC1 option A)
+
+> **Operator ratified the engine guard on 2026-08-16.** The recommendation below stands as
+> written; AC1's same-bytes live-path proof is now a binding deliverable, not an option.
 
 > `PaperEngine::step` rejects (typed) any order whose `symbol` differs from `bar.symbol`.
 
@@ -111,12 +114,22 @@ There is **no recorded runtime** for a θ-surface regeneration anywhere in the c
 (`grep` for took/elapsed/runtime/wall-clock over `evidence/*/reports/*.md` returns nothing). Any
 number quoted here would be invented, so none is.
 
-**Proposed first step — one measured cell, then multiply:**
+**First step — one measured cell, then multiply:**
 
 ```bash
-# time a SINGLE surface regeneration end-to-end, then scale by 34
-time cargo run --release --bin param_robustness_sweep --features backtest/realdata -- <one-θ-surface>
+# ⚠️ --out-dir IS MANDATORY. The binary's default out-dir is
+#    evidence/v1/momentum-parameter-robustness-sweep/reports/ — an ANCHORED
+#    directory. Running it without an override writes into the frozen corpus and
+#    breaks the AD-2 gate. (Learned the hard way 2026-08-16: a measurement run was
+#    launched on defaults and killed before it wrote. evidence/ stayed clean and
+#    anchors held 119/119, but only because it was caught mid-compute.)
+cargo build --release --bin param_robustness_sweep --features realdata
+./target/release/param_robustness_sweep --out-dir /tmp/sweep-out/
 ```
+
+**Any regeneration during this re-lock must go to a NEW namespace anyway (§3 step 3),
+so `--out-dir` is load-bearing twice over — once for anchor safety while measuring,
+once for the re-lock's own namespace discipline.**
 
 Run that once, record it in this document, and the budget becomes arithmetic. Until then the honest
 statement is: **34 surfaces, unknown unit cost, needs one measurement.** That measurement is itself
@@ -124,7 +137,16 @@ a small task and should be the operator's first authorisation, ahead of the full
 
 ---
 
-## 5. The two decisions this document asks for
+## 5. Decisions — BOTH ANSWERED 2026-08-16
+
+1. **Seam: RATIFIED — engine guard.** Implementation may proceed on that basis, with AC1's
+   same-bytes proof for the live/agent paths as a hard gate.
+2. **Measurement run: AUTHORISED.** One θ-surface timed end-to-end (200 paths, tier1,
+   momentum, 2023, vol-adjusted-return — the binary's own defaults), build time recorded
+   separately from run time because only the run scales by 34. Result recorded in §4 above
+   once it lands. Full-corpus authorisation remains pending that number.
+
+### Superseded — the two decisions this document originally asked for
 
 1. **Ratify the seam** — engine guard (recommended) vs caller routing.
 2. **Authorise the measurement run** above, so the compute budget stops being a guess. Full-corpus

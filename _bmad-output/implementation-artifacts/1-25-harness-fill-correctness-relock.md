@@ -30,7 +30,7 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
 
 ## Tasks / Subtasks
 
-- [ ] Architect: fill-correctness seam decision (engine guard vs caller routing) + re-lock plan (namespace, report inventory incl. threshold-sweep lanes, compute budget) — coordinate with 1-24 as one program.
+- [x] Architect: fill-correctness seam decision + re-lock plan — **DONE 2026-08-16**, `docs/dev-notes/1-25-architect-seam-and-relock-plan-2026-08-16.md`. **Seam RATIFIED by the operator: ENGINE GUARD** (`PaperEngine::step` typed-rejects `order.symbol != bar.symbol`) — the signature already carries that precondition, it is provably a no-op on every live/agent caller (all pass single-symbol batches: `runtime.rs:2280/:2310/:2385`), and it converts a convention into an invariant a future harness lane cannot silently break. Silent *deferral* inside the engine was explicitly REJECTED (it reorders execution — a behaviour change disguised as a fix, unprovable byte-identical). Inventory: **34 anchors (#86-#119) = 29% of the corpus**. Compute budget deliberately NOT estimated (no runtime is recorded anywhere in the corpus); one measurement run authorised instead.
 - [ ] Dev: fixes per AC1-AC3 + the same-bytes live-path proof.
 - [ ] Re-run + re-lock + errata + verdict re-derivation (AC4).
 - [ ] Review: old rows intact, new rows complete, verdict-delta table honest, advisor-gate independence proof (AC5).
