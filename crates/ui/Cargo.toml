@@ -112,7 +112,18 @@ clap = { workspace = true }
 
 # iced — GUI framework. Pinned explicitly per ui-designer constraint.
 # Do NOT use a range. Update in lockstep across ui/cockpit/viewer.
-iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas"] }
+#
+# `x11` + `wayland` are LOAD-BEARING ON LINUX — do not drop them (CI ubuntu leg,
+# task #11 / 2026-08-15). `default-features = false` disables iced's defaults,
+# which cascade to `iced_winit`'s own `default = ["x11", "wayland"]`. With both
+# off, `softbuffer`'s Linux backends (its own `default = [kms, x11, x11-dlopen,
+# wayland, wayland-dlopen]`) are never selected, so its `make_dispatch!` macro
+# generates a `BufferDispatch` enum with ZERO variants and the crate fails to
+# compile with 25 errors (E0004 non-exhaustive `match self` on a reference,
+# plus E0282/E0283/E0392). macOS is unaffected — it uses the Cocoa backend —
+# which is exactly why this was invisible on the dev box and only ever broke
+# the ubuntu CI leg. Reproduced in a rust:latest container mirroring ci.yml.
+iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas", "x11", "wayland"] }
 
 # iced_aw was dropped 2026-05-16 (ui-drop-iced-aw v0.1) to decouple
 # from third-party iced ecosystem cadence (iced_aw locked at 0.14;
