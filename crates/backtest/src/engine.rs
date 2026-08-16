@@ -49,6 +49,26 @@ pub enum MatchError {
     FillError(String),
     #[error("no liquidity")]
     NoLiquidity,
+    /// An order was submitted against a bar belonging to a **different symbol**.
+    ///
+    /// `step(bar, orders)` prices every order at that one bar's close, so the
+    /// call is only meaningful when every order belongs to `bar.symbol`. That
+    /// precondition was always implied by the signature and was never enforced —
+    /// which is bug-log **#67**: the research-harness lanes iterate *merged
+    /// multi-symbol* bars and handed each order whatever bar was being processed,
+    /// so a fill could be priced at another symbol's mark.
+    ///
+    /// Seam ratified by the operator 2026-08-16 (story 1-25): enforce here, at
+    /// the engine, rather than by convention in each caller — a caller-side rule
+    /// can be forgotten by the next lane author, an engine guard cannot.
+    /// Deliberately a **reject**, never a silent deferral to the order's own bar:
+    /// deferring would make the engine reorder execution, which is a behaviour
+    /// change disguised as a bug fix.
+    #[error("symbol mismatch: order for {order_symbol} submitted against a {bar_symbol} bar")]
+    SymbolMismatch {
+        order_symbol: String,
+        bar_symbol: String,
+    },
 }
 
 /// The matching engine abstraction.

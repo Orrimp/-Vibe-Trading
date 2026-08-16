@@ -272,8 +272,24 @@ pub async fn run_path(
     let mut last_accrual_ts: Option<trading_core::Timestamp> = None;
     let mut settled_boundaries: i128 = 0;
 
+    // #67 fill-symbol correctness (story 1-25, seam ratified 2026-08-16).
+    // `merged_bars` interleaves EVERY symbol sorted by (ts, symbol), so the `bar`
+    // in hand belongs to ONE symbol while a signal may fire for another. The
+    // sizing path below already resolves the right price per symbol via
+    // `mark_prices.get(&sig.symbol)`; the FILL path did not — it handed the
+    // current `bar` to `engine.step`, pricing the fill at a foreign symbol's
+    // close. #67 was therefore a divergence between sizing and filling INSIDE
+    // one block, not a missing concept.
+    //
+    // This index is the fill-side twin of `mark_prices`: same key, same update
+    // point, same "most recent bar for this symbol" semantics — so a fill is now
+    // priced at exactly the bar whose close the sizing used.
+    let mut last_bar_by_symbol: std::collections::HashMap<trading_core::Symbol, Bar> =
+        std::collections::HashMap::new();
+
     for bar in &merged_bars {
         mark_prices.insert(bar.symbol.clone(), bar.close.get());
+        last_bar_by_symbol.insert(bar.symbol.clone(), bar.clone());
 
         let signals = strategy.on_bar(bar);
 
@@ -334,7 +350,18 @@ pub async fn run_path(
                             &risk_limits,
                             equity,
                         ) {
-                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                            Ok(ord) => match engine
+                                .step(
+                                    // #67: fill at THIS order's symbol bar, never the
+                                    // merged-loop bar. Present by construction — the
+                                    // `mark_prices.get(&sig.symbol)` guard above already
+                                    // returned for this symbol, and both maps are written
+                                    // at the same point in the loop.
+                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
+                                    vec![ord],
+                                )
+                                .await
+                            {
                                 Ok(fills) => {
                                     for fill in fills {
                                         let notional_fill = fill.qty.get() * fill.price.get();
@@ -441,7 +468,18 @@ pub async fn run_path(
                             &risk_limits,
                             equity,
                         ) {
-                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                            Ok(ord) => match engine
+                                .step(
+                                    // #67: fill at THIS order's symbol bar, never the
+                                    // merged-loop bar. Present by construction — the
+                                    // `mark_prices.get(&sig.symbol)` guard above already
+                                    // returned for this symbol, and both maps are written
+                                    // at the same point in the loop.
+                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
+                                    vec![ord],
+                                )
+                                .await
+                            {
                                 Ok(fills) => {
                                     for fill in fills {
                                         let notional_fill = fill.qty.get() * fill.price.get();
@@ -516,7 +554,18 @@ pub async fn run_path(
                             &risk_limits,
                             equity,
                         ) {
-                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                            Ok(ord) => match engine
+                                .step(
+                                    // #67: fill at THIS order's symbol bar, never the
+                                    // merged-loop bar. Present by construction — the
+                                    // `mark_prices.get(&sig.symbol)` guard above already
+                                    // returned for this symbol, and both maps are written
+                                    // at the same point in the loop.
+                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
+                                    vec![ord],
+                                )
+                                .await
+                            {
                                 Ok(fills) => {
                                     for fill in fills {
                                         let notional_fill = fill.qty.get() * fill.price.get();
@@ -603,7 +652,18 @@ pub async fn run_path(
                             &risk_limits,
                             equity,
                         ) {
-                            Ok(ord) => match engine.step(bar, vec![ord]).await {
+                            Ok(ord) => match engine
+                                .step(
+                                    // #67: fill at THIS order's symbol bar, never the
+                                    // merged-loop bar. Present by construction — the
+                                    // `mark_prices.get(&sig.symbol)` guard above already
+                                    // returned for this symbol, and both maps are written
+                                    // at the same point in the loop.
+                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
+                                    vec![ord],
+                                )
+                                .await
+                            {
                                 Ok(fills) => {
                                     for fill in fills {
                                         let notional_fill = fill.qty.get() * fill.price.get();
@@ -1524,13 +1584,35 @@ selection_mode = "long_short"
         // Re-baselining this literal is legitimate ONLY together with an explanation of
         // what changed in the long-only path — the same contract as `evidence/anchors.toml`,
         // at unit-test scale and unit-test speed.
-        const GOLDEN_LONG_ONLY_EQUITY_CURVE: &str = "100000,100000,100000,100000,100000,\
-             100000,101000.00,101000.00,101000.00,101000.00,101000.00,101000.00,101000.00,\
-             101000.00,101000.00,101918.18181818181818181818182,101918.18181818181818181818182,\
-             101918.18181818181818181818182,101918.18181818181818181818182,\
-             101000.00000000000000000000000,101000.00000000000000000000000,\
-             101000.00000000000000000000000,101000.00000000000000000000000,\
-             101000.00000000000000000000000,101000.00000000000000000000000";
+        // ── RE-BASELINED 2026-08-16 (story 1-25, bug-log #67) ────────────────
+        //
+        // PREVIOUS value (contaminated — kept here as the evidence, not as history
+        // trivia): the curve rose to `101000.00` at index 6 and `101918.18…` at
+        // index 15. Those gains were FABRICATED BY #67 and the arithmetic is exact:
+        //
+        //   fixture from hour 6: AAAUSDT = 1000, BBBUSDT = 1100, bars sorted
+        //   (ts, symbol) so AAA is processed first; sizing is 10% => 10 000 notional.
+        //
+        //     BUGGY  fill at AAA close 1000 -> 10.0000 units, marked at 1100 = 11 000
+        //            equity = 100 000 - 10 000 + 11 000 = 101 000   <- the old pin
+        //     FIXED  fill at BBB close 1100 ->  9.0909 units, marked at 1100 = 10 000
+        //            equity = 100 000                              <- this pin
+        //
+        // Both reproduce to the digit, so the old literal was not "a slightly different
+        // number" — it was the strategy booking an instant ~1% gain for buying one
+        // symbol at a different symbol's price. Correct arithmetic yields a FLAT curve
+        // because this fixture's price does not move after entry.
+        //
+        // What changed in the long-only path: `run_path` now fills every order at its
+        // OWN symbol's most recent bar (`last_bar_by_symbol`), the fill-side twin of
+        // the `mark_prices` lookup the SIZING path already used. #67 was a divergence
+        // between sizing and filling inside one block.
+        //
+        // ⚠️ The anchored surfaces (#86..#107) still carry the CONTAMINATED numbers —
+        // they are byte-frozen report bodies and are regenerated only at the re-lock
+        // (AC4). This pin moving is therefore EXPECTED to disagree with the anchors
+        // until then; that disagreement is the defect, not a regression.
+        const GOLDEN_LONG_ONLY_EQUITY_CURVE: &str = "100000,100000,100000,100000,100000,100000,100000.00,100000.00,100000.00,100000.00,100000.00,100000.00,100000.00,100000.00,100000.00,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000,100000.00000000000000000000000";
 
         use rust_decimal_macros::dec;
         use time::OffsetDateTime;

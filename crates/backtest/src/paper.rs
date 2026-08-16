@@ -129,6 +129,31 @@ impl PaperEngine {
 #[async_trait]
 impl MatchingEngine for PaperEngine {
     async fn step(&mut self, bar: &Bar, orders: Vec<Order>) -> Result<Vec<Fill>, MatchError> {
+        // ── #67 fill-symbol guard (story 1-25, seam ratified 2026-08-16) ──────
+        // Every order is priced at THIS bar's close, so the call is only
+        // meaningful when every order belongs to `bar.symbol`. The signature has
+        // always implied that; nothing enforced it, and the harness lanes
+        // (`scenarios/montecarlo.rs::run_path`, `bin/threshold_sweep.rs::run_cell`)
+        // iterate MERGED multi-symbol bars — so an order could be, and was,
+        // filled at another symbol's mark.
+        //
+        // Checked BEFORE any pricing work so a mismatched batch cannot partially
+        // fill: the whole call is rejected, leaving the caller's book untouched.
+        //
+        // Live/agent callers are unaffected by construction — they build
+        // single-symbol batches from the bar they are stepping
+        // (`agent/src/runtime.rs:2280/:2310/:2385`), so this predicate is always
+        // true there. AC1 requires that be PROVEN, not asserted — see
+        // `paper_step_symbol_guard_is_noop_on_single_symbol_batches`.
+        for order in &orders {
+            if *order.symbol() != bar.symbol {
+                return Err(MatchError::SymbolMismatch {
+                    order_symbol: order.symbol().to_string(),
+                    bar_symbol: bar.symbol.to_string(),
+                });
+            }
+        }
+
         let mut fills = Vec::with_capacity(orders.len());
 
         // VWAP is not yet available in Bar; both modes fall back to close.
@@ -521,6 +546,79 @@ mod tests {
             fills[0].price.get(),
             dec!(40_008),
             "unrelated config unaffected"
+        );
+    }
+
+    // ── #67 fill-symbol guard (story 1-25, seam ratified 2026-08-16) ──────────
+
+    /// The guard FIRES: an order for one symbol against another symbol's bar is
+    /// rejected rather than silently priced at the wrong mark.
+    ///
+    /// This is the defect of record (bug-log #67). Before the guard, this call
+    /// returned a fill priced at the DOGEUSDT close — `montecarlo.rs:1184`
+    /// records a fixture that hit exactly this and "came out at 105 000".
+    #[tokio::test]
+    async fn paper_step_rejects_order_for_a_different_symbol() {
+        let mut engine = PaperEngine::new(MatchConfig::default(), 0x00C0_FFEE);
+        let bar = make_bar_at_close_symbol(Symbol::new("DOGEUSDT"), dec!(0.30));
+        let order = make_order_symbol(Symbol::new("BTCUSDT"), Side::Buy, dec!(1));
+
+        let err = engine.step(&bar, vec![order]).await.unwrap_err(); // an order must not be filled at another symbol's bar (#67)
+
+        match err {
+            MatchError::SymbolMismatch {
+                order_symbol,
+                bar_symbol,
+            } => {
+                assert_eq!(order_symbol, "BTCUSDT");
+                assert_eq!(bar_symbol, "DOGEUSDT");
+            }
+            other => panic!("expected SymbolMismatch, got {other:?}"),
+        }
+    }
+
+    /// AC1's required no-op proof: on the batch shape every live/agent caller
+    /// uses — a single-symbol batch built from the bar being stepped — the guard
+    /// changes nothing. Same fill count, same price, same fee.
+    ///
+    /// The expected values are stated as literals rather than compared against a
+    /// second run, so this cannot degenerate into a tautology: it pins the actual
+    /// arithmetic (close 0.30 + 2 bps slippage, 4 bps taker fee) that the
+    /// pre-guard path produced.
+    #[tokio::test]
+    async fn paper_step_symbol_guard_is_noop_on_single_symbol_batches() {
+        let mut engine = PaperEngine::new(MatchConfig::default(), 0x00C0_FFEE);
+        let bar = make_bar_at_close_symbol(Symbol::new("DOGEUSDT"), dec!(0.30));
+        let order = make_order_symbol(Symbol::new("DOGEUSDT"), Side::Buy, dec!(12.7));
+
+        let fills = engine.step(&bar, vec![order]).await.unwrap(); // a symbol-matched batch must still fill
+
+        assert_eq!(fills.len(), 1, "guard must not drop a matching order");
+        assert_eq!(fills[0].qty.get(), dec!(12.7), "qty must be untouched");
+        assert_eq!(
+            fills[0].price.get(),
+            dec!(0.30) * (Decimal::ONE + Decimal::from(2) / Decimal::new(10_000, 0)),
+            "fill price must be the pre-guard arithmetic: close + 2bps slippage"
+        );
+    }
+
+    /// A mismatched batch fills NOTHING — the guard runs before any pricing, so
+    /// there is no partial application to unwind. Without this the caller's book
+    /// could diverge from the engine's on a rejected batch, which is the failure
+    /// shape bug-log #71 describes from a different direction.
+    #[tokio::test]
+    async fn paper_step_symbol_mismatch_is_all_or_nothing() {
+        let mut engine = PaperEngine::new(MatchConfig::default(), 0x00C0_FFEE);
+        let bar = make_bar_at_close_symbol(Symbol::new("DOGEUSDT"), dec!(0.30));
+        // first order matches, second does not — the whole call must reject
+        let ok = make_order_symbol(Symbol::new("DOGEUSDT"), Side::Buy, dec!(1));
+        let bad = make_order_symbol(Symbol::new("BTCUSDT"), Side::Buy, dec!(1));
+
+        let result = engine.step(&bar, vec![ok, bad]).await;
+
+        assert!(
+            matches!(result, Err(MatchError::SymbolMismatch { .. })),
+            "a batch containing any foreign symbol must reject entirely, not partially fill"
         );
     }
 }
