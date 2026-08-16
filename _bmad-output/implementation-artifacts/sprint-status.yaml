@@ -72,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-08-14 07:10  # CODE-REVIEW BURN-DOWN COMPLETE (14/14 reviewed). Closed: 1-20, 2-15, 2-18 (+1-10..1-18 earlier). NOT closed, 3 FAILs: 1-21 (blocked on 1-25), 3-15, 3-16. Eight bug-log disclosures this program: #74 #75 #76 #77 #78 #79(FIXED) #80 #81. Two new mandatory probes (channel, supersession) + the baseline-authority rule now in the playbook and the bmad-code-review override.
+last_updated: 2026-08-16  # RETROSPECTIVES: epics 5+7 done, epic 4 PARTIAL (4-13 outstanding — the prior action item wrongly called epic 4 done). All 17 story files for epics 5/7 are historical stubs with empty dev records, so all three retros were reconstructed from git log / CHANGELOG / ADRs / bug-log. 9 action items recorded. Also 2026-08-15/16: bug-log #74-#92; #80/#84/#86 FIXED; ubuntu CI leg FIXED (iced default-features stranded softbuffer with zero Linux backends, proven both ways).
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -216,7 +216,7 @@ development_status:
   4-11-phase-2d: done
   4-12-advisor-data-quality-surface: done
   4-13-advisor-online-fdr-annex: ready-for-dev  # 2026-07-27 operator decision PRD §13 Q3 = BUILD (report-only online-FDR cross-run annex per research-gap-analysis-2026-07-11; scorecard-style additive, FROZEN gate untouched)
-  epic-4-retrospective: optional
+  epic-4-retrospective: optional  # 2026-08-16 — PARTIAL retro written (epic-4-retro-2026-08-16.md, 12 of 13 stories). Deliberately NOT flipped to done: 4-13 is still ready-for-dev, and marking it done would repeat the board-says-done-reality-differs error this retro itself documents. Flip only after 4-13 lands and the full retro supersedes it (action 4-A3).
 
   # -- Epic 5: v3 "Prove It's Done" Close-Out
   epic-5: done
@@ -226,7 +226,7 @@ development_status:
   5-4-advisor-pit-discipline: done
   5-5-advisor-lot-realism: done
   5-6-advisor-handoff-export: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done  # 2026-08-16 — epic-5-retro-2026-08-16.md. Reconstructed from git log / CHANGELOG / ADRs 0083,0085-0088 / bug-log: all 6 story files are historical stubs with EMPTY dev records, so the workflow's story-analysis step had no input. Verdict: 5-2's 4-corpus re-run is genuine falsification work and 5-4 produced the best-engineered gate in the repo; but 5-3 co-presents a gate that FAILS OPEN (#83) and the robustness flag is rendered in 0 of 62 anchored reports.
 
   # -- Epic 6: Remediation, Infra & Governance (P0-P8, lints, BMAD migration)
   epic-6: in-progress
@@ -257,11 +257,48 @@ development_status:
   7-9-v3-regime-classifier: done
   7-10-v3-xgboost-cheap-classifier: done  # retired (story-file status: retired; work complete, line retired)
   7-11-vol-killswitch-overlay-noop-fix: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done  # 2026-08-16 — epic-7-retro-2026-08-16.md. Reconstructed (all 11 story files are historical stubs). ~153 commits, zero shipped alpha — arms RETIRED/foreclosed honestly. Its most valuable artifact was an INVARIANT not a model (AD-16, born from the noop-fix), and the sting is that AD-16 was later implemented VACUOUSLY (#74, story 3-15): a lesson recorded as a rule is not enforced until something proves the enforcement can fail.
 
 # PRD §13 open questions carried as migration backlog notes (not retrospective output;
 # recorded here so the board surfaces them - owner: operator).
 action_items:
+  # ── Epic 5 / 7 / 4 retrospective outputs (2026-08-16) ──────────────────
+  - epic: 7
+    action: "7-A1 Audit every AD-16 divergence gate for vacuity - each must be RED-proven by mutation (the invariant epic 7 paid for was later implemented in gates that could not fail: #74, story 3-15)"
+    owner: "dev"
+    status: open
+  - epic: 7
+    action: "7-A2 Replace AD-16 meta-enforcement (currently a substring grep over test filenames) with a check that the named gate can actually fail"
+    owner: "dev"
+    status: open
+  - epic: 7
+    action: "7-A3 Resolve 7-6's deferred alpha verdict or re-label it shipped-partial on the board so done stops overstating it"
+    owner: "operator"
+    status: open
+  - epic: 5
+    action: "5-A1 Rule on bug-log #83 (allow-list recommended) - the frozen gate treats an un-computable robustness run as crown-eligible; patch, identity test and RED-proof are staged"
+    owner: "operator"
+    status: open
+  - epic: 5
+    action: "5-A2 Render the robustness flag in report output - it appears in 0 of 62 anchored reports, so the corpus cannot witness whether the gate ever fired"
+    owner: "dev"
+    status: open
+  - epic: 5
+    action: "5-A3 Decide whether lot-realism should become the default rather than opt-in"
+    owner: "operator"
+    status: open
+  - epic: 4
+    action: "4-A1 Wire drawdown_control_overlay to the shared vol_estimator, or narrow ADR-0079 to the one function actually used (declared consumers != actual consumers)"
+    owner: "dev"
+    status: open
+  - epic: 4
+    action: "4-A2 Decide the fate of the 3 uncalled vol_estimator functions incl. Corsi-2009 HAR-RV: wire or delete"
+    owner: "operator"
+    status: open
+  - epic: 4
+    action: "4-A3 Finish 4-13 then re-run the epic 4 retrospective in full - the 2026-08-16 one is PARTIAL and superseded"
+    owner: "dev"
+    status: open
   - epic: 3
     action: "PRD §13 Q1 - EUR/USD rate source v0.3 fork: live-fetched rate over static fallback - build or leave? (low stakes)"
     owner: "operator"
@@ -291,9 +328,9 @@ action_items:
     owner: "operator"
     status: done  # 2026-08-04 DECIDED: BUILD -> story 6-12-evidence-reproducibility-sample (ready-for-dev)
   - epic: 6
-    action: "Run the first retrospectives - epics 4, 5, 7 are done with 0 retros; include a deferred-work.md revisit in each (the ledger now carries Owner/Revisit fields)"
+    action: "Run the first retrospectives - epics 5 and 7 are done; epic 4 is NOT (4-13 still ready-for-dev, the original wording was stale); include a deferred-work.md revisit in each (the ledger now carries Owner/Revisit fields)"
     owner: "operator+orchestrator"
-    status: open
+    status: done  # 2026-08-16 epics 5+7 retros written; epic 4 partial (superseded when 4-13 lands)
   - epic: 6
     action: "Push-transport resilience: wedge observed CLEARED 2026-07-27 (plain git push succeeded) but the transport stays single-path - install the deploy-key fallback per docs/runbooks/ops-push-and-cache.md when convenient"
     owner: "operator"

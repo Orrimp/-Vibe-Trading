@@ -483,8 +483,21 @@ def check_orphan_stories(report: Report) -> None:
     # ledger (one heading per review), NOT a story file — exclude it from the
     # story<->board bijection (2026-07-26, first BMAD-native review run).
     non_story_files = {"deferred-work"}
+    # Retrospective documents (`epic-{N}-retro-{date}.md`) are the
+    # bmad-retrospective workflow's OWN output, not stories — same category as
+    # `deferred-work` above. The board tracks them as `epic-N-retrospective`
+    # rows, which the loop below already skips (they fail the `^\d+-\d+-`
+    # story-key match), so there is no board key for a retro file to bind to and
+    # the story<->board bijection must not include them.
+    # Added 2026-08-16, when the first retrospectives in this repo's history
+    # (epics 5 and 7) tripped `orphan-story` purely by existing.
+    _RETRO_FILE_RE = re.compile(r"^epic-\d+-retro-")
     story_filenames = (
-        {p.stem for p in STORY_DIR.glob("*.md") if p.stem not in non_story_files}
+        {
+            p.stem
+            for p in STORY_DIR.glob("*.md")
+            if p.stem not in non_story_files and not _RETRO_FILE_RE.match(p.stem)
+        }
         if STORY_DIR.is_dir()
         else set()
     )
