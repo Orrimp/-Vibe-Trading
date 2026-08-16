@@ -108,11 +108,35 @@ of the MN-basis domain is **unknown pending a correctly-signed re-run** — not 
 
 ---
 
-## 4. Compute budget — **must be measured, not estimated**
+## 4. Compute budget — **MEASURED 2026-08-16**
 
-There is **no recorded runtime** for a θ-surface regeneration anywhere in the corpus
-(`grep` for took/elapsed/runtime/wall-clock over `evidence/*/reports/*.md` returns nothing). Any
-number quoted here would be invented, so none is.
+There was **no recorded runtime** for a θ-surface anywhere in the corpus, so one was measured rather
+than estimated.
+
+| | measured |
+|---|---|
+| build (`--release`, warm profile) | **8.65 s** — one-time, does **not** scale |
+| **one θ-surface run** | **1087.11 s real ≈ 18.1 min** (exit 0) |
+| CPU used | 13 482 s user ⇒ **~12.4× parallelism already** |
+| **34 surfaces, sequential** | **≈ 10.3 h** |
+
+Configuration: 200 paths, tier1, momentum, 2023, vol-adjusted-return (the binary's own defaults),
+`--out-dir` redirected to scratchpad. `evidence/` verified clean afterwards; anchors 119/119.
+
+**Read 10.3 h as a FLOOR, not an estimate.** Two reasons:
+
+1. **The measured surface is on the cheap end.** It is a long-only momentum lane. The inventory's
+   heavy lanes are materially bigger: the MN family (#108-#119) runs *"~2× the order traffic of any
+   prior lane: 6 legs plus buy-to-covers"*, and the basis-reversal family (#100-#107) is the heaviest
+   Sell-traffic lane at **60 k–318 k trades / 200 paths**. A blended figure well above 18 min/surface
+   is the realistic planning number.
+2. **There is no parallelism headroom.** A single surface already saturates ~12.4 cores, so running
+   surfaces concurrently will not compress wall-clock much — this is close to a serial budget.
+
+**Planning guidance: reserve a multi-day window, not an evening**, and expect the regeneration to be
+the long pole of the whole re-lock. If that is unacceptable, the split proposed in §6 (code fixes
+first, regeneration as its own story) becomes the pragmatic route — the fixes are the part that
+unblocks 1-21's *analysis*; only the re-lock needs the compute.
 
 **First step — one measured cell, then multiply:**
 
