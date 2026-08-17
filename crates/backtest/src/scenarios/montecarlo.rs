@@ -218,14 +218,29 @@ pub async fn run_path(
     // existing funding_map is preserved. For carry: the map is passed as
     // `funding_override` so BOTH score and accrual see it. For basis: the map is
     // pre-injected; `funding_override` stays `None` → no accrual (NO cashflow — D-BR.1).
-    let funding_map_for_accrual = funding_override.clone();
-    let mut strategy = if let Some(map) = funding_override {
-        strategy.with_funding(Some(map))
-    } else {
-        // Do NOT call with_funding(None) — preserve any pre-injected sidecar map
-        // (used by the basis-reversal arm, D-BR.1 / D-BR.3).
-        strategy
-    };
+    // ── #75 score/accrual channel separation (story 1-25) ────────────────────
+    // `funding_override` is the ACCRUAL channel and NOTHING ELSE. It used to also
+    // be pushed into the strategy here via `with_funding(Some(map))`, which
+    // silently OVERWROTE any score map the caller had already injected.
+    //
+    // That is bug-log #75, and it had exactly one victim. The sweep driver
+    // (`param_robustness_sweep.rs`) already injects the score map itself —
+    // `.with_funding(final_strategy_score_map).with_basis_score(...)` — so for
+    // `MnBasisSpread` the sequence was: driver injects BASIS for scoring, then
+    // this line replaced it with the FUNDING accrual map. The market-neutral
+    // basis arm therefore scored on funding and became a duplicate funding run
+    // (anchors #108-#111). `MnFundingSpread` and `MnBasisFundingResidual` pass the
+    // same map on both channels, so the clobber was a no-op there — which is why
+    // only one arm was corrupted, and why the `mn-basisperp` control differed from
+    // `mn-funding` in every number while `mn-basis` differed in none.
+    //
+    // The score channel now belongs to the CALLER, exclusively. A caller that
+    // wants the accrual map to also drive scoring must say so, by injecting it:
+    //     MomentumStrategy::from_config(..).with_funding(Some(map))
+    // Making that explicit is the point: the two channels can no longer be
+    // conflated by accident.
+    let funding_map_for_accrual = funding_override;
+    let mut strategy = strategy;
 
     let mut cash = initial_capital;
     let mut min_cash_seen = initial_capital;
@@ -1080,7 +1095,14 @@ mod tests {
         }
 
         // Build carry strategy: K=1, L=1 settlement lookback, rebalance=1 bar.
-        let make_carry_strat = || {
+        // #75 (story 1-25): `run_path` no longer injects `funding_override` into the
+        // strategy — that channel is accrual-only now. This arm SCORES on funding
+        // (`score_source = funding_carry`), so it must receive the map explicitly.
+        // Passing it here reproduces the previous behaviour exactly; the difference
+        // is that the score channel is now stated rather than inherited.
+        let make_carry_strat = |funding_score: Option<
+            std::collections::BTreeMap<(Symbol, trading_core::Timestamp), Decimal>,
+        >| {
             let toml = r#"
 id = "carry_test"
 kind = "cross_sectional_momentum"
@@ -1100,6 +1122,7 @@ score_source = "funding_carry"
                 strategy::CrossSectionalMomentumConfig::from_str(toml).expect("valid carry config");
             cfg.score_source = strategy::ScoreSource::FundingCarry;
             strategy::MomentumStrategy::from_config(cfg, smol_str::SmolStr::new("carry_test"))
+                .with_funding(funding_score)
         };
 
         let initial_capital = dec!(100_000);
@@ -1117,11 +1140,15 @@ score_source = "funding_carry"
             bars_override: Some(bars.clone()),
             emit_equity_bin: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
-            funding_override: Some(funding_nonzero),
+            funding_override: Some(funding_nonzero.clone()),
             bar_span_hours: 1,
         };
-        let result_with = pollster::block_on(run_path(input_with, 0x00C0_FFEE, make_carry_strat()))
-            .expect("run_path with funding must succeed");
+        let result_with = pollster::block_on(run_path(
+            input_with,
+            0x00C0_FFEE,
+            make_carry_strat(Some(funding_nonzero)),
+        ))
+        .expect("run_path with funding must succeed");
 
         // Run WITH zero-rate funding (cashflow forced to zero).
         let input_zero = TcnScenarioInput {
@@ -1136,11 +1163,15 @@ score_source = "funding_carry"
             bars_override: Some(bars),
             emit_equity_bin: None,
             latency_slippage_sim: crate::cli_types::LatencySlippageSimConfig::default(),
-            funding_override: Some(funding_zero),
+            funding_override: Some(funding_zero.clone()),
             bar_span_hours: 1,
         };
-        let result_zero = pollster::block_on(run_path(input_zero, 0x00C0_FFEE, make_carry_strat()))
-            .expect("run_path with zero funding must succeed");
+        let result_zero = pollster::block_on(run_path(
+            input_zero,
+            0x00C0_FFEE,
+            make_carry_strat(Some(funding_zero)),
+        ))
+        .expect("run_path with zero funding must succeed");
 
         // The WITH-carry equity must differ from the zero-cashflow equity.
         // If the cashflow is computed-and-ignored (no-op), both final equities are identical.

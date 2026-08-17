@@ -198,7 +198,13 @@ fn run_to_result(
     bars: Vec<Bar>,
     funding_override: Option<BTreeMap<(Symbol, Timestamp), Decimal>>,
 ) -> backtest::scenarios::montecarlo::PathRunResult {
-    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("carry_e2e_test"));
+    // #75 (story 1-25): `funding_override` is the ACCRUAL channel only — `run_path`
+    // no longer pushes it into the strategy. This test wants funding to drive the
+    // SCORE too (it measures realized_funding, which depends on the positions the
+    // score picks), so it now injects the score map explicitly. Previously
+    // `run_path` did this implicitly, which is what let #75's clobber hide.
+    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("carry_e2e_test"))
+        .with_funding(funding_override.clone());
     let input = TcnScenarioInput {
         scenario_name: "carry-e2e".to_string(),
         start_year: 2023,
