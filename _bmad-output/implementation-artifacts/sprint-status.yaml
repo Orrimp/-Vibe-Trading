@@ -72,7 +72,7 @@
 #   - PRD §13 open questions are carried as action_items below (backlog notes, owner: operator).
 
 generated: 2026-07-25 13:31
-last_updated: 2026-08-16  # RETROSPECTIVES: epics 5+7 done, epic 4 PARTIAL (4-13 outstanding — the prior action item wrongly called epic 4 done). All 17 story files for epics 5/7 are historical stubs with empty dev records, so all three retros were reconstructed from git log / CHANGELOG / ADRs / bug-log. 9 action items recorded. Also 2026-08-15/16: bug-log #74-#92; #80/#84/#86 FIXED; ubuntu CI leg FIXED (iced default-features stranded softbuffer with zero Linux backends, proven both ways).
+last_updated: 2026-08-19  # 1-25 IN PROGRESS — code half of AC1-AC3 done (#67 #75 #71 #76 fixed+pushed; #72/#73 already code-fixed 2026-08-04). Blocked on TWO operator rulings (#69 enforce-or-delete, #68 implement-or-drop — both confirmed declared-but-unread) plus a multi-day compute window for AC4. Also 2026-08-16/19: ubuntu CI leg FIXED (iced default-features stranded softbuffer with zero Linux backends, proven both ways); dev/test disk footprint capped after target/debug reached 155 GB.
 project: trading
 project_key: NOKEY
 tracking_system: file-system
@@ -106,7 +106,7 @@ development_status:
   1-22-simple-strategy-overfit-guard: done
   1-23-simple-strategy-bear-survey: done
   1-24-pwsd-fidelity-relock: ready-for-dev  # 2026-07-31 created by the 1-13 review decision (doc-now + re-lock story): PWSD literature fidelity + volume proxy under a formal ADR-0045 §D6 namespace re-lock
-  1-25-harness-fill-correctness-relock: ready-for-dev  # 2026-07-31 CRITICAL — created by the 1-14 review (cross-symbol fill mispricing in research-harness lanes; bug-log #67; one re-lock program with 1-24)
+  1-25-harness-fill-correctness-relock: in-progress  # 2026-08-19 CODE HALF of AC1-AC3 landed and pushed: #67 engine guard + per-symbol fill routing (11acd12; the bug fabricated ~1% of equity, measured to the digit), #75 score/accrual channel separation (936134c; only MnBasisSpread was corrupted, which is why mn-basis differed from mn-funding in NO number), #71 side-aware cap on RESULTING exposure + 7-case binding test (7884f52; the old cap was also EVADABLE BY SPLITTING — not in the original write-up), #76 residual direction + literal-value direction gate (7884f52). #72/#73 code halves confirmed still in place from 2026-08-04. REMAINING, all operator-gated: #69 enforce-or-delete and #68 implement-or-drop (both source-confirmed as declared-but-unread and annotated at their declarations, ae62de8), then AC4's re-lock — 34 anchors = 29% of the corpus, budget MEASURED at 18.1 min/surface => 10.3 h FLOOR, 15-20 h realistic, no parallelism headroom. NOT flipped to ready-for-review: the story's defining deliverable (the regeneration) has not run.  # 2026-07-31 CRITICAL — created by the 1-14 review (cross-symbol fill mispricing in research-harness lanes; bug-log #67; one re-lock program with 1-24)
   epic-1-retrospective: optional
 
   # -- Epic 2: Cockpit & UI (Lumen shell, Live, Lab, charts, quality gates)

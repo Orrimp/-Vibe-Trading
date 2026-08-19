@@ -1,6 +1,11 @@
 # Story 1.25: harness-fill-correctness-relock
 
-Status: ready-for-dev
+Status: in-progress
+
+<!-- 2026-08-19: the CODE half of AC1-AC3 is landed and pushed; AC4 (regeneration) and
+     AC5 (band re-examination) are NOT started and are gated on two operator rulings
+     plus a compute window. Deliberately NOT `ready-for-review`: reviewing now would
+     assess a story whose defining deliverable — the re-lock — has not run. -->
 
 <!-- Created 2026-07-31 by the 1-14 code-review decision (operator: new critical story + program).
      CRITICAL priority. Runs as ONE re-lock program with 1-24-pwsd-fidelity-relock (same
@@ -31,8 +36,46 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
 ## Tasks / Subtasks
 
 - [x] Architect: fill-correctness seam decision + re-lock plan — **DONE 2026-08-16**, `docs/dev-notes/1-25-architect-seam-and-relock-plan-2026-08-16.md`. **Seam RATIFIED by the operator: ENGINE GUARD** (`PaperEngine::step` typed-rejects `order.symbol != bar.symbol`) — the signature already carries that precondition, it is provably a no-op on every live/agent caller (all pass single-symbol batches: `runtime.rs:2280/:2310/:2385`), and it converts a convention into an invariant a future harness lane cannot silently break. Silent *deferral* inside the engine was explicitly REJECTED (it reorders execution — a behaviour change disguised as a fix, unprovable byte-identical). Inventory: **34 anchors (#86-#119) = 29% of the corpus**. Compute budget deliberately NOT estimated (no runtime is recorded anywhere in the corpus); one measurement run authorised instead.
-- [ ] Dev: fixes per AC1-AC3 + the same-bytes live-path proof.
-- [ ] Re-run + re-lock + errata + verdict re-derivation (AC4).
+- [~] Dev: fixes per AC1-AC3 + the same-bytes live-path proof — **CODE HALF DONE 2026-08-17/19.**
+  - [x] **#67** engine guard (`MatchError::SymbolMismatch`, checked before pricing so a mismatched
+        batch cannot partially fill) + per-symbol fill routing in `run_path` (`last_bar_by_symbol`,
+        the fill-side twin of the `mark_prices` lookup the SIZING path already used — #67 was a
+        divergence between sizing and filling inside ONE block). AC1's same-bytes live-path proof:
+        `paper_step_symbol_guard_is_noop_on_single_symbol_batches`, pinned to LITERAL arithmetic so
+        it cannot degenerate into a tautology. Measured: the bug fabricated ~1% of equity
+        (`buy@1000/mark@1100 → 101 000` vs a correct flat `100 000`, both to the digit).
+        Commit `11acd12`.
+  - [x] **#75** score/accrual channel separation — `funding_override` is now accrual-ONLY;
+        `run_path` no longer overwrites the caller's score map. Only `MnBasisSpread` was corrupted
+        (the other two MN arms pass the same map on both channels), which is why `mn-basis` differed
+        from `mn-funding` in NO number while the `mn-basisperp` control differed in every one.
+        Commit `936134c`.
+  - [x] **#71** side-aware exposure cap on RESULTING exposure. Second defect found while fixing it,
+        not in the original write-up: **the old cap was evadable by splitting** — at 0.39 of equity a
+        top-up ending at 0.44 passed on its own 0.05 notional. AC3's binding test added (7 cases).
+        Commit `7884f52`.
+  - [x] **#76** residual direction — `rank(funding) − rank(basis)`. AC3's literal-value direction
+        gate landed by converting the pre-existing `characterization_bug76_…` test (which pinned the
+        BUG and carried an instruction to invert it on fix) into
+        `direction_gate_bug76_…_longs_the_lowest_basis_name`, plus the assertion that matters: the
+        residual arm and the plain `BasisReversal` arm must now AGREE on the sign of the basis axis.
+        Commit `7884f52`.
+  - [x] **#72 / #73** — code halves already fixed 2026-08-04 (`fix(carry)`); verified still in place.
+        Regeneration is what remains, and that is AC4.
+  - [ ] **#69** enforce-or-delete — **OPERATOR RULING REQUIRED.** Source-confirmed: `size_portfolio_target`
+        is the sole enforcer and has **zero production callers** (definition + its own tests + 3 sites in
+        `agent/tests/v1_rebalance_reject.rs`). Sweep scenarios set `Some(0.50)`, it is printed into hashed
+        bodies, nothing reads it. Annotated at the declaration; commit `ae62de8`.
+  - [ ] **#68** implement-or-drop — **OPERATOR RULING REQUIRED.** `drift_rebalance_threshold` is swept,
+        **range-validated**, copied to `momentum.rs:194` — and read nowhere. One of the three advertised
+        Tier-1 grid axes has no consumer. Annotated at the declaration; commit `ae62de8`.
+- [ ] Re-run + re-lock + errata + verdict re-derivation (AC4) — **BLOCKED: needs a compute window.**
+  Budget MEASURED 2026-08-16 rather than estimated: one θ-surface = **1087 s (18.1 min)**, build 8.65 s
+  (one-time), ~12.4× parallelism already in use. **34 surfaces ⇒ ≈10.3 h sequential, and that is a
+  FLOOR** — the measured lane is long-only momentum (the cheap end); the MN family runs ~2× the order
+  traffic and the basis-reversal family hits 60k–318k trades/200 paths. Plan a multi-day window;
+  15–20 h is the realistic figure. `--out-dir` is MANDATORY (its default points INTO the anchored
+  corpus — nearly written there on 2026-08-16, caught mid-compute).
 - [ ] Review: old rows intact, new rows complete, verdict-delta table honest, advisor-gate independence proof (AC5).
 
 ## Dev Notes
