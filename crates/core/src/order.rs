@@ -66,6 +66,20 @@ pub struct RiskLimits {
     /// as a fraction of equity.  `None` = no portfolio cap (v0 backward-compat).
     /// When `Some(cap)`, `risk::size_portfolio_target` enforces the cap
     /// atomically across the entire rebalance vector.
+    ///
+    /// ⚠️ **BUT THAT ENFORCER HAS NO PRODUCTION CALLER (bug-log #69).** Census of
+    /// `size_portfolio_target(` across the workspace: its definition, its own unit
+    /// tests, and three sites in `agent/tests/v1_rebalance_reject.rs`. Zero in
+    /// production — `montecarlo.rs` 0, `param_robustness_sweep.rs` 0. The sweep
+    /// scenarios set `Some(dec!(0.50))`, that number is printed into hashed report
+    /// bodies, and no shipped code path ever compares against it.
+    ///
+    /// Note the shape: a passing test proves the enforcer *works*, which is not the
+    /// same as proving the limit *binds*. `Order::new` below caps PER-SYMBOL
+    /// exposure (see the #71 block) and never reads this field.
+    ///
+    /// Enforce-or-delete is story 1-25 AC3. Until then, treat a `Some(..)` here as
+    /// intent, not protection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub portfolio_exposure_cap: Option<Decimal>,
 }

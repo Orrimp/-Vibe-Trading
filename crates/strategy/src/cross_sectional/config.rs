@@ -250,6 +250,23 @@ pub struct CrossSectionalMomentumConfig {
     /// Portfolio exposure cap (0, 1].
     pub exposure_cap: Decimal,
     /// Relative drift threshold for hold case (0, 1).
+    /// ⚠️ **INERT — swept, validated, copied, and never read (bug-log #68).**
+    ///
+    /// The Tier-1 grid advertises three axes — "lookback × k_long ×
+    /// drift_rebalance_threshold" (`sweep_harness.rs:2684`) — and the harness does
+    /// set this per cell (`sweep_harness.rs:1721`). It is then range-validated
+    /// below (must be in `(0, 1)`) and copied into `MomentumStrategy`'s
+    /// `drift_threshold` field (`momentum.rs:194`).
+    ///
+    /// **Nothing reads it.** `grep drift_threshold momentum.rs` returns exactly the
+    /// declaration (`:39`) and that assignment (`:194`). No rebalance decision
+    /// consults it, so the no-trade hold band this parameter names does not exist
+    /// and every cell differing only in drift produces identical output.
+    ///
+    /// Ratify-or-fix is story 1-25 AC3 / the 1-16 review's call: implement the hold
+    /// band, or drop the axis and correct the narrative at regeneration. Until then
+    /// this doc comment is the only thing preventing the grid from reading as a
+    /// three-dimensional sweep. **Do not remove it without doing one or the other.**
     pub drift_rebalance_threshold: Decimal,
     /// Vol floor for score denominator (> 0).
     pub vol_floor: Decimal,
@@ -311,6 +328,23 @@ struct RawConfig {
     #[serde(default = "default_exposure_cap")]
     pub exposure_cap: Decimal,
     #[serde(default = "default_drift")]
+    /// ⚠️ **INERT — swept, validated, copied, and never read (bug-log #68).**
+    ///
+    /// The Tier-1 grid advertises three axes — "lookback × k_long ×
+    /// drift_rebalance_threshold" (`sweep_harness.rs:2684`) — and the harness does
+    /// set this per cell (`sweep_harness.rs:1721`). It is then range-validated
+    /// below (must be in `(0, 1)`) and copied into `MomentumStrategy`'s
+    /// `drift_threshold` field (`momentum.rs:194`).
+    ///
+    /// **Nothing reads it.** `grep drift_threshold momentum.rs` returns exactly the
+    /// declaration (`:39`) and that assignment (`:194`). No rebalance decision
+    /// consults it, so the no-trade hold band this parameter names does not exist
+    /// and every cell differing only in drift produces identical output.
+    ///
+    /// Ratify-or-fix is story 1-25 AC3 / the 1-16 review's call: implement the hold
+    /// band, or drop the axis and correct the narrative at regeneration. Until then
+    /// this doc comment is the only thing preventing the grid from reading as a
+    /// three-dimensional sweep. **Do not remove it without doing one or the other.**
     pub drift_rebalance_threshold: Decimal,
     #[serde(default = "default_vol_floor")]
     pub vol_floor: Decimal,

@@ -806,8 +806,32 @@ Two of three bail; one returns a plausible value. That is the discriminator this
 
 **Moral**: a feature-flag combination that nothing builds is untested code with a manifest comment promising otherwise. Feature *combinatorics* are a reachability surface in their own right — the audit that found #81 asked "is this feature on?" for single features; this is the question one level up, and `--no-default-features` is where it bites, because it is the one flag that turns things **off** that everything else assumes on.
 
+### `#68-src` — the drift axis is INERT: `drift_rebalance_threshold` is parsed, range-validated, copied into a struct field, and never read
+**Status**: source-confirmed 2026-08-17 (story 1-25 AC3 work, orchestrator). This is the source confirmation for the `#68` drift-axis item the 1-16 review routed into 1-25. Anchor-impacting: **the fix would be** — the axis currently is not.
+
+**The chain, complete:**
+
+| step | site |
+|---|---|
+| swept by the harness | `sweep_harness.rs:1721` — `cfg.drift_rebalance_threshold = cell.drift()` |
+| **range-validated** | `config.rs:418` — errors unless in `(0, 1)` |
+| copied to the strategy | `momentum.rs:194` — `drift_threshold: cfg.drift_rebalance_threshold` |
+| declared | `momentum.rs:39` — `drift_threshold: Decimal` |
+| **read** | **nowhere** — `grep drift_threshold momentum.rs` returns exactly those two lines |
+
+So one of the three axes the Tier-1 grid advertises — *"lookback × k_long × drift_rebalance_threshold"* (`sweep_harness.rs:2684`) — has no consumer. The code takes care to **validate** a number it never uses, which is the tell: validation is the last place a value is touched before it disappears.
+
+**Grid shape, measured:** 58 cells carry a drift value — **54 at `0.10`, one at `0.30`, three at `0.50`**. Since the value is never read, any two cells identical on the other axes are necessarily identical in output regardless of their drift labels.
+
+**What I did NOT establish, stated so nobody inherits a false claim.** Whether the anchored grid actually *contains* such a pair needs a careful cell-by-cell read. A regex parse of the `ThetaCell` literals returned one candidate pair, but its own output was self-contradictory (both cells parsed as `k_long = 3` while their `role` strings read "top-1 only" versus "wide selection"), so the lookbehind was spanning neighbouring literals. **The parse is unreliable and its result is discarded.** The inertness above does not depend on it.
+
+**Family.** Fourth declared-but-unread control in three days: **#85** (two account loss stops, zero read sites), **#69** (portfolio cap — enforcer exists, has passing tests, zero production callers), **#71** (per-symbol cap that capped the order rather than the position and could be walked past in increments), and now **#68**. In every case the value is *configured, documented, and often validated* — and never consulted. AC3's "enforce-or-delete + a BINDING test for every declared risk limit" is the correct response precisely because a fifth instance is more likely than not.
+
+**Fix direction (operator's call, per the 1-16 review's ratify-or-fix framing):** implement the hold band so the axis does what the grid claims, **or** drop the axis and correct the narrative at regeneration. Do not leave it swept-but-inert: every θ-surface currently presents drift as an explored dimension. If it is implemented, a **drift-only cell pair becomes a mandatory per-axis divergence probe** — the same shape as AD-16's overlay gate, and the only thing that would have caught this.
+
 ## Changelog
 
+- 2026-08-17 (orchestrator): **#68 SOURCE-CONFIRMED** — the drift axis is inert. `drift_rebalance_threshold` is swept (`sweep_harness.rs:1721`), **range-validated** (`config.rs:418`), copied to `momentum.rs:194`'s `drift_threshold` field — and read NOWHERE (grep returns only the declaration and the assignment). One of the three advertised Tier-1 grid axes has no consumer; the code validates a number it never uses. Grid measured: 58 cells, 54 at 0.10 / 1 at 0.30 / 3 at 0.50. NOT established: whether a drift-only cell pair exists in the anchored grid — a regex parse returned a self-contradictory candidate and was discarded. Fourth declared-but-unread control in three days (#85, #69, #71, #68).
 - 2026-08-15 (orchestrator): **#92 interim applied** — `crates/ui/Cargo.toml` no longer advertises `--no-default-features` as supported; the comment now states it does not build, names the three files, and records that no shipping target needs it. Scope re-measured and it is SMALLER than first reported: most of `state.rs`'s 16 `agent::` mentions are doc comments, so the real surface is `ActivityEvent` + `HaltReason` + the activity types — one cohesive group of plain data types. That makes the coherent fix a relocation into `trading_core` (which `ui` already depends on unconditionally) rather than cfg-gating 21 sites — an architectural move that wants an ADR, hence not done unilaterally.
 - 2026-08-15 (orchestrator): **#90 OPTION 1 APPLIED** — the carve-out is now documented at the definition (no `Fill`, both parity gates blind by construction, why it is symmetric, why engine-routing was deferred) and **gated** by a new caller census, `liquidation_carve_out_census.rs`. A fill-tape gate can never see this path, so the caller set is the only thing that can be guarded — the test locks it in both directions (no new callers; no stale allow-list entries) and carries a >100-files sanity assert so a broken walker cannot pass vacuously. RED-proven by planting a third caller; the failure names the file and explicitly forbids just adding it to the allow-list. Options 2/3 still the operator's.
 - 2026-08-15 (orchestrator): **#89 PARTLY FIXED — the predicted tautology existed and is gone.** `t24_deterministic_across_runs` passed the SAME seed to both engines and asserted equal fills; RED-proven vacuous by mutating one seed to 999_999 (still passed), then replaced with deliberately DIFFERENT seeds asserting fills are seed-INDEPENDENT — true today, falsifiable the moment anyone wires `self.rng`, and annotated to say the anchor story must move with it. Field now carries a ⚠️ INERT doc comment. 225 backtest lib tests pass, clippy/fmt clean, anchors 119/119 (checked — paper.rs is on the fill path). Wire-or-delete still open.

@@ -85,11 +85,22 @@ hr
 # ── 4. latest log tails ──────────────────────────────────────────────────────
 printf "${B}LATEST RESULTS${N}\n"
 found=0
-for f in $(ls -t "$SCRATCH"/*.log 2>/dev/null | head -3); do
+now=$(date +%s)
+for f in $(ls -t "$SCRATCH"/*.log 2>/dev/null | head -4); do
   line=$(grep -E "^test result|BUILD EXIT|CLIPPY_EXIT|^error|FAILED" "$f" 2>/dev/null | tail -1)
   [ -z "$line" ] && line=$(tail -1 "$f" 2>/dev/null)
+  # AGE MATTERS. Without it this panel showed a 2-day-old failure line as if it
+  # were the current result — the monitor reporting stale state as live is worse
+  # than reporting nothing. Anything older than 1h is dimmed and marked.
+  mt=$(stat -f %m "$f" 2>/dev/null || echo "$now")
+  age=$(( (now - mt) / 60 )); tag=""
+  if   [ "$age" -ge 1440 ]; then tag=" ${R}[${D}$(( age / 1440 ))d old${R}]${N}"
+  elif [ "$age" -ge 60 ];  then tag=" ${Y}[$(( age / 60 ))h old]${N}"
+  elif [ "$age" -ge 5 ];   then tag=" ${D}[${age}m]${N}"
+  fi
   col="$D"; case "$line" in *"0 failed"*|*"EXIT: 0"*|*"EXIT=0"*) col="$G";; *FAILED*|*error*) col="$R";; esac
-  printf "  %-26s ${col}%s${N}\n" "$(basename "$f" .log | cut -c1-26)" "$(printf '%s' "$line" | cut -c1-46)"
+  [ "$age" -ge 60 ] && col="$D"   # never colour a stale line green or red
+  printf "  %-20s ${col}%s${N}%b\n" "$(basename "$f" .log | cut -c1-20)" "$(printf '%s' "$line" | cut -c1-40)" "$tag"
   found=1
 done
 [ "$found" = 0 ] && printf "  ${D}(no logs yet)${N}\n"
