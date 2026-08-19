@@ -810,9 +810,31 @@ impl MomentumStrategy {
             .map(|(i, (sym, _))| (sym.clone(), Decimal::from(i as u64 + 1)))
             .collect();
 
-        // residual_score = rank(basis) − rank(funding) — integer arithmetic, NO division.
-        // Positive residual: basis rank higher than funding rank → more-reversal-favored than
-        // what funding alone would predict. Long these (they outperform vs the funding mirror).
+        // residual_score = rank(funding) − rank(basis) — integer arithmetic, NO division.
+        //
+        // ── DIRECTION FIX, bug-log #76 (story 1-25) ──────────────────────────
+        // This was `rank(basis) − rank(funding)`, which ranked the basis axis
+        // INVERTED against this arm's own spec. The chain:
+        //
+        //   basis_reversal_score = −trailing_mean(basis)          (see :495)
+        //   ranks are built by DESCENDING sort  ⇒  rank 1 = best
+        //   ⇒ rank 1 = highest reversal score = LOWEST basis
+        //
+        // The old comment reasoned "positive residual: basis rank higher …
+        // more-reversal-favored", but with rank 1 = best a HIGHER rank NUMBER is
+        // WORSE. So `rank(basis) − rank(funding)` was maximal for the WORST basis,
+        // and `top_k_long` (which takes the HIGHEST scores) therefore longed the
+        // HIGHEST basis — the exact opposite of `config.rs:85`'s contract:
+        // "highest residual → long (lowest basis relative to funding)".
+        //
+        // Worked example, universe of 10:
+        //   ideal long = lowest basis (rank_basis 1) whose funding is unfavourable
+        //   (rank_funding 10) — its basis is better than funding predicts.
+        //     OLD: 1 − 10 = −9  → lowest score → the arm SHORTED it
+        //     NEW: 10 − 1 = +9  → highest score → the arm LONGS it   ✓
+        //
+        // Positive residual: funding rank worse than basis rank → the basis is more
+        // favourable than funding alone predicts. Long these.
         // Negative residual: short these.
         let mut result: BTreeMap<Symbol, Option<Decimal>> = self
             .universe_symbols
@@ -822,7 +844,7 @@ impl MomentumStrategy {
 
         for sym in basis_rank.keys() {
             if let (Some(&br), Some(&fr)) = (basis_rank.get(sym), funding_rank.get(sym)) {
-                *result.entry(sym.clone()).or_insert(None) = Some(br - fr);
+                *result.entry(sym.clone()).or_insert(None) = Some(fr - br);
             }
         }
 
@@ -2326,10 +2348,10 @@ selection_mode = "long_short"
         let residuals = strat.build_residual_scores();
 
         // AA: basis rank 1 (most neg → high score), funding rank 3 (most pos → low score)
-        //   → residual = 1 − 3 = −2
+        //   → residual = rank(funding)3 − rank(basis)1 = +2
         let aa_res = residuals.get(&aaa).copied().flatten();
         // CC: basis rank 3 (most pos → low score), funding rank 1 (most neg → high score)
-        //   → residual = 3 − 1 = +2
+        //   → residual = rank(funding)1 − rank(basis)3 = −2
         let cc_res = residuals.get(&ccc).copied().flatten();
 
         assert!(
@@ -2340,29 +2362,27 @@ selection_mode = "long_short"
         // Raw basis: AA (rank 1) > BB > CC (rank 3), so long AA short CC.
         // Residual: CC (residual +2) > BB > AA (residual −2), so long CC short AA.
         //
-        // READ THE NEXT TWO ASSERTION MESSAGES WITH CARE (review 1-21). They say
-        // "AA has high basis and low funding" and "CC has low basis and high funding".
-        // Both are FACTUALLY BACKWARDS for this fixture: AA's basis is −0.02 (the LOWEST)
-        // and CC's is +0.02 (the HIGHEST). bug-log #76 quotes the AA line verbatim as
-        // evidence, so the strings are left EXACTLY as written rather than quietly
-        // corrected — a fixed quote would make the bug-log entry unverifiable. The
-        // assertions themselves are true (they only test the SIGN of the residual); it is
-        // the prose that is wrong, and prose that contradicts its own fixture is how the
-        // direction defect stayed invisible. The direction is now pinned by value in
-        // `characterization_bug76_residual_arm_longs_the_highest_basis_name`; these
-        // messages get rewritten at the 1-25 re-lock, with the code.
+        // ── REWRITTEN AT THE 1-25 RE-LOCK (bug-log #76) ─────────────────────
+        // This block previously asserted the INVERTED direction and carried a note
+        // saying its own prose was "FACTUALLY BACKWARDS for this fixture" — left
+        // uncorrected so #76's evidence stayed quotable, and explicitly scheduled to
+        // be "rewritten at the 1-25 re-lock, with the code". The code is fixed
+        // (`residual = rank(funding) - rank(basis)`), so this is that rewrite: the
+        // assertions now state the CORRECT direction and the prose matches the fixture.
         assert!(
-            cc_res.unwrap() > aa_res.unwrap(),
-            "M-DEV-4: when funding is inverted vs basis, CC must have higher residual than AA. \
+            aa_res.unwrap() > cc_res.unwrap(),
+            "M-DEV-4 (#76 FIXED): AAUSDT (LOWEST basis) must out-rank CCUSDT (HIGHEST) on the residual. \
              CC residual={cc_res:?}, AA residual={aa_res:?}"
         );
         assert!(
-            aa_res.unwrap() < dec!(0),
-            "M-DEV-4: AA has high basis and low funding → residual must be negative (got {aa_res:?})"
+            aa_res.unwrap() > dec!(0),
+            "M-DEV-4 (#76 FIXED): AAUSDT has the LOWEST basis (-0.02) and the WORST funding (+0.03, it pays) \
+             -> its basis beats what funding predicts -> residual must be POSITIVE (got {aa_res:?})"
         );
         assert!(
-            cc_res.unwrap() > dec!(0),
-            "M-DEV-4: CC has low basis and high funding → residual must be positive (got {cc_res:?})"
+            cc_res.unwrap() < dec!(0),
+            "M-DEV-4 (#76 FIXED): CCUSDT has the HIGHEST basis (+0.02) and the BEST funding (-0.03, it earns) \
+             -> its basis is worse than funding predicts -> residual must be NEGATIVE (got {cc_res:?})"
         );
     }
 
@@ -2450,7 +2470,7 @@ selection_mode = "long_short"
     /// Do not delete it — the flip is the record that the direction was chosen, not
     /// inherited.
     #[test]
-    fn characterization_bug76_residual_arm_longs_the_highest_basis_name() {
+    fn direction_gate_bug76_residual_arm_longs_the_lowest_basis_name() {
         use time::OffsetDateTime;
         let ts0 = Timestamp::new(OffsetDateTime::UNIX_EPOCH);
         let aaa = Symbol::new("AAUSDT");
@@ -2484,18 +2504,21 @@ selection_mode = "long_short"
         let aa_res = residuals.get(&aaa).copied().flatten().expect("AA warmed");
         let cc_res = residuals.get(&ccc).copied().flatten().expect("CC warmed");
 
-        // LITERAL residual values — not an inequality (bug-log #76's moral).
+        // LITERAL residual values — not an inequality (bug-log #76's moral: every
+        // pre-fix residual test asserted only DIFFERENCE, which the inverted arm
+        // satisfied just as well). These are the values AFTER the direction fix.
         assert_eq!(
             aa_res,
-            dec!(-2),
-            "bug-log #76 characterization: AAUSDT (basis −0.02, the LOWEST) must currently \
-             score residual = rank(basis)1 − rank(funding)3 = −2. Got {aa_res}."
+            dec!(2),
+            "DIRECTION GATE (#76 FIXED): AAUSDT (basis −0.02, the LOWEST) must score \
+             residual = rank(funding)3 − rank(basis)1 = +2 — the strongest LONG. Got {aa_res}. \
+             If this reads −2 the subtraction order regressed to rank(basis) − rank(funding)."
         );
         assert_eq!(
             cc_res,
-            dec!(2),
-            "bug-log #76 characterization: CCUSDT (basis +0.02, the HIGHEST) must currently \
-             score residual = rank(basis)3 − rank(funding)1 = +2. Got {cc_res}."
+            dec!(-2),
+            "DIRECTION GATE (#76 FIXED): CCUSDT (basis +0.02, the HIGHEST) must score \
+             residual = rank(funding)1 − rank(basis)3 = −2 — the strongest SHORT. Got {cc_res}."
         );
 
         // The selection that follows from those values, asserted through the PUBLIC
@@ -2503,17 +2526,16 @@ selection_mode = "long_short"
         let longs = crate::cross_sectional::selector::top_k_long(&residuals, 1, dec!(0.5));
         let shorts = crate::cross_sectional::selector::bottom_k_short(&residuals, 1, dec!(0.5));
         assert!(
-            longs.contains_key(&ccc),
-            "bug-log #76 CHARACTERIZATION (KNOWN DEFECT): the residual arm currently LONGS \
-             CCUSDT — the HIGHEST-basis name (+0.02) — while its own doc and config.rs both \
-             say 'Long = highest residual (LOW-basis relative to its funding level)'. \
-             longs={longs:?}. If this FAILS, the direction was fixed (story 1-25): invert \
-             this test and re-run anchors #116-#119."
+            longs.contains_key(&aaa),
+            "DIRECTION GATE (#76 FIXED): the residual arm must LONG AAUSDT — the LOWEST-basis \
+             name (−0.02) — matching config.rs:85's contract 'highest residual → long (lowest \
+             basis relative to funding)'. longs={longs:?}. Before the fix it longed CCUSDT, \
+             the HIGHEST-basis name; if that returns, anchors #116-#119 are invalid again."
         );
         assert!(
-            shorts.contains_key(&aaa),
-            "bug-log #76 CHARACTERIZATION (KNOWN DEFECT): the residual arm currently SHORTS \
-             AAUSDT — the LOWEST-basis name (−0.02). shorts={shorts:?}"
+            shorts.contains_key(&ccc),
+            "DIRECTION GATE (#76 FIXED): the residual arm must SHORT CCUSDT — the HIGHEST-basis \
+             name (+0.02). shorts={shorts:?}"
         );
 
         // The contrast that makes it a defect rather than a choice: the long-only
@@ -2528,9 +2550,10 @@ selection_mode = "long_short"
         let basis_longs = crate::cross_sectional::selector::top_k_long(&basis_scores, 1, dec!(0.5));
         assert!(
             basis_longs.contains_key(&aaa),
-            "control: plain BasisReversal longs AAUSDT (the LOWEST basis) on the same \
-             values — the residual arm longs CCUSDT. The two arms disagree on the basis \
-             axis itself, which is bug-log #76. basis_longs={basis_longs:?}"
+            "control: plain BasisReversal longs AAUSDT (the LOWEST basis). AFTER the #76 fix \
+             the residual arm AGREES with it — both long AAUSDT. That agreement IS the gate: \
+             the two arms must not disagree on the sign of the basis axis itself. \
+             basis_longs={basis_longs:?}"
         );
     }
 

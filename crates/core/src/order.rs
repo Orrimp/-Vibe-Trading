@@ -157,10 +157,43 @@ impl Order {
             }
         }
 
-        // Exposure cap: notional of this order / equity <= cap
+        // ── Exposure cap on the RESULTING exposure, side-aware (bug-log #71) ──
+        //
+        // This used to cap the ORDER'S OWN notional and consult neither `side` nor
+        // `position_snapshot`:
+        //     let notional = qty.get() * last_mark.get();
+        //     if notional / equity > cap { reject }
+        //
+        // So a Sell that CLOSES a position — driving exposure toward zero — was
+        // rejected exactly as if it opened that much, silently (no else arm, no
+        // warn, no counter). The strategy recorded the close, the engine kept the
+        // position, and every later decision ran off a false flat. The mirror case
+        // bites shorts: a rising short's buy-to-cover is sized at the full short
+        // notional, so it could exceed the cap and be refused, leaving forced
+        // liquidation as the only exit (a mechanistic candidate for the 97.8-100%
+        // p95 MaxDD and the 86-328 liquidation counts on the MN surfaces).
+        //
+        // The cap is a limit on HOW MUCH EXPOSURE YOU END UP WITH, so it is
+        // evaluated on the resulting signed position:
+        //     resulting = base_qty + (Buy ? +qty : -qty)
+        //     |resulting| * mark / equity <= cap
+        // which permits closes and covers (resulting -> 0) while still blocking
+        // genuine over-exposure in EITHER direction, including opening a large
+        // short via Sell — which the old check could not see at all.
+        //
+        // Anchor note: when `position_snapshot` is the empty placeholder
+        // (`Position::empty(Symbol::new(""))`, as most unit tests and every
+        // no-position caller pass), `base_qty` is 0 and this reduces to
+        // `|±qty| * mark / equity` — byte-identical to the previous arithmetic.
+        // Behaviour changes ONLY where a real position is supplied, which is
+        // exactly the #71 case.
         if current_equity > Decimal::ZERO {
-            let notional = qty.get() * last_mark.get();
-            let exposure_frac = notional / current_equity;
+            let signed_delta = match side {
+                Side::Buy => qty.get(),
+                Side::Sell => -qty.get(),
+            };
+            let resulting_qty = position_snapshot.base_qty + signed_delta;
+            let exposure_frac = resulting_qty.abs() * last_mark.get() / current_equity;
             if exposure_frac > risk_limits.per_symbol_exposure_cap {
                 return Err(OrderError::Risk(RiskError::ExposureCap {
                     proposed: exposure_frac,

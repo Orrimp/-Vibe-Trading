@@ -222,6 +222,38 @@ test result: ok. 4 passed; 0 failed; 0 ignored
 **Impact**: story 1-17's LOCKED design certified fixed-fraction sizing as safe BECAUSE "the 0.50 portfolio cap throttles" high-cardinality bars — false. TS long/flat emits up to 10 Buys → ~90-100% gross in high-breadth regimes (anchored tim 0.78-0.87) vs the hashed `held_constant | exposure_cap=0.50` row in anchors #90/#91; the only real limiter is the cash pre-flight, which rations ALPHABETICALLY (BTreeMap emission order), starving alphabetically-late symbols — violating the design's own per-asset-independence criterion. The FAMILY-UNIFORM-FRAGILE verdict likely survives (p5-Sharpe ≈ exposure-scale-invariant; margins ≥~1.06 Sharpe uniform), but prob_loss/p95-maxdd are exposure-sensitive banded signals and the anchored body misdescribes the book — the 1-25 regeneration must correct the description and re-affirm the closure explicitly.
 **Moral** (the #68 lineage, risk-limit edition): a limit that is set, printed, and ratified into a design's safety argument is not a limit that is ENFORCED. Every declared risk control needs a binding test (construct a scenario where the limit must bind; assert it does).
 
+> **SOURCE-CONFIRMED 2026-08-17 (story 1-25 work, orchestrator).** The mechanism is now
+> pinned exactly, and it is stronger than "inert": the enforcer is **test-only**.
+>
+> `RiskLimits.portfolio_exposure_cap`'s own doc says *"When `Some(cap)`,
+> `risk::size_portfolio_target` enforces the cap atomically across the entire rebalance
+> vector."* That function is the **sole** enforcer — `Order::new` never reads the field.
+> Census of `size_portfolio_target(` across the whole workspace:
+>
+> | site | kind |
+> |---|---|
+> | `risk/src/portfolio.rs:67` | the definition |
+> | `risk/src/portfolio.rs:269,293,317,350` | its own unit tests |
+> | `agent/tests/v1_rebalance_reject.rs:88,169,255` | a test file |
+> | **anywhere in production** | **ZERO** |
+>
+> `montecarlo.rs` = 0 calls. `param_robustness_sweep.rs` = 0 calls. So the sweep scenarios
+> set `portfolio_exposure_cap: Some(dec!(0.50))` (`threshold_sweep.rs:156`,
+> `tcn_overlay_weights.rs:148`, `patchtst_overlay_weights.rs:155`; `pairs.rs:155` sets 0.75),
+> that number is printed into the hashed report bodies, and **nothing ever reads it**.
+>
+> **The sharp part:** `v1_rebalance_reject.rs` PROVES the enforcer works. So the corpus
+> contains a passing test for a limit that production never invokes — a gate verifying a
+> function rather than a behaviour, which is bug-log #77's shape one level out. Compare #80,
+> where the *helpers* turned out production-dead; here the *enforcer* is, so the limit
+> evaporates while its test stays green.
+>
+> **Family:** this is the third declared-limit-with-no-reader found in two days — #85 (two
+> account loss stops, zero read sites), #71 (a per-symbol cap that capped the order instead
+> of the position, and could be walked past in increments), and now #69. AC3's
+> "enforce-or-delete + a BINDING test for **every** declared risk limit" is the right
+> response precisely because the pattern is systemic rather than incidental.
+
 ### `#70` — The R3 data-coverage gate compares COARSE expected against RAW loaded: on horizon lanes it passes with ~4% of the data
 **Status**: FIXED 2026-08-04 (story 1-18 review patch pass) — one-line unit correction + a horizon-invariance test.
 **Discovery**: story 1-18 code review (Acceptance Auditor H2 + Edge Hunter H2, independently); orchestrator-verified at source.
