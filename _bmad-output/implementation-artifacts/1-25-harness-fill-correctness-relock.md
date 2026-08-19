@@ -62,14 +62,29 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
         Commit `7884f52`.
   - [x] **#72 / #73** — code halves already fixed 2026-08-04 (`fix(carry)`); verified still in place.
         Regeneration is what remains, and that is AC4.
-  - [ ] **#69** enforce-or-delete — **OPERATOR RULING REQUIRED.** Source-confirmed: `size_portfolio_target`
+  - [ ] **#69** — **RULED 2026-08-19: WIRE IT.** The operator chose to make the limit real rather than
+        strike the claim: call `size_portfolio_target` on the harness lanes so the declared `0.50`
+        actually binds, with a binding test per AC3. Changes results — absorbed by the re-lock, which
+        regenerates these surfaces anyway. The hashed bodies' `exposure_cap=0.50` becomes true rather
+        than aspirational. *(prior state, for the record:)* enforce-or-delete — Source-confirmed: `size_portfolio_target`
         is the sole enforcer and has **zero production callers** (definition + its own tests + 3 sites in
         `agent/tests/v1_rebalance_reject.rs`). Sweep scenarios set `Some(0.50)`, it is printed into hashed
         bodies, nothing reads it. Annotated at the declaration; commit `ae62de8`.
-  - [ ] **#68** implement-or-drop — **OPERATOR RULING REQUIRED.** `drift_rebalance_threshold` is swept,
+  - [ ] **#68** — **RULED 2026-08-19: DROP THE AXIS.** Remove `drift_rebalance_threshold` from the
+        Tier-1 grid and correct every surface that presents drift as an explored dimension. No
+        information is lost — there was none, the axis did nothing. Chosen over implementing a hold
+        band because that would be NEW strategy behaviour in a project declared feature-complete, and
+        the grid would then need cells that actually vary drift to be worth exploring (54 of 58 sit at
+        0.10). *(prior state, for the record:)* implement-or-drop — `drift_rebalance_threshold` is swept,
         **range-validated**, copied to `momentum.rs:194` — and read nowhere. One of the three advertised
         Tier-1 grid axes has no consumer. Annotated at the declaration; commit `ae62de8`.
-- [ ] Re-run + re-lock + errata + verdict re-derivation (AC4) — **BLOCKED: needs a compute window.**
+- [ ] Re-run + re-lock + errata + verdict re-derivation (AC4) — **RULED 2026-08-19: SPLIT OUT.**
+  The regeneration moves to its own story so the eight code fixes can be reviewed while a multi-day
+  compute window is scheduled. The split line falls BEFORE regeneration (plan §6) so no partial corpus
+  is ever produced. 1-25 therefore closes on the CODE deliverable; the re-lock story owns AC4 + AC5.
+  **Ordering constraint:** the re-lock cannot start until #69 (wire) and #68 (drop) land — both change
+  results, so regenerating first would produce a corpus obsolete on arrival.
+  Budget carried over, MEASURED not estimated:
   Budget MEASURED 2026-08-16 rather than estimated: one θ-surface = **1087 s (18.1 min)**, build 8.65 s
   (one-time), ~12.4× parallelism already in use. **34 surfaces ⇒ ≈10.3 h sequential, and that is a
   FLOOR** — the measured lane is long-only momentum (the cheap end); the MN family runs ~2× the order
