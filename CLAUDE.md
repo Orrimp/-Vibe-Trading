@@ -100,6 +100,14 @@ trading/
 - Every external I/O behind a trait so tests can fake it.
 - `unsafe` requires a `// SAFETY:` comment.
 - `cargo fmt` on save; `cargo clippy -- -D warnings` must pass.
+- **Scope verification to the crates you actually touched.** `clippy --all-targets` over the
+  workspace links **339 integration-test binaries** across 17 crates — one measured cycle took
+  **52 minutes** and repeated runs grew `target/debug` to **155 GB**, filling a 460 GB disk
+  (2026-08-19). Prefer `-p <crate>` for the crates in your diff; run the wide sweep only before a
+  release or when a change is genuinely cross-cutting (a `core` type, a shared trait). The
+  workspace `[profile.dev]`/`[profile.test]` now set `debug = "line-tables-only"` +
+  `split-debuginfo = "unpacked"` to cap the footprint — `release` is untouched, so anchored runs
+  and the measured cockpit render times are unaffected.
 - **Iced/cockpit UI: verify at the rendered-PIXEL layer** (the `iced_test::Emulator::screenshot`
   harnesses — `render_snapshots.rs`, `live_equity_render.rs`, `reports_populated_curve_render.rs`),
   exercising the *populated* state with a negative control — NOT unit tests, text-summary

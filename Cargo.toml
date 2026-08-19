@@ -39,6 +39,28 @@ resolver = "2"
 # GUI/rasterizer-heavy workspaces (deps do the per-frame pixel work; first-
 # party code does not). After this, a dev `cargo run` renders at ~release
 # speed without a release rebuild.
+# ── Dev/test disk footprint (added 2026-08-19) ────────────────────────────────
+# `cargo clippy/test --all-targets` links **339 integration-test binaries** across
+# 17 crates, and cargo's default `debug = true` embeds a FULL copy of DWARF in
+# each one. That is what grew `target/debug` to **155 GB** and filled a 460 GB
+# disk (measured, not estimated).
+#
+# `line-tables-only` keeps the part this project actually uses — file:line in
+# panics and test backtraces — and drops the variable/type tables that dominate
+# the size. `unpacked` split-debuginfo leaves debug data in the .o files instead
+# of copying it into every one of those 339 binaries.
+#
+# NEITHER affects the `release` profile, so anchored report runs, the measured
+# 17-24 ms cockpit renders, and every number in `evidence/` are untouched. Both
+# are reversible: delete these two lines and `cargo clean` to go back.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.test]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
 [profile.dev.package."*"]
 opt-level = 3
 
