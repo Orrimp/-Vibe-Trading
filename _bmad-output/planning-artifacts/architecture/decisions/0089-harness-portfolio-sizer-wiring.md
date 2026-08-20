@@ -89,6 +89,29 @@ over-cap vector; one proving the drift band actually suppresses a within-band re
 limit that cannot fail is precisely what created #69, so an assertion that passes without the control
 being active is not acceptable evidence.
 
+## ⚠️ PARTIALLY BLOCKED 2026-08-19 — D1 presupposes an enforcer that fits, and it does not
+
+Implementation stopped before any code. `size_portfolio_target` is **structurally long-only**:
+`TargetLeg.target_weight` is `[0, exposure_cap / k_long]` with `0 == close`, the only `Side::Sell` it
+emits is sell-to-flat (`portfolio.rs:121-130`), and it caps on `total_long_notional` alone. `run_path`
+has four transitions including **open-short** and **cover**, so routing the harness through it would
+silently break every short-capable lane — MN (#108-#119), basis-reversal (#100-#107), `*_ls`,
+`always_short`.
+
+**This reframes #69**: the enforcer may have gone uncalled because it could not serve a long/short
+harness, not because someone forgot to call it.
+
+**And it surfaced the larger finding: `exposure_cap = 0.50` has never been defined.** The MN book is
+6 legs at `fraction = 0.10`, so gross = 0.60 (breach), net ≈ 0.00 (far inside), long-only = 0.30
+(inside). All three are defensible readings, they disagree about whether the anchored MN surfaces
+violated their own declared limit, and the enforcer measures the one reading under which they did not.
+
+**Still standing:** D2 (breach policy), D5 (RED-provable gates), D6 (sizing preserved).
+**Now open:** D1, D3, D4 — all presuppose an enforcer that can express this book.
+
+Options and a recommendation (specify the measure first, then extend or drop) are in
+`docs/dev-notes/1-25-portfolio-control-rescope-2026-08-19.md`.
+
 ## Consequences
 
 - **Anchor-impacting on every non-BUYHOLD lane.** The Hold decision suppresses rebalances the current
