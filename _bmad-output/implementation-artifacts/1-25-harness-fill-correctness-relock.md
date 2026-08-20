@@ -70,7 +70,20 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
         is the sole enforcer and has **zero production callers** (definition + its own tests + 3 sites in
         `agent/tests/v1_rebalance_reject.rs`). Sweep scenarios set `Some(0.50)`, it is printed into hashed
         bodies, nothing reads it. Annotated at the declaration; commit `ae62de8`.
-  - [ ] **#68** — **RULED 2026-08-19: DROP THE AXIS.** Remove `drift_rebalance_threshold` from the
+  - [ ] **#68 + #69 are ONE defect — RE-RULED 2026-08-19: WIRE `size_portfolio_target` FULLY.**
+        Found while implementing the earlier rulings: `risk::size_portfolio_target` implements **both**
+        controls — the portfolio cap at `portfolio.rs:189` (`if let Some(portfolio_cap) =
+        limits.portfolio_exposure_cap`) **and** the drift hold band at `:110`
+        (`relative_drift > drift_threshold`). Neither parameter is inert by design; they are inert
+        because **the single function that consumes both has no production caller**. The hold band is
+        not missing — it is written, unit-tested, and never invoked.
+        **This SUPERSEDES the "drop the drift axis" ruling taken earlier the same day.** That ruling
+        rested on "implementing a hold band would be NEW strategy behaviour in a feature-complete
+        project" — a premise that is false: the behaviour already exists. The operator re-ruled to
+        wire the function fully and accept both controls, with binding tests for each per AC3. The
+        drift axis therefore becomes **real**, not removed, and the grid's three advertised axes all
+        become genuine.
+        *(superseded ruling, kept for the record:)* DROP THE AXIS — Remove `drift_rebalance_threshold` from the
         Tier-1 grid and correct every surface that presents drift as an explored dimension. No
         information is lost — there was none, the axis did nothing. Chosen over implementing a hold
         band because that would be NEW strategy behaviour in a project declared feature-complete, and
