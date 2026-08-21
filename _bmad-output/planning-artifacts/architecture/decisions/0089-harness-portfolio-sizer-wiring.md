@@ -89,6 +89,36 @@ over-cap vector; one proving the drift band actually suppresses a within-band re
 limit that cannot fail is precisely what created #69, so an assertion that passes without the control
 being active is not acceptable evidence.
 
+## D7 — `exposure_cap` MEANS GROSS: Σ |notional| (operator ruling, 2026-08-22)
+
+The blocking question below is answered. **`exposure_cap = 0.50` is a limit on GROSS exposure —
+Σ |notional| across all legs, long and short alike.**
+
+Rationale, as ruled: gross is the quantity that actually carries risk in a long/short book. Both legs
+can move against you, so a 3-long/3-short book at 0.60 gross is genuinely twice as exposed as a
+0.30 long-only one. **Net** was rejected as near-vacuous here — it is ~0 *by construction* on a
+market-neutral arm, so the cap could never bind on precisely the lanes it was written for.
+**Long-only** was rejected because it ignores half the book: an MN arm could add unbounded short
+exposure and never breach.
+
+**Consequences, stated plainly because they are not comfortable:**
+
+1. **The anchored MN surfaces DID breach their own declared limit.** At 6 legs × `fraction 0.10` the
+   book runs **0.60 gross against a hashed `exposure_cap = 0.50`**. Bug-log #69's reading — "the
+   declared limit is violated by construction on every MN path" — is now the **official** one, not a
+   candidate interpretation.
+2. **The existing enforcer cannot implement this ruling.** `size_portfolio_target` caps
+   `total_long_notional` (`portfolio.rs:191`), which is the long-only measure. Wiring it unchanged
+   would enforce the reading that was just rejected. It must be extended to signed target weights
+   with a gross-notional cap, or replaced.
+3. **Anchor-impacting in a second way.** It is not only that the cap starts binding — surfaces which
+   previously reported compliance were non-compliant under the ruled measure. 1-26's errata must say
+   so per scenario.
+4. **D1/D3/D4 are UNBLOCKED but re-scoped.** The target vector carries signed weights; the cap is
+   evaluated on Σ |notional|; `crates/risk`'s long-only tests all need companions.
+
+## ⚠️ RESOLVED by D7 — the analysis below is kept for the record
+
 ## ⚠️ PARTIALLY BLOCKED 2026-08-19 — D1 presupposes an enforcer that fits, and it does not
 
 Implementation stopped before any code. `size_portfolio_target` is **structurally long-only**:

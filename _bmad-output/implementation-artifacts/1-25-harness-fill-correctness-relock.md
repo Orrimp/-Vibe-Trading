@@ -70,7 +70,14 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
         is the sole enforcer and has **zero production callers** (definition + its own tests + 3 sites in
         `agent/tests/v1_rebalance_reject.rs`). Sweep scenarios set `Some(0.50)`, it is printed into hashed
         bodies, nothing reads it. Annotated at the declaration; commit `ae62de8`.
-  - [ ] **#68 + #69 are ONE defect — RE-RULED 2026-08-19: WIRE `size_portfolio_target` FULLY.**
+  - [ ] **#68 + #69 — UNITS RULED 2026-08-22: `exposure_cap` MEANS GROSS (Σ |notional|).** ADR-0089 D7.
+        The anchored MN surfaces **did** breach their declared limit (6 legs × 0.10 = **0.60 gross vs a
+        hashed 0.50**), so bug-log #69's reading is now official rather than a candidate. And
+        `size_portfolio_target` **cannot implement the ruling as written** — it caps
+        `total_long_notional`, the long-only measure that was explicitly rejected — so it must be
+        extended to signed weights with a gross cap, or replaced. 1-26's errata owes the per-scenario
+        non-compliance record.
+  - [ ] *(prior)* **#68 + #69 are ONE defect — RE-RULED 2026-08-19: WIRE `size_portfolio_target` FULLY.**
         Found while implementing the earlier rulings: `risk::size_portfolio_target` implements **both**
         controls — the portfolio cap at `portfolio.rs:189` (`if let Some(portfolio_cap) =
         limits.portfolio_exposure_cap`) **and** the drift hold band at `:110`
