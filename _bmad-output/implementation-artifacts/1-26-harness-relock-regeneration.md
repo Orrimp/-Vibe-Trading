@@ -42,7 +42,15 @@ as history, the migration honest, and the verdict re-derivation loud.
    re-examined is an assumption, not a guarantee.
 6. **Unblocks 1-21.** Its triad is deliberately unflipped pending a correctly-signed MN re-run. The
    re-derived verdicts — not the 1-21 review — decide what the market-neutral basis spread shows.
-7. Standing floor: anchors green (old + new rows); spec-lint PASS; advisor-gate independence
+7. **Un-ignore the four drift gates (bug-log #93).** `determinism.rs`'s `t717_*` / `tt1_*`
+   `*_anchor_hash_unchanged` tests re-run a scenario and compare its body-SHA to a pin. They are the
+   **only** gate that can observe code-vs-evidence drift — `verify_anchors.sh` hashes committed
+   bodies and never re-runs, which is why it reported 119/119 green while the code stopped
+   reproducing the evidence (`0f6f6eb8…` pinned vs `b655e5e7…` produced). They currently carry
+   `#[ignore]`. This story re-derives those pins from the regenerated surfaces and **removes the
+   attribute in the same commit** — the flip must be visible in the diff that re-prices the anchors.
+   Do NOT re-baseline them any other way: re-pinning a truthful gate to current output is #77.
+8. Standing floor: anchors green (old + new rows); spec-lint PASS; advisor-gate independence
    re-proven (`bakeoff/bootstrap.rs` resamples returns — assert its inputs/outputs unchanged).
 
 ## Tasks / Subtasks

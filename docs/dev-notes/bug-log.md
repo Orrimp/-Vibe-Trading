@@ -829,8 +829,41 @@ So one of the three axes the Tier-1 grid advertises — *"lookback × k_long × 
 
 **Fix direction (operator's call, per the 1-16 review's ratify-or-fix framing):** implement the hold band so the axis does what the grid claims, **or** drop the axis and correct the narrative at regeneration. Do not leave it swept-but-inert: every θ-surface currently presents drift as an explored dimension. If it is implemented, a **drift-only cell pair becomes a mandatory per-axis divergence probe** — the same shape as AD-16's overlay gate, and the only thing that would have caught this.
 
+### `#93` — `verify_anchors.sh` cannot see code-vs-evidence drift: it hashes committed bodies and never re-runs. The code stopped reproducing the frozen evidence, and 119/119 stayed green
+**Status**: OPEN — known-red, routed to story **1-26** (found 2026-08-22 while fixing the CI test step). Anchor-impacting: **that is the finding**.
+
+**What happened.** Four tests in `crates/backtest/tests/determinism.rs` (`t717_*`, `tt1_*`) RE-RUN a scenario from the pinned corpus and compare the resulting body-SHA to a literal. They are red:
+
+```
+top10-2023-1h-momentum
+  expected 0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3   (pinned; also in evidence/anchors.toml)
+  got      b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15   (what the code produces today)
+```
+
+**And `bash scripts/verify_anchors.sh` reports `ANCHORS PASS (119 / 119)` at the same moment.** Both are correct, because they measure different things:
+
+| gate | measures | can it see drift? |
+|---|---|---|
+| `verify_anchors.sh` | SHA-256 of the **committed report bodies** | **no** — the files are unchanged, so it passes forever |
+| `determinism.rs` `*_anchor_hash_unchanged` | SHA of a **freshly re-run** scenario | **yes** — this is the only such gate in the repo |
+
+So the corpus's own regression gate is structurally blind to the case where the *code* moves away from the *evidence*. The frozen bodies stay byte-identical; nothing re-derives them; the gate reports green. The four re-running tests are the closure for exactly that blind spot — and they are the ones that went red.
+
+**They are telling the truth, and they predate this session.** Bisect against `83378c5` shows they failed **before** #67/#71/#75/#76 landed. Those fixes moved the numbers further; they did not cause the divergence. Something changed the harness's arithmetic earlier and the pins were never re-derived.
+
+**Why they are now `#[ignore]`d rather than fixed or re-baselined.** Re-baselining a truthful regression gate to whatever the code currently emits is bug-log **#77**'s exact failure — it converts the gate into a rubber stamp and silently blesses whatever caused the drift. The pins can only be legitimately re-derived by the **1-26 re-lock**, which regenerates the affected surfaces under a new namespace and records per-scenario old-vs-new numbers in an errata. Until then they carry `#[ignore]` with the reason inline, CI verifies everything else, and they remain runnable:
+
+```
+cargo test -p backtest --test determinism -- --ignored
+```
+
+**A correction recorded with it.** The CI failure was first diagnosed as "the machine-local corpus is absent on runners" and a skip-guard was written for it. That premise is **false**: `data/binance` is **tracked**, so a runner has it. The gitignored — and therefore genuinely CI-absent — data dirs are `audit`, `audit.db`, `binance-dynamic`, `reflection`. The guard was removed rather than left in place, because a guard documenting a condition that never occurs is itself the declared-vs-actual defect this log exists to catch.
+
+**Moral**: an immutability gate is not a reproducibility gate. Hashing what you stored proves only that storage is intact; it says nothing about whether the producer still produces it. If the evidence is meant to be *reproducible*, something must actually re-run — and that something must be allowed to fail.
+
 ## Changelog
 
+- 2026-08-22 (orchestrator): **#93 added (OPEN, known-red → 1-26)** — `verify_anchors.sh` hashes COMMITTED report bodies and never re-runs, so it cannot see the code drifting away from the evidence: it printed `ANCHORS PASS (119/119)` while four re-running determinism tests showed the same scenario now hashes `b655e5e7…` against a pinned `0f6f6eb8…`. Those four are the ONLY gate in the repo that can observe code-vs-evidence drift, and they are correctly red; bisect puts the divergence BEFORE #67/#71/#75/#76. `#[ignore]`d with the reason inline (still runnable via `-- --ignored`) rather than re-baselined, because re-pinning a truthful gate to current output is #77's failure. Also corrects a wrong diagnosis: the CI failure is NOT missing corpus — `data/binance` is TRACKED and present on runners; the gitignored dirs are `audit`, `audit.db`, `binance-dynamic`, `reflection`. The skip-guard written on that false premise was removed.
 - 2026-08-22 (orchestrator): **#69 UNITS RULED — `exposure_cap` MEANS GROSS (Σ |notional|)**, ADR-0089 D7. This settles a question the corpus never answered and it lands against the surfaces: at 6 legs × fraction 0.10 the MN book runs **0.60 gross vs its hashed `exposure_cap = 0.50`**, so **the anchored MN surfaces DID breach their own declared limit** — #69's reading is now the official one, not a candidate. Net was rejected as near-vacuous (≈0 by construction on a market-neutral arm, so the cap could never bind on the very lanes it was written for); long-only was rejected because it ignores half the book. **Consequence for the fix: `size_portfolio_target` cannot implement the ruling as written** — it caps `total_long_notional`, the long-only measure that was just rejected — so it must be extended to signed weights with a gross cap, or replaced. The second-order consequence is the sharper one: surfaces that previously *reported compliance* were non-compliant under the ruled measure, so 1-26's errata owes a per-scenario record, not just new numbers.
 - 2026-08-22 (orchestrator): **#92 RULED — fix the cfg gating AND add a CI leg.** Relocate the shared types (`ActivityEvent`, `HaltReason`, the activity enums) into `trading_core`, which `ui` already depends on unconditionally, then add a CI job that builds the minimal config so it cannot rot again. Chosen over deleting the claim or fixing without coverage: it is the only option that closes the declared-vs-executed family rather than changing which side happens to be true. Unblocks **#91**, whose fix lives in exactly that build. Needs an ADR for the type relocation.
 - 2026-08-17 (orchestrator): **#68 SOURCE-CONFIRMED** — the drift axis is inert. `drift_rebalance_threshold` is swept (`sweep_harness.rs:1721`), **range-validated** (`config.rs:418`), copied to `momentum.rs:194`'s `drift_threshold` field — and read NOWHERE (grep returns only the declaration and the assignment). One of the three advertised Tier-1 grid axes has no consumer; the code validates a number it never uses. Grid measured: 58 cells, 54 at 0.10 / 1 at 0.30 / 3 at 0.50. NOT established: whether a drift-only cell pair exists in the anchored grid — a regex parse returned a self-contradictory candidate and was discarded. Fourth declared-but-unread control in three days (#85, #69, #71, #68).
