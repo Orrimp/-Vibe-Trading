@@ -488,6 +488,37 @@ fn run_scenario_once(scenario: &str) -> String {
         .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
 }
 
+/// Corpus-presence gate for the real-data anchor-hash tests (task #11 / CI).
+///
+/// These tests shell out to the backtest binary, which reads the PINNED Binance
+/// corpus under `data/binance/`. That corpus is machine-local: it is not in the
+/// repo and never reaches a CI runner, so `output.status.success()` fails there
+/// and the whole `Test workspace (non-ui crates)` step goes red — which is what
+/// kept all three CI legs failing.
+///
+/// Returns `false` and prints a `[skip]` line when the corpus is absent.
+///
+/// The `[skip]` marker is NOT decoration: `.github/workflows/ci.yml` greps for it
+/// and reports the count, precisely so a green CI run is never read as "the
+/// real-data guards executed". That is bug-log #66's discipline — an
+/// unobservable skip is indistinguishable from a pass.
+fn binance_corpus_present(what: &str) -> bool {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("workspace root is two levels above crates/backtest");
+    let corpus = root.join("data").join("binance");
+    if corpus.is_dir() {
+        return true;
+    }
+    println!(
+        "[skip] {what}: pinned Binance corpus absent at {} — this anchor-hash check runs \
+         on the canonical box only. NOT a pass: nothing was verified.",
+        corpus.display()
+    );
+    false
+}
+
 fn scenario_body_hex(scenario: &str) -> String {
     let report = run_scenario_once(scenario);
     let hash = backtest::report_body_hash(&report);
@@ -693,6 +724,9 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `3b60ef07…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_top10_2023_momentum_anchor_hash_unchanged() {
+    if !binance_corpus_present("t717_top10_2023_momentum_anchor_hash_unchanged") {
+        return;
+    }
     const ANCHOR: &str = "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
     assert_eq!(
@@ -708,6 +742,9 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `1f33534f…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_top10_2024_momentum_anchor_hash_unchanged() {
+    if !binance_corpus_present("t717_top10_2024_momentum_anchor_hash_unchanged") {
+        return;
+    }
     const ANCHOR: &str = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
     assert_eq!(
@@ -734,6 +771,9 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `01d02584…` replaced with canonical 8-bps SHA.
 #[test]
 fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
+    if !binance_corpus_present("tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged") {
+        return;
+    }
     const ANCHOR: &str = "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc";
     let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
     assert_eq!(
@@ -749,6 +789,9 @@ fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `e24c85ac…` replaced with canonical 8-bps SHA.
 #[test]
 fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
+    if !binance_corpus_present("tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged") {
+        return;
+    }
     const ANCHOR: &str = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e";
     let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");
     assert_eq!(

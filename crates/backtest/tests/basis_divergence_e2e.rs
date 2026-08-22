@@ -234,10 +234,23 @@ fn run_to_result(
     cfg: strategy::CrossSectionalMomentumConfig,
     bars: Vec<Bar>,
     // The basis sidecar map (basis values keyed by (Symbol, Timestamp)).
-    // Passed via funding_override so run_path injects it into the strategy.
+    //
+    // #75 (story 1-25, 2026-08-22): this used to be handed to `funding_override`
+    // and rely on `run_path` calling `strategy.with_funding(funding_override)` to
+    // put it on the SCORE channel. That injection is gone — `funding_override` is
+    // now the ACCRUAL channel and nothing else, because it was silently clobbering
+    // the caller's pre-injected score map on the MN-basis arm (which is why
+    // anchors #108-#111 were duplicate funding runs).
+    //
+    // So this helper now injects the score map EXPLICITLY, which is also what the
+    // production wiring does (`run_to_result_production_wiring` below). The two
+    // helpers previously differed in a way the file's own doc-comment called "the
+    // INVERSE of the production wiring"; they now agree on the score channel and
+    // differ only in whether an accrual map is supplied.
     basis_override: Option<BTreeMap<(Symbol, Timestamp), Decimal>>,
 ) -> backtest::scenarios::montecarlo::PathRunResult {
-    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("basis_e2e_test"));
+    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("basis_e2e_test"))
+        .with_funding(basis_override.clone());
     let input = TcnScenarioInput {
         bar_span_hours: 1,
         scenario_name: "basis-e2e".to_string(),
@@ -251,9 +264,9 @@ fn run_to_result(
         bars_override: Some(bars),
         emit_equity_bin: None,
         latency_slippage_sim: backtest::cli_types::LatencySlippageSimConfig::default(),
-        // Pass the basis map via funding_override so run_path injects it into
-        // the strategy's funding_map (line 155: `strategy.with_funding(funding_override)`).
-        // The accrual block will run but its effect is minor for these selection tests.
+        // Accrual channel only (#75). The score map is injected above. Keeping the
+        // same map here preserves this helper's original accrual behaviour, whose
+        // effect is minor for these selection tests.
         funding_override: basis_override,
     };
     pollster::block_on(run_path(input, 0xC0FFEE, strat))
@@ -471,14 +484,33 @@ fn r_br_production_wiring_preserves_pre_injected_basis_map() {
          Got {} fills.",
         control.trades
     );
-    assert_ne!(
-        armed.final_equity, control.final_equity,
-        "PRODUCTION-WIRING REGRESSION: the pre-injected basis map made NO difference to \
-         equity (armed={}, control={}). Under the production wiring the map reaches the \
-         score ONLY via the run_path preservation branch; if it is clobbered, the armed \
-         run degenerates to the control exactly, which is what this equality means.",
-        armed.final_equity, control.final_equity
-    );
+    // ── EQUITY ASSERTION REMOVED 2026-08-22 (bug-log #67) ────────────────
+    // This used to be `assert_ne!(armed.final_equity, control.final_equity)`.
+    // It was satisfiable ONLY because of the defect it now outlives.
+    //
+    // The basis map gives BBUSDT the most negative basis (-0.015), so
+    // `BasisReversal` selects BBUSDT — and BBUSDT's price is FLAT at 500.0 by
+    // construction in `build_divergence_universe` ("flat -> poor momentum",
+    // which is the contrast the momentum tests in this file need). With
+    // `slippage_bps: 0` and `taker_fee_bps: 0`, buying a flat asset and marking
+    // it at the same price yields EXACTLY zero P&L. Under correct fill pricing
+    // the armed run therefore MUST land on the control, and asserting otherwise
+    // asserts something that cannot be true.
+    //
+    // It passed before because #67 priced the fill at whatever symbol's bar the
+    // merged loop was on — a foreign close — manufacturing an equity delta out
+    // of the mispricing. Same shape as `run_path_k_short_zero_..._is_pinned`,
+    // whose pinned "profit" was also #67's artifact.
+    //
+    // The gate is NOT weakened: the two assertions above are strictly stronger
+    // evidence for what this test exists to prove. `armed.trades > 0` with
+    // `control.trades == 0` shows the pre-injected map reached the score and
+    // changed behaviour. An equity delta showed only that SOME number moved, and
+    // it moved for the wrong reason.
+    //
+    // If you want an equity-level falsifier here, give BBUSDT a non-flat series
+    // or non-zero fees — do not restore an assertion that correct arithmetic
+    // forbids.
     // D-BR.1: the basis is a SELECTION signal — the accrual block must stay
     // unreachable under the production wiring (funding_override = None).
     assert_eq!(

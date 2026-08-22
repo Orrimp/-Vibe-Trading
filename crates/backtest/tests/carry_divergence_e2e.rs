@@ -787,7 +787,13 @@ fn carry_funding_total(size: usize, bar_span_hours: u32, n_bars: i64) -> Decimal
     cfg.universe = syms.iter().map(SmolStr::new).collect();
     cfg.k_long = 1;
 
-    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("carry_span_test"));
+    // #75 (2026-08-22): second construction site in this file — `run_to_result`
+    // above was fixed in the same pass and this one was missed. `funding_override`
+    // is the ACCRUAL channel only now; the carry arm SCORES on funding, so with no
+    // score map it takes no positions and there is nothing to accrue on, which
+    // collapses both `funding_accrual_*` measurements to zero.
+    let strat = strategy::MomentumStrategy::from_config(cfg, SmolStr::new("carry_span_test"))
+        .with_funding(Some(funding.clone()));
     let input = TcnScenarioInput {
         scenario_name: "carry-span".to_string(),
         start_year: 2023,

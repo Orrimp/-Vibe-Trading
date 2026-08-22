@@ -1225,7 +1225,7 @@ fn mn_no_look_ahead_both_sidecars() {
 /// test — flip its assertions, so the flip is visible in the diff that re-prices the
 /// anchors.
 #[test]
-fn characterization_bug75_funding_override_clobbers_injected_score_map() {
+fn gate_bug75_pre_injected_score_map_survives_the_accrual_map() {
     const N_HOURS: usize = 40;
 
     let sym_a = Symbol::new("AAUSDT");
@@ -1245,9 +1245,24 @@ fn characterization_bug75_funding_override_clobbers_injected_score_map() {
         funding_map.insert((sym_a.clone(), ts), dec!(-0.030)); // best score under −mean → LONGED
         funding_map.insert((sym_b.clone(), ts), dec!(0.030)); // worst → SHORTED
         funding_map.insert((sym_c.clone(), ts), dec!(0.001));
-        other_map.insert((sym_a.clone(), ts), dec!(0.777));
-        other_map.insert((sym_b.clone(), ts), dec!(-0.555));
-        other_map.insert((sym_c.clone(), ts), dec!(0.123));
+        // ── FIXTURE CORRECTED 2026-08-22 (bug-log #75) ──────────────────
+        // These were 0.777 / -0.555 / 0.123, which rank A worst, C mid, B best —
+        // the SAME ordering as `basis_map` (+0.010 / -0.020 / +0.005).
+        // `BasisReversal` ranks cross-sectionally, so only the ORDER matters and
+        // the "nonsense" map selected exactly the same legs. The leg could never
+        // discriminate.
+        //
+        // That was invisible while the clobber made every pre-injection
+        // irrelevant: with no pre-injection surviving, identical equity was the
+        // expected result and the test passed for the wrong reason. Separating
+        // the channels is what exposed it.
+        //
+        // Reversed so the ordering is now A best, C mid, B worst — the exact
+        // inverse of `basis_map`, which is what a map called "nonsense" has to be
+        // to falsify anything.
+        other_map.insert((sym_a.clone(), ts), dec!(-0.777));
+        other_map.insert((sym_b.clone(), ts), dec!(0.555));
+        other_map.insert((sym_c.clone(), ts), dec!(-0.123));
     }
 
     // Production's MN-basis wiring: basis pre-injected as the SCORE, real funding handed
@@ -1284,25 +1299,32 @@ fn characterization_bug75_funding_override_clobbers_injected_score_map() {
         injected_basis.trades
     );
 
-    assert_eq!(
+    // ── FLIPPED AT THE 1-25 RE-LOCK (bug-log #75, 2026-08-22) ────────────
+    // This test previously pinned the DEFECT with `assert_eq!` on both legs, and
+    // its own doc-comment instructed: "Invert it ... Do not delete this test —
+    // flip its assertions, so the flip is visible in the diff that re-prices the
+    // anchors." This is that flip.
+    //
+    // `funding_override` is now the ACCRUAL channel and nothing else; `run_path`
+    // no longer calls `with_funding` at all, so a caller's pre-injected score map
+    // survives. The two legs below are the proof.
+    assert_ne!(
         injected_basis.final_equity, injected_nonsense.final_equity,
-        "bug-log #75 CHARACTERIZATION (KNOWN DEFECT): pre-injecting the basis map vs \
-         pre-injecting a nonsense map currently makes NO difference — `run_path` \
-         overwrites the score map with `funding_override` whenever it is `Some`, which \
-         on the MN lane is always. basis-injected={}, nonsense-injected={}. \
-         If this assertion FAILS, the two channels have been separated (story 1-25) — \
-         that is the FIX, not a regression: invert this test and re-lock anchors \
-         #108-#111.",
+        "bug-log #75 GATE: pre-injecting the BASIS map must now produce different equity \
+         from pre-injecting a NONSENSE map — the pre-injection has to matter. \
+         basis-injected={}, nonsense-injected={}. If these are equal again, the score map \
+         is being clobbered once more and anchors #108-#111 would revert to duplicate \
+         funding runs.",
         injected_basis.final_equity, injected_nonsense.final_equity,
     );
 
-    assert_eq!(
+    assert_ne!(
         injected_basis.final_equity, injected_funding.final_equity,
-        "bug-log #75 CHARACTERIZATION (KNOWN DEFECT): the arm scores on the ACCRUAL map. \
-         Pre-injecting the basis and pre-injecting the funding map land on the same \
-         equity ({} vs {}) because only `funding_override` reaches the score. This is why \
-         `mn-basis` (#108-#111) and `mn-funding` (#112-#115) came out bit-identical. \
-         Invert at the 1-25 re-lock.",
+        "bug-log #75 GATE: the arm must no longer score on the ACCRUAL map. Pre-injecting \
+         the basis and pre-injecting the funding map must now land on DIFFERENT equity \
+         ({} vs {}). Their equality was why `mn-basis` (#108-#111) and `mn-funding` \
+         (#112-#115) came out bit-identical — the finding that made the k2 kill-criterion \
+         fire on funding-vs-funding.",
         injected_basis.final_equity, injected_funding.final_equity,
     );
 }

@@ -247,17 +247,10 @@ mod activity_types {
         assert!(set.contains(&ActivityKind::Training));
     }
 
-    /// T-D-N1 — `ActivityId` atomic counter is strictly monotonic across
-    /// two consecutive calls.
-    #[test]
-    fn activity_id_atomic_monotonic() {
-        let a = ActivityId::next();
-        let b = ActivityId::next();
-        assert!(b.0 > a.0, "expected b ({}) > a ({})", b.0, a.0);
-        // Also verify the underlying counter advanced (not stuck).
-        let current = NEXT_ACTIVITY_ID.load(Ordering::Relaxed);
-        assert!(current > b.0, "counter must have advanced past b");
-    }
+    // T-D-N1 (`activity_id_atomic_monotonic`) MOVED to `trading_core::activity`
+    // with the counter itself (bug-log #92, 2026-08-22). It reached into the
+    // private `NEXT_ACTIVITY_ID` static, which now lives there — the test follows
+    // the code it tests rather than reaching across a crate boundary.
 
     /// T-D-N3 — A dropped `ActivityHandle` emits exactly one `End { Success }`
     /// event on the channel (happy path).

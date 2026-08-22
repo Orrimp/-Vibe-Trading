@@ -105,3 +105,25 @@ pub struct ActivityEvent {
     /// Wall-clock milliseconds since the Unix epoch (UTC) at event emission.
     pub ts_ms: i64,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T-D-N1 — `ActivityId`'s atomic counter is strictly monotonic across two
+    /// consecutive calls, and the underlying static actually advances.
+    ///
+    /// Moved here from `agent::activity` with the counter (bug-log #92): it reads
+    /// the private `NEXT_ACTIVITY_ID`, so it can only live in this module. That
+    /// coupling is precisely why the relocation broke `agent`'s TEST build while
+    /// `cargo check -p agent` stayed green — the lib compiled, the test target did
+    /// not. Verified here with `--all-targets`.
+    #[test]
+    fn activity_id_atomic_monotonic() {
+        let a = ActivityId::next();
+        let b = ActivityId::next();
+        assert!(b.0 > a.0, "expected b ({}) > a ({})", b.0, a.0);
+        let current = NEXT_ACTIVITY_ID.load(Ordering::Relaxed);
+        assert!(current > b.0, "counter must have advanced past b");
+    }
+}
