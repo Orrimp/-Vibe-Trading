@@ -1270,24 +1270,31 @@ pub fn spawn_lab_run(
     let strategy = cfg.strategy_id.clone();
     let symbol = cfg.symbol.clone();
 
-    // Fixtures / no-`live` / no-runtime mode: immediately resolve.
+    // ── #91 FIXED 2026-08-22 ─────────────────────────────────────────────
+    // This arm used to return `Message::LabRunCompleted(Ok(RunSummary{ empty }))`
+    // — a SUCCESS carrying zero fills, zero equity, default KPIs and no report
+    // path: the exact wire shape of a real run that produced nothing. Both
+    // siblings answer the same case with `Err`:
+    //     spawn_bakeoff       -> Err(LEADERBOARD_RUN_NEEDS_LIVE)   (leaderboard/runner.rs:246)
+    //     spawn_training_run  -> Err("training not supported ...")  (lab/trainer.rs:363)
+    // Two of three bailed; one returned a plausible value. That is the same
+    // discriminator that separated harmless `backtest/candle` (all off-arms
+    // bail) from bug-log #81 (`backtest/realdata` returns a bare `None`).
+    //
+    // The stub's original rationale — "useful for the fixture cockpit" — expired
+    // on 2026-05-25, the day AFTER it was written, when `live` became a default
+    // feature and `--features fixtures` began ADDING to defaults rather than
+    // replacing them. No shipping target has taken this branch since.
+    //
+    // It is reachable and verifiable again only because bug-log #92 fixed the
+    // `--no-default-features` build; before that this code could not even be
+    // compiled, which is why the fix waited.
     #[cfg(not(feature = "live"))]
     {
-        // In fixture mode there's no tokio runtime to drive the progress channel.
-        // Drop the cancel receiver + progress sender immediately (no-op).
-        let _ = cancel;
-        let _ = progress_tx;
-        let summary = RunSummary {
-            strategy_id: strategy,
-            symbol,
-            report_path: None,
-            equity_series: Vec::new(),
-            fills: Vec::new(),
-            kpis: backtest::BacktestKpis::default(),
-            bars: Arc::new(Vec::new()),
-            position_curve: Vec::new(),
-        };
-        iced::Task::done(Message::LabRunCompleted(Ok(summary)))
+        let _ = (strategy, symbol, cancel, progress_tx);
+        return iced::Task::done(Message::LabRunCompleted(Err(smol_str::SmolStr::new(
+            crate::strings::LAB_RUN_NEEDS_LIVE,
+        ))));
     }
 
     #[cfg(feature = "live")]

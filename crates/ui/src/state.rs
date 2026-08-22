@@ -18,7 +18,7 @@ use trading_core::{
     Tick, Timestamp, Usdt, Venue,
 };
 
-use agent::ActivityEvent;
+use trading_core::ActivityEvent;
 
 use crate::lab::activity::ActivityTape;
 use crate::lab::state::{DateRange, LabState};
@@ -547,7 +547,7 @@ pub enum MarketHealthState {
 /// Constructed by `cockpit_live` (the unified bin); left `None` for
 /// `cockpit --features fixtures` (no kill switch to trip).
 #[cfg(feature = "live")]
-pub type KillTripFn = std::sync::Arc<dyn Fn(agent::HaltReason) + Send + Sync>;
+pub type KillTripFn = std::sync::Arc<dyn Fn(trading_core::HaltReason) + Send + Sync>;
 
 /// Per-strategy status pill (R5). A row can carry an error badge (with
 /// `error_summary` copy) while the overall panel is still `Ready` — this is
@@ -2896,7 +2896,7 @@ pub fn update(model: &mut Cockpit, msg: Message) {
                 // `KillState::Flattening` without any agent contact.
                 #[cfg(feature = "live")]
                 if let Some(trip) = model.kill_switch.as_ref() {
-                    trip(agent::HaltReason::ManualOperator);
+                    trip(trading_core::HaltReason::ManualOperator);
                 }
                 model.kill = KillState::Flattening;
             }
@@ -5033,7 +5033,7 @@ mod tests {
     fn t906_kill_confirmed_calls_trip_closure_with_manual_operator() {
         use std::sync::Mutex;
 
-        let captured: std::sync::Arc<Mutex<Vec<agent::HaltReason>>> =
+        let captured: std::sync::Arc<Mutex<Vec<trading_core::HaltReason>>> =
             std::sync::Arc::new(Mutex::new(Vec::new()));
         let captured_clone = std::sync::Arc::clone(&captured);
         let trip: KillTripFn = std::sync::Arc::new(move |reason| {
@@ -5060,7 +5060,7 @@ mod tests {
             "trip closure must be called exactly once on KillConfirmed",
         );
         assert!(
-            matches!(calls[0], agent::HaltReason::ManualOperator),
+            matches!(calls[0], trading_core::HaltReason::ManualOperator),
             "trip closure must receive HaltReason::ManualOperator, got {:?}",
             calls[0],
         );

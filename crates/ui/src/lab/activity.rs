@@ -15,7 +15,7 @@
 
 use std::time::{Duration, Instant};
 
-use agent::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
+use trading_core::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -203,7 +203,7 @@ impl ActivityTape {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use agent::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
+    use trading_core::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
 
     use super::ActivityTape;
 

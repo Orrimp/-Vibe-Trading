@@ -1580,6 +1580,7 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
         ("LEADERBOARD_PROGRESS_FMT", LEADERBOARD_PROGRESS_FMT),
         ("LEADERBOARD_ERROR_PREFIX", LEADERBOARD_ERROR_PREFIX),
         ("LEADERBOARD_RUN_NEEDS_LIVE", LEADERBOARD_RUN_NEEDS_LIVE),
+        ("LAB_RUN_NEEDS_LIVE", LAB_RUN_NEEDS_LIVE),
         // advisor-dynamic-data fetch-error copy (ADR-0061 Wave C)
         (
             "LEADERBOARD_FETCH_NETWORK_ERROR",
@@ -2880,6 +2881,16 @@ pub const LEADERBOARD_ERROR_PREFIX: &str = "The bake-off could not run";
 /// build rather than hanging or panicking.
 pub const LEADERBOARD_RUN_NEEDS_LIVE: &str = "Running a bake-off needs the live build. Launch the cockpit with \
      `cargo run -p ui --bin cockpit_live` to rank strategies on real data.";
+
+/// Lab run attempted in a non-`live` build (bug-log #91).
+///
+/// `spawn_lab_run` used to answer this case with `Ok(RunSummary{ empty })` — a
+/// SUCCESS carrying zero fills, zero equity and default KPIs, i.e. the exact wire
+/// shape of a real run that produced nothing. Both siblings
+/// (`spawn_bakeoff`, `spawn_training_run`) return `Err`. It now does too, and this
+/// is the message.
+pub const LAB_RUN_NEEDS_LIVE: &str = "Running a backtest needs the live build. Launch the cockpit with \
+     `cargo run -p ui --bin cockpit_live` to run strategies on real data.";
 
 /// Dynamic fetch failed — no network connectivity or Binance unreachable.
 /// Maps to `BinanceFetchError::Network` / `::Timeout` (ADR-0061 Wave C).

@@ -44,29 +44,10 @@ pub enum KillSwitchError {
     Io(#[from] std::io::Error),
 }
 
-/// Reasons the kill switch can be tripped.
-#[derive(Debug, Clone)]
-pub enum HaltReason {
-    HaltFile,
-    HeartbeatTimeout,
-    LedgerImbalance,
-    ClockSkew,
-    ManualOperator,
-    Test,
-}
-
-impl std::fmt::Display for HaltReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::HaltFile => write!(f, "halt_file"),
-            Self::HeartbeatTimeout => write!(f, "heartbeat_timeout"),
-            Self::LedgerImbalance => write!(f, "ledger_imbalance"),
-            Self::ClockSkew => write!(f, "clock_skew"),
-            Self::ManualOperator => write!(f, "manual_operator"),
-            Self::Test => write!(f, "test"),
-        }
-    }
-}
+// `HaltReason` RELOCATED to `trading_core::halt` (bug-log #92, 2026-08-22) —
+// `ui` referenced it unconditionally while `agent` is a `live`-only dependency.
+// The `KillSwitch` itself stays here; only the reason enum moved.
+pub use trading_core::halt::HaltReason;
 
 /// Arguments handed to an [`IncidentSpawner`] when the kill switch trips
 /// (T809 — operator success reports R12.1c).

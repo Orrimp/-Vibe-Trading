@@ -5,6 +5,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::float_arithmetic)]
 #![warn(clippy::pedantic)]
 
+pub mod activity;
 pub mod asset;
 pub mod bar;
 pub mod equity_series;
@@ -15,6 +16,7 @@ pub mod funding;
 /// Per-bar funding-rate constant for single-coin directional shorts (ADR-0068 D4).
 pub mod funding_rate;
 pub mod fx;
+pub mod halt;
 pub mod money;
 pub mod order;
 pub mod pair;
@@ -31,6 +33,7 @@ pub mod universe;
 pub mod venue;
 pub mod views;
 
+pub use activity::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
 pub use asset::{Asset, Btc, Currency, Usdt};
 pub use bar::{Bar, Timeframe};
 pub use equity_series::{BacktestMetrics, EquityPoint, EquitySeries, EquitySeriesError};
@@ -46,6 +49,7 @@ pub use forecast::{
 pub use funding::FundingObs;
 pub use funding_rate::{DEFAULT_PERP_FUNDING_RATE, FundingRate, FundingRateError};
 pub use fx::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxNote, FxRate, FxRateError};
+pub use halt::HaltReason;
 pub use money::Money;
 pub use money::{Price, Quantity};
 pub use order::{Order, OrderId, OrderKind, ProposedOrder, RiskLimits, TimeInForce};

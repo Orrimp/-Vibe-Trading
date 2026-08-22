@@ -12,95 +12,24 @@
 //!   during panic") }` when `std::thread::panicking()` is true (R1.3 / F3).
 
 use std::cell::Cell;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use tokio::sync::broadcast;
 
-// ── Global ID counter ────────────────────────────────────────────────────────
-
-static NEXT_ACTIVITY_ID: AtomicU64 = AtomicU64::new(1);
-
-/// A monotonic per-process activity identifier. NOT a UUID; IDs do not need
-/// to survive restarts (the activity tape is purely in-memory per R-NR.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ActivityId(pub u64);
-
-impl ActivityId {
-    /// Allocate the next ID from the global atomic counter.
-    #[must_use]
-    pub fn next() -> Self {
-        Self(NEXT_ACTIVITY_ID.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-// ── Kind ─────────────────────────────────────────────────────────────────────
-
-/// The activity class. Determines icon/label prefix in the status bar tape.
-///
-/// Q8=(a): only the three v0.1.0 producers are active.
-/// `LlmCall` / `AuditLedgerWrite` are forward-listed (R5.1 / R5.2) and
-/// included as variants so future producers can add wiring without a
-/// schema migration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActivityKind {
-    /// Yahoo data preload (cold-cache fetch + parquet read).
-    YahooPreload,
-    /// Lab backtest run dispatched by the cockpit Lab screen.
-    LabRun,
-    /// Training subprocess managed by the cockpit Train sub-panel.
-    Training,
-    /// Forward-listed for v0.1.1 (`v3-llm-forecaster`). Not wired at v0.1.0.
-    LlmCall,
-    /// Forward-listed for v0.1.1. Not wired at v0.1.0 (K3 — aggregation
-    /// design required before enabling).
-    AuditLedgerWrite,
-}
-
-// ── Outcome / Phase ──────────────────────────────────────────────────────────
-
-/// Terminal outcome of a completed activity.
-#[derive(Debug, Clone)]
-pub enum ActivityOutcome {
-    /// Activity completed normally.
-    Success,
-    /// Activity failed with the given human-readable reason.
-    Failed(String),
-    /// Activity was cancelled by the operator or the system.
-    Cancelled,
-}
-
-/// Lifecycle phase carried by each `ActivityEvent`.
-#[derive(Debug, Clone)]
-pub enum ActivityPhase {
-    /// Activity just started. `total_units` is known if the producer can
-    /// estimate it upfront (e.g. total bars for a backtest).
-    Start { total_units: Option<u64> },
-    /// Progress heartbeat. Rate-limited to ≤ 10 events/sec per handle (R1.4).
-    Tick { current: u64, elapsed_ms: u64 },
-    /// Activity finished (success, failure, or cancellation).
-    End(ActivityOutcome),
-}
-
-// ── Event ─────────────────────────────────────────────────────────────────────
-
-/// A single event on the activity broadcast channel.
-///
-/// All fields are `Clone` so the broadcast channel can fan out to multiple
-/// subscribers without allocation per receiver.
-#[derive(Debug, Clone)]
-pub struct ActivityEvent {
-    /// Stable ID for correlating Start → Tick* → End across events.
-    pub id: ActivityId,
-    /// Which subsystem produced this event.
-    pub kind: ActivityKind,
-    /// Operator-facing label (≤ 64 chars recommended per R1.2).
-    pub label: String,
-    /// Lifecycle phase for this event.
-    pub phase: ActivityPhase,
-    /// Wall-clock milliseconds since the Unix epoch (UTC) at event emission.
-    pub ts_ms: i64,
-}
+// ── Wire types: RELOCATED to `trading_core` (bug-log #92, 2026-08-22) ────────
+//
+// `ActivityId` / `ActivityKind` / `ActivityOutcome` / `ActivityPhase` /
+// `ActivityEvent` now live in `trading_core::activity`. They are plain data and
+// `ui` consumes them, but `ui` declares `agent` only under its `live` feature —
+// so importing them from here broke the documented `--no-default-features`
+// build (three E0432 errors). The PRODUCER side below (`ActivitySender`,
+// `ActivityHandle`, the tokio broadcast) stays here: it needs tokio, and
+// `trading_core` deliberately has no async dependency.
+//
+// Re-exported so every existing `agent::ActivityEvent` path keeps compiling.
+pub use trading_core::activity::{
+    ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase,
+};
 
 // ── ActivitySender ────────────────────────────────────────────────────────────
 

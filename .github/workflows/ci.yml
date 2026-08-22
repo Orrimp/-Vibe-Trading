@@ -116,6 +116,22 @@ jobs:
       - name: Build ui (fixtures)
         run: cargo build -p ui --bin cockpit --features fixtures
 
+      # ── Ubuntu: the MINIMAL build (bug-log #92) ───────────────────────────
+      # `crates/ui/Cargo.toml` documents `--no-default-features` as a supported
+      # opt-out ("for the gallery-only bin"). NOTHING built it, so it rotted: from
+      # roughly the 2026-05-25 promotion of `live` to a default feature until
+      # 2026-08-22 it failed with three E0432 errors, because `state.rs`,
+      # `lab/activity.rs` and `widgets/activity_tape.rs` imported the `live`-only
+      # `agent` crate unconditionally. Fixed by relocating the wire types to
+      # `trading_core` (ADR pending); THIS STEP is what stops it happening again.
+      #
+      # Cheap by design — `cargo check`, one leg, no tests. The point is coverage
+      # of a build configuration, not of behaviour. A documented capability that
+      # nothing exercises is the defect class this whole burn-down keeps finding.
+      - name: Check ui minimal build (--no-default-features)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo check -p ui --no-default-features --features fixtures
+
       # ── All legs: test the non-UI workspace crates ─────────────────────────
       # Excludes `ui` because:
       #   - ubuntu/windows: visual snapshots are compiled out by the

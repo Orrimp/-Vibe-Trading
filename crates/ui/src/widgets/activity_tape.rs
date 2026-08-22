@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use iced::widget::{Container, Row, Space, Text};
 use iced::{Alignment, Length};
 
-use agent::{ActivityKind, ActivityOutcome};
+use trading_core::{ActivityKind, ActivityOutcome};
 
 use crate::lab::activity::ActivityTape;
 use crate::strings::{
@@ -188,7 +188,7 @@ fn format_elapsed(elapsed: Duration) -> String {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
-    use agent::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
+    use trading_core::{ActivityEvent, ActivityId, ActivityKind, ActivityOutcome, ActivityPhase};
 
     use crate::lab::activity::ActivityTape;
 
