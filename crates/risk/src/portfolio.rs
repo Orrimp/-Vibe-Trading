@@ -80,7 +80,13 @@ pub fn size_portfolio_target(
 
     // Compute proposed orders.
     let mut orders: Vec<Order> = Vec::new();
-    let mut total_long_notional = Decimal::ZERO;
+    // ── GROSS, not long-only (ADR-0089 D7, operator ruling 2026-08-22) ──────
+    // `exposure_cap` means Σ |notional| across ALL legs. Long-only was explicitly
+    // rejected: it ignores half the book, so an MN arm could add unbounded short
+    // exposure and never breach. Net was rejected as near-vacuous — ~0 by
+    // construction on a market-neutral arm, so the cap could never bind on the
+    // very lanes it was written for.
+    let mut total_gross_notional = Decimal::ZERO;
 
     // Iterate in alphabetical order (BTreeMap) for R12.5 determinism.
     for (symbol, leg) in targets {
@@ -94,40 +100,55 @@ pub fn size_portfolio_target(
         let current_notional = current_qty * mark;
 
         // Determine if an order is needed.
+        // Signed-aware (ADR-0089 D7). `target_weight` may now be negative, meaning
+        // a short leg; 0 still means "flat this symbol".
         let needs_order = if leg.target_weight == Decimal::ZERO {
-            // Close: sell to flat if we hold anything.
-            current_qty > Decimal::ZERO
-        } else if current_qty <= Decimal::ZERO {
-            // Open: we're flat, need to buy.
+            // Close whatever is held, in either direction.
+            current_qty != Decimal::ZERO
+        } else if current_qty == Decimal::ZERO {
+            // Flat -> open, long or short.
+            true
+        } else if current_qty.is_sign_negative() != target_notional.is_sign_negative() {
+            // Sign crossing (long -> short or short -> long): always act. A drift
+            // ratio is meaningless across a sign change — the position must be
+            // reversed regardless of magnitude.
             true
         } else {
-            // Resize check: |current - target| / target > drift_threshold
-            let relative_drift = if target_notional > Decimal::ZERO {
-                (current_notional - target_notional).abs() / target_notional
-            } else {
+            // Same-side resize: drift measured on magnitudes.
+            let relative_drift = if target_notional.is_zero() {
                 Decimal::ZERO
+            } else {
+                (current_notional.abs() - target_notional.abs()).abs() / target_notional.abs()
             };
             relative_drift > drift_threshold
         };
 
         if !needs_order {
-            // Count current notional toward portfolio cap even for held positions.
-            if leg.target_weight > Decimal::ZERO {
-                total_long_notional += target_notional;
-            }
+            // Count held exposure toward the cap as GROSS magnitude — a held short
+            // consumes exposure exactly as a held long does.
+            total_gross_notional += target_notional.abs();
             continue;
         }
 
         if leg.target_weight == Decimal::ZERO {
-            // Sell to flat.
-            if current_qty > Decimal::ZERO {
-                let qty = Quantity::new(current_qty).map_err(|_| PortfolioSizeError::ZeroEquity)?;
+            // Close to flat in EITHER direction (ADR-0089 D7): a long closes with a
+            // Sell, a short covers with a Buy. Before this the short case did not
+            // exist, so a short leg could never be flattened by the sizer at all.
+            if current_qty != Decimal::ZERO {
+                let close_side = if current_qty > Decimal::ZERO {
+                    Side::Sell
+                } else {
+                    Side::Buy
+                };
+                let qty =
+                    Quantity::new(current_qty.abs()).map_err(|_| PortfolioSizeError::ZeroEquity)?;
                 let position_snap = trading_core::Position::empty(symbol.clone());
-                // Sell order: bypass per-symbol cap check (closing always OK).
+                // Closing always OK — the per-symbol cap is resulting-exposure aware
+                // (bug-log #71), so a close/cover reduces to ~0 and cannot breach.
                 let ord = Order::new(
                     strategy_id.clone(),
                     symbol.clone(),
-                    Side::Sell,
+                    close_side,
                     qty,
                     OrderKind::Market,
                     TimeInForce::Ioc,
@@ -142,11 +163,18 @@ pub fn size_portfolio_target(
                 // If sell fails validation, skip (should not happen for flat-close)
             }
         } else {
-            // Buy to target.
-            let target_qty = target_notional / mark;
+            // Open/resize toward a SIGNED target (ADR-0089 D7): a negative
+            // `target_weight` is a short leg and emits a Sell.
+            let open_side = if target_notional > Decimal::ZERO {
+                Side::Buy
+            } else {
+                Side::Sell
+            };
+            let target_qty = (target_notional / mark).abs();
 
-            // Per-symbol exposure check.
-            let per_sym_notional = target_notional / equity_d;
+            // Per-symbol exposure check, on MAGNITUDE — a 40% short is exactly as
+            // exposed as a 40% long.
+            let per_sym_notional = (target_notional / equity_d).abs();
             if per_sym_notional > limits.per_symbol_exposure_cap {
                 return Err(PortfolioSizeError::SymbolExposureBreach {
                     symbol: symbol.clone(),
@@ -155,7 +183,7 @@ pub fn size_portfolio_target(
                 });
             }
 
-            total_long_notional += target_notional;
+            total_gross_notional += target_notional.abs();
 
             let qty = Quantity::new(target_qty).map_err(|_| PortfolioSizeError::ZeroEquity)?;
             if qty.get() > Decimal::ZERO {
@@ -169,7 +197,7 @@ pub fn size_portfolio_target(
                 let ord = Order::new(
                     strategy_id.clone(),
                     symbol.clone(),
-                    Side::Buy,
+                    open_side,
                     qty,
                     OrderKind::Market,
                     TimeInForce::Ioc,
@@ -188,9 +216,9 @@ pub fn size_portfolio_target(
     // Portfolio-level exposure cap check (R5.2 all-or-nothing).
     if let Some(portfolio_cap) = limits.portfolio_exposure_cap {
         let portfolio_cap_notional = portfolio_cap * equity_d;
-        if total_long_notional > portfolio_cap_notional + dec!(0.00000001) {
+        if total_gross_notional > portfolio_cap_notional + dec!(0.00000001) {
             return Err(PortfolioSizeError::PortfolioExposureBreach {
-                proposed: total_long_notional / equity_d,
+                proposed: total_gross_notional / equity_d,
                 cap: portfolio_cap,
             });
         }
@@ -371,5 +399,140 @@ mod tests {
                 Err(_) => {} // other errors are OK (zero equity, etc.)
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ADR-0089 D5 — BINDING TESTS for the GROSS cap and signed legs.
+    //
+    // These exist because bug-log #69 was a limit with a passing test and no
+    // caller: the test proved the enforcer WORKED, which is not the same as
+    // proving the limit BINDS. Each test below is written so it would go RED if
+    // the control were removed — the cap test in particular constructs an
+    // over-cap vector explicitly, because production lanes at 0.30 gross would
+    // never supply one (ADR-0089 D6).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// THE RULING, made binding: a market-neutral book that is INSIDE the
+    /// long-only cap must still be REFUSED on gross.
+    ///
+    /// 3 long × 0.20 + 3 short × 0.20 = **1.20 gross**, but only **0.60 long**.
+    /// Under the old `total_long_notional` accounting this passed a 1.00 cap
+    /// outright. That is precisely the reading ADR-0089 D7 rejected, and it is
+    /// why the anchored MN surfaces ran 0.60 gross against a hashed 0.50 claim
+    /// while reporting compliance.
+    #[test]
+    fn gross_cap_refuses_a_book_that_the_long_only_measure_would_pass() {
+        let targets = make_targets(&[
+            ("AAA", 0.20, 100.0),
+            ("BBB", 0.20, 100.0),
+            ("CCC", 0.20, 100.0),
+            ("DDD", -0.20, 100.0),
+            ("EEE", -0.20, 100.0),
+            ("FFF", -0.20, 100.0),
+        ]);
+        let result = size_portfolio_target(
+            &targets,
+            Money::<Usdt>::from_decimal(dec!(100_000)),
+            &BTreeMap::new(),
+            dec!(0.10),
+            &limits_with_cap(0.50, Some(1.00)),
+            &StrategyId::new("gross_cap_test"),
+            ts(),
+        );
+        match result {
+            Err(PortfolioSizeError::PortfolioExposureBreach { proposed, cap }) => {
+                assert_eq!(cap, dec!(1.00));
+                assert!(
+                    proposed > dec!(1.0),
+                    "gross must be ~1.20, got {proposed} — if this reads ~0.60 the cap is \
+                     back on the LONG-ONLY measure that ADR-0089 D7 rejected"
+                );
+            }
+            other => panic!(
+                "GROSS CAP NOT BINDING: 3 long + 3 short at 0.20 each is 1.20 gross against a \
+                 1.00 cap and must be refused. Got {other:?}. Under the long-only measure this \
+                 book reads 0.60 and passes — which is exactly the defect (bug-log #69)."
+            ),
+        }
+    }
+
+    /// A negative target weight must emit a SELL. Before the signed extension
+    /// there was no way to express a short at all, which is why the enforcer
+    /// could not serve the long/short harness.
+    #[test]
+    fn negative_target_weight_opens_a_short() {
+        let targets = make_targets(&[("AAA", -0.20, 100.0)]);
+        let orders = size_portfolio_target(
+            &targets,
+            Money::<Usdt>::from_decimal(dec!(100_000)),
+            &BTreeMap::new(),
+            dec!(0.10),
+            &limits_with_cap(0.50, Some(1.00)),
+            &StrategyId::new("short_open_test"),
+            ts(),
+        )
+        .expect("a 0.20 short is inside both caps");
+        assert_eq!(orders.len(), 1, "expected exactly one leg, got {orders:?}");
+        assert_eq!(
+            orders[0].side(),
+            Side::Sell,
+            "a negative target_weight must open a SHORT (Sell), got {:?}",
+            orders[0].side()
+        );
+        assert_eq!(
+            orders[0].qty().get(),
+            dec!(200),
+            "0.20 x 100_000 / 100 = 200 units, on MAGNITUDE not sign"
+        );
+    }
+
+    /// Target 0 while holding a SHORT must emit a BUY (cover). The old code
+    /// only closed longs, so a short leg could never be flattened by the sizer.
+    #[test]
+    fn zero_target_covers_an_existing_short() {
+        let targets = make_targets(&[("AAA", 0.0, 100.0)]);
+        let mut book = BTreeMap::new();
+        book.insert(sym("AAA"), dec!(-200)); // short 200 units
+        let orders = size_portfolio_target(
+            &targets,
+            Money::<Usdt>::from_decimal(dec!(100_000)),
+            &book,
+            dec!(0.10),
+            &limits_with_cap(0.50, Some(1.00)),
+            &StrategyId::new("cover_test"),
+            ts(),
+        )
+        .expect("covering a short is always allowed");
+        assert_eq!(orders.len(), 1, "expected a cover leg, got {orders:?}");
+        assert_eq!(
+            orders[0].side(),
+            Side::Buy,
+            "flattening a SHORT must emit a Buy (cover), got {:?}",
+            orders[0].side()
+        );
+        assert_eq!(orders[0].qty().get(), dec!(200), "cover the whole short");
+    }
+
+    /// REGRESSION GUARD: an all-long book must behave exactly as before. Gross
+    /// and long-only coincide when nothing is short, so the extension must be
+    /// invisible to every existing long-only caller.
+    #[test]
+    fn long_only_book_is_unchanged_by_the_signed_extension() {
+        let targets = make_targets(&[("AAA", 0.20, 100.0), ("BBB", 0.20, 100.0)]);
+        let orders = size_portfolio_target(
+            &targets,
+            Money::<Usdt>::from_decimal(dec!(100_000)),
+            &BTreeMap::new(),
+            dec!(0.10),
+            &limits_with_cap(0.50, Some(1.00)),
+            &StrategyId::new("long_only_regression"),
+            ts(),
+        )
+        .expect("0.40 gross is inside a 1.00 cap");
+        assert_eq!(orders.len(), 2);
+        assert!(
+            orders.iter().all(|o| o.side() == Side::Buy),
+            "an all-positive target vector must still emit only Buys"
+        );
     }
 }
