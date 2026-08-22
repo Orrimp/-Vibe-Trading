@@ -62,7 +62,31 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
         Commit `7884f52`.
   - [x] **#72 / #73** — code halves already fixed 2026-08-04 (`fix(carry)`); verified still in place.
         Regeneration is what remains, and that is AC4.
-  - [ ] **#69** — **RULED 2026-08-19: WIRE IT.** The operator chose to make the limit real rather than
+  - [x] **#68 + #69 — WIRED AND BINDING 2026-08-23.** `run_path` builds a signed target vector at each
+        rebalance boundary and calls `size_portfolio_target`; a breach skips the whole rebalance,
+        increments `PathRunResult.portfolio_breaches`, and logs (ADR-0089 D1/D2). The sizer was first
+        extended to signed weights with a GROSS cap (D7), which is what made the ruling implementable.
+        Three RED-proven gates in `crates/backtest/tests/portfolio_controls_bind.rs`: neutering the
+        cap, the band, or #94's delta sizing turns exactly one of them red.
+        **Four findings recorded with the fix, none of them cosmetic:**
+        1. **bug-log #94** — the sizer sized a resize order to the whole TARGET, not the delta. First
+           fixture through the resize path lost **74 % of equity** (`min_cash_seen` 43.8 / 100 000).
+           It also DISABLED the drift band: an overshooting order leaves the leg outside the band every
+           bar, so the band could never hold anything. Fixing it first is what let #68's gate be
+           RED-proven at all.
+        2. **The gate is the REBALANCE BOUNDARY, not `!signals.is_empty()`.** Signals are a delta, so a
+           full book emits none; a signal-gated rebalance would have left the band nearly as inert as
+           #68 found it. `MomentumStrategy::last_rebalance_ts()` added for this.
+        3. **ADR-0089's "turnover falls" is WRONG and is now corrected in the ADR.** The old code could
+           not resize a held leg at all (`Buy if current_qty <= 0`), so the band bounds NEW behaviour
+           rather than suppressing old. Net direction is an empirical question for 1-26.
+        4. **bug-log #95** — `portfolio_exposure_cap` is declared at **9** sites and read at **1**
+           workspace-wide. `run_path` is now wired and it is the lane behind **all 34** inventory
+           anchors (#86-#119 are θ-surfaces from `param_robustness_sweep`); **eight other lanes still
+           declare a cap they cannot enforce**. Needs a ruling. This also corrects the architect note:
+           `scenarios::threshold_sweep::run_cell` is the candle-gated TCN τ/ε sweep and produces NONE
+           of the inventory anchors, so D1 was dischargeable on `run_path` alone.
+  - [x] **#69** — *(superseded by the entry above)* **RULED 2026-08-19: WIRE IT.** The operator chose to make the limit real rather than
         strike the claim: call `size_portfolio_target` on the harness lanes so the declared `0.50`
         actually binds, with a binding test per AC3. Changes results — absorbed by the re-lock, which
         regenerates these surfaces anyway. The hashed bodies' `exposure_cap=0.50` becomes true rather

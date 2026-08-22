@@ -165,12 +165,29 @@ pub fn size_portfolio_target(
         } else {
             // Open/resize toward a SIGNED target (ADR-0089 D7): a negative
             // `target_weight` is a short leg and emits a Sell.
-            let open_side = if target_notional > Decimal::ZERO {
+            //
+            // ── bug-log #94: the order is the DELTA, not the target ───────────
+            // This used to emit `|target_notional / mark|` — the WHOLE target
+            // quantity — on every action, including a same-side resize of a leg
+            // already held. That is only correct against a "set position to X"
+            // venue API. Every execution path in this codebase fills orders
+            // INCREMENTALLY (`PaperEngine::step` adds the fill to the book), so a
+            // resize added a second full-size leg on top of the first: 10 % of
+            // equity, then 20 %, then 30 %, until cash ran out.
+            //
+            // It survived because the function had no production caller (#69) —
+            // and its own tests only ever exercised flat -> open and -> close,
+            // where delta and target coincide. Wiring it is what made the
+            // resize path reachable, and the first fixture through it lost 74 %
+            // of equity with `min_cash` at 43.8 out of 100 000.
+            let target_qty_signed = target_notional / mark;
+            let delta_qty = target_qty_signed - current_qty;
+            let open_side = if delta_qty > Decimal::ZERO {
                 Side::Buy
             } else {
                 Side::Sell
             };
-            let target_qty = (target_notional / mark).abs();
+            let target_qty = delta_qty.abs();
 
             // Per-symbol exposure check, on MAGNITUDE — a 40% short is exactly as
             // exposed as a 40% long.
@@ -183,11 +200,20 @@ pub fn size_portfolio_target(
                 });
             }
 
+            // The cap accumulates the RESULTING leg (`target_notional`), never the
+            // delta — the limit is on the book after the rebalance, not on its
+            // turnover.
             total_gross_notional += target_notional.abs();
 
             let qty = Quantity::new(target_qty).map_err(|_| PortfolioSizeError::ZeroEquity)?;
             if qty.get() > Decimal::ZERO {
                 let position_snap = trading_core::Position::empty(symbol.clone());
+                // An EMPTY snapshot is sound here even though `Order::new`'s cap is
+                // resulting-exposure aware (bug-log #71): the per-symbol limit has
+                // already been applied above to `target_notional`, which IS the
+                // resulting position — a strictly better measure than
+                // `snapshot + delta` could give. `relaxed_limits` therefore turns
+                // that check off rather than letting it re-run on the delta alone.
                 // Use a relaxed limits for portfolio sizer (per-symbol cap already checked above).
                 let relaxed_limits = RiskLimits {
                     per_symbol_exposure_cap: Decimal::ONE, // already checked above

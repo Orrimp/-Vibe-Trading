@@ -107,10 +107,11 @@ exposure and never breach.
    book runs **0.60 gross against a hashed `exposure_cap = 0.50`**. Bug-log #69's reading — "the
    declared limit is violated by construction on every MN path" — is now the **official** one, not a
    candidate interpretation.
-2. **The existing enforcer cannot implement this ruling.** `size_portfolio_target` caps
-   `total_long_notional` (`portfolio.rs:191`), which is the long-only measure. Wiring it unchanged
-   would enforce the reading that was just rejected. It must be extended to signed target weights
-   with a gross-notional cap, or replaced.
+2. ~~**The existing enforcer cannot implement this ruling.**~~ **RESOLVED 2026-08-22** —
+   `size_portfolio_target` was extended to signed target weights with a gross-notional cap
+   (`total_gross_notional`), signed `needs_order` including sign crossings, and signed emission
+   (a negative `target_weight` opens a short; target 0 covers one). Its 13 long-only tests pass
+   untouched: gross and long-only coincide when nothing is short.
 3. **Anchor-impacting in a second way.** It is not only that the cap starts binding — surfaces which
    previously reported compliance were non-compliant under the ruled measure. 1-26's errata must say
    so per scenario.
@@ -144,15 +145,56 @@ Options and a recommendation (specify the measure first, then extend or drop) ar
 
 ## Consequences
 
-- **Anchor-impacting on every non-BUYHOLD lane.** The Hold decision suppresses rebalances the current
-  code performs unconditionally, so turnover falls and fee drag falls with it. All 34 surfaces in the
-  1-26 inventory move. That is what story `1-26` exists to absorb, and why its AC1 entry gate requires
-  this to land first.
+- **Anchor-impacting on every non-BUYHOLD lane.** All 34 surfaces in the 1-26 inventory move. That is
+  what story `1-26` exists to absorb, and why its AC1 entry gate requires this to land first.
+
+  ⚠️ **CORRECTED 2026-08-23 — this bullet originally read "the Hold decision suppresses rebalances the
+  current code performs unconditionally, so turnover falls and fee drag falls with it". That is
+  wrong.** The pre-wiring code could not resize a held position AT ALL: the long-open arm was guarded
+  `Buy if current_qty <= 0`, and the strategy emits no Buy for a symbol it already holds. A held leg
+  was opened once at `0.10 x equity` and never touched until it exited. So the drift band does not
+  suppress behaviour the old code had — it BOUNDS behaviour this change introduces. Whether net
+  turnover rises or falls is an empirical question for the 1-26 re-lock, and must be reported from
+  measurement, not asserted here.
 - **A previously unreachable error becomes reachable.** `PortfolioExposureBreach` can now fire on
   lanes that today run to ~60–100 % gross against a hashed `exposure_cap=0.50` claim.
 - **The hashed claim becomes true.** Report bodies asserting `exposure_cap = 0.50` currently describe
   an intent; after this they describe the run.
 - BUYHOLD rows stay clean — pure mark-to-market, never construct an `Order`, never reach the sizer.
+
+## Implementation notes (2026-08-23) — two things the decision above got wrong
+
+**D1's gate is the REBALANCE BOUNDARY, not a non-empty signal batch.** `build_rebalance_signals`
+emits only TRANSITIONS — a leg that is held and still selected emits nothing — so once the book is
+full a rebalance bar produces an EMPTY `Vec<Signal>`. Gating the sizer on `!signals.is_empty()`
+compiles and looks right, and would have re-marked the book only when membership changed, leaving
+the drift band very nearly as inert as #68 found it. `MomentumStrategy::last_rebalance_ts()` was
+added so the harness can see the boundary itself; `run_path` latches it per timestamp, because on a
+merged multi-symbol stream only the FIRST bar at a timestamp trips `is_rebalance_bar` while the
+value stays equal to that timestamp for all of its siblings.
+
+**Wiring surfaced bug-log #94, and it had to be fixed FIRST.** The sizer's resize branch emitted the
+full target quantity rather than the delta — correct only against a "set position to X" API, while
+every path here fills incrementally. First fixture through the resize path: **−74 % equity,
+`min_cash_seen` 43.8 / 100 000**. It also DISABLED the control D4 is about: an overshooting order
+leaves the leg outside the band on the next bar, so the band can hold nothing (10 fills delta-sized
+vs 50 absolute-sized on the binding fixture). D5's band gate could not have been RED-proven without
+this fix.
+
+**Two hardcodes replaced by the config they claimed to honour.** `portfolio_exposure_cap` was
+`Some(dec!(0.50))` in `run_path` while the report body printed the config's `exposure_cap`; the
+drift threshold had no consumer at all. Both now come from `MomentumStrategy`. Every shipped grid
+cell is at 0.50 / 0.10, so the cap change is behaviour-neutral on the corpus — but a config at any
+other value was being silently ignored, which is the same declared-vs-executed shape as #69 itself.
+
+**One behaviour change beyond the ruling, stated rather than buried.** The old open-short arm matched
+`current_qty <= 0` and stacked another `0.10 x equity` short on top of an existing one without
+bound. A target vector cannot express "add more" — `-FIXED_FRACTION` is a level — so a repeat Sell on
+an already-short leg is now a Hold or a resize back to the level. Stacking was never a declared
+control; it was an artefact of per-signal construction. Separately, the open-short arm's
+`min(target_notional, cash)` cap was removed as DEAD by the same argument review 1-14 used on its
+long-side twin: once notional is capped to cash the pre-flight becomes `cash >= cash + fee`, false
+for any positive fee, so a capped short was always skipped anyway.
 
 ## References
 

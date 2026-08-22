@@ -90,6 +90,18 @@ pub struct PathRunResult {
     /// `0` for every non-MN run (`k_short == 0` → the liquidation check is dead code).
     /// Default `0` for momentum/MR/carry/basis runs → anchor-neutral.
     pub liquidations: u64,
+    /// Rebalances refused outright by the portfolio exposure cap (ADR-0089 D2).
+    ///
+    /// The sizer is all-or-nothing (R5.2): on a breach the ENTIRE rebalance is
+    /// skipped and the book is left unchanged for that bar. Surfacing the count
+    /// is the non-negotiable half of that policy — a silent skip reads exactly
+    /// like a clean run, which is the failure class bug-log #66 was.
+    ///
+    /// `0` on any path whose gross target never exceeds the cap. At
+    /// `FIXED_FRACTION = 0.10` with `k_long = 3` gross is ~0.30 against a 0.50
+    /// cap, so momentum/MR cells legitimately read zero; the counter is for the
+    /// lanes that actually run hot (TS at ~90-100 % gross, MN at ~60 %).
+    pub portfolio_breaches: u64,
 }
 
 // ── run_path constants (D-MN.2 LOCKED hashed body fields) ────────────────────
@@ -101,6 +113,23 @@ pub struct PathRunResult {
 /// This constant is a hashed body field of the MN anchor; changing it = a new surface.
 /// `pub` so the sweep harness can embed it in the MN grid-def string (anchor body K3).
 pub const MAX_LEVERAGE: rust_decimal::Decimal = rust_decimal::Decimal::ONE;
+
+/// Per-leg target weight used by the harness rebalance (ADR-0089 D6).
+///
+/// Held CONSTANT at the value the pre-wiring code sized with
+/// (`equity * 0.10`, hardcoded at four sites) rather than moved to
+/// `TargetLeg`'s documented domain `[0, exposure_cap / k_long]` (~0.167 at
+/// `k_long` = 3). The reason is attribution, not conservatism: wiring the sizer
+/// already switches on two controls that move results (the gross cap and the
+/// drift band), and resizing every position in the same change would leave no
+/// delta in the 1-26 re-lock traceable to a named cause.
+///
+/// Consequence, recorded honestly: at 0.10 with `k_long` = 3 the gross target is
+/// ~0.30, BELOW the 0.50 cap — so on those cells the cap does not bind and the
+/// breach counter reads zero. That is a true result, not a dead gate; the cap
+/// binds where the grid actually exceeds it (the TS surfaces at ~90-100 % gross,
+/// the MN book at ~60 %).
+const FIXED_FRACTION: rust_decimal::Decimal = rust_decimal::Decimal::from_parts(10, 0, 0, false, 2);
 
 /// Maintenance-margin fraction for short liquidation (D-MN.2 LOCKED, hashed body field).
 ///
@@ -158,9 +187,7 @@ pub async fn run_path(
     strategy: strategy::MomentumStrategy,
 ) -> Result<PathRunResult> {
     use rust_decimal_macros::dec;
-    use trading_core::{
-        Order, OrderKind, Position, Price, Quantity, RiskLimits, Side, Symbol, TimeInForce,
-    };
+    use trading_core::{Money, Price, RiskLimits, Side, Symbol, Usdt};
 
     use crate::engine::MatchingEngine as _;
     use strategy::Strategy as _;
@@ -198,8 +225,19 @@ pub async fn run_path(
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: dec!(0.40),
         price_sanity_band: dec!(0.20),
-        portfolio_exposure_cap: Some(dec!(0.50)),
+        // ADR-0089 D7 — the cap is GROSS (S |notional|), and it comes from the
+        // CONFIG, not from a literal. This used to be `Some(dec!(0.50))` while
+        // the report body printed the config's `exposure_cap`. Every shipped grid
+        // cell is at 0.50, so the two agreed and the divergence was invisible —
+        // but it is the same declared-vs-executed shape as #69 itself, and a
+        // config at any other cap was being silently ignored.
+        portfolio_exposure_cap: Some(strategy.exposure_cap()),
     };
+
+    // ADR-0089 D4 — the drift hold band, read from the config. The Tier-1 grid
+    // advertises `lookback x k_long x drift_rebalance_threshold`; until the sizer
+    // was wired nothing consumed the third axis (bug-log #68).
+    let drift_threshold = strategy.drift_threshold();
 
     // M-DEV-3 (MN-spread): read k_short from the strategy — ZERO overhead when k_short==0.
     // Every short-side branch in run_path is gated on `k_short > 0` so the long-only
@@ -241,6 +279,10 @@ pub async fn run_path(
     // conflated by accident.
     let funding_map_for_accrual = funding_override;
     let mut strategy = strategy;
+    // The rebalance's orders all carry the strategy's id. It cannot be read off
+    // the signal batch: a boundary with no membership change emits no signals and
+    // still rebalances (ADR-0089 D4).
+    let strategy_id_for_orders = strategy.id();
 
     let mut cash = initial_capital;
     let mut min_cash_seen = initial_capital;
@@ -258,6 +300,13 @@ pub async fn run_path(
     // positions but the field is used only when the TS sweep driver requests it).
     let mut time_in_market_bars = 0u64;
     // M-DEV-3: liquidation counter (ZERO for k_short==0 → dead code path → anchor-neutral).
+    // ADR-0089 D2 — rebalances refused outright by the portfolio exposure cap.
+    // A breach that leaves no trace is indistinguishable from no breach, which is
+    // precisely the failure class that produced #69; the counter is what makes the
+    // skip observable.
+    let mut portfolio_breaches = 0u64;
+    // Latch so a rebalance boundary is applied ONCE, not once per symbol-bar.
+    let mut last_rebalance_applied: Option<trading_core::Timestamp> = None;
     let mut liquidations = 0u64;
     let mut equity_curve: Vec<Decimal> = vec![initial_capital];
     let mut peak_equity = initial_capital;
@@ -308,423 +357,309 @@ pub async fn run_path(
 
         let signals = strategy.on_bar(bar);
 
-        for sig in &signals {
-            let Some(&mark) = mark_prices.get(&sig.symbol) else {
-                continue;
-            };
-            if mark <= Decimal::ZERO {
-                continue;
-            }
+        // The rebalance boundary, de-duplicated per timestamp. `merged_bars`
+        // interleaves every symbol sorted by (ts, symbol), and only the FIRST bar
+        // at a timestamp trips `is_rebalance_bar` — its siblings see
+        // `minutes_since == 0`. Without this latch the sizer would run once per
+        // symbol per boundary.
+        let is_rebalance_boundary = strategy.last_rebalance_ts() == Some(bar.close_ts)
+            && last_rebalance_applied != Some(bar.close_ts);
+        if is_rebalance_boundary {
+            last_rebalance_applied = Some(bar.close_ts);
+        }
 
+        // ── ADR-0089 D1 — TARGET-VECTOR REBALANCE (was: per-signal Order::new) ──
+        //
+        // This block replaces four per-signal order-construction arms (cover-short,
+        // open-long, close-long, open-short) with ONE atomic call to
+        // `risk::size_portfolio_target`. It is not a refactor; it changes WHEN
+        // orders are created and WHICH orders exist, and it is the fix for bug-log
+        // #68 + #69 — which are ONE defect: the function implementing BOTH the
+        // portfolio exposure cap and the drift hold band had zero production
+        // callers. Both controls were configured, range-validated, and printed into
+        // hashed report bodies; neither was ever consulted.
+        //
+        // WHY A WHOLE-VECTOR CALL. The controls are portfolio-level by definition.
+        // A cap on S |notional| cannot be evaluated one signal at a time, and a
+        // hold band needs the CURRENT position to compare a target against. Both
+        // are properties of the book, so the book is what gets sized.
+        //
+        // THE REBALANCE BOUNDARY IS ONE `on_bar` CALL. `build_rebalance_signals`
+        // already emits the whole universe's transitions at a rebalance bar and
+        // nothing at any other bar, so this needs no cross-bar accumulation: the
+        // signal batch in hand IS the rebalance.
+        //
+        // SIGNALS ARE A DELTA, NOT A TARGET. The strategy emits only TRANSITIONS
+        // (open / close / open_short / close_short) — a symbol that is held and
+        // still selected emits nothing. So the target vector is reconstructed as
+        // (current book, each position keeping its side) + (this batch's
+        // transitions). The transition mapping below is the SAME predicate the
+        // four deleted arms dispatched on — `(kind, current_qty, k_short)` — so
+        // the intent classification is faithful by construction, not by comment.
+        //
+        // HONEST CONSEQUENCE — RESIZE IS NEW, AND ADR-0089's "TURNOVER FALLS" IS
+        // WRONG. The old code could never resize a held position: the long-open arm
+        // was guarded `Buy if current_qty <= 0`, and the strategy emits no Buy for a
+        // symbol it already holds. Under a target vector, a held leg is re-marked to
+        // `fixed_fraction x CURRENT equity` whenever it has drifted past the band.
+        // That behaviour DID NOT EXIST before. The drift band therefore does not
+        // suppress rebalances the old code performed — it bounds rebalances this
+        // change introduces. Net turnover direction is an EMPIRICAL question for the
+        // 1-26 re-lock, not the decrease ADR-0089's Consequences section asserts.
+        //
+        // SIZING HELD CONSTANT (D6): `target_weight = FIXED_FRACTION`, signed by
+        // side — NOT the sizer's documented `exposure_cap / k_long` (~0.167 at
+        // k_long=3). Two controls already move results here; resizing every
+        // position at the same time would leave no delta in the 1-26 re-lock
+        // attributable to a named cause.
+        //
+        // WHY THE GATE IS THE BOUNDARY AND NOT `!signals.is_empty()`. Both compile;
+        // only one implements D4. A signal batch is empty both when the bar is not
+        // a rebalance bar AND when it is one with no membership change — and the
+        // second case is the common one once the book is full. Gating on a
+        // non-empty batch would re-mark the book only when a leg entered or left,
+        // so a held position would still never be resized and the drift band would
+        // stay very nearly as inert as #68 found it. The band has to be evaluated
+        // at every boundary or it is not wired.
+        if is_rebalance_boundary {
             let position_value: Decimal = position_book
                 .iter()
                 .map(|(sym, &qty)| qty * mark_prices.get(sym).copied().unwrap_or(Decimal::ZERO))
                 .sum();
             let equity = cash + position_value;
-            if equity <= Decimal::ZERO {
-                continue;
+
+            // Every currently-held leg keeps its side; transitions then overwrite.
+            let mut desired: std::collections::BTreeMap<Symbol, Decimal> = position_book
+                .iter()
+                .filter(|(_, qty)| **qty != Decimal::ZERO)
+                .map(|(sym, qty)| {
+                    (
+                        sym.clone(),
+                        if *qty > Decimal::ZERO {
+                            FIXED_FRACTION
+                        } else {
+                            -FIXED_FRACTION
+                        },
+                    )
+                })
+                .collect();
+
+            for sig in &signals {
+                let current_qty = position_book
+                    .get(&sig.symbol)
+                    .copied()
+                    .unwrap_or(Decimal::ZERO);
+                // Arm order is LOAD-BEARING and mirrors the deleted `match`: the
+                // cover guard is more specific than the long-open guard and must
+                // be tested first.
+                let target = match sig.kind {
+                    // Buy against a held short → cover to flat.
+                    trading_core::SignalKind::Buy if current_qty < Decimal::ZERO && k_short > 0 => {
+                        Some(Decimal::ZERO)
+                    }
+                    // Buy while flat → open long.
+                    trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
+                        Some(FIXED_FRACTION)
+                    }
+                    // Sell against a held long → close to flat.
+                    trading_core::SignalKind::Sell if current_qty > Decimal::ZERO => {
+                        Some(Decimal::ZERO)
+                    }
+                    // Sell while flat or short → open short.
+                    //
+                    // BEHAVIOUR CHANGE, STATED: the old arm matched `current_qty <= 0`
+                    // and opened ANOTHER 0.10-of-equity short on top of an existing
+                    // one, stacking without bound. A target vector cannot express
+                    // "add more" — `-FIXED_FRACTION` is a level, so a repeat Sell on
+                    // an already-short leg is now a Hold (or a resize back to the
+                    // level). Stacking was never a declared control; it was an
+                    // artefact of per-signal construction.
+                    trading_core::SignalKind::Sell
+                        if current_qty <= Decimal::ZERO && k_short > 0 =>
+                    {
+                        Some(-FIXED_FRACTION)
+                    }
+                    _ => None,
+                };
+                if let Some(weight) = target {
+                    desired.insert(sig.symbol.clone(), weight);
+                }
             }
 
-            let current_qty = position_book
-                .get(&sig.symbol)
-                .copied()
-                .unwrap_or(Decimal::ZERO);
+            let mut targets: std::collections::BTreeMap<Symbol, risk::TargetLeg> =
+                std::collections::BTreeMap::new();
+            for (sym, weight) in &desired {
+                let Some(&mark) = mark_prices.get(sym) else {
+                    continue;
+                };
+                if mark <= Decimal::ZERO {
+                    continue;
+                }
+                let Ok(mark_price) = Price::new(mark) else {
+                    continue;
+                };
+                targets.insert(
+                    sym.clone(),
+                    risk::TargetLeg {
+                        symbol: sym.clone(),
+                        target_weight: *weight,
+                        mark_price,
+                    },
+                );
+            }
 
-            match sig.kind {
-                // ── M-DEV-3: Buy-to-cover short (k_short > 0 ONLY — dead code when k_short==0) ─
-                // Placed BEFORE the long-open arm so the more-specific guard wins.
-                // current_qty < 0 means we hold a short; this Buy signal covers it.
-                trading_core::SignalKind::Buy if current_qty < Decimal::ZERO && k_short > 0 => {
-                    // Cover the entire short position at mark.
-                    let cover_qty = (-current_qty).max(Decimal::ZERO);
-                    if cover_qty <= Decimal::ZERO {
-                        continue;
-                    }
-                    let pos_snap = Position::empty(sig.symbol.clone());
-                    if let Ok(qty) = Quantity::new(cover_qty)
-                        && let Ok(price) = Price::new(mark)
-                    {
-                        // Review 1-21: the order-construction and engine-step Err arms used
-                        // to be swallowed by an `if let Ok(..) && let Ok(..)` chain — a
-                        // risk-limit REJECTION was indistinguishable from a no-fill, with no
-                        // log and no counter. On the MN lane an unfilled cover leaves a short
-                        // open that the book believes is closed → a directionally-biased
-                        // book that no output records. The behaviour is UNCHANGED (both arms
-                        // still skip); only the diagnosis is now loud. Trace-only by
-                        // construction: a counter would need a new report COLUMN, which is
-                        // anchor-impacting (D-MN.8 hashed body) — see the story's triage.
-                        match Order::new(
-                            sig.strategy_id.clone(),
-                            sig.symbol.clone(),
-                            Side::Buy,
-                            qty,
-                            OrderKind::Market,
-                            TimeInForce::Ioc,
-                            &pos_snap,
-                            price,
-                            &risk_limits,
-                            equity,
-                        ) {
-                            Ok(ord) => match engine
-                                .step(
-                                    // #67: fill at THIS order's symbol bar, never the
-                                    // merged-loop bar. Present by construction — the
-                                    // `mark_prices.get(&sig.symbol)` guard above already
-                                    // returned for this symbol, and both maps are written
-                                    // at the same point in the loop.
-                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
-                                    vec![ord],
-                                )
-                                .await
+            // `Money::new` rejects a non-positive equity, which subsumes the old
+            // per-signal `if equity <= 0 { continue }` guard.
+            // `Money::from_decimal` is infallible, so the sizer's own ZeroEquity
+            // arm cannot stand in for the guard the deleted per-signal loop had
+            // (`if equity <= 0 { continue }`). Keep it explicit.
+            // A boundary with no signals still rebalances (that is the point), so
+            // the strategy id cannot come from the batch.
+            let strategy_id = strategy_id_for_orders.clone();
+            if !targets.is_empty() && equity > Decimal::ZERO {
+                match risk::size_portfolio_target(
+                    &targets,
+                    Money::<Usdt>::from_decimal(equity),
+                    &position_book,
+                    drift_threshold,
+                    &risk_limits,
+                    &strategy_id,
+                    bar.close_ts,
+                ) {
+                    Ok(orders) => {
+                        for ord in orders {
+                            let sym = ord.symbol().clone();
+                            let side = ord.side();
+                            let order_qty = ord.qty().get();
+                            let Some(&mark) = mark_prices.get(&sym) else {
+                                continue;
+                            };
+                            let Some(fill_bar) = last_bar_by_symbol.get(&sym).cloned() else {
+                                continue;
+                            };
+                            let pre_qty = position_book.get(&sym).copied().unwrap_or(Decimal::ZERO);
+                            let notional = order_qty * mark;
+                            let fee_estimate = notional * Decimal::new(i64::from(taker_fee_bps), 4);
+
+                            // Solvency / initial-margin pre-flight, carried over from
+                            // the deleted arms. A Buy spends cash (long-open or
+                            // short-cover); a Sell that OPENS a short reserves margin
+                            // (= notional at MAX_LEVERAGE = 1); a Sell that closes a
+                            // long brings cash in and needs no check.
+                            //
+                            // The old open-short arm also downsized notional to cash
+                            // (`if target_notional > cash { cash }`). That cap was
+                            // DEAD, by exactly the argument review 1-14 used to remove
+                            // the long arm's twin: once notional is capped to cash the
+                            // pre-flight becomes `cash >= cash + fee`, false for any
+                            // positive fee — every anchored lane runs
+                            // taker_fee_bps = 4. Capped ⇒ skipped, so dropping it is
+                            // behaviour-neutral.
+                            let required_cash = match side {
+                                Side::Buy => Some(notional + fee_estimate),
+                                Side::Sell if pre_qty <= Decimal::ZERO => {
+                                    Some(notional / MAX_LEVERAGE + fee_estimate)
+                                }
+                                Side::Sell => None,
+                            };
+                            if let Some(required) = required_cash
+                                && (cash < required || notional <= Decimal::ZERO)
                             {
+                                tracing::debug!(
+                                    symbol = %sym,
+                                    ?side,
+                                    %cash,
+                                    %required,
+                                    "rebalance leg SKIPPED by the solvency pre-flight"
+                                );
+                                continue;
+                            }
+
+                            // #67: fill at THIS order's symbol bar, never the merged-loop
+                            // bar. `merged_bars` interleaves every symbol sorted by
+                            // (ts, symbol), so the bar in hand belongs to ONE symbol
+                            // while the rebalance spans many.
+                            match engine.step(&fill_bar, vec![ord]).await {
                                 Ok(fills) => {
                                     for fill in fills {
                                         let notional_fill = fill.qty.get() * fill.price.get();
-                                        let total_cost = notional_fill + fill.fee.amount();
-                                        if total_cost > cash {
-                                            // Solvency guard: skip rather than go negative.
-                                            // NOTE: abandoning a cover leaves the short OPEN
-                                            // while the strategy's `held_short_symbols` says
-                                            // it is closed — the book is now directionally
-                                            // biased and nothing but this line records it.
-                                            tracing::warn!(
-                                                symbol = %sig.symbol,
-                                                cash = %cash,
-                                                total_cost = %total_cost,
-                                                abandoned_qty = %fill.qty.get(),
-                                                "short cover solvency guard triggered — the short \
-                                                 stays OPEN while the strategy believes it is flat"
-                                            );
-                                            continue;
+                                        match fill.side {
+                                            Side::Buy => {
+                                                let total_cost = notional_fill + fill.fee.amount();
+                                                if total_cost > cash {
+                                                    // Defensive: price moved between the
+                                                    // pre-flight estimate and the fill.
+                                                    // Abandoning a COVER leaves the short
+                                                    // open while the strategy believes it
+                                                    // is flat — loud, not silent.
+                                                    tracing::warn!(
+                                                        symbol = %sym,
+                                                        %cash,
+                                                        %total_cost,
+                                                        abandoned_qty = %fill.qty.get(),
+                                                        "solvency guard triggered — fill \
+                                                         SKIPPED to prevent negative cash"
+                                                    );
+                                                    continue;
+                                                }
+                                                cash -= total_cost;
+                                                *position_book
+                                                    .entry(sym.clone())
+                                                    .or_insert(Decimal::ZERO) += fill.qty.get();
+                                            }
+                                            Side::Sell => {
+                                                cash += notional_fill - fill.fee.amount();
+                                                *position_book
+                                                    .entry(sym.clone())
+                                                    .or_insert(Decimal::ZERO) -= fill.qty.get();
+                                            }
                                         }
-                                        cash -= total_cost;
                                         if cash < min_cash_seen {
                                             min_cash_seen = cash;
                                         }
-                                        *position_book
-                                            .entry(sig.symbol.clone())
-                                            .or_insert(Decimal::ZERO) += fill.qty.get();
                                         trades += 1;
                                     }
                                 }
+                                // Review 1-21: a rejected order used to be swallowed by an
+                                // `if let Ok(..) && let Ok(..)` chain — a risk REJECTION was
+                                // indistinguishable from a no-fill, with no log and no
+                                // counter. Behaviour is unchanged (skip); the diagnosis is
+                                // loud.
                                 Err(err) => tracing::warn!(
-                                    symbol = %sig.symbol,
-                                    side = "Buy",
-                                    intent = "cover_short",
-                                    notional = %(cover_qty * mark),
-                                    %equity,
-                                    error = %err,
-                                    "engine REJECTED the buy-to-cover order — the short stays \
-                                     OPEN (silently, before review 1-21)"
-                                ),
-                            },
-                            Err(err) => tracing::warn!(
-                                symbol = %sig.symbol,
-                                side = "Buy",
-                                intent = "cover_short",
-                                notional = %(cover_qty * mark),
-                                %equity,
-                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
-                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
-                                price_sanity_band = %risk_limits.price_sanity_band,
-                                error = %err,
-                                "risk limits REJECTED the buy-to-cover order — the short stays \
-                                 OPEN (silently, before review 1-21)"
-                            ),
-                        }
-                    }
-                }
-                trading_core::SignalKind::Buy if current_qty <= Decimal::ZERO => {
-                    let fraction = dec!(0.10);
-                    // Bug B fix (v0.1.1): the buy is SKIPPED when cash cannot cover
-                    // notional + estimated fee, so cash can never go negative. Before
-                    // this fix, notional was sized against total equity (cash +
-                    // positions) without checking whether cash was sufficient, driving
-                    // cash negative on fee-churn paths (up to 5 343 trades/year) and
-                    // producing impossible negative equity on a long-only book. Per the
-                    // solvency invariant: cash ≥ 0 AND equity ≥ 0 at ALL steps. The
-                    // strategy's 10%-of-equity intent is preserved when cash is
-                    // sufficient. TWO guard layers protect solvency: (1) the pre-flight
-                    // skip below; (2) the defensive fill-loop guard on total_cost.
-                    //
-                    // Review 1-14: a former "layer 1" notional cap
-                    // (`min(target_notional, cash)`) was removed as dead code — with
-                    // any positive taker fee a cash-capped buy always failed the
-                    // pre-flight (`cash < cash + fee`), so no downsized buy could ever
-                    // execute; skip-vs-skip is byte-identical. All anchored lanes and
-                    // the harness drivers use taker_fee_bps = 4.
-                    let notional = equity * fraction;
-                    // Estimate round-trip fee (taker_fee_bps; conservative).
-                    let fee_estimate = notional * Decimal::new(i64::from(taker_fee_bps), 4); // bps → fraction
-                    // Pre-flight solvency check: skip the buy outright if cash cannot
-                    // cover notional + estimated fee (no partial downsizing).
-                    if cash < notional + fee_estimate || notional <= Decimal::ZERO {
-                        continue;
-                    }
-                    let qty_raw = notional / mark;
-                    if qty_raw <= Decimal::ZERO {
-                        continue;
-                    }
-                    let pos_snap = Position::empty(sig.symbol.clone());
-                    if let Ok(qty) = Quantity::new(qty_raw)
-                        && let Ok(price) = Price::new(mark)
-                    {
-                        // Review 1-21: see the cover arm above — a rejected order used to be
-                        // silent. Behaviour unchanged (skip), diagnosis now loud.
-                        match Order::new(
-                            sig.strategy_id.clone(),
-                            sig.symbol.clone(),
-                            Side::Buy,
-                            qty,
-                            OrderKind::Market,
-                            TimeInForce::Ioc,
-                            &pos_snap,
-                            price,
-                            &risk_limits,
-                            equity,
-                        ) {
-                            Ok(ord) => match engine
-                                .step(
-                                    // #67: fill at THIS order's symbol bar, never the
-                                    // merged-loop bar. Present by construction — the
-                                    // `mark_prices.get(&sig.symbol)` guard above already
-                                    // returned for this symbol, and both maps are written
-                                    // at the same point in the loop.
-                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
-                                    vec![ord],
-                                )
-                                .await
-                            {
-                                Ok(fills) => {
-                                    for fill in fills {
-                                        let notional_fill = fill.qty.get() * fill.price.get();
-                                        let total_cost = notional_fill + fill.fee.amount();
-                                        // Solvency guard (defensive): if somehow fill cost exceeds
-                                        // cash (edge case from price movement between estimate and fill),
-                                        // skip updating rather than going negative.
-                                        if total_cost > cash {
-                                            tracing::warn!(
-                                                symbol = %sig.symbol,
-                                                cash = %cash,
-                                                total_cost = %total_cost,
-                                                "solvency guard triggered — skipping fill to prevent negative cash"
-                                            );
-                                            continue;
-                                        }
-                                        cash -= total_cost;
-                                        if cash < min_cash_seen {
-                                            min_cash_seen = cash;
-                                        }
-                                        *position_book
-                                            .entry(sig.symbol.clone())
-                                            .or_insert(Decimal::ZERO) += fill.qty.get();
-                                        trades += 1;
-                                    }
-                                }
-                                Err(err) => tracing::warn!(
-                                    symbol = %sig.symbol,
-                                    side = "Buy",
-                                    intent = "open_long",
+                                    symbol = %sym,
+                                    ?side,
                                     %notional,
                                     %equity,
                                     error = %err,
-                                    "engine REJECTED the long-open order — the leg is absent from \
-                                     the book (silently, before review 1-21)"
+                                    "engine REJECTED a rebalance leg — the book now differs \
+                                     from the target the sizer approved"
                                 ),
-                            },
-                            Err(err) => tracing::warn!(
-                                symbol = %sig.symbol,
-                                side = "Buy",
-                                intent = "open_long",
-                                %notional,
-                                %equity,
-                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
-                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
-                                price_sanity_band = %risk_limits.price_sanity_band,
-                                error = %err,
-                                "risk limits REJECTED the long-open order — the leg is absent from \
-                                 the book (silently, before review 1-21)"
-                            ),
+                            }
                         }
                     }
+                    // ── ADR-0089 D2 — breach policy: SKIP, COUNT, SURFACE ──────
+                    // The sizer is all-or-nothing by design (R5.2); it does not
+                    // scale a vector down to fit. Scaling was rejected because it
+                    // silently converts a breach into a smaller trade. Skipping
+                    // SILENTLY was rejected for the reason this project keeps
+                    // paying for (bug-log #66's class): an unobservable skip reads
+                    // as a clean run. The counter is the whole point.
+                    Err(risk::PortfolioSizeError::PortfolioExposureBreach { proposed, cap }) => {
+                        portfolio_breaches += 1;
+                        tracing::warn!(
+                            %proposed,
+                            %cap,
+                            n_legs = targets.len(),
+                            "portfolio exposure cap BREACHED — the ENTIRE rebalance is \
+                             skipped (ADR-0089 D2); the book is unchanged this bar"
+                        );
+                    }
+                    Err(err) => tracing::warn!(
+                        error = %err,
+                        n_legs = targets.len(),
+                        "portfolio sizer REFUSED the rebalance — the book is unchanged this bar"
+                    ),
                 }
-                trading_core::SignalKind::Sell if current_qty > Decimal::ZERO => {
-                    let pos_snap = Position::empty(sig.symbol.clone());
-                    if let Ok(qty) = Quantity::new(current_qty)
-                        && let Ok(price) = Price::new(mark)
-                    {
-                        // Review 1-21: see the cover arm above — a rejected order used to be
-                        // silent. Behaviour unchanged (skip), diagnosis now loud. A rejected
-                        // CLOSE is the worst of the four: the position stays on while the
-                        // strategy's `held_symbols` records it as flat.
-                        match Order::new(
-                            sig.strategy_id.clone(),
-                            sig.symbol.clone(),
-                            Side::Sell,
-                            qty,
-                            OrderKind::Market,
-                            TimeInForce::Ioc,
-                            &pos_snap,
-                            price,
-                            &risk_limits,
-                            equity,
-                        ) {
-                            Ok(ord) => match engine
-                                .step(
-                                    // #67: fill at THIS order's symbol bar, never the
-                                    // merged-loop bar. Present by construction — the
-                                    // `mark_prices.get(&sig.symbol)` guard above already
-                                    // returned for this symbol, and both maps are written
-                                    // at the same point in the loop.
-                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
-                                    vec![ord],
-                                )
-                                .await
-                            {
-                                Ok(fills) => {
-                                    for fill in fills {
-                                        let notional_fill = fill.qty.get() * fill.price.get();
-                                        cash += notional_fill - fill.fee.amount();
-                                        *position_book
-                                            .entry(sig.symbol.clone())
-                                            .or_insert(Decimal::ZERO) -= fill.qty.get();
-                                        trades += 1;
-                                    }
-                                }
-                                Err(err) => tracing::warn!(
-                                    symbol = %sig.symbol,
-                                    side = "Sell",
-                                    intent = "close_long",
-                                    notional = %(current_qty * mark),
-                                    %equity,
-                                    error = %err,
-                                    "engine REJECTED the long-close order — the position stays \
-                                     OPEN while the strategy believes it is flat (silently, \
-                                     before review 1-21)"
-                                ),
-                            },
-                            Err(err) => tracing::warn!(
-                                symbol = %sig.symbol,
-                                side = "Sell",
-                                intent = "close_long",
-                                notional = %(current_qty * mark),
-                                %equity,
-                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
-                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
-                                price_sanity_band = %risk_limits.price_sanity_band,
-                                error = %err,
-                                "risk limits REJECTED the long-close order — the position stays \
-                                 OPEN while the strategy believes it is flat (silently, before \
-                                 review 1-21)"
-                            ),
-                        }
-                    }
-                }
-                // ── M-DEV-3: Open/extend short (k_short > 0 ONLY — dead code when k_short==0) ─
-                // `current_qty <= 0` means flat or already short; this Sell signal opens/extends.
-                // The initial-margin gate mirrors the long Bug-B skip (D-MN.2 solvency point 2).
-                trading_core::SignalKind::Sell if current_qty <= Decimal::ZERO && k_short > 0 => {
-                    let fraction = dec!(0.10);
-                    let target_notional = equity * fraction;
-                    // Reserve margin = notional / max_leverage (max_leverage=1 → margin=notional).
-                    // The short is SKIPPED (not partially filled) if cash < margin + estimated fee
-                    // — mirroring the long Bug-B pre-flight skip (D-MN.2 initial-margin gate).
-                    // NOTE (review 1-14): this branch deliberately KEEPS its notional cap —
-                    // it is part of the LOCKED MN anchor surface (D-MN.2) and was not in the
-                    // 1-14 dead-cap finding's scope (which covered the long Buy branch only).
-                    let notional = if target_notional > cash {
-                        cash
-                    } else {
-                        target_notional
-                    };
-                    let margin = notional / MAX_LEVERAGE;
-                    let fee_estimate = notional * Decimal::new(i64::from(taker_fee_bps), 4);
-                    if cash < margin + fee_estimate || notional <= Decimal::ZERO {
-                        continue;
-                    }
-                    let qty_raw = notional / mark;
-                    if qty_raw <= Decimal::ZERO {
-                        continue;
-                    }
-                    let pos_snap = Position::empty(sig.symbol.clone());
-                    if let Ok(qty) = Quantity::new(qty_raw)
-                        && let Ok(price) = Price::new(mark)
-                    {
-                        // Review 1-21: see the cover arm above — a rejected order used to be
-                        // silent. Behaviour unchanged (skip), diagnosis now loud. This is the
-                        // arm the MN finding is about: a rejected SHORT-open leaves the long
-                        // book standing alone, i.e. a directionally-biased "market-neutral"
-                        // run that no column of the θ-surface would reveal.
-                        match Order::new(
-                            sig.strategy_id.clone(),
-                            sig.symbol.clone(),
-                            Side::Sell,
-                            qty,
-                            OrderKind::Market,
-                            TimeInForce::Ioc,
-                            &pos_snap,
-                            price,
-                            &risk_limits,
-                            equity,
-                        ) {
-                            Ok(ord) => match engine
-                                .step(
-                                    // #67: fill at THIS order's symbol bar, never the
-                                    // merged-loop bar. Present by construction — the
-                                    // `mark_prices.get(&sig.symbol)` guard above already
-                                    // returned for this symbol, and both maps are written
-                                    // at the same point in the loop.
-                                    last_bar_by_symbol.get(&sig.symbol).unwrap_or(bar),
-                                    vec![ord],
-                                )
-                                .await
-                            {
-                                Ok(fills) => {
-                                    for fill in fills {
-                                        let notional_fill = fill.qty.get() * fill.price.get();
-                                        // Open short: sell proceeds in, qty goes negative.
-                                        // cash += notional − fee (proceeds in, fee out).
-                                        cash += notional_fill - fill.fee.amount();
-                                        if cash < min_cash_seen {
-                                            min_cash_seen = cash;
-                                        }
-                                        // qty goes NEGATIVE (short position).
-                                        *position_book
-                                            .entry(sig.symbol.clone())
-                                            .or_insert(Decimal::ZERO) -= fill.qty.get();
-                                        trades += 1;
-                                    }
-                                }
-                                Err(err) => tracing::warn!(
-                                    symbol = %sig.symbol,
-                                    side = "Sell",
-                                    intent = "open_short",
-                                    %notional,
-                                    %margin,
-                                    %equity,
-                                    error = %err,
-                                    "engine REJECTED the short-open order — the MN book is now \
-                                     LONG-BIASED for this rebalance (silently, before review 1-21)"
-                                ),
-                            },
-                            Err(err) => tracing::warn!(
-                                symbol = %sig.symbol,
-                                side = "Sell",
-                                intent = "open_short",
-                                %notional,
-                                %margin,
-                                %equity,
-                                per_symbol_exposure_cap = %risk_limits.per_symbol_exposure_cap,
-                                portfolio_exposure_cap = ?risk_limits.portfolio_exposure_cap,
-                                price_sanity_band = %risk_limits.price_sanity_band,
-                                error = %err,
-                                "risk limits REJECTED the short-open order — the MN book is now \
-                                 LONG-BIASED for this rebalance (silently, before review 1-21)"
-                            ),
-                        }
-                    }
-                }
-                _ => {}
             }
         }
 
@@ -955,6 +890,7 @@ pub async fn run_path(
         realized_funding: realized_funding_total,
         time_in_market_bars,
         liquidations,
+        portfolio_breaches,
     })
 }
 

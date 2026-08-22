@@ -861,8 +861,100 @@ cargo test -p backtest --test determinism -- --ignored
 
 **Moral**: an immutability gate is not a reproducibility gate. Hashing what you stored proves only that storage is intact; it says nothing about whether the producer still produces it. If the evidence is meant to be *reproducible*, something must actually re-run — and that something must be allowed to fail.
 
+### `#94` — `size_portfolio_target` sized a resize order to the whole TARGET, not the delta. Wiring it lost 74 % of equity on the first fixture through the resize path
+**Status**: FIXED 2026-08-23 (`crates/risk/src/portfolio.rs`), binding test
+`crates/backtest/tests/portfolio_controls_bind.rs::a_resize_converges_instead_of_overshooting_every_bar`.
+Found while wiring ADR-0089 D1.
+
+**What happened.** The open/resize branch emitted an order for
+`|target_notional / mark|` — the full target quantity — regardless of what the
+leg already held. That is correct only against a *"set position to X"* venue
+API. Every execution path in this repository fills INCREMENTALLY:
+`PaperEngine::step` ADDS the fill to the book. So a resize of a leg already
+holding 10 % of equity ordered another 10 %, then another, until cash was gone.
+
+**How it surfaced.** `horizon_divergence_e2e::f_hr_4_signal_non_no_op_daily`
+went red the moment the sizer was actually called, with TS and always-long
+returning *byte-identical* results — the tell that neither strategy's decisions
+were reaching the book any more. Instrumented: final equity **25 722** from
+100 000 (−74 %) with `min_cash_seen` at **43.8**. The book had gone fully
+invested on a fixture that targets 10 %.
+
+**Why it survived.** Two independent reasons, and they compound:
+
+1. **No caller.** This is #69 — the function had no production call site, so the
+   resize path had never executed anywhere.
+2. **Its own tests could not see it.** All 13 pre-existing unit tests exercise
+   flat → open or → close. In BOTH, delta and target coincide exactly. The one
+   case where they differ — a same-side resize of a held leg — had no test.
+
+**The sharper consequence: #94 disabled #68.** A delta-sized order lands the leg
+ON its target, so the drift band then holds it for several bars. An
+absolute-sized order OVERSHOOTS, so the leg is outside the band again on the very
+next bar and re-trades forever. Measured on the binding fixture (60 bars, 0.10
+band, +2 %/bar): **10 fills delta-sized vs 50 absolute-sized**. Had the sizer
+been wired without fixing this, the hold band would have been switched on and
+observably suppressed nothing — and the natural conclusion would have been that
+the band does not work, rather than that the orders never converged.
+
+**Also corrected here:** `total_gross_notional` accumulates `target_notional`
+(the RESULTING leg), never the delta — the cap is a limit on the book after the
+rebalance, not on its turnover.
+
+**Moral**: "returns a `Vec<Order>`" does not say whether an order is an absolute
+position or a delta, and the two are indistinguishable in every test where the
+prior position is zero. An order-producing function needs at least one test
+whose starting position is non-zero and whose target is non-zero — otherwise the
+entire semantic is unpinned.
+
+### `#95` — `portfolio_exposure_cap` is declared at NINE sites and read at ONE. Wiring `run_path` fixes one lane; eight others still declare a cap they cannot enforce
+**Status**: OPEN — scope finding, needs an operator ruling. Found 2026-08-23 while
+closing #69.
+
+**The census, whole-workspace and reproducible:**
+
+```bash
+# declarations
+grep -rn "portfolio_exposure_cap: Some" crates/*/src/     # 9 sites
+# reads
+grep -rn "portfolio_exposure_cap" crates/*/src/ | grep -v "portfolio_exposure_cap:"   # 1 site
+```
+
+The single read is `crates/risk/src/portfolio.rs:243`, inside
+`size_portfolio_target`. `Order::new` does NOT consult it — its cap is the
+per-symbol one. So the portfolio cap is enforceable through exactly one function,
+and until 2026-08-23 that function had no production caller (#69).
+
+**What the wiring did and did not fix.** `run_path` now calls the sizer, so the
+cap binds there — and `run_path` is the lane behind **every one of the 34 anchors
+in the 1-25 inventory** (#86-#119 are all θ-surfaces from
+`param_robustness_sweep`, which routes through it). The other eight declaring
+lanes still construct orders per signal and therefore still cannot enforce it:
+
+`patchtst_overlay_weights` · `threshold_sweep` (the TCN τ/ε `run_cell`, distinct
+from `run_path`) · `tcn_overlay` · `garch_vol_target_overlay` ·
+`tcn_overlay_weights` · `pairs` (declares **0.75**) · `momentum` ·
+`regime_dispatcher`
+
+**A correction to the 1-25 architect note.** It records "two production lanes are
+implicated (`run_path`, `run_cell`)". For the 34-anchor inventory that is one
+lane too many: `scenarios/threshold_sweep::run_cell` is the candle-gated TCN
+threshold sweep and produces none of #86-#119. The inventory is entirely
+`run_path`, which is why D1 could be discharged without touching `run_cell`.
+
+**Why this is not just "more of #69".** #69 was one uncalled function. This is the
+declaration side: eight call sites that state a limit in a struct the code path
+they use never inspects. Fixing them means either routing those lanes through the
+sizer too (a repeat of the D1 restructure, eight times, on lanes with their own
+anchors) or deleting the declarations and saying so in the reports that print
+them. **Neither should be chosen silently**, which is why this is logged rather
+than fixed.
+
 ## Changelog
 
+- 2026-08-23 (orchestrator): **#95 added (OPEN — needs a ruling)** — `portfolio_exposure_cap` is declared at **9** sites and read at **1** across the whole workspace; the single read is inside `size_portfolio_target`, and `Order::new` never consults it. Wiring `run_path` (#69) binds the cap on the lane behind **all 34** inventory anchors — #86-#119 are θ-surfaces from `param_robustness_sweep`, which routes through it. Eight other lanes still declare a cap they cannot enforce (`pairs` declares 0.75). Also corrects the 1-25 architect note: `scenarios::threshold_sweep::run_cell` is the candle-gated TCN τ/ε sweep and produces NONE of the inventory anchors, so D1 was dischargeable on `run_path` alone.
+- 2026-08-23 (orchestrator): **#94 added and FIXED — the sizer's resize order was the TARGET, not the delta.** Found by wiring ADR-0089 D1: `size_portfolio_target` emitted `|target_notional / mark|` on every action, correct only against a "set position to X" API, while every path here fills incrementally. A leg targeted at 10 % of equity accumulated another 10 % per rebalance — measured **−74 % equity, `min_cash_seen` 43.8 / 100 000**, with TS and always-long returning byte-identical results. Survived because #69 meant no caller AND because all 13 of its unit tests start from a flat position, where delta and target coincide. **It also disabled #68**: an overshooting order leaves the leg outside the band every bar, so the hold band could never have held anything (10 fills delta-sized vs 50 absolute-sized on the binding fixture). Fixing it first is what let #68's gate be RED-proven at all.
+- 2026-08-23 (orchestrator): **#68 + #69 CLOSED — the sizer is wired and both controls now BIND.** `run_path` builds a signed target vector at each rebalance boundary and calls `size_portfolio_target` (ADR-0089 D1); breaches skip the whole rebalance, increment `PathRunResult.portfolio_breaches`, and are logged (D2). Three RED-proven gates in `portfolio_controls_bind.rs` — neutering the cap, the band, or #94's delta sizing each turns exactly one of them red. **Two corrections to ADR-0089 recorded with the fix:** (1) the gate is the REBALANCE BOUNDARY, not `!signals.is_empty()` — signals are a delta, so a full book emits none and a signal-gated rebalance would have left the band nearly as inert as #68 found it; (2) the ADR's "turnover falls" is **wrong** — the old code could never resize a held leg at all (`Buy if current_qty <= 0`), so the band does not suppress old behaviour, it bounds NEW behaviour, and the net direction is an empirical question for 1-26.
 - 2026-08-22 (orchestrator): **#93 added (OPEN, known-red → 1-26)** — `verify_anchors.sh` hashes COMMITTED report bodies and never re-runs, so it cannot see the code drifting away from the evidence: it printed `ANCHORS PASS (119/119)` while four re-running determinism tests showed the same scenario now hashes `b655e5e7…` against a pinned `0f6f6eb8…`. Those four are the ONLY gate in the repo that can observe code-vs-evidence drift, and they are correctly red; bisect puts the divergence BEFORE #67/#71/#75/#76. `#[ignore]`d with the reason inline (still runnable via `-- --ignored`) rather than re-baselined, because re-pinning a truthful gate to current output is #77's failure. Also corrects a wrong diagnosis: the CI failure is NOT missing corpus — `data/binance` is TRACKED and present on runners; the gitignored dirs are `audit`, `audit.db`, `binance-dynamic`, `reflection`. The skip-guard written on that false premise was removed.
 - 2026-08-22 (orchestrator): **#69 UNITS RULED — `exposure_cap` MEANS GROSS (Σ |notional|)**, ADR-0089 D7. This settles a question the corpus never answered and it lands against the surfaces: at 6 legs × fraction 0.10 the MN book runs **0.60 gross vs its hashed `exposure_cap = 0.50`**, so **the anchored MN surfaces DID breach their own declared limit** — #69's reading is now the official one, not a candidate. Net was rejected as near-vacuous (≈0 by construction on a market-neutral arm, so the cap could never bind on the very lanes it was written for); long-only was rejected because it ignores half the book. **Consequence for the fix: `size_portfolio_target` cannot implement the ruling as written** — it caps `total_long_notional`, the long-only measure that was just rejected — so it must be extended to signed weights with a gross cap, or replaced. The second-order consequence is the sharper one: surfaces that previously *reported compliance* were non-compliant under the ruled measure, so 1-26's errata owes a per-scenario record, not just new numbers.
 - 2026-08-22 (orchestrator): **#92 RULED — fix the cfg gating AND add a CI leg.** Relocate the shared types (`ActivityEvent`, `HaltReason`, the activity enums) into `trading_core`, which `ui` already depends on unconditionally, then add a CI job that builds the minimal config so it cannot rot again. Chosen over deleting the claim or fixing without coverage: it is the only option that closes the declared-vs-executed family rather than changing which side happens to be true. Unblocks **#91**, whose fix lives in exactly that build. Needs an ADR for the type relocation.

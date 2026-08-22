@@ -247,6 +247,51 @@ impl MomentumStrategy {
     /// Read by `run_path` to gate the short-side branch. `0` for all non-LongShort
     /// strategies → dead code in `run_path` → anchor-neutral.
     #[must_use]
+    /// The configured drift rebalance threshold (ADR-0089 D4).
+    ///
+    /// Exposed so the research harness can pass the CONFIGURED value to
+    /// `risk::size_portfolio_target` instead of inventing one. Until 2026-08-22
+    /// this axis was inert: the Tier-1 grid advertises
+    /// `lookback x k_long x drift_rebalance_threshold`, but nothing consumed the
+    /// third axis, so 54 of 58 cells sat at 0.10 and the axis changed nothing
+    /// (bug-log #68). Wiring the sizer is what makes it genuine.
+    /// Timestamp of the most recent REBALANCE decision, or `None` before the first.
+    ///
+    /// Exposed because `on_bar` returns an empty `Vec<Signal>` for TWO different
+    /// situations and the caller cannot tell them apart: "this is not a rebalance
+    /// bar" and "this IS a rebalance bar and nothing transitioned". The
+    /// distinction is load-bearing for the harness's target-vector rebalance
+    /// (ADR-0089 D1): signals are a DELTA — a leg that is held and still selected
+    /// emits nothing — so gating the rebalance on a non-empty signal batch would
+    /// re-mark the book only when membership changed, leaving the drift hold band
+    /// almost as inert as bug-log #68 found it. `last_rebalance_ts == bar.close_ts`
+    /// is the boundary itself.
+    ///
+    /// NOTE for callers on a merged multi-symbol stream: only the FIRST bar at a
+    /// timestamp triggers the rebalance (`minutes_since` is then 0 for its
+    /// siblings), but this value stays equal to that timestamp for all of them.
+    /// De-duplicate per timestamp on the caller side.
+    pub fn last_rebalance_ts(&self) -> Option<Timestamp> {
+        self.last_rebalance_ts
+    }
+
+    pub fn drift_threshold(&self) -> Decimal {
+        self.drift_threshold
+    }
+
+    /// The configured portfolio exposure cap (ADR-0089 D7 — GROSS: S |notional|).
+    ///
+    /// Exposed for the same reason as [`Self::drift_threshold`]: the harness used
+    /// to HARDCODE `portfolio_exposure_cap: Some(dec!(0.50))` into its
+    /// `RiskLimits` while the report body printed the CONFIG's `exposure_cap`.
+    /// Those agreed for every shipped grid cell (all at 0.50), so the divergence
+    /// was invisible — but it is the same declared-vs-executed shape as bug-log
+    /// #69 itself, and a config at any other cap would have been silently
+    /// ignored.
+    pub fn exposure_cap(&self) -> Decimal {
+        self.exposure_cap
+    }
+
     pub fn k_short(&self) -> u32 {
         self.k_short
     }
