@@ -55,7 +55,24 @@ as history, the migration honest, and the verdict re-derivation loud.
 
 ## Tasks / Subtasks
 
-- [ ] Confirm the AC1 entry gate: #69 wired and #68 dropped, both verified.
+- [x] **AC1 entry gate SATISFIED 2026-08-23.** #68 and #69 are both WIRED (not dropped — the "drop
+  the drift axis" ruling was withdrawn 2026-08-19 on a false premise, then superseded by ADR-0089
+  D1/D7). `run_path` builds a signed target vector per rebalance boundary and calls
+  `size_portfolio_target`; the gross cap and the drift band both bind, RED-proven in
+  `crates/backtest/tests/portfolio_controls_bind.rs`. Landed in `723ca74`.
+  **Three things this story inherits from that commit:**
+  - **bug-log #94 was fixed in the same pass** (the sizer sized resizes to the target, not the delta).
+    Regenerating before it would have produced a corpus with a −74 %-equity artefact baked in.
+  - **ADR-0089's "turnover falls" is CORRECTED to "direction unknown".** The old code could not resize
+    a held leg at all, so the band bounds NEW behaviour. AC4's errata must REPORT the turnover
+    direction from measurement; do not carry the old claim forward as an expectation.
+  - **The four `#[ignore]`d determinism pins are NOT part of this movement.** Re-measured after D1:
+    byte-identical to their 2026-08-22 values. They cover `scenarios/momentum.rs` and
+    `scenarios/tcn_overlay.rs` — lanes outside `run_path` (bug-log #95). Their drift is pre-existing
+    and separately caused; re-deriving them is a distinct exercise from re-pricing the 34 surfaces.
+- [ ] Decide bug-log **#95** before regenerating, or record that it is deliberately out of scope: eight
+  lanes still declare a `portfolio_exposure_cap` they cannot enforce. None produce inventory anchors,
+  so this does not block — but the errata should not claim the cap binds engine-wide.
 - [ ] Schedule the compute window (see Dev Notes — measured, not estimated).
 - [ ] Regenerate all 34 surfaces to a NEW namespace with `--out-dir` set explicitly.
 - [ ] Errata + verdict re-derivation (AC4), escalating any thesis-touching flip first.

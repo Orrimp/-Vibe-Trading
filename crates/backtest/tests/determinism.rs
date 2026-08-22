@@ -718,6 +718,19 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 // **1-26** (the re-lock), which regenerates the 34 affected surfaces under a new
 // namespace and records per-scenario old-vs-new numbers in an errata.
 //
+// RE-MEASURED 2026-08-23, after the ADR-0089 D1 sizer wiring landed. All four
+// produce the SAME hashes as on 2026-08-22 — `t717_top10_2023_1h_momentum` is
+// still `b655e5e7…` exactly. That is not luck and it is worth writing down: these
+// four cover `scenarios/momentum.rs` and `scenarios/tcn_overlay.rs`, which are
+// among the eight lanes bug-log #95 identifies as still building orders per
+// signal. `run_path` — the lane D1 rewrote, and the one behind all 34 of the 1-26
+// inventory anchors — is not on their path.
+//
+// So 1-26 must NOT conflate the two sources of movement:
+//   * these four: drift that predates the session entirely, cause unknown;
+//   * the 34 inventory surfaces: deliberate, attributable movement from D1.
+// Re-deriving one set of pins says nothing about the other.
+//
 // `#[ignore]` is applied so CI can verify EVERYTHING ELSE while this remains open.
 // They still run on demand:
 //     cargo test -p backtest --test determinism -- --ignored
