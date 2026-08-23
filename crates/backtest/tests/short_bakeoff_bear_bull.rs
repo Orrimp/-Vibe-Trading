@@ -180,6 +180,14 @@ struct ArmResult {
     trade_count: usize,
     final_equity: Decimal,
     initial_equity: Decimal,
+    /// Fills that moved the position at or below zero — a Sell from flat/short,
+    /// or a Buy while short. `0` on a `short_enabled` arm means the arm carries
+    /// a long/short label it never earned (bug-log #82).
+    short_legs: usize,
+    /// Most negative reconstructed position over the run.
+    min_pos: Decimal,
+    /// Largest long position over the run — the bug-log #82 ratchet probe.
+    max_pos: Decimal,
 }
 
 fn flag_str(f: RobustnessFlag) -> &'static str {
@@ -335,7 +343,78 @@ async fn run_arm(arm: &ArmDef, bars: Vec<Bar>, candidate_index: usize) -> Option
         trade_count: kpis.trade_count,
         final_equity,
         initial_equity,
+        short_legs,
+        min_pos: minpos,
+        max_pos: maxpos,
     })
+}
+
+/// **bug-log #82 gate — a long/short arm must actually take a short.**
+///
+/// Two properties, both of which were FALSE when #82 was written and both of
+/// which are now measured true on real data:
+///
+/// 1. **`v0.sma_cross_ls` takes short legs.** It took ZERO on both windows.
+///    The cause was bug-log #71: `Order::new`'s cap was side-blind, so once the
+///    position passed `per_symbol_exposure_cap = 0.40` every position-CLOSING
+///    Sell was silently refused while each small opening Buy still passed. The
+///    arm could never return to flat, so `Sell-when-flat` — the short ENTRY —
+///    could never fire.
+/// 2. **The position stays bounded.** The same refusal made the arm a one-way
+///    ratchet: 181 buys against 1 sell, `max_pos` 28.2 (bear) and 39.2 (bull) on
+///    a 100 000 account — roughly 11-16x leverage — ending at NEGATIVE equity
+///    (-9 235 / -14 146). A long/short arm had become an unbounded leveraged
+///    long, and nothing in the KPI table showed it.
+///
+/// RED-ON-REVERT: restore the side-blind cap and both assertions fail — the
+/// short count returns to zero and the ratchet returns with it.
+///
+/// Deliberately NOT asserted here: `macd_ls` / `rsi_ls` / `bbands_ls` still take
+/// zero short legs. That is #82's SECOND mechanism (perfect buy/sell
+/// alternation never reaches the flat state `Sell-when-flat` requires) and it is
+/// independent of #71 — it needs a signal-shape decision or honest re-labelling,
+/// not a cap fix. Asserting it here would encode a defect as a requirement.
+fn assert_no_ratchet_and_shorts_taken(window: &str, results: &[ArmResult]) {
+    let Some(arm) = results.iter().find(|r| r.id == "v0.sma_cross_ls") else {
+        panic!("#82 gate: v0.sma_cross_ls missing from the {window} field");
+    };
+    assert!(
+        arm.short_legs > 0,
+        "#82 gate ({window}): v0.sma_cross_ls is labelled long/short and took \
+         {} short legs. Zero means the arm is ranked as long/short while running \
+         long-only — check that Order::new's exposure cap is still evaluated on \
+         RESULTING exposure (bug-log #71), because a side-blind cap refuses the \
+         closing Sells that the short entry depends on.",
+        arm.short_legs
+    );
+    assert!(
+        arm.min_pos < Decimal::ZERO,
+        "#82 gate ({window}): v0.sma_cross_ls never held a negative position \
+         (min_pos = {}). Short legs without a negative position would mean the \
+         census is counting something else.",
+        arm.min_pos
+    );
+    // The ratchet's most direct signature: an unbounded long. BTC traded roughly
+    // 19k-70k across these two windows, so 10 units on a 100 000 account is
+    // 2-7x leverage — impossible for a book that can close. The measured ratchet
+    // reached 28.2 (bear) and 39.2 (bull); the fixed arm reaches 1.83 and 0.98.
+    // The bound sits far from both, so it tests the RATCHET, not the sizing.
+    assert!(
+        arm.max_pos < Decimal::from(10),
+        "#82 gate ({window}): v0.sma_cross_ls reached max_pos = {} units on a \
+         100 000 account — that is the leverage ratchet, not a position. Every \
+         closing Sell refused while every opening Buy passed.",
+        arm.max_pos
+    );
+    assert!(
+        arm.final_equity > Decimal::ZERO,
+        "#82 gate ({window}): v0.sma_cross_ls ended at NEGATIVE equity ({}). \
+         That is the leverage ratchet — every closing Sell refused while every \
+         opening Buy passed. Note the second-order trap: the cap check is guarded \
+         by `if current_equity > 0`, so once equity goes negative the cap stops \
+         applying at all.",
+        arm.final_equity
+    );
 }
 
 // ── Table printer ─────────────────────────────────────────────────────────────
@@ -508,6 +587,7 @@ async fn t_t1_short_bakeoff_bear_window() {
     }
 
     print_table("BEAR 2022-Q2 (BTC -58%)", &results);
+    assert_no_ratchet_and_shorts_taken("BEAR 2022-Q2", &results);
     check_always_short_sanity(&results);
 
     // ── Sanity check: verify the short engine sign via direct short_exec call ──
@@ -642,6 +722,7 @@ async fn t_t1_short_bakeoff_bull_window() {
     }
 
     print_table("BULL H1-2024 (BTC +~80%)", &results);
+    assert_no_ratchet_and_shorts_taken("BULL H1-2024", &results);
 
     // On a bull window always_short is EXPECTED to lose -- this is the honest control.
     let always_short = results.iter().find(|r| r.id == "v0.always_short");

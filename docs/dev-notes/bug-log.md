@@ -571,7 +571,58 @@ Note the `required-features` trap that hides both: `backtest/Cargo.toml` puts `r
 **Moral**: a `#![cfg(feature = "…")]` on a whole module makes its absence *silent* — the crate compiles, the caller takes the `cfg(not(...))` branch, and the feature simply is not there. Combined with per-crate feature namespacing, a workspace can enable `x/yahoo` everywhere it is visible and still leave `y/yahoo` off. **Never let a product capability depend on a feature flag no test asserts is on.** For every `cfg(feature)`-gated capability, ask: which build actually ships it, and what fails if it does not?
 
 ### `#82` — The advisor's entire SHORT SLATE never shorts on real data. Five arms are ranked as long/short; four are long-only in practice, one never trades at all, and the flagship ratchets to ~11-16× leverage because the side-blind cap refuses its exits.
-**Status**: OPEN (found 2026-08-15 while fixing #80; the census that exposed it is now printed on every run so it cannot hide again). Anchor-impacting: **no** (advisor/bake-off lane, `write_report=false`). This is **#71's consequence on the product surface** — the research-lane defect was known; what is new is what it does to the ranked field the operator reads.
+**Status**: **MECHANISM 1 FIXED — RE-MEASURED 2026-08-23** (by #71's resulting-exposure cap; gate added,
+RED-proven). **Mechanism 2 still OPEN.** **Point 3 RETRACTED — it was a mis-framing, see below.**
+(Found 2026-08-15 while fixing #80; the census that exposed it is now printed on every run so it
+cannot hide again.)
+
+---
+
+#### RE-MEASUREMENT 2026-08-23 — same harness, same two real windows, same corpus
+
+```bash
+cargo test -p backtest --features realdata --test short_bakeoff_bear_bull -- --ignored --nocapture
+```
+
+| arm | window | fills then → now | buys/sells then → now | **short legs** then → now |
+|---|---|---|---|---|
+| `v0.sma_cross_ls` | bear | 182 → **254** | 181/1 → **126/128** | 0 → **128** |
+| `v0.sma_cross_ls` | bull | 152 → **528** | 151/1 → **266/262** | 0 → **262** |
+| `v0.macd_ls` | both | 66 / 189 (unchanged) | 33/33, 95/94 | 0 → **0** |
+| `v0.rsi_ls` | both | 84 / 120 (unchanged) | 42/42, 60/60 | 0 → **0** |
+| `v0.bbands_ls` | both | 134 / 206 (unchanged) | 67/67, 103/103 | 0 → **0** |
+
+**Mechanism 1 (the leverage ratchet) is GONE.** `max_pos` fell from **28.2 / 39.2 units** to
+**1.83 / 0.98**, `min_pos` is now **negative** (−1.81 / −0.94) where it was pinned at 0, and terminal
+equity moved from **−9 235 / −14 146** to **positive on both windows** (bull: 88 887). The arm now
+returns to flat, so `Sell-when-flat` fires and the short entry works — which is the whole causal
+chain #82 described, run in reverse by fixing its root.
+
+**Binding gate added, and RED-PROVEN by restoring the defect.**
+`short_bakeoff_bear_bull.rs::assert_no_ratchet_and_shorts_taken` asserts, per window, that
+`v0.sma_cross_ls` takes ≥ 1 short leg, reaches a negative position, and does not end at negative
+equity. Reverting `Order::new`'s resulting-exposure check to the side-blind form fails BOTH windows
+with `took 0 short legs` — reproducing #82's original measurement exactly. This is the assertion
+#82's own moral said was missing: *"When an arm is labelled long/short, assert that it takes a short
+— on real data."*
+
+**Mechanism 2 (the alternation lock) is UNCHANGED and still open.** `macd_ls`, `rsi_ls` and
+`bbands_ls` still alternate perfectly (33/33, 42/42, 67/67, 95/94, 60/60, 103/103) and still take
+**zero** short legs. #82 predicted this would be independent of #71 and it was right. The gate
+deliberately does NOT assert on these three: they need a signal-shape decision or honest
+re-labelling, and asserting the current behaviour would encode a defect as a requirement.
+
+**⚠ POINT 3 RETRACTED — `v0.always_short` taking zero fills is CORRECT BY CONSTRUCTION, not a
+defect.** The arm dispatches to `bakeoff::buyhold::run_alwaysshort_path`, a closed-form
+mark-to-market equity path — the exact structural twin of `run_buyhold_path`. It emits no `Fill`
+because it constructs no `Order`, by design. The tell was in the same census table all along:
+**`v0.buyhold` also reports `fills=0`**, and nobody thinks the benchmark failed to run. The harness's
+own sanity gate proves the arm works — `initial=100 000 → final=156 210` on the −58 % bear window,
+plus a direct `short_exec` cross-check at `+5 615`. Calling this "an arm which never trades" was the
+same error #82 already self-corrected once in its scope note: **reasoning from a symptom without
+tracing the implementation.** Twice in one entry.
+
+ Anchor-impacting: **no** (advisor/bake-off lane, `write_report=false`). This is **#71's consequence on the product surface** — the research-lane defect was known; what is new is what it does to the ranked field the operator reads.
 
 **Measured, orchestrator-verified, both real windows (2022-Q2 bear and H1-2024 bull):**
 
@@ -952,6 +1003,7 @@ than fixed.
 
 ## Changelog
 
+- 2026-08-23 (orchestrator): **#82 RE-MEASURED — mechanism 1 FIXED by #71, gate added and RED-proven; point 3 RETRACTED.** `v0.sma_cross_ls` now takes **128 / 262 short legs** (was 0 / 0) with `max_pos` down from **28.2 / 39.2 units to 1.83 / 0.98** and terminal equity positive on both windows (was −9 235 / −14 146). The leverage ratchet is gone: the arm returns to flat, so the short entry fires. `assert_no_ratchet_and_shorts_taken` is the assertion #82's own moral asked for; restoring the side-blind cap fails BOTH windows with `took 0 short legs`, reproducing the original measurement exactly. **Mechanism 2 unchanged and still open** — `macd_ls`/`rsi_ls`/`bbands_ls` still alternate perfectly and take zero shorts, exactly as #82 predicted, and the gate deliberately does not assert on them. **Point 3 was wrong**: `v0.always_short` dispatches to `run_alwaysshort_path`, a closed-form equity path that emits no `Fill` by construction — `v0.buyhold` reports `fills=0` in the same table, and the sanity gate shows the arm returns 100 000 → 156 210 on the bear window. Reasoning from a symptom without tracing the implementation, in the one entry that already self-corrected for it once.
 - 2026-08-23 (orchestrator): **#95 added (OPEN — needs a ruling)** — `portfolio_exposure_cap` is declared at **9** sites and read at **1** across the whole workspace; the single read is inside `size_portfolio_target`, and `Order::new` never consults it. Wiring `run_path` (#69) binds the cap on the lane behind **all 34** inventory anchors — #86-#119 are θ-surfaces from `param_robustness_sweep`, which routes through it. Eight other lanes still declare a cap they cannot enforce (`pairs` declares 0.75). Also corrects the 1-25 architect note: `scenarios::threshold_sweep::run_cell` is the candle-gated TCN τ/ε sweep and produces NONE of the inventory anchors, so D1 was dischargeable on `run_path` alone.
 - 2026-08-23 (orchestrator): **#94 added and FIXED — the sizer's resize order was the TARGET, not the delta.** Found by wiring ADR-0089 D1: `size_portfolio_target` emitted `|target_notional / mark|` on every action, correct only against a "set position to X" API, while every path here fills incrementally. A leg targeted at 10 % of equity accumulated another 10 % per rebalance — measured **−74 % equity, `min_cash_seen` 43.8 / 100 000**, with TS and always-long returning byte-identical results. Survived because #69 meant no caller AND because all 13 of its unit tests start from a flat position, where delta and target coincide. **It also disabled #68**: an overshooting order leaves the leg outside the band every bar, so the hold band could never have held anything (10 fills delta-sized vs 50 absolute-sized on the binding fixture). Fixing it first is what let #68's gate be RED-proven at all.
 - 2026-08-23 (orchestrator): **#68 + #69 CLOSED — the sizer is wired and both controls now BIND.** `run_path` builds a signed target vector at each rebalance boundary and calls `size_portfolio_target` (ADR-0089 D1); breaches skip the whole rebalance, increment `PathRunResult.portfolio_breaches`, and are logged (D2). Three RED-proven gates in `portfolio_controls_bind.rs` — neutering the cap, the band, or #94's delta sizing each turns exactly one of them red. **Two corrections to ADR-0089 recorded with the fix:** (1) the gate is the REBALANCE BOUNDARY, not `!signals.is_empty()` — signals are a delta, so a full book emits none and a signal-gated rebalance would have left the band nearly as inert as #68 found it; (2) the ADR's "turnover falls" is **wrong** — the old code could never resize a held leg at all (`Buy if current_qty <= 0`), so the band does not suppress old behaviour, it bounds NEW behaviour, and the net direction is an empirical question for 1-26.
