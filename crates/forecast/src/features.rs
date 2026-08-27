@@ -1243,8 +1243,36 @@ mod tests {
             .map(|d| std::path::PathBuf::from(d).join("../../data/binance"))
             .unwrap_or_else(|_| std::path::PathBuf::from("data/binance"));
 
-        if !root.exists() {
-            eprintln!("SKIP: data/binance not found");
+        // ── The guard must check for the DATA, not for the directory ─────────
+        //
+        // `data/binance/` is tracked — but only `REVISION.toml` is (`git ls-files
+        // data/binance` returns exactly one path). The parquet corpus underneath
+        // it is machine-local. So `root.exists()` is TRUE on every CI runner
+        // while every byte this test reads is absent: the skip never fired,
+        // `windows_for_symbol` yielded `Err`, and the `expected Ok windows` arm
+        // panicked. That is what turned the 3-OS matrix red on all three legs.
+        //
+        // Corrects bug-log #93's note, which recorded "the CI failure is NOT
+        // missing corpus — `data/binance` is TRACKED and present on runners" and
+        // removed a skip-guard on that basis. The directory is tracked; the data
+        // is not, and only the data matters. It is the same shape as the defects
+        // this log is full of — a guard that checks a proxy for the condition
+        // instead of the condition.
+        //
+        // The months are the ones the 2023-01-01..2023-03-01 span actually reads.
+        let required = [
+            root.join("BTCUSDT/2023/01.parquet"),
+            root.join("BTCUSDT/2023/02.parquet"),
+        ];
+        if let Some(missing) = required.iter().find(|p| !p.exists()) {
+            // VISIBLE, per bug-log #66: a silent skip is indistinguishable from a
+            // pass. The CI step greps for `[skip]` to report the count.
+            eprintln!(
+                "[skip] windows_determinism_on_real_data: real-data corpus absent \
+                 ({} not found). Only data/binance/REVISION.toml is tracked; the \
+                 parquet corpus is machine-local, so this is EXPECTED in CI.",
+                missing.display()
+            );
             return;
         }
 
