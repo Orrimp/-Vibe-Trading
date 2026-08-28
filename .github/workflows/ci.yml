@@ -138,6 +138,24 @@ jobs:
       #     #![cfg(target_os="macos")] source gate, but headless smokes need
       #     the platform-specific step below.
       #   - macos: full ui test suite runs in a dedicated step below.
+      # ── A FAILING STEP MUST NOT CANCEL THE GATES BELOW IT ────────────────
+      #
+      # Measured 2026-08-23: with this step red, steps 9-12 all reported
+      # `skipped` — including "Test ui (full suite, macOS canonical gate)", which
+      # is AD-10's canonical rendered-pixel gate. So for as long as CI was red on
+      # ANY cause, the entire UI evidence base ran zero assertions on every leg,
+      # and the run's summary said nothing about it.
+      #
+      # That is this project's recurring defect wearing a CI hat: a gate that
+      # never executes is indistinguishable from a gate that passed. It is also
+      # how the `leaderboard_scorecard_render` regression (bisected to 67f2a9d)
+      # stayed unreported — it is a REAL failure on the canonical box that no run
+      # ever reached.
+      #
+      # The UI steps below therefore carry `always() &&` in front of their OS
+      # condition: an earlier failure no longer cancels them. A failing step still
+      # fails the job — nothing is being made permissive here; the run just stops
+      # hiding what else is broken.
       - name: Test workspace (non-ui crates)
         run: cargo test --workspace --exclude ui
 
@@ -147,7 +165,9 @@ jobs:
       # so this runs only the headless smokes: headless_emulator_smoke,
       # cockpit_live_lab_run_smoke, and all other non-visual ui integration tests.
       - name: Test ui (headless, Linux)
-        if: matrix.os == 'ubuntu-latest'
+        # `always() &&` so a failure in an EARLIER step cannot silently cancel this
+        # gate — see the block above `Test workspace`.
+        if: always() && matrix.os == 'ubuntu-latest'
         run: xvfb-run -a cargo test -p ui --features fixtures
 
       # ── Ubuntu: skip-visibility (bug-log #66 class) ────────────────────────
@@ -156,7 +176,7 @@ jobs:
       # "the real-data guards executed" (they run for real on the canonical box
       # only). Informational: never fails the build.
       - name: Report corpus-gated skips (informational)
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'ubuntu-latest'
         run: |
           OUT=$(xvfb-run -a cargo test -p ui --test lab_binance_divergence --test lab_binance_persist_compare -- --nocapture 2>&1 || true)
           N=$(printf '%s' "$OUT" | grep -c "\[skip\]" || true)
@@ -167,7 +187,9 @@ jobs:
       # The #![cfg(target_os="macos")] source gate compiles the visual tests IN
       # on macOS only; they run against the 56 committed baseline PNGs.
       - name: Test ui (full suite, macOS canonical gate)
-        if: matrix.os == 'macos-latest'
+        # `always() &&` — this is AD-10's canonical gate; it must never be skipped
+        # as a side effect of an unrelated step failing.
+        if: always() && matrix.os == 'macos-latest'
         run: cargo test -p ui
 
       # ── Windows: build + non-visual cargo test -p ui (D5 scope) ───────────
@@ -176,5 +198,5 @@ jobs:
       # Interactive window UX on Windows is best-effort at v0.1 (no Windows HW
       # for manual QA); full interactive parity is a v0.2 follow-on (D5).
       - name: Test ui (non-visual, Windows)
-        if: matrix.os == 'windows-latest'
+        if: always() && matrix.os == 'windows-latest'
         run: cargo test -p ui --features fixtures
