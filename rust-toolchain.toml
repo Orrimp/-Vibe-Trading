@@ -1,0 +1,20 @@
+# The compiler is a BUILD INPUT, and this repository controls its build inputs.
+#
+# Pinned 2026-08-23 (ADR-0091). CI installed `dtolnay/rust-toolchain@stable` —
+# whatever stable happened to be that morning — while the canonical box runs
+# 1.94.1. The gap had reached FOUR releases (1.94.1, 2026-03-25 -> 1.98.0,
+# 2026-08-18), and `crates/core/tests/compile_fail/*.stderr` pin exact rustc
+# diagnostics, so `compile_fail_tests` failed on two of the three CI legs.
+#
+# Measured, not assumed: `cargo +1.98.0 test -p trading_core --test trybuild`
+# reproduces the CI failure here. 1.94 lists 8 private fields on the `Order`
+# literal; 1.98 lists 7 (dropping the one that IS supplied) and re-formats the
+# spans. Same code, same test, different compiler.
+#
+# Re-blessing the .stderr files was rejected: it fixes today's stable and breaks
+# on the next one, and it means the evidence corpus is produced by a compiler
+# nobody chose. Raising the pin is a deliberate act — bump it here, re-run the
+# anchors, and re-bless the trybuild expectations in the same commit.
+[toolchain]
+channel = "1.94.1"
+components = ["rustfmt", "clippy"]
