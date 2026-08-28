@@ -156,8 +156,42 @@ jobs:
       # condition: an earlier failure no longer cancels them. A failing step still
       # fails the job — nothing is being made permissive here; the run just stops
       # hiding what else is broken.
+      #
+      # WHY THIS STEP IS A SCRIPT AND NOT `run: cargo test ...`
+      #
+      # Run logs require repo ADMIN to download (`gh run ... --log-failed` ->
+      # HTTP 403 for everyone else), so a plain `cargo test` failure is visible to
+      # a non-admin only as the word "failure" next to a step name. Diagnosing the
+      # 2026-08-22 red run therefore took a clean-clone reproduction to learn a
+      # fact one line of output already contained.
+      #
+      # `::error::` lines become run ANNOTATIONS, which are part of the run's
+      # public metadata rather than its log. So the failing test names travel out
+      # of the log and can be read without admin. `--no-fail-fast` makes that list
+      # COMPLETE — the default stops at the first failing target and would have
+      # hidden that one fix was not the whole fix.
       - name: Test workspace (non-ui crates)
-        run: cargo test --workspace --exclude ui
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --workspace --exclude ui --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/ws-test.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::group::failing tests"
+            # Test names, then the assertion/panic text that explains them.
+            grep -E '^test .* \.\.\. FAILED$' "$RUNNER_TEMP/ws-test.log" | sort -u | while IFS= read -r t; do
+              echo "::error title=test failed::$t"
+            done
+            grep -E 'panicked at ' "$RUNNER_TEMP/ws-test.log" | sort -u | head -20 | while IFS= read -r pline; do
+              echo "::error title=panic::$pline"
+            done
+            # A build/link failure produces no `test ... FAILED` line at all.
+            grep -E '^error(\[|:)' "$RUNNER_TEMP/ws-test.log" | sort -u | head -10 | while IFS= read -r eline; do
+              echo "::error title=build error::$eline"
+            done
+            echo "::endgroup::"
+          fi
+          exit "$status"
 
       # ── Ubuntu: headless ui tests (smokes only — visual baselines not compiled) ──
       # xvfb-run provides a virtual X display for winit window creation.
