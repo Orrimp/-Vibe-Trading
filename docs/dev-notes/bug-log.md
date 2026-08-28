@@ -1013,8 +1013,71 @@ anchors) or deleting the declarations and saying so in the reports that print
 them. **Neither should be chosen silently**, which is why this is logged rather
 than fixed.
 
+### `#96` — the P0-1 "show your work" credibility block renders ENTIRELY below the fold, and its pixel gate has been measuring the scrollbar
+**Status**: OPEN — needs a product decision, not a patch. Found 2026-08-23 while piloting #88;
+bisected. Anchor-impacting: **no** (cockpit surface).
+
+**The gate.** `leaderboard_scorecard_render` renders the leaderboard with
+`scorecard = Some(..)` and against a control with `scorecard = None`, and asserts the first paints
+STRICTLY MORE foreground. It fails:
+
+```
+with=39794 vs without=41774, delta=-1980
+```
+
+**Bisected to `67f2a9d`** (`feat(advisor-data-quality-surface): P1-7 — DATA-stage trust/quality
+panel`), which added a large Data quality panel to the same screen. The test passed at `00240ed` and
+fails at every commit after `67f2a9d`.
+
+**Diagnosed at the pixels, not inferred.** The two 1920x1080 renders were diffed:
+
+```
+differing region bbox (l,t,r,b): (1894, 820, 1904, 1020)   -> 10 px wide, at x=1894 of 1920
+differing pixels: 1986
+```
+
+A 10-pixel-wide strip at the right edge of the viewport is the **SCROLLBAR**. Everything else is
+byte-identical. So:
+
+1. **The credibility block contributes ZERO visible pixels.** It is entirely below the fold.
+2. **The delta the gate measures is the scrollbar thumb.** Adding content below the fold lengthens
+   the scroll extent, which SHORTENS the thumb, which REMOVES foreground pixels — hence a
+   *negative* delta. The gate is not weakly measuring the feature; it is measuring the scrollbar,
+   with the opposite sign.
+
+**Why the fixture did not save it.** The test's own doc records that it deliberately uses the 2-row
+`benchmark_wins` fixture "so the scorecard block fits". That short-table trick bought a fixed
+vertical budget — and `67f2a9d` spent it. The safeguard was real, and a later feature silently
+consumed it.
+
+**The product consequence is the serious half.** This is the P0-1 overfitting scorecard — the block
+whose entire purpose is telling the operator how much to trust the ranking. On a 1920x1080 viewport
+it is now off-screen; a user sees the recommendation and the table without ever meeting the
+"how much to trust this" panel unless they scroll. The honesty surface is the thing that got pushed
+below the fold.
+
+**Why nobody saw the red.** Two independent maskings, both now fixed: the macOS canonical UI step was
+being CANCELLED by an earlier failing step (so it reported `skipped`, never `failure`), and a red run
+was undiagnosable without repo admin. Both are addressed — but note the ordering: this regression has
+been live since `67f2a9d` and no CI run has ever reported it.
+
+**Fix direction — a REAL decision, deliberately not taken here.**
+- **(a) Move the credibility block above Data quality.** Changes what users see, which is the actual
+  complaint. Restores the gate's meaning for free.
+- **(b) Make the harness scroll to the block, or render a taller viewport.** Restores the gate only.
+  If chosen, say so explicitly: it accepts that the block lives below the fold.
+
+Do NOT "fix" this by loosening the assertion or re-baselining the delta — the number it compares is
+the scrollbar, so any threshold fitted to it is fitted to noise. That is bug-log #77's failure.
+
+**Moral**: a pixel gate that compares two renders can be satisfied by ANY difference between them,
+including chrome the feature never touches. When a harness reserves a resource by construction — a
+short fixture, a fixed viewport — that reservation is an invariant with no enforcement, and the next
+feature to want the same space will take it silently.
+
 ## Changelog
 
+- 2026-08-23 (orchestrator): **#96 added (OPEN — needs a product decision).** The P0-1 "show your work" credibility block renders ENTIRELY below the fold, and `leaderboard_scorecard_render` has been measuring the SCROLLBAR. Bisected to `67f2a9d` (the DATA-stage quality panel), which spent the vertical budget the test had bought with a deliberate 2-row fixture. Diagnosed at the pixels: the two 1920x1080 renders differ in exactly one 10px-wide strip at `x=1894..1904` — the scrollbar — for 1986 pixels, matching the reported `delta=-1980`. Adding content below the fold lengthens the scroll extent, shortens the thumb, and removes foreground, so the gate reads NEGATIVE. The block contributes zero visible pixels. Two maskings kept it invisible (the macOS UI step was cancelled by an earlier failure; logs need repo admin), both now fixed — so no CI run has ever reported a regression that has been live since `67f2a9d`. Fix is (a) move the block above Data quality or (b) scroll/enlarge the harness and state that the block lives below the fold; NOT re-baselining a threshold fitted to scrollbar noise (#77).
 - 2026-08-23 (orchestrator): **CI was RED on all three legs since 2026-08-22, and it was my own #93 correction that did it.** The failing step is `cargo test --workspace --exclude ui`; it PASSES locally and fails on any fresh checkout, so it was reproduced in a clean `git clone` — one test, `forecast::features::tests::windows_determinism_on_real_data`. Root cause: `git ls-files data/binance` returns **exactly one path** (`REVISION.toml`). The DIRECTORY is tracked; the PARQUET CORPUS is not. So `root.exists()` is TRUE on every runner while every byte the test reads is absent — the skip never fired, `windows_for_symbol` returned `Err`, and the test panicked. **#93's note claiming "the CI failure is NOT missing corpus — `data/binance` is TRACKED and present on runners" is now marked wrong in place**, along with the skip-guard removal it justified. Fixed by guarding on the two parquet files the test actually reads and emitting a VISIBLE `[skip]` line (bug-log #66). Verified both ways: skips in the clean clone, runs for real locally.
 - 2026-08-23 (orchestrator): **#82 RE-MEASURED — mechanism 1 FIXED by #71, gate added and RED-proven; point 3 RETRACTED.** `v0.sma_cross_ls` now takes **128 / 262 short legs** (was 0 / 0) with `max_pos` down from **28.2 / 39.2 units to 1.83 / 0.98** and terminal equity positive on both windows (was −9 235 / −14 146). The leverage ratchet is gone: the arm returns to flat, so the short entry fires. `assert_no_ratchet_and_shorts_taken` is the assertion #82's own moral asked for; restoring the side-blind cap fails BOTH windows with `took 0 short legs`, reproducing the original measurement exactly. **Mechanism 2 unchanged and still open** — `macd_ls`/`rsi_ls`/`bbands_ls` still alternate perfectly and take zero shorts, exactly as #82 predicted, and the gate deliberately does not assert on them. **Point 3 was wrong**: `v0.always_short` dispatches to `run_alwaysshort_path`, a closed-form equity path that emits no `Fill` by construction — `v0.buyhold` reports `fills=0` in the same table, and the sanity gate shows the arm returns 100 000 → 156 210 on the bear window. Reasoning from a symptom without tracing the implementation, in the one entry that already self-corrected for it once.
 - 2026-08-23 (orchestrator): **#95 added (OPEN — needs a ruling)** — `portfolio_exposure_cap` is declared at **9** sites and read at **1** across the whole workspace; the single read is inside `size_portfolio_target`, and `Order::new` never consults it. Wiring `run_path` (#69) binds the cap on the lane behind **all 34** inventory anchors — #86-#119 are θ-surfaces from `param_robustness_sweep`, which routes through it. Eight other lanes still declare a cap they cannot enforce (`pairs` declares 0.75). Also corrects the 1-25 architect note: `scenarios::threshold_sweep::run_cell` is the candle-gated TCN τ/ε sweep and produces NONE of the inventory anchors, so D1 was dischargeable on `run_path` alone.
