@@ -172,26 +172,7 @@ jobs:
       # hidden that one fix was not the whole fix.
       - name: Test workspace (non-ui crates)
         shell: bash
-        run: |
-          set -o pipefail
-          cargo test --workspace --exclude ui --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/ws-test.log"
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            echo "::group::failing tests"
-            # Test names, then the assertion/panic text that explains them.
-            grep -E '^test .* \.\.\. FAILED$' "$RUNNER_TEMP/ws-test.log" | sort -u | while IFS= read -r t; do
-              echo "::error title=test failed::$t"
-            done
-            grep -E 'panicked at ' "$RUNNER_TEMP/ws-test.log" | sort -u | head -20 | while IFS= read -r pline; do
-              echo "::error title=panic::$pline"
-            done
-            # A build/link failure produces no `test ... FAILED` line at all.
-            grep -E '^error(\[|:)' "$RUNNER_TEMP/ws-test.log" | sort -u | head -10 | while IFS= read -r eline; do
-              echo "::error title=build error::$eline"
-            done
-            echo "::endgroup::"
-          fi
-          exit "$status"
+        run: scripts/ci_run_annotated.sh "workspace" cargo test --workspace --exclude ui --no-fail-fast
 
       # ── Ubuntu: headless ui tests (smokes only — visual baselines not compiled) ──
       # xvfb-run provides a virtual X display for winit window creation.
@@ -202,7 +183,8 @@ jobs:
         # `always() &&` so a failure in an EARLIER step cannot silently cancel this
         # gate — see the block above `Test workspace`.
         if: always() && matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a cargo test -p ui --features fixtures
+        shell: bash
+        run: xvfb-run -a scripts/ci_run_annotated.sh "ui-linux" cargo test -p ui --features fixtures --no-fail-fast
 
       # ── Ubuntu: skip-visibility (bug-log #66 class) ────────────────────────
       # Corpus-gated real-data tests self-skip wherever data/binance is absent
@@ -224,7 +206,8 @@ jobs:
         # `always() &&` — this is AD-10's canonical gate; it must never be skipped
         # as a side effect of an unrelated step failing.
         if: always() && matrix.os == 'macos-latest'
-        run: cargo test -p ui
+        shell: bash
+        run: scripts/ci_run_annotated.sh "ui-macos" cargo test -p ui --no-fail-fast
 
       # ── Windows: build + non-visual cargo test -p ui (D5 scope) ───────────
       # The windows = "=0.57.0" dep stanza (D4) makes pid_alive.rs compile.
@@ -233,4 +216,5 @@ jobs:
       # for manual QA); full interactive parity is a v0.2 follow-on (D5).
       - name: Test ui (non-visual, Windows)
         if: always() && matrix.os == 'windows-latest'
-        run: cargo test -p ui --features fixtures
+        shell: bash
+        run: scripts/ci_run_annotated.sh "ui-windows" cargo test -p ui --features fixtures --no-fail-fast
