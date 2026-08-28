@@ -29,6 +29,11 @@
 #     that are hardest to diagnose remotely. `error:` / `error[E....]` lines are
 #     matched too.
 #
+#  3. On the WINDOWS runner grep decided the log was BINARY and printed
+#     "Binary file D:\a\_temp/ci-annotated-workspace.log matches" INSTEAD of the
+#     matching lines — so the one leg with 17 failures annotated none of their
+#     names. `-a` forces text. Observed on run for 7c126db.
+#
 # Usage:  scripts/ci_run_annotated.sh <label> <command...>
 set -uo pipefail
 
@@ -46,18 +51,18 @@ if [ "$status" -eq 0 ]; then
 fi
 
 # Test failures, then the assertions that explain them, then build errors.
-{ grep -E '^test .* \.\.\. FAILED$' "$log" || true; } | sort -u | while IFS= read -r line; do
+{ grep -aE '^test .* \.\.\. FAILED$' "$log" || true; } | sort -u | while IFS= read -r line; do
   echo "::error title=${label}: test failed::${line}"
 done
-{ grep -E 'panicked at ' "$log" || true; } | sort -u | head -20 | while IFS= read -r line; do
+{ grep -aE 'panicked at ' "$log" || true; } | sort -u | head -20 | while IFS= read -r line; do
   echo "::error title=${label}: panic::${line}"
 done
-{ grep -E '^error(\[|:)' "$log" || true; } | sort -u | head -10 | while IFS= read -r line; do
+{ grep -aE '^error(\[|:)' "$log" || true; } | sort -u | head -10 | while IFS= read -r line; do
   echo "::error title=${label}: build error::${line}"
 done
 
 # A count, so a truncated annotation list never reads as the whole story.
-n=$(grep -cE '^test .* \.\.\. FAILED$' "$log" || true)
+n=$(grep -acE '^test .* \.\.\. FAILED$' "$log" || true)
 echo "::error title=${label}: summary::${n} failing test(s); exit status ${status}"
 
 exit "$status"
