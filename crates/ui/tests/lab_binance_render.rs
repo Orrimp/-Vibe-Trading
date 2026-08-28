@@ -156,6 +156,27 @@ use ui::lab::equity_loader::LabEquitySeries;
 use ui::lab::runner::{DefaultLabBinanceBarSource, LabBarSource, LabRunConfig};
 use ui::test_support::chart_overlay_program;
 
+/// Probe for the DATA this test loads — never for `REVISION.toml`.
+///
+/// `REVISION.toml` is TRACKED: `git ls-files data/binance` returns exactly that
+/// one path. The parquet corpus beneath it is gitignored and machine-local. A
+/// probe on `REVISION.toml` is therefore TRUE on every CI runner while every
+/// byte this test reads is absent — the skip never fires, `preload` errors, and
+/// the "corpus PRESENT ... hard FAIL, not a skip" arm panics. That is what turned
+/// the Linux and Windows UI legs red, invisibly, because those steps were being
+/// cancelled by an earlier failing step.
+///
+/// The months named here are the ones `RANGE_2023_H1` actually loads. They are NOT the same
+/// across these tests — this one reads 2023, its siblings read another year —
+/// so this probe is deliberately per-file rather than a shared helper that would
+/// be right for one caller and wrong for the next.
+fn corpus_data_present(root: &std::path::Path) -> bool {
+    (1..=6).all(|m| {
+        root.join(format!("data/binance/BTCUSDT/2023/{m:02}.parquet"))
+            .is_file()
+    })
+}
+
 const RANGE_2023_H1: DateRange = DateRange::Custom {
     start_ms: 1_672_531_200_000, // 2023-01-01T00:00:00Z
     end_ms: 1_688_169_600_000,   // 2023-07-01T00:00:00Z
@@ -229,9 +250,9 @@ fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
 #[allow(clippy::type_complexity)] // return type is clear in context; extracting a type alias adds indirection without benefit
 fn binance_sourced_run() -> Option<(Vec<trading_core::Bar>, Vec<(i64, Decimal)>)> {
     let root = pin_cwd_to_workspace_root();
-    if !root.join("data/binance/REVISION.toml").is_file() {
+    if !corpus_data_present(&root) {
         eprintln!(
-            "[skip] data/binance/REVISION.toml not present at the workspace root \
+            "[skip] the pinned Binance parquet corpus (data/binance/BTCUSDT/2023/01..06.parquet) is absent at the workspace root \
              ({}) — the gitignored pinned corpus is absent on this machine; \
              curve raster proof skipped.",
             root.display()

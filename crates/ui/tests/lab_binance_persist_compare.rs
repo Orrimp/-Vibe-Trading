@@ -45,6 +45,27 @@ use ui::lab::state::{DateRange, LabDataSource, Preset};
 
 /// 2024 H1 — `binance_range_to_ms_pair(H1_2024)` resolves to 2024-01..2024-07
 /// UTC, on-disk for BTCUSDT in the pinned corpus.
+/// Probe for the DATA this test loads — never for `REVISION.toml`.
+///
+/// `REVISION.toml` is TRACKED: `git ls-files data/binance` returns exactly that
+/// one path. The parquet corpus beneath it is gitignored and machine-local. A
+/// probe on `REVISION.toml` is therefore TRUE on every CI runner while every
+/// byte this test reads is absent — the skip never fires, `preload` errors, and
+/// the "corpus PRESENT ... hard FAIL, not a skip" arm panics. That is what turned
+/// the Linux and Windows UI legs red, invisibly, because those steps were being
+/// cancelled by an earlier failing step.
+///
+/// The months named here are the ones `ENG_RANGE` (H1 **2024**) actually loads. They are NOT the same
+/// across these tests — this one reads 2024, its siblings read another year —
+/// so this probe is deliberately per-file rather than a shared helper that would
+/// be right for one caller and wrong for the next.
+fn corpus_data_present(root: &std::path::Path) -> bool {
+    (1..=6).all(|m| {
+        root.join(format!("data/binance/BTCUSDT/2024/{m:02}.parquet"))
+            .is_file()
+    })
+}
+
 const ENG_RANGE: EngDateRange = EngDateRange::H1_2024;
 
 /// Resolve the workspace root (`crates/ui` → `crates` → root) and pin the
@@ -68,9 +89,9 @@ fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
 /// error PANICS (review patch 1 — no more any-Err→skip vacuity).
 fn try_load_binance_bars() -> Option<Vec<trading_core::Bar>> {
     let root = pin_cwd_to_workspace_root();
-    if !root.join("data/binance/REVISION.toml").is_file() {
+    if !corpus_data_present(&root) {
         eprintln!(
-            "[skip] data/binance/REVISION.toml not present at the workspace root \
+            "[skip] the pinned Binance parquet corpus (data/binance/BTCUSDT/2024/01..06.parquet) is absent at the workspace root \
              ({}) — the gitignored pinned corpus is absent on this machine; \
              persist/Compare round-trip skipped.",
             root.display()

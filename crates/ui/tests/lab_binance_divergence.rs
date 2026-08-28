@@ -44,6 +44,27 @@ use ui::lab::runner::{DefaultLabBinanceBarSource, LabBarSource, LabRunConfig};
 /// 2023 H1 as a `Custom` ms range: 2023-01-01 .. 2023-07-01 UTC. The pinned
 /// corpus covers 2023-01..2024-12 at 1h, so this window resolves to on-disk
 /// months for BTCUSDT.
+/// Probe for the DATA this test loads — never for `REVISION.toml`.
+///
+/// `REVISION.toml` is TRACKED: `git ls-files data/binance` returns exactly that
+/// one path. The parquet corpus beneath it is gitignored and machine-local. A
+/// probe on `REVISION.toml` is therefore TRUE on every CI runner while every
+/// byte this test reads is absent — the skip never fires, `preload` errors, and
+/// the "corpus PRESENT ... hard FAIL, not a skip" arm panics. That is what turned
+/// the Linux and Windows UI legs red, invisibly, because those steps were being
+/// cancelled by an earlier failing step.
+///
+/// The months named here are the ones `RANGE_2023_H1` actually loads. They are NOT the same
+/// across these tests — this one reads 2023, its siblings read another year —
+/// so this probe is deliberately per-file rather than a shared helper that would
+/// be right for one caller and wrong for the next.
+fn corpus_data_present(root: &std::path::Path) -> bool {
+    (1..=6).all(|m| {
+        root.join(format!("data/binance/BTCUSDT/2023/{m:02}.parquet"))
+            .is_file()
+    })
+}
+
 const RANGE_2023_H1: DateRange = DateRange::Custom {
     start_ms: 1_672_531_200_000, // 2023-01-01T00:00:00Z
     end_ms: 1_688_169_600_000,   // 2023-07-01T00:00:00Z
@@ -115,7 +136,7 @@ fn pin_cwd_to_workspace_root() -> std::path::PathBuf {
 /// when this is genuinely absent; with the probe present, any loader error is
 /// a hard FAIL (the old any-Err→skip made the tests vacuous).
 fn corpus_probe(root: &std::path::Path) -> bool {
-    root.join("data/binance/REVISION.toml").is_file()
+    corpus_data_present(root)
 }
 
 /// Load real Binance bars via the PRODUCTION `DefaultLabBinanceBarSource`
@@ -128,7 +149,7 @@ fn try_load_binance_bars() -> Option<(Vec<trading_core::Bar>, SmolStr)> {
     let root = pin_cwd_to_workspace_root();
     if !corpus_probe(&root) {
         eprintln!(
-            "[skip] data/binance/REVISION.toml not present at the workspace root \
+            "[skip] the pinned Binance parquet corpus (data/binance/BTCUSDT/2023/01..06.parquet) is absent at the workspace root \
              ({}) — the gitignored pinned corpus is absent on this machine; \
              divergence test skipped. (The no-silent-fallback contract is still \
              proven by loader_missing_corpus_returns_typed_err_not_synthetic.)",
