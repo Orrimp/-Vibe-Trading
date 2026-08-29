@@ -412,7 +412,10 @@ pub async fn generate(
     let mut csv_paths: Vec<PathBuf> = Vec::new();
 
     // equity-<window>.csv
-    let equity_window_path = artifacts_dir.join(format!("equity-{}.csv", window.slug()));
+    // `file_slug()`, not `slug()`: the display form contains colons for
+    // `Since(..)` windows and is illegal in a Windows filename. `slug()` stays
+    // the body/run-id form and is deliberately unchanged — see `ReportWindow::file_slug`.
+    let equity_window_path = artifacts_dir.join(format!("equity-{}.csv", window.file_slug()));
     csv_artifacts::write_equity_csv(&equity_window_path, &period_curve)?;
     csv_paths.push(equity_window_path);
 

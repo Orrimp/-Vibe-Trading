@@ -115,6 +115,25 @@ impl ReportWindow {
             }
         }
     }
+
+    /// A slug that is safe to put in a FILENAME on every supported OS.
+    ///
+    /// [`Self::slug`] is the DISPLAY form and must not change: it is written
+    /// into report bodies (`period:` / `window_label:`) and hashed into the run
+    /// id (`run_id.rs`), so altering it would move report bytes and break the
+    /// AD-2 anchors. This variant exists solely for path construction.
+    ///
+    /// The difference only ever bites `Since(ts)`, whose display form is
+    /// `since:<RFC-3339>` — three colons, and `:` is illegal in a Windows
+    /// filename (drive separator / NTFS alternate-data-stream marker). Writing
+    /// `equity-since:2023-01-01T00:00:00Z.csv` fails with `ERROR_INVALID_NAME`
+    /// (os error 123): six `t1003_*` / `t1006_*` tests failed that way on the
+    /// windows-latest leg, and so would any operator asking for a `Since`
+    /// report on Windows. Every other variant is already safe and is unchanged.
+    #[must_use]
+    pub fn file_slug(&self) -> String {
+        self.slug().replace(':', "-")
+    }
 }
 
 #[cfg(test)]
@@ -230,5 +249,46 @@ mod tests {
         let (since, until) = ReportWindow::Inception.resolve(now, inception);
         assert_eq!(since, inception);
         assert_eq!(until, now);
+    }
+
+    /// `file_slug()` must never emit a character that is illegal in a filename
+    /// on any supported OS. Windows rejects `< > : " / \\ | ? *`; `:` is the one
+    /// this code actually produced, and it failed with `ERROR_INVALID_NAME`
+    /// (os error 123) on the windows-latest leg.
+    ///
+    /// Asserted as a PROPERTY rather than left to the Windows CI leg, so the
+    /// invariant holds on every platform — including the ones that cannot break it.
+    #[test]
+    fn file_slug_is_filename_safe_on_every_platform() {
+        const ILLEGAL: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+        let ts = trading_core::Timestamp::new(
+            time::OffsetDateTime::from_unix_timestamp(1_672_531_200).expect("valid epoch"),
+        );
+
+        for w in [
+            ReportWindow::Days7,
+            ReportWindow::Days30,
+            ReportWindow::Days90,
+            ReportWindow::Weekly,
+            ReportWindow::Monthly,
+            ReportWindow::Inception,
+            ReportWindow::Since(ts),
+        ] {
+            let fs = w.file_slug();
+            assert!(
+                !fs.contains(ILLEGAL),
+                "file_slug() produced {fs:?}, which contains a character illegal in a \
+                 Windows filename — writing `equity-{fs}.csv` fails with \
+                 ERROR_INVALID_NAME (os error 123)"
+            );
+            assert!(!fs.is_empty(), "file_slug() must not be empty");
+        }
+
+        // The DISPLAY form is deliberately unchanged: it reaches report bodies and
+        // the run-id hash, so sanitising it there would move bytes and break AD-2.
+        assert!(
+            ReportWindow::Since(ts).slug().contains(':'),
+            "slug() is the display form and keeps its colons — only file_slug() is sanitised"
+        );
     }
 }
