@@ -1133,8 +1133,56 @@ the delivery of those bytes to a client-side config it never set. The compiler h
 (ADR-0091) and was closed the same week. When you pin an output, pin every input that can change it —
 and note that both holes were found only because a CI leg finally ran.
 
+### `#98` — R13.3's 256 MiB RSS budget is enforced with a ruler that reads 5x differently per platform
+**Status**: OPEN — needs a ruling on R13.3, not a patch. Found 2026-08-29 once CI failures became
+readable. Anchor-impacting: **no**.
+
+**Measured, same test, same workload, same commit:**
+
+| platform | peak `ru_maxrss` | verdict vs `< 256 MiB` |
+|---|---|---|
+| macOS (canonical box) | **54.3 MiB** | PASS, with 4.7x headroom |
+| ubuntu-latest (CI) | **269.6 MiB** | FAIL by 5 % |
+
+`t815_perf_smoke_90d_under_10s_and_under_256mib` (`crates/reports/tests/perf_smoke.rs:155`). The
+wall-clock half of the same test passes comfortably on both (1.06 s against a 10 s budget here).
+
+**The unit handling is CORRECT — that was checked first.** `peak_rss_bytes()` branches on
+`cfg(target_os)`: bytes on macOS, kilobytes x 1024 on Linux (`perf_smoke.rs:66-76`), exactly as the
+platforms define `ru_maxrss`. Both numbers above are genuine bytes. And the measurement is isolated:
+the binary contains a single test, so `RUSAGE_SELF` peak is not polluted by siblings.
+
+**So the gap is real, and 5x is far too large to read as "the code needs 270 MiB".** The same code
+doing the same work reports 54 MiB under one kernel's accounting and 270 MiB under another's.
+`ru_maxrss` counts resident pages, and what lands resident differs by allocator (glibc arenas vs
+macOS libmalloc), by whether parquet reads are mapped or copied, and by kernel reclaim policy. It is
+not a portable measure of what the program *needs*.
+
+**The defect is therefore not the number — it is that a declared requirement is enforced by an
+instrument that is not comparable across the platforms it now runs on.** R13.3 says "RSS < 256 MiB".
+That budget was calibrated on the box where the metric reads ~5x lower, and the 3-OS matrix has been
+silently applying it to a ruler nobody re-calibrated. Same family as the rest of this log: the
+measurement is a proxy, and the proxy changed underneath the claim.
+
+**Why it surfaced only now.** It has presumably failed on every ubuntu run since the matrix was
+activated, but the leg died earlier (build, then `compile_fail_tests`, then corpus guards), and run
+logs need repo admin. It became visible in one line the moment the annotation tooling landed.
+
+**Options, none of them "raise the number and move on":**
+- **(a) Platform-aware budget** with the calibration recorded per platform, and a note that the two
+  numbers are not comparable. Honest, cheap, and keeps the gate live on all three legs.
+- **(b) Measure something comparable** — e.g. peak allocated bytes via an instrumented allocator —
+  so one budget means the same thing everywhere. Correct, more work.
+- **(c) Scope R13.3 to the canonical box** and say so in the requirement, leaving the other legs to
+  assert the wall-clock half only. Weakest, but honest if the budget is really a macOS claim.
+
+**Do NOT simply raise 256 to 300.** That fits the number to the noisiest platform, silently
+re-baselines a declared requirement to whatever CI happens to emit, and leaves the next platform to
+break it again — bug-log #77's failure applied to a performance budget.
+
 ## Changelog
 
+- 2026-08-29 (orchestrator): **#98 added (OPEN — needs an R13.3 ruling).** `t815_perf_smoke_90d_under_10s_and_under_256mib` measures **54.3 MiB on macOS and 269.6 MiB on ubuntu** for the same workload — a 5x gap, so the 256 MiB budget passes with 4.7x headroom on the calibration box and fails by 5 % in CI. The unit handling was checked FIRST and is correct (`cfg(target_os)`: bytes on macOS, KB x 1024 on Linux), and the binary holds a single test so `RUSAGE_SELF` is not polluted. The defect is not the number: a declared requirement is being enforced by an instrument that is not comparable across the platforms it now runs on, calibrated on the one that reads lowest. Options are a platform-aware budget, a comparable metric (instrumented allocator), or scoping R13.3 to the canonical box — explicitly NOT raising 256 to 300, which would fit a declared requirement to the noisiest platform (#77's failure in performance clothing). Visible only now: the ubuntu leg previously died earlier, and logs need repo admin.
 - 2026-08-29 (orchestrator): **#97 added and FIXED — AD-2's byte-immutability did not survive a Windows checkout.** `.gitattributes` had no text/eol rules, so `evidence/**` fell back to `core.autocrlf`, which is `true` on windows-latest. Measured: the same anchored report checks out as **3103 bytes / 81 CRLF** on Windows vs **3022 / 0** on the canonical box — `552d7df2…` vs `0f4c4bad…`. All 119 anchors fail on such a checkout; `t1937*` on the windows leg is exactly that. Worse, the gate SCRIPTS get CRLF too, so `verify_anchors.sh` dies with `set: pipefail: invalid option name` — the gate cannot even run there. It looked safe only because the gate runs on ubuntu alone. Fixed with `* text=auto eol=lf` + `evidence/** -text` + `-text` on the two vendored CRLF CSVs; verified in throwaway clones BOTH ways (Windows-style checkout now 0 CRLF / 3022 bytes, and `ANCHORS PASS 119/119` inside that clone), with zero re-normalization churn locally. Same shape as ADR-0091's unpinned compiler, found the same week, and both surfaced only because a CI leg finally executed.
 - 2026-08-23 (orchestrator): **the same proxy-probe defect found in THREE more files, and it was red on two CI legs.** `crates/ui/tests/lab_binance_{divergence,persist_compare,render}.rs` all guarded on `data/binance/REVISION.toml.is_file()` — the ONE tracked path under `data/binance` — as a stand-in for the gitignored parquet corpus. On every runner the probe is TRUE, the skip never fires, `preload` errors, and the tests panic through an arm that literally reads *"corpus PRESENT ... hard FAIL, not a skip"*. Four sites now share one root cause (the fourth was `forecast::features`), and in each the guard checked a proxy rather than the condition. The probes now name the months the loader actually reads (`data/binance/BTCUSDT/2023/01..06.parquet`). **Verified in BOTH directions, which is the part that matters for a skip-guard:** corpus present -> the tests RUN for real (3/1/3 passed); corpus absent (clean clone = the CI condition) -> visible `[skip]` lines, no panic. A guard that only ever skips is the same defect in a new coat. These failures were invisible until the UI steps stopped being cancelled by an earlier failing step (6753ff1) and CI failures became readable without repo admin (7c126db).
 - 2026-08-23 (orchestrator): **#96 added (OPEN — needs a product decision).** The P0-1 "show your work" credibility block renders ENTIRELY below the fold, and `leaderboard_scorecard_render` has been measuring the SCROLLBAR. Bisected to `67f2a9d` (the DATA-stage quality panel), which spent the vertical budget the test had bought with a deliberate 2-row fixture. Diagnosed at the pixels: the two 1920x1080 renders differ in exactly one 10px-wide strip at `x=1894..1904` — the scrollbar — for 1986 pixels, matching the reported `delta=-1980`. Adding content below the fold lengthens the scroll extent, shortens the thumb, and removes foreground, so the gate reads NEGATIVE. The block contributes zero visible pixels. Two maskings kept it invisible (the macOS UI step was cancelled by an earlier failure; logs need repo admin), both now fixed — so no CI run has ever reported a regression that has been live since `67f2a9d`. Fix is (a) move the block above Data quality or (b) scroll/enlarge the harness and state that the block lives below the fold; NOT re-baselining a threshold fitted to scrollbar noise (#77).
