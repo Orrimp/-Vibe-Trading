@@ -1075,8 +1075,67 @@ including chrome the feature never touches. When a harness reserves a resource b
 short fixture, a fixed viewport — that reservation is an invariant with no enforcement, and the next
 feature to want the same space will take it silently.
 
+### `#97` — AD-2's byte-immutability does not survive a Windows checkout: nothing constrained line endings, so git rewrote the anchored corpus
+**Status**: **FIXED 2026-08-29** (`.gitattributes`), proven in both directions. Found while
+diagnosing the windows-latest leg. Anchor-impacting: **no** — the anchored BLOBS are unchanged; what
+changed is a guarantee that they arrive intact.
+
+**The claim.** AD-2 pins 119 report bodies by SHA-256 and requires them byte-identical before and
+after any change. The SHA is taken over the file's BYTES — `read_to_string` -> strip front matter ->
+`hash(body.as_bytes())`, with no `\r` handling anywhere (`strategy_anchors_unchanged.rs:402`).
+
+**The gap.** `.gitattributes` carried exactly two lines (an LFS filter and one `binary` rule) and no
+text/eol rules at all, so `evidence/**` resolved to `text: unspecified`. Git then falls back to
+`core.autocrlf` — which is `true` on Windows and on GitHub's `windows-latest` runner.
+
+**Measured, not argued.** Cloning this repo with `-c core.autocrlf=true` and reading one anchored
+report:
+
+| | CRLF | bare LF | bytes |
+|---|---|---|---|
+| Windows-style checkout | **81** | 0 | **3103** |
+| LF checkout (canonical box) | 0 | 81 | **3022** |
+
+Different bytes, therefore a different SHA — confirmed directly:
+`552d7df2…` (LF) vs `0f4c4bad…` (CRLF) on the same report. **All 119 anchors fail on such a
+checkout**, and `t1937_nine_strategy_anchors_unchanged` /
+`t1937b_canonical_strategy_anchors_unchanged` on the windows leg are exactly that.
+
+**A second consequence, found by running the gate in that clone.** The gate SCRIPTS get CRLF too:
+
+```
+scripts/verify_anchors.sh: line 58: set: pipefail: invalid option name
+```
+
+`pipefail\r` is not an option name. So on a Windows checkout the anchor gate does not merely fail —
+**it cannot execute**.
+
+**Why it looked safe.** `verify_anchors.sh` runs on the ubuntu leg only. A byte-immutability
+invariant whose truth depends on which OS performed the checkout is not an invariant; it is a
+property of one machine.
+
+**The fix**, verified end-to-end in throwaway clones rather than reasoned about:
+
+```
+* text=auto eol=lf          # normalize everywhere, repo and working tree
+evidence/** -text           # byte-immutable: never translate, either direction
+.claude/skills/bmad-brainstorming/**/*.csv -text   # the only 2 tracked files with CRLF blobs
+```
+
+- Windows-style checkout WITH the rules: **0 CRLF, 3022 bytes** — identical to the canonical box.
+- `verify_anchors.sh` in that same clone: **ANCHORS PASS (119 / 119)**.
+- The two vendored CSVs keep their CRLF (109 each) — `text=auto` would otherwise rewrite them.
+- On this machine the change produces **no re-normalization churn**: `.gitattributes` is the only
+  modified path.
+
+**Moral**: this repository hashes its own artefacts and calls the result an invariant, while leaving
+the delivery of those bytes to a client-side config it never set. The compiler had the same hole
+(ADR-0091) and was closed the same week. When you pin an output, pin every input that can change it —
+and note that both holes were found only because a CI leg finally ran.
+
 ## Changelog
 
+- 2026-08-29 (orchestrator): **#97 added and FIXED — AD-2's byte-immutability did not survive a Windows checkout.** `.gitattributes` had no text/eol rules, so `evidence/**` fell back to `core.autocrlf`, which is `true` on windows-latest. Measured: the same anchored report checks out as **3103 bytes / 81 CRLF** on Windows vs **3022 / 0** on the canonical box — `552d7df2…` vs `0f4c4bad…`. All 119 anchors fail on such a checkout; `t1937*` on the windows leg is exactly that. Worse, the gate SCRIPTS get CRLF too, so `verify_anchors.sh` dies with `set: pipefail: invalid option name` — the gate cannot even run there. It looked safe only because the gate runs on ubuntu alone. Fixed with `* text=auto eol=lf` + `evidence/** -text` + `-text` on the two vendored CRLF CSVs; verified in throwaway clones BOTH ways (Windows-style checkout now 0 CRLF / 3022 bytes, and `ANCHORS PASS 119/119` inside that clone), with zero re-normalization churn locally. Same shape as ADR-0091's unpinned compiler, found the same week, and both surfaced only because a CI leg finally executed.
 - 2026-08-23 (orchestrator): **the same proxy-probe defect found in THREE more files, and it was red on two CI legs.** `crates/ui/tests/lab_binance_{divergence,persist_compare,render}.rs` all guarded on `data/binance/REVISION.toml.is_file()` — the ONE tracked path under `data/binance` — as a stand-in for the gitignored parquet corpus. On every runner the probe is TRUE, the skip never fires, `preload` errors, and the tests panic through an arm that literally reads *"corpus PRESENT ... hard FAIL, not a skip"*. Four sites now share one root cause (the fourth was `forecast::features`), and in each the guard checked a proxy rather than the condition. The probes now name the months the loader actually reads (`data/binance/BTCUSDT/2023/01..06.parquet`). **Verified in BOTH directions, which is the part that matters for a skip-guard:** corpus present -> the tests RUN for real (3/1/3 passed); corpus absent (clean clone = the CI condition) -> visible `[skip]` lines, no panic. A guard that only ever skips is the same defect in a new coat. These failures were invisible until the UI steps stopped being cancelled by an earlier failing step (6753ff1) and CI failures became readable without repo admin (7c126db).
 - 2026-08-23 (orchestrator): **#96 added (OPEN — needs a product decision).** The P0-1 "show your work" credibility block renders ENTIRELY below the fold, and `leaderboard_scorecard_render` has been measuring the SCROLLBAR. Bisected to `67f2a9d` (the DATA-stage quality panel), which spent the vertical budget the test had bought with a deliberate 2-row fixture. Diagnosed at the pixels: the two 1920x1080 renders differ in exactly one 10px-wide strip at `x=1894..1904` — the scrollbar — for 1986 pixels, matching the reported `delta=-1980`. Adding content below the fold lengthens the scroll extent, shortens the thumb, and removes foreground, so the gate reads NEGATIVE. The block contributes zero visible pixels. Two maskings kept it invisible (the macOS UI step was cancelled by an earlier failure; logs need repo admin), both now fixed — so no CI run has ever reported a regression that has been live since `67f2a9d`. Fix is (a) move the block above Data quality or (b) scroll/enlarge the harness and state that the block lives below the fold; NOT re-baselining a threshold fitted to scrollbar noise (#77).
 - 2026-08-23 (orchestrator): **CI was RED on all three legs since 2026-08-22, and it was my own #93 correction that did it.** The failing step is `cargo test --workspace --exclude ui`; it PASSES locally and fails on any fresh checkout, so it was reproduced in a clean `git clone` — one test, `forecast::features::tests::windows_determinism_on_real_data`. Root cause: `git ls-files data/binance` returns **exactly one path** (`REVISION.toml`). The DIRECTORY is tracked; the PARQUET CORPUS is not. So `root.exists()` is TRUE on every runner while every byte the test reads is absent — the skip never fired, `windows_for_symbol` returned `Err`, and the test panicked. **#93's note claiming "the CI failure is NOT missing corpus — `data/binance` is TRACKED and present on runners" is now marked wrong in place**, along with the skip-guard removal it justified. Fixed by guarding on the two parquet files the test actually reads and emitting a VISIBLE `[skip]` line (bug-log #66). Verified both ways: skips in the clean clone, runs for real locally.

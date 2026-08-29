@@ -1,2 +1,38 @@
+# ── Line endings are part of the contract, not a preference ───────────────────
+#
+# AD-2 pins 119 report bodies by SHA-256 and requires them byte-identical. Those
+# SHAs are computed over the file's BYTES (`read_to_string` -> strip front matter
+# -> hash; no `\r` handling anywhere). Until 2026-08-29 nothing here constrained
+# line endings, so git fell back to `core.autocrlf` — which is `true` on Windows
+# and on GitHub's windows-latest runner.
+#
+# Measured, not assumed. Cloning this repo with `-c core.autocrlf=true` and
+# reading one anchored report:
+#     Windows checkout : 81 CRLF, 0 bare LF, 3103 bytes
+#     LF checkout      :  0 CRLF,            3022 bytes
+# Different bytes, different SHA. Every one of the 119 anchors fails on such a
+# checkout, and `t1937_nine_strategy_anchors_unchanged` /
+# `t1937b_canonical_strategy_anchors_unchanged` are exactly that failure observed
+# on the windows-latest leg.
+#
+# The gate looked safe only because `verify_anchors.sh` runs on the ubuntu leg
+# alone. A byte-immutability invariant that depends on which OS checked the repo
+# out is not an invariant.
+
+# Normalize everything to LF, in the repository AND in every working tree.
+* text=auto eol=lf
+
+# The evidence corpus is byte-immutable (AD-2): never translate it, in either
+# direction, for any reason. Redundant with `eol=lf` above and deliberately so —
+# this line states the intent at the files it protects.
+evidence/** -text
+
+# Vendored BMAD assets that legitimately ship with CRLF in their blobs. They are
+# the only two tracked files in the repo containing CRLF; `text=auto` would
+# rewrite them on the next commit that touches them.
+.claude/skills/bmad-brainstorming/analysis/method-matrix.csv -text
+.claude/skills/bmad-brainstorming/assets/brain-methods.csv   -text
+
+# Binary assets (pre-existing).
 crates/forecast/checkpoints/anchors/*.safetensors filter=lfs diff=lfs merge=lfs -text
 crates/ui/tests/visual-baselines/** binary
