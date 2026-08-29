@@ -183,3 +183,52 @@ and verified in the same cycle, not written blind here:
 
 That keeps all four assertions meaningful while dropping the assumption that
 350 ms of wall-clock is always enough scheduler time.
+
+### Aggregator timing tests (2026-08-29) — one FIXED, one reframed and left alone
+
+**`aggregator_emits_one_tick_per_window` (agent) — FIXED, verified against a real
+local reproduction.**
+
+Its docstring says "fire 500 ticks across a 350 ms span". The code sent all 500
+in ONE tight loop with no delay and slept afterwards. A single instantaneous
+burst is ONE non-empty window, and by design the first non-empty window emits
+only `Start` — the 100 ms throttle suppresses `tick()` in the same window. So a
+`Tick` appeared only if the aggregator happened to be scheduled part-way through
+the burst. That is scheduler luck.
+
+Reproduced locally under 42 CPU burners on 14 cores: `starts=1 ticks=0
+end_success=1`, identical to the windows-latest failure "at least 1 Tick event
+(got 0)". Fixed by sending the 500 events in 5 chunks with an 80 ms sleep
+between, so the multiple non-empty windows are REAL and Ticks follow by
+construction — which is what the docstring claimed all along. Also replaced the
+fixed post-burst sleep with a bounded wait on the observation (`collect_until`).
+
+Verified: **6/6 passes under the same load that previously failed 2 of 4.**
+
+**`audit_aggregator_handles_10k_event_storm` (ui) — NOT fixed, and REFRAMED.**
+
+This was recorded above as a linux/windows failure. It is not:
+
+    5 consecutive runs at unmodified HEAD, macOS canonical box:
+      FAILED, FAILED, ok, ok, ok        (one failure showed cumulative_counter=10 / 10000)
+
+**The test is flaky on the canonical box too.** The CI legs are not special; a
+slower runner just loses the race more often. An earlier single passing run here
+is what made it look platform-specific.
+
+An attempt to apply the same bounded-wait fix was REVERTED. Two things were
+learned and are worth recording so the next attempt starts ahead:
+
+1. Waiting for "the first Tick" is the wrong condition — it captured 6806 / 10000
+   (68 %) and failed assertion 4's 90 % coverage bar. The test's own strongest
+   assertion caught the weakened fix, which is exactly what it is for.
+2. Waiting for 90 % coverage instead still plateaued at 8343 / 10000 after a full
+   10 s. So the shortfall is NOT a timing shortfall: some of the storm never
+   appears in any `Tick` at all. Candidates, unverified: the final partial window
+   is flushed with `End` rather than as a `Tick`, and/or the `activity_rx`
+   broadcast receiver lags and drops while undrained (consistent with the
+   `cumulative_counter=10` run).
+
+Fixing it needs the aggregator's window/flush semantics, not more waiting. Left
+to whoever owns those; the reproduction recipe is 42 CPU burners and repeated
+runs, which now fails often enough on macOS to iterate against.

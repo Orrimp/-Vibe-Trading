@@ -27,6 +27,50 @@ use agent::bus::EventBus;
 use agent::config::BusConfig;
 use audit::tick::{AuditContext, AuditEvent, AuditTick};
 
+/// Collect activity events until `done` is satisfied, or `deadline` elapses.
+///
+/// Replaces the fixed `sleep(..)`-then-drain pattern these tests used. That
+/// pattern asserts a SCHEDULING assumption, not a behaviour: it requires the
+/// aggregator task to be polled enough times inside a wall-clock window. On a
+/// 2-core CI runner under load it need not be polled at all, which is how
+/// `aggregator_emits_one_tick_per_window` failed on windows-latest with
+/// "at least 1 Tick event (got 0)" while passing on every developer machine.
+///
+/// Waiting for the OBSERVATION instead keeps every assertion below intact —
+/// counts are still asserted exactly — while removing the assumption that a
+/// fixed number of milliseconds buys a fixed amount of scheduler time. The
+/// deadline is deliberately generous: it bounds a hang, it does not pace the test.
+/// A fast machine returns as soon as the event arrives, so this does not slow
+/// the common case.
+async fn collect_until<F>(
+    rx: &mut tokio::sync::broadcast::Receiver<agent::activity::ActivityEvent>,
+    deadline: Duration,
+    mut done: F,
+) -> Vec<agent::activity::ActivityEvent>
+where
+    F: FnMut(&[agent::activity::ActivityEvent]) -> bool,
+{
+    let start = tokio::time::Instant::now();
+    let mut seen = Vec::new();
+    while start.elapsed() < deadline {
+        match tokio::time::timeout(Duration::from_millis(25), rx.recv()).await {
+            Ok(Ok(ev)) => {
+                seen.push(ev);
+                if done(&seen) {
+                    break;
+                }
+            }
+            // Lagged: keep waiting — the aggregator is producing faster than we drain.
+            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => {}
+            // Closed: nothing more will arrive.
+            Ok(Err(_)) => break,
+            // Tick of the poll loop; re-check the deadline.
+            Err(_) => {}
+        }
+    }
+    seen
+}
+
 // ── Helper ─────────────────────────────────────────────────────────────────────
 
 fn make_fill_tick() -> AuditTick<AuditEvent> {
@@ -98,25 +142,57 @@ fn aggregator_emits_one_tick_per_window() {
 
         let _agg = spawn_aggregator(Some(&tick_tx), &bus);
 
-        // Send 500 ticks rapidly across 350ms — all in one tight burst.
-        // The aggregator will batch them into windows.
-        for _ in 0..500 {
-            let _ = tick_tx.send(make_fill_tick());
+        // Send 500 ticks ACROSS ~400 ms, in 5 chunks with a sleep between them.
+        //
+        // This previously sent all 500 in ONE tight loop with no delay — despite
+        // the docstring above saying "across a 350 ms span" — and then slept.
+        // A single instantaneous burst is ONE non-empty window, and by design the
+        // first non-empty window emits only `Start`: the 100 ms throttle
+        // suppresses `tick()` in the same window as `start()`. So a Tick appeared
+        // only if the aggregator happened to be scheduled part-way through the
+        // burst, splitting it across windows. That is scheduler luck, and on a
+        // loaded 2-core runner it does not happen: reproduced locally under 42 CPU
+        // burners as `starts=1 ticks=0 end_success=1`, identical to the
+        // windows-latest failure "at least 1 Tick event (got 0)".
+        //
+        // Chunking makes the multiple non-empty windows REAL, so Ticks follow by
+        // construction rather than by timing luck — which is what the docstring
+        // claimed all along.
+        for _chunk in 0..5 {
+            for _ in 0..100 {
+                let _ = tick_tx.send(make_fill_tick());
+            }
+            sleep(Duration::from_millis(80)).await;
         }
 
-        // Wait 350 ms for the aggregator to process 3+ windows.
-        sleep(Duration::from_millis(350)).await;
+        // Wait for the aggregator to actually emit a Tick, rather than assuming
+        // 350 ms of wall-clock buys it enough scheduler time (see `collect_until`).
+        let mut collected = collect_until(&mut activity_rx, Duration::from_secs(5), |seen| {
+            seen.iter()
+                .any(|e| matches!(e.phase, ActivityPhase::Tick { .. }))
+        })
+        .await;
 
-        // Close the bus → aggregator emits End{Success}.
+        // Close the bus → aggregator emits End{Success}; wait for THAT, too.
         drop(tick_tx);
-        sleep(Duration::from_millis(250)).await;
+        collected.extend(
+            collect_until(&mut activity_rx, Duration::from_secs(5), |seen| {
+                seen.iter()
+                    .any(|e| matches!(e.phase, ActivityPhase::End(ActivityOutcome::Success)))
+            })
+            .await,
+        );
 
         let mut starts = 0usize;
         let mut ticks = 0usize;
         let mut end_success = 0usize;
         let mut total_seen: u64 = 0;
 
-        while let Ok(ev) = activity_rx.try_recv() {
+        for ev in collected
+            .iter()
+            .cloned()
+            .chain(std::iter::from_fn(|| activity_rx.try_recv().ok()))
+        {
             match &ev.phase {
                 ActivityPhase::Start { .. } => starts += 1,
                 ActivityPhase::Tick { current, .. } => {
