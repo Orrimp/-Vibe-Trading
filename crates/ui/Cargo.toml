@@ -123,7 +123,23 @@ clap = { workspace = true }
 # plus E0282/E0283/E0392). macOS is unaffected — it uses the Cocoa backend —
 # which is exactly why this was invisible on the dev box and only ever broke
 # the ubuntu CI leg. Reproduced in a rust:latest container mirroring ci.yml.
-iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas", "x11", "wayland"] }
+# `fira-sans` makes iced load Fira Sans into the global cosmic-text font DB
+# (`iced_graphics/src/text.rs:125`). Listed explicitly because it is a
+# PREREQUISITE for `Font::with_name("Fira Sans")` to resolve — not because it
+# fixes anything on its own.
+#
+# ⚠ IT DOES NOT MAKE RENDERING DETERMINISTIC ON NATIVE, and story 6-9 / the
+# 2026-07-27 drift note both assume it does. Measured 2026-08-29: toggling this
+# feature produces BYTE-IDENTICAL snapshots (same SHA, `assistant_slot__open_stub__typical`).
+# The reason is `iced_graphics/src/settings.rs:42` — the auto-switch of
+# `default_font` to Fira Sans is gated on
+# `cfg!(all(target_arch = "wasm32", feature = "fira-sans"))`. WASM ONLY. On
+# macOS/Linux/Windows the default stays `Font::DEFAULT` = `Family::SansSerif`,
+# which cosmic-text still resolves through the OS font database — the exact
+# instability the drift note diagnoses.
+#
+# See docs/dev-notes/visual-baseline-drift-2026-07-27.md § Correction.
+iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas", "x11", "wayland", "fira-sans"] }
 
 # iced_aw was dropped 2026-05-16 (ui-drop-iced-aw v0.1) to decouple
 # from third-party iced ecosystem cadence (iced_aw locked at 0.14;

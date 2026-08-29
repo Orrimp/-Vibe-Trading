@@ -80,3 +80,106 @@ Historical stub - implementation predates BMAD story tracking; see git history v
   work this story wants.
 - This is H1 of the cross-platform program: the embedded font is the prerequisite for ever
   having Linux/Windows baselines at all, not just for un-sticking macOS.
+
+## CI shakeout — measured status (orchestrator, 2026-08-29)
+
+The 2026-08-12 leads above are **superseded**: the logs became readable and the
+failures are now named rather than inferred. `gh run --log-failed` still returns
+`HTTP 403` without repo admin, so `scripts/ci_run_annotated.sh` was added — it
+emits failing test names, panic lines and build errors as `::error::`
+ANNOTATIONS, which live in the run's metadata rather than its log and are
+readable without admin.
+
+**Two structural masks were removed first, and both had been hiding everything
+else:**
+
+1. **A failing step cancelled every step below it.** With `Test workspace` red,
+   steps 9-12 reported `skipped` — including *"Test ui (full suite, macOS
+   canonical gate)"*. AD-10's canonical pixel gate had not executed on a single
+   commit. The four UI steps now carry `always() &&` before their OS condition.
+   A failing step still fails the job; the run just stops hiding what else broke.
+2. **The annotation budget is ~10 per step.** The first version spent it on bare
+   test names and surfaced zero panics on the leg with the most failures. Order
+   is now summary -> panics-with-assertion-text -> build errors -> names ->
+   explicit elision notice.
+
+### Fixed this pass
+
+| failure | legs | cause |
+|---|---|---|
+| `Build ui (fixtures)` | ubuntu | `default-features = false` on iced left `iced_winit` with no Linux backend |
+| `compile_fail_tests` | macOS, ubuntu | CI ran `@stable` (1.98.0) vs the canonical box's 1.94.1; trybuild pins exact rustc diagnostics. **ADR-0091** pins the toolchain |
+| `windows_determinism_on_real_data` | all three | guard probed `data/binance/` (dir tracked) instead of the parquet corpus (gitignored) |
+| `lab_binance_*` x3 | linux, windows | same defect: probed `REVISION.toml`, the ONE tracked path under `data/binance` |
+| Governance gates | ubuntu | a TRACKED audit note linked to an UNTRACKED one; committing it also closed the 08-24 audit's own finding F-F |
+| Windows annotated nothing | windows | grep called the log binary; `-a` |
+| `t1937*` anchors | windows | **bug-log #97** — no `.gitattributes` text rules, so `core.autocrlf=true` rewrote the anchored corpus: 3103 bytes/81 CRLF vs 3022/0. The gate scripts got CRLF too, so `verify_anchors.sh` died with `set: pipefail: invalid option name` — on Windows the gate could not even run |
+
+### Still open
+
+- **windows**: ~10 workspace tests (`t1003_*`, `t1006_*`, `t1414_*`,
+  `aggregator_*`). Their assertion text was never annotated (budget bug, now
+  fixed) — the next run should name them.
+- **windows + linux**: `audit_aggregator_handles_10k_event_storm`.
+- **macOS**: the 48-file visual drift — see the correction below.
+- `leaderboard_scorecard_render` — bug-log **#96**, a product decision.
+
+### ⚠ H1 IS WRONG AS WRITTEN — the font prerequisite does not do what it claims
+
+The "Product-review fold-in (2026-08-04)" above says to *"enable the embedded
+default font (the `fira-sans` feature exists but is not in defaults)"* FIRST, and
+calls it the prerequisite for everything cross-platform. **Measured 2026-08-29,
+that step is a no-op on native:**
+
+- `cargo tree -e features` already resolves `iced_renderer feature "fira-sans"`
+  at HEAD, without `crates/ui/Cargo.toml` listing it.
+- Toggling the feature explicitly on/off produces **byte-identical** snapshots
+  (`assistant_slot__open_stub__typical`, SHA `29eea22ef8432708` both ways).
+- Cause, at source: `iced_graphics/src/settings.rs:42` switches `default_font` to
+  Fira Sans only under `cfg!(all(target_arch = "wasm32", feature = "fira-sans"))`
+  — **WASM only**. On native, `Font::DEFAULT` stays `Family::SansSerif`, still
+  resolved through the OS font DB. The feature loads the font into the database;
+  nothing ever asks for it by name.
+
+**And the harder half:** `iced_test::screenshot` takes no font argument
+(`viewport_matrix.rs:133` -> `Emulator::new`), so setting the font on the
+application builder would NOT reach the pixel gate. The app and the gate would
+then disagree by construction — worse than today.
+
+**Therefore the ~62-file re-baseline stays blocked**, but for a different reason
+than recorded: not "the font feature is off" (it is on) but "nothing selects the
+font, and the test harness has no way to". Full analysis, with the source lines,
+in `docs/dev-notes/visual-baseline-drift-2026-07-27.md` § Correction.
+
+### `audit_aggregator_handles_10k_event_storm` — diagnosed, NOT fixed (2026-08-29)
+
+Fails on linux AND windows; passes here. Panic site is
+`activity_tape_audit_ledger_event_storm.rs:184`, which is **assertion 1** —
+`cumulative_counter >= 1`, the WEAKEST of the file's four. So CI observed
+**zero** events from a 10 000-event storm, not merely too few.
+
+Mechanism, from source: the test fires 10k events in a tight loop, then does a
+single fixed `sleep(Duration::from_millis(350))` (line 126) and drains. The
+aggregator emits on a 100 ms `interval.tick()`. On a 2-4 core runner under
+scheduler pressure, that task need not be polled at all inside 350 ms — so the
+drain sees nothing. The file's own comment anticipates the fast case ("on very
+fast machines the storm completes in << 1 ms") and not the slow one.
+
+**Not reproduced locally, and I will not pretend otherwise.** Run under 42 CPU
+burners on 14 cores: 3/3 passes, 0.38-0.43 s. A 14-core box still schedules the
+aggregator promptly; the failure needs the runner's core count, which macOS
+cannot simulate for a native process.
+
+**Recommended fix, deliberately NOT applied** — it is timing-sensitive code and
+CI is the only environment that reproduces the failure, so it should be changed
+and verified in the same cycle, not written blind here:
+
+> Replace the fixed 350 ms sleep with a BOUNDED POLL — wait until the drained
+> cumulative counter reaches the 90 % threshold assertion 4 already requires, up
+> to a generous ceiling (~5 s), and fail with "observed N of 10000 after Xms" on
+> timeout. Then compute assertion 2's rate-cap budget from the ACTUAL elapsed
+> wait rather than the hardcoded 350, so a longer wait cannot silently inflate
+> the tick budget.
+
+That keeps all four assertions meaningful while dropping the assumption that
+350 ms of wall-clock is always enough scheduler time.

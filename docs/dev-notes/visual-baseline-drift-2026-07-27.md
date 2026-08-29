@@ -61,3 +61,70 @@ Until remediation lands, a red `visual_snapshots` run on this box is
 any NEW visual regression must be caught by the structural harnesses + the
 `target/visual-diff/*-actual.png` eyeball trail, and the stash-A/B technique
 above is the way to attribute any new failure to a change vs the drift.
+
+---
+
+## Correction (2026-08-29) — remediation step 1 does not work on native
+
+The diagnosis above is **confirmed**: re-measured at HEAD, `visual_snapshots`
+is `3 passed; 48 failed`, the diff artifact is glyph-localized (changed pixels
+only on sidebar nav labels and one top-right text run; every non-text region
+pixel-identical), and structural harnesses still pass. Nothing here disputes
+the cause.
+
+**But step 1 as written cannot fix it, and would have cost a whole cycle.**
+
+It says: *"enable the embedded-font path (`fira-sans` feature exists but is NOT
+in defaults …)"*. Two things are wrong with that.
+
+1. **The feature is already enabled.** `cargo tree -e features` resolves
+   `iced_renderer feature "fira-sans"` -> `iced_graphics feature "fira-sans"`
+   at HEAD, without `crates/ui/Cargo.toml` listing it.
+2. **Enabling it changes nothing on native.** A/B measured 2026-08-29 —
+   `assistant_slot__open_stub__typical` rendered with the feature explicitly on
+   and explicitly off produced **byte-identical PNGs** (`29eea22ef8432708` both).
+
+**Why**, at source:
+
+- `iced_graphics/src/text.rs:125` — the feature LOADS `FiraSans-Regular.ttf`
+  into the global cosmic-text `FontSystem`. It makes the font *available*.
+- `iced_graphics/src/settings.rs:42` — the switch of `default_font` to
+  `Font::with_name("Fira Sans")` is gated on
+  **`cfg!(all(target_arch = "wasm32", feature = "fira-sans"))`**. WASM only.
+- `iced_core/src/font.rs:19` — on native, `Font::DEFAULT` therefore stays
+  `Family::SansSerif`, a GENERIC family that cosmic-text resolves through
+  `PlatformFallback` against the OS font DB. Which is the bomb.
+
+So the font is in the database and nothing asks for it by name.
+
+### What the real fix has to do
+
+Something must select the font explicitly. Two halves, and the second is the
+hard one:
+
+- **The app**: `iced::application(..).default_font(Font::with_name("Fira Sans"))`
+  — the builder API exists (`iced-0.14.0/src/application.rs:234`). Easy.
+- **The pixel gate**: no hook exists. The harness renders through
+  `iced_test::screenshot(&program, &theme, viewport, scale, duration)`
+  (`viewport_matrix.rs:133`), which takes **no font argument** and constructs
+  `Emulator::new` with none either. Setting the font on the application builder
+  does NOT reach the tests — so the gate would keep measuring the OS font while
+  the shipped app used Fira Sans, which is *worse* than today: the two would
+  disagree by construction.
+
+Options, none free, and this is an operator call:
+  (a) give the widgets an explicit font at the `ui` layer, so both paths agree;
+  (b) vendor/patch `iced_test` to accept a default font — the repo already
+      vendors `iced_tiny_skia`, so the pattern exists (and is operator-locked);
+  (c) upstream a font parameter to `iced_test`.
+
+### Consequence for the re-baseline
+
+**Do not re-baseline yet.** The ordering rule in step 2 is right, but its
+precondition is not met by simply flipping the feature — and re-baselining now
+would re-arm exactly the bomb this note was written to defuse, while *appearing*
+to have followed the documented remediation.
+
+`crates/ui/Cargo.toml` now lists `fira-sans` explicitly with this correction
+recorded at the dependency, because the next reader will otherwise repeat the
+same experiment.
