@@ -1180,8 +1180,64 @@ logs need repo admin. It became visible in one line the moment the annotation to
 re-baselines a declared requirement to whatever CI happens to emit, and leaves the next platform to
 break it again — bug-log #77's failure applied to a performance budget.
 
+### `#99` — the audit aggregator silently DISCARDS the final window's count when the tick bus closes
+**Status**: OPEN — product-side, found 2026-08-29 while fixing the storm test's accounting.
+Anchor-impacting: **no**.
+
+`run_aggregator_loop` accumulates events into `agg.counter` and emits that count at each 100 ms
+`interval.tick()` boundary via `swap(0)`. On `RecvError::Closed` it `break`s and then:
+
+```rust
+// Explicitly drop handle so End{Success} is emitted before the task exits.
+drop(agg.handle);
+```
+
+Whatever sits in `agg.counter` at that moment — every event received since the last boundary — is
+never emitted. Not as a `Tick`, not in the `End` event. It is dropped.
+
+**Measured.** With the storm test's accounting made exact (Start-label count + Tick counts), a clean
+run reconciles perfectly:
+
+```
+start_label=62 + ticks=4938 = 5000/5000 (100.0%)
+```
+
+Under load, where the close lands mid-window:
+
+```
+start_label=3 + ticks=3650 = 3653 / 5000  (73.1%)   <- 1347 events unaccounted
+```
+
+The gap is exactly the un-flushed final window.
+
+**Why it matters beyond a flaky test.** The activity tape is an operator-facing honesty surface: it
+reports how much the audit ledger is writing. Under-reporting the tail of every burst means the
+number the operator reads is systematically low whenever a run ends mid-window — which is the normal
+way runs end. The undercount is invisible because nothing reconciles the tape against the ledger.
+
+**The fix is small and local** — before `drop(agg.handle)`, flush a non-zero counter through the
+existing handle:
+
+```rust
+let n = agg.counter.swap(0, Ordering::Relaxed);
+if n > 0 && let Some(h) = agg.handle.as_ref() { h.tick(n as u64); }
+drop(agg.handle);
+```
+
+**NOT applied here.** It changes PRODUCT behaviour on the activity tape (one extra `Tick` at
+shutdown), and the operator's 2026-08-29 ruling on the sibling question deliberately chose the
+test-side options over the product-side one. This is a different product change from the one that
+was declined, so it wants its own answer rather than being folded in silently.
+
+**Until then** the storm test is materially better but not perfect: 9 of 10 passes under 42 CPU
+burners, against 2 of 5 FAILURES at unmodified HEAD unloaded. The residual failure is this defect,
+and the assertion message now names the split (`start_label=… + ticks=…`) so the next occurrence is
+self-diagnosing.
+
 ## Changelog
 
+- 2026-08-29 (orchestrator): **#99 added (OPEN, product-side)** — the audit aggregator DISCARDS the final window's count when the tick bus closes: `run_aggregator_loop` breaks on `Closed` and drops the handle without flushing `agg.counter`, so every event since the last 100 ms boundary vanishes from the activity tape. Found by making the storm test's accounting exact: a clean run now reconciles at **5000/5000 (100 %)**, while a run whose close lands mid-window reads **3653/5000 (73 %)** — the gap is precisely the un-flushed window. It matters beyond the test: the tape is an operator-facing honesty surface, and runs normally end mid-window, so the reported write count is systematically low at the tail with nothing reconciling it against the ledger. The fix is ~3 lines before `drop(agg.handle)` but changes product behaviour (an extra shutdown `Tick`), and the same-day ruling deliberately chose test-side over product-side on the sibling question — so it is recorded for its own decision rather than folded in.
+- 2026-08-29 (orchestrator): **storm test accounting FIXED per the operator ruling.** `TOTAL_EVENTS` 10 000 -> 5 000 (below the aggregator's `K2_THRESHOLD` of 9 999, so the Start label stays parseable), and coverage now sums the Start-label count with the Tick counts — the first non-empty window emits NO Tick by design, so its events were previously invisible to the 90 % bar. Also removed the last scheduling assumption: `tick_count >= 1` required the burst to span two windows by luck (it does not, under load, 4 of 8 runs) and is replaced by `start_count >= 1` plus the accounting bar. Result: 9/10 under 42 CPU burners vs 2/5 FAILING unloaded at HEAD. Chunking the sends across windows was tried and REVERTED — it measured worse (65 %), because more windows means more chances to lose a partial one to #99.
 - 2026-08-29 (orchestrator): **#98 added (OPEN — needs an R13.3 ruling).** `t815_perf_smoke_90d_under_10s_and_under_256mib` measures **54.3 MiB on macOS and 269.6 MiB on ubuntu** for the same workload — a 5x gap, so the 256 MiB budget passes with 4.7x headroom on the calibration box and fails by 5 % in CI. The unit handling was checked FIRST and is correct (`cfg(target_os)`: bytes on macOS, KB x 1024 on Linux), and the binary holds a single test so `RUSAGE_SELF` is not polluted. The defect is not the number: a declared requirement is being enforced by an instrument that is not comparable across the platforms it now runs on, calibrated on the one that reads lowest. Options are a platform-aware budget, a comparable metric (instrumented allocator), or scoping R13.3 to the canonical box — explicitly NOT raising 256 to 300, which would fit a declared requirement to the noisiest platform (#77's failure in performance clothing). Visible only now: the ubuntu leg previously died earlier, and logs need repo admin.
 - 2026-08-29 (orchestrator): **#97 added and FIXED — AD-2's byte-immutability did not survive a Windows checkout.** `.gitattributes` had no text/eol rules, so `evidence/**` fell back to `core.autocrlf`, which is `true` on windows-latest. Measured: the same anchored report checks out as **3103 bytes / 81 CRLF** on Windows vs **3022 / 0** on the canonical box — `552d7df2…` vs `0f4c4bad…`. All 119 anchors fail on such a checkout; `t1937*` on the windows leg is exactly that. Worse, the gate SCRIPTS get CRLF too, so `verify_anchors.sh` dies with `set: pipefail: invalid option name` — the gate cannot even run there. It looked safe only because the gate runs on ubuntu alone. Fixed with `* text=auto eol=lf` + `evidence/** -text` + `-text` on the two vendored CRLF CSVs; verified in throwaway clones BOTH ways (Windows-style checkout now 0 CRLF / 3022 bytes, and `ANCHORS PASS 119/119` inside that clone), with zero re-normalization churn locally. Same shape as ADR-0091's unpinned compiler, found the same week, and both surfaced only because a CI leg finally executed.
 - 2026-08-23 (orchestrator): **the same proxy-probe defect found in THREE more files, and it was red on two CI legs.** `crates/ui/tests/lab_binance_{divergence,persist_compare,render}.rs` all guarded on `data/binance/REVISION.toml.is_file()` — the ONE tracked path under `data/binance` — as a stand-in for the gitignored parquet corpus. On every runner the probe is TRUE, the skip never fires, `preload` errors, and the tests panic through an arm that literally reads *"corpus PRESENT ... hard FAIL, not a skip"*. Four sites now share one root cause (the fourth was `forecast::features`), and in each the guard checked a proxy rather than the condition. The probes now name the months the loader actually reads (`data/binance/BTCUSDT/2023/01..06.parquet`). **Verified in BOTH directions, which is the part that matters for a skip-guard:** corpus present -> the tests RUN for real (3/1/3 passed); corpus absent (clean clone = the CI condition) -> visible `[skip]` lines, no panic. A guard that only ever skips is the same defect in a new coat. These failures were invisible until the UI steps stopped being cancelled by an earlier failing step (6753ff1) and CI failures became readable without repo admin (7c126db).

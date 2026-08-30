@@ -33,8 +33,40 @@ use crate::build_ledger_1y::{FIXTURE_SEED, build_ledger_1y};
 /// R13.1 wall-clock budget — assert `< 10s`.
 const WALL_CLOCK_BUDGET: Duration = Duration::from_secs(10);
 
-/// R13.3 RSS ceiling — `< 256 MiB`.
+/// R13.3 RSS ceiling — **calibrated per platform** (operator ruling 2026-08-29,
+/// bug-log #98).
+///
+/// R13.3 declares "RSS < 256 MiB" and that number is unchanged on the canonical
+/// box. What changed is the admission that `ru_maxrss` is NOT a comparable
+/// measure across kernels, so one literal cannot mean the same thing on three
+/// legs. Measured, same commit, same workload:
+///
+/// | platform | peak `ru_maxrss` |
+/// |---|---|
+/// | macOS (canonical box) | **54.3 MiB** |
+/// | ubuntu-latest (CI)    | **269.9 MiB** |
+///
+/// A 5x gap is not "the code needs 270 MiB". `ru_maxrss` counts RESIDENT pages,
+/// and what stays resident differs by allocator, by whether parquet reads are
+/// mapped or copied, and by kernel reclaim policy. The unit handling below is
+/// correct and was verified first (bytes on macOS, kilobytes x 1024 elsewhere),
+/// so both figures are genuine.
+///
+/// The non-macOS ceiling is therefore CALIBRATED, not invented: 269.9 MiB
+/// measured, 384 MiB budgeted, ~42 % headroom. Raising the macOS number to match
+/// was explicitly rejected — that would fit a declared requirement to the noisiest
+/// platform and leave the next one to break it (bug-log #77's failure in
+/// performance clothing).
+///
+/// **If this trips on Linux, do not raise it reflexively.** 384 MiB is far above
+/// the measured value; a breach means real growth, not instrument noise. Re-measure
+/// both platforms and record the new pair here.
+#[cfg(target_os = "macos")]
 const RSS_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
+
+/// See the macOS constant above for the calibration and the ruling.
+#[cfg(not(target_os = "macos"))]
+const RSS_BUDGET_BYTES: u64 = 384 * 1024 * 1024;
 
 /// Read the current process's peak resident-set size in bytes.
 ///
