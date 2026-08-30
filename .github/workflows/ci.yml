@@ -112,6 +112,27 @@ jobs:
             libxcb-shape0-dev \
             libxcb-xfixes0-dev
 
+      # ── Ubuntu: clippy, which CI has never run ────────────────────────────
+      #
+      # CLAUDE.md states `cargo clippy -- -D warnings` MUST pass, and until now
+      # nothing enforced it remotely: `grep -c clippy ci.yml` returned 0. The gap
+      # was found the ordinary way — a pre-existing unused import in
+      # `agent/src/activity.rs` sat in `main` because no gate looked.
+      #
+      # SCOPE IS DELIBERATE AND LOAD-BEARING. This is `--workspace` WITHOUT
+      # `--all-targets` / `--tests`, so it lints libs and bins only. CLAUDE.md
+      # records why: linting all targets links 339 integration-test binaries
+      # across 17 crates — one measured cycle took 52 MINUTES and grew
+      # `target/debug` to 155 GB, filling a 460 GB disk. A gate that cannot
+      # finish is not a gate. Test-target lints stay a local, per-crate concern
+      # (`cargo clippy -p <crate> --tests`).
+      #
+      # One leg only: clippy findings are not OS-specific, and three copies would
+      # triple the cost for no extra signal.
+      - name: Clippy (libs + bins, ubuntu only)
+        if: always() && matrix.os == 'ubuntu-latest'
+        run: cargo clippy --workspace -- -D warnings
+
       # ── All legs: build the ui crate (fixtures binary) ────────────────────
       - name: Build ui (fixtures)
         run: cargo build -p ui --bin cockpit --features fixtures

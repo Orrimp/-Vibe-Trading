@@ -197,7 +197,6 @@ fn now_ms() -> i64 {
 #[allow(clippy::unwrap_used)]
 mod activity_types {
     use std::collections::HashSet;
-    use std::sync::atomic::Ordering;
 
     use tokio::sync::broadcast;
 

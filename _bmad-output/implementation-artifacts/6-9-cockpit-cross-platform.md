@@ -232,3 +232,41 @@ learned and are worth recording so the next attempt starts ahead:
 Fixing it needs the aggregator's window/flush semantics, not more waiting. Left
 to whoever owns those; the reproduction recipe is 42 CPU burners and repeated
 runs, which now fails often enough on macOS to iterate against.
+
+#### Storm test — ROOT CAUSE FOUND 2026-08-29 (still not fixed; needs a design call)
+
+Not flakiness in the ordinary sense. From `activity_audit_aggregator.rs`, the
+`(n, None)` arm — the FIRST non-empty window — calls `bus.start(kind, label)` and
+deliberately emits **no Tick**; its count goes into the Start LABEL only. The
+source says so explicitly ("We do NOT call `h.tick(n)` immediately after
+`start()`" — the 100 ms throttle would swallow it).
+
+`cumulative_counter` in the test sums **Tick** counts only. So every event the
+first window absorbs is invisible to assertion 4's 90 % coverage bar, and the
+test passes or fails on how much of the storm window 1 happens to swallow:
+
+    window 1 absorbs ~17 %  ->  coverage 83 %  -> FAIL   (measured)
+    window 1 absorbs 9990   ->  cumulative_counter = 10  -> FAIL (measured)
+    window 1 absorbs little ->  coverage > 90 %  -> pass  (the usual case here)
+
+That is why it fails more on slow runners: the aggregator is scheduled less
+often during the burst, so a single window absorbs a larger share.
+
+**And the obvious fix does not work.** Recovering window 1's count means parsing
+the Start label — but `format_label` collapses anything above `K2_THRESHOLD`
+(9999) to the fixed string `"Audit: 9999+ writes"`. In a 10 000-event storm the
+first window very often exceeds 9999, so the count is unrecoverable BY DESIGN
+precisely in the case that breaks the test.
+
+**The decision this needs** (not taken here — it is assertion-design ownership):
+- (a) assert coverage over `Start`-label count + Tick counts, and shrink the
+      storm below `K2_THRESHOLD` so the label stays parseable; or
+- (b) drop assertion 4's coverage bar and assert the contractual property
+      instead — the K2 label flip — which the file's own comment notes is already
+      unit-tested in `format_label_truncates_above_k2_threshold`; or
+- (c) have the aggregator emit the first window's count as a Tick too, which
+      changes PRODUCT behaviour and the activity-tape semantics.
+
+(a) and (b) are test-side; (c) is a product change. Until one is chosen the test
+stays red on the slower legs and intermittently red here — 2 failures in 5 runs
+at unmodified HEAD on the canonical box.
