@@ -390,9 +390,39 @@ async fn t1414_v7_coinbase_outage_isolated() {
 
     // ── 7. Assert the audit ledger captured a venue-tagged
     //        FeedReconnect row for Coinbase (R8 / Q11).
-    let events = audit::query::strategy_events_since(&ledger, ts_at(-3600))
-        .await
-        .expect("strategy_events_since");
+    // Poll for the row rather than querying once.
+    //
+    // The reconnect row is written by a SPAWNED task through SQLite; querying
+    // immediately asserts that the write has already landed, which is a
+    // scheduling-and-I/O assumption, not a behaviour. It held on the canonical
+    // box and failed on windows-latest with `got 0`.
+    //
+    // The clock is PAUSED here (`tokio::time::pause()` above), so a `sleep`-based
+    // poll would auto-advance virtual time and return instantly without giving the
+    // writer a chance. This yields to the runtime and advances the virtual clock
+    // explicitly instead, so it is deterministic rather than wall-clock dependent.
+    //
+    // Safe by inspection: EVERY assertion in this test is a lower bound or an
+    // invariant (`binance_count > 0`, `kraken_count > 0`, `saw_coinbase_stale`,
+    // `>= 1` here, `res.is_ok()`, and a fixed supervisor count of 4). There is no
+    // upper bound on anything that grows with waiting, so polling can only help
+    // this assertion and cannot weaken another. That check is the point: the same
+    // pattern was reverted from `audit_aggregator_handles_10k_event_storm`
+    // precisely because there the assertion WAS a coverage ratio the wait weakened.
+    let mut events = Vec::new();
+    for _ in 0..200 {
+        events = audit::query::strategy_events_since(&ledger, ts_at(-3600))
+            .await
+            .expect("strategy_events_since");
+        if events
+            .iter()
+            .any(|e| matches!(e.kind, trading_core::StrategyEventKind::FeedReconnect))
+        {
+            break;
+        }
+        tokio::time::advance(Duration::from_millis(10)).await;
+        tokio::task::yield_now().await;
+    }
     let coinbase_reconnect_count = events
         .iter()
         .filter(|e| matches!(e.kind, trading_core::StrategyEventKind::FeedReconnect))
