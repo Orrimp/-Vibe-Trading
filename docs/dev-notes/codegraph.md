@@ -123,3 +123,42 @@ tracing the caller graph. The grep cross-check is what prevented it.
 caller set being *complete* — a reachability claim, a dead-code claim, a "no production callers"
 claim — confirm with `grep -rn --include='*.rs'` before writing it down. The two tools disagree
 exactly where this codebase's defects live: deep inside the async loops that execute real plans.
+
+## Correction (2026-09-14) — the miss pattern is SYNTAX, not depth
+
+The calibration above is right about the **rule** (caller lists are a lower bound; grep before any
+completeness claim) and wrong about the **cause**. It attributed the two `runtime.rs` misses to calls
+"~24–40 spaces deep inside nested `async`/closure blocks". Re-measured against `grep` across 11 call
+sites, depth predicts nothing — a call at indent **28** resolves, calls at indent **4** are missed.
+Two syntactic patterns account for every observed miss:
+
+| pattern | example | codegraph |
+|---|---|---|
+| **callee named via a path that crosses a crate boundary** | `risk::size_portfolio_target(` — `agent/tests/v1_rebalance_reject.rs:88`, indent **4** | **missed** |
+| … including a module imported from another crate | `short_exec::plan_open_short(` in `agent` (via `use backtest::short_exec;`) | **missed** |
+| the same qualified call from a same-crate module | `short_exec::plan_open_short(` in `backtest/src/scenarios/sma_composed_run.rs`, indent **28** | found |
+| a bare name brought in with `use`, even cross-crate | `spawn_aggregator(` in `ui/tests` (agent -> ui) | found |
+| **any call inside a macro invocation** | `window.file_slug()` inside `format!(…)` — `reports/src/lib.rs:418`; `.slug()` inside `assert_eq!` | **missed** |
+| the same method call outside a macro | `self.slug()`, `period.slug()` | found |
+
+The original two misses (`short_exec::plan_open_short`, `short_exec::check_and_liquidate` in
+`runtime.rs`) are both the cross-crate-path pattern — they happened to also be deep, which is the
+confound. The `backtest` sibling calls that "resolved correctly" are same-crate calls.
+
+**Why this is worse than a depth problem would be:** the missed form is where production callers
+live. Observed misses include the ONLY production caller of `size_portfolio_target`
+(`backtest/src/scenarios/montecarlo.rs:520`) — so codegraph reports it as having no production
+caller, which is exactly bug-log #69's pre-fix state — plus `spawn_aggregator`'s
+(`ui/src/bin/cockpit_live.rs:648`), `file_slug`'s (`reports/src/lib.rs:418`) and `run_path`'s bin
+(`backtest/src/bin/param_robustness_sweep.rs:894`). A text census finds **~1,400** call sites of the
+cross-crate-path form (**~580 under `src/`**), concentrated in `agent/src/runtime.rs` (65) and
+`ui/src/bin/cockpit_live.rs` (63) — the code that executes plans. (Regex estimate; the pattern was
+verified on 8 sampled sites, not all 1,400.)
+
+Also observed: `codegraph_explore` (MCP) annotates `file_slug` with "no covering tests found" while
+listing a test as its only caller, and a four-term query spent its output budget on an unrelated
+`scripts/spec_lint.py` class. Treat its coverage and relevance hints as leads, not facts.
+
+**The working rule above stands unchanged** — orient with CodeGraph, confirm completeness with grep.
+What changes is that no call site is safe to trust on depth grounds: shallow, qualified calls are
+missed too.
