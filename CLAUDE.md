@@ -149,6 +149,9 @@ grepping — the repo is indexable with [CodeGraph](docs/dev-notes/codegraph.md)
 Cargo dependency, not part of the product/runtime, **zero** effect on builds, tests,
 or the `verify_anchors` gate. The `.codegraph/` index is gitignored. Setup + the
 **opt-in** MCP wiring are in [`docs/dev-notes/codegraph.md`](docs/dev-notes/codegraph.md).
+Its caller lists are a **lower bound** here — calls through another crate's path, an inline
+`mod`, or inside a macro are invisible to it — so any "no callers" / dead-code claim goes through
+`scripts/callers.sh <symbol>` (CodeGraph ∪ grep), never `codegraph callers` alone.
 
 ## Vendored dependencies
 

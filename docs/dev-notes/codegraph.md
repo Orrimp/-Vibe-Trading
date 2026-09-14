@@ -162,3 +162,50 @@ listing a test as its only caller, and a four-term query spent its output budget
 **The working rule above stands unchanged** — orient with CodeGraph, confirm completeness with grep.
 What changes is that no call site is safe to trust on depth grounds: shallow, qualified calls are
 missed too.
+
+### Measured on 1.6.0, and pinned down with a minimal repro (2026-09-14)
+
+**Upgrading does not help.** CodeGraph 1.6.0 (latest, 2026-08-26; this machine runs 1.1.0) was
+installed into a scratch prefix, a clean clone of `c196e43` was indexed with it (806 files / 19,021
+nodes), and the same call sites were re-checked. Both controls still resolve; all eight previously
+missed sites are still missed. 1.6.0's resolver does build an exact crate-name map from the
+workspace `Cargo.toml` (`resolution/frameworks/rust.js`, `getCargoWorkspaceCrateMap`), but it serves
+`use` imports, not call paths — and its extractor still declares `callTypes: ['call_expression']`
+only, so nothing inside a macro invocation is ever a call site.
+
+**The exact rule**, isolated on a two-crate workspace with one control per factor. Every target
+function was confirmed indexed with `codegraph query`, so each miss is resolution, not extraction:
+
+| call in crate `b` | form | 1.6.0 |
+|---|---|---|
+| `target()` after `use a::target;` | bare import, cross-crate | found |
+| `local2()` after `use inner::local2;` | bare import from an inline module | found |
+| `filemod::file_local()` | same-crate module **in its own file** | found |
+| `a::target()` | through another crate's path | **missed** |
+| `util::helper()` after `use a::util;` | module imported from another crate | **missed** |
+| `inner::local()` | same-crate **inline** `mod inner { … }` | **missed** |
+| `format!("{}", target())` | bare name inside a macro | **missed** |
+| `assert_eq!(target(), 1)` | bare name inside a macro | **missed** |
+
+So a path-qualified call `m::f()` resolves **only** when `m` is a same-crate module that lives in its
+own file; every other path, and every call inside a macro, is invisible to `callers` and `impact`.
+(The table above says "a same-crate module path resolves" — true for file modules only.)
+
+### A complete census: `scripts/callers.sh`
+
+```bash
+scripts/callers.sh <symbol> [path...]      # default: crates/ ; runs from any subdirectory
+```
+
+It runs `codegraph callers` plus a grep for call sites, and prints every grep site as ✓ (CodeGraph
+knows the enclosing function) or ✗ (it does not), with a hint for why — `[path-qualified call]`,
+`[inside a macro?]`, `[inside a string literal?]` — and a summary line, e.g.
+`12 call site(s) · 7 in functions CodeGraph reports · 5 grep-only` for `size_portfolio_target`.
+
+**Any "no callers" / dead-code / reachability claim goes through this, not through
+`codegraph callers` alone.** ✗ lines are candidates to read, not proven callers: grep also matches
+string literals and same-named methods on other types.
+
+**Upstream:** no existing issue covers either gap (searched 2026-09-14; the analogous qualified-call
+fixes exist for C++ #790, Go #1640 and Python #1704). Both are drafted from the synthetic repro above
+and not yet filed.
