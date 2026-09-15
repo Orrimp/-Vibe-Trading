@@ -222,8 +222,9 @@ population is every function whose name is defined exactly once in `crates/` and
 call: **2,448 functions, 11,790 call sites** (3,670 production, 8,120 test). Calls that cannot target
 our function are excluded on meaning, not text: `x.f()` counts only if `f` is a method, bare `f()` only
 if it is a free function, and paths through external crates are dropped (7,788 candidate sites).
-CodeGraph's `calls` edges are read straight from its SQLite index; on five spot-checked symbols they
-match `codegraph callers` exactly, apart from crate-root `pub use` re-exports, which the CLI also lists.
+CodeGraph's `calls` edges are read straight from its SQLite index. Cross-checked against
+`codegraph callers` on six symbols (re-run 2026-09-15): four match exactly, and the other two
+differ only by the crate-root `lib.rs` whose `pub use` re-exports the symbol, which the CLI also lists.
 **Audit:** 20 of 20 randomly sampled misses are real calls. Of 8 sampled CodeGraph edges with no
 matching ground-truth call, 7 are genuine false positives.
 
@@ -258,7 +259,7 @@ methods, 98.4%):
 | turbofish `f::<T>()` | 0% | 8 |
 
 **What the numbers say.**
-- **Two causes account for 98% of the misses.** 61% are macro-embedded — mostly test assertions:
+- **Two causes account for 97% of the misses.** 61% are macro-embedded — mostly test assertions:
   `assert_eq!` 780, `assert!` 363, `vec!` 248, `assert_snapshot!` 103, `format!` 89, `stream!` 47. Another 37% are calls written through a module or crate name. The remainder are
   `const`/`static` initializers, turbofish calls, and a handful of methods.
 - **The rule, restated from the census:** CodeGraph resolves a call by the name at the call site.
