@@ -3,10 +3,13 @@
 #
 # WHY: on this repo CodeGraph's caller lists are a LOWER BOUND
 # (docs/dev-notes/codegraph.md § Correction 2026-09-14). It does not resolve
-#   (1) a callee named through a cross-crate path — `risk::size_portfolio_target(`,
-#       `agent::spawn_aggregator(`, or a module imported from another crate; and
+#   (1) a callee named through a module or crate name — `risk::size_portfolio_target(`,
+#       `agent::spawn_aggregator(`, `frame::panel(` after `use crate::...::frame`; only
+#       full `crate::` / `super::` paths mostly resolve; and
 #   (2) any call inside a macro invocation — `format!("{}", w.file_slug())`,
 #       `assert_eq!(x.slug(), ..)`.
+# Census (scripts/codegraph_bench/run.sh, 2026-09-15): 71% of call sites found overall, 81% in
+# production code; 9% of called functions are reported as having no callers at all.
 # Measured on 1.1.0 AND on 1.6.0 (latest, 2026-08-26): both persist. Those are
 # exactly where this repo's production callers live — CodeGraph alone reports
 # `size_portfolio_target` as having no production caller.

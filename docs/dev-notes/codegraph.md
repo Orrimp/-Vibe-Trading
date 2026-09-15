@@ -209,3 +209,75 @@ string literals and same-named methods on other types.
 **Upstream:** no existing issue covers either gap (searched 2026-09-14; the analogous qualified-call
 fixes exist for C++ #790, Go #1640 and Python #1704). Both are drafted from the synthetic repro above
 and not yet filed.
+
+### Census, 2026-09-15 — every unique-name function, against an independent ground truth
+
+Reproduce with `scripts/codegraph_bench/run.sh`; add `LABEL=path/to/codegraph.db` to compare another
+index side by side. Measured at `b9a15fc` on CodeGraph 1.1.0 (installed) and 1.6.0 (latest).
+
+**Method.** The ground truth is a small Rust lexer (`scripts/codegraph_bench/gt.py`), independent of
+both CodeGraph and grep. It skips comments, strings, char literals and `#[attributes]`, and tracks
+brackets, so it knows each call's enclosing function and whether the call is inside a macro. The
+population is every function whose name is defined exactly once in `crates/` and that has at least one
+call: **2,448 functions, 11,790 call sites** (3,670 production, 8,120 test). Calls that cannot target
+our function are excluded on meaning, not text: `x.f()` counts only if `f` is a method, bare `f()` only
+if it is a free function, and paths through external crates are dropped (7,788 candidate sites).
+CodeGraph's `calls` edges are read straight from its SQLite index; on five spot-checked symbols they
+match `codegraph callers` exactly, apart from crate-root `pub use` re-exports, which the CLI also lists.
+**Audit:** 20 of 20 randomly sampled misses are real calls. Of 8 sampled CodeGraph edges with no
+matching ground-truth call, 7 are genuine false positives.
+
+| metric | 1.1.0 | 1.6.0 |
+|---|---|---|
+| call-site recall, all code | **71.3%** | 71.2% |
+| ... production code | **80.7%** | 80.3% |
+| ... test code | 67.0% | 67.0% |
+| caller-function recall | 73.1% | 73.0% |
+| functions with ALL callers found | 73.3% | 73.0% |
+| functions reported as having **zero** callers (they have at least one) | **9.3%** | 9.5% |
+| functions whose **every** production caller is missed | **12.8%** | 13.1% |
+| precision (the caller fn really makes a valid call) | 97.1% | 97.3% |
+| `callers` latency p50 / p90 (n = 40) | 150 / 169 ms | 169 / 179 ms |
+
+Call-site recall by how the call is written (1.1.0; 1.6.0 is within a point everywhere except
+methods, 98.4%):
+
+| call form | recall | sites |
+|---|---|---|
+| bare `f()` — local, or imported with `use` from the same or another crate | ~100% | 6,236 |
+| `Type::f()` | 100% | 577 |
+| method `x.f()` | 99.3% | 1,489 |
+| `crate::...::f()` / `super::...::f()` | 96.2% | 80 |
+| `m::f()`, `m` a same-crate file module | 64% | 11 |
+| `m::f()`, `m` a same-crate module brought in by `use` | 14% | 193 |
+| `m::f()`, `m` a module imported from another crate | 1% | 315 |
+| `other_crate::f()` | **0%** | 745 |
+| `m::f()`, `m` an inline `mod m { }` | 0% | 17 |
+| any call **inside a macro** | **0%** | 2,053 |
+| call in a `const` / `static` initializer | 0% | 66 |
+| turbofish `f::<T>()` | 0% | 8 |
+
+**What the numbers say.**
+- **Two causes account for 98% of the misses.** 61% are macro-embedded — mostly test assertions:
+  `assert_eq!` 780, `assert!` 363, `vec!` 248, `assert_snapshot!` 103, `format!` 89, `stream!` 47. Another 37% are calls written through a module or crate name. The remainder are
+  `const`/`static` initializers, turbofish calls, and a handful of methods.
+- **The rule, restated from the census:** CodeGraph resolves a call by the name at the call site.
+  Bare names, methods and `Type::f()` are near-perfect, and full `crate::`/`super::` paths mostly work.
+  A path through a module *alias* — a crate name, a module name brought in by `use`, or an inline
+  module — almost never resolves. Nothing inside a macro is ever extracted. This supersedes the
+  narrower "same-crate file module" phrasing earlier in this note.
+- **The two `runtime.rs` misses that started this note have both causes.** They sit inside
+  `tokio::select!` *and* go through the imported `short_exec::` module. Either one alone would hide
+  them, which is why depth looked like the pattern.
+- **False positives cluster on generic names.** External `tokio`/`reqwest` `.build()`,
+  `Result::expect_err()`, `(1..n).all()` and `tempfile::tempdir()` get linked to a same-named workspace
+  function. So `callers` and `impact` on a generically named function over-report as well as
+  under-report.
+- **Upgrading does not help.** 1.6.0 moves the path failures from "never extracted" to "extracted,
+  unresolved" (its `unresolved_refs` table records them), but the outcome is identical. Indexing is
+  deterministic: three builds of one commit gave identical edge sets, so re-running changes nothing
+  until the code or the version does.
+
+**Limitations.** Only functions with a workspace-unique name are measured (6,673 of 7,249 names), so
+overloaded names like `new` are not covered. Receiver types are not resolved, so a few method sites
+may be external calls with a colliding name; the audit found none among 20 sampled misses.
