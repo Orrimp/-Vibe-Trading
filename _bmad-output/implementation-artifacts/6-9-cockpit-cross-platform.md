@@ -121,8 +121,10 @@ else:**
   `aggregator_*`). Their assertion text was never annotated (budget bug, now
   fixed) — the next run should name them.
 - **windows + linux**: `audit_aggregator_handles_10k_event_storm`.
-- **macOS**: the 48-file visual drift — RESOLVED 2026-09-16 (ADR-0093, below); the
-  one-time re-baseline is the remaining step.
+- **macOS**: the 48-file visual drift — RESOLVED 2026-09-16 (ADR-0093, below). The
+  one-time re-baseline is DONE: all 56 baselines re-captured under the embedded face
+  with per-screen operator approval, and a second consecutive run reproduced them
+  byte-identically.
 - `leaderboard_scorecard_render` — bug-log **#96**, FIXED 2026-09-16 (ADR-0092): the
   credibility block leads the pane, and the gate measures the block instead of the
   scrollbar.
