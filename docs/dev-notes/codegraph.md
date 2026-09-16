@@ -282,3 +282,39 @@ methods, 98.4%):
 **Limitations.** Only functions with a workspace-unique name are measured (6,673 of 7,249 names), so
 overloaded names like `new` are not covered. Receiver types are not resolved, so a few method sites
 may be external calls with a colliding name; the audit found none among 20 sampled misses.
+
+
+### grep, measured on the same corpus (2026-09-16)
+
+`scripts/codegraph_bench/grep_baseline.py` puts the other tool an agent reaches for —
+`grep -rn "name(" crates/` — through the census's own population: the same 2,466
+functions, the same 11,851 call sites, the same tree, with CodeGraph re-indexed first so
+neither side is scored on files the other could not see. It does not re-implement the
+census's rules; it executes them.
+
+| | grep | CodeGraph |
+|---|---|---|
+| call sites surfaced | **99.9%** (8 missed) | 73.1% |
+| what it hands you | 16,775 lines to read | caller functions, directly |
+| ...of which are the call you asked about | **70.2%** | 97% (census, strict) |
+| failure mode | **loud** — the junk is in front of you | **silent** — "no callers" |
+
+The 8 grep misses are all turbofish (`f::<T>(`): the naive pattern needs the `(` next to
+the name. Everything else — every macro-embedded call, every `m::f()` and
+`other_crate::f()` CodeGraph cannot resolve — grep finds, because it is matching text and
+does not care what the text means.
+
+What it charges for that: 4,996 of its 16,775 hits are not the call you asked about —
+2,392 code lines that mention the name without calling it, 1,733 comments and doc
+examples, 690 real calls to a DIFFERENT function of the same name, 181 string literals.
+The median symbol costs 4 hits, but the tail is where the reading time goes: `tempdir`
+173 hits for 4 real calls, `expect_err` 109 for 4, `all` 99 for 2, `now` 298 for 145.
+
+And it answers a different question. grep returns LINES; "who calls X" is about
+FUNCTIONS, so every hit needs a second pass to find its enclosing `fn` — which is what
+`scripts/callers.sh` does with awk, and what CodeGraph gives directly.
+
+**So the rule is the union, and neither half is redundant.** Recall comes from grep;
+precision, the caller's identity and the blast radius come from CodeGraph. Alone,
+CodeGraph reports 9% of called functions as having no callers at all — the failure you
+cannot see. Alone, grep makes you read ~30% noise and work out the callers yourself.

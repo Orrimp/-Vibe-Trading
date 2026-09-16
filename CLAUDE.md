@@ -153,6 +153,8 @@ Its caller lists are a **lower bound** here. Measured, it finds ~81% of producti
 reports 9% of called functions as having no callers: calls written through a module or crate name
 (`m::f()`, `other_crate::f()`) or inside a macro are invisible to it. So any "no callers" / dead-code
 claim goes through `scripts/callers.sh <symbol>` (CodeGraph ∪ grep), never `codegraph callers` alone.
+Measured on the same corpus, plain grep finds 99.9% of call sites but hands you ~30% noise and no
+caller names, so the union is not belt-and-braces: each half covers the other's failure.
 
 ## Vendored dependencies
 
