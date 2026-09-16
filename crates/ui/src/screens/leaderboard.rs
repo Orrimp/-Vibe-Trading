@@ -463,34 +463,37 @@ fn ready_pane<'a>(
     let recommendation = recommendation_block(report, narration, mode);
     let table = leaderboard_table(report, coin, lookback, mode);
 
-    // advisor-data-quality-surface (P1-7) — the DATA-stage trust/quality
-    // readout, rendered FIRST (above the recommendation + table) so the
-    // workflow spine reads DATA → ANALYSIS → SUGGEST: "here's what the
-    // numbers are built on" before "here's the pick". Always present
-    // (`data_quality` is not `Option` — every bake-off has a known symbol).
-    // DISPLAY-ONLY: never feeds the crown/rank/gate.
-    let data_quality = data_quality_block(&report.data_quality, mode);
-
-    let mut stack = Column::new()
-        .spacing(space::L)
-        .push(data_quality)
-        .push(recommendation)
-        .push(table);
-
-    // advisor-overfitting-scorecard (P0-1 / ADR-0075) — the "show your work"
-    // honesty readout. Rendered DIRECTLY UNDER the ranked table (so it reads as
-    // "here's the pick, and here's how much to trust it") ONLY when the report
-    // carries a (non-degenerate) scorecard; absent → no block (the negative
-    // control). Placed below the table — not between recommendation and table —
-    // so the ranked rows keep their position in the result pane. REPORT-ONLY:
-    // display-only, never the verdict.
+    // advisor-overfitting-scorecard (P0-1 / ADR-0075, placement ADR-0092) — the
+    // "How much to trust this" readout LEADS the pane, above Data quality. It
+    // used to sit under the ranked table; once the P1-7 Data quality panel was
+    // stacked on top, the whole block rendered below the fold of a 1920×1080
+    // viewport (bug-log #96), so the honesty surface was the one thing a user
+    // never met without scrolling. Rendered ONLY when the report carries a
+    // (non-degenerate) scorecard; absent → no block (the negative control).
+    // REPORT-ONLY: display-only, never the verdict.
+    let mut stack = Column::new().spacing(space::L);
     if let Some(sc) = &report.scorecard {
         stack = stack.push(scorecard_block(sc, mode));
     }
 
+    // The pick and the rows it ranks follow the trust readout directly, so a
+    // 1920x1080 viewport carries all three (ADR-0092 D1, re-ruled 2026-09-16 on
+    // measurement: leading with BOTH honesty panels pushed the recommendation and
+    // the whole table below the fold — trading #96's complaint for a worse one).
+    stack = stack.push(recommendation).push(table);
+
+    // advisor-data-quality-surface (P1-7) — the DATA-stage trust/quality readout:
+    // what the numbers are built on. UNDER the ranked table since ADR-0092: of the
+    // three readouts on this screen it is the least urgent to a user deciding
+    // whether to act, and something had to yield the fold. Always present
+    // (`data_quality` is not `Option` — every bake-off has a known symbol).
+    // DISPLAY-ONLY: never feeds the crown/rank/gate.
+    stack = stack.push(data_quality_block(&report.data_quality, mode));
+
     // advisor-turnover-and-tail-metrics (P1-2) — the "Risk story" block. Sits
-    // BELOW the scorecard so the two honesty layers pair: trust (scorecard) +
-    // risk (tail/median). Rendered ONLY when the report carries the crown's
+    // under the ranked table, next to the rows whose risk (tail/median) it
+    // describes. It was paired with the scorecard until that moved to the top
+    // of the pane (ADR-0092). Rendered ONLY when the report carries the crown's
     // tail summary; absent → no block (the negative control). Sortino/Calmar
     // come from the crowned row (`CandidateKpis` already carried them for
     // narration). REPORT-ONLY — display-only, never changes the pick.

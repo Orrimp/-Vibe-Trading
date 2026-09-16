@@ -49,6 +49,9 @@ Land a **report-only** overfitting scorecard alongside every bake-off
   `usize`/`f64`/`bool`. **Zero new `ui` dep edge.**
 
 - A leaderboard *"How much to trust this"* panel below the ranked table:
+  > **Amended by ADR-0092 (2026-09-16):** the panel now renders FIRST in the pane,
+  > above Data quality. Below the table it fell below the fold once P1-7 stacked a
+  > Data quality panel on top (bug-log #96). Everything else in this bullet stands.
   four facts (`STRATEGIES TRIED`, `DEFLATED CONFIDENCE`, `MINIMUM HISTORY
   NEEDED`, `BEATS HOLDING AFTER THE SEARCH?`) each with a plain-language
   gloss. Reuses `frame::panel` (zero new widgets, zero new theme tokens).

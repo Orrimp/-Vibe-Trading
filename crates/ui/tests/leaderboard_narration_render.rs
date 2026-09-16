@@ -46,13 +46,22 @@ use ui::leaderboard::NarrationState;
 use ui::state::{Cockpit, PanelState};
 use ui::test_support::leaderboard_screen_program;
 
+/// Render the whole PANE, not the fold.
+///
+/// These gates ask "did this block paint?", which is a question about the pane. Whether a
+/// block clears the operator's 1080-px fold is asserted once, and only once, in
+/// `leaderboard_scorecard_render` (bug-log #96 / ADR-0092). When ADR-0092 reordered the
+/// pane, every band scan in a 1080-px frame started measuring an empty strip below the
+/// clip — 13 gates failed the same day with "got 0". A frame taller than the pane cannot
+/// clip, so these scans stay about content.
+const PANE_HEIGHT: u32 = 2400;
 /// Render the bare Leaderboard screen body at the `typical` 1920×1080 slot and
 /// return the physical-pixel RGBA buffer + dimensions.
 fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1080), 1.0, Duration::ZERO);
+    let screenshot = iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
     (
         screenshot.size.width,
         screenshot.size.height,
@@ -89,13 +98,18 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 // `Ready` paints heavy ACCENT here while `FellBack` paints ~none — the
 // discriminator is preserved at the new position.
 
-/// Top of the RECOMMENDATION band — below the (now taller) form + budget-context
-/// line, where the recommendation `frame::panel` starts.
-const REC_TOP: u32 = 500;
-/// Bottom of the RECOMMENDATION band — generously below the AI-summary card
-/// (top border y≈572, bottom border y≈649) but above where the ranked table's
-/// crowned-row accent reliably begins (y≈718 in the no-card states).
-const REC_BOTTOM: u32 = 715;
+/// Top of the RECOMMENDATION band — where the recommendation `frame::panel` starts.
+///
+/// Re-measured 2026-09-16 after ADR-0092 put the scorecard above the recommendation
+/// and these gates moved to a full-pane frame: on
+/// `/tmp/forward_f9_narration_ready_render.png` the recommendation block spans
+/// y=877..1078 (4431 ACCENT px — the AI-summary card's label + border), and the
+/// ranked table's crowned-row accent does not begin until y≈1153. Everything above
+/// the block is fixed-height in every fixture (form, budget-context line, scorecard),
+/// so the band does not move with the field size.
+const REC_TOP: u32 = 850;
+/// Bottom of the RECOMMENDATION band — below the AI-summary card, above the table.
+const REC_BOTTOM: u32 = 1100;
 
 /// `true` for an `ACCENT`-teal (#6FB6AE — R111 G182 B174) pixel — green & blue
 /// high and close, red clearly lower (the exact predicate the leaderboard +

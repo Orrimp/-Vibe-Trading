@@ -123,23 +123,20 @@ clap = { workspace = true }
 # plus E0282/E0283/E0392). macOS is unaffected — it uses the Cocoa backend —
 # which is exactly why this was invisible on the dev box and only ever broke
 # the ubuntu CI leg. Reproduced in a rust:latest container mirroring ci.yml.
-# `fira-sans` makes iced load Fira Sans into the global cosmic-text font DB
-# (`iced_graphics/src/text.rs:125`). Listed explicitly because it is a
-# PREREQUISITE for `Font::with_name("Fira Sans")` to resolve — not because it
-# fixes anything on its own.
+# NO `fira-sans`. That feature compiles FiraSans-Regular.ttf (431 KiB) in and
+# loads it into the global cosmic-text font DB, but it never SELECTS it: the
+# `default_font` auto-switch at `iced_graphics/src/settings.rs:42` is gated on
+# `cfg!(all(target_arch = "wasm32", feature = "fira-sans"))` — WASM ONLY. On
+# macOS/Linux/Windows the default stayed `Font::DEFAULT` = `Family::SansSerif`,
+# which cosmic-text maps to "Open Sans" and, when that is missing, resolves
+# through the OS font database — the drift the 2026-07-27 note diagnoses.
+# Measured 2026-08-29: toggling the feature produced BYTE-IDENTICAL snapshots.
 #
-# ⚠ IT DOES NOT MAKE RENDERING DETERMINISTIC ON NATIVE, and story 6-9 / the
-# 2026-07-27 drift note both assume it does. Measured 2026-08-29: toggling this
-# feature produces BYTE-IDENTICAL snapshots (same SHA, `assistant_slot__open_stub__typical`).
-# The reason is `iced_graphics/src/settings.rs:42` — the auto-switch of
-# `default_font` to Fira Sans is gated on
-# `cfg!(all(target_arch = "wasm32", feature = "fira-sans"))`. WASM ONLY. On
-# macOS/Linux/Windows the default stays `Font::DEFAULT` = `Family::SansSerif`,
-# which cosmic-text still resolves through the OS font database — the exact
-# instability the drift note diagnoses.
-#
-# See docs/dev-notes/visual-baseline-drift-2026-07-27.md § Correction.
-iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas", "x11", "wayland", "fira-sans"] }
+# Since ADR-0093 this crate embeds Inter-Regular itself (`assets/fonts/`, SIL
+# OFL 1.1) and every application selects it with
+# `.default_font(theme::font::embedded())`, so Fira Sans would be dead weight.
+# See docs/dev-notes/visual-baseline-drift-2026-07-27.md § Resolution.
+iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "thread-pool", "advanced", "canvas", "x11", "wayland"] }
 
 # iced_aw was dropped 2026-05-16 (ui-drop-iced-aw v0.1) to decouple
 # from third-party iced ecosystem cadence (iced_aw locked at 0.14;
@@ -201,6 +198,11 @@ windows = { version = "=0.57.0", features = [
 
 [dev-dependencies]
 criterion.workspace = true
+# embedded_font_contract.rs reads the embedded face's cmap straight from the TTF
+# bytes. cosmic-text's `Font::unicode_codepoints()` is a lazily-filled cache, not the
+# font's character map: it reported `—` and `→` as absent from a face that has both.
+# Already in the lock via fontdb; adds nothing to the build graph.
+ttf-parser = "=0.25.1"
 insta = { version = "=1.47.2", features = ["yaml"] }
 # T32 integration test: needs tokio runtime to drive the live subscription.
 # Wave C (lab-recipe-test-harness v0.2.0): `test-util` feature enables

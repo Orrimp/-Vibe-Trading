@@ -128,3 +128,39 @@ to have followed the documented remediation.
 `crates/ui/Cargo.toml` now lists `fira-sans` explicitly with this correction
 recorded at the dependency, because the next reader will otherwise repeat the
 same experiment.
+
+---
+
+## Resolution (2026-09-16) — the cockpit embeds Inter, and the contract is tested
+
+**ADR-0093.** `crates/ui/assets/fonts/Inter-Regular.ttf` (303 KiB, SIL OFL 1.1) ships in
+this repository; `theme::font::embedded()` loads it once per process and returns
+`theme::font::UI`; every `iced::application(..)` passes it to `.default_font(..)`, and
+all 15 canvas texts name it (canvas text does not inherit the renderer default). iced's
+`fira-sans` feature is dropped in the same change (431 KiB), so the binary is ~128 KiB
+SMALLER than before the fix.
+
+**Why the app-builder half of the Correction's option list was not enough.**
+`iced_test`'s `Emulator` builds its renderer from `Program::settings().default_font` and
+never loads `settings.fonts` (`iced_test-0.14.0/src/emulator.rs`), so the harness needs
+the LOAD as well as the NAME. One call does both, at all 14 application sites.
+
+**Which option shipped.** (a), "give the widgets an explicit font at the `ui` layer" —
+but at the renderer-default layer rather than per widget: 412 text constructors cannot be
+kept correct by discipline, whereas one default plus 15 canvas fields can be, and is, by
+`crates/ui/tests/embedded_font_contract.rs`. That test also fails on any string literal
+carrying a glyph the face lacks — cosmic-text falls back PER GLYPH, so one missing
+character re-arms this whole bug for that character. Fira Sans lacked eight of the
+cockpit's glyphs (`✓ ✗ ⚠ ★ ● ⓘ ▸ ▾`), five of them the non-colour signals in ADR-0085's
+verbatim copy; Inter lacks three (`ⓘ ▸ ▾`), replaced in the Lab screen.
+
+**Step 2 of the remediation is unblocked**: re-baseline ONCE under the embedded font,
+with per-screen operator approval, recording `sw_vers` + toolchain in that commit.
+
+**What this does NOT cover, measured.** The contract is enforced by scanning string literals
+under `crates/ui/src`, so text the cockpit LOADS is outside it: the Reports screen and the
+`viewer` binary render report bodies from `evidence/`, where 11 glyphs Inter cannot draw
+appear across 21 of 321 documents — mostly the block-element sparkline rows
+(`▁`..`█`, 480 occurrences), plus a little set/logic notation. Those fall back per glyph to an
+OS font on that screen. No baseline covers a Reports screen today; bug-log #100 carries the
+measurement and the fix direction (draw the sparkline instead of typing it).

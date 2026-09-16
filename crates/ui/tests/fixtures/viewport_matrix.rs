@@ -128,6 +128,7 @@ pub fn snapshot_widget_at_slot<P, B>(
     let ((w, h), scale) = slot(slot_name);
 
     let program = build_program();
+    super::visual_diff::assert_embedded_default_font(&program);
     let theme = iced::Theme::Dark;
 
     let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);

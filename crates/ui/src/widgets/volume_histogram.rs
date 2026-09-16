@@ -209,6 +209,7 @@ impl canvas::Program<Message> for HistogramProgram {
             let micro = text::MICRO as f32;
             #[allow(clippy::useless_conversion)]
             frame.fill_text(CanvasText {
+                font: crate::theme::font::UI,
                 content: KPI_DASH_PLACEHOLDER.to_string(),
                 position: centre,
                 color: color::FG_3.current(self.mode),

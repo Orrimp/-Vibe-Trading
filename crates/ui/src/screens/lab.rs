@@ -513,7 +513,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     // `last_run_ok` derivation (line 384) treats this as a clean terminal
     // (notice ⇒ last_run_error.is_none() ⇒ Run button NOT Failed, R3).
     if let Some(notice) = model.lab_state.last_run_notice.as_ref() {
-        let notice_text = Text::new(format!("\u{24d8} {notice}"))
+        let notice_text = Text::new(format!("Note: {notice}"))
             .size(text::SMALL)
             .color(color::FG_2.current(mode));
         run_button_row = run_button_row.push(notice_text);
@@ -900,8 +900,8 @@ fn training_panel(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
     let fg1 = color::FG_1.current(mode);
     let fg3 = color::FG_3.current(mode);
 
-    // Header chip: shows "Train ▾" (expanded) or "Train ▸" (collapsed).
-    let arrow = if collapsed { " ▸" } else { " ▾" };
+    // Header chip: shows "Train ▼" (expanded) or "Train ▶" (collapsed).
+    let arrow = if collapsed { " ▶" } else { " ▼" };
     let header_label = format!("{}{arrow}", strings::TRAINING_PANEL_HEADER);
     let header_chip =
         iced::widget::button(iced::widget::text(header_label).size(12).style(move |_| {

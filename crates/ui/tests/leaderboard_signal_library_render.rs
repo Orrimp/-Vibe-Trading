@@ -54,6 +54,37 @@ use std::time::Duration;
 use ui::state::{Cockpit, PanelState};
 use ui::test_support::leaderboard_screen_program;
 
+/// Render the whole PANE, not a fixed slice of it.
+///
+/// Both guards in this file compare two fixtures whose fields differ in length, so a
+/// frame shorter than the pane does not merely crop the picture — it CHANGES the
+/// comparison: the longer field loses more content off the bottom, and the "wider field
+/// paints more" assertion inverts. That is what happened when ADR-0092 moved the
+/// scorecard to the top of the pane and pushed everything down by 358 px.
+const PANE_HEIGHT: u32 = 3000;
+
+/// Fail loudly if the pane outgrows [`PANE_HEIGHT`] instead of silently truncating a
+/// comparison — the reservation-with-no-enforcement trap of bug-log #96.
+fn assert_pane_fits(w: u32, h: u32, rgba: &[u8]) {
+    const BAND: u32 = 48;
+    for y in h.saturating_sub(BAND)..h {
+        for x in 0..w {
+            let idx = ((y as usize * w as usize) + x as usize) * 4;
+            let (r, g, b) = (
+                i32::from(rgba[idx]),
+                i32::from(rgba[idx + 1]),
+                i32::from(rgba[idx + 2]),
+            );
+            if (r * 2 + g * 3 + b) / 6 > 80 {
+                panic!(
+                    "the pane reaches the bottom {BAND} px of the {h}-px frame, so it is \
+                     clipped and every cross-fixture comparison in this file is measuring \
+                     the clip — raise PANE_HEIGHT"
+                );
+            }
+        }
+    }
+}
 /// Render the bare Leaderboard screen body at 1920×1600 / scale-1.0.
 ///
 /// The viewport is 1600px tall (not the 1080 the canonical leaderboard guard
@@ -68,12 +99,11 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1600), 1.0, Duration::ZERO);
-    (
-        screenshot.size.width,
-        screenshot.size.height,
-        screenshot.rgba.to_vec(),
-    )
+    let screenshot = iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
+    let (w, h) = (screenshot.size.width, screenshot.size.height);
+    let rgba = screenshot.rgba.to_vec();
+    assert_pane_fits(w, h, &rgba);
+    (w, h, rgba)
 }
 
 // ── Region bands ──────────────────────────────────────────────────────────────

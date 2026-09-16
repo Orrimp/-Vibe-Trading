@@ -47,6 +47,7 @@ fn try_render(n: usize) -> Result<(), String> {
             BisectApp::update,
             BisectApp::view,
         )
+        .default_font(ui::theme::font::embedded())
         .title(BisectApp::title)
         .theme(BisectApp::theme);
         let _ = app;

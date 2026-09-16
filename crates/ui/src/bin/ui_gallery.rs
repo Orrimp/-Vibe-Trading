@@ -75,6 +75,7 @@ fn main() -> ExitCode {
         GalleryApp::update,
         GalleryApp::view_scrollable,
     )
+    .default_font(ui::theme::font::embedded())
     .title(GalleryApp::title)
     .theme(GalleryApp::theme)
     .run()

@@ -565,6 +565,7 @@ impl canvas::Program<Message> for ChartProgram {
                 // disagrees.
                 #[allow(clippy::useless_conversion)]
                 frame.fill_text(CanvasText {
+                    font: crate::theme::font::UI,
                     content: CHART_NO_DATA.to_string(),
                     position: centre,
                     color: color::FG_3.current(self.mode),
@@ -1006,6 +1007,7 @@ fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode:
         // Label — right-aligned just outside the tick mark.
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: format!("{price:.2}"),
             position: Point::new(inner.x - AXIS_TICK_LEN_PX - label_gap, y),
             color: axis_color,
@@ -1077,6 +1079,7 @@ fn draw_time_axis(frame: &mut Frame, inner: Rectangle, bars: &[Bar], mode: Theme
         let label = format!("{:02}:{:02}", local_ts.hour(), local_ts.minute());
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: label,
             position: Point::new(x, inner.y + inner.height + AXIS_TICK_LEN_PX + label_gap),
             color: axis_color,
@@ -1462,6 +1465,7 @@ fn draw_equity_axis(
         };
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: label,
             position: Point::new(tick_x + AXIS_TICK_LEN_PX + label_gap, y),
             color: axis_color,

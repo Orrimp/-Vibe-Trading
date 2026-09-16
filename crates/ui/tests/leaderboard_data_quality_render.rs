@@ -40,9 +40,11 @@
 //!    optional, gated on `!warnings.is_empty()`).
 //!
 //! The fixtures used here are deliberately SHORT-TABLE (the 2-row
-//! `benchmark_wins` field) so the DATA-quality panel — which renders FIRST,
-//! above the recommendation + table — lands inside the 1920×1080 screenshot
-//! viewport.
+//! `benchmark_wins` field) so the whole pane stays small. Since ADR-0092 the
+//! DATA-quality panel renders UNDER the ranked table, so these gates render the
+//! whole pane ([`PANE_HEIGHT`]) rather than the fold.
+//! No measurement here reads the scrollbar gutter ([`GUTTER_PX`]): bug-log #96 was
+//! a sibling gate whose whole signal came from the scrollbar thumb.
 //!
 //! ## macOS gate (ADR-0057 D2)
 //!
@@ -61,13 +63,22 @@ use ui::leaderboard::{DataQualityWarning, VenueTrust};
 use ui::state::{Cockpit, PanelState};
 use ui::test_support::leaderboard_screen_program;
 
+/// Render the whole PANE, not the fold.
+///
+/// These gates ask "did this block paint?", which is a question about the pane. Whether a
+/// block clears the operator's 1080-px fold is asserted once, and only once, in
+/// `leaderboard_scorecard_render` (bug-log #96 / ADR-0092). When ADR-0092 reordered the
+/// pane, every band scan in a 1080-px frame started measuring an empty strip below the
+/// clip — 13 gates failed the same day with "got 0". A frame taller than the pane cannot
+/// clip, so these scans stay about content.
+const PANE_HEIGHT: u32 = 2400;
 /// Render the bare Leaderboard screen body at the `typical` 1920×1080 slot and
 /// return the physical-pixel RGBA buffer + dimensions.
 fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1080), 1.0, Duration::ZERO);
+    let screenshot = iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
     (
         screenshot.size.width,
         screenshot.size.height,
@@ -75,13 +86,17 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     )
 }
 
-/// Count general foreground (text / marker) pixels across the whole frame —
+/// Right-edge strip where the pane's vertical scrollbar draws (x = 1894..=1904 of
+/// 1920, measured in bug-log #96). Excluded from every measurement.
+const GUTTER_PX: u32 = 32;
+
+/// Count general foreground (text / marker) pixels left of the scrollbar gutter —
 /// anything that crosses a luma floor the near-black `CANVAS`/`PANEL`/
 /// `PANEL_RAISED` tiers never reach. Monotonic in how much content drew.
 fn foreground_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
     let mut hits = 0u64;
     for y in 0..h {
-        for x in 0..w {
+        for x in 0..w.saturating_sub(GUTTER_PX) {
             let idx = ((y as usize * w as usize) + x as usize) * 4;
             let (r, g, b) = (
                 i32::from(rgba[idx]),
@@ -100,18 +115,16 @@ fn foreground_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
 /// **The render-layer guard (presence).** The populated `benchmark_wins`
 /// short-table fixture — which carries a real `data_quality` readout via
 /// `DataQualityView::for_symbol("BTCUSDT")` — MUST paint a substantial
-/// "Data quality" block at the TOP of the ready pane. Proven two ways:
+/// "Data quality" block in the ready pane. Proven two ways:
 ///
 /// 1. The whole-frame foreground count clears a floor well above what the
 ///    recommendation + 2-row table + scorecard + risk-story + disclaimer
 ///    alone would paint WITHOUT the new panel (a coarse regression smoke
 ///    check — the panel is title + caption + 4 label/value rows + an
 ///    informational note, a lot of additional text).
-/// 2. The DATA-quality panel renders FIRST in the stack (before the
-///    recommendation), so its title band sits in a fixed, known y-range near
-///    the top of the ready pane. We crop that band and assert it carries
-///    foreground pixels — i.e. SOMETHING painted right where the panel
-///    title must be, not just "more text somewhere in the frame".
+/// 2. The panel has no fixed position to crop since ADR-0092 put it below the
+///    ranked table, so presence is proven by the Warnings-row negative control in
+///    [`data_quality_panel_present_with_warnings`] instead of by a y-band.
 ///
 /// Writes the operator-facing PNG to `/tmp/leaderboard_data_quality_render.png`.
 #[test]
@@ -155,39 +168,13 @@ fn data_quality_block_paints_a_substantial_panel() {
          PNG: /tmp/leaderboard_data_quality_render.png"
     );
 
-    // (2) Targeted top-band crop. The DATA-quality panel is FIRST in the
-    // stack (`ready_pane` pushes it before `recommendation`), so its title +
-    // caption band must occupy the topmost ~140 physical px of the 1080-tall
-    // frame (well above where the recommendation headline would start on the
-    // OLD stack order). A regression that drops the panel (but leaves
-    // everything else) shifts the recommendation headline UP into this exact
-    // band, which would keep this assertion passing — so this crop proves
-    // "something painted at the top", establishing the first-in-stack
-    // position is occupied; guard (1)'s whole-frame floor is what actually
-    // catches a dropped panel (a smaller total). Kept as a belt-and-braces
-    // sanity check that the ready pane isn't blank at the top.
-    let band_h = 140u32.min(h);
-    let mut band_fg = 0u64;
-    for y in 0..band_h {
-        for x in 0..w {
-            let idx = ((y as usize * w as usize) + x as usize) * 4;
-            let (r, g, b) = (
-                i32::from(rgba[idx]),
-                i32::from(rgba[idx + 1]),
-                i32::from(rgba[idx + 2]),
-            );
-            let luma = (r * 2 + g * 3 + b) / 6;
-            if luma > 80 {
-                band_fg += 1;
-            }
-        }
-    }
-    assert!(
-        band_fg > 200,
-        "the top ~140px band (where the DATA-quality panel's title/caption \
-         must sit, first in the stack) must carry visible foreground \
-         (got {band_fg}). PNG: /tmp/leaderboard_data_quality_render.png"
-    );
+    // (2) The panel's own pixels, not its position. ADR-0092 moved this panel BELOW the
+    // ranked table, so it no longer owns a known y-range in any fixture, and a crop at a
+    // fixed offset would measure whatever happens to be there — the #96 failure mode.
+    // Presence is proven instead by the one genuinely optional sub-element this DTO has:
+    // `data_quality_panel_present_with_warnings` below turns the Warnings row on and off
+    // in otherwise identical frames. Here we keep the coarse whole-pane floor above, which
+    // a silently dropped panel would breach.
 }
 
 /// **Negative-control discriminator (warnings row).** The ONE genuinely
@@ -206,9 +193,8 @@ fn data_quality_panel_present_with_warnings() {
         DataQualityWarning::PumpAndDump,
     ];
     // Strip the sibling honesty blocks (scorecard/tail) in BOTH frames so the
-    // delta is attributable to the Warnings row alone (the same isolation
-    // discipline `leaderboard_scorecard_render.rs` uses when comparing two
-    // states that differ in exactly one optional block).
+    // delta is attributable to the Warnings row alone, and so the panel leads the
+    // stack (ADR-0092) with its Warnings row well inside the 1080-px frame.
     with_warnings.scorecard = None;
     with_warnings.tail = None;
 

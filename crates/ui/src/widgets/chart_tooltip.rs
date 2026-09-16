@@ -268,6 +268,7 @@ fn draw_row(frame: &mut Frame, x: f32, y: f32, width: f32, row: &TooltipRow, mod
         let mid = Point::new(x + TOOLTIP_PAD_X_PX, y);
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: row.value.clone(),
             position: mid,
             color: value_color,
@@ -282,6 +283,7 @@ fn draw_row(frame: &mut Frame, x: f32, y: f32, width: f32, row: &TooltipRow, mod
     let label_pos = Point::new(x + TOOLTIP_PAD_X_PX, y);
     #[allow(clippy::useless_conversion)]
     frame.fill_text(CanvasText {
+        font: crate::theme::font::UI,
         content: row.label.clone(),
         position: label_pos,
         color: label_color,
@@ -294,6 +296,7 @@ fn draw_row(frame: &mut Frame, x: f32, y: f32, width: f32, row: &TooltipRow, mod
     let value_pos = Point::new(x + width - TOOLTIP_PAD_X_PX, y);
     #[allow(clippy::useless_conversion)]
     frame.fill_text(CanvasText {
+        font: crate::theme::font::UI,
         content: row.value.clone(),
         position: value_pos,
         color: value_color,

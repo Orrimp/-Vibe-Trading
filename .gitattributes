@@ -36,3 +36,6 @@ evidence/** -text
 # Binary assets (pre-existing).
 crates/forecast/checkpoints/anchors/*.safetensors filter=lfs diff=lfs merge=lfs -text
 crates/ui/tests/visual-baselines/** binary
+
+# The cockpit's embedded UI face (ADR-0093). Never normalise a font.
+crates/ui/assets/fonts/*.ttf binary

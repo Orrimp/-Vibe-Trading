@@ -73,6 +73,7 @@ fn run_slot(slot_name: &str) {
 
     let app = GalleryApp::default();
     let program = program_from_cockpit(app.cockpit.clone());
+    fixtures::visual_diff::assert_embedded_default_font(&program);
     let theme = iced::Theme::Dark;
 
     let screenshot = iced_test::screenshot(

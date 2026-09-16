@@ -101,6 +101,7 @@ pub fn program_from_cockpit(
     };
 
     iced::application(boot, TestApp::update, TestApp::view)
+        .default_font(crate::theme::font::embedded())
         .title(TestApp::title)
         .theme(TestApp::theme)
 }
@@ -185,6 +186,7 @@ pub fn compare_screen_program(
         )
     };
     iced::application(boot, CompareScreenApp::update, CompareScreenApp::view)
+        .default_font(crate::theme::font::embedded())
         .title(CompareScreenApp::title)
         .theme(CompareScreenApp::theme)
 }
@@ -274,6 +276,7 @@ pub fn chart_overlay_program(
         )
     };
     iced::application(boot, ChartOverlayApp::update, ChartOverlayApp::view)
+        .default_font(crate::theme::font::embedded())
         .title(ChartOverlayApp::title)
         .theme(ChartOverlayApp::theme)
 }
@@ -377,6 +380,7 @@ pub fn leaderboard_screen_program(
         LeaderboardScreenApp::update,
         LeaderboardScreenApp::view,
     )
+    .default_font(crate::theme::font::embedded())
     .title(LeaderboardScreenApp::title)
     .theme(LeaderboardScreenApp::theme)
 }
@@ -459,6 +463,7 @@ pub fn tune_screen_program(
         )
     };
     iced::application(boot, TuneScreenApp::update, TuneScreenApp::view)
+        .default_font(crate::theme::font::embedded())
         .title(TuneScreenApp::title)
         .theme(TuneScreenApp::theme)
 }
@@ -545,6 +550,7 @@ pub fn forward_plan_screen_program(
         ForwardPlanScreenApp::update,
         ForwardPlanScreenApp::view,
     )
+    .default_font(crate::theme::font::embedded())
     .title(ForwardPlanScreenApp::title)
     .theme(ForwardPlanScreenApp::theme)
 }
@@ -616,6 +622,7 @@ pub fn source_toggle_program(
 > {
     let boot = move || (SourceToggleApp { current }, iced::Task::none());
     iced::application(boot, SourceToggleApp::update, SourceToggleApp::view)
+        .default_font(crate::theme::font::embedded())
         .title(SourceToggleApp::title)
         .theme(SourceToggleApp::theme)
 }

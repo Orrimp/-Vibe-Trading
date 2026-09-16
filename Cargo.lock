@@ -8323,6 +8323,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trading_core",
+ "ttf-parser",
  "uuid",
  "windows",
 ]

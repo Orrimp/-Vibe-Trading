@@ -46,13 +46,22 @@ use std::time::Duration;
 use ui::state::{Cockpit, PanelState};
 use ui::test_support::leaderboard_screen_program;
 
+/// Render the whole PANE, not the fold.
+///
+/// These gates ask "did this block paint?", which is a question about the pane. Whether a
+/// block clears the operator's 1080-px fold is asserted once, and only once, in
+/// `leaderboard_scorecard_render` (bug-log #96 / ADR-0092). When ADR-0092 reordered the
+/// pane, every band scan in a 1080-px frame started measuring an empty strip below the
+/// clip — 13 gates failed the same day with "got 0". A frame taller than the pane cannot
+/// clip, so these scans stay about content.
+const PANE_HEIGHT: u32 = 2400;
 /// Render the bare Leaderboard screen body at the `typical` 1920×1080 slot and
 /// return the physical-pixel RGBA buffer + dimensions.
 fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1080), 1.0, Duration::ZERO);
+    let screenshot = iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
     (
         screenshot.size.width,
         screenshot.size.height,
@@ -85,19 +94,28 @@ fn warn_amber_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
     hits
 }
 
-/// Count `WARN`-amber pixels in the BANNER REGION only. The Recommendation panel
-/// is the 3rd block in the result column (under the guided-input form + the Data
-/// quality panel), so with the full 20-arm field it lands in the LOWER half of
-/// the 1920×1080 frame (empirically the WeakEvidence band paints at y ≈ 875–910;
-/// read `/tmp/crown_credibility_weak.png`). Restricting to `y > h/2` isolates the
-/// band from the guided-input form's `ACCENT` chips (teal, not amber — but kept
-/// out of frame anyway) and keeps the guard strictly about the banner. The
-/// scorecard panel below the table carries at most a single `✗` glyph + a short
-/// warn line (empirically < 100 amber px), far under the delta floor.
+/// Top of the BANNER band — the recommendation panel, measured.
+///
+/// Everything above it is fixed-height regardless of fixture: the guided-input form,
+/// the budget-context line, and (since ADR-0092) the scorecard. Re-measured
+/// 2026-09-16 on `/tmp/crown_credibility_weak.png` and `_passes.png`: the
+/// recommendation block starts at y=877 in both, and the WeakEvidence band paints
+/// y=877..1048 (6189 amber px there vs 0 in the Passes control).
+const BANNER_TOP: u32 = 850;
+/// Bottom of the BANNER band — above the ranked table, whose first row starts at
+/// y≈1102. This bound is load-bearing: the amber predicate below also matches
+/// `DOWN_500` clay (201,123,94 satisfies `r>130 && r>b+40 && g>b+25`), so a scan that
+/// reached the table would count every Max-DD figure and every Fragile badge as
+/// "amber" — which is exactly how this guard failed when a taller frame exposed the
+/// table to a `y > h/2` region.
+const BANNER_BOTTOM: u32 = 1100;
+
+/// Count `WARN`-amber pixels in the BANNER band only — see [`BANNER_TOP`].
 fn warn_amber_pixels_banner_region(w: u32, h: u32, rgba: &[u8]) -> u64 {
-    let start_y = h / 2;
+    let start_y = BANNER_TOP.min(h);
+    let end_y = BANNER_BOTTOM.min(h);
     let mut hits = 0u64;
-    for y in start_y..h {
+    for y in start_y..end_y {
         for x in 0..w {
             let idx = ((y as usize * w as usize) + x as usize) * 4;
             let (r, g, b) = (

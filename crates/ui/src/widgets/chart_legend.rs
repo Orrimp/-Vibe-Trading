@@ -278,6 +278,7 @@ fn draw_legend_impl(
         let micro = text::MICRO as f32;
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: row.label.to_string(),
             position: Point::new(label_x, label_y),
             color: color::FG_2.current(mode),
@@ -335,6 +336,7 @@ fn draw_legend_impl(
         let micro = text::MICRO as f32;
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: label_text,
             position: Point::new(label_x, label_y),
             color: label_color,

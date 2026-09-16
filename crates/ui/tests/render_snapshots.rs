@@ -100,6 +100,7 @@ fn run_panel_slot_legacy(panel_name: &str, slot_name: &str, cockpit: ui::Cockpit
     };
 
     let program = program_from_cockpit(cockpit);
+    fixtures::visual_diff::assert_embedded_default_font(&program);
     let theme = iced::Theme::Dark;
 
     let screenshot = iced_test::screenshot(&program, &theme, (w, h), scale, Duration::ZERO);

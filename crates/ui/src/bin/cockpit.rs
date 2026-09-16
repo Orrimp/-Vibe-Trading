@@ -143,6 +143,7 @@ fn main() -> iced::Result {
     // Shared with `cockpit_live` and `viewer` via
     // `ui::window_icon::standard_window_settings`.
     iced::application(App::boot, App::update, App::view)
+        .default_font(ui::theme::font::embedded())
         .title(App::title)
         .theme(App::theme)
         .subscription(App::subscription)

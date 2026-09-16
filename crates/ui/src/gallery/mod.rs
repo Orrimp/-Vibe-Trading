@@ -113,6 +113,7 @@ pub fn program_from_cockpit(
         )
     };
     iced::application(boot, GalleryApp::update, GalleryApp::view)
+        .default_font(crate::theme::font::embedded())
         .title(GalleryApp::title)
         .theme(GalleryApp::theme)
 }

@@ -49,6 +49,15 @@ use std::time::Duration;
 use ui::state::{Cockpit, PanelState};
 use ui::test_support::leaderboard_screen_program;
 
+/// Render the whole PANE, not the fold.
+///
+/// These gates ask "did this block paint?", which is a question about the pane. Whether a
+/// block clears the operator's 1080-px fold is asserted once, and only once, in
+/// `leaderboard_scorecard_render` (bug-log #96 / ADR-0092). When ADR-0092 reordered the
+/// pane, every band scan in a 1080-px frame started measuring an empty strip below the
+/// clip — 13 gates failed the same day with "got 0". A frame taller than the pane cannot
+/// clip, so these scans stay about content.
+const PANE_HEIGHT: u32 = 2400;
 /// Render the bare Leaderboard screen body at the `typical` 1920×1080 slot and
 /// return the physical-pixel RGBA buffer + dimensions. The
 /// `leaderboard_screen_program` harness pins the screen body to `ThemeMode::Dark`
@@ -59,7 +68,7 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, 1080), 1.0, Duration::ZERO);
+    let screenshot = iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
     (
         screenshot.size.width,
         screenshot.size.height,

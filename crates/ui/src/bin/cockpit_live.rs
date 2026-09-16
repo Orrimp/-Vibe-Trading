@@ -997,6 +997,7 @@ fn main() -> Result<()> {
         AppState::update,
         AppState::view,
     )
+    .default_font(ui::theme::font::embedded())
     .title(AppState::title)
     .theme(AppState::theme)
     .subscription(AppState::subscription)

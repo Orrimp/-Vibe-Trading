@@ -408,3 +408,23 @@ mod tests {
         );
     }
 }
+
+/// Refuse to byte-compare a render that was not drawn with the embedded UI font.
+///
+/// A baseline is reproducible only if every glyph in it comes from a font the repo
+/// ships. `iced_test::screenshot` builds its renderer from
+/// `Program::settings().default_font`, so a program built without
+/// `.default_font(ui::theme::font::UI)` renders through the OS font database and
+/// its baseline drifts with the OS (`docs/dev-notes/visual-baseline-drift-2026-07-27.md`).
+/// Every byte-compare entry point calls this BEFORE rendering, so such a baseline
+/// can never even be captured.
+#[allow(dead_code)] // each including test file uses a different subset of fixtures
+pub fn assert_embedded_default_font<P: iced_test::program::Program>(program: &P) {
+    let font = iced_test::program::Program::settings(program).default_font;
+    assert!(
+        font == ui::theme::font::UI,
+        "this program renders with {font:?}, not the embedded UI font: build it with \
+         `.default_font(ui::theme::font::embedded())`, which LOADS the face as well as \
+         naming it (ADR-0093)"
+    );
+}

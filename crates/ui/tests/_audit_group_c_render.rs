@@ -557,6 +557,7 @@ fn home_program(
         )
     };
     iced::application(boot, HomeApp::update, HomeApp::view)
+        .default_font(ui::theme::font::embedded())
         .title(HomeApp::title)
         .theme(HomeApp::theme)
 }

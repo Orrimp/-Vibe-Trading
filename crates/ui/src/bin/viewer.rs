@@ -75,6 +75,7 @@ fn main() -> ExitCode {
         App::update,
         App::view,
     )
+    .default_font(ui::theme::font::embedded())
     .title(move |_app: &App| format!("Backtest report — {scenario}"))
     .theme(App::theme)
     // T2028 + T2029 — Layout-β min-size floor + Lumen brand icon.

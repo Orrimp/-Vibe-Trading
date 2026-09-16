@@ -121,8 +121,11 @@ else:**
   `aggregator_*`). Their assertion text was never annotated (budget bug, now
   fixed) — the next run should name them.
 - **windows + linux**: `audit_aggregator_handles_10k_event_storm`.
-- **macOS**: the 48-file visual drift — see the correction below.
-- `leaderboard_scorecard_render` — bug-log **#96**, a product decision.
+- **macOS**: the 48-file visual drift — RESOLVED 2026-09-16 (ADR-0093, below); the
+  one-time re-baseline is the remaining step.
+- `leaderboard_scorecard_render` — bug-log **#96**, FIXED 2026-09-16 (ADR-0092): the
+  credibility block leads the pane, and the gate measures the block instead of the
+  scrollbar.
 
 ### ⚠ H1 IS WRONG AS WRITTEN — the font prerequisite does not do what it claims
 
@@ -150,6 +153,41 @@ then disagree by construction — worse than today.
 than recorded: not "the font feature is off" (it is on) but "nothing selects the
 font, and the test harness has no way to". Full analysis, with the source lines,
 in `docs/dev-notes/visual-baseline-drift-2026-07-27.md` § Correction.
+
+### H1 RESOLVED (2026-09-16) — the cockpit embeds Inter (ADR-0093)
+
+What was missing was not a feature flag but a face this repository owns, plus the two
+places that have to agree on it:
+
+- `crates/ui/assets/fonts/Inter-Regular.ttf` (303 KiB, SIL OFL 1.1) ships in the repo,
+  and iced's `fira-sans` (431 KiB) is dropped in the same change — the binary ends up
+  ~128 KiB SMALLER than before. The operator lifted the no-bundled-fonts lock for this
+  one face.
+- `theme::font::embedded()` LOADS the face into the global font database (once per
+  process) and RETURNS the font. Both halves are load-bearing: `iced_test`'s `Emulator`
+  builds its renderer from `Program::settings().default_font` and never loads
+  `settings.fonts`, so a program that only NAMES the face renders through the OS font
+  database in the gate while the app renders Inter — the "disagree by construction"
+  failure the paragraph above warned about.
+- All 14 `iced::application(..)` sites pass it to `.default_font(..)`, and all 15 canvas
+  texts name `theme::font::UI` directly, because canvas text carries a concrete `font`
+  field and does not inherit the renderer default.
+- `crates/ui/tests/embedded_font_contract.rs` enforces every clause on every platform,
+  including "no string literal draws a glyph the face lacks" — cosmic-text falls back
+  PER GLYPH, so one missing character re-arms this bug for that character. Fira Sans
+  lacked eight of this UI's glyphs (`✓ ✗ ⚠ ★ ● ⓘ ▸ ▾`), five of them the non-colour
+  signals in ADR-0085's verbatim copy; Inter lacks three, replaced in the Lab screen.
+- The byte-compare helpers assert the program's default font BEFORE rendering, so a
+  baseline drawn through the OS font database cannot even be captured.
+
+Why the operator's "widget-level font at the ui layer" ruling shipped as a renderer
+default rather than 412 `.font(..)` calls: the ruling's requirement is that the app and
+the gate agree, and one default plus 15 canvas fields is enforceable by a test, whereas
+412 call sites are enforceable only by discipline.
+
+**The re-baseline is unblocked** — ONE pass, per-screen operator approval, with
+`sw_vers` + toolchain recorded in that commit. It also unblocks story 3-20
+(advisor-honesty-surface), which was waiting on this for its AD-10 proof.
 
 ### `audit_aggregator_handles_10k_event_storm` — diagnosed, NOT fixed (2026-08-29)
 

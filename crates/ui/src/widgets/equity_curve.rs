@@ -329,6 +329,7 @@ fn draw_price_axis(frame: &mut Frame, inner: Rectangle, range: (f32, f32), mode:
         );
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: money_axis_label(v, decimals),
             position: Point::new(inner.x - tick_len - label_gap, y),
             color: axis_color,
@@ -401,6 +402,7 @@ fn draw_time_axis(frame: &mut Frame, inner: Rectangle, series: &EquitySeries, mo
         let label = format_time_axis_label(local_ts, span_seconds);
         #[allow(clippy::useless_conversion)]
         frame.fill_text(CanvasText {
+            font: crate::theme::font::UI,
             content: label,
             position: Point::new(x, inner.y + inner.height + tick_len + label_gap),
             color: axis_color,

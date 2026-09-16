@@ -563,14 +563,58 @@ pub mod text {
     pub const DISPLAY: u32 = 32;
 }
 
-/// Font family stacks. `Inter` for UI, `JetBrains Mono` for numerics.
+/// Font family stacks, and the one face the runtime actually embeds.
 ///
-/// The runtime does not bundle `Inter` or `JetBrains Mono` TTFs —
-/// operator-locked: every kilobyte of font is a kilobyte not spent on
-/// faster bar rendering. iced falls through the stack to a platform
-/// default. The constants exist so widget code can still cite the
-/// canonical Lumen stack when the runtime gains font loading.
+/// The no-bundled-fonts lock was lifted by the operator on 2026-09-16 (ADR-0093)
+/// for `Inter` alone: the cockpit now ships `Inter-Regular.ttf` (303 KiB) and
+/// drops iced's `fira-sans` feature (431 KiB), so the binary is ~128 KiB SMALLER
+/// than before and every glyph it draws comes from a file in this repository.
+/// `JetBrains Mono` is still not bundled — `FONT_MONO` stays a documentation
+/// stack that resolves to a platform default.
 pub mod font {
+    /// The one typeface the cockpit draws with: Inter Regular, EMBEDDED in this
+    /// repository (`crates/ui/assets/fonts/Inter-Regular.ttf`, SIL OFL 1.1).
+    ///
+    /// Every glyph the cockpit draws has to come from a file the repo ships, or the
+    /// pixels are a property of the machine: `Font::DEFAULT` is the generic
+    /// `SansSerif`, which cosmic-text maps to "Open Sans", which neither macOS nor
+    /// the CI runners ship, so text fell through to whatever the OS offered and the
+    /// byte-exact baselines drifted with every OS update
+    /// (`docs/dev-notes/visual-baseline-drift-2026-07-27.md`). Inter is the Lumen
+    /// stack's own UI face and covers every glyph the cockpit draws — including
+    /// `✓ ✗ ⚠ ★ ●`, the non-colour signals in ADR-0085's verbatim copy, which the
+    /// Fira Sans iced bundles does not have.
+    ///
+    /// Use [`embedded()`] at every application: it LOADS the face and names it.
+    /// This constant is the name alone — for canvas `Text` (which does not inherit
+    /// the renderer default) and for assertions.
+    /// `crates/ui/tests/embedded_font_contract.rs` enforces both.
+    pub const UI: iced::Font = iced::Font::with_name("Inter");
+
+    /// The embedded face's bytes. Licence: `assets/fonts/Inter-LICENSE` (SIL OFL 1.1).
+    pub const UI_REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+
+    /// Load the embedded face into the global font database — once per process —
+    /// and return [`UI`].
+    ///
+    /// Both halves matter. `iced::application(..).font(..)` loads fonts when the real
+    /// runtime starts, but `iced_test`'s `Emulator` — what every pixel gate renders
+    /// through — builds its renderer from `Program::settings().default_font` and
+    /// never loads `settings.fonts` (`iced_test-0.14.0/src/emulator.rs`). A program
+    /// that NAMES Inter without LOADING it renders through the OS font database
+    /// instead: exactly the drift this indirection exists to prevent.
+    pub fn embedded() -> iced::Font {
+        static LOADED: std::sync::Once = std::sync::Once::new();
+        LOADED.call_once(|| {
+            let system = iced::advanced::graphics::text::font_system();
+            let mut guard = system
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            guard.load_font(std::borrow::Cow::Borrowed(UI_REGULAR));
+        });
+        UI
+    }
+
     /// UI sans-serif stack: `Inter` → platform default.
     pub const FONT_SANS: &str = "Inter, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif";
     /// Numerics monospace stack: `JetBrains Mono` → platform default.

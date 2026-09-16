@@ -1014,8 +1014,8 @@ them. **Neither should be chosen silently**, which is why this is logged rather
 than fixed.
 
 ### `#96` — the P0-1 "show your work" credibility block renders ENTIRELY below the fold, and its pixel gate has been measuring the scrollbar
-**Status**: OPEN — needs a product decision, not a patch. Found 2026-08-23 while piloting #88;
-bisected. Anchor-impacting: **no** (cockpit surface).
+**Status**: FIXED 2026-09-16 — ADR-0092 (placement) + a rewritten gate. Found 2026-08-23
+while piloting #88; bisected. Anchor-impacting: **no** (cockpit surface).
 
 **The gate.** `leaderboard_scorecard_render` renders the leaderboard with
 `scorecard = Some(..)` and against a control with `scorecard = None`, and asserts the first paints
@@ -1069,6 +1069,18 @@ been live since `67f2a9d` and no CI run has ever reported it.
 
 Do NOT "fix" this by loosening the assertion or re-baselining the delta — the number it compares is
 the scrollbar, so any threshold fitted to it is fitted to noise. That is bug-log #77's failure.
+
+**Fixed (2026-09-16, ADR-0092)** — option (a), with one measured correction. The scorecard
+block renders FIRST in the ready pane, and the pick follows it: leading with BOTH honesty
+panels (scorecard then Data quality, the literal ruling) was implemented, rendered, and
+measured to push the recommendation and the entire ranked table below the fold — the same
+bug pointed at the pick. Shipped order: scorecard -> recommendation -> table -> Data quality
+-> Risk story, so the trust readout, the pick and the first ranked rows all clear 1080. The gate was
+rewritten rather than re-tuned: presence is measured in a 1920x2400 frame where nothing scrolls
+or clips (asserted, not assumed), so the with/without delta is the block itself; visibility is a
+separate assertion that locates the block's extent and requires it to end above y=1080; and no
+measurement reads the 32-px scrollbar gutter, so no gate on this screen can be satisfied by
+chrome again.
 
 **Moral**: a pixel gate that compares two renders can be satisfied by ANY difference between them,
 including chrome the feature never touches. When a harness reserves a resource by construction — a
@@ -1295,3 +1307,81 @@ self-diagnosing.
 - 2026-08-03 (orchestrator): #68 added (OPEN) — the θ-grids' drift/hold-band swept axis is inert (the #65 class, one layer up); implement-or-drop rides 1-25; #67 blast radius extended to anchor #87.
 - 2026-07-31 (orchestrator): #67 added (OPEN) — cross-symbol fill mispricing in the research-harness lanes; anchored C2/C3 evidence is execution-artifact noise; advisor gate proven unaffected; fix+re-lock = story 1-25 (program with 1-24).
 - 2026-07-27 (orchestrator): #66 added+FIXED — ui real-data guard tests vacuous since day 1 (cwd-relative corpus root, any-Err→skip); revival caught 3 latent production bugs (CSV-name test bug, scenario-name collision/shadowing, unindented-frontmatter Compare skip). Story 1-10 code-review pass; all gates re-verified (anchors 119/119, spec-lint 0, clippy 0, AC5 4369-point round-trip).
+
+### `#100` — the cockpit renders report bodies from disk, and those carry glyphs the embedded face cannot draw
+**Status**: OPEN — measured, scoped, not fixed. Found 2026-09-16 while wiring ADR-0093.
+Anchor-impacting: **no** (reads the corpus, never writes it).
+
+ADR-0093 makes every glyph the cockpit draws come from a face this repo ships — for text
+written in `crates/ui/src`. `crates/ui/tests/embedded_font_contract.rs` enforces exactly that,
+by scanning string literals. But the Reports screen (`crates/ui/src/screens/reports.rs:324`)
+and the `viewer` binary (`crates/ui/src/bin/viewer.rs:111`) render `body_markdown` LOADED
+FROM `evidence/`, and no static scan can see it.
+
+**Measured** over the 321 committed evidence documents: **11 glyphs Inter cannot draw, in 21
+files**.
+
+| glyph | count | files | source |
+|---|---|---|---|
+| `▁`..`█` (block elements) | 480 | 4 | `reports::render::equity_curve` -> `sparkline::encode` |
+| `∧ ∈ ⊥ ≡ ≫ ∪ ≪` | 26 | ~10 | set / logic notation in report prose |
+| `ⓘ` | 2 | 1 | a quoted Lab notice |
+| `✅` | 1 | 1 | an ERRATA marker |
+
+cosmic-text falls back PER GLYPH, so on that screen those characters are drawn by whatever
+OS font has them — the exact instability ADR-0093 removes everywhere else.
+
+**Why nothing is red.** No byte-exact baseline is a Reports screen, and the ui's own report
+fixture body (`reports_populated_curve_render.rs:194`) is plain ASCII plus an em dash, which
+Inter has. So no gate depends on the fallback today. A future Reports-screen baseline would
+drift with the OS until this is fixed — which is the trap #96 taught: the reservation is real
+but unenforced.
+
+**Fix direction (not taken here).** Prefer DRAWING the equity sparkline as a widget on that
+screen instead of rendering typed block characters — it removes 480 of the 483 occurrences and
+is the honest fix, since a sparkline is a picture. The residual notation glyphs are report
+prose; either accept them as documented fallback or normalise the report vocabulary. Embedding
+a second, block-capable face is the expensive option and buys the least.
+
+**Moral**: a contract enforced by scanning source covers what the source says, not what the
+program loads. State the scope in the test, or the next reader will believe the stronger claim.
+
+### `#101` — a negative control that ADR-0085 had already falsified, red since, and never diagnosed
+**Status**: FIXED 2026-09-16. Found while re-baselining for ADR-0093; attributed by stash A/B.
+Anchor-impacting: **no** (cockpit surface).
+
+`leaderboard_long_only_is_the_negative_control_for_shorts` asserted two things about the
+long-only field: that it paints strictly LESS warn-amber than the short field, and that it
+paints **`< 40`** amber px at all — "no short field, so no unbounded-loss disclaimer".
+
+The second claim stopped being true when **ADR-0085** added the crown-credibility band to
+the recommendation banner. That band is `WARN_500`-amber and paints in EVERY frame whose
+crown does not clear DSR — the modal case for these fixtures — so the long-only control
+carries amber that has nothing to do with short selling.
+
+**Measured, not inferred.** With this session's changes stashed (plain HEAD):
+
+```
+long = short = 1611 amber px   ->  assertion 1 fails as a tautology
+```
+
+Both assertions were therefore unreachable-as-intended, and the file has been red since
+ADR-0085 landed. The 2026-07-27 drift note counted this file's one failure among the "62
+baseline comparisons" and attributed it to font drift; it was not font drift.
+
+**Why it surfaced now.** The file rendered a 2400-px frame, which since ADR-0092 (the
+scorecard moved to the top of the pane, +358 px) no longer reached the bottom-anchored
+short-field disclaimer — `iced_test::screenshot` CLIPS to the viewport. Raising the frame
+to 3000 px and asserting the pane fits captured the disclaimer again, which made the short
+frame paint strictly more amber than the control, which moved the failure from assertion 1
+to assertion 2 and finally made the real defect legible.
+
+**Fix.** The discriminator is the DELTA, not an absolute: both frames legitimately carry
+ADR-0085's band, and only the short field draws the unbounded-loss disclaimer on top of it.
+The absolute `< 40` claim is gone, with the measurement and its reason recorded at the
+assertion.
+
+**Moral**: a negative control asserts what a feature does NOT paint. Every later feature
+that paints in the same channel silently weakens it — and when the control finally fails,
+the cheapest story ("font drift", "flaky pixels") is the one most likely to be believed.
+Attribute a red before you re-baseline it away: `git stash` + run at HEAD costs one minute.
