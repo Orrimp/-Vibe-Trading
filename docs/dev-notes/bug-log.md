@@ -1595,8 +1595,9 @@ story 3-20 AC1's subject and needs the provenance enum described there.
 A verification whose failure is indistinguishable from a cache miss is not a verification.
 
 ### `#106` — an anchored report body embeds a MEASURED wall-clock time, so only a machine as fast as the operator's can reproduce it
-**Status**: OPEN — found 2026-09-24 while scoping story 6-12 (evidence-reproducibility-sample).
-Anchor-impacting: **no, if fixed as described** — the fix renders the same bytes.
+**Status**: **FIXED 2026-09-24** (same day, one line). Found while scoping story 6-12.
+Anchor-impacting: **no** — verified `ANCHORS PASS (119 / 119)` before AND after the change;
+the fix renders the bytes the committed body already carries.
 
 `report::sma` prints the run's own duration into the hashed body:
 
@@ -1633,6 +1634,10 @@ is byte-identical to the committed body, so **no re-lock is needed and 119/119 h
 change**. It is a one-line prerequisite for story 6-12, whose whole point is that a third party
 can reproduce a figure — and today they cannot reproduce this one unless their machine is fast
 enough.
+
+**Fixed**: `body_elapsed_override: Some(0.0)` at `run_yahoo_sma.rs:249`, with the stale comment
+replaced by one that states the scenario IS anchored and why the value is pinned. Anchors held
+at 119/119 across the change, as predicted — nothing was re-emitted, so no committed body moved.
 
 **Moral**: a hashed artifact must contain no measurement of the machine that produced it. The
 seven siblings that pin the value knew this; the eighth was written as a new scenario and

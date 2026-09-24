@@ -245,8 +245,19 @@ async fn main() -> Result<()> {
     let sma_input = SmaScenarioInput {
         scenario_name: scenario.clone(),
         body_name: scenario.clone(),
-        // No elapsed override — this is a new scenario, not replicating an anchor.
-        body_elapsed_override: None,
+        // bug-log #106 — PIN the wall-clock, because this scenario IS anchored
+        // (`evidence/anchors.toml`, `btc-yahoo-2024-1d-sma-cross`, body-SHA
+        // `076929bb…`). `report::sma` prints `{body_elapsed:.1}s` into the HASHED body,
+        // so an unpinned value makes the anchor reproducible only on hardware fast
+        // enough to finish inside 50 ms — every slower run renders `0.1s` and misses,
+        // for a reason having nothing to do with the data or the engine. The seven
+        // sibling emitters in `main.rs` all pin theirs. `0.0` is what the committed
+        // body already reads, so this renders identical bytes and needs no re-lock.
+        //
+        // The comment this replaces said "a new scenario, not replicating an anchor".
+        // That was true when it was written and stopped being true when the scenario
+        // was locked; nothing re-read it.
+        body_elapsed_override: Some(0.0),
         symbol,
         start_year: 2024,
         initial_capital: INITIAL_CAPITAL,
