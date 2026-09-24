@@ -1642,3 +1642,60 @@ at 119/119 across the change, as predicted — nothing was re-emitted, so no com
 **Moral**: a hashed artifact must contain no measurement of the machine that produced it. The
 seven siblings that pin the value knew this; the eighth was written as a new scenario and
 inherited the hazard when it was anchored, with the comment still asserting it was exempt.
+
+### `#107` — an anchored report body says two things the engine did not compute: a bar count that is off by one, and a money figure rounded through `f64`
+**Status**: OPEN — found 2026-09-24 while proving story 6-12's reproduction.
+Anchor-impacting: **yes, if fixed** — both live in the hashed body, so either fix re-locks
+`btc-yahoo-2024-1d-sma-cross` and its seven `btc-2023-1m-*` siblings. **Do not fix casually.**
+
+Reproducing `btc-yahoo-2024-1d-sma-cross` from a fresh corpus root produced a body
+**byte-identical** to the committed one (SHA `076929bb…`, verified). Reproducibility is not the
+problem. What the body *says* is.
+
+The same run's stdout and its own report disagree:
+
+| | stdout | hashed body |
+|---|---|---|
+| bars | `Bars loaded: 366`, `Bars replayed: 366` | `\| Bars replayed \| 367 \|` |
+| final equity | `$104560.07 USDT` | `\| Final equity \| $104560.08 USDT \|` |
+
+**A — "Bars replayed" is not the bars replayed.** `report::sma` fills that cell with
+`bars = state.equity_curve.len()` (`crates/backtest/src/report/sma.rs:158`). The equity curve
+carries an initial point — equity *before* the first bar — so it is always `bars + 1`. The
+console's 366 is the honest count; the published figure is one larger, and has been in every
+SMA report since the template was written.
+
+**B — the money figure is rounded through `f64`, and it changes the cent.**
+`crates/backtest/src/report/sma.rs:36`:
+
+```rust
+let final_f = f64::try_from(final_equity).unwrap_or(0.0);
+```
+
+The console formats the `Decimal` (`${final_equity:.2}` → `.07`); the body formats the `f64`
+conversion (`${final_eq:.2}` → `.08`). Same source value, two different cents, and the one that
+gets **hashed, anchored and shown to the user** is the `f64` one.
+
+This is the shape AD-9 exists to forbid — "no `f64` in money math; `rust_decimal::Decimal` +
+the `Money<C>` newtype only". The ledger obeys it; the *presentation* of the ledger's answer
+does not, and presentation is what the anchor preserves. Note the `unwrap_or(0.0)`: a
+conversion failure would publish `$0.00` as a final equity rather than fail.
+
+**Why nothing is red.** `verify_anchors.sh` hashes committed bodies and never re-runs
+(bug-log #93), so it cannot compare a body against the engine. Nobody had re-executed this
+scenario since it was locked, and the stdout that disagrees scrolls past.
+
+**Why it matters beyond a cent.** The console is what a human reads before deciding a run looks
+right and locking it. If the terminal and the artifact disagree, the human validates one number
+and anchors another.
+
+**Fix direction (deliberately not taken here).** Both fixes change hashed bytes, so they belong
+in a formal re-lock (ADR-0038 § D6), not in a drive-by. Natural home: story **1-26**'s
+regeneration, which is already re-emitting anchored surfaces and already owns a `--out-dir`.
+Rename the row to what it is (`Equity points`) or subtract the initial point; and format the
+`Decimal` directly instead of converting. Until then the numbers are what they are and this
+entry is the record of it.
+
+**Moral**: byte-immutability preserves a claim, it does not audit it. An anchor can hold a
+figure that was never true with perfect fidelity for as long as nobody re-runs the thing that
+produced it.
