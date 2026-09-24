@@ -28,6 +28,8 @@
 /// Houses `compare::state` (CompareScreenState / CachedCell / CompareKpiAxis)
 /// and `compare::cache` (scan_spec_tree + lookup_cell + parse_frontmatter).
 pub mod compare;
+/// Story 6-11 — the operator session log: what the application actually did.
+pub mod session_log;
 
 /// Phase F — Memory-screen feature module (ui-rethink-phase-f-memory-models-assistant).
 /// Houses `memory::state` (MemoryScreenState / LessonCardCard / MemoryViewMode /

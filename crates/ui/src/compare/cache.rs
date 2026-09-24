@@ -367,7 +367,7 @@ fn extract_equity_curve_tail(body: &str, max_points: usize) -> Vec<f64> {
 #[must_use]
 pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
     let roots = [spec_root.to_path_buf()];
-    scan_report_roots(&roots)
+    scan_report_roots(&roots).0
 }
 
 /// Scan a FIXED-ORDER union of report roots and build the Compare cache
@@ -382,19 +382,32 @@ pub fn scan_spec_tree(spec_root: &Path) -> BTreeMap<(SmolStr, Symbol, DateRange)
 ///    root's same-named file is skipped before it is even parsed.
 /// 3. Within the union, the existing **most-recent-`generated:`-wins**
 ///    per-tuple tiebreaker decides which report represents a tuple in Compare.
+///
+/// # The tally (story 6-11 AC3)
+///
+/// Returns what it FOUND alongside what it admitted. `#66` A.4 was invisible precisely
+/// because this function could only report its output: forty reports whose
+/// `strategy.id` had been filed top-level were skipped by a bare `continue`, and an
+/// empty Compare matrix is indistinguishable from one whose scanner rejected
+/// everything. The tally makes "0 admitted of 40 discovered, all for a missing
+/// `strategy.id`" a thing the program can say.
 #[must_use]
 pub fn scan_report_roots(
     roots: &[std::path::PathBuf],
-) -> BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> {
+) -> (
+    BTreeMap<(SmolStr, Symbol, DateRange), CachedCell>,
+    crate::session_log::ScanTally,
+) {
     let mut cache: BTreeMap<(SmolStr, Symbol, DateRange), CachedCell> = BTreeMap::new();
+    let mut tally = crate::session_log::ScanTally::default();
     // Filenames already claimed by a higher-priority (earlier) root. The
     // collision rule (ADR-0055 § D5 #2): identical filename ⇒ lab-runs wins,
     // so a later root's same-named file is skipped.
     let mut seen_filenames: BTreeSet<SmolStr> = BTreeSet::new();
     for root in roots {
-        scan_one_root(root, &mut cache, &mut seen_filenames);
+        scan_one_root(root, &mut cache, &mut seen_filenames, &mut tally);
     }
-    cache
+    (cache, tally)
 }
 
 /// Scan one report root into `cache`, honoring the cross-root filename
@@ -403,7 +416,9 @@ fn scan_one_root(
     spec_root: &Path,
     cache: &mut BTreeMap<(SmolStr, Symbol, DateRange), CachedCell>,
     seen_filenames: &mut BTreeSet<SmolStr>,
+    tally: &mut crate::session_log::ScanTally,
 ) {
+    use crate::session_log::Rejected;
     use std::fs;
 
     // Walk spec_root/**/ looking for backtest-*.md files.
@@ -449,11 +464,13 @@ fn scan_one_root(
             // claimed this exact filename, skip it (lab-runs wins).
             let fname_key = SmolStr::new(fname);
             if !seen_filenames.insert(fname_key) {
+                tally.reject(Rejected::DuplicateFilename);
                 continue;
             }
 
             let Ok(content) = fs::read_to_string(&report_path) else {
                 tracing::warn!("compare::cache: failed to read {}", report_path.display());
+                tally.reject(Rejected::Unreadable);
                 continue;
             };
 
@@ -462,21 +479,27 @@ fn scan_one_root(
                     "compare::cache: malformed frontmatter in {}",
                     report_path.display()
                 );
+                tally.reject(Rejected::MalformedFrontmatter);
                 continue;
             };
 
             let Some(scenario) = fm.get("scenario") else {
+                tally.reject(Rejected::MissingScenario);
                 continue;
             };
 
             let Some(strategy_id_raw) = fm.get("strategy.id") else {
+                // `#66` A.4's bucket: the frontmatter parsed, the key was filed
+                // top-level by an unindented writer template, and every report in the
+                // corpus landed here silently.
+                tally.reject(Rejected::MissingStrategyId);
                 continue;
             };
 
             let strategy_id = SmolStr::new(strategy_id_raw.as_str());
 
             let Some(universe) = scenario_universe(scenario) else {
-                // Unknown scenario prefix — skip silently.
+                tally.reject(Rejected::UnknownScenario);
                 continue;
             };
 
@@ -506,8 +529,12 @@ fn scan_one_root(
                 extract_kpis_from_body(&content, &fm, &source_path, is_multi, equity_series_ts)
             else {
                 tracing::warn!("compare::cache: no KPI table in {}", report_path.display());
+                tally.reject(Rejected::NoKpiTable);
                 continue;
             };
+            // Admitted: one per REPORT, matching the denominator, which counts report
+            // files. The per-symbol fan-out below multiplies cells, not candidates.
+            tally.admit();
 
             // Use default range (Last90d) since reports don't encode a date-range
             // directly comparable to `DateRange`. The cache lookup at view-render
@@ -757,7 +784,7 @@ strategy:
         );
 
         let roots = [lab_runs, std::path::PathBuf::from("/nonexistent/spec")];
-        let cache = scan_report_roots(&roots);
+        let (cache, _tally) = scan_report_roots(&roots);
 
         // BTC SMA cell.
         let btc = cache
@@ -806,7 +833,7 @@ strategy:
 
         // Production order: lab-runs FIRST.
         let roots = [lab_runs, spec];
-        let cache = scan_report_roots(&roots);
+        let (cache, _tally) = scan_report_roots(&roots);
         let btc = cache
             .get(&(
                 SmolStr::new("btc_sma_cross"),
@@ -878,7 +905,7 @@ strategy:
         );
 
         let roots = [lab_runs];
-        let cache = scan_report_roots(&roots);
+        let (cache, _tally) = scan_report_roots(&roots);
         let btc = cache
             .get(&(
                 SmolStr::new("btc_sma_cross"),

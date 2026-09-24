@@ -1593,3 +1593,47 @@ story 3-20 AC1's subject and needs the provenance enum described there.
 
 **Moral**: `Ok(_) | Err(_)` in one arm spends the error you went to the trouble of computing.
 A verification whose failure is indistinguishable from a cache miss is not a verification.
+
+### `#106` — an anchored report body embeds a MEASURED wall-clock time, so only a machine as fast as the operator's can reproduce it
+**Status**: OPEN — found 2026-09-24 while scoping story 6-12 (evidence-reproducibility-sample).
+Anchor-impacting: **no, if fixed as described** — the fix renders the same bytes.
+
+`report::sma` prints the run's own duration into the hashed body:
+
+```rust
+// crates/backtest/src/report/sma.rs:81
+let body_elapsed = input.body_elapsed_override.unwrap_or(elapsed_secs);
+// crates/backtest/src/report/sma.rs:129
+| Wall-clock time      | {body_elapsed:.1}s              |
+```
+
+Every anchored SMA scenario in `main.rs` pins that number — `body_elapsed_override: Some(0.1)`
+or `Some(0.2)` at `:441`, `:460`, `:479`, `:498`, `:517`, `:536`, `:555`, `:574`. **One emitter
+does not**: `crates/backtest/src/bin/run_yahoo_sma.rs:249` passes `None`, under a comment that
+was true when it was written and is false now —
+
+> `// No elapsed override — this is a new scenario, not replicating an anchor.`
+
+— because `btc-yahoo-2024-1d-sma-cross` **is** anchored (`evidence/anchors.toml`,
+`sha256 = 076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0`). The committed
+body reads `| Wall-clock time      | 0.0s              |`, which means the operator's release
+run finished in under 0.05 s.
+
+**Consequence**: any re-run slower than 50 ms renders `0.1s`, the body diverges, and the anchor
+misses — for a reason that has nothing to do with the data, the engine, or correctness. A debug
+profile, a cold CI runner, or a slower machine is enough. The anchor is reproducible only by
+hardware at least as fast as the box that made it, which is the opposite of what an anchor is for.
+
+**Why nothing is red**: `verify_anchors.sh` hashes the COMMITTED body and never re-runs
+(bug-log #93), so it cannot observe this. Nobody has re-executed this scenario since it was
+locked.
+
+**Fix**: `body_elapsed_override: Some(0.0)` at `run_yahoo_sma.rs:249`. It renders `0.0s`, which
+is byte-identical to the committed body, so **no re-lock is needed and 119/119 holds across the
+change**. It is a one-line prerequisite for story 6-12, whose whole point is that a third party
+can reproduce a figure — and today they cannot reproduce this one unless their machine is fast
+enough.
+
+**Moral**: a hashed artifact must contain no measurement of the machine that produced it. The
+seven siblings that pin the value knew this; the eighth was written as a new scenario and
+inherited the hazard when it was anchored, with the comment still asserting it was exempt.

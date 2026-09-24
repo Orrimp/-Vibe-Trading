@@ -241,7 +241,7 @@ development_status:
   6-8-subscription-pipe-server-time-template: done
   6-9-cockpit-cross-platform: in-progress  # the open CI run-2 shakeout (P7 activated 2026-07-10; fix-forward)
   6-10-bmad-method-migration: done  # COMPLETE 2026-07-25 — all 7 phases (0..5c); spec/ retired, gates ported intact, docs cutover shipped
-  6-11-operator-session-log: ready-for-dev  # 2026-08-04 product review PRD §13 Q6 = BUILD — the independent record of what the app DID (gate: replays bug-log #66 A.4)
+  6-11-operator-session-log: done  # 2026-09-24 ADR-0096 — six events with a producer each; `scanned` carries the denominator (discovered/admitted/rejected-by-named-reason). Gate is a DISCRIMINATION test: the #66 A.4 corpus and an empty one must record differently. Off is structural (Option sink, None in every fixture)
   6-12-evidence-reproducibility-sample: ready-for-dev  # 2026-08-04 product review PRD §13 Q7 = BUILD — one real-data claim reproducible from a fresh clone by a second party
   epic-6-retrospective: optional
 

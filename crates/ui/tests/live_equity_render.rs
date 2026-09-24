@@ -1276,7 +1276,7 @@ fn write_companion_equity_csv(
 /// `scan_report_roots` over a two-run `lab-runs/` scene (reports + companion
 /// CSVs), with a populated `strategies_config` so the real matrix renders.
 fn compare_cockpit_from_two_run_scene(lab_runs: &std::path::Path) -> Cockpit {
-    let cache = ui::compare::cache::scan_report_roots(&[lab_runs.to_path_buf()]);
+    let (cache, _tally) = ui::compare::cache::scan_report_roots(&[lab_runs.to_path_buf()]);
 
     let mut c = Cockpit::new();
     c.current_screen = Screen::Compare;

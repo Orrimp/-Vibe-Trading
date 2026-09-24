@@ -1,6 +1,6 @@
 # Story 6.11: operator-session-log
 
-Status: ready-for-dev
+Status: done
 
 <!-- Created 2026-08-04 by the adversarial product review (PRD §13 Q6; operator
      decision 2026-08-04: BUILD). Disclosure context: bug-log #66 A.4 — a shipped,
@@ -38,10 +38,38 @@ so that "it works" stops resting entirely on tests — which have themselves bee
 
 ## Tasks / Subtasks
 
-- [ ] Decide the event vocabulary (the "operator-visible action + outcome + denominator" shape) — small and closed, not extensible-by-accident.
-- [ ] Dev: writer behind a trait (external I/O rule), session rollover, the off-switch.
-- [ ] The #66-replay acceptance test (AC3) — the story's real gate.
-- [ ] Document what is recorded, where, and for how long.
+- [x] Event vocabulary — **done 2026-09-24**: six events, and a CLOSED `Rejected` enum of seven reasons (ADR-0096 D1/D3).
+- [x] Dev: `SessionSink` trait + `JsonlSink`, rollover, off-switch — **done 2026-09-24**.
+- [x] The #66-replay acceptance test (AC3) — **done 2026-09-24**, `crates/ui/tests/session_log_replays_66_a4.rs`.
+- [x] Document what is recorded, where, and for how long — **done 2026-09-24**, [`docs/runbooks/operator-session-log.md`](../../docs/runbooks/operator-session-log.md) **and** a README written beside the logs themselves.
+
+## Dev record (2026-09-24)
+
+ADR-0096.
+
+| AC | What shipped |
+|---|---|
+| AC1 | Six events, each with a producer: `session_started`, `screen_opened` (on `SwitchScreen`), `run_started`/`run_finished` (the Lab pair, carrying strategy/pair/range/source — the same four the persistence schema records, so the log cannot describe a run by different inputs than the product saves), `scanned`, `artifact_written` (a saved forward-plan export). |
+| AC2 | One append-only JSONL per session under `$XDG_STATE_HOME/trading/sessions/`, readable with `cat`. No network call of any kind. The directory is OUTSIDE the repo, so there is no `.gitignore` rule to forget. |
+| AC3 | `ScanTally { discovered, admitted, rejected }` on `scan_report_roots`, and a **discrimination** test: the defect corpus and an empty corpus must record DIFFERENTLY. A presence test would pass on the very log that missed #66 A.4. |
+| AC4 | `Option<Arc<dyn SessionSink>>` on the `Cockpit` — off is structural, `None` in every fixture/gallery/test, `TRADING_SESSION_LOG=0` for the binaries. An unopenable file costs one `warn!` and the cockpit runs unlogged. |
+| AC5 | 30 sessions, pruned at boot, stated in the runbook AND in a README written beside the logs. |
+| AC6 | anchors 119/119; spec-lint PASS; no `println!` in library code; no UI surface added, so AD-10 does not bind. |
+
+### One honest note on the replay (AC3)
+
+**#66 A.4's literal trigger no longer reproduces.** Its fix was a tolerant-reader change to
+`parse_frontmatter`, which now accepts the unindented `strategy:` shape — verified while
+writing the test, because the first version of the defect corpus was admitted. So the gate
+reconstructs A.4's **outcome** (a directory of valid reports the scanner admits none of,
+for one attributable reason) by a different route, and says so in the file. Re-breaking the
+parser to get a more literal replay would test the parser, not the log.
+
+### What this does NOT do
+
+It records the application's behaviour, not the money. `crates/audit/` already covers the
+money side durably (double-entry SQLite, story 3-21's crash proof). The two schemas are
+deliberately not entangled.
 
 ## Dev Notes
 
@@ -58,5 +86,7 @@ so that "it works" stops resting entirely on tests — which have themselves bee
 
 ### References
 
-- Trace: `REQ-OPERATOR-SESSION-LOG-001` (state=`scoped`)
+- ADR: [`0096-the-cockpit-records-what-it-did.md`](../planning-artifacts/architecture/decisions/0096-the-cockpit-records-what-it-did.md)
+- Runbook: [`docs/runbooks/operator-session-log.md`](../../docs/runbooks/operator-session-log.md)
+- Trace: `REQ-OPERATOR-SESSION-LOG-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 6 (Remediation, Infra & Governance)

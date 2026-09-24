@@ -3624,10 +3624,10 @@ title       = "A local, inspectable, append-only record of what the application 
 feature     = "operator-session-log"
 product     = "_bmad-output/planning-artifacts/PRD.md"
 arch        = ["docs/dev-notes/product-review-2026-08-04.md"]
-crates      = ["crates/ui", "crates/agent"]
-tests       = []
+crates      = ["crates/ui"]
+tests       = ["crates/ui/tests/session_log_replays_66_a4.rs"]
 anchors     = []
-state       = "scoped"   # created 2026-08-04 by the product review; operator decision BUILD
+state       = "shipped"   # 2026-09-24, ADR-0096. The gate is a DISCRIMINATION test: the #66 A.4 corpus and an empty one must record differently
 
 [[req]]
 id          = "REQ-EVIDENCE-REPRODUCIBILITY-SAMPLE-001"

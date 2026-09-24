@@ -1010,6 +1010,13 @@ pub struct Cockpit {
     /// nothing at all).
     pub lab_persist: crate::lab::persistence::PersistenceDebouncer,
 
+    /// 6-11 — where the operator session log goes, or `None` for "off".
+    ///
+    /// Same switch shape as `lab_state_path` (ADR-0094 D3): every fixture, gallery and
+    /// test leaves it `None`, so the log costs an `Option` check there, and only the
+    /// real binaries arm it.
+    pub session_log: Option<std::sync::Arc<dyn crate::session_log::SessionSink>>,
+
     /// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) — activity tape.
     /// In-flight background ops (Yahoo preload, Lab Run, Training).
     /// Updated by `Message::ActivityEventReceived` and purged at ~1 Hz by
@@ -1405,6 +1412,7 @@ impl std::fmt::Debug for Cockpit {
             .field("lab_state_path", &self.lab_state_path)
             .field("lab_restore", &self.lab_restore)
             .field("lab_persist", &self.lab_persist)
+            .field("session_log", &self.session_log.as_ref().map(|_| "<sink>"))
             .field("universe", &self.universe)
             .field("selected_symbol", &self.selected_symbol)
             .field("chart_buffer", &self.chart_buffer)
@@ -1529,6 +1537,7 @@ impl Default for Cockpit {
             lab_state_path: None,
             lab_restore: crate::lab::persistence::RestoreOutcome::default(),
             lab_persist: crate::lab::persistence::PersistenceDebouncer::default(),
+            session_log: None,
         }
     }
 }
@@ -1538,6 +1547,17 @@ impl Cockpit {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Record one operator-visible action, if the session log is armed (6-11).
+    ///
+    /// See [`open_session_log`] for when that is.
+    ///
+    /// A no-op `Option` check when it is not, which is every fixture and test.
+    pub fn log_session(&self, event: &crate::session_log::Event) {
+        if let Some(sink) = &self.session_log {
+            sink.record(event);
+        }
     }
 
     /// Boot cockpit with persistence restore (T-D-14c).
@@ -1560,6 +1580,10 @@ impl Cockpit {
             // Arming the writer is what `boot` is FOR: a cockpit built with
             // `new()` restores nothing and saves nothing (bug-log #102).
             lab_state_path: Some(path),
+            // 6-11 — the session log, armed here for the same reason and disarmed by
+            // `TRADING_SESSION_LOG=0`. A failure to open the file is not a reason to
+            // fail a boot: the cockpit runs, unlogged, and says so once.
+            session_log: open_session_log(),
             ..Self::default()
         }
     }
@@ -1666,6 +1690,7 @@ impl Cockpit {
             lab_state_path: None,
             lab_restore: crate::lab::persistence::RestoreOutcome::Fresh,
             lab_persist: crate::lab::persistence::PersistenceDebouncer::default(),
+            session_log: None,
         }
     }
 
@@ -2738,6 +2763,64 @@ fn promote_swept_config(model: &mut Cockpit, params: crate::tune::PromoteParams)
 /// The function is long because every `Message` variant gets its own arm
 /// — splitting it into sub-functions would obscure the one-place view of
 /// the state machine. `clippy::too_many_lines` disagrees; we disagree.
+/// Open this process's session log, unless the operator turned it off (6-11 AC4).
+///
+/// Returns `None` — the log simply off — when `TRADING_SESSION_LOG=0`, or when the file
+/// cannot be opened. The second case matters: a read-only home directory, a full disk or
+/// a permissions problem must cost the operator a `warn!` and nothing else. A cockpit
+/// that refuses to start because it could not open its own diary would be a worse bug
+/// than the one this log exists to catch.
+fn open_session_log() -> Option<std::sync::Arc<dyn crate::session_log::SessionSink>> {
+    use crate::session_log::{Event, JsonlSink, SessionSink, disabled_by_env, prune, session_dir};
+    if disabled_by_env() {
+        return None;
+    }
+    let dir = session_dir(None);
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    match JsonlSink::create(&dir, started) {
+        Ok(sink) => {
+            prune(&dir);
+            sink.record(&Event::SessionStarted { app: "cockpit" });
+            Some(std::sync::Arc::new(sink) as std::sync::Arc<dyn SessionSink>)
+        }
+        Err(e) => {
+            tracing::warn!(
+                dir = %dir.display(),
+                error = %e,
+                "session log could not be opened; continuing without it"
+            );
+            None
+        }
+    }
+}
+
+/// The Lab inputs that define a run, for the session log (6-11 AC1).
+///
+/// Deliberately the SAME four the persistence schema records — strategy, pair, range,
+/// data source. A log that described a run by different inputs than the ones the
+/// product saves would be a second, quietly diverging description of the same thing.
+fn lab_run_inputs(lab: &LabState) -> std::collections::BTreeMap<String, String> {
+    let mut m = std::collections::BTreeMap::new();
+    m.insert(
+        "strategy".to_owned(),
+        lab.strategy
+            .as_ref()
+            .map_or_else(|| "<none>".to_owned(), |s| s.0.to_string()),
+    );
+    m.insert(
+        "pair".to_owned(),
+        lab.pair.as_ref().map_or_else(
+            || "<none>".to_owned(),
+            |(v, sym)| format!("{v:?}:{}", sym.0.as_str()),
+        ),
+    );
+    m.insert("range".to_owned(), format!("{:?}", lab.range));
+    m.insert("source".to_owned(), format!("{:?}", lab.data_source));
+    m
+}
+
 /// Does this message change something the saved Lab session records?
 ///
 /// Deliberately an explicit list rather than a `Message::Lab*` prefix match:
@@ -3105,6 +3188,9 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
         // ── Phase 2 — Shell IA + Charts ─────────────────────────────────────
         Message::SwitchScreen(s) => {
             model.current_screen = s;
+            model.log_session(&crate::session_log::Event::ScreenOpened {
+                screen: format!("{s:?}"),
+            });
             // R5.2 deep-link: deprecated Risk/Debug/Control aliases pre-select
             // the matching Settings tab on the way through (Design § A4).
             #[allow(deprecated)]
@@ -3123,7 +3209,15 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             // tag (e.g. on a fresh Lab run completing).
             if s == Screen::Compare && model.compare_screen_state.last_indexed_at.is_none() {
                 let roots = crate::lab::equity_loader::default_report_roots();
-                model.compare_screen_state.cache = crate::compare::cache::scan_report_roots(&roots);
+                let (cache, tally) = crate::compare::cache::scan_report_roots(&roots);
+                // 6-11 AC3 — the denominator, recorded at the one place that has it.
+                // `#66` A.4 lived here: the scan admitted nothing from forty reports and
+                // the screen said only "no runs yet".
+                model.log_session(&crate::session_log::Event::Scanned {
+                    what: "compare_reports",
+                    tally,
+                });
+                model.compare_screen_state.cache = cache;
                 model.compare_screen_state.last_indexed_at = Some(time::OffsetDateTime::now_utc());
             }
         }
@@ -3343,6 +3437,13 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
         // Wave 2 (M2.5 / T-D-14) — run-inflight tracking.
         // Pure state: the binary side wires the Task::perform.
         Message::LabRunRequested => {
+            // 6-11 AC1 — a run and the inputs that DEFINE it. Without the inputs a log
+            // line saying "a run started" cannot be matched to what it produced, which
+            // is most of the value.
+            model.log_session(&crate::session_log::Event::RunStarted {
+                kind: "lab",
+                inputs: lab_run_inputs(&model.lab_state),
+            });
             model.lab_run_inflight = true;
             // R9.3 — clear stale progress from any prior run.
             model.lab_state.run_progress = None;
@@ -3353,6 +3454,12 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             model.lab_state.last_run_notice = None;
         }
         Message::LabRunCompleted(outcome) => {
+            // 6-11 AC1 — the outcome, paired with the `RunStarted` above.
+            model.log_session(&crate::session_log::Event::RunFinished {
+                kind: "lab",
+                ok: outcome.is_ok(),
+                detail: outcome.as_ref().err().map(ToString::to_string),
+            });
             model.lab_run_inflight = false;
             // R9.3 — clear progress on run completion.
             model.lab_state.run_progress = None;
@@ -3846,11 +3953,23 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             use crate::screens::forward_plan::PlanExportOutcome;
             match crate::screens::forward_plan::export_current_plan(model) {
                 PlanExportOutcome::Saved(filename) => {
+                    // 6-11 AC1 — "which reports/plans were written". The toast is
+                    // transient and the file is the durable thing; the log is what
+                    // still knows tomorrow which plan left the building.
+                    model.log_session(&crate::session_log::Event::ArtifactWritten {
+                        kind: "forward_plan",
+                        path: filename.clone(),
+                    });
                     let msg =
                         crate::strings::PLAN_EXPORT_TOAST_SAVED_FMT.replace("{file}", &filename);
                     enqueue_toast(model, SmolStr::new(msg), ToastSeverity::Success);
                 }
                 PlanExportOutcome::Failed(reason) => {
+                    model.log_session(&crate::session_log::Event::RunFinished {
+                        kind: "forward_plan_export",
+                        ok: false,
+                        detail: Some(reason.clone()),
+                    });
                     let msg =
                         crate::strings::PLAN_EXPORT_TOAST_FAILED_FMT.replace("{reason}", &reason);
                     enqueue_toast(model, SmolStr::new(msg), ToastSeverity::Danger);
