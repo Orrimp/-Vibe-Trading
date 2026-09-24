@@ -607,6 +607,19 @@ pub struct BakeoffReportMirror {
     /// export filename). `[u8; 32]` is `core`/`std`, so this crosses the
     /// `ui` seam with zero new dependency edge.
     pub run_seed: [u8; 32],
+    /// advisor-honesty-surface (3-20 AC1/AC2) — the arms the run ASKED FOR,
+    /// value-echoed from `BakeoffRequest::field` at this one boundary.
+    ///
+    /// This is deliberately NOT derived from [`Self::rows`]. `rows` is what came
+    /// back; `requested_arms` is what went in, and the difference between them is
+    /// the whole point: an arm that was requested and produced no candidate is a
+    /// SILENT SEARCH FAILURE, and without the input set on screen it is
+    /// indistinguishable from an honest "we ran it and it lost". Comparing the
+    /// two is what lets the verdict surface say "N ran" and mean it.
+    ///
+    /// A value-echo of an existing `Vec<StrategyId>`, like `run_seed`: no engine
+    /// change, no new dependency edge, no computation.
+    pub requested_arms: Vec<SmolStr>,
 }
 
 impl BakeoffReportMirror {
@@ -664,6 +677,14 @@ impl BakeoffReportMirror {
             // advisor-handoff-export P5 (ADR-0088 § D7): value-echo of the
             // existing master seed — zero engine computation.
             run_seed: report.request.seed,
+            // 3-20 AC1 — value-echo of the requested field. `rows` says what came
+            // back; this says what was asked for.
+            requested_arms: report
+                .request
+                .field
+                .iter()
+                .map(|id| SmolStr::new(id.0.as_str()))
+                .collect(),
         }
     }
 
@@ -1228,6 +1249,7 @@ mod tests {
             }),
             data_quality: DataQualityView::for_symbol("BTCUSDT"),
             run_seed: [0u8; 32],
+            requested_arms: Vec::new(),
         }
     }
 

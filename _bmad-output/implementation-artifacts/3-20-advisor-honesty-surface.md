@@ -1,6 +1,6 @@
 # Story 3.20: advisor-honesty-surface
 
-Status: ready-for-dev
+Status: done
 
 <!-- Created 2026-08-04 by the adversarial product review
      (docs/dev-notes/product-review-2026-08-04.md, findings 1/5/9/10/13).
@@ -40,9 +40,54 @@ so that the product's honesty lives in what I can SEE — not only in the machin
 
 ## Tasks / Subtasks
 
-- [ ] UX pass: what the honest verdict screen says, in what order, without becoming a wall of text.
-- [ ] Dev: registry-sourced arm inventory; search-completeness statement; scorecard labelling; qualifier constant; why-this-lost + cadence.
-- [ ] Render verification: populated + negative-control screenshots per AD-10.
+- [x] UX pass — **done 2026-09-24**, recorded as ADR-0095 D2/D4/D5 (what it says, in what order, and why the next step sits below the table rather than beside the pick).
+- [x] Dev: registry-sourced arm inventory; search-completeness statement; scorecard labelling; qualifier constant; why-this-lost + cadence — **done 2026-09-24**.
+- [x] Render verification with negative controls per AD-10 — **done 2026-09-24**.
+
+## Dev record (2026-09-24)
+
+ADR-0095. Two of the five ACs turned out to be smaller than written and one turned out to
+be unbuildable as worded; the rest is the story as scoped.
+
+| AC | What shipped |
+|---|---|
+| AC1 | `BakeoffReportMirror::requested_arms` value-echoes `BakeoffRequest::field` at the `from_report` boundary — the run's INPUT set. The screen names the arms from it and the window from `range_label`. **The data revision is a stated limitation — see below.** |
+| AC2 | "Searched N of M strategies — K produced trades on this data", and a `DOWN_500` "this ranking is INCOMPLETE and must not be read as 'nothing beat holding'" when requested arms did not come back. Never-traded is counted separately from lost. |
+| AC3 | **Already met.** `LEADERBOARD_SCORECARD_CAPTION` already said "it never changes the result" and already rendered inside the block ADR-0092 put above the fold. Guarded, not rebuilt. |
+| AC4 | One constant, `LEADERBOARD_STANDING_QUALIFIER`, stating direction-preserved / magnitudes-not-final / the-ranking-does-not-rest-on-it. A test fails the build if a second copy appears anywhere under `crates/ui/src`. |
+| AC5 | `next_step_after_hold` — the gate signal that decided it, chosen in gate order, plus a cadence whose first sentence is the useful one ("re-running today gives the same answer — the bake-off is seeded"). Renders nothing rather than guess when the combination should not arise. |
+| AC6 | 4 pixel gates with negative controls + 4 wording guards; `leaderboard_scorecard_render` re-run and green (block 473..903 of a 1080 fold); anchors 119/119; spec-lint PASS; no gate/strategy behaviour touched. |
+
+### AC1's data revision — a stated limitation, not a placeholder
+
+Investigated at source before building anything. **There is no single per-run data
+revision.** What exists is an aggregate SHA-256 per CORPUS DIRECTORY, computed by
+`data::revision::read_and_verify_revision_manifest` and **discarded** at
+`crates/backtest/src/bakeoff/mod.rs:424`. A BTCUSDT run's "revision" would be a hash
+dominated by files it never opened, and one run can touch three independently-versioned
+corpora.
+
+Worse for the headline case: `LeaderboardLookback` offers RELATIVE windows and the pinned
+corpus spans 2023-01-01 … 2025-01-01, so today no relative window is covered and every such
+run reads `data/binance-dynamic` — which has **no `REVISION.toml` at all** by design
+(ADR-0061 D5). Surfacing it honestly needs a provenance enum and ~40-60 lines in
+`crates/backtest`, i.e. an engine change outside a presentation-only story.
+
+**Operator call if you want it**: that engine change is not in this story. Recorded in
+ADR-0095 D7.
+
+### Two findings spawned by this story
+
+- **bug-log #105** (new, OPEN) — `bakeoff/mod.rs:541` handles `Ok(_) | Err(_)` in one arm,
+  so a `RevisionError::AggregateMismatch` (a corrupt or tampered pinned corpus) is
+  indistinguishable from "window not covered": it degrades silently to unpinned live data
+  and logs a line that is untrue in that case. The Lab path hard-fails correctly.
+- **`leaderboard_scorecard_render`'s extent measurement changed technique** (ADR-0095
+  § Consequences). It required all 48 rows of the following block to match byte-for-byte
+  at some offset; this story's three added lines put that block on a fractional `y` and a
+  1-px full-width hairline now rasterises one row off — 44 of 48 rows match exactly at the
+  true 430-px offset. The gate now requires a dominant match (≥ 40 of 48). **The fold
+  assertion is untouched**; it was never what failed.
 
 ## Entry-gate notes (orchestrator, 2026-09-24 — read before scoping the dev pass)
 

@@ -3595,9 +3595,13 @@ feature     = "advisor-honesty-surface"
 product     = "_bmad-output/planning-artifacts/PRD.md"
 arch        = ["docs/dev-notes/product-review-2026-08-04.md"]
 crates      = ["crates/ui"]
-tests       = []
+tests       = [
+  "crates/ui/tests/leaderboard_search_completeness_render.rs",
+  "crates/ui/tests/honesty_surface_wording.rs",
+  "crates/ui/tests/leaderboard_scorecard_render.rs",
+]
 anchors     = []
-state       = "scoped"   # created 2026-08-04 by the product review; PRD §13 Q8 operator go/no-go pending
+state       = "shipped"   # 2026-09-24, ADR-0095. AC3 was already met (guarded, not rebuilt); AC1's data revision ships as a STATED LIMITATION — there is no single per-run revision (ADR-0095 D7), and the relative-lookback path reads the unpinned dynamic cache
 
 [[req]]
 id          = "REQ-PAPER-PORTFOLIO-DURABILITY-001"

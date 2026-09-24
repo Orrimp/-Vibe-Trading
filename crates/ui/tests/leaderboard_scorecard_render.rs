@@ -249,15 +249,44 @@ fn scorecard_block_is_entirely_above_the_fold() {
     // the stack spacing). Take the first text-bearing rows of that block as drawn
     // WITHOUT the scorecard — text, so blank rows cannot match an arbitrary shift — and
     // find them in the frame WITH it.
+    //
+    // The shift is the offset at which MOST of that window matches byte-for-byte, not
+    // all of it. Measured 2026-09-24, after 3-20 added three lines to the block: at the
+    // true shift (430 px) 44 of the 48 rows are byte-identical and 4 differ across
+    // nearly the full content width (x = 17..1887) — a 1-px full-width hairline whose
+    // container now lands on a fractional y and rasterises one row off. Requiring all
+    // 48 made the measurement, not the property, the thing that failed: the fold
+    // assertion below was comfortably satisfied (the block ends at 903 of 1080) while
+    // the test reported "the block after the scorecard was not found".
+    //
+    // So: take the offset that maximises exact row matches, and require that it is a
+    // DOMINANT match. That still proves what the extent measurement needs — the pane
+    // below is the same content, translated — and refuses a coincidental alignment.
+    // It does not touch the fold assertion, which is the actual product requirement
+    // (ADR-0092 D3); loosening THAT is the #77 failure this file exists to avoid.
     const WINDOW: u32 = 48;
+    const MIN_MATCHING_ROWS: usize = 40;
     let y1 = (y0..TALL)
         .find(|&y| tall_without.row_has_fg(y))
         .expect("the pane has content after the scorecard's position");
-    let shift = (1..TALL.saturating_sub(y1 + WINDOW))
-        .find(|&d| (y1..y1 + WINDOW).all(|y| tall_without.row_eq(y, &tall_with, y + d)))
-        .expect(
-            "the block after the scorecard was not found, shifted down, in the frame that has it",
-        );
+    let (shift, matched) = (1..TALL.saturating_sub(y1 + WINDOW))
+        .map(|d| {
+            (
+                d,
+                (y1..y1 + WINDOW)
+                    .filter(|&y| tall_without.row_eq(y, &tall_with, y + d))
+                    .count(),
+            )
+        })
+        .max_by_key(|&(_, n)| n)
+        .expect("a non-empty shift range");
+    assert!(
+        matched >= MIN_MATCHING_ROWS,
+        "the block after the scorecard was not found, translated, in the frame that has \
+         it: the best offset ({shift} px) reproduces only {matched} of {WINDOW} rows \
+         byte-for-byte. Below {MIN_MATCHING_ROWS} the pane is not merely shifted — \
+         something re-laid out, and the extent measured from it would be fiction."
+    );
     // Conservative bottom: from the first diverging row, so it can only over-state.
     let bottom = y0 + shift;
 

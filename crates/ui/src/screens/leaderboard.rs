@@ -86,31 +86,36 @@ use crate::strings::{
     LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT,
     LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
     LEADERBOARD_HEADLINE_ALL_FRAGILE, LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING,
-    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
-    LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
-    LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
-    LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECOMMENDATION_TITLE,
-    LEADERBOARD_RISK_STORY_CALMAR_HINT, LEADERBOARD_RISK_STORY_CALMAR_LABEL,
-    LEADERBOARD_RISK_STORY_CAPTION, LEADERBOARD_RISK_STORY_CVAR_95_LABEL,
-    LEADERBOARD_RISK_STORY_CVAR_99_LABEL, LEADERBOARD_RISK_STORY_CVAR_HINT,
-    LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE, LEADERBOARD_RISK_STORY_MEDIAN_HINT,
-    LEADERBOARD_RISK_STORY_MEDIAN_LABEL, LEADERBOARD_RISK_STORY_SKEW_HINT,
-    LEADERBOARD_RISK_STORY_SKEW_LABEL, LEADERBOARD_RISK_STORY_SORTINO_HINT,
-    LEADERBOARD_RISK_STORY_SORTINO_LABEL, LEADERBOARD_RISK_STORY_TITLE, LEADERBOARD_ROBUST_TAG,
-    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
+    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_NEXT_STEP_TITLE, LEADERBOARD_PROGRESS_FMT,
+    LEADERBOARD_REASON_ALL_FRAGILE, LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE,
+    LEADERBOARD_REASON_BENCHMARK_UNDEFEATED, LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE,
+    LEADERBOARD_REASON_TIE_DRAWDOWN, LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECHECK_CADENCE,
+    LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_RISK_STORY_CALMAR_HINT,
+    LEADERBOARD_RISK_STORY_CALMAR_LABEL, LEADERBOARD_RISK_STORY_CAPTION,
+    LEADERBOARD_RISK_STORY_CVAR_95_LABEL, LEADERBOARD_RISK_STORY_CVAR_99_LABEL,
+    LEADERBOARD_RISK_STORY_CVAR_HINT, LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE,
+    LEADERBOARD_RISK_STORY_MEDIAN_HINT, LEADERBOARD_RISK_STORY_MEDIAN_LABEL,
+    LEADERBOARD_RISK_STORY_SKEW_HINT, LEADERBOARD_RISK_STORY_SKEW_LABEL,
+    LEADERBOARD_RISK_STORY_SORTINO_HINT, LEADERBOARD_RISK_STORY_SORTINO_LABEL,
+    LEADERBOARD_RISK_STORY_TITLE, LEADERBOARD_ROBUST_TAG, LEADERBOARD_RUN_BUTTON,
+    LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
     LEADERBOARD_SCORECARD_BEATS_HOLD_NO, LEADERBOARD_SCORECARD_BEATS_HOLD_YES,
     LEADERBOARD_SCORECARD_CAPTION, LEADERBOARD_SCORECARD_CONFIDENCE_HINT,
     LEADERBOARD_SCORECARD_CONFIDENCE_LABEL, LEADERBOARD_SCORECARD_HISTORY_FMT,
     LEADERBOARD_SCORECARD_HISTORY_HINT, LEADERBOARD_SCORECARD_HISTORY_LABEL,
     LEADERBOARD_SCORECARD_INFORMATIONAL_NOTE, LEADERBOARD_SCORECARD_TITLE,
     LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT, LEADERBOARD_SCORECARD_TRIED_LABEL,
-    LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL, LEADERBOARD_SHORT_BBANDS_LS_LABEL,
-    LEADERBOARD_SHORT_FIELD_NOTE, LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
+    LEADERBOARD_SEARCH_ARMS_FMT, LEADERBOARD_SEARCH_COMPLETE_FMT,
+    LEADERBOARD_SEARCH_INCOMPLETE_FMT, LEADERBOARD_SHORT_ALWAYS_SHORT_LABEL,
+    LEADERBOARD_SHORT_BBANDS_LS_LABEL, LEADERBOARD_SHORT_FIELD_NOTE,
+    LEADERBOARD_SHORT_MACD_LS_LABEL, LEADERBOARD_SHORT_RSI_LS_LABEL,
     LEADERBOARD_SHORT_SMA_CROSS_LS_LABEL, LEADERBOARD_SHORT_TAG,
     LEADERBOARD_SIGNAL_DONCHIAN_BREAK_LABEL, LEADERBOARD_SIGNAL_DONCHIAN_FLOOR_LABEL,
     LEADERBOARD_SIGNAL_DVOL_REGIME_LABEL, LEADERBOARD_SIGNAL_MACRO_RISKON_LABEL,
     LEADERBOARD_SIGNAL_OBV_LABEL, LEADERBOARD_SIGNAL_ROC_MOMENTUM_LABEL,
-    LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
+    LEADERBOARD_SIGNAL_VOL_BREAKOUT_LABEL, LEADERBOARD_STANDING_QUALIFIER,
+    LEADERBOARD_WHY_LOST_FRAGILE, LEADERBOARD_WHY_LOST_NO_TRADES, LEADERBOARD_WHY_LOST_TO_HOLD,
+    LEADERBOARD_WHY_LOST_TO_SEARCH, LEADERBOARD_WINNER_FRAGILE_CLAUSE,
     LEADERBOARD_WINNER_ROBUST_CLAUSE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
@@ -473,7 +478,7 @@ fn ready_pane<'a>(
     // REPORT-ONLY: display-only, never the verdict.
     let mut stack = Column::new().spacing(space::L);
     if let Some(sc) = &report.scorecard {
-        stack = stack.push(scorecard_block(sc, mode));
+        stack = stack.push(scorecard_block(report, sc, mode));
     }
 
     // The pick and the rows it ranks follow the trust readout directly, so a
@@ -481,6 +486,15 @@ fn ready_pane<'a>(
     // measurement: leading with BOTH honesty panels pushed the recommendation and
     // the whole table below the fold — trading #96's complaint for a worse one).
     stack = stack.push(recommendation).push(table);
+
+    // 3-20 AC5 — the next step, directly under the ranking it explains. Placed BELOW
+    // the table, not between the pick and the table: ADR-0092 re-ruled that ordering
+    // on measurement, and the fold is a requirement (bug-log #96). A user who reads
+    // "holding won" and stops has lost nothing; one who scrolls gets the why and the
+    // cadence. `None` when an active strategy actually won.
+    if let Some(next_step) = next_step_after_hold(report, mode) {
+        stack = stack.push(next_step);
+    }
 
     // advisor-data-quality-surface (P1-7) — the DATA-stage trust/quality readout:
     // what the numbers are built on. UNDER the ranked table since ADR-0092: of the
@@ -978,7 +992,11 @@ fn data_quality_block(dq: &DataQualityView, mode: ThemeMode) -> crate::Element<'
 /// - **Minimum history needed** — `min_btl_years` years, glossed.
 /// - **Beats holding after the search?** — `crown_clears_dsr` yes/no + the
 ///   informational-not-a-gate note.
-fn scorecard_block(sc: &ScorecardView, mode: ThemeMode) -> crate::Element<'static> {
+fn scorecard_block(
+    report: &BakeoffReportMirror,
+    sc: &ScorecardView,
+    mode: ThemeMode,
+) -> crate::Element<'static> {
     let caption = Text::new(LEADERBOARD_SCORECARD_CAPTION)
         .size(text::SMALL)
         .color(color::FG_3.current(mode))
@@ -1034,15 +1052,165 @@ fn scorecard_block(sc: &ScorecardView, mode: ThemeMode) -> crate::Element<'stati
         mode,
     );
 
-    let body = Column::new()
-        .spacing(space::M)
-        .push(caption)
-        .push(tried)
+    let mut body = Column::new().spacing(space::M).push(caption).push(tried);
+    if let Some(search) = search_completeness(report, mode) {
+        body = body.push(search);
+    }
+    let body = body
         .push(confidence)
         .push(history)
-        .push(beats);
+        .push(beats)
+        // 3-20 AC4 — the standing qualifier, last in the trust block because it
+        // qualifies everything above it. Read from the ONE constant that also states
+        // it in the record, so the screen cannot drift from the bug log.
+        .push(
+            Text::new(LEADERBOARD_STANDING_QUALIFIER)
+                .size(text::MICRO)
+                .color(color::FG_3.current(mode))
+                .width(Length::Fill),
+        );
 
     frame::panel(LEADERBOARD_SCORECARD_TITLE, body.into(), mode)
+}
+
+/// advisor-honesty-surface 3-20 AC5 — the next step, when the answer is "hold".
+///
+/// `None` unless an active strategy actually lost (`BenchmarkWins` / `AllFragile`).
+/// When one WON there is nothing to explain and the pick speaks for itself; rendering
+/// an empty "what would have to change" there would be filler.
+///
+/// The reason is derived from the run's own numbers, in the order the gates apply, so
+/// it names the signal that actually decided it rather than a generic apology:
+///
+/// 1. **no trades** — the arm never played. Not a loss; a non-test. Said first
+///    because reading it as a loss is the most costly misreading available here.
+/// 2. **fragile** — it beat holding and did not survive resampling.
+/// 3. **lost to holding** — the modal, honest case.
+/// 4. **lost to the search count** — it beat holding, but not by enough to survive
+///    how many strategies were tried (the scorecard's `crown_clears_dsr`).
+fn next_step_after_hold(
+    report: &BakeoffReportMirror,
+    mode: ThemeMode,
+) -> Option<crate::Element<'static>> {
+    use crate::leaderboard::{OutcomeKind, RobustnessLabel};
+    if !matches!(
+        report.recommendation.outcome,
+        OutcomeKind::BenchmarkWins | OutcomeKind::AllFragile
+    ) {
+        return None;
+    }
+    let best = report
+        .rows
+        .iter()
+        .filter(|r| !r.is_benchmark)
+        .max_by(|a, b| {
+            a.sharpe
+                .partial_cmp(&b.sharpe)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })?;
+    let benchmark = report.rows.iter().find(|r| r.is_benchmark);
+
+    let template = if best.trade_count == 0 {
+        LEADERBOARD_WHY_LOST_NO_TRADES
+    } else if matches!(best.robustness, Some(RobustnessLabel::Fragile)) {
+        LEADERBOARD_WHY_LOST_FRAGILE
+    } else if benchmark.is_some_and(|b| best.sharpe <= b.sharpe) {
+        LEADERBOARD_WHY_LOST_TO_HOLD
+    } else if report
+        .scorecard
+        .as_ref()
+        .is_some_and(|sc| !sc.crown_clears_dsr)
+    {
+        LEADERBOARD_WHY_LOST_TO_SEARCH
+    } else {
+        // It beat holding, held up under resampling, and cleared the search count —
+        // yet holding was crowned. That combination should not reach here, and
+        // inventing a plain-language reason for it would be a guess presented as a
+        // finding. Say nothing rather than something unfounded.
+        return None;
+    };
+
+    let body = Column::new()
+        .spacing(space::XS)
+        .push(
+            Text::new(template.replace("{arm}", best.strategy.as_str()))
+                .size(text::SMALL)
+                .color(color::FG_1.current(mode))
+                .width(Length::Fill),
+        )
+        .push(
+            Text::new(LEADERBOARD_RECHECK_CADENCE)
+                .size(text::SMALL)
+                .color(color::FG_2.current(mode))
+                .width(Length::Fill),
+        );
+
+    Some(frame::panel(LEADERBOARD_NEXT_STEP_TITLE, body.into(), mode))
+}
+
+/// advisor-honesty-surface 3-20 AC1/AC2 — what the run actually searched.
+///
+/// Two lines directly under "Strategies tried", because they are that row's
+/// elaboration: the affirmative completeness statement, then the arm names and the
+/// window. The names come from `requested_arms` — the run's own input set, echoed at
+/// the mirror boundary — never a hardcoded list, so an arm added to the registry
+/// shows up here without anyone remembering to edit a string.
+///
+/// The load-bearing case is the NEGATIVE one. Product review finding 1: a screen
+/// where the search silently failed looked identical to the honest null. Here it
+/// cannot: arms asked for that did not come back are counted and named as a
+/// `DOWN_500` warning that the ranking is incomplete, and only a run where every
+/// requested arm returned gets the affirmative sentence.
+///
+/// `None` when the report carries no requested set (a mirror built before this
+/// field existed). Saying nothing is correct there — the alternative is claiming a
+/// completeness we cannot substantiate, which is the defect, not the fix.
+fn search_completeness(
+    report: &BakeoffReportMirror,
+    mode: ThemeMode,
+) -> Option<crate::Element<'static>> {
+    let asked = report.requested_arms.len();
+    if asked == 0 {
+        return None;
+    }
+    let active = || report.rows.iter().filter(|r| !r.is_benchmark);
+    let ran = active().count();
+    let traded = active().filter(|r| r.trade_count > 0).count();
+    let missing = asked.saturating_sub(ran);
+
+    let headline = if missing == 0 {
+        Text::new(
+            LEADERBOARD_SEARCH_COMPLETE_FMT
+                .replace("{ran}", &ran.to_string())
+                .replace("{asked}", &asked.to_string())
+                .replace("{traded}", &traded.to_string()),
+        )
+        .color(color::FG_2.current(mode))
+    } else {
+        Text::new(
+            LEADERBOARD_SEARCH_INCOMPLETE_FMT
+                .replace("{missing}", &missing.to_string())
+                .replace("{asked}", &asked.to_string()),
+        )
+        .color(color::DOWN_500.current(mode))
+    };
+
+    let arms = Text::new(
+        LEADERBOARD_SEARCH_ARMS_FMT
+            .replace("{arms}", &report.requested_arms.join(", "))
+            .replace("{window}", report.range_label.as_str()),
+    )
+    .size(text::MICRO)
+    .color(color::FG_3.current(mode))
+    .width(Length::Fill);
+
+    Some(
+        Column::new()
+            .spacing(space::XXS)
+            .push(headline.size(text::SMALL).width(Length::Fill))
+            .push(arms)
+            .into(),
+    )
 }
 
 /// One scorecard fact — a `label` (muted `MICRO`) over a `value` (`H3`,

@@ -1386,6 +1386,16 @@ pub fn fake_tail_summary_view() -> crate::leaderboard::TailSummaryView {
 /// `any1of4`, `k2of4`, `k3of4`), then buy-and-hold appended by `run_bakeoff`.
 ///
 /// Built directly as the mirror type — fixtures NEVER stand up the engine; the
+/// 3-20 AC1 — the non-benchmark strategy ids of a fixture's rows, which is what a
+/// HEALTHY run's `requested_arms` looks like: it asked for exactly what came back. A
+/// fixture modelling a silent search failure sets the field itself instead.
+fn active_arm_ids(rows: &[crate::leaderboard::LeaderRow]) -> Vec<SmolStr> {
+    rows.iter()
+        .filter(|r| !r.is_benchmark)
+        .map(|r| r.strategy.clone())
+        .collect()
+}
+
 /// mirror is the whole point of the `ui`-pure seam.
 #[must_use]
 #[allow(clippy::too_many_lines)] // a 13-row literal data table — splitting it hurts readability
@@ -1606,7 +1616,10 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
     // > rsi(-0.31).
     let ranked = vec![0, 1, 12, 5, 10, 11, 3, 4, 9, 6, 7, 8, 2];
 
+    // 3-20 AC1 — a healthy fixture asked for exactly the arms it got back.
+    let requested_arms: Vec<SmolStr> = active_arm_ids(&rows);
     BakeoffReportMirror {
+        requested_arms,
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         rows,
@@ -1800,7 +1813,10 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
     //   2=rsi(-0.31) 6=rsi_ls(-0.48) 8=always_short(-1.12).
     let ranked = vec![0, 1, 9, 3, 4, 5, 7, 2, 6, 8];
 
+    // 3-20 AC1 — a healthy fixture asked for exactly the arms it got back.
+    let requested_arms: Vec<SmolStr> = active_arm_ids(&rows);
     BakeoffReportMirror {
+        requested_arms,
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         rows,
@@ -2058,7 +2074,10 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
     // bbands(0.54) > rsi(-0.31). Indices into `rows`.
     let ranked = vec![0, 1, 4, 3, 2];
 
+    // 3-20 AC1 — a healthy fixture asked for exactly the arms it got back.
+    let requested_arms: Vec<SmolStr> = active_arm_ids(&rows);
     BakeoffReportMirror {
+        requested_arms,
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         rows,
@@ -2156,7 +2175,10 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             robustness: None,
         },
     ];
+    // 3-20 AC1 — a healthy fixture asked for exactly the arms it got back.
+    let requested_arms: Vec<SmolStr> = active_arm_ids(&rows);
     BakeoffReportMirror {
+        requested_arms,
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         rows,
@@ -2333,7 +2355,10 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
     //   0=sma, 1=macd, 2=rsi, 3=bbands, 4=majority, 5=unanimous, 6=buyhold.
     let ranked = vec![6, 4, 0, 3, 1, 5, 2];
 
+    // 3-20 AC1 — a healthy fixture asked for exactly the arms it got back.
+    let requested_arms: Vec<SmolStr> = active_arm_ids(&rows);
     BakeoffReportMirror {
+        requested_arms,
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         rows,
@@ -2509,7 +2534,10 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
     //   0=sma, 1=macd, 2=rsi, 3=bbands, 4=majority, 5=unanimous, 6=buyhold.
     let ranked = vec![0, 1, 6, 5, 3, 4, 2];
 
+    // 3-20 AC1 — a healthy fixture asked for exactly the arms it got back.
+    let requested_arms: Vec<SmolStr> = active_arm_ids(&rows);
     BakeoffReportMirror {
+        requested_arms,
         coin: SmolStr::new("BTCUSDT"),
         range_label: SmolStr::new("2024 H1"),
         rows,

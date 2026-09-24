@@ -101,16 +101,32 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 
 /// Top of the RECOMMENDATION band — where the recommendation `frame::panel` starts.
 ///
-/// Re-measured 2026-09-16 after ADR-0092 put the scorecard above the recommendation
-/// and these gates moved to a full-pane frame: on
-/// `/tmp/forward_f9_narration_ready_render.png` the recommendation block spans
-/// y=877..1078 (4431 ACCENT px — the AI-summary card's label + border), and the
-/// ranked table's crowned-row accent does not begin until y≈1153. Everything above
-/// the block is fixed-height in every fixture (form, budget-context line, scorecard),
-/// so the band does not move with the field size.
-const REC_TOP: u32 = 850;
+/// Re-measured 2026-09-24 after story 3-20 added three lines to the scorecard block
+/// (ADR-0095). Two things changed and both are recorded here rather than left for the
+/// next reader to rediscover:
+///
+/// 1. The block grew by 72 px (358 -> 430), so everything below it moved down.
+/// 2. **The block's height is no longer constant across fixtures.** 3-20's arm-inventory
+///    line lists the requested arms and WRAPS, so a wide field pushes the recommendation
+///    further down than a narrow one. The previous doc comment's assumption — "everything
+///    above the block is fixed-height in every fixture, so the band does not move with the
+///    field size" — is false as of ADR-0095, and this band is sized for the SPREAD.
+///
+/// Measured, full-pane renders at 1920 x 2400:
+///
+/// | fixture | what paints | where |
+/// |---|---|---|
+/// | `five_arm` (5 arms) | WeakEvidence banner, 6187 amber px | y = 977..1018 |
+/// | narration `Ready` | AI-summary card, ACCENT | y = 1073..1151 |
+/// | narration `NotRequested` | Explain ghost button, ACCENT | y = 1119..1146 |
+/// | `benchmark_wins` | stray amber (scorecard glyph, ~40 px) | y = 1122..1164 |
+/// | any | ranked table's crowned-row accent | y >= 1205 |
+///
+/// So the band spans the recommendation region across every fixture and stops short of
+/// the table, whose clay the colour predicates would otherwise match.
+const REC_TOP: u32 = 950;
 /// Bottom of the RECOMMENDATION band — below the AI-summary card, above the table.
-const REC_BOTTOM: u32 = 1100;
+const REC_BOTTOM: u32 = 1190;
 
 /// `true` for an `ACCENT`-teal (#6FB6AE — R111 G182 B174) pixel — green & blue
 /// high and close, red clearly lower (the exact predicate the leaderboard +

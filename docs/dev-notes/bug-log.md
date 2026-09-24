@@ -1552,3 +1552,44 @@ describes an intended use that was never wired.
 
 **Moral**: `2>/dev/null` on the tool a check depends on converts "I cannot run" into "I found
 nothing". If a gate's scanner can be missing, the gate must fail when it is — not report clean.
+
+### `#105` — a corrupt or tampered pinned corpus degrades SILENTLY to unpinned live data, and the log says the window wasn't covered
+**Status**: OPEN — found 2026-09-24 while scoping story 3-20 AC1 ("show the data revision").
+Anchor-impacting: **no** (the bake-off writes no report body — `write_report: false`, ADR-0059).
+
+`resolve_bakeoff_bars` tries the pinned corpus first and falls through to a live fetch:
+
+```rust
+// crates/backtest/src/bakeoff/mod.rs:541
+Ok(_) | Err(_) => {
+    tracing::info!(target: "bakeoff.resolve", ...,
+        "pinned corpus does not cover the window — using dynamic fetch");
+}
+```
+
+`Err(_)` here includes `RevisionError::FileMismatch` and `AggregateMismatch` — the errors
+`data::revision::read_and_verify_revision_manifest` exists to raise. So a corpus whose bytes
+no longer hash to its manifest is handled identically to one that simply lacks the requested
+window: the run proceeds on `data/binance-dynamic`, which by design has **no `REVISION.toml`
+at all** (`crates/data/src/dynamic_cache.rs:43` — "live data is not reproducible, ADR-0061 D5").
+The `info!` that records it states something that is not true in the mismatch case.
+
+The Lab path does this correctly for comparison: it compares against
+`BINANCE_PINNED_REVISION_SHA` and hard-fails (`crates/ui/src/lab/runner.rs:757-773`).
+
+**What the verify call actually buys today**: only that the corpus is self-consistent, never
+that it is *the* pinned corpus. `bakeoff/mod.rs:424` computes the aggregate and discards it.
+
+**Why it matters beyond tidiness.** The headline product path is a RELATIVE lookback
+(`LeaderboardLookback`, 2 weeks … 4 years → `DateRange::Custom { now-Nd, now }`,
+`crates/ui/src/leaderboard/state.rs:858-862`), and the pinned corpus spans 2023-01-01 …
+2025-01-01. On today's date NO relative window is covered, so the dynamic path is not the
+exception — it is the normal case, and the pinned-corpus verification never binds on it.
+
+**Fix direction (not taken here)**: split the arm. A `RevisionError` mismatch is a loud
+failure or at minimum a distinct, truthful log line and a flag the UI can surface; "window
+not covered" stays the quiet fall-through. Surfacing WHICH corpus a run actually used is
+story 3-20 AC1's subject and needs the provenance enum described there.
+
+**Moral**: `Ok(_) | Err(_)` in one arm spends the error you went to the trouble of computing.
+A verification whose failure is indistinguishable from a cache miss is not a verification.

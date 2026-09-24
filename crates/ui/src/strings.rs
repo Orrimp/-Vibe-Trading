@@ -1810,6 +1810,33 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             "LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT",
             LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT,
         ),
+        // advisor-honesty-surface 3-20 AC1/AC2 — what was actually searched
+        (
+            "LEADERBOARD_SEARCH_COMPLETE_FMT",
+            LEADERBOARD_SEARCH_COMPLETE_FMT,
+        ),
+        (
+            "LEADERBOARD_SEARCH_INCOMPLETE_FMT",
+            LEADERBOARD_SEARCH_INCOMPLETE_FMT,
+        ),
+        ("LEADERBOARD_SEARCH_ARMS_FMT", LEADERBOARD_SEARCH_ARMS_FMT),
+        (
+            "LEADERBOARD_STANDING_QUALIFIER",
+            LEADERBOARD_STANDING_QUALIFIER,
+        ),
+        // advisor-honesty-surface 3-20 AC5 — the next step after "hold"
+        ("LEADERBOARD_NEXT_STEP_TITLE", LEADERBOARD_NEXT_STEP_TITLE),
+        (
+            "LEADERBOARD_WHY_LOST_NO_TRADES",
+            LEADERBOARD_WHY_LOST_NO_TRADES,
+        ),
+        ("LEADERBOARD_WHY_LOST_FRAGILE", LEADERBOARD_WHY_LOST_FRAGILE),
+        ("LEADERBOARD_WHY_LOST_TO_HOLD", LEADERBOARD_WHY_LOST_TO_HOLD),
+        (
+            "LEADERBOARD_WHY_LOST_TO_SEARCH",
+            LEADERBOARD_WHY_LOST_TO_SEARCH,
+        ),
+        ("LEADERBOARD_RECHECK_CADENCE", LEADERBOARD_RECHECK_CADENCE),
         (
             "LEADERBOARD_SCORECARD_CONFIDENCE_LABEL",
             LEADERBOARD_SCORECARD_CONFIDENCE_LABEL,
@@ -3333,6 +3360,91 @@ pub const LEADERBOARD_SCORECARD_TRIED_LABEL: &str = "Strategies tried";
 /// (correlation-adjusted) trial count in plain words. `{n_eff}` = the rounded
 /// effective count. Example: "13 (about 8 truly independent)".
 pub const LEADERBOARD_SCORECARD_TRIED_EFFECTIVE_FMT: &str = "about {n_eff} truly independent";
+
+/// advisor-honesty-surface 3-20 AC2 — the POSITIVE search-completeness statement.
+///
+/// Product review finding 1: the honest-null screen and a screen where the search
+/// silently failed looked identical. A user could not tell "we ran 12 strategies and
+/// none beat holding" from "we meant to run 12, something broke, and here is what
+/// came back". So the screen states what it actually did, in the affirmative.
+///
+/// `{ran}` = arms that returned a result · `{asked}` = arms the run asked for ·
+/// `{traded}` = of those, how many produced any trade at all. An arm that produced
+/// no trade did not lose — it never played, and saying so is the difference between
+/// a search and a shrug.
+pub const LEADERBOARD_SEARCH_COMPLETE_FMT: &str =
+    "Searched {ran} of {asked} strategies \u{2014} {traded} produced trades on this data.";
+
+/// The NEGATIVE case: arms were asked for and did not come back. Rendered in the
+/// failure colour, because a ranking missing arms is not a ranking of the field.
+///
+/// `{missing}` = asked − ran · `{asked}` = arms the run asked for.
+pub const LEADERBOARD_SEARCH_INCOMPLETE_FMT: &str = "\u{26a0} {missing} of {asked} strategies did not return a result \u{2014} this \
+     ranking is INCOMPLETE and must not be read as \"nothing beat holding\".";
+
+/// advisor-honesty-surface 3-20 AC4 — the STANDING QUALIFIER.
+///
+/// Product review finding 10: some conclusions carry a qualification in the record
+/// and none on screen. The record said one thing, the cockpit said a shorter thing,
+/// and the user only ever saw the shorter thing.
+///
+/// **This constant is the single definition.** The AC is not "show a caveat" — it is
+/// that the screen and the record cannot drift apart, which is only true if exactly
+/// one place in the repo says it. Anything that needs this text reads it from here;
+/// `standing_qualifier_is_defined_once` fails the build if a second copy appears.
+///
+/// Today's qualifier is bug-log `#67` / story `1-25-harness-fill-correctness-relock`:
+/// the research-harness lanes priced cross-symbol fills at the trigger bar's close,
+/// so the anchored C2/C3 evidence behind "active trading did not win" is execution-
+/// artifact contaminated and is being re-locked. Two things are true at once and
+/// both belong on screen: the DIRECTION of that finding is preserved, and the
+/// magnitudes are not final. The third sentence is the one that keeps this honest
+/// rather than alarming — #67 verified that `bakeoff/bootstrap.rs` resamples log
+/// returns from candidate equity curves and never re-executes fills, so the ranking
+/// above does not stand on the contaminated lane at all.
+///
+/// When 1-25 closes, this constant changes here and nowhere else.
+pub const LEADERBOARD_STANDING_QUALIFIER: &str = "Standing qualifier: the research evidence behind \"active trading did not win\" is being re-locked (bug-log #67). Its direction is preserved; its magnitudes are not final. The ranking above does not rest on it \u{2014} it is computed from these candidates' own equity curves.";
+
+/// The inventory line — WHICH arms, and over what window. Names come from the live
+/// request, never a hardcoded list (3-20 AC1), so an arm added to the registry
+/// appears here without anyone remembering to update a string.
+///
+/// `{arms}` = comma-separated strategy ids · `{window}` = the lookback label.
+pub const LEADERBOARD_SEARCH_ARMS_FMT: &str = "{arms} \u{2014} over {window}.";
+
+/// advisor-honesty-surface 3-20 AC5 — the next step after "hold".
+///
+/// Product review finding 13: the honest null told the user what NOT to do and then
+/// stopped. "Nothing beat holding" is a complete finding and an incomplete answer —
+/// it leaves someone who just asked a question with nowhere to go.
+pub const LEADERBOARD_NEXT_STEP_TITLE: &str = "What would have to change";
+
+/// Why the best active arm lost — the gate signal that failed, in plain language.
+/// One of these is chosen from the run's own numbers; `{arm}` is the best active
+/// strategy by Sharpe.
+///
+/// The arm never traded. This is NOT losing — it never played, and the distinction
+/// matters: a strategy with no signal on this window tells you nothing about the
+/// strategy.
+pub const LEADERBOARD_WHY_LOST_NO_TRADES: &str = "{arm} produced no trades on this window, so it was never actually tested here \u{2014} a longer window, or one covering a different market, would be the thing to change.";
+
+/// The arm beat holding but did not survive resampling.
+pub const LEADERBOARD_WHY_LOST_FRAGILE: &str = "{arm} scored best of the active strategies but did not hold up when the data was resampled \u{2014} its edge is inside the noise, and more of the same data will not settle it.";
+
+/// The arm was simply worse than doing nothing. The modal, honest case.
+pub const LEADERBOARD_WHY_LOST_TO_HOLD: &str = "{arm} was the best active strategy and still earned less per unit of risk than simply holding. Nothing here failed \u{2014} holding won on its merits.";
+
+/// The arm beat holding, but not by enough to survive the count of strategies tried.
+pub const LEADERBOARD_WHY_LOST_TO_SEARCH: &str = "{arm} beat holding on the raw numbers, but not by enough to survive how many strategies were tried \u{2014} with this many attempts, a lead that size shows up by chance.";
+
+/// The concrete re-check cadence (AC5's second half).
+///
+/// The non-obvious half is the first sentence, and it is the one that saves the user
+/// from pointless re-running: the bake-off is seeded, so re-running it tomorrow on the
+/// same window returns the same answer. What changes an answer is more data, not
+/// another run.
+pub const LEADERBOARD_RECHECK_CADENCE: &str = "Re-running this today would give the same answer \u{2014} the bake-off is seeded, so only new data can change it. Check again after about a quarter of fresh prices, or sooner if the market regime visibly turns.";
 
 /// Label — "Deflated confidence" row. The DSR: confidence the crown's edge is
 /// real AFTER accounting for how many strategies we tried.
