@@ -924,6 +924,25 @@ That premise is **false**: `data/binance` is **tracked**, so a runner has it. Th
 
 **Moral**: an immutability gate is not a reproducibility gate. Hashing what you stored proves only that storage is intact; it says nothing about whether the producer still produces it. If the evidence is meant to be *reproducible*, something must actually re-run — and that something must be allowed to fail.
 
+**Characterised in plain units 2026-09-24** (while scoping `#107`), which is more legible than
+the hash comparison above and worth having in the entry. At clean `HEAD`, no local
+modification, the four synthetic `btc-2023-1m-*` scenarios re-emit as:
+
+| `btc-2023-1m-sma-cross` | committed body | fresh run |
+|---|---|---|
+| Bars replayed | 525601 | 17544 |
+| Final equity | $47290.03 | $107381.95 |
+| Total fees | $33435.478506 | $1849.150109 |
+
+**525600 is the minutes in a 365-day year. 17544 is 731 × 24 — the hours in two years.** So a
+scenario named **`1m`** now produces **hourly** bars over a **two-year** span. Not a rounding
+drift: a different cadence over a different window, and the equity is 2.3× the recorded value
+with fees 18× smaller. The other three scenarios diverge identically.
+
+Consequence beyond this entry: **no anchor in this family can be re-locked until this is
+resolved**, because a re-emission would freeze today's computation and silently retire the
+recorded one. That blocks `#107`'s fix, and it is why story 1-26 owns both.
+
 ### `#94` — `size_portfolio_target` sized a resize order to the whole TARGET, not the delta. Wiring it lost 74 % of equity on the first fixture through the resize path
 **Status**: FIXED 2026-08-23 (`crates/risk/src/portfolio.rs`), binding test
 `crates/backtest/tests/portfolio_controls_bind.rs::a_resize_converges_instead_of_overshooting_every_bar`.
@@ -1689,12 +1708,44 @@ scenario since it was locked, and the stdout that disagrees scrolls past.
 right and locking it. If the terminal and the artifact disagree, the human validates one number
 and anchors another.
 
-**Fix direction (deliberately not taken here).** Both fixes change hashed bytes, so they belong
-in a formal re-lock (ADR-0038 § D6), not in a drive-by. Natural home: story **1-26**'s
-regeneration, which is already re-emitting anchored surfaces and already owns a `--out-dir`.
-Rename the row to what it is (`Equity points`) or subtract the initial point; and format the
-`Decimal` directly instead of converting. Until then the numbers are what they are and this
-entry is the record of it.
+**Blast radius, corrected 2026-09-24 after the first estimate was too small.** The initial
+entry said "this anchor and its seven siblings". Cross-grep of the report emitters:
+
+| observable | emitters | anchored bodies carrying the row |
+|---|---|---|
+| A — `equity_curve.len()` as "Bars replayed" | `sma.rs` only | **26** |
+| B — money through `f64::try_from` | `sma`, `momentum`, `pairs`, `regime_dispatcher`, `tcn_overlay` (all five) | **80** |
+
+A changes all 26 deterministically. B changes only the bodies where f64 rounding actually
+crosses a cent boundary — **measured, that is rarer than feared**: re-emitting the four
+synthetic `btc-2023-1m-*` scenarios with the money formatted from `Decimal` produced output
+**identical** to the f64 path. The Yahoo anchor is where the two diverge.
+
+**BLOCKED: #107 cannot be fixed by re-locking today, because of `#93`.** Measured 2026-09-24,
+at clean `HEAD` with no local modification (`git status` clean, verified):
+
+| `btc-2023-1m-sma-cross` | committed body | fresh run at HEAD |
+|---|---|---|
+| Bars replayed | 525601 | **17544** |
+| Final equity | $47290.03 | **$107381.95** |
+| Total fees | $33435.478506 | **$1849.150109** |
+
+525600 is the number of minutes in a 365-day year; 17544 is 731 × 24, the hours in two years.
+So the scenario named **`1m`** now generates **hourly** bars over a **two-year** span. The same
+divergence appeared in all four `btc-2023-1m-*` scenarios.
+
+This is `#93` — "the code stopped reproducing the frozen evidence, and 119/119 stayed green" —
+observed at full scale and in plainer units than that entry's hash comparison. **You cannot
+re-lock an anchor whose scenario no longer reproduces its own recorded body for unrelated
+reasons**: the re-emission would bake today's computation in and silently convert a tracked
+drift into the new truth, which is exactly what D6.b's "don't silently mutate historical
+evidence" forbids.
+
+**Fix direction.** Both fixes change hashed bytes and therefore belong in story **1-26**'s
+regeneration — which already owns re-emitting anchored surfaces, already owns `--out-dir`, and
+must resolve `#93` first because nothing else can. Rename the row to what it is
+(`Equity points`) or subtract the initial point; and format the `Decimal` directly instead of
+converting. Until 1-26 runs, the numbers are what they are and this entry is the record.
 
 **Moral**: byte-immutability preserves a claim, it does not audit it. An anchor can hold a
 figure that was never true with perfect fidelity for as long as nobody re-runs the thing that
