@@ -3606,9 +3606,13 @@ feature     = "paper-portfolio-durability"
 product     = "_bmad-output/planning-artifacts/PRD.md"
 arch        = ["docs/dev-notes/product-review-2026-08-04.md"]
 crates      = ["crates/ui", "crates/audit"]
-tests       = []
+tests       = [
+  "crates/audit/tests/crash_consistency.rs",
+  "crates/ui/tests/lab_session_restore_render.rs",
+  "crates/ui/src/lab/persistence.rs",
+]
 anchors     = []
-state       = "scoped"   # created 2026-08-04 by the product review; operator prioritisation pending
+state       = "shipped"   # 2026-09-24; the inventory understated it — the whole persistence path was unwired (bug-log #102), so AC3 shipped ON TOP of wiring it
 
 [[req]]
 id          = "REQ-OPERATOR-SESSION-LOG-001"

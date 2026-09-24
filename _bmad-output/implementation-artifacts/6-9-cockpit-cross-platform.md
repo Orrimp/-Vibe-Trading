@@ -310,3 +310,87 @@ precisely in the case that breaks the test.
 (a) and (b) are test-side; (c) is a product change. Until one is chosen the test
 stays red on the slower legs and intermittently red here — 2 failures in 5 runs
 at unmodified HEAD on the canonical box.
+
+## The last two windows-latest reds — fixed at source, CI-unconfirmed (2026-09-24)
+
+Both remaining `windows-latest` failures are addressed. **Neither fix is
+CI-confirmed yet** — no Windows box was available and GitHub run logs still need
+repo admin — so this section states what was proven by running and what was
+reasoned. The story stays `in-progress` until a green Windows lane says otherwise.
+
+### `t1414_v7_coinbase_outage_isolated` — a paused clock cannot span a ledger call
+
+Not a Windows API difference and not "the runner is slow". A structural defect
+that macOS and ubuntu happen to survive:
+
+- `tokio::time::pause()` (was `coinbase_outage_isolation.rs:196`) froze the clock
+  across BOTH audit-ledger interactions.
+- Every `sqlx` pool acquire wraps itself in `tokio::time::timeout(30 s)` —
+  `sqlx-core-0.8.6/src/pool/inner.rs:248-251` → `sqlx-core/src/rt/mod.rs:27`. That
+  deadline is on the **virtual** clock.
+- The SQLite work runs on a raw `std::thread::Builder` worker
+  (`sqlx-sqlite-0.8.6/src/connection/worker.rs:106`), **not** `spawn_blocking`, so
+  it does not inhibit tokio's auto-advance (tokio's only inhibitor is
+  `runtime/blocking/schedule.rs:25`).
+- So whenever the runtime parks with the write still in flight, virtual time jumps
+  to the next deadline and keeps jumping — `park_thread_timeout` in
+  `tokio/src/runtime/time/mod.rs`.
+- `spawn_venue_supervisor` swallows the resulting `PoolTimedOut` as a non-fatal
+  `warn!` (`crates/agent/src/runtime.rs:2872-2880`). The only symptom is a missing
+  row: `got 0`.
+
+**Measured on the canonical box (both by running):**
+
+| probe | result |
+|---|---|
+| 16 concurrent `feed_reconnect` writes under `pause()` | **9 returned `PoolTimedOut` in 481 µs of real time**; only 7 rows landed |
+| the old 200-iteration bounded poll, forced to run in full (the windows case) | **96 virtual seconds burned in 39 ms of real time** — vs sqlx's 30 s acquire deadline |
+
+The second number is the whole bug: the poll loop added in 2026-09 to "give the
+writer a chance" gives it 39 ms of real time while burning 96 s of the virtual
+time the writer's deadline is measured in. It cannot help, and past 30 s it is
+what kills the write.
+
+**Fix:** the clock is now paused only across the MockFeed / watchdog phase. The
+supervisors start on the real clock, the `FeedReconnect` assertion is a bounded
+REAL-time poll (5 ms steps, 10 s ceiling) placed before the pause, and
+`tokio::time::resume()` precedes the cancel+drain so its 5 s budget is wall-clock
+again. A grep-verifiable invariant now holds: **no `audit::` call appears between
+`pause()` and `resume()`.** Every assertion is unchanged.
+
+**Not proven:** that windows-latest specifically loses this race. 30/30 passes
+under 42 CPU burners on 14 cores, old code AND new — same limit the
+`audit_aggregator_handles_10k_event_storm` diagnosis hit, and for the same reason.
+
+### `t1926_no_secrets_in_artifacts` — the gate could not run on Windows, and would have gone green
+
+The test shelled out to `bash scripts/check_no_secrets_in_llm_artifacts.sh`. On
+`windows-latest` that is unrunnable-or-worse:
+
+- `bash` resolution from a native process is not guaranteed, and `C:\Windows\
+  System32\bash.exe` (the WSL launcher) would shadow Git-Bash if present.
+- The script's two workhorses are absent or shadowed: `strings(1)` is binutils and
+  not in Git-for-Windows; GNU `find` loses to `C:\Windows\System32\find.exe` when
+  Git's `usr/bin` is off PATH.
+- **The `strings` case is the dangerous one, not the loud one.** Every
+  `strings … | grep -q` pipeline reports "no match" when `strings` is missing, so
+  the script would print `V9 PASS` having scanned nothing — bug-log #66's class,
+  on the one gate AD-19 leans on.
+
+(CRLF is NOT a factor any more: `.gitattributes` pins `* text=auto eol=lf` since
+bug-log #97.)
+
+**Fix, option (a) per the preferred shape:** the scan is now Rust and runs on all
+three legs. The script stays the single source of truth — `SecretGate::parse`
+READS `PATTERNS=(…)` and `SK_RE=` out of it at runtime, and refuses to run if the
+list shrank below 8 or if `SK_RE` changed spelling. The Rust scan is a strict
+superset of the shell one (raw bytes, so no `strings` floor and no `grep`
+line-splitting). Three controls that the shell gate never had now run every time:
+the matcher must detect both fixture keys (and their upper-case forms), must stay
+quiet on innocuous bytes, and the directory WALK must find a planted key in a
+throwaway tree. On unix the script is still executed verbatim as an ADDITIONAL
+assertion, so its own plumbing stays exercised.
+
+**Coverage lost on Windows:** the script's `find`/`grep`/`strings` plumbing. Never
+the pattern list, never the artifacts — both are covered on every leg, which is
+strictly more than before, when the whole gate was absent there.

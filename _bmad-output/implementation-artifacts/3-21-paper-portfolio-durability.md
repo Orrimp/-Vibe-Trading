@@ -1,6 +1,6 @@
 # Story 3.21: paper-portfolio-durability
 
-Status: ready-for-dev
+Status: done
 
 <!-- Created 2026-08-04 by the adversarial product review
      (docs/dev-notes/product-review-2026-08-04.md, finding 12). -->
@@ -64,8 +64,46 @@ not rebuild it), AC3 (fail loudly + surface, rather than silently cold-start), A
 ## Tasks / Subtasks
 
 - [x] Inventory what is persisted today vs what the survival contract needs to claim — **done 2026-08-04, result above**.
-- [ ] Dev: version + migrate-or-fail-loud; crash-consistency test; restored-from surfacing.
-- [ ] Runbook/in-app documentation of the contract.
+- [x] Dev: version + migrate-or-fail-loud; restored-from surfacing — **done 2026-09-24**.
+- [x] Crash-consistency test (AC2) — **done 2026-09-24**, `crates/audit/tests/`.
+- [x] Runbook documentation of the contract — **done 2026-09-24**,
+      [`docs/runbooks/paper-state-durability.md`](../../docs/runbooks/paper-state-durability.md).
+
+## Dev record (2026-09-24)
+
+**The inventory understated the defect, and the correction is the story's main
+finding.** It named `lab::persistence::decode` as silently cold-starting. Checking the
+blast radius before fixing it showed that nothing called the feature at all:
+`Cockpit::boot` and the whole `PersistenceDebouncer` were reachable only from their own
+unit tests (`scripts/callers.sh`, CodeGraph ∪ grep), and both shipped binaries
+constructed the cockpit with `Cockpit::new()`. **The Lab session was written to disk
+never and read from disk never**, from `c654f31` (2026-05-17) until this change.
+Recorded as **bug-log #102**.
+
+So the work landed in that order — wire it, then fix the load path — because a
+migrate-or-fail-loud contract on a load that never runs is ceremony.
+
+| AC | What shipped |
+|---|---|
+| AC1 | `docs/runbooks/paper-state-durability.md` — the table of what survives, where, and written when; the money side and its one unstated limit (no explicit SQLite `journal_mode`); the session side and its one measured gap. |
+| AC2 | the crash-consistency test in `crates/audit/tests/`, with a negative control. |
+| AC3 | `decode` returns `Result<LabState, FailureReason>` instead of swallowing; `restore` returns the state AND a `RestoreOutcome`. A file that cannot be used is **renamed aside before returning**, because the debounced writer would otherwise overwrite the operator's saved session with cold-start defaults ~500 ms later — the failure mode was data LOSS, not data ignored. No migration exists (v1 is the only version), so every mismatch fails loudly and names both versions. |
+| AC4 | the Lab toolbar renders "Fresh session" / "Restored from &lt;ts&gt;" / the failure and the kept-aside path in `DOWN_500`. Proven at the pixels by `crates/ui/tests/lab_session_restore_render.rs` — three gates plus the negative control that two identical outcomes render byte-identically. |
+| AC5 | anchors 119/119; spec-lint PASS; no `f64` added; no strategy/gate behaviour touched; UI proven at the render layer. |
+
+**Two deviations, both deliberate, neither silent:**
+
+1. **AC4 says "the Live view"; the notice is on the Lab screen.** AC4 was written in
+   August, before the inventory knew which state was actually at risk. The state that
+   restores from a file is the Lab session, so the notice belongs where that state is.
+   The Live view's paper portfolio restores from the ledger, which is a different
+   mechanism with a different failure mode. **Operator call if you want a second
+   surfacing on Live for the equity hydrate** — it is not built here.
+2. **No forced flush at window close.** `iced::application(..).run()` consumes the
+   application state, and the `app_state` still in scope afterwards is a pre-boot clone,
+   so there is no correct place to force a final write. A selection changed in the last
+   ~500 ms before the window closes is lost. Stated in the code at the call site and in
+   the runbook rather than papered over.
 
 ## Dev Notes
 
@@ -84,5 +122,8 @@ not rebuild it), AC3 (fail loudly + surface, rather than silently cold-start), A
 
 ### References
 
-- Trace: `REQ-PAPER-PORTFOLIO-DURABILITY-001` (state=`scoped`)
+- ADR: [`0094-the-lab-session-persists-and-says-so.md`](../planning-artifacts/architecture/decisions/0094-the-lab-session-persists-and-says-so.md)
+- Bug log: `#102` (the unwired persistence path), FIXED here
+- Runbook: [`docs/runbooks/paper-state-durability.md`](../../docs/runbooks/paper-state-durability.md)
+- Trace: `REQ-PAPER-PORTFOLIO-DURABILITY-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 3 (Advisor MVP)

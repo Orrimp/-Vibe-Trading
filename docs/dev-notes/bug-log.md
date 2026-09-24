@@ -1308,6 +1308,16 @@ self-diagnosing.
 - 2026-07-31 (orchestrator): #67 added (OPEN) — cross-symbol fill mispricing in the research-harness lanes; anchored C2/C3 evidence is execution-artifact noise; advisor gate proven unaffected; fix+re-lock = story 1-25 (program with 1-24).
 - 2026-07-27 (orchestrator): #66 added+FIXED — ui real-data guard tests vacuous since day 1 (cwd-relative corpus root, any-Err→skip); revival caught 3 latent production bugs (CSV-name test bug, scenario-name collision/shadowing, unindented-frontmatter Compare skip). Story 1-10 code-review pass; all gates re-verified (anchors 119/119, spec-lint 0, clippy 0, AC5 4369-point round-trip).
 
+**Observed again 2026-09-24** while gating story 3-21, and this is what the open decision
+costs in practice: `audit_aggregator_handles_10k_event_storm` fails **1 run in 5** unloaded on
+macOS, always the same way — `start_label=152..240 + ticks=0 = 0.03..0.05` coverage. `ticks=0`
+means the whole 5 000-event burst landed inside ONE window, so no `Tick` ever fired and the
+window's real count went out with the bus. The Start label alone caught the first ~200 events.
+The test is therefore a coin-flip on whether the burst happens to straddle a boundary, and a
+`cargo test -p ui` run aborts at it before reaching the other ~85 test binaries. Attribution
+for 3-21: not that change — the same commit's earlier full run passed this test, and 4 of 5
+runs pass at the same tree. It stays OPEN pending the product-side ruling.
+
 ### `#100` — the cockpit renders report bodies from disk, and those carry glyphs the embedded face cannot draw
 **Status**: OPEN — measured, scoped, not fixed. Found 2026-09-16 while wiring ADR-0093.
 Anchor-impacting: **no** (reads the corpus, never writes it).
@@ -1385,3 +1395,160 @@ assertion.
 that paints in the same channel silently weakens it — and when the control finally fails,
 the cheapest story ("font drift", "flaky pixels") is the one most likely to be believed.
 Attribute a red before you re-baseline it away: `git stash` + run at HEAD costs one minute.
+
+### `#102` — lab-state persistence was shipped, unit-tested, and never wired: the cockpit neither restores nor saves it
+**Status**: **FIXED 2026-09-24** (ADR-0094, story 3-21). Found the same day while scoping 3-21.
+Anchor-impacting: **no** (no evidence path; the file lives in `$XDG_CONFIG_HOME`).
+
+Story 3-21's inventory named the defect as `lab::persistence::decode` silently cold-starting on
+a version mismatch or a parse error. Checking the blast radius before fixing it turned up a
+larger one: **nothing calls the feature at all.**
+
+```
+# the read path
+crates/ui/src/state.rs:1529   pub fn boot(state_path_override: Option<&Path>) -> Self   <- restores
+  callers: crates/ui/src/state.rs:5736, :5862                                           (its own unit tests)
+
+# the write path
+crates/ui/src/lab/persistence.rs:307   PersistenceDebouncer
+                                :329   flush_if_due
+                                :341   force_flush
+  callers (scripts/callers.sh, CodeGraph ∪ grep): persistence.rs:450, :474, :475, :492   (its own unit tests)
+```
+
+Both shipped binaries construct the cockpit with `Cockpit::new()` — `bin/cockpit.rs:174` and
+`bin/cockpit_live.rs:705` — never `Cockpit::boot(..)`. `cockpit_live` has a clean shutdown
+sequence (`:1012-1028`) that would be the natural `force_flush` site and does not call it.
+
+**Consequence.** The Lab selection (strategy, pair, date range, compare set, training-panel
+state) is written to disk never and read from disk never. Every launch is a cold start, and
+`~/.config/trading/cockpit-lab-state.json` is not created by the shipped cockpit at all. The
+500 ms debounce, the XDG path resolution, the schema-version field, the corruption fallback and
+their nine unit tests are all exercised only by callers inside the module.
+
+**Why nothing is red.** Every test calls the API directly — `boot(Some(&path))` in the unit
+tests, `encode`/`decode` round-trips in-module. A test that constructs the thing it tests cannot
+observe that the product does not construct it. This is the same shape as `#95` (declared at
+nine sites, read at one) and `#81` (an arm whose loader never compiled): the unit is correct,
+the wire is missing, and the suite only ever looks at the unit.
+
+**How long.** Shipped `c654f31` (2026-05-17, ui-rethink-phase-a-lab Wave 2, T-D-17). Bug `#54`
+(`799543a`) later changed the cold-start default from `v1.momentum × XRPUSDT` to
+`v0.sma × BTCUSDT` — a fix written on the belief that the cold-start path was user-visible. It
+was, but only because *every* start is a cold start. There is no CHANGELOG line for the feature.
+
+**Fix direction.** Wire it, then fix the load path 3-21 actually asked about — in that order,
+because a migrate-or-fail-loud contract on a load that never runs is ceremony. Wiring makes the
+file real, which makes the silent-reset defect real too: today a failed load returns cold-start
+defaults and the next flush *overwrites the user's file with them*, so the failure mode is data
+loss, not data ignored. That is why the load path must distinguish "fresh" from "failed" before
+the write path goes live, and must never let a file it could not read be overwritten.
+
+**Fixed by** ADR-0094: `Cockpit::boot` replaces `Cockpit::new` in both binaries; the writer is
+driven from `ui::state::update` (the seam both cockpits share) on an explicit five-message list;
+`lab_state_path: Option<PathBuf>` is the single switch that arms it, and every fixture, gallery
+and test constructor sets `None`, so a demo cockpit cannot write the operator's file. The load
+path then got what 3-21 actually asked for: `decode` returns `Result<_, FailureReason>`, `restore`
+returns the outcome alongside the state, and a file that cannot be used is renamed aside BEFORE
+the load returns. `restore_or_default` was deleted — after the wiring its only callers were, once
+again, its own tests.
+
+**Moral**: "is it tested?" and "is it reachable from `main`?" are different questions, and the
+green suite answers only the first. Ask `scripts/callers.sh` of any feature you are about to
+extend — the extension inherits its reachability, not its test count.
+
+### `#103` — a paused tokio clock silently kills every sqlx write under it, and the hazard was already written down in a different test's doc comment
+**Status**: FIXED 2026-09-24 in `coinbase_outage_isolation.rs` (story 6-9 shakeout).
+Anchor-impacting: **no**.
+
+`t1414_v7_coinbase_outage_isolated` has been red on `windows-latest` since the 3-OS matrix
+was activated, reading `got 0` where a `FeedReconnect` row was expected. It is not a slow
+runner. The test called `tokio::time::pause()` before both ledger interactions, and:
+
+- every sqlx pool acquire wraps itself in `tokio::time::timeout(acquire_timeout /* 30 s */, …)`
+  (`sqlx-core-0.8.6/src/pool/inner.rs:248-251` → `rt/mod.rs:27`) — a deadline on the
+  **virtual** clock;
+- the SQLite work runs on a raw `std::thread::Builder` worker
+  (`sqlx-sqlite-0.8.6/src/connection/worker.rs:106`), **not** `spawn_blocking`, so it never
+  inhibits tokio's auto-advance (the only inhibitor is `runtime/blocking/schedule.rs:25`);
+- so the moment the runtime parks mid-write, virtual time leaps to the next deadline —
+  repeatedly — and the acquire times out after microseconds of real time;
+- `spawn_venue_supervisor` swallows the resulting `PoolTimedOut` as a non-fatal `warn!`
+  (`crates/agent/src/runtime.rs:2872-2880`), so the only symptom is a missing row.
+
+**Measured** (temporary probes, since removed): 16 concurrent `feed_reconnect` writes under
+`pause()` → **9 returned `PoolTimedOut` after 481 µs of real time**. And the 200-iteration
+bounded poll added in 2026-09 to "give the writer a chance" burns **96 virtual seconds in
+39 ms of real time** against that 30 s deadline — it cannot help, and past 30 s it is what
+kills the write.
+
+**The part worth keeping.** This exact hazard was already documented — in the doc comment of
+a different test:
+
+> `crates/ui/tests/training_poller_subscription.rs:10` — "`tokio::time::pause()` + `advance()`
+> is incompatible with `sqlx`'s in-memory SQLite pool: the pool's connection-acquire timeout
+> fires immediately when time is frozen, producing `pool timed out`."
+
+Someone hit it, diagnosed it correctly, wrote it down where they were standing, and moved on.
+The next test walked into it anyway and cost a red CI lane for two months. A hazard recorded
+in one file's prose is not a repo-wide guard.
+
+**Fix**: the clock is paused only across the MockFeed/watchdog phase; supervisors start on
+the real clock, the `FeedReconnect` assertion moved ahead of the pause as a bounded
+**real**-time poll, and `resume()` precedes cancel+drain. Checked mechanically and
+independently: no `audit::` / `ledger.` / `journal::` / `query::` call now appears between
+`pause()` (line 361) and `resume()` (line 483).
+
+**Not proven**: that `windows-latest` specifically loses this race — that needs the lane to
+go green, which is story 6-9's own gate. macOS was 30/30 under 42 CPU burners both before
+and after, which is the same ceiling `#99`'s sibling diagnosis hit.
+
+**Moral**: an invariant that lives in one file's doc comment will be re-discovered the
+expensive way. If a rule is repo-wide, it belongs where the next person is looking — the bug
+log, CLAUDE.md, or a test that fails when it is broken.
+
+### `#104` — the secrets gate scans with `strings(1)` and swallows its absence, so on a box without binutils it passes having read nothing
+**Status**: FIXED 2026-09-24 (story 6-9 shakeout). Anchor-impacting: **no**.
+
+`scripts/check_no_secrets_in_llm_artifacts.sh` is the V9 gate: no substring of an API key may
+appear in any artifact the LLM smoke run writes. It scans like this (`:146`, `:150`):
+
+```bash
+if strings -- "$file" 2>/dev/null | grep -i -q -F "$pat"; then
+```
+
+`strings(1)` is binutils. It ships with macOS (Xcode CLT) and every Linux runner, and it is
+**absent from Git-for-Windows**. When it is missing the pipeline produces no output,
+`grep -q` reports no match, and the file is declared clean — and `2>/dev/null` eats the
+"command not found" that would otherwise have said so. A secrets gate that passes having
+scanned zero bytes is the `#66` vacuous-test failure mode, on the one check whose whole
+purpose is to be paranoid. GNU `find` is shadowed the same way by `C:\Windows\System32\find.exe`.
+
+**Fix**: the scan itself is Rust now and runs on all three legs
+(`crates/llm/tests/no_secrets_in_artifacts_test.rs`). The script stays the single source of
+truth for the pattern list — the test PARSES `PATTERNS=(…)` and `SK_RE=` out of it at
+runtime and refuses to run if the list shrank below 8 entries or `SK_RE` changed spelling,
+so the two cannot drift silently. The Rust scan is a strict superset of the shell one: raw
+bytes, so no `strings` 4-character floor and no `grep` line-splitting. On unix the script is
+still executed verbatim as an additional assertion, keeping its own `find`/`grep`/`strings`
+plumbing exercised. Three controls the shell gate never had now run every time: the matcher
+detects both fixture keys and their upper-case forms, stays quiet on innocuous bytes, and the
+directory WALK finds a planted key in a throwaway tree. Red-proofed by compiling out the unix
+leg and planting a key: 4 hits, failing test.
+
+**Coverage lost on Windows**: the script's `find`/`grep`/`strings` plumbing — never the
+pattern list, never the artifacts. Strictly more is covered there than before, which was
+nothing.
+
+**Not proven**: that this vacuity is what made `t1926_no_secrets_in_artifacts` RED on
+`windows-latest` — a vacuous gate passes, it does not fail, so the red has some other
+proximate cause (`bash` resolution from `std::process::Command` is the likely one) that
+could not be pinned without a Windows box. The vacuity is real and structural either way,
+and the fix removes both.
+
+**Also note**: nothing in `.github/workflows/` or `.githooks/` invokes this script — it runs
+only from the test. The "fires standalone against CI artifacts" rationale in its own header
+describes an intended use that was never wired.
+
+**Moral**: `2>/dev/null` on the tool a check depends on converts "I cannot run" into "I found
+nothing". If a gate's scanner can be missing, the gate must fail when it is — not report clean.

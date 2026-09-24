@@ -1,6 +1,6 @@
 # Story 3.20: advisor-honesty-surface
 
-Status: backlog
+Status: ready-for-dev
 
 <!-- Created 2026-08-04 by the adversarial product review
      (docs/dev-notes/product-review-2026-08-04.md, findings 1/5/9/10/13).
@@ -42,7 +42,33 @@ so that the product's honesty lives in what I can SEE — not only in the machin
 
 - [ ] UX pass: what the honest verdict screen says, in what order, without becoming a wall of text.
 - [ ] Dev: registry-sourced arm inventory; search-completeness statement; scorecard labelling; qualifier constant; why-this-lost + cadence.
-- [ ] Render verification: populated + negative-control screenshots per AD-10 (BLOCKED until the pixel gate is green — see story 6-9's embedded-font prerequisite).
+- [ ] Render verification: populated + negative-control screenshots per AD-10.
+
+## Entry-gate notes (orchestrator, 2026-09-24 — read before scoping the dev pass)
+
+**The blocker is gone.** AC6's pixel proof was sequenced behind story 6-9's embedded-font
+fix; that shipped 2026-09-16 as **ADR-0093** (the `ui` crate embeds Inter, the 56 baselines
+were re-captured, the macOS gate is green). Nothing about this story is blocked now. The
+`Status:` line was also stale at `backlog` while the board carried the operator's
+`ready-for-dev` BUILD ruling — corrected here, board is the ruling, AD-4 makes this line the
+source of truth.
+
+**Two findings that should shrink the dev pass — verify before building, do not assume:**
+
+1. **AC1/AC2 need no new data source.** `BakeoffReportMirror.rows`
+   (`crates/ui/src/leaderboard/state.rs:563`) already carries every candidate with its
+   `strategy` name, `is_benchmark`, and `trade_count`, built at the single
+   `from_report` boundary from the live report. So "N arms ran, M produced signals" is
+   derivable from state the screen already holds — the work is the *rendering* and the
+   negative-control test, not plumbing a registry read.
+2. **AC3 may already be shipped.** `LEADERBOARD_SCORECARD_CAPTION`
+   (`crates/ui/src/strings.rs:3325`) reads "An honesty check on the search behind the pick
+   — it never changes the result", and it is rendered as the scorecard block's caption at
+   `crates/ui/src/screens/leaderboard.rs:982`. Since ADR-0092 that block LEADS the ready
+   pane, so it is above the 1080-px fold. **Prove it at the pixels before writing anything
+   for AC3** — if it holds, this AC closes as already-met and says so, per the same scope
+   guard story 3-21 used. If it does not (e.g. the caption reads as decoration rather than
+   a label), that is the finding, and it is a smaller change than the AC implies.
 
 ## Dev Notes
 

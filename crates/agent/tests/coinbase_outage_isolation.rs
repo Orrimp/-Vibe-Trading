@@ -47,6 +47,45 @@
 //!
 //! Mirrors the determinism gate in T1409's tests (see
 //! `crates/agent/src/runtime.rs:1577` `FakeClock`).
+//!
+//! ### The paused clock must not span a ledger call (2026-09-24, story 6-9)
+//!
+//! `tokio::time::pause()` covers the *virtual*-time parts of this test —
+//! the MockFeed cadence and the watchdog's 1 Hz scan — and NOTHING
+//! else.  Both audit-ledger interactions happen with the clock running.
+//! That is a correctness requirement, not tidiness:
+//!
+//! - Every `sqlx` pool acquire wraps itself in
+//!   `tokio::time::timeout(acquire_timeout /* 30 s default */, …)` —
+//!   `sqlx-core-0.8.6/src/pool/inner.rs:248-251`, routed to tokio by
+//!   `sqlx-core/src/rt/mod.rs:27`.  That deadline is on the *virtual*
+//!   clock.
+//! - The actual SQLite work runs on a raw OS thread
+//!   (`sqlx-sqlite-0.8.6/src/connection/worker.rs:106`,
+//!   `std::thread::Builder`), **not** `spawn_blocking`, so it does not
+//!   inhibit auto-advance — tokio's only inhibitor is
+//!   `runtime/blocking/schedule.rs:25`.
+//! - With the clock paused, a current-thread runtime that parks jumps
+//!   straight to the next timer deadline and keeps doing so
+//!   (`tokio/src/runtime/time/mod.rs`, `park_thread_timeout`).  So the
+//!   30 s acquire deadline can elapse in *microseconds* of real time
+//!   while the worker thread is still mid-write.
+//!
+//! Measured on the canonical box: with the clock paused, 9 of 16
+//! concurrent `feed_reconnect` writes returned `PoolTimedOut` after
+//! 481 µs of real time and left no rows.  `spawn_venue_supervisor`
+//! swallows that error as a non-fatal `warn!`
+//! (`crates/agent/src/runtime.rs:2872-2880`), so the only symptom is a
+//! missing row — which is precisely the `got 0` this test reported on
+//! `windows-latest`.  macOS and ubuntu won the race; a slower runner
+//! does not.  Polling harder cannot help: by then the write is already
+//! dead.
+//!
+//! Hence the shape below — supervisors start on the real clock, the
+//! `FeedReconnect` assertion is a bounded REAL-time poll, and only then
+//! does the deterministic advance-driven phase begin.  The bounded poll
+//! is a lower-bound assertion (`>= 1`), so waiting can only help it and
+//! cannot weaken any other assertion in the file.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -171,14 +210,15 @@ fn ts_at(secs: i64) -> Timestamp {
 ///    Coinbase }` once the fake clock crosses the threshold.
 ///
 /// **Determinism:** the test does NOT use `#[tokio::test(start_paused
-/// = true)]` because `sqlx::SqlitePool::connect` relies on tokio's
-/// wall-clock acquire timer; with `start_paused` the connection-acquire
-/// times out immediately.  We open the ledger first (real time), then
-/// call `tokio::time::pause()` *after* the ledger fixture is ready so
-/// every subsequent supervisor / watchdog sleep is advance-driven.
+/// = true)]`, and does not hold the clock paused across any ledger
+/// call — `sqlx` puts every pool acquire behind a *virtual*-clock
+/// 30 s timeout while doing the work on a raw OS thread, so a paused
+/// clock kills the write outright (module docs above, measured).  The
+/// clock is paused only for the MockFeed / watchdog phase, where every
+/// sleep is advance-driven.
 #[tokio::test(flavor = "current_thread")]
 async fn t1414_v7_coinbase_outage_isolated() {
-    // ── 1. Audit ledger fixture (real wall-clock — sqlx connect needs it).
+    // ── 1. Audit ledger fixture (real wall-clock — sqlx needs it).
     let temp = tempfile::tempdir().expect("tempdir");
     let db_path = temp.path().join("test_ledger.db");
     let ledger = Arc::new(
@@ -189,11 +229,6 @@ async fn t1414_v7_coinbase_outage_isolated() {
     audit::bootstrap::chart_of_accounts(&ledger)
         .await
         .expect("chart");
-
-    // ── 1b. Pause tokio time AFTER the ledger fixture is open.  Every
-    // subsequent `tokio::time::sleep` / `interval` is now advance-driven
-    // — the watchdog's 1Hz scan and the MockFeed's interval pacing.
-    tokio::time::pause();
 
     // ── 2. Bus + subscriber ───────────────────────────────────────────────
     let bus = Arc::new(EventBus::new(&BusConfig::default()));
@@ -275,9 +310,60 @@ async fn t1414_v7_coinbase_outage_isolated() {
         Some(Arc::clone(&last_tick)),
     );
 
+    // ── 4b. Assert the audit ledger captured a venue-tagged
+    //        FeedReconnect row for Coinbase (R8 / Q11) — ON THE REAL
+    //        CLOCK, before anything is paused.
+    //
+    // The reconnect row is written by a SPAWNED task through SQLite on
+    // sqlx's own OS thread. Querying once immediately asserts that the
+    // write has already landed, which is a scheduling-and-I/O
+    // assumption, not a behaviour; it held on the canonical box and
+    // failed on windows-latest with `got 0`.
+    //
+    // This is therefore a BOUNDED POLL, and it runs before
+    // `tokio::time::pause()` rather than after it — see the module
+    // docs: under a paused clock this write does not merely take
+    // longer, it is *killed* by sqlx's virtual-clock acquire timeout,
+    // and no amount of polling can recover it.
+    //
+    // Safe by inspection: EVERY assertion in this test is a lower bound
+    // or an invariant (`binance_count > 0`, `kraken_count > 0`,
+    // `saw_coinbase_stale`, `>= 1` here, `res.is_ok()`, and a fixed
+    // supervisor count of 4). There is no upper bound on anything that
+    // grows with waiting, so polling can only help this assertion and
+    // cannot weaken another. That check is the point: the same pattern
+    // was reverted from `audit_aggregator_handles_10k_event_storm`
+    // precisely because there the assertion WAS a coverage ratio the
+    // wait weakened.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let coinbase_reconnect_count = loop {
+        let events = audit::query::strategy_events_since(&ledger, ts_at(-3600))
+            .await
+            .expect("strategy_events_since");
+        let n = events
+            .iter()
+            .filter(|e| matches!(e.kind, trading_core::StrategyEventKind::FeedReconnect))
+            .count();
+        if n >= 1 || std::time::Instant::now() >= deadline {
+            break n;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    };
+    assert!(
+        coinbase_reconnect_count >= 1,
+        "audit ledger must contain >= 1 FeedReconnect row after Coinbase panic; got {coinbase_reconnect_count} after a 10s bounded wait"
+    );
+
+    // ── 4c. Pause tokio time.  From here to the `resume()` in step 7
+    // every `sleep` / `interval` is advance-driven — the watchdog's 1Hz
+    // scan and the MockFeed's interval pacing — and NO ledger call may
+    // appear between the two.
+    tokio::time::pause();
+
     // Watchdog with a 30s threshold (Q7 default) and 1Hz scan cadence.
-    // FakeClock starts at t=0; we'll advance it past the threshold
-    // after the venues are warm.
+    // Spawned after the pause so its scan interval is virtual from its
+    // first tick.  FakeClock starts at t=0; we'll advance it past the
+    // threshold after the venues are warm.
     let t0 = ts_at(0);
     let clock = FakeClock::new(t0);
     spawn_market_health_watchdog(
@@ -388,49 +474,13 @@ async fn t1414_v7_coinbase_outage_isolated() {
         "watchdog must publish MarketHealth::Stale for Venue::Coinbase after 30s silence (Q7)"
     );
 
-    // ── 7. Assert the audit ledger captured a venue-tagged
-    //        FeedReconnect row for Coinbase (R8 / Q11).
-    // Poll for the row rather than querying once.
-    //
-    // The reconnect row is written by a SPAWNED task through SQLite; querying
-    // immediately asserts that the write has already landed, which is a
-    // scheduling-and-I/O assumption, not a behaviour. It held on the canonical
-    // box and failed on windows-latest with `got 0`.
-    //
-    // The clock is PAUSED here (`tokio::time::pause()` above), so a `sleep`-based
-    // poll would auto-advance virtual time and return instantly without giving the
-    // writer a chance. This yields to the runtime and advances the virtual clock
-    // explicitly instead, so it is deterministic rather than wall-clock dependent.
-    //
-    // Safe by inspection: EVERY assertion in this test is a lower bound or an
-    // invariant (`binance_count > 0`, `kraken_count > 0`, `saw_coinbase_stale`,
-    // `>= 1` here, `res.is_ok()`, and a fixed supervisor count of 4). There is no
-    // upper bound on anything that grows with waiting, so polling can only help
-    // this assertion and cannot weaken another. That check is the point: the same
-    // pattern was reverted from `audit_aggregator_handles_10k_event_storm`
-    // precisely because there the assertion WAS a coverage ratio the wait weakened.
-    let mut events = Vec::new();
-    for _ in 0..200 {
-        events = audit::query::strategy_events_since(&ledger, ts_at(-3600))
-            .await
-            .expect("strategy_events_since");
-        if events
-            .iter()
-            .any(|e| matches!(e.kind, trading_core::StrategyEventKind::FeedReconnect))
-        {
-            break;
-        }
-        tokio::time::advance(Duration::from_millis(10)).await;
-        tokio::task::yield_now().await;
-    }
-    let coinbase_reconnect_count = events
-        .iter()
-        .filter(|e| matches!(e.kind, trading_core::StrategyEventKind::FeedReconnect))
-        .count();
-    assert!(
-        coinbase_reconnect_count >= 1,
-        "audit ledger must contain >= 1 FeedReconnect row after Coinbase panic; got {coinbase_reconnect_count}"
-    );
+    // ── 7. Back to the real clock for the drain.  The 5s budget below
+    //        is a WALL-CLOCK budget: under the paused clock tokio would
+    //        auto-advance straight to that deadline the moment the
+    //        runtime parked, firing the timeout instead of measuring
+    //        anything.  (The FeedReconnect assertion already ran, on
+    //        the real clock, at step 4b.)
+    tokio::time::resume();
 
     // ── 8. Cancel + drain.  No `JoinError::is_panic()` may surface
     //        from any supervisor — that's the panic-isolation

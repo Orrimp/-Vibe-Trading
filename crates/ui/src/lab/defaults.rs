@@ -6,7 +6,7 @@
 //!
 //! These constants are separate from `LabState::default()` because `LabState`
 //! owns `Option` fields — the cold-start is the first pre-populated state the
-//! operator sees after `persistence::restore_or_default` falls back.
+//! operator sees after `persistence::restore` falls back.
 
 use smol_str::SmolStr;
 use trading_core::{StrategyId, Symbol, Venue};

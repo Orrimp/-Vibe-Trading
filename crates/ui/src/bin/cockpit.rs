@@ -170,8 +170,11 @@ impl App {
         // the cockpit — earlier presets stay available for snapshot tests.
         #[cfg(feature = "fixtures")]
         let mut cockpit = ui::fixtures::fake_cockpit_v15a_pairs_steady_state();
+        // bug-log #102 — restore + arm the writer. Only this branch: the
+        // fixtures build above is a demo whose state is synthetic, and it must
+        // never write it over the operator's real session file.
         #[cfg(not(feature = "fixtures"))]
-        let mut cockpit = Cockpit::new();
+        let mut cockpit = Cockpit::boot(None);
 
         // Phase 2 boot — sidebar shell + universe + chart-buffer seed.
         // Q6=(a) (lab-end-to-end-v2 T-D1.2): pre-load bars for ALL 10

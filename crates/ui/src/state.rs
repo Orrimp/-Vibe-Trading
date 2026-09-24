@@ -992,6 +992,24 @@ pub struct Cockpit {
     /// M-FINAL adds persistence via `lab::persistence`.
     pub lab_state: LabState,
 
+    /// 3-21 / bug-log #102 — where the Lab session is persisted.
+    ///
+    /// `None` means persistence is NOT wired for this cockpit. The fixtures
+    /// demo, the gallery and every test construct one that way, so none of
+    /// them can write over the operator's real file. Only `Cockpit::boot`
+    /// sets it, and it is the single switch that makes the writer live.
+    pub lab_state_path: Option<std::path::PathBuf>,
+
+    /// What `Cockpit::boot` found on disk — restored, fresh, or a saved
+    /// session it could not read. Surfaced on the Lab screen (3-21 AC4) so a
+    /// restart is legible instead of mysterious.
+    pub lab_restore: crate::lab::persistence::RestoreOutcome,
+
+    /// Debounced writer for `lab_state`. Inert while `lab_state_path` is
+    /// `None`; driven by `update` (bug-log #102 — it was previously driven by
+    /// nothing at all).
+    pub lab_persist: crate::lab::persistence::PersistenceDebouncer,
+
     /// cockpit-activity-status-bar v0.1.0 Wave B (T-D-N4) — activity tape.
     /// In-flight background ops (Yahoo preload, Lab Run, Training).
     /// Updated by `Message::ActivityEventReceived` and purged at ~1 Hz by
@@ -1384,6 +1402,9 @@ impl std::fmt::Debug for Cockpit {
         );
         dbg.field("current_screen", &self.current_screen)
             .field("lab_state", &self.lab_state)
+            .field("lab_state_path", &self.lab_state_path)
+            .field("lab_restore", &self.lab_restore)
+            .field("lab_persist", &self.lab_persist)
             .field("universe", &self.universe)
             .field("selected_symbol", &self.selected_symbol)
             .field("chart_buffer", &self.chart_buffer)
@@ -1505,6 +1526,9 @@ impl Default for Cockpit {
             forward_budget: None,
             forward_fx: None,
             advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
+            lab_state_path: None,
+            lab_restore: crate::lab::persistence::RestoreOutcome::default(),
+            lab_persist: crate::lab::persistence::PersistenceDebouncer::default(),
         }
     }
 }
@@ -1529,9 +1553,13 @@ impl Cockpit {
     pub fn boot(state_path_override: Option<&std::path::Path>) -> Self {
         use crate::lab::persistence;
         let path = persistence::lab_state_path(state_path_override);
-        let lab_state = persistence::restore_or_default(&path);
+        let (lab_state, lab_restore) = persistence::restore(&path);
         Self {
             lab_state,
+            lab_restore,
+            // Arming the writer is what `boot` is FOR: a cockpit built with
+            // `new()` restores nothing and saves nothing (bug-log #102).
+            lab_state_path: Some(path),
             ..Self::default()
         }
     }
@@ -1633,6 +1661,11 @@ impl Cockpit {
             forward_budget: None,
             forward_fx: None,
             advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
+            // A fixture cockpit persists NOTHING: `None` here is the
+            // switch that keeps it off the operator's real session file.
+            lab_state_path: None,
+            lab_restore: crate::lab::persistence::RestoreOutcome::Fresh,
+            lab_persist: crate::lab::persistence::PersistenceDebouncer::default(),
         }
     }
 
@@ -2705,8 +2738,52 @@ fn promote_swept_config(model: &mut Cockpit, params: crate::tune::PromoteParams)
 /// The function is long because every `Message` variant gets its own arm
 /// — splitting it into sub-functions would obscure the one-place view of
 /// the state machine. `clippy::too_many_lines` disagrees; we disagree.
-#[allow(clippy::too_many_lines)]
+/// Does this message change something the saved Lab session records?
+///
+/// Deliberately an explicit list rather than a `Message::Lab*` prefix match:
+/// run progress, run completion and stop requests are transient, and marking
+/// them dirty would rewrite the file on every progress tick. The schema
+/// (`persistence::LabStateJson`) is the contract — strategy, pair, range,
+/// compare set, training-panel state. Nothing else is persisted, so nothing
+/// else belongs here.
+#[must_use]
+pub const fn persists_lab_state(msg: &Message) -> bool {
+    matches!(
+        msg,
+        Message::LabSelectPair(..)
+            | Message::LabSelectPrimaryStrategy(..)
+            | Message::LabToggleCompare(..)
+            | Message::LabSelectRange(..)
+            | Message::TrainingPanelToggled
+    )
+}
+
+/// Pure state transition, plus the two lines that make the Lab session durable.
+///
+/// The persistence wiring lives HERE rather than in each binary because
+/// `update` is the one seam both cockpits share — and for three years it was
+/// wired into neither (bug-log #102). `flush_if_due` is an `Instant` compare
+/// when nothing is pending, and the 1 Hz server-time tick guarantees an
+/// `update` at least once a second, so a change reaches disk within ~1.5 s of
+/// the operator going quiet without a subscription of its own.
 pub fn update(model: &mut Cockpit, msg: Message) {
+    if persists_lab_state(&msg) {
+        model.lab_persist.mark_dirty();
+    }
+    update_state_machine(model, msg);
+    // `is_due` first: it is an `Instant` compare and false on almost every
+    // message, so the hot path (bars, ticks) never reaches the `PathBuf` clone.
+    if model.lab_persist.is_due()
+        && let Some(path) = model.lab_state_path.clone()
+    {
+        model.lab_persist.flush_if_due(&model.lab_state, &path);
+    }
+}
+
+/// The state machine itself. Split out only so the early `return`s in its arms
+/// cannot skip the flush above; call `update`, not this.
+#[allow(clippy::too_many_lines)]
+fn update_state_machine(model: &mut Cockpit, msg: Message) {
     match msg {
         Message::BarReceived(bar) => {
             model.last_bar_ts = Some(bar.close_ts);

@@ -27,8 +27,25 @@
 #   2  — required artifact path missing (configuration / harness bug).
 #
 # The script is invocable standalone (`bash scripts/check_no_secrets_in_llm_artifacts.sh`)
-# AND from the V9 integration test (T1926 — wraps this script in a
-# `std::process::Command::status()` call after running the smoke harness).
+# AND from the V9 integration test (T1926).
+#
+# THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR THE PATTERN LIST.
+# `crates/llm/tests/no_secrets_in_artifacts_test.rs` READS the `PATTERNS=(...)`
+# array and the `SK_RE=` line out of this file at runtime and scans the smoke
+# run's artifacts itself, in Rust, on every platform — so the test and CI cannot
+# drift. Two consequences worth knowing before editing:
+#
+#   1. Keep the `PATTERNS=(` opener, one quoted pattern per line, and a closing
+#      `)` on its own line. The test's parser asserts it found >= 8 patterns and
+#      fails loudly rather than scanning a silently-empty list.
+#   2. Changing `SK_RE` fails that test on purpose: the Rust side pins the
+#      supported spelling (`SUPPORTED_SK_RE`) because its matcher is hand-rolled.
+#      Update both together.
+#
+# On unix the test ALSO executes this script verbatim, so the find/grep/strings
+# plumbing below stays exercised. It does not on windows-latest: `strings(1)` is
+# binutils (absent from Git-for-Windows) and a `strings`-less run reports "no
+# match" for every binary artifact — a gate that passes having scanned nothing.
 #
 # Usage:
 #   scripts/check_no_secrets_in_llm_artifacts.sh \

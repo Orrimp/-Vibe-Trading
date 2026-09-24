@@ -131,7 +131,11 @@ fn string_literals(src: &str) -> Vec<(usize, String)> {
                 } else if j < b.len() {
                     j += 1;
                 }
-                i = if b.get(j) == Some(&'\'') { j + 1 } else { i + 1 };
+                i = if b.get(j) == Some(&'\'') {
+                    j + 1
+                } else {
+                    i + 1
+                };
             }
             'r' if matches!(b.get(i + 1), Some('"') | Some('#')) => {
                 let mut j = i + 1;
@@ -181,7 +185,8 @@ fn string_literals(src: &str) -> Vec<(usize, String)> {
                                 hex.push(c);
                                 k += 1;
                             }
-                            if let Some(c) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
+                            if let Some(c) =
+                                u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
                             {
                                 s.push(c);
                             }
@@ -393,7 +398,11 @@ fn the_default_font_is_the_embedded_face_at_the_pixels() {
          reaching the widgets"
     );
 
-    let different = render_sample("Honest Advisor 0123456788 ✓ ✗ ⚠ ★ ●", false, Some(ui::theme::font::embedded()));
+    let different = render_sample(
+        "Honest Advisor 0123456788 ✓ ✗ ⚠ ★ ●",
+        false,
+        Some(ui::theme::font::embedded()),
+    );
     assert!(
         inherited != different,
         "the comparison above is vacuous: two different strings rasterise identically"
@@ -414,7 +423,12 @@ fn every_glyph_the_ui_draws_is_in_the_embedded_face() {
     let face = ttf_parser::Face::parse(ui::theme::font::UI_REGULAR, 0)
         .expect("the embedded face parses as a TTF");
     let mut covered: HashSet<u32> = HashSet::new();
-    for subtable in face.tables().cmap.expect("the embedded face has a cmap").subtables {
+    for subtable in face
+        .tables()
+        .cmap
+        .expect("the embedded face has a cmap")
+        .subtables
+    {
         if subtable.is_unicode() {
             subtable.codepoints(|cp| {
                 if subtable.glyph_index(cp).is_some() {
@@ -466,7 +480,10 @@ fn every_application_selects_the_embedded_font() {
     for dir in ["src", "tests"] {
         for file in rust_sources(&crate_dir().join(dir)) {
             // This file renders a control frame WITHOUT the default font on purpose.
-            if file.file_name().is_some_and(|n| n == "embedded_font_contract.rs") {
+            if file
+                .file_name()
+                .is_some_and(|n| n == "embedded_font_contract.rs")
+            {
                 continue;
             }
             let text = std::fs::read_to_string(&file).expect("read source");
@@ -521,18 +538,10 @@ fn every_canvas_text_names_the_embedded_font() {
 #[derive(Debug, Clone)]
 enum Message {}
 
+#[derive(Default)]
 struct Sample {
     text: String,
     names_the_font: bool,
-}
-
-impl Default for Sample {
-    fn default() -> Self {
-        Self {
-            text: String::new(),
-            names_the_font: false,
-        }
-    }
 }
 
 impl Sample {

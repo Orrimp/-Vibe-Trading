@@ -199,8 +199,46 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         .cache_summary
         .clone()
         .unwrap_or_else(crate::lab::cache_state::CacheSummary::empty);
+    // ── 3-21 AC4 / bug-log #102 — session-restore notice ───────────────
+    // "Restored from <when>" / "Fresh session" / the failure and where the
+    // unreadable file was kept. Until #102 the cockpit restored nothing, so a
+    // reset was indistinguishable from a saved session; this line is what
+    // makes a restart legible.
+    //
+    // Pushed INTO the existing toolbar row rather than added as a new body
+    // child on purpose: `chart_body_height_px` above counts the body Column's
+    // 12 children to size the chart, and a 13th would silently mis-size it.
+    //
+    // Gated on `lab_state_path.is_some()` — i.e. on persistence actually being
+    // armed for THIS cockpit. A fixture, gallery or demo cockpit persists
+    // nothing, so telling its viewer "Fresh session" would be a claim about
+    // durability that is not true there. Silence is the honest render when
+    // there is no session to have restored. (Caught by the 8 byte-exact
+    // `render_snapshots` baselines, which are fixture cockpits.)
+    let restore_failed = model.lab_restore.is_failure();
+    let restore_line: crate::Element<'_> = if model.lab_state_path.is_some() {
+        let mut line = model.lab_restore.headline();
+        if let Some(detail) = model.lab_restore.detail() {
+            line.push_str(" — ");
+            line.push_str(&detail);
+        }
+        Text::new(line)
+            .size(text::SMALL)
+            .color(if restore_failed {
+                color::DOWN_500.current(mode)
+            } else {
+                color::FG_2.current(mode)
+            })
+            .into()
+    } else {
+        iced::widget::Space::new()
+            .width(Length::Fixed(0.0))
+            .height(Length::Fixed(0.0))
+            .into()
+    };
     let cache_summary_toolbar_row = Row::new()
         .spacing(space::S)
+        .push(restore_line)
         .push(iced::widget::Space::new().width(Length::Fill))
         .push(cache_state_summary_badge::view(&cache_summary_borrow, mode))
         .width(Length::Fill);

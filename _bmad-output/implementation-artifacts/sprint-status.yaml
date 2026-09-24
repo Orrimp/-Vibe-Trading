@@ -199,7 +199,7 @@ development_status:
   3-18-advisor-reflection-decision-loop: ready-for-dev  # arch-done; build awaits an operator decision
   3-19-advisor-eur-live-rate: ready-for-dev  # 2026-07-27 operator decision PRD §13 Q1 = BUILD (live-fetched EUR/USD at plan render; static rate stays offline fallback)
   3-20-advisor-honesty-surface: ready-for-dev  # 2026-08-04 operator: BUILD, sequenced behind 6-9's embedded-font fix (AD-10 pixel proof impossible until the baseline gate is green) — 2026-08-04 product review (PRD §13 Q8) — verdict surface shows what was searched, the report-only scorecard label, the standing qualifier, and a next step; pixel proof blocked on 6-9's embedded font
-  3-21-paper-portfolio-durability: ready-for-dev  # 2026-08-04 operator: inventory-first DONE (money side sound via atomic SQLite double-entry; REAL defect = silent cold-start reset on version/parse failure) — 2026-08-04 product review (finding 12) — survival contract + crash-consistency + versioned state for the user's paper €200
+  3-21-paper-portfolio-durability: done  # 2026-09-24 — the inventory UNDERSTATED it: the whole persistence path was unreachable from either binary (bug-log #102), so AC3 shipped on top of wiring it. Survival contract (docs/runbooks/paper-state-durability.md), SIGKILL-mid-transaction crash proof, fail-loud load that keeps an unreadable file aside, restore notice proven at the pixels
   epic-3-retrospective: optional
 
   # -- Epic 4: v2 Research-Driven Credibility Tranche

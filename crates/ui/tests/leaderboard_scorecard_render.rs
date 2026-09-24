@@ -223,7 +223,10 @@ fn scorecard_block_paints_and_exceeds_no_scorecard() {
 #[test]
 fn scorecard_block_is_entirely_above_the_fold() {
     let with_sc = ui::fixtures::fake_bakeoff_report_mirror_benchmark_wins();
-    assert!(with_sc.scorecard.is_some(), "the fixture must carry a scorecard");
+    assert!(
+        with_sc.scorecard.is_some(),
+        "the fixture must carry a scorecard"
+    );
     let mut without_sc = with_sc.clone();
     without_sc.scorecard = None;
 
@@ -252,7 +255,9 @@ fn scorecard_block_is_entirely_above_the_fold() {
         .expect("the pane has content after the scorecard's position");
     let shift = (1..TALL.saturating_sub(y1 + WINDOW))
         .find(|&d| (y1..y1 + WINDOW).all(|y| tall_without.row_eq(y, &tall_with, y + d)))
-        .expect("the block after the scorecard was not found, shifted down, in the frame that has it");
+        .expect(
+            "the block after the scorecard was not found, shifted down, in the frame that has it",
+        );
     // Conservative bottom: from the first diverging row, so it can only over-state.
     let bottom = y0 + shift;
 
@@ -261,7 +266,9 @@ fn scorecard_block_is_entirely_above_the_fold() {
         FOLD,
     );
     fold.save("/tmp/leaderboard_scorecard_render.png");
-    eprintln!("scorecard block: rows {y0}..{bottom} (height incl. spacing {shift} px), fold at {FOLD}");
+    eprintln!(
+        "scorecard block: rows {y0}..{bottom} (height incl. spacing {shift} px), fold at {FOLD}"
+    );
 
     assert!(
         bottom <= FOLD,

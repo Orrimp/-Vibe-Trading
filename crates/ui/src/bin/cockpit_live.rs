@@ -702,7 +702,17 @@ fn main() -> Result<()> {
         })
     };
 
-    let mut cockpit = Cockpit::new();
+    // bug-log #102 — `boot` rather than `new`: it restores the saved Lab
+    // session AND arms the debounced writer. `new()` does neither, which is
+    // how this binary spent three years persisting nothing at all.
+    //
+    // Known bound, not a claim of completeness: the flush is debounced 500 ms
+    // and driven by `ui::state::update`, and `iced::application(..).run()`
+    // consumes the `AppState` — the `app_state` still in scope below is a
+    // pre-boot clone, so there is no correct place to force a final flush.
+    // A selection changed in the last ~500 ms before the window closes is
+    // lost. Documented in docs/runbooks/paper-state-durability.md.
+    let mut cockpit = Cockpit::boot(None);
     cockpit.kill_switch = Some(trip);
     cockpit.current_screen = Screen::Live;
     cockpit.universe = universe_pairs.clone();

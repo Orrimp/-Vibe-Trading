@@ -99,7 +99,8 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
     ui::force_chart_utc_for_tests();
     let program = leaderboard_screen_program(cockpit);
     let theme = iced::Theme::Dark;
-    let screenshot = iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
+    let screenshot =
+        iced_test::screenshot(&program, &theme, (1920, PANE_HEIGHT), 1.0, Duration::ZERO);
     let (w, h) = (screenshot.size.width, screenshot.size.height);
     let rgba = screenshot.rgba.to_vec();
     assert_pane_fits(w, h, &rgba);

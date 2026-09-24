@@ -12,8 +12,12 @@
 //! - **XDG path** — `$XDG_CONFIG_HOME/trading/cockpit-lab-state.json`, defaulting
 //!   to `~/.config/trading/`. macOS keeps the same path (not `~/Library/…`)
 //!   for symmetry with Linux (Design § 5.2).
-//! - **Corruption → cold-start fallback** — `tracing::warn!` + cold-start
-//!   defaults; never panic on a malformed state file (R6.3).
+//! - **Corruption → cold-start, and the operator is TOLD** — never panic on a
+//!   malformed state file (R6.3), but never swallow it either. `restore`
+//!   returns a [`RestoreOutcome`] alongside the state, and a file it could not
+//!   use is renamed out of the writer's path first, because the debounced
+//!   writer would otherwise overwrite it with defaults ~500 ms later
+//!   (story 3-21 AC3/AC4, bug-log #102).
 //! - **`version: 1` schema** — `params: null` reserved for Phase B; `compare_set`
 //!   as an array so Phase B can extend additively (Design § 5.1).
 //!
@@ -169,7 +173,7 @@ fn range_from_json(r: &PersistRange) -> DateRange {
 pub fn encode(state: &LabState) -> Result<String, serde_json::Error> {
     use trading_core::StrategyId;
     let json = LabStateJson {
-        version: 1,
+        version: SCHEMA_VERSION,
         strategy: state.strategy.as_ref().map(|s| s.0.to_string()),
         pair: state.pair.as_ref().map(|(v, sym)| PersistPair {
             venue: format!("{v:?}"),
@@ -189,32 +193,136 @@ pub fn encode(state: &LabState) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(&json)
 }
 
-/// Deserialize a `LabState` from a JSON string.
+/// The only lab-state schema version this cockpit writes and understands.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// Why a saved lab session could not be restored.
 ///
-/// On any parse error, logs a warning and returns the cold-start defaults.
-#[must_use]
-pub fn decode(json: &str, source_hint: &str) -> LabState {
-    match serde_json::from_str::<LabStateJson>(json) {
-        Ok(j) => {
-            if j.version != 1 {
-                warn!(
-                    path = source_hint,
-                    version = j.version,
-                    "unsupported lab-state schema version; falling back to cold-start defaults"
-                );
-                return cold_start_defaults();
-            }
-            lab_state_from_json(&j)
-        }
-        Err(e) => {
-            warn!(
-                path = source_hint,
-                error = %e,
-                "failed to parse lab-state JSON; falling back to cold-start defaults"
-            );
-            cold_start_defaults()
+/// Story 3-21 AC3: a version we do not understand, or bytes we cannot parse,
+/// fails LOUDLY with something actionable. It does not drop the operator's
+/// saved selection behind a `tracing` line they will never see.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FailureReason {
+    /// Written by a cockpit with a different schema. No migration exists yet —
+    /// version 1 is the only version there has ever been, so every mismatch is
+    /// a fail-loud. A future v2 migrates HERE, and only then may this arm shrink.
+    UnsupportedVersion { found: u32, supported: u32 },
+    /// The file is not the JSON this schema expects.
+    Corrupt { detail: String },
+    /// The file could not be read at all — permissions, or an I/O error.
+    Unreadable { detail: String },
+}
+
+impl std::fmt::Display for FailureReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedVersion { found, supported } => write!(
+                f,
+                "saved by schema version {found}; this cockpit reads version {supported}"
+            ),
+            Self::Corrupt { detail } => write!(f, "the file is not valid lab-state JSON: {detail}"),
+            Self::Unreadable { detail } => write!(f, "the file could not be read: {detail}"),
         }
     }
+}
+
+/// A saved session that existed and could not be used.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreFailure {
+    /// What went wrong.
+    pub reason: FailureReason,
+    /// Where the unusable file was moved so the debounced writer cannot
+    /// overwrite it with cold-start defaults. `None` means the rescue itself
+    /// failed — the message says so rather than promising one that did not happen.
+    pub preserved_at: Option<PathBuf>,
+}
+
+/// What happened when the cockpit last tried to restore the saved lab session.
+///
+/// This is part of the contract, not a log line. A failed load leaves the
+/// operator looking at cold-start defaults that are indistinguishable from
+/// their own saved selection — which is the whole of bug-log #102's second
+/// half, and what story 3-21 AC4 asks to be made legible.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum RestoreOutcome {
+    /// No state file yet — first launch on this machine. Not a failure.
+    #[default]
+    Fresh,
+    /// The saved session came back. `saved_at` is the file's modification time.
+    Restored {
+        saved_at: Option<std::time::SystemTime>,
+    },
+    /// A state file existed and could not be used; cold-start defaults are
+    /// on screen instead.
+    Failed(RestoreFailure),
+}
+
+impl RestoreOutcome {
+    /// The one line the operator reads (AC4). Never empty: "fresh session" is
+    /// an answer, and an unexplained reset is the thing being fixed.
+    #[must_use]
+    pub fn headline(&self) -> String {
+        match self {
+            Self::Fresh => "Fresh session".to_owned(),
+            Self::Restored { saved_at } => saved_at.map_or_else(
+                || "Restored from your last session".to_owned(),
+                |t| format!("Restored from {}", stamp(t)),
+            ),
+            Self::Failed(_) => "Fresh session — your saved one could not be read".to_owned(),
+        }
+    }
+
+    /// The actionable half: what happened and where the old file went.
+    /// `None` when nothing is wrong.
+    #[must_use]
+    pub fn detail(&self) -> Option<String> {
+        let Self::Failed(f) = self else { return None };
+        Some(match &f.preserved_at {
+            Some(to) => format!("{} — kept at {}", f.reason, to.display()),
+            None => format!(
+                "{} — and it could NOT be moved aside, so it may be overwritten",
+                f.reason
+            ),
+        })
+    }
+
+    /// Did a saved session exist and fail to load?
+    #[must_use]
+    pub const fn is_failure(&self) -> bool {
+        matches!(self, Self::Failed(_))
+    }
+}
+
+/// `2026-09-24 14:32 UTC` — minute resolution is what a restart notice needs.
+fn stamp(t: std::time::SystemTime) -> String {
+    let dt = time::OffsetDateTime::from(t);
+    format!("{} {:02}:{:02} UTC", dt.date(), dt.hour(), dt.minute())
+}
+
+/// Deserialize a `LabState` from a JSON string.
+///
+/// # Errors
+/// Returns the [`FailureReason`] rather than silently cold-starting: the caller
+/// owns what the operator sees (story 3-21 AC3, bug-log #102).
+pub fn decode(json: &str, source_hint: &str) -> Result<LabState, FailureReason> {
+    let j: LabStateJson = serde_json::from_str(json).map_err(|e| {
+        warn!(path = source_hint, error = %e, "lab-state JSON did not parse");
+        FailureReason::Corrupt {
+            detail: e.to_string(),
+        }
+    })?;
+    if j.version != SCHEMA_VERSION {
+        warn!(
+            path = source_hint,
+            version = j.version,
+            "unsupported lab-state schema version"
+        );
+        return Err(FailureReason::UnsupportedVersion {
+            found: j.version,
+            supported: SCHEMA_VERSION,
+        });
+    }
+    Ok(lab_state_from_json(&j))
 }
 
 fn lab_state_from_json(j: &LabStateJson) -> LabState {
@@ -272,25 +380,72 @@ pub fn write_sync(state: &LabState, path: &Path) -> std::io::Result<()> {
     std::fs::write(path, json.as_bytes())
 }
 
-/// Read and decode a `LabState` from `path`.
-/// Returns cold-start defaults on any error (file not found, parse failure).
+/// Read and decode a `LabState` from `path`, reporting what happened.
+///
+/// A file this function could not use is MOVED ASIDE before it returns. That is
+/// not tidiness: the debounced writer overwrites `path` unconditionally about
+/// 500 ms after the next Lab interaction, so without the rescue a load failure
+/// would DESTROY the operator's saved session rather than merely ignore it
+/// (bug-log #102, story 3-21 AC3).
 #[must_use]
-pub fn restore_or_default(path: &Path) -> LabState {
+pub fn restore(path: &Path) -> (LabState, RestoreOutcome) {
     match std::fs::read_to_string(path) {
-        Ok(content) => decode(&content, &path.display().to_string()),
+        Ok(content) => match decode(&content, &path.display().to_string()) {
+            Ok(state) => {
+                let saved_at = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+                (state, RestoreOutcome::Restored { saved_at })
+            }
+            Err(reason) => (cold_start_defaults(), preserve_and_report(path, reason)),
+        },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // First launch — cold start is normal.
-            cold_start_defaults()
+            // First launch on this machine — cold start is the correct answer,
+            // and the only one that is not a failure.
+            (cold_start_defaults(), RestoreOutcome::Fresh)
         }
-        Err(e) => {
-            warn!(
-                path = %path.display(),
-                error = %e,
-                "failed to read lab-state file; falling back to cold-start defaults"
-            );
-            cold_start_defaults()
-        }
+        Err(e) => (
+            cold_start_defaults(),
+            preserve_and_report(
+                path,
+                FailureReason::Unreadable {
+                    detail: e.to_string(),
+                },
+            ),
+        ),
     }
+}
+
+/// Move a file we could not use out of the writer's way, then report it.
+fn preserve_and_report(path: &Path, reason: FailureReason) -> RestoreOutcome {
+    warn!(path = %path.display(), reason = %reason, "could not restore lab state");
+    let preserved_at = preserve(path);
+    if let Some(to) = &preserved_at {
+        warn!(from = %path.display(), to = %to.display(), "lab-state file kept aside");
+    } else {
+        warn!(
+            path = %path.display(),
+            "lab-state file could NOT be kept aside; it may be overwritten"
+        );
+    }
+    RestoreOutcome::Failed(RestoreFailure {
+        reason,
+        preserved_at,
+    })
+}
+
+/// Best-effort rename to `<name>.unreadable-<unix-seconds>`.
+///
+/// Returns `None` when the rename fails — including the case where the file was
+/// unreadable because the directory itself is not writable. The caller reports
+/// the `None` honestly instead of claiming a rescue that did not happen.
+fn preserve(path: &Path) -> Option<PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    let mut name = path.file_name()?.to_os_string();
+    name.push(format!(".unreadable-{stamp}"));
+    let to = path.with_file_name(name);
+    std::fs::rename(path, &to).ok().map(|()| to)
 }
 
 // ── Debounce state ────────────────────────────────────────────────────────────
@@ -303,7 +458,7 @@ pub const DEBOUNCE_MS: u64 = 500;
 /// Call `mark_dirty()` on every `Message::Lab*` mutation, then
 /// `flush_if_due(state, path)` on a periodic timer (or at cockpit shutdown)
 /// to write if the deadline has passed.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct PersistenceDebouncer {
     /// `Some(instant_millis)` when a write is pending.
     dirty_since: Option<std::time::Instant>,
@@ -358,7 +513,7 @@ impl PersistenceDebouncer {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use trading_core::{StrategyId, Symbol, Venue};
@@ -380,7 +535,7 @@ mod tests {
     fn encode_decode_roundtrip() {
         let original = make_test_state();
         let json = encode(&original).unwrap();
-        let restored = decode(&json, "test");
+        let restored = decode(&json, "test").expect("round-trip must decode");
 
         assert_eq!(
             restored.strategy.as_ref().map(|s| s.0.as_str()),
@@ -391,16 +546,100 @@ mod tests {
         assert_eq!(restored.compare_len(), original.compare_len());
     }
 
-    /// T-D-17 — corrupted JSON → cold-start fallback (no panic, no crash).
+    /// 3-21 AC3 — corrupted JSON is REPORTED, not swallowed. The old contract
+    /// ("returns cold-start defaults") is still honoured by `restore`, but the
+    /// reason now reaches the caller so the operator can be told.
     #[test]
-    fn decode_corrupted_returns_cold_start() {
+    fn decode_corrupted_reports_the_reason() {
         let bad = r#"{"version": 1, "range": NOTJSON}"#;
-        let state = decode(bad, "test");
-        // Should be cold-start defaults (Bug #54 fix: v0.sma, not v1.momentum).
+        match decode(bad, "test") {
+            Err(FailureReason::Corrupt { detail }) => assert!(
+                !detail.is_empty(),
+                "the reason must carry something actionable"
+            ),
+            other => panic!("expected Corrupt, got {other:?}"),
+        }
+    }
+
+    /// 3-21 AC3 — a schema version we do not understand fails loudly and names
+    /// both versions. No migration exists yet; when one does, it lands here.
+    #[test]
+    fn decode_unsupported_version_fails_loudly() {
+        let future =
+            r#"{"version": 99, "range": {"kind": "preset", "preset": "Last90d"}, "params": null}"#;
+        match decode(future, "test") {
+            Err(FailureReason::UnsupportedVersion { found, supported }) => {
+                assert_eq!(found, 99);
+                assert_eq!(supported, SCHEMA_VERSION);
+            }
+            other => panic!("expected UnsupportedVersion, got {other:?}"),
+        }
+    }
+
+    /// 3-21 AC3 — the rescue. A file we could not read is moved aside BEFORE
+    /// the writer can overwrite it, and the outcome says where it went.
+    #[test]
+    fn restore_preserves_a_file_it_cannot_use() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("cockpit-lab-state.json");
+        std::fs::write(&path, r#"{"version": 99}"#).unwrap();
+
+        let (state, outcome) = restore(&path);
+
         assert_eq!(
             state.strategy.as_ref().map(|s| s.0.as_str()),
-            Some("v0.sma")
+            Some("v0.sma"),
+            "cold-start defaults still stand in (Bug #54: v0.sma, not v1.momentum)"
         );
+        let RestoreOutcome::Failed(f) = &outcome else {
+            panic!("expected Failed, got {outcome:?}")
+        };
+        let kept = f.preserved_at.as_ref().expect("the file must be kept");
+        assert!(kept.exists(), "the kept-aside file must be on disk");
+        assert!(
+            !path.exists(),
+            "the original path must be free for the writer"
+        );
+        assert!(
+            outcome
+                .detail()
+                .unwrap()
+                .contains(&kept.display().to_string()),
+            "the operator must be told WHERE it went"
+        );
+    }
+
+    /// 3-21 AC4 — a good file restores and reports when it was saved.
+    #[test]
+    fn restore_reports_when_the_session_was_saved() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("cockpit-lab-state.json");
+        write_sync(&make_test_state(), &path).unwrap();
+
+        let (state, outcome) = restore(&path);
+
+        assert_eq!(state.pair, make_test_state().pair);
+        let RestoreOutcome::Restored { saved_at } = outcome else {
+            panic!("expected Restored, got {outcome:?}")
+        };
+        assert!(saved_at.is_some(), "a file on disk has a modification time");
+        assert!(
+            RestoreOutcome::Restored { saved_at }
+                .headline()
+                .starts_with("Restored from 20"),
+            "AC4 wants a timestamp the operator can read"
+        );
+    }
+
+    /// 3-21 AC4 — a first launch is an ANSWER, not a silence.
+    #[test]
+    fn restore_absent_file_reads_as_fresh() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, outcome) = restore(&tmp.path().join("nope.json"));
+        assert_eq!(outcome, RestoreOutcome::Fresh);
+        assert_eq!(outcome.headline(), "Fresh session");
+        assert_eq!(outcome.detail(), None);
+        assert!(!outcome.is_failure());
     }
 
     /// T-D-17 — `write_sync` creates the file and parent dirs.
@@ -415,10 +654,10 @@ mod tests {
         assert!(content.contains("version"), "expected 'version' in JSON");
     }
 
-    /// T-D-17 — `restore_or_default` returns cold-start when file absent.
+    /// T-D-17 — an absent file yields cold-start state.
     #[test]
     fn restore_absent_file_returns_cold_start() {
-        let state = restore_or_default(Path::new("/tmp/nonexistent-lab-state-999.json"));
+        let (state, _) = restore(Path::new("/tmp/nonexistent-lab-state-999.json"));
         assert_eq!(
             state.strategy.as_ref().map(|s| s.0.as_str()),
             Some("v0.sma"),
@@ -433,7 +672,7 @@ mod tests {
         let path = tmp.path().join("cockpit-lab-state.json");
         let original = make_test_state();
         write_sync(&original, &path).unwrap();
-        let restored = restore_or_default(&path);
+        let (restored, _) = restore(&path);
         assert_eq!(
             restored.strategy.as_ref().map(|s| s.0.as_str()),
             original.strategy.as_ref().map(|s| s.0.as_str()),
@@ -527,7 +766,7 @@ mod tests {
     fn cold_start_encode_decode_qa3() {
         let state = cold_start_defaults();
         let json = encode(&state).unwrap();
-        let restored = decode(&json, "test");
+        let restored = decode(&json, "test").expect("round-trip must decode");
         assert_eq!(
             restored.strategy.as_ref().map(|s| s.0.as_str()),
             Some("v0.sma")
@@ -550,7 +789,7 @@ mod tests {
         let mut state = cold_start_defaults();
         state.training_panel_collapsed = true;
         let json = encode(&state).unwrap();
-        let restored = decode(&json, "test-collapsed");
+        let restored = decode(&json, "test-collapsed").expect("must decode");
         assert!(
             restored.training_panel_collapsed,
             "collapsed=true must roundtrip"
@@ -559,7 +798,7 @@ mod tests {
         // Expanded = false (operator opened the panel, then saved state).
         state.training_panel_collapsed = false;
         let json = encode(&state).unwrap();
-        let restored = decode(&json, "test-expanded");
+        let restored = decode(&json, "test-expanded").expect("must decode");
         assert!(
             !restored.training_panel_collapsed,
             "collapsed=false must roundtrip"
@@ -582,7 +821,7 @@ mod tests {
             "params": null,
             "compare_set": []
         }"#;
-        let restored = decode(pre_feature_json, "pre-feature-test");
+        let restored = decode(pre_feature_json, "pre-feature-test").expect("must decode");
         assert!(
             restored.training_panel_collapsed,
             "pre-feature JSON must load with training_panel_collapsed=true (R8.1 / Q4)"

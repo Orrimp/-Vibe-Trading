@@ -198,6 +198,7 @@ Not a feature program — a **bounded ship-readiness pass** ratified after the v
 - **lab-yahoo-realdata** — multi-asset Yahoo data pivot for the Lab (+ v0.1.2 ETH-USD anchor & cache badge, + v0.1.3 REVISION front-matter & Binance ETH H1).
 - **lab-yahoo-empty-range-ux** — empty-date-range UX handling.
 - **bug-64-d11-attempt-3-yahoo-run-runtime-context** — Yahoo+Run runtime-context + cancellation fix.
+- **paper-portfolio-durability** (story 3-21) — the Lab session actually persists now: `Cockpit::boot` + a debounced writer wired into `state::update` (both were unreachable from either binary — bug-log #102), a load path that fails loudly and keeps an unreadable file aside instead of letting the writer overwrite it, a "Fresh session / Restored from &lt;ts&gt;" notice proven at the pixels, a SIGKILL-mid-transaction crash-consistency proof for the ledger, and [the survival contract](docs/runbooks/paper-state-durability.md) in one place.
 
 ### iced platform & UI quality gates
 - **iced-native-widgets** + **iced-aw-cherry-pick** + **ui-drop-iced-aw** — migration to native iced widgets, dropping `iced_aw`/`iced_fonts`.
