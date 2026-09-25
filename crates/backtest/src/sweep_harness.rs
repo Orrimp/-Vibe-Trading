@@ -2336,10 +2336,29 @@ pub fn render_surface_report(
         body.push_str("|----|----------|-----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|------------|----------|-------|\n");
     } else if show_mn {
         body.push_str(
-            "Liquidations = total maintenance-margin liquidation events across all N paths (MN only, D-MN.8).\n\n",
+            "Liquidations = total maintenance-margin liquidation events across all N paths (MN only, D-MN.8).\n",
         );
-        body.push_str("| g  | lookback | rebalance | k_long | k_short | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | liquidations | verdict  | notes |\n");
-        body.push_str("|----|----------|-----------|--------|---------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------|----------|-------|\n");
+        body.push_str(
+            "Trades = total trade count across all N paths. NOTE: this count INCLUDES synthetic\n",
+        );
+        body.push_str(
+            "liquidation covers, so MN turnover is not directly comparable with the long-only families\n",
+        );
+        body.push_str(
+            "(bug-log #110). Read it next to the liquidations column, not on its own.\n",
+        );
+        body.push_str(
+            "Funding = total realized funding cashflow across all N paths, in quote currency. The MN short\n",
+        );
+        body.push_str(
+            "leg shorts the HIGHEST-funding names, so it is an INCOME leg: a positive figure means the book\n",
+        );
+        body.push_str(
+            "received funding. Together with the fee ladder this makes R-MN.3's net-of-cost read derivable\n",
+        );
+        body.push_str("from this report rather than from outside it.\n\n");
+        body.push_str("| g  | lookback | rebalance | k_long | k_short | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | liquidations | trades     | funding        | verdict  | notes |\n");
+        body.push_str("|----|----------|-----------|--------|---------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------|------------|----------------|----------|-------|\n");
     } else if show_trades {
         body.push_str(
             "Trades = total trade count across all N paths (turnover legibility — R-MR.3).\n\n",
@@ -2432,7 +2451,7 @@ pub fn render_surface_report(
             let _ = std::fmt::Write::write_fmt(
                 &mut body,
                 format_args!(
-                    "| {:2} | {:8} | {:9} | {:6} | {:7} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:12} | {:8} | {} |\n",
+                    "| {:2} | {:8} | {:9} | {:6} | {:7} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:12} | {:10} | {:14.2} | {:8} | {} |\n",
                     cr.cell.g,
                     cr.cell.lookback_minutes,
                     cr.cell.rebalance_minutes_override,
@@ -2447,6 +2466,8 @@ pub fn render_surface_report(
                     s.max_dd_tail_p95 * 100.0,
                     spread,
                     cr.total_liquidations,
+                    cr.total_trades,
+                    cr.total_funding_harvested,
                     verdict_str,
                     c5_flag,
                 ),
@@ -2518,8 +2539,40 @@ pub fn render_surface_report(
 
     body.push('\n');
 
+    // The § 0 null. ADR-0051 § D-MN: "The null: a dollar-neutral ~0 cash-equivalent,
+    // NOT buy-and-hold ... a beta-neutral book's null is cash; benchmarking against
+    // +1.74 was the long-only mistake this feature corrects." Declared there, never
+    // rendered until bug-log #110. Analytic, not simulated: a dollar-neutral book
+    // holding no risk returns 0 on every path, so every statistic is 0 by construction
+    // and there is nothing to resample. It carries NO verdict.
+    if is_mn_run {
+        body.push_str("## Dollar-neutral null (the § 0 null for a beta-neutral book)\n\n");
+        body.push_str(
+            "ADR-0051 § D-MN: a beta-neutral book's null is CASH, not buy-and-hold. This row is the\n",
+        );
+        body.push_str(
+            "bar the spread must clear on the frozen § 0 weakest-link bands. It is analytic, not\n",
+        );
+        body.push_str(
+            "resampled: a dollar-neutral cash-equivalent returns 0 on every path, so every statistic\n",
+        );
+        body.push_str("below is 0 by construction. It carries NO verdict.\n\n");
+        body.push_str("| row       | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | verdict  |\n");
+        body.push_str("|-----------|-----------|------------|------------|-----------|-------------|-----------|----------|----------|\n");
+        body.push_str("| NULL-0    | 0.000000 | 0.000000  | 0.000000  | 0.000000 | 0.000000    | 0.00%   | 0.000000 | (null — no verdict) |\n\n");
+    }
+
     // Buy-and-hold control row (passive benchmark — no verdict).
     body.push_str("## Buy-and-hold passive control (adversarial-review benchmark)\n\n");
+    if is_mn_run {
+        body.push_str(
+            "RETAINED AS A REFERENCE, NOT AS THIS ARM'S NULL. Per ADR-0051 § D-MN, buy-and-hold is the\n",
+        );
+        body.push_str(
+            "WRONG null for a beta-stripped book — the § 0 null above is. It is kept because deleting a\n",
+        );
+        body.push_str("measured control loses information, and it is labelled so it cannot be read as the bar.\n\n");
+    }
     body.push_str("Equal-weight, hold from bar 0 over the SAME N paths and auto-L bootstrap.\n");
     body.push_str("Reference: adversarial review p50 Sharpe ≈ +1.78, P(loss) ≈ 4%, p95 MaxDD ≈ 51% at auto-L, N=500.\n\n");
     body.push_str("| row       | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | verdict  |\n");
@@ -2666,10 +2719,30 @@ pub fn render_surface_report(
                         "across the tested parameter space on this 10-symbol universe. The dollar-neutral\n",
                     );
                     body.push_str(
-                        "construction removes directional beta but not fee-bleed from short-leg turnover.\n",
+                        "construction removes directional beta. This report does NOT identify what remains\n",
                     );
                     body.push_str(
+                        "as the binding cost, and it no longer claims fee-bleed: the 2026-09-25 re-lock\n",
+                    );
+                    body.push_str(
+                        "measured this family at BOTH fee levels and the arm is uniformly FRAGILE at 0 bps\n",
+                    );
+                    body.push_str(
+                        "taker fee — with no fee bleed at all — while 0 -> 5 bps costs only ~0.05-0.16\n",
+                    );
+                    body.push_str(
+                        "Sharpe against a gap to the FRAGILE band of ~0.3. The fee is not the killer.\n",
+                    );
+                    if taker_fee_bps == 0 {
+                        body.push_str(
+                            "This surface IS the 0 bps read: fee-bleed is excluded by construction here.\n",
+                        );
+                    }
+                    body.push_str(
                         "VERDICT: FRAGILE. Pre-registered result — see R-MN.LOAD (§ D6.10).\n",
+                    );
+                    body.push_str(
+                        "Supersession (bug-log #110): the earlier fee-bleed reading is WITHDRAWN, not softened.\n",
                     );
                 }
                 SweepScoreSource::VolAdjustedReturn => match direction {

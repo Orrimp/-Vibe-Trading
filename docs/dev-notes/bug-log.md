@@ -1864,6 +1864,47 @@ bisectable defect with its own cause, and it wants its own story — not a line 
 errata.
 
 ### `#110` — the re-lock re-ran the arithmetic through the same renderer, so every prose rider survived into a third generation of anchored bodies
+**Status**: RESOLVED 2026-09-25 — operator ruled "fix the renderer and re-emit", and it is done.
+The 12 MN surfaces were re-run through a corrected renderer and re-emitted in place. Not a D6.b
+case (D6.b covers bodies reflecting a *wiring bug*; these were renderer strings), so it was ruled
+on its own. What landed, in `crates/backtest/src/sweep_harness.rs`:
+
+- **The falsified fee-bleed claim is WITHDRAWN, not softened.** The MN conclusion now states that
+  the report does not identify the binding cost, carries the measurement that refutes the old
+  reading (uniformly FRAGILE at 0 bps; 0 → 5 bps costs ~0.05–0.16 Sharpe against a ~0.3 gap to the
+  band), and adds an explicit `Supersession (bug-log #110)` line. A 0-bps surface additionally says
+  so of itself: *"This surface IS the 0 bps read: fee-bleed is excluded by construction here."*
+- **The § 0 dollar-neutral null is rendered at last** as a `NULL-0` row, analytic and verdict-free,
+  quoting ADR-0051 § D-MN. BUYHOLD is kept but explicitly demoted — deleting a measured control
+  loses information; leaving it unlabelled let it be read as the bar.
+- **`trades` and `funding` columns added**, so R-MN.3's net-of-cost read is derivable from the
+  report instead of from outside it. The `trades` header says in the body that the count **includes
+  synthetic liquidation covers**, which is the comparability trap made visible rather than removed.
+
+**Two negative controls, both measured, not assumed:**
+
+1. **Non-MN bodies are untouched.** Two non-MN surfaces (`ts-horizon-daily-2023`,
+   `carry-horizon-4h-2023`) were re-run through the changed renderer: **both body-SHAs
+   byte-identical.** Independently, with the 12 new MN bodies in place and `anchors.toml` still
+   untouched, the gate reported exactly **12 FAIL / 107 PASS**.
+2. **The renderer moved no number.** Every shared θ-cell column across all 12 surfaces is
+   **byte-identical to the first pass** — the change is presentation, not computation.
+
+`anchors.toml`: 119 rows before and after, none added, none deleted, **12 SHAs changed (all
+`v2-mn-*`), 107 byte-identical, 0 namespaces changed**. **ANCHORS PASS (119 / 119)**; spec-lint
+PASS; adr-registry PASS; `p2_verdict_rerun` 3/3, `null_data_no_crown` 8/8, backtest lib 298/298;
+clippy clean on the touched crate.
+
+**Still open, and deliberately so:** the **ruin count**. Making a wiped-out path distinguishable
+from a merely-bad one needs a counter threaded through the path loop, not a renderer line, so it
+is out of this pass's scope and is not claimed as delivered. Same for separating synthetic
+liquidation covers from real fills in `trades` — the body now *says* they are conflated, which is
+the honest interim, not the fix.
+
+---
+
+**Original entry, kept for the record:**
+
 **Status**: OPEN — found 2026-09-25 while answering story 1-26's AC6 (unblock 1-21).
 Anchor-impacting: **yes if fixed** — the strings live in the hashed body, so clearing them
 re-locks the 12 MN surfaces a second time. Needs its own ruling; **not** a D6.b case (D6.b

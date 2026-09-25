@@ -74,19 +74,28 @@ FAMILY-UNIFORM-FRAGILE and every cell FRAGILE**; best p50 at 0 bps is **+0.2038*
 band, and 0 → 5 bps costs only **0.05–0.16** Sharpe. The killer is not the fee. Six of the twelve
 surfaces were run at zero fee precisely to test this, and they answer it.
 
-**Why the story still does not close — bug-log `#110`.** The re-lock cleared every rider that was
-*arithmetic* and none that was *prose*, because re-running a corrected engine through an unchanged
-renderer cannot change what the renderer says. Still outstanding, unchanged by the regeneration:
+**The prose riders — found open, ruled on, and now CLEARED (bug-log `#110`).** The re-lock cleared
+every rider that was *arithmetic* and none that was *prose*, because re-running a corrected engine
+through an unchanged renderer cannot change what the renderer says. That was ruled on the same day
+and the renderer was fixed; the 12 MN surfaces were re-run and re-emitted a second time:
 
-- the falsified fee-bleed sentence, now frozen into a **third** generation of anchored bodies;
-- the § 0 dollar-neutral ≈0 null — declared, still not rendered; all 12 bodies still print BUYHOLD
-  and none carries a ≈0 null row;
-- body hygiene: no `trades` column, no funding-cost column (so R-MN.3's "net-of-cost edge at each
-  fee level" is still underivable from its own evidence), no ruin count.
+- the **falsified fee-bleed sentence is WITHDRAWN**, replaced by the measurement that refutes it,
+  plus an explicit `Supersession (bug-log #110)` line; a 0-bps surface now says so of itself;
+- the **§ 0 dollar-neutral null is rendered** as a verdict-free `NULL-0` row quoting ADR-0051
+  § D-MN, and BUYHOLD is kept but explicitly demoted so it cannot be read as the bar;
+- **`trades` and `funding` columns added**, so R-MN.3's net-of-cost read is derivable from this
+  report rather than from outside it.
 
-Clearing them is a **renderer** change plus a second re-emission of the 12 bodies. It is explicitly
-**not** a D6.b case — D6.b covers bodies that reflect a wiring bug — so it needs its own ruling.
-`#110` carries the argument and the numbers.
+Proven, not assumed: two non-MN surfaces re-run through the changed renderer came back
+**byte-identical**, the gate showed exactly **12 FAIL / 107 PASS** before a SHA was touched, and
+every shared θ-cell column is **byte-identical to the first pass** — the change is presentation,
+not computation.
+
+**What remains before this story can close:** the **ruin count** (equity is clamped before the
+metric calls, so a wiped-out path is still indistinguishable from a merely-bad one) and **separating
+synthetic liquidation covers from real fills** in `trades`. Both need a counter threaded through the
+path loop, not a renderer line, and both are recorded as *not* delivered — the body now states the
+conflation rather than hiding it, which is the honest interim. `#110` carries the detail.
 
 - [ ] `perp-basis-mn-spread` 0.2.0 - the base feature (presenter-done)
 

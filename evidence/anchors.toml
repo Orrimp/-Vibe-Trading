@@ -1174,12 +1174,16 @@ sha256   = "e916b43cddd25700c25da9852e7e82f9ab11235ac47b6fb49b0e76d57b2e77a3"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=d719d263a16d68d39cf0589d146bdc0221000bfd7af7470c5b25e14bf99d0aa1.
 # SUPERSEDED BODY sha256=b1de3f9be3fe95bd663274e389ab9b16588688f4459225500737e6b1e76edaea — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "d719d263a16d68d39cf0589d146bdc0221000bfd7af7470c5b25e14bf99d0aa1"
+sha256   = "2eb6d3320cc90fe64062050655b7bfb229e21efca49efcef267fac7283d09156"
 
 # Anchor #109 — MN-Basis 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1188,12 +1192,16 @@ sha256   = "d719d263a16d68d39cf0589d146bdc0221000bfd7af7470c5b25e14bf99d0aa1"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=f21270aa233be1fa743c8ed6f9814753d9498a1cd9d4c2d0895afffa7250bcad.
 # SUPERSEDED BODY sha256=3a263a814948d16b0fbae47f20518f71442dbf3c9afedca5c66fa29ad2d72293 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "f21270aa233be1fa743c8ed6f9814753d9498a1cd9d4c2d0895afffa7250bcad"
+sha256   = "e674507d2037463449b247791b98bcb695d835649622457dde7835a9dc90dc6f"
 
 # Anchor #110 — MN-Basis 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1202,12 +1210,16 @@ sha256   = "f21270aa233be1fa743c8ed6f9814753d9498a1cd9d4c2d0895afffa7250bcad"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=d04079bb5bb238e7b722582608622f6193e22c8165fe1d0aeea4a747cb26459d.
 # SUPERSEDED BODY sha256=9f66a93995bc0c606fe94d5bc475784bfe517d0b3efb61f12f74104d31711909 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "d04079bb5bb238e7b722582608622f6193e22c8165fe1d0aeea4a747cb26459d"
+sha256   = "edcf8e2ab5181ff4910b52575c4a4a453a584b6260f745d1a50b71d9b455f503"
 
 # Anchor #111 — MN-Basis 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1216,12 +1228,16 @@ sha256   = "d04079bb5bb238e7b722582608622f6193e22c8165fe1d0aeea4a747cb26459d"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=7ac5d68e7194ecbd854bec7da19dba1a450558d19d56e37f2bdf066779c5e78c.
 # SUPERSEDED BODY sha256=6dddb3f5d96ee2f5c6fb5f155eb93ba950cd233bddf02ffbf75d7e131a1f90c7 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "7ac5d68e7194ecbd854bec7da19dba1a450558d19d56e37f2bdf066779c5e78c"
+sha256   = "9e83c6dcc71efbd98127fe974279b53f73d637e13c0d1e7ee517b78db14fb51c"
 
 # Anchor #112 — MN-Funding 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1230,12 +1246,16 @@ sha256   = "7ac5d68e7194ecbd854bec7da19dba1a450558d19d56e37f2bdf066779c5e78c"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=0b35180f0b5c3b0c5d8aca9dce3beb0cbd60ba2310b0572fbf273c694c3e9a75.
 # SUPERSEDED BODY sha256=16633a63864560b83aa60ffb01a8c96f9625bb217696cb3af2e779ffcf4d0aa0 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "0b35180f0b5c3b0c5d8aca9dce3beb0cbd60ba2310b0572fbf273c694c3e9a75"
+sha256   = "98701c9c6fdbc3d2361f9a9dfa1fc01fb48ad0eb3aa85b7e605559532c2333c9"
 
 # Anchor #113 — MN-Funding 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1244,12 +1264,16 @@ sha256   = "0b35180f0b5c3b0c5d8aca9dce3beb0cbd60ba2310b0572fbf273c694c3e9a75"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=db87754b71d22fd9b804e74dd20b0e9d40ca03a30c883adfce6e12c67a7af470.
 # SUPERSEDED BODY sha256=b3726a288852fef79cee9bb638e3c94c6dc474e98cb9023448a77748b2a08d72 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "db87754b71d22fd9b804e74dd20b0e9d40ca03a30c883adfce6e12c67a7af470"
+sha256   = "1986cabcd754daa8b80016b7b35d6eb696de474aeb4d81474befb5e5d6a43cb7"
 
 # Anchor #114 — MN-Funding 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1258,12 +1282,16 @@ sha256   = "db87754b71d22fd9b804e74dd20b0e9d40ca03a30c883adfce6e12c67a7af470"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=2ca27795c3e404916ade38c1f50774aa88ad95f5d865a9e6a1db5406fe272666.
 # SUPERSEDED BODY sha256=38ccc463f248552b07618fcf26bc7652ac7d91eb324583602f15814c3e776ff1 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "2ca27795c3e404916ade38c1f50774aa88ad95f5d865a9e6a1db5406fe272666"
+sha256   = "f02c404c69a1e60591b58e293c305d23692ea1b2aeb404ac3f90e8b2ace79c08"
 
 # Anchor #115 — MN-Funding 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1272,12 +1300,16 @@ sha256   = "2ca27795c3e404916ade38c1f50774aa88ad95f5d865a9e6a1db5406fe272666"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=d4dc19560296b39c92655537c99e6483023293665608914812f8c1bc0add2090.
 # SUPERSEDED BODY sha256=2e2ba8b60d1ca757c0e23f6913dd8a8428e6289976aa43f1bb290f5696d2f23b — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "d4dc19560296b39c92655537c99e6483023293665608914812f8c1bc0add2090"
+sha256   = "7d7033c4955a3e22e3222666259a5b36d2e56a1687524ec3bd5073e9385b9db9"
 
 # Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1286,12 +1318,16 @@ sha256   = "d4dc19560296b39c92655537c99e6483023293665608914812f8c1bc0add2090"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=7d06cb0416f270416dc0cde271db2a29b5a468f668c3896783b7aaf696608762.
 # SUPERSEDED BODY sha256=1af13f140626be0a94e5d01deeb508eee2cfdc907d23c3ce856bb9da3fabbd82 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "7d06cb0416f270416dc0cde271db2a29b5a468f668c3896783b7aaf696608762"
+sha256   = "a2d435075330c06e29ee4922232551d561d4c576b4410380e51e570ce622c03e"
 
 # Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1300,12 +1336,16 @@ sha256   = "7d06cb0416f270416dc0cde271db2a29b5a468f668c3896783b7aaf696608762"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=1d62f2f03172245a6b780f4999d146ca84b1faf6ff1dea3466645ccf3e5102e6.
 # SUPERSEDED BODY sha256=058820ff1e6011262fb868c621cf84a7c831d63fa3dae0862b83b61d86d17732 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "1d62f2f03172245a6b780f4999d146ca84b1faf6ff1dea3466645ccf3e5102e6"
+sha256   = "a42b4a01dea87fb8b757ebffaa2ef20bc5868aa02a3cbe0fac31d7d39e72ad12"
 
 # Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1314,12 +1354,16 @@ sha256   = "1d62f2f03172245a6b780f4999d146ca84b1faf6ff1dea3466645ccf3e5102e6"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=2e8febac89197a1d92d17135417f56f5a4fe53916ec903c3c813bb161900443a.
 # SUPERSEDED BODY sha256=aedbc28ad3ec29ae112e44499f6af2ca2174a34356488cb7eb810de429880623 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "2e8febac89197a1d92d17135417f56f5a4fe53916ec903c3c813bb161900443a"
+sha256   = "27e816900cdf0a1220ff87ce9c2fdfdaaa5f78d08d5aed167bc94c9fe3fb0bb3"
 
 # Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1328,9 +1372,13 @@ sha256   = "2e8febac89197a1d92d17135417f56f5a4fe53916ec903c3c813bb161900443a"
 #   FAMILY-UNIFORM-FRAGILE (unchanged)
 #   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+#   RE-EMITTED A SECOND TIME 2026-09-25 (bug-log #110, operator-ruled): renderer only — the
+#   falsified fee-bleed claim WITHDRAWN, the § 0 dollar-neutral NULL-0 row rendered at last,
+#   and trades + funding columns added so R-MN.3 is derivable from this report. Every θ-cell
+#   number is byte-identical to the first pass — measured. Pass-1 body sha256=8f009276866a6ed35be635fc2fc49c2f6366b3c1dc416d41924e918da86c0e25.
 # SUPERSEDED BODY sha256=23f03994730a67368d92f7a6c2405ae43b0d0081c180347d7ebd5e4181d69885 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "8f009276866a6ed35be635fc2fc49c2f6366b3c1dc416d41924e918da86c0e25"
+sha256   = "07d0537adb4c4eda14239c26c75b89ddf02b5a76603b06ca1b9092b260e1cc4b"

@@ -58,13 +58,25 @@ as history, the migration honest, and the verdict re-derivation loud.
    re-examined is an assumption, not a guarantee.
 6. **Unblocks 1-21.** Its triad is deliberately unflipped pending a correctly-signed MN re-run. The
    re-derived verdicts — not the 1-21 review — decide what the market-neutral basis spread shows.
-7. **Un-ignore the four drift gates (bug-log #93).** `determinism.rs`'s `t717_*` / `tt1_*`
-   `*_anchor_hash_unchanged` tests re-run a scenario and compare its body-SHA to a pin. They are the
-   **only** gate that can observe code-vs-evidence drift — `verify_anchors.sh` hashes committed
-   bodies and never re-runs, which is why it reported 119/119 green while the code stopped
-   reproducing the evidence (`0f6f6eb8…` pinned vs `b655e5e7…` produced). They currently carry
-   `#[ignore]`. This story re-derives those pins from the regenerated surfaces and **removes the
-   attribute in the same commit** — the flip must be visible in the diff that re-prices the anchors.
+7. **~~Un-ignore the four drift gates~~ — AMENDED 2026-09-25 by operator ruling; the original text
+   was unsatisfiable.** It asked for the four gates' pins to be "re-derived from the regenerated
+   surfaces". **None of the four scenarios is among the 34** — they are `top10-2023-1h-momentum`,
+   `top10-2024-h1-momentum`, `top10-2023-fy-tcn-overlay`, `top10-2024-fy-tcn-overlay`, and the 34 are
+   all `*-theta-surface-*`. `determinism.rs:722` says why, and said it first: those four run through
+   `scenarios/momentum.rs` and `scenarios/tcn_overlay.rs`, lanes `run_path` never touches. Bug-log
+   **`#109`**.
+
+   **What AC7 now requires, and what was delivered:** prove by measurement whether this re-lock
+   moved them, and record the answer. **Measured at `2d63ddef` after the re-lock: all four still RED
+   with hashes UNCHANGED from the 2026-08-22 and 2026-08-23 measurements** — so the re-lock moved all
+   34 inventory surfaces and moved these four not at all, and the two sources of movement are
+   provably disjoint. The `#[ignore]` **stays** (removing it puts CI permanently red on a defect this
+   story does not fix) and the pins **stay** (re-baselining them is bug-log `#77`'s exact failure
+   mode).
+
+   The stability across three measurements spanning the ADR-0089 D1 wiring and this whole re-lock is
+   itself the finding: the divergence is **deterministic, reproducible and bisectable**. It is
+   therefore its own story — **`1-27-determinism-drift-bisect`**, created by the same ruling.
    Do NOT re-baseline them any other way: re-pinning a truthful gate to current output is #77.
 8. Standing floor: anchors green (old + new rows); spec-lint PASS; advisor-gate independence
    re-proven (`bakeoff/bootstrap.rs` resamples returns — assert its inputs/outputs unchanged).
@@ -125,9 +137,11 @@ as history, the migration honest, and the verdict re-derivation loud.
   from both sides. **ANCHORS PASS (119 / 119)**. 5-step D6.b record:
   [`docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md`](../../docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md).
   This closes AC8's "new rows" leg.
-- [ ] **AC7 unsatisfiable as written — bug-log #109.** Re-measured after the re-lock: all four gates
-  still RED with hashes *unchanged* from 2026-08-22/23. They cover scenarios that are not among the
-  34. Needs an AC amendment, not a commit.
+- [x] **AC7 AMENDED 2026-09-25 by operator ruling, and discharged as amended — bug-log #109.**
+  Re-measured after the re-lock: all four gates still RED with hashes *unchanged* from 2026-08-22/23,
+  which is the confirming measurement that this re-lock did not touch them. `#[ignore]` and the pins
+  both stay. The bisect is now story
+  [`1-27-determinism-drift-bisect`](1-27-determinism-drift-bisect.md).
 - [ ] Review: old rows intact, new rows complete, verdict-delta table honest.
 - [x] **AC6 — 1-21's question ANSWERED (its closure is a separate matter).** The re-derived verdicts,
   not the 1-21 review, decide what the MN spread shows, and they say: **all 12 surfaces

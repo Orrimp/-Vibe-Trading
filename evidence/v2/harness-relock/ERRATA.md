@@ -403,7 +403,9 @@ Nothing in this re-lock edits the frozen gate. The verdicts moved because the *i
 |---|---|
 | ~~Verdict-narrative ruling for 3 slugs~~ | **RULED + executed** — § 6 |
 | ~~Re-lock namespace vs ADR-0038 § D6.b~~ | **RULED + executed** — § 6b, bug-log `#108` |
-| AC7 unsatisfiable as written | § 7, bug-log `#109` — needs an AC amendment |
-| The four drift gates' own cause | bug-log `#93`/`#109` — wants its own story with a bisect |
+| ~~MN prose riders (falsified claim, missing § 0 null, columns)~~ | **RULED + executed** — bug-log `#110`; 12 MN bodies re-emitted a second time |
+| ~~AC7 unsatisfiable~~ | **AMENDED + discharged** — bug-log `#109`; the bisect is story `1-27-determinism-drift-bisect` |
+| MN ruin count + separating liquidation covers from real fills | bug-log `#110` — needs a path-loop counter, not a renderer line |
+| The four drift gates' own cause | story `1-27-determinism-drift-bisect` |
 | bug-log `#95` exposure cap on 8 lanes | out of scope here, stated explicitly |
 | AC6 — unblocking story 1-21 | now unblocked by the § 6 ruling |
