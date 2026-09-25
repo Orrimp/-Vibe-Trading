@@ -1837,6 +1837,31 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_WHY_LOST_TO_SEARCH,
         ),
         ("LEADERBOARD_RECHECK_CADENCE", LEADERBOARD_RECHECK_CADENCE),
+        // story 4-13 / B7 — the cross-run check beside the per-run scorecard
+        (
+            "LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT",
+            LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT,
+        ),
+        (
+            "LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT",
+            LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT,
+        ),
+        (
+            "LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY",
+            LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY,
+        ),
+        (
+            "LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT",
+            LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT,
+        ),
+        (
+            "LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT",
+            LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT,
+        ),
+        (
+            "LEADERBOARD_CROSS_RUN_CAPTION",
+            LEADERBOARD_CROSS_RUN_CAPTION,
+        ),
         (
             "LEADERBOARD_SCORECARD_CONFIDENCE_LABEL",
             LEADERBOARD_SCORECARD_CONFIDENCE_LABEL,
@@ -3445,6 +3470,77 @@ pub const LEADERBOARD_WHY_LOST_TO_SEARCH: &str = "{arm} beat holding on the raw 
 /// same window returns the same answer. What changes an answer is more data, not
 /// another run.
 pub const LEADERBOARD_RECHECK_CADENCE: &str = "Re-running this today would give the same answer \u{2014} the bake-off is seeded, so only new data can change it. Check again after about a quarter of fresh prices, or sooner if the market regime visibly turns.";
+
+// ── Cross-run check (story 4-13 / gap-analysis B7 — the online-FDR annex) ─────
+//
+// The scorecard above counts the strategies tried IN ONE RUN. These lines count the
+// other axis: the operator's whole SEQUENCE of bake-offs. Re-run on a new coin, a new
+// window, or simply a later date and the chance that at least one run says "beats
+// holding" grows with the length of the sequence even when nothing ever does.
+//
+// No jargon on screen: the engine's doc comment carries "Šidák", "family-wise" and
+// "online FDR / alpha-investing"; the operator gets "chance alone would produce
+// about N". Naming the method here would trade a fact the reader can act on for one
+// they would have to look up.
+
+/// The HONEST HEADLINE (story 4-13 AC3) — the sequence's "beats holding" count is
+/// within what chance alone predicts, so it says so plainly.
+///
+/// This is the branch that matters. Someone who has run twenty bake-offs and seen one
+/// say "an active strategy wins" has not found an edge; they have run twenty tests.
+/// Saying it in one sentence is the difference between a surface that reports and a
+/// surface that flatters.
+///
+/// `{runs}` = readable recorded runs · `{beats}` = of those, how many concluded an
+/// active strategy beats holding · `{expected}` = `runs × 0.05`, one decimal.
+pub const LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT: &str = "Cross-run check: {runs} bake-offs recorded, {beats} of them concluded an active strategy beats holding. Chance alone would produce about {expected} over a sequence that long \u{2014} so this is no more than chance.";
+
+/// The other sufficient reading: the count is ABOVE what chance alone explains.
+///
+/// Stated as arithmetic, not as a finding. "More than chance explains" is not "you
+/// found an edge" — the caption's independence limitation bites hardest exactly here,
+/// because the commonest way to run this count up is to re-run the same coin over
+/// overlapping windows, which the bar cannot tell from fresh tests.
+///
+/// Same placeholders as [`LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT`].
+pub const LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT: &str = "Cross-run check: {runs} bake-offs recorded, {beats} of them concluded an active strategy beats holding. Chance alone would produce about {expected} over a sequence that long \u{2014} so the count is higher than chance alone explains.";
+
+/// AC5 insufficiency — NOTHING recorded yet. The first run, or a fresh clone.
+///
+/// Not a fault and not worded as one: a sequence of zero is the normal starting state,
+/// and the honest thing is to say the check has nothing to work with rather than to
+/// print an N = 0 arithmetic that would read as a finding.
+pub const LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY: &str = "Cross-run history: insufficient (N=0) \u{2014} no earlier bake-off has been recorded, so there is no sequence of runs to check this one against.";
+
+/// AC5 insufficiency — a sequence of ONE is not a sequence.
+///
+/// `{runs}` = the readable row count. Says WHY rather than just refusing: at N = 1 the
+/// cross-run bar collapses onto the per-run one, so everything true here is already in
+/// the numbers above and repeating it would be dressing up an answer already given.
+pub const LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT: &str = "Cross-run history: insufficient (N={runs}) \u{2014} a single earlier run is not a sequence, and everything true about one run is already in the numbers above.";
+
+/// AC5 insufficiency — the ledger is DAMAGED, and this is the one that must not be
+/// quiet about it.
+///
+/// Rows exist that did not parse, so the real sequence is LONGER than the part that
+/// can be counted. Under-counting the sequence shrinks the chance-alone expectation,
+/// which biases the whole check OPTIMISTIC — the one direction an honesty surface must
+/// never fail in silently. The line therefore names the damaged rows and says which
+/// way the error points, in words, so the `WARN` tint is never the only signal.
+///
+/// `{runs}` = readable rows · `{bad}` = rows that did not parse.
+pub const LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT: &str = "Cross-run history: insufficient (N={runs} readable, {bad} damaged) \u{2014} the real sequence is longer than the part that can be counted, so this check would read BETTER than the truth.";
+
+/// The caption naming the limitation (story 4-13 AC2's "state the choice plainly").
+///
+/// Two errors, in opposite directions, neither hidden: the shipped bar treats every
+/// recorded run as an independent test and as equally current, so it is
+/// **conservative about old runs** (a 2021 discovery still spends 2026's budget) and
+/// **optimistic about correlated ones** (re-running the same coin over an overlapping
+/// window is not a fresh test). The deferred alternative — alpha-investing with
+/// decaying memory — is named by what it would DO, not by its name, per the no-jargon
+/// rule; `crates/backtest/src/bakeoff/fdr_annex.rs` carries the literature reference.
+pub const LEADERBOARD_CROSS_RUN_CAPTION: &str = "Counted with a fixed bar that treats every run as independent and equally recent \u{2014} hard on old runs, easy on repeats: re-running the same coin over an overlapping window is not a fresh test. A version that forgets old runs as they age is not built yet.";
 
 /// Label — "Deflated confidence" row. The DSR: confidence the crown's edge is
 /// real AFTER accounting for how many strategies we tried.

@@ -416,6 +416,122 @@ impl ScorecardView {
     }
 }
 
+// ── Cross-run multiple-testing annex (story 4-13 / gap-analysis B7) ───────────
+
+/// Why the cross-run annex has nothing to conclude — the pure-`ui` mirror of
+/// `backtest::bakeoff::fdr_annex::Insufficient`.
+///
+/// The three variants are kept DISTINCT rather than collapsed to one "no data"
+/// state because they are three different things to tell an operator, and the
+/// third is not merely an absence:
+///
+/// - [`Self::NoHistory`] — nothing has been recorded yet. Expected on a first run
+///   or a fresh clone; not a fault.
+/// - [`Self::TooFewRuns`] — a sequence of one is not a sequence. The per-run
+///   scorecard already says everything true at N = 1.
+/// - [`Self::PartiallyUnreadable`] — **damage.** Rows exist that did not parse, so
+///   the sequence is LONGER than the count we can defend. Under-counting the
+///   sequence understates the expected-false-positive number, which biases the
+///   annex OPTIMISTIC — the one direction an honesty surface must never fail in
+///   silently. The rendered line names the damaged rows for exactly that reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FdrInsufficiency {
+    /// No ledger on disk — the first run, or a fresh clone.
+    NoHistory,
+    /// Fewer readable rows than the engine's `MIN_RUNS`.
+    TooFewRuns,
+    /// The ledger exists and some rows did not parse.
+    PartiallyUnreadable,
+}
+
+/// The REPORT-ONLY cross-run multiple-testing annex, mirrored from
+/// `backtest::bakeoff::fdr_annex::FdrAnnex` into a pure-`ui` shape (story 4-13,
+/// gap-analysis B7).
+///
+/// **Plain fields only — NO `backtest::FdrAnnex` crosses into the widgets.** Every
+/// field is a `usize` / `f64` / a `ui`-owned enum, exactly as [`ScorecardView`] does
+/// it: the engine type is read ONCE in [`BakeoffReportMirror::from_report`] and
+/// projected here, so the render code never names an engine struct.
+///
+/// Mirrors only what is rendered. `sidak_dsr_bar` / `crowns_clearing_sidak` /
+/// `alpha` are deliberately omitted — the shipped line states the sequence length,
+/// the "beats holding" count and the chance-alone expectation, and mirroring fields
+/// no widget reads would be speculative surface. (Same reasoning that omits `pbo`
+/// from [`ScorecardView`].) When the Šidák bar earns a line, it is mirrored then.
+///
+/// # REPORT-ONLY
+///
+/// A credibility readout, never a verdict. Nothing here touches the crown, the
+/// rank, or the FROZEN robustness gate — the engine side proves that in
+/// `crates/backtest/tests/fdr_annex_identity.rs`, and on this side the type is only
+/// ever read by the rendering helper.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FdrAnnexView {
+    /// Readable bake-off runs found in the ledger — the length of the SEQUENCE of
+    /// tests the operator has actually run.
+    pub runs: usize,
+    /// Rows that could not be parsed. `0` in the healthy case; non-zero means the
+    /// sequence is longer than [`Self::runs`] and every number here is optimistic.
+    pub unreadable_rows: usize,
+    /// Of the readable runs, how many concluded an active strategy beats holding.
+    pub beats_hold: usize,
+    /// `runs × α` — how many "beats holding" verdicts chance alone would produce
+    /// over a sequence this long if no strategy ever truly beat holding.
+    pub expected_false_beats_hold: f64,
+    /// `Some(..)` when the annex cannot make its statement. The numeric fields are
+    /// then whatever the partial history supports and MUST NOT be rendered as a
+    /// conclusion — the rendering helper switches on this first.
+    pub insufficient: Option<FdrInsufficiency>,
+}
+
+impl FdrAnnexView {
+    /// Mirror a `backtest::bakeoff::fdr_annex::FdrAnnex` into the pure-`ui` view.
+    ///
+    /// Total, not fallible: unlike [`ScorecardView::from_scorecard`] there is no
+    /// degenerate shape to suppress, because the engine already models "nothing to
+    /// say" explicitly as [`Self::insufficient`]. Turning an insufficient annex into
+    /// a `None` here would throw away the AC5 statement (which variant, and how many
+    /// runs) that the operator is owed. The `Option` that DOES exist is one level up
+    /// — `BakeoffReportMirror::fdr_annex` is `None` when the run was never asked to
+    /// record itself, which is a different fact and reads differently on screen.
+    ///
+    /// This is the only place a `backtest::FdrAnnex` is read on the `ui` side; it is
+    /// reached exclusively from [`BakeoffReportMirror::from_report`]. Pure + total —
+    /// no I/O, no panic. Crosses the seam as plain `usize` / `f64`.
+    #[must_use]
+    pub fn from_annex(a: &backtest::bakeoff::fdr_annex::FdrAnnex) -> Self {
+        use backtest::bakeoff::fdr_annex::Insufficient;
+        Self {
+            runs: a.runs,
+            unreadable_rows: a.unreadable_rows,
+            beats_hold: a.beats_hold,
+            expected_false_beats_hold: a.expected_false_beats_hold,
+            insufficient: a.insufficient.map(|i| match i {
+                Insufficient::NoHistory => FdrInsufficiency::NoHistory,
+                Insufficient::TooFewRuns => FdrInsufficiency::TooFewRuns,
+                Insufficient::PartiallyUnreadable => FdrInsufficiency::PartiallyUnreadable,
+            }),
+        }
+    }
+
+    /// Is the sequence's "beats holding" count within what chance alone predicts?
+    ///
+    /// The honest headline, recomputed from the mirrored fields so the widgets never
+    /// have to reach back into an engine type. `None` when the annex is insufficient
+    /// — deliberately not `false`, because "we cannot say" and "no, it is not" are
+    /// different answers and conflating them is how an honesty surface starts lying.
+    /// The engine's `FdrAnnex::beats_hold_within_chance` is the same predicate over
+    /// the same values; `the_view_headline_agrees_with_the_engine` pins them together.
+    #[must_use]
+    pub fn beats_hold_within_chance(&self) -> Option<bool> {
+        if self.insufficient.is_some() {
+            return None;
+        }
+        #[allow(clippy::cast_precision_loss)]
+        Some((self.beats_hold as f64) <= self.expected_false_beats_hold)
+    }
+}
+
 // ── advisor-crown-credibility P1 (ADR-0085) / advisor-handoff-export P5
 // (ADR-0088) — the crown's overfitting (DSR) verdict ──────────────────────────
 //
@@ -579,6 +695,19 @@ pub struct BakeoffReportMirror {
     /// all-zero readout. **REPORT-ONLY** — display-only honesty readout, never
     /// touches the crown / rank / gate.
     pub scorecard: Option<ScorecardView>,
+    /// The cross-run multiple-testing annex (story 4-13 / gap-analysis B7),
+    /// mirrored from `Recommendation.fdr_annex`.
+    ///
+    /// `None` when the run was NOT asked to record itself — no ledger path on the
+    /// request, which is every test and the anchored CLI path. That is a different
+    /// statement from an annex that ran and found too little history
+    /// ([`FdrAnnexView::insufficient`]), and the screen renders it differently: a
+    /// run that kept no sequence cannot say anything about a sequence, so it says
+    /// nothing at all rather than inventing an "N = 0" finding.
+    ///
+    /// **REPORT-ONLY** — display-only honesty readout, never touches the crown /
+    /// rank / gate.
+    pub fdr_annex: Option<FdrAnnexView>,
     /// The crown's coherent-tail + median summary (P1-2 /
     /// advisor-turnover-and-tail-metrics), mirrored from
     /// `Recommendation.crown_tail`. `None` when the robustness gate ran in
@@ -670,6 +799,9 @@ impl BakeoffReportMirror {
             // P0-1 (ADR-0075): mirror the report-only scorecard. `None` for a
             // degenerate (empty-field) scorecard. Crosses as plain f64/usize/bool.
             scorecard: ScorecardView::from_scorecard(&r.scorecard),
+            // 4-13 / B7: mirror the report-only cross-run annex. `None` when the run
+            // kept no ledger. Crosses as plain usize/f64 + a `ui`-owned enum.
+            fdr_annex: r.fdr_annex.as_ref().map(FdrAnnexView::from_annex),
             // P1-2 (advisor-turnover-and-tail-metrics): mirror the report-only
             // crown tail summary. `None` when the gate ran in `Skip` mode or the
             // curve was too short. Crosses as plain f64.
@@ -1241,6 +1373,7 @@ mod tests {
                 min_btl_years: 1.2,
                 crown_clears_dsr: false,
             }),
+            fdr_annex: None,
             tail: Some(TailSummaryView {
                 cvar_95: -0.18,
                 cvar_99: -0.27,
@@ -1352,6 +1485,95 @@ mod tests {
         assert!((view.deflated_sharpe - 0.62).abs() < 1e-9);
         assert!((view.min_btl_years - 6.4).abs() < 1e-9);
         assert!(!view.crown_clears_dsr);
+    }
+
+    // ── 4-13 / B7 cross-run annex mirror ────────────────────────────────────
+
+    /// The five projected fields cross unchanged, and the three insufficiency
+    /// variants map one-to-one rather than collapsing into a single "no data".
+    #[test]
+    fn fdr_annex_view_mirrors_every_field_and_every_reason() {
+        use backtest::bakeoff::fdr_annex::{Insufficient, compute_annex};
+
+        let rows: Vec<backtest::bakeoff::fdr_annex::LedgerRow> = (0..20)
+            .map(|i| backtest::bakeoff::fdr_annex::LedgerRow {
+                run_label: "2026-01-01".to_owned(),
+                symbol: "BTCUSDT".to_owned(),
+                window: "Last90d".to_owned(),
+                n_candidates: 5,
+                n_eff: 3.2,
+                crown: "v0.sma".to_owned(),
+                crown_dsr: 0.5,
+                beats_hold: i == 0,
+            })
+            .collect();
+
+        let view = FdrAnnexView::from_annex(&compute_annex(&rows, 0));
+        assert_eq!(view.runs, 20);
+        assert_eq!(view.unreadable_rows, 0);
+        assert_eq!(view.beats_hold, 1);
+        // 20 x 0.05 = 1.0, hand-computed, not read back from the implementation.
+        assert!((view.expected_false_beats_hold - 1.0).abs() < 1e-12);
+        assert!(view.insufficient.is_none());
+
+        // Each engine reason lands on its own view variant. A mapping that folded
+        // two of them together would silently turn "the ledger is damaged" into
+        // "there is no history", which is the one substitution AC5 forbids.
+        for (rows, unreadable, want) in [
+            (0usize, 0usize, Some(FdrInsufficiency::NoHistory)),
+            (1, 0, Some(FdrInsufficiency::TooFewRuns)),
+            (20, 3, Some(FdrInsufficiency::PartiallyUnreadable)),
+            (20, 0, None),
+        ] {
+            let sample: Vec<_> = rows_of(rows);
+            let v = FdrAnnexView::from_annex(&compute_annex(&sample, unreadable));
+            assert_eq!(v.insufficient, want, "rows={rows} unreadable={unreadable}");
+        }
+
+        // And the damage count is carried, not swallowed: "3 of 20 rows are
+        // unreadable" and "3 runs happened" are different states.
+        let damaged = FdrAnnexView::from_annex(&compute_annex(&rows, 3));
+        assert_eq!(damaged.unreadable_rows, 3);
+        assert_eq!(damaged.runs, 20, "the good rows are still counted");
+        let _ = Insufficient::NoHistory; // the engine enum is named, not re-exported
+    }
+
+    /// The view's headline is the SAME predicate as the engine's, on the same
+    /// values. It is recomputed rather than mirrored so the widgets never reach
+    /// back into an engine type — which is only safe while the two agree, so the
+    /// agreement is pinned here across all four shapes.
+    #[test]
+    fn the_view_headline_agrees_with_the_engine() {
+        use backtest::bakeoff::fdr_annex::compute_annex;
+        for (n, beats, unreadable) in [(0, 0, 0), (1, 1, 0), (20, 1, 0), (20, 5, 0), (20, 1, 3)] {
+            let mut sample = rows_of(n);
+            for (i, r) in sample.iter_mut().enumerate() {
+                r.beats_hold = i < beats;
+            }
+            let engine = compute_annex(&sample, unreadable);
+            let view = FdrAnnexView::from_annex(&engine);
+            assert_eq!(
+                view.beats_hold_within_chance(),
+                engine.beats_hold_within_chance(),
+                "n={n} beats={beats} unreadable={unreadable}"
+            );
+        }
+    }
+
+    /// `n` identical ledger rows that did not beat holding.
+    fn rows_of(n: usize) -> Vec<backtest::bakeoff::fdr_annex::LedgerRow> {
+        (0..n)
+            .map(|_| backtest::bakeoff::fdr_annex::LedgerRow {
+                run_label: "2026-01-01".to_owned(),
+                symbol: "BTCUSDT".to_owned(),
+                window: "Last90d".to_owned(),
+                n_candidates: 5,
+                n_eff: 3.2,
+                crown: "v0.sma".to_owned(),
+                crown_dsr: 0.5,
+                beats_hold: false,
+            })
+            .collect()
     }
 
     // ── P1-2 tail mirror (advisor-turnover-and-tail-metrics) ────────────────

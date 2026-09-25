@@ -284,6 +284,7 @@ async fn bootstrap_flags_populate_in_bakeoff() {
             field: vec![StrategyId("v0.sma".into())],
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         data_source: ScenarioDataSource::Synthetic,
         robustness: RobustnessMode::Bootstrap {
@@ -341,6 +342,7 @@ async fn bootstrap_skip_mode_all_none() {
             field: vec![StrategyId("v0.sma".into())],
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         data_source: ScenarioDataSource::Synthetic,
         robustness: RobustnessMode::Skip,
@@ -402,6 +404,7 @@ async fn bakeoff_with_ensemble_field_runs_and_flags_them() {
             field,
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         data_source: ScenarioDataSource::Synthetic,
         // Small path count for test speed — only the populate-and-flag behaviour

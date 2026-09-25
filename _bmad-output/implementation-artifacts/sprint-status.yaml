@@ -216,7 +216,7 @@ development_status:
   4-10-advisor-no-alpha-gate-ci: done
   4-11-phase-2d: done
   4-12-advisor-data-quality-surface: done
-  4-13-advisor-online-fdr-annex: ready-for-dev  # 2026-07-27 operator decision PRD §13 Q3 = BUILD (report-only online-FDR cross-run annex per research-gap-analysis-2026-07-11; scorecard-style additive, FROZEN gate untouched)
+  4-13-advisor-online-fdr-annex: done  # 2026-09-25 ADR-0098 — the register's one legitimate build-candidate, shipped. Static Šidák/family-wise (expected N×α + the per-run bar); LORD alpha-investing DEFERRED and stated in the module docs, the rendered caption and the ADR. Ledger git-ignored ⇒ anchors byte-immutable by construction; identity proven over all 4 ledger states on the FULL ranking
   epic-4-retrospective: optional  # 2026-08-16 — PARTIAL retro written (epic-4-retro-2026-08-16.md, 12 of 13 stories). Deliberately NOT flipped to done: 4-13 is still ready-for-dev, and marking it done would repeat the board-says-done-reality-differs error this retro itself documents. Flip only after 4-13 lands and the full retro supersedes it (action 4-A3).
 
   # -- Epic 5: v3 "Prove It's Done" Close-Out

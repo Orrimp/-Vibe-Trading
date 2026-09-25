@@ -22,6 +22,8 @@
 
 pub mod bootstrap;
 pub mod buyhold;
+/// Story 4-13 — the report-only cross-run multiple-testing annex (gap-analysis B7).
+pub mod fdr_annex;
 pub mod rank;
 pub mod robustness;
 pub mod scorecard;
@@ -646,6 +648,26 @@ pub struct BakeoffRequest {
     /// Changing this scales the absolute equity curve but does NOT change the
     /// ranking (returns are percentage-based). Honest UI copy must say so.
     pub initial_capital: rust_decimal::Decimal,
+
+    // ── Cross-run FDR ledger (story 4-13) ───────────────────────────────────
+    //
+    // Another NEW field with no `Default` impl, for the same reason as the two
+    // above: every caller states its intent explicitly rather than inheriting
+    // one. Here that matters more than usual — the field decides whether a run
+    // is COUNTED as a test in the cross-run sequence, and a run that records
+    // itself by accident would inflate the very denominator the annex reports.
+    //
+    // **Anchor contract**: unchanged from the block above. The advisor path sets
+    // `write_report = false` (ADR-0059), the ledger lives in a git-ignored dir
+    // outside every `evidence/**` glob (ADR-0055 `/lab-runs/` precedent), and
+    // nothing here is read by the FROZEN gate. Anchors stay 119/119.
+    /// Where to append this run's row in the cross-run FDR ledger, or `None` to
+    /// record nothing.
+    ///
+    /// `None` in every test and on the anchored CLI path — those runs are not
+    /// the operator asking a question, and counting them would make the
+    /// sequence longer than the operator's actual search.
+    pub fdr_ledger: Option<std::path::PathBuf>,
 }
 
 /// Configuration for `run_bakeoff`.
@@ -889,6 +911,20 @@ pub struct Recommendation {
     /// **REPORT-ONLY** — does NOT change crowning, eligibility, or the gate bands.
     /// `crown_clears_dsr` is informational; never a veto in v2.
     pub scorecard: Scorecard,
+    /// Cross-run multiple-testing annex (story 4-13 / gap-analysis B7).
+    ///
+    /// The per-run `scorecard` deflates by how many arms were tried IN THIS RUN. This
+    /// counts the other axis: the operator's whole SEQUENCE of re-runs, where the chance
+    /// that at least one says "beats holding" grows with the sequence even when nothing
+    /// ever does.
+    ///
+    /// `None` when the run was not asked to record itself (`request.fdr_ledger` is
+    /// `None`) — every test and the anchored CLI path.
+    ///
+    /// **REPORT-ONLY** — no field of it is read by `rank_candidates`,
+    /// `classify_verdict`, `verdict_bands` or `compute_robustness_flag`. Proven by
+    /// `crates/backtest/tests/fdr_annex_identity.rs`.
+    pub fdr_annex: Option<fdr_annex::FdrAnnex>,
     /// Crown's coherent-tail + median summary (P1-2 / advisor-turnover-and-tail-metrics).
     ///
     /// Surfaced by the leaderboard's "Risk story" block — `CVaR` (coherent),
@@ -1433,6 +1469,37 @@ pub async fn run_bakeoff(
         "Crown tail summary (P1-2, report-only)"
     );
 
+    // ── Story 4-13: the cross-run annex ────────────────────────────────────
+    //
+    // Deliberately placed AFTER ranking and crowning are complete and computed from
+    // their outputs, so the data flow makes the report-only claim structurally obvious:
+    // nothing below can reach back into the gate. Reading the ledger before appending
+    // this run means the annex describes the sequence UP TO here, and this run becomes
+    // part of the denominator only for the next one — which is the honest reading of
+    // "how many tests had I already run when I got this answer".
+    let fdr_annex = req.fdr_ledger.as_ref().map(|path| {
+        let (rows, unreadable) = fdr_annex::read_ledger(path);
+        let annex = fdr_annex::compute_annex(&rows, unreadable);
+        fdr_annex::append_row(
+            path,
+            &fdr_annex::LedgerRow {
+                // The ONLY clock on this path, and it touches the git-ignored ledger
+                // row alone — never a report body, so it cannot perturb an anchor.
+                // `compute_annex` above stays pure and clock-free on purpose: the
+                // arithmetic is testable without freezing time.
+                run_label: time::OffsetDateTime::now_utc().date().to_string(),
+                symbol: req.symbol.0.to_string(),
+                window: format!("{:?}", req.range),
+                n_candidates: bakeoff_scorecard.n_candidates,
+                n_eff: bakeoff_scorecard.n_eff,
+                crown: crowned_candidate.strategy.0.to_string(),
+                crown_dsr: bakeoff_scorecard.deflated_sharpe,
+                beats_hold: matches!(ranking.outcome, RecommendationOutcome::ActiveWins),
+            },
+        );
+        annex
+    });
+
     let rationale = Recommendation {
         outcome: ranking.outcome,
         winner: crowned_candidate.strategy.clone(),
@@ -1441,6 +1508,7 @@ pub async fn run_bakeoff(
         winner_robustness: crowned_candidate.robustness,
         reasons: ranking.reasons.clone(),
         scorecard: bakeoff_scorecard,
+        fdr_annex,
         crown_tail,
     };
 

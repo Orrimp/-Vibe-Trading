@@ -112,21 +112,37 @@ fn render_leaderboard_rgba(cockpit: Cockpit) -> (u32, u32, Vec<u8>) {
 ///    above the block is fixed-height in every fixture, so the band does not move with the
 ///    field size" — is false as of ADR-0095, and this band is sized for the SPREAD.
 ///
-/// Measured, full-pane renders at 1920 x 2400:
+/// Re-measured again 2026-09-25, after story 4-13 added the cross-run check to the same
+/// trust block: it grew a further 46 px (the fold gate's measured extent went 903 -> 949),
+/// so everything below moved down by that much. The gates did NOT go red, but measuring
+/// showed the old bottom bound had become a tripwire rather than a bracket — the
+/// AI-summary card's bottom accent border (y = 1196) and the Explain button's (y = 1191)
+/// had both fallen OUTSIDE a band that ends at 1190, and the Explain button's LABEL had
+/// only 7 px of slack left. So the bottom moved 1190 -> 1230, on measurement: that is
+/// below every feature the band is meant to bracket and still 23 px clear of the ranked
+/// table's crowned-row accent (y >= 1253), whose clay the amber predicate also matches.
+///
+/// Measured by the `measure` test in each file, full-pane renders at 1920 x 2400:
 ///
 /// | fixture | what paints | where |
 /// |---|---|---|
-/// | `five_arm` (5 arms) | WeakEvidence banner, 6187 amber px | y = 977..1018 |
-/// | narration `Ready` | AI-summary card, ACCENT | y = 1073..1151 |
-/// | narration `NotRequested` | Explain ghost button, ACCENT | y = 1119..1146 |
-/// | `benchmark_wins` | stray amber (scorecard glyph, ~40 px) | y = 1122..1164 |
-/// | any | ranked table's crowned-row accent | y >= 1205 |
+/// | `five_arm` (5 arms) | WeakEvidence banner, 6186 amber px in band | y = 1023..1063 |
+/// | narration `Ready` | AI-summary card, ACCENT (2579 px in band) | y = 1119..1196 |
+/// | narration `NotRequested` | Explain ghost button, ACCENT (372 px in band) | y = 1173..1191 |
+/// | narration `FellBack` | neither — 0 ACCENT in band (the control) | next teal at y = 1263 |
+/// | `benchmark_wins` | stray amber only, 17 px in band, no dense run | — |
+/// | any | ranked table's crowned-row accent | y >= 1253 |
+///
+/// The two control CEILINGS are what a bottom bound set too low would break by letting
+/// the table in: `passes` measures 0 amber in band (229 in the whole frame) and
+/// `benchmark_wins` 17 (138 whole-frame), both far under their `< 400` ceilings even if
+/// every stray pixel fell inside.
 ///
 /// So the band spans the recommendation region across every fixture and stops short of
 /// the table, whose clay the colour predicates would otherwise match.
 const REC_TOP: u32 = 950;
 /// Bottom of the RECOMMENDATION band — below the AI-summary card, above the table.
-const REC_BOTTOM: u32 = 1190;
+const REC_BOTTOM: u32 = 1230;
 
 /// `true` for an `ACCENT`-teal (#6FB6AE — R111 G182 B174) pixel — green & blue
 /// high and close, red clearly lower (the exact predicate the leaderboard +
@@ -381,4 +397,122 @@ fn narration_not_requested_paints_explain_control() {
          Explain control (expected >200 foreground px, got {rec_fg}). \
          PNG: /tmp/forward_f9_narration_not_requested_render.png"
     );
+}
+
+/// Prints the geometry table in [`REC_TOP`]'s doc comment — and the identical one in
+/// `crown_credibility_render`'s `BANNER_TOP`. Run it after ANY change to the pane
+/// above the recommendation block:
+///
+/// ```text
+/// cargo test -p ui --test leaderboard_narration_render -- --ignored --nocapture measure
+/// ```
+///
+/// It exists because both bands are anchored to MEASURED positions, and the honest way
+/// to move one is to re-measure, never to widen it until the test passes (the #77
+/// failure both files are written against). It reports, per fixture, the contiguous
+/// row-runs in which the discriminating colour paints, so the band can be checked to
+/// still bracket the recommendation region and still stop short of the ranked table —
+/// whose `DOWN_500` clay the amber predicate also matches.
+#[test]
+#[ignore = "measurement, not a gate"]
+fn measure() {
+    /// Merge rows carrying `>= 8` hits into contiguous runs, tolerating 3-row gaps
+    /// (glyph interiors), and report runs of at least 20 px.
+    fn runs(w: u32, h: u32, rgba: &[u8], hit: fn(i32, i32, i32) -> bool) -> Vec<(u32, u32, u64)> {
+        let per_row: Vec<u64> = (0..h)
+            .map(|y| {
+                (0..w)
+                    .filter(|&x| {
+                        let i = ((y as usize * w as usize) + x as usize) * 4;
+                        hit(
+                            i32::from(rgba[i]),
+                            i32::from(rgba[i + 1]),
+                            i32::from(rgba[i + 2]),
+                        )
+                    })
+                    .count() as u64
+            })
+            .collect();
+        let mut out: Vec<(u32, u32, u64)> = Vec::new();
+        let mut open: Option<(u32, u32, u64)> = None;
+        for (y, &n) in per_row.iter().enumerate() {
+            #[allow(clippy::cast_possible_truncation)]
+            let y = y as u32;
+            if n >= 8 {
+                open = match open {
+                    Some((a, _, t)) => Some((a, y, t + n)),
+                    None => Some((y, y, n)),
+                };
+            } else if let Some((a, b, t)) = open
+                && y > b + 3
+            {
+                out.push((a, b, t));
+                open = None;
+            }
+        }
+        if let Some(r) = open {
+            out.push(r);
+        }
+        out.retain(|&(_, _, t)| t >= 20);
+        out
+    }
+
+    fn amber(r: i32, g: i32, b: i32) -> bool {
+        r > 130 && r > b + 40 && g > b + 25
+    }
+    fn teal(r: i32, g: i32, b: i32) -> bool {
+        is_accent_teal(r, g, b)
+    }
+
+    let five_arm = render_leaderboard_rgba(ui::fixtures::fake_cockpit_leaderboard(
+        PanelState::Ready(ui::fixtures::fake_bakeoff_report_mirror_five_arm()),
+    ));
+    let bench = render_leaderboard_rgba(ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(
+        ui::fixtures::fake_bakeoff_report_mirror_benchmark_wins(),
+    )));
+    let ready = render_with_narration(
+        NarrationState::Ready(smol_str::SmolStr::new(
+            ui::fixtures::FAKE_NARRATION_READY_PROSE,
+        )),
+        "/tmp/forward_f9_narration_ready_render.png",
+    );
+    let not_req = render_with_narration(
+        NarrationState::NotRequested,
+        "/tmp/forward_f9_narration_not_requested_render.png",
+    );
+    let fellback = render_with_narration(
+        NarrationState::FellBack,
+        "/tmp/forward_f9_narration_fallback_render.png",
+    );
+
+    for (label, (w, h, rgba), hit) in [
+        (
+            "five_arm         amber",
+            &five_arm,
+            amber as fn(i32, i32, i32) -> bool,
+        ),
+        ("five_arm          teal", &five_arm, teal),
+        ("benchmark_wins   amber", &bench, amber),
+        ("narration Ready   teal", &ready, teal),
+        ("narration NotReq  teal", &not_req, teal),
+        ("narration FellBck teal", &fellback, teal),
+    ] {
+        let rs = runs(*w, *h, rgba, hit);
+        let shown: Vec<String> = rs
+            .iter()
+            .map(|(a, b, t)| format!("y={a}..{b} ({t} px)"))
+            .collect();
+        println!("{label}: {}", shown.join("  "));
+    }
+    println!("band under test: REC_TOP={REC_TOP} REC_BOTTOM={REC_BOTTOM}");
+    for (label, (w, _h, rgba)) in [
+        ("Ready  ", &ready),
+        ("NotReq ", &not_req),
+        ("FellBck", &fellback),
+    ] {
+        println!(
+            "{label} teal in band = {}",
+            accent_teal_in_band(*w, rgba, REC_TOP, REC_BOTTOM)
+        );
+    }
 }

@@ -61,44 +61,47 @@ use iced::{Border, Length};
 use trading_core::{StrategyId, Symbol};
 
 use crate::leaderboard::state::{
-    BakeoffReportMirror, CrownCredibility, DataQualityView, LeaderRow, LeaderboardLookback,
-    NarrationState, OutcomeKind, ReasonLabel, RecommendationMirror, RobustnessLabel, ScorecardView,
-    TailSummaryView, crown_credibility,
+    BakeoffReportMirror, CrownCredibility, DataQualityView, FdrAnnexView, FdrInsufficiency,
+    LeaderRow, LeaderboardLookback, NarrationState, OutcomeKind, ReasonLabel, RecommendationMirror,
+    RobustnessLabel, ScorecardView, TailSummaryView, crown_credibility,
 };
 use crate::state::{Cockpit, Message, PanelState};
 use crate::strings::{
     LEADERBOARD_BENCHMARK_FRAGILE_NOTE, LEADERBOARD_BENCHMARK_TAG, LEADERBOARD_BUDGET_CONTEXT_FMT,
     LEADERBOARD_CAPTION, LEADERBOARD_COL_MAX_DD, LEADERBOARD_COL_RANK, LEADERBOARD_COL_RETURN,
     LEADERBOARD_COL_SHARPE, LEADERBOARD_COL_STRATEGY, LEADERBOARD_COL_TRADES,
-    LEADERBOARD_COL_TURNOVER, LEADERBOARD_CONTEXT_NO_BUDGET_FMT, LEADERBOARD_CROWN_PASSES_DSR,
-    LEADERBOARD_CROWN_TAG, LEADERBOARD_CROWN_WEAK_EVIDENCE, LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT,
-    LEADERBOARD_DATA_QUALITY_CAPTION, LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE,
-    LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL, LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL,
-    LEADERBOARD_DATA_QUALITY_TITLE, LEADERBOARD_DATA_QUALITY_TRUST_LABEL,
-    LEADERBOARD_DATA_QUALITY_VENUE_LABEL, LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL,
-    LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT, LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL,
-    LEADERBOARD_ENSEMBLE_K2OF4_LABEL, LEADERBOARD_ENSEMBLE_K3OF4_LABEL,
-    LEADERBOARD_ENSEMBLE_MAJORITY_LABEL, LEADERBOARD_ENSEMBLE_SAT_IN_CASH,
-    LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL, LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL,
-    LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL, LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL,
-    LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX, LEADERBOARD_EXPLAIN_BUTTON,
-    LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT, LEADERBOARD_EXPLAIN_LLM_LABEL,
-    LEADERBOARD_FIELD_ARM_COUNT_FMT, LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT,
-    LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE, LEADERBOARD_HEADLINE_ACTIVE_WINS,
-    LEADERBOARD_HEADLINE_ALL_FRAGILE, LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING,
-    LEADERBOARD_MARGINAL_TAG, LEADERBOARD_NEXT_STEP_TITLE, LEADERBOARD_PROGRESS_FMT,
-    LEADERBOARD_REASON_ALL_FRAGILE, LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE,
-    LEADERBOARD_REASON_BENCHMARK_UNDEFEATED, LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE,
-    LEADERBOARD_REASON_TIE_DRAWDOWN, LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECHECK_CADENCE,
-    LEADERBOARD_RECOMMENDATION_TITLE, LEADERBOARD_RISK_STORY_CALMAR_HINT,
-    LEADERBOARD_RISK_STORY_CALMAR_LABEL, LEADERBOARD_RISK_STORY_CAPTION,
-    LEADERBOARD_RISK_STORY_CVAR_95_LABEL, LEADERBOARD_RISK_STORY_CVAR_99_LABEL,
-    LEADERBOARD_RISK_STORY_CVAR_HINT, LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE,
-    LEADERBOARD_RISK_STORY_MEDIAN_HINT, LEADERBOARD_RISK_STORY_MEDIAN_LABEL,
-    LEADERBOARD_RISK_STORY_SKEW_HINT, LEADERBOARD_RISK_STORY_SKEW_LABEL,
-    LEADERBOARD_RISK_STORY_SORTINO_HINT, LEADERBOARD_RISK_STORY_SORTINO_LABEL,
-    LEADERBOARD_RISK_STORY_TITLE, LEADERBOARD_ROBUST_TAG, LEADERBOARD_RUN_BUTTON,
-    LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
+    LEADERBOARD_COL_TURNOVER, LEADERBOARD_CONTEXT_NO_BUDGET_FMT,
+    LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT, LEADERBOARD_CROSS_RUN_CAPTION,
+    LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT, LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY,
+    LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT, LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT,
+    LEADERBOARD_CROWN_PASSES_DSR, LEADERBOARD_CROWN_TAG, LEADERBOARD_CROWN_WEAK_EVIDENCE,
+    LEADERBOARD_CROWN_WEAK_EVIDENCE_HINT, LEADERBOARD_DATA_QUALITY_CAPTION,
+    LEADERBOARD_DATA_QUALITY_INFORMATIONAL_NOTE, LEADERBOARD_DATA_QUALITY_PROVENANCE_LABEL,
+    LEADERBOARD_DATA_QUALITY_SURVIVAL_LABEL, LEADERBOARD_DATA_QUALITY_TITLE,
+    LEADERBOARD_DATA_QUALITY_TRUST_LABEL, LEADERBOARD_DATA_QUALITY_VENUE_LABEL,
+    LEADERBOARD_DATA_QUALITY_WARNINGS_LABEL, LEADERBOARD_DISCLAIMER, LEADERBOARD_EMPTY_PROMPT,
+    LEADERBOARD_ENSEMBLE_ANY1OF4_LABEL, LEADERBOARD_ENSEMBLE_K2OF4_LABEL,
+    LEADERBOARD_ENSEMBLE_K3OF4_LABEL, LEADERBOARD_ENSEMBLE_MAJORITY_LABEL,
+    LEADERBOARD_ENSEMBLE_SAT_IN_CASH, LEADERBOARD_ENSEMBLE_TR_MR_MACD_RSI_LABEL,
+    LEADERBOARD_ENSEMBLE_TR_MR_SMA_BB_LABEL, LEADERBOARD_ENSEMBLE_TREND_PAIR_LABEL,
+    LEADERBOARD_ENSEMBLE_UNANIMOUS_LABEL, LEADERBOARD_ENSEMBLE_VOTE_TAG, LEADERBOARD_ERROR_PREFIX,
+    LEADERBOARD_EXPLAIN_BUTTON, LEADERBOARD_EXPLAIN_FELLBACK, LEADERBOARD_EXPLAIN_INFLIGHT,
+    LEADERBOARD_EXPLAIN_LLM_LABEL, LEADERBOARD_FIELD_ARM_COUNT_FMT,
+    LEADERBOARD_FIELD_ARM_COUNT_NO_DVOL_FMT, LEADERBOARD_FRAGILE_TAG, LEADERBOARD_HEADLINE,
+    LEADERBOARD_HEADLINE_ACTIVE_WINS, LEADERBOARD_HEADLINE_ALL_FRAGILE,
+    LEADERBOARD_HEADLINE_BENCHMARK_WINS, LEADERBOARD_LOADING, LEADERBOARD_MARGINAL_TAG,
+    LEADERBOARD_NEXT_STEP_TITLE, LEADERBOARD_PROGRESS_FMT, LEADERBOARD_REASON_ALL_FRAGILE,
+    LEADERBOARD_REASON_BEAT_BENCHMARK_SHARPE, LEADERBOARD_REASON_BENCHMARK_UNDEFEATED,
+    LEADERBOARD_REASON_HIGHEST_ROBUST_SHARPE, LEADERBOARD_REASON_TIE_DRAWDOWN,
+    LEADERBOARD_REASON_TIE_RETURN, LEADERBOARD_RECHECK_CADENCE, LEADERBOARD_RECOMMENDATION_TITLE,
+    LEADERBOARD_RISK_STORY_CALMAR_HINT, LEADERBOARD_RISK_STORY_CALMAR_LABEL,
+    LEADERBOARD_RISK_STORY_CAPTION, LEADERBOARD_RISK_STORY_CVAR_95_LABEL,
+    LEADERBOARD_RISK_STORY_CVAR_99_LABEL, LEADERBOARD_RISK_STORY_CVAR_HINT,
+    LEADERBOARD_RISK_STORY_INFORMATIONAL_NOTE, LEADERBOARD_RISK_STORY_MEDIAN_HINT,
+    LEADERBOARD_RISK_STORY_MEDIAN_LABEL, LEADERBOARD_RISK_STORY_SKEW_HINT,
+    LEADERBOARD_RISK_STORY_SKEW_LABEL, LEADERBOARD_RISK_STORY_SORTINO_HINT,
+    LEADERBOARD_RISK_STORY_SORTINO_LABEL, LEADERBOARD_RISK_STORY_TITLE, LEADERBOARD_ROBUST_TAG,
+    LEADERBOARD_RUN_BUTTON, LEADERBOARD_RUN_BUTTON_RUNNING, LEADERBOARD_SCORECARD_BEATS_HOLD_LABEL,
     LEADERBOARD_SCORECARD_BEATS_HOLD_NO, LEADERBOARD_SCORECARD_BEATS_HOLD_YES,
     LEADERBOARD_SCORECARD_CAPTION, LEADERBOARD_SCORECARD_CONFIDENCE_HINT,
     LEADERBOARD_SCORECARD_CONFIDENCE_LABEL, LEADERBOARD_SCORECARD_HISTORY_FMT,
@@ -1056,10 +1059,15 @@ fn scorecard_block(
     if let Some(search) = search_completeness(report, mode) {
         body = body.push(search);
     }
+    let mut body = body.push(confidence).push(history).push(beats);
+    // 4-13 / B7 — the cross-run check, directly under "Beats holding after the
+    // search?" because it is that question asked of the other axis: the per-run row
+    // answers it for THIS bake-off, this pair of lines answers it for the whole
+    // sequence of bake-offs the operator has run. `None` when the run kept no ledger.
+    if let Some(cross_run) = cross_run_block(report, mode) {
+        body = body.push(cross_run);
+    }
     let body = body
-        .push(confidence)
-        .push(history)
-        .push(beats)
         // 3-20 AC4 — the standing qualifier, last in the trust block because it
         // qualifies everything above it. Read from the ONE constant that also states
         // it in the record, so the screen cannot drift from the bug log.
@@ -1213,6 +1221,121 @@ fn search_completeness(
     )
 }
 
+/// Story 4-13 / gap-analysis B7 — the CROSS-RUN check, beside the per-run scorecard.
+///
+/// The scorecard above deflates by how many strategies were tried in ONE run. This
+/// pair of lines states the other axis: how many bake-offs the operator has run in
+/// total, how many of them concluded an active strategy beats holding, and how many
+/// such conclusions chance alone would produce over a sequence that long. Re-run the
+/// bake-off often enough and one of the runs says "a strategy wins" even when none
+/// ever does — that is not a finding, it is arithmetic, and this is where it is said.
+///
+/// Two lines, matching [`search_completeness`]'s shape: the statement, then a muted
+/// caption naming the limitation. The caption is not decoration — the shipped bar
+/// treats every run as independent and equally current, so it is hard on old runs and
+/// easy on repeats, and a reader who does not know that would over-read the number.
+///
+/// Four states, deliberately distinguishable in words as well as colour:
+///
+/// | state | line | tint |
+/// |---|---|---|
+/// | sufficient, within chance | "…so this is no more than chance" | `FG_2` |
+/// | sufficient, above chance | "…higher than chance alone explains" | `FG_2` |
+/// | insufficient: none / one run | "Cross-run history: insufficient (N=…)" | `FG_3` |
+/// | insufficient: damaged ledger | "…N readable, M damaged …would read BETTER than the truth" | `WARN_500` |
+///
+/// Only the damaged case is tinted, and it still says "damaged" in words — colour is
+/// never the only signal. It is the only state where something is WRONG rather than
+/// merely absent: unparsed rows mean the sequence is longer than the count, which
+/// shrinks the chance-alone expectation, which biases the whole check optimistic.
+/// That is the one direction an honesty surface must never fail in quietly.
+///
+/// The two sufficient readings share a tint on purpose. "More than chance explains"
+/// is not a win and not a fault; dressing it in a sentiment colour would editorialise
+/// a number whose own caption says it is easy to run up by re-testing the same coin.
+///
+/// `None` when the report carries no annex at all — the run was never asked to record
+/// itself, so there is no sequence, not even an empty one. Saying nothing is correct
+/// there; printing "N = 0" would present a bookkeeping choice as a finding.
+///
+/// One coupling worth knowing: this is rendered inside [`scorecard_block`], which the
+/// pane only calls when the report carries a non-degenerate scorecard. So a report
+/// with an annex but no scorecard would show no cross-run line. That combination is
+/// unreachable today — a degenerate scorecard means `n_candidates == 0`, and a
+/// bake-off that ranked nothing lands `PanelState::Empty` rather than `Ready`
+/// (`finish_run_empty_rows_lands_empty_not_ready`), so this pane never renders there.
+/// If that ever changes, this line moves out of the block rather than growing a second
+/// call site.
+///
+/// **REPORT-ONLY** — nothing here touches the crown, the rank, or the FROZEN gate.
+fn cross_run_block(
+    report: &BakeoffReportMirror,
+    mode: ThemeMode,
+) -> Option<crate::Element<'static>> {
+    let annex: &FdrAnnexView = report.fdr_annex.as_ref()?;
+
+    // Switch on `insufficient` FIRST: when it is set the numeric fields are whatever
+    // the partial history happened to support, and rendering them as a conclusion is
+    // exactly the failure the engine's `Option` exists to prevent.
+    let (line, tint) = match annex.insufficient {
+        Some(FdrInsufficiency::NoHistory) => (
+            LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY.to_owned(),
+            color::FG_3.current(mode),
+        ),
+        Some(FdrInsufficiency::TooFewRuns) => (
+            LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT
+                .replace("{runs}", &annex.runs.to_string()),
+            color::FG_3.current(mode),
+        ),
+        Some(FdrInsufficiency::PartiallyUnreadable) => (
+            LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT
+                .replace("{runs}", &annex.runs.to_string())
+                .replace("{bad}", &annex.unreadable_rows.to_string()),
+            color::WARN_500.current(mode),
+        ),
+        None => {
+            // Sufficient. `beats_hold_within_chance` is `Some(..)` here by
+            // construction (it is `None` only while `insufficient` is set), but the
+            // fallback is the within-chance wording rather than an `expect`: a UI
+            // must not panic, and of the two readings that is the one that cannot
+            // overstate the evidence.
+            let template = if annex.beats_hold_within_chance() == Some(false) {
+                LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT
+            } else {
+                LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT
+            };
+            (
+                template
+                    .replace("{runs}", &annex.runs.to_string())
+                    .replace("{beats}", &annex.beats_hold.to_string())
+                    .replace(
+                        "{expected}",
+                        &round_expected(annex.expected_false_beats_hold),
+                    ),
+                color::FG_2.current(mode),
+            )
+        }
+    };
+
+    Some(
+        Column::new()
+            .spacing(space::XXS)
+            .push(
+                Text::new(line)
+                    .size(text::SMALL)
+                    .color(tint)
+                    .width(Length::Fill),
+            )
+            .push(
+                Text::new(LEADERBOARD_CROSS_RUN_CAPTION)
+                    .size(text::MICRO)
+                    .color(color::FG_3.current(mode))
+                    .width(Length::Fill),
+            )
+            .into(),
+    )
+}
+
 /// One scorecard fact — a `label` (muted `MICRO`) over a `value` (`H3`,
 /// `value_color`), with an optional one-line plain-language `hint` (muted
 /// `SMALL`) beneath. The label-over-value shape keeps each fact scannable as a
@@ -1274,6 +1397,20 @@ fn round_count(n_eff: f64) -> String {
 fn round_years(years: f64) -> String {
     let y = years.max(0.0);
     format!("{y:.1}")
+}
+
+/// Format the cross-run "chance alone would produce about N" count (4-13 / B7).
+///
+/// One decimal, clamped at `0.0` (`runs × α` is `≥ 0` by construction). Kept at one
+/// decimal rather than rounded to a whole number because the interesting range is
+/// small — twenty runs at α = 0.05 expects 1.0, and rounding "0.6" to "1" would let a
+/// sequence that has NOT yet earned a single chance false positive read as though it
+/// had. Separate from [`round_years`] despite the identical body: they format
+/// different quantities and will not stay identical if either gains a unit or a
+/// precision rule.
+fn round_expected(expected: f64) -> String {
+    let e = expected.max(0.0);
+    format!("{e:.1}")
 }
 
 // ── Risk story block (advisor-turnover-and-tail-metrics P1-2) ─────────────────

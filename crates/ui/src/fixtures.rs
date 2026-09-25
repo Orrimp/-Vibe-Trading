@@ -1346,6 +1346,39 @@ pub fn fake_scorecard_view() -> crate::leaderboard::ScorecardView {
     }
 }
 
+/// A deterministic, SUFFICIENT [`FdrAnnexView`](crate::leaderboard::FdrAnnexView) for
+/// the leaderboard's cross-run line (story 4-13 / gap-analysis B7).
+///
+/// Models the state a real advisor run reaches once the ledger has some history: 22
+/// recorded bake-offs, 1 of which concluded an active strategy beats holding, against
+/// the 22 × 0.05 = 1.1 that chance alone would produce over a sequence that long. So
+/// `beats_hold_within_chance()` is `Some(true)` — 1 ≤ 1.1.
+///
+/// That reading is the default on purpose, on two grounds:
+///
+/// - It is the honest headline the story exists to surface, so the fold gate and the
+///   gallery exercise the branch that matters rather than an edge case.
+/// - It is the era-qualified thesis's own shape (MEMORY: no active edge on the
+///   current era). A default fixture showing repeated beats-holding verdicts would
+///   put a claim on every screenshot that the evidence does not support.
+///
+/// `beats_hold = 1` rather than `0` deliberately: a zero would render the one count
+/// whose wording could go stale without anyone noticing.
+///
+/// Fixed numbers, no clock, no ledger on disk — fixtures NEVER stand up the engine.
+/// Used by `fake_bakeoff_report_mirror*` so a populated leaderboard always has the
+/// cross-run line to render against (and so the fold gate measures it for real).
+#[must_use]
+pub fn fake_fdr_annex_view() -> crate::leaderboard::FdrAnnexView {
+    crate::leaderboard::FdrAnnexView {
+        runs: 22,
+        unreadable_rows: 0,
+        beats_hold: 1,
+        expected_false_beats_hold: 1.1,
+        insufficient: None,
+    }
+}
+
 /// A deterministic [`TailSummaryView`](crate::leaderboard::TailSummaryView) for the
 /// leaderboard "Risk story" block (advisor-turnover-and-tail-metrics, P1-2).
 /// Fixed numbers so the render guard is stable. Models a realistic crown:
@@ -1636,6 +1669,9 @@ pub fn fake_bakeoff_report_mirror() -> crate::leaderboard::BakeoffReportMirror {
         },
         // P0-1 (ADR-0075): the report-only "show your work" scorecard.
         scorecard: Some(fake_scorecard_view()),
+        // 4-13 / B7: the report-only cross-run annex — a run that recorded
+        // itself into the ledger and found a sequence to speak about.
+        fdr_annex: Some(fake_fdr_annex_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
@@ -1833,6 +1869,9 @@ pub fn fake_bakeoff_report_mirror_with_shorts() -> crate::leaderboard::BakeoffRe
         },
         // P0-1 (ADR-0075): the report-only "show your work" scorecard.
         scorecard: Some(fake_scorecard_view()),
+        // 4-13 / B7: the report-only cross-run annex — a run that recorded
+        // itself into the ledger and found a sequence to speak about.
+        fdr_annex: Some(fake_fdr_annex_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
@@ -2101,6 +2140,9 @@ pub fn fake_bakeoff_report_mirror_five_arm() -> crate::leaderboard::BakeoffRepor
             min_btl_years: 2.6,
             crown_clears_dsr: false,
         }),
+        // 4-13 / B7: the report-only cross-run annex — a run that recorded
+        // itself into the ledger and found a sequence to speak about.
+        fdr_annex: Some(fake_fdr_annex_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the
@@ -2200,6 +2242,9 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins() -> crate::leaderboard::Bakeof
             min_btl_years: 1.1,
             crown_clears_dsr: false,
         }),
+        // 4-13 / B7: the report-only cross-run annex — a run that recorded
+        // itself into the ledger and found a sequence to speak about.
+        fdr_annex: Some(fake_fdr_annex_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the BENCHMARK-WINS modal
         // case still carries a tail summary — the crown (buy-and-hold) has its
         // own bootstrap distribution. Wider negative tail (the single-asset
@@ -2384,6 +2429,9 @@ pub fn fake_bakeoff_report_mirror_benchmark_wins_full() -> crate::leaderboard::B
             min_btl_years: 3.2,
             crown_clears_dsr: false,
         }),
+        // 4-13 / B7: the report-only cross-run annex — a run that recorded
+        // itself into the ledger and found a sequence to speak about.
+        fdr_annex: Some(fake_fdr_annex_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): wider negative tail
         // matching the buy-and-hold honest path-dependence on this single
         // volatile asset (B1). Report-only.
@@ -2561,6 +2609,9 @@ pub fn fake_bakeoff_report_mirror_with_ensembles() -> crate::leaderboard::Bakeof
             min_btl_years: 3.3,
             crown_clears_dsr: false,
         }),
+        // 4-13 / B7: the report-only cross-run annex — a run that recorded
+        // itself into the ledger and found a sequence to speak about.
+        fdr_annex: Some(fake_fdr_annex_view()),
         // P1-2 (advisor-turnover-and-tail-metrics): the report-only Risk story.
         tail: Some(fake_tail_summary_view()),
         // P1-7 (advisor-data-quality-surface): the DATA-stage readout for the

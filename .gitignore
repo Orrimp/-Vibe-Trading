@@ -11,6 +11,10 @@
 # glob ⇒ `verify_anchors.sh` stays 119/119 BY CONSTRUCTION (the git boundary is
 # the guarantee, not reviewer vigilance).
 /plan-exports/
+# Story 4-13 — the cross-run FDR ledger. Same ADR-0055 lab-runs precedent:
+# git-ignored ⇒ outside every `evidence/**` anchor glob ⇒ the 119 anchored bodies
+# are byte-immutable BY CONSTRUCTION, not by anyone remembering.
+/advisor-runs/
 
 # Runtime state — not source
 # `/data/` excluded except for `data/yahoo/REVISION.toml` (revision-pin manifest

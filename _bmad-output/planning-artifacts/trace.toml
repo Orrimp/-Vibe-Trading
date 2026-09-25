@@ -3551,9 +3551,14 @@ feature     = "advisor-online-fdr-annex"
 product     = "_bmad-output/planning-artifacts/PRD.md"
 arch        = ["docs/dev-notes/research-gap-analysis-2026-07-11.md"]
 crates      = ["crates/backtest", "crates/ui"]
-tests       = []
+tests       = [
+  "crates/backtest/tests/fdr_annex_identity.rs",
+  "crates/backtest/src/bakeoff/fdr_annex.rs",
+  "crates/ui/tests/leaderboard_cross_run_annex_render.rs",
+  "crates/ui/tests/honesty_surface_wording.rs",
+]
 anchors     = []
-state       = "scoped"   # analyst story 4-13 drafted 2026-07-27 (operator decision PRD §13 Q3 = BUILD; epic-4 reopened); ready-for-dev
+state       = "shipped"   # 2026-09-25, ADR-0098. SHIPPED the static family-wise version (expected N×α + Šidák bar); LORD alpha-investing with decaying memory deferred and stated, per AC2's explicit permission. Identity proven over all four ledger states on the FULL ranking
 
 [[req]]
 id          = "REQ-LAB-RECIPE-HARNESS-V0-3-001"

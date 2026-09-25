@@ -96,6 +96,7 @@ async fn t14_decisive_signal_library_bakeoff() {
             field: field.clone(),
             timeframe: backtest::resample::Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         data_source: ScenarioDataSource::BinanceCache,
         robustness: RobustnessMode::Bootstrap {

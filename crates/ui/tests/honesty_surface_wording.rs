@@ -96,10 +96,161 @@ fn the_new_honesty_strings_are_registered() {
         "LEADERBOARD_SEARCH_INCOMPLETE_FMT",
         "LEADERBOARD_SEARCH_ARMS_FMT",
         "LEADERBOARD_STANDING_QUALIFIER",
+        // story 4-13 / gap-analysis B7 — the cross-run check
+        "LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT",
+        "LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT",
+        "LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY",
+        "LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT",
+        "LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT",
+        "LEADERBOARD_CROSS_RUN_CAPTION",
     ] {
         assert!(
             registry.contains(&key),
             "{key} is rendered but not in strings::all()"
         );
+    }
+}
+
+// ── Story 4-13 (gap-analysis B7) — the cross-run check's WORDING ──────────────
+//
+// Same division as above, for the same reason: `leaderboard_cross_run_annex_render`
+// proves the line paints and that its four states paint differently. It cannot read
+// the words, and two of this story's acceptance criteria are entirely about what the
+// words say. Asserting them here on the constants is the honest split; claiming the
+// pixel gate covered them would be the proxy AD-10 exists to refuse.
+
+/// **AC2 — the caption states the limitation, in BOTH directions.**
+///
+/// What shipped is the static family-wise bar, not LORD alpha-investing with decaying
+/// memory. The AC permits the cheap version provided the choice is stated, and the
+/// statement is only honest if it names both errors: the bar is CONSERVATIVE about old
+/// runs (it never forgets) and OPTIMISTIC about correlated ones (it cannot tell a
+/// re-run of the same coin over an overlapping window from a fresh test). A caption
+/// that named only the first would flatter the number; only the second would look like
+/// a disclaimer with no content.
+///
+/// Asserted on meaning-bearing fragments rather than the whole sentence, so a reword
+/// that keeps the content passes and one that drops half of it fails.
+#[test]
+fn the_cross_run_caption_names_both_directions_of_its_limitation() {
+    let c = strings::LEADERBOARD_CROSS_RUN_CAPTION;
+    for fragment in [
+        // independence + recency assumption, in plain words
+        "independent",
+        "equally recent",
+        // the two errors it causes
+        "hard on old runs",
+        "easy on repeats",
+        // the concrete instance of the optimistic one
+        "overlapping window is not a fresh test",
+        // and what is NOT built
+        "not built yet",
+    ] {
+        assert!(
+            c.contains(fragment),
+            "the cross-run caption must state {fragment:?}; it reads: {c:?}"
+        );
+    }
+}
+
+/// **AC5 — the damaged-ledger line names the damage AND which way it biases.**
+///
+/// Unreadable rows are the one insufficiency where something is WRONG rather than
+/// merely absent: they make the counted sequence shorter than the real one, which
+/// shrinks the chance-alone expectation, which makes the whole check read better than
+/// the truth. An operator who is told only "insufficient" cannot know that. The line
+/// therefore carries the damaged-row count as a placeholder AND says the direction of
+/// the error in words — which is also what keeps the `WARN` tint from being the only
+/// signal.
+#[test]
+fn the_damaged_ledger_line_names_the_rows_and_the_bias_direction() {
+    let d = strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT;
+    assert!(
+        d.contains("{runs}") && d.contains("{bad}"),
+        "the damaged-ledger line must carry BOTH counts — readable and damaged — or \
+         the operator cannot tell '3 of 40 rows are broken' from '3 runs happened'. \
+         It reads: {d:?}"
+    );
+    assert!(
+        d.contains("damaged"),
+        "the damaged-ledger line must say 'damaged' in words, so the WARN tint is \
+         never the only signal. It reads: {d:?}"
+    );
+    assert!(
+        d.contains("BETTER than the truth"),
+        "the damaged-ledger line must state WHICH WAY the under-count biases the \
+         check — optimistic is the one direction an honesty surface must not fail in \
+         quietly. It reads: {d:?}"
+    );
+}
+
+/// **AC5 — the three insufficiency reasons are three different sentences.**
+///
+/// The render gate proves they paint differently; this proves they are not three
+/// renderings of one shrug. Each must state the N it is talking about (so "no history"
+/// and "one run" cannot be confused) and no two may be the same text.
+#[test]
+fn the_three_insufficiency_reasons_say_different_things() {
+    let reasons = [
+        strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY,
+        strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT,
+        strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT,
+    ];
+    for r in reasons {
+        assert!(
+            r.contains("insufficient") && r.contains("N="),
+            "every insufficiency line must name itself insufficient and state its N \
+             (AC5's literal wording); this one reads: {r:?}"
+        );
+    }
+    for (i, a) in reasons.iter().enumerate() {
+        for b in &reasons[i + 1..] {
+            assert_ne!(
+                a, b,
+                "two insufficiency reasons share the same text — an operator cannot \
+                 act on a difference the copy does not make"
+            );
+        }
+    }
+}
+
+/// **The no-jargon rule, on the story most tempted to break it.**
+///
+/// The engine's module doc says "Šidák", "family-wise", "online FDR" and
+/// "alpha-investing", and it should — that is where the literature reference belongs.
+/// None of it may reach the screen: the reader of this line is someone deciding what
+/// to do with €200, and a term they have to look up is a term that stops them reading.
+/// The rendered copy says "chance alone would produce about N" instead.
+#[test]
+fn the_cross_run_copy_carries_no_jargon() {
+    let rendered = [
+        strings::LEADERBOARD_CROSS_RUN_WITHIN_CHANCE_FMT,
+        strings::LEADERBOARD_CROSS_RUN_ABOVE_CHANCE_FMT,
+        strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_NO_HISTORY,
+        strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_TOO_FEW_FMT,
+        strings::LEADERBOARD_CROSS_RUN_INSUFFICIENT_DAMAGED_FMT,
+        strings::LEADERBOARD_CROSS_RUN_CAPTION,
+    ];
+    for term in [
+        "Šidák",
+        "Sidak",
+        "family-wise",
+        "familywise",
+        "FDR",
+        "false discovery",
+        "alpha-investing",
+        "alpha investing",
+        "LORD",
+        "Bonferroni",
+        "p-value",
+    ] {
+        for line in rendered {
+            assert!(
+                !line.to_lowercase().contains(&term.to_lowercase()),
+                "the rendered cross-run copy must not use the term {term:?} — the \
+                 method's name belongs in the engine's doc comment, not on a screen \
+                 someone reads to decide what to do. Offending line: {line:?}"
+            );
+        }
     }
 }

@@ -1,6 +1,6 @@
 # Story 4.13: advisor-online-fdr-annex
 
-Status: ready-for-dev
+Status: done
 
 <!-- Analyst-drafted 2026-07-29 (Mary). Operator-DECIDED build: PRD §13 Q3 answer, 2026-07-27
      ("build as a report-annex"). This is gap-analysis B7 — the single build-candidate in
@@ -22,11 +22,51 @@ so that the false-"beats-hold" rate accumulated across my whole SEQUENCE of bake
 
 ## Tasks / Subtasks
 
-- [ ] Architect M-T1: ratify ledger location/format + annex math (its own ADR, AD-18 atomic with Registry row); confirm the anchored CLI report path is untouched (scorecard precedent: advisor bakeoff runs `write_report = false`; annex carried on `Recommendation`).
-- [ ] Ledger writer at bakeoff completion — proposed seam: the scorecard block `crates/backtest/src/bakeoff/mod.rs:1167-1180` already has `all_sharpes`/`N_eff`/`t_bars`/crown in scope.
-- [ ] Annex math module (`bakeoff/fdr_annex.rs` or sibling) + render line beside the scorecard on leaderboard/forward-plan surfaces (pixel proof per AD-10 if UI-visible).
-- [ ] Identity test (AC 4) + degradation tests (AC 5) + a unit fixture proving the expected-false-positive arithmetic on a known sequence.
-- [ ] Gates: anchors 119/119, spec-lint, clippy, fmt.
+- [x] Ratify ledger location/format + annex math — **done 2026-09-25**, ADR-0098 (+ Registry row, atomic).
+- [x] Ledger writer at bakeoff completion — **done 2026-09-25**.
+- [x] Annex math module `bakeoff/fdr_annex.rs` — **done 2026-09-25**.
+- [x] Render line beside the scorecard + pixel proof — **done 2026-09-25**.
+- [x] Identity test (AC4) + degradation tests (AC5) + the arithmetic fixture — **done 2026-09-25**.
+- [x] Gates: anchors 119/119, spec-lint, clippy, fmt.
+
+## Dev record (2026-09-25)
+
+ADR-0098.
+
+### What shipped, and what did not — AC2 asks for this plainly
+
+**Shipped: the static family-wise version.** Two numbers over the recorded sequence — the
+expected false "beats holding" count `N × α` (B7's named minimum), and the Šidák per-run
+bar `DSR ≥ (1−α)^(1/N)` with how many recorded crowns clear it.
+
+**Not shipped: LORD alpha-investing with decaying memory.** It is the better fit for
+crypto non-stationarity and needs wealth accounting across the sequence. AC2 explicitly
+permits the cheap version for v0.1 provided the choice is stated; it is stated in the
+module docs, in the rendered caption, and in ADR-0098 D1 — including the direction of the
+error: Šidák assumes independence, so it is **conservative about old runs and optimistic
+about correlated ones**. Re-running the same coin on an overlapping window is not a fresh
+test, and the operator is told so.
+
+### The decisions worth knowing
+
+| | |
+|---|---|
+| α | Not a new knob — `DSR_THRESHOLD` is 0.95, so the per-run level is already 0.05 (D2). |
+| Ledger | `advisor-runs/fdr-ledger.jsonl`, git-ignored ⇒ outside every `evidence/**` glob ⇒ anchors byte-immutable BY CONSTRUCTION (D3). No money in the rows, so AD-9 is not implicated. |
+| Recording | `BakeoffRequest::fdr_ledger: Option<PathBuf>`, no `Default`, **all 17 sites state intent**. 15 are `None`. A run that recorded itself by accident would inflate the denominator the annex reports (D4). |
+| Order | Read BEFORE append: the annex describes the sequence UP TO this run (D5). |
+| Damage | Unreadable rows are COUNTED, never swallowed — under-counting biases the annex *optimistic*, the one direction an honesty surface must not fail in (D6). |
+| "Within chance" | `Option<bool>`. Insufficient history is `None`, not `false` — "cannot say" is not "no" (D7). |
+
+### AC4, the FROZEN-gate obligation
+
+`crates/backtest/tests/fdr_annex_identity.rs` asserts the crown **and the full ranking
+order** are identical with the annex absent and present across all four ledger states
+AC4 names — missing, empty, populated, corrupt — because each reaches a different branch
+of `read_ledger`. Comparing only the winner would pass on a change that reshuffled
+everything below first place, so `ranked` is compared in full. The field is three
+resolvable arms plus the benchmark, so the ranking is four entries long; a two-entry
+ranking would be a weak reorder detector. `robustness.rs` and `rank.rs` byte-untouched.
 
 ## Dev Notes
 
@@ -37,7 +77,8 @@ so that the false-"beats-hold" rate accumulated across my whole SEQUENCE of bake
 
 ### References
 
-- Trace: `REQ-ADVISOR-ONLINE-FDR-ANNEX-001` (state=`scoped`)
+- ADR: [`0098-the-cross-run-multiple-testing-annex.md`](../planning-artifacts/architecture/decisions/0098-the-cross-run-multiple-testing-annex.md)
+- Trace: `REQ-ADVISOR-ONLINE-FDR-ANNEX-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 4 (v2 Research-Driven Credibility Tranche)
 - Decision record: PRD §13 Q3 (operator answer 2026-07-27); `docs/dev-notes/research-gap-analysis-2026-07-11.md` § B7 + § C2; `research/backtesting/papers.md` [73]; pattern predecessor story `4-1-advisor-overfitting-scorecard` (ADR-0075).
 

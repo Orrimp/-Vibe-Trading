@@ -113,15 +113,31 @@ fn warn_amber_pixels(w: u32, h: u32, rgba: &[u8]) -> u64 {
 ///    above the block is fixed-height in every fixture, so the band does not move with the
 ///    field size" — is false as of ADR-0095, and this band is sized for the SPREAD.
 ///
-/// Measured, full-pane renders at 1920 x 2400:
+/// Re-measured again 2026-09-25, after story 4-13 added the cross-run check to the same
+/// trust block: it grew a further 46 px (the fold gate's measured extent went 903 -> 949),
+/// so everything below moved down by that much. The gates did NOT go red, but measuring
+/// showed the old bottom bound had become a tripwire rather than a bracket — the
+/// AI-summary card's bottom accent border (y = 1196) and the Explain button's (y = 1191)
+/// had both fallen OUTSIDE a band that ends at 1190, and the Explain button's LABEL had
+/// only 7 px of slack left. So the bottom moved 1190 -> 1230, on measurement: that is
+/// below every feature the band is meant to bracket and still 23 px clear of the ranked
+/// table's crowned-row accent (y >= 1253), whose clay the amber predicate also matches.
+///
+/// Measured by the `measure` test in each file, full-pane renders at 1920 x 2400:
 ///
 /// | fixture | what paints | where |
 /// |---|---|---|
-/// | `five_arm` (5 arms) | WeakEvidence banner, 6187 amber px | y = 977..1018 |
-/// | narration `Ready` | AI-summary card, ACCENT | y = 1073..1151 |
-/// | narration `NotRequested` | Explain ghost button, ACCENT | y = 1119..1146 |
-/// | `benchmark_wins` | stray amber (scorecard glyph, ~40 px) | y = 1122..1164 |
-/// | any | ranked table's crowned-row accent | y >= 1205 |
+/// | `five_arm` (5 arms) | WeakEvidence banner, 6186 amber px in band | y = 1023..1063 |
+/// | narration `Ready` | AI-summary card, ACCENT (2579 px in band) | y = 1119..1196 |
+/// | narration `NotRequested` | Explain ghost button, ACCENT (372 px in band) | y = 1173..1191 |
+/// | narration `FellBack` | neither — 0 ACCENT in band (the control) | next teal at y = 1263 |
+/// | `benchmark_wins` | stray amber only, 17 px in band, no dense run | — |
+/// | any | ranked table's crowned-row accent | y >= 1253 |
+///
+/// The two control CEILINGS are what a bottom bound set too low would break by letting
+/// the table in: `passes` measures 0 amber in band (229 in the whole frame) and
+/// `benchmark_wins` 17 (138 whole-frame), both far under their `< 400` ceilings even if
+/// every stray pixel fell inside.
 ///
 /// So the band spans the recommendation region across every fixture and stops short of
 /// the table, whose clay the colour predicates would otherwise match.
@@ -132,7 +148,7 @@ const BANNER_TOP: u32 = 950;
 /// reached the table would count every Max-DD figure and every Fragile badge as
 /// "amber" — which is exactly how this guard failed when a taller frame exposed the
 /// table to a `y > h/2` region.
-const BANNER_BOTTOM: u32 = 1190;
+const BANNER_BOTTOM: u32 = 1230;
 
 /// Count `WARN`-amber pixels in the BANNER band only — see [`BANNER_TOP`].
 fn warn_amber_pixels_banner_region(w: u32, h: u32, rgba: &[u8]) -> u64 {
@@ -153,6 +169,42 @@ fn warn_amber_pixels_banner_region(w: u32, h: u32, rgba: &[u8]) -> u64 {
         }
     }
     hits
+}
+
+/// Prints the amber geometry [`BANNER_TOP`] / [`BANNER_BOTTOM`] are anchored to:
+///
+/// ```text
+/// cargo test -p ui --test crown_credibility_render -- --ignored --nocapture measure
+/// ```
+///
+/// Reports the amber count inside the band for all three fixtures — the money shot and
+/// the two controls whose ceilings (`< 400`) are what a mis-placed `BANNER_BOTTOM`
+/// would break by letting the ranked table's `DOWN_500` clay in. Companion to
+/// `leaderboard_narration_render`'s `measure`, which prints the row-runs the band is
+/// meant to bracket.
+#[test]
+#[ignore = "measurement, not a gate"]
+fn measure() {
+    let weak = ui::fixtures::fake_bakeoff_report_mirror_five_arm();
+    let mut passes = weak.clone();
+    if let Some(sc) = passes.scorecard.as_mut() {
+        sc.crown_clears_dsr = true;
+    }
+    let bench = ui::fixtures::fake_bakeoff_report_mirror_benchmark_wins();
+
+    for (label, mirror) in [
+        ("weak (money shot)", weak),
+        ("passes (control) ", passes),
+        ("benchmark_wins   ", bench),
+    ] {
+        let cockpit = ui::fixtures::fake_cockpit_leaderboard(PanelState::Ready(mirror));
+        let (w, h, r) = render_leaderboard_rgba(cockpit);
+        println!(
+            "{label}: amber in band {BANNER_TOP}..{BANNER_BOTTOM} = {}, whole frame = {}",
+            warn_amber_pixels_banner_region(w, h, &r),
+            warn_amber_pixels(w, h, &r)
+        );
+    }
 }
 
 /// **The money shot.** The `five_arm` mirror (`ActiveWins`, `crown_clears_dsr ==

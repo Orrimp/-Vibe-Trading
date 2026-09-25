@@ -159,6 +159,12 @@ pub fn default_bakeoff_config() -> backtest::BakeoffConfig {
             // Defaults: H1 identity pass-through + 100_000 USDT legacy capital.
             timeframe: backtest::resample::Horizon::OneHour,
             initial_capital: rust_decimal_macros::dec!(100_000),
+            // Story 4-13 — the advisor bake-off is the operator ASKING A QUESTION,
+            // so it is the one run that counts as a test in the cross-run sequence.
+            // Repo-root-relative, like its `/lab-runs/` and `/plan-exports/` siblings.
+            fdr_ledger: Some(backtest::bakeoff::fdr_annex::ledger_path(
+                std::path::Path::new("."),
+            )),
         },
         data_source: backtest::engine::ScenarioDataSource::BinanceCache,
         robustness: advisor_robustness(),
@@ -195,6 +201,12 @@ pub fn bakeoff_config_from_state(
             // Thread the operator-chosen timeframe + start capital.
             timeframe: st.timeframe.to_horizon(),
             initial_capital: st.start_capital(),
+            // Story 4-13 — the advisor bake-off is the operator ASKING A QUESTION,
+            // so it is the one run that counts as a test in the cross-run sequence.
+            // Repo-root-relative, like its `/lab-runs/` and `/plan-exports/` siblings.
+            fdr_ledger: Some(backtest::bakeoff::fdr_annex::ledger_path(
+                std::path::Path::new("."),
+            )),
         },
         data_source: backtest::engine::ScenarioDataSource::BinanceCache,
         robustness: advisor_robustness(),

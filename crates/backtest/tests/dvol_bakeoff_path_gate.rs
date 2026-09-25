@@ -241,6 +241,7 @@ async fn dvol_regime_bakeoff_ran_a_real_series() {
             field: field.clone(),
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         data_source: ScenarioDataSource::BinanceCache,
         // Skip bootstrap for speed (wiring check, not robustness assessment).
@@ -398,6 +399,7 @@ async fn dvol_regime_bakeoff_eth_ran_a_real_series() {
             field: field.clone(),
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         data_source: ScenarioDataSource::BinanceCache,
         robustness: backtest::RobustnessMode::Skip,
@@ -503,6 +505,7 @@ async fn solusdt_bakeoff_runs_clean_without_dvol_arm() {
             field: field.clone(),
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         // Synthetic so we don't need the corpus for SOLUSDT.
         data_source: ScenarioDataSource::Synthetic,
@@ -582,6 +585,7 @@ async fn btcusdt_bakeoff_drops_dvol_arm_when_series_unavailable() {
             field,
             timeframe: Horizon::OneHour,
             initial_capital: dec!(100_000),
+            fdr_ledger: None,
         },
         // Synthetic → `preloaded_bars` is None → no DVOL series can be resolved.
         data_source: ScenarioDataSource::Synthetic,
