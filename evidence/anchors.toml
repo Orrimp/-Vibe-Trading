@@ -672,10 +672,19 @@ sha256   = "7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20"
 # Wall-clock: 1217.1s on Apple-Silicon M-series (canonical box, ~11 cores).
 # Verify with: scripts/verify_anchors.sh (expects 86/86 PASS with this SHA)
 
+# Anchor — v1-momentum-theta-surface-2023-block-bootstrap-real-fy
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.4584, p5=-0.3141 — FRAGILE. P(Sharpe>1) max 0.105. p95_maxdd 25.64%..61.55%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v1-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5"
+sha256   = "acebe2268d9b439a0342e2301a19e53797ec8c33cad1262191d4e364081fc9a3"
 
 # C3 MR parameter-robustness sweep — θ-surface anchor #87 (2026-05-31).
 # Cross-sectional mean-reversion: 6-cell × N=200 LOCKED MR Tier-1 grid (§ D-MR.2-LOCKED).
@@ -691,10 +700,19 @@ sha256   = "0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5"
 # Anchored by developer (tester confirms 87/87 PASS in test report).
 # Verify with: scripts/verify_anchors.sh (expects 87/87 PASS with this SHA)
 
+# Anchor — v1-mr-theta-surface-2023-block-bootstrap-real-fy
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.8940, p5=-0.0816 — FRAGILE. P(Sharpe>1) max 0.435. p95_maxdd 20.52%..41.61%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v1-mr-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a"
+sha256   = "c1e76483fa92e60cb09d06c856c52c32602366f755054c28fae420d052f37237"
 
 # C3 carry (funding) θ-surface anchor #88 (2026-06-02).
 # Cross-sectional funding carry (framing (a) long-only directional carry-tilt):
@@ -714,10 +732,19 @@ sha256   = "a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a"
 # Anchored by tester at M-TEST (VERDICT → PASS).
 # Verify with: scripts/verify_anchors.sh (expects 88/88 PASS with this SHA)
 
+# Anchor — v1-carry-theta-surface-2023-block-bootstrap-real-fy
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.9457, p5=+0.0071 — MARGINAL. P(Sharpe>1) max 0.470. p95_maxdd 8.62%..32.04%.
+#   FAMILY-HAS-NON-FRAGILE-CELLS (was FAMILY-UNIFORM-FRAGILE; 2 of 6 cells FRAGILE->MARGINAL)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v1-carry-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4"
+sha256   = "d05c14b68b1408e4eade6e630212fc3f70b0174cec975b80121bb0e29b54ffe9"
 
 # C3 carry (funding) θ-surface anchor #89 — 2024 OOS regime (2026-06-02).
 # Same LOCKED 6-cell carry Tier-1 grid as #88 but on 2024-FY real Binance data.
@@ -734,10 +761,19 @@ sha256   = "f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4"
 # Anchored by tester at M-TEST per ADR-0051 § D6.6.4 (durable choice — both regimes locked).
 # Verify with: scripts/verify_anchors.sh (expects 89/89 PASS with this SHA)
 
+# Anchor — v1-carry-theta-surface-2024-block-bootstrap-real-fy
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.6246, p5=-0.6463 — FRAGILE. P(Sharpe>1) max 0.270. p95_maxdd 11.59%..45.97%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v1-carry-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199"
+sha256   = "9201293a8ab4a96a164ecaba366164d3b29a9a2b391ffdfa104a5fb65f33701c"
 
 # C3 TS-momentum θ-surface anchor #90 — 2023-FY (2026-06-03).
 # Time-series (per-asset absolute) momentum: 6-cell × N=200 LOCKED TS Tier-1 grid (§ D-TSM.3-LOCKED).
@@ -757,10 +793,19 @@ sha256   = "fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199"
 # Anchored by tester at M-TEST (VERDICT → PASS, durable choice per § D-TSM.6 / R-TSM.5).
 # Verify with: scripts/verify_anchors.sh (expects 90/90 PASS with this SHA)
 
+# Anchor — v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=2: p50=+0.8139, p5=-0.2015 — FRAGILE. P(Sharpe>1) max 0.370. p95_maxdd 22.13%..47.62%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57"
+sha256   = "9a6e6d2d2e787ea325efae85e40089dae4eeec2dab8bf5a1549378c7c5d3cb2f"
 
 # C3 TS-momentum θ-surface anchor #91 — 2024-FY OOS regime (2026-06-03).
 # Same LOCKED 6-cell TS Tier-1 grid as #90 but on 2024-FY real Binance data.
@@ -780,10 +825,19 @@ sha256   = "c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57"
 # universe is closed. Routes to broader-universe / horizon axis.
 # Verify with: scripts/verify_anchors.sh (expects 91/91 PASS with this SHA)
 
+# Anchor — v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=2: p50=+0.4779, p5=-0.7695 — FRAGILE. P(Sharpe>1) max 0.245. p95_maxdd 33.27%..47.57%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=ff7e7dda98940ac707540a34acfabb0d45d6fbe14c5274d0ba0ba8d5b383dae8 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "ff7e7dda98940ac707540a34acfabb0d45d6fbe14c5274d0ba0ba8d5b383dae8"
+sha256   = "75e0a2954fdd9fa942ab70d05f719c3efb87b7bc300061b43f35c772ed387805"
 
 # Horizon retest — coarser decision cadence (4h + daily) θ-surface anchors (2026-06-05).
 # Namespace: horizon-retest-robustness (NEW — distinct from mc-robustness-2026-06; the horizon
@@ -808,164 +862,292 @@ sha256   = "ff7e7dda98940ac707540a34acfabb0d45d6fbe14c5274d0ba0ba8d5b383dae8"
 # Verify with: scripts/verify_anchors.sh (expects 99/99 PASS with all 8 SHAs)
 
 # Anchor #92 — TS-momentum 4h horizon, 2023-FY
-# 6-cell × N=200. Grid: lookback∈{42,180,540} × threshold∈{0.00,0.02}. horizon=4h.
-# g=4 (best p50): p50=+0.165, p5=-0.038 — FRAGILE (p5 < 0, p95_maxdd=75.1%).
-# BH control: p50=+1.910, p95_maxdd=49.8% (recomputed at 4h frequency).
-# Wall-clock: 8.3s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=2: p50=+0.8645, p5=-0.3362 — FRAGILE. P(Sharpe>1) max 0.410. p95_maxdd 20.15%..22.61%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.9103 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=015dbc19c0cd6228b2cb4b1c2fff72a341d76e9cabe0474b2b2ff53fe2a544b6 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback∈{42,180,540} × threshold∈{0.00,0.02}. horizon=4h.
+#   g=4 (best p50): p50=+0.165, p5=-0.038 — FRAGILE (p5 < 0, p95_maxdd=75.1%).
+#   BH control: p50=+1.910, p95_maxdd=49.8% (recomputed at 4h frequency).
+#   Wall-clock: 8.3s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "015dbc19c0cd6228b2cb4b1c2fff72a341d76e9cabe0474b2b2ff53fe2a544b6"
+sha256   = "fd567c075f699db89ceefcbd018f4e7a94cceecfa3aaddf23fe4d31309a02196"
 
 # Anchor #93 — TS-momentum 4h horizon, 2024-FY (tail-negative regime)
-# 6-cell × N=200. Grid: lookback∈{42,180,540} × threshold∈{0.00,0.02}. horizon=4h.
-# g=4 (best p50): p50=+0.106, p5=-0.085 — FRAGILE.
-# BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
-# Wall-clock: 8.4s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=0: p50=+0.5529, p5=-0.4345 — FRAGILE. P(Sharpe>1) max 0.250. p95_maxdd 25.73%..31.35%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1656 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=760dd5379a4237d8ea6c8cf9b8739fe8754780c9d03388f43f826c589d69cfe4 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback∈{42,180,540} × threshold∈{0.00,0.02}. horizon=4h.
+#   g=4 (best p50): p50=+0.106, p5=-0.085 — FRAGILE.
+#   BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
+#   Wall-clock: 8.4s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "760dd5379a4237d8ea6c8cf9b8739fe8754780c9d03388f43f826c589d69cfe4"
+sha256   = "616b0de52a407ad8b2841682df7c3b3a37fc5c62470a7c342319b1ef2b1205eb"
 
 # Anchor #94 — TS-momentum daily horizon, 2023-FY
-# 6-cell × N=1000. Grid: lookback∈{5,20,60} × threshold∈{0.00,0.02}. horizon=daily.
-# g=4 (best p50): p50=+0.169, p5=-0.044 — FRAGILE. Daily p50 Sharpes are SANE (NOT inflated).
-# BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
-# Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.8353, p5=-0.1502 — FRAGILE. P(Sharpe>1) max 0.389. p95_maxdd 17.35%..20.30%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.9506 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=0bd24273da3995ec556d831c7c0f0964a81ceae73487e48df9f85ecc62f3990c — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=1000. Grid: lookback∈{5,20,60} × threshold∈{0.00,0.02}. horizon=daily.
+#   g=4 (best p50): p50=+0.169, p5=-0.044 — FRAGILE. Daily p50 Sharpes are SANE (NOT inflated).
+#   BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
+#   Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "0bd24273da3995ec556d831c7c0f0964a81ceae73487e48df9f85ecc62f3990c"
+sha256   = "1c4506ce95ec7319b6577738bfab0719346067f3c094fbd85c40b48da4904ead"
 
 # Anchor #95 — TS-momentum daily horizon, 2024-FY (tail-negative regime)
-# 6-cell × N=1000. Grid: lookback∈{5,20,60} × threshold∈{0.00,0.02}. horizon=daily.
-# g=4 (best p50): p50=+0.106, p5=-0.099 — FRAGILE.
-# BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
-# Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.5343, p5=-0.4127 — FRAGILE. P(Sharpe>1) max 0.201. p95_maxdd 25.50%..29.22%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1481 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=83366072f5c6fd2076306017c6b021ecd2d6e5c4d8d61d523ae0585041f916a4 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=1000. Grid: lookback∈{5,20,60} × threshold∈{0.00,0.02}. horizon=daily.
+#   g=4 (best p50): p50=+0.106, p5=-0.099 — FRAGILE.
+#   BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
+#   Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "83366072f5c6fd2076306017c6b021ecd2d6e5c4d8d61d523ae0585041f916a4"
+sha256   = "b90948dc0c0d90118de926f518f5634745341ea29fadbf2646289a5e909001f9"
 
 # Anchor #96 — Carry (funding) 4h horizon, 2023-FY
-# 6-cell × N=200. Grid: L∈{2,6,12} settlements × k_long∈{1,3,5}. horizon=4h.
-# g=2 (best p50): p50=+0.029, p5=-0.057 — FRAGILE. Funding harvest overwhelmed by price vol.
-# BH control: p50=+1.910, p95_maxdd=49.8% (same paths as TS 4h 2023).
-# Wall-clock: 7.0s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+1.0220, p5=-0.1277 — FRAGILE. P(Sharpe>1) max 0.505. p95_maxdd 9.59%..29.37%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.9103 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=a2ca7d3cd62d09cab4d7740f509de12e8ec76f8365e40d0a93b77b6e49854fcc — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: L∈{2,6,12} settlements × k_long∈{1,3,5}. horizon=4h.
+#   g=2 (best p50): p50=+0.029, p5=-0.057 — FRAGILE. Funding harvest overwhelmed by price vol.
+#   BH control: p50=+1.910, p95_maxdd=49.8% (same paths as TS 4h 2023).
+#   Wall-clock: 7.0s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "a2ca7d3cd62d09cab4d7740f509de12e8ec76f8365e40d0a93b77b6e49854fcc"
+sha256   = "ec96378284dc693f80b1e97b3560719473a8fd1b2f281aaa344344ec31d38ee4"
 
 # Anchor #97 — Carry (funding) 4h horizon, 2024-FY (tail-negative regime)
-# 6-cell × N=200. Grid: L∈{2,6,12} settlements × k_long∈{1,3,5}. horizon=4h.
-# g=4 (best p50): p50=+0.032, p5=+0.006 — FRAGILE (P(Sharpe>1)=0.000, p95_maxdd=67.2%).
-# BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
-# Wall-clock: 7.1s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=2: p50=+0.5739, p5=-0.0968 — FRAGILE. P(Sharpe>1) max 0.230. p95_maxdd 9.70%..45.00%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1656 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=dc46f2a8de8cb12a793f7d6cb1e90993076d4f4fc5e447b80880184373248153 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: L∈{2,6,12} settlements × k_long∈{1,3,5}. horizon=4h.
+#   g=4 (best p50): p50=+0.032, p5=+0.006 — FRAGILE (P(Sharpe>1)=0.000, p95_maxdd=67.2%).
+#   BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
+#   Wall-clock: 7.1s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "dc46f2a8de8cb12a793f7d6cb1e90993076d4f4fc5e447b80880184373248153"
+sha256   = "f0c099f39f1e1f4d80619d12488949b2264b8f82de4938bf49488688a52f4b30"
 
 # Anchor #98 — Carry (funding) daily horizon, 2023-FY
-# 6-cell × N=1000. Grid: L∈{1,3,7} settlements × k_long∈{1,3,5}. horizon=daily.
-# g=5 (best p50): p50=+0.065, p5=-0.016 — FRAGILE.
-# BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
-# Wall-clock: 6.4s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=5: p50=+1.0101, p5=+0.0834 — MARGINAL. P(Sharpe>1) max 0.511. p95_maxdd 8.30%..27.09%.
+#   FAMILY-HAS-NON-FRAGILE-CELLS (was FAMILY-UNIFORM-FRAGILE; 4 of 6 cells FRAGILE->MARGINAL)
+#   BH control p50=+1.9506 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=565e56ccfa01beb748de381b7a7e33b051882ca02a0b009b1367726f8849c675 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=1000. Grid: L∈{1,3,7} settlements × k_long∈{1,3,5}. horizon=daily.
+#   g=5 (best p50): p50=+0.065, p5=-0.016 — FRAGILE.
+#   BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
+#   Wall-clock: 6.4s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "565e56ccfa01beb748de381b7a7e33b051882ca02a0b009b1367726f8849c675"
+sha256   = "dd3b828d37e3d65330b6c3349a29e232f13b131e914a7516ecda30c33fc791d5"
 
 # Anchor #99 — Carry (funding) daily horizon, 2024-FY (tail-negative regime)
-# 6-cell × N=1000. Grid: L∈{1,3,7} settlements × k_long∈{1,3,5}. horizon=daily.
-# g=5 (best p50): p50=+0.058, p5=-0.017 — FRAGILE.
-# BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
-# Wall-clock: 6.9s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.5999, p5=-0.4189 — FRAGILE. P(Sharpe>1) max 0.240. p95_maxdd 9.65%..42.34%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1481 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=baf650bdb5db1d0a9f2aaa8549ad05b9f5f41e2c51c60e54b6046c33c2d773d6 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=1000. Grid: L∈{1,3,7} settlements × k_long∈{1,3,5}. horizon=daily.
+#   g=5 (best p50): p50=+0.058, p5=-0.017 — FRAGILE.
+#   BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
+#   Wall-clock: 6.9s Apple-Silicon M-series (canonical box).
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "baf650bdb5db1d0a9f2aaa8549ad05b9f5f41e2c51c60e54b6046c33c2d773d6"
+sha256   = "7eb5a2851ff33c97301d6e10d2b5cecaafccf260e1a7d85c66c9ac923588e14d"
 
 # Anchor #100 — Basis-Reversal 0bps taker fee, 2023-FY (gross — no fee bleed)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=0bps, slippage=2bps.
-# g=2 (best p50): p50=+0.049, p5=-0.043 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
-# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+1.1033, p5=+0.1563 — MARGINAL. P(Sharpe>1) max 0.575. p95_maxdd 8.06%..26.29%.
+#   FAMILY-HAS-NON-FRAGILE-CELLS (was FAMILY-UNIFORM-FRAGILE; 5 of 6 cells FRAGILE->MARGINAL)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=1cd5abbb5c4325a63e1c358c746f7e7b70481ab0429dbf78ad89a1296cebdc87 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=0bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.049, p5=-0.043 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
+#   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "1cd5abbb5c4325a63e1c358c746f7e7b70481ab0429dbf78ad89a1296cebdc87"
+sha256   = "06563e48ba5f36a50b74bec18f92307bb08b070f0d31c7acee44ac188045ee72"
 
 # Anchor #101 — Basis-Reversal 0bps taker fee, 2024-FY (tail-negative regime, gross)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=0bps, slippage=2bps.
-# g=2 (best p50): p50=+0.051, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
-# Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.8625, p5=-0.3117 — FRAGILE. P(Sharpe>1) max 0.400. p95_maxdd 12.58%..46.21%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=e8552e4557197caf42f7d479c7c55862eb3e8c99dcfd41f5fe5c09b0eaed6562 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=0bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.051, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
+#   Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "e8552e4557197caf42f7d479c7c55862eb3e8c99dcfd41f5fe5c09b0eaed6562"
+sha256   = "c84ceacae51278397e6ccf0da9e75d13b670ec88abe80509a91680816a54d277"
 
 # Anchor #102 — Basis-Reversal 2bps taker fee, 2023-FY
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=2bps, slippage=2bps.
-# g=2 (best p50): p50=+0.048, p5=-0.047 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE.
-# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+1.0746, p5=+0.1273 — MARGINAL. P(Sharpe>1) max 0.545. p95_maxdd 8.34%..27.13%.
+#   FAMILY-HAS-NON-FRAGILE-CELLS (was FAMILY-UNIFORM-FRAGILE; 5 of 6 cells FRAGILE->MARGINAL)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=9ed405f54715fc97573c2f31c27c717d8d032dbc66ad4287eada727d2ca37d6f — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=2bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.048, p5=-0.047 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE.
+#   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "9ed405f54715fc97573c2f31c27c717d8d032dbc66ad4287eada727d2ca37d6f"
+sha256   = "a851fb90017e68ef521f7ae0c725fc4a12b9267cef228fbc40bb58709c0e7088"
 
 # Anchor #103 — Basis-Reversal 2bps taker fee, 2024-FY (tail-negative regime)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=2bps, slippage=2bps.
-# g=2 (best p50): p50=+0.050, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE.
-# Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.8364, p5=-0.3391 — FRAGILE. P(Sharpe>1) max 0.385. p95_maxdd 12.79%..47.21%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=87ba979816fc0b5dc63cede6ebf42cd979bf868faf901f8346dcde61d6a98b42 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=2bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.050, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE.
+#   Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "87ba979816fc0b5dc63cede6ebf42cd979bf868faf901f8346dcde61d6a98b42"
+sha256   = "eabd33d7971e401c9d24f3b84037c8a50a06151bffe389a4a4028bd309f022a6"
 
 # Anchor #104 — Basis-Reversal 5bps taker fee, 2023-FY (realistic fee level)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=5bps, slippage=2bps.
-# g=2 (best p50): p50=+0.047, p5=-0.064 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
-# Wall-clock: 28.2s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+1.0298, p5=+0.0839 — MARGINAL. P(Sharpe>1) max 0.540. p95_maxdd 8.70%..28.84%.
+#   FAMILY-HAS-NON-FRAGILE-CELLS (was FAMILY-UNIFORM-FRAGILE; 2 of 6 cells FRAGILE->MARGINAL)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=a29d9f954e8c698da7fa233f2302412fae8f9941c19711b933e24d755afc8b06 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=5bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.047, p5=-0.064 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
+#   Wall-clock: 28.2s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "a29d9f954e8c698da7fa233f2302412fae8f9941c19711b933e24d755afc8b06"
+sha256   = "fa345cb7eb6187f6782e169e2b8730d673194e33a4589d4865b318ca4e6b5fcd"
 
 # Anchor #105 — Basis-Reversal 5bps taker fee, 2024-FY (realistic fee level, tail-negative regime)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=5bps, slippage=2bps.
-# g=2 (best p50): p50=+0.049, p5=-0.011 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
-# Wall-clock: 28.3s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.7989, p5=-0.3826 — FRAGILE. P(Sharpe>1) max 0.350. p95_maxdd 13.19%..48.67%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=dfe12905e0f41d0275ad0f8672ad1f2eb59eddc5696747a93aa0304098018c97 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=5bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.049, p5=-0.011 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
+#   Wall-clock: 28.3s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "dfe12905e0f41d0275ad0f8672ad1f2eb59eddc5696747a93aa0304098018c97"
+sha256   = "e9b6c6352bd72b80a11033228e1e20d7389f3428595baf5524cb36ea07b3910a"
 
 # Anchor #106 — Basis-Reversal 10bps taker fee, 2023-FY (high-fee stress)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=10bps, slippage=2bps.
-# g=2 (best p50): p50=+0.044, p5=-0.075 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at high fee.
-# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.9568, p5=+0.0117 — MARGINAL. P(Sharpe>1) max 0.470. p95_maxdd 9.30%..31.90%.
+#   FAMILY-HAS-NON-FRAGILE-CELLS (was FAMILY-UNIFORM-FRAGILE; 2 of 6 cells FRAGILE->MARGINAL)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=c1ae40887dfcce853f55abeff3bf8de8a5d743258a3d0d6d7a46f69dc289c3ef — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=10bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.044, p5=-0.075 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at high fee.
+#   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "c1ae40887dfcce853f55abeff3bf8de8a5d743258a3d0d6d7a46f69dc289c3ef"
+sha256   = "aa2697e53c6b4f12ed90b850803f676b1f1d25b3b333e3e9825a0ab7ecdbc54b"
 
 # Anchor #107 — Basis-Reversal 10bps taker fee, 2024-FY (high-fee stress, tail-negative regime)
-# 6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=10bps, slippage=2bps.
-# g=2 (best p50): p50=+0.047, p5=-0.015 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
-# BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at high fee.
-# Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=3: p50=+0.7368, p5=-0.4471 — FRAGILE. P(Sharpe>1) max 0.305. p95_maxdd 13.93%..53.05%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=ab4b53a90ed5d9d1533b9445dcbeb521cae27fd260efa55d016556cacafb847d — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
+#   6-cell × N=200. Grid: lookback_bars∈{24,60,168} × k_long∈{1,3,5}. fee=10bps, slippage=2bps.
+#   g=2 (best p50): p50=+0.047, p5=-0.015 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
+#   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at high fee.
+#   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "ab4b53a90ed5d9d1533b9445dcbeb521cae27fd260efa55d016556cacafb847d"
+sha256   = "e916b43cddd25700c25da9852e7e82f9ab11235ac47b6fb49b0e76d57b2e77a3"
 
 # Anchors #108-#119 — MN Spread v0.2.0 (perp-basis-mn-spread), 3 arms × 2 fees × 2 years
 # Arms AS RUN (corrected 2026-08-11, bug-log #75 — the labels below are what the
@@ -986,73 +1168,169 @@ sha256   = "ab4b53a90ed5d9d1533b9445dcbeb521cae27fd260efa55d016556cacafb847d"
 # Wall-clock: <30s Apple-Silicon M-series. git stage: M-DEV-8.
 
 # Anchor #108 — MN-Basis 0bps fee, 2023-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.2038, p5=-0.2765 — FRAGILE. P(Sharpe>1) max 0.005. p95_maxdd 18.41%..18.77%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=b1de3f9be3fe95bd663274e389ab9b16588688f4459225500737e6b1e76edaea — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "b1de3f9be3fe95bd663274e389ab9b16588688f4459225500737e6b1e76edaea"
+sha256   = "d719d263a16d68d39cf0589d146bdc0221000bfd7af7470c5b25e14bf99d0aa1"
 
 # Anchor #109 — MN-Basis 0bps fee, 2024-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.2038, p5=-0.1627 — FRAGILE. P(Sharpe>1) max 0.005. p95_maxdd 20.40%..24.23%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=3a263a814948d16b0fbae47f20518f71442dbf3c9afedca5c66fa29ad2d72293 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "3a263a814948d16b0fbae47f20518f71442dbf3c9afedca5c66fa29ad2d72293"
+sha256   = "f21270aa233be1fa743c8ed6f9814753d9498a1cd9d4c2d0895afffa7250bcad"
 
 # Anchor #110 — MN-Basis 5bps fee, 2023-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.1405, p5=-0.3468 — FRAGILE. P(Sharpe>1) max 0.005. p95_maxdd 20.09%..20.31%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=9f66a93995bc0c606fe94d5bc475784bfe517d0b3efb61f12f74104d31711909 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "9f66a93995bc0c606fe94d5bc475784bfe517d0b3efb61f12f74104d31711909"
+sha256   = "d04079bb5bb238e7b722582608622f6193e22c8165fe1d0aeea4a747cb26459d"
 
 # Anchor #111 — MN-Basis 5bps fee, 2024-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.1518, p5=-0.2176 — FRAGILE. P(Sharpe>1) max 0.000. p95_maxdd 21.87%..27.98%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=6dddb3f5d96ee2f5c6fb5f155eb93ba950cd233bddf02ffbf75d7e131a1f90c7 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "6dddb3f5d96ee2f5c6fb5f155eb93ba950cd233bddf02ffbf75d7e131a1f90c7"
+sha256   = "7ac5d68e7194ecbd854bec7da19dba1a450558d19d56e37f2bdf066779c5e78c"
 
 # Anchor #112 — MN-Funding 0bps fee, 2023-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.1984, p5=-0.1712 — FRAGILE. P(Sharpe>1) max 0.005. p95_maxdd 16.64%..19.22%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=16633a63864560b83aa60ffb01a8c96f9625bb217696cb3af2e779ffcf4d0aa0 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "16633a63864560b83aa60ffb01a8c96f9625bb217696cb3af2e779ffcf4d0aa0"
+sha256   = "0b35180f0b5c3b0c5d8aca9dce3beb0cbd60ba2310b0572fbf273c694c3e9a75"
 
 # Anchor #113 — MN-Funding 0bps fee, 2024-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.1869, p5=-0.1758 — FRAGILE. P(Sharpe>1) max 0.010. p95_maxdd 19.18%..27.27%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=b3726a288852fef79cee9bb638e3c94c6dc474e98cb9023448a77748b2a08d72 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "b3726a288852fef79cee9bb638e3c94c6dc474e98cb9023448a77748b2a08d72"
+sha256   = "db87754b71d22fd9b804e74dd20b0e9d40ca03a30c883adfce6e12c67a7af470"
 
 # Anchor #114 — MN-Funding 5bps fee, 2023-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.1447, p5=-0.2250 — FRAGILE. P(Sharpe>1) max 0.005. p95_maxdd 17.58%..21.21%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=38ccc463f248552b07618fcf26bc7652ac7d91eb324583602f15814c3e776ff1 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "38ccc463f248552b07618fcf26bc7652ac7d91eb324583602f15814c3e776ff1"
+sha256   = "2ca27795c3e404916ade38c1f50774aa88ad95f5d865a9e6a1db5406fe272666"
 
 # Anchor #115 — MN-Funding 5bps fee, 2024-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.1330, p5=-0.2246 — FRAGILE. P(Sharpe>1) max 0.005. p95_maxdd 20.59%..29.70%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=2e2ba8b60d1ca757c0e23f6913dd8a8428e6289976aa43f1bb290f5696d2f23b — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "2e2ba8b60d1ca757c0e23f6913dd8a8428e6289976aa43f1bb290f5696d2f23b"
+sha256   = "d4dc19560296b39c92655537c99e6483023293665608914812f8c1bc0add2090"
 
 # Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=+0.0144, p5=-0.3739 — FRAGILE. P(Sharpe>1) max 0.000. p95_maxdd 22.24%..29.40%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=1af13f140626be0a94e5d01deeb508eee2cfdc907d23c3ce856bb9da3fabbd82 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "1af13f140626be0a94e5d01deeb508eee2cfdc907d23c3ce856bb9da3fabbd82"
+sha256   = "7d06cb0416f270416dc0cde271db2a29b5a468f668c3896783b7aaf696608762"
 
 # Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=0: p50=-0.0431, p5=-0.4649 — FRAGILE. P(Sharpe>1) max 0.000. p95_maxdd 28.25%..31.07%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=058820ff1e6011262fb868c621cf84a7c831d63fa3dae0862b83b61d86d17732 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "058820ff1e6011262fb868c621cf84a7c831d63fa3dae0862b83b61d86d17732"
+sha256   = "1d62f2f03172245a6b780f4999d146ca84b1faf6ff1dea3466645ccf3e5102e6"
 
 # Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=1: p50=-0.1243, p5=-0.5146 — FRAGILE. P(Sharpe>1) max 0.000. p95_maxdd 26.32%..34.57%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.7353 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=aedbc28ad3ec29ae112e44499f6af2ca2174a34356488cb7eb810de429880623 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "aedbc28ad3ec29ae112e44499f6af2ca2174a34356488cb7eb810de429880623"
+sha256   = "2e8febac89197a1d92d17135417f56f5a4fe53916ec903c3c813bb161900443a"
 
 # Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
+# RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
+#   Operator-ruled 2026-09-25: re-emit in place, do not bifurcate the namespace.
+#   best p50 cell g=0: p50=-0.2033, p5=-0.6230 — FRAGILE. P(Sharpe>1) max 0.000. p95_maxdd 33.54%..34.74%.
+#   FAMILY-UNIFORM-FRAGILE (unchanged)
+#   BH control p50=+1.1047 — EVERY cell still loses to buy-and-hold.
+#   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
+# SUPERSEDED BODY sha256=23f03994730a67368d92f7a6c2405ae43b0d0081c180347d7ebd5e4181d69885 — its numbers are bug-log #94 sizer artefacts,
+# kept verbatim below so the correction is legible next to what it corrects:
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "23f03994730a67368d92f7a6c2405ae43b0d0081c180347d7ebd5e4181d69885"
+sha256   = "8f009276866a6ed35be635fc2fc49c2f6366b3c1dc416d41924e918da86c0e25"

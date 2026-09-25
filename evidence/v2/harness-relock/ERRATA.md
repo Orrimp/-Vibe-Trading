@@ -1,7 +1,9 @@
 # Errata — harness re-lock regeneration (story 1-26)
 
-**Status: AC4 / AC5 measured. One finding is ESCALATED to the operator and is NOT
-published into any narrative document until ruled on — see § 6.**
+**Status: AC4 / AC5 measured. Both escalations RULED by the operator on 2026-09-25 and
+EXECUTED — see § 6 and § 6b. The 34 bodies are re-emitted in place under ADR-0038 § D6.b;
+`ANCHORS PASS (119 / 119)` with 34 SHAs changed, 85 byte-identical and 0 namespaces changed.
+Record: [`docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md`](../../../docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md).**
 
 This errata re-prices the 34 contaminated θ-surfaces of the bug-log #67 inventory against
 clean execution arithmetic. The old rows stay byte-frozen where they are; nothing under
@@ -20,7 +22,8 @@ clean execution arithmetic. The old rows stay byte-frozen where they are; nothin
 | window | 2026-09-25 16:49:29Z → 18:03:12Z |
 | wall clock | 4462 s = **74.4 min** at `RAYON_NUM_THREADS=8`, `nice -n 19` |
 | outcome | 34 / 34 `ok`, 0 failures (`logs/progress.tsv`) |
-| out-dir | `evidence/v2/harness-relock/reports/` — a NEW namespace, per AC3 |
+| out-dir | `evidence/v2/harness-relock/reports/` — the driver's own output, kept as the run record |
+| under gate | `evidence/v1/<slug>/reports/` — the same 34 bodies, byte-identical, re-emitted in place under D6.b (§ 6b). The gate resolves per namespace to the v1 directories and never to this one; nothing here is anchored. |
 
 The story's Dev Notes budgeted **10.3 h as a floor, 15–20 h realistic**. The measured figure is
 **74 minutes**. The estimate was extrapolated from a single long-only momentum surface
@@ -239,11 +242,16 @@ And on the other arm, of the 22 cells that are FRAGILE on `p5_sharpe` alone, the
 deliverable AC5 asked for is the answer, and the answer is: on the clean corpus at N=200, a
 handful of verdicts are decided by a margin finer than the measurement's own resolution.
 
-## 6. ESCALATION — operator ruling required before any narrative change
+## 6. ESCALATION — RULED 2026-09-25: re-state now, with the control alongside
 
 AC4 requires that any flip touching the era-qualified thesis's supporting narrative goes to the
-operator **before** publication. This one does, so it has not been published. No narrative
-document has been edited.
+operator **before** publication. This one did, and nothing was published until the ruling came.
+
+> **RULED 2026-09-25 — re-state the three slugs' verdict lines now, with the buy-and-hold
+> dominance stated alongside**, rather than waiting for the C5 deflation pass. Executed: the
+> re-statement is carried in the re-emitted anchor comment blocks, each of which now ends
+> `BH control p50=… — EVERY cell still loses to buy-and-hold.` README and CHANGELOG were
+> checked and needed no edit.
 
 **The finding.** Six 2023 surfaces across three slugs no longer read `FAMILY-UNIFORM-FRAGILE`.
 The sentence "uniformly fragile" is no longer what the evidence says for the 2023 basis-reversal
@@ -270,10 +278,15 @@ The flip lands on stories `1-20` (perp-basis-signal-robustness), `carry-strategy
 FAMILY-UNIFORM-FRAGILE (2024)`, with the buy-and-hold dominance stated alongside it — or to
 route the 20 flipped cells through the C5 deflation pass first and re-state afterwards.
 
-## 6b. ESCALATION — the re-lock namespace contradicts ADR-0038 § D6.b
+## 6b. ESCALATION — RULED 2026-09-25: follow D6.b, re-emit in place
 
-Found while establishing whether these 34 bodies should be anchored. It is a ratified-decision
-conflict, so it goes to the operator rather than being resolved here (AD-18).
+Found while establishing whether these 34 bodies should be anchored. It was a ratified-decision
+conflict, so it went to the operator rather than being resolved here (AD-18).
+
+> **RULED 2026-09-25 — outcome (A): follow D6.b as ratified.** The 34 bodies are re-emitted in
+> place under their existing namespaces; a D6.c amendment was declined in favour of one corpus.
+> The 5-step record, including the negative invariant, is
+> [`docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md`](../../../docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md).
 
 **Story 1-26 AC3 says:** *"Regeneration goes to a NEW namespace per ADR-0038/0045 § D6; old rows
 stay byte-frozen."*
@@ -305,9 +318,15 @@ The two coherent outcomes:
   re-pricing, with a mandatory back-pointer from every superseded row so a reader cannot consume a
   stale body unaware. AC3's intent, made architecturally legitimate.
 
-**Nothing has been done in either direction.** `evidence/anchors.toml` is untouched, still 119 rows,
-still `ANCHORS PASS (119 / 119)`. The 34 new bodies are committed as measurement output in a
-non-anchored directory, which prejudges neither outcome.
+**Executed under (A).** `anchors.toml` still has 119 rows — none added, none deleted — with 34
+`sha256` values replaced, **85 byte-identical**, and **0 namespaces changed**. The enumeration was
+confirmed from both sides: before touching a single SHA, the new bodies in place made
+`verify_anchors.sh` report exactly **34 FAIL / 85 PASS**, and the failing set was exactly the
+inventory. After the update: **ANCHORS PASS (119 / 119)**.
+
+Each re-emitted row's comment block carries the new headline numbers, the family-verdict delta, the
+buy-and-hold control, and the superseded numbers kept **verbatim** underneath with their old SHA — so
+the correction sits next to what it corrects.
 
 **What is already proven, either way — these bodies are anchor-grade.** Reproducibility was verified
 rather than assumed: four surfaces drawn from three different slugs were re-run independently
@@ -382,9 +401,9 @@ Nothing in this re-lock edits the frozen gate. The verdicts moved because the *i
 
 | item | where |
 |---|---|
-| Verdict-narrative ruling for 3 slugs | § 6 — operator |
-| Re-lock namespace vs ADR-0038 § D6.b | § 6b, bug-log `#108` — operator/architect |
+| ~~Verdict-narrative ruling for 3 slugs~~ | **RULED + executed** — § 6 |
+| ~~Re-lock namespace vs ADR-0038 § D6.b~~ | **RULED + executed** — § 6b, bug-log `#108` |
 | AC7 unsatisfiable as written | § 7, bug-log `#109` — needs an AC amendment |
 | The four drift gates' own cause | bug-log `#93`/`#109` — wants its own story with a bisect |
 | bug-log `#95` exposure cap on 8 lanes | out of scope here, stated explicitly |
-| AC6 — unblocking story 1-21 | depends on the § 6 ruling |
+| AC6 — unblocking story 1-21 | now unblocked by the § 6 ruling |

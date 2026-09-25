@@ -1785,10 +1785,15 @@ figure that was never true with perfect fidelity for as long as nobody re-runs t
 produced it.
 
 ### `#108` — the re-lock's "new namespace" is the one thing ADR-0038 § D6.b rejected by name, and its stated reason is live
-**Status**: OPEN — ESCALATED to the operator 2026-09-25 while deciding whether story 1-26's
-34 regenerated bodies should be anchored. No action taken in either direction.
-Anchor-impacting: **yes, whichever way it is ruled** — outcome (A) re-prices 34 anchored rows
-in place; outcome (B) leaves them and adds 34 new ones.
+**Status**: RESOLVED 2026-09-25 — operator ruled **outcome (A): follow D6.b as ratified**, and it
+is executed. The 34 bodies are re-emitted in place under their existing namespaces; a D6.c
+amendment was declined in favour of one corpus. `anchors.toml`: 119 rows before and after, none
+added, none deleted, **34 SHAs changed, 85 byte-identical, 0 namespaces changed**, and the changed
+set *is* the inventory — confirmed from both sides, since the new bodies in place made the gate
+report exactly 34 FAIL / 85 PASS before a single SHA was touched. **ANCHORS PASS (119 / 119)**.
+5-step record: [`docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md`](1-26-d6b-re-emission-2026-09-25.md).
+The stale-bodies objection is answered structurally: each re-emitted row keeps its superseded
+numbers verbatim, with the old SHA, directly beneath the correction.
 
 Story 1-26 AC3: *"Regeneration goes to a NEW namespace per ADR-0038/0045 § D6; old rows stay
 byte-frozen."* It cites D6 as its authority. D6.b — the *wiring-bug-fix re-emission protocol*,

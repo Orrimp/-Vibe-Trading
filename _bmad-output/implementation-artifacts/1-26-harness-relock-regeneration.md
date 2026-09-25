@@ -111,18 +111,26 @@ as history, the migration honest, and the verdict re-derivation loud.
 - [x] **Bodies proven anchor-grade before proposing to anchor them** — 4 surfaces across 3 slugs
   re-run independently, all 4 body-SHAs byte-identical; 0 of 34 bodies carry run-varying metadata,
   so anchoring cannot reproduce bug-log #106.
-- [ ] **BLOCKED on operator — verdict-narrative ruling.** ERRATA § 6. The thesis is NOT in question
-  (0 of 156 cells beat their own buy-and-hold control, in either corpus; nothing reached ROBUST).
-  README and CHANGELOG need **no** change — their claims name `perp-basis-mn-spread` (all 12 held)
-  and `momentum-parameter-robustness-sweep` (held). The flip lands on three slugs' verdict lines.
-- [ ] **BLOCKED on operator/architect — bug-log #108.** AC3's "new namespace" is what ADR-0038
-  § D6.b rejects by name, for a reason that is live here. `anchors.toml` deliberately untouched
-  pending the ruling, so AC8's "new rows" leg is open. ERRATA § 6b.
+- [x] **Verdict narrative RULED 2026-09-25 and re-stated.** The operator ruled: re-state the three
+  slugs now, with the buy-and-hold dominance alongside, rather than waiting for C5. Executed in the
+  re-emitted anchor comment blocks — each ends `BH control p50=… — EVERY cell still loses to
+  buy-and-hold.` The thesis is untouched: 0 of 156 cells beat their control in either corpus and
+  nothing reached ROBUST. README and CHANGELOG checked and needed **no** edit; their claims name
+  `perp-basis-mn-spread` (all 12 held) and `momentum-parameter-robustness-sweep` (held).
+- [x] **bug-log #108 RULED 2026-09-25 and executed — AC3 superseded by ADR-0038 § D6.b.** The
+  operator chose outcome (A): re-emit in place, one corpus, no D6.c amendment. AC3's "NEW namespace"
+  instruction is therefore **overridden by the ratified protocol it cited**. 34 bodies copied into
+  the anchored directory of the report each supersedes; `anchors.toml` 119 rows before and after,
+  **34 SHAs changed, 85 byte-identical, 0 namespaces changed**, changed set == inventory, confirmed
+  from both sides. **ANCHORS PASS (119 / 119)**. 5-step D6.b record:
+  [`docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md`](../../docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md).
+  This closes AC8's "new rows" leg.
 - [ ] **AC7 unsatisfiable as written — bug-log #109.** Re-measured after the re-lock: all four gates
   still RED with hashes *unchanged* from 2026-08-22/23. They cover scenarios that are not among the
   34. Needs an AC amendment, not a commit.
 - [ ] Review: old rows intact, new rows complete, verdict-delta table honest.
-- [ ] AC6 — unblock story 1-21, once § 6 is ruled.
+- [ ] AC6 — unblock story 1-21. Now unblocked by the 2026-09-25 ruling: the MN family is re-priced
+  under a correctly-signed engine and all 12 surfaces held `FAMILY-UNIFORM-FRAGILE`.
 
 ## Dev Notes
 
