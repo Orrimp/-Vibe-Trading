@@ -63,11 +63,88 @@ reproducible**, so it is bisectable. It is not drift-in-progress.
 7. Standing floor: anchors green before AND after; spec-lint PASS; the FROZEN gate files
    byte-untouched (AD-1).
 
+## Investigation log — 2026-09-25
+
+Recorded as it was measured, so the next reader inherits the exclusions rather than re-deriving them.
+
+### The drift, reproduced and diffed
+
+`t717_top10_2023_momentum` reproduces **exactly** outside the test harness: same tempdir shape, same
+`--scenario … --seed 0xC0FFEE`, same `b655e5e7…`. Diffing the produced body against the anchored one
+(`evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260527-181341-…`) shows
+**8 changed lines, all in the summary table** — the θ/table structure is untouched:
+
+| field | anchored | produced |
+|---|---|---|
+| Trades | 4809 | **592** |
+| Buys / Sells | 2406 / 2403 | 296 / **296** |
+| Max drawdown | 87.63 % | **14.34 %** |
+| Final equity | $50 922.49 | $87 606.01 |
+| Total fees | $3 640.60 | $2 255.39 |
+
+An 8.1× turnover collapse with symmetric buys/sells and a drawdown that falls by 73 points.
+
+### Excluded, each with its evidence
+
+- **`crates/strategy/src/momentum.rs` — byte-unchanged** across the whole window. Signal generation
+  is not the cause.
+- **The only change in the lane's own file is a no-op here.** `scenarios/momentum.rs` gained exactly
+  two lines: `sim_slippage_cost(…, &sig.symbol)`. In `sim.rs` the `symbol` argument is read **only**
+  by the `SquareRoot` arm; the `Linear { bps }` arm ignores it, and this synthetic scenario runs
+  `Linear{bps:8}` (`main.rs`: *"Synthetic: Linear{bps:8} fallback + no V map"*).
+- **`#71`'s side-aware exposure cap — excluded by its own anchor note.** `Order::new` now caps the
+  *resulting* signed position, but its comment states the arithmetic is byte-identical when
+  `position_snapshot` is the empty placeholder. This lane passes exactly that
+  (`Position::empty(sig.symbol.clone())`). Consistent with the measurement: the hashes did not move
+  across `7884f52`.
+- **`crates/risk` is not on this lane's path.** The loop calls `Order::new` + `engine.step`; it never
+  calls `size_portfolio_target`.
+- **"The pin was silently re-pointed at the sqrt-impact namespace" — checked and FALSE.** There is no
+  `v5-sqrt-impact-2026-05` row for any of the four scenarios, and
+  `evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/` contains **0 files**.
+
+That leaves the matching layer: `crates/backtest/src/engine.rs` (+2315) and `paper.rs` (+412).
+
+### The boundary probe changed the question
+
+Probing `e74204a9^` (2026-05-28) produced **`3b60ef07…`** — which is this scenario's
+**`noop-baseline`** anchor row, *not* the pinned `0f6f6eb8…`. And `3b60ef07…` is precisely the SHA
+the test's own doc-comment calls the *"stale noop-baseline SHA"* that was *"replaced with canonical
+8-bps SHA"*.
+
+`git log -S` dates that replacement: **`f089533e` (2026-05-31) — "engine-drift fix COMPLETE: re-lock
+14 in-test anchors + close the regression-gate blind-spot"**.
+
+So the timeline is: ≤05-28 the default binary produced the noop-baseline body → an engine-drift fix
+landed → 05-31 the pins were re-locked to `0f6f6eb8…` → at some later point the output moved again to
+`b655e5e7…`. **The known-good boundary is therefore `f089533e`, not the start of the candidate
+window**, and the search space is the candidates dated after it.
+
+**Next probe (decisive): `f089533e` itself.**
+- If it yields `0f6f6eb8…`, the 2026-05-31 re-lock was honest and the drift is a later commit —
+  bisect the ~27 candidates between 2026-06-01 and 2026-08-15.
+- If it yields anything else, the re-lock itself pinned a body the default invocation never produced,
+  and this is a *pin* defect rather than an engine drift — which would also explain why no code fix
+  has ever made these four green.
+
+### Cost correction
+
+This story's Dev Notes claimed "14 s per run — gated on thinking, not compute". That is right for the
+**test run** and wrong for the **historical builds**: a commit from May pulls a full workspace
+dependency rebuild (minutes each), and cargo keeps every old dependency version, so `target` grew to
+60 GB during the first probe. The probe script now carries a disk brake (`cargo clean` below 30 GB
+free). Budget the bisect as ~5 builds, not as a 14 s loop.
+
 ## Tasks / Subtasks
 
-- [ ] Reproduce all four RED locally and record the hashes (a 14 s run once the test target is built:
-      `cargo test -p backtest --test determinism --release -- --ignored top10_`).
-- [ ] Bisect. The cheap probe is one gate, not four — `t717_top10_2023_momentum` is the fastest.
+- [x] Reproduce all four RED locally and record the hashes. Done 2026-09-25; `t717_top10_2023_momentum`
+      also reproduces outside the harness, which is what made the diff below possible.
+- [x] Diff the produced body against the anchored one — 8 lines, all summary-table (see log above).
+- [x] Exclude the obvious suspects with evidence rather than reasoning (see log above).
+- [ ] Probe `f089533e` — the commit that re-locked the pins. Decisive between "engine drifted later"
+      and "the re-lock pinned a body the default invocation never produced".
+- [ ] Bisect the candidates dated after `f089533e`. `scripts/relock`-style driver + probe live in the
+      session scratchpad; budget ~5 full builds.
 - [ ] Name the cause (AC2) and classify it (AC3).
 - [ ] Resolve per the branch taken; remove `#[ignore]` in the same commit (AC4).
 - [ ] Check the `#95` lanes for the same cause (AC6).
