@@ -23,6 +23,22 @@ as history, the migration honest, and the verdict re-derivation loud.
    actually called, binding test present) and **#68 dropped** (drift axis removed from the grid and
    from every surface that presents it as an explored dimension). Regenerating before all of these
    land produces a second contaminated corpus — that is the whole reason for the split.
+
+   > **GATE MET 2026-09-25** — verified at source, not assumed. `#69` was wired on 2026-08-23
+   > (`723ca742`): `scripts/callers.sh size_portfolio_target` reports a production caller at
+   > `montecarlo.rs:520` inside `run_path`, where the bug-log census found zero, and the binding
+   > test this AC requires is green.
+   >
+   > `#68` took the **other** branch of its own "implement-or-drop". The two were one defect —
+   > `size_portfolio_target` implements BOTH controls — so wiring it for `#69` made the drift axis
+   > live as a side effect (`montecarlo.rs:238` says so). Its binding test varies only
+   > `drift_rebalance_threshold` 0.001 vs 0.90 and is green. This AC's letter says "dropped";
+   > executing that would have deleted a working dimension, so it went back to the operator, who
+   > **ruled 2026-09-25 that implemented-and-binding-tested satisfies the gate**. The axis stays.
+   >
+   > What still rides the regeneration (AC4): the anchored narratives for `#86`/`#87` attribute
+   > cell results to a hold band that was INERT when those surfaces ran. The new rows are the
+   > first where the third axis is real.
 2. **Inventory: 34 anchors** — `#86`, `#87`, `#88`, `#89`, `#90`, `#91`, `#92-#99`, `#100-#107`,
    `#108-#119` = **29 % of the 119-anchor corpus**. Two lanes (`run_path`, `run_cell`). BUYHOLD rows
    are clean throughout (pure mark-to-market, never construct an `Order`).

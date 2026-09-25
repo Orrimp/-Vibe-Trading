@@ -209,8 +209,9 @@ test result: ok. 4 passed; 0 failed; 0 ignored
 **Moral** (the #65/#66 lineage continues): the harness's e2e gates validated a synthetic stand-in reducer, never the production fan-out — a fill-arithmetic corruption of this size sailed through a VERDICT→PASS tester run because no test ever priced a real cross-symbol fill. The 1-14 review pass re-points those gates at the real chain.
 
 ### `#68` — The θ-grids' drift/hold-band swept axis is behaviorally INERT (anchored narratives attribute results to a lever that does not exist)
-**Status**: **IMPLEMENTED 2026-08-23** (`723ca742`) — i.e. the ruling's OTHER branch.
-**Operator confirmation outstanding**; see below. Disclosure entry, 2026-08-03.
+**Status**: **RESOLVED 2026-09-25 — implemented, not dropped.** The operator confirmed that
+"implemented + binding-tested" satisfies story 1-26's AC1 entry gate: *"Zählt als erfüllt."*
+The axis stays. Implemented 2026-08-23 (`723ca742`). Disclosure entry, 2026-08-03.
 
 **The premise of this entry is void, verified 2026-09-25.** #68 and #69 were ONE defect: the
 sole implementation reading BOTH the exposure cap and the drift band
@@ -221,13 +222,16 @@ made the drift axis live as a side effect. The code says so itself
 `portfolio_controls_bind.rs::drift_band_suppresses_resizes_that_a_tight_band_performs`,
 which holds everything constant and varies only `drift_rebalance_threshold` 0.001 vs 0.90.
 
-**Why this needs the operator and not a commit.** The 2026-08-19 ruling recorded in story
-1-26 AC1 is *"#68 dropped (drift axis removed from the grid and from every surface that
-presents it as an explored dimension)"*. That ruling was made while the axis was inert —
-**four days before the wiring landed**. Executing it now would delete a working,
+**Why this went back to the operator rather than into a commit.** The 2026-08-19 ruling
+recorded in story 1-26 AC1 is *"#68 dropped (drift axis removed from the grid and from every
+surface that presents it as an explored dimension)"*. That ruling was made while the axis was
+inert — **four days before the wiring landed**. Executing it would have deleted a working,
 binding-tested dimension. Implementing was the other half of this entry's own
-"implement-or-drop", so the outcome is inside the ruling's intent; but 1-26's entry gate
-reads the letter, and only the operator can say the letter is satisfied.
+"implement-or-drop", so the outcome sat inside the ruling's intent — but 1-26's gate reads
+the letter. **Ruled 2026-09-25: the letter is satisfied.** The narrative correction at
+regeneration still stands: the anchored θ-surface narratives (#86, #87) attribute cell
+results to a hold band that was inert WHEN THOSE SURFACES RAN, and 1-26 re-prices them with
+it live. The axis's third-dimension claim becomes true only for the new rows.
 
 Original entry below, unchanged as the record of what was found.
 **Discovery**: story 1-16 code-review Blind Hunter H1; orchestrator-accepted on the reviewer's caller-graph evidence.
