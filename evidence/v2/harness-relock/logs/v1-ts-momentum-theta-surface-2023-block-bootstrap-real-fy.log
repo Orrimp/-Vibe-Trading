@@ -1,0 +1,16 @@
+param_robustness_sweep DONE
+  report:         evidence/v2/harness-relock/reports/robustness-sweep-20260925-175859-v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy.md
+  body_sha:       9a6e6d2d2e787ea325efae85e40089dae4eeec2dab8bf5a1549378c7c5d3cb2f
+  wall_clock_s:   40.9
+  n_cells:        6
+  n_paths:        200
+  family_verdict: FAMILY-UNIFORM-FRAGILE
+  buyhold p50 Sharpe: 1.7353  P(loss): 0.0450  p95 MaxDD: 51.15%
+
+  per-cell summary:
+    g= 0 lookback= 168 k_long=10 drift=0.10 → FRAGILE | p50=0.5523 p5=-0.4026 MaxDD_p95=27.5%
+    g= 1 lookback=  24 k_long=10 drift=0.10 → FRAGILE | p50=-0.6954 p5=-1.6002 MaxDD_p95=47.6%
+    g= 2 lookback= 720 k_long=10 drift=0.10 → FRAGILE | p50=0.8139 p5=-0.2015 MaxDD_p95=22.6%
+    g= 3 lookback= 168 k_long=10 drift=0.10 → FRAGILE | p50=0.5920 p5=-0.2281 MaxDD_p95=23.2%
+    g= 4 lookback= 720 k_long=10 drift=0.10 → FRAGILE | p50=0.7809 p5=-0.1874 MaxDD_p95=22.1%
+    g= 5 lookback=  24 k_long=10 drift=0.10 → FRAGILE | p50=-0.2216 p5=-0.9483 MaxDD_p95=32.0%

@@ -1783,3 +1783,77 @@ converting. Until 1-26 runs, the numbers are what they are and this entry is the
 **Moral**: byte-immutability preserves a claim, it does not audit it. An anchor can hold a
 figure that was never true with perfect fidelity for as long as nobody re-runs the thing that
 produced it.
+
+### `#108` — the re-lock's "new namespace" is the one thing ADR-0038 § D6.b rejected by name, and its stated reason is live
+**Status**: OPEN — ESCALATED to the operator 2026-09-25 while deciding whether story 1-26's
+34 regenerated bodies should be anchored. No action taken in either direction.
+Anchor-impacting: **yes, whichever way it is ruled** — outcome (A) re-prices 34 anchored rows
+in place; outcome (B) leaves them and adds 34 new ones.
+
+Story 1-26 AC3: *"Regeneration goes to a NEW namespace per ADR-0038/0045 § D6; old rows stay
+byte-frozen."* It cites D6 as its authority. D6.b — the *wiring-bug-fix re-emission protocol*,
+which is precisely the protocol for the situation 1-26 is in — says the opposite in step 4:
+
+> the new SHAs land in `evidence/anchors.toml` **in-place under the existing namespaces**
+> (Q2=(a) default — never bifurcate the namespace; never silently delete a row)
+
+and lists **namespace bifurcation** under "Not in scope of this protocol", with the reason:
+
+> a `*-postfix` namespace was rejected at Q2 — bifurcation invites future readers to consume
+> stale bodies
+
+**That reason is not hypothetical here.** The 34 old rows stay anchored and gate-verified under
+`evidence/v1/**/reports/`, and this re-lock's errata shows their tail-drawdown figures to be
+artefacts of bug-log #94: the old corpus carries cells at **100.00 %** tail drawdown where the
+clean engine's corpus-wide median is **26.70 %**, improved in **156 of 156** cells. A reader who
+greps the anchored corpus finds the artefact; the correction is one directory away and nothing
+in the anchored body points to it.
+
+**Why it was not caught earlier.** AC3 cites "ADR-0038/0045 § D6" — and plain § D6 *is*
+compatible with a new namespace, because it only says existing anchors stay byte-identical.
+D6.b is the 2026-05-22 amendment that narrows it, and it sits under a heading the citation does
+not name. The citation is not wrong about D6; it is silent about D6.b.
+
+**The mechanism for changing it already exists** and D6.b names it: *"If the protocol itself
+needs revision … the revision lands as **D6.c** (additive amendment subsection, not in-place
+mutation of D6.b)."* So the two coherent outcomes are (A) re-emit in place under D6.b with the
+architect sign-off and negative invariant its step 5 requires, or (B) ratify D6.c permitting a
+re-lock namespace **with a mandatory back-pointer from every superseded row**, which is the only
+form that answers the stale-bodies objection.
+
+Full argument, with the reproducibility evidence proving the bodies are anchor-grade either way:
+[`evidence/v2/harness-relock/ERRATA.md` § 6b](../../evidence/v2/harness-relock/ERRATA.md).
+
+### `#109` — an AC asks for pins to be re-derived from surfaces that do not contain them, and the file it targets says so in a comment
+**Status**: OPEN — measured 2026-09-25. Not fixable by story 1-26; needs an AC amendment.
+Anchor-impacting: no.
+
+Story 1-26 AC7 requires the four `#[ignore]`d drift gates in `crates/backtest/tests/determinism.rs`
+to have their pins *"re-derived from the regenerated surfaces"* and the attribute removed in the
+same commit. That is not possible as written. The four gates cover `top10-2023-1h-momentum`,
+`top10-2024-h1-momentum`, `top10-2023-fy-tcn-overlay` and `top10-2024-fy-tcn-overlay` — **none of
+which is among the 34 regenerated surfaces.** The 34 are all `*-theta-surface-*`.
+
+`determinism.rs:722-731` already says why, and said it first:
+
+> these four cover `scenarios/momentum.rs` and `scenarios/tcn_overlay.rs` … `run_path` — the lane
+> D1 rewrote, and the one behind all 34 of the 1-26 inventory anchors — is not on their path. So
+> 1-26 must NOT conflate the two sources of movement … Re-deriving one set of pins says nothing
+> about the other.
+
+**Measured after the re-lock at `2d63ddef`** — all four still RED, and every produced hash is
+*unchanged* from the 2026-08-22 and 2026-08-23 measurements (`top10-2023-1h-momentum` is still
+`b655e5e7…` exactly). The re-lock moved all 34 inventory surfaces and moved these four not at all,
+which is the confirming measurement for the comment's claim.
+
+So AC7 has three parts and they cannot all hold: *re-derive from the regenerated surfaces*
+(impossible — not in them), *remove the `#[ignore]`* (would put CI permanently red on a defect
+this story does not fix), *do not re-baseline* (correct, and bug-log #77's exact failure mode if
+violated). The story's own Task note reaches the opposite conclusion from AC7 and is the later,
+better-informed text.
+
+**What the drift actually wants.** The same hash across three measurements spanning the ADR-0089
+D1 sizer wiring and this entire re-lock means the divergence is deterministic and reproducible,
+and a bisect against `83378c5` already places it *before* the #67/#71/#75/#76 fixes. It is a
+bisectable defect with its own cause, and it wants its own story — not a line in someone else's
+errata.

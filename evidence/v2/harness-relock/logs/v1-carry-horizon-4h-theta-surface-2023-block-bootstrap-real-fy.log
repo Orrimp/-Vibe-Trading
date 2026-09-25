@@ -1,0 +1,16 @@
+param_robustness_sweep DONE
+  report:         evidence/v2/harness-relock/reports/robustness-sweep-20260925-165401-v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy.md
+  body_sha:       ec96378284dc693f80b1e97b3560719473a8fd1b2f281aaa344344ec31d38ee4
+  wall_clock_s:   10.2
+  n_cells:        6
+  n_paths:        200
+  family_verdict: FAMILY-UNIFORM-FRAGILE
+  buyhold p50 Sharpe: 1.9103  P(loss): 0.0750  p95 MaxDD: 49.80%
+
+  per-cell summary:
+    g= 0 lookback=   6 k_long=3 drift=0.10 → FRAGILE | p50=0.9092 p5=-0.1020 MaxDD_p95=19.6%
+    g= 1 lookback=   2 k_long=3 drift=0.10 → FRAGILE | p50=0.6748 p5=-0.2603 MaxDD_p95=22.2%
+    g= 2 lookback=  12 k_long=3 drift=0.10 → FRAGILE | p50=0.9161 p5=-0.0117 MaxDD_p95=16.8%
+    g= 3 lookback=   6 k_long=5 drift=0.10 → FRAGILE | p50=1.0220 p5=-0.1277 MaxDD_p95=29.4%
+    g= 4 lookback=   6 k_long=1 drift=0.10 → FRAGILE | p50=0.5774 p5=-0.1383 MaxDD_p95=9.6%
+    g= 5 lookback=   2 k_long=5 drift=0.10 → FRAGILE | p50=1.0065 p5=-0.1804 MaxDD_p95=29.1%

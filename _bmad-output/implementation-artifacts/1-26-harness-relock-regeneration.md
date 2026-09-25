@@ -1,6 +1,6 @@
 # Story 1.26: harness-relock-regeneration
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Created 2026-08-19 by the operator's AC4 split ruling on 1-25. 1-25 keeps the
      CODE deliverable (the eight CRITICALs); this story owns the REGENERATION —
@@ -86,14 +86,43 @@ as history, the migration honest, and the verdict re-derivation loud.
     byte-identical to their 2026-08-22 values. They cover `scenarios/momentum.rs` and
     `scenarios/tcn_overlay.rs` — lanes outside `run_path` (bug-log #95). Their drift is pre-existing
     and separately caused; re-deriving them is a distinct exercise from re-pricing the 34 surfaces.
-- [ ] Decide bug-log **#95** before regenerating, or record that it is deliberately out of scope: eight
-  lanes still declare a `portfolio_exposure_cap` they cannot enforce. None produce inventory anchors,
-  so this does not block — but the errata should not claim the cap binds engine-wide.
-- [ ] Schedule the compute window (see Dev Notes — measured, not estimated).
-- [ ] Regenerate all 34 surfaces to a NEW namespace with `--out-dir` set explicitly.
-- [ ] Errata + verdict re-derivation (AC4), escalating any thesis-touching flip first.
-- [ ] AC5 band re-examination, with numbers.
+- [x] **bug-log #95 recorded as deliberately out of scope.** None of the eight lanes produces an
+  inventory anchor, so it does not block. The errata states explicitly that it makes **no**
+  engine-wide claim for the exposure cap — only that it binds on `run_path`, the lane behind all 34
+  surfaces.
+- [x] **Compute window scheduled and run** — `RAYON_NUM_THREADS=8`, `nice -n 19`, one terminal.
+- [x] **All 34 regenerated**, 34/34 `ok`, 0 failures, into `evidence/v2/harness-relock/reports/`
+  with `--out-dir` explicit (AC3). **Measured wall clock: 74.4 min**, against a Dev-Notes budget of
+  "10.3 h floor, 15–20 h realistic". The estimate extrapolated from one long-only momentum surface;
+  two surfaces account for 83 % of the run and the other 32 finish in 12 minutes together.
+- [x] **AC4 errata + verdict re-derivation** — [`evidence/v2/harness-relock/ERRATA.md`](../../evidence/v2/harness-relock/ERRATA.md).
+  156 cells re-priced, 312 verdicts independently re-derived against the frozen bands with **0
+  mismatches**. 20 cells FRAGILE → MARGINAL, 0 in any other direction, 6 surfaces change family
+  verdict. **Turnover measured: it RISES (+5.5…+7.6 %), correcting ADR-0089's "turnover falls"** —
+  on the 9 of 34 surfaces that publish a `trades` column; the errata claims nothing for the other 25.
+- [x] **AC5 band re-examination, with numbers** — ERRATA § 5. The bands classify the clean corpus
+  differently in kind: `p95_maxdd` goes from tripping **149/156** cells to **0/156**, `p5_sharpe`
+  becomes the dominant binding signal, and the old corpus had **no** cell anywhere decided by a
+  single signal against **24** in the clean one. Escalated: at N=200 paths `P(Sharpe>1)` resolves to
+  0.005 and the band sits at 0.350 — one cell is FRAGILE *solely* on that signal at 0.345, i.e. by
+  **one resampled path**. The gate stays byte-frozen (AD-1); no threshold is proposed.
+- [x] **AC8 standing floor verified** — anchors 119/119, spec-lint PASS, advisor-gate independence
+  17/17, FDR identity 2/2, manifest gate 2/2, FROZEN files byte-untouched. ERRATA § 8.
+- [x] **Bodies proven anchor-grade before proposing to anchor them** — 4 surfaces across 3 slugs
+  re-run independently, all 4 body-SHAs byte-identical; 0 of 34 bodies carry run-varying metadata,
+  so anchoring cannot reproduce bug-log #106.
+- [ ] **BLOCKED on operator — verdict-narrative ruling.** ERRATA § 6. The thesis is NOT in question
+  (0 of 156 cells beat their own buy-and-hold control, in either corpus; nothing reached ROBUST).
+  README and CHANGELOG need **no** change — their claims name `perp-basis-mn-spread` (all 12 held)
+  and `momentum-parameter-robustness-sweep` (held). The flip lands on three slugs' verdict lines.
+- [ ] **BLOCKED on operator/architect — bug-log #108.** AC3's "new namespace" is what ADR-0038
+  § D6.b rejects by name, for a reason that is live here. `anchors.toml` deliberately untouched
+  pending the ruling, so AC8's "new rows" leg is open. ERRATA § 6b.
+- [ ] **AC7 unsatisfiable as written — bug-log #109.** Re-measured after the re-lock: all four gates
+  still RED with hashes *unchanged* from 2026-08-22/23. They cover scenarios that are not among the
+  34. Needs an AC amendment, not a commit.
 - [ ] Review: old rows intact, new rows complete, verdict-delta table honest.
+- [ ] AC6 — unblock story 1-21, once § 6 is ruled.
 
 ## Dev Notes
 
