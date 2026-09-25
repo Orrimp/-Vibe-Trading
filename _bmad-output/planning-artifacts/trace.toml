@@ -3636,6 +3636,9 @@ feature     = "evidence-reproducibility-sample"
 product     = "_bmad-output/planning-artifacts/PRD.md"
 arch        = ["docs/runbooks/corpus-restore.md"]
 crates      = ["crates/data", "crates/backtest"]
-tests       = []
-anchors     = []
-state       = "scoped"   # created 2026-08-04 by the product review; operator decision BUILD
+tests       = [
+  "crates/data/tests/reproducibility_sample_corpus.rs",
+  "crates/backtest/tests/reproducibility_sample_figure.rs",
+]
+anchors     = ["btc-yahoo-2024-1d-sma-cross"]
+state       = "shipped"   # 2026-09-25, ADR-0097. Reproduces the ANCHORED body-SHA exactly (not a tolerance); required fixing bug-log #106 first; runbook states the #93 caveat that other anchored scenarios currently do NOT reproduce

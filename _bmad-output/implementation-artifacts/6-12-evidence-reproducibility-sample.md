@@ -1,6 +1,6 @@
 # Story 6.12: evidence-reproducibility-sample
 
-Status: ready-for-dev
+Status: done
 
 <!-- Created 2026-08-04 by the adversarial product review (PRD §13 Q7; operator
      decision 2026-08-04: BUILD). Finding 8: every pinned corpus is machine-local
@@ -37,9 +37,51 @@ so that "honest" means verifiable-by-someone-else, not merely honestly-intended.
 
 ## Tasks / Subtasks
 
-- [ ] Choose the slice (symbol, window, size budget) and the figure it will reproduce — smallest thing that proves the chain end to end.
-- [ ] Commit the sample + `REVISION.toml` + `.gitignore` exception; verify the loader's pin check passes on it.
-- [ ] Write the runbook recipe (command, expected value, tolerance, the honest-limits paragraph).
+- [x] Choose the slice and the figure — **done 2026-09-25**: `data/yahoo-sample/BTC-USD/1d/2024/` (12 daily parquets, 96 KB) reproducing `btc-yahoo-2024-1d-sma-cross`.
+- [x] Commit the sample + `REVISION.toml` + `.gitignore` exception; loader pin check passes — **done 2026-09-25**.
+- [x] Runbook recipe with the honest-limits section — **done 2026-09-25**, [`docs/runbooks/evidence-reproducibility-sample.md`](../../docs/runbooks/evidence-reproducibility-sample.md).
+- [x] CI wiring so it cannot rot (AC4) — **done 2026-09-25**, ubuntu leg.
+
+## Dev record (2026-09-25)
+
+ADR-0097.
+
+| AC | What shipped |
+|---|---|
+| AC1 | `data/yahoo-sample/BTC-USD/1d/2024/` — 12 daily parquets, 96 KB, own `REVISION.toml`, plain git. **AC1's `.gitignore` premise was wrong** — see below. |
+| AC2 | `cargo test -p backtest --features yahoo --test reproducibility_sample_figure` reproduces `btc-yahoo-2024-1d-sma-cross` to body-SHA `076929bb…`, the value anchored 2026-05-28. Exact, not within a tolerance — see below. |
+| AC3 | The runbook's "What this is NOT" section, at length: one claim only, corpora still machine-local, the anchored bodies were ALREADY verifiable and it is the runs that were not, and the `#93` caveat. |
+| AC4 | CI, ubuntu leg. Two tests: the corpus's manifest verifies (no feature flag, runs everywhere) and the figure reproduces (`yahoo` feature). |
+| AC5 | anchors 119/119 before and after; spec-lint PASS; the sample's pin verifies through `read_and_verify_revision_manifest` exactly as the full corpora do. |
+
+### Three places the evidence contradicted the ACs
+
+1. **AC1's `.gitignore` premise is false.** It says to add the exception "in the same style
+   as `data/binance/`". That style commits only `REVISION.toml` — `git ls-files data/`
+   returns 13 files, all manifests, **zero** parquets. Following it literally would have
+   committed no data at all. D1 uses a new pattern and the `.gitignore` comment explains
+   why this corpus is the one exception.
+2. **AC1's "LFS if warranted" is not warranted** at 96 KB, and `.gitattributes` has no
+   `*.parquet` rule today. Plain git.
+3. **AC2's "within a stated tolerance" does not fit.** The anchored body SHA is exact and
+   already existed; inventing a float tolerance would be a weaker claim than the one
+   available for free. The human-readable figure ($104560.08) is quoted in the runbook.
+
+### A prerequisite had to ship first
+
+Bug-log **#106**, found while scoping this: `run_yahoo_sma` did not pin the wall-clock it
+prints into the hashed body, so the anchor was reproducible only on hardware fast enough
+to finish inside 50 ms. Fixed in `bb3be261`. **Without it this gate would have been flaky
+by construction** — which is why the scoping pass came before the build.
+
+### The caveat that makes this story more useful than it was written
+
+Measured 2026-09-24 (bug-log `#93`): several OTHER anchored scenarios **no longer
+reproduce their own committed bodies**. The `btc-2023-1m-*` family emits hourly bars over
+two years where the evidence records minute bars over one — 525601 → 17544 bars, final
+equity $47290.03 → $107381.95. This gate is green precisely because it covers the scenario
+that still holds, and the runbook says so rather than letting a green sample imply a
+healthy corpus. Resolving `#93` belongs to story 1-26.
 - [ ] Wire the reproduce check into CI so it cannot rot.
 
 ## Dev Notes
@@ -57,5 +99,7 @@ so that "honest" means verifiable-by-someone-else, not merely honestly-intended.
 
 ### References
 
+- ADR: [`0097-one-figure-reproduces-from-a-fresh-clone.md`](../planning-artifacts/architecture/decisions/0097-one-figure-reproduces-from-a-fresh-clone.md)
+- Runbook: [`docs/runbooks/evidence-reproducibility-sample.md`](../../docs/runbooks/evidence-reproducibility-sample.md)
 - Trace: `REQ-EVIDENCE-REPRODUCIBILITY-SAMPLE-001` (state=`scoped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 6 (Remediation, Infra & Governance)

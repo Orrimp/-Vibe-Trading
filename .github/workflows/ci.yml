@@ -195,6 +195,27 @@ jobs:
         shell: bash
         run: scripts/ci_run_annotated.sh "workspace" cargo test --workspace --exclude ui --no-fail-fast
 
+      # Story 6-12 — the reproducibility sample. The ONE real-data figure in this
+      # repo that a second party can reproduce from a fresh clone.
+      #
+      # Ubuntu only: this proves reproducibility from the committed bytes, which is a
+      # property of the data and the engine, not of the operating system. Running it on
+      # three legs would triple the cost of the `yahoo` feature build to re-assert the
+      # same fact. (If cross-OS float determinism is ever in question, that is a
+      # separate, measured decision — the same one ADR-0057 D2 made for the pixel gates.)
+      #
+      # It needs the `yahoo` feature, which the workspace test step above does not
+      # enable, and `python3` for the canonical body hash — already a prerequisite of
+      # the governance-gate steps.
+      #
+      # AC4's whole point: without this the recipe becomes a stale document nobody runs,
+      # and the day the engine drifts away from the anchor nobody finds out. Bug-log #93
+      # is what that looks like when it happens unobserved.
+      - name: Reproduce the sample figure (story 6-12)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: scripts/ci_run_annotated.sh "repro-sample" cargo test -p backtest --features yahoo --test reproducibility_sample_figure
+
       # ── Ubuntu: headless ui tests (smokes only — visual baselines not compiled) ──
       # xvfb-run provides a virtual X display for winit window creation.
       # The visual snapshot tests are compiled OUT on Linux (#![cfg(target_os="macos")])

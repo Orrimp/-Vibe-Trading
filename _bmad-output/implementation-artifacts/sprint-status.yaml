@@ -242,7 +242,7 @@ development_status:
   6-9-cockpit-cross-platform: in-progress  # the open CI run-2 shakeout (P7 activated 2026-07-10; fix-forward)
   6-10-bmad-method-migration: done  # COMPLETE 2026-07-25 — all 7 phases (0..5c); spec/ retired, gates ported intact, docs cutover shipped
   6-11-operator-session-log: done  # 2026-09-24 ADR-0096 — six events with a producer each; `scanned` carries the denominator (discovered/admitted/rejected-by-named-reason). Gate is a DISCRIMINATION test: the #66 A.4 corpus and an empty one must record differently. Off is structural (Option sink, None in every fixture)
-  6-12-evidence-reproducibility-sample: ready-for-dev  # 2026-08-04 product review PRD §13 Q7 = BUILD — one real-data claim reproducible from a fresh clone by a second party
+  6-12-evidence-reproducibility-sample: done  # 2026-09-25 ADR-0097 — 96 KB committed slice reproduces the ANCHORED body-SHA exactly, CI-gated on ubuntu. AC1 gitignore premise + AC2 tolerance premise both corrected on evidence; required fixing #106 first; runbook carries the #93 caveat
   epic-6-retrospective: optional
 
   # -- Epic 7: Retired Research Lines (measured-and-retired bets)

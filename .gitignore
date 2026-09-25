@@ -20,6 +20,13 @@
 !/data/yahoo/
 /data/yahoo/*
 !/data/yahoo/REVISION.toml
+# Story 6-12 — the reproducibility SAMPLE is the one corpus whose bytes ARE
+# tracked. Every sibling above commits only its REVISION.toml, because the bulk
+# parquets are GBs and machine-local; this slice is 96 KB on purpose, so that a
+# fresh clone can reproduce one real-data figure without the operator's disks.
+# Plain git, no LFS — see docs/runbooks/evidence-reproducibility-sample.md.
+!/data/yahoo-sample/
+!/data/yahoo-sample/**
 # Pinned Binance hourly klines corpus (ADR-0032; simple-strategies-realdata
 # review patch 3): bulk parquets stay gitignored; only the revision-pin
 # manifest is tracked — the Lab/CLI pin-assert (revision 3a8b96c4…) needs the
