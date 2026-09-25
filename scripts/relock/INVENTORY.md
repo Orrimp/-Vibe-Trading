@@ -50,16 +50,38 @@ compute**: a test can assert, for each of the 34 scenarios, that the proposed fl
 (a) passes both validators and (b) produces that exact scenario name. Nothing needs to
 run for hours to find out a row is wrong.
 
-## What remains
+## DONE 2026-09-25 — the manifest is derived and proven
 
-1. Derive the flag tuple per surface: grid, year, taker-fee (basis/MN only), MN
-   sub-variant, score-source, plus the `required_*` values the validators demand.
-2. Write the machine-verification test described above.
-3. Only then write `surfaces.tsv`.
+`crates/backtest/tests/relock_manifest.rs` enumerates every axis tuple the binary would
+ACCEPT and keeps the ones that name an anchored surface. All **34 derive from exactly one
+accepted tuple** — no gaps, no ambiguity, first run. Nothing in `surfaces.tsv` was typed
+by hand; re-generate it rather than editing:
 
-## And the run is gated regardless
+```
+cargo test -p backtest --test relock_manifest write_manifest -- --ignored
+```
 
-1-26 AC1: `#69` wired and `#68` dropped must land first. The AC is explicit —
-"regenerating before all of these land produces a second contaminated corpus — that is
-the whole reason for the split". Both are WORK, not decisions; the operator ruled on both
-2026-08-19.
+The always-on gate (`every_anchored_surface_derives_from_exactly_one_accepted_tuple`)
+keeps the committed file honest: if a surface ever stops being reachable, that is drift
+to report, not a row to hand-write. A second test asserts the known forgery
+(`--grid tier1 --taker-fee-bps 20`, which emits anchor `#86`'s exact name at a fee it
+never ran) is still refused — if that ever passes, the derivation is filtering nothing.
+
+## The entry gate is open
+
+1-26 AC1 required `#69` wired and `#68` dropped. Verified 2026-09-25: `#69` was wired
+2026-08-23 (`723ca742`) with its binding test green, and `#68` took the other branch of
+its own "implement-or-drop" — the two were one defect, so wiring the sizer made the drift
+axis live. **Operator ruled 2026-09-25 that implemented-and-binding-tested satisfies the
+gate.** See 1-26 AC1's annotation.
+
+## What remains before the compute window
+
+Nothing mechanical. The run is:
+
+```
+scripts/relock/run_surfaces.sh --out-dir evidence/v2/harness-relock/reports
+```
+
+~16 h at the default 8 threads (10.3 h floor at 12.4), resumable, `nice -n 19`. Then AC4
+(errata + verdict re-derivation) and AC5 (band re-examination) on the output.

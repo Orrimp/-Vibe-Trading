@@ -1,0 +1,44 @@
+# Story 1-26 — the 34 regeneration invocations.
+#
+# DERIVED, NOT HAND-WRITTEN. Every row below was produced by
+# `crates/backtest/tests/relock_manifest.rs` from the binary's own `required_*`
+# tables, accepted by its own `validate_grid_axis_pairing`, and named by its own
+# `build_scenario_name`. Re-generate rather than edit:
+#
+#   cargo test -p backtest --test relock_manifest write_manifest -- --ignored
+#
+# scenario\tbinary\targs
+v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2023 --score-source basis-reversal --taker-fee-bps 0
+v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2024 --score-source basis-reversal --taker-fee-bps 0
+v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2023 --score-source basis-reversal --taker-fee-bps 2
+v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2024 --score-source basis-reversal --taker-fee-bps 2
+v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2023 --score-source basis-reversal --taker-fee-bps 5
+v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2024 --score-source basis-reversal --taker-fee-bps 5
+v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2023 --score-source basis-reversal --taker-fee-bps 10
+v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid basis-tier1 --year 2024 --score-source basis-reversal --taker-fee-bps 10
+v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid carry4h --year 2023 --score-source carry --taker-fee-bps 4
+v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid carry4h --year 2024 --score-source carry --taker-fee-bps 4
+v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid carry-daily --year 2023 --score-source carry --taker-fee-bps 4
+v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid carry-daily --year 2024 --score-source carry --taker-fee-bps 4
+v1-carry-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid carry-tier1 --year 2023 --score-source carry --taker-fee-bps 4
+v1-carry-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid carry-tier1 --year 2024 --score-source carry --taker-fee-bps 4
+v1-momentum-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid tier1 --year 2023 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-mr-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mr-tier1 --year 2023 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid ts4h --year 2023 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid ts4h --year 2024 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid ts-daily --year 2023 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid ts-daily --year 2024 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid ts-tier1 --year 2023 --score-source vol-adjusted-return --taker-fee-bps 4
+v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid ts-tier1 --year 2024 --score-source vol-adjusted-return --taker-fee-bps 4
+v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2023 --score-source mn-basis-spread --taker-fee-bps 0
+v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2024 --score-source mn-basis-spread --taker-fee-bps 0
+v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2023 --score-source mn-basis-spread --taker-fee-bps 5
+v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2024 --score-source mn-basis-spread --taker-fee-bps 5
+v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2023 --score-source mn-basis-funding-residual --taker-fee-bps 0
+v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2024 --score-source mn-basis-funding-residual --taker-fee-bps 0
+v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2023 --score-source mn-basis-funding-residual --taker-fee-bps 5
+v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2024 --score-source mn-basis-funding-residual --taker-fee-bps 5
+v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2023 --score-source mn-funding-spread --taker-fee-bps 0
+v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2024 --score-source mn-funding-spread --taker-fee-bps 0
+v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2023 --score-source mn-funding-spread --taker-fee-bps 5
+v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy	param_robustness_sweep	--grid mn-tier1 --year 2024 --score-source mn-funding-spread --taker-fee-bps 5
