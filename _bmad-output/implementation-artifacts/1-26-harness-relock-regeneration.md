@@ -129,8 +129,19 @@ as history, the migration honest, and the verdict re-derivation loud.
   still RED with hashes *unchanged* from 2026-08-22/23. They cover scenarios that are not among the
   34. Needs an AC amendment, not a commit.
 - [ ] Review: old rows intact, new rows complete, verdict-delta table honest.
-- [ ] AC6 — unblock story 1-21. Now unblocked by the 2026-09-25 ruling: the MN family is re-priced
-  under a correctly-signed engine and all 12 surfaces held `FAMILY-UNIFORM-FRAGILE`.
+- [x] **AC6 — 1-21's question ANSWERED (its closure is a separate matter).** The re-derived verdicts,
+  not the 1-21 review, decide what the MN spread shows, and they say: **all 12 surfaces
+  FAMILY-UNIFORM-FRAGILE under a correctly-signed engine**, now on their own merits rather than on a
+  liquidation artefact. Measured: C1 (`#75`) discharged — `mn-basis` was bit-identical to
+  `mn-funding` in **8 of 8** compared cells and is now identical in **0 of 8**; `#71`'s absorbing
+  state gone — **2210 liquidation events → 0**, and the 97.8–100 % `p95_maxdd` it was offered to
+  explain fell to **16.64–34.74 %**. The supersession sentence is now falsified by measurement: at
+  **0 bps** taker fee every surface is still uniformly FRAGILE (best p50 **+0.2038** against a 0.5
+  band); 0 → 5 bps costs 0.05–0.16 Sharpe, so the fee is not the killer.
+  **1-21 still cannot close** — bug-log **`#110`**: the re-lock cleared every *arithmetic* rider and
+  no *prose* rider, because a corrected engine through an unchanged renderer says the same words.
+  The falsified sentence, the missing § 0 ≈0 null and the body-hygiene columns need a renderer
+  change plus a second re-emission, which is **not** a D6.b case and needs its own ruling.
 
 ## Dev Notes
 

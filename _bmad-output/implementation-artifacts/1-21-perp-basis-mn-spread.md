@@ -45,7 +45,48 @@ so that the strategy/backtest engine is deterministic, real-data-grounded, and h
 
 Probes CLEAR (all ten): **identity-forge** on this story's own axes — enumerated, not spot-checked: `MnTier1` pins all six axes, the arm→name-token map is injective, `k_short` is derived rather than a CLI axis, and the margin constants are compile-time; the residue found (`--paths`/`--ensemble-seed`) is legacy and now guarded. **Seed-collision** — zero new RNG; the basis is gathered at the already-materialised `idx_seq`, guarded by an existing test. **Skip-visibility** — no `#[ignore]`, no cwd-relative root, nothing self-skips green. **AD-9 Decimal purity** — the residual is integer-valued `Decimal`, no `f64` anywhere in the money path. **AD-1** — the frozen gate files were never touched (`git log` over the range returns nothing). **Half-warm across two sidecars** — the residual's warm-up gate is the conjunction of both rings and re-intersects independently. **Channel** — the MN falsifiers inject with `funding_override: None`, so the test channel does not itself move equity; this is *not* a repeat of #74 (the defect is the opposite — production uses a channel the tests never exercise). The bakeoff exemption holds: `bakeoff/bootstrap.rs` untouched, so crowns, verdicts and the era-qualified thesis are unaffected.
 
-**Status: stays `review`, BLOCKED on 1-25.** The triad is deliberately NOT flipped — flipping it would assert a delivered result the evidence does not support. The 12 anchor-safe patches are committed; the two CRITICALs, the §0 null, the supersession sentence and the body-hygiene riders are inventory for the re-lock. **The re-run, not this review, decides what the market-neutral basis spread actually shows.**
+**Status: stays `review`.** No longer blocked on 1-25 — the re-lock has run — but still not closable. See below.
+
+### The re-run has happened (2026-09-25, story 1-26) — here is what it decided
+
+The re-lock regenerated all 12 MN surfaces on a correctly-signed engine and re-emitted them in
+place under ADR-0038 § D6.b. This section answers the review's own question, and it separates what
+the re-run settled from what it could not.
+
+**Settled, measured on the clean corpus:**
+
+| the review's finding | before | after |
+|---|---|---|
+| **C1 (`#75`)** — the basis arm never saw the basis; `mn-basis` ≡ `mn-funding` | **8 of 8** compared cells bit-identical | **0 of 8** identical — the basis map now reaches the score |
+| **`#71`** — the absorbing cover-rejection → liquidation state | **2210** liquidation events across 24 cells | **0** |
+| the **97.8–100 % `p95_maxdd`** that state was offered to explain | 85.51 – 100.00 % | **16.64 – 34.74 %** |
+| `git_commit` naming a commit that lacked the harness | `18334c9` | `2d63ddef`, the commit that produced them |
+
+So the FRAGILE verdicts now stand **on their own merits** rather than on a liquidation artefact,
+and the honest-status line — *"unknown pending a correctly-signed re-run"* — is discharged:
+**all 12 surfaces are FAMILY-UNIFORM-FRAGILE under a correctly-signed engine.** That is the answer
+the story existed to obtain.
+
+**And the supersession sentence is now falsified by measurement, not by argument.** All 12 bodies
+still close with *"removes directional beta but not fee-bleed from short-leg turnover"*. On the
+clean corpus, **at 0 bps taker fee — no fee bleed at all — every surface is still
+FAMILY-UNIFORM-FRAGILE and every cell FRAGILE**; best p50 at 0 bps is **+0.2038** against a 0.5
+band, and 0 → 5 bps costs only **0.05–0.16** Sharpe. The killer is not the fee. Six of the twelve
+surfaces were run at zero fee precisely to test this, and they answer it.
+
+**Why the story still does not close — bug-log `#110`.** The re-lock cleared every rider that was
+*arithmetic* and none that was *prose*, because re-running a corrected engine through an unchanged
+renderer cannot change what the renderer says. Still outstanding, unchanged by the regeneration:
+
+- the falsified fee-bleed sentence, now frozen into a **third** generation of anchored bodies;
+- the § 0 dollar-neutral ≈0 null — declared, still not rendered; all 12 bodies still print BUYHOLD
+  and none carries a ≈0 null row;
+- body hygiene: no `trades` column, no funding-cost column (so R-MN.3's "net-of-cost edge at each
+  fee level" is still underivable from its own evidence), no ruin count.
+
+Clearing them is a **renderer** change plus a second re-emission of the 12 bodies. It is explicitly
+**not** a D6.b case — D6.b covers bodies that reflect a wiring bug — so it needs its own ruling.
+`#110` carries the argument and the numbers.
 
 - [ ] `perp-basis-mn-spread` 0.2.0 - the base feature (presenter-done)
 

@@ -1862,3 +1862,51 @@ D1 sizer wiring and this entire re-lock means the divergence is deterministic an
 and a bisect against `83378c5` already places it *before* the #67/#71/#75/#76 fixes. It is a
 bisectable defect with its own cause, and it wants its own story — not a line in someone else's
 errata.
+
+### `#110` — the re-lock re-ran the arithmetic through the same renderer, so every prose rider survived into a third generation of anchored bodies
+**Status**: OPEN — found 2026-09-25 while answering story 1-26's AC6 (unblock 1-21).
+Anchor-impacting: **yes if fixed** — the strings live in the hashed body, so clearing them
+re-locks the 12 MN surfaces a second time. Needs its own ruling; **not** a D6.b case (D6.b
+covers bodies reflecting a *wiring bug*, and this is a renderer string).
+
+Story 1-21's review listed riders "owed at regeneration". The regeneration has now run, and it
+cleared the ones that were **arithmetic** and none of the ones that were **prose** — because
+re-running a corrected engine through an unchanged renderer cannot change what the renderer says.
+Nobody had separated the two classes, so all of them were booked against the re-lock.
+
+**Cleared by the re-lock — measured on the clean corpus:**
+
+| rider | before | after |
+|---|---|---|
+| C1 `#75` — basis arm never saw the basis | `mn-basis` ≡ `mn-funding`, **8 of 8** compared cells bit-identical | **0 of 8** identical |
+| `#71` absorbing liquidation state | **2210** liquidation events across 24 cells | **0** |
+| the 97.8–100 % `p95_maxdd` it was offered to explain | 85.51 – 100.00 % | **16.64 – 34.74 %** |
+| `git_commit` stamp naming a commit without the harness | `18334c9` | `2d63ddef`, the commit that produced them |
+
+**NOT cleared, and now frozen into a third generation:**
+
+- **The falsified fee-bleed sentence.** All 12 bodies still close with *"The dollar-neutral
+  construction removes directional beta but not fee-bleed from short-leg turnover."* The clean
+  corpus falsifies it outright, using the surfaces' own numbers: **at 0 bps taker fee — no fee
+  bleed at all — every MN surface is still FAMILY-UNIFORM-FRAGILE and every cell FRAGILE.** Best
+  p50 at 0 bps is **+0.2038**, against a FRAGILE band of 0.5 and a buy-and-hold control near
+  +1.10…+1.74. Going from 0 to 5 bps costs only **0.05–0.16** Sharpe. The fee is not what is
+  killing this arm, and six of the twelve surfaces were run at zero fee precisely to check that.
+- **The § 0 null was declared and still is not rendered.** § 0 replaced the BUYHOLD control with a
+  dollar-neutral ≈0 null because benchmarking a beta-stripped arm against +1.74 is the wrong null.
+  All 12 bodies still print **BUYHOLD** and **none** contains a ≈0 null row. (A grep for
+  "dollar-neutral" hits — but only the prose sentence above, not a control row. Worth recording as
+  its own small trap: the string that looks like the fix is the string that is the defect.)
+- **Body hygiene**: still **no `trades` column** and **no funding-cost column** on any MN surface,
+  so R-MN.3's "net-of-cost edge at each fee level" remains underivable from its own evidence; still
+  **no ruin count**, so a wiped-out path stays indistinguishable from a merely-bad one.
+
+**Consequence for 1-21.** Its two CRITICALs are resolved at the arithmetic layer and its FRAGILE
+verdicts now stand on their own merits rather than on a liquidation artefact — but it still cannot
+close, because three of the riders its review made conditions of closure are untouched, and one of
+them is a false statement inside anchored evidence.
+
+**The lesson worth keeping.** "Owed at regeneration" was the wrong bucket. A rider is only
+discharged by a re-run if the re-run changes the thing the rider is about. Riders against the
+*renderer* need a renderer change and their own re-emission; booking them against a compute window
+made them look scheduled when nothing was going to touch them.
