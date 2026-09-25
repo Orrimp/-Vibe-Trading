@@ -209,14 +209,43 @@ test result: ok. 4 passed; 0 failed; 0 ignored
 **Moral** (the #65/#66 lineage continues): the harness's e2e gates validated a synthetic stand-in reducer, never the production fan-out — a fill-arithmetic corruption of this size sailed through a VERDICT→PASS tester run because no test ever priced a real cross-symbol fill. The 1-14 review pass re-points those gates at the real chain.
 
 ### `#68` — The θ-grids' drift/hold-band swept axis is behaviorally INERT (anchored narratives attribute results to a lever that does not exist)
-**Status**: OPEN — implement-or-drop decision rides story 1-25's AC3 ratify-or-fix list (with the axis's narrative corrected at regeneration). Disclosure entry, 2026-08-03.
+**Status**: **IMPLEMENTED 2026-08-23** (`723ca742`) — i.e. the ruling's OTHER branch.
+**Operator confirmation outstanding**; see below. Disclosure entry, 2026-08-03.
+
+**The premise of this entry is void, verified 2026-09-25.** #68 and #69 were ONE defect: the
+sole implementation reading BOTH the exposure cap and the drift band
+(`risk::size_portfolio_target`) had no production caller. Wiring it for #69 on 2026-08-23
+made the drift axis live as a side effect. The code says so itself
+(`montecarlo.rs:238`): *"until the sizer was wired nothing consumed the third axis
+(bug-log #68)"*. Its binding test is green —
+`portfolio_controls_bind.rs::drift_band_suppresses_resizes_that_a_tight_band_performs`,
+which holds everything constant and varies only `drift_rebalance_threshold` 0.001 vs 0.90.
+
+**Why this needs the operator and not a commit.** The 2026-08-19 ruling recorded in story
+1-26 AC1 is *"#68 dropped (drift axis removed from the grid and from every surface that
+presents it as an explored dimension)"*. That ruling was made while the axis was inert —
+**four days before the wiring landed**. Executing it now would delete a working,
+binding-tested dimension. Implementing was the other half of this entry's own
+"implement-or-drop", so the outcome is inside the ruling's intent; but 1-26's entry gate
+reads the letter, and only the operator can say the letter is satisfied.
+
+Original entry below, unchanged as the record of what was found.
 **Discovery**: story 1-16 code-review Blind Hunter H1; orchestrator-accepted on the reviewer's caller-graph evidence.
 **Mechanism**: `drift_rebalance_threshold` reaches exactly three places — the config hash, the report grid-definition table, and `MomentumStrategy.drift_threshold` marked `#[allow(dead_code)]` (written, never read). No drift/hold-band logic exists in `run_path`/`PaperEngine`; the only real implementation (`risk::size_portfolio_target`) has zero production callers; the equal-weight open/close-on-membership signal scheme cannot express a hold band. 0.10 vs 0.30 vs 0.50 changes nothing.
 **Impact**: the anchored θ-surface narratives (#86 momentum, #87 MR) attribute cell results to "wide hold-band / low-turnover engineering" — a confounded interpretation (lookback+k carry everything). Verdicts stand (all-FRAGILE is direction-preserving under an inert axis); the INTERPRETATION and the grid's third-axis scientific claim do not. No test could go red on this: no cell pair is drift-only distinct.
 **Moral** (the #65 lineage, again): a parameter that is hashed, printed, and swept is not a parameter that is EXECUTED — the same class as the v3-vol no-op overlay (#65), one layer up. Sweep design must include a per-axis "this axis moved the output" probe (a drift-only cell pair would have caught this on day 1).
 
 ### `#69` — `portfolio_exposure_cap` is INERT engine-wide; D-TSM.2's ratified safety premise is false; the anchored TS surfaces ran ~2× the documented gross exposure, alphabetically rationed
-**Status**: OPEN — enforce-or-delete + corrected exposure description + explicit thesis re-affirmation ride story 1-25 AC3/AC4. Disclosure entry, 2026-08-04.
+**Status**: **FIXED 2026-08-23** (`723ca742`), verified 2026-09-25. The corrected exposure
+description + thesis re-affirmation still ride story 1-26's regeneration.
+
+**Verified at source 2026-09-25**, because the entry sat at OPEN for a month after the fix
+landed and 1-26's entry gate reads this line. `scripts/callers.sh size_portfolio_target` now
+reports a PRODUCTION caller — `crates/backtest/src/scenarios/montecarlo.rs:520`, inside
+`run_path` — where the census in this entry found zero. The binding test AC1 asks for exists
+and is green: `crates/backtest/tests/portfolio_controls_bind.rs::gross_cap_refuses_the_whole_rebalance_and_the_count_is_surfaced`.
+
+Original entry below, unchanged as the record of what was found.
 **Discovery**: story 1-17 code-review Blind Hunter H-1 (the #68-mandated caller-graph probe, aimed at the risk-limit layer).
 **Mechanism**: `Order::new` validates ONLY `per_symbol_exposure_cap` (`crates/core/src/order.rs:123-170`); `portfolio_exposure_cap`'s sole implementation (`crates/risk/src/portfolio.rs:189`) has zero production callers; `run_path` sets `Some(dec!(0.50))` decoratively with empty per-order Position snapshots. Invisible in every top-K family (K≤5 × 10% fixed-fraction ≤ 50% — the cap could never bind).
 **Impact**: story 1-17's LOCKED design certified fixed-fraction sizing as safe BECAUSE "the 0.50 portfolio cap throttles" high-cardinality bars — false. TS long/flat emits up to 10 Buys → ~90-100% gross in high-breadth regimes (anchored tim 0.78-0.87) vs the hashed `held_constant | exposure_cap=0.50` row in anchors #90/#91; the only real limiter is the cash pre-flight, which rations ALPHABETICALLY (BTreeMap emission order), starving alphabetically-late symbols — violating the design's own per-asset-independence criterion. The FAMILY-UNIFORM-FRAGILE verdict likely survives (p5-Sharpe ≈ exposure-scale-invariant; margins ≥~1.06 Sharpe uniform), but prob_loss/p95-maxdd are exposure-sensitive banded signals and the anchored body misdescribes the book — the 1-25 regeneration must correct the description and re-affirm the closure explicitly.
