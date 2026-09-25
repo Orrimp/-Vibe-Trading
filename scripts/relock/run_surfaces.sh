@@ -84,13 +84,32 @@ if [ ! -f "$MANIFEST" ]; then
   exit 2
 fi
 
+# ── Guard 3: the binary must exist BEFORE 34 invocations discover it does not ──
+#
+# Learned the hard way 2026-09-25: the first real run failed all 34 surfaces in one
+# second with `No such file or directory`, because nothing had built the release binary.
+# The story's own notes say "release build 8.65 s (one-time)"; this is that one time.
+# `--features candle,realdata` is NOT optional and NOT guessed — the binary itself
+# refuses without it: "param_robustness_sweep --generator block-bootstrap-real requires
+# --features realdata". Every anchored surface is a `block-bootstrap-real` run.
+#
+# The build runs UNCONDITIONALLY rather than behind an `-x` existence check, because a
+# binary built without those features exists and is wrong — which is precisely how the
+# 2026-09-25 second attempt failed. Cargo is a no-op when it is already current.
+BIN="./target/release/param_robustness_sweep"
+echo "ensuring $BIN is current (release, features candle,realdata) …"
+cargo build --release -p backtest --features candle,realdata --bin param_robustness_sweep || {
+  echo "REFUSED: the release binary could not be built." >&2
+  exit 2
+}
+
 mkdir -p "$OUT_DIR"
 LOG_DIR="$OUT_DIR/../logs"; mkdir -p "$LOG_DIR"
 PROGRESS="$LOG_DIR/progress.tsv"
 [ -f "$PROGRESS" ] || printf 'scenario\tstatus\tseconds\tfinished_utc\n' > "$PROGRESS"
 
 total=$(grep -vcE '^\s*(#|$)' "$MANIFEST")
-done_count=0; skipped=0; failed=0; i=0
+done_count=0; skipped=0; failed=0; i=0; fast_fails=0
 
 echo "surfaces: $total · threads: $THREADS · nice: $NICENESS · out: $OUT_DIR"
 echo "resumable — Ctrl-C any time, re-run the same command to continue"
@@ -107,7 +126,7 @@ while IFS=$'\t' read -r scenario binary args; do
     continue
   fi
 
-  cmd=(nice -n "$NICENESS" ./target/release/"$binary")
+  cmd=(nice -n "$NICENESS" "./target/release/$binary")
   # shellcheck disable=SC2206
   cmd+=($args --out-dir "$OUT_DIR")
 
@@ -129,6 +148,24 @@ while IFS=$'\t' read -r scenario binary args; do
     echo "      FAILED after $((secs / 60)) min — see $LOG_DIR/$scenario.log" >&2
     failed=$((failed + 1))
     # Keep going: one bad surface should not cost the other 33. The summary is loud.
+    #
+    # BUT: a surface that fails in seconds did not run, it failed to START, and three of
+    # those in a row is a broken setup rather than three bad surfaces. Continuing then
+    # produces 34 identical errors where the first one already said everything — which is
+    # exactly what the 2026-09-25 first run did. Stop and show the log.
+    if [ "$secs" -lt 30 ]; then
+      fast_fails=$((fast_fails + 1))
+    else
+      fast_fails=0
+    fi
+    if [ "$fast_fails" -ge 3 ]; then
+      echo >&2
+      echo "ABORTING: 3 surfaces failed in under 30 s each — this is a setup problem, not" >&2
+      echo "a data problem. The other $((total - i)) would fail identically. First lines:" >&2
+      echo >&2
+      head -3 "$LOG_DIR/$scenario.log" >&2
+      exit 1
+    fi
   fi
 done < "$MANIFEST"
 

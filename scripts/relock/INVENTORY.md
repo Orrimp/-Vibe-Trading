@@ -75,13 +75,35 @@ its own "implement-or-drop" — the two were one defect, so wiring the sizer mad
 axis live. **Operator ruled 2026-09-25 that implemented-and-binding-tested satisfies the
 gate.** See 1-26 AC1's annotation.
 
+## Measured cost — the story's estimate is right for ONE family and wrong for the rest
+
+Every distinct invocation shape was run once at `RAYON_NUM_THREADS=8`, 2026-09-25:
+
+| family | surfaces | measured | note |
+|---|---|---|---|
+| `tier1` momentum (1h) | 1 | **1677 s ≈ 28 min** | matches the story: 18.1 min × 12.4/8 = 28.1 |
+| `mr` / `carry` / `ts-tier1` (1h) | 5 | not individually measured | same shape as momentum |
+| `basis-tier1` (1h) | 8 | **~40 s** | the story calls this the HEAVIEST lane |
+| `mn-tier1` (1h) | 12 | **23 s** | |
+| `ts-4h` / `carry-4h` | 4 | **14 s** | |
+| `ts-daily` / `carry-daily` | 4 | **11 s** | 1000 paths, not 200 |
+
+So the cost is concentrated in the six `tier1`-family 1h surfaces; **everything else together
+is about 12 minutes**. If the other five behave like momentum the whole run is **≈3 h at 8
+threads**, and it is hard to construct a case above ~6 h.
+
+**The story's "10.3 h floor, 15-20 h realistic" does not survive contact.** Its cost model
+also has the ordering backwards — it calls basis-reversal the heaviest lane (measured: 40 s)
+and momentum the cheap end (measured: 28 min). Treat the note as an estimate from one
+measurement generalised too far, and this table as the replacement.
+
 ## What remains before the compute window
 
-Nothing mechanical. The run is:
+Nothing mechanical:
 
 ```
 scripts/relock/run_surfaces.sh --out-dir evidence/v2/harness-relock/reports
 ```
 
-~16 h at the default 8 threads (10.3 h floor at 12.4), resumable, `nice -n 19`. Then AC4
+Resumable, `nice -n 19`, builds its own binary with `--features candle,realdata`. Then AC4
 (errata + verdict re-derivation) and AC5 (band re-examination) on the output.

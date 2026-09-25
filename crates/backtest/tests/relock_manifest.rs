@@ -235,14 +235,42 @@ fn write_manifest() {
          # scenario\\tbinary\\targs\n",
     );
     for row in derived.values() {
-        out.push_str(&format!(
-            "{}\tparam_robustness_sweep\t--grid {} --year {} --score-source {} --taker-fee-bps {}\n",
+        // EVERY required axis is emitted explicitly, never left to a CLI default.
+        //
+        // Found the hard way 2026-09-25: the first manifest omitted `--paths`, which
+        // happens to default to 200 — the right value for `BasisTier1`, and a QUARTER of
+        // the 1000 that `TsDaily`/`CarryDaily` require. Four daily surfaces would have
+        // run at a quarter of their intended work and produced entirely plausible
+        // reports. A manifest that agrees with today's defaults is not a manifest, it is
+        // a coincidence with a shelf life.
+        let g = row.grid;
+        // Collapsed to single-spaced: the `\`-continuations below keep the source
+        // readable, and a TSV field must not inherit their indentation.
+        let seed = format!("0x{:X}", g.required_ensemble_seed().unwrap_or(0));
+        let line = format!(
+            "{}\tparam_robustness_sweep\t             --grid {} --year {} --score-source {} --taker-fee-bps {}              --direction {} --selection-mode {} --horizon {}              --slippage-bps {} --paths {} --ensemble-seed {}\n",
             row.scenario,
-            grid_flag(row.grid),
+            grid_flag(g),
             row.year,
             score_flag(row.score_source),
             row.taker_fee_bps,
-        ));
+            direction_flag(g.required_direction()),
+            mode_flag(g.required_selection_mode()),
+            horizon_flag(g.required_horizon()),
+            g.required_slippage_bps(),
+            g.required_paths().unwrap_or(200),
+            seed,
+        );
+        let mut parts = line.split('\t');
+        let scenario = parts.next().unwrap_or_default();
+        let binary = parts.next().unwrap_or_default();
+        let args: String = parts
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push_str(&format!("{scenario}\t{binary}\t{args}\n"));
     }
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/relock/surfaces.tsv");
@@ -258,12 +286,41 @@ fn grid_flag(g: GridKind) -> &'static str {
         GridKind::CarryTier1 => "carry-tier1",
         GridKind::TsTier1 => "ts-tier1",
         GridKind::TwoCell => "two-cell",
-        GridKind::Ts4h => "ts4h",
+        // clap's own spelling, from `--help`. Guessed "ts4h"/"carry4h" once and a smoke
+        // run rejected both in 0 s (2026-09-25). The possible-values list is the source.
+        GridKind::Ts4h => "ts-4h",
         GridKind::TsDaily => "ts-daily",
-        GridKind::Carry4h => "carry4h",
+        GridKind::Carry4h => "carry-4h",
         GridKind::CarryDaily => "carry-daily",
         GridKind::BasisTier1 => "basis-tier1",
         GridKind::MnTier1 => "mn-tier1",
+    }
+}
+
+fn direction_flag(d: backtest::sweep_harness::SweepDirection) -> &'static str {
+    use backtest::sweep_harness::SweepDirection as D;
+    match d {
+        D::Momentum => "momentum",
+        D::Reversion => "reversion",
+    }
+}
+
+fn mode_flag(m: backtest::sweep_harness::SweepSelectionMode) -> &'static str {
+    use backtest::sweep_harness::SweepSelectionMode as M;
+    match m {
+        M::CrossSectionalTopK => "cross-sectional-top-k",
+        M::TimeSeriesLongFlat => "time-series-long-flat",
+    }
+}
+
+fn horizon_flag(h: backtest::resample::Horizon) -> &'static str {
+    use backtest::resample::Horizon as H;
+    // clap's value names, NOT the Rust variant names. Guessed wrong once (2026-09-25:
+    // "one-day" was rejected in 1 s by a smoke run); these are `--help`'s own list.
+    match h {
+        H::OneHour => "1h",
+        H::FourHours => "4h",
+        H::OneDay => "daily",
     }
 }
 
