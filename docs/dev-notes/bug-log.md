@@ -1830,8 +1830,23 @@ Full argument, with the reproducibility evidence proving the bodies are anchor-g
 [`evidence/v2/harness-relock/ERRATA.md` § 6b](../../evidence/v2/harness-relock/ERRATA.md).
 
 ### `#109` — an AC asks for pins to be re-derived from surfaces that do not contain them, and the file it targets says so in a comment
-**Status**: OPEN — measured 2026-09-25. Not fixable by story 1-26; needs an AC amendment.
-Anchor-impacting: no.
+**Status**: OPEN — measured 2026-09-25, then PARTLY CORRECTED the same evening. AC7 is still
+unsatisfiable as written and still needs its amendment; but the inference I drew from the
+measurement was **wrong** and is retracted below.
+Anchor-impacting: **yes** — see `#111`. (This entry originally said "no".)
+
+> **RETRACTION 2026-09-25.** This entry concluded: *"the re-lock moved all 34 inventory surfaces and
+> moved these four not at all, which is the confirming measurement for the comment's claim"* — the
+> claim being that the two movements have different causes. The measurement is right; **the
+> inference is wrong.** A bisect that evening put the cause of all four at **`11acd126`
+> (2026-08-16) — the `#67` fix**, measured one commit either side (`b3332d35` → `0f6f6eb8…` GOOD,
+> `11acd126` → `b655e5e7…` BAD). The four did not move during the 2026-09-25 regeneration because
+> they had **already** moved on 2026-08-16. Same cause as the 34 surfaces, different date.
+>
+> The reasoning error is worth more than the correction: the exclusion rested on "these four do not
+> go through `run_path`". True — and irrelevant. `#67`'s fix landed in `engine.rs` and `paper.rs`,
+> the engine **below** every lane. Lane-scoping cannot bound a defect fixed beneath the lanes.
+> Full write-up: `#111`.
 
 Story 1-26 AC7 requires the four `#[ignore]`d drift gates in `crates/backtest/tests/determinism.rs`
 to have their pins *"re-derived from the regenerated surfaces"* and the attribute removed in the
@@ -1951,3 +1966,85 @@ them is a false statement inside anchored evidence.
 discharged by a re-run if the re-run changes the thing the rider is about. Riders against the
 *renderer* need a renderer change and their own re-emission; booking them against a compute window
 made them look scheduled when nothing was going to touch them.
+
+### `#111` — the `#67` blast radius was scoped by LANE, and `#67` was fixed BENEATH the lanes
+**Status**: OPEN — cause bisected 2026-09-25 (story 1-27). Resolution is a D6.b re-lock, not a code
+fix; the scope of that re-lock is the open question.
+Anchor-impacting: **yes** — at minimum the 4 scenarios below; possibly more (see § Scope).
+
+The four `#[ignore]`d `determinism.rs` gates have been red since August and were believed to be a
+separate, older drift of unknown cause. They are not. Bisected, one commit either side, on the
+default invocation those tests use:
+
+| commit | date | produces |
+|---|---|---|
+| `b3332d35` | 2026-08-15 | `0f6f6eb8…` — **GOOD**, reproduces the pin exactly |
+| `11acd126` | 2026-08-16 | `b655e5e7…` — **BAD**, and it is the hash we still see today |
+
+`11acd126` is **the `#67` fix**: *"the harness was booking a ~1% gain for buying one symbol at
+another symbol's price — engine guard + per-symbol fill routing"*.
+
+**So the pinned bodies are `#67`-contaminated evidence, and the gates are red because the engine
+became CORRECT.** Story 1-27 is therefore a D6.b re-lock, not a bug hunt. The diff says the same
+thing in numbers — on `top10-2023-1h-momentum`, 8 changed lines, all summary-table:
+
+| field | pinned (contaminated) | produced (clean) |
+|---|---|---|
+| Trades | 4809 | 592 |
+| Buys / Sells | 2406 / 2403 | 296 / 296 |
+| Max drawdown | 87.63 % | 14.34 % |
+| Final equity | $50 922.49 | $87 606.01 |
+
+**The reasoning error, which matters more than the four SHAs.** Every artefact that touched this —
+`determinism.rs`'s own comment, story 1-26's Task note, bug-log `#109`, the 1-26 errata — excluded
+`#67` on the same ground: *these four do not go through `run_path`*. That is **true and
+irrelevant**. `#67`'s fix landed in `engine.rs` (+20) and `paper.rs` (+98) — the engine **below**
+every lane. Anything that calls `engine.step` with a multi-symbol universe is in scope, `run_path`
+or not.
+
+A defect fixed beneath the lanes cannot be bounded by naming lanes. The `#67` inventory was built by
+naming lanes (`run_path`, `run_cell` → 34 θ-surfaces), so it bounded the wrong thing.
+
+Corroborating detail, not decoration: the `t622_*` gates (`btc-2023-1m-sma-cross` and siblings) stayed
+**green** across `11acd126`. They are single-symbol, and "buying one symbol at another symbol's price"
+needs at least two. The defect's own mechanism predicts exactly which anchors move, and it is not
+"the ones on `run_path`" — it is "the multi-symbol ones".
+
+#### Scope — the part that is not yet measured
+
+77 distinct scenarios are anchored. 34 are the `#67` inventory; 4 are these gates. Of the remaining
+**39**, thirteen are multi-symbol by name and therefore candidates on the mechanism above:
+
+- 11 × `top10-*` (momentum-realdata, patchtst-overlay, regime-dispatcher ×2, tcn-overlay-realdata ×2,
+  tcn-overlay-weights ×2 + ×2 realdata, vol-target-overlay)
+- 2 × `pairs-*` (`pairs-2023-zscore-mr`, `pairs-2024-h1-zscore-mr`)
+
+**Nothing in the repo can currently say whether they moved**, which is bug-log `#93`'s point exactly:
+`verify_anchors.sh` hashes committed bodies and never re-runs, and only these four scenarios have a
+re-run gate at all. The 26 single-symbol / non-engine scenarios are out of scope on the mechanism.
+
+#### Scope — first measurement, 2026-09-25
+
+Two of the thirteen were re-run at `HEAD` on the default invocation and compared against every
+anchored row for their scenario:
+
+| scenario | produced | verdict |
+|---|---|---|
+| `pairs-2023-zscore-mr` | `ac647a59…` | matches **neither** `v1.5a + noop-baseline` (`90591a0e…`) nor `v1.5a + v5-realdata-medium-2026-05` (`01c9da4d…`) — **DRIFTED** |
+| `pairs-2024-h1-zscore-mr` | `5bee5e9c…` | matches **neither** (`14f50a59…` / `6252819b…`) — **DRIFTED** |
+
+Both are 2-symbol scenarios — the minimum the `#67` defect needs. Attribution for these two is **not
+bisected**, so `#67` is the leading explanation on mechanism, not a measured cause; what *is*
+measured is that they no longer reproduce.
+
+`top10-2023-fy-tcn-overlay-weights` and its 2024 sibling could not be run by the default binary
+(RUN-FAIL — they need the `candle` feature), so they stay unmeasured rather than counted either way.
+
+**The headline, and it is a gate problem before it is a corpus problem:** `scripts/verify_anchors.sh`
+reports **ANCHORS PASS (119 / 119)** right now, while **at least 6 anchored scenarios do not
+reproduce** — the 4 gated ones and these 2. The gate hashes committed bodies and never re-runs, so it
+cannot see this. That is bug-log `#93` stated as a number instead of a worry.
+
+The remaining 11 candidates are unmeasured. The honest statement is: **the `#67` re-lock covered 34
+of an unknown total; 6 further anchored scenarios are confirmed non-reproducing and 11 more are
+unexcluded.**

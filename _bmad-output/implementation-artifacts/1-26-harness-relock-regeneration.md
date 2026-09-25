@@ -77,6 +77,18 @@ as history, the migration honest, and the verdict re-derivation loud.
    The stability across three measurements spanning the ADR-0089 D1 wiring and this whole re-lock is
    itself the finding: the divergence is **deterministic, reproducible and bisectable**. It is
    therefore its own story — **`1-27-determinism-drift-bisect`**, created by the same ruling.
+
+   > **CORRECTION, same evening.** 1-27 bisected it: the cause is **`11acd126` (2026-08-16) — the
+   > `#67` fix** (`b3332d35` → `0f6f6eb8…` GOOD, `11acd126` → `b655e5e7…` BAD). So these four are
+   > **not** a separate drift; they share this story's own cause. They did not move during the
+   > 2026-09-25 regeneration because they had already moved on 2026-08-16.
+   >
+   > What stands: the `#[ignore]` and the pins stay, and the resolution is a D6.b re-lock in 1-27.
+   > What is retracted: "the two sources of movement are provably disjoint". The exclusion rested on
+   > "these four do not go through `run_path`" — true, and irrelevant, because `#67`'s fix landed in
+   > `engine.rs` + `paper.rs`, **below** every lane. **AC2's 34-anchor inventory was scoped by lane
+   > and therefore bounded the wrong thing**; bug-log `#111` carries the 13 further multi-symbol
+   > anchored scenarios that are now unexcluded candidates.
    Do NOT re-baseline them any other way: re-pinning a truthful gate to current output is #77.
 8. Standing floor: anchors green (old + new rows); spec-lint PASS; advisor-gate independence
    re-proven (`bakeoff/bootstrap.rs` resamples returns — assert its inputs/outputs unchanged).

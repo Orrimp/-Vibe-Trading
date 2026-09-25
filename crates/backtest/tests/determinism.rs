@@ -708,9 +708,32 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 //   expected 0f6f6eb8…  (pinned, and present in evidence/anchors.toml)
 //   got      b655e5e7…  (what the current code produces)
 //
-// Bisect against 83378c5 shows they failed BEFORE #67/#71/#75/#76 landed, so the
-// drift predates this session's harness fixes — those fixes moved the numbers
-// further, they did not cause the divergence.
+// ── CAUSE FOUND 2026-09-25 (story 1-27). The paragraph that used to stand here
+// was WRONG, and it is kept below so the correction is legible next to it:
+//
+//     "Bisect against 83378c5 shows they failed BEFORE #67/#71/#75/#76 landed, so
+//      the drift predates this session's harness fixes — those fixes moved the
+//      numbers further, they did not cause the divergence."
+//
+// Measured, one commit either side, on the default invocation this test uses:
+//   b3332d35 (2026-08-15)  ->  0f6f6eb8…   GOOD, reproduces the pin exactly
+//   11acd126 (2026-08-16)  ->  b655e5e7…   BAD, and it is the hash we see today
+//
+// `83378c59` itself was measured GOOD, so the old claim is falsified at its own
+// cited commit. `11acd126` is **the #67 fix** — "the harness was booking a ~1%
+// gain for buying one symbol at another symbol's price — engine guard +
+// per-symbol fill routing".
+//
+// The reasoning error worth keeping: the old note excluded #67 because these four
+// scenarios do not go through `run_path`. True, and irrelevant — #67's fix landed
+// in `engine.rs` (+20) and `paper.rs` (+98), the engine BELOW every lane. Anything
+// that calls `engine.step` with a multi-symbol universe is in scope, `run_path` or
+// not. Single-symbol scenarios are immune by the defect's own mechanism, which is
+// why the `t622_*` gates above stayed green throughout.
+//
+// So these four are NOT a separate drift. The pinned bodies are #67-contaminated
+// evidence, and these gates are red because the engine became CORRECT. Resolution
+// is a D6.b re-lock (story 1-27), not a code fix.
 //
 // DO NOT re-baseline these pins to the current output. That converts a truthful
 // regression gate into a rubber stamp — bug-log #77's exact failure — and it would
@@ -718,18 +741,19 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 // **1-26** (the re-lock), which regenerates the 34 affected surfaces under a new
 // namespace and records per-scenario old-vs-new numbers in an errata.
 //
-// RE-MEASURED 2026-08-23, after the ADR-0089 D1 sizer wiring landed. All four
-// produce the SAME hashes as on 2026-08-22 — `t717_top10_2023_1h_momentum` is
-// still `b655e5e7…` exactly. That is not luck and it is worth writing down: these
-// four cover `scenarios/momentum.rs` and `scenarios/tcn_overlay.rs`, which are
-// among the eight lanes bug-log #95 identifies as still building orders per
-// signal. `run_path` — the lane D1 rewrote, and the one behind all 34 of the 1-26
-// inventory anchors — is not on their path.
+// RE-MEASURED 2026-08-23, after the ADR-0089 D1 sizer wiring landed, and again
+// 2026-09-25 after the 1-26 re-lock: all four produce the SAME hashes every time —
+// `t717_top10_2023_1h_momentum` is still `b655e5e7…` exactly.
 //
-// So 1-26 must NOT conflate the two sources of movement:
-//   * these four: drift that predates the session entirely, cause unknown;
-//   * the 34 inventory surfaces: deliberate, attributable movement from D1.
-// Re-deriving one set of pins says nothing about the other.
+// That stability was originally read as "a separate, older drift". It is not. It
+// means the move had ALREADY happened, at 11acd126 on 2026-08-16, and nothing
+// since has touched it. D1 (2026-08-23) genuinely changed nothing here — that part
+// of the old note holds — but the CAUSE is shared with the 34 inventory surfaces:
+// both are #67.
+//
+// What 1-26 correctly kept separate: the 2026-09-25 regeneration RUN moved the 34
+// and not these four. What it got wrong, on the strength of the note above: that
+// the two therefore have different causes. Same cause, different dates.
 //
 // `#[ignore]` is applied so CI can verify EVERYTHING ELSE while this remains open.
 // They still run on demand:
@@ -741,7 +765,7 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `3b60ef07…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-26 re-lock: code no longer reproduces the frozen evidence; do NOT re-baseline (see the block above)"]
+#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn t717_top10_2023_momentum_anchor_hash_unchanged() {
     const ANCHOR: &str = "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
@@ -757,7 +781,7 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `1f33534f…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-26 re-lock: code no longer reproduces the frozen evidence; do NOT re-baseline (see the block above)"]
+#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn t717_top10_2024_momentum_anchor_hash_unchanged() {
     const ANCHOR: &str = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
@@ -784,7 +808,7 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `01d02584…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-26 re-lock: code no longer reproduces the frozen evidence; do NOT re-baseline (see the block above)"]
+#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
     const ANCHOR: &str = "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc";
     let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
@@ -800,7 +824,7 @@ fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `e24c85ac…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-26 re-lock: code no longer reproduces the frozen evidence; do NOT re-baseline (see the block above)"]
+#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
     const ANCHOR: &str = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e";
     let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");

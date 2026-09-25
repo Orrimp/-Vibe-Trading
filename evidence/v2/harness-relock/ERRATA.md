@@ -364,9 +364,15 @@ Anchoring these would not create the bug-log #106 failure mode.
   | `top10-2023-fy-tcn-overlay` | `1460fcc7…` | `64f51802…` |
   | `top10-2024-fy-tcn-overlay` | `b8e9186b…` | `908b66e1…` |
 
-  This is the confirming measurement, not an assumption: the re-lock moved all 34 inventory
-  surfaces and moved these four **not at all**. The two sources of movement are disjoint, exactly
-  as `determinism.rs` predicted. Three consequences:
+  **CORRECTED the same evening — the measurement stands, the inference does not.** Story 1-27
+  bisected the cause to **`11acd126` (2026-08-16), the `#67` fix** (`b3332d35` → `0f6f6eb8…` GOOD,
+  `11acd126` → `b655e5e7…` BAD). These four did not move during this regeneration because they had
+  **already** moved on 2026-08-16 — **same cause as the 34, different date.** "The two sources of
+  movement are disjoint" is retracted; so is `determinism.rs`'s prediction that it rested on.
+  The exclusion reasoning was the error: it named lanes, and `#67` was fixed in `engine.rs` +
+  `paper.rs`, **below** every lane. Consequence for this errata: **§ 2's 34-surface scope was
+  bounded by lane and is therefore a lower bound** — bug-log `#111` lists 13 further multi-symbol
+  anchored scenarios that nothing has yet excluded. Three consequences still hold:
 
   1. **The `#[ignore]` stays.** Removing it now would put CI permanently red on a defect this
      story does not fix and cannot fix.
@@ -406,6 +412,7 @@ Nothing in this re-lock edits the frozen gate. The verdicts moved because the *i
 | ~~MN prose riders (falsified claim, missing § 0 null, columns)~~ | **RULED + executed** — bug-log `#110`; 12 MN bodies re-emitted a second time |
 | ~~AC7 unsatisfiable~~ | **AMENDED + discharged** — bug-log `#109`; the bisect is story `1-27-determinism-drift-bisect` |
 | MN ruin count + separating liquidation covers from real fills | bug-log `#110` — needs a path-loop counter, not a renderer line |
-| The four drift gates' own cause | story `1-27-determinism-drift-bisect` |
+| ~~The four drift gates' own cause~~ | **FOUND** — `11acd126`, the `#67` fix; bug-log `#111`. Resolution is a D6.b re-lock in story `1-27` |
+| **The `#67` inventory is a lower bound** | bug-log `#111` — 13 further multi-symbol anchored scenarios unexcluded; no gate re-runs them (`#93`) |
 | bug-log `#95` exposure cap on 8 lanes | out of scope here, stated explicitly |
 | AC6 — unblocking story 1-21 | now unblocked by the § 6 ruling |

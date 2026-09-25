@@ -1,6 +1,6 @@
 # Story 1.27: determinism-drift-bisect
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Created 2026-09-25 by the operator's AC7 ruling on 1-26. 1-26 measured that its re-lock
      moved all 34 inventory surfaces and moved these four gates NOT AT ALL, which is the
@@ -120,7 +120,40 @@ landed → 05-31 the pins were re-locked to `0f6f6eb8…` → at some later poin
 `b655e5e7…`. **The known-good boundary is therefore `f089533e`, not the start of the candidate
 window**, and the search space is the candidates dated after it.
 
-**Next probe (decisive): `f089533e` itself.**
+**Probe (decisive): `f089533e` itself — MEASURED `0f6f6eb8…`.** The 2026-05-31 re-lock was honest:
+the default invocation reproduced the pin the day it was set. The "pin was never reproducible"
+hypothesis is **falsified**, and this is a real code drift with a proven known-good boundary.
+
+### CAUSE FOUND — `11acd126` (2026-08-16), the `#67` fix
+
+Bisected over the 26 path-filtered candidates in (2026-05-31, 2026-08-15], then narrowed:
+
+| commit | date | produces | |
+|---|---|---|---|
+| `b0aeb172` | 2026-06-25 | `0f6f6eb8…` | GOOD |
+| `452ce026` | 2026-07-25 | `0f6f6eb8…` | GOOD |
+| `b1d96e72` | 2026-08-07 | `0f6f6eb8…` | GOOD |
+| `cd7a5c7a` | 2026-08-14 | `0f6f6eb8…` | GOOD |
+| `83378c59` | 2026-08-15 | `0f6f6eb8…` | **GOOD** — falsifies this story's own cited boundary |
+| `b3332d35` | 2026-08-15 | `0f6f6eb8…` | GOOD |
+| **`11acd126`** | **2026-08-16** | **`b655e5e7…`** | **BAD — first bad, and it is today's hash** |
+
+`11acd126` is *"fix(1-25,#67): the harness was booking a ~1% gain for buying one symbol at another
+symbol's price — engine guard + per-symbol fill routing"*.
+
+**This resolves AC3 to branch (b), and it retracts the premise this story was written on.** The
+pinned bodies are `#67`-contaminated; the gates are red because the engine became **correct**. There
+is no defect to fix.
+
+The reasoning error that hid it for six weeks: every artefact excluded `#67` because these four do
+not go through `run_path`. True, and irrelevant — `#67`'s fix landed in `engine.rs` (+20) and
+`paper.rs` (+98), the engine **below** every lane. The `t622_*` gates corroborate the mechanism from
+the other side: single-symbol, stayed green throughout, because "one symbol at another symbol's
+price" needs two symbols.
+
+Full write-up and the widened-scope question: bug-log **`#111`**.
+
+**Superseded hypothesis, kept so the correction is legible:**
 - If it yields `0f6f6eb8…`, the 2026-05-31 re-lock was honest and the drift is a later commit —
   bisect the ~27 candidates between 2026-06-01 and 2026-08-15.
 - If it yields anything else, the re-lock itself pinned a body the default invocation never produced,
