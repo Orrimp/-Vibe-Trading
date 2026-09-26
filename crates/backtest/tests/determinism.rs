@@ -603,8 +603,8 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 //   btc-2023-1m-macd-trend            4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a  (SYNTHETIC)
 //   btc-2023-1m-rsi-reversion         4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7  (SYNTHETIC)
 //   btc-2023-1m-bbands-mean-revert    5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894  (SYNTHETIC)
-//   top10-2023-1h-momentum            0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3
-//   top10-2024-h1-momentum            78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490
+//   top10-2023-1h-momentum            b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15
+//   top10-2024-h1-momentum            37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052
 //
 // NOTE: T715 (pairs backtest) introduced a data_source regression where the
 // momentum scenarios were emitting "synthetic (seeded RNG, v1.5a multi-symbol)"
@@ -755,19 +755,19 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 // and not these four. What it got wrong, on the strength of the note above: that
 // the two therefore have different causes. Same cause, different dates.
 //
-// `#[ignore]` is applied so CI can verify EVERYTHING ELSE while this remains open.
-// They still run on demand:
-//     cargo test -p backtest --test determinism -- --ignored
-// Remove the attribute in the same commit as the 1-26 re-lock.
+// RESOLVED 2026-09-26 by the story 1-27 D6.b re-lock. The pins below are the bodies the
+// corrected engine produces, re-emitted in place under their existing namespaces, and the
+// `#[ignore]` attributes are GONE — these are live regression gates again. The block above
+// is kept because the reasoning is the record: they were red because the engine became
+// correct, and the fix was to re-price the evidence, never to re-pin the gate (#77).
 
 /// T717 — top10-2023-1h-momentum anchor hash unchanged.
 ///
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `3b60ef07…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn t717_top10_2023_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3";
+    const ANCHOR: &str = "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -781,9 +781,8 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `1f33534f…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn t717_top10_2024_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490";
+    const ANCHOR: &str = "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -800,17 +799,16 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 // absent in CI). The tt1_* scenarios are bare synthetic paths (no -realdata
 // suffix) and take the Linear{bps:8} fallback in the default binary.
 //
-//   top10-2023-fy-tcn-overlay  1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc
-//   top10-2024-fy-tcn-overlay  b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e
+//   top10-2023-fy-tcn-overlay  64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1
+//   top10-2024-fy-tcn-overlay  908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d
 
 /// T-T-1 — top10-2023-fy-tcn-overlay (2023 full-year top-10, passthrough mode) anchor hash.
 ///
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `01d02584…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc";
+    const ANCHOR: &str = "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1";
     let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -824,9 +822,8 @@ fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 /// Stale noop-baseline SHA `e24c85ac…` replaced with canonical 8-bps SHA.
 #[test]
-#[ignore = "known-red pending the 1-27 D6.b re-lock: the PIN is #67-contaminated evidence (cause bisected to 11acd126); do NOT re-baseline outside the protocol — see the block above"]
 fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e";
+    const ANCHOR: &str = "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d";
     let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -843,8 +840,8 @@ fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
 //
 // The anchor hashes were locked by developer on 2026-05-18 after two
 // deterministic runs:
-//   top10-2023-fy-tcn-overlay-weights  7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4
-//   top10-2024-fy-tcn-overlay-weights  23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b
+//   top10-2023-fy-tcn-overlay-weights  175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462
+//   top10-2024-fy-tcn-overlay-weights  3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab
 //
 // NOTE: The existing 20 anchor tests (above) must remain --features candle
 // independent — this `#[cfg(feature = "candle")]` block is additive only.
@@ -924,11 +921,11 @@ fn scenario_body_hex_candle(scenario: &str) -> String {
 /// M3 — top10-2023-fy-tcn-overlay-weights real-weights anchor hash.
 ///
 /// Requires `--features candle` + LFS checkpoints present on disk.
-/// Locked anchor: `7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4`
+/// Locked anchor: `175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462`
 #[cfg(feature = "candle")]
 #[test]
 fn m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged() {
-    const ANCHOR: &str = "7cb1357c0d0d25cf89766d88f1342434788c4c373e6c3b1cb77d7f8cf05acef4";
+    const ANCHOR: &str = "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462";
     let hex = scenario_body_hex_candle("top10-2023-fy-tcn-overlay-weights");
     assert_eq!(
         hex, ANCHOR,
@@ -942,11 +939,11 @@ fn m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged() {
 /// M3 — top10-2024-fy-tcn-overlay-weights real-weights anchor hash.
 ///
 /// Requires `--features candle` + LFS checkpoints present on disk.
-/// Locked anchor: `23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b`
+/// Locked anchor: `3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab`
 #[cfg(feature = "candle")]
 #[test]
 fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
-    const ANCHOR: &str = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b";
+    const ANCHOR: &str = "3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab";
     let hex = scenario_body_hex_candle("top10-2024-fy-tcn-overlay-weights");
     assert_eq!(
         hex, ANCHOR,
@@ -1173,10 +1170,22 @@ fn run_realdata_scenario_try(
         .expect("spawn backtest binary");
 
     if !output.status.success() {
+        // Report the exit status explicitly. A process killed by a signal exits non-zero
+        // with EMPTY stdout and stderr, and "exited non-zero: stdout: , stderr: " tells the
+        // reader nothing — it reads like a refusal the binary never made. Naming the status
+        // separates "the binary said no" from "something killed it".
+        let out = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let diagnosis = if out.is_empty() && err.is_empty() {
+            " — the process said NOTHING on either stream, which means it was almost \
+             certainly killed (signal / OOM) rather than refusing the run. Re-run before \
+             treating this as drift."
+        } else {
+            ""
+        };
         return Err(format!(
-            "stdout: {}\nstderr: {}",
-            String::from_utf8_lossy(&output.stdout).trim(),
-            String::from_utf8_lossy(&output.stderr).trim()
+            "exit status {:?}{diagnosis}\nstdout: {out}\nstderr: {err}",
+            output.status
         ));
     }
 
@@ -1478,10 +1487,10 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
 // and `v2.6.0-realdata + v5-realdata-medium-2026-05` (pre-sqrt-impact) — which are
 // frozen history and are NOT what current code should produce.
 //
-// `#[ignore]` because they are a MEASUREMENT first: story 1-27 has bisected the four
-// `top10-*` in-test pins to `11acd126` (the #67 fix) and the `-realdata` family has
-// never had a reproduction check at all, so their state is genuinely unknown until
-// these run. Invoke explicitly:
+// These began as a MEASUREMENT (the `-realdata` family had never had a reproduction check),
+// were `#[ignore]`d while their state was unknown, and are now LIVE gates: the 2026-09-26
+// D6.b re-lock re-priced their target rows, so each one asserts a body the current engine
+// actually produces. Invoke the corpus-gated ones explicitly:
 //
 //     cargo test -p backtest --test determinism --features realdata,candle \
 //         -- --ignored reproduces_anchor
@@ -1490,114 +1499,50 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
 // these panic with a loud message instead of returning green, because a test you
 // invoked by name and that silently did nothing is worse than no test.
 //
-// When a gate here is GREEN the `#[ignore]` should come off — it is then a real
-// regression gate. When it is RED it stays, with the D6.b re-lock as the resolution
-// (never a re-pin to current output; that is bug-log #77).
+// The rule that got them here, for whoever adds the next one: while a gate's state is
+// unknown it is `#[ignore]`d and its ignore-reason carries the measured delta; once the
+// evidence is re-priced so the gate is GREEN, the attribute comes off and it becomes a
+// live regression gate. A RED gate is never fixed by re-pinning it to current output —
+// that is bug-log #77, and it converts a caught drift into a silent one.
 
 /// R-REPRO-1 — `top10-2023-fy-tcn-overlay-realdata` reproduces its canonical anchor.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642";
-    assert_reproduces_canonical_anchor("top10-2023-fy-tcn-overlay-realdata", ANCHOR, false);
+    const ANCHOR: &str = "b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8";
+    assert_reproduces_with_flags("top10-2023-fy-tcn-overlay-realdata", ANCHOR, &[]);
 }
 
 /// R-REPRO-2 — `top10-2024-fy-tcn-overlay-realdata` reproduces its canonical anchor.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3";
-    assert_reproduces_canonical_anchor("top10-2024-fy-tcn-overlay-realdata", ANCHOR, false);
+    const ANCHOR: &str = "b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd";
+    assert_reproduces_with_flags("top10-2024-fy-tcn-overlay-realdata", ANCHOR, &[]);
 }
 
 /// R-REPRO-3 — `top10-2023-fy-tcn-overlay-weights-realdata` reproduces its anchor.
 #[cfg(all(feature = "realdata", feature = "candle"))]
 #[test]
-#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
-    const ANCHOR: &str = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70";
-    assert_reproduces_canonical_anchor(
-        "top10-2023-fy-tcn-overlay-weights-realdata",
-        ANCHOR,
-        true,
-    );
+    const ANCHOR: &str = "fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d";
+    assert_reproduces_with_flags("top10-2023-fy-tcn-overlay-weights-realdata", ANCHOR, &[]);
 }
 
 /// R-REPRO-4 — `top10-2024-fy-tcn-overlay-weights-realdata` reproduces its anchor.
 #[cfg(all(feature = "realdata", feature = "candle"))]
 #[test]
-#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2024_fy_tcn_overlay_weights_reproduces_anchor() {
-    const ANCHOR: &str = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c";
-    assert_reproduces_canonical_anchor(
-        "top10-2024-fy-tcn-overlay-weights-realdata",
-        ANCHOR,
-        true,
-    );
+    const ANCHOR: &str = "0d6cc994094a2d6e0038725cb06dba92a5031e40b8d3c4b35a3195cfb2ef5d99";
+    assert_reproduces_with_flags("top10-2024-fy-tcn-overlay-weights-realdata", ANCHOR, &[]);
 }
 
-/// Shared body for the R-REPRO gates.
-///
-/// `needs_checkpoint` selects the candle-capable binary and additionally requires the
-/// LFS checkpoint, which the `-weights` arms load at runtime.
-///
-/// # Panics
-///
-/// Panics when a precondition is absent (`data/binance/REVISION.toml`, or the TCN
-/// checkpoint for a weights arm) — see bug-log #113 requirement 6: an explicitly
-/// invoked measurement must report UNMEASURED loudly rather than return green.
-#[cfg(feature = "realdata")]
-fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkpoint: bool) {
-    assert!(
-        real_binance_data_available(),
-        "UNMEASURED, not passed: {scenario} needs data/binance/REVISION.toml and it is absent.\n\
-         Fetch the corpus first:\n  cargo run -p data --bin fetch_binance_klines -- \
-         --emit-revision-manifest ...\n\
-         Reporting this as a skip would be bug-log #113 requirement 6 — a gate that \
-         returns green having measured nothing."
-    );
-
-    #[cfg(feature = "candle")]
-    let bin = if needs_checkpoint {
-        assert!(
-            tcn_checkpoint_present("tcn-bs1"),
-            "UNMEASURED, not passed: {scenario} needs a resolved tcn-bs1 checkpoint under \
-             crates/forecast/checkpoints/anchors/ and none was found. If the file is present, \
-             check the resolver before the file (bug-log #114)."
-        );
-        ensure_realdata_candle_binary()
-    } else {
-        ensure_realdata_binary()
-    };
-    #[cfg(not(feature = "candle"))]
-    let bin = {
-        assert!(
-            !needs_checkpoint,
-            "UNMEASURED, not passed: {scenario} needs --features candle for its real weights."
-        );
-        ensure_realdata_binary()
-    };
-
-    let workspace = workspace_root_path();
-    let report = run_realdata_scenario_once(&bin, &workspace, scenario);
-    let hex: String = backtest::report_body_hash(&report)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-
-    assert_eq!(
-        hex, anchor,
-        "R-REPRO: {scenario} no longer reproduces its canonical \
-         `+ noop-baseline` anchor — the zero-sim-slippage row, which is what the DEFAULT\n\
-         invocation produces (bug-log #123).\n\
-         Expected: {anchor}\nGot:      {hex}\n\
-         This is code-vs-evidence drift, the thing verify_anchors.sh cannot see \
-         (bug-log #93). Do NOT re-pin to the produced value — that is bug-log #77. \
-         The resolution is a D6.b re-lock (story 1-27)."
-    );
-}
+// `assert_reproduces_canonical_anchor` lived here until 2026-09-26. It used the DEBUG
+// binary and the PANICKING runner, while R-REPRO-5..9 used release and the fallible one —
+// the same family running two unstated conditions, which is bug-log #112's shape in my own
+// code. It was also how a silent process kill surfaced as `panicked … exited non-zero`
+// with empty stdout AND stderr, telling the reader nothing. All nine gates now go through
+// `assert_reproduces_with_flags`: one runner, one declared condition, one UNMEASURED path.
 
 // ── R-REPRO-5..9 — the -realdata anchors that had no gate at all (bug-log #111) ──
 //
@@ -1620,7 +1565,6 @@ fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkp
 /// R-REPRO-5 — `top10-2023-fy-momentum-realdata`.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "known-red: measured 1fc0e85d… against pin 0867d232… under the DECLARED sqrt flags (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
 fn realdata_2023_fy_momentum_reproduces_anchor() {
     // bug-log #123, operator ruling (a) 2026-09-26. This scenario's ONLY anchor row is
     // `v5-sqrt-impact-2026-05`, so the gate must run the invocation that produces that
@@ -1628,7 +1572,7 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
     // condition it never ran. The flags are declared here rather than assumed, which is
     // the whole point: the row names `SquareRoot { alpha=1.0, lookback=90 }`, so the
     // gate names it too.
-    const ANCHOR: &str = "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901";
+    const ANCHOR: &str = "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef";
     assert_reproduces_with_flags(
         "top10-2023-fy-momentum-realdata",
         ANCHOR,
@@ -1644,9 +1588,8 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
 /// R-REPRO-6 — `top10-2023-fy-patchtst-overlay-realdata`.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "known-red: measured f704c4f2… against pin b015b564… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
 fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c";
+    const ANCHOR: &str = "f704c4f2f71b539e1b927ce157ec2c348b353dd3fa6af5bab015dc0a1b59b486";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-patchtst-overlay-realdata", ANCHOR);
 }
 
@@ -1681,9 +1624,8 @@ fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
 /// R-REPRO-9 — `top10-2023-fy-vol-target-overlay-realdata`.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "known-red: measured 91848e23… against pin 6adc4334… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
 fn realdata_2023_fy_vol_target_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f";
+    const ANCHOR: &str = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-vol-target-overlay-realdata", ANCHOR);
 }
 

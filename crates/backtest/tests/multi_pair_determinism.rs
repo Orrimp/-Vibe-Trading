@@ -125,28 +125,26 @@ fn t716_pairs_2024_h1_zscore_mr_deterministic() {
 // (`90591a0e…` / `14f50a59…`) are the frozen pre-friction oracle and are NOT what
 // current code should produce.
 //
-// `#[ignore]` because both were MEASURED red on 2026-09-26 (`ac647a59…` and
-// `5bee5e9c…`, identical from two independent passes, so the feature set does not
-// move them). Attribution to the #67 engine fix is mechanism, not bisect — these
-// are 2-symbol scenarios and #67 was "buying one symbol at another symbol's
-// price". The resolution is the D6.b re-lock of story 1-27, never a re-pin to the
-// produced value (bug-log #77).
+// Both were measured red on 2026-09-26 (`ac647a59…`, `5bee5e9c…` — identical from two
+// independent passes, so the feature set does not move them), and the 1-27 D6.b re-lock
+// re-priced their `v1.5a + v5-realdata-medium-2026-05` rows to those bodies the same day.
+// So they are LIVE gates now, not `#[ignore]`d. Attribution of the original drift to the
+// #67 engine fix is mechanism rather than bisect — these are 2-symbol scenarios and #67
+// was "buying one symbol at another symbol's price".
 //
 //     cargo test -p backtest --test multi_pair_determinism -- --ignored reproduces_anchor
 
 /// R-REPRO-10 — `pairs-2023-zscore-mr` reproduces its canonical anchor.
 #[test]
-#[ignore = "known-red pending the 1-27 D6.b re-lock: measured ac647a59… against pin 01c9da4d…; do NOT re-pin (bug-log #77)"]
 fn pairs_2023_zscore_mr_reproduces_anchor() {
-    const ANCHOR: &str = "01c9da4d4c5ce268b5de49c72f367ef729fcaccf04d572e5dc0fa1f1bd65e76e";
+    const ANCHOR: &str = "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10";
     assert_pairs_reproduces("pairs-2023-zscore-mr", ANCHOR);
 }
 
 /// R-REPRO-11 — `pairs-2024-h1-zscore-mr` reproduces its canonical anchor.
 #[test]
-#[ignore = "known-red pending the 1-27 D6.b re-lock: measured 5bee5e9c… against pin 6252819b…; do NOT re-pin (bug-log #77)"]
 fn pairs_2024_h1_zscore_mr_reproduces_anchor() {
-    const ANCHOR: &str = "6252819b4f719ce45bf5cfa70bfb38143c216e96dde8e5a43fdfe43055dce5e9";
+    const ANCHOR: &str = "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b";
     assert_pairs_reproduces("pairs-2024-h1-zscore-mr", ANCHOR);
 }
 

@@ -2716,3 +2716,42 @@ anywhere: canonical rows resolve from the `v0.4.0-candle-feature-gated-re-emit` 
 v0.5.0 dir, and noop rows resolve to the newest match *outside* all v5 dirs — by a lexicographic sort
 of full paths, so the directory name outranks the timestamp. A body dropped in the wrong directory
 changes nothing and the gate stays green over the old one.
+
+### `#124` — a gate that was killed reported "the binary exited non-zero", which is a refusal the binary never made
+**Status**: FIXED 2026-09-27, found by it happening during the 1-27 re-lock verification.
+Anchor-impacting: no.
+
+In the 754-second run of all nine R-REPRO gates, one failed:
+`realdata_2023_fy_tcn_overlay_weights_reproduces_anchor`. Its message:
+
+```
+backtest binary exited non-zero for scenario top10-2023-fy-tcn-overlay-weights-realdata:
+stdout:
+stderr:
+```
+
+**Both streams empty.** That is the signature of a process killed by a signal — memory pressure, after
+many hours of sustained load — not of a binary refusing a run. But the message says "exited non-zero",
+which reads as a refusal, and the obvious next inference is drift in the very scenario the re-lock had
+just re-priced. Re-run alone: **2 passed**. It was a kill.
+
+This is `#114`/`#119` in the other direction. There, a guard accused the **data** while the bug sat in
+the accuser. Here, a diagnosis accused the **binary** for something the environment did. Both are the
+same defect: **a diagnosis that names the wrong cause is worse than none**, because it aims the next
+reader away from the answer — and at `#114` that cost four months.
+
+**Fixed**: the runner now prints the exit status explicitly and, when both streams are empty, says so:
+
+> *"the process said NOTHING on either stream, which means it was almost certainly killed (signal /
+> OOM) rather than refusing the run. Re-run before treating this as drift."*
+
+#### The second finding, which is mine and older by two hours
+
+The failure came from `run_realdata_scenario_once` — the **panicking** runner — because R-REPRO-1..4
+used `assert_reproduces_canonical_anchor` (debug binary, panics on non-zero) while R-REPRO-5..9 used
+`assert_reproduces_with_flags` (release binary, fallible, reports UNMEASURED). **One family, two
+unstated conditions** — `#112`'s exact shape, written by me about two hours after I documented it.
+
+All nine now go through one path: one runner, one declared condition, one UNMEASURED route, the release
+binary. The old helper is deleted and a comment stands where it was, because the reason it existed is
+the finding. Side benefit measured: the weights pair runs in **77 s** on release against 168 s on debug.

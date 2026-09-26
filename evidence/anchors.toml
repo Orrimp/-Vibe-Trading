@@ -145,25 +145,61 @@ sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
 # (K5 determinism gate PASS).  Passthrough (no-candle) and real-weights
 # (candle) variants are separate rows as they use different dispatch paths.
 
+# top10-2023-fy-tcn-overlay-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default real-data (Linear{bps:0}, zero sim slippage).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v1/backtest-real-binance-data/reports/backtest-20260926-212330-top10-2023-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642"
+sha256   = "b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8"
 
+# top10-2024-fy-tcn-overlay-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default real-data (Linear{bps:0}, zero sim slippage).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v1/backtest-real-binance-data/reports/backtest-20260926-212334-top10-2024-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3"
+sha256   = "b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd"
 
+# top10-2023-fy-tcn-overlay-weights-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default real-data (Linear{bps:0}, zero sim slippage).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v1/backtest-real-binance-data/reports/backtest-20260926-212407-top10-2023-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70"
+sha256   = "fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d"
 
+# top10-2024-fy-tcn-overlay-weights-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default real-data (Linear{bps:0}, zero sim slippage).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v1/backtest-real-binance-data/reports/backtest-20260926-212440-top10-2024-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c"
+sha256   = "0d6cc994094a2d6e0038725cb06dba92a5031e40b8d3c4b35a3195cfb2ef5d99"
 
 # v2.5 alpha-investigation reports (T-T-1).  Locked by tester on 2026-05-19
 # against the data/binance/ REVISION.toml manifest SHA
@@ -249,10 +285,19 @@ scenario = "forecast-distribution-patchtst-bs1-realdata"
 version  = "v2.5a.0-patchtst + noop-baseline"
 sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 
+# top10-2023-fy-patchtst-overlay-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default real-data (Linear{bps:0}, zero sim slippage).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v1/v25a-patchtst-overlay/reports/backtest-20260926-212511-top10-2023-fy-patchtst-overlay-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v2.5a.0-patchtst + noop-baseline"
-sha256   = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c"
+sha256   = "f704c4f2f71b539e1b927ce157ec2c348b353dd3fa6af5bab015dc0a1b59b486"
 
 # v3.0.0-volatility GARCH vol-targeting scenarios (T-T2 / M-FINAL).  Locked by
 # tester on 2026-05-22 against data/binance/ REVISION.toml manifest SHA
@@ -279,10 +324,19 @@ scenario = "vol-verdict-bs1-realdata"
 version  = "v3.0.0-volatility + noop-baseline"
 sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 
+# top10-2023-fy-vol-target-overlay-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default real-data (Linear{bps:0}, zero sim slippage).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v1/v3-volatility-forecaster/reports/backtest-20260926-212515-top10-2023-fy-vol-target-overlay-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + noop-baseline"
-sha256   = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f"
+sha256   = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
@@ -360,25 +414,61 @@ scenario = "btc-2023-1m-bbands-mean-revert"
 version  = "v0.5 + v5-realdata-medium-2026-05"
 sha256   = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd"
 
+# top10-2023-1h-momentum
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default synthetic (Linear{bps:8}, forced).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260926-212144-top10-2023-1h-momentum.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-1h-momentum"
 version  = "v1 + v5-realdata-medium-2026-05"
-sha256   = "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3"
+sha256   = "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15"
 
+# top10-2024-h1-momentum
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default synthetic (Linear{bps:8}, forced).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260926-212149-top10-2024-h1-momentum.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2024-h1-momentum"
 version  = "v1 + v5-realdata-medium-2026-05"
-sha256   = "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490"
+sha256   = "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052"
 
+# pairs-2023-zscore-mr
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default synthetic (Linear{bps:8}, forced).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260926-212159-pairs-2023-zscore-mr.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=01c9da4d4c5ce268b5de49c72f367ef729fcaccf04d572e5dc0fa1f1bd65e76e — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "pairs-2023-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "01c9da4d4c5ce268b5de49c72f367ef729fcaccf04d572e5dc0fa1f1bd65e76e"
+sha256   = "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10"
 
+# pairs-2024-h1-zscore-mr
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default synthetic (Linear{bps:8}, forced).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260926-212200-pairs-2024-h1-zscore-mr.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=6252819b4f719ce45bf5cfa70bfb38143c216e96dde8e5a43fdfe43055dce5e9 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "pairs-2024-h1-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "6252819b4f719ce45bf5cfa70bfb38143c216e96dde8e5a43fdfe43055dce5e9"
+sha256   = "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b"
 
 [[anchors]]
 scenario = "report-sample-7d"
@@ -390,25 +480,61 @@ scenario = "report-sample-90d"
 version  = "v2.0.0 + v5-realdata-medium-2026-05"
 sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 
+# top10-2023-fy-tcn-overlay
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default synthetic (Linear{bps:8}, forced).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260926-212151-top10-2023-fy-tcn-overlay.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc"
+sha256   = "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1"
 
+# top10-2024-fy-tcn-overlay
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): default synthetic (Linear{bps:8}, forced).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/backtest-20260926-212158-top10-2024-fy-tcn-overlay.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e"
+sha256   = "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d"
 
+# top10-2023-fy-tcn-overlay-weights
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): --features candle, synthetic (Linear{bps:8}).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260926-212220-top10-2023-fy-tcn-overlay-weights.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc"
+sha256   = "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462"
 
+# top10-2024-fy-tcn-overlay-weights
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): --features candle, synthetic (Linear{bps:8}).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20260926-212302-top10-2024-fy-tcn-overlay-weights.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137"
+sha256   = "3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
@@ -589,10 +715,19 @@ sha256   = "a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97"
 # cfg.volume_usd_per_symbol (was passing Decimal::ZERO to all call sites — no-op bug).
 # Fixed at crates/backtest/src/scenarios/sim.rs + all 7 scenario files (2026-05-29 dev).
 
+# top10-2023-fy-momentum-realdata
+# RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
+#   Condition DECLARED (bug-log #123): DECLARED sqrt flags: alpha=1.0 lookback=90 (ruling (a)).
+#   Cause of the drift: bug-log #67 (engine guard + per-symbol fill routing, 11acd126),
+#   bisected one commit either side. The gate was red because the engine became CORRECT.
+#   Landed: evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/backtest-20260926-212519-top10-2023-fy-momentum-realdata.md
+#   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
+# SUPERSEDED BODY sha256=0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901 — kept verbatim below so the correction
+# is legible next to what it corrects:
 [[anchors]]
 scenario = "top10-2023-fy-momentum-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901"
+sha256   = "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef"
 
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
