@@ -2592,3 +2592,32 @@ since it was written: **3 passed, 0 failed** — checkpoint decode, `model_revis
 `sigma_train > 0` and forward shape, for both BS-1 and BS-2. They had been printing *"run `git lfs
 pull`"* and returning green over a resolved 1.67 MB checkpoint. Fixing the accuser turned three
 phantom passes into three real ones.
+
+### `#122` — the `m3_*` gates build with `candle` and pin the PRE-candle re-emit, so their "drift" was measured against the wrong expectation
+**Status**: OPEN — found 2026-09-26 while deriving the row mapping for the 1-27 D6.b re-lock.
+Anchor-impacting: no by itself; it changes **which row** the re-lock moves for two scenarios.
+
+`m3_top10_{2023,2024}_fy_tcn_overlay_weights_anchor_hash_unchanged` build the binary
+`--features candle` (`run_scenario_once_candle`) and pin `7cb1357c…` / `23c24dae…`, which are the
+**`v2.5.0-tcn-weights + noop-baseline`** rows.
+
+The bodies do not state which namespace they belong to — every generation carries the same
+`Slippage: 2 bps, Taker fee: 4 bps` line, so the friction text cannot distinguish them. **The
+directories can**, and they settle it:
+
+| sha | resolver directory | generation |
+|---|---|---|
+| `7cb1357c…` | `v1/v25-tcn-overlay/reports/` (5 copies) and `v5-latency-slippage-sim-v0.2.0-anchor-migration/` | the ORIGINAL, pre-candle |
+| `28379df8…` | `v5-latency-slippage-sim-v0.4.0-**candle-feature-gated-re-emit**/reports/` | the candle re-emit |
+
+A test that builds with `candle` should be pinned to the candle re-emit. It is pinned to the
+generation before it. Same shape as `#120` — the wrong row of a multi-row scenario — and older.
+
+**Consequence for the measurement:** the m3 pair is still DRIFTED (produced `175173b6…` /
+`3c1178fb…`, which match neither candidate), so `#111`'s count of 15 is unchanged. But the *reported
+delta* was against the wrong baseline, and the re-lock must move the **`v5-realdata-medium-2026-05`**
+rows (`28379df8…` / `0c13ed0b…`), not the noop ones.
+
+**Why it survived:** `check_determinism_anchors.py` skips these two as cfg-gated (`#115`) — so the one
+gate whose job is to catch a pin pointing at the wrong row is precisely blind to them. Two findings
+that only become visible together.
