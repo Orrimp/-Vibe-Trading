@@ -100,8 +100,14 @@ An 8.1× turnover collapse with symmetric buys/sells and a drawdown that falls b
 - **`crates/risk` is not on this lane's path.** The loop calls `Order::new` + `engine.step`; it never
   calls `size_portfolio_target`.
 - **"The pin was silently re-pointed at the sqrt-impact namespace" — checked and FALSE.** There is no
-  `v5-sqrt-impact-2026-05` row for any of the four scenarios, and
-  `evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/` contains **0 files**.
+  `v5-sqrt-impact-2026-05` row for any of these four scenarios. The namespace carries **9** rows, all
+  for `-realdata` siblings, each resolving to its own report and each PASSING.
+
+  > **Correction 2026-09-26.** This bullet first added "…and the v0.5.0 reports directory contains
+  > **0 files**". That is **false** — it holds **19** reports; my `ls` missed the `reports/`
+  > subdirectory. The conclusion is unaffected, because it rests on the absence of rows for these four
+  > and not on that directory — but the second supporting fact was wrong and is withdrawn. Two facts
+  > offered for one conclusion is also how a wrong one travels unnoticed.
 
 That leaves the matching layer: `crates/backtest/src/engine.rs` (+2315) and `paper.rs` (+412).
 

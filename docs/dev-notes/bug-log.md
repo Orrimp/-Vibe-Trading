@@ -2146,3 +2146,58 @@ harness that is already right.
 
 **6 confirmed non-reproducing, 12 confirmed reproducing, 9 genuinely unknown** — and the 9 are
 unknown because no gate declares their condition, which is the same defect this entry is about.
+
+### `#113` — the `-realdata` anchors have a test named `_determinism` that delivers determinism, and a data-absent path that returns green having measured nothing
+**Status**: OPEN — found 2026-09-26 while establishing the reproduction condition for the 9 unmeasured
+`-realdata` anchors (bug-log `#111`). This is the concrete design basis for the reproduction gate.
+Anchor-impacting: no by itself; **yes as a side effect** — see § The landmine.
+
+`crates/backtest/tests/determinism.rs` carries four `#[cfg(feature = "realdata")]` tests —
+`realdata_{2023,2024}_fy_tcn_overlay_determinism` and their `_weights` siblings. Each one:
+
+```rust
+let report1 = run_realdata_scenario_once(&bin, &workspace, scenario);
+let report2 = run_realdata_scenario_once(&bin, &workspace, scenario);
+…
+assert_eq!(hex1, hex2, "…body-SHA256 must be identical across two runs…");
+```
+
+It runs the scenario **twice and compares the two runs with each other**. It never compares against
+`anchors.toml`. So it passes for as long as the engine is deterministic — **including when the code
+has stopped reproducing the anchored body.** The name is honest about what it does; the mistake is
+reading it as coverage for reproduction. It is the `#93` blind spot with something reassuring parked
+next to it.
+
+Second half: when `data/binance/REVISION.toml` is absent the test prints a message and `return`s —
+commented *"soft skip — does not count as failure"*. In CI, which does not carry the 240 parquets,
+these four therefore report **green having executed nothing**. Both halves together mean the
+`-realdata` family has never had a reproduction check, in CI or locally.
+
+#### The landmine
+
+`run_realdata_scenario_once` runs with `current_dir(workspace_root)`, so the report lands in
+`evidence/<feature>/reports/` — **inside the anchored corpus.** `verify_anchors.sh` resolves each
+anchor to the *newest* matching report in that directory. So if these tests are ever run at a commit
+whose output differs from the pin, the run **plants a drifted body in the corpus and flips
+`verify_anchors.sh` to FAIL as a side effect** — a test whose execution can break a different gate.
+
+`--reports-dir` exists precisely for this and its own help text says so ("Useful for re-running into a
+tempdir without touching the anchored reports under `evidence/`"). These tests predate it, or missed
+it. `run_scenario_once` (the non-realdata sibling) is clean — it uses a tempdir.
+
+#### What the reproduction gate must therefore do
+
+Adding to `#112`'s requirements, and now from measurement rather than principle:
+
+4. **Compare against the anchor, not against a second run of itself.** Self-consistency is a
+   different property and both are worth having, but only one of them can see drift.
+5. **Never write into `evidence/`** — pass `--reports-dir` to a tempdir. A gate must not be able to
+   damage the corpus it checks.
+6. **A skip is not a pass.** Data-absent must be reported as `unmeasured` and counted, not `return`ed
+   silently green. (`#104` is the same shape: a secrets gate that swallowed the absence of its
+   scanner.)
+
+The good news is how little is missing: `ensure_realdata_binary`, `run_realdata_scenario_once`,
+`real_binance_data_available` and `tcn_checkpoint_present` already encode the condition correctly.
+**What is missing is the comparison.** That is a surgical change, and making it is also how the 9
+unmeasured anchors of `#111` finally get measured.
