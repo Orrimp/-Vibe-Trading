@@ -1160,10 +1160,12 @@ fn run_realdata_scenario_try(
     bin: &std::path::Path,
     run_dir: &std::path::Path,
     scenario: &str,
+    declared_flags: &[&str],
 ) -> Result<String, String> {
     let reports = tempfile::tempdir().expect("create reports tempdir");
     let output = std::process::Command::new(bin)
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .args(declared_flags)
         .arg("--reports-dir")
         .arg(reports.path())
         .current_dir(run_dir)
@@ -1618,13 +1620,25 @@ fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkp
 /// R-REPRO-5 — `top10-2023-fy-momentum-realdata`.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "BLOCKED, not merely red: this scenario's ONLY anchor row is the sqrt-impact one, and the default invocation produces a zero-sim-slippage body. There is no row for the condition this gate runs. Needs an operator ruling — bug-log #123."]
+#[ignore = "known-red: measured 1fc0e85d… against pin 0867d232… under the DECLARED sqrt flags (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
 fn realdata_2023_fy_momentum_reproduces_anchor() {
-    // bug-log #123 — deliberately left pointing at the sqrt row so the mismatch is
-    // visible rather than papered over. This gate cannot be made correct by choosing
-    // a different pin: the row it would need does not exist.
+    // bug-log #123, operator ruling (a) 2026-09-26. This scenario's ONLY anchor row is
+    // `v5-sqrt-impact-2026-05`, so the gate must run the invocation that produces that
+    // condition — the default one is zero-sim-slippage and would be compared against a
+    // condition it never ran. The flags are declared here rather than assumed, which is
+    // the whole point: the row names `SquareRoot { alpha=1.0, lookback=90 }`, so the
+    // gate names it too.
     const ANCHOR: &str = "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901";
-    assert_reproduces_or_report_unmeasured("top10-2023-fy-momentum-realdata", ANCHOR);
+    assert_reproduces_with_flags(
+        "top10-2023-fy-momentum-realdata",
+        ANCHOR,
+        &[
+            "--sim-slippage-sqrt-alpha",
+            "1.0",
+            "--sim-slippage-sqrt-lookback-days",
+            "90",
+        ],
+    );
 }
 
 /// R-REPRO-6 — `top10-2023-fy-patchtst-overlay-realdata`.
@@ -1683,6 +1697,23 @@ fn realdata_2023_fy_vol_target_overlay_reproduces_anchor() {
 /// invoked by name that silently does nothing is worse than no test.
 #[cfg(feature = "realdata")]
 fn assert_reproduces_or_report_unmeasured(scenario: &str, anchor: &str) {
+    assert_reproduces_with_flags(scenario, anchor, &[]);
+}
+
+/// As `assert_reproduces_or_report_unmeasured`, but the gate **declares the CLI flags**
+/// that produce the row it asserts.
+///
+/// bug-log #123 requirement: each gate names the invocation that produced its target
+/// row. The default invocation is zero-sim-slippage, so it reproduces a
+/// `+ noop-baseline` row; a scenario whose only row is `v5-sqrt-impact-2026-05` must be
+/// run WITH the sqrt flags or it is being compared against a condition it never ran.
+/// Passing `&[]` is itself a declaration — "this gate asserts the default condition".
+///
+/// # Panics
+///
+/// Panics on drift, and on an absent precondition (reported as UNMEASURED, per #113 req 6).
+#[cfg(feature = "realdata")]
+fn assert_reproduces_with_flags(scenario: &str, anchor: &str, declared_flags: &[&str]) {
     assert!(
         real_binance_data_available(),
         "UNMEASURED, not passed: {scenario} needs data/binance/REVISION.toml and it is absent."
@@ -1692,7 +1723,7 @@ fn assert_reproduces_or_report_unmeasured(scenario: &str, anchor: &str) {
     let bin = ensure_realdata_release_binary(cfg!(feature = "candle"));
 
     let workspace = workspace_root_path();
-    let report = match run_realdata_scenario_try(&bin, &workspace, scenario) {
+    let report = match run_realdata_scenario_try(&bin, &workspace, scenario, declared_flags) {
         Ok(r) => r,
         Err(why) => panic!(
             "UNMEASURED, not passed: {scenario} — the binary refused this run. Its own words:\n\

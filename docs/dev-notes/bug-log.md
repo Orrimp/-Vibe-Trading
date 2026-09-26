@@ -2685,6 +2685,34 @@ Three ways out, none of them mine to pick:
   asserted **"none added"** — so this is a deliberate amendment to the invariant, not a detail.
 - **(c)** Relabel the row as historical with no reproduction claim, per `#118`, and delete the gate.
 
-The gate is left `#[ignore]`d pointing at the sqrt row **on purpose**, so the mismatch stays visible
-instead of being papered over by a pin I chose. It cannot be made correct by picking a different pin:
-the row it would need does not exist.
+> **RULED 2026-09-26 — (a).** Re-run it with the sqrt flags and land that body. Executed: the gate now
+> **declares** its flags rather than inheriting the default, and measures
+> `1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef` against the pin `0867d232…`. So it
+> is genuinely drifted under the *right* condition, and `1fc0e85d…` — not `0fc591e5…` — is the body the
+> re-lock lands on the sqrt row.
+
+The mechanism is now general and worth keeping: `assert_reproduces_with_flags(scenario, anchor,
+declared_flags)`. **Passing `&[]` is itself a declaration** — "this gate asserts the default,
+zero-sim-slippage condition" — so every gate states the invocation that produced the row it checks,
+instead of one global assumption covering conditions that differ. That is `#112` requirement (1)
+implemented rather than written down.
+
+#### Final mapping — all 15, and the re-lock is smaller than it looked
+
+One row moves per scenario, not all of them: **15 of 119 rows change, 104 stay byte-identical, 0
+namespaces change.** The other 20 rows belonging to these 15 scenarios are frozen history and are part
+of the negative invariant.
+
+| target row | scenarios | how established |
+|---|---|---|
+| `+ v5-realdata-medium-2026-05` | 8 — momentum ×2, tcn-overlay ×2, pairs ×2, tcn-overlay-weights ×2 | synthetic ⇒ `Linear{bps:8}` forced regardless of CLI (`main.rs:214-220`); for the weights pair also directory provenance (`#122`) |
+| `+ noop-baseline` | 6 — tcn-overlay-realdata ×2, weights-realdata ×2, patchtst, vol-target | default real-data ⇒ `Linear{bps:0}`, and noop **is** the zero-sim-slippage generation |
+| `v5-sqrt-impact-2026-05` | 1 — momentum-realdata | its only row; gate declares the sqrt flags per ruling (a) |
+
+**A landing constraint that must be honoured or the re-lock is invisible.** `verify_anchors.sh`
+resolves each namespace to a different directory set, so a re-emitted body is not free to live
+anywhere: canonical rows resolve from the `v0.4.0-candle-feature-gated-re-emit` / v0.3.0 migration dirs
+(the global-newest fallback is never reached while those hit), the sqrt row resolves **only** from the
+v0.5.0 dir, and noop rows resolve to the newest match *outside* all v5 dirs — by a lexicographic sort
+of full paths, so the directory name outranks the timestamp. A body dropped in the wrong directory
+changes nothing and the gate stays green over the old one.
