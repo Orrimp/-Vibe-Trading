@@ -879,9 +879,18 @@ fn run_scenario_once_candle(scenario: &str) -> String {
     let bin_path = workspace_root.join("target/debug/backtest");
 
     // Run from workspace root so checkpoint + config paths resolve correctly.
-    // The report is written to evidence/<feature>/reports/ under the workspace root.
+    //
+    // bug-log #113 — the OUTPUT used to land in `evidence/<feature>/reports/`, inside
+    // the anchored corpus, and `verify_anchors.sh` resolves each anchor to the NEWEST
+    // matching report there. So running this test at a commit whose output differs
+    // from the pin planted a drifted body in the corpus and flipped that gate to FAIL
+    // as a side effect. `--reports-dir` sends it to a tempdir instead; only the output
+    // location moves, the body is unchanged.
+    let reports = tempfile::tempdir().expect("create reports tempdir");
     let output = std::process::Command::new(&bin_path)
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .arg("--reports-dir")
+        .arg(reports.path())
         .current_dir(workspace_root)
         .output()
         .expect("spawn backtest binary");
@@ -1037,8 +1046,20 @@ fn run_realdata_scenario_once(
     run_dir: &std::path::Path,
     scenario: &str,
 ) -> String {
+    // bug-log #113 — this used to run with NO `--reports-dir`, so the report landed
+    // in `evidence/<feature>/reports/` INSIDE the anchored corpus. `verify_anchors.sh`
+    // resolves each anchor to the NEWEST matching report there, so running this test
+    // at a commit whose output differs from the pin planted a drifted body in the
+    // corpus and flipped that gate to FAIL as a side effect — a test able to break a
+    // different gate by being run.
+    //
+    // CWD stays the workspace root: `data/binance/`, `config/strategies/` and the
+    // forecast checkpoints are all resolved relative to it. Only the OUTPUT moves.
+    let reports = tempfile::tempdir().expect("create reports tempdir");
     let output = std::process::Command::new(bin)
         .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .arg("--reports-dir")
+        .arg(reports.path())
         .current_dir(run_dir)
         .output()
         .expect("spawn backtest binary");
@@ -1057,6 +1078,8 @@ fn run_realdata_scenario_once(
         .map(|l| l.trim_start_matches("Report written: ").trim())
         .expect("could not find 'Report written:' line");
 
+    // `--reports-dir` makes the printed path absolute; `join` on an absolute path
+    // returns it unchanged, so this covers both shapes.
     let report_path = run_dir.join(report_rel);
     std::fs::read_to_string(&report_path)
         .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
@@ -1221,20 +1244,44 @@ fn tcn_checkpoint_present(checkpoint_name: &str) -> bool {
         .and_then(|p| p.parent())
         .expect("workspace root");
 
-    // Convention from ADR-0029: checkpoints live under
-    // crates/forecast/checkpoints/anchors/<name>.safetensors
-    let ckpt = workspace_root
+    // bug-log #114 — this used to build `<name>.safetensors` and test `.exists()`.
+    // The real convention is `<name>-<content-hash>.safetensors`, e.g.
+    // `tcn-bs1-d1c3696d…​.safetensors`, so the un-hashed path NEVER existed and this
+    // returned false on every machine, resolved LFS or not. Both `_weights` tests
+    // guarded by it therefore skipped silently — and reported green — from the day
+    // they were written (`ce4ccbdd`, 2026-05-18) until 2026-09-26.
+    //
+    // Match the prefix instead, and require a real file rather than an unresolved
+    // LFS pointer (a pointer is ~130 bytes; the smallest real checkpoint is ~1.6 MB).
+    let dir = workspace_root
         .join("crates")
         .join("forecast")
         .join("checkpoints")
-        .join("anchors")
-        .join(format!("{checkpoint_name}.safetensors"));
+        .join("anchors");
 
-    if !ckpt.exists() {
-        eprintln!("T-D-15: checkpoint {ckpt:?} absent (LFS not resolved) — skipping weights test");
-        return false;
+    let prefix = format!("{checkpoint_name}-");
+    let found = std::fs::read_dir(&dir).ok().and_then(|entries| {
+        entries.flatten().find_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let is_match = name.starts_with(&prefix) && name.ends_with(".safetensors");
+            let big_enough = e.metadata().map(|m| m.len() > 4096).unwrap_or(false);
+            (is_match && big_enough).then(|| e.path())
+        })
+    });
+
+    match found {
+        Some(path) => {
+            eprintln!("checkpoint {checkpoint_name} resolved to {path:?}");
+            true
+        }
+        None => {
+            eprintln!(
+                "checkpoint {checkpoint_name}-*.safetensors absent or unresolved under {dir:?} \
+                 — weights arms cannot run (bug-log #114)"
+            );
+            false
+        }
     }
-    true
 }
 
 /// T-D-15 — `top10-2023-fy-tcn-overlay-weights-realdata` determinism.
@@ -1308,5 +1355,139 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
         hex1, hex2,
         "T-D-15: {scenario} body-SHA256 must be identical across two runs at seed 0xC0FFEE.\n\
          Run1: {hex1}\nRun2: {hex2}"
+    );
+}
+
+// ── R-REPRO — reproduction gates for the `-realdata` anchors (bug-log #111/#113) ──
+//
+// These are NOT the `*_determinism` tests above and must not be confused with them.
+// Those run a scenario twice and compare it with ITSELF: they prove the engine is
+// deterministic, which passes perfectly well while the code has stopped reproducing
+// the anchored evidence. Both properties are worth having; only this one can see
+// code-vs-evidence drift (bug-log #93).
+//
+// The comparison target is the CURRENT canonical namespace, `v5-sqrt-impact-2026-05`
+// (ADR-0045 § D6 / v0.5.0). Each of these scenarios also carries two historical rows
+// in evidence/anchors.toml — `v2.6.0-realdata + noop-baseline` (pre-friction oracle)
+// and `v2.6.0-realdata + v5-realdata-medium-2026-05` (pre-sqrt-impact) — which are
+// frozen history and are NOT what current code should produce.
+//
+// `#[ignore]` because they are a MEASUREMENT first: story 1-27 has bisected the four
+// `top10-*` in-test pins to `11acd126` (the #67 fix) and the `-realdata` family has
+// never had a reproduction check at all, so their state is genuinely unknown until
+// these run. Invoke explicitly:
+//
+//     cargo test -p backtest --test determinism --features realdata,candle \
+//         -- --ignored reproduces_anchor
+//
+// Per bug-log #113 requirement 6, a missing precondition is UNMEASURED, not a pass:
+// these panic with a loud message instead of returning green, because a test you
+// invoked by name and that silently did nothing is worse than no test.
+//
+// When a gate here is GREEN the `#[ignore]` should come off — it is then a real
+// regression gate. When it is RED it stays, with the D6.b re-lock as the resolution
+// (never a re-pin to current output; that is bug-log #77).
+
+/// R-REPRO-1 — `top10-2023-fy-tcn-overlay-realdata` reproduces its canonical anchor.
+#[cfg(feature = "realdata")]
+#[test]
+#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
+fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
+    const ANCHOR: &str = "1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a";
+    assert_reproduces_canonical_anchor("top10-2023-fy-tcn-overlay-realdata", ANCHOR, false);
+}
+
+/// R-REPRO-2 — `top10-2024-fy-tcn-overlay-realdata` reproduces its canonical anchor.
+#[cfg(feature = "realdata")]
+#[test]
+#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
+fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
+    const ANCHOR: &str = "39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c";
+    assert_reproduces_canonical_anchor("top10-2024-fy-tcn-overlay-realdata", ANCHOR, false);
+}
+
+/// R-REPRO-3 — `top10-2023-fy-tcn-overlay-weights-realdata` reproduces its anchor.
+#[cfg(all(feature = "realdata", feature = "candle"))]
+#[test]
+#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
+fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
+    const ANCHOR: &str = "38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175";
+    assert_reproduces_canonical_anchor(
+        "top10-2023-fy-tcn-overlay-weights-realdata",
+        ANCHOR,
+        true,
+    );
+}
+
+/// R-REPRO-4 — `top10-2024-fy-tcn-overlay-weights-realdata` reproduces its anchor.
+#[cfg(all(feature = "realdata", feature = "candle"))]
+#[test]
+#[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
+fn realdata_2024_fy_tcn_overlay_weights_reproduces_anchor() {
+    const ANCHOR: &str = "582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6";
+    assert_reproduces_canonical_anchor(
+        "top10-2024-fy-tcn-overlay-weights-realdata",
+        ANCHOR,
+        true,
+    );
+}
+
+/// Shared body for the R-REPRO gates.
+///
+/// `needs_checkpoint` selects the candle-capable binary and additionally requires the
+/// LFS checkpoint, which the `-weights` arms load at runtime.
+///
+/// # Panics
+///
+/// Panics when a precondition is absent (`data/binance/REVISION.toml`, or the TCN
+/// checkpoint for a weights arm) — see bug-log #113 requirement 6: an explicitly
+/// invoked measurement must report UNMEASURED loudly rather than return green.
+#[cfg(feature = "realdata")]
+fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkpoint: bool) {
+    assert!(
+        real_binance_data_available(),
+        "UNMEASURED, not passed: {scenario} needs data/binance/REVISION.toml and it is absent.\n\
+         Fetch the corpus first:\n  cargo run -p data --bin fetch_binance_klines -- \
+         --emit-revision-manifest ...\n\
+         Reporting this as a skip would be bug-log #113 requirement 6 — a gate that \
+         returns green having measured nothing."
+    );
+
+    #[cfg(feature = "candle")]
+    let bin = if needs_checkpoint {
+        assert!(
+            tcn_checkpoint_present("tcn-bs1"),
+            "UNMEASURED, not passed: {scenario} needs a resolved tcn-bs1 checkpoint under \
+             crates/forecast/checkpoints/anchors/ and none was found. If the file is present, \
+             check the resolver before the file (bug-log #114)."
+        );
+        ensure_realdata_candle_binary()
+    } else {
+        ensure_realdata_binary()
+    };
+    #[cfg(not(feature = "candle"))]
+    let bin = {
+        assert!(
+            !needs_checkpoint,
+            "UNMEASURED, not passed: {scenario} needs --features candle for its real weights."
+        );
+        ensure_realdata_binary()
+    };
+
+    let workspace = workspace_root_path();
+    let report = run_realdata_scenario_once(&bin, &workspace, scenario);
+    let hex: String = backtest::report_body_hash(&report)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+
+    assert_eq!(
+        hex, anchor,
+        "R-REPRO: {scenario} no longer reproduces its canonical \
+         `v5-sqrt-impact-2026-05` anchor.\n\
+         Expected: {anchor}\nGot:      {hex}\n\
+         This is code-vs-evidence drift, the thing verify_anchors.sh cannot see \
+         (bug-log #93). Do NOT re-pin to the produced value — that is bug-log #77. \
+         The resolution is a D6.b re-lock (story 1-27)."
     );
 }

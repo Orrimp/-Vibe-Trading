@@ -2147,6 +2147,66 @@ harness that is already right.
 **6 confirmed non-reproducing, 12 confirmed reproducing, 9 genuinely unknown** — and the 9 are
 unknown because no gate declares their condition, which is the same defect this entry is about.
 
+#### Update 2026-09-26 — the gate was built, and it measured
+
+Four R-REPRO gates were added to `determinism.rs` (compare against the anchor, `--reports-dir` to a
+tempdir, precondition absence panics as UNMEASURED). Running them:
+
+| scenario | expected (`v5-sqrt-impact-2026-05`) | produced | verdict |
+|---|---|---|---|
+| `top10-2023-fy-tcn-overlay-realdata` | `1157af76…` | `b6d88fa6…` | **DRIFTED** |
+| `top10-2024-fy-tcn-overlay-realdata` | `39a02c79…` | `b5efe7b6…` | **DRIFTED** |
+| `top10-2023-fy-tcn-overlay-weights-realdata` | — | — | UNMEASURED → unblocked by `#114` |
+| `top10-2024-fy-tcn-overlay-weights-realdata` | — | — | UNMEASURED → unblocked by `#114` |
+
+So the running count is **8 confirmed non-reproducing** (4 `top10-*` in-test, 2 `pairs-*`, 2
+`tcn-overlay-realdata`), 12 confirmed reproducing, and the remainder split between the 2 weights arms
+(unblocked by the `#114` fix) and **5 with no runner at all** —
+`top10-2023-fy-momentum-realdata`, `top10-2023-fy-patchtst-overlay-realdata`,
+`top10-{2023,2024}-fy-regime-dispatcher-realdata`, `top10-2023-fy-vol-target-overlay-realdata`.
+
+A caveat kept deliberately: my earlier shell sweep reported `momentum-realdata` (`0fc591e5…`) and
+`patchtst-overlay-realdata` (`f704c4f2…`) as drifted. **Those numbers are not counted as confirmed.**
+They came from the same class of apparatus that produced two sets of false verdicts (`#112`), so they
+are a hypothesis until a gate covers those scenarios.
+
+#### Final tally for this pass — 2026-09-26, gate-measured only
+
+With `#114` fixed the two weights arms ran, and the `m3_*` gates (which were never `#[ignore]`d and
+fail for anyone running `--features candle`) were measured too, after their runner was given the same
+`--reports-dir` fix:
+
+| scenario | expected | produced |
+|---|---|---|
+| `top10-2023-fy-tcn-overlay-weights-realdata` | `38736839…` | `fa09a769…` |
+| `top10-2024-fy-tcn-overlay-weights-realdata` | `582dabab…` | `0d6cc994…` |
+| `top10-2023-fy-tcn-overlay-weights` (m3) | `7cb1357c…` | `175173b6…` |
+| `top10-2024-fy-tcn-overlay-weights` (m3) | `23c24dae…` | `3c1178fb…` |
+
+**12 distinct anchored scenarios are gate-confirmed NOT to reproduce:**
+
+- 4 `top10-*` in-test pins — cause bisected to `11acd126` (`#67`)
+- 2 `pairs-*` — measured twice under the no-feature tempdir condition
+- 2 `top10-*-fy-tcn-overlay-realdata`
+- 2 `top10-*-fy-tcn-overlay-weights-realdata`
+- 2 `top10-*-fy-tcn-overlay-weights` (m3)
+
+**5 are gate-confirmed to reproduce** — the `btc-2023-1m-*` family (sma-cross, sma-baseline-refresh,
+macd-trend, rsi-reversion, bbands-mean-revert), proven by 12 passing `t622_*`/`t717_*` tests.
+
+**5 anchored scenarios have a binary that can run them but no gate**, so they stay unmeasured:
+`top10-2023-fy-momentum-realdata`, `top10-2023-fy-patchtst-overlay-realdata`,
+`top10-{2023,2024}-fy-regime-dispatcher-realdata`, `top10-2023-fy-vol-target-overlay-realdata`.
+
+And **`scripts/verify_anchors.sh` reports `ANCHORS PASS (119 / 119)` throughout.** Twelve scenarios do
+not reproduce and the corpus gate is green, because it hashes committed bodies and never re-runs.
+That is `#93`, now with a number on it.
+
+**A demonstration, not a hypothetical:** the `m3_*` run above was RED, and before it ran its runner
+was given `--reports-dir`. Without that fix the red run would have written two drifted bodies into
+`evidence/<feature>/reports/`, where `verify_anchors.sh` takes the newest — flipping the corpus gate
+to FAIL as a side effect of running a test. `git status -- evidence/` was empty after the run.
+
 ### `#113` — the `-realdata` anchors have a test named `_determinism` that delivers determinism, and a data-absent path that returns green having measured nothing
 **Status**: OPEN — found 2026-09-26 while establishing the reproduction condition for the 9 unmeasured
 `-realdata` anchors (bug-log `#111`). This is the concrete design basis for the reproduction gate.
@@ -2201,3 +2261,44 @@ The good news is how little is missing: `ensure_realdata_binary`, `run_realdata_
 `real_binance_data_available` and `tcn_checkpoint_present` already encode the condition correctly.
 **What is missing is the comparison.** That is a surgical change, and making it is also how the 9
 unmeasured anchors of `#111` finally get measured.
+
+### `#114` — a checkpoint guard that looked for a filename shape that has never existed, so two tests skipped silently and reported green for four months
+**Status**: FIXED 2026-09-26 (resolver corrected); the measurement it was hiding is in `#111`.
+Anchor-impacting: no.
+
+`determinism.rs::tcn_checkpoint_present(name)` built:
+
+```rust
+.join(format!("{checkpoint_name}.safetensors"));
+if !ckpt.exists() { eprintln!("… absent (LFS not resolved) — skipping weights test"); return false; }
+```
+
+The real convention is `<name>-<content-hash>.safetensors`. On disk:
+
+```
+crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d79933c8d97695e5fff671f645f810e7961becb2333475fb9cc44fcd2.safetensors   1.67 MB, resolved
+```
+
+`tcn-bs1.safetensors` has never existed. So the guard returned **false on every machine**, LFS
+resolved or not, and the two tests behind it —
+`realdata_{2023,2024}_fy_tcn_overlay_weights_determinism` — `return`ed before their first assertion
+**every time they were invoked, since `ce4ccbdd` (2026-05-18)**. Four months of a green test result
+for code that never ran.
+
+The diagnostic made it worse than silent: it printed *"(LFS not resolved)"*, naming a cause that was
+not the cause. Anyone who checked would have found the checkpoint present, concluded the message was
+stale, and moved on. **The guard accused the data of being absent when the bug was in the accuser.**
+This entry's own first draft repeated that diagnosis, because the new R-REPRO gates inherited the
+same helper — the false message propagated into a new test the same day it was written.
+
+**Fix**: match `<name>-*.safetensors` by prefix, and require a file larger than 4 KiB so an
+unresolved LFS pointer (~130 bytes) is still correctly reported as absent. The success path now
+prints the resolved path, so a future reader can see *which* file satisfied the guard rather than
+trusting that one did.
+
+**The shape to recognise**, since this is the fifth instance this session (`#102` unreachable
+feature, `#104` secrets gate with no scanner, `#113` data-absent soft skip, `#112` unpinned
+condition, and this): **a precondition check that cannot succeed is indistinguishable from a
+precondition that is never met.** Both look like a clean skip. The distinguishing move is to make
+the *success* path observable — log what satisfied the guard, and count skips as `unmeasured`
+rather than folding them into a pass.
