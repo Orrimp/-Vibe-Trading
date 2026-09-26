@@ -2096,3 +2096,53 @@ refuted.
 
 Without (1)–(3) the gate reproduces this entry's failure at CI scale, which is worse than the
 `#93` blind spot it exists to close: a gate that cries drift is retired by the third false alarm.
+
+#### A SECOND confound, found the same way — the condition is CWD × FEATURE SET
+
+After fixing the CWD, the tempdir pass reported the *opposite* set of false verdicts:
+`btc-2023-1m-{bbands-mean-revert,macd-trend,rsi-reversion}` and `eth-2024-h1-sma-cross` as DRIFTED,
+while the two that had failed from repo-root now reproduced. Neatly inverted — which is itself the
+tell.
+
+Cause: my binary was built `--features candle,realdata`; `determinism.rs::run_scenario_once` builds
+plain `cargo build --bin backtest`, **no features**. The file says so — *"These anchors capture the
+`PassthroughForecaster` path (candle feature absent in CI)"*. So the reproduction condition is at
+least **(CWD, feature set)**, not CWD alone.
+
+#### The authoritative measurement — the repo's own gate
+
+Stopping the re-implementation and running `cargo test -p backtest --test determinism` settles it:
+
+```
+test result: ok. 16 passed; 0 failed; 4 ignored
+```
+
+All twelve `t622_*` / `t717_*` gates (sma-cross, sma-baseline-refresh, macd-trend, rsi-reversion,
+bbands-mean-revert) **pass**. The only red ones are the four `top10-*` gates, already `#[ignore]`d
+with the `#67` cause bisected. **Every DRIFTED verdict my sweeps produced for the `t622_*`/`t717_*`
+families was false, in both directions.**
+
+#### The lesson that outranks both confounds
+
+I re-implemented a measurement apparatus that already existed, correct, in the repo — twice — and
+each re-implementation silently answered a different question. `determinism.rs::run_scenario_once`
+already encodes the condition (tempdir, no features, fixed seed, copied `config/strategies`); it took
+two false result sets to go back and just run it.
+
+**So the reproduction gate is an EXTENSION of `determinism.rs`, not a new sweep script.** Add
+scenarios to the existing harness, with a per-scenario condition where it differs (a `-realdata` arm
+needs the corpus and the features, so it needs its own runner alongside `run_scenario_once`, not a
+shell loop around the binary). Requirements (1)–(3) above stand; requirement (0) is: extend the
+harness that is already right.
+
+#### Honest standing bilanz (2026-09-26)
+
+| class | count | state |
+|---|---|---|
+| reproduce, proven by the repo's own gate | 12 | green |
+| do not reproduce, cause bisected to `#67` | 4 | the `top10-*` gated ones |
+| do not reproduce, measured twice under the no-feature tempdir condition | 2 | `pairs-2023-zscore-mr`, `pairs-2024-h1-zscore-mr` — same hash from both passes, so features do not move them; attribution to `#67` is mechanism, not bisect |
+| condition never established, therefore **unmeasured** | 9 | the `top10-*-realdata` family (+ 2 `-weights` that RUN-FAIL without `candle`) |
+
+**6 confirmed non-reproducing, 12 confirmed reproducing, 9 genuinely unknown** — and the 9 are
+unknown because no gate declares their condition, which is the same defect this entry is about.
