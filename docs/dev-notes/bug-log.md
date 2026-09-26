@@ -2191,8 +2191,17 @@ fail for anyone running `--features candle`) were measured too, after their runn
 - 2 `top10-*-fy-tcn-overlay-weights-realdata`
 - 2 `top10-*-fy-tcn-overlay-weights` (m3)
 
-**5 are gate-confirmed to reproduce** — the `btc-2023-1m-*` family (sma-cross, sma-baseline-refresh,
-macd-trend, rsi-reversion, bbands-mean-revert), proven by 12 passing `t622_*`/`t717_*` tests.
+**~~5 are gate-confirmed to reproduce~~ — CORRECTED 2026-09-26: only 2 reproduce an `anchors.toml`
+row.** The `btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}` gates pin `4d8192af` /
+`4a744788` / `5037accb`, and **none of those three strings appears in `anchors.toml`** (verified,
+0 occurrences each). They pin the *synthetic* body while the canonical row is the *real-data* body
+(17 544 bars vs 525 601) — deliberate and documented (`determinism.rs:538-541`, ADR-0045 § D6.3), but
+the narrow consequence stands: **those three anchor rows have no re-run coverage.** Only
+`btc-2023-1m-sma-{cross,baseline-refresh}` pin `d2fa7616`, which *is* an `anchors.toml` row.
+
+The count of genuinely-green anchor coverage is nevertheless still 5, because the coverage audit found
+three real gates nobody had counted: `report-sample-{7d,90d}` and `btc-yahoo-2024-1d-sma-cross` (the
+latter in CI). See [`anchor-gate-coverage-audit-2026-09-26.md`](anchor-gate-coverage-audit-2026-09-26.md).
 
 **5 anchored scenarios have a binary that can run them but no gate**, so they stay unmeasured:
 `top10-2023-fy-momentum-realdata`, `top10-2023-fy-patchtst-overlay-realdata`,
@@ -2302,3 +2311,158 @@ condition, and this): **a precondition check that cannot succeed is indistinguis
 precondition that is never met.** Both look like a clean skip. The distinguishing move is to make
 the *success* path observable — log what satisfied the guard, and count skips as `unmeasured`
 rather than folding them into a pass.
+
+### `#115` — the linter that guards the anchor pins is blind to 11 of 25 of them, and reports "0 skipped"
+**Status**: OPEN — measured 2026-09-26. Highest-leverage of the audit findings: it is the meta-gate.
+Anchor-impacting: no directly; **yes indirectly**, since it is what is supposed to notice a stale pin.
+
+`scripts/check_determinism_anchors.py` is ADR-0045 § D7.1's gate: every non-cfg-gated `const ANCHOR`
+in `determinism.rs` must equal its `anchors.toml` SHA. Re-derived both numbers:
+
+```
+grep -cE "const (ANCHOR|EXPECTED)" crates/backtest/tests/determinism.rs   ->  25
+python3 scripts/check_determinism_anchors.py
+  check_determinism_anchors: OK — 14 literal(s) match (8 canonical, 6 synthetic; 0 skipped: cfg-gated)
+```
+
+A site only enters the script's `sites` list if `scenario_body_hex("…")` appears within 7 lines
+(`:150`). Sites whose runner is spelled `scenario_body_hex_candle(` — the `m3_*` pair — or
+`assert_reproduces_canonical_anchor(` / `assert_reproduces_or_report_unmeasured(` — **the nine R-REPRO
+gates written today** — resolve to `scenario is None` and are dropped at `:196-204`. Not counted, not
+warned, and **not reported as skipped**. 25 − 11 = 14, exactly the printed number.
+
+**The 11 invisible sites are precisely the ones proven stale this week** (`#111`, `#112`): the two m3
+weights pins and the nine `-realdata` reproduction pins. The gate whose job is to notice a pin going
+stale cannot see the pins that went stale, and its own output says `0 skipped`.
+
+Two smaller faults in the same file: a total regex failure prints `WARN` and `exit 0` (`:519-521`),
+and `--write` (`:525`) syncs only the visible 14 — so an operator "fixing drift" with it silently
+leaves 11 pins untouched. Unlike its five sibling gates it has **no `--self-test`**.
+
+**Fix**: an unresolvable `const ANCHOR` site must `return 1`; print `n_sites_found` against a declared
+floor so a parser regression is loud; add `--self-test` with a fixture covering all three runner
+spellings. The shape is `#114`'s (a check that cannot succeed for a subset) crossed with the
+count-you-did-not-measure shape of `#112`.
+
+### `#116` — two neutrality gates hash a committed file and compare it to a constant copied from that file, while the drift they guard is live
+**Status**: OPEN — found 2026-09-26. Both gates are GREEN right now over a scenario measured as
+drifted the same day.
+Anchor-impacting: **yes** — both run with `current_dir(workspace_root)` and no `--reports-dir`, so
+executing either can plant a body in the corpus (`#113`'s landmine, two more instances).
+
+`crates/forecast/tests/patchtst_overlay_neutrality.rs:34,150,212` (K4, ADR-0036) and
+`crates/trader/tests/llm_forecaster_neutrality.rs:36,141,224` (R10.2) assert that adding an overlay
+must not change `top10-2023-fy-tcn-overlay-realdata`'s body-SHA.
+
+They run the scenario — and then hash the wrong file. `report_dir_for_scenario` maps this scenario to
+`evidence/backtest-real-binance-data/reports/` (`crates/backtest/src/main.rs:2569-2573` + `:2549-2552`)
+and **that directory does not exist** (verified: `ls` fails; the corpus is at
+`evidence/v1/backtest-real-binance-data/`). Both tests search only the `evidence/v1/…` candidates, so
+`find_latest_report` resolves the newest **committed** body — whose SHA is bit-identical to
+`EXPECTED_SHA`, because `EXPECTED_SHA` was copied from it. **The run's own output is never examined.**
+
+The R-REPRO gate measured this scenario producing `b6d88fa6…` on the same day (`#111`). So the drift
+is live, and two gates written to catch exactly this report green.
+
+Compounding: `EXPECTED_SHA` is the `v2.6.0-realdata + noop-baseline` row — three generations behind
+the live `v5-sqrt-impact-2026-05` row `1157af76…`.
+
+**Fix**: do not repair the bespoke harnesses — delete them and add the two scenarios to
+`determinism.rs::assert_reproduces_canonical_anchor`, which already writes to a tempdir, compares
+against the current-generation anchor, and reports an absent precondition as unmeasured. This is
+`#112` requirement (0): extend the apparatus that is already right instead of maintaining a second one.
+
+### `#117` — `verify_anchors.sh` re-implemented in Rust, inside `cargo test --workspace`, named as if it re-ran anything
+**Status**: OPEN — found 2026-09-26. A naming and framing defect, not a logic bug; the highest-value
+one to act on because of who reads it.
+Anchor-impacting: no.
+
+`crates/reports/tests/strategy_anchors_unchanged.rs` holds three tests — `:436`, `:489`, `:542` —
+checking 25 anchor rows across three namespace tables. All three read committed report bodies off
+disk (`std::fs::read_to_string` at `:403`; verified — the file contains no `Command::new`), and the
+module doc at `:29-31` says so itself: it *"mirrors `scripts/verify_anchors.sh:63-110`"*.
+
+So it is the corpus gate re-implemented in Rust, **inside the workspace test suite**. That is worse
+than `verify_anchors.sh` for one reason only: a *test* named `*_strategy_anchors_unchanged` reads as
+a reproduction check. A developer running `cargo test --workspace` sees three green tests whose names
+say the strategy anchors are unchanged — over exactly the scenarios that do not reproduce.
+
+Two of the three additionally soft-skip on an empty table (`:490`, `:543`) — `#113` requirement 6 —
+though all three tables are in fact populated today.
+
+**Fix**: rename to `*_committed_bodies_unchanged` and say in one line what it does not prove. The
+logic is fine and worth keeping — storage integrity inside the test suite is genuinely useful. Only
+the name lies, and it is the name that gets counted.
+
+### `#118` — an anchor outlived its producer, and the corpus gate has reported PASS on it every day since
+**Status**: OPEN — needs a disposition decision, not a fix. Found 2026-09-26.
+Anchor-impacting: **yes** — 2 rows.
+
+`sharpe-comparison-realdata` is pinned twice in `evidence/anchors.toml`. **No code path at HEAD emits
+the name** — verified: `grep -rl "sharpe-comparison-realdata" crates/` returns nothing.
+`crates/forecast/src/bin/sharpe_comparison.rs` emits four names and the bare one is not among them.
+The resolved report dates to 2026-05-19, and
+`docs/dev-notes/retired-surface-inventory-2026-05-22.md:157` lists the surface as retired.
+
+So the anchor outlived its producer, and `verify_anchors.sh` has reported PASS on both rows ever
+since — because it hashes a file, and the file is still there. This is `#93` in its purest form: not
+a gate that failed to notice drift, but a gate verifying evidence for an experiment that can no
+longer be run at all.
+
+The disposition is a decision, not a measurement. Either the rows are relabelled as historical record
+carrying no reproduction claim, or the rename is traced and they are re-keyed to the surviving name.
+**Re-emitting is not available.** Related, same shape and also unreachable:
+`eth-yahoo-2024-1d-sma-cross`, whose anchored body contains a `rev=` substring that `D-V0.1.3-1`
+moved out of the body — see the coverage audit § 3.
+
+### `#119` — `#114`'s twin: the same wrong CWD assumption, the same wrong blame, in the forecast crate
+**Status**: OPEN — found 2026-09-26 by generalising `#114`.
+Anchor-impacting: no.
+
+`crates/forecast/src/tcn.rs:496-497`:
+
+```rust
+// In tests and binaries, the CWD is the workspace root.
+let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
+```
+
+Cargo runs integration tests with CWD = the **package** root. This repo documents that in four
+places, including `docs/dev-notes/bug-log.md:192` ("cargo runs ui test binaries with
+cwd=`crates/ui/`" — empirically confirmed there). So under `cargo test -p forecast --features candle`
+the path resolves to `crates/forecast/crates/forecast/checkpoints/anchors`, `load_anchor` returns
+`CheckpointNotFound`, and `crates/forecast/tests/anchors_load.rs` skips on **every** machine while
+printing *"run `git lfs pull` to fetch checkpoints"* — with the 1.67 MB checkpoint resolved on disk.
+
+Character-for-character `#114`: a precondition that cannot succeed, plus a diagnostic that accuses
+the data while the bug sits in the accuser. Found by looking for `#114`'s shape rather than by
+tripping over it, which is the argument for writing these entries as shapes and not as incidents.
+
+**Fix**: resolve from `env!("CARGO_MANIFEST_DIR")` in both `tcn.rs` and `patchtst.rs`, and print the
+resolved path on success — `#114`'s own fix, applied to its twin.
+
+---
+
+## The shape, named — for the six entries above and the five before them
+
+Eleven entries this week share one mechanism, and it is worth stating once rather than eleven times:
+
+> **A gate that cannot fail is indistinguishable from a gate that passes.**
+
+Two sub-shapes cover all of them. **(a) The expectation and the measurement come from the same
+place** — `#116` hashes a committed file against a constant copied from it; the
+`compute_robustness_flag` bit-identity test compares a function to its own delegate through a
+hand-copied mapping. **(b) The gate reports a count it did not measure** — `verify_anchors.sh` prints
+`total / total`; `check_no_clocks_in_ui_tests.sh` prints an array length, not files scanned;
+`orch_determinism_check.sh` prints PASS having hashed zero files because the glob's error message is
+itself deterministic.
+
+The distinguishing move, in both cases: **make the success path observable.** Log what satisfied the
+guard. Print how many files the walk read. Assert on *that* number — not on the absence of findings
+in a set nobody proved was non-empty. The repo's own `crates/llm/tests/no_secrets_in_artifacts_test.rs`
+does all three and documents why; it is the shape to copy, and it exists because `#104` forced it.
+
+Full audits: [`docs/dev-notes/cannot-fail-gate-audit-2026-09-26.md`](cannot-fail-gate-audit-2026-09-26.md)
+(14 CONFIRMED, 3 SUSPECTED, 10 counter-examples) and
+[`docs/dev-notes/anchor-gate-coverage-audit-2026-09-26.md`](anchor-gate-coverage-audit-2026-09-26.md)
+(all 77 anchored scenarios: 15 with real coverage, 4 off-anchor pins, 2 self-comparing, 56 with
+nothing).
