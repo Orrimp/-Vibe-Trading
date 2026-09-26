@@ -32,6 +32,30 @@
 //! SHAs forever. A new `CANONICAL_STRATEGY_ANCHORS` table (added at
 //! v0.3.0 Wave C) is checked against canonical-namespace reports.
 //!
+//! ## What this test does NOT prove — read this before counting it as coverage
+//!
+//! bug-log **#117**. These three tests hash **report bodies read off disk**. They
+//! never re-run a producer. So they prove **storage integrity** — the committed
+//! evidence has not been edited or truncated — and they prove **nothing at all**
+//! about whether the current code still produces those bodies.
+//!
+//! That distinction is load-bearing. As of 2026-09-26, **12 anchored scenarios do
+//! not reproduce** (bug-log `#111`) while these tests are green, because the bodies
+//! on disk are exactly the bodies that were committed. The module doc below says
+//! this file "mirrors `scripts/verify_anchors.sh:63-110`" — it does, and
+//! `verify_anchors.sh` is the gate bug-log `#93` exists to describe: it cannot see
+//! code-vs-evidence drift.
+//!
+//! The gate that CAN see drift re-runs the producer and compares against the
+//! anchor — see `crates/backtest/tests/determinism.rs` (the `R-REPRO` block) and
+//! `crates/backtest/tests/reproducibility_sample_figure.rs`.
+//!
+//! The names `t1937*_strategy_anchors_unchanged` read as though they re-ran
+//! something. Renaming them was considered and **rejected**: they are cited by name
+//! in byte-immutable anchored reports (`evidence/v1/v2-llm-strategy/reports/…`,
+//! `evidence/v1/cockpit-toast-queue/reports/…`) and in ADR-0043 § D-t1937, and a
+//! rename would orphan those citations. The names stay; this block is the fix.
+//!
 //! ## What this test checks
 //!
 //! For each of the 9 strategy anchors:
@@ -487,6 +511,15 @@ fn t1937_nine_strategy_anchors_unchanged() {
 /// regression check for future canonical migrations.
 #[test]
 fn t1937b_canonical_strategy_anchors_unchanged() {
+    // bug-log #117 / #113 req 6 — an empty table is UNMEASURED, not a pass. Both
+    // tables were populated long ago (Wave C (v0.3.0)), so emptiness now means the constant
+    // was deleted or renamed, which must be loud rather than silently green.
+    assert!(
+        !CANONICAL_STRATEGY_ANCHORS.is_empty(),
+        "T1937b: CANONICAL_STRATEGY_ANCHORS is EMPTY. It was populated at Wave C (v0.3.0), so an empty table today \
+         means the constant was removed or renamed — not that there is nothing to check. \
+         A skip here would be indistinguishable from a pass (bug-log #117)."
+    );
     if CANONICAL_STRATEGY_ANCHORS.is_empty() {
         eprintln!(
             "T1937b soft skip: CANONICAL_STRATEGY_ANCHORS is empty — populated at Wave C \
@@ -540,6 +573,15 @@ fn t1937b_canonical_strategy_anchors_unchanged() {
 /// this gate becomes a hard regression check for future migrations.
 #[test]
 fn t1937c_sqrt_impact_strategy_anchors_unchanged() {
+    // bug-log #117 / #113 req 6 — an empty table is UNMEASURED, not a pass. Both
+    // tables were populated long ago (Wave E (v0.5.0)), so emptiness now means the constant
+    // was deleted or renamed, which must be loud rather than silently green.
+    assert!(
+        !SQRT_IMPACT_STRATEGY_ANCHORS.is_empty(),
+        "T1937c: SQRT_IMPACT_STRATEGY_ANCHORS is EMPTY. It was populated at Wave E (v0.5.0), so an empty table today \
+         means the constant was removed or renamed — not that there is nothing to check. \
+         A skip here would be indistinguishable from a pass (bug-log #117)."
+    );
     if SQRT_IMPACT_STRATEGY_ANCHORS.is_empty() {
         eprintln!(
             "T1937c soft skip: SQRT_IMPACT_STRATEGY_ANCHORS is empty — populated at Wave E \

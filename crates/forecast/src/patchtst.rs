@@ -661,7 +661,9 @@ impl PatchTstForecaster {
     ///
     /// Returns `PatchTstForecasterError::CheckpointNotFound` if file is absent.
     pub fn load_anchor(scenario: AnchorScenario) -> Result<Self, PatchTstForecasterError> {
-        let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
+        // bug-log #119 — shares the TCN resolver; a bare relative path here broke
+        // under `cargo test`, which uses the PACKAGE root, not the workspace root.
+        let anchors_dir = crate::tcn::resolve_anchors_dir_pub();
         let prefix = scenario.file_prefix();
         let sha = scenario.sha_prefix();
 

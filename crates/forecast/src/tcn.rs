@@ -493,9 +493,7 @@ impl TcnForecaster {
     /// Returns `TcnForecasterError::SafetensorsLoad` on weight load failure.
     /// Returns `TcnForecasterError::MetadataParse` on JSON parse failure.
     pub fn load_anchor(scenario: AnchorScenario) -> Result<Self, TcnForecasterError> {
-        // Resolve the checkpoint directory relative to the workspace root.
-        // In tests and binaries, the CWD is the workspace root.
-        let anchors_dir = PathBuf::from("crates/forecast/checkpoints/anchors");
+        let anchors_dir = resolve_anchors_dir();
         let prefix = scenario.file_prefix();
         let sha = scenario.sha_prefix();
 
@@ -1466,4 +1464,61 @@ mod tests {
             "3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d"
         );
     }
+}
+
+// ── Checkpoint directory resolution (bug-log #119) ────────────────────────────
+
+/// Resolve `crates/forecast/checkpoints/anchors`, working from any CWD.
+///
+/// bug-log **#119** — this used to be a bare
+/// `PathBuf::from("crates/forecast/checkpoints/anchors")` under the comment *"In
+/// tests and binaries, the CWD is the workspace root."* That is true of binaries
+/// launched from the repo root and **false under `cargo test`**, which uses the
+/// PACKAGE root — so the path resolved to
+/// `crates/forecast/crates/forecast/checkpoints/anchors`, `load_anchor` returned
+/// `CheckpointNotFound`, and `tests/anchors_load.rs` skipped on every machine while
+/// printing *"run `git lfs pull`"* with the checkpoint resolved on disk. Character
+/// for character bug-log #114, including blaming the data for the accuser's bug.
+///
+/// Additive by construction: the CWD-relative path is tried FIRST, so every caller
+/// that works today keeps working. The `CARGO_MANIFEST_DIR`-derived path is only a
+/// fallback — it is a build-machine path, so it is deliberately not preferred.
+///
+/// Logs the directory it settled on, because #114's lesson is that the SUCCESS path
+/// has to be observable: a guard that only speaks when it fails cannot be
+/// distinguished from one that never ran.
+pub(crate) fn resolve_anchors_dir() -> PathBuf {
+    const REL: &str = "crates/forecast/checkpoints/anchors";
+
+    let cwd_relative = PathBuf::from(REL);
+    if cwd_relative.is_dir() {
+        tracing::debug!(dir = %cwd_relative.display(), "anchors dir resolved (CWD-relative)");
+        return cwd_relative;
+    }
+
+    // CARGO_MANIFEST_DIR is `<workspace>/crates/forecast` for this crate.
+    let from_manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|ws| ws.join(REL));
+
+    match from_manifest {
+        Some(dir) if dir.is_dir() => {
+            tracing::debug!(dir = %dir.display(), "anchors dir resolved (via CARGO_MANIFEST_DIR)");
+            dir
+        }
+        _ => {
+            tracing::warn!(
+                rel = REL,
+                "anchors dir not found CWD-relative nor via CARGO_MANIFEST_DIR — \
+                 returning the relative path so the caller's error names it (bug-log #119)"
+            );
+            cwd_relative
+        }
+    }
+}
+
+/// Crate-internal re-export so `patchtst.rs` shares one resolver (bug-log #119).
+pub(crate) fn resolve_anchors_dir_pub() -> PathBuf {
+    resolve_anchors_dir()
 }

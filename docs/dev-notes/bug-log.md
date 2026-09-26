@@ -2049,6 +2049,39 @@ The remaining 11 candidates are unmeasured. The honest statement is: **the `#67`
 of an unknown total; 6 further anchored scenarios are confirmed non-reproducing and 11 more are
 unexcluded.**
 
+#### COMPLETE MEASUREMENT — 2026-09-26, the operator's "measure everything first" satisfied
+
+Every anchored scenario the `backtest` binary can run has now been measured under a declared
+condition. Superseding every partial tally above.
+
+**15 distinct anchored scenarios are gate-confirmed NOT to reproduce:**
+
+| group | n | note |
+|---|---|---|
+| `top10-{2023-1h,2024-h1}-momentum`, `top10-{2023,2024}-fy-tcn-overlay` | 4 | cause **bisected** to `11acd126` (`#67`) |
+| `pairs-{2023,2024-h1}-zscore-mr` | 2 | gated 2026-09-26; `ac647a59…`, `5bee5e9c…` |
+| `top10-{2023,2024}-fy-tcn-overlay-realdata` | 2 | `b6d88fa6…`, `b5efe7b6…` |
+| `top10-{2023,2024}-fy-tcn-overlay-weights-realdata` | 2 | `fa09a769…`, `0d6cc994…` |
+| `top10-{2023,2024}-fy-tcn-overlay-weights` (m3) | 2 | not `#[ignore]`d — red for anyone building `--features candle` |
+| `top10-2023-fy-momentum-realdata` | 1 | `0fc591e5…` vs pin `0867d232…` |
+| `top10-2023-fy-patchtst-overlay-realdata` | 1 | `f704c4f2…` vs pin `b015b564…` |
+| `top10-2023-fy-vol-target-overlay-realdata` | 1 | `91848e23…` vs pin `6adc4334…` |
+
+**7 are gate-confirmed to reproduce:** `btc-2023-1m-sma-{cross,baseline-refresh}`,
+`top10-{2023,2024}-fy-regime-dispatcher-realdata` (**new, and the first green ones in the `-realdata`
+family** — see `#120`), `report-sample-{7d,90d}`, `btc-yahoo-2024-1d-sma-cross`.
+
+**4 have a re-run gate that pins something which is not an `anchors.toml` row** — the three
+`btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}` synthetic pins and
+`eth-yahoo-2024-1d-sma-cross`. Those four anchor rows have no coverage.
+
+**The rest — 34 θ-surfaces, 1 MC scenario, 15 forecast/report-binary scenarios — still have no
+re-run gate of any kind.** See the coverage audit for what each would need.
+
+So the `#67` re-lock covered **34 surfaces of a corpus in which 15 further scenarios do not
+reproduce** — and `verify_anchors.sh` reports `ANCHORS PASS (119 / 119)` through all of it. (On what
+that number does and does not mean, see `#115`'s sibling finding: it prints `total / total`.)
+
 ### `#112` — one anchored scenario name, two legitimate bodies, selected by CWD — and a re-run gate that does not pin it measures a coin flip
 **Status**: OPEN as a design constraint — found 2026-09-26 by walking into it. Not a code defect:
 the behaviour is intended and the body even labels itself. The defect is that **nothing enforces
@@ -2390,9 +2423,26 @@ say the strategy anchors are unchanged — over exactly the scenarios that do no
 Two of the three additionally soft-skip on an empty table (`:490`, `:543`) — `#113` requirement 6 —
 though all three tables are in fact populated today.
 
-**Fix**: rename to `*_committed_bodies_unchanged` and say in one line what it does not prove. The
-logic is fine and worth keeping — storage integrity inside the test suite is genuinely useful. Only
-the name lies, and it is the name that gets counted.
+**Fix applied 2026-09-26 — and the obvious fix was the wrong one.** The audit recommended renaming to
+`*_committed_bodies_unchanged`. **Rejected after checking:** the names are cited by name in
+**byte-immutable** anchored reports (`evidence/v1/v2-llm-strategy/reports/test-2026-05-12-…`,
+`evidence/v1/cockpit-toast-queue/reports/test-final-2026-05-27-…`) and in ADR-0043 § D-t1937. A rename
+would orphan citations in evidence that cannot be edited to follow it (AD-2 / ADR-0038 § D6).
+
+What landed instead:
+
+1. **A `## What this test does NOT prove` block at the top of the module doc**, before the existing
+   description — the shape `reproducibility_sample_figure.rs` uses and the audit itself praised. It
+   states that these tests prove storage integrity and nothing about reproduction, gives the number
+   (12 anchored scenarios do not reproduce while these are green), names where the gate that CAN see
+   drift lives, and records that the rename was considered and why it was rejected. The name still
+   reads wrong; now the first thing under it says so.
+2. **Non-vacuity on both soft-skips** — `assert!(!TABLE.is_empty(), …)` before the `return`. Both
+   tables were populated at v0.3.0 and v0.5.0, so emptiness today means the constant was deleted or
+   renamed, which must be loud. `#113` requirement 6.
+
+The general point is worth keeping: when a misleading name is load-bearing in immutable evidence, the
+fix is to put the correction where the reader lands, not to break the citation chain.
 
 ### `#118` — an anchor outlived its producer, and the corpus gate has reported PASS on it every day since
 **Status**: OPEN — needs a disposition decision, not a fix. Found 2026-09-26.
@@ -2466,3 +2516,79 @@ Full audits: [`docs/dev-notes/cannot-fail-gate-audit-2026-09-26.md`](cannot-fail
 [`docs/dev-notes/anchor-gate-coverage-audit-2026-09-26.md`](anchor-gate-coverage-audit-2026-09-26.md)
 (all 77 anchored scenarios: 15 with real coverage, 4 off-anchor pins, 2 self-comparing, 56 with
 nothing).
+
+### `#120` — "the canonical namespace" is per SCENARIO, not one global choice, and pinning it globally reports a reproducing scenario as drifted
+**Status**: FIXED 2026-09-26, caught by measurement before it shipped.
+Anchor-impacting: no.
+
+Writing the nine R-REPRO gates I pinned every `-realdata` scenario to its
+`v5-sqrt-impact-2026-05` row, on the reasoning that this is the newest namespace and therefore "the
+canonical one". Four of the five newly-gated scenarios have such a row, so the assumption held long
+enough to look right.
+
+Then the measurement came back:
+
+| scenario | produced | which row that is |
+|---|---|---|
+| `top10-2023-fy-regime-dispatcher-realdata` | `f37bbb8d…` | **`v3.0.0-regime`** |
+| `top10-2024-fy-regime-dispatcher-realdata` | `691a7056…` | **`v3.0.0-regime`** |
+
+Both reproduce **exactly** — and both would have been reported as DRIFTED by my gate, which pinned
+`857f9494…` / `519886dc…` (the sqrt-impact rows). Two perfectly reproducing scenarios, called broken
+by the gate built to find broken ones.
+
+What the default invocation reproduces is the `v3.0.0-regime` row. The sqrt-impact rows exist for
+these two scenarios but **their invocation is not established** — presumably explicit `--sim-*` flags,
+which is bug-log `#112`'s condition problem in yet another dimension.
+
+**Fix**: both gates re-pinned from measurement to the `v3.0.0-regime` rows, `#[ignore]` removed — they
+are real regression gates now, and the first two green ones in the `-realdata` family. The doc comment
+records why the namespace is not the sqrt-impact one, so the next reader does not "correct" it back.
+
+**The lesson, which is the same lesson again:** a scenario's canonical namespace is a property of the
+scenario, and the only way to know which row the code reproduces is to run it and see. I picked the
+newest-looking namespace uniformly because that is what "canonical" sounded like. Had these two gates
+shipped `#[ignore]`d with a "known-red" label, the error would have been invisible — a wrong pin
+hiding behind an expected failure.
+
+### `#121` — a reproduction gate is only as runnable as its build profile, and the debug binary makes two of them unusable
+**Status**: FIXED 2026-09-26.
+Anchor-impacting: no.
+
+`top10-2023-fy-regime-dispatcher-realdata` takes **270 s in release and over an hour in debug** —
+measured: a debug run was killed after 1 h 25 m without finishing. The existing `*_determinism` tests
+build the **debug** binary, which is fine for them because they are cheap. Un-`#[ignore]`ing the two
+green regime-dispatcher gates on that binary would have made
+`cargo test -p backtest --features realdata` unusable, which is how a gate gets disabled for good.
+
+**Fix**: a separate `ensure_realdata_release_binary()` used only by the R-REPRO gates. The existing
+`*_determinism` tests keep the debug binary.
+
+Changing the profile is only safe because it was **measured, not assumed**, not to change the hashed
+body: `top10-{2023,2024}-fy-tcn-overlay-realdata` and their `-weights` siblings each produced
+byte-identical SHAs from a debug run and a release run — 4 scenarios, 8 runs. Independently
+corroborated by the anchored report's own front-matter: it records `wall_clock_s: 3.2`, the release
+run reports 3.2 s, and debug takes ~19 s. **The anchor was locked in release**, which was an inference
+until the wall-clock confirmed it.
+
+Verified on 4 of 9. If a future gate disagrees between profiles, the profile **is** part of its
+condition and belongs in its doc comment — `#112`'s dimension list growing to
+**CWD × feature set × build profile**, which is the fourth time this week that "the condition" turned
+out to be wider than assumed.
+
+**Cost, stated so nobody is surprised into `#[ignore]`ing them later:** the two green
+regime-dispatcher gates take **602 s together** and are deliberately **not** `#[ignore]`d. That is
+tolerable because `--features realdata` is not enabled in CI (see the coverage audit § 4), so they run
+only when a developer explicitly asks for the realdata suite — and they are the only reproduction
+coverage that family has. The alternative, if ten minutes ever becomes intolerable, is **not** to
+silence them: it is the `dvol_bakeoff_path_gate.rs::corpus_gated_tests_are_declared_and_counted`
+pattern — `#[ignore]` them, and add an always-running test that asserts the declared inventory matches
+the `#[ignore]` count and prints the re-run command, so the skip stays visible. Its own docstring puts
+it best: *"It fails when the skips become invisible."*
+
+**And the `#119` fix recovered three gates that had never run.** With the checkpoint resolver
+corrected, `cargo test -p forecast --features candle --test anchors_load` executes for the first time
+since it was written: **3 passed, 0 failed** — checkpoint decode, `model_revision` prefix,
+`sigma_train > 0` and forward shape, for both BS-1 and BS-2. They had been printing *"run `git lfs
+pull`"* and returning green over a resolved 1.67 MB checkpoint. Fixing the accuser turned three
+phantom passes into three real ones.

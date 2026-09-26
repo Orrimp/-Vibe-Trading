@@ -1085,6 +1085,110 @@ fn run_realdata_scenario_once(
         .unwrap_or_else(|e| panic!("could not read report {report_path:?}: {e}"))
 }
 
+/// Build the `backtest` binary in **release** and return its path — for the R-REPRO
+/// gates only.
+///
+/// Why a separate builder (bug-log #121): the `*_determinism` tests above use the
+/// debug binary, which is fine for them because they are cheap. The `-realdata`
+/// reproduction gates are not: `top10-2023-fy-regime-dispatcher-realdata` needs
+/// **270 s in release and over an hour in debug** — un-`#[ignore]`ing it on the debug
+/// binary would make `cargo test -p backtest --features realdata` unusable.
+///
+/// The profile is safe to change here because it was **measured, not assumed**, not to
+/// affect the hashed body: `top10-{2023,2024}-fy-tcn-overlay-realdata` and their
+/// `-weights` siblings each produced byte-identical SHAs from a debug and a release
+/// run on 2026-09-26 (4 scenarios, 8 runs). Independent corroboration: the anchored
+/// report's own `wall_clock_s` is 3.2 s and the release run reports 3.2 s, while debug
+/// takes ~19 s — so the anchor itself was locked in release.
+///
+/// Verified on 4 of 9 scenarios. If a future R-REPRO gate disagrees between profiles,
+/// the profile IS part of its condition and belongs in its doc comment — that is
+/// bug-log #112's dimension list growing again, not a reason to distrust these four.
+#[cfg(feature = "realdata")]
+fn ensure_realdata_release_binary(with_candle: bool) -> std::path::PathBuf {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let workspace_root = std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not locate workspace root");
+
+    let _guard = BACKTEST_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
+
+    let features = if with_candle {
+        "candle,realdata"
+    } else {
+        "realdata"
+    };
+    let status = std::process::Command::new("cargo")
+        .args([
+            "build",
+            "--release",
+            "-p",
+            "backtest",
+            "--bin",
+            "backtest",
+            "--features",
+            features,
+        ])
+        .current_dir(workspace_root)
+        .status()
+        .expect("cargo build --release failed");
+    assert!(
+        status.success(),
+        "cargo build --release --bin backtest --features {features} failed"
+    );
+
+    let bin = workspace_root.join("target/release/backtest");
+    assert!(
+        bin.is_file(),
+        "release backtest binary missing at {}",
+        bin.display()
+    );
+    bin
+}
+
+/// Fallible sibling of `run_realdata_scenario_once`: returns the report on success,
+/// or the binary's own stderr on refusal.
+///
+/// bug-log #114's lesson, applied: do NOT hand-roll a precondition check when the
+/// thing itself will tell you. That guard built a filename shape which had never
+/// existed and so reported "absent" for four months on machines where the file was
+/// present. The binary already refuses with a precise message naming the missing
+/// feature or checkpoint — so ask it, and repeat what it says.
+#[cfg(feature = "realdata")]
+fn run_realdata_scenario_try(
+    bin: &std::path::Path,
+    run_dir: &std::path::Path,
+    scenario: &str,
+) -> Result<String, String> {
+    let reports = tempfile::tempdir().expect("create reports tempdir");
+    let output = std::process::Command::new(bin)
+        .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .arg("--reports-dir")
+        .arg(reports.path())
+        .current_dir(run_dir)
+        .output()
+        .expect("spawn backtest binary");
+
+    if !output.status.success() {
+        return Err(format!(
+            "stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&output.stdout).trim(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report_rel = stdout
+        .lines()
+        .find(|l| l.starts_with("Report written: "))
+        .map(|l| l.trim_start_matches("Report written: ").trim())
+        .ok_or_else(|| format!("no 'Report written:' line for {scenario}"))?;
+
+    let report_path = run_dir.join(report_rel);
+    std::fs::read_to_string(&report_path).map_err(|e| format!("read {report_path:?}: {e}"))
+}
+
 /// Return the workspace root (two directories up from `CARGO_MANIFEST_DIR`).
 #[cfg(feature = "realdata")]
 fn workspace_root_path() -> std::path::PathBuf {
@@ -1489,5 +1593,123 @@ fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkp
          This is code-vs-evidence drift, the thing verify_anchors.sh cannot see \
          (bug-log #93). Do NOT re-pin to the produced value — that is bug-log #77. \
          The resolution is a D6.b re-lock (story 1-27)."
+    );
+}
+
+// ── R-REPRO-5..9 — the -realdata anchors that had no gate at all (bug-log #111) ──
+//
+// These five are anchored under `v5-sqrt-impact-2026-05` and, until now, nothing in
+// the repo re-ran them: `verify_anchors.sh` hashes their committed bodies and the
+// `*_determinism` tests never covered them. Their reproduction state was genuinely
+// unknown, which is why bug-log #111 could only report a LOWER bound on the #67
+// blast radius.
+//
+// They use `assert_reproduces_or_report_unmeasured`, which — per bug-log #114 —
+// does NOT hand-roll a precondition check for the forecaster checkpoints each arm
+// needs. The binary refuses with a precise message when a feature or checkpoint is
+// missing; the helper repeats that message as UNMEASURED. A guard I write myself is
+// one more thing that can be wrong in the direction of silence, and #114 is exactly
+// that mistake costing four months.
+//
+//     cargo test -p backtest --test determinism --features realdata,candle \
+//         -- --ignored reproduces_anchor
+
+/// R-REPRO-5 — `top10-2023-fy-momentum-realdata`.
+#[cfg(feature = "realdata")]
+#[test]
+#[ignore = "known-red: measured 0fc591e5… against pin 0867d232… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
+fn realdata_2023_fy_momentum_reproduces_anchor() {
+    const ANCHOR: &str = "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901";
+    assert_reproduces_or_report_unmeasured("top10-2023-fy-momentum-realdata", ANCHOR);
+}
+
+/// R-REPRO-6 — `top10-2023-fy-patchtst-overlay-realdata`.
+#[cfg(feature = "realdata")]
+#[test]
+#[ignore = "known-red: measured f704c4f2… against pin b015b564… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
+fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
+    const ANCHOR: &str = "b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4";
+    assert_reproduces_or_report_unmeasured("top10-2023-fy-patchtst-overlay-realdata", ANCHOR);
+}
+
+/// R-REPRO-7 — `top10-2023-fy-regime-dispatcher-realdata` reproduces its
+/// **`v3.0.0-regime`** anchor. GREEN — measured 2026-09-26.
+///
+/// bug-log #120 — this gate was first written against the
+/// `v5-sqrt-impact-2026-05` row (`857f9494…`) on the assumption that "the canonical
+/// namespace" is one global choice. It is not: it is **per scenario**. The default
+/// invocation reproduces the `v3.0.0-regime` row exactly, and the sqrt-impact row's
+/// invocation is not established. Pinning the wrong row would have reported a
+/// perfectly reproducing scenario as drifted.
+///
+/// Not `#[ignore]`d: this is a real regression gate now.
+#[cfg(feature = "realdata")]
+#[test]
+fn realdata_2023_fy_regime_dispatcher_reproduces_anchor() {
+    const ANCHOR: &str = "f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775";
+    assert_reproduces_or_report_unmeasured("top10-2023-fy-regime-dispatcher-realdata", ANCHOR);
+}
+
+/// R-REPRO-8 — `top10-2024-fy-regime-dispatcher-realdata` reproduces its
+/// **`v3.0.0-regime`** anchor. GREEN — measured 2026-09-26. See R-REPRO-7 for why
+/// the namespace is not the sqrt-impact one (bug-log #120).
+#[cfg(feature = "realdata")]
+#[test]
+fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
+    const ANCHOR: &str = "691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e";
+    assert_reproduces_or_report_unmeasured("top10-2024-fy-regime-dispatcher-realdata", ANCHOR);
+}
+
+/// R-REPRO-9 — `top10-2023-fy-vol-target-overlay-realdata`.
+#[cfg(feature = "realdata")]
+#[test]
+#[ignore = "known-red: measured 91848e23… against pin 6adc4334… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
+fn realdata_2023_fy_vol_target_overlay_reproduces_anchor() {
+    const ANCHOR: &str = "6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf";
+    assert_reproduces_or_report_unmeasured("top10-2023-fy-vol-target-overlay-realdata", ANCHOR);
+}
+
+/// Compare a `-realdata` scenario against its canonical `v5-sqrt-impact-2026-05`
+/// anchor, reporting a refused run as UNMEASURED **in the binary's own words**.
+///
+/// # Panics
+///
+/// Panics on drift (the point of the gate), and on an absent precondition — which is
+/// reported as UNMEASURED rather than skipped, per bug-log #113 requirement 6: a test
+/// invoked by name that silently does nothing is worse than no test.
+#[cfg(feature = "realdata")]
+fn assert_reproduces_or_report_unmeasured(scenario: &str, anchor: &str) {
+    assert!(
+        real_binance_data_available(),
+        "UNMEASURED, not passed: {scenario} needs data/binance/REVISION.toml and it is absent."
+    );
+
+    // Release, deliberately — see `ensure_realdata_release_binary` (bug-log #121).
+    let bin = ensure_realdata_release_binary(cfg!(feature = "candle"));
+
+    let workspace = workspace_root_path();
+    let report = match run_realdata_scenario_try(&bin, &workspace, scenario) {
+        Ok(r) => r,
+        Err(why) => panic!(
+            "UNMEASURED, not passed: {scenario} — the binary refused this run. Its own words:\n\
+             {why}\n\
+             Reported as unmeasured rather than skipped (bug-log #113 req 6), and deliberately \
+             NOT pre-guarded by a hand-rolled precondition check (bug-log #114)."
+        ),
+    };
+
+    let hex: String = backtest::report_body_hash(&report)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+
+    assert_eq!(
+        hex, anchor,
+        "R-REPRO: {scenario} no longer reproduces its canonical \
+         `v5-sqrt-impact-2026-05` anchor.\n\
+         Expected: {anchor}\nGot:      {hex}\n\
+         Code-vs-evidence drift — the thing verify_anchors.sh cannot see (bug-log #93). \
+         Do NOT re-pin to the produced value (bug-log #77); the resolution is a D6.b \
+         re-lock (story 1-27)."
     );
 }
