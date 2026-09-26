@@ -1497,7 +1497,7 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
 #[test]
 #[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a";
+    const ANCHOR: &str = "8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642";
     assert_reproduces_canonical_anchor("top10-2023-fy-tcn-overlay-realdata", ANCHOR, false);
 }
 
@@ -1506,7 +1506,7 @@ fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
 #[test]
 #[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c";
+    const ANCHOR: &str = "fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3";
     assert_reproduces_canonical_anchor("top10-2024-fy-tcn-overlay-realdata", ANCHOR, false);
 }
 
@@ -1515,7 +1515,7 @@ fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
 #[test]
 #[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
-    const ANCHOR: &str = "38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175";
+    const ANCHOR: &str = "552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70";
     assert_reproduces_canonical_anchor(
         "top10-2023-fy-tcn-overlay-weights-realdata",
         ANCHOR,
@@ -1528,7 +1528,7 @@ fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
 #[test]
 #[ignore = "measurement first: the -realdata family has never had a reproduction check (bug-log #111/#113); run with --ignored"]
 fn realdata_2024_fy_tcn_overlay_weights_reproduces_anchor() {
-    const ANCHOR: &str = "582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6";
+    const ANCHOR: &str = "2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c";
     assert_reproduces_canonical_anchor(
         "top10-2024-fy-tcn-overlay-weights-realdata",
         ANCHOR,
@@ -1588,7 +1588,8 @@ fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkp
     assert_eq!(
         hex, anchor,
         "R-REPRO: {scenario} no longer reproduces its canonical \
-         `v5-sqrt-impact-2026-05` anchor.\n\
+         `+ noop-baseline` anchor — the zero-sim-slippage row, which is what the DEFAULT\n\
+         invocation produces (bug-log #123).\n\
          Expected: {anchor}\nGot:      {hex}\n\
          This is code-vs-evidence drift, the thing verify_anchors.sh cannot see \
          (bug-log #93). Do NOT re-pin to the produced value — that is bug-log #77. \
@@ -1617,8 +1618,11 @@ fn assert_reproduces_canonical_anchor(scenario: &str, anchor: &str, needs_checkp
 /// R-REPRO-5 — `top10-2023-fy-momentum-realdata`.
 #[cfg(feature = "realdata")]
 #[test]
-#[ignore = "known-red: measured 0fc591e5… against pin 0867d232… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
+#[ignore = "BLOCKED, not merely red: this scenario's ONLY anchor row is the sqrt-impact one, and the default invocation produces a zero-sim-slippage body. There is no row for the condition this gate runs. Needs an operator ruling — bug-log #123."]
 fn realdata_2023_fy_momentum_reproduces_anchor() {
+    // bug-log #123 — deliberately left pointing at the sqrt row so the mismatch is
+    // visible rather than papered over. This gate cannot be made correct by choosing
+    // a different pin: the row it would need does not exist.
     const ANCHOR: &str = "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-momentum-realdata", ANCHOR);
 }
@@ -1628,7 +1632,7 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
 #[test]
 #[ignore = "known-red: measured f704c4f2… against pin b015b564… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
 fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4";
+    const ANCHOR: &str = "5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-patchtst-overlay-realdata", ANCHOR);
 }
 
@@ -1665,7 +1669,7 @@ fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
 #[test]
 #[ignore = "known-red: measured 91848e23… against pin 6adc4334… (2026-09-26); D6.b re-lock, never a re-pin (#77)"]
 fn realdata_2023_fy_vol_target_overlay_reproduces_anchor() {
-    const ANCHOR: &str = "6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf";
+    const ANCHOR: &str = "9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-vol-target-overlay-realdata", ANCHOR);
 }
 
@@ -1706,7 +1710,8 @@ fn assert_reproduces_or_report_unmeasured(scenario: &str, anchor: &str) {
     assert_eq!(
         hex, anchor,
         "R-REPRO: {scenario} no longer reproduces its canonical \
-         `v5-sqrt-impact-2026-05` anchor.\n\
+         `+ noop-baseline` anchor — the zero-sim-slippage row, which is what the DEFAULT\n\
+         invocation produces (bug-log #123).\n\
          Expected: {anchor}\nGot:      {hex}\n\
          Code-vs-evidence drift — the thing verify_anchors.sh cannot see (bug-log #93). \
          Do NOT re-pin to the produced value (bug-log #77); the resolution is a D6.b \

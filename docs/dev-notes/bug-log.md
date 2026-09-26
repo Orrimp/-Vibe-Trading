@@ -2621,3 +2621,70 @@ rows (`28379df8…` / `0c13ed0b…`), not the noop ones.
 **Why it survived:** `check_determinism_anchors.py` skips these two as cfg-gated (`#115`) — so the one
 gate whose job is to catch a pin pointing at the wrong row is precisely blind to them. Two findings
 that only become visible together.
+
+### `#123` — I read a comment for the behaviour, on the crux of a 35-row decision, and an independent derivation caught it
+**Status**: pins CORRECTED 2026-09-26. One scenario remains BLOCKED on an operator ruling.
+Anchor-impacting: **yes** — it determines which row the 1-27 D6.b re-lock moves for 7 scenarios.
+
+Deriving which `anchors.toml` namespace row each re-emitted body replaces, I assigned the seven
+`-realdata` scenarios to their **`v5-sqrt-impact-2026-05`** rows, citing `crates/backtest/src/main.rs:1641-1643`:
+
+> Real-data: SquareRoot model + universe-avg V map. Synthetic: Linear{bps:8} fallback.
+
+An independent derivation (deliberately not shown my table) read the **code that computes the model**
+instead, and disagreed on 7 of 15. It is right. `build_slippage_model_for_scenario`
+(`crates/backtest/src/main.rs:195-221`) returns, for a real-data scenario, `build_slippage_model(args)`
+— **the CLI flags** — and both `sim_slippage_sqrt_alpha` and `sim_slippage_bps` default to **0**
+(`:120-128`). So the DEFAULT real-data invocation produces `Linear { bps: 0 }`: **zero sim slippage.**
+
+That comment describes the **v0.5.0 re-emission invocation**, the one run with
+`--sim-slippage-sqrt-alpha 1.0`. Not the default. I read the intent and took it for the behaviour —
+the exact failure mode of `#112`/`#113`/`#114`, committed by me, at the one point where 35 rows of a
+byte-immutable corpus turned on it.
+
+The syllogism that settles it, both halves verifiable:
+
+1. **`noop-baseline` = the zero-sim-slippage generation** — stated in frozen evidence,
+   `evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/sharpe-delta-2026-05-29.md:17`:
+   *"Noop baseline = pre-v5 zero-sim-slippage report"*.
+2. **The default real-data invocation is zero-sim-slippage** — the code above.
+
+So the produced bodies belong on the **`+ noop-baseline`** rows. Six gates re-pinned accordingly
+(`8fa47f49`, `fd8191df`, `552d7df2`, `2a65c434`, `5f303cc0`, `9fa64d46`), and the assertion prose —
+which named the sqrt namespace in a message that would have been printed to whoever hit it — corrected.
+
+**What my rule needed and theirs did not: an exception.** I had to treat `#120`'s regime-dispatcher
+pair as an exception, because it reproduced the *older* `v3.0.0-regime` row. Under the slippage rule it
+is not an exception at all: a zero-slippage default run reproducing those rows **proves they are
+zero-slippage bodies**. A rule that needs an exception to fit the one case you measured is usually the
+wrong rule, and that was the signal I had and did not use.
+
+**A measurement that closed one door and opened another.** Re-running
+`top10-2023-fy-tcn-overlay-realdata` WITH `--sim-slippage-sqrt-alpha 1.0
+--sim-slippage-sqrt-lookback-days 90` produces `48f1f25b…` — matching **neither** the sqrt row
+(`1157af76…`) nor the noop row (`8fa47f49…`) nor the default run (`b6d88fa6…`). So the flags do move
+the body (the condition is real), and **the sqrt row is drifted too**. For this whole family **no
+constructible invocation reproduces any anchored row**, which means the row assignment cannot be
+settled by reproduction — only by provenance. The independent derivation's `PROBABLE` is therefore the
+correct confidence level and **cannot be raised by measurement today**; its own suggested upgrade test
+presupposes an undrifted row, which is the thing that fails.
+
+#### BLOCKED on a ruling — `top10-2023-fy-momentum-realdata`
+
+Its **only** anchor row is `v5-sqrt-impact-2026-05` (`0867d232…`). The default invocation produces a
+zero-sim-slippage body (`0fc591e5…`), and **there is no row for that condition.** Landing `0fc591e5`
+on the sqrt row would make that row's own comment — which names
+`SlippageModel::SquareRoot { alpha=1.0 }` — false.
+
+Three ways out, none of them mine to pick:
+
+- **(a)** Re-run it with the sqrt flags and land *that* body on the sqrt row. Keeps one row, one
+  condition, and `0fc591e5` is then simply not the body to land. Needs the sqrt-flag run to be the
+  one the gate asserts, i.e. the gate declares its flags.
+- **(b)** Add a `+ noop-baseline` row for it. Clean semantically, but D6.b step 5 as executed for 1-26
+  asserted **"none added"** — so this is a deliberate amendment to the invariant, not a detail.
+- **(c)** Relabel the row as historical with no reproduction claim, per `#118`, and delete the gate.
+
+The gate is left `#[ignore]`d pointing at the sqrt row **on purpose**, so the mismatch stays visible
+instead of being papered over by a pin I chose. It cannot be made correct by picking a different pin:
+the row it would need does not exist.
