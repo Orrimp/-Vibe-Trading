@@ -2048,3 +2048,51 @@ cannot see this. That is bug-log `#93` stated as a number instead of a worry.
 The remaining 11 candidates are unmeasured. The honest statement is: **the `#67` re-lock covered 34
 of an unknown total; 6 further anchored scenarios are confirmed non-reproducing and 11 more are
 unexcluded.**
+
+### `#112` — one anchored scenario name, two legitimate bodies, selected by CWD — and a re-run gate that does not pin it measures a coin flip
+**Status**: OPEN as a design constraint — found 2026-09-26 by walking into it. Not a code defect:
+the behaviour is intended and the body even labels itself. The defect is that **nothing enforces
+which condition a reproduction check runs under**, and the operator-approved reproduction gate
+(story 1-27 follow-on) is exactly the thing that must.
+Anchor-impacting: no.
+
+`btc-2023-1m-sma-cross`, same binary, same `--seed 0xC0FFEE`, same commit — **20 of 37 body lines
+differ** depending only on the working directory:
+
+| | CWD = tempdir | CWD = repo root |
+|---|---|---|
+| Data source | `synthetic (seeded RNG, v0 fallback)` | `real (Binance Vision)` |
+| Bars replayed | 525 601 | 17 544 |
+| Total return | −82.01 % | +7.38 % |
+| Max drawdown | 82.07 % | 4.20 % |
+| Trades | 12 077 | 441 |
+| body-SHA | `d2fa7616…` | `9b35c926…` |
+
+`d2fa7616…` is what the `t622_*` gate pins, and the tempdir run reproduces it **byte-exactly**. The
+repo-root run is not drift — it is a different, equally real answer to a different question, because
+from a tempdir the parquet lookup misses and the v0 synthetic fallback takes over. `determinism.rs`
+documents this for `t622_*` ("Re-locked to SYNTHETIC SHA … CWD=tempdir → parquet lookup misses"), and
+the hashed body carries its own `Data source` line, so a human reader is never misled.
+
+**An automated check is.** A corpus-wide reproduction sweep run from the repo root reported
+**6 false `DRIFTED`** verdicts tonight — `btc-2023-1m-sma-{cross,baseline-refresh}`,
+`btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}` (these three matched by luck, having no
+parquet for their symbol) and `eth-2024-h1-sma-cross` — before the confound was caught by re-running
+one of them from a tempdir. Which condition is correct is **per scenario family**: `t622_*` anchors
+are synthetic, `-realdata` anchors are real.
+
+Worth noting what the bad measurement nearly cost: it appeared to **falsify** the `#111` mechanism
+("single-symbol scenarios are immune to `#67`") by showing single-symbol SMA scenarios drifting. The
+prediction is fine; the measurement was not. A prediction refuted by an unpinned measurement is not
+refuted.
+
+**Binding requirement for the reproduction gate:**
+
+1. The gate declares, per scenario, which data condition its anchor was locked under — and runs it
+   under exactly that one.
+2. The gate asserts on the body's own `Data source` line **before** comparing SHAs, so a
+   silently-changed condition fails loudly as a condition mismatch instead of as a fake drift.
+3. A scenario whose condition cannot be established is reported as **unmeasured**, never as green.
+
+Without (1)–(3) the gate reproduces this entry's failure at CI scale, which is worse than the
+`#93` blind spot it exists to close: a gate that cries drift is retired by the third false alarm.
