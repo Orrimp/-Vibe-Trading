@@ -2857,13 +2857,36 @@ symbol's price"*, which needs a multi-symbol universe. That is exactly why the s
 family stayed green through `11acd126`, and that prediction is what made `#111`'s scope argument
 credible in the first place.
 
-`eth-2024-h1-sma-cross` is single-symbol. So either it has a **different, unbisected cause**, or the
-`#67` mechanism is narrower than stated. Folding it into the `#67` re-lock on a resemblance would
-destroy the one piece of evidence that distinguishes those two possibilities. It is therefore
-`#[ignore]`d with its measured delta and **not** re-locked — a drift whose cause is unknown is not the
-same object as a drift whose cause is bisected, and the corpus should not record them as if it were.
+`eth-2024-h1-sma-cross` is single-symbol, so the prediction said it should be immune.
 
-Running count of non-reproducing anchored scenarios: **15 → 16.**
+> **DIAGNOSED the same day, and the prediction held.** The cause is the v5-latency-slippage-sim
+> v0.5.0 **Q-D1=(a)** decision (`7e8a7e03`, 2026-05-29), which forces `Linear{bps:8}` on every
+> scenario **not** listed in `REAL_DATA_SCENARIO_IDS` (`main.rs:43-59`, nine `-realdata` ids). This
+> scenario is not listed, and its anchored body was generated **2026-05-28** — one day before the
+> decision. The canonical-friction migration never swept it.
+
+**No bisect was needed, because the diff plus arithmetic settled it** — the `#123` lesson applied.
+The diff is 5 fields, and **trades / buys / sells are UNCHANGED**: same decisions, different costs,
+i.e. a pricing change. Then the numbers close it:
+
+| | |
+|---|---|
+| notional implied by the fees ($1697.19 at 4 bps taker) | **$4,242,981** |
+| 8 bps on that — what Q-D1=(a) would add | **$3,394** |
+| measured equity delta ($109,544.54 → $106,069.26) | **$3,475** |
+| | **2.3 % apart** |
+
+**Scope established as exactly one.** A scan for anchors whose resolving body predates 2026-05-29 and
+sits outside the v5 migration directories returned 16 rows. Thirteen are `noop-baseline` — pre-friction
+**by design**, and `anchors.toml:8-10` says so. Two run through `run_yahoo_sma`, a different binary
+that Q-D1=(a) never touches — **proven, not assumed**, by `btc-yahoo-2024-1d-sma-cross`'s green CI
+gate. That leaves `eth-2024-h1-sma-cross` alone.
+
+Re-emitted under D6.b 2026-09-27: 119 rows before and after, **1** sha changed, 0 namespaces, 118
+byte-identical, and exactly one row red before any sha moved. Its gate is now live and green.
+
+Running count of non-reproducing anchored scenarios: 15 → 16 → **15 again**. And `determinism.rs`
+now reports **24 passed, 0 failed, 0 ignored** — it began this week at 16 passed / 4 ignored.
 
 #### Two linter corrections this forced
 

@@ -1821,22 +1821,25 @@ fn realdata_row_btc_2023_1m_bbands_mean_revert() {
     assert_realdata_row("btc-2023-1m-bbands-mean-revert", ANCHOR);
 }
 
-/// R-REAL-4 — `eth-2024-h1-sma-cross`. RED, and its cause is NOT `#67`.
+/// R-REAL-4 — `eth-2024-h1-sma-cross`. GREEN since the 2026-09-27 re-lock.
 ///
 /// This scenario had **no** re-run gate of any kind — its single `anchors.toml` row is a real
 /// Binance Vision body and nothing re-ran it. Measured 2026-09-27: `405c2816…` against the
 /// pinned `bd4001e4…`.
 ///
-/// **Worth stating plainly: `#67`'s mechanism does not explain this one.** `#67` was "buying
-/// one symbol at another symbol's price", which needs a multi-symbol universe — that is why
-/// the single-symbol `t622_*` family stayed green through `11acd126` and why it predicted
-/// which anchors would move (bug-log `#111`). `eth-2024-h1-sma-cross` is single-symbol, so it
-/// should have been immune. It is not, so it has a **different, unbisected cause** and gets
-/// its own investigation rather than being folded into the `#67` re-lock on a resemblance.
+/// **`#67`'s mechanism does not explain this one, and that held up.** `#67` was "buying one
+/// symbol at another symbol's price", which needs a multi-symbol universe — which is why the
+/// single-symbol `t622_*` family stayed green through `11acd126`. This scenario is
+/// single-symbol, so the prediction said it should be immune. It was: the cause is the v5
+/// Q-D1=(a) decision (`7e8a7e03`, 2026-05-29) forcing `Linear{bps:8}` on every scenario not
+/// listed in `REAL_DATA_SCENARIO_IDS`, against a body generated 2026-05-28 — one day earlier.
+///
+/// Quantified rather than inferred: the fees imply $4.24M of notional, 8 bps on that is
+/// $3,394, and the measured equity delta was $3,475 — 2.3% apart, with trades/buys/sells
+/// unchanged. Re-emitted under D6.b 2026-09-27 (bug-log `#125`).
 #[test]
-#[ignore = "known-red, cause NOT #67 and not yet bisected: measured 405c2816… against pin bd4001e4… (2026-09-27). Do NOT re-pin (#77) — bug-log #125"]
 fn realdata_row_eth_2024_h1_sma_cross() {
     // anchor-ns: lab-yahoo-realdata-v0.1.3
-    const ANCHOR: &str = "bd4001e42475955f518421d75cab207c85d0db3ba3a9d45fbdceff4f4b4e5441";
+    const ANCHOR: &str = "405c2816c8791221049216351bb08fc781598d34b42dd83e222ccdb604f11846";
     assert_realdata_row("eth-2024-h1-sma-cross", ANCHOR);
 }

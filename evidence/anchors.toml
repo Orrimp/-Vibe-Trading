@@ -665,10 +665,24 @@ sha256   = "e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a"
 # Retires v0.1.2 Yahoo-to-Yahoo K1 fallback. D-V0.1.3-5 scenario registration.
 # Verify with: scripts/verify_anchors.sh  (expects 71 / 71 PASS)
 
+# eth-2024-h1-sma-cross
+# RE-EMITTED 2026-09-27 under ADR-0038 § D6.b — story 1-27 follow-on, bug-log #125.
+#   Cause is NOT #67. It is the v5-latency-slippage-sim v0.5.0 Q-D1=(a) decision
+#   (7e8a7e03, 2026-05-29), which forces Linear{bps:8} on every scenario NOT listed in
+#   REAL_DATA_SCENARIO_IDS. This scenario is not listed, and its body was generated
+#   2026-05-28 — one day before. The canonical-friction migration never swept it.
+#   QUANTIFIED, not inferred: fees imply $4,242,981 of notional; 8 bps on that is $3,394;
+#   the measured equity delta is $3,475 — 2.3% apart. Trades/Buys/Sells are UNCHANGED,
+#   so this is a pricing change, not a decision change.
+#   Scope established as exactly ONE: of 16 rows whose body predates the decision, 13 are
+#   noop-baseline oracles (pre-friction BY DESIGN) and 2 run through run_yahoo_sma, which
+#   Q-D1=(a) does not touch — proven by btc-yahoo-2024-1d-sma-cross's green CI gate.
+#   Landed: evidence/v1/v0-paper-sma/reports/backtest-20260927-123805-eth-2024-h1-sma-cross.md
+# SUPERSEDED BODY sha256=bd4001e42475955f518421d75cab207c85d0db3ba3a9d45fbdceff4f4b4e5441 — kept verbatim below:
 [[anchors]]
 scenario = "eth-2024-h1-sma-cross"
 version  = "lab-yahoo-realdata-v0.1.3"
-sha256   = "bd4001e42475955f518421d75cab207c85d0db3ba3a9d45fbdceff4f4b4e5441"
+sha256   = "405c2816c8791221049216351bb08fc781598d34b42dd83e222ccdb604f11846"
 
 # v3.0.0-regime RegimeDispatcher anchors (2026-05-29).
 # Wave E: 4 new anchors under v3.0.0-regime namespace (71 → 75).
