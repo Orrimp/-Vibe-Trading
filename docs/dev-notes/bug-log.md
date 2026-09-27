@@ -2818,3 +2818,59 @@ unstated conditions** — `#112`'s exact shape, written by me about two hours af
 All nine now go through one path: one runner, one declared condition, one UNMEASURED route, the release
 binary. The old helper is deleted and a comment stands where it was, because the reason it existed is
 the finding. Side benefit measured: the weights pair runs in **77 s** on release against 168 s on debug.
+
+### `#125` — three scenarios had BOTH their anchor rows uncovered while a green `*_anchor_hash_unchanged` test sat beside each, and a fourth drift turned up whose cause is NOT `#67`
+**Status**: 3 rows now covered and GREEN; 1 drift found and OPEN (unbisected). 2026-09-27.
+Anchor-impacting: **yes for the fourth** — `eth-2024-h1-sma-cross` needs a re-lock once its cause is
+known, and not before.
+
+The anchor-gate coverage audit's "off-anchor pin" class, acted on.
+`btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}` each have two `anchors.toml` rows —
+`noop-baseline` (synthetic, pre-friction) and `v5-realdata-medium-2026-05` (**real Binance Vision**) —
+and their `t622_*`/`t717_*` gates pin a **third** value that is in neither
+(`4d8192af`, `4a744788`, `5037accb`, held in `check_determinism_anchors.py::SYNTHETIC_DETERMINISM_SHAS`).
+That is deliberate and documented (ADR-0045 § D6.3): those gates run from a tempdir, so the parquet
+lookup misses and they assert the synthetic body.
+
+The consequence nobody had acted on: **both real rows were uncovered**, while a green test named
+`*_anchor_hash_unchanged` sat beside each one. The name is the trap, not the design.
+
+**Measured under the minimal condition** — plain `backtest` binary, **no features**, CWD = workspace
+root, `--reports-dir` to a tempdir:
+
+| scenario | verdict | |
+|---|---|---|
+| `btc-2023-1m-macd-trend` | REPRODUCES | `6cb14ac5…` = its `v5-realdata-medium` row |
+| `btc-2023-1m-rsi-reversion` | REPRODUCES | `87b4e1cc…` |
+| `btc-2023-1m-bbands-mean-revert` | REPRODUCES | `5b6237d1…` |
+| `eth-2024-h1-sma-cross` | **DRIFTED** | `405c2816…` against pin `bd4001e4…` |
+
+Four `R-REAL` gates added. The three green ones assert the body's own
+`Data source | real (Binance Vision)` line **before** the SHA (`#112` req 2), so a silent fall back to
+the synthetic path reads as a condition mismatch rather than as drift.
+
+#### The fourth one is the finding, and `#67` does not explain it
+
+`eth-2024-h1-sma-cross` had **no** re-run gate at all — one real-data row, nothing re-ran it. It
+drifts. And **`#67`'s mechanism predicts it should not**: `#67` was *"buying one symbol at another
+symbol's price"*, which needs a multi-symbol universe. That is exactly why the single-symbol `t622_*`
+family stayed green through `11acd126`, and that prediction is what made `#111`'s scope argument
+credible in the first place.
+
+`eth-2024-h1-sma-cross` is single-symbol. So either it has a **different, unbisected cause**, or the
+`#67` mechanism is narrower than stated. Folding it into the `#67` re-lock on a resemblance would
+destroy the one piece of evidence that distinguishes those two possibilities. It is therefore
+`#[ignore]`d with its measured delta and **not** re-locked — a drift whose cause is unknown is not the
+same object as a drift whose cause is bisected, and the corpus should not record them as if it were.
+
+Running count of non-reproducing anchored scenarios: **15 → 16.**
+
+#### Two linter corrections this forced
+
+1. **An explicit `// anchor-ns:` declaration now beats the scenario-keyed synthetic override.** Two
+   sites can pin the same scenario under different conditions — which is exactly the new arrangement
+   for `btc-2023-1m-*` — and a scenario-level override compared the second against the first's
+   expectation, calling a correct gate stale.
+2. **The summary's "synthetic" count now follows the RESOLUTION, not the scenario name.** It was
+   reporting 9 where the resolution used 6: a number nobody measured, in the summary line of the tool
+   written to catch exactly that.

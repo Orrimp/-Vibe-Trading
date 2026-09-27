@@ -1700,3 +1700,143 @@ fn assert_reproduces_with_flags(scenario: &str, anchor: &str, declared_flags: &[
          re-lock (story 1-27)."
     );
 }
+
+// ── R-REAL — the REAL-DATA rows of the btc/eth family (bug-log #125) ─────────
+//
+// The `t622_*` / `t717_*` gates above run from a **tempdir**, so the parquet lookup misses
+// and they assert the SYNTHETIC body. Their pins are therefore not `anchors.toml` rows at
+// all — they live in `check_determinism_anchors.py::SYNTHETIC_DETERMINISM_SHAS`, which is
+// deliberate and documented (ADR-0045 § D6.3).
+//
+// The consequence nobody had acted on: for `btc-2023-1m-{macd-trend,rsi-reversion,
+// bbands-mean-revert}` **both** `anchors.toml` rows were uncovered — the `noop-baseline`
+// row (synthetic, pre-friction) and the `v5-realdata-medium-2026-05` row (real Binance
+// Vision data) — while a green test named `*_anchor_hash_unchanged` sat beside each one.
+// That is the anchor-gate coverage audit's "off-anchor pin" class.
+//
+// These four gates cover the real-data rows. Condition, declared: the plain `backtest`
+// binary (**no features**), CWD = the **workspace root** so `data/binance/` resolves, and
+// `--reports-dir` to a tempdir so a run can never touch the corpus (#113). The bodies say
+// `Data source | real (Binance Vision)`, which is asserted before the SHA (#112 req 2) —
+// a silent fall back to the synthetic path must read as a condition mismatch, not as drift.
+
+/// Serialises the plain-binary build for the R-REAL gates. The `realdata`-gated
+/// `BACKTEST_BUILD_MU` above is not visible here (different cfg), and two of these tests
+/// building `target/debug/backtest` concurrently is the same output-path race its comment
+/// describes.
+static REAL_ROW_BUILD_MU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Run `scenario` from the WORKSPACE ROOT with the plain binary, so real parquets resolve.
+fn run_scenario_realdata_cwd(scenario: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let ws = std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("locate workspace root");
+
+    let _guard = REAL_ROW_BUILD_MU.lock().unwrap_or_else(|p| p.into_inner());
+    let status = std::process::Command::new("cargo")
+        .args(["build", "--bin", "backtest"])
+        .current_dir(ws)
+        .status()
+        .expect("cargo build failed");
+    assert!(status.success(), "cargo build --bin backtest failed");
+
+    let reports = tempfile::tempdir().expect("create reports tempdir");
+    let output = std::process::Command::new(ws.join("target/debug/backtest"))
+        .args(["--scenario", scenario, "--seed", "0xC0FFEE"])
+        .arg("--reports-dir")
+        .arg(reports.path())
+        .current_dir(ws)
+        .output()
+        .expect("spawn backtest binary");
+
+    let out = String::from_utf8_lossy(&output.stdout).to_string();
+    let err = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        output.status.success(),
+        "backtest exited {:?} for {scenario}{}\nstdout: {}\nstderr: {}",
+        output.status,
+        if out.trim().is_empty() && err.trim().is_empty() {
+            " — nothing on either stream, so it was almost certainly killed rather than \
+             refusing the run; re-run before treating this as drift (bug-log #124)"
+        } else {
+            ""
+        },
+        out.trim(),
+        err.trim(),
+    );
+
+    let rel = out
+        .lines()
+        .find(|l| l.starts_with("Report written: "))
+        .map(|l| l.trim_start_matches("Report written: ").trim())
+        .expect("'Report written:' line");
+    std::fs::read_to_string(ws.join(rel)).expect("read report")
+}
+
+/// Shared body: assert the real-data CONDITION, then the anchored SHA.
+fn assert_realdata_row(scenario: &str, anchor: &str) {
+    let report = run_scenario_realdata_cwd(scenario);
+    assert!(
+        report.contains("real (Binance Vision)"),
+        "R-REAL condition mismatch for {scenario}: expected the real-data path and the body \
+         does not say so. The anchored row is a real-data body; a run that silently fell back \
+         to the synthetic path would differ for that reason, not because the engine drifted \
+         (bug-log #112)."
+    );
+    let hex: String = backtest::report_body_hash(&report)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(
+        hex, anchor,
+        "R-REAL: {scenario} no longer reproduces its `v5-realdata-medium-2026-05` row.\n\
+         Expected: {anchor}\nGot:      {hex}\n\
+         Do NOT re-pin (bug-log #77); the resolution is an ADR-0038 § D6.b re-emission."
+    );
+}
+
+/// R-REAL-1 — `btc-2023-1m-macd-trend` real-data row. GREEN, measured 2026-09-27.
+#[test]
+fn realdata_row_btc_2023_1m_macd_trend() {
+    // anchor-ns: v5-realdata-medium-2026-05
+    const ANCHOR: &str = "6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5";
+    assert_realdata_row("btc-2023-1m-macd-trend", ANCHOR);
+}
+
+/// R-REAL-2 — `btc-2023-1m-rsi-reversion` real-data row. GREEN, measured 2026-09-27.
+#[test]
+fn realdata_row_btc_2023_1m_rsi_reversion() {
+    // anchor-ns: v5-realdata-medium-2026-05
+    const ANCHOR: &str = "87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695";
+    assert_realdata_row("btc-2023-1m-rsi-reversion", ANCHOR);
+}
+
+/// R-REAL-3 — `btc-2023-1m-bbands-mean-revert` real-data row. GREEN, measured 2026-09-27.
+#[test]
+fn realdata_row_btc_2023_1m_bbands_mean_revert() {
+    // anchor-ns: v5-realdata-medium-2026-05
+    const ANCHOR: &str = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd";
+    assert_realdata_row("btc-2023-1m-bbands-mean-revert", ANCHOR);
+}
+
+/// R-REAL-4 — `eth-2024-h1-sma-cross`. RED, and its cause is NOT `#67`.
+///
+/// This scenario had **no** re-run gate of any kind — its single `anchors.toml` row is a real
+/// Binance Vision body and nothing re-ran it. Measured 2026-09-27: `405c2816…` against the
+/// pinned `bd4001e4…`.
+///
+/// **Worth stating plainly: `#67`'s mechanism does not explain this one.** `#67` was "buying
+/// one symbol at another symbol's price", which needs a multi-symbol universe — that is why
+/// the single-symbol `t622_*` family stayed green through `11acd126` and why it predicted
+/// which anchors would move (bug-log `#111`). `eth-2024-h1-sma-cross` is single-symbol, so it
+/// should have been immune. It is not, so it has a **different, unbisected cause** and gets
+/// its own investigation rather than being folded into the `#67` re-lock on a resemblance.
+#[test]
+#[ignore = "known-red, cause NOT #67 and not yet bisected: measured 405c2816… against pin bd4001e4… (2026-09-27). Do NOT re-pin (#77) — bug-log #125"]
+fn realdata_row_eth_2024_h1_sma_cross() {
+    // anchor-ns: lab-yahoo-realdata-v0.1.3
+    const ANCHOR: &str = "bd4001e42475955f518421d75cab207c85d0db3ba3a9d45fbdceff4f4b4e5441";
+    assert_realdata_row("eth-2024-h1-sma-cross", ANCHOR);
+}

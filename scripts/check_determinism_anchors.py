@@ -42,7 +42,8 @@ DETERMINISM_RS = REPO_ROOT / "crates" / "backtest" / "tests" / "determinism.rs"
 # bug-log #115 non-vacuity floor: the number of `const ANCHOR` sites this tool must at
 # least SEE. Bumped deliberately when sites are added; lowering it is a reviewable act.
 # It exists because the tool once reported "OK — 14 literal(s)" while 25 existed.
-MIN_EXPECTED_SITES = 25
+# 2026-09-27: 25 -> 29 with the four R-REAL real-data-row gates (bug-log #125).
+MIN_EXPECTED_SITES = 29
 
 # Version tag that marks the canonical in-test SHA namespace.
 CANONICAL_VERSION_SUFFIX = "v5-realdata-medium-2026-05"
@@ -349,7 +350,13 @@ def detect_drift(
             continue
 
         # --- Dual-map resolution (step 1: synthetic override) ---
-        synth = SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
+        #
+        # An EXPLICIT `// anchor-ns:` declaration beats this scenario-keyed default. Two
+        # sites can pin the same scenario under different conditions — `btc-2023-1m-*` has
+        # a t622 pin for the synthetic path and a real-data pin for the canonical row — and
+        # a scenario-level override would compare the second against the first's expectation
+        # and call a correct gate stale. The site knows which row it asserts; the site wins.
+        synth = None if site.declared_ns is not None else SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
         if synth is not None:
             match = site.literal == synth
             row = DriftRow(
@@ -660,8 +667,8 @@ def _self_test() -> int:  # noqa: C901
         # P4 — the floor is a real assertion, not decoration.
         probe(
             "P4 floor is at least the sites we ship",
-            MIN_EXPECTED_SITES >= 25,
-            f"MIN_EXPECTED_SITES={MIN_EXPECTED_SITES} is below the 25 sites shipped 2026-09-27",
+            MIN_EXPECTED_SITES >= 29,
+            f"MIN_EXPECTED_SITES={MIN_EXPECTED_SITES} is below the 29 sites shipped 2026-09-27",
         )
 
     if failures:
@@ -802,9 +809,15 @@ def main() -> int:  # noqa: C901
     n_skip = len(skipped)
     n_ok = n_total - n_skip
     # Count synthetic vs canonical matches for informational output.
+    # Count what the RESOLUTION did, not what the scenario name suggests. The synthetic
+    # override is skipped for a site that declares its namespace, so a scenario-keyed count
+    # over-reports — the same "a number nobody measured" shape this tool exists to catch,
+    # in its own summary line.
     n_synth = sum(
         1 for s in sites
-        if not s.cfg_gated and s.scenario in SYNTHETIC_DETERMINISM_SHAS
+        if not s.cfg_gated
+        and s.declared_ns is None
+        and s.scenario in SYNTHETIC_DETERMINISM_SHAS
     )
     n_canonical = n_ok - n_synth
     print(
