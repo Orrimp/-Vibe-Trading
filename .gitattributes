@@ -39,3 +39,16 @@ crates/ui/tests/visual-baselines/** binary
 
 # The cockpit's embedded UI face (ADR-0093). Never normalise a font.
 crates/ui/assets/fonts/*.ttf binary
+
+# ── The three pinned Binance corpora are BINARY, stated not sniffed ───────────
+#
+# Committed 2026-09-27 (operator decision): 720 parquets under data/binance,
+# data/binance-funding and data/binance-basis, each verified against its
+# REVISION.toml per-file SHA-256 before landing (720/720, 0 deviations).
+#
+# `* text=auto` above would leave their binary-ness to git's content sniffing.
+# This repo has already lost a byte-immutability invariant to exactly that kind
+# of assumption — see the header: on a `core.autocrlf=true` checkout all 119
+# anchors failed. These parquets are byte-exact INPUT to anchored reports, so
+# they are declared binary rather than detected as binary.
+data/**/*.parquet binary

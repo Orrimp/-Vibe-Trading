@@ -35,12 +35,20 @@
 # review patch 3): bulk parquets stay gitignored; only the revision-pin
 # manifest is tracked — the Lab/CLI pin-assert (revision 3a8b96c4…) needs the
 # manifest reproducible from a fresh clone, mirroring every sibling corpus.
+# TRACKED IN FULL since 2026-09-27 (operator decision): the bulk parquets are
+# committed, not just the pin, so the theta-surfaces that consume them are
+# reproducible from a fresh clone and reachable from CI - the same reasoning that
+# put data/yahoo-sample/ in the repo, at 11 MB total for all three corpora.
+# Plain git, no LFS (mirrors data/yahoo-sample/).
 !/data/binance/
-/data/binance/*
-!/data/binance/REVISION.toml
+!/data/binance/**
+# TRACKED IN FULL since 2026-09-27 (operator decision): the bulk parquets are
+# committed, not just the pin, so the theta-surfaces that consume them are
+# reproducible from a fresh clone and reachable from CI - the same reasoning that
+# put data/yahoo-sample/ in the repo, at 11 MB total for all three corpora.
+# Plain git, no LFS (mirrors data/yahoo-sample/).
 !/data/binance-funding/
-/data/binance-funding/*
-!/data/binance-funding/REVISION.toml
+!/data/binance-funding/**
 # Broader-universe spike (2026-06-02, universe-method-diagnosis § S): 35 mid-cap
 # 2024 + 27 mid-cap 2023 hourly klines. Bulk parquets stay gitignored (mirrors
 # data/binance); only the revision-pin manifest is tracked for reproducibility.
@@ -51,9 +59,13 @@
 # 10 large-cap premium-index (perp basis) hourly klines, 2023-2024, fetched by
 # fetch_binance_premium. Bulk parquets stay gitignored (mirrors data/binance);
 # only the revision-pin manifest (aggregate SHA aa72409a…) is tracked.
+# TRACKED IN FULL since 2026-09-27 (operator decision): the bulk parquets are
+# committed, not just the pin, so the theta-surfaces that consume them are
+# reproducible from a fresh clone and reachable from CI - the same reasoning that
+# put data/yahoo-sample/ in the repo, at 11 MB total for all three corpora.
+# Plain git, no LFS (mirrors data/yahoo-sample/).
 !/data/binance-basis/
-/data/binance-basis/*
-!/data/binance-basis/REVISION.toml
+!/data/binance-basis/**
 # 2021-22 hourly down-market corpus (feature binance-corpus-expansion,
 # 2026-06-15): same 10 symbols as data/binance, 2021-2022. Bulk parquets
 # gitignored (mirrors data/binance); only the REVISION.toml pin is tracked.
