@@ -1509,6 +1509,7 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
+    // anchor-ns: noop-baseline
     const ANCHOR: &str = "b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8";
     assert_reproduces_with_flags("top10-2023-fy-tcn-overlay-realdata", ANCHOR, &[]);
 }
@@ -1517,6 +1518,7 @@ fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
+    // anchor-ns: noop-baseline
     const ANCHOR: &str = "b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd";
     assert_reproduces_with_flags("top10-2024-fy-tcn-overlay-realdata", ANCHOR, &[]);
 }
@@ -1525,6 +1527,7 @@ fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
 #[cfg(all(feature = "realdata", feature = "candle"))]
 #[test]
 fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
+    // anchor-ns: noop-baseline
     const ANCHOR: &str = "fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d";
     assert_reproduces_with_flags("top10-2023-fy-tcn-overlay-weights-realdata", ANCHOR, &[]);
 }
@@ -1533,6 +1536,7 @@ fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
 #[cfg(all(feature = "realdata", feature = "candle"))]
 #[test]
 fn realdata_2024_fy_tcn_overlay_weights_reproduces_anchor() {
+    // anchor-ns: noop-baseline
     const ANCHOR: &str = "0d6cc994094a2d6e0038725cb06dba92a5031e40b8d3c4b35a3195cfb2ef5d99";
     assert_reproduces_with_flags("top10-2024-fy-tcn-overlay-weights-realdata", ANCHOR, &[]);
 }
@@ -1572,6 +1576,7 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
     // condition it never ran. The flags are declared here rather than assumed, which is
     // the whole point: the row names `SquareRoot { alpha=1.0, lookback=90 }`, so the
     // gate names it too.
+    // anchor-ns: v5-sqrt-impact-2026-05
     const ANCHOR: &str = "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef";
     assert_reproduces_with_flags(
         "top10-2023-fy-momentum-realdata",
@@ -1589,6 +1594,7 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
+    // anchor-ns: noop-baseline
     const ANCHOR: &str = "f704c4f2f71b539e1b927ce157ec2c348b353dd3fa6af5bab015dc0a1b59b486";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-patchtst-overlay-realdata", ANCHOR);
 }
@@ -1607,6 +1613,7 @@ fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2023_fy_regime_dispatcher_reproduces_anchor() {
+    // anchor-ns: v3.0.0-regime
     const ANCHOR: &str = "f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-regime-dispatcher-realdata", ANCHOR);
 }
@@ -1617,6 +1624,7 @@ fn realdata_2023_fy_regime_dispatcher_reproduces_anchor() {
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
+    // anchor-ns: v3.0.0-regime
     const ANCHOR: &str = "691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e";
     assert_reproduces_or_report_unmeasured("top10-2024-fy-regime-dispatcher-realdata", ANCHOR);
 }
@@ -1625,6 +1633,7 @@ fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
 #[cfg(feature = "realdata")]
 #[test]
 fn realdata_2023_fy_vol_target_overlay_reproduces_anchor() {
+    // anchor-ns: noop-baseline
     const ANCHOR: &str = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-vol-target-overlay-realdata", ANCHOR);
 }

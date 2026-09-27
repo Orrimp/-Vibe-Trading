@@ -2367,7 +2367,8 @@ the *success* path observable — log what satisfied the guard, and count skips 
 rather than folding them into a pass.
 
 ### `#115` — the linter that guards the anchor pins is blind to 11 of 25 of them, and reports "0 skipped"
-**Status**: OPEN — measured 2026-09-26. Highest-leverage of the audit findings: it is the meta-gate.
+**Status**: FIXED 2026-09-27. And fixing the blindness immediately exposed that the rule underneath
+it was wrong too — see § The second half.
 Anchor-impacting: no directly; **yes indirectly**, since it is what is supposed to notice a stale pin.
 
 `scripts/check_determinism_anchors.py` is ADR-0045 § D7.1's gate: every non-cfg-gated `const ANCHOR`
@@ -2393,10 +2394,48 @@ Two smaller faults in the same file: a total regex failure prints `WARN` and `ex
 and `--write` (`:525`) syncs only the visible 14 — so an operator "fixing drift" with it silently
 leaves 11 pins untouched. Unlike its five sibling gates it has **no `--self-test`**.
 
-**Fix**: an unresolvable `const ANCHOR` site must `return 1`; print `n_sites_found` against a declared
-floor so a parser regression is loud; add `--self-test` with a fixture covering all three runner
-spellings. The shape is `#114`'s (a check that cannot succeed for a subset) crossed with the
-count-you-did-not-measure shape of `#112`.
+**Fixed 2026-09-27**, and the tool now reports
+`OK — 25 of 25 resolved literal(s) match … 0 unresolved. Sites seen: 25 (floor 25).`
+
+- **Resolve the SCENARIO, not the runner.** The regex matches any quoted argument with a scenario
+  name's shape, so a new helper spelling needs no change here. The old regex made every new helper
+  invisible **by default**, which is the property that turned a parser detail into four months of
+  false confidence.
+- **An unresolvable site is a hard failure**, listed with `file:line`, `fn`, and the literal. A total
+  parse failure now returns 1 instead of `WARN … return 0`.
+- **A non-vacuity floor** (`MIN_EXPECTED_SITES = 25`) with the count printed either way, so a silent
+  shrink is visible and lowering it is a reviewable act.
+- **`--self-test` with four probes**, because a linter without one is exactly what this entry is
+  about: it reports a number nobody has checked it can fail to produce. Each probe corresponds to a
+  way the tool was once silently wrong.
+
+#### The second half — the blindness was hiding a wrong RULE
+
+The moment the tool could see all 25 sites it reported **9 stale literals**. They are not stale. Its
+mapping rule — *every in-test pin mirrors the `v5-realdata-medium-2026-05` row* — is namespace-naive:
+7 of those sites target `noop-baseline` (the default real-data invocation is zero-sim-slippage,
+`#123`) and 2 target `v3.0.0-regime`. **Running `--write` on that assumption would have re-pinned nine
+CORRECT gates to the wrong rows — `#77` committed by the tool built to prevent it.**
+
+So the fix is not only "see more sites". **The target namespace is a property of the site**, and the
+site now says so: `// anchor-ns: <version substring>` next to its `const ANCHOR`, defaulting to the
+canonical suffix so every pre-existing site keeps its meaning unchanged. Same principle as the gates
+declaring their run conditions — the thing that knows is the thing that states it.
+
+And `--write` **refuses** when any site declares a non-canonical namespace, naming them, rather than
+syncing the ones it happens to understand.
+
+#### One probe caught a bug in my own fix
+
+The declaration search first scanned a wide window in both directions. Removing a declaration left the
+tool **green** — the site had borrowed its neighbour's. A window wide enough to be forgiving is wide
+enough to launder one site's meaning into another. It is now backwards-only, at most three lines, and
+stops at a `fn` boundary.
+
+That probe existed only because I ran it. The first attempt at it used `sed` expressions that silently
+matched nothing, and both "probes" reported OK on an unmodified file — two no-ops I nearly recorded as
+passes. **A probe you did not verify changed something is not a probe**, which is this entry's own
+shape aimed at the person writing it.
 
 ### `#116` — two neutrality gates hash a committed file and compare it to a constant copied from that file, while the drift they guard is live
 **Status**: OPEN — found 2026-09-26. Both gates are GREEN right now over a scenario measured as
