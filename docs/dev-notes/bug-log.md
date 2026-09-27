@@ -2939,3 +2939,71 @@ exactly one row red before any sha moved. Gated by `theta_surface_reproduction.r
 With it, **every scenario the `backtest`/`param_robustness_sweep`/`monte_carlo` binaries can produce
 now has a re-run gate.** What remains ungated is the 15 forecast/report-binary scenarios, a different
 producer family entirely.
+
+### `#127` — the clamp evaluates the ruin predicate three times in order to hide its consequence, and records it zero times
+**Status**: disclosed 2026-09-27, owned by story 1-28 (`ready-for-dev`). Anchor-impacting: **yes, when
+fixed** — new columns change the rendered body; the re-emission protocol is an entry gate, not dev's call.
+
+Every Monte-Carlo equity value `e <= 0` is mapped to `dec!(0.000001)` before the metric calls, at three
+independent sites: `crates/backtest/src/bin/param_robustness_sweep.rs:911-917`, the same file again at
+`:1974-1980`, and `crates/backtest/src/mc_harness.rs:294-303`.
+
+**The clamp is correct and is staying.** It exists so `compute_sharpe_hourly` cannot return NaN on a
+ruined path (ADR-0051 D2 asserts NaN absent), and removing it would move every Sharpe, Sortino, Calmar
+and max-drawdown number in the corpus. Nothing here argues against the clamp.
+
+The defect is that the predicate `e <= Decimal::ZERO` is **evaluated in order to substitute a value, and
+the answer is then discarded**. After the substitution, a path that lost everything and a path that lost
+99.9 % are the same number. `p95_maxdd = 100.00 %` is the signature of ruin and is also what a merely
+catastrophic path prints.
+
+#### Why this is the week's shape moved one layer out
+
+`#102`, `#104`, `#112`–`#126` were all *gates that could not fail*. This is an **observable that cannot
+be observed**, and it is harder to notice for one specific reason: a broken gate at least prints a verdict
+you can distrust, whereas this prints a perfectly ordinary percentage. There is no tell in the output. The
+information is destroyed one line before the number that needed it.
+
+**A substitution is a lossy write.** Where code replaces a value because the real one is unusable, the
+replacement site is exactly where the discarded fact has to be recorded — it is the only place that still
+knows.
+
+#### The triplication is the multiplier, not a style complaint
+
+One clamp is one place to remember the counter. Three clamps are three places to forget it, and the third
+copy was added without anyone noticing the first two had the same gap. Story 1-28 AC1 therefore factors
+one helper returning the clamped curve **and** the witness, with a test asserting the literal
+`dec!(0.000001)` occurs exactly once in `crates/backtest/src/` — so a fourth copy goes red.
+
+#### Measured before scoping: this is a tripwire, not a correction
+
+Across `evidence/**/reports/*theta-surface*.md`, the **live** (2026-09-25, post-re-lock) bodies contain
+**zero** cells at `p95_maxdd >= 99.9 %`. Cells at exactly `100.00 %` survive only in two **superseded**
+2026-06-08 `mn-basisperp` bodies — which is precisely where the clamp was hiding ruin, and is the
+retro-validation of the concern. So the new columns will render `0` everywhere on today's evidence.
+Nothing in the live corpus is being misread, and the guard lands before the next surface that would be.
+
+The second half of story 1-28 — `trades` incremented for real fills at
+`crates/backtest/src/scenarios/montecarlo.rs:620` and for synthetic maintenance-margin cover legs at
+`:839` — is **not** a new finding: `#110` disclosed it and 1-21 shipped the honest interim, a legend at
+`sweep_harness.rs:2345-2348` that states the conflation rather than hiding it. It is carried here only
+because both halves need the same threading.
+
+#### Records clarification (not a defect): what "re-emitted in place" means
+
+The D6.b records for 1-26 / 1-21 / 1-27 say the bodies were re-emitted **in place**. That means *the same
+directory and the same anchor namespace* — **not** the same filename. The re-lock wrote new timestamped
+files beside the old ones (`robustness-sweep-20260925-*` next to `robustness-sweep-20260608-*`), and
+`scripts/verify_anchors.sh` resolving each anchor to the **newest** match is what makes the 2026-09-25
+bodies live and the 2026-06-08 bodies history-on-disk. Recorded because the orchestrator misread it as
+same-file on 2026-09-27, and because the measurement above is only interpretable once you know which
+bodies are live.
+
+#### One suspicion checked and refuted rather than filed
+
+`scripts/callers.sh liquidations` reported a single reader, inside a test — which would have made the
+rendered MN `liquidations` column structurally always-zero, the same defect a third time. It is fully
+wired (`param_robustness_sweep.rs:908` → `:1879` sum → `:1913` → `sweep_harness.rs:2468`) and
+demonstrably rendered 2210 events before the `#71` fix removed the absorbing state. Two greps, no
+finding. Noted because `callers.sh` matches whole words and `total_liquidations` is a different
+identifier — on a struct **field**, its count is a lower bound in a way its function-symbol output is not.
