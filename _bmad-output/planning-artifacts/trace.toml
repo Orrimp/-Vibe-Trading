@@ -3681,3 +3681,15 @@ tests       = ["crates/backtest/tests/relock_manifest.rs"]
 anchors     = []
 state       = "shipped"   # 2026-09-27. 34 surfaces regenerated in 74.4 min (budget said 10.3 h floor) and re-emitted IN PLACE under ADR-0038 D6.b per operator ruling; 12 MN bodies re-emitted a second time for the renderer riders (#110). AC7 amended and its bisect shipped as story 1-27. Review measured: old bodies intact 34/34, new rows anchored 34/34, errata table 0 mismatches over 136 numbers.
 
+[[req]]
+id          = "REQ-MN-RUIN-FILL-PROVENANCE-001"
+title       = "Make a wiped-out Monte-Carlo path distinguishable from a merely-bad one, and a synthetic maintenance-margin cover leg distinguishable from a real fill, so the two most dramatic numbers the theta-surface reports print (p95_maxdd and trades) each measure one thing. The ruin predicate `e <= 0` is already evaluated at three duplicated clamp sites (param_robustness_sweep.rs:911 and :1974, mc_harness.rs:294) and its answer discarded; `trades` is incremented for real fills at montecarlo.rs:620 and for synthetic liquidation covers at :839. The clamp itself is deliberate (ADR-0051 D2, NaN prevention) and stays — one shared helper returns the clamped curve AND the witness. Measured before scoping: the live 2026-09-25 bodies carry ZERO cells at p95_maxdd >= 99.9%, so this is a tripwire rather than a correction; the 100.00% cells exist only in two superseded 2026-06-08 mn-basisperp bodies, which is where the clamp was hiding ruin."
+feature     = "mn-ruin-and-fill-provenance"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = [
+  "_bmad-output/planning-artifacts/architecture/decisions/0038-vol-forecast-verdict-shape.md",
+]
+crates      = ["crates/backtest"]
+tests       = []
+anchors     = []   # re-emission protocol is an ENTRY GATE (story AC5) — architect + operator rule before any SHA moves
+state       = "scoped"   # story 1-28 created 2026-09-27 from the two items story 1-21 records as explicitly NOT delivered (bug-log #110); ready-for-dev, blocked on the AC5 protocol ruling
