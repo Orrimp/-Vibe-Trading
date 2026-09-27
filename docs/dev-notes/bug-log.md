@@ -2075,8 +2075,29 @@ family** — see `#120`), `report-sample-{7d,90d}`, `btc-yahoo-2024-1d-sma-cross
 `btc-2023-1m-{macd-trend,rsi-reversion,bbands-mean-revert}` synthetic pins and
 `eth-yahoo-2024-1d-sma-cross`. Those four anchor rows have no coverage.
 
-**The rest — 34 θ-surfaces, 1 MC scenario, 15 forecast/report-binary scenarios — still have no
-re-run gate of any kind.** See the coverage audit for what each would need.
+**~~The rest — 34 θ-surfaces, 1 MC scenario, 15 forecast/report-binary scenarios — still have no
+re-run gate of any kind.~~ UPDATED 2026-09-27: the 34 θ-surfaces now have one.**
+`crates/backtest/tests/theta_surface_reproduction.rs` re-runs each surface from
+`scripts/relock/surfaces.tsv` and compares against its anchor. **32 of 34 measured GREEN** in 764 s;
+the 2 expensive ones (1461 s + 2258 s) are split into their own gate so the cheap block stays usable.
+That takes the corpus from 12 anchor-comparing scenarios to **46**, and the largest single block of
+`#93`'s blind spot is now observed rather than assumed.
+
+Built to this week's rules rather than from scratch: the condition is **declared** (release binary,
+`--features candle,realdata`, CWD = workspace root, invocation from the `GridKind`-derived manifest
+that `relock_manifest.rs` already gate-tests); `--out-dir` always points at a tempdir, because the
+binary's default points *inside* the anchored corpus and `verify_anchors.sh` takes the newest match
+(`#113`); an absent corpus is **UNMEASURED and loud**, never a pass (`#113` req 6); and a killed
+process is distinguished from a refusal (`#124`).
+
+And it has the companion the audit named as the pattern to copy —
+`corpus_gated_theta_tests_are_declared`, corpus-independent so it **always** runs, asserting the
+manifest row count, that **every** surface has an anchor, and that the cost split is not stale; it
+warns *louder* when the corpora ARE present, because then the gates should be run. Both failure modes
+were probed rather than assumed: falsifying the row count fires, and mistyping an expensive scenario
+fires with *"the cost split is stale"*.
+
+Still without any re-run gate: **1 MC scenario + 15 forecast/report-binary scenarios.**
 
 So the `#67` re-lock covered **34 surfaces of a corpus in which 15 further scenarios do not
 reproduce** — and `verify_anchors.sh` reports `ANCHORS PASS (119 / 119)` through all of it. (On what
