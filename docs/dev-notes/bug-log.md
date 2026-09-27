@@ -3007,3 +3007,94 @@ wired (`param_robustness_sweep.rs:908` → `:1879` sum → `:1913` → `sweep_ha
 demonstrably rendered 2210 events before the `#71` fix removed the absorbing state. Two greps, no
 finding. Noted because `callers.sh` matches whole words and `total_liquidations` is a different
 identifier — on a struct **field**, its count is a lower bound in a way its function-symbol output is not.
+
+### `#128` — the forecast/report binaries default their WRITES into the anchored corpus and hardcode their READS to dated paths inside it
+**Status**: disclosed 2026-09-27. Anchor-impacting: **(a) can destroy an anchored body outright.**
+Derived by a delegated read-only agent (`docs/dev-notes/forecast-bin-repro-recipes-2026-09-27.md`,
+686 lines, no binary run); the five load-bearing claims below were each re-verified by the
+orchestrator at the cited lines before being filed.
+
+The 15 scenarios left ungated after `#126` are a different producer family — six binaries in
+`crates/forecast` and `crates/backtest`, not the `backtest`/`param_robustness_sweep`/`monte_carlo`
+family. Deriving how to reproduce them surfaced five defects with one theme: **these binaries treat
+the byte-immutable evidence corpus as their working directory.**
+
+#### (a) A no-argument run OVERWRITES a byte-immutable anchored body
+
+`crates/backtest/src/bin/threshold_sweep.rs` combines two things that are each defensible alone:
+
+```rust
+//  :152   #[arg(long, default_value = "evidence/v1/v25-tcn-threshold-tuning/reports/")]
+//         out_dir: PathBuf,
+//  :1045  let report_filename = format!("threshold-sweep-{label}-realdata-recalibrated-20260521.md");
+```
+
+A **hardcoded date** in the filename plus a **default out-dir pointing into the corpus**. Every other
+bin in this family embeds *today's* date, so a careless run merely plants a newer file that silently
+becomes what `verify_anchors.sh` hashes — bad, and recoverable by deleting it. This one writes over
+the anchored body itself. Recoverable only from git, and only if someone notices.
+
+So for this bin `--out-dir <tempdir>` is not advisory, and the mandatory-`--out-dir` note in the 1-26
+record was about a different binary.
+
+#### (b) Nine zeros labelled "graceful degradation", read from a path the re-lock pattern moves
+
+The same bin reads its predecessor's numbers from **hardcoded, dated paths inside the corpus**
+(`:106`, `:109` → `evidence/v1/v25-tcn-recalibrate/reports/forecast-distribution-bs{1,2}-realdata-recalibrated-20260521.md`),
+consumed at `:741`. On any read failure `parse_gate_survivors` (`:246-251`) returns `[0usize; 9]`, and
+its own doc comment calls that "graceful degradation". No error, no log. Nine zeros then render in the
+report indistinguishably from nine measured zeros.
+
+**This is armed, not hypothetical.** Those two predecessor rows are on the list of scenarios awaiting a
+re-run gate, and this project's re-emission pattern writes a **new timestamped filename beside the old
+one** (see `#127`'s records clarification). Re-emit them and the anchor resolver follows the new body
+while `threshold_sweep` keeps reading the 2026-05-21 one — the gate would validate one body while the
+downstream report quotes another, silently. Delete the old one instead and the parser returns zeros.
+Neither failure announces itself.
+
+#### (c) A refusal is reported as a convergence failure
+
+`crates/forecast/src/bin/regime_verdict.rs:837-853` handles a refused child correctly as far as
+flagging goes — `completed = status.success()` is carried onward — but when no report is found it warns
+and substitutes `String::new()`, and the verdict it then emits is **V-REG-1, defined at `:197` as "EM
+convergence failure"**. Exit 0. So a build without the right features produces a report asserting that
+the EM algorithm failed to converge, when what actually happened is that the backtest binary never ran.
+
+This is the `#114` / `#124` shape again, and the reason it keeps earning an entry: **a diagnosis that
+names the wrong cause is worse than no diagnosis, because it aims the next reader away from the
+answer.** Three of the six bins declare `required-features` and refuse at cargo target-selection;
+`vol_verdict`, `regime_verdict` and `sharpe_comparison` declare none, and of those only
+`sharpe_comparison` bails (`:414-416`).
+
+#### (d) The `candle` feature is decoupled from whether candle is linked
+
+`crates/backtest/Cargo.toml:38` declares `candle = ["strategy/forecast"]`, while `:63` already sets
+`strategy = { path = "../strategy", features = ["forecast"] }` **unconditionally**. The feature
+therefore adds nothing to the dependency graph; its only effect is flipping `#[cfg]` blocks in
+`scenarios/*.rs` and the `threshold_sweep` target gate. The comment above it (`:36-37`) is true about
+those cfg blocks and false as a statement about the build: reasoning "candle is not linked, so the
+tensor path cannot run" is wrong in both directions.
+
+#### (e) Two rows are not reproducible from a tempdir at all
+
+`recalibrate_sigma_train.rs:455-459` writes the **resolved overlay path** into `body`
+(`"- Read-only against \`{overlay_path}\` original safetensors."`, fed from `:686`), and
+`scripts/hash_report.py` strips only the YAML front-matter before hashing. So the anchored SHA of
+`recalibrate-sigma-train-bs1` / `-bs2` **encodes an absolute-ish input path**, and pointing
+`--anchor-dir` at a tempdir changes the digest by construction. A reproduction gate for these two
+either asserts against the committed checkpoint directory (`git diff --exit-code
+crates/forecast/checkpoints/anchors/`) or the body stops printing the path — and the latter is itself
+a body change, so a D6.b re-emission.
+
+A hashed body should contain what the run MEASURED, not where the run FOUND it. An input path is
+provenance and belongs in the front-matter, which is excluded from the hash for exactly this reason.
+
+#### Consequence for the plan
+
+12 of the 14 gateable rows are measurable today (the 15th, `sharpe-comparison-realdata`, has no
+producer at HEAD — `#118`). Total compute ≈ 79 min, taken from the anchored reports' own
+`wall_clock_s` front-matter rather than estimated, ranging from `vol_verdict` at 0.7 s to
+`recalibrate_sigma_train --scenario bs2` at 619.8 s. Every required checkpoint and corpus file is
+present on this machine. Three rows are *predicted* to drift because their backtest inputs were
+re-emitted after they were locked — that prediction is dated inference, not measurement, and a red
+there is a D6.b candidate rather than a gate bug.
