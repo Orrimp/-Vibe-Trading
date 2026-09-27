@@ -3667,3 +3667,17 @@ tests       = [
 anchors     = []
 state       = "shipped"   # 2026-09-27. 15 rows re-emitted in place under D6.b (119/119, 15 changed, 104 byte-identical, 0 namespaces); 11 R-REPRO gates added; every #[ignore] removed. Open follow-ons carried as bug-log #115/#118 and the 50 still-ungated scenarios.
 
+[[req]]
+id          = "REQ-HARNESS-RELOCK-REGENERATION-001"
+title       = "Regenerate the 34 contaminated anchored theta-surfaces under a formal re-lock once every harness code fix has landed, so the C2/C3 research verdicts rest on real execution arithmetic — with the old rows frozen as history, the migration honest, and the verdict re-derivation loud. Measured outcome: 156 cells re-priced, 312 verdicts re-derived against the frozen bands with 0 mismatches; 20 cells FRAGILE->MARGINAL and none the other way; p95_maxdd improved in 156/156 (median 85.53% -> 26.70%, the old corpus carrying cells at 100.00% — a bug-log #94 sizer artefact). THESIS INTACT and checked rather than assumed: 0 of 156 cells beat their own buy-and-hold control in either corpus."
+feature     = "harness-relock-regeneration"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = [
+  "evidence/v2/harness-relock/ERRATA.md",
+  "docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md",
+]
+crates      = ["crates/backtest"]
+tests       = ["crates/backtest/tests/relock_manifest.rs"]
+anchors     = []
+state       = "shipped"   # 2026-09-27. 34 surfaces regenerated in 74.4 min (budget said 10.3 h floor) and re-emitted IN PLACE under ADR-0038 D6.b per operator ruling; 12 MN bodies re-emitted a second time for the renderer riders (#110). AC7 amended and its bisect shipped as story 1-27. Review measured: old bodies intact 34/34, new rows anchored 34/34, errata table 0 mismatches over 136 numbers.
+

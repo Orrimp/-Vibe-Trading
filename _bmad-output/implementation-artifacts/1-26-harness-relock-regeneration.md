@@ -1,6 +1,6 @@
 # Story 1.26: harness-relock-regeneration
 
-Status: in-progress
+Status: done
 
 <!-- Created 2026-08-19 by the operator's AC4 split ruling on 1-25. 1-25 keeps the
      CODE deliverable (the eight CRITICALs); this story owns the REGENERATION —
@@ -154,7 +154,15 @@ as history, the migration honest, and the verdict re-derivation loud.
   which is the confirming measurement that this re-lock did not touch them. `#[ignore]` and the pins
   both stay. The bisect is now story
   [`1-27-determinism-drift-bisect`](1-27-determinism-drift-bisect.md).
-- [ ] Review: old rows intact, new rows complete, verdict-delta table honest.
+- [x] **Review PASSED 2026-09-27 — all three claims measured, not asserted.**
+  - **Old rows intact**: all **34** pre-re-lock bodies are still on disk and still hash to their
+    original SHAs. The re-emission added files beside them; it overwrote and deleted nothing.
+  - **New rows complete**: **34 / 34** anchor rows resolve to their 2026-09-25 body (for the 12 MN
+    surfaces, to the second pass — the bug-log `#110` renderer re-emission).
+  - **Verdict-delta table honest**: every one of the 34 rows in
+    [`ERRATA.md`](../../evidence/v2/harness-relock/ERRATA.md) § 3 was re-derived from the reports on
+    disk — family verdict, cell flips, median Δp50, median Δp95_maxdd, and cells beating their own
+    buy-and-hold — **0 mismatches across 136 checked numbers.**
 - [x] **AC6 — 1-21's question ANSWERED (its closure is a separate matter).** The re-derived verdicts,
   not the 1-21 review, decide what the MN spread shows, and they say: **all 12 surfaces
   FAMILY-UNIFORM-FRAGILE under a correctly-signed engine**, now on their own merits rather than on a
@@ -195,3 +203,4 @@ as history, the migration honest, and the verdict re-derivation loud.
 - Predecessor: `1-25-harness-fill-correctness-relock` (the CODE half).
 - Blocks: `1-21-perp-basis-mn-spread` (AC6).
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1.
+- Trace: `REQ-HARNESS-RELOCK-REGENERATION-001` (state=`shipped`)
