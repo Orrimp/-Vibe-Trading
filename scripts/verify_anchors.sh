@@ -3,7 +3,16 @@
 # report under evidence/**/reports/. Prints PASS/FAIL per scenario,
 # exits non-zero on any mismatch or missing report.
 #
-# Usage: scripts/verify_anchors.sh
+# Usage: scripts/verify_anchors.sh [--explain]
+#
+#   --explain   also print, for every anchor, WHICH file on disk satisfied it.
+#               The resolver takes the NEWEST match per namespace, so a corpus
+#               directory holding both a superseded body and its re-emitted
+#               successor is resolved silently. --explain makes that visible.
+#
+# Env:
+#   ANCHORS_FILE            verify a different anchors file (used by this gate's own probes)
+#   MIN_EXPECTED_ANCHORS    non-vacuity floor (default 119) — see the tail of this script
 #
 # This is the regression gate the tester MUST run before VERDICT -> PASS.
 # It is also wired into the `verify-anchors` skill.
@@ -58,7 +67,14 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-anchors="$root/evidence/anchors.toml"
+anchors="${ANCHORS_FILE:-$root/evidence/anchors.toml}"
+explain=0
+for arg in "$@"; do
+    case "$arg" in
+        --explain) explain=1 ;;
+        *) echo "unknown argument: $arg (see the usage header)" >&2; exit 2 ;;
+    esac
+done
 hasher="$root/scripts/hash_report.py"
 migration_dir_v02="$root/evidence/v5-latency-slippage-sim-v0.2.0-anchor-migration"
 migration_dir_v03="$root/evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring"
@@ -72,6 +88,7 @@ canonical_dirs_pattern="$root/evidence/v5-latency-slippage-sim-v0"
 
 fail=0
 total=0
+pass=0
 scenario=""
 version=""
 
@@ -229,7 +246,12 @@ while IFS= read -r line; do
         fi
         actual="$(python3 "$hasher" "$latest" | awk '{print $1}')"
         if [[ "$actual" == "$expected" ]]; then
-            printf 'PASS  %-36s  %s\n' "$scenario" "$expected"
+            pass=$((pass + 1))
+            if [[ "$explain" -eq 1 ]]; then
+                printf 'PASS  %-36s  %s\n      resolved %s\n' "$scenario" "$expected" "${latest#$root/}"
+            else
+                printf 'PASS  %-36s  %s\n' "$scenario" "$expected"
+            fi
         else
             printf 'FAIL  %-36s\n      expected %s\n      actual   %s\n      file     %s\n' \
                 "$scenario" "$expected" "$actual" "$latest"
@@ -239,8 +261,33 @@ while IFS= read -r line; do
 done < "$anchors"
 
 echo "---"
+
+# ── Non-vacuity: this gate may only report PASS for a corpus it actually parsed ──
+# Until 2026-09-27 the summary read "($total / $total)" — numerator and denominator
+# were the SAME variable, so the pass count was never measured, only inferred from
+# `fail == 0`. Worse, a row the sha256 regex cannot see (an upper-case digest, a
+# single-quoted value, a reflowed row) is not counted, not compared and not reported
+# — and the gate would still print a perfectly self-consistent (N / N). `declared`
+# is counted independently, from the [[anchors]] block headers, so the two numbers
+# can disagree; `floor` catches a corpus that shrank. bug-log #127.
+declared="$(grep -c '^\[\[anchors\]\]' "$anchors" || true)"
+floor="${MIN_EXPECTED_ANCHORS:-119}"
+
+if [[ "$total" -ne "$declared" ]]; then
+    echo "ANCHORS FAIL  (parser matched $total sha256 row(s) but the file declares $declared [[anchors]] block(s) — $((declared - total)) row(s) were never compared)"
+    exit 1
+fi
+if [[ "$total" -lt "$floor" ]]; then
+    echo "ANCHORS FAIL  (parsed $total row(s), floor is $floor — the corpus shrank or the parser stopped seeing rows; export MIN_EXPECTED_ANCHORS to ratify a deliberate change)"
+    exit 1
+fi
+
 if [[ "$fail" -eq 0 ]]; then
-    echo "ANCHORS PASS  ($total / $total)"
+    if [[ "$pass" -ne "$total" ]]; then
+        echo "ANCHORS FAIL  (internal: $pass PASS of $total compared rows, yet no failure was flagged — a compare path returned without reporting)"
+        exit 1
+    fi
+    echo "ANCHORS PASS  ($pass / $total)   [declared $declared · floor $floor]"
 else
     echo "ANCHORS FAIL  (mismatches detected; route HANDOFF -> developer with body diff)"
 fi
