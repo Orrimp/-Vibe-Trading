@@ -218,7 +218,7 @@ fn assert_surfaces_reproduce(which: &[(String, Vec<String>)]) {
 
 /// R-THETA-1 — the 32 cheap surfaces reproduce their anchors. ~11 min.
 #[test]
-#[ignore = "corpus-gated + ~11 min: run with --ignored (see corpus_gated_theta_tests_are_declared)"]
+#[ignore = "corpus-gated + 13 min (measured 764 s, 2026-09-27): run with --ignored (see corpus_gated_theta_tests_are_declared)"]
 fn theta_surfaces_cheap_reproduce_anchors() {
     let expensive: Vec<&str> = EXPENSIVE.iter().map(|(s, _)| *s).collect();
     let rows: Vec<_> = manifest_rows()
@@ -236,7 +236,7 @@ fn theta_surfaces_cheap_reproduce_anchors() {
 
 /// R-THETA-2 — the two expensive surfaces. **~62 min**, separate so the cheap block is usable.
 #[test]
-#[ignore = "corpus-gated + ~62 min for two surfaces (1461 s + 2258 s measured): run with --ignored"]
+#[ignore = "corpus-gated + 62 min for two surfaces (measured 3742 s together, 2026-09-27): run with --ignored"]
 fn theta_surfaces_expensive_reproduce_anchors() {
     let expensive: Vec<&str> = EXPENSIVE.iter().map(|(s, _)| *s).collect();
     let rows: Vec<_> = manifest_rows()

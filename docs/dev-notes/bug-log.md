@@ -2078,8 +2078,11 @@ family** — see `#120`), `report-sample-{7d,90d}`, `btc-yahoo-2024-1d-sma-cross
 **~~The rest — 34 θ-surfaces, 1 MC scenario, 15 forecast/report-binary scenarios — still have no
 re-run gate of any kind.~~ UPDATED 2026-09-27: the 34 θ-surfaces now have one.**
 `crates/backtest/tests/theta_surface_reproduction.rs` re-runs each surface from
-`scripts/relock/surfaces.tsv` and compares against its anchor. **32 of 34 measured GREEN** in 764 s;
-the 2 expensive ones (1461 s + 2258 s) are split into their own gate so the cheap block stays usable.
+`scripts/relock/surfaces.tsv` and compares against its anchor. **All 34 measured GREEN** — 32 cheap in
+**764 s**, the 2 expensive in **3742 s** (split into their own gate so the cheap block stays usable).
+The expensive pair's runtime lands within 23 seconds of the 1461 s + 2258 s measured during the 1-26
+regeneration two days earlier, which is a small independent check that the sweep is as deterministic in
+cost as it is in output.
 That takes the corpus from 12 anchor-comparing scenarios to **46**, and the largest single block of
 `#93`'s blind spot is now observed rather than assumed.
 
