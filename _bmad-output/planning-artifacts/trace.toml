@@ -3693,3 +3693,16 @@ crates      = ["crates/backtest"]
 tests       = []
 anchors     = []   # re-emission protocol is an ENTRY GATE (story AC5) — architect + operator rule before any SHA moves
 state       = "scoped"   # story 1-28 created 2026-09-27 from the two items story 1-21 records as explicitly NOT delivered (bug-log #110); ready-for-dev, blocked on the AC5 protocol ruling
+[[req]]
+id          = "REQ-FORECAST-BIN-REPRODUCTION-GATES-001"
+title       = "Give every anchored scenario the forecast/report binaries can produce a gate that re-runs it and compares against the ANCHOR, so verify_anchors reporting 119/119 stops meaning 'the committed bodies still hash to what we wrote down' for a fifth of the corpus. Member list DERIVED from the criterion (every anchors.toml scenario no test file and no run manifest names): 15, matching the independent coverage audit; three of them have no literal occurrence in the tree because their names are built with format!, which a grep-only inventory would have declared producer-less. 10 measurable now, 2 (threshold-sweep-bs{1,2}-realdata-recalibrated) HELD on bug-log #129 because their producing lane run_cell silently drops cross-symbol orders since the #67 guard, 2 blocked because the anchored SHA encodes an input path (#128e), 1 without a producer at HEAD (#118). Entry gate: threshold_sweep's default --out-dir points INTO the corpus while its filename hardcodes a date, so a no-argument run overwrites a byte-immutable body."
+feature     = "forecast-bin-reproduction-gates"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = [
+  "docs/dev-notes/forecast-bin-repro-recipes-2026-09-27.md",
+  "docs/dev-notes/anchor-gate-coverage-audit-2026-09-26.md",
+]
+crates      = ["crates/backtest", "crates/forecast"]
+tests       = []
+anchors     = []   # gates only; any red is triaged to a D6.b candidate with its cause named at a file:line
+state       = "scoped"   # story 1-29 created 2026-09-27 after #126 closed the backtest-family; ready-for-dev, 2 rows HELD on the #129 ruling

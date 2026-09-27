@@ -3098,3 +3098,114 @@ producer at HEAD — `#118`). Total compute ≈ 79 min, taken from the anchored 
 present on this machine. Three rows are *predicted* to drift because their backtest inputs were
 re-emitted after they were locked — that prediction is dated inference, not measurement, and a red
 there is a D6.b candidate rather than a gate bug.
+
+### `#129` — the `#67` guard turned a mispriced fill into a silently dropped order, on an anchored lane the fix never reached
+**Status**: disclosed 2026-09-27. **CRITICAL.** Anchor-impacting: 2 rows
+(`threshold-sweep-bs{1,2}-realdata-recalibrated`, `anchors.toml:262` / `:267`). Found by a delegated
+read-only audit of story 1-25's acceptance criteria; the orchestrator re-verified every claim below at
+the cited lines.
+
+`run_cell` is **not** in `crates/backtest/src/bin/threshold_sweep.rs` — it is
+`crates/backtest/src/scenarios/threshold_sweep.rs:56`, and the bin's `fn @643` is its caller
+(`:783`, `:845`, `:937`). The orchestrator grepped the bin, found nothing, and treated the absence as
+weak evidence the guard might be missing. `scripts/callers.sh run_cell` answers it in one call. I had
+written that instruction into the audit's own brief and then not followed it myself.
+
+#### The source has confessed since v0.1.1
+
+`crates/backtest/src/scenarios/montecarlo.rs:5-9`, verbatim at HEAD:
+
+> *from v0.1.1 `run_path` carries the Bug-B long-only solvency guard (pre-flight cash check +
+> fill-loop guard), which `run_cell` does NOT — `run_cell` retains the pre-Bug-B unguarded Buy sizing
+> inside the frozen-anchored threshold-sweep lane.*
+
+Confirmed by reading it: `equity = cash + position_value` (`scenarios/threshold_sweep.rs:195`), the only
+cash-adjacent test is `if equity <= Decimal::ZERO { continue }` (`:196`) — which does not bound **cash**
+— and Buy sizing is `equity * dec!(0.10)` (`:207-208`) with no cash comparison anywhere. So story 1-25's
+AC2 ("BOTH lanes fixed") is unmet, and has been unmet in writing the whole time.
+
+#### The part nobody wrote down
+
+`run_cell` also never received the per-symbol routing half of the `#67` fix, and both of its engine
+calls are written as:
+
+```rust
+//  scenarios/threshold_sweep.rs:228 and :269
+&& let Ok(fills) = engine.step(bar, vec![ord]).await
+{ … }
+```
+
+An `if`-chain with **no else arm**. Since the `#67` engine guard makes `PaperEngine::step` return
+`Err(MatchError::SymbolMismatch)` for a cross-symbol order, the pattern simply fails to match and the
+entire body is skipped. No log, no counter, no error, no fill.
+
+**So the `#67` fix did not leave this lane unfixed — it changed its behaviour.** Before the guard, a
+cross-symbol order was priced at the wrong symbol's bar: wrong, loud in the arithmetic, and the defect
+`#67` was filed for. After the guard, the same order **vanishes**. A dropped order and a mispriced fill
+are different wrong answers, and only one of them is invisible.
+
+That behaviour change landed on a lane with two frozen anchors and was never disclosed — which is the
+part that makes this CRITICAL rather than merely open. `#67`'s inventory was scoped to the lanes it
+believed the fix touched; this is a third way that scoping failed, after `#111` (scoped by lane while
+the fix landed beneath the lanes) and `#126` (the criterion was right, the enumeration under it was
+incomplete). Here the lane was **known** to be divergent, said so in its own module doc, and still was
+not re-examined when the engine beneath it changed.
+
+#### The compounding defect, not yet manifest
+
+No solvency guard → cash can go negative → final equity can go negative → `compute_calmar`'s unguarded
+`powf` → **NaN into a hashed body**. `bin/threshold_sweep.rs` applies no clamp at all, calling
+`compute_calmar` raw at `:790` and `:945` — unlike every other lane, which clamps (see `#127`).
+Measured: `grep -rl NaN evidence/*/reports/` is empty, so it has not happened. The guard against it is
+arithmetic luck, not code.
+
+#### Direct collision with story 1-29
+
+`threshold-sweep-bs{1,2}-realdata-recalibrated` are 2 of the 12 rows story 1-29 sets out to gate. A
+reproduction gate on them would pin, as correct-by-definition, a body produced by a lane that silently
+drops orders. **1-29 must not gate those two rows until this is ruled on** — otherwise the gate
+converts an undisclosed behaviour change into a defended invariant, which is the most expensive form of
+this project's recurring mistake.
+
+The ruling is the operator's, and the honest options are: fix `run_cell` (routing + solvency guard) and
+re-lock its two anchors under D6.b; or narrow 1-25's AC2 to `run_path` explicitly **and** disclose the
+silent-drop behaviour change in the story record and in the two anchors' comments. Narrowing the AC
+without the disclosure is the one option that is not available.
+
+**2026-09-27 (orchestrator) — `#118` archaeology: the framing was wrong on both cases, and they are not
+one shape.** A delegated read-only history audit (`docs/dev-notes/118-anchor-archaeology-2026-09-27.md`)
+settled both. The two cases share only "the gate passes on a body nothing can regenerate" — and that
+much is still a valid **byte-immutability** check. What is false on these rows is the *reproduction*
+claim, not the measurement.
+
+**`sharpe-comparison-realdata` (2 rows = ONE body pinned twice, the second a v5 namespace copy carrying
+the identical SHA).** The producer was renamed to `sharpe-comparison-patchtst-bs1-realdata` by
+`bd731338` (2026-05-22) — but the same commit grew the scenario set 4 → 5 and restructured the verdict
+table, so the anchored 4-row body is not a body the surviving name can ever emit. That **forces
+option (b) out**: re-keying would pin a digest the surviving name has never produced. The evidence does
+not force a choice between relabelling and documenting the gap. Its numbers are not uniquely cited
+anywhere live.
+
+**`eth-yahoo-2024-1d-sma-cross` — `#118` said "re-emitting is not available", and that is wrong.** The
+row was *knowingly* left on a pre-migration body by `e74204a9` (2026-05-28, whose own message says
+"UNCHANGED … not re-emitted at v0.1.3 per analyst defer"), the replacement digest was measured, and it
+is **already committed**: `crates/backtest/tests/run_yahoo_sma_ticker_flag.rs:156`,
+`ETH_ANCHOR_SHA = "c854ff2b…"`, with the reason spelled out at `:149-156` and deferred to a v0.1.4 ship.
+**That ship was retired** (`trace.toml:2270`, operator decision 2026-06-16) and its retirement note
+reasons only about the 9 *new* tickers, silent on the 1 *in-place* row it also owned — while
+`trace.toml:2269` still reads `anchors = []  # tester M-FINAL fills with row 70`. The producer still
+runs at HEAD. So there is a fourth option `#118` did not list: **discharge the 2026-05-28 defer.** Its
+numbers ARE load-bearing — `anchors.toml:664` rests the H1 hypothesis discharge on this body's `+2.76%`.
+
+Mechanism, which narrows the option space: **no `historical` field exists** in `anchors.toml` or any
+reader, so a real relabel needs a `verify_anchors.sh` change. Relabelling by deleting the `sha256` line
+is no longer possible — `#127`'s hardening fails with *"N row(s) were never compared"*. Deletion has an
+existing ratification hook (`MIN_EXPECTED_ANCHORS`), but **ADR-0038 § D6.b forbids row deletion
+outright** and already names `D6.c` as the slot for a protocol amendment; no `D6.c` exists.
+`scripts/spec_lint.py:601`/`:608` cross-check trace ↔ anchors both ways, so any re-key edits
+`trace.toml` in the same pass.
+
+Two corrections to `#118`'s own text: it cited `retired-surface-inventory-2026-05-22.md:157` as evidence
+the surface is retired — that line asserts the opposite (that `sharpe_comparison.rs` still emits the
+name) and was **already false when written**, 23 h after the rename landed. And grouping the two cases
+as "the same shape" does not survive the history.
