@@ -28,7 +28,12 @@
 //!
 //! ## What this does NOT prove
 //!
-//! It proves the 34 bodies are reproducible from this machine's corpora. It does **not** make
+//! It covers the 34 θ-surfaces **and** the one Monte-Carlo scenario from the sibling
+//! `monte_carlo` binary (see `mc_reproduces_anchor` at the bottom) — both are the same
+//! producer family over the same corpora, so they share one apparatus rather than growing a
+//! second one (bug-log `#112` requirement 0).
+//!
+//! It proves those bodies are reproducible from this machine's corpora. It does **not** make
 //! them third-party reproducible: the three corpora (`data/binance`, `-funding`, `-basis`) are
 //! gitignored, ~11 MB of parquet with only `REVISION.toml` tracked. On a fresh clone these
 //! gates report **UNMEASURED**, never green — see `corpus_gated_theta_tests_are_declared`.
@@ -298,4 +303,101 @@ fn corpus_gated_theta_tests_are_declared() {
             rows.len()
         );
     }
+}
+
+// ── R-MC — the one Monte-Carlo scenario (bug-log #126) ───────────────────────
+
+/// R-MC-1 — `v1-momentum-2023-block-bootstrap-real-fy-mc` reproduces its anchor.
+///
+/// This was the **last** `backtest`-family scenario with no re-run gate. It had exactly one
+/// generation (2026-05-30) and was **not** re-emitted by the 1-26 re-lock, so its state was
+/// genuinely unknown until 2026-09-27 — when it turned out to have drifted for the same
+/// cause as the 34 θ-surfaces, `#67`/`#94`.
+///
+/// The link is mechanistic rather than a resemblance: `mc_harness.rs:281` calls
+/// `montecarlo::run_path`, the exact lane where `#94`'s sizer was wired (ADR-0089 D1). The
+/// signature agrees too — p50 `max_drawdown` **81.39 % → 34.12 %**, the same near-ruin
+/// collapse the 156 θ-cells showed (85.53 % → 26.70 %).
+///
+/// And the reason it was missed is worth keeping: the `#67` inventory **named** the lanes
+/// `run_path` and `run_cell`, and still omitted a `run_path` scenario. Not `#111`'s
+/// lane-scoping mistake — an enumeration miss under a correct rule.
+///
+/// Condition, declared: `monte_carlo` **release** with `--features candle,realdata`,
+/// `--generator block-bootstrap-real --paths 500 --ensemble-seed 0xC0FFEE --year 2023`, CWD
+/// = the workspace root, `--out-dir` to a tempdir (its default writes **into** the anchored
+/// corpus).
+#[test]
+#[ignore = "corpus-gated + 4 min (measured 256 s, 2026-09-27): run with --ignored"]
+fn mc_reproduces_anchor() {
+    const SCENARIO: &str = "v1-momentum-2023-block-bootstrap-real-fy-mc";
+    const ANCHOR: &str = "3aae06c00bcbf45eb96e7fae7d3856ff1bc148fbacb8f2dc5db1385a1d0cf745";
+
+    assert!(
+        corpora_present(),
+        "UNMEASURED, not passed: {SCENARIO} needs data/binance/REVISION.toml and it is absent."
+    );
+
+    let ws = workspace_root();
+    let status = std::process::Command::new("cargo")
+        .args([
+            "build", "--release", "-p", "backtest", "--bin", "monte_carlo",
+            "--features", "candle,realdata",
+        ])
+        .current_dir(&ws)
+        .status()
+        .expect("cargo build failed");
+    assert!(status.success(), "building monte_carlo failed");
+
+    let out = tempfile::tempdir().expect("create out-dir tempdir");
+    let output = std::process::Command::new(ws.join("target/release/monte_carlo"))
+        .args([
+            "--generator", "block-bootstrap-real",
+            "--paths", "500",
+            "--ensemble-seed", "0xC0FFEE",
+            "--year", "2023",
+        ])
+        .arg("--out-dir")
+        .arg(out.path())
+        .current_dir(&ws)
+        .output()
+        .expect("spawn monte_carlo");
+    let so = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let se = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    assert!(
+        output.status.success(),
+        "monte_carlo exited {:?}{}\nstdout: {so}\nstderr: {se}",
+        output.status,
+        if so.is_empty() && se.is_empty() {
+            " — nothing on either stream, so almost certainly killed rather than refusing; \
+             re-run before treating this as drift (bug-log #124)"
+        } else {
+            ""
+        },
+    );
+
+    let md = std::fs::read_dir(out.path())
+        .expect("read out-dir")
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|x| x == "md"))
+        .expect("monte_carlo wrote no .md");
+
+    let hash = std::process::Command::new("python3")
+        .arg(ws.join("scripts/hash_report.py"))
+        .arg(&md)
+        .output()
+        .expect("spawn hash_report.py");
+    let got = String::from_utf8_lossy(&hash.stdout)
+        .split_whitespace()
+        .next()
+        .expect("hash_report.py printed nothing")
+        .to_string();
+
+    assert_eq!(
+        got, ANCHOR,
+        "R-MC: {SCENARIO} no longer reproduces its anchor.\n\
+         Expected: {ANCHOR}\nGot:      {got}\n\
+         Do NOT re-pin (bug-log #77); the resolution is an ADR-0038 § D6.b re-emission."
+    );
 }

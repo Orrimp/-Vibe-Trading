@@ -805,10 +805,23 @@ sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
 # Determinism: body SHA identical on 2 independent runs (FP-C2.3 PASS — tester to verify).
 # Verify with: scripts/verify_anchors.sh (expects 85/85 PASS with this new SHA)
 
+# v1-momentum-2023-block-bootstrap-real-fy-mc
+# RE-EMITTED 2026-09-27 under ADR-0038 § D6.b — story 1-27 follow-on, bug-log #126.
+#   Same cause as the 34 theta-surfaces (#67 / #94), and mechanistically linked rather
+#   than inferred from resemblance: mc_harness.rs:281 calls montecarlo::run_path, the
+#   exact lane where #94's sizer was wired (ADR-0089 D1) and #67's engine guard applies.
+#   Signature agrees: p50 max_drawdown 81.39% -> 34.12%, the same near-ruin collapse the
+#   156 theta-cells showed (85.53% -> 26.70%).
+#   WHY IT WAS MISSED: the #67 inventory named the lanes `run_path` and `run_cell` and
+#   still omitted a run_path scenario. Not a reasoning error like #111's lane-scoping —
+#   an ENUMERATION error under a correct rule. It had exactly one generation (2026-05-30)
+#   and was the last backtest-family scenario with no re-run gate.
+#   Landed: evidence/v1/strategy-robustness-harness/reports/robustness-20260927-155436-….md
+# SUPERSEDED BODY sha256=7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20 — kept verbatim below:
 [[anchors]]
 scenario = "v1-momentum-2023-block-bootstrap-real-fy-mc"
 version  = "mc-robustness-2026-06"
-sha256   = "7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20"
+sha256   = "3aae06c00bcbf45eb96e7fae7d3856ff1bc148fbacb8f2dc5db1385a1d0cf745"
 
 # C3 momentum parameter-robustness sweep — θ-surface anchor (2026-05-30).
 # Re-scoped 6-cell × N=200 grid (orchestrator 2026-05-30; was 14-cell × N=500).

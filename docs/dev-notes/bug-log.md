@@ -2897,3 +2897,45 @@ now reports **24 passed, 0 failed, 0 ignored** — it began this week at 16 pass
 2. **The summary's "synthetic" count now follows the RESOLUTION, not the scenario name.** It was
    reporting 9 where the resolution used 6: a number nobody measured, in the summary line of the tool
    written to catch exactly that.
+
+
+### `#126` — the `#67` inventory NAMED `run_path` and still missed a `run_path` scenario
+**Status**: re-emitted and gated 2026-09-27. The last `backtest`-family scenario without a re-run gate.
+Anchor-impacting: **yes** — 1 row, re-locked under D6.b.
+
+`v1-momentum-2023-block-bootstrap-real-fy-mc` had exactly **one** generation (2026-05-30) and was not
+touched by the 1-26 re-lock. Its state was therefore genuinely unknown, and the anchor-gate coverage
+audit flagged it as the one non-θ scenario of the sweep family with no gate.
+
+Measured 2026-09-27: **DRIFTED**, `7dbf5628…` → `3aae06c0…`.
+
+**The attribution is mechanistic, not a resemblance.** `crates/backtest/src/mc_harness.rs:281` calls
+`crate::scenarios::montecarlo::run_path` — the exact lane where `#94`'s sizer was wired (ADR-0089 D1,
+`723ca742`) and where `#67`'s engine guard applies. The signature agrees independently: p50
+`max_drawdown` **81.39 % → 34.12 %**, the same near-ruin collapse the 156 θ-cells showed
+(85.53 % → 26.70 %).
+
+That distinction matters, and it is the difference between this entry and `#125`. There, the mechanism
+**predicted immunity** (single-symbol), so the resemblance contradicted it and folding it in would have
+destroyed the evidence. Here the mechanism predicts involvement and the signature agrees. Same
+observation, opposite handling, because the mechanism — not the resemblance — decides.
+
+#### The finding is sharper than `#111`'s
+
+`#111` said the `#67` inventory was scoped by **lane** while `#67` was fixed **beneath** the lanes — a
+reasoning error. This is different and, in a way, worse: **the inventory named `run_path` explicitly,
+and still omitted a `run_path` scenario.** The rule was right; the enumeration under it was
+incomplete. A wrong rule announces itself the first time someone checks it; a correct rule applied
+incompletely does not, because every spot-check confirms the rule.
+
+The general lesson for the next inventory: **derive the member list mechanically from the criterion** —
+`scripts/callers.sh run_path` would have listed `mc_harness.rs:281` on day one — rather than writing
+down the members you can think of and naming the criterion afterwards.
+
+Re-emitted under D6.b: 119 rows before and after, **1** changed, 0 namespaces, 118 byte-identical, and
+exactly one row red before any sha moved. Gated by `theta_surface_reproduction.rs::mc_reproduces_anchor`
+(**measured 256 s**), and green.
+
+With it, **every scenario the `backtest`/`param_robustness_sweep`/`monte_carlo` binaries can produce
+now has a re-run gate.** What remains ungated is the 15 forecast/report-binary scenarios, a different
+producer family entirely.
