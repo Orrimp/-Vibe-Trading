@@ -3282,3 +3282,27 @@ whose cause is unnamed is re-baselining (`#77`); and the old verdict is cited in
 **accepted ADR-0036:45**, and inside another `evidence/` body
 (`v25-tcn-horizon-bump-or-retire/reports/test-final-2026-05-21.md:75`) that cannot be edited to match
 without breaking its own bytes — the `#110` knot, not dev's to untie.
+
+**2026-09-28 (orchestrator) — `#118` case 2 DISCHARGED: `eth-yahoo-2024-1d-sma-cross` re-emitted under § D6.b.**
+Operator ruling 2026-09-27: re-emit eth, document the sharpe gap. Both done.
+
+The 2026-05-28 defer is discharged rather than inherited. Measured 2026-09-27T21:59:28Z from the
+workspace root, `target/release/run_yahoo_sma --ticker ETH-USD --reports-dir <tempdir>`,
+`--features yahoo`, release: the run reproduces **`c854ff2b…` exactly** — byte-for-byte the digest
+measured at the v0.1.3 migration four months ago and committed since as `ETH_ANCHOR_SHA`
+(`crates/backtest/tests/run_yahoo_sma_ticker_flag.rs:156`). Four months and a great many engine commits
+apart, the same bytes. This lane is **single-symbol**, so `#67` never touched it — which is why it held
+while the multi-symbol lanes did not, and is the mechanism agreeing with itself rather than a
+coincidence.
+
+Landing control, proven not assumed: with the new body on disk and **before** the sha was touched, the
+gate showed exactly **1 FAIL / 118 PASS**, and the single FAIL was this row resolving to the new file
+with exactly the digest that then replaced it. After: `ANCHORS PASS (119 / 119) [declared 119 · floor
+119]`, and `git diff` on `anchors.toml` shows **exactly one** `sha256` line and one `version` line
+changed — 118 rows byte-identical. The superseded body stays on disk, linked from the row's comment
+(§ D6.b forbids row deletion). Its `+2.76 %` total return, which carries the H1 hypothesis discharge,
+is **unchanged** by the re-emission, so that discharge still stands.
+
+One limit stated rather than hidden: `data/yahoo/ETH-USD/1d/2024/` is gitignored and operator-local, so
+**CI cannot reproduce this row**. The three Binance corpora were committed the same day for exactly this
+reason; the Yahoo cache was not part of that decision.

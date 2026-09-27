@@ -690,9 +690,44 @@ sha256   = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0"
 # Verify with: scripts/verify_anchors.sh  (expects 70 / 70 PASS)
 
 [[anchors]]
+# ── RE-EMITTED 2026-09-28 under ADR-0038 § D6.b — the 2026-05-28 defer, discharged ──
+# The v0.1.3 body→frontmatter migration (D-V0.1.3-1, commit e74204a9) stopped emitting
+# `rev=` inside the body and moved the full revision SHA to the front matter, which
+# hash_report.py strips. That made the v0.1.2 body STRUCTURALLY unreachable: no invocation
+# of the current emit shape can reproduce it. e74204a9 updated the BTC sibling in place
+# (8045623b… → 076929bb…) and deliberately deferred this row — its own message: "Row 70
+# eth-yahoo-2024-1d-sma-cross — UNCHANGED … not re-emitted at v0.1.3 per analyst defer",
+# scheduled to the v0.1.4 BNB ship (D-V0.1.3-6). That ship was RETIRED 2026-06-16
+# (trace.toml:2270, operator decision) and its retirement note reasons only about the 9 NEW
+# tickers, silent on the one in-place row it also owned. So the defer outlived its owner —
+# the mechanism bug-log #118 recorded as "re-emitting is not available", which was wrong.
+#
+# Condition declared (a body SHA means nothing without it):
+#   cwd            = workspace root
+#   invocation     = target/release/run_yahoo_sma --ticker ETH-USD --reports-dir <tempdir>
+#   features       = yahoo          profile = release
+#   input corpus   = data/yahoo/ETH-USD/1d/2024 (gitignored, operator-local — so CI cannot
+#                    reproduce this row; that limit is stated, not hidden)
+#
+# MEASURED 2026-09-27T21:59:28Z: the run reproduces c854ff2b… — byte-for-byte the digest
+# measured at the 2026-05-28 migration and committed since then as ETH_ANCHOR_SHA at
+# crates/backtest/tests/run_yahoo_sma_ticker_flag.rs:156. Four months and a great many engine
+# commits apart, the same bytes. This lane is single-symbol, so bug-log #67 never touched it,
+# which is why it held while the multi-symbol lanes did not.
+#
+# Landing control, proven not assumed: with the new body on disk and BEFORE this sha was
+# touched, the gate showed exactly 1 FAIL / 118 PASS, and the one FAIL was this row resolving
+# to the new file with exactly the digest below.
+#
+# SUPERSEDED BODY sha256=e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a
+#   — file kept verbatim at
+#   evidence/v1/lab-yahoo-realdata-v0.1.2-eth-usd-anchor-and-cache-badge/reports/backtest-20260527-215652-eth-yahoo-2024-1d-sma-cross.md
+#   (D6.b forbids row deletion; historical evidence stays linked). Its +2.76 % total return
+#   carries the H1 hypothesis discharge cited at anchors.toml elsewhere in this file — the
+#   number is UNCHANGED by this re-emission, which is why the discharge still stands.
 scenario = "eth-yahoo-2024-1d-sma-cross"
-version  = "lab-yahoo-realdata-v0.1.2"
-sha256   = "e59a5f87daf0cc58ce8be2e1695dfc2ccc3ab76bd976b54c957e9e3c5ed4199a"
+version  = "lab-yahoo-realdata-v0.1.3"
+sha256   = "c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2"
 
 # lab-yahoo-realdata v0.1.3 Binance ETH H1 anchor (2026-05-28).
 # Third real-data anchor in the registry.  Source: data/binance/ETHUSDT/2024/
