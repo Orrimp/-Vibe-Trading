@@ -3246,3 +3246,39 @@ Isolated to this one producer — `grep` for the literal and for the comment fin
 
 Found while measuring `#129`: the freshly emitted body's `generated:` line read 2026-05-21 with today's
 time, which is what prompted reading the construction rather than trusting it.
+
+**2026-09-27 (orchestrator) — `#129` MEASURED in three states; the fix is landed, the re-lock is NOT.**
+Full record with every digest: `docs/dev-notes/129-threshold-sweep-measurement-2026-09-27.md`.
+
+Six distinct body digests for two scenarios — ANCHOR (2026-05-21, `447c0432`), PRE-FIX (HEAD with
+`run_cell` untouched) and POST-FIX. **`PRE-FIX ≠ ANCHOR` on both**, so this lane had already stopped
+reproducing before today, while `verify_anchors.sh` said 119/119 throughout. That makes it the THIRD
+such family after 1-26's 34 θ-surfaces and 1-27's 15 rows, and it sat outside both inventories. Its
+cause is **not bisected**, and must not be assumed to be `#67` — `#125` is the precedent for a drift
+that resembled `#67`'s signature and had a different cause.
+
+**The verdict had already flipped before the fix:** `T-MARGINAL` → `T-ALPHA-UNLOCKED`, at PRE-FIX
+already. Composition matters more than the label: of the 1.8338 by which `max_cell_sharpe − v1_sharpe`
+grew, **0.6963 (38 %) is the CONTROL getting worse**, not the strategy getting better. The FROZEN gate
+is uninvolved (grepped — neither file references `classify_verdict`/`verdict_bands`/
+`compute_robustness_flag`/`rank_candidates`); `T-*` is this report's private vocabulary over a 9×5 grid
+with no bootstrap, no DSR and no multiple-testing correction, selecting a maximum from 45 cells.
+
+**What I could not establish, stated rather than glossed:** `POST-FIX ≠ PRE-FIX`, but not *which* half
+of the fix moved it. The two new branches log through `tracing::warn!` and the run emitted **zero log
+lines of any level** — no subscriber is installed in this bin and `RUST_LOG` was unset. I first read
+"0 refusals" as proof the silent-drop path was never taken; it proves nothing, and the post-fix code
+*cannot* log a refusal because it never hands a foreign bar to the engine. An absence of output from a
+logger that was never installed is this week's own subject matter, and I nearly filed it as evidence.
+The report renders no order or trade counts either, so the artefact cannot answer it — `#110` added a
+`trades` column to the MN surfaces for exactly this reason and this family never got one.
+
+**Landed:** the code (ratified `#67` seam — `last_bar_by_symbol`, the fill-side twin of `mark_prices`,
+mirroring `montecarlo::run_path` — plus the Bug-B pre-flight, and a reported refusal in place of a
+silent `if let` drop). 282 lib + 15 integration tests green, clippy clean on a forced re-lint.
+**Not landed:** the anchor re-pin. Three independent reasons — AD-19 (a thesis-adjacent verdict flip
+escalates BEFORE publication, and the ruling was given before the flip was known); re-pinning a number
+whose cause is unnamed is re-baselining (`#77`); and the old verdict is cited in `trace.toml:372`,
+**accepted ADR-0036:45**, and inside another `evidence/` body
+(`v25-tcn-horizon-bump-or-retire/reports/test-final-2026-05-21.md:75`) that cannot be edited to match
+without breaking its own bytes — the `#110` knot, not dev's to untie.

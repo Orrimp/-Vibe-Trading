@@ -175,8 +175,20 @@ pub async fn run_cell(
         // fill triangle markers against the run's own time window (R5.2 pattern).
         let bars_arc: Arc<Vec<Bar>> = Arc::new(merged_bars_raw);
 
+        // #67 fill-symbol correctness (story 1-25, seam ratified 2026-08-16) — the
+        // fill-side twin of `mark_prices`, with the same key, the same update point and
+        // the same "most recent bar for this symbol" semantics, so a fill is priced at
+        // exactly the bar whose close the sizing used. Mirrors
+        // `montecarlo::run_path`'s map rather than inventing a second mechanism.
+        //
+        // `run_cell` did not receive this half of the #67 fix in 2026-08. See bug-log
+        // #129 for what that cost.
+        let mut last_bar_by_symbol: std::collections::HashMap<Symbol, Bar> =
+            std::collections::HashMap::new();
+
         for bar in bars_arc.iter() {
             mark_prices.insert(bar.symbol.clone(), bar.close.get());
+            last_bar_by_symbol.insert(bar.symbol.clone(), bar.clone());
 
             let signals = strategy.on_bar(bar);
 
@@ -225,8 +237,55 @@ pub async fn run_cell(
                                 &risk_limits,
                                 equity,
                             )
-                            && let Ok(fills) = engine.step(bar, vec![ord]).await
                         {
+                            // #67: fill at THIS order's symbol bar, never the merged-loop
+                            // bar. Until 2026-09-27 this was written
+                            // `&& let Ok(fills) = engine.step(bar, …)` — an `if`-chain with
+                            // NO else arm. Once the #67 engine guard began returning
+                            // `Err(SymbolMismatch)` the pattern simply failed to match and
+                            // the order VANISHED: no log, no counter, no fill. A dropped
+                            // order and a mispriced fill are different wrong answers and
+                            // only one of them is invisible (bug-log #129).
+                            let Some(fill_bar) = last_bar_by_symbol.get(&sig.symbol) else {
+                                tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    "no bar seen yet for this symbol — Buy SKIPPED, and said so"
+                                );
+                                continue;
+                            };
+
+                            // Bug-B solvency pre-flight, carried over from
+                            // `montecarlo::run_path` (story 1-25 AC2). `run_cell` retained
+                            // the pre-Bug-B unguarded Buy sizing until 2026-09-27: the only
+                            // cash-adjacent test was `equity <= 0`, and equity is
+                            // `cash + position_value`, so nothing bounded cash. Unbounded,
+                            // cash goes negative, final equity goes negative, and
+                            // `compute_calmar`'s unguarded powf puts NaN in a hashed body.
+                            let fee_estimate =
+                                notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
+                            let required = notional + fee_estimate;
+                            if cash < required {
+                                tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    %cash,
+                                    %required,
+                                    "Buy SKIPPED by the solvency pre-flight"
+                                );
+                                continue;
+                            }
+
+                            let fills = match engine.step(fill_bar, vec![ord]).await {
+                                Ok(fills) => fills,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        order_symbol = %sig.symbol,
+                                        bar_symbol = %fill_bar.symbol,
+                                        error = %err,
+                                        "engine REFUSED a Buy — reported, not dropped"
+                                    );
+                                    continue;
+                                }
+                            };
                             for fill in fills {
                                 let notional_fill = fill.qty.get() * fill.price.get();
                                 cash -= notional_fill + fill.fee.amount();
@@ -266,8 +325,29 @@ pub async fn run_cell(
                                 &risk_limits,
                                 equity,
                             )
-                            && let Ok(fills) = engine.step(bar, vec![ord]).await
                         {
+                            // #67 / #129: same routing and the same loud refusal as the Buy
+                            // arm above. No solvency pre-flight here — closing a long
+                            // RELEASES cash, so there is nothing to be short of.
+                            let Some(fill_bar) = last_bar_by_symbol.get(&sig.symbol) else {
+                                tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    "no bar seen yet for this symbol — Sell SKIPPED, and said so"
+                                );
+                                continue;
+                            };
+                            let fills = match engine.step(fill_bar, vec![ord]).await {
+                                Ok(fills) => fills,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        order_symbol = %sig.symbol,
+                                        bar_symbol = %fill_bar.symbol,
+                                        error = %err,
+                                        "engine REFUSED a Sell — reported, not dropped"
+                                    );
+                                    continue;
+                                }
+                            };
                             for fill in fills {
                                 let notional_fill = fill.qty.get() * fill.price.get();
                                 cash += notional_fill - fill.fee.amount();
