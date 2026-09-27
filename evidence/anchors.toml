@@ -216,6 +216,25 @@ scenario = "forecast-distribution-bs2-realdata"
 version  = "v2.6.0-alpha-investigation + noop-baseline"
 sha256   = "d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06"
 
+# ── NO REPRODUCTION CLAIM (bug-log #118, ruled 2026-09-27) ────────────────────
+# Nothing at HEAD emits the name `sharpe-comparison-realdata`. Its producer was
+# renamed to `sharpe-comparison-patchtst-bs1-realdata` by bd731338 (2026-05-22) —
+# but the SAME commit grew the scenario set from 4 to 5 and restructured the
+# verdict table, so the body pinned here is not a body the surviving name can ever
+# emit. Re-keying this digest onto that name is therefore FORCED OUT: it would pin
+# a SHA that name has never produced. (History: producer + report landed b8a29a8a
+# 2026-05-19, pinned 86 min later at 50567390; the two rows below are ONE body
+# pinned twice, the second a v5 namespace copy with the identical digest.)
+#
+# What the row still is: a valid BYTE-IMMUTABILITY check — the committed body has
+# not been altered. What it is NOT: evidence that the code still produces it. That
+# distinction is the whole point of this note, and it is why the row is neither
+# deleted (ADR-0038 § D6.b forbids row deletion outright — historical evidence
+# stays linked) nor re-keyed.
+#
+# Its numbers are not uniquely cited anywhere live: 0.003098 / 0.017263 also appear
+# as the successor report's passthrough-2023 row, and 0.001389 / 0.006447 appear
+# nowhere. Full archaeology: docs/dev-notes/118-anchor-archaeology-2026-09-27.md.
 [[anchors]]
 scenario = "sharpe-comparison-realdata"
 version  = "v2.6.0-alpha-investigation + noop-baseline"
@@ -566,6 +585,25 @@ scenario = "forecast-distribution-bs2-realdata"
 version  = "v2.6.0-alpha-investigation + v5-realdata-medium-2026-05"
 sha256   = "d7cd08e6727a7629a4d5427f947e3b1bf0daea04f772bc6f90defef4c405fc06"
 
+# ── NO REPRODUCTION CLAIM (bug-log #118, ruled 2026-09-27) ────────────────────
+# Nothing at HEAD emits the name `sharpe-comparison-realdata`. Its producer was
+# renamed to `sharpe-comparison-patchtst-bs1-realdata` by bd731338 (2026-05-22) —
+# but the SAME commit grew the scenario set from 4 to 5 and restructured the
+# verdict table, so the body pinned here is not a body the surviving name can ever
+# emit. Re-keying this digest onto that name is therefore FORCED OUT: it would pin
+# a SHA that name has never produced. (History: producer + report landed b8a29a8a
+# 2026-05-19, pinned 86 min later at 50567390; the two rows below are ONE body
+# pinned twice, the second a v5 namespace copy with the identical digest.)
+#
+# What the row still is: a valid BYTE-IMMUTABILITY check — the committed body has
+# not been altered. What it is NOT: evidence that the code still produces it. That
+# distinction is the whole point of this note, and it is why the row is neither
+# deleted (ADR-0038 § D6.b forbids row deletion outright — historical evidence
+# stays linked) nor re-keyed.
+#
+# Its numbers are not uniquely cited anywhere live: 0.003098 / 0.017263 also appear
+# as the successor report's passthrough-2023 row, and 0.001389 / 0.006447 appear
+# nowhere. Full archaeology: docs/dev-notes/118-anchor-archaeology-2026-09-27.md.
 [[anchors]]
 scenario = "sharpe-comparison-realdata"
 version  = "v2.6.0-alpha-investigation + v5-realdata-medium-2026-05"

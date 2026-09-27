@@ -149,7 +149,16 @@ struct Args {
     metadata_path: PathBuf,
 
     /// Output directory for the heatmap report.
-    #[arg(long, default_value = "evidence/v1/v25-tcn-threshold-tuning/reports/")]
+    ///
+    /// The default deliberately points at `target/`, NOT into `evidence/` (bug-log
+    /// #128a). This bin is the one producer in the repo whose report FILENAME hardcodes
+    /// a date (`-20260521.md`, see `report_filename` below), so a default-argument run
+    /// used to write straight OVER a byte-immutable anchored body — not merely plant a
+    /// newer file that wins `verify_anchors.sh`'s newest-match resolution, but destroy
+    /// the pinned bytes, recoverable only from git and only if someone noticed.
+    ///
+    /// Landing an anchored re-emission is an explicit `--out-dir`, never a default.
+    #[arg(long, default_value = "target/threshold-sweep-reports/")]
     out_dir: PathBuf,
 
     /// Pinned data revision SHA (v2.6.0-realdata default).
