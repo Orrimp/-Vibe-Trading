@@ -1,6 +1,6 @@
 # Story 1.27: determinism-drift-bisect
 
-Status: in-progress
+Status: done
 
 <!-- Created 2026-09-25 by the operator's AC7 ruling on 1-26. 1-26 measured that its re-lock
      moved all 34 inventory surfaces and moved these four gates NOT AT ALL, which is the
@@ -205,3 +205,4 @@ free). Budget the bisect as ~5 builds, not as a 14 s loop.
 - Protocol if AC3 branch (b): ADR-0038 § D6.b, worked example in
   [`docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md`](../../docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md).
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1.
+- Trace: `REQ-DETERMINISM-DRIFT-BISECT-001` (state=`shipped`)

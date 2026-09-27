@@ -227,6 +227,7 @@ Not a feature program — a **bounded ship-readiness pass** ratified after the v
 - **adr-registry-atomic-lint** — ADR-registry atomicity lint (sibling pre-commit guard).
 - **queue-staleness-reconciliation** — backlog-queue staleness reconciliation pass.
 - **subscription-pipe-server-time-template** — server-time template closing the Wave-1 subscription-pipe carve-out.
+- **determinism-drift-bisect** — the four `#[ignore]`d `determinism.rs` gates traced to their cause (`11acd126`, the `#67` engine fix) and resolved by an ADR-0038 § D6.b re-emission of **15** anchored scenarios, not 4: the `#67` inventory was scoped by LANE while `#67` was fixed BENEATH the lanes, so it was a lower bound. Adds **11 `R-REPRO` reproduction gates** that re-run the producer and compare against the anchor — the first coverage for `#93`'s blind spot — each declaring its own condition (CWD × feature set × build profile), writing outside `evidence/`, and reporting an absent precondition as `unmeasured` rather than green. Two audits map the rest: 12 of 77 anchored scenarios have real anchor-comparing coverage, and 14 gates elsewhere in the repo cannot fail.
 - **regression-anchor gate** — `evidence/anchors.toml` + `scripts/verify_anchors.sh` (119 byte-SHA bodies); `scripts/spec_lint.py` structural gate (dead-link, frontmatter, orphan, trace, status-drift).
 
 ## BMAD-METHOD migration — 2026-07-24 → 2026-07-25 (process re-platform, zero guarantees dropped)

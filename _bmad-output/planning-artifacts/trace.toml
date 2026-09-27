@@ -3647,3 +3647,23 @@ tests       = [
 ]
 anchors     = ["btc-yahoo-2024-1d-sma-cross"]
 state       = "shipped"   # 2026-09-25, ADR-0097. Reproduces the ANCHORED body-SHA exactly (not a tolerance); required fixing bug-log #106 first; runbook states the #93 caveat that other anchored scenarios currently do NOT reproduce
+
+[[req]]
+id          = "REQ-DETERMINISM-DRIFT-BISECT-001"
+title       = "Trace the four #[ignore]'d determinism gates' divergence to its actual cause and resolve it, so the ONLY gate that can observe code-vs-evidence drift is green because the drift is understood — not because someone re-pinned it (bug-log #77). Cause bisected to 11acd126, the #67 engine fix: the pinned bodies were #67-contaminated and the gates were red because the engine became CORRECT. The lane-scoped #67 inventory was therefore a LOWER BOUND — 15 anchored scenarios do not reproduce, not 4 — and the resolution is a D6.b re-emission of all 15 plus reproduction gates that can see the next one."
+feature     = "determinism-drift-bisect"
+product     = "_bmad-output/planning-artifacts/PRD.md"
+arch        = [
+  "docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md",
+  "docs/dev-notes/relock-row-mapping-derivation-2026-09-26.md",
+  "docs/dev-notes/anchor-gate-coverage-audit-2026-09-26.md",
+  "docs/dev-notes/cannot-fail-gate-audit-2026-09-26.md",
+]
+crates      = ["crates/backtest", "crates/forecast", "crates/reports"]
+tests       = [
+  "crates/backtest/tests/determinism.rs",
+  "crates/backtest/tests/multi_pair_determinism.rs",
+]
+anchors     = []
+state       = "shipped"   # 2026-09-27. 15 rows re-emitted in place under D6.b (119/119, 15 changed, 104 byte-identical, 0 namespaces); 11 R-REPRO gates added; every #[ignore] removed. Open follow-ons carried as bug-log #115/#118 and the 50 still-ungated scenarios.
+
