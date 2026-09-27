@@ -3209,3 +3209,40 @@ Two corrections to `#118`'s own text: it cited `retired-surface-inventory-2026-0
 the surface is retired — that line asserts the opposite (that `sharpe_comparison.rs` still emits the
 name) and was **already false when written**, 23 h after the rename landed. And grouping the two cases
 as "the same shape" does not survive the history.
+
+### `#130` — every report this producer emits claims it was generated on 2026-05-21, forever
+**Status**: disclosed 2026-09-27. Anchor-impacting: **no** — and that is the finding, not a mitigation.
+
+`crates/backtest/src/bin/threshold_sweep.rs:1006-1028` builds the `generated:` front-matter field like
+this, verbatim at HEAD:
+
+```rust
+let secs = now;                        //  real epoch seconds
+let mins   = secs / 60 % 60;           //  real
+let hours  = secs / 3600 % 24;         //  real
+let _days_since_epoch = secs / 86400;  //  computed, then DISCARDED — note the underscore
+// Approximate date from epoch days (good enough for advisory frontmatter).
+format!("{}-{}-{}T{:02}:{:02}:{:02}Z", 2026, "05", "21", hours, mins, secs % 60)
+```
+
+The year, month and day are literals — and they are not arbitrary literals, they are **the date the
+anchored bodies were born**. Only the time of day is live. So a run today emits
+`generated: 2026-05-21T21:38:08Z`: a real clock time welded to a four-month-old date. The comment
+promises an approximation from epoch days and the very next line throws that number away.
+
+**Why it survived, and why that is the point.** `generated:` lives in the YAML front matter, and
+`scripts/hash_report.py` strips the front matter before hashing — by design, so that re-emitting a
+body does not churn the digest over a timestamp. So this field is the one part of the report that
+**nothing checks**: not the anchor gate, not the determinism literals, not spec-lint. It drifted into
+fiction precisely where no gate was looking, and it will keep asserting May 2026 until someone reads it
+next to a `git_commit` from September.
+
+That combination is what makes it worth an entry rather than a silent fix: the body carries a real
+`git_commit` and a real `wall_clock_s` beside a fabricated date, so the front matter is internally
+inconsistent in a way that misdates evidence. The repo's own convention elsewhere is a real UTC stamp
+in the FILENAME (`backtest-20260927-123805-…`), which is how the mismatch is visible at all.
+
+Isolated to this one producer — `grep` for the literal and for the comment finds no other site.
+
+Found while measuring `#129`: the freshly emitted body's `generated:` line read 2026-05-21 with today's
+time, which is what prompted reading the construction rather than trusting it.
