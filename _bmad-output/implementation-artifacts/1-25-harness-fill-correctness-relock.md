@@ -94,14 +94,15 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
         is the sole enforcer and has **zero production callers** (definition + its own tests + 3 sites in
         `agent/tests/v1_rebalance_reject.rs`). Sweep scenarios set `Some(0.50)`, it is printed into hashed
         bodies, nothing reads it. Annotated at the declaration; commit `ae62de8`.
-  - [ ] **#68 + #69 — UNITS RULED 2026-08-22: `exposure_cap` MEANS GROSS (Σ |notional|).** ADR-0089 D7.
+  - [x] **#68 + #69 — UNITS RULED 2026-08-22: `exposure_cap` MEANS GROSS (Σ |notional|).** ADR-0089 D7.
+        *(superseded by the WIRED AND BINDING entry above — box closed 2026-09-27 as bookkeeping, no new work; the units ruling is implemented at `crates/risk/src/portfolio.rs:83-247` and bound by `portfolio_controls_bind`, measured 3 passed / 0 ignored.)*
         The anchored MN surfaces **did** breach their declared limit (6 legs × 0.10 = **0.60 gross vs a
         hashed 0.50**), so bug-log #69's reading is now official rather than a candidate. And
         `size_portfolio_target` **cannot implement the ruling as written** — it caps
         `total_long_notional`, the long-only measure that was explicitly rejected — so it must be
         extended to signed weights with a gross cap, or replaced. 1-26's errata owes the per-scenario
         non-compliance record.
-  - [ ] *(prior)* **#68 + #69 are ONE defect — RE-RULED 2026-08-19: WIRE `size_portfolio_target` FULLY.**
+  - [x] *(prior — superseded twice; box closed 2026-09-27 as bookkeeping)* **#68 + #69 are ONE defect — RE-RULED 2026-08-19: WIRE `size_portfolio_target` FULLY.**
         Found while implementing the earlier rulings: `risk::size_portfolio_target` implements **both**
         controls — the portfolio cap at `portfolio.rs:189` (`if let Some(portfolio_cap) =
         limits.portfolio_exposure_cap`) **and** the drift hold band at `:110`
@@ -122,7 +123,7 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
         0.10). *(prior state, for the record:)* implement-or-drop — `drift_rebalance_threshold` is swept,
         **range-validated**, copied to `momentum.rs:194` — and read nowhere. One of the three advertised
         Tier-1 grid axes has no consumer. Annotated at the declaration; commit `ae62de8`.
-- [ ] Re-run + re-lock + errata + verdict re-derivation (AC4) — **RULED 2026-08-19: SPLIT OUT.**
+- [x] Re-run + re-lock + errata + verdict re-derivation (AC4) — **RULED 2026-08-19: SPLIT OUT → story 1-26, `done` 2026-09-27.** Not this story's box any more; closed here so the list stops implying un-started work. 34 surfaces regenerated, errata at `evidence/v2/harness-relock/ERRATA.md`.
   The regeneration moves to its own story so the eight code fixes can be reviewed while a multi-day
   compute window is scheduled. The split line falls BEFORE regeneration (plan §6) so no partial corpus
   is ever produced. 1-25 therefore closes on the CODE deliverable; the re-lock story owns AC4 + AC5.
@@ -135,7 +136,54 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
   traffic and the basis-reversal family hits 60k–318k trades/200 paths. Plan a multi-day window;
   15–20 h is the realistic figure. `--out-dir` is MANDATORY (its default points INTO the anchored
   corpus — nearly written there on 2026-08-16, caught mid-compute).
-- [ ] Review: old rows intact, new rows complete, verdict-delta table honest, advisor-gate independence proof (AC5).
+- [x] Review: old rows intact, new rows complete, verdict-delta table honest (AC5) — **delivered by 1-26's review, 2026-09-27**: old bodies intact 34/34, new rows anchored 34/34, errata table 0 mismatches over 136 re-derived numbers. **The advisor-gate independence leg is NOT delivered as written** — see the 2026-09-27 audit note below.
+
+## Audit 2026-09-27 — NOT CLOSABLE, and why
+
+An independent read-only audit of every criterion against HEAD is at
+`docs/dev-notes/1-25-ac-closure-audit-2026-09-27.md`. Verdicts: **AC1 met** (guard at `paper.rs:148-155`,
+binding test at `:561` uses `.unwrap_err()` so it cannot pass without the guard; `cargo test -p backtest
+--lib paper::tests` → 12 passed / 0 ignored). **AC2 NOT met.** AC3: one of seven riders met on the
+inventory lane, one partial-and-unratified, five not met. **AC6 not met as written.** The four stale
+boxes above are bookkeeping and are now closed; the substance below is not bookkeeping.
+
+**AC2 is the only code/compute question, and it is worse than "unfixed" — see `#129`.** `run_cell` is
+`crates/backtest/src/scenarios/threshold_sweep.rs:56`, not the bin. Its own module doc
+(`scenarios/montecarlo.rs:5-9`) has said since v0.1.1 that it lacks the Bug-B solvency guard, and reading
+it confirms there is no cash bound anywhere. It also never got the per-symbol routing, and both engine
+calls are `&& let Ok(fills) = engine.step(…)` with no else arm (`:228`, `:269`) — so since the `#67`
+guard began returning `Err`, cross-symbol orders **vanish silently** on a lane carrying two frozen
+anchors. Narrowing AC2 to `run_path` is available; narrowing it *without disclosing that behaviour
+change* is not.
+
+**AC3.1 is not superseded by the leap-aware `resample.rs` work.** `bars_per_year_1h` feeds the bar-count
+arithmetic and the `*_periodic` siblings; the 1h lane still uses `const SQRT_HPY = 92.601_295_098_46`
+(`stats/mod.rs:42`, `:72`; square = 8574.9999) while its doc at `:35` still says `sqrt(24*365)`. The
+value *is* informally ratified in a test comment (`:930-945`, RED-on-revert) — the missing half is
+exactly the doc correction AC3.1 names. Same constant duplicated at
+`forecast/src/bin/sharpe_comparison.rs:109`/`:113`, whose "re-sync trigger" test re-declares it in its
+own file (`sharpe_comparison_determinism.rs:41`) and therefore **can never trip**.
+
+**AC3.6: the `0xC0FFEE` constants are the defect, not the fix** — it is the project-wide fixture seed at
+~25 sites, which *is* the domain collision 1-14 recorded.
+
+**AC6 is credited to a gate that cannot fail for the claim.** The errata cites
+`robustness_bootstrap_bites` (17 passed) as proof that "bootstrap.rs inputs and outputs are unchanged";
+that test is ADR-0063's behavioural gate and pins no baseline. The claim is nonetheless **true** on
+other evidence: `bootstrap.rs` was untouched by all five story commits, bakeoff never calls
+`engine.step`, and `#111` measured both `btc-2023-1m-sma-*` anchors as reproducing. The fix is to
+re-word AC6 onto the evidence that carries it.
+
+**One obligation is orphaned, and it is 1-26's, not this story's.** The now-closed box at the `#68`/`#69`
+units entry ended by saying 1-26's errata owes a per-scenario non-compliance record. That record is
+absent from all nine sections of `evidence/v2/harness-relock/ERRATA.md`, and 1-26 is `done` — so it needs
+re-homing rather than quietly expiring.
+
+Shortest path to closable: (1) operator ruling on `#129`; (2) a writing-only ratification pass for
+AC3.3/3.4/3.5/3.6 and the AC6 re-wording, which AC3 explicitly permits ("ratified-as-is in the story
+record"); (3) a renderer + re-emission ruling for AC3.1 and AC3.2, which are prose riders inside hashed
+bodies and so per `#110` can never be cleared by a re-lock alone; (4) at flip time the ADR-0082 triad —
+`REQ-HARNESS-FILL-CORRECTNESS-001` is still `state=scoped`.
 
 ## Dev Notes
 
