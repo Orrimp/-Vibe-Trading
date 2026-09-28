@@ -96,7 +96,17 @@ a different cause, and folding it in destroys the evidence.
 
 ## Tasks / Subtasks
 
-- [ ] Do not start the bisect while commits are unpushed. A bisect moves the working tree across four
+- [x] **AC1 DONE 2026-09-28 — first divergence is `13955206`, a documentation reorg** (bug-log `#132`).
+      766 commits, no path restriction, GOOD `42e084e0` (verified to reproduce `551cc2ab…` before the
+      bisect started — and note the anchored body's own `git_commit: 447c0432` names a commit at which
+      the producing binary did not yet exist, so that stamp records the repo pointer, not the code that
+      ran). Mechanism: the body embeds the predecessor's PATH at line 98, so `spec/` → `spec/v1/` moved
+      the digest with zero numbers changed. `#128e` in a second producer.
+- [ ] **AC2 — bisect the ARITHMETIC step on a NUMBER, not on the body SHA.** The digest is polluted by
+      provenance strings and the BMAD migration renames that path again, which would yield another
+      pure-path step. Use v1 Sharpe (`+0.003098` at the anchor → `−0.328302` pre-fix): one value,
+      present in every version of the body, demonstrably moved. Range: `13955206`..HEAD.
+- [x] Do not start the bisect while commits are unpushed. A bisect moves the working tree across four
       months of history; the five commits sitting unpushed on 2026-09-28 (the push is blocked on the
       operator's SSH agent) are the reason this is written down rather than already run.
 - [ ] AC1: bisect bs1 against `551cc2ab…`. bs2 as the confirmation, not as a second bisect.

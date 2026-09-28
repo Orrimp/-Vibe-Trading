@@ -3352,3 +3352,60 @@ Tool now reports `35 of 35 … across 5 file(s) (floor 35)` with the per-file sp
 probes. Probed independently by the orchestrator after the fact: mutating one digit of
 `reproducibility_sample_figure.rs`'s literal makes it FAIL naming that file and line and printing both
 digests; restored, green. Record: `docs/dev-notes/131-anchor-literal-reconciler-scope-2026-09-28.md`.
+
+### `#132` — the threshold-sweep anchor was broken by a directory rename, because the body records where the run looked
+**Status**: first divergence FOUND 2026-09-28 by bisect (story 1-30 AC1). Anchor-impacting: yes — this is
+the first of at least two steps; the later, arithmetic one is still unattributed (1-30 AC2).
+
+`git bisect`, 766 commits, **no path restriction** (`#111` is the standing warning that scoping by the
+lanes you believe are involved is how `#67` hid for six weeks), GOOD = `42e084e0`, BAD = HEAD, ten steps.
+
+**First bad commit: `13955206` (2026-06-28) — `refactor(spec): reorganize into spec/v1 (implemented) +
+spec/v2 (research-driven)`.** A documentation reorganisation. Its entire diff against
+`crates/backtest/src/bin/threshold_sweep.rs` is **seven `//!` doc-comment lines**, and a doc comment
+cannot move arithmetic.
+
+The mechanism is line 98 of the emitted body:
+
+```
+ANCHOR    (Read from predecessor `spec/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md` body — NOT re-computed.)
+TODAY     (Read from predecessor `evidence/v1/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md` body — NOT re-computed.)
+```
+
+**The hashed body records where the run found its input.** `spec/…` → `spec/v1/…` on 2026-06-28, then
+`spec/…` → `evidence/…` at the BMAD migration: each rename rewrote that sentence and therefore the
+digest, with **zero numbers changed**. This is `#128e` exactly — there, `recalibrate_sigma_train` welds
+its overlay path into the body, making two rows unreproducible from a tempdir. Two producers, one
+defect: **a hashed body should carry what the run MEASURED, not where it LOOKED.** A path is provenance
+and belongs in the front matter, which is excluded from the hash for precisely this reason.
+
+#### The hypothesis I had, and why it was wrong
+
+I expected `#128b` — the hardcoded dated predecessor path at `bin/threshold_sweep.rs:106/:109` being
+moved out from under the reader, whose `parse_gate_survivors` then returns nine zeros it calls "graceful
+degradation". Checked instead of assumed, and it did not happen: the literal and the file moved together
+in that same commit (`spec/v25-tcn-recalibrate/…` → `spec/v1/v25-tcn-recalibrate/…`, both present at
+their respective commits), and the Gate-survivor counts are **identical** in the anchored and the
+current body — 69085, 60339, 51964, 44375, 37386, 31177, 25973, 21684, 18087. `#128b` stays armed and
+unfired.
+
+#### What this does and does not settle
+
+It settles **when byte-reproduction broke**: 2026-06-28, by a rename. It does **not** explain the
+numbers. The post-reorg digest is `35e3ce7d…` and today's pre-fix digest is `1dc4855f…`, so at least one
+more step exists, and that one IS arithmetic — v1 Sharpe moved `+0.003098` → `−0.328302` somewhere
+between.
+
+**Instrument note for 1-30 AC2, learned here:** do not bisect the second step on the body SHA. That
+digest is polluted by provenance strings — the BMAD migration renames this path a second time and will
+produce another pure-path step. **Bisect on a NUMBER instead** (v1 Sharpe is the cleanest: single value,
+present in every version of the body, and it demonstrably moved). Bisecting a hash answers "did any byte
+change"; bisecting a number answers the question actually being asked.
+
+#### Retro
+
+The bisect cost ~2 h of compute and returned a documentation commit. That is the right answer, not a
+wasted run — and it would have been unavailable to any amount of reading, because nothing in the diff
+of `13955206` suggests it could move a backtest. The corpus trap was real and pre-empted: the 720
+parquets became tracked on 2026-09-28, so every checkout before that deletes them from the working
+tree; the step script restores them from a copy outside the repo before each build.
