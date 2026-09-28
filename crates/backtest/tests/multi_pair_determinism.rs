@@ -137,6 +137,10 @@ fn t716_pairs_2024_h1_zscore_mr_deterministic() {
 /// R-REPRO-10 — `pairs-2023-zscore-mr` reproduces its canonical anchor.
 #[test]
 fn pairs_2023_zscore_mr_reproduces_anchor() {
+    // No namespace declaration here, on purpose: the row these two pin is
+    // `v1.5a + v5-realdata-medium-2026-05`, whose version CONTAINS the canonical suffix, so
+    // `scripts/check_determinism_anchors.py` resolves it by default and uniquely — the
+    // `v1.5a + noop-baseline` sibling does not contain that suffix (bug-log #131).
     const ANCHOR: &str = "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10";
     assert_pairs_reproduces("pairs-2023-zscore-mr", ANCHOR);
 }
@@ -144,6 +148,10 @@ fn pairs_2023_zscore_mr_reproduces_anchor() {
 /// R-REPRO-11 — `pairs-2024-h1-zscore-mr` reproduces its canonical anchor.
 #[test]
 fn pairs_2024_h1_zscore_mr_reproduces_anchor() {
+    // No namespace declaration here, on purpose: the row these two pin is
+    // `v1.5a + v5-realdata-medium-2026-05`, whose version CONTAINS the canonical suffix, so
+    // `scripts/check_determinism_anchors.py` resolves it by default and uniquely — the
+    // `v1.5a + noop-baseline` sibling does not contain that suffix (bug-log #131).
     const ANCHOR: &str = "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b";
     assert_pairs_reproduces("pairs-2024-h1-zscore-mr", ANCHOR);
 }

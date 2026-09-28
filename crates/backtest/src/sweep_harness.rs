@@ -2344,9 +2344,7 @@ pub fn render_surface_report(
         body.push_str(
             "liquidation covers, so MN turnover is not directly comparable with the long-only families\n",
         );
-        body.push_str(
-            "(bug-log #110). Read it next to the liquidations column, not on its own.\n",
-        );
+        body.push_str("(bug-log #110). Read it next to the liquidations column, not on its own.\n");
         body.push_str(
             "Funding = total realized funding cashflow across all N paths, in quote currency. The MN short\n",
         );

@@ -39,6 +39,13 @@ use std::process::Command;
 
 /// The body-SHA `evidence/anchors.toml` pins for `btc-yahoo-2024-1d-sma-cross`
 /// (version `lab-yahoo-realdata-v0.1.1`, locked 2026-05-28).
+///
+/// This digest is written out in THREE places — here, `run_yahoo_sma_ticker_flag.rs`, and
+/// the anchors.toml row. Until 2026-09-28 nothing checked that the three agreed; the two
+/// lines below are what `scripts/check_determinism_anchors.py` reads to reconcile them
+/// (bug-log #131), and the scenario is declared because this const is at file scope.
+// anchor-scenario: btc-yahoo-2024-1d-sma-cross
+// anchor-ns: lab-yahoo-realdata-v0.1.1
 const ANCHORED_BODY_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0";
 
 /// The human-readable figure the body carries, quoted in the runbook so the claim is

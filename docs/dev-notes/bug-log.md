@@ -3306,3 +3306,49 @@ is **unchanged** by the re-emission, so that discharge still stands.
 One limit stated rather than hidden: `data/yahoo/ETH-USD/1d/2024/` is gitignored and operator-local, so
 **CI cannot reproduce this row**. The three Binance corpora were committed the same day for exactly this
 reason; the Yahoo cache was not part of that decision.
+
+### `#131` — the reconciler's own SCOPE was the unstated assumption: "29 of 29" was true, and silent about four more files
+**Status**: FIXED 2026-09-28. Anchor-impacting: **no** — 0 mismatches found, which is itself the finding.
+
+`scripts/check_determinism_anchors.py` exists to stop a second SHA system drifting from
+`evidence/anchors.toml`. It printed `OK — 29 of 29 resolved literal(s) match … Sites seen: 29 (floor
+29)`, every word of which was true about `crates/backtest/tests/determinism.rs` — the only file its
+`main()` ever opened.
+
+Derived mechanically rather than listed from memory
+(`grep -rln 'const [A-Z_]*ANCHOR[A-Z_]*\s*:\s*&str' crates/ --include='*.rs'`), the repo holds **35**
+such literals across **five** test files. Six of them — in `multi_pair_determinism.rs`,
+`run_yahoo_sma_ticker_flag.rs`, `theta_surface_reproduction.rs` and `reproducibility_sample_figure.rs`
+— were reconciled by nothing. `076929bb63d9bec0…` (the BTC yahoo anchor) is duplicated in **three**
+places with nothing comparing them.
+
+So this is the tool's own subject matter, one level up. A gate that reports a count it did measure can
+still mislead, if the SET it measured is narrower than the set the reader assumes — and the assumption
+lived in a single module-level constant. The summary now prints a **per-file breakdown**, so a file
+dropping out of scope is visible in the output rather than only in a total that still looks plausible.
+
+**All six already matched.** Report a clean result as a result: those gates were correct, they were
+merely unguarded — had one been wrong it would have been wrong silently for as long as the file
+existed. Five of the six are additionally live-reproduced by tests that RAN rather than skipped.
+
+Four defects surfaced while extending it, each fixed and each the same family:
+
+- **File-scope consts inherited an unrelated function's `#[cfg(feature = …)]`** because `current_fn` is
+  sticky, so on the first broadening the two literals the whole change exists to check were classified
+  "skipped: cfg-gated" — dropped at the last step and counted as fine. Sites at brace depth 0 are now
+  `(file scope)` and never cfg-inherited.
+- **Declaration bleed between adjacent file-scope consts**: the backwards window stopped only at `fn`,
+  so with no `fn` between two consts, `ETH_ANCHOR_SHA` inherited BTC's declaration and resolved to the
+  wrong scenario. It now also stops at the previous anchor const. This is the *second* time a
+  too-forgiving window laundered one site's meaning into another in this same file.
+- **The broadened name regex could not match a bare `ANCHOR`**, zeroing all 29 original sites — caught
+  instantly because `--self-test` probes stopped firing. The non-vacuity machinery earned its keep on
+  its own author.
+- **Documentation drift**: `ETH_ANCHOR_SHA`'s doc comment still claimed row 70 held the superseded
+  digest and that re-emission was "deferred to the v0.1.4 BNB ship" — false since that row was
+  re-emitted, and the ship was retired 2026-06-16.
+
+Tool now reports `35 of 35 … across 5 file(s) (floor 35)` with the per-file split; `--self-test` runs 9
+probes. Probed independently by the orchestrator after the fact: mutating one digit of
+`reproducibility_sample_figure.rs`'s literal makes it FAIL naming that file and line and printing both
+digests; restored, green. Record: `docs/dev-notes/131-anchor-literal-reconciler-scope-2026-09-28.md`.

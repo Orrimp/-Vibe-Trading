@@ -2,14 +2,25 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""check_determinism_anchors.py — static drift-linter for determinism.rs in-test anchor constants.
+"""check_determinism_anchors.py — static drift-linter for in-test anchor-SHA constants.
 
 Sub-second, no engine execution.  Asserts that every non-cfg-gated
-const ANCHOR / const ANCHOR_PREFIX site in
-crates/backtest/tests/determinism.rs equals the corresponding
-v5-realdata-medium-2026-05 SHA in evidence/anchors.toml.
+`const <…ANCHOR…>: &str = "<hex>"` site in the SCANNED_FILES list equals the
+anchors.toml row it targets — the v5-realdata-medium-2026-05 row by default, or
+whichever row the site names with `// anchor-ns:`.
 
 ADR-0045 § D7.1 (Decision 2, primary gate).
+
+bug-log #131 — the tool's own SCOPE was the unstated assumption. Until
+2026-09-28 it scanned ONE file, `determinism.rs`, and printed
+"OK — 29 of 29 resolved literal(s) match": true of that file, silent about the
+four other test files that carry six more anchor literals. The same defect it
+was built to prevent, one level up. Two things follow, and both are load-bearing:
+
+  * the file list is explicit and the summary prints a PER-FILE count, so a file
+    dropping out of scope shows up in the output rather than only in a total;
+  * the const NAME pattern is broad (anything containing ANCHOR) and the filter
+    that keeps non-digests out is the VALUE shape (8–64 hex chars), not the name.
 
 Exit codes:
   0  All in-test constants match anchors.toml (or --pre-commit with no
@@ -37,13 +48,37 @@ from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ANCHORS_TOML = REPO_ROOT / "evidence" / "anchors.toml"
-DETERMINISM_RS = REPO_ROOT / "crates" / "backtest" / "tests" / "determinism.rs"
+TESTS_DIR = REPO_ROOT / "crates" / "backtest" / "tests"
+DETERMINISM_RS = TESTS_DIR / "determinism.rs"
 
-# bug-log #115 non-vacuity floor: the number of `const ANCHOR` sites this tool must at
+# bug-log #131 — every file that carries an in-test anchor-SHA literal, not just the
+# first one anybody wrote. Derived mechanically on 2026-09-28 with
+#   grep -rln 'const [A-Z_]*ANCHOR[A-Z_]*\s*:\s*&str' crates/ --include='*.rs'
+# and re-derivable the same way; `crates/ui/src/strings.rs` also matches that NAME grep
+# and is correctly absent here because its value is the UI label "Anchor: ", not a digest
+# (the hex VALUE filter in `const_anchor_re` is what rules it out — see below).
+#
+# A file added to this list needs the floor below raised in the same edit. A file REMOVED
+# from it shows up as a missing per-file row in the summary line, which is the point: the
+# pre-#131 tool could not distinguish "this file has no literals" from "this file is not
+# looked at".
+SCANNED_FILES: tuple[Path, ...] = (
+    DETERMINISM_RS,
+    TESTS_DIR / "multi_pair_determinism.rs",
+    TESTS_DIR / "run_yahoo_sma_ticker_flag.rs",
+    TESTS_DIR / "theta_surface_reproduction.rs",
+    TESTS_DIR / "reproducibility_sample_figure.rs",
+)
+
+# bug-log #115 non-vacuity floor: the number of anchor-literal sites this tool must at
 # least SEE. Bumped deliberately when sites are added; lowering it is a reviewable act.
 # It exists because the tool once reported "OK — 14 literal(s)" while 25 existed.
 # 2026-09-27: 25 -> 29 with the four R-REAL real-data-row gates (bug-log #125).
-MIN_EXPECTED_SITES = 29
+# 2026-09-28: 29 -> 35 with the SCOPE fix (bug-log #131). The +6 are not new gates — they
+#   were in the tree all along, in four files the tool never opened: 2 in
+#   multi_pair_determinism.rs, 2 in run_yahoo_sma_ticker_flag.rs, 1 in
+#   theta_surface_reproduction.rs, 1 in reproducibility_sample_figure.rs.
+MIN_EXPECTED_SITES = 35
 
 # Version tag that marks the canonical in-test SHA namespace.
 CANONICAL_VERSION_SUFFIX = "v5-realdata-medium-2026-05"
@@ -74,10 +109,11 @@ class AnchorEntry(NamedTuple):
 
 
 class InTestSite(NamedTuple):
+    file: str             # bug-log #131: which file — the tool scans five, not one
     lineno: int           # 1-based
     fn_name: str
     scenario: str
-    const_name: str       # "ANCHOR" or "ANCHOR_PREFIX"
+    const_name: str       # any name containing ANCHOR; *_PREFIX means prefix-compare
     literal: str
     cfg_gated: bool       # True → skip (R3)
     # bug-log #123: the namespace this site's pin belongs to, declared by the site via
@@ -152,8 +188,19 @@ def _is_cfg_feature_line(line: str) -> bool:
     return bool(re.match(r"\s*#\[cfg\(feature\s*=", line))
 
 
-def parse_determinism_rs(path: Path) -> list[InTestSite]:
-    """Extract all const ANCHOR / const ANCHOR_PREFIX sites in determinism.rs.
+def _is_prefix_site(const_name: str) -> bool:
+    """Whether the site compares a PREFIX of the anchored SHA rather than the whole thing.
+
+    bug-log #131: was an exact `const_name == "ANCHOR_PREFIX"` test, which silently became
+    full-equality for any other name once the name pattern broadened. `*_PREFIX` is the
+    convention; the repo currently ships zero such sites (EX-2 converted them all), so this
+    only guards the next one.
+    """
+    return const_name.endswith("_PREFIX")
+
+
+def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[UnresolvedSite]]:
+    """Extract every anchor-SHA const site in `path`.
 
     R3: skips any site inside a #[cfg(feature = ...)] function.
     Strategy:
@@ -174,8 +221,18 @@ def parse_determinism_rs(path: Path) -> list[InTestSite]:
     fn_start_depth = 0
 
     # Regex patterns.
+    #
+    # bug-log #131 — this used to be `const (ANCHOR(?:_PREFIX)?)` : an EXACT name match. So
+    # `BTC_ANCHOR_SHA`, `ETH_ANCHOR_SHA` and `ANCHORED_BODY_SHA` — six live gates across four
+    # files — were invisible, and the tool said "29 of 29" without qualification.
+    #
+    # Now the NAME is loose (anything containing ANCHOR) and the VALUE carries the filter:
+    # 8–64 hex characters. That hex requirement is what keeps a non-digest const out —
+    # `crates/ui/src/strings.rs`'s `STRATEGY_REGISTRY_LAST_ANCHOR_PREFIX: &str = "Anchor: "`
+    # matches the name grep and can never match this, because `"Anchor: "` is not hex. The
+    # value shape is the correct filter; the name never was.
     const_anchor_re = re.compile(
-        r'const\s+(ANCHOR(?:_PREFIX)?)\s*:\s*&str\s*=\s*"([0-9a-fA-F]{8,64})"'
+        r'const\s+([A-Za-z0-9_]*ANCHOR[A-Za-z0-9_]*)\s*:\s*&str\s*=\s*"([0-9a-fA-F]{8,64})"'
     )
     # bug-log #115 — this used to be `scenario_body_hex\("([^"]+)"\)` ONLY. Sites whose
     # runner is spelled differently — `scenario_body_hex_candle(`,
@@ -200,6 +257,17 @@ def parse_determinism_rs(path: Path) -> list[InTestSite]:
     # within its window. No declaration means the canonical suffix, which keeps every
     # pre-existing site working unchanged.
     anchor_ns_re = re.compile(r'//\s*anchor-ns:\s*(\S+)')
+    # bug-log #131 — the EXPLICIT scenario declaration. The forward scan below finds a
+    # scenario only when a scenario-shaped quoted string happens to sit within 7 lines of the
+    # const; that is true inside a test fn and false at file scope, where
+    # `run_yahoo_sma_ticker_flag.rs` keeps its two constants a hundred lines from the call
+    # that uses them. The alternative — planting an incidental quoted string in the test so a
+    # regex finds it — is how the PREVIOUS version of this tool laundered one site's meaning
+    # into another (probe P3). A site that cannot be resolved by adjacency SAYS what it pins.
+    #
+    # Read in the same narrow backwards window as `// anchor-ns:`, and it WINS over the
+    # forward scan: an explicit declaration must not be overridable by a nearby coincidence.
+    anchor_scenario_re = re.compile(r'//\s*anchor-scenario:\s*(\S+)')
     fn_decl_re = re.compile(r'^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)')
 
     # We also need to track the current test fn name for ANCHOR context.
@@ -236,9 +304,22 @@ def parse_determinism_rs(path: Path) -> list[InTestSite]:
             const_name = const_m.group(1)
             literal = const_m.group(2)
 
+            # bug-log #131 — a FILE-SCOPE const belongs to no fn, and `current_fn` is
+            # sticky. Two consequences, and the second is not cosmetic:
+            #   * it was reported under whichever fn happened to be declared above it
+            #     (`run_yahoo_sma_ticker_flag.rs`'s two constants read as
+            #     `fn pinned_table_allowed_yahoo_tickers_matches_data_crate`);
+            #   * it INHERITED that fn's `#[cfg(feature = ...)]`, so both would have been
+            #     "skipped: cfg-gated" — the six literals this change exists to check,
+            #     dropped again at the last step, and counted as fine.
+            at_file_scope = brace_depth == 0
+            site_fn = "(file scope)" if at_file_scope else current_fn
+            site_cfg_gated = False if at_file_scope else current_fn_cfg_gated
+
             # Look forward a few lines to find the scenario_body_hex call.
             scenario: str | None = None
             declared_ns: str | None = None
+            declared_scenario: str | None = None
             # The declaration belongs to THIS site: scan BACKWARDS only, at most three
             # lines, and stop at a `fn` boundary.
             #
@@ -247,35 +328,61 @@ def parse_determinism_rs(path: Path) -> list[InTestSite]:
             # GREEN, because the site had picked up the NEXT site's declaration. A window
             # wide enough to be forgiving is wide enough to launder one site's meaning into
             # another — the same bleed as a `grep` that matches the wrong file.
+            #
+            # bug-log #131 reads `// anchor-scenario:` in the SAME window, for the same
+            # reason and with the same narrowness. First match of each key wins; neither key
+            # short-circuits the other's search, because the window is three lines and both
+            # declarations belong to the site that sits under them.
             for j in range(i - 1, max(-1, i - 4), -1):
                 if "fn " in lines[j]:
                     break
-                ns_m = anchor_ns_re.search(lines[j])
-                if ns_m:
-                    declared_ns = ns_m.group(1)
+                # bug-log #131 — and stop at the PREVIOUS anchor const too. The two
+                # `run_yahoo_sma_ticker_flag.rs` constants sit at FILE scope with no `fn`
+                # between them, so the `fn` boundary alone let the second site inherit the
+                # first one's declarations: probe P7 caught exactly that, one level down
+                # from the bleed P3 caught. A declaration above a const belongs to THAT
+                # const.
+                if const_anchor_re.search(lines[j]):
                     break
-            for j in range(i + 1, min(i + 8, len(lines))):
-                sc_m = scenario_call_re.search(lines[j])
-                if sc_m:
-                    scenario = sc_m.group(1)
+                if declared_ns is None:
+                    ns_m = anchor_ns_re.search(lines[j])
+                    if ns_m:
+                        declared_ns = ns_m.group(1)
+                if declared_scenario is None:
+                    sc_decl_m = anchor_scenario_re.search(lines[j])
+                    if sc_decl_m:
+                        declared_scenario = sc_decl_m.group(1)
+                if declared_ns is not None and declared_scenario is not None:
                     break
+
+            if declared_scenario is not None:
+                # An explicit declaration is not second-guessed by adjacency.
+                scenario = declared_scenario
+            else:
+                for j in range(i + 1, min(i + 8, len(lines))):
+                    sc_m = scenario_call_re.search(lines[j])
+                    if sc_m:
+                        scenario = sc_m.group(1)
+                        break
 
             if scenario is None:
                 # bug-log #115: an unresolvable site is a FINDING, not a silent drop.
                 unresolved.append(UnresolvedSite(
+                    file=path.name,
                     lineno=i + 1,
-                    fn_name=current_fn,
+                    fn_name=site_fn,
                     const_name=const_name,
                     literal=literal,
                 ))
             else:
                 sites.append(InTestSite(
+                    file=path.name,
                     lineno=i + 1,
-                    fn_name=current_fn,
+                    fn_name=site_fn,
                     scenario=scenario,
                     const_name=const_name,
                     literal=literal,
-                    cfg_gated=current_fn_cfg_gated,
+                    cfg_gated=site_cfg_gated,
                     declared_ns=declared_ns,
                 ))
 
@@ -286,6 +393,35 @@ def parse_determinism_rs(path: Path) -> list[InTestSite]:
         i += 1
 
     return sites, unresolved
+
+
+def scan_files(
+    paths: tuple[Path, ...] | list[Path],
+) -> tuple[list[InTestSite], list[UnresolvedSite], dict[str, int]]:
+    """Parse every path in `paths`, returning (sites, unresolved, per_file_counts).
+
+    bug-log #131 — `per_file_counts` is a row PER SCANNED FILE, present even when the
+    count is zero, and it is printed in the summary. A total alone cannot tell "this file
+    has no literals" from "this file was never opened", and the whole finding is that the
+    tool spent months in the second state while reporting the first.
+
+    A path that does not exist is a hard error, not a zero: a file silently renamed out of
+    scope would otherwise read as "no literals here".
+    """
+    sites: list[InTestSite] = []
+    unresolved: list[UnresolvedSite] = []
+    per_file: dict[str, int] = {}
+    for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"{path} is in SCANNED_FILES but does not exist — a scanned file that "
+                "vanished reads as 'no literals' unless this fails (bug-log #131)"
+            )
+        s, u = parse_anchor_literals(path)
+        sites.extend(s)
+        unresolved.extend(u)
+        per_file[path.name] = len(s) + len(u)
+    return sites, unresolved, per_file
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +435,7 @@ class UnresolvedSite(NamedTuple):
     sites go unchecked for months while the tool printed "0 skipped".
     """
 
+    file: str
     lineno: int
     fn_name: str
     const_name: str
@@ -306,6 +443,7 @@ class UnresolvedSite(NamedTuple):
 
 
 class DriftRow(NamedTuple):
+    file: str
     lineno: int
     fn_name: str
     scenario: str
@@ -339,6 +477,7 @@ def detect_drift(
     for site in sites:
         if site.cfg_gated:
             skipped.append(DriftRow(
+                file=site.file,
                 lineno=site.lineno,
                 fn_name=site.fn_name,
                 scenario=site.scenario,
@@ -360,6 +499,7 @@ def detect_drift(
         if synth is not None:
             match = site.literal == synth
             row = DriftRow(
+                file=site.file,
                 lineno=site.lineno,
                 fn_name=site.fn_name,
                 scenario=site.scenario,
@@ -383,12 +523,13 @@ def detect_drift(
             can = canonical.get(site.scenario)
         if can is not None:
             # For ANCHOR_PREFIX, check starts_with; for ANCHOR, full equality.
-            if site.const_name == "ANCHOR_PREFIX":
+            if _is_prefix_site(site.const_name):
                 match = can.startswith(site.literal)
             else:
                 match = site.literal == can
 
             row = DriftRow(
+                file=site.file,
                 lineno=site.lineno,
                 fn_name=site.fn_name,
                 scenario=site.scenario,
@@ -406,6 +547,7 @@ def detect_drift(
         # neither map is an unanchored constant — it cannot be validated.
         # This is always a configuration error; fail loudly.
         mismatches.append(DriftRow(
+            file=site.file,
             lineno=site.lineno,
             fn_name=site.fn_name,
             scenario=site.scenario,
@@ -475,36 +617,50 @@ def apply_write(
                 continue
 
         # Check if already current (using dual-map expected value).
-        if site.const_name == "ANCHOR":
-            is_match = site.literal == target
-        else:  # ANCHOR_PREFIX
+        if _is_prefix_site(site.const_name):
             is_match = target.startswith(site.literal)
+        else:
+            is_match = site.literal == target
         if is_match:
             continue
 
         lineno_0 = site.lineno - 1  # 0-based index
         old_line = lines_out[lineno_0]
 
-        if site.const_name == "ANCHOR_PREFIX":
-            # Rename const ANCHOR_PREFIX → ANCHOR and update the literal.
+        # bug-log #131: rewrite the site's OWN const name. The old code hardcoded
+        # `ANCHOR` / `ANCHOR_PREFIX`, so a `BTC_ANCHOR_SHA` site would have had its
+        # substitution silently no-op while `rewrites` still counted it — a --write that
+        # reports having fixed a literal it did not touch.
+        base_name = site.const_name.removesuffix("_PREFIX")
+        if _is_prefix_site(site.const_name):
             new_line = re.sub(
-                r'const\s+ANCHOR_PREFIX\s*:\s*&str\s*=\s*"[0-9a-fA-F]+"',
-                f'const ANCHOR: &str = "{target}"',
+                rf'const\s+{re.escape(site.const_name)}\s*:\s*&str\s*=\s*"[0-9a-fA-F]+"',
+                f'const {base_name}: &str = "{target}"',
                 old_line,
             )
+            if new_line == old_line:
+                raise RuntimeError(
+                    f"--write could not rewrite {site.file}:{site.lineno} "
+                    f"({site.const_name}) — refusing to report a rewrite that did not land"
+                )
             lines_out[lineno_0] = new_line
             prefix_warnings.append(
                 f"  MANUAL NEEDED: {site.fn_name} "
-                f"({path.name}:{site.lineno}): "
-                f"const renamed ANCHOR_PREFIX→ANCHOR but assert!(..starts_with..) "
-                f"must be converted to assert_eq!(hex, ANCHOR, ..) manually."
+                f"({site.file}:{site.lineno}): "
+                f"const renamed {site.const_name}→{base_name} but assert!(..starts_with..) "
+                f"must be converted to assert_eq!(hex, {base_name}, ..) manually."
             )
         else:
             new_line = re.sub(
-                r'const\s+ANCHOR\s*:\s*&str\s*=\s*"[0-9a-fA-F]+"',
-                f'const ANCHOR: &str = "{target}"',
+                rf'const\s+{re.escape(site.const_name)}\s*:\s*&str\s*=\s*"[0-9a-fA-F]+"',
+                f'const {site.const_name}: &str = "{target}"',
                 old_line,
             )
+            if new_line == old_line:
+                raise RuntimeError(
+                    f"--write could not rewrite {site.file}:{site.lineno} "
+                    f"({site.const_name}) — refusing to report a rewrite that did not land"
+                )
             lines_out[lineno_0] = new_line
 
         rewrites += 1
@@ -539,7 +695,7 @@ def print_drift_table(mismatches: list[DriftRow], skipped: list[DriftRow]) -> No
     for row in mismatches:
         print(
             f"| {row.scenario} "
-            f"| {row.fn_name} ({DETERMINISM_RS.name}:{row.lineno}) "
+            f"| {row.fn_name} ({row.file}:{row.lineno}) "
             f"| `{_truncate(row.in_test)}` "
             f"| `{_truncate(row.canonical)}` "
             f"| NO |",
@@ -555,7 +711,7 @@ def print_drift_table(mismatches: list[DriftRow], skipped: list[DriftRow]) -> No
         for row in skipped:
             print(
                 f"| {row.scenario} "
-                f"| {row.fn_name} ({DETERMINISM_RS.name}:{row.lineno}) "
+                f"| {row.fn_name} ({row.file}:{row.lineno}) "
                 f"| {row.note} |",
                 file=sys.stderr,
             )
@@ -566,14 +722,20 @@ def print_drift_table(mismatches: list[DriftRow], skipped: list[DriftRow]) -> No
 # ---------------------------------------------------------------------------
 
 def _relevant_files_staged() -> bool:
-    """Return True if determinism.rs or anchors.toml is staged."""
+    """Return True if any SCANNED_FILES entry or anchors.toml is staged.
+
+    bug-log #131 — this list used to name determinism.rs alone, so an edit to any of the
+    other four anchor-literal files skipped the pre-commit gate entirely. It is derived
+    from SCANNED_FILES now, so the two cannot drift apart.
+    """
+    pathspecs = [str(p.relative_to(REPO_ROOT)) for p in SCANNED_FILES]
+    pathspecs.append(str(ANCHORS_TOML.relative_to(REPO_ROOT)))
     try:
         result = subprocess.run(
             [
                 "git", "diff", "--cached", "--name-only",
                 "--",
-                "crates/backtest/tests/determinism.rs",
-                "evidence/anchors.toml",
+                *pathspecs,
             ],
             cwd=REPO_ROOT,
             capture_output=True,
@@ -604,6 +766,14 @@ def _self_test() -> int:  # noqa: C901
       green — it had borrowed the neighbour's. This probe is why the window is
       backwards-only and stops at a `fn` boundary.
     - **P4** the non-vacuity floor.
+    - **P5** a const NAME it did not know. Until 2026-09-28 the regex demanded the name be
+      exactly `ANCHOR` / `ANCHOR_PREFIX`, so `BTC_ANCHOR_SHA`, `ETH_ANCHOR_SHA` and
+      `ANCHORED_BODY_SHA` were invisible — six live gates in four files (bug-log #131).
+    - **P6** the hex VALUE filter that keeps a non-digest const (the UI's `"Anchor: "`
+      label) out. The value shape is the filter; the name never was.
+    - **P7** the explicit `// anchor-scenario:` form, and that it too does not bleed.
+    - **P8** the file list itself: non-empty, all present, and a vanished entry raises
+      rather than silently contributing zero sites.
 
     A linter without this mode is exactly the thing bug-log `#115` is about: it reports a
     number nobody has checked it can fail to produce.
@@ -631,7 +801,7 @@ def _self_test() -> int:  # noqa: C901
             '    assert_reproduces_with_flags("gamma-one-two", ANCHOR, &[]);\n}\n',
             encoding="utf-8",
         )
-        s1, u1 = parse_determinism_rs(p1)
+        s1, u1 = parse_anchor_literals(p1)
         probe(
             "P1 three runner spellings resolve",
             len(s1) == 3 and not u1,
@@ -641,7 +811,7 @@ def _self_test() -> int:  # noqa: C901
         # P2 — a const with no scenario must be UNRESOLVED, not dropped.
         p2 = tmp / "p2.rs"
         p2.write_text('fn d() {\n    const ANCHOR: &str = "dddddddd";\n    something_else();\n}\n', encoding="utf-8")
-        s2, u2 = parse_determinism_rs(p2)
+        s2, u2 = parse_anchor_literals(p2)
         probe(
             "P2 scenario-less const is unresolved",
             len(s2) == 0 and len(u2) == 1,
@@ -656,7 +826,7 @@ def _self_test() -> int:  # noqa: C901
             '    scenario_body_hex("epsilon-one-two");\n}\n',
             encoding="utf-8",
         )
-        s3, _ = parse_determinism_rs(p3)
+        s3, _ = parse_anchor_literals(p3)
         by_fn = {s.fn_name: s.declared_ns for s in s3}
         probe(
             "P3 declaration does not bleed between sites",
@@ -667,8 +837,83 @@ def _self_test() -> int:  # noqa: C901
         # P4 — the floor is a real assertion, not decoration.
         probe(
             "P4 floor is at least the sites we ship",
-            MIN_EXPECTED_SITES >= 29,
-            f"MIN_EXPECTED_SITES={MIN_EXPECTED_SITES} is below the 29 sites shipped 2026-09-27",
+            MIN_EXPECTED_SITES >= 35,
+            f"MIN_EXPECTED_SITES={MIN_EXPECTED_SITES} is below the 35 sites shipped 2026-09-28 "
+            "(29 in determinism.rs + 6 in the four files the pre-#131 tool never opened)",
+        )
+
+        # P5 — the broadened const NAME. `BTC_ANCHOR_SHA`, `ETH_ANCHOR_SHA` and
+        # `ANCHORED_BODY_SHA` were invisible to the exact-name regex; that is six live
+        # gates in four files, and the tool said "29 of 29" without qualification.
+        p5 = tmp / "p5.rs"
+        p5.write_text(
+            '// anchor-scenario: alpha-one-two\nconst BTC_ANCHOR_SHA: &str = "aaaaaaaa";\n'
+            '// anchor-scenario: beta-one-two\nconst ANCHORED_BODY_SHA: &str = "bbbbbbbb";\n',
+            encoding="utf-8",
+        )
+        s5, u5 = parse_anchor_literals(p5)
+        probe(
+            "P5 non-ANCHOR-prefixed const names are seen",
+            len(s5) == 2 and not u5
+            and {s.const_name for s in s5} == {"BTC_ANCHOR_SHA", "ANCHORED_BODY_SHA"},
+            f"expected 2 resolved named BTC_ANCHOR_SHA/ANCHORED_BODY_SHA, got "
+            f"{[(s.const_name, s.scenario) for s in s5]} / {len(u5)} unresolved",
+        )
+
+        # P6 — the hex VALUE filter, which is what keeps the UI label out. The NAME
+        # `STRATEGY_REGISTRY_LAST_ANCHOR_PREFIX` matches; `"Anchor: "` is not a digest.
+        # If this probe stops firing, the tool has started linting UI strings.
+        p6 = tmp / "p6.rs"
+        p6.write_text(
+            'pub const STRATEGY_REGISTRY_LAST_ANCHOR_PREFIX: &str = "Anchor: ";\n'
+            '// anchor-scenario: gamma-one-two\nconst ANCHOR: &str = "cccccccc";\n',
+            encoding="utf-8",
+        )
+        s6, u6 = parse_anchor_literals(p6)
+        probe(
+            "P6 a non-hex value is not an anchor literal",
+            len(s6) == 1 and not u6 and s6[0].scenario == "gamma-one-two",
+            f"expected only the hex site, got {[(s.const_name, s.literal) for s in s6]}",
+        )
+
+        # P7 — an EXPLICIT `// anchor-scenario:` resolves a site whose scenario is nowhere
+        # near it, and does NOT bleed to the next site. Same window, same reason as P3.
+        p7 = tmp / "p7.rs"
+        p7.write_text(
+            '// anchor-scenario: delta-one-two\n// anchor-ns: lab-yahoo-realdata-v0.1.1\n'
+            'const BTC_ANCHOR_SHA: &str = "dddddddd";\n'
+            'const ETH_ANCHOR_SHA: &str = "eeeeeeee";\n'
+            + '//\n' * 8
+            + 'fn later() {\n    body("zeta-one-two");\n}\n',
+            encoding="utf-8",
+        )
+        s7, u7 = parse_anchor_literals(p7)
+        by_const = {s.const_name: (s.scenario, s.declared_ns) for s in s7}
+        probe(
+            "P7 explicit scenario resolves its own site only",
+            by_const.get("BTC_ANCHOR_SHA") == ("delta-one-two", "lab-yahoo-realdata-v0.1.1")
+            and "ETH_ANCHOR_SHA" not in by_const
+            and [u.const_name for u in u7] == ["ETH_ANCHOR_SHA"],
+            f"expected BTC declared + ETH unresolved; got {by_const} / "
+            f"{[u.const_name for u in u7]}",
+        )
+
+        # P8 — SCANNED_FILES is not vacuous, and a vanished file is an ERROR not a zero.
+        missing = [p for p in SCANNED_FILES if not p.is_file()]
+        probe(
+            "P8 every scanned file exists",
+            len(SCANNED_FILES) >= 5 and not missing,
+            f"{len(SCANNED_FILES)} file(s) listed; missing: {[str(m) for m in missing]}",
+        )
+        try:
+            scan_files((tmp / "does-not-exist.rs",))
+            vanished_raised = False
+        except FileNotFoundError:
+            vanished_raised = True
+        probe(
+            "P8b a vanished scanned file fails rather than counting zero",
+            vanished_raised,
+            "scan_files() returned normally for a nonexistent path",
         )
 
     if failures:
@@ -678,13 +923,16 @@ def _self_test() -> int:  # noqa: C901
             file=sys.stderr,
         )
         return 1
-    print("check_determinism_anchors --self-test: OK — 4 probes fired")
+    print("check_determinism_anchors --self-test: OK — 9 probes fired")
     return 0
 
 
 def main() -> int:  # noqa: C901
     parser = argparse.ArgumentParser(
-        description="Static drift-linter: asserts determinism.rs constants == anchors.toml canonical SHAs."
+        description=(
+            "Static drift-linter: asserts every in-test anchor-SHA literal in SCANNED_FILES "
+            "== the anchors.toml row it targets."
+        )
     )
     parser.add_argument(
         "--write",
@@ -701,7 +949,7 @@ def main() -> int:  # noqa: C901
         "--pre-commit",
         action="store_true",
         dest="pre_commit",
-        help="No-op if neither determinism.rs nor anchors.toml is staged.",
+        help="No-op unless a SCANNED_FILES entry or anchors.toml is staged.",
     )
     args = parser.parse_args()
 
@@ -720,9 +968,9 @@ def main() -> int:  # noqa: C901
         return 2
 
     try:
-        sites, unresolved = parse_determinism_rs(DETERMINISM_RS)
+        sites, unresolved, per_file = scan_files(SCANNED_FILES)
     except Exception as exc:  # noqa: BLE001
-        print(f"ERROR: could not parse {DETERMINISM_RS}: {exc}", file=sys.stderr)
+        print(f"ERROR: could not scan the anchor-literal files: {exc}", file=sys.stderr)
         return 2
 
     canonical = canonical_sha_map(anchors)
@@ -731,8 +979,24 @@ def main() -> int:  # noqa: C901
     # nothing and reports success is the failure mode it exists to prevent.
     if not sites:
         print(
-            "FAIL: no const ANCHOR site resolved in determinism.rs. That is a parser "
-            "regression, not an empty file — see bug-log #115.",
+            "FAIL: no anchor-SHA const site resolved in any of the "
+            f"{len(SCANNED_FILES)} scanned files. That is a parser regression, not an empty "
+            "tree — see bug-log #115.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # bug-log #131 — a file that contributes ZERO sites is reported here, not buried in the
+    # total. Every file in SCANNED_FILES was put there because it HAS literals, so a zero is
+    # either a deleted gate or a parser that stopped seeing it.
+    empty = [name for name, n in per_file.items() if n == 0]
+    if empty:
+        print(
+            "FAIL: "
+            + ", ".join(empty)
+            + " is in SCANNED_FILES but yielded 0 anchor literals. Either the gate was "
+            "removed (drop the file and lower the floor in the same commit) or the parser "
+            "stopped seeing it (bug-log #131).",
             file=sys.stderr,
         )
         return 1
@@ -740,9 +1004,10 @@ def main() -> int:  # noqa: C901
     # Non-vacuity floor. The count is printed either way, so a silent shrink is visible.
     if len(sites) + len(unresolved) < MIN_EXPECTED_SITES:
         print(
-            f"FAIL: found {len(sites) + len(unresolved)} const ANCHOR site(s), floor is "
+            f"FAIL: found {len(sites) + len(unresolved)} anchor literal site(s), floor is "
             f"{MIN_EXPECTED_SITES}. Either sites were deleted (update the floor in the same "
-            "commit) or the parser stopped seeing them (bug-log #115).",
+            "commit) or the parser stopped seeing them (bug-log #115). Per file: "
+            + ", ".join(f"{k}={v}" for k, v in per_file.items()),
             file=sys.stderr,
         )
         return 1
@@ -756,13 +1021,15 @@ def main() -> int:  # noqa: C901
         )
         for u in unresolved:
             print(
-                f"  determinism.rs:{u.lineno} fn {u.fn_name} — {u.const_name} = "
-                f"{u.literal[:16]}… (no scenario string found within 8 lines)",
+                f"  {u.file}:{u.lineno} fn {u.fn_name} — {u.const_name} = "
+                f"{u.literal[:16]}… (no `// anchor-scenario:` within 3 lines above, and no "
+                "scenario-shaped string within 7 lines below)",
                 file=sys.stderr,
             )
         print(
-            "\nEither the site names its scenario within 8 lines of the const, or this "
-            "tool is extended deliberately — never by dropping the site.",
+            "\nEither the site declares `// anchor-scenario: <name>` directly above the "
+            "const, or names its scenario within 7 lines below it, or this tool is extended "
+            "deliberately — never by dropping the site.",
             file=sys.stderr,
         )
         return 1
@@ -785,13 +1052,20 @@ def main() -> int:  # noqa: C901
             )
             for s in declared:
                 print(
-                    f"  determinism.rs:{s.lineno} fn {s.fn_name} — anchor-ns: {s.declared_ns}",
+                    f"  {s.file}:{s.lineno} fn {s.fn_name} — anchor-ns: {s.declared_ns}",
                     file=sys.stderr,
                 )
             return 1
-        n = apply_write(DETERMINISM_RS, sites, canonical)
+        # bug-log #131 — sites now come from five files, and `apply_write` rewrites BY LINE
+        # NUMBER. Handing it the whole list with one path would edit one file at another
+        # file's line numbers. Group by file; a path with no sites is not opened.
+        n = 0
+        for path in SCANNED_FILES:
+            mine = [s for s in sites if s.file == path.name]
+            if mine:
+                n += apply_write(path, mine, canonical)
         if n:
-            print(f"check_determinism_anchors: rewrote {n} stale literal(s) in {DETERMINISM_RS.name}")
+            print(f"check_determinism_anchors: rewrote {n} stale literal(s)")
         else:
             print("check_determinism_anchors: all literals already current — no changes")
         return 0
@@ -819,12 +1093,21 @@ def main() -> int:  # noqa: C901
         and s.declared_ns is None
         and s.scenario in SYNTHETIC_DETERMINISM_SHAS
     )
-    n_canonical = n_ok - n_synth
+    # bug-log #131 — split the declared-namespace sites out instead of folding them into
+    # "canonical". 13 of the 29 determinism.rs sites target a NON-canonical row; calling
+    # them canonical in the summary is the same species of unstated assumption as scanning
+    # one file and saying "29 of 29".
+    n_declared = sum(1 for s in sites if not s.cfg_gated and s.declared_ns is not None)
+    n_canonical = n_ok - n_synth - n_declared
+    # The per-file breakdown. A file dropping out of scope is then visible in the output
+    # rather than only in the total — the finding this whole change is about.
+    per_file_str = " · ".join(f"{name} {n}" for name, n in per_file.items())
     print(
         f"check_determinism_anchors: OK — {n_ok} of {n_total} resolved literal(s) match "
-        f"({n_canonical} canonical v5-realdata-medium-2026-05, {n_synth} synthetic; "
-        f"{n_skip} skipped: cfg-gated; 0 unresolved). "
-        f"Sites seen: {n_total} (floor {MIN_EXPECTED_SITES})."
+        f"({n_canonical} canonical v5-realdata-medium-2026-05, {n_declared} declared-ns, "
+        f"{n_synth} synthetic; {n_skip} skipped: cfg-gated; 0 unresolved). "
+        f"Sites seen: {n_total} across {len(per_file)} file(s) (floor {MIN_EXPECTED_SITES}) "
+        f"— {per_file_str}."
     )
     return 0
 

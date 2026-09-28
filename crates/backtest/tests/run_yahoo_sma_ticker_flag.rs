@@ -143,16 +143,30 @@ fn pinned_table_allowed_yahoo_tickers_matches_data_crate() {
 ///
 /// The corresponding anchors.toml row 69 (namespace `lab-yahoo-realdata-v0.1.1`)
 /// was updated in-place to this value per Q2=(a) + ADR-0038 § D6.b.
+///
+/// The two machine-readable lines below are read by `scripts/check_determinism_anchors.py`
+/// (bug-log #131). This const sits at file scope, a hundred lines from the call that uses
+/// it, so the reconciler cannot infer the scenario from adjacency — it is DECLARED. Note
+/// `reproducibility_sample_figure.rs` pins this same body-SHA; the reconciler is what keeps
+/// the two copies and the anchors.toml row from drifting apart.
+// anchor-scenario: btc-yahoo-2024-1d-sma-cross
+// anchor-ns: lab-yahoo-realdata-v0.1.1
 const BTC_ANCHOR_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0";
 
 /// ETH body SHA under the v0.1.3 emit shape (no `rev=` in body; `revision_sha:` in frontmatter).
 ///
 /// The v0.1.3 body→frontmatter migration changed this SHA from the v0.1.2
-/// anchor (`e59a5f87...`).  Row 70 in evidence/anchors.toml retains the OLD SHA
-/// (`e59a5f87...`) because the on-disk archived file is byte-immutable
-/// (ADR-0038 § D6.b); bulk Yahoo ticker re-emit deferred to v0.1.4 BNB ship
-/// (D-V0.1.3-6).  This constant tracks the CURRENT live-emission shape,
-/// which reflects the new no-`rev=` body contract from D-V0.1.3-1.
+/// anchor (`e59a5f87...`). Row 70 in `evidence/anchors.toml` carried that OLD SHA for four
+/// months — the v0.1.4 BNB ship it was deferred to (D-V0.1.3-6) was retired 2026-06-16 and
+/// took the defer with it, so the row and this constant disagreed with nothing checking.
+/// Re-emitted under ADR-0038 § D6.b on 2026-09-28 (bug-log #118, commit `b079822f`): the row
+/// is now `lab-yahoo-realdata-v0.1.3` = `c854ff2b…`, this value, and the superseded body
+/// stays linked from the anchors.toml comment block rather than deleted.
+///
+/// Machine-readable declaration for `scripts/check_determinism_anchors.py` (bug-log #131) —
+/// this const is at file scope, so its scenario is declared, not inferred.
+// anchor-scenario: eth-yahoo-2024-1d-sma-cross
+// anchor-ns: lab-yahoo-realdata-v0.1.3
 const ETH_ANCHOR_SHA: &str = "c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2";
 
 #[cfg(feature = "yahoo")]
@@ -276,9 +290,9 @@ fn eth_ticker_sha_matches_anchor_70() {
         "ETH body SHA drifted from expected v0.1.3 live-emission shape.\n\
          Expected: {ETH_ANCHOR_SHA}\n\
          Actual:   {sha}\n\
-         Note: on-disk anchor row 70 in anchors.toml uses the v0.1.2 archived SHA \
-         (e59a5f87…) — that file is byte-immutable per ADR-0038 § D6.b and \
-         bulk re-emit is deferred to v0.1.4 BNB ship."
+         Note: anchors.toml row 70 was re-emitted to this value under ADR-0038 § D6.b on \
+         2026-09-28 (bug-log #118); the v0.1.2 archived body (e59a5f87…) stays linked as \
+         SUPERSEDED. So this is real drift, not the old row-70 mismatch."
     );
 }
 

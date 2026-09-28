@@ -46,7 +46,10 @@ use std::path::{Path, PathBuf};
 /// The two surfaces whose cost is an order of magnitude above the rest.
 /// Measured 2026-09-25 during the 1-26 regeneration, at `RAYON_NUM_THREADS=8`.
 const EXPENSIVE: [(&str, u32); 2] = [
-    ("v1-momentum-theta-surface-2023-block-bootstrap-real-fy", 1461),
+    (
+        "v1-momentum-theta-surface-2023-block-bootstrap-real-fy",
+        1461,
+    ),
     ("v1-mr-theta-surface-2023-block-bootstrap-real-fy", 2258),
 ];
 
@@ -154,7 +157,10 @@ fn run_surface(bin: &Path, scenario: &str, args: &[String]) -> Result<String, St
         } else {
             ""
         };
-        return Err(format!("{scenario}: exit {:?}{hint}\n{so}\n{se}", output.status));
+        return Err(format!(
+            "{scenario}: exit {:?}{hint}\n{so}\n{se}",
+            output.status
+        ));
     }
 
     let md = std::fs::read_dir(out.path())
@@ -185,7 +191,10 @@ fn assert_surfaces_reproduce(which: &[(String, Vec<String>)]) {
          (data/binance{{,-funding,-basis}}/REVISION.toml). Reporting a skip as a pass is \
          bug-log #113 requirement 6."
     );
-    assert!(!which.is_empty(), "empty surface set — the manifest scan found nothing");
+    assert!(
+        !which.is_empty(),
+        "empty surface set — the manifest scan found nothing"
+    );
 
     let bin = ensure_sweep_binary();
     let mut drifted = Vec::new();
@@ -196,7 +205,9 @@ fn assert_surfaces_reproduce(which: &[(String, Vec<String>)]) {
             Ok(got) => {
                 let want = anchored_sha(scenario);
                 if got != want {
-                    drifted.push(format!("  {scenario}\n    expected {want}\n    got      {got}"));
+                    drifted.push(format!(
+                        "  {scenario}\n    expected {want}\n    got      {got}"
+                    ));
                 }
             }
             Err(why) => broke.push(format!("  {why}")),
@@ -213,9 +224,17 @@ fn assert_surfaces_reproduce(which: &[(String, Vec<String>)]) {
          twice in docs/dev-notes/1-2{{6,7}}-d6b-re-emission-*.md.",
         which.len(),
         drifted.len(),
-        if drifted.is_empty() { "  (none)".into() } else { drifted.join("\n") },
+        if drifted.is_empty() {
+            "  (none)".into()
+        } else {
+            drifted.join("\n")
+        },
         broke.len(),
-        if broke.is_empty() { "  (none)".into() } else { broke.join("\n") },
+        if broke.is_empty() {
+            "  (none)".into()
+        } else {
+            broke.join("\n")
+        },
     );
 }
 
@@ -248,7 +267,11 @@ fn theta_surfaces_expensive_reproduce_anchors() {
         .into_iter()
         .filter(|(s, _)| expensive.contains(&s.as_str()))
         .collect();
-    assert_eq!(rows.len(), EXPENSIVE.len(), "expected the 2 expensive surfaces");
+    assert_eq!(
+        rows.len(),
+        EXPENSIVE.len(),
+        "expected the 2 expensive surfaces"
+    );
     assert_surfaces_reproduce(&rows);
 }
 
@@ -331,6 +354,11 @@ fn corpus_gated_theta_tests_are_declared() {
 #[ignore = "corpus-gated + 4 min (measured 256 s, 2026-09-27): run with --ignored"]
 fn mc_reproduces_anchor() {
     const SCENARIO: &str = "v1-momentum-2023-block-bootstrap-real-fy-mc";
+    // Declared for `scripts/check_determinism_anchors.py` (bug-log #131). The reconciler
+    // reads the scenario from a quoted string AFTER the const or from this line; `SCENARIO`
+    // above is before it, and `mc-robustness-2026-06` is not the canonical namespace.
+    // anchor-scenario: v1-momentum-2023-block-bootstrap-real-fy-mc
+    // anchor-ns: mc-robustness-2026-06
     const ANCHOR: &str = "3aae06c00bcbf45eb96e7fae7d3856ff1bc148fbacb8f2dc5db1385a1d0cf745";
 
     assert!(
@@ -341,8 +369,14 @@ fn mc_reproduces_anchor() {
     let ws = workspace_root();
     let status = std::process::Command::new("cargo")
         .args([
-            "build", "--release", "-p", "backtest", "--bin", "monte_carlo",
-            "--features", "candle,realdata",
+            "build",
+            "--release",
+            "-p",
+            "backtest",
+            "--bin",
+            "monte_carlo",
+            "--features",
+            "candle,realdata",
         ])
         .current_dir(&ws)
         .status()
@@ -352,10 +386,14 @@ fn mc_reproduces_anchor() {
     let out = tempfile::tempdir().expect("create out-dir tempdir");
     let output = std::process::Command::new(ws.join("target/release/monte_carlo"))
         .args([
-            "--generator", "block-bootstrap-real",
-            "--paths", "500",
-            "--ensemble-seed", "0xC0FFEE",
-            "--year", "2023",
+            "--generator",
+            "block-bootstrap-real",
+            "--paths",
+            "500",
+            "--ensemble-seed",
+            "0xC0FFEE",
+            "--year",
+            "2023",
         ])
         .arg("--out-dir")
         .arg(out.path())
