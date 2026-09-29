@@ -102,7 +102,15 @@ a different cause, and folding it in destroys the evidence.
       the producing binary did not yet exist, so that stamp records the repo pointer, not the code that
       ran). Mechanism: the body embeds the predecessor's PATH at line 98, so `spec/` → `spec/v1/` moved
       the digest with zero numbers changed. `#128e` in a second producer.
-- [ ] **AC2 — bisect the ARITHMETIC step on a NUMBER, not on the body SHA.** The digest is polluted by
+- [x] **AC2 DONE 2026-09-29 — the arithmetic step is `11acd126`, the `#67` fix itself.** Eleven steps
+      on v1 Sharpe, two `SKIP-build` commits handled as untestable. `+0.003098` → `−0.328302` exactly
+      there. Mechanism confirmed from the other end: `run_cell` never got the routing half, so once the
+      engine guard returned `Err`, its else-less `let Ok(fills)` chain dropped cross-symbol orders in
+      silence. Same commit 1-27 bisected to for its 15 rows, reached independently here.
+      **Consequence for AC6: the re-lock pins the POST-FIX bodies (`04564535…`, `f7008296…`).** The
+      anchored body is `#67`-contaminated (mispriced fills) and the pre-fix state is drop-contaminated;
+      only today's code is correct.
+- [x] *(superseded)* **AC2 — bisect the ARITHMETIC step on a NUMBER, not on the body SHA.** The digest is polluted by
       provenance strings and the BMAD migration renames that path again, which would yield another
       pure-path step. Use v1 Sharpe (`+0.003098` at the anchor → `−0.328302` pre-fix): one value,
       present in every version of the body, demonstrably moved. Range: `13955206`..HEAD.

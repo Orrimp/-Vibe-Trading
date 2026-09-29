@@ -3409,3 +3409,52 @@ wasted run — and it would have been unavailable to any amount of reading, beca
 of `13955206` suggests it could move a backtest. The corpus trap was real and pre-empted: the 720
 parquets became tracked on 2026-09-28, so every checkout before that deletes them from the working
 tree; the step script restores them from a copy outside the repo before each build.
+
+**2026-09-29 — `#129`/`#132` AC2: the arithmetic step is `11acd126`, the `#67` fix itself.**
+
+Second bisect, instrument **v1 Sharpe** rather than the body SHA (bug-log `#132` explains why: the
+digest is polluted by provenance strings and the BMAD migration renames that path a second time, so a
+hash bisect would only have found another pure-path step). GOOD `42e084e0`, BAD HEAD, eleven steps, two
+`SKIP-build` commits handled as untestable rather than as divergences.
+
+**First bad commit: `11acd126` (2026-08-16) — `fix(1-25,#67): … engine guard + per-symbol fill
+routing`.** v1 Sharpe `+0.003098` → `−0.328302` exactly there.
+
+So the lane's history is now fully attributed, in two steps with two different kinds of cause:
+
+| date | commit | what moved |
+|---|---|---|
+| 2026-06-28 | `13955206` (doc reorg) | the **bytes** only — the body prints its predecessor's path |
+| 2026-08-16 | `11acd126` (the `#67` fix) | the **numbers** |
+
+**This confirms `#129` by measurement rather than by argument.** Yesterday the record could only say
+`POST-FIX ≠ PRE-FIX` without separating the repair's two halves, because the bin installs no tracing
+subscriber and the report renders no order counts. The bisect answers it from the other end: the
+arithmetic moved at exactly the commit that introduced the engine guard, and `run_cell` never received
+the routing half — so its `&& let Ok(fills) = engine.step(…)` chain, having no else arm, began dropping
+cross-symbol orders in silence from that day. The mechanism predicted the commit and the measurement
+found it.
+
+#### Which of the three states is the correct one — and it is none of the two that are pinned
+
+| state | v1 Sharpe | best cell | verdict | what its arithmetic is |
+|---|---|---|---|---|
+| ANCHOR (pinned) | `+0.003098` | `+0.018254` | `T-MARGINAL` | pre-`#67`: cross-symbol fills **mispriced** |
+| PRE-FIX | `−0.328302` | `+0.354852` | `T-ALPHA-UNLOCKED` | post-guard: those orders **silently dropped** |
+| POST-FIX | `−0.693194` | `+1.155769` | `T-ALPHA-UNLOCKED` | routed correctly + solvency guard |
+
+The anchored body is `#67`-contaminated; the state the corpus silently drifted into is drop-contaminated;
+only today's code is correct. A re-lock therefore pins the POST-FIX bodies (`04564535…`, `f7008296…`),
+not the pre-fix ones — the same conclusion 1-27 reached for its 15 rows, arrived at independently here.
+
+#### The verdict flip survives the correction, and that is the thing to escalate
+
+`T-ALPHA-UNLOCKED` is not an artefact of the silent drops: under **corrected** arithmetic the delta is
+larger still (`1.155769 − (−0.693194) = 1.8490` against a `+0.10` line). What it means is the part that
+must not be lost in the label: the v1 baseline **loses money** (`−0.693194` Sharpe, `−27.52 %` total
+return), and the report selects the **maximum of 45 cells** with no bootstrap, no DSR and no
+multiple-testing correction. Beating a losing baseline, chosen as the best of 45, is not an edge, and
+the FROZEN robustness gate — which is what this project means by an edge — is not involved anywhere in
+this report (grepped: neither file references `classify_verdict`, `verdict_bands`,
+`compute_robustness_flag` or `rank_candidates`). The era-qualified thesis is untouched by a point
+estimate that never faced that gate.
