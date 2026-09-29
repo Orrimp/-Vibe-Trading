@@ -156,6 +156,75 @@ tautology. A pinned assertion replaces it, probed RED and back.
 re-emission, not a re-lock), AC3.3/3.4/3.5/3.6 (ratify-in-writing, which AC3 explicitly permits), and
 AC6's re-wording onto the evidence that actually carries the claim.
 
+## AC3 ratifications, 2026-09-29 — the writing-only pass AC3 explicitly permits
+
+AC3 allows each rider to be *"either fixed or explicitly ratified-as-is in the story record"*. Four
+were neither. They are ratified here, with the consequence of each stated rather than waved past.
+
+### AC3.3 — sentinel-zero pooling: RATIFIED as-is, and the policy is written down at last
+
+**The behaviour.** Four distinct undefined conditions all return `0.0`: `compute_sharpe_hourly` at
+`stats/mod.rs` on `n < 2` and on `std < 1e-15`, `compute_sortino_hourly` likewise, and
+`compute_calmar` at four separate guards. `reduce_samples` then pools those zeros into `p5`/`p50`/`p95`
+**as if they were observations**. It is demonstrably NaN- and ±Inf-aware — three tests enforce that —
+and has no notion of a sentinel at all.
+
+**The policy, stated: a sentinel zero is pooled as an observation, and that is the shipped behaviour.**
+The honest consequence is that *a degenerate path is indistinguishable from a genuinely zero-Sharpe
+path* in every percentile. That is precisely bug-log `#127`'s shape — a substitution made so a
+computation can proceed, whose fact is then discarded — and the cure is the same: **record the
+condition, do not change the pooling.** Changing the pooling re-prices every anchored surface;
+recording it costs a counter. Routed to story **1-28**, which already owns exactly this pattern for
+the ruin clamp, rather than inventing a second mechanism here.
+
+### AC3.4 — negative-final Calmar guard: FIXED, not ratified
+
+The caller-side clamp stays (story 1-28 rules it correct). What did not stay is the assertion beside
+it: `debug_assert!(…is_finite())` is compiled out of `--release`, and **every anchored surface is
+produced by a release build** — the leg that mattered was inert in exactly the builds it was written
+for. All six are now real `assert!`s, and the third clamp site (the buy-and-hold control in
+`param_robustness_sweep.rs`) had **no finiteness check at all**; it now has one. A panic is the correct
+outcome: a NaN in a hashed body is the failure the anchor system exists to prevent, and
+`grep -rl NaN evidence/*/reports/` is empty, so nothing that reproduces today can trip it. The contract
+change is documented in `run_one_path`'s `# Panics` section.
+
+### AC3.5 — slippage-aware solvency pre-flight: RATIFIED as-is, with the gap quantified
+
+`scenarios/montecarlo.rs`'s pre-flight requires `notional + fee_estimate` and **no slippage term**,
+while the engine fills a Buy at `base_price * (1 + slippage/10_000)`. So the pre-flight understates the
+cash actually required by exactly the slippage fraction, and a Buy can pass it and overdraw at the
+fill. Ratified rather than fixed because adding the term changes which orders are skipped, which
+re-prices every anchored surface that runs with `slippage_bps > 0` — an ADR-0038 § D6.b re-lock, not a
+rider. The symptom is guarded downstream (the fill-loop cash check), so the exposure is a *wrong skip
+decision*, never a negative balance. **Anyone changing `slippage_bps` in a lane should read this
+paragraph first.**
+
+### AC3.6 — `FILL_SEED` domain separation: RATIFIED as inert, with the collision's real size named
+
+The two constants the story brief cites are **the defect, not the fix**: `0xC0FFEE` is the
+project-wide fixture seed at roughly 25 sites, from `core/src/forecast.rs`'s `sampling_seed` through
+`PaperEngine::new(config, 0x00C0_FFEE)` in `paper.rs`'s tests to UI and LLM test fixtures. No domain
+separation of any kind exists — no tag, no hash, no derivation. Ratified as **inert today** on 1-14's
+own finding (*"FILL_SEED == default master seed domain collision (inert today)"*): nothing derives one
+stream from the other, so the collision costs correlation between fixtures rather than between
+results. It becomes live the moment any code derives a second stream from the master seed, and that is
+the trigger to revisit, not a date. Decision `#89` remains open and this ratification does not close
+it.
+
+### AC6 — advisor-gate independence: the CLAIM stands, the CITATION was wrong
+
+1-26's errata credits `robustness_bootstrap_bites` (17 passed) with proving *"bootstrap.rs inputs and
+outputs unchanged"*. That test is ADR-0063's pre-existing behavioural gate: declining equity ⇒ FRAGILE,
+growing ⇒ not, same-seed determinism, short/empty ⇒ Skipped. It pins **no numeric baseline** and
+asserts **nothing about its inputs** — it would pass identically whether or not the candidate equity
+curves feeding the bootstrap had moved. A gate credited with a claim it does not measure.
+
+The claim itself is nonetheless **true**, on evidence verified independently: `bakeoff/bootstrap.rs`
+was last touched by `3c297b3e` (2026-06-25), before any of this story's commits; the bakeoff directory
+contains **zero** calls to `.step(`, so it cannot reach the engine this story changed; and bug-log
+`#111` measured both `btc-2023-1m-sma-*` anchors as reproducing. AC6 is discharged **on that evidence**
+and the errata's sentence is withdrawn as over-read.
+
 ## Audit 2026-09-27 — NOT CLOSABLE, and why
 
 An independent read-only audit of every criterion against HEAD is at

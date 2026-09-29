@@ -192,6 +192,16 @@ pub struct IndexedPathMetrics {
 ///
 /// Propagates path-generation, config-load, and `run_path` engine errors,
 /// each wrapped with the failing path index `j`.
+///
+/// # Panics
+///
+/// Panics if Sharpe, Sortino or Calmar is non-finite after the equity curve has been
+/// clamped. That is deliberate and it is a contract change made on 2026-09-29 (story
+/// 1-25 AC3.4): these three checks were `debug_assert!`, so they were compiled out of
+/// exactly the `--release` builds that produce every anchored surface. A NaN reaching a
+/// hashed report body is the failure this project's whole anchor system exists to
+/// prevent, so failing loudly beats emitting it. `grep -rl NaN evidence/*/reports/` is
+/// empty, so nothing that reproduces today can trip this.
 #[allow(clippy::too_many_arguments)]
 // Verbatim seam extraction from `bin/monte_carlo.rs` (1-14 review patch 1):
 // splitting it into sub-fns would diverge the lifted code from its origin,
@@ -307,15 +317,23 @@ pub fn run_one_path(
     let sortino = crate::stats::compute_sortino_hourly(&equity_clamped);
     let calmar = crate::stats::compute_calmar(&equity_clamped);
     let max_dd = crate::stats::compute_max_drawdown_f64(&equity_clamped);
+    // Story 1-25 AC3.4: a real assertion, not `debug_assert!`. These three finiteness
+    // checks guard against a NaN reaching a HASHED report body, and every anchored
+    // surface is produced by a `--release` build — where `debug_assert!` is compiled
+    // out. The leg that mattered was inert in exactly the builds it was written for
+    // (bug-log #133's shape: a gate that cannot fail where it counts). A panic mid-run
+    // is the correct outcome here: a NaN in an anchored body is the thing this project
+    // exists to prevent, and `grep -rl NaN evidence/*/reports/` is empty, so nothing
+    // that reproduces today can trip it.
     let total_ret = crate::stats::compute_total_return(&equity_clamped);
 
     // Assert no NaN — if clamping didn't prevent NaN, something is wrong structurally.
-    debug_assert!(sharpe.is_finite(), "Sharpe NaN after clamping at path {j}");
-    debug_assert!(
+    assert!(sharpe.is_finite(), "Sharpe NaN after clamping at path {j}");
+    assert!(
         sortino.is_finite(),
         "Sortino NaN after clamping at path {j}"
     );
-    debug_assert!(calmar.is_finite(), "Calmar NaN after clamping at path {j}");
+    assert!(calmar.is_finite(), "Calmar NaN after clamping at path {j}");
 
     tracing::trace!(
         j,

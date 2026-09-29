@@ -937,15 +937,23 @@ fn run_one_path_with_config(
             backtest::stats::compute_calmar_periodic(&equity_clamped, ppy),
         )
     };
+    // Story 1-25 AC3.4: a real assertion, not `debug_assert!`. These three finiteness
+    // checks guard against a NaN reaching a HASHED report body, and every anchored
+    // surface is produced by a `--release` build — where `debug_assert!` is compiled
+    // out. The leg that mattered was inert in exactly the builds it was written for
+    // (bug-log #133's shape: a gate that cannot fail where it counts). A panic mid-run
+    // is the correct outcome here: a NaN in an anchored body is the thing this project
+    // exists to prevent, and `grep -rl NaN evidence/*/reports/` is empty, so nothing
+    // that reproduces today can trip it.
     let max_dd = backtest::stats::compute_max_drawdown_f64(&equity_clamped);
     let total_ret = backtest::stats::compute_total_return(&equity_clamped);
 
-    debug_assert!(sharpe.is_finite(), "Sharpe NaN after clamping at path {j}");
-    debug_assert!(
+    assert!(sharpe.is_finite(), "Sharpe NaN after clamping at path {j}");
+    assert!(
         sortino.is_finite(),
         "Sortino NaN after clamping at path {j}"
     );
-    debug_assert!(calmar.is_finite(), "Calmar NaN after clamping at path {j}");
+    assert!(calmar.is_finite(), "Calmar NaN after clamping at path {j}");
 
     tracing::trace!(
         j,
@@ -1998,6 +2006,18 @@ fn main() -> Result<()> {
                                 backtest::stats::compute_calmar_periodic(&equity_clamped, ppy),
                             )
                         };
+                    // Story 1-25 AC3.4: the BUY-AND-HOLD control's clamp site had NO
+                    // finiteness check at all — it clamped and never verified the clamp
+                    // worked, while its two siblings at :911 and in mc_harness.rs did.
+                    // Three copies of one guard, and the third was simply missing; that is
+                    // the same multiplier bug-log #127 names for the clamp itself.
+                    assert!(
+                        bh_sharpe.is_finite() && bh_sortino.is_finite() && bh_calmar.is_finite(),
+                        "buy-and-hold control produced a non-finite metric after clamping \
+                         (sharpe={bh_sharpe}, sortino={bh_sortino}, calmar={bh_calmar}) — a NaN \
+                         here would reach a hashed report body"
+                    );
+
                     let pm = backtest::stats::PathMetrics {
                         sharpe: bh_sharpe,
                         sortino: bh_sortino,
