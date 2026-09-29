@@ -1,6 +1,6 @@
 # Story 1.28: mn-ruin-and-fill-provenance
 
-Status: in-progress
+Status: review
 
 <!-- Created 2026-09-27 by the orchestrator, from the two items story 1-21 records as
      explicitly NOT delivered (1-21 lines 94-98, bug-log #110). 1-21 shipped the honest
@@ -125,7 +125,20 @@ follows that same shape.
       inserting a fourth copy → RED naming `mc_harness.rs:294`, restored → green. On its first run that
       walk found THREE sites and the third was its own search needle, which is now split so the
       detector cannot match itself. Ruin is logged at WARN at every site; rendering it is AC2.
-- [ ] Architect: confirm the blast radius by measuring which report tables gain columns (AC2/AC3).
+- [x] **AC2 + AC3 + AC4 + AC6 DONE 2026-09-29.** Blast radius measured, not estimated: 34 surfaces,
+      because the ruin line is emitted on the path all six table shapes pass through — a tripwire over
+      12 of 34 would miss 22 by construction. Per-surface diff census against the previous bodies,
+      taken BEFORE anything landed: **22 changed only the ruin line, 12 (MN) the ruin line plus the
+      `cover_fills` column, 0 anything else.** No number moved. Landing control: **34 FAIL / 85 PASS**
+      with the new bodies on disk and before any sha moved; afterwards `ANCHORS PASS (119 / 119)`,
+      exactly 34 sha lines changed, 85 byte-identical, `35 of 35` literals, spec-lint PASS.
+      Record: `docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md`.
+      **Result: ruined paths 0 on all 34, `cover_fills` 0 on all 12 MN.** The tripwire reads clean and
+      the split is a no-op on today's numbers — which is exactly why AC4's fixture was not optional:
+      the corpus has had zero liquidations since `#71`, so neither column could have proven itself from
+      evidence.
+- [ ] Review: columns non-vacuous (probed, both), unchanged numbers proven byte-identical (diff census
+      above), 1-21 closed out or its remaining items re-stated honestly.
 - [ ] Dev: AC1 — factor the single clamp+witness helper, delete the three copies, add the
       single-occurrence test.
 - [ ] Dev: AC3 — split the counter at `montecarlo.rs:620` / `:839`, extend `PathRunResult`.

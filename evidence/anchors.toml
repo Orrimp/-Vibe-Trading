@@ -1016,10 +1016,13 @@ sha256   = "937cb52f7186ba6a2fea3f3142d72b80660da9d3984bb5dbfdf47299718efc3e"
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
 # SUPERSEDED BODY sha256=0dd989d9dc6f81a8dc722096d104fb7c0db3e7220f319c26b132e54df5f71dd5 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "acebe2268d9b439a0342e2301a19e53797ec8c33cad1262191d4e364081fc9a3"
+sha256   = "9d69176b1877bb20effcd3df55610e5f706ddbdc269c756f6f0cfe46eff08b20"
 
 # C3 MR parameter-robustness sweep — θ-surface anchor #87 (2026-05-31).
 # Cross-sectional mean-reversion: 6-cell × N=200 LOCKED MR Tier-1 grid (§ D-MR.2-LOCKED).
@@ -1044,10 +1047,13 @@ sha256   = "acebe2268d9b439a0342e2301a19e53797ec8c33cad1262191d4e364081fc9a3"
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
 # SUPERSEDED BODY sha256=a708112e1e8ddd4e48360b1e9f83d927c65d3d0f05be984e362c76f20be7bb4a — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-mr-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "c1e76483fa92e60cb09d06c856c52c32602366f755054c28fae420d052f37237"
+sha256   = "523c2edaa306cdbdaae6ef63e80272c40247f885dbf87c97451341d4628c2cf9"
 
 # C3 carry (funding) θ-surface anchor #88 (2026-06-02).
 # Cross-sectional funding carry (framing (a) long-only directional carry-tilt):
@@ -1076,10 +1082,13 @@ sha256   = "c1e76483fa92e60cb09d06c856c52c32602366f755054c28fae420d052f37237"
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
 # SUPERSEDED BODY sha256=f03cd7145699f854768e1721ee675d7aa87a10269694f41561c404f2e1b9f2c4 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-carry-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "d05c14b68b1408e4eade6e630212fc3f70b0174cec975b80121bb0e29b54ffe9"
+sha256   = "1f3dcc492184e409f2a954ca20b1661751eb72ef498283bd270a9ea25b3cbcdf"
 
 # C3 carry (funding) θ-surface anchor #89 — 2024 OOS regime (2026-06-02).
 # Same LOCKED 6-cell carry Tier-1 grid as #88 but on 2024-FY real Binance data.
@@ -1105,10 +1114,13 @@ sha256   = "d05c14b68b1408e4eade6e630212fc3f70b0174cec975b80121bb0e29b54ffe9"
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
 # SUPERSEDED BODY sha256=fd96d5a87fd9ad18c98cf38f5f3c17a55c8a79e92a1a0845a724a507bb51e199 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-carry-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "9201293a8ab4a96a164ecaba366164d3b29a9a2b391ffdfa104a5fb65f33701c"
+sha256   = "4cf7f277f3996148ff7b2b62d5c11232e32cdd67b09d9c2c6296aa991ce96dcb"
 
 # C3 TS-momentum θ-surface anchor #90 — 2023-FY (2026-06-03).
 # Time-series (per-asset absolute) momentum: 6-cell × N=200 LOCKED TS Tier-1 grid (§ D-TSM.3-LOCKED).
@@ -1137,10 +1149,13 @@ sha256   = "9201293a8ab4a96a164ecaba366164d3b29a9a2b391ffdfa104a5fb65f33701c"
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
 # SUPERSEDED BODY sha256=c1bf9325a2e37628c702f0a3993245641bd060642f2e70c1cf9ca90413c28e57 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "9a6e6d2d2e787ea325efae85e40089dae4eeec2dab8bf5a1549378c7c5d3cb2f"
+sha256   = "bc47e196efd666b99d6944ccea18b731baf745400e9ba4bfcf01cb05c8b96f11"
 
 # C3 TS-momentum θ-surface anchor #91 — 2024-FY OOS regime (2026-06-03).
 # Same LOCKED 6-cell TS Tier-1 grid as #90 but on 2024-FY real Binance data.
@@ -1169,10 +1184,13 @@ sha256   = "9a6e6d2d2e787ea325efae85e40089dae4eeec2dab8bf5a1549378c7c5d3cb2f"
 #   Errata: evidence/v2/harness-relock/ERRATA.md · dev-note: docs/dev-notes/1-26-d6b-re-emission-2026-09-25.md
 # SUPERSEDED BODY sha256=ff7e7dda98940ac707540a34acfabb0d45d6fbe14c5274d0ba0ba8d5b383dae8 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "75e0a2954fdd9fa942ab70d05f719c3efb87b7bc300061b43f35c772ed387805"
+sha256   = "112283e5876a30da8d15d7e302d6dfcee34f73d860b1b71c51bd0ead9489a009"
 
 # Horizon retest — coarser decision cadence (4h + daily) θ-surface anchors (2026-06-05).
 # Namespace: horizon-retest-robustness (NEW — distinct from mc-robustness-2026-06; the horizon
@@ -1209,10 +1227,13 @@ sha256   = "75e0a2954fdd9fa942ab70d05f719c3efb87b7bc300061b43f35c772ed387805"
 #   g=4 (best p50): p50=+0.165, p5=-0.038 — FRAGILE (p5 < 0, p95_maxdd=75.1%).
 #   BH control: p50=+1.910, p95_maxdd=49.8% (recomputed at 4h frequency).
 #   Wall-clock: 8.3s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "fd567c075f699db89ceefcbd018f4e7a94cceecfa3aaddf23fe4d31309a02196"
+sha256   = "0b39ccf2df7a1862604aa045e3ae0e063047d5fa618885baf67787094bfd52d1"
 
 # Anchor #93 — TS-momentum 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1227,10 +1248,13 @@ sha256   = "fd567c075f699db89ceefcbd018f4e7a94cceecfa3aaddf23fe4d31309a02196"
 #   g=4 (best p50): p50=+0.106, p5=-0.085 — FRAGILE.
 #   BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
 #   Wall-clock: 8.4s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "616b0de52a407ad8b2841682df7c3b3a37fc5c62470a7c342319b1ef2b1205eb"
+sha256   = "cb86000ad27468e9f2fec65ec634c4d600871656d752611f84bbf21558f3635f"
 
 # Anchor #94 — TS-momentum daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1245,10 +1269,13 @@ sha256   = "616b0de52a407ad8b2841682df7c3b3a37fc5c62470a7c342319b1ef2b1205eb"
 #   g=4 (best p50): p50=+0.169, p5=-0.044 — FRAGILE. Daily p50 Sharpes are SANE (NOT inflated).
 #   BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
 #   Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "1c4506ce95ec7319b6577738bfab0719346067f3c094fbd85c40b48da4904ead"
+sha256   = "8198ed3670250bb471f7151bf18c595c86fbce806095ed84737befa30ba25349"
 
 # Anchor #95 — TS-momentum daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1263,10 +1290,13 @@ sha256   = "1c4506ce95ec7319b6577738bfab0719346067f3c094fbd85c40b48da4904ead"
 #   g=4 (best p50): p50=+0.106, p5=-0.099 — FRAGILE.
 #   BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
 #   Wall-clock: 6.8s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "b90948dc0c0d90118de926f518f5634745341ea29fadbf2646289a5e909001f9"
+sha256   = "bafd1f4ed5d9e8a62c486121fd711ec92c6e32882fdfb87d51466b24ef87dfbc"
 
 # Anchor #96 — Carry (funding) 4h horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1281,10 +1311,13 @@ sha256   = "b90948dc0c0d90118de926f518f5634745341ea29fadbf2646289a5e909001f9"
 #   g=2 (best p50): p50=+0.029, p5=-0.057 — FRAGILE. Funding harvest overwhelmed by price vol.
 #   BH control: p50=+1.910, p95_maxdd=49.8% (same paths as TS 4h 2023).
 #   Wall-clock: 7.0s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "ec96378284dc693f80b1e97b3560719473a8fd1b2f281aaa344344ec31d38ee4"
+sha256   = "8807fdb27698b0a9f93636b8118d0e026dd0ed45c9004f964b9129df38b3572f"
 
 # Anchor #97 — Carry (funding) 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1299,10 +1332,13 @@ sha256   = "ec96378284dc693f80b1e97b3560719473a8fd1b2f281aaa344344ec31d38ee4"
 #   g=4 (best p50): p50=+0.032, p5=+0.006 — FRAGILE (P(Sharpe>1)=0.000, p95_maxdd=67.2%).
 #   BH control: p50=+1.166, p95_maxdd=63.6% (recomputed at 4h frequency).
 #   Wall-clock: 7.1s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "f0c099f39f1e1f4d80619d12488949b2264b8f82de4938bf49488688a52f4b30"
+sha256   = "59cb1ff88b5747f77f769ade3af4c12154a76a114da94b0b4b6742e13fc25136"
 
 # Anchor #98 — Carry (funding) daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1317,10 +1353,13 @@ sha256   = "f0c099f39f1e1f4d80619d12488949b2264b8f82de4938bf49488688a52f4b30"
 #   g=5 (best p50): p50=+0.065, p5=-0.016 — FRAGILE.
 #   BH control: p50=+1.951, p95_maxdd=47.5% (recomputed at daily frequency).
 #   Wall-clock: 6.4s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "dd3b828d37e3d65330b6c3349a29e232f13b131e914a7516ecda30c33fc791d5"
+sha256   = "0c4273e6568c165d068ea327ccda0cf8aa89c4e4798eeb625bb7c3103f6ec9e1"
 
 # Anchor #99 — Carry (funding) daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1335,10 +1374,13 @@ sha256   = "dd3b828d37e3d65330b6c3349a29e232f13b131e914a7516ecda30c33fc791d5"
 #   g=5 (best p50): p50=+0.058, p5=-0.017 — FRAGILE.
 #   BH control: p50=+1.148, p95_maxdd=64.0% (recomputed at daily frequency).
 #   Wall-clock: 6.9s Apple-Silicon M-series (canonical box).
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "7eb5a2851ff33c97301d6e10d2b5cecaafccf260e1a7d85c66c9ac923588e14d"
+sha256   = "0427481b54bc7c9151b9a2626d979cd8051c80028e4824afdc134c6afffb4888"
 
 # Anchor #100 — Basis-Reversal 0bps taker fee, 2023-FY (gross — no fee bleed)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1353,10 +1395,13 @@ sha256   = "7eb5a2851ff33c97301d6e10d2b5cecaafccf260e1a7d85c66c9ac923588e14d"
 #   g=2 (best p50): p50=+0.049, p5=-0.043 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
 #   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "06563e48ba5f36a50b74bec18f92307bb08b070f0d31c7acee44ac188045ee72"
+sha256   = "3dde4b93445899580777c18457e09e3f231b5faa707ea4cbcb23cae6cc1cfeed"
 
 # Anchor #101 — Basis-Reversal 0bps taker fee, 2024-FY (tail-negative regime, gross)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1371,10 +1416,13 @@ sha256   = "06563e48ba5f36a50b74bec18f92307bb08b070f0d31c7acee44ac188045ee72"
 #   g=2 (best p50): p50=+0.051, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE even at 0bps gross.
 #   Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "c84ceacae51278397e6ccf0da9e75d13b670ec88abe80509a91680816a54d277"
+sha256   = "f20d4af16457e050b156014e31f30c3bb7ee4f092e0bd74fcf8b28ef092e4dbd"
 
 # Anchor #102 — Basis-Reversal 2bps taker fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1389,10 +1437,13 @@ sha256   = "c84ceacae51278397e6ccf0da9e75d13b670ec88abe80509a91680816a54d277"
 #   g=2 (best p50): p50=+0.048, p5=-0.047 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE.
 #   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "a851fb90017e68ef521f7ae0c725fc4a12b9267cef228fbc40bb58709c0e7088"
+sha256   = "444df2155efa13291d131e6fde995471da4b73c1379ce98aff9a1d6b5f03f2db"
 
 # Anchor #103 — Basis-Reversal 2bps taker fee, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1407,10 +1458,13 @@ sha256   = "a851fb90017e68ef521f7ae0c725fc4a12b9267cef228fbc40bb58709c0e7088"
 #   g=2 (best p50): p50=+0.050, p5=-0.010 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE.
 #   Wall-clock: 29.6s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "eabd33d7971e401c9d24f3b84037c8a50a06151bffe389a4a4028bd309f022a6"
+sha256   = "343b62034afd1aa793a73c1ecbd71e5d9765d253a2ed3f995e7b54cbe116cc33"
 
 # Anchor #104 — Basis-Reversal 5bps taker fee, 2023-FY (realistic fee level)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1425,10 +1479,13 @@ sha256   = "eabd33d7971e401c9d24f3b84037c8a50a06151bffe389a4a4028bd309f022a6"
 #   g=2 (best p50): p50=+0.047, p5=-0.064 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
 #   Wall-clock: 28.2s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "fa345cb7eb6187f6782e169e2b8730d673194e33a4589d4865b318ca4e6b5fcd"
+sha256   = "1d53187c3b8b36f12e12828c89b69c204b083bf7359699e8e3c8bace29e6e60f"
 
 # Anchor #105 — Basis-Reversal 5bps taker fee, 2024-FY (realistic fee level, tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1443,10 +1500,13 @@ sha256   = "fa345cb7eb6187f6782e169e2b8730d673194e33a4589d4865b318ca4e6b5fcd"
 #   g=2 (best p50): p50=+0.049, p5=-0.011 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at realistic fee.
 #   Wall-clock: 28.3s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "e9b6c6352bd72b80a11033228e1e20d7389f3428595baf5524cb36ea07b3910a"
+sha256   = "b7f0ed98872c7a937e281441d4f54e2bb556904a0289b4115f927aabd6eeb660"
 
 # Anchor #106 — Basis-Reversal 10bps taker fee, 2023-FY (high-fee stress)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1461,10 +1521,13 @@ sha256   = "e9b6c6352bd72b80a11033228e1e20d7389f3428595baf5524cb36ea07b3910a"
 #   g=2 (best p50): p50=+0.044, p5=-0.075 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.735, p95_maxdd=51.15% (2023-FY). FAMILY-UNIFORM-FRAGILE at high fee.
 #   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "aa2697e53c6b4f12ed90b850803f676b1f1d25b3b333e3e9825a0ab7ecdbc54b"
+sha256   = "df189f476f4a87647187d6f746bea44229ffe3af8adc7c098ee6ef82bea2d53e"
 
 # Anchor #107 — Basis-Reversal 10bps taker fee, 2024-FY (high-fee stress, tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1479,10 +1542,13 @@ sha256   = "aa2697e53c6b4f12ed90b850803f676b1f1d25b3b333e3e9825a0ab7ecdbc54b"
 #   g=2 (best p50): p50=+0.047, p5=-0.015 — FRAGILE. P(Sharpe>1)=0.000 at ALL cells.
 #   BH control: p50=+1.105, p95_maxdd=64.83% (2024-FY). FAMILY-UNIFORM-FRAGILE at high fee.
 #   Wall-clock: 28.7s Apple-Silicon M-series (canonical box). git_commit: 8ca3c3e9e6447154.
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "e916b43cddd25700c25da9852e7e82f9ab11235ac47b6fb49b0e76d57b2e77a3"
+sha256   = "167e7a030f221f5805ce11ee2f74e7678aa7e44c7ea457ec73c537c30fad3eeb"
 
 # Anchors #108-#119 — MN Spread v0.2.0 (perp-basis-mn-spread), 3 arms × 2 fees × 2 years
 # Arms AS RUN (corrected 2026-08-11, bug-log #75 — the labels below are what the
@@ -1515,10 +1581,13 @@ sha256   = "e916b43cddd25700c25da9852e7e82f9ab11235ac47b6fb49b0e76d57b2e77a3"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=d719d263a16d68d39cf0589d146bdc0221000bfd7af7470c5b25e14bf99d0aa1.
 # SUPERSEDED BODY sha256=b1de3f9be3fe95bd663274e389ab9b16588688f4459225500737e6b1e76edaea — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "2eb6d3320cc90fe64062050655b7bfb229e21efca49efcef267fac7283d09156"
+sha256   = "82528944f45b04cdec7b6b0135467fdd220571e1a737cb5fed3716dc73c31ad8"
 
 # Anchor #109 — MN-Basis 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1533,10 +1602,13 @@ sha256   = "2eb6d3320cc90fe64062050655b7bfb229e21efca49efcef267fac7283d09156"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=f21270aa233be1fa743c8ed6f9814753d9498a1cd9d4c2d0895afffa7250bcad.
 # SUPERSEDED BODY sha256=3a263a814948d16b0fbae47f20518f71442dbf3c9afedca5c66fa29ad2d72293 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "e674507d2037463449b247791b98bcb695d835649622457dde7835a9dc90dc6f"
+sha256   = "9ffbde26f95fcfb64f6dd397c7482a12e633c65eb6b848eb8bc7b681b7221a2d"
 
 # Anchor #110 — MN-Basis 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1551,10 +1623,13 @@ sha256   = "e674507d2037463449b247791b98bcb695d835649622457dde7835a9dc90dc6f"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=d04079bb5bb238e7b722582608622f6193e22c8165fe1d0aeea4a747cb26459d.
 # SUPERSEDED BODY sha256=9f66a93995bc0c606fe94d5bc475784bfe517d0b3efb61f12f74104d31711909 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "edcf8e2ab5181ff4910b52575c4a4a453a584b6260f745d1a50b71d9b455f503"
+sha256   = "7ed6add7a5728ea2411f7bea4d0db766540826eeb0ba574645dbfb1cf17fd4e8"
 
 # Anchor #111 — MN-Basis 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1569,10 +1644,13 @@ sha256   = "edcf8e2ab5181ff4910b52575c4a4a453a584b6260f745d1a50b71d9b455f503"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=7ac5d68e7194ecbd854bec7da19dba1a450558d19d56e37f2bdf066779c5e78c.
 # SUPERSEDED BODY sha256=6dddb3f5d96ee2f5c6fb5f155eb93ba950cd233bddf02ffbf75d7e131a1f90c7 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "9e83c6dcc71efbd98127fe974279b53f73d637e13c0d1e7ee517b78db14fb51c"
+sha256   = "9c23740ebbd7f43b74d2d83524fe748e97725510b1181bc9d4b4f9b205bf94d2"
 
 # Anchor #112 — MN-Funding 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1587,10 +1665,13 @@ sha256   = "9e83c6dcc71efbd98127fe974279b53f73d637e13c0d1e7ee517b78db14fb51c"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=0b35180f0b5c3b0c5d8aca9dce3beb0cbd60ba2310b0572fbf273c694c3e9a75.
 # SUPERSEDED BODY sha256=16633a63864560b83aa60ffb01a8c96f9625bb217696cb3af2e779ffcf4d0aa0 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "98701c9c6fdbc3d2361f9a9dfa1fc01fb48ad0eb3aa85b7e605559532c2333c9"
+sha256   = "ac134d559ae05c767d946e349ef57b33f3b6b0e2c3a0b3bba6d79877662009ca"
 
 # Anchor #113 — MN-Funding 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1605,10 +1686,13 @@ sha256   = "98701c9c6fdbc3d2361f9a9dfa1fc01fb48ad0eb3aa85b7e605559532c2333c9"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=db87754b71d22fd9b804e74dd20b0e9d40ca03a30c883adfce6e12c67a7af470.
 # SUPERSEDED BODY sha256=b3726a288852fef79cee9bb638e3c94c6dc474e98cb9023448a77748b2a08d72 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "1986cabcd754daa8b80016b7b35d6eb696de474aeb4d81474befb5e5d6a43cb7"
+sha256   = "bd7861ed4e18fdc825243e826ceafe219bdefc1fc8e422966c3222a3b59efb91"
 
 # Anchor #114 — MN-Funding 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1623,10 +1707,13 @@ sha256   = "1986cabcd754daa8b80016b7b35d6eb696de474aeb4d81474befb5e5d6a43cb7"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=2ca27795c3e404916ade38c1f50774aa88ad95f5d865a9e6a1db5406fe272666.
 # SUPERSEDED BODY sha256=38ccc463f248552b07618fcf26bc7652ac7d91eb324583602f15814c3e776ff1 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "f02c404c69a1e60591b58e293c305d23692ea1b2aeb404ac3f90e8b2ace79c08"
+sha256   = "e9024299feb49433b2d0876428489c232845572a5e8b07095c2ef15dc3e9ec21"
 
 # Anchor #115 — MN-Funding 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1641,10 +1728,13 @@ sha256   = "f02c404c69a1e60591b58e293c305d23692ea1b2aeb404ac3f90e8b2ace79c08"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=d4dc19560296b39c92655537c99e6483023293665608914812f8c1bc0add2090.
 # SUPERSEDED BODY sha256=2e2ba8b60d1ca757c0e23f6913dd8a8428e6289976aa43f1bb290f5696d2f23b — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "7d7033c4955a3e22e3222666259a5b36d2e56a1687524ec3bd5073e9385b9db9"
+sha256   = "735a6efeb79531926ef65fe4ad59c6f947d7754f6146aa0fb22efd7459a52959"
 
 # Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1659,10 +1749,13 @@ sha256   = "7d7033c4955a3e22e3222666259a5b36d2e56a1687524ec3bd5073e9385b9db9"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=7d06cb0416f270416dc0cde271db2a29b5a468f668c3896783b7aaf696608762.
 # SUPERSEDED BODY sha256=1af13f140626be0a94e5d01deeb508eee2cfdc907d23c3ce856bb9da3fabbd82 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "a2d435075330c06e29ee4922232551d561d4c576b4410380e51e570ce622c03e"
+sha256   = "f2be5aec4f6a9d56a2e5b35919b3c2555fe274871234805b4e51b55840eb35bd"
 
 # Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1677,10 +1770,13 @@ sha256   = "a2d435075330c06e29ee4922232551d561d4c576b4410380e51e570ce622c03e"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=1d62f2f03172245a6b780f4999d146ca84b1faf6ff1dea3466645ccf3e5102e6.
 # SUPERSEDED BODY sha256=058820ff1e6011262fb868c621cf84a7c831d63fa3dae0862b83b61d86d17732 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "a42b4a01dea87fb8b757ebffaa2ef20bc5868aa02a3cbe0fac31d7d39e72ad12"
+sha256   = "5a7cccfe4024233e6e4ccfbd20346a7dc780d40732a8f74b98611ed03a6f76d6"
 
 # Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1695,10 +1791,13 @@ sha256   = "a42b4a01dea87fb8b757ebffaa2ef20bc5868aa02a3cbe0fac31d7d39e72ad12"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=2e8febac89197a1d92d17135417f56f5a4fe53916ec903c3c813bb161900443a.
 # SUPERSEDED BODY sha256=aedbc28ad3ec29ae112e44499f6af2ca2174a34356488cb7eb810de429880623 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "27e816900cdf0a1220ff87ce9c2fdfdaaa5f78d08d5aed167bc94c9fe3fb0bb3"
+sha256   = "164fb81e9eea978e8d5de671fab01652bff9d587041bcb51496209621396bc3c"
 
 # Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1713,7 +1812,10 @@ sha256   = "27e816900cdf0a1220ff87ce9c2fdfdaaa5f78d08d5aed167bc94c9fe3fb0bb3"
 #   number is byte-identical to the first pass — measured. Pass-1 body sha256=8f009276866a6ed35be635fc2fc49c2f6366b3c1dc416d41924e918da86c0e25.
 # SUPERSEDED BODY sha256=23f03994730a67368d92f7a6c2405ae43b0d0081c180347d7ebd5e4181d69885 — its numbers are bug-log #94 sizer artefacts,
 # kept verbatim below so the correction is legible next to what it corrects:
+# RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
+#   provenance). ADDITIVE ONLY: no number moved. Full record, including the
+#   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "07d0537adb4c4eda14239c26c75b89ddf02b5a76603b06ca1b9092b260e1cc4b"
+sha256   = "78a0df0a48362af6a1cb0de61c7c18001c42c92d8f1c7b244efe0c2900f3e4d8"
