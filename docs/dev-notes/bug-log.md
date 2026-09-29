@@ -3541,3 +3541,52 @@ reason, the columns ride along then. Reverse this in one sentence if you disagre
 
 Reproduce:
 `RUST_LOG=warn ./target/release/threshold_sweep --scenario bs1 --metadata-path crates/forecast/checkpoints/anchors/tcn-bs1-…metadata.recalibrated.json --out-dir <tempdir>`
+
+### `#133` — the "re-sync trigger" re-implemented its own subject, and importing the constant did not fix it
+**Status**: FIXED 2026-09-29 (story 1-25 AC3.1). Anchor-impacting: **no** — pure move plus doc
+corrections; no report body changes, `ANCHORS PASS (119 / 119)` before and after.
+
+`crates/forecast/tests/sharpe_comparison_determinism.rs` is the test the design named the **re-sync
+trigger** for the hourly annualisation constant. It re-declared that constant and re-implemented all
+five metric functions — 90 lines — plus a copy of the report renderer, because the real ones lived
+inside `bin/sharpe_comparison.rs`'s private `mod metrics` and a test cannot import a binary's module.
+So it compared a copy against a copy: it would have stayed green if the binary's module were deleted,
+and it could never trip on the drift it existed to catch.
+
+The module (232 lines, 5 public functions, 36 call sites) now lives at
+`crates/forecast/src/metrics.rs`; the bin and the test import the one definition. Pure move — the code
+is byte-identical, dedented one level — and it brought 5 inline tests into the library suite with it
+(83 → 88 with `--features candle`).
+
+#### The part worth the entry: the obvious fix was not the fix
+
+Importing the production constant was necessary and **not sufficient**. Probed it: swapping
+`SQRT_HOURS_PER_YEAR` for √8760 — the value the docs claimed — left the test **green**. Its single
+assertion renders a report twice and compares the renders, so a changed constant changes both sides
+equally. A determinism tautology, the same shape the 1-21 review found in a different test.
+
+**A gate that imports the right value can still be unable to fail.** What it needed was a PINNED
+expectation, which is now `sqrt_hours_per_year_is_the_ratified_8575_constant_and_not_8760` — probed in
+both directions: constant swapped → RED with the re-lock instruction in the message, restored → green.
+
+#### The docs were the actual AC3.1 gap, and they were false in two crates
+
+`backtest/src/stats/mod.rs:35` said *"Formula: … * sqrt(24*365)"* and
+`forecast`'s metrics said *"√(24 · 365) ≈ 92.601295"*. √(24·365) = √8760 ≈ **93.594872**. The shipped
+constant is √8574.9998 ≈ 92.601295 — so both docs named a formula ~2.1 % away from the code, and the
+forecast one contradicted itself inside a single line. AC3.1 permits ratifying √8575 *with the doc
+corrected to match*; the value was already ratified in a comment, so the docs were the whole gap.
+Both corrected, and `stats/mod.rs`'s constant de-duplicated — it was declared identically inside two
+functions, which is two places for one value to drift.
+
+#### Scoped out deliberately
+
+The test still carries its own copy of `render_report`, so `test_render_deterministic` continues to
+test a copy of the renderer rather than the renderer. Extracting that is a larger move tied to the
+bin's report shape, and it is not what AC3.1 names. Recorded here rather than done quietly.
+
+**Still owed by a re-emission, not by this commit:** the renderer prints the literal string
+`sqrt(24*365) = {:.6}` into hashed bodies at `sharpe_comparison.rs:1007/:1345/:1681`. That text is
+false in the same way the docs were, and per `#110` a corrected engine behind an unchanged renderer
+says the same words — so it cannot be cleared by a re-lock alone and rides the next re-emission of
+those reports (story 1-29 covers three of them).

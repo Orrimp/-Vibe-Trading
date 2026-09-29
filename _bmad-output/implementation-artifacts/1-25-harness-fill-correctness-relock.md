@@ -138,6 +138,24 @@ so that the C2/C3 research verdicts rest on real execution arithmetic — with t
   corpus — nearly written there on 2026-08-16, caught mid-compute).
 - [x] Review: old rows intact, new rows complete, verdict-delta table honest (AC5) — **delivered by 1-26's review, 2026-09-27**: old bodies intact 34/34, new rows anchored 34/34, errata table 0 mismatches over 136 re-derived numbers. **The advisor-gate independence leg is NOT delivered as written** — see the 2026-09-27 audit note below.
 
+## Update 2026-09-29 — AC2 is now MET, and AC3.1 is discharged
+
+**AC2**, the audit's "single genuinely-unmet hard criterion", was met on 2026-09-27 by commit
+`3c104317`: `run_cell` received both halves — per-symbol fill routing (the ratified `#67` seam,
+`last_bar_by_symbol` mirroring `montecarlo::run_path`) and the Bug-B solvency pre-flight it never had.
+Measured since (story 1-30 AC3): **80.9 % of this lane's fills are cross-symbol** — 148 719 of 183 751
+over 47 cells — so the routing half is not a formality here; the solvency pre-flight fired 6 times.
+
+**AC3.1 discharged** (bug-log `#133`): the value √8574.9998 is RATIFIED as-is, the false docs in both
+crates are corrected, the duplicated constant in `stats/mod.rs` is de-duplicated, and the re-sync
+trigger can now actually fail — it re-implemented its own subject and, even after importing the
+production constant, stayed green under a probe because its only assertion was a determinism
+tautology. A pinned assertion replaces it, probed RED and back.
+
+**Still open**: AC3.2 (verdict vocabulary — prose inside hashed bodies, so `#110`'s shape: it needs a
+re-emission, not a re-lock), AC3.3/3.4/3.5/3.6 (ratify-in-writing, which AC3 explicitly permits), and
+AC6's re-wording onto the evidence that actually carries the claim.
+
 ## Audit 2026-09-27 — NOT CLOSABLE, and why
 
 An independent read-only audit of every criterion against HEAD is at

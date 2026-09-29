@@ -38,96 +38,17 @@ pub struct ReportContext {
     pub source_reports: Vec<String>,
 }
 
-const SQRT_HOURS_PER_YEAR: f64 = 92.601_295_098_46;
+// Story 1-25 AC3.1 / 2026-09-29: these five metric functions and the annualisation
+// constant used to be RE-IMPLEMENTED here, byte for byte, because they lived inside
+// `bin/sharpe_comparison.rs` and a test cannot import a binary's private module. This
+// file is the test the design named the RE-SYNC TRIGGER for that constant — and it
+// compared its own copy against its own copy, so it could never trip on the drift it
+// exists to catch, and would have stayed green if the binary's module were deleted.
+// The module now lives in the library and both sides import the one definition.
+use forecast::metrics::{
+    SQRT_HOURS_PER_YEAR, compute_calmar, compute_sharpe_hourly, compute_sortino_hourly,
+};
 
-fn log_returns(equity: &[Decimal]) -> Vec<f64> {
-    if equity.len() < 2 {
-        return vec![];
-    }
-    equity
-        .windows(2)
-        .map(|w| {
-            let prev = f64::try_from(w[0]).unwrap_or(1.0);
-            let curr = f64::try_from(w[1]).unwrap_or(1.0);
-            if prev <= 0.0 { 0.0 } else { (curr / prev).ln() }
-        })
-        .collect()
-}
-
-fn compute_sharpe_hourly(equity: &[Decimal]) -> f64 {
-    let rets = log_returns(equity);
-    let n = rets.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let mean_r = rets.iter().sum::<f64>() / n as f64;
-    let var_r: f64 = rets.iter().map(|&r| (r - mean_r).powi(2)).sum::<f64>() / n as f64;
-    let std_r = var_r.sqrt();
-    if std_r < 1e-15 {
-        return 0.0;
-    }
-    mean_r / std_r * SQRT_HOURS_PER_YEAR
-}
-
-fn compute_sortino_hourly(equity: &[Decimal]) -> f64 {
-    let rets = log_returns(equity);
-    let n = rets.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let mean_r = rets.iter().sum::<f64>() / n as f64;
-    let downside_sq: f64 = rets.iter().map(|&r| r.min(0.0).powi(2)).sum::<f64>() / n as f64;
-    let downside_std = downside_sq.sqrt();
-    if downside_std < 1e-15 {
-        return 0.0;
-    }
-    mean_r / downside_std * SQRT_HOURS_PER_YEAR
-}
-
-fn compute_calmar(equity: &[Decimal]) -> f64 {
-    let n = equity.len();
-    if n < 2 {
-        return 0.0;
-    }
-    let initial = f64::try_from(equity[0]).unwrap_or(0.0);
-    let final_eq = f64::try_from(equity[n - 1]).unwrap_or(0.0);
-    if initial <= 0.0 {
-        return 0.0;
-    }
-    let years = (n as f64 - 1.0) / 8760.0;
-    if years <= 0.0 {
-        return 0.0;
-    }
-    let cagr = (final_eq / initial).powf(1.0 / years) - 1.0;
-    let max_dd = compute_max_drawdown(equity);
-    if max_dd.abs() < 1e-15 {
-        return 0.0;
-    }
-    cagr / max_dd.abs()
-}
-
-fn compute_max_drawdown(equity: &[Decimal]) -> f64 {
-    if equity.len() < 2 {
-        return 0.0;
-    }
-    let mut peak = f64::try_from(equity[0]).unwrap_or(0.0);
-    let mut max_dd = 0.0f64;
-    for e in &equity[1..] {
-        let eq = f64::try_from(*e).unwrap_or(0.0);
-        if eq > peak {
-            peak = eq;
-        }
-        if peak > 0.0 {
-            let dd = (peak - eq) / peak;
-            if dd > max_dd {
-                max_dd = dd;
-            }
-        }
-    }
-    max_dd
-}
-
-/// Render the report body deterministically (mirrors sharpe_comparison::render::render_report).
 fn render_report(results: &[RerunResult; 4], _ctx: &ReportContext) -> String {
     use std::fmt::Write as FmtWrite;
     let mut body = String::with_capacity(4096);
@@ -324,5 +245,39 @@ fn test_render_deterministic() {
     assert_eq!(
         body1, body2,
         "render_report must be byte-deterministic across two calls"
+    );
+}
+
+/// Story 1-25 AC3.1, made enforceable — the ratification that was only ever a comment.
+///
+/// AC3.1 permits either moving to √8760 or *"a formal ratification of √8575 with the doc
+/// corrected to match"*. The shipped constant has always been the latter; what was missing
+/// was anything that could go RED if someone "corrected" it to the value the docs claimed.
+///
+/// The file's other test cannot do this job and it is worth saying why: it renders a report
+/// twice and compares the two renders. Changing the constant changes both sides equally, so
+/// it stays green — a determinism tautology. Importing the production constant (2026-09-29)
+/// was necessary and not sufficient; a probe that swapped the constant for √8760 left that
+/// test passing, which is how this gap was found.
+///
+/// This test compares against a PINNED number instead, so it can fail.
+#[test]
+fn sqrt_hours_per_year_is_the_ratified_8575_constant_and_not_8760() {
+    let squared = SQRT_HOURS_PER_YEAR * SQRT_HOURS_PER_YEAR;
+
+    assert!(
+        (squared - 8574.999_8).abs() < 1e-3,
+        "SQRT_HOURS_PER_YEAR squared is {squared}, expected 8574.9998. This constant is \
+         load-bearing for anchored sharpe-comparison bodies: changing it re-prices every \
+         one of them. If the change is intended, re-lock the affected anchors under \
+         ADR-0038 § D6.b and update this pin in the same commit."
+    );
+
+    let sqrt_8760 = (24.0_f64 * 365.0).sqrt();
+    assert!(
+        (SQRT_HOURS_PER_YEAR - sqrt_8760).abs() > 0.9,
+        "SQRT_HOURS_PER_YEAR has been set to √(24·365) = {sqrt_8760}. That is the value the \
+         doc comments asserted until 2026-09-29 while the code shipped √8574.9998 — a ~2.1% \
+         difference. Adopting it is a deliberate re-pricing, not a typo fix."
     );
 }

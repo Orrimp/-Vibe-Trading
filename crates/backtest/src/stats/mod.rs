@@ -31,15 +31,27 @@ use rust_decimal::Decimal;
 // These functions are byte-identical to the originals; only their path changed.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Hourly-to-annual annualisation factor: **√8574.9998**, NOT √(24·365)=√8760.
+///
+/// One definition. It lived as two identical `const`s inside two functions until
+/// 2026-09-29, which is two places for the same value to drift apart. Pinned
+/// RED-on-revert by `f_hr_1_compute_sharpe_hourly_value_unchanged` below.
+const SQRT_HPY: f64 = 92.601_295_098_46;
+
 /// Compute Sharpe (annualised, hourly) from an equity curve.
-/// Formula: `mean_log_return` / `std_log_return` * sqrt(24*365).
+/// Formula: `mean_log_return` / `std_log_return` * `SQRT_HPY`.
+///
+/// `SQRT_HPY` is **√8574.9998**, not √(24·365)=√8760. This doc asserted the latter
+/// until 2026-09-29 while the code shipped the former — a ~2.1 % difference, and the
+/// constant is load-bearing for anchored bodies. The value is RATIFIED as-is (story 1-25
+/// AC3.1); the doc is what was wrong. Changing the constant re-prices every anchored
+/// report that consumes it and is an ADR-0038 § D6.b re-lock, not a typo fix.
 ///
 /// Lifted verbatim from `bin/threshold_sweep.rs:232` (R-NR.5).
 #[must_use]
 #[allow(clippy::cast_precision_loss)] // R-NR.5: verbatim lift — cast matches original
 pub fn compute_sharpe_hourly(equity: &[Decimal]) -> f64 {
     use rust_decimal::prelude::ToPrimitive;
-    const SQRT_HPY: f64 = 92.601_295_098_46;
     let n = equity.len();
     if n < 2 {
         return 0.0;
@@ -69,7 +81,6 @@ pub fn compute_sharpe_hourly(equity: &[Decimal]) -> f64 {
 #[allow(clippy::cast_precision_loss)] // R-NR.5: verbatim lift — cast matches original
 pub fn compute_sortino_hourly(equity: &[Decimal]) -> f64 {
     use rust_decimal::prelude::ToPrimitive;
-    const SQRT_HPY: f64 = 92.601_295_098_46;
     let n = equity.len();
     if n < 2 {
         return 0.0;
