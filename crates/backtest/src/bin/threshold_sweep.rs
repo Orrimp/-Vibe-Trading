@@ -619,6 +619,41 @@ fn render_report(
     body.push_str("- `T-MARGINAL`       ⇔ max-cell Sharpe delta ∈ [0.0, +0.10)\n");
     body.push_str("- `T-NO-ALPHA`       ⇔ max-cell Sharpe delta < 0\n\n");
     body.push_str(&format!("This checkpoint: **{verdict}**.\n\n"));
+
+    // ── How to read the verdict (operator-ruled 2026-09-29, AD-19 escalation) ──────
+    // `T-ALPHA-UNLOCKED` invites exactly one wrong reading — that an edge was found —
+    // and the label travels further than the report does. So the body states its own
+    // limits next to the label, computed from THIS run rather than written down once:
+    // a hardcoded qualifier would go stale the first time the numbers moved, which is
+    // the defect this whole re-lock exists to clean up (bug-log #129/#132).
+    body.push_str(
+        "**How to read this verdict.** The T-classifier is a point estimate — \
+         `max-cell Sharpe − v1 Sharpe`, with the maximum taken over every cell of the \
+         grid. It carries no bootstrap, no deflated Sharpe ratio and no \
+         multiple-testing correction, and it is NOT this project's robustness gate: \
+         nothing in this report calls `classify_verdict`, `verdict_bands`, \
+         `compute_robustness_flag` or `rank_candidates` (AD-1). A T-verdict is \
+         therefore not evidence of an edge.\n\n",
+    );
+    body.push_str(&format!(
+        "Composition of this checkpoint's delta: best cell {:+.6} − v1 baseline {:+.6} \
+         = {:+.6}, selected as the maximum of {} cells.\n",
+        headline.sharpe,
+        v1_sharpe,
+        max_sharpe_delta,
+        cells.len()
+    ));
+    if v1_sharpe < 0.0 {
+        body.push_str(&format!(
+            "The v1 baseline is NEGATIVE ({:+.6} Sharpe, {:+.2}% total return), so this \
+             delta measures a cell beating a baseline that loses money. Read it as that \
+             and not as a return.\n\n",
+            v1_sharpe,
+            v1_total_return * 100.0
+        ));
+    } else {
+        body.push('\n');
+    }
     body.push_str(
         "(Advisory verdict — does NOT amend ADR-0033 § D3 F-verdict algorithm per Q4=(c).\n",
     );
@@ -1051,7 +1086,14 @@ fn main() -> Result<()> {
         default_cell_total_return,
     );
 
-    let report_filename = format!("threshold-sweep-{label}-realdata-recalibrated-20260521.md");
+    // Filename dated from the RUN, not welded to 2026-05-21 (bug-log #130's sibling:
+    // `generated:` has the same defect inside the front matter). The old hardcoded date
+    // is what made a default-argument run OVERWRITE the anchored body rather than plant
+    // a newer file beside it (#128a). The filename is not hashed, so this is body-neutral.
+    let report_filename = format!(
+        "threshold-sweep-{label}-realdata-recalibrated-{}.md",
+        &generated[..10].replace('-', "")
+    );
     std::fs::create_dir_all(&args.out_dir)
         .with_context(|| format!("create out_dir {:?}", args.out_dir))?;
     let report_path = args.out_dir.join(&report_filename);

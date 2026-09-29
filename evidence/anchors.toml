@@ -277,15 +277,90 @@ sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
 # spec/v25-tcn-threshold-tuning/feature.md § Verification).  The 26 pre-feature
 # anchors above stay byte-identical (anchor-additive only, per R7 / R8).
 
+# == RE-EMITTED 2026-09-29 under ADR-0038 D6.b -- story 1-30, operator-ruled ==========
+# WHY, bisected in two steps rather than assumed (bug-log #129/#132):
+#   2026-06-28 `13955206` (a DOC reorg) moved the BYTES -- the body prints its
+#     predecessor's PATH, so spec/ -> spec/v1/ -> evidence/ rewrote the digest with zero
+#     numbers changed. Instrument: body SHA, 766 commits, 10 steps.
+#   2026-08-16 `11acd126` (THE #67 FIX) moved the NUMBERS. Instrument: v1 Sharpe, 11
+#     steps. `run_cell` never received the routing half of that fix, so once the engine
+#     guard returned Err its else-less `let Ok(fills) = engine.step(..)` chain dropped
+#     cross-symbol orders IN SILENCE from that day (bug-log #129, repaired 2026-09-27).
+#
+# WHICH state is correct -- and it is neither of the two that were previously pinned:
+#   ANCHOR   pre-#67   : cross-symbol fills MISPRICED
+#   drifted  post-guard: those same orders SILENTLY DROPPED
+#   THIS ROW            : routed per-symbol + Bug-B solvency pre-flight = correct
+#
+# CONDITION declared (a body SHA means nothing without it):
+#   cwd=workspace root - features=candle,realdata - profile=release
+#   invocation=threshold_sweep --scenario <bs1|bs2> --metadata-path <overlay> --out-dir <tempdir>
+#   corpus=data/binance{,-funding,-basis} at REVISION 3a8b96c4... (committed 2026-09-28)
+#
+# VERDICT MOVED and was escalated BEFORE landing (AD-19): T-MARGINAL -> T-ALPHA-UNLOCKED.
+# Operator ruled 2026-09-29: re-emit AND make the label's limits unmissable inside the
+# body. The report now renders a qualifier computed FROM THE RUN -- which caught an
+# orchestrator misreading on its first render: Heatmap A is the Sharpe *delta*, and
+# +1.155769 had been read as a best-cell Sharpe. It is not.
+#
+# LANDING CONTROL, proven: with both new bodies on disk and BEFORE any sha moved, the
+# gate showed exactly 4 FAIL / 115 PASS, and the four were these rows.
+# bs1 measured: v1 baseline -0.693194 Sharpe (-27.52 pct total return, i.e. it LOSES
+#   money); best cell +0.462575 ABSOLUTE; delta +1.155769, the maximum over 45 cells,
+#   with no bootstrap, no DSR and no multiple-testing correction. The FROZEN robustness
+#   gate is NOT involved anywhere in this report (grepped: no classify_verdict /
+#   verdict_bands / compute_robustness_flag / rank_candidates). This is not an edge.
+# SUPERSEDED BODY sha256=551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c -- kept verbatim at
+#   evidence/v1/v25-tcn-threshold-tuning/reports/threshold-sweep-bs1-realdata-recalibrated-20260521.md
+#   (D6.b forbids row deletion; historical evidence stays linked). Its numbers -- v1
+#   Sharpe +0.003098, delta +0.018254, T-MARGINAL -- are #67-contaminated, and they are
+#   what trace.toml's REQ-V25-TCN-THRESHOLD-TUNING-001 comment and ADR-0036 still cite;
+#   both corrected in this same pass. The frozen body
+#   evidence/v1/v25-tcn-horizon-bump-or-retire/reports/test-final-2026-05-21.md:75 also
+#   reads "(T-MARGINAL)"; it cannot be edited without breaking its own bytes, so it
+#   stands as the 2026-05 reading and this comment is the correction of record.
 [[anchors]]
 scenario = "threshold-sweep-bs1-realdata-recalibrated"
 version  = "v2.6.2-threshold-tuning + noop-baseline"
-sha256   = "551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c"
+sha256   = "924a51bbe56e56b95511c2f8daa5e49f5721323b2352a28d4cf0e3815bb7d74d"
 
+# == RE-EMITTED 2026-09-29 under ADR-0038 D6.b -- story 1-30, operator-ruled ==========
+# WHY, bisected in two steps rather than assumed (bug-log #129/#132):
+#   2026-06-28 `13955206` (a DOC reorg) moved the BYTES -- the body prints its
+#     predecessor's PATH, so spec/ -> spec/v1/ -> evidence/ rewrote the digest with zero
+#     numbers changed. Instrument: body SHA, 766 commits, 10 steps.
+#   2026-08-16 `11acd126` (THE #67 FIX) moved the NUMBERS. Instrument: v1 Sharpe, 11
+#     steps. `run_cell` never received the routing half of that fix, so once the engine
+#     guard returned Err its else-less `let Ok(fills) = engine.step(..)` chain dropped
+#     cross-symbol orders IN SILENCE from that day (bug-log #129, repaired 2026-09-27).
+#
+# WHICH state is correct -- and it is neither of the two that were previously pinned:
+#   ANCHOR   pre-#67   : cross-symbol fills MISPRICED
+#   drifted  post-guard: those same orders SILENTLY DROPPED
+#   THIS ROW            : routed per-symbol + Bug-B solvency pre-flight = correct
+#
+# CONDITION declared (a body SHA means nothing without it):
+#   cwd=workspace root - features=candle,realdata - profile=release
+#   invocation=threshold_sweep --scenario <bs1|bs2> --metadata-path <overlay> --out-dir <tempdir>
+#   corpus=data/binance{,-funding,-basis} at REVISION 3a8b96c4... (committed 2026-09-28)
+#
+# VERDICT MOVED and was escalated BEFORE landing (AD-19): T-MARGINAL -> T-ALPHA-UNLOCKED.
+# Operator ruled 2026-09-29: re-emit AND make the label's limits unmissable inside the
+# body. The report now renders a qualifier computed FROM THE RUN -- which caught an
+# orchestrator misreading on its first render: Heatmap A is the Sharpe *delta*, and
+# +1.155769 had been read as a best-cell Sharpe. It is not.
+#
+# LANDING CONTROL, proven: with both new bodies on disk and BEFORE any sha moved, the
+# gate showed exactly 4 FAIL / 115 PASS, and the four were these rows.
+# bs2 measured: v1 baseline -0.447133 Sharpe; best cell +0.639450 ABSOLUTE; delta
+#   +1.086583 over the same 45-cell grid, same absent bootstrap/DSR/multiple-testing
+#   correction, same uninvolved FROZEN gate.
+# SUPERSEDED BODY sha256=755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3 -- kept verbatim at
+#   evidence/v1/v25-tcn-threshold-tuning/reports/threshold-sweep-bs2-realdata-recalibrated-20260521.md
 [[anchors]]
 scenario = "threshold-sweep-bs2-realdata-recalibrated"
 version  = "v2.6.2-threshold-tuning + noop-baseline"
-sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"
+sha256   = "f60d3bdd61e634abbb34bc9cb34717670750143de0ebc3cbe97a504547ff563d"
 
 # v2.5a PatchTST overlay scenarios (T-T-1.b / M-FINAL).  Locked by tester on 2026-05-22
 # against the PatchTST BS-1 checkpoint (model_revision
@@ -632,12 +707,12 @@ sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
 [[anchors]]
 scenario = "threshold-sweep-bs1-realdata-recalibrated"
 version  = "v2.6.2-threshold-tuning + v5-realdata-medium-2026-05"
-sha256   = "551cc2ab3df85bffb6ce50415efd5f7e70ba912ae08057fb5231da50dacc2f9c"
+sha256   = "924a51bbe56e56b95511c2f8daa5e49f5721323b2352a28d4cf0e3815bb7d74d"
 
 [[anchors]]
 scenario = "threshold-sweep-bs2-realdata-recalibrated"
 version  = "v2.6.2-threshold-tuning + v5-realdata-medium-2026-05"
-sha256   = "755bc3801359f1995cf4535215467995df00aeb90c93e695c16750b8c54486c3"
+sha256   = "f60d3bdd61e634abbb34bc9cb34717670750143de0ebc3cbe97a504547ff563d"
 
 [[anchors]]
 scenario = "forecast-distribution-patchtst-bs1-realdata"

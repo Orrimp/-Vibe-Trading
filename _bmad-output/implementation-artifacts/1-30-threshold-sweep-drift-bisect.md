@@ -120,7 +120,22 @@ a different cause, and folding it in destroys the evidence.
 - [ ] AC1: bisect bs1 against `551cc2ab…`. bs2 as the confirmation, not as a second bisect.
 - [ ] AC2: attribute each mover.
 - [ ] AC5 before AC3 — the instrumentation is what makes AC3 answerable at all.
-- [ ] AC4: escalate with the composition, then AC6 + AC7 in one pass.
+- [x] **AC4/AC5(part)/AC6/AC7 DONE 2026-09-29.** Escalated with the composition; operator ruled
+      re-emit AND qualify in-body. The report now renders a qualifier COMPUTED FROM THE RUN (limits of
+      the T-classifier, the delta's composition, and a negative-baseline sentence when it applies) —
+      which caught an orchestrator misreading on its first render: Heatmap A is the Sharpe *delta*, so
+      the figures filed as "best cell Sharpe" were deltas. Corrected in the bug-log.
+      Re-emitted under D6.b: 4 rows re-pinned (2 scenarios x 2 namespaces), landing control proved
+      **4 FAIL / 115 PASS before any sha moved**, exactly 4 sha256 lines changed afterwards and 115
+      byte-identical, `ANCHORS PASS (119 / 119)`. Citations moved in the same pass: `trace.toml`
+      REQ-V25-TCN-THRESHOLD-TUNING-001 and ADR-0036 (which is `proposed`, not accepted as I first
+      recorded) both corrected with the contamination named; the frozen
+      `test-final-2026-05-21.md:75` cannot be edited without breaking its own bytes, so the anchor
+      comment is the correction of record for it.
+      Also fixed here, body-neutral: the report filename no longer hardcodes `-20260521` (the sibling
+      of `#130`, and the reason a default run could overwrite an anchored body).
+- [ ] AC5 remainder: the tracing subscriber and per-cell order/fill counts are still not built — the
+      lane remains unable to say how many orders it placed.
 
 ## Dev Notes
 

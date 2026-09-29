@@ -44,6 +44,20 @@ The phase-2 ship is **paradigm test, not parameter sweep** — the v2.5
 TCN journey (closed 2026-05-21 via operator's `v25-tcn-horizon-bump-or-retire`
 Q1=(b) retirement decision) shipped joint T-MARGINAL with Sharpe-deltas
 of +0.018 / +0.045, well below the +0.10 T-ALPHA-UNLOCKED threshold.
+
+> **Correction 2026-09-29 (story 1-30, ADR-0038 § D6.b re-emission).** Those two
+> deltas were produced by `#67`-contaminated arithmetic: the research harness priced
+> cross-symbol fills at the wrong symbol's bar. Re-measured under corrected routing,
+> the deltas are **+1.155769 (BS-1) and +1.086583 (BS-2)** and both clear the +0.10
+> line — so the sentence above no longer supports the premise it was written for.
+> What it does NOT mean: each delta is the maximum over 45 grid cells, measured
+> against a v1 baseline that loses money (−0.693194 / −0.447133 Sharpe), with no
+> bootstrap, no deflated Sharpe ratio and no multiple-testing correction, and the
+> FROZEN robustness gate is not involved in that report at all. The H1 question this
+> ADR poses — whether PatchTST clears the threshold — therefore needs a different
+> reference point than "TCN did not clear it", because on corrected arithmetic TCN
+> does clear this particular classifier. That is a question for whoever revisits this
+> `proposed` ADR, not a decision taken here.
 PatchTST shifts inductive bias (patch-attention vs dilated convolution)
 on the same data; whether it clears the threshold is the H1 question.
 
@@ -571,6 +585,9 @@ code-review check at D3 closes this loop.
 
 ## Changelog
 
+- 2026-09-29 (orchestrator, story 1-30): the cited TCN Sharpe-deltas corrected — they
+  were `#67`-contaminated. Status unchanged (`proposed`); the H1 premise is flagged,
+  not re-decided. See bug-log `#129`/`#132` and the D6.b block in `evidence/anchors.toml`.
 - 2026-05-21 (architect, M-T1): initial proposal. Status `proposed`
   pending developer's M-D ship + tester's M-FINAL pass. Cross-refs
   `REQ-V25A-PATCHTST-001` in

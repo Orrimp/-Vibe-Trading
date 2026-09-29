@@ -3458,3 +3458,30 @@ the FROZEN robustness gate — which is what this project means by an edge — i
 this report (grepped: neither file references `classify_verdict`, `verdict_bands`,
 `compute_robustness_flag` or `rank_candidates`). The era-qualified thesis is untouched by a point
 estimate that never faced that gate.
+
+**2026-09-29 (orchestrator) — CORRECTION to my own `#129`/`#132` numbers: I read deltas as absolute
+Sharpes.** The threshold-sweep report has **no absolute-Sharpe heatmap at all**. Heatmap A is titled
+*"Sharpe (ann.) delta vs v1 momentum"*, and every figure I quoted from it as a "best cell Sharpe" is a
+**delta**. The corrected picture:
+
+| state | v1 Sharpe | delta (Heatmap A) | best cell, ABSOLUTE |
+|---|---|---|---|
+| ANCHOR (2026-05, `#67`-contaminated) | `+0.003098` | `+0.018254` | **`+0.021352`** |
+| drifted (post-guard, silent drops) | `−0.328302` | `+0.354852` | **`+0.026550`** |
+| re-emitted (corrected routing) | `−0.693194` | `+1.155769` | **`+0.462575`** |
+
+So the corrected arithmetic does lift the best cell substantially — `+0.021` → `+0.463` — but it never
+approached the `1.16` I wrote, and the headline that reads best is the pair: **the best cell rises to
++0.46 while the baseline falls to −0.69**, and the delta is the sum of those two movements.
+
+Where the wrong figures stand: the `#129`/`#132` AC2 entry above, the 2026-09-27 measurement note, and
+story 1-30's board line, all of which say "best cell" where they mean "delta". They are left as written
+with this correction as the record, per the project's convention of not silently rewriting a filed
+finding.
+
+**What caught it:** the operator-ruled verdict qualifier, on its very first render. It prints
+`best cell {headline.sharpe} − v1 baseline {v1_sharpe} = {max_sharpe_delta}` computed from the run, so
+the two quantities appeared side by side and the misreading had nowhere to hide. A qualifier written
+down as fixed prose would have repeated my error instead of exposing it — which is the argument for
+computing such a line rather than authoring it, and it earned its keep before the body it explains had
+even landed.
