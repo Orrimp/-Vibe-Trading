@@ -164,6 +164,14 @@ pub async fn run_cell(
         let mut trades = 0usize;
         let mut buys = 0usize;
         let mut sells = 0usize;
+        // Story 1-30 AC3 diagnostics. These separate the two halves of the #129 repair,
+        // which the artefact alone could not: `cross_symbol_routed` counts orders whose
+        // own symbol's bar is NOT the merged-loop bar — precisely the set the pre-repair
+        // code handed to `engine.step` with a foreign bar and, after the #67 guard began
+        // returning Err, dropped in silence. `solvency_skips` counts the Bug-B pre-flight.
+        // Logged, not rendered: this answers AC3 without touching a hashed body.
+        let mut cross_symbol_routed = 0usize;
+        let mut solvency_skips = 0usize;
         let mut total_fees = Decimal::ZERO;
         let mut equity_curve: Vec<Decimal> = vec![input.initial_capital];
         let mut peak_equity = input.initial_capital;
@@ -261,10 +269,15 @@ pub async fn run_cell(
                             // `cash + position_value`, so nothing bounded cash. Unbounded,
                             // cash goes negative, final equity goes negative, and
                             // `compute_calmar`'s unguarded powf puts NaN in a hashed body.
+                            if fill_bar.symbol != bar.symbol {
+                                cross_symbol_routed += 1;
+                            }
+
                             let fee_estimate =
                                 notional * Decimal::new(i64::from(input.taker_fee_bps), 4);
                             let required = notional + fee_estimate;
                             if cash < required {
+                                solvency_skips += 1;
                                 tracing::warn!(
                                     symbol = %sig.symbol,
                                     %cash,
@@ -336,6 +349,9 @@ pub async fn run_cell(
                                 );
                                 continue;
                             };
+                            if fill_bar.symbol != bar.symbol {
+                                cross_symbol_routed += 1;
+                            }
                             let fills = match engine.step(fill_bar, vec![ord]).await {
                                 Ok(fills) => fills,
                                 Err(err) => {
@@ -411,6 +427,20 @@ pub async fn run_cell(
             passed_through = stats.passed_through,
             warmup = stats.window_warming_up,
             "threshold_sweep::run_cell complete"
+        );
+
+        // Story 1-30 AC3: one line per cell, at WARN so a diagnostic run surfaces it
+        // without changing any hashed body. `RUST_LOG` is unset by default and
+        // EnvFilter::from_default_env() then admits ERROR only — which is why the
+        // 2026-09-27 run showed zero log lines and I wrongly recorded that this binary
+        // installs no subscriber. It does, at bin/threshold_sweep.rs:700.
+        tracing::warn!(
+            cross_symbol_routed,
+            solvency_skips,
+            trades,
+            buys,
+            sells,
+            "AC3 cell diagnostics: cross_symbol_routed counts orders filled at their OWN symbol's bar rather than the merged-loop bar — the set the pre-repair code handed to the engine with a foreign bar and then dropped in silence once the #67 guard began refusing them"
         );
 
         Ok(TcnOverlayRunResult {

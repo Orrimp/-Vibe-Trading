@@ -3485,3 +3485,59 @@ the two quantities appeared side by side and the misreading had nowhere to hide.
 down as fixed prose would have repeated my error instead of exposing it — which is the argument for
 computing such a line rather than authoring it, and it earned its keep before the body it explains had
 even landed.
+
+**2026-09-29 (orchestrator) — CORRECTION: `threshold_sweep` DOES install a tracing subscriber.**
+I recorded three times — in the `#129` measurement note, in the `#129`/`#132` bug-log entries and in
+story 1-30 — that this binary installs none, and used the run's zero log lines as the evidence. Both
+halves were wrong, and the second is the instructive one.
+
+The subscriber is installed at `crates/backtest/src/bin/threshold_sweep.rs:700`
+(`llm::tracing_init::install_global(&[], false).ok()`). The reason nothing appeared is one line
+inside it: `EnvFilter::from_default_env()`, which with `RUST_LOG` unset admits **ERROR only**. Every
+`tracing::warn!` in the lane was filtered, not absent.
+
+So the diagnosis I filed — "an absence of output from a logger that was never installed" — named the
+wrong cause while being right that the absence proved nothing. That is the `#114`/`#124` shape applied
+to my own note: **a diagnosis that names the wrong cause aims the next reader away from the answer**,
+and here the wrong cause was expensive in a specific way — it made AC5 look like a build (install a
+subscriber, thread it through) when the actual gap was one environment variable and a counter.
+
+Consequence for story 1-30 AC3/AC5: no new plumbing is needed for the logging half. What IS needed is
+a counter, because even with `RUST_LOG=warn` today's repaired code cannot log a refusal — it never
+hands a foreign bar to the engine, so its refusal branch is unreachable by construction. The set that
+matters is *orders routed to their own symbol's bar rather than the merged-loop bar*: exactly what the
+pre-repair code handed over with a foreign bar and, after the `#67` guard, dropped in silence. That
+counter plus the Bug-B pre-flight counter now log once per cell at WARN, and they are **logged, not
+rendered** — so AC3 is answerable without a third re-emission of bodies re-locked hours ago.
+
+**2026-09-29 — story 1-30 AC3 ANSWERED by measurement: the movement is the routing half, not the
+solvency guard.** The `#129` repair had two behavioural halves and yesterday's record could only say
+`POST-FIX ≠ PRE-FIX` without separating them. Measured now, 47 cells of the bs1 sweep, one diagnostic
+line per cell at WARN with `RUST_LOG=warn`:
+
+| counter | total | per cell |
+|---|---|---|
+| `cross_symbol_routed` | **148 719** | min 1 900 · max 5 064 |
+| `solvency_skips` | **6** | 44 of 47 cells fired it zero times |
+| fills | 183 751 | |
+
+**80.9 % of every fill in this lane is cross-symbol.** Each of those, before the repair, was handed to
+`engine.step` with the merged-loop bar instead of the order's own — mispriced before `#67`, silently
+dropped after it. The Bug-B solvency pre-flight fired **6 times in 183 751 fills (0.003 %)**, so it
+contributes essentially nothing to the numbers. AC3 asked which half moved the result; the answer is
+the routing half, and it is not close.
+
+**Proven body-neutral rather than assumed:** the diagnostic run re-emitted the bs1 body at
+`924a51bb…` — byte-identical to the row re-locked hours earlier. The counters are logged and never
+reach a `body.push_str` path (grepped: 0 hits), so the reasoning holds for the later message-wording
+fix too.
+
+**Decision (orchestrator, recorded not asked): the counters stay logged and are NOT rendered.** The
+report already renders `Trades (cell)` for the headline cell. A per-cell `cross_symbol_routed` column
+would save a future reader one command — against a third re-emission of two bodies re-locked the same
+week, and against the churn to every downstream citation that entails. The diagnostic is one env var
+and is written down here with its exact invocation. If the lane is re-emitted again for an independent
+reason, the columns ride along then. Reverse this in one sentence if you disagree.
+
+Reproduce:
+`RUST_LOG=warn ./target/release/threshold_sweep --scenario bs1 --metadata-path crates/forecast/checkpoints/anchors/tcn-bs1-…metadata.recalibrated.json --out-dir <tempdir>`

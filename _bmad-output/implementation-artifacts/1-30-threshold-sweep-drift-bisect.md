@@ -1,6 +1,6 @@
 # Story 1.30: threshold-sweep-drift-bisect
 
-Status: in-progress
+Status: review
 
 <!-- 2026-09-29: AC1, AC2, AC4, AC6 and AC7 are DELIVERED (both bisects run, re-lock landed,
      citations moved). AC3 and the AC5 remainder are NOT: the lane still installs no tracing
@@ -140,8 +140,16 @@ a different cause, and folding it in destroys the evidence.
       comment is the correction of record for it.
       Also fixed here, body-neutral: the report filename no longer hardcodes `-20260521` (the sibling
       of `#130`, and the reason a default run could overwrite an anchored body).
-- [ ] AC5 remainder: the tracing subscriber and per-cell order/fill counts are still not built — the
-      lane remains unable to say how many orders it placed.
+- [x] **AC3 + AC5 ANSWERED 2026-09-29 — and the premise under them was wrong.** This binary DOES
+      install a subscriber (`bin/threshold_sweep.rs:700`); `EnvFilter::from_default_env()` admits
+      ERROR only when `RUST_LOG` is unset, which is why the 2026-09-27 run showed nothing. So AC5's
+      logging half needed no build at all. What it needed was a counter, because the repaired code
+      cannot log a refusal — it never hands a foreign bar to the engine, so that branch is unreachable
+      by construction. Measured over 47 cells: `cross_symbol_routed` **148 719 of 183 751 fills
+      (80.9 %)**, `solvency_skips` **6** (zero in 44 of 47 cells). **AC3's answer: the routing half
+      moved the result; the solvency guard contributed 0.003 %.** Body proven neutral — the diagnostic
+      run re-emitted bs1 at `924a51bb…`, byte-identical to the re-locked row.
+      Per-cell rendering deliberately NOT added; reasoning recorded in the bug-log.
 
 ## Dev Notes
 
