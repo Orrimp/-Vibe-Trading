@@ -1,8 +1,14 @@
 # Story 1.30: threshold-sweep-drift-bisect
 
-Status: ready-for-dev
+Status: in-progress
 
-<!-- Created 2026-09-28 by the operator's ruling on bug-log #129: bisect first, then re-lock.
+<!-- 2026-09-29: AC1, AC2, AC4, AC6 and AC7 are DELIVERED (both bisects run, re-lock landed,
+     citations moved). AC3 and the AC5 remainder are NOT: the lane still installs no tracing
+     subscriber and renders no order/fill counts, so the repair's two halves — per-symbol routing
+     and the Bug-B solvency pre-flight — still cannot be separated by measurement. Status is
+     in-progress rather than review for exactly that reason.
+
+     Created 2026-09-28 by the operator's ruling on bug-log #129: bisect first, then re-lock.
      Same shape as 1-27, which bisected the four #[ignore]d determinism gates to 11acd126 and
      re-emitted 15 rows. The difference is stated in "Method" below and it is not cosmetic. -->
 
