@@ -1,6 +1,6 @@
 # Story 1.21: perp-basis-mn-spread
 
-Status: review
+Status: done
 
 <!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
@@ -91,13 +91,23 @@ Proven, not assumed: two non-MN surfaces re-run through the changed renderer cam
 every shared θ-cell column is **byte-identical to the first pass** — the change is presentation,
 not computation.
 
-**What remains before this story can close:** the **ruin count** (equity is clamped before the
-metric calls, so a wiped-out path is still indistinguishable from a merely-bad one) and **separating
-synthetic liquidation covers from real fills** in `trades`. Both need a counter threaded through the
-path loop, not a renderer line, and both are recorded as *not* delivered — the body now states the
-conflation rather than hiding it, which is the honest interim. `#110` carries the detail.
+**~~What remains before this story can close~~ — BOTH DELIVERED 2026-09-29 by story 1-28.** The
+**ruin count** and the **separation of synthetic liquidation covers from real fills** were recorded
+here as *not* delivered, with the body stating the conflation rather than hiding it as the honest
+interim. They are now built, and the MN bodies carry them:
 
-- [ ] `perp-basis-mn-spread` 0.2.0 - the base feature (presenter-done)
+- `stats::clamp_equity_for_metrics` is one definition returning the clamped curve **and** the witness;
+  the three inline copies are gone. Every report renders `Ruined paths: N of M`.
+- `trades` is real fills only; forced buy-to-cover legs are counted as `cover_fills`, which the MN
+  table now renders. `#110`'s legend — *"MN turnover is not directly comparable … read it next to the
+  liquidations column"* — is replaced by the numbers it apologised for.
+
+**Both read 0 on all 12 MN surfaces**, because the `#71` fix took liquidations from 2210 to 0. That is
+the tripwire reading clean, not the columns failing: neither could prove itself from a corpus with
+nothing to show, so both were proven in fixtures and both were probed by breaking them (story 1-28
+AC4). Record: `docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md`.
+
+- [x] `perp-basis-mn-spread` 0.2.0 - the base feature (presenter-done)
 
 ## Dev Notes
 
@@ -108,7 +118,7 @@ conflation rather than hiding it, which is the honest interim. `#110` carries th
 
 ### References
 
-- Trace: `REQ-PERP-BASIS-MN-SPREAD-001` (state=`tester-done`)
+- Trace: `REQ-PERP-BASIS-MN-SPREAD-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
 
 ## Dev Agent Record
