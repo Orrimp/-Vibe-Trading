@@ -31,8 +31,6 @@
 
 use anyhow::{Context, Result};
 use rayon::prelude::*;
-use rust_decimal::Decimal;
-use rust_decimal_macros::dec;
 
 // ── Generator kind ────────────────────────────────────────────────────────────
 
@@ -301,17 +299,22 @@ pub fn run_one_path(
     // We clamp negative equity to 1e-6 (representing near-zero remnant capital)
     // so the Sharpe on a ruin path is a finite large-negative number rather than NaN.
     // This is intentional: ADR-0051 D2 asserts NaN absent; we prevent NaN here.
-    let equity_clamped: Vec<Decimal> = result
-        .equity_curve
-        .iter()
-        .map(|&e| {
-            if e <= Decimal::ZERO {
-                dec!(0.000001)
-            } else {
-                e
-            }
-        })
-        .collect();
+    let crate::stats::ClampedEquity {
+        curve: equity_clamped,
+        first_ruin_bar,
+        clamped_bars,
+    } = crate::stats::clamp_equity_for_metrics(&result.equity_curve);
+    if let Some(bar) = first_ruin_bar {
+        // Story 1-28: the clamp used to destroy this silently. Logged here so the fact
+        // survives the substitution; rendering it per cell is AC2 and moves a body.
+        tracing::warn!(
+            path = j,
+            first_ruin_bar = bar,
+            clamped_bars,
+            "RUIN: equity reached zero or below and was clamped to 1e-6 for the metrics — \
+             p95_maxdd near 100% on this path is ruin, not merely a deep drawdown"
+        );
+    }
 
     let sharpe = crate::stats::compute_sharpe_hourly(&equity_clamped);
     let sortino = crate::stats::compute_sortino_hourly(&equity_clamped);

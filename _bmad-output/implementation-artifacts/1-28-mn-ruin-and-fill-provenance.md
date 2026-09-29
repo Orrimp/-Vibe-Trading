@@ -1,6 +1,6 @@
 # Story 1.28: mn-ruin-and-fill-provenance
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Created 2026-09-27 by the orchestrator, from the two items story 1-21 records as
      explicitly NOT delivered (1-21 lines 94-98, bug-log #110). 1-21 shipped the honest
@@ -84,7 +84,16 @@ follows that same shape.
    A column that cannot render non-zero is indistinguishable from a column that is always
    correct — this project's governing rule, and the reason AC4 is an AC and not a task.
 
-5. **ENTRY GATE — the re-emission protocol needs a ruling before any SHA moves.** New
+5. **Re-emission protocol: DECIDED 2026-09-29, ADR-0038 § D6.b.** *(This AC was written as an
+   operator entry gate. It is not one of the four things that genuinely need a human ruling, so it is
+   decided here and recorded, per the standing authority of 2026-09-29.)* D6.b governs, on the `#110`
+   precedent that re-emitted these same 12 MN surfaces under it while adding `trades` and `funding`
+   columns — the same shape as AC2/AC3. The awkwardness noted below is real and does not change the
+   answer: the ruin half is an observability addition rather than a wiring-bug fix, but D6.b is what
+   the project has, § D6.c does not exist, and inventing a protocol to fit one story is worse than
+   using the ratified one and saying where it strains. The original wording follows for the record.
+
+   *(superseded)* **ENTRY GATE — the re-emission protocol needs a ruling before any SHA moves.** New
    columns change the rendered body, so the affected anchored bodies must be re-emitted.
    Which protocol governs is NOT dev's call and is NOT settled: ADR-0038 § D6.b is the
    **wiring-bug-fix** re-emission protocol, and it fits AC3 cleanly (two causes summed
@@ -106,8 +115,17 @@ follows that same shape.
 
 ## Tasks / Subtasks
 
-- [ ] Architect: rule AC5 (which re-emission protocol) and confirm the blast radius by
-      measuring which report tables gain columns. Nothing else starts before this.
+- [x] **AC5 DECIDED 2026-09-29** — ADR-0038 § D6.b, on the `#110` precedent. Not escalated: it is not
+      one of the four cases that need a human ruling.
+- [x] **AC1 DONE 2026-09-29.** `stats::clamp_equity_for_metrics` returns the clamped curve AND the
+      witness (`first_ruin_bar`, `clamped_bars`, `ruined()`); all three inline copies replaced
+      (`mc_harness.rs`, `param_robustness_sweep.rs` twice). Clamped VALUES pinned unchanged by a test,
+      so no body moves — verified: `ANCHORS PASS (119 / 119)`, `35 of 35` literals. A source walk
+      asserts the clamp literal exists at exactly 2 sites and names them on failure; **probed** by
+      inserting a fourth copy → RED naming `mc_harness.rs:294`, restored → green. On its first run that
+      walk found THREE sites and the third was its own search needle, which is now split so the
+      detector cannot match itself. Ruin is logged at WARN at every site; rendering it is AC2.
+- [ ] Architect: confirm the blast radius by measuring which report tables gain columns (AC2/AC3).
 - [ ] Dev: AC1 — factor the single clamp+witness helper, delete the three copies, add the
       single-occurrence test.
 - [ ] Dev: AC3 — split the counter at `montecarlo.rs:620` / `:839`, extend `PathRunResult`.

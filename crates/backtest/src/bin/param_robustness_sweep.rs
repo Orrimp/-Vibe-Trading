@@ -908,17 +908,19 @@ fn run_one_path_with_config(
     let liquidations = result.liquidations;
 
     // ── Compute per-path metric scalars ───────────────────────────────────────
-    let equity_clamped: Vec<Decimal> = result
-        .equity_curve
-        .iter()
-        .map(|&e| {
-            if e <= Decimal::ZERO {
-                dec!(0.000001)
-            } else {
-                e
-            }
-        })
-        .collect();
+    let backtest::stats::ClampedEquity {
+        curve: equity_clamped,
+        first_ruin_bar,
+        clamped_bars,
+    } = backtest::stats::clamp_equity_for_metrics(&result.equity_curve);
+    if let Some(bar) = first_ruin_bar {
+        tracing::warn!(
+            path = j,
+            first_ruin_bar = bar,
+            clamped_bars,
+            "RUIN: equity reached zero or below and was clamped to 1e-6 for the metrics"
+        );
+    }
 
     // M-DEV-3: metric branch (D-HR.1) — 1h uses verbatim fns (anchor-safe);
     // coarse horizons use the *_periodic fns with the correct periods_per_year.
@@ -1979,16 +1981,18 @@ fn main() -> Result<()> {
                     };
                     let merged = data::ReplayFeed::merge_synthetic(generated_path.bars_by_symbol);
                     let (equity, final_eq) = run_buyhold_path(&merged, dec!(100_000), n_symbols);
-                    let equity_clamped: Vec<Decimal> = equity
-                        .iter()
-                        .map(|&e| {
-                            if e <= Decimal::ZERO {
-                                dec!(0.000001)
-                            } else {
-                                e
-                            }
-                        })
-                        .collect();
+                    let backtest::stats::ClampedEquity {
+                        curve: equity_clamped,
+                        first_ruin_bar: bh_first_ruin_bar,
+                        clamped_bars: bh_clamped_bars,
+                    } = backtest::stats::clamp_equity_for_metrics(&equity);
+                    if let Some(bar) = bh_first_ruin_bar {
+                        tracing::warn!(
+                            first_ruin_bar = bar,
+                            clamped_bars = bh_clamped_bars,
+                            "RUIN on the BUY-AND-HOLD control path"
+                        );
+                    }
                     // M-DEV-3: BH metric branch — mirror the per-cell branch (D-HR.1/D-HR.4).
                     // 1h → verbatim fns (byte-identical); coarse → *_periodic.
                     let (bh_sharpe, bh_sortino, bh_calmar) =

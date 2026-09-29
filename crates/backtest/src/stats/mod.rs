@@ -31,6 +31,70 @@ use rust_decimal::Decimal;
 // These functions are byte-identical to the originals; only their path changed.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// An equity curve clamped for metric computation, **plus the fact the clamp destroyed**.
+///
+/// Story 1-28 / bug-log `#127`. Every value `<= 0` is mapped to `1e-6` before the metric
+/// calls, because `compute_sharpe_hourly`'s log-returns would otherwise be NaN and
+/// ADR-0051 D2 asserts NaN absent. The clamp is deliberate and stays.
+///
+/// What did not stay is throwing away the answer. The predicate `e <= 0` was evaluated at
+/// **three** duplicated sites and recorded at none, so after the substitution a path that
+/// lost everything and a path that lost 99.9 % were the same number — and `p95_maxdd` at
+/// 100.00 % was the signature of ruin and also what a merely catastrophic path printed.
+/// **A substitution is a lossy write; the replacement site is the only place that still
+/// knows what was replaced.**
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClampedEquity {
+    /// The curve with every non-positive value replaced by `1e-6`.
+    pub curve: Vec<Decimal>,
+    /// Index of the first bar at or below zero, if the path was ever ruined.
+    pub first_ruin_bar: Option<usize>,
+    /// How many bars were clamped. `0` for a path that never went non-positive.
+    pub clamped_bars: usize,
+}
+
+impl ClampedEquity {
+    /// Whether this path was ruined — i.e. its equity reached zero or below at any bar.
+    #[must_use]
+    pub const fn ruined(&self) -> bool {
+        self.first_ruin_bar.is_some()
+    }
+}
+
+/// Clamp an equity curve for metric computation and report what the clamp hid.
+///
+/// One definition. It was three identical copies until 2026-09-29 — in `mc_harness.rs` and
+/// twice in `bin/param_robustness_sweep.rs` — which is three places to forget the same
+/// counter, and the third copy was added without anyone noticing the first two had the
+/// same gap.
+///
+/// The clamped VALUES are unchanged by this consolidation, so no anchored body moves.
+#[must_use]
+pub fn clamp_equity_for_metrics(equity: &[Decimal]) -> ClampedEquity {
+    let mut first_ruin_bar = None;
+    let mut clamped_bars = 0usize;
+    let curve = equity
+        .iter()
+        .enumerate()
+        .map(|(i, &e)| {
+            if e <= Decimal::ZERO {
+                clamped_bars += 1;
+                if first_ruin_bar.is_none() {
+                    first_ruin_bar = Some(i);
+                }
+                rust_decimal_macros::dec!(0.000001)
+            } else {
+                e
+            }
+        })
+        .collect();
+    ClampedEquity {
+        curve,
+        first_ruin_bar,
+        clamped_bars,
+    }
+}
+
 /// Hourly-to-annual annualisation factor: **√8574.9998**, NOT √(24·365)=√8760.
 ///
 /// One definition. It lived as two identical `const`s inside two functions until
@@ -1625,5 +1689,118 @@ mod tests {
             "median_terminal_wealth must not be NaN"
         );
         assert!(!s.skew.is_nan(), "skew must not be NaN");
+    }
+}
+
+#[cfg(test)]
+mod clamp_witness_tests {
+    use super::{ClampedEquity, clamp_equity_for_metrics};
+    use rust_decimal_macros::dec;
+
+    /// Story 1-28 AC4 — non-vacuity: a ruined path must be DISTINGUISHABLE.
+    ///
+    /// This is the assertion the three duplicated clamp sites could not make for four
+    /// months, because each computed `e <= 0` and threw the answer away. It fails if the
+    /// witness is ever dropped again.
+    #[test]
+    fn a_ruined_path_is_reported_as_ruined_and_a_merely_bad_one_is_not() {
+        let ruined = clamp_equity_for_metrics(&[dec!(100), dec!(50), dec!(0), dec!(-20)]);
+        assert!(ruined.ruined(), "a path reaching zero must report ruin");
+        assert_eq!(
+            ruined.first_ruin_bar,
+            Some(2),
+            "first non-positive bar is index 2"
+        );
+        assert_eq!(
+            ruined.clamped_bars, 2,
+            "both the zero and the negative bar are clamped"
+        );
+
+        // The case the clamp made indistinguishable: down 99.9%, never at or below zero.
+        let merely_bad = clamp_equity_for_metrics(&[dec!(100), dec!(50), dec!(0.1)]);
+        assert!(
+            !merely_bad.ruined(),
+            "a path that lost 99.9% but stayed positive is NOT ruin — that distinction is \
+             the whole point of the witness"
+        );
+        assert_eq!(merely_bad.clamped_bars, 0);
+    }
+
+    /// The clamped VALUES must be exactly what the three inline copies produced, or every
+    /// anchored body that consumes them moves.
+    #[test]
+    fn clamped_values_are_unchanged_by_the_consolidation() {
+        let got = clamp_equity_for_metrics(&[dec!(10), dec!(0), dec!(-5), dec!(3)]);
+        assert_eq!(
+            got,
+            ClampedEquity {
+                curve: vec![dec!(10), dec!(0.000001), dec!(0.000001), dec!(3)],
+                first_ruin_bar: Some(1),
+                clamped_bars: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn an_empty_curve_is_not_ruin() {
+        let got = clamp_equity_for_metrics(&[]);
+        assert!(!got.ruined());
+        assert!(got.curve.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod clamp_single_definition_test {
+    /// Story 1-28 AC1 — the clamp may exist exactly ONCE, and a fourth copy goes RED here.
+    ///
+    /// It was three identical inline copies until 2026-09-29 (`mc_harness.rs` and twice in
+    /// `bin/param_robustness_sweep.rs`), and the third was added without anyone noticing
+    /// the first two shared the same gap: each evaluated `e <= 0` and discarded the answer.
+    /// One clamp is one place to remember the witness; three are three places to forget it.
+    ///
+    /// The count is 2 by construction: the helper itself, and the fixture in
+    /// `clamp_witness_tests` that pins the clamped values. Anything else is a new copy.
+    #[test]
+    fn the_clamp_literal_exists_exactly_once_outside_its_own_test_fixture() {
+        const EXPECTED: usize = 2;
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+
+        let mut hits: Vec<String> = Vec::new();
+        let mut stack = vec![src.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read_dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).expect("read source");
+                    for (i, line) in text.lines().enumerate() {
+                        // Split so this line does not match itself: the first run of
+                        // this test found THREE sites and the third was its own needle.
+                        if line.contains(concat!("dec!(0.", "000001)")) {
+                            let rel = path.strip_prefix(&src).unwrap_or(&path);
+                            hits.push(format!("{}:{}", rel.display(), i + 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Non-vacuity: a walk that read nothing would otherwise "pass" by finding nothing.
+        assert!(
+            !hits.is_empty(),
+            "the walk found ZERO occurrences of the clamp literal under {}, which means it \
+             read nothing — not that the clamp is gone",
+            src.display()
+        );
+        assert_eq!(
+            hits.len(),
+            EXPECTED,
+            "expected the clamp literal at exactly {EXPECTED} sites (the helper and its own \
+             test fixture) and found {} — at {hits:?}. A new inline copy is the defect this \
+             test exists to catch; route it through stats::clamp_equity_for_metrics so the \
+             ruin witness cannot be dropped again (bug-log #127, story 1-28 AC1).",
+            hits.len()
+        );
     }
 }
