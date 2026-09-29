@@ -327,18 +327,39 @@ fn render_report(
     // Verdict — directional summary of the distribution.
     let sharpe_p50 = summary.sharpe.p50;
     let sharpe_spread = summary.sharpe.p95 - summary.sharpe.p5;
+    // Story 1-25 AC3.2. This is a SINGLE-SIGNAL p50 rule and it used to print it in the
+    // house vocabulary — `ROBUST-ABOVE-1` / `MARGINAL` / `WEAK` — into the hashed body.
+    // `MARGINAL` is the collision that matters: the same word the FROZEN 5-signal
+    // weakest-link gate emits (`bakeoff/robustness.rs::classify_verdict`, vocabulary
+    // FRAGILE / MARGINAL / ROBUST), computed by a completely different and far weaker
+    // rule, while `FRAGILE` never appears here at all. A reader cannot tell them apart.
+    //
+    // The fix is the one the operator ruled for the T-classifier on 2026-09-29: do not
+    // change what is computed — make what is computed unmistakable. The labels are now
+    // namespaced so they cannot be confused with a gate verdict, and the rule states
+    // itself next to them. The C3 lane was already aligned (`sweep_harness.rs`); this
+    // was the C2 lane.
     let verdict_str = if sharpe_p50 > 1.0 {
-        "ROBUST-ABOVE-1: p50 Sharpe > 1.0 — ensemble median clears the paper→live gate"
+        "MC-P50-ABOVE-1: p50 Sharpe > 1.0 — ensemble median clears 1.0"
     } else if sharpe_p50 > 0.0 {
-        "MARGINAL: p50 Sharpe in (0, 1.0] — median is positive but below the paper→live gate"
+        "MC-P50-POSITIVE: p50 Sharpe in (0, 1.0] — median positive, below 1.0"
     } else {
-        "WEAK: p50 Sharpe ≤ 0 — ensemble median is non-positive"
+        "MC-P50-NONPOSITIVE: p50 Sharpe ≤ 0 — ensemble median is non-positive"
     };
 
     body.push_str("## Verdict\n\n");
     body.push_str(&format!("Sharpe p50: {sharpe_p50:.6}\n"));
     body.push_str(&format!("Sharpe spread (p95-p5): {sharpe_spread:.6}\n"));
     body.push_str(&format!("Verdict: {verdict_str}\n\n"));
+    body.push_str(
+        "This `MC-P50-*` label is a one-signal summary of the median Sharpe and nothing \
+         more. It is NOT this project's robustness verdict: that is the FROZEN 5-signal \
+         weakest-link rule in `bakeoff/robustness.rs::classify_verdict` (vocabulary \
+         FRAGILE / MARGINAL / ROBUST), which reads p5, p50, prob_loss, P(Sharpe>1) and \
+         p95_maxdd together and is not computed anywhere in this report. The labels are \
+         namespaced so the two cannot be confused; until 2026-09-29 this line read \
+         ROBUST-ABOVE-1 / MARGINAL / WEAK, and MARGINAL collided outright.\n\n",
+    );
 
     body.push_str("Notes:\n");
     body.push_str("- Drawdown tail (p95 MaxDD) is the headline paper→live gate number.\n");

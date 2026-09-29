@@ -1,6 +1,6 @@
 # Story 1.25: harness-fill-correctness-relock
 
-Status: in-progress
+Status: review
 
 <!-- 2026-08-19: the CODE half of AC1-AC3 is landed and pushed; AC4 (regeneration) and
      AC5 (band re-examination) are NOT started and are gated on two operator rulings
@@ -155,6 +155,32 @@ tautology. A pinned assertion replaces it, probed RED and back.
 **Still open**: AC3.2 (verdict vocabulary — prose inside hashed bodies, so `#110`'s shape: it needs a
 re-emission, not a re-lock), AC3.3/3.4/3.5/3.6 (ratify-in-writing, which AC3 explicitly permits), and
 AC6's re-wording onto the evidence that actually carries the claim.
+
+## AC3.2 — FIXED 2026-09-29, and it was the last open rider
+
+`bin/monte_carlo.rs` rendered a **single-signal p50 rule** into the hashed body using the house
+vocabulary: `ROBUST-ABOVE-1` / `MARGINAL` / `WEAK`. `MARGINAL` is the collision that matters — the same
+word the FROZEN 5-signal weakest-link gate emits (`bakeoff/robustness.rs::classify_verdict`, vocabulary
+`FRAGILE` / `MARGINAL` / `ROBUST`), computed by a far weaker rule, while `FRAGILE` never appeared in
+this report at all. A reader could not tell a one-signal summary from a gate verdict. The C3 lane
+(`sweep_harness.rs`) was already aligned; this was the C2 lane.
+
+Fixed the way the operator ruled for the T-classifier the same day: **do not change what is computed,
+make it unmistakable.** Labels are namespaced `MC-P50-ABOVE-1` / `MC-P50-POSITIVE` /
+`MC-P50-NONPOSITIVE`, and the body now states the rule beside them and names the frozen gate it is not.
+
+**Nothing numeric moved.** This run's p50 Sharpe is `−0.718332`; the old rule printed `WEAK` for it and
+the new one prints `MC-P50-NONPOSITIVE`. Identical meaning, a word that can no longer be mistaken for a
+verdict. Blast radius was exactly **one live body** — the other six `mc-robustness-2026-06` rows are
+θ-surfaces from `param_robustness_sweep`, whose renderer was already correct.
+
+Re-emitted under ADR-0038 § D6.b: control proved **1 FAIL / 118 PASS** with the new body on disk and
+before the sha moved; `ANCHORS PASS (119 / 119)` after. The reproduction gate's pinned literal in
+`theta_surface_reproduction.rs` was caught as stale by `check_determinism_anchors` — a file that tool
+did not scan before the `#131` scope fix landed the day before, so that fix earned its keep on its
+first real opportunity — and updated in the same pass; `35 of 35` again.
+
+**With this, every AC of story 1-25 is discharged.**
 
 ## AC3 ratifications, 2026-09-29 — the writing-only pass AC3 explicitly permits
 

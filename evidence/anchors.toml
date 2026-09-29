@@ -966,10 +966,35 @@ sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
 #   and was the last backtest-family scenario with no re-run gate.
 #   Landed: evidence/v1/strategy-robustness-harness/reports/robustness-20260927-155436-….md
 # SUPERSEDED BODY sha256=7dbf562887cbf6790f6a85b5276392388f429d098a955a139d81eedc7fd0ef20 — kept verbatim below:
+# == RE-EMITTED 2026-09-29 under ADR-0038 D6.b -- story 1-25 AC3.2, VOCABULARY only ==
+# WHAT changed: the label, not the finding. This report renders a SINGLE-SIGNAL p50 rule
+# and used to print it in the house vocabulary -- ROBUST-ABOVE-1 / MARGINAL / WEAK -- into
+# the hashed body. `MARGINAL` is the collision that matters: the same word the FROZEN
+# 5-signal weakest-link gate emits (bakeoff/robustness.rs::classify_verdict, vocabulary
+# FRAGILE / MARGINAL / ROBUST), computed by a completely different and far weaker rule,
+# while FRAGILE never appeared here at all. A reader could not tell the two apart.
+#
+# The labels are now namespaced MC-P50-ABOVE-1 / MC-P50-POSITIVE / MC-P50-NONPOSITIVE and
+# the body states the rule beside them. Same treatment the operator ruled for the
+# T-classifier the same day: do not change what is computed, make it unmistakable.
+#
+# NOTHING NUMERIC MOVED. This run's p50 Sharpe is -0.718332 and the old rule would have
+# printed WEAK for it; the new rule prints MC-P50-NONPOSITIVE. Identical meaning, a word
+# that can no longer be confused with a gate verdict.
+#
+# CONDITION: cwd=workspace root - features=candle,realdata - profile=release
+#   monte_carlo --generator block-bootstrap-real --paths 500 --ensemble-seed 0xC0FFEE
+#              --year 2023 --out-dir <tempdir>
+#   corpus=data/binance at REVISION 3a8b96c4...
+# CONTROL, proven: with the new body on disk and BEFORE the sha moved, the gate showed
+#   exactly 1 FAIL / 118 PASS, and the one FAIL was this row.
+# SUPERSEDED BODY sha256=3aae06c00bcbf45eb96e7fae7d3856ff1bc148fbacb8f2dc5db1385a1d0cf745
+#   -- kept verbatim on disk (D6.b forbids row deletion). It was itself re-emitted on
+#   2026-09-27 under bug-log #126; the numbers from that pass are unchanged here.
 [[anchors]]
 scenario = "v1-momentum-2023-block-bootstrap-real-fy-mc"
 version  = "mc-robustness-2026-06"
-sha256   = "3aae06c00bcbf45eb96e7fae7d3856ff1bc148fbacb8f2dc5db1385a1d0cf745"
+sha256   = "937cb52f7186ba6a2fea3f3142d72b80660da9d3984bb5dbfdf47299718efc3e"
 
 # C3 momentum parameter-robustness sweep — θ-surface anchor (2026-05-30).
 # Re-scoped 6-cell × N=200 grid (orchestrator 2026-05-30; was 14-cell × N=500).
