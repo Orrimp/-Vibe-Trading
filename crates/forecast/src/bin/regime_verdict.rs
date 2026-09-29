@@ -846,8 +846,27 @@ fn main() -> Result<()> {
         let body = match report_path {
             Ok(p) => std::fs::read_to_string(&p)
                 .with_context(|| format!("reading report {}", p.display()))?,
+            // Bug-log #128c (story 1-29 AC5). A missing report used to become
+            // `String::new()` unconditionally, and every downstream statistic then parsed
+            // as zero. Where the child FAILED that is harmless — V-REG-1 fires and its
+            // evidence names the real condition. Where the child SUCCEEDED it is not: the
+            // verdict is then computed from fabricated zeros on a run that reported
+            // success, and nothing anywhere says so. A refusal must not be reported as a
+            // result, and a success that produced nothing is not a result either.
+            Err(e) if completed => {
+                anyhow::bail!(
+                    "the backtest for {scenario_name} exited 0 but wrote no report to the \
+                     tempdir ({e}). Refusing to emit a V-REG verdict computed from an empty \
+                     body: every statistic would parse as zero and the verdict would look \
+                     measured. If the binary legitimately emits nothing here, that is the \
+                     thing to fix, not this guard (bug-log #128c)."
+                );
+            }
             Err(_) => {
-                tracing::warn!("no report found in tmpdir — using empty stats for V-REG-1");
+                tracing::warn!(
+                    "backtest did not complete AND wrote no report — empty stats, V-REG-1 \
+                     will fire and its evidence names the real condition"
+                );
                 String::new()
             }
         };

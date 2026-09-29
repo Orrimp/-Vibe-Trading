@@ -3624,3 +3624,33 @@ earlier. Process note, because this session is about exactly this: that sentence
 the run was still going and was confirmed afterwards. It happened to be right. Writing it before
 the measurement landed was not, and the only reason it is not a defect in this record is that I
 went back and checked rather than moving on.
+
+### `#128c` — a run that exited 0 and wrote nothing still produced a verdict, computed from fabricated zeros
+**Status**: half FIXED 2026-09-30 (story 1-29 AC5); the naming half rides the next re-emission.
+Anchor-impacting: **no** for the fix; the rename is body-affecting and deferred deliberately.
+
+`crates/forecast/src/bin/regime_verdict.rs` spawns the `backtest` binary, then looks for the report it
+should have written. When it found none it substituted `String::new()` **unconditionally**, and every
+downstream statistic then parsed as zero.
+
+Two cases hide behind that one line, and only one of them is harmless:
+
+- **The child FAILED.** Fine. V-REG-1 fires and its evidence string says *"Backtest did not complete
+  successfully — EM convergence failure suspected"*, which names the real condition and hedges. The
+  audit read this as a pure misdiagnosis; reading the code, it is more honest than that.
+- **The child SUCCEEDED and wrote nothing.** Not fine. The verdict is then computed from fabricated
+  zeros on a run that reported success, and nothing anywhere says so. That is this week's recurring
+  shape: **a substitution made so the code can proceed, whose fact is then discarded.** It now bails
+  with the reason, because a success that produced nothing is not a result any more than a refusal is.
+
+#### What is NOT fixed here, and why it waits
+
+The verdict's *name* still reads `V-REG-1 (Convergence failure)` / *"EM convergence failure"* while
+what it actually tests is *"the backtest completed"* — the table row already labels itself honestly
+(`| V-REG-1 | EM convergence (backtest completed successfully) |`), so the gap is the headline, which
+is what gets quoted. Renaming it changes the hashed body of `regime-verdict-bs1-realdata`, which is one
+of the ten rows story 1-29 will re-run and gate. It rides that re-emission rather than earning one of
+its own.
+
+Recorded rather than done quietly, because a rename that never happens is indistinguishable from a
+rename nobody thought was needed.

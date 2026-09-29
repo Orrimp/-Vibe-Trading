@@ -128,7 +128,17 @@ Every required checkpoint and corpus file is present on this machine (verified b
 - [ ] *(superseded)* AC1 first, alone, and committed before anything is run: the out-dir default, the required-flag
       decision, and the silent-zeros parser. Nothing else may execute while a no-argument run of
       `threshold_sweep` can destroy an anchored body.
-- [ ] AC5: decide refuse-vs-diagnose for `vol_verdict`, `regime_verdict`, `sharpe_comparison`.
+- [x] **AC5 DECIDED + half DONE 2026-09-30** (bug-log `#128c`). Decision, recorded not escalated:
+      **diagnose where the report can name the condition, refuse where it cannot.**
+      - `sharpe_comparison` already bails on a refused child — unchanged.
+      - `regime_verdict` had ONE line covering two cases. Child FAILED: harmless, V-REG-1 fires and its
+        evidence names the real condition (more honest than the audit's summary — read the code, not
+        the verdict name). Child SUCCEEDED and wrote nothing: it computed a verdict from fabricated
+        zeros on a run that reported success. That now bails with the reason.
+      - `vol_verdict`: no change; it takes no such substitution.
+      Deferred with its reason: V-REG-1 is still NAMED for EM convergence while it tests *"the backtest
+      completed"* — the table row already labels itself honestly, so the gap is the headline. Renaming
+      is body-affecting and rides this story's own re-emission of `regime-verdict-bs1-realdata`.
 - [ ] AC2/AC3/AC4: the shared runner, then the 12 gates on top of it.
 - [ ] AC6: run them. Triage each red to a cause at a `file:line`; batch the D6.b re-emissions rather
       than re-locking one row at a time.
