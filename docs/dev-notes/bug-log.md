@@ -3590,3 +3590,37 @@ bin's report shape, and it is not what AC3.1 names. Recorded here rather than do
 false in the same way the docs were, and per `#110` a corrected engine behind an unchanged renderer
 says the same words — so it cannot be cleared by a re-lock alone and rides the next re-emission of
 those reports (story 1-29 covers three of them).
+
+**2026-09-29 — `#128b` FIXED: the nine silent zeros are three paths, not two, and the third was never
+written down.** `bin/threshold_sweep.rs::parse_gate_survivors` returned `[0usize; 9]` on failure and
+its own doc called that *"graceful degradation"*. Those zeros then rendered into a **hashed body**
+indistinguishable from nine measured zeros, with no log line anywhere.
+
+Enumerating the failure paths while fixing it turned up one nobody had listed: besides (1) an
+unreadable file and (2) a missing section heading, there is (3) a **partial parse** — fewer than nine
+table rows left the tail silently zero-filled. The probe output is the defect stated in one line:
+
+```
+[69085, 60339, 51964, 44375, 0, 0, 0, 0, 0]
+```
+
+Four measured values and five fabricated ones, identical in the rendered table.
+
+All three are now errors carrying their own diagnosis, and four unit tests pin them — including a
+non-vacuity test that the happy path still parses, without which the three failure tests would pass
+against a parser that could never succeed. **Probed**: relaxing the partial-parse guard turns the
+third test RED with the array above; restored, 4 pass.
+
+Why it mattered beyond tidiness: the input is a **hardcoded dated path into the anchored corpus**
+(`evidence/v1/v25-tcn-recalibrate/reports/forecast-distribution-bs1-realdata-recalibrated-20260521.md`),
+and this project's re-emission pattern writes a NEW timestamped filename beside the old one. Those two
+predecessor rows are themselves on story 1-29's list of scenarios awaiting a gate. The day they are
+re-emitted, this read starts failing — and until today it would have started lying instead. The error
+message says exactly that, so the next reader is not left to rediscover it.
+
+Body-neutral by construction (only failure paths change) **and** measured: a full bs1 run after the
+change re-emitted the body at `924a51bb…`, byte-identical to the digest it was re-pinned to hours
+earlier. Process note, because this session is about exactly this: that sentence was written while
+the run was still going and was confirmed afterwards. It happened to be right. Writing it before
+the measurement landed was not, and the only reason it is not a defect in this record is that I
+went back and checked rather than moving on.

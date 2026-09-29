@@ -116,7 +116,16 @@ Every required checkpoint and corpus file is present on this machine (verified b
 
 ## Tasks / Subtasks
 
-- [ ] AC1 first, alone, and committed before anything is run: the out-dir default, the required-flag
+- [x] **AC1 DONE 2026-09-29/30.** `#128a`: the `--out-dir` default no longer points into the corpus
+      (landed 2026-09-27). `#128b`: `parse_gate_survivors` no longer returns nine silent zeros —
+      and enumerating its failure paths while fixing it found a THIRD nobody had listed: besides an
+      unreadable file and a missing section heading, a **partial parse** left the tail zero-filled.
+      The probe prints the defect in one line: `[69085, 60339, 51964, 44375, 0, 0, 0, 0, 0]` — four
+      measured values and five fabricated ones, identical once rendered. All three are errors carrying
+      their own diagnosis, pinned by four unit tests including a non-vacuity test that the happy path
+      still parses. Body-neutral, measured not assumed: a full bs1 run re-emitted `924a51bb…`,
+      byte-identical to the anchored digest.
+- [ ] *(superseded)* AC1 first, alone, and committed before anything is run: the out-dir default, the required-flag
       decision, and the silent-zeros parser. Nothing else may execute while a no-argument run of
       `threshold_sweep` can destroy an anchored body.
 - [ ] AC5: decide refuse-vs-diagnose for `vol_verdict`, `regime_verdict`, `sharpe_comparison`.

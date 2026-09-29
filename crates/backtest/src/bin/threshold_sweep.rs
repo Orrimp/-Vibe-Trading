@@ -251,19 +251,38 @@ use backtest::stats::{
 /// Reads the `## Confidence-gate survival` section and extracts the
 /// `bars surviving` column for τ ∈ {0.1, …, 0.9}.
 ///
-/// Returns `[0usize; 9]` on any parse failure (graceful degradation).
-fn parse_gate_survivors(report_path: &str) -> [usize; 9] {
+/// # Errors
+///
+/// Every failure is an error. Until 2026-09-29 this returned `[0usize; 9]` on any
+/// failure and its own doc called that *"graceful degradation"* (bug-log `#128b`) —
+/// nine zeros that then rendered into a hashed body indistinguishable from nine
+/// MEASURED zeros, with no log line anywhere. There were three such paths, not two:
+/// an unreadable file, a missing section heading, and — the one nobody wrote down —
+/// a PARTIAL parse, where fewer than nine rows left the tail silently zero-filled.
+///
+/// The input is a hardcoded dated path into the anchored corpus
+/// (`ScenarioArg::gate_survivor_report`), and this project's re-emission pattern
+/// writes a NEW timestamped filename beside the old one. So the day that predecessor
+/// is re-emitted, this read starts failing — and used to start lying.
+fn parse_gate_survivors(report_path: &str) -> anyhow::Result<[usize; 9]> {
     let mut result = [0usize; 9];
-    let content = match std::fs::read_to_string(report_path) {
-        Ok(c) => c,
-        Err(_) => return result,
-    };
+    let content = std::fs::read_to_string(report_path).with_context(|| {
+        format!(
+            "reading the predecessor gate-survivor report at {report_path}. This path is \
+             hardcoded WITH ITS DATE, so a re-emission of that report moves it out from \
+             under this reader (bug-log #128b)."
+        )
+    })?;
 
     // Find the confidence-gate survival section.
-    let section_start = match content.find("## Confidence-gate survival") {
-        Some(pos) => pos,
-        None => return result,
-    };
+    let section_start = content
+        .find("## Confidence-gate survival")
+        .with_context(|| {
+            format!(
+                "no `## Confidence-gate survival` section in {report_path} — the file \
+                     exists but is not the report this expects"
+            )
+        })?;
     let section = &content[section_start..];
 
     // Parse table rows: `| 0.10 | 69085 | 0.887640 |`
@@ -289,7 +308,13 @@ fn parse_gate_survivors(report_path: &str) -> [usize; 9] {
             break;
         }
     }
-    result
+    anyhow::ensure!(
+        tau_idx == 9,
+        "parsed only {tau_idx} of 9 gate-survivor rows from {report_path}. The remaining \
+         {} would have been zero-filled and rendered into a hashed body as if measured.",
+        9 - tau_idx
+    );
+    Ok(result)
 }
 
 // ── Cell result ───────────────────────────────────────────────────────────────
@@ -782,7 +807,7 @@ fn main() -> Result<()> {
     let data_revision_sha = read_data_revision_sha(&args.data_root);
 
     // ── Step 3: Parse gate-survivor counts from predecessor report ────────────
-    let gate_survivors = parse_gate_survivors(scenario.gate_survivor_report());
+    let gate_survivors = parse_gate_survivors(scenario.gate_survivor_report())?;
     info!(
         gate_survivors = ?gate_survivors,
         "gate-survivor counts parsed from predecessor report"
@@ -1125,4 +1150,83 @@ fn main() -> Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod gate_survivor_parser_tests {
+    use super::parse_gate_survivors;
+    use std::io::Write;
+
+    fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join("threshold_sweep_parser_tests");
+        std::fs::create_dir_all(&dir).expect("tempdir");
+        let p = dir.join(name);
+        let mut f = std::fs::File::create(&p).expect("create");
+        f.write_all(body.as_bytes()).expect("write");
+        p
+    }
+
+    const NINE_ROWS: &str = "\
+## Confidence-gate survival
+
+| τ    | bars surviving | share |
+|------|----------------|-------|
+| 0.10 | 69085 | 0.887640 |
+| 0.20 | 60339 | 0.775300 |
+| 0.30 | 51964 | 0.667700 |
+| 0.40 | 44375 | 0.570200 |
+| 0.50 | 37386 | 0.480400 |
+| 0.60 | 31177 | 0.400600 |
+| 0.70 | 25973 | 0.333700 |
+| 0.80 | 21684 | 0.278600 |
+| 0.90 | 18087 | 0.232400 |
+";
+
+    /// Non-vacuity: the happy path must actually parse, or the three failure tests
+    /// below would pass against a parser that can never succeed.
+    #[test]
+    fn nine_rows_parse_to_nine_counts() {
+        let p = write_tmp("ok.md", NINE_ROWS);
+        let got = parse_gate_survivors(p.to_str().expect("utf8")).expect("must parse");
+        assert_eq!(got[0], 69085, "first τ row");
+        assert_eq!(got[8], 18087, "last τ row");
+    }
+
+    /// Bug-log #128b, path 1 of 3: an unreadable file.
+    #[test]
+    fn a_missing_file_is_an_error_and_not_nine_zeros() {
+        let err = parse_gate_survivors("/nonexistent/definitely/not/here.md")
+            .expect_err("a missing predecessor must be an error");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("hardcoded WITH ITS DATE"),
+            "the error must say WHY this path goes missing — it is a dated path into the \
+             corpus and re-emission moves it. Got: {msg}"
+        );
+    }
+
+    /// Path 2 of 3: the file exists but is not the expected report.
+    #[test]
+    fn a_missing_section_is_an_error_and_not_nine_zeros() {
+        let p = write_tmp("no_section.md", "# Some other report\n\nnothing here.\n");
+        let err = parse_gate_survivors(p.to_str().expect("utf8"))
+            .expect_err("a file without the section must be an error");
+        assert!(format!("{err:#}").contains("Confidence-gate survival"));
+    }
+
+    /// Path 3 of 3 — the one nobody wrote down. A PARTIAL parse used to zero-fill the
+    /// tail silently, so four measured rows and five fabricated zeros rendered into a
+    /// hashed body looking exactly alike.
+    #[test]
+    fn a_partial_table_is_an_error_and_not_a_zero_filled_tail() {
+        let four = NINE_ROWS.lines().take(8).collect::<Vec<_>>().join("\n");
+        let p = write_tmp("partial.md", &four);
+        let err = parse_gate_survivors(p.to_str().expect("utf8"))
+            .expect_err("a short table must be an error, not a zero-filled tail");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("of 9 gate-survivor rows"),
+            "the error must say how many rows it got. Got: {msg}"
+        );
+    }
 }
