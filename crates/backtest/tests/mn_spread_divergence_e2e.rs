@@ -1328,3 +1328,107 @@ fn gate_bug75_pre_injected_score_map_survives_the_accrual_map() {
         injected_basis.final_equity, injected_funding.final_equity,
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 1-28 AC4 — a forced cover must be COUNTABLE and must not pass for a trade
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Config for the liquidation fixture: LongShort, k_long = k_short = 1, plain
+/// momentum scoring so no sidecar is needed.
+fn make_liquidation_config() -> strategy::CrossSectionalMomentumConfig {
+    strategy::CrossSectionalMomentumConfig {
+        id: SmolStr::new("test_liquidation"),
+        universe: vec![
+            SmolStr::new("AAUSDT"),
+            SmolStr::new("BBUSDT"),
+            SmolStr::new("CCUSDT"),
+        ],
+        lookback_minutes: 1,
+        rebalance_minutes: 1,
+        k_long: 1,
+        k_short: 1,
+        exposure_cap: dec!(0.5),
+        drift_rebalance_threshold: dec!(0.10),
+        vol_floor: dec!(0.000001),
+        stage: SmolStr::new("research"),
+        direction: Direction::Momentum,
+        score_source: ScoreSource::VolAdjustedReturn,
+        selection_mode: SelectionMode::LongShort,
+        entry_threshold: Decimal::ZERO,
+    }
+}
+
+/// Bars that force a maintenance-margin liquidation: the shorted symbol is the
+/// worst performer at the rebalance and then rises tenfold.
+///
+/// `MAINTENANCE_MARGIN_FRAC` is `0.5`, so the liquidation fires once
+/// `equity < 0.5 * gross_short_notional`. A short opened near 90 and marked at 900
+/// loses roughly ten times its own notional while that notional itself grows tenfold,
+/// which clears the threshold with room to spare — the fixture does not sit on the edge.
+fn liquidation_bars() -> Vec<Bar> {
+    let mut bars = Vec::new();
+    // (AA, BB, CC) per hour. BB falls into the rebalance (⇒ shorted), then spikes.
+    let prices: [(Decimal, Decimal, Decimal); 5] = [
+        (dec!(100), dec!(100), dec!(100)),
+        (dec!(110), dec!(90), dec!(100)),
+        (dec!(120), dec!(80), dec!(100)),
+        (dec!(120), dec!(800), dec!(100)),
+        (dec!(120), dec!(900), dec!(100)),
+    ];
+    for (h, (a, b, c)) in prices.iter().enumerate() {
+        let hour = i64::try_from(h).expect("fixture length fits i64");
+        bars.push(make_bar("AAUSDT", *a, hour));
+        bars.push(make_bar("BBUSDT", *b, hour));
+        bars.push(make_bar("CCUSDT", *c, hour));
+    }
+    bars
+}
+
+/// AC4 non-vacuity: `liquidation_cover_fills` must be able to be non-zero.
+///
+/// Until 2026-09-29 a forced buy-to-cover incremented `trades` alongside real fills, so
+/// one counter stood for a strategy decision and an engine-forced exit, and MN turnover
+/// could not be read on its own — bug-log `#110` shipped a legend saying exactly that
+/// rather than the split.
+///
+/// This test is the reason the new column cannot be a decoration: **the live corpus
+/// contains ZERO liquidations** since the `#71` fix took 2210 events to 0, so the column
+/// reads 0 everywhere and its ability to be non-zero cannot be demonstrated from evidence.
+/// It has to be demonstrated here or nowhere.
+#[test]
+fn a_forced_cover_is_counted_separately_and_never_as_a_trade() {
+    let liquidated = run_to_result(make_liquidation_config(), liquidation_bars(), None, None);
+
+    assert!(
+        liquidated.liquidations >= 1,
+        "fixture did not trigger a maintenance-margin liquidation (liquidations = {}), so it \
+         proves nothing about the counter. Prices must drive equity below \
+         MAINTENANCE_MARGIN_FRAC (0.5) x gross short notional.",
+        liquidated.liquidations
+    );
+    assert!(
+        liquidated.liquidation_cover_fills >= 1,
+        "a liquidation fired ({} events) but liquidation_cover_fills is {} — the counter is \
+         not wired to the cover loop, which is exactly the always-zero column this test \
+         exists to prevent",
+        liquidated.liquidations,
+        liquidated.liquidation_cover_fills
+    );
+
+    // Specificity: the same prices with NO short leg must produce real trades and zero
+    // covers. Without this half, a counter that simply mirrored `trades` would pass above.
+    let mut long_only = make_liquidation_config();
+    long_only.k_short = 0;
+    long_only.selection_mode = SelectionMode::CrossSectionalTopK;
+    let control = run_to_result(long_only, liquidation_bars(), None, None);
+
+    assert_eq!(
+        control.liquidation_cover_fills, 0,
+        "a long-only run cannot force-cover a short, yet it reported {} cover fills",
+        control.liquidation_cover_fills
+    );
+    assert!(
+        control.trades > 0,
+        "the long-only control placed no trades at all, so the comparison below is vacuous"
+    );
+}

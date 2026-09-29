@@ -1897,6 +1897,15 @@ pub struct CellResult {
     /// Total maintenance-margin liquidations across all N paths (M-DEV-5, MN only).
     /// 0 for all non-MN runs → anchor-neutral by construction.
     pub total_liquidations: u64,
+    /// Story 1-28 AC3: synthetic buy-to-cover FILLS from those liquidations, across all N
+    /// paths. Split out of `trades` on 2026-09-29 — one counter had stood for a strategy
+    /// decision and a forced exit, and `#110` shipped a legend saying so rather than the
+    /// split. 0 for every long-only run.
+    pub total_liquidation_cover_fills: u64,
+    /// Story 1-28 AC2: how many of the N paths were RUINED — equity at or below zero at
+    /// some bar, before the clamp to 1e-6 made that indistinguishable from a merely
+    /// catastrophic path in every percentile (bug-log `#127`).
+    pub ruined_paths: u64,
 }
 
 // ── Report renderer (ADR-0051 D3 / § D6.4) ────────────────────────────────────
@@ -2322,6 +2331,43 @@ pub fn render_surface_report(
     let show_basis_trades = is_basis_run && !selection_mode.is_ts();
     let show_mn = is_mn_run && !selection_mode.is_ts();
     let show_time_in_market = selection_mode.is_ts();
+
+    // ── Ruin, made visible on EVERY family (story 1-28 AC2, bug-log #127) ─────────
+    // Emitted here, above the table, because there are six table shapes below and a
+    // per-cell column would be six headers and six row formats — six places to add it
+    // and six to forget it, which is the multiplier this story exists to remove. Ruin is
+    // a run-level fact and reads as one.
+    //
+    // Why it needs saying at all: every equity value <= 0 is clamped to 1e-6 before the
+    // metrics, so afterwards a path that lost EVERYTHING and a path that lost 99.9% are
+    // the same number, and `p95_maxdd` at ~100% is the signature of ruin AND what a merely
+    // catastrophic path prints. The clamp is correct and stays; what was missing was the
+    // record of what it replaced.
+    let ruined: u64 = cell_results.iter().map(|c| c.ruined_paths).sum();
+    let paths_total: u64 = (cell_results.len() * n_paths) as u64;
+    if ruined == 0 {
+        let _ = std::fmt::Write::write_fmt(
+            &mut body,
+            format_args!(
+                "Ruined paths: **0 of {paths_total}** — no path's equity reached zero or below \
+             at any bar. Stated rather than left to inference: equity <= 0 is clamped to \
+             1e-6 before the metrics, so `p95_maxdd` near 100% would otherwise be \
+             indistinguishable from ruin (bug-log #127).\n\n"
+            ),
+        );
+    } else {
+        let _ = std::fmt::Write::write_fmt(
+            &mut body,
+            format_args!(
+                "**Ruined paths: {ruined} of {paths_total}.** Equity reached zero or below at \
+             some bar on these paths and was clamped to 1e-6 so the metrics stay finite — \
+             so their Sharpe, Calmar and max-drawdown are floors, not measurements, and a \
+             `p95_maxdd` near 100% in the table below is RUIN on this surface, not merely a \
+             deep drawdown (bug-log #127).\n\n"
+            ),
+        );
+    }
+
     if show_time_in_market {
         body.push_str(
             "time_in_market = fraction of bars where ≥1 long position was held (mean across N paths, D-TSM.6.4).\n\n",
@@ -2342,9 +2388,14 @@ pub fn render_surface_report(
             "Trades = total trade count across all N paths. NOTE: this count INCLUDES synthetic\n",
         );
         body.push_str(
-            "liquidation covers, so MN turnover is not directly comparable with the long-only families\n",
+            "liquidation covers, so MN turnover was not directly comparable with the long-only\n",
         );
-        body.push_str("(bug-log #110). Read it next to the liquidations column, not on its own.\n");
+        body.push_str(
+            "families. SPLIT 2026-09-29 (story 1-28 AC3): `trades` is real fills only and \
+             `cover_fills` is the synthetic buy-to-cover legs a maintenance-margin \
+             liquidation forces. Bug-log #110 shipped this caveat because the report could \
+             not make the distinction; it can now, so the caveat is replaced by the numbers.\n",
+        );
         body.push_str(
             "Funding = total realized funding cashflow across all N paths, in quote currency. The MN short\n",
         );
@@ -2355,7 +2406,7 @@ pub fn render_surface_report(
             "received funding. Together with the fee ladder this makes R-MN.3's net-of-cost read derivable\n",
         );
         body.push_str("from this report rather than from outside it.\n\n");
-        body.push_str("| g  | lookback | rebalance | k_long | k_short | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | liquidations | trades     | funding        | verdict  | notes |\n");
+        body.push_str("| g  | lookback | rebalance | k_long | k_short | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | liquidations | cover_fills | trades     | funding        | verdict  | notes |\n");
         body.push_str("|----|----------|-----------|--------|---------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------|------------|----------------|----------|-------|\n");
     } else if show_trades {
         body.push_str(
@@ -2449,7 +2500,7 @@ pub fn render_surface_report(
             let _ = std::fmt::Write::write_fmt(
                 &mut body,
                 format_args!(
-                    "| {:2} | {:8} | {:9} | {:6} | {:7} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:12} | {:10} | {:14.2} | {:8} | {} |\n",
+                    "| {:2} | {:8} | {:9} | {:6} | {:7} | {:.2} | {:.6} | {:.6}  | {:.6}  | {:.6} | {:.6}    | {:.2}%   | {:.6} | {:12} | {:11} | {:10} | {:14.2} | {:8} | {} |\n",
                     cr.cell.g,
                     cr.cell.lookback_minutes,
                     cr.cell.rebalance_minutes_override,
@@ -2464,6 +2515,7 @@ pub fn render_surface_report(
                     s.max_dd_tail_p95 * 100.0,
                     spread,
                     cr.total_liquidations,
+                    cr.total_liquidation_cover_fills,
                     cr.total_trades,
                     cr.total_funding_harvested,
                     verdict_str,

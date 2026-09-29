@@ -393,6 +393,14 @@ struct IndexedPathMetrics {
     /// Number of maintenance-margin liquidation events on this path (M-DEV-5, MN only).
     /// Populated from `run_path`'s `liquidations` field. 0 for all non-MN runs.
     liquidations: u64,
+    /// Story 1-28 AC3: synthetic buy-to-cover fills forced by a maintenance-margin
+    /// liquidation. Until 2026-09-29 these were counted as `trades`, so one number stood
+    /// for two events and MN turnover could not be read on its own (bug-log `#110`).
+    liquidation_cover_fills: usize,
+    /// Story 1-28 AC2: did this path's equity reach zero or below before the clamp?
+    /// The clamp maps it to 1e-6 so the metrics stay finite, which makes ruin and a merely
+    /// catastrophic loss the same number downstream (bug-log `#127`).
+    ruined: bool,
 }
 
 // ── Buy-and-hold passive control ───────────────────────────────────────────────
@@ -906,6 +914,7 @@ fn run_one_path_with_config(
     let bars_run = result.equity_curve.len().saturating_sub(1) as u64;
     // M-DEV-5: liquidations counter from run_path (0 for all non-MN runs → anchor-neutral).
     let liquidations = result.liquidations;
+    let liquidation_cover_fills = result.liquidation_cover_fills;
 
     // ── Compute per-path metric scalars ───────────────────────────────────────
     let backtest::stats::ClampedEquity {
@@ -982,6 +991,8 @@ fn run_one_path_with_config(
         time_in_market_bars,
         bars_run,
         liquidations,
+        liquidation_cover_fills,
+        ruined: first_ruin_bar.is_some(),
     })
 }
 
@@ -1887,6 +1898,11 @@ fn main() -> Result<()> {
         // M-DEV-5 (D-MN.8): total liquidations across all N paths.
         // 0 for all non-MN runs → anchor-neutral by construction.
         let total_liquidations: u64 = indexed.iter().map(|r| r.liquidations).sum();
+        let total_liquidation_cover_fills: u64 = indexed
+            .iter()
+            .map(|r| r.liquidation_cover_fills as u64)
+            .sum();
+        let ruined_paths: u64 = indexed.iter().filter(|r| r.ruined).count() as u64;
         let metrics: Vec<backtest::stats::PathMetrics> =
             indexed.into_iter().map(|r| r.metrics).collect();
 
@@ -1921,6 +1937,8 @@ fn main() -> Result<()> {
             total_time_in_market_bars,
             total_bars_run,
             total_liquidations,
+            total_liquidation_cover_fills,
+            ruined_paths,
         });
     }
 

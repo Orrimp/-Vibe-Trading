@@ -49,7 +49,20 @@ pub struct PathRunResult {
     /// per-path metric scalars.
     pub equity_curve: Vec<Decimal>,
     /// Number of fills executed on this path.
+    ///
+    /// **Real fills only since 2026-09-29** (story 1-28 AC3). Until then this counter was
+    /// also incremented for every synthetic maintenance-margin buy-to-cover leg, so one
+    /// number stood for two different events and the MN surfaces' turnover could not be
+    /// read on its own — `sweep_harness.rs` shipped a legend saying exactly that
+    /// (bug-log `#110`, the honest interim). The covers are now counted separately.
     pub trades: usize,
+    /// Synthetic buy-to-cover fills forced by the M-DEV-3 maintenance-margin liquidation.
+    ///
+    /// These are NOT strategy decisions: the engine closes a short leg at mark because
+    /// equity fell below the maintenance margin. Counting them as `trades` overstated
+    /// turnover and made a forced exit indistinguishable from an intended one.
+    /// `0` for every long-only run (`k_short == 0` ⇒ the block is inert).
+    pub liquidation_cover_fills: usize,
     /// Initial capital (carried for P(loss) computation in the reducer).
     pub initial_equity: Decimal,
     /// Final equity (convenience; redundant with `equity_curve.last()`).
@@ -308,6 +321,7 @@ pub async fn run_path(
     // Latch so a rebalance boundary is applied ONCE, not once per symbol-bar.
     let mut last_rebalance_applied: Option<trading_core::Timestamp> = None;
     let mut liquidations = 0u64;
+    let mut liquidation_cover_fills = 0usize;
     let mut equity_curve: Vec<Decimal> = vec![initial_capital];
     let mut peak_equity = initial_capital;
     let mut max_drawdown_tracking = Decimal::ZERO;
@@ -836,7 +850,10 @@ pub async fn run_path(
                     }
                     // Remove the short position.
                     position_book.remove(sym);
-                    trades += 1;
+                    // Story 1-28 AC3: a FORCED cover, not a strategy decision. It used to
+                    // increment `trades` alongside real fills, so one counter stood for two
+                    // events and MN turnover could not be read on its own (bug-log #110).
+                    liquidation_cover_fills += 1;
                     tracing::warn!(
                         symbol = %sym,
                         %equity,
@@ -884,6 +901,7 @@ pub async fn run_path(
     Ok(PathRunResult {
         equity_curve,
         trades,
+        liquidation_cover_fills,
         initial_equity: initial_capital,
         final_equity,
         min_cash_seen,
