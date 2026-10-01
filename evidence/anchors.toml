@@ -260,15 +260,55 @@ scenario = "forecast-distribution-bs2-realdata-recalibrated"
 version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
 sha256   = "d6c1e17ca162469e94b8dacd7c4485ec4d8cd77b6768f9e7ebe2f7deaf4b4151"
 
+# == RE-EMITTED 2026-10-01 under ADR-0038 D6.b -- story 1-29, bug-log #134 ===========
+# SUPERSEDED BODIES, kept verbatim so the correction is auditable rather than asserted:
+#   recalibrate-sigma-train-bs1  sha256=baa658fb7ad96796f643d8fecab9156362b17faad97afc37be77867850336ad9
+#   recalibrate-sigma-train-bs2  sha256=bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0
+#
+# WHY: the one line in these bodies asserting the run was read-only named the only file the
+#   run WROTE. `recalibrate_sigma_train.rs:457` rendered
+#     "- Read-only against `{overlay_path}` original safetensors."
+#   and overlay_path (:628) is `args.anchor_dir.join("{prefix}-{sha}.metadata.recalibrated.json")`,
+#   written three lines later at :631. Two errors in one sentence: it called a file read-only that
+#   the run created, and it called a JSON metadata overlay "safetensors". The bin's own header doc
+#   states the contract CORRECTLY and the code honours it -- only the report misstated it, which is
+#   the worst of the three places for it to be wrong, because the report is what a third party
+#   reads and this gate has been defending the sentence since 2026-05-21.
+#
+# WHAT CHANGED -- diff census taken BEFORE landing, per the 1-26/1-27/1-28 precedent:
+#   one line CORRECTED (it now names the .safetensors the run actually read), one line ADDED (it
+#   names the single artefact the run writes, by FILENAME only, so --anchor-dir stays out of the
+#   body), and NOTHING else. Zero numbers moved. Both scenarios, identical shape: 2 lines of 51.
+#
+# NEGATIVE INVARIANT, measured not asserted: the hashed body no longer depends on --anchor-dir.
+#   `recalibrate_sigma_train_readonly.rs::body_is_anchor_dir_invariant` ran each scenario TWICE
+#   into two DIFFERENT anchor-dirs; bs1 gave 1d1831c6... both times and bs2 4193d2be... both
+#   times (2312 s, 2026-10-01). The same run compared the committed checkpoint directory BYTE FOR
+#   BYTE across all four real runs and it was unchanged -- the read-only assertion the --help
+#   guard could never make (#135).
+#
+# AND THIS UNBLOCKS THEM. #128e had these two rows down as the only genuinely ungateable pair in
+#   the forecast-binary family, because --anchor-dir reached the hashed body so no tempdir could
+#   reproduce the anchor. It reached it THROUGH THIS SENTENCE. One change closes a false claim and
+#   the blocker, without the two being traded off -- which is the signal it was the right change
+#   rather than the convenient one.
+#
+# CONDITION declared (a body SHA means nothing without it):
+#   cwd=workspace root - features=candle - profile=release
+#   invocation=recalibrate_sigma_train --scenario <bs1|bs2> --anchor-dir <tempdir> --out-dir <tempdir>
+#   corpus=data/binance at REVISION 3a8b96c4...
+#
+# NO VERDICT MOVED: these are derivation reports. sigma_train, the ratio and every statistic are
+#   byte-identical to the superseded bodies, so AD-19 escalation is neither required nor claimed.
 [[anchors]]
 scenario = "recalibrate-sigma-train-bs1"
 version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
-sha256   = "baa658fb7ad96796f643d8fecab9156362b17faad97afc37be77867850336ad9"
+sha256   = "1d1831c65e35d11e21e3eb4482e28eea0e910eae932c179467d46f62cd3a9bec"
 
 [[anchors]]
 scenario = "recalibrate-sigma-train-bs2"
 version  = "v2.6.1-alpha-investigation-recalibrated + noop-baseline"
-sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
+sha256   = "4193d2bea07ddc9e05f7bdb2d3c5c0e6c6ecd411fd7eb9cdbc33b1e5ad7eec85"
 
 # v2.6.2 τ × ε threshold-tuning sweep reports (T-T-1.b / M-FINAL).  Locked by tester
 # on 2026-05-21 against the recalibrated checkpoint forward passes (BS-1 2023 FY /
@@ -461,10 +501,46 @@ sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
 # wiring-bug-fix protocol. Diagnostic chain in:
 # spec/dev-notes/v3-vol-overlay-noop-discovery-2026-05-22.md.
 
+# == RE-EMITTED 2026-10-01 under ADR-0038 D6.b -- story 1-29 AC6, bug-log #137 =======
+# SUPERSEDED BODIES, kept verbatim:
+#   sharpe-comparison-vol-target-bs1-realbaseline     sha256=ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9
+#   sharpe-comparison-regime-dispatcher-bs1-realdata  sha256=a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97
+#
+# WHY: these two rows are DERIVED -- every number is computed from other anchored bodies -- and all
+#   of their sub-scenarios were re-emitted under D6.b on 2026-09-26 (the #94 sizer fix among them),
+#   AFTER these rows were locked in May. A derived row inherits every re-emission upstream of it and
+#   nothing was tracking that inheritance. Story 1-29's gates measured the drift on 2026-10-01:
+#   seven of seven NON-derived rows reproduced byte for byte; all three derived rows drifted. That
+#   split is the finding, not the individual digests.
+#
+# WHAT CHANGED -- census taken BEFORE landing:
+#   (a) the numbers, inherited from the sub-scenario re-emissions. The old bodies carry $0.00 final
+#       equity and 73-98% drawdowns -- the #94 sizer artefacts; the new ones are sane ($95306.77,
+#       9.58% DD, 1138 trades against the old 6203).
+#   (b) the annualisation LABEL, corrected in the same pass because it cost nothing to carry here:
+#       `sqrt(24*365) = 92.601295` -> `sqrt(8574.9998) = 92.601295 (... NOT sqrt(24*365) =
+#       93.594872)`. The printed VALUE never changed; the label named a formula 2.1% away from the
+#       constant the code has always shipped. Ratified as-is by story 1-25 AC3.1 and pinned
+#       RED-on-revert in sharpe_comparison_determinism.rs.
+#
+# NO VERDICT MOVED on these two: T-VOL-NO-ALPHA and T-REG-NO-ALPHA before and after. AD-19
+#   escalation is neither required nor claimed FOR THESE TWO.
+#
+# THE THIRD ROW OF THIS FAMILY IS DELIBERATELY NOT HERE. `sharpe-comparison-vol-target-bs1-realdata`
+#   flipped T-VOL-NO-ALPHA -> T-VOL-ALPHA-UNLOCKED and is HELD, unlanded, pending an operator
+#   ruling: it changes what the corpus claims, which is AD-19 and a standing stop condition. Its
+#   anchor below is therefore still the MAY digest while its gate reports RED -- a disagreement that
+#   is deliberate and recorded, not an oversight. Full numbers and the three readings: bug-log #137.
+#
+# CONDITION declared: cwd=workspace root - features=(none for the bin; the spawned
+#   target/release/backtest is built --features candle,realdata) - profile=release
+#   invocation=sharpe_comparison --scenario <vol-target-bs1-rebaseline|regime-dispatcher-bs1>
+#   --backtest-bin target/release/backtest --out-dir <tempdir>
+#   corpus=data/binance at REVISION 3a8b96c4...
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline + noop-baseline"
-sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
+sha256   = "b82f3132dd8eb3c7cf8b1a1016f888437ce6ceb324ee21231e891dc21afac2db"
 
 # ── v5 v0.3.0 canonical-friction anchor set ──────────────────────────────────
 # Re-emitted under LatencySlippageSimConfig { latency_ms_min: 30,
@@ -697,12 +773,12 @@ sha256   = "d6c1e17ca162469e94b8dacd7c4485ec4d8cd77b6768f9e7ebe2f7deaf4b4151"
 [[anchors]]
 scenario = "recalibrate-sigma-train-bs1"
 version  = "v2.6.1-alpha-investigation-recalibrated + v5-realdata-medium-2026-05"
-sha256   = "baa658fb7ad96796f643d8fecab9156362b17faad97afc37be77867850336ad9"
+sha256   = "1d1831c65e35d11e21e3eb4482e28eea0e910eae932c179467d46f62cd3a9bec"
 
 [[anchors]]
 scenario = "recalibrate-sigma-train-bs2"
 version  = "v2.6.1-alpha-investigation-recalibrated + v5-realdata-medium-2026-05"
-sha256   = "bfa8104ace81dd6a98f42a65cd0a5bd584089fa93fbafa4aa6f11d02954b47e0"
+sha256   = "4193d2bea07ddc9e05f7bdb2d3c5c0e6c6ecd411fd7eb9cdbc33b1e5ad7eec85"
 
 [[anchors]]
 scenario = "threshold-sweep-bs1-realdata-recalibrated"
@@ -742,7 +818,7 @@ sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline + v5-realdata-medium-2026-05"
-sha256   = "ff2b934961f8cea87c2e44953a746dba3f3b732c42a997c501bbcc3b989d95e9"
+sha256   = "b82f3132dd8eb3c7cf8b1a1016f888437ce6ceb324ee21231e891dc21afac2db"
 
 # lab-yahoo-realdata v0.1.1 Yahoo anchor (2026-05-27).
 # First real-data Yahoo anchor in the registry.  Source: data/yahoo/BTC-USD/1d/2024
@@ -860,7 +936,7 @@ sha256   = "2d248f4e9df358c24f49d1fce246c72aa7b00f2f28293edcae6fa0323a2eda1d"
 [[anchors]]
 scenario = "sharpe-comparison-regime-dispatcher-bs1-realdata"
 version  = "v3.0.0-regime"
-sha256   = "a9e001399edbfe0325cbc403626698892ad949179aa2518c8d33304e5531ab97"
+sha256   = "4f5d35c8e9ac0197870380687b9cd034b5e326942b5c1ccbd7bdc905d67d70d2"
 
 # v5-latency-slippage-sim v0.5.0 — square-root market-impact anchors (2026-05-29).
 # Namespace: v5-sqrt-impact-2026-05

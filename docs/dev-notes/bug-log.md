@@ -3954,3 +3954,60 @@ renderer and the tautology. Per ADR-0082 the evidence moved, so the trace moved 
 `trace.toml`'s T-D-10 row now lists `anchored_report_reproduction.rs` as the renderer evidence and
 describes what is left behind honestly.
 
+
+---
+
+### `#137` — a re-emission flipped a verdict to ALPHA-UNLOCKED, and it is the row with the synthetic baseline
+**Status**: ESCALATED to the operator 2026-10-01, unlanded. Anchor-impacting: **yes** — the body
+exists and is held out of `evidence/` pending the ruling. AD-19 / public-claim territory.
+
+Story 1-29's AC6 measurement found all three `sharpe-comparison` rows drifted, because their
+sub-scenario bodies were re-emitted under § D6.b on 2026-09-26 (bug-log `#94`'s sizer fix, among
+others) after these rows were locked in May. Re-emitting them is routine. **One verdict moved.**
+
+| row | baseline | overlay/dispatcher | Δ | verdict |
+|---|---|---|---|---|
+| `vol-target-bs1-realdata` **(was)** | −0.026770 | −0.018621 | +0.008149 | `T-VOL-NO-ALPHA` |
+| `vol-target-bs1-realdata` **(now)** | **−0.667765** | **−0.407398** | **+0.260366** | **`T-VOL-ALPHA-UNLOCKED`** |
+| `vol-target-bs1-realbaseline` (was) | +0.003098 | −0.018621 | −0.021719 | `T-VOL-NO-ALPHA` |
+| `vol-target-bs1-realbaseline` (now) | −0.328302 | −0.407398 | −0.079096 | `T-VOL-NO-ALPHA` |
+| `regime-dispatcher-bs1` (was) | +0.003098 | −0.291015 | −0.294113 | `T-REG-NO-ALPHA` |
+| `regime-dispatcher-bs1` (now) | −0.328302 | −0.290 … | +0.037287 | `T-REG-NO-ALPHA` |
+
+#### Three readings the operator needs before ruling, and they point the same way
+
+**1. Both Sharpes are NEGATIVE.** −0.667765 and −0.407398. The overlay does not make money; it
+**loses less**. `T-VOL-ALPHA-UNLOCKED` is literally correct under its own rule — ADR-0038 § D1.c says
+`net_delta >= 0.10 → T-VOL-ALPHA-UNLOCKED`, and the rule says nothing about the sign of either side —
+and it invites a reading the numbers do not support. Same species as everything else filed this week:
+a label that says more than its measurement.
+
+**2. The flipped row is the one with the SYNTHETIC baseline, and the overlay is identical in both.**
+The same overlay scores **−0.407398 in both rows**. The entire difference is the baseline:
+`top10-2023-1h-momentum` (synthetic, forced to `Linear { bps: 8 }` under Q-D1=(a)) at −0.667765,
+versus `top10-2023-fy-momentum-realdata` (real Binance data) at −0.328302. The synthetic baseline is
+0.34 Sharpe worse, and that gap is the whole of the +0.26 "alpha".
+
+**3. The project already built the better comparison, and it says NO-ALPHA.** The
+`-realbaseline` row exists *because* the synthetic baseline was judged the wrong reference — that is
+what "rebaseline" means and why it was locked a week later. Same overlay, real baseline, Δ = −0.079:
+the overlay is **worse** than the baseline it should be measured against.
+
+So the flip is an artifact of the weaker of two comparisons the repo deliberately keeps side by side,
+and the stronger one is unchanged. **The era-qualified thesis is not contradicted by the better
+measurement.** But a body that prints `T-VOL-ALPHA-UNLOCKED` is a change in what the corpus claims,
+whatever the surrounding prose says, and the prose is not what gets quoted.
+
+#### Why this is a STOP and not a decision I take
+
+Landing it changes what the project publicly claims. That is one of the four standing stop conditions,
+and AD-19 forbids shipping a moved verdict without an explicit human override. The other two rows'
+verdicts did not move and are landed.
+
+#### Not fixed, and NOT to be fixed by softening the number
+
+The resolution is **not** to re-pin, re-scale, or re-thershold anything — that is `#77` with a
+different mask. The options are about what the body SAYS, not what it computes, and the FROZEN gate
+(AD-1) is untouched either way: `classify_verdict` / `verdict_bands` / `compute_robustness_flag` /
+`rank_candidates` are not in this path at all. This is ADR-0038 § D1.c's T-classifier, a report-level
+label.

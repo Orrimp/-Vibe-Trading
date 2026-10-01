@@ -7,8 +7,8 @@
 //! any row whose producer has no gate, `ANCHORS PASS (119 / 119)` means only *"the committed
 //! bytes still hash to what we wrote down"* — never *"the code still produces them"*
 //! (bug-log `#93`). `docs/dev-notes/anchor-gate-coverage-audit-2026-09-26.md` counted **15**
-//! such rows in the forecast/report-binary family. This file gates **12** of them and makes
-//! the other **3** declare, in code, why they are not gated — see `OMITTED`.
+//! such rows in the forecast/report-binary family. This file gates **14** of them; the one
+//! that remains declares, in code, why it cannot be — see `OMITTED`.
 //!
 //! The derivation of all 15, with every `file:line` behind the conditions below, is
 //! `docs/dev-notes/forecast-bin-repro-recipes-2026-09-27.md`.
@@ -19,7 +19,7 @@
 //! condition is **(binary × cargo features × build profile × CWD × invocation × corpus)**, and
 //! every part of it is a field on `Gate` rather than a convention a reader has to reconstruct:
 //!
-//! - **profile** — `--release` for all twelve. Not a preference: `determinism.rs:1091-1098`
+//! - **profile** — `--release` for all fourteen. Not a preference: `determinism.rs:1091-1098`
 //!   measured release-vs-debug to leave realdata bodies byte-identical, and the anchored
 //!   front-matter `wall_clock_s` values are release numbers.
 //! - **features** — `Gate::features`. `""` is a *declaration*, not an omission, and the two
@@ -46,6 +46,20 @@
 //! single value `--metadata-path` moves (`10.954250` plain → `0.018016` recalibrated), so a
 //! gate pointed at the wrong overlay fails as *"you ran the other variant"* instead of as an
 //! opaque 64-hex mismatch. A changed condition must not be able to read as drift.
+//!
+//! ## Running these gates takes the corpus out of play while they run
+//!
+//! The AC4 check compares `git status` over `evidence/` and the checkpoint directory **across each
+//! run**, so anything that changes that output mid-run makes the gate report UNMEASURED — including
+//! a `git commit`, a landed re-emission, or an editor save. That is deliberate: from inside the
+//! gate, "the binary wrote there" and "someone else wrote there" are indistinguishable, and
+//! certifying the run anyway would be the whole point thrown away.
+//!
+//! Measured 2026-10-01: `threshold_sweep_bs1_reproduces_anchor` refused on `M evidence/anchors.toml`
+//! during a § D6.b re-lock running in another pane. The refusal was right; its message was not —
+//! it read as an accusation of the binary, and now names both causes.
+//!
+//! Practical order, then: settle the corpus, commit, **then** run the gates.
 //!
 //! ## Do NOT add this file to `check_determinism_anchors.py`'s `SCANNED_FILES`
 //!
@@ -95,6 +109,12 @@ struct Gate {
     args: &'static [&'static str],
     /// Needs `target/release/backtest` built `--features candle,realdata` (the shell-out family).
     needs_backtest_bin: bool,
+    /// Pass `--anchor-dir <tempdir>` as well. `recalibrate_sigma_train` has a SECOND write — the
+    /// `.metadata.recalibrated.json` overlay — whose directory is that flag, defaulting to the
+    /// committed checkpoint tree. The runner owns it for the same reason it owns `--out-dir`: a
+    /// gate must not be able to write into the repo (AC4). Only possible since bug-log `#134`
+    /// took the flag's value out of the hashed body.
+    needs_tempdir_anchor_dir: bool,
     /// Body lines asserted BEFORE the SHA, each with what it proves (AC3).
     witnesses: &'static [(&'static str, &'static str)],
     /// The anchored report's own front-matter `wall_clock_s` — measured, not estimated.
@@ -121,6 +141,7 @@ const GATES: &[Gate] = &[
                          target without it, so this condition cannot be got wrong silently",
         args: &["--scenario", "bs1"],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| model_revision   | d1c3696d79933c8d97695e5fff671f645f810e7961becb2333475fb9cc44fcd2 |",
@@ -147,6 +168,7 @@ const GATES: &[Gate] = &[
         features_means: "required-features — cargo refuses without it",
         args: &["--scenario", "bs2"],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| model_revision   | 3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d |",
@@ -165,6 +187,7 @@ const GATES: &[Gate] = &[
         features_means: "required-features — cargo refuses without it",
         args: &["--scenario", "bs1", "--metadata-path", BS1_OVERLAY],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| sigma_train      | 0.018016 |",
@@ -189,6 +212,7 @@ const GATES: &[Gate] = &[
         features_means: "required-features — cargo refuses without it",
         args: &["--scenario", "bs2", "--metadata-path", BS2_OVERLAY],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| model_revision   | 3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d |",
@@ -211,6 +235,7 @@ const GATES: &[Gate] = &[
         features_means: "required-features — cargo refuses without it",
         args: &["--scenario", "patchtst-bs1"],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| model_revision   | 62520db92f68c1d323f0782bc367c742cf9439631106ddc0fd492188f6d1cd4d |",
@@ -238,6 +263,7 @@ const GATES: &[Gate] = &[
                          by vol_verdict_is_candle_invariant, not assumed",
         args: &["--scenario", "bs1"],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| checkpoint_revision | 991324772ba077355731c2f551e3412430070b76468f6044261161a9160c0c71 |",
@@ -268,6 +294,7 @@ const GATES: &[Gate] = &[
             "target/release/backtest",
         ],
         needs_backtest_bin: true,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| Scenario             | top10-2024-fy-regime-dispatcher-realdata |",
@@ -298,6 +325,7 @@ const GATES: &[Gate] = &[
             "target/release/backtest",
         ],
         needs_backtest_bin: true,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| Baseline scenario | top10-2023-1h-momentum",
@@ -325,6 +353,7 @@ const GATES: &[Gate] = &[
             "target/release/backtest",
         ],
         needs_backtest_bin: true,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| Baseline scenario | top10-2023-fy-momentum-realdata",
@@ -352,6 +381,7 @@ const GATES: &[Gate] = &[
             "target/release/backtest",
         ],
         needs_backtest_bin: true,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| Dispatcher scenario | top10-2023-fy-regime-dispatcher-realdata",
@@ -394,6 +424,7 @@ const GATES: &[Gate] = &[
                          flips #[cfg] blocks and the required-features line, nothing else",
         args: &["--scenario", "bs1", "--metadata-path", BS1_OVERLAY],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| σ_train (recal)   | 0.018015675",
@@ -415,6 +446,7 @@ const GATES: &[Gate] = &[
         features_means: "required-features — cargo refuses without both (see the bs1 row)",
         args: &["--scenario", "bs2", "--metadata-path", BS2_OVERLAY],
         needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: false,
         witnesses: &[
             (
                 "| model_revision    | 3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d |",
@@ -427,35 +459,81 @@ const GATES: &[Gate] = &[
         ],
         measured_s: 224,
     },
+    // ── recalibrate_sigma_train ×2 — unblocked by bug-log #134 ───────────────
+    //
+    // #128e had these two down as the only genuinely ungateable pair in the family: the hashed
+    // body carried the resolved `--anchor-dir` path, so the only value that reproduced the anchor
+    // was the committed checkpoint directory — and a gate would have had to REWRITE the repo to
+    // run. It carried it through a sentence that was also FALSE (it asserted read-only status for
+    // the one file the run wrote). Correcting the sentence removed the dependency, so these are
+    // gateable without any trade (#134, re-emitted 2026-10-01 under § D6.b).
+    //
+    // Both now take `--anchor-dir <tempdir>` from the runner, and
+    // `recalibrate_sigma_train_readonly.rs::body_is_anchor_dir_invariant` is the measurement that
+    // the body does not depend on it: two runs per scenario into two DIFFERENT anchor-dirs, equal
+    // digests, and the committed checkpoints byte-identical afterwards.
+    Gate {
+        scenario: "recalibrate-sigma-train-bs1",
+        anchor_ns: "v2.6.1-alpha-investigation-recalibrated + noop-baseline",
+        package: "forecast",
+        bin: "recalibrate_sigma_train",
+        features: "candle",
+        features_means: "required-features at crates/forecast/Cargo.toml:61 — cargo refuses the \
+                         target without it",
+        args: &["--scenario", "bs1"],
+        needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: true,
+        witnesses: &[
+            (
+                "| σ_train (original metadata) | 10.954250 |",
+                "the ORIGINAL metadata was read — this bin DERIVES the recalibrated value, so                  seeing the original is what proves it started from the right place",
+            ),
+            (
+                "| σ_train (recalibrated)      | 0.018015675 |",
+                "the derived value, which is the whole output of this report",
+            ),
+            (
+                ".safetensors` (anchored safetensors; never written)",
+                "the #134 correction is IN the body. Before 2026-10-01 this line named the                  `.metadata.recalibrated.json` the run writes and called it safetensors; a gate                  that passed without this witness would be defending the false sentence",
+            ),
+        ],
+        measured_s: 487,
+    },
+    Gate {
+        scenario: "recalibrate-sigma-train-bs2",
+        anchor_ns: "v2.6.1-alpha-investigation-recalibrated + noop-baseline",
+        package: "forecast",
+        bin: "recalibrate_sigma_train",
+        features: "candle",
+        features_means: "required-features — cargo refuses without it",
+        args: &["--scenario", "bs2"],
+        needs_backtest_bin: false,
+        needs_tempdir_anchor_dir: true,
+        witnesses: &[
+            (
+                "| model_revision    | 3fabcabecbee94d6acfbd6e8315627d43479359ce4d47287fb04b5dc42e5c21d",
+                "the BS-2 checkpoint",
+            ),
+            (
+                ".safetensors` (anchored safetensors; never written)",
+                "the #134 correction is IN the body",
+            ),
+        ],
+        measured_s: 620,
+    },
 ];
 
-/// The 3 rows of the family that are deliberately NOT gated, each with the reason.
+/// The row of the family that is deliberately NOT gated, with the reason.
 ///
 /// This exists so the omissions are **visible**. A family that silently gates most of 15 and
 /// reports success is the shape this whole programme was filed against: `coverage_is_complete`
 /// below asserts `GATES ∪ OMITTED` is the whole family, so a row cannot fall out of coverage
 /// without a test going red.
-const OMITTED: &[(&str, &str)] = &[
-    (
-        "recalibrate-sigma-train-bs1",
-        "BLOCKED (bug-log #128e). recalibrate_sigma_train.rs:454-458 writes the RESOLVED \
-         overlay path into the HASHED body, so `--anchor-dir` cannot be redirected to a \
-         tempdir without changing the digest — there is no setting that both leaves the repo \
-         untouched and reproduces the anchor. Disposition is story 1-29 AC7.",
-    ),
-    (
-        "recalibrate-sigma-train-bs2",
-        "BLOCKED (bug-log #128e) — identical mechanism to the bs1 row: the same renderer \
-         writes the same resolved overlay path into the same hashed body, so neither row can \
-         be sandboxed. Reproducing either needs `--anchor-dir` at its default, which REWRITES \
-         the two committed overlay JSONs. Disposition is story 1-29 AC7.",
-    ),
-    (
-        "sharpe-comparison-realdata",
-        "NO PRODUCER AT HEAD (bug-log #118, ruled 2026-09-27). Nothing emits this name; it is \
+const OMITTED: &[(&str, &str)] = &[(
+    "sharpe-comparison-realdata",
+    "NO PRODUCER AT HEAD (bug-log #118, ruled 2026-09-27). Nothing emits this name; it is \
          not gateable, and the ruling is recorded in anchors.toml beside the row itself.",
-    ),
-];
+)];
 
 /// The audit's independent count of the family. If this stops matching `GATES ∪ OMITTED`,
 /// either a row was added to the corpus or one quietly left this file.
@@ -614,12 +692,15 @@ fn run_gate(gate: &Gate) -> Result<(String, String), String> {
     let bin = cargo_build(gate.package, gate.bin, gate.features);
 
     let out = tempfile::tempdir().expect("create out-dir tempdir");
+    let anchor_dir = tempfile::tempdir().expect("create anchor-dir tempdir");
     let before = protected_tree_status();
 
-    let output = std::process::Command::new(&bin)
-        .args(gate.args)
-        .arg("--out-dir")
-        .arg(out.path())
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.args(gate.args).arg("--out-dir").arg(out.path());
+    if gate.needs_tempdir_anchor_dir {
+        cmd.arg("--anchor-dir").arg(anchor_dir.path());
+    }
+    let output = cmd
         .current_dir(&ws)
         .output()
         .map_err(|e| format!("{}: spawn {}: {e}", gate.scenario, bin.display()))?;
@@ -628,9 +709,18 @@ fn run_gate(gate: &Gate) -> Result<(String, String), String> {
     let after = protected_tree_status();
     assert_eq!(
         before, after,
-        "{} MUTATED a protected tree. A gate that can write into evidence/ can flip \
-         verify_anchors.sh as a side effect of having been run, because the corpus gate \
-         resolves each anchor to the NEWEST match (bug-log #113).\nbefore:\n{before}\nafter:\n{after}",
+        "UNMEASURED, not failed: a protected tree CHANGED across {}'s run, so this gate cannot \
+         certify that the run left the corpus alone.\n\
+         before:\n{before}\nafter:\n{after}\n\
+         Two causes, and the diff above distinguishes them — read it before blaming the binary:\n\
+         (a) the run wrote there. That is the thing this check exists for: a gate that can write \
+             into evidence/ flips verify_anchors.sh as a side effect of having been run, because \
+             the corpus gate resolves each anchor to the NEWEST match (bug-log #113).\n\
+         (b) SOMETHING ELSE touched evidence/ or the checkpoint dir while the gate was running — \
+             a concurrent re-lock, a landed re-emission, an editor. The refusal is deliberately \
+             conservative and fires either way, because from in here the two are \
+             indistinguishable. Measured 2026-10-01: this fired on `M evidence/anchors.toml` \
+             during a § D6.b re-lock happening in another pane. Settle the corpus, then re-run.",
         gate.scenario
     );
 
@@ -714,7 +804,7 @@ fn preserve(scenario: &str, body: &str) -> String {
     }
 }
 
-/// The one path all twelve gates go through (AC2): condition → run → witness → SHA.
+/// The one path all fourteen gates go through (AC2): condition → run → witness → SHA.
 ///
 /// # Panics
 ///
@@ -793,7 +883,7 @@ fn gate(scenario: &str) -> &'static Gate {
 
 // ── The gates ────────────────────────────────────────────────────────────────
 //
-// `#[ignore]`d because the twelve together are ~58 min of measured compute (the sum of the
+// `#[ignore]`d because the fourteen together are ~76 min of measured compute (the sum of the
 // anchored bodies' own wall_clock_s). They are invoked explicitly:
 //
 //     cargo test -p forecast --test anchored_report_reproduction -- --ignored
@@ -856,9 +946,19 @@ fn regime_verdict_bs1_reproduces_anchor() {
 
 /// R-SC-1 — `sharpe-comparison-vol-target-bs1-realdata`. ~11 s after the backtest build.
 ///
-/// **Predicted to drift** (recipes § 4.4): both its sub-scenarios were re-emitted under
-/// ADR-0038 § D6.b on 2026-09-26, after this row was locked on 2026-05-22. A red here is a
-/// measurement of that prediction, not a bug in this gate.
+/// **KNOWN RED as of 2026-10-01, deliberately, pending an operator ruling — bug-log `#137`.**
+/// Measured: anchor `d21db467…`, produced `29aac8e0…`, every witness passing. § 4.4 predicted the
+/// drift and the cause is the inherited § D6.b re-emission of both its sub-scenarios on
+/// 2026-09-26. Its two siblings were re-emitted and re-locked the same day; **this one was not**,
+/// because re-emitting it moves its verdict `T-VOL-NO-ALPHA` → `T-VOL-ALPHA-UNLOCKED`, which
+/// changes what the corpus claims (AD-19 + a standing stop condition).
+///
+/// So this gate and `verify_anchors.sh` disagree about this row on purpose: the corpus holds the
+/// May body, the code produces a different one, and the resolution is a ruling rather than a
+/// commit. Do not "fix" it by re-pinning (`#77`) and do not land the new body without the ruling.
+/// `#137` carries the numbers and the three readings — the short version is that both Sharpes are
+/// negative, the flip belongs to the row with the SYNTHETIC baseline, and the purpose-built
+/// real-baseline comparison of the same overlay still says NO-ALPHA.
 #[test]
 #[ignore = "corpus-gated + ~11 s run (the cost is the backtest release build): run with --ignored"]
 fn sharpe_comparison_vol_target_reproduces_anchor() {
@@ -878,6 +978,21 @@ fn sharpe_comparison_realbaseline_reproduces_anchor() {
 #[ignore = "corpus-gated + ~287 s (anchored wall_clock_s): run with --ignored"]
 fn sharpe_comparison_regime_dispatcher_reproduces_anchor() {
     assert_gate_reproduces(gate("sharpe-comparison-regime-dispatcher-bs1-realdata"));
+}
+
+/// R-RS-1 — `recalibrate-sigma-train-bs1`. ~487 s. Unblocked by `#134`; defends the body
+/// re-emitted 2026-10-01 under § D6.b, whose one read-only claim finally names the file it read.
+#[test]
+#[ignore = "corpus-gated + ~487 s (anchored wall_clock_s): run with --ignored"]
+fn recalibrate_sigma_train_bs1_reproduces_anchor() {
+    assert_gate_reproduces(gate("recalibrate-sigma-train-bs1"));
+}
+
+/// R-RS-2 — `recalibrate-sigma-train-bs2`. ~620 s, the most expensive row in the family.
+#[test]
+#[ignore = "corpus-gated + ~620 s (anchored wall_clock_s): run with --ignored"]
+fn recalibrate_sigma_train_bs2_reproduces_anchor() {
+    assert_gate_reproduces(gate("recalibrate-sigma-train-bs2"));
 }
 
 /// R-TS-1 — `threshold-sweep-bs1-realdata-recalibrated`. ~255 s.
@@ -980,12 +1095,15 @@ fn coverage_is_complete() {
             g.features
         );
         // AC4, structurally: the runner owns --out-dir, and no gate may name evidence/.
-        assert!(
-            !g.args.contains(&"--out-dir"),
-            "{}: passes --out-dir itself. The runner owns that flag so that no gate can write \
-             into the corpus (AC4).",
-            g.scenario
-        );
+        for flag in ["--out-dir", "--anchor-dir"] {
+            assert!(
+                !g.args.contains(&flag),
+                "{}: passes {flag} itself. The runner owns every write-destination flag so that \
+                 no gate can write into the repo (AC4). For --anchor-dir, declare \
+                 `needs_tempdir_anchor_dir: true` instead.",
+                g.scenario
+            );
+        }
         assert!(
             !g.args.iter().any(|a| a.contains("evidence/")),
             "{}: argv names evidence/ — a gate must not read a path out of the corpus it is \

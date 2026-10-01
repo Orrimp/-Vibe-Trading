@@ -226,8 +226,35 @@ Every required checkpoint and corpus file is present on this machine (verified b
       **AC4 held empirically, not just structurally**: `git status` over `evidence/` and the
       checkpoint directory was clean at every check across all 49 minutes and 11 binary invocations.
 
-      Remaining: the two `threshold-sweep` gates were added after this pass started and run
-      separately; the three reds are being re-emitted (below).
+      **The three reds re-emitted under § D6.b the same day — two landed, one HELD.**
+      `docs/dev-notes/1-29-d6b-re-emission-2026-10-01.md` is the record for the
+      `recalibrate-sigma-train` pair; the sharpe family's block is in `anchors.toml` beside the rows.
+
+      | row | new digest | verdict | landed? |
+      |---|---|---|---|
+      | `sharpe-comparison-vol-target-bs1-realbaseline` | `b82f3132…` | `T-VOL-NO-ALPHA` → unchanged | **yes** |
+      | `sharpe-comparison-regime-dispatcher-bs1-realdata` | `4f5d35c8…` | `T-REG-NO-ALPHA` → unchanged | **yes** |
+      | `sharpe-comparison-vol-target-bs1-realdata` | `4a1600bc…` | **`T-VOL-NO-ALPHA` → `T-VOL-ALPHA-UNLOCKED`** | **NO — bug-log `#137`** |
+
+      The held row is a standing stop condition: re-emitting it changes what the corpus claims, and
+      AD-19 forbids shipping a moved verdict without an explicit override. Its gate is therefore
+      **KNOWN RED on purpose** and says so in its own doc comment — the corpus holds the May body,
+      the code produces a different one, and the resolution is a ruling rather than a commit.
+
+      The three readings the ruling needs, all in `#137`: both Sharpes are **negative** (−0.667765
+      baseline, −0.407398 overlay — the overlay loses *less*, it does not make money); the flip
+      belongs to the row with the **synthetic** baseline, and the identical overlay scores −0.407398
+      in both rows, so the whole +0.26 is the baseline's 0.34 of extra badness; and the
+      purpose-built real-baseline comparison of that same overlay is **unchanged at NO-ALPHA**
+      (Δ = −0.079). The era-qualified thesis is not contradicted by the better of the two
+      comparisons the repo deliberately keeps side by side.
+
+      Remaining: the two `threshold-sweep` gates were added after this pass started. Their first run
+      reported **UNMEASURED, not red** — the AC4 check saw `M evidence/anchors.toml` appear mid-run
+      because the § D6.b re-lock was landing in another pane, and refused to certify a run it could
+      no longer vouch for. The refusal was correct and its message was not (it read as an accusation
+      of the binary); both causes are now named in it, and the operational order — settle the corpus,
+      commit, then run the gates — is in the file's module doc. Re-running them clean.
 
 - [x] **AC7 RULED 2026-10-01 — (b) fix the body, re-emit, then gate. Bug-log `#134`.**
       Reading the code to write the disposition found the reason the choice is not a judgement call.
@@ -247,9 +274,18 @@ Every required checkpoint and corpus file is present on this machine (verified b
       - Print the **relative constant**, not a resolved path: `resolve_anchors_dir` falls back to an
         absolute `CARGO_MANIFEST_DIR` path, which would make the body machine-dependent — `#132`'s
         shape rather than a cure for it.
-      - Remaining work, in order: the one-line fix + a RED-proven would-have-caught test, re-emit
-        both rows under ADR-0038 § D6.b (≈ 18 min: 487 s + 620 s measured), then move the two rows
-        from `OMITTED` to `GATES` — `coverage_is_complete` holds the total at 15 either way.
+      - **DONE 2026-10-01, all of it.** The one-line fix landed with its RED-proven tripwire
+        (`report_is_handed_the_read_path_not_the_write_path`, measured RED against unmodified
+        `HEAD`, green after). Both rows re-emitted under § D6.b — `1d1831c6…` / `4193d2be…`, four
+        `anchors.toml` rows re-locked, `ANCHORS PASS (119/119)` after. The census says what the
+        re-emission did: **2 lines of 51 changed per body, zero numbers moved.**
+      - The negative invariant is the measurement that unblocks them: `body_is_anchor_dir_invariant`
+        ran each scenario twice into two **different** anchor-dirs and got equal digests (2312 s),
+        and compared the committed checkpoint directory byte for byte across all four real runs —
+        the read-only assertion `#135` had nowhere to put.
+      - Both rows are now **gated**, with the runner owning `--anchor-dir` exactly as it owns
+        `--out-dir`. The family is **14 gated of 15**; the one that remains is `#118`'s
+        producer-less row, and `coverage_is_complete` enforces the total.
 - [x] **Review — probes DONE 2026-10-01, 6/6 RED with their intended messages.** Each mutates the
       gate table, asserts the mutation actually landed (SHA-256 before vs after — a probe that
       changed nothing proves nothing), runs the companion, greps for the specific message, and
