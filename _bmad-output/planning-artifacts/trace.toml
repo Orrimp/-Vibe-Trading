@@ -307,7 +307,8 @@ crates      = [
 tests       = [
   "crates/forecast/tests/forecast_distribution_verdict.rs",       # T-D-4 (5 tests: F1/F2/F3/F4 fixtures + mutual-exclusivity property)
   "crates/forecast/tests/forecast_distribution_bin_readonly.rs",  # T-D-5 (2 tests: no writes outside --out-dir; help surface lacks retrain flags)
-  "crates/forecast/tests/sharpe_comparison_determinism.rs",       # T-D-10 (1 test: render byte-identity on 2-run)
+  "crates/forecast/tests/anchored_report_reproduction.rs",        # T-D-10 (3 gates: the sharpe-comparison rows re-run the REAL bin and compare against the ANCHOR — replaces the fixture self-comparison retired 2026-10-01, bug-log #136)
+  "crates/forecast/tests/sharpe_comparison_determinism.rs",       # T-D-10 (1 test: the ratified √8574.9998 annualisation constant, pinned RED-on-revert)
   "crates/backtest/tests/backtest_sharpe_emit_equity_bin.rs",     # T-D-8 (anchor neutrality + bincode roundtrip for --emit-equity-bin)
 ]
 anchors     = [

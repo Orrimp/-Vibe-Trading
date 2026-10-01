@@ -773,14 +773,14 @@ mod render_vol_target {
         writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
         writeln!(
             &mut body,
-            "| Annualisation     | sqrt(24*365) = {:.6} (hourly -> annual) |",
+            "| Annualisation     | sqrt(8574.9998) = {:.6} (hourly -> annual; NOT sqrt(24*365) = 93.594872) |",
             metrics::SQRT_HOURS_PER_YEAR
         )
         .unwrap();
         writeln!(&mut body, "| Risk-free rate    | 0.000000 (constant) |").unwrap();
         writeln!(
             &mut body,
-            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(24*365) |"
+            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(8574.9998) |"
         )
         .unwrap();
         writeln!(
@@ -1111,14 +1111,14 @@ mod render_vol_target_rebaseline {
         writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
         writeln!(
             &mut body,
-            "| Annualisation     | sqrt(24*365) = {:.6} (hourly -> annual) |",
+            "| Annualisation     | sqrt(8574.9998) = {:.6} (hourly -> annual; NOT sqrt(24*365) = 93.594872) |",
             metrics::SQRT_HOURS_PER_YEAR
         )
         .unwrap();
         writeln!(&mut body, "| Risk-free rate    | 0.000000 (constant) |").unwrap();
         writeln!(
             &mut body,
-            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(24*365) |"
+            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(8574.9998) |"
         )
         .unwrap();
         writeln!(
@@ -1447,14 +1447,14 @@ mod render_regime_dispatcher {
         writeln!(&mut body, "| Bar interval      | 1h |").unwrap();
         writeln!(
             &mut body,
-            "| Annualisation     | sqrt(24*365) = {:.6} (hourly -> annual) |",
+            "| Annualisation     | sqrt(8574.9998) = {:.6} (hourly -> annual; NOT sqrt(24*365) = 93.594872) |",
             metrics::SQRT_HOURS_PER_YEAR
         )
         .unwrap();
         writeln!(&mut body, "| Risk-free rate    | 0.000000 (constant) |").unwrap();
         writeln!(
             &mut body,
-            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(24*365) |"
+            "| Sharpe formula    | (mean_r - r_f) / std_r * sqrt(8574.9998) |"
         )
         .unwrap();
         writeln!(

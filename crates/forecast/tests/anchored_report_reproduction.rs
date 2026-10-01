@@ -557,6 +557,16 @@ fn protected_tree_status() -> String {
         .current_dir(workspace_root())
         .output()
         .expect("spawn git status");
+    // A failed `git status` returns EMPTY stdout, and an empty string compares equal to an empty
+    // string — so without this the AC4 check would be vacuous exactly when it could not see.
+    // That is the file's own subject (`#135` mechanism 3) turned on the file itself.
+    assert!(
+        out.status.success(),
+        "`git status --porcelain` over the protected trees exited {:?}. AC4 cannot be CHECKED, so \
+         it is UNMEASURED — not passed.\nstderr: {}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr).trim()
+    );
     String::from_utf8_lossy(&out.stdout).to_string()
 }
 

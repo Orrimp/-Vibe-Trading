@@ -3608,6 +3608,22 @@ false in the same way the docs were, and per `#110` a corrected engine behind an
 says the same words — so it cannot be cleared by a re-lock alone and rides the next re-emission of
 those reports (story 1-29 covers three of them).
 
+> **PAID 2026-10-01 — and it cost nothing, because the ride arrived.** Story 1-29's measurement found
+> **all three** `sharpe-comparison` rows drifted (their sub-scenarios were re-emitted on 2026-09-26,
+> after these rows were locked). All three bodies were therefore being re-emitted under § D6.b
+> regardless, so correcting the label is free rather than a re-emission of its own. Six sites, three
+> render families (`:776/:783` vol-target, `:1114/:1121` rebaseline, `:1450/:1457`
+> regime-dispatcher), now reading
+> `sqrt(8574.9998) = {:.6} (hourly -> annual; NOT sqrt(24*365) = 93.594872)`. The parenthetical stays
+> in the body deliberately: the confusion is natural, the body is what gets quoted, and a reader who
+> knows the hourly count is 8760 should be met with the answer rather than left to find the
+> discrepancy.
+>
+> Had even one of the three been GREEN, this would have been a decision rather than a freebie —
+> correcting its label would have forced a re-emission of a reproducing row. Worth stating because
+> the cheap version of this choice was luck, not planning: nothing scheduled the label fix for the
+> moment its carrier appeared, I happened to be holding both at once.
+
 **2026-09-29 — `#128b` FIXED: the nine silent zeros are three paths, not two, and the third was never
 written down.** `bin/threshold_sweep.rs::parse_gate_survivors` returned `[0usize; 9]` on failure and
 its own doc called that *"graceful degradation"*. Those zeros then rendered into a **hashed body**
@@ -3875,9 +3891,9 @@ left the fix gone.
 ---
 
 ### `#136` — the determinism test renders its OWN copy of the report twice, and the copy has drifted
-**Status**: FOUND 2026-10-01 while checking what else consumed the body line `#134` changed.
-Anchor-impacting: **no**. The `#133` sibling that was left behind, now with a measurement rather than
-a suspicion.
+**Status**: FOUND and FIXED 2026-10-01 while checking what else consumed the body line `#134`
+changed. Anchor-impacting: **no**. The `#133` sibling that was left behind, now with a measurement
+rather than a suspicion.
 
 `crates/forecast/tests/sharpe_comparison_determinism.rs:52`:
 
@@ -3921,10 +3937,20 @@ condition under which deleting a test is safe — something real replaces it.
 `sqrt_hours_per_year_is_the_ratified_8575_constant_and_not_8760` stays: it compares against a pinned
 number, which is exactly why it was written and why it can fail.
 
-**Deletion HELD until the replacement is measured, 2026-10-01.** The argument above turns on the three
-`sharpe-comparison-*` reproduction gates being real coverage. They were written today and have not
-reported yet — the 1-29 measurement is still running, and recipes § 4.4 *predicts* two of them drift.
-Removing the old test on the strength of a replacement whose state is unknown is the same move as
-re-pinning an anchor to current output: it assumes the answer. The deletion lands once those three
-gates have a verdict, red or green; either is real coverage, which is the point.
+**Deletion was HELD until the replacement was measured, and then released the same day.** The
+argument above turns on the three `sharpe-comparison-*` reproduction gates being real coverage, and
+when it was written they had not reported. Removing the old test on the strength of a replacement
+whose state is unknown is the same move as re-pinning an anchor to current output: it assumes the
+answer.
+
+They reported at 14:06. **All three RED**, each with its old and new digest and every witness passing
+first — a real drift that the self-comparison was structurally incapable of seeing, since the copy was
+only ever compared against itself. That is the condition met, and in the direction that makes the case
+strongest: the replacement did not merely exist, it *caught something*.
+
+Retired accordingly. `sharpe_comparison_determinism.rs` keeps the one test that can fail — the
+ratified √8574.9998 constant, pinned against a number — and loses 8 kB of mirrored types, copied
+renderer and the tautology. Per ADR-0082 the evidence moved, so the trace moved with it:
+`trace.toml`'s T-D-10 row now lists `anchored_report_reproduction.rs` as the renderer evidence and
+describes what is left behind honestly.
 

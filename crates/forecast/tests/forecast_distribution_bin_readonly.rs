@@ -163,9 +163,10 @@ fn checkpoint_tree(dir: &std::path::Path) -> Vec<(std::path::PathBuf, Vec<u8>)> 
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&d) else {
-            continue;
-        };
+        // Panic, never `continue`: a skipped subdirectory is UNMEASURED, and the before/after
+        // comparison would skip it identically on both sides — vacuous precisely where it is blind.
+        let entries = std::fs::read_dir(&d)
+            .unwrap_or_else(|e| panic!("reading sentinel dir {}: {e}", d.display()));
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {

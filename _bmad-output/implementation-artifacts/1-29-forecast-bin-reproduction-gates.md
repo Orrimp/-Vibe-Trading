@@ -179,8 +179,56 @@ Every required checkpoint and corpus file is present on this machine (verified b
         honest: `GATES ∪ OMITTED == 15`, no row in both, every omission carrying a real reason. It
         earned its place on first execution by failing on two omission reasons I had written as
         *"see the bs1 row"*.
-- [ ] AC6: run them. Triage each red to a cause at a `file:line`; batch the D6.b re-emissions rather
-      than re-locking one row at a time.
+- [~] **AC6 — the family's reproduction state, MEASURED 2026-10-01.** One serial pass,
+      `--test-threads=1`, `RAYON_NUM_THREADS=8`, release, bin sources `HEAD`-clean.
+      **8 passed, 3 failed, 2953 s (49 min).**
+
+      | row | verdict | vs the prediction |
+      |---|---|---|
+      | `forecast-distribution-bs1-realdata` | **GREEN** | unpredicted |
+      | `forecast-distribution-bs2-realdata` | **GREEN** | unpredicted |
+      | `forecast-distribution-bs1-realdata-recalibrated` | **GREEN** | unpredicted |
+      | `forecast-distribution-bs2-realdata-recalibrated` | **GREEN** | unpredicted |
+      | `forecast-distribution-patchtst-bs1-realdata` | **GREEN** | unpredicted |
+      | `vol-verdict-bs1-realdata` | **GREEN** | unpredicted |
+      | `regime-verdict-bs1-realdata` | **GREEN** | § 4.4 called it the likeliest of the four
+        shell-out rows to reproduce — **confirmed** |
+      | `sharpe-comparison-vol-target-bs1-realdata` | **RED** `d21db467…` → `29aac8e0…` | § 4.4
+        **predicted drift** — confirmed |
+      | `sharpe-comparison-vol-target-bs1-realbaseline` | **RED** `ff2b9349…` → `c01f4c66…` | § 4.4
+        **predicted drift** — confirmed |
+      | `sharpe-comparison-regime-dispatcher-bs1-realdata` | **RED** `a9e00139…` → `d07483bc…` | § 4.4
+        called this one **uncertain**, not predicted — now measured |
+      | *(not a row)* `vol_verdict_is_candle_invariant` | **GREEN** | see below |
+
+      **Seven of seven non-derived rows reproduce. All three derived rows drifted.** That split is
+      the finding, and it is not a coincidence: every red is a report whose numbers are *computed
+      from other anchored bodies*, and all of those sub-scenario bodies were re-emitted under
+      ADR-0038 § D6.b on 2026-09-26, after these rows were locked in May. A derived row inherits
+      every re-emission upstream of it and nothing was tracking that.
+
+      Causes, at `file:line`, dated BEFORE the measurement rather than fitted to it — the three
+      superseded sub-scenarios are in `evidence/anchors.toml` with their old digests kept verbatim:
+      `top10-2023-1h-momentum` (`0f6f6eb8…` superseded), `top10-2023-fy-momentum-realdata`
+      (`0867d232…`), `top10-2023-fy-vol-target-overlay-realdata` (`9fa64d46…`).
+      `top10-2023-fy-regime-dispatcher-realdata` is **not** a cause: it is GREEN at its own anchor
+      (`determinism.rs:1603-1618`), so the regime-dispatcher row's drift comes entirely through its
+      momentum baseline. All three reds are D6.b re-emission candidates, **never** re-baselines
+      (`#77`).
+
+      **The one caveat this story refused to close by reading is now closed by measuring.**
+      `vol_verdict_is_candle_invariant` is GREEN: `vol_verdict` produces a byte-identical body with
+      and without `--features candle`. The recipes doc could only argue it from
+      `features.rs:811-824` and said so; Dev Notes said *"the gate must assert it rather than assume
+      it"*. It does, and the reading was right — which is worth exactly as much as it being wrong
+      would have been, because now either answer would have been visible.
+
+      **AC4 held empirically, not just structurally**: `git status` over `evidence/` and the
+      checkpoint directory was clean at every check across all 49 minutes and 11 binary invocations.
+
+      Remaining: the two `threshold-sweep` gates were added after this pass started and run
+      separately; the three reds are being re-emitted (below).
+
 - [x] **AC7 RULED 2026-10-01 — (b) fix the body, re-emit, then gate. Bug-log `#134`.**
       Reading the code to write the disposition found the reason the choice is not a judgement call.
       `recalibrate_sigma_train.rs:457` renders `"- Read-only against \`{overlay_path}\` original
