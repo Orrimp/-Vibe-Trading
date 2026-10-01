@@ -1,6 +1,6 @@
 # Story 1.29: forecast-bin-reproduction-gates
 
-Status: ready-for-dev
+Status: review
 
 <!-- Created 2026-09-27 by the orchestrator. #126 closed the backtest/param_robustness_sweep/
      monte_carlo family: every scenario those three binaries can produce now has a re-run
@@ -179,7 +179,7 @@ Every required checkpoint and corpus file is present on this machine (verified b
         honest: `GATES ∪ OMITTED == 15`, no row in both, every omission carrying a real reason. It
         earned its place on first execution by failing on two omission reasons I had written as
         *"see the bs1 row"*.
-- [~] **AC6 — the family's reproduction state, MEASURED 2026-10-01.** One serial pass,
+- [x] **AC6 DONE 2026-10-01 — 14 of 14 gated rows GREEN, and three of them only after a re-emission.** One serial pass,
       `--test-threads=1`, `RAYON_NUM_THREADS=8`, release, bin sources `HEAD`-clean.
       **8 passed, 3 failed, 2953 s (49 min).**
 
@@ -234,12 +234,16 @@ Every required checkpoint and corpus file is present on this machine (verified b
       |---|---|---|---|
       | `sharpe-comparison-vol-target-bs1-realbaseline` | `b82f3132…` | `T-VOL-NO-ALPHA` → unchanged | **yes** |
       | `sharpe-comparison-regime-dispatcher-bs1-realdata` | `4f5d35c8…` | `T-REG-NO-ALPHA` → unchanged | **yes** |
-      | `sharpe-comparison-vol-target-bs1-realdata` | `4a1600bc…` | **`T-VOL-NO-ALPHA` → `T-VOL-ALPHA-UNLOCKED`** | **NO — bug-log `#137`** |
+      | `sharpe-comparison-vol-target-bs1-realdata` | `d35073f8…` | **`T-VOL-NO-ALPHA` → `T-VOL-ALPHA-UNLOCKED`** | **yes, after the ruling** |
 
-      The held row is a standing stop condition: re-emitting it changes what the corpus claims, and
-      AD-19 forbids shipping a moved verdict without an explicit override. Its gate is therefore
-      **KNOWN RED on purpose** and says so in its own doc comment — the corpus holds the May body,
-      the code produces a different one, and the resolution is a ruling rather than a commit.
+      The third row was a standing stop condition — re-emitting it changes what the corpus claims,
+      and AD-19 forbids shipping a moved verdict without an explicit override — so it was escalated
+      before landing and **held** while its two siblings went in. **Operator ruled 2026-10-01: re-emit
+      AND make the label's limits unmissable inside the body**, the same ruling on the same shape as
+      the 2026-09-29 threshold-sweep escalation. Landed as `d35073f8…` with a **computed** qualifier
+      under the T-classifier row, pinned in both directions by a unit test and defended by one of
+      that gate's own witnesses — so a body printing `T-VOL-ALPHA-UNLOCKED` without its limits cannot
+      pass. Details in `#137`.
 
       The three readings the ruling needs, all in `#137`: both Sharpes are **negative** (−0.667765
       baseline, −0.407398 overlay — the overlay loses *less*, it does not make money); the flip
@@ -249,12 +253,28 @@ Every required checkpoint and corpus file is present on this machine (verified b
       (Δ = −0.079). The era-qualified thesis is not contradicted by the better of the two
       comparisons the repo deliberately keeps side by side.
 
-      Remaining: the two `threshold-sweep` gates were added after this pass started. Their first run
-      reported **UNMEASURED, not red** — the AC4 check saw `M evidence/anchors.toml` appear mid-run
-      because the § D6.b re-lock was landing in another pane, and refused to certify a run it could
-      no longer vouch for. The refusal was correct and its message was not (it read as an accusation
-      of the binary); both causes are now named in it, and the operational order — settle the corpus,
-      commit, then run the gates — is in the file's module doc. Re-running them clean.
+      **Final state, with the provenance of each green spelled out — three passes, because the
+      corpus moved underneath the first one:**
+
+      | pass | when | gates | result |
+      |---|---|---|---|
+      | 1 | 13:17–14:06, 2953 s | the 10 rows that existed then + the candle-invariance measurement | 7 rows GREEN, 3 sharpe rows RED |
+      | 2 | 15:09–15:33, 1427 s | `recalibrate-sigma-train-bs{1,2}` (new, unblocked by `#134`), `threshold-sweep-bs{1,2}` (new) | **4 GREEN** |
+      | 3 | 20:54–21:05, 327 s | the 3 sharpe rows, after their re-emissions landed | **3 GREEN** |
+
+      **14 of 14 gated rows have a green measurement.** The 7 from pass 1 stand: none of their
+      anchors was touched by any re-emission in this story, and `body_is_anchor_dir_invariant`
+      separately verified the committed checkpoint directory is byte-identical after four real runs
+      — which is what the two `-recalibrated` rows depend on. The fifteenth row is `#118`'s
+      producer-less one and has a written disposition, not a gate.
+
+      Pass 2 also had a false start worth keeping: the two `threshold-sweep` gates first reported
+      **UNMEASURED, not red** — the AC4 check saw `M evidence/anchors.toml` appear mid-run because
+      the § D6.b re-lock was landing concurrently, and refused to certify a run it could no longer
+      vouch for. The refusal was correct and its message was not, since it read as an accusation of
+      the binary. Both causes are now named in it, and the operational order it implies — settle the
+      corpus, commit, **then** run the gates — is in the file's module doc, because the constraint is
+      real and not obvious.
 
 - [x] **AC7 RULED 2026-10-01 — (b) fix the body, re-emit, then gate. Bug-log `#134`.**
       Reading the code to write the disposition found the reason the choice is not a judgement call.

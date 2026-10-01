@@ -3706,7 +3706,7 @@ arch        = [
 crates      = ["crates/backtest", "crates/forecast"]
 tests       = []
 anchors     = []   # gates only; any red is triaged to a D6.b candidate with its cause named at a file:line
-state       = "scoped"   # story 1-29 created 2026-09-27 after #126 closed the backtest-family; ready-for-dev, 2 rows HELD on the #129 ruling
+state       = "scoped"   # story 1-29 at REVIEW 2026-10-01: all ACs discharged. 14 of 15 family rows gated and all 14 measured GREEN; the 15th is #118's producer-less row with a written disposition. 4 re-emissions under D6.b (#134 x2, #137 x1 operator-ruled, + the sharpe pair), 6/6 probes RED. Awaiting bmad-code-review, not further dev.
 [[req]]
 id          = "REQ-THRESHOLD-SWEEP-DRIFT-BISECT-001"
 title       = "Trace the threshold-sweep lane's divergence to the commits that caused it before re-pinning its anchors, so the re-emission records a cause rather than a new number and the T-MARGINAL -> T-ALPHA-UNLOCKED verdict flip reaches a reader explained. Measured 2026-09-27: six distinct body digests for two scenarios across ANCHOR / PRE-FIX / POST-FIX; PRE-FIX != ANCHOR, so the lane stopped reproducing before the #129 repair while verify_anchors reported 119/119 — the third such family after 1-26's 34 theta-surfaces and 1-27's 15 rows, outside both inventories. Unlike 1-27's single-cause bisect, 54 commits touch the feeding files across four months, several of which move money arithmetic on their own, so the deliverable is a per-commit attribution list and not a single SHA. Of the verdict delta's growth, 38% is the CONTROL getting worse, not the strategy improving; the FROZEN gate is uninvolved and T-* is this one report's vocabulary over a 45-cell grid with no bootstrap, DSR or multiple-testing correction."
