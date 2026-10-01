@@ -684,3 +684,38 @@ that reproduces the anchor is the committed checkpoint directory. Either accept 
 with `git diff --exit-code crates/forecast/checkpoints/anchors/` as the assertion, or change the body
 to print the overlay path relative to `--anchor-dir` — which is itself a body change and therefore an
 ADR-0038 § D6.b re-emission.
+
+---
+
+## 9. Corrections of record — 2026-10-01 (story 1-29 AC2/AC3/AC4/AC7)
+
+This note is a dated derivation. Rather than edit it in place and lose what it said, the four things
+that have since changed or turned out wrong are recorded here.
+
+**9.1 — Rows 7 and 8's SHAs in § 1 are STALE.** `threshold-sweep-bs{1,2}-realdata-recalibrated` were
+re-emitted on 2026-09-29 under ADR-0038 § D6.b by story 1-30, after `#129`'s silent cross-symbol drop
+was repaired. The live values are `924a51bb…` and `f60d3bdd…`; `551cc2ab…` / `755bc380…` are history.
+This is why the gates built on this note **read the SHA out of `anchors.toml` at run time** instead of
+copying it: a recipe doc goes stale, the corpus does not.
+
+**9.2 — § 8's "Blocked: 2 of 14" is right, and its reasoning was incomplete.** The blocker is not only
+that `--anchor-dir` reaches the hashed body. Bug-log `#134`: the sentence it reaches it *through* is
+**false**. `recalibrate_sigma_train.rs:457` renders *"- Read-only against `{overlay_path}` original
+safetensors"* — and `overlay_path` (`:628`) is the `.metadata.recalibrated.json` the run **wrote** at
+`:631`. The body's sole read-only claim names the only file the run created, and calls a JSON overlay
+*safetensors*. § 4.2 quoted the line correctly and read it as a provenance-location problem; it is
+also a correctness problem, and that is what decides the disposition. Option (a) — *"run it, it
+rewrites X, assert X came back identical"* — would certify a body asserting X is read-only. Ruled (b):
+fix the sentence, re-emit, then gate. The fix removes the blocker as a side effect, because the READ
+path (`:506`) is a hardcoded relative constant that no flag touches.
+
+**9.3 — § 2.2's `vol_verdict` candle-invariance is now MEASURED, not inferred.** The note labelled it
+*"a code-reading conclusion … not measured"* and said a gate should assert it. It does:
+`anchored_report_reproduction.rs::vol_verdict_is_candle_invariant` runs the bin both ways and compares
+body-SHAs. The result is in that test's output, not in this paragraph — which is the point.
+
+**9.4 — § 4.1's `parse_gate_survivors` note undercounted.** It names two failure paths (unreadable
+file → nine zeros). There are **three**: a missing section heading, and a *partial* parse that
+zero-fills the tail — `[69085, 60339, 51964, 44375, 0, 0, 0, 0, 0]`, four measured values and five
+fabricated ones, indistinguishable once rendered. All three now error with their own diagnosis
+(bug-log `#128b`, fixed 2026-09-29).

@@ -266,7 +266,7 @@ fn sqrt_hours_per_year_is_the_ratified_8575_constant_and_not_8760() {
     let squared = SQRT_HOURS_PER_YEAR * SQRT_HOURS_PER_YEAR;
 
     assert!(
-        (squared - 8574.999_8).abs() < 1e-3,
+        (squared - 8_574.999_8).abs() < 1e-3,
         "SQRT_HOURS_PER_YEAR squared is {squared}, expected 8574.9998. This constant is \
          load-bearing for anchored sharpe-comparison bodies: changing it re-prices every \
          one of them. If the change is intended, re-lock the affected anchors under \

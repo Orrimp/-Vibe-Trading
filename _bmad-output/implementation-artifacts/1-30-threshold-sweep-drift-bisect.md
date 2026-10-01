@@ -171,3 +171,23 @@ a different cause, and folding it in destroys the evidence.
 - Measurement: `docs/dev-notes/129-threshold-sweep-measurement-2026-09-27.md`
 - Disclosures: `docs/dev-notes/bug-log.md` § `#129`, § `#128`, § `#130`
 - Precedent: `_bmad-output/implementation-artifacts/1-27-determinism-drift-bisect.md`
+
+---
+
+## Addendum 2026-10-01 — what this story did NOT leave behind
+
+Story 1-29 AC8 assigned the two `threshold-sweep-bs{1,2}-realdata-recalibrated` reproduction gates to
+**this** story, on the reasoning that a gate for a repaired lane belongs beside the repair. This story
+re-emitted both bodies under ADR-0038 § D6.b and shipped without building them, so between 2026-09-29
+and 2026-10-01 the two rows were re-emitted, correct, anchored — and **re-run-gated nowhere**. Nothing
+would have noticed the lane walking away from the repaired state the way it walked away from the first
+one.
+
+Found by checking, not by reading: 1-29's own omission note claimed the rows were "gated elsewhere",
+and grepping for that gate found only this story's read-only test, which asserts nothing about a body.
+A false provenance claim of the species 1-29 filed the same morning as bug-log `#134`.
+
+The gates now live in `crates/forecast/tests/anchored_report_reproduction.rs`
+(`threshold_sweep_bs{1,2}_reproduces_anchor`), through the same runner as the other ten, with the
+`#129` disclosure carried in their block comment. No change is needed here; this addendum exists so
+the handoff that did not happen is on the record rather than inferred from its absence.

@@ -263,7 +263,18 @@ fn render_report(
     span_start: &str,
     span_end: &str,
     data_revision_sha: &str,
-    overlay_path: &str,
+    // The anchored **safetensors** this run READ, as a workspace-relative path.
+    //
+    // bug-log `#134`: this used to be `overlay_path` — the `.metadata.recalibrated.json` the run
+    // WRITES — so the body's one read-only claim named the only file the run created. It must
+    // stay `--anchor-dir`-independent, or the hashed body records where the run wrote instead of
+    // what it measured and both reproduction gates re-block (`#128e`). Relative, never resolved:
+    // `resolve_anchors_dir` (`tcn.rs:1505-1509`) falls back to an absolute `CARGO_MANIFEST_DIR`
+    // path, which would make the body machine-dependent — `#132`'s shape, not a cure for it.
+    weights_path: &str,
+    // The overlay this run writes, by FILENAME only — the directory is `--anchor-dir` and must
+    // not reach the body.
+    overlay_filename: &str,
     original_metadata: &serde_json::Value,
 ) -> String {
     let ratio = if sigma_train_recal.abs() > 1e-15 {
@@ -454,12 +465,17 @@ fn render_report(
     writeln!(&mut body, "\n## Notes\n").unwrap();
     writeln!(
         &mut body,
-        "- Read-only against `{overlay_path}` original safetensors."
+        "- Read-only against `{weights_path}` (anchored safetensors; never written)."
     )
     .unwrap();
     writeln!(
         &mut body,
         "- Read-only against original `.metadata.json` (no mutation)."
+    )
+    .unwrap();
+    writeln!(
+        &mut body,
+        "- Writes exactly one checkpoint artefact: `{overlay_filename}`, into `--anchor-dir`."
     )
     .unwrap();
     writeln!(
@@ -683,7 +699,11 @@ fn main() -> Result<()> {
         span_start_str,
         span_end_str,
         &data_revision_sha,
-        &overlay_path.display().to_string(),
+        &anchors_dir
+            .join(format!("{prefix}-{sha}.safetensors"))
+            .display()
+            .to_string(),
+        &overlay_filename,
         &original_metadata,
     );
 

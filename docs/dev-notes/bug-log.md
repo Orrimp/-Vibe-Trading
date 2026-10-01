@@ -2529,7 +2529,11 @@ carrying no reproduction claim, or the rename is traced and they are re-keyed to
 moved out of the body — see the coverage audit § 3.
 
 ### `#119` — `#114`'s twin: the same wrong CWD assumption, the same wrong blame, in the forecast crate
-**Status**: OPEN — found 2026-09-26 by generalising `#114`.
+**Status**: FIXED in both prescribed sites — `tcn.rs` resolves through `resolve_anchors_dir`
+(CWD-relative first, `CARGO_MANIFEST_DIR` fallback, logs what it settled on) and `patchtst.rs` calls
+`resolve_anchors_dir_pub`. Status corrected 2026-10-01; it had read OPEN after the fix landed.
+**But the fix list below was ENUMERATED, not derived** — see the 2026-10-01 note at the end of this
+entry and `#135`.
 Anchor-impacting: no.
 
 `crates/forecast/src/tcn.rs:496-497`:
@@ -2552,6 +2556,19 @@ tripping over it, which is the argument for writing these entries as shapes and 
 
 **Fix**: resolve from `env!("CARGO_MANIFEST_DIR")` in both `tcn.rs` and `patchtst.rs`, and print the
 resolved path on success — `#114`'s own fix, applied to its twin.
+
+**2026-10-01 — the fix list was two files because two files had symptoms.** `#126`'s lesson is that a
+member list must be derived from the criterion, not written down; this entry's was written down. The
+criterion is *"every workspace-relative path literal in a crate whose tests run from the package
+root"*, and running it over the tree found **three more sites with this exact literal**, all in the
+`*_readonly.rs` guards, all silently resolving to nothing — filed as `#135` and fixed the same day.
+The rest of the sweep is clean and worth recording so nobody runs it again: `tcn_byte_identity.rs:113`
+and `patchtst_byte_identity.rs:95` use the literal as a **git pathspec** against an explicit
+`current_dir(&ws_root)` and keep a `checked_count` non-vacuity counter — the correct pattern;
+`sigma_train_not_in_safetensors{,_patchtst}.rs` carry `"checkpoints/anchors"` as a second candidate,
+which resolves from the package root; `vol_verdict.rs:131` is a clap default for a binary whose
+declared CWD is the workspace root. Four sites, four different reasons they are fine, and none of
+them is "it looked right".
 
 ---
 
@@ -3654,3 +3671,260 @@ its own.
 
 Recorded rather than done quietly, because a rename that never happens is indistinguishable from a
 rename nobody thought was needed.
+
+---
+
+### `#134` — the one line asserting the run was read-only names the only file the run wrote
+**Status**: FOUND 2026-10-01 (story 1-29 AC7). Anchor-impacting: **yes** — the sentence is inside the
+hashed bodies of `recalibrate-sigma-train-bs1` and `-bs2`, so fixing it is an ADR-0038 § D6.b
+re-emission. **Not yet fixed**; the ruling and the plan are below.
+
+`crates/forecast/src/bin/recalibrate_sigma_train.rs:457` renders, into the hashed body:
+
+```rust
+writeln!(&mut body, "- Read-only against `{overlay_path}` original safetensors.")
+```
+
+fed from `:686` with `&overlay_path.display().to_string()`. And `overlay_path` is built at `:628`:
+
+```rust
+let overlay_path = args.anchor_dir.join(&overlay_filename);   // {prefix}-{sha}.metadata.recalibrated.json
+write_overlay(&original_metadata, sigma_train_recal, &overlay_path)?;   // :631 — the run WRITES it
+```
+
+So the body's sole read-only provenance claim names **the file the run created, eight lines earlier**,
+and calls a `.metadata.recalibrated.json` *"original safetensors"*. Both anchored bodies carry it
+verbatim:
+
+```
+- Read-only against `crates/forecast/checkpoints/anchors/tcn-bs1-d1c3696d….metadata.recalibrated.json` original safetensors.
+- Read-only against original `.metadata.json` (no mutation).
+```
+
+The second line is correct and needs no path. The first was meant to be its safetensors sibling and
+was handed the write target instead.
+
+The bin's own header doc states the contract correctly — *"NO mutation of … `.safetensors`"*, *"Exactly
+two filesystem-write calls: 1. `std::fs::write(overlay_path, …)`"*. So the contract was right, the
+code honours it, and only the **report** misstates it. That is the worst place for it to be wrong: the
+report is the artefact a third party reads, and `verify_anchors.sh` has been defending the false
+sentence since 2026-05-21.
+
+#### Why this settles story 1-29 AC7, rather than being a separate finding
+
+AC7 framed the two blocked rows as a choice between two defensible options:
+
+- **(A)** accept a repo-mutating gate — run with `--anchor-dir` at its default (which rewrites the two
+  committed overlay JSONs) and assert `git diff --exit-code crates/forecast/checkpoints/anchors/`;
+- **(B)** move the path out of the hashed body, which is itself a body change and therefore a D6.b
+  re-emission.
+
+`#134` makes (A) untenable. That gate's procedure is *"run it, it rewrites file X, assert X came back
+byte-identical"* — and the body it would be certifying says X is read-only. The gate would be defending
+a sentence its own method contradicts. That is story 1-29 AC8's language about the threshold-sweep
+lane, in a second lane: **converting an undisclosed behaviour into a defended invariant.**
+
+**Ruled (b), recorded not escalated: fix the sentence, re-emit under D6.b, then gate.**
+
+#### The fix also removes the blocker, which is the signal it is the right one
+
+`#128e` blocks rows 5/6 because `--anchor-dir` — the *write* target — reaches the hashed body. The
+*read* paths do not: `:506` is a hardcoded `PathBuf::from("crates/forecast/checkpoints/anchors")`,
+independent of every flag. So a sentence that names the safetensors it actually read is stable under
+`--anchor-dir <tempdir>`, and the gate sandboxes cleanly — one change closes a false claim **and** the
+blocker, without the two being traded off against each other.
+
+Print the relative constant, not a resolved path: `resolve_anchors_dir` (`tcn.rs:1489-1519`) falls back
+to an absolute `CARGO_MANIFEST_DIR`-derived path when the CWD-relative probe misses, so a resolved
+location would make the body machine-dependent — `#132`'s shape (a body that records *where the run
+looked*) rather than a cure for it.
+
+#### The shape, for the register
+
+This is the week's recurring mechanism pointed at prose instead of at code: **a claim that cannot be
+false.** Nothing re-reads that sentence against the filesystem, nothing cross-checks the path against
+the writes the bin declares, and the body-SHA gate pins whatever it says. A sentence is exactly as
+unfalsifiable as a gate with no assertion, and it is quoted more often.
+
+Two siblings already on the books, same class, both deferred to the re-emission that will carry them:
+the `sqrt(24*365) = 92.601295` label in the `sharpe_comparison` bodies (the value is √8574.9998, not
+√8760), and `V-REG-1`'s *"EM convergence failure"* headline over a check that tests *"the backtest
+completed"* (`#128c`). Three false strings in hashed bodies, found in one week, none of them caught by
+anything — because nothing was looking.
+
+#### And the test that should have caught it cannot — filed separately as `#135`
+
+`recalibrate_sigma_train_readonly.rs::test_originals_untouched_by_run` is the guard that exists for
+exactly this. It cannot fail, for three independent reasons, and it has **two siblings with the same
+three reasons** — one per bin in this family. That is a cluster, not a footnote to `#134`: see `#135`.
+
+#### The would-have-caught test (ADR-0038 § D6.b step 3)
+
+The invariant, stated so it can only be satisfied by the fix: **the hashed body does not depend on
+`--anchor-dir`.** Two runs into two different tempdir anchor-dirs must produce the same body-SHA.
+Today they cannot — the directory is interpolated into the Notes line — so the test is RED against
+current `HEAD` before the fix and GREEN after, which is the whole requirement. It is also exactly the
+property that unblocks the two rows, so the re-emission and the gate are proved by one assertion
+rather than two.
+
+A cheap always-running companion sits beside it (the expensive one is ~16 min): a source walk
+asserting `overlay_path` does not reach `render_report` at all. The `#133` lesson applies — the walk
+must not be able to match its own search string.
+
+---
+
+### `#135` — the three read-only guard tests have never asserted anything, for three independent reasons each
+**Status**: FOUND and FIXED 2026-10-01 while writing `#134`'s would-have-caught test.
+Anchor-impacting: **no** — these are tests; no report body moves.
+
+One "read-only guard" test exists per bin in the checkpoint-touching family:
+
+| test | crate | the literal it reads |
+|---|---|---|
+| `recalibrate_sigma_train_readonly.rs:98` `test_originals_untouched_by_run` | `forecast` | `crates/forecast/checkpoints/anchors` |
+| `threshold_sweep_readonly.rs:101` `test_originals_untouched_by_run` | `backtest` | `crates/forecast/checkpoints/anchors` |
+| `forecast_distribution_bin_readonly.rs:88` | `forecast` | `crates/forecast/checkpoints`, `crates/forecast/replay-cache` |
+
+All three are the same code. All three cannot fail, and each carries all three mechanisms:
+
+**1. The "run" is `--help`.** Every one of them spawns the bin with `--help`, which clap handles and
+exits before `main` reaches a filesystem call. The contract is asserted across an invocation that
+cannot violate it. None of this is hidden — each doc comment says *"unchanged by a `--help`
+invocation"*. The name was believed instead of the sentence directly under it.
+
+**2. The paths do not resolve.** The literals are **workspace**-relative; `cargo` runs an integration
+test from the **package** root. From `crates/forecast/` the first one resolves to
+`crates/forecast/crates/forecast/checkpoints/anchors`; from `crates/backtest/` the second resolves to
+`crates/backtest/crates/forecast/…`. Verified rather than reasoned: `os.path.isdir` on the literal
+from the package root returns `False`. Every sentinel is missing on every run.
+
+**3. A missing sentinel compares equal to itself.**
+
+```rust
+.map(|p| p.metadata().ok().and_then(|m| m.modified().ok()))   // → None when the path is wrong
+```
+
+`assert_eq!(None, None)` passes. Given mechanism 2 this is not a hypothetical about a deleted
+checkpoint directory — it is what executes on every run.
+
+Any one mechanism alone is sufficient. Together they mean these three tests have been green since they
+were written, in both directions, and would stay green with the checkpoint directory deleted and the
+bins rewritten to overwrite it.
+
+#### It is a recurrence of `#119`, found by needing it rather than by looking
+
+`crates/forecast/src/tcn.rs` carries a doc comment that describes this bug, by number, in the same
+words — *"true of binaries launched from the repo root and **false under `cargo test`**, which uses
+the PACKAGE root — so the path resolved to `crates/forecast/crates/forecast/checkpoints/anchors`"*.
+That is `#119`, found 2026-09-26, fixed where its symptom was, and documented unusually well.
+
+The three guards here had the identical literal and were never touched, because `#119`'s fix list was
+*"`tcn.rs` and `patchtst.rs`"* — the two files where something visibly broke — rather than *"every
+workspace-relative path literal in a crate whose tests run from the package root"*. Sixteen entries
+later the same bug was still sitting in four more places, under a doc comment explaining it.
+
+`#126` named this exact failure for a different list: **derive the member list from the criterion, not
+from the symptoms.** It applies to a bug's fix list as much as to a gate's coverage list, and that is
+the generalisation worth keeping from this pair.
+
+#### Why this one is worth its own number
+
+`#134` is a false sentence in a report. This is the instrument that was installed to detect exactly
+that class of thing, reporting PASS. The register's recurring rule — *a gate that cannot fail is
+indistinguishable from a gate that passes* — usually turns up one mechanism at a time. Here three
+stacked in one function, written together, and the redundancy is what kept it invisible: fixing any
+single one would have left the test still green, so anyone who checked one mechanism and moved on
+would have come away reassured.
+
+Note also what it took to find: not reading the tests, which I had done, but needing a REAL read-only
+assertion for `#134` and discovering there was nowhere to put it because the existing one did not work.
+The gap was visible only from the direction of someone trying to use it.
+
+#### Fixed 2026-10-01, and PROVED non-vacuous
+
+A rewritten test that passes is exactly what the old one did, so the pass was probed rather than
+believed: a fifth, deliberately non-existent sentinel was appended to the list and the guard went RED
+with *"sentinel … is MISSING or unreadable … This is UNMEASURED, not a pass"*. That is the proof the
+whole pass rests on — under the new code the test **cannot** pass unless every sentinel was actually
+read, which retires mechanisms 2 and 3 together.
+
+The probe itself was checked for being a probe (the 1-27 pass had two that were no-ops reporting OK on
+unmodified files): the file's SHA-256 before and after the mutation were compared, and the run only
+counted because they differed.
+
+#### The fix
+
+- resolve from the **workspace** root (`CARGO_MANIFEST_DIR`'s grandparent), as the rest of the repo does;
+- assert each sentinel **EXISTS** before reading it — the non-vacuity check (`#113` req 6) that would
+  have surfaced mechanism 2 on the day it was written;
+- compare **bytes**, not mtimes: stronger, free, and immune to a filesystem that does not update mtime;
+- keep the `--help` case — it is a real if weak property — and put `help` in its NAME so it stops
+  standing in for a run;
+- put the real-run assertion where a real run already happens: `#134`'s anchor-dir-invariance gate,
+  which runs the bin twice anyway and can assert the committed checkpoints are byte-identical after.
+
+**Process note, 2026-10-01 — the probe's restore destroyed the thing it was probing.** The probe
+script restored with `git checkout -- <file>`. That file carried the **uncommitted** `#135` fix, so
+the restore reverted to HEAD and silently threw the patch away; it was caught only because the
+before/after SHA-256 comparison — the no-op guard, there for an unrelated reason — printed two
+different hashes at the end. A snapshot (`cp` to a temp file, `cp` back) is the correct restore for a
+working tree with uncommitted work, and the probe harness now uses one. Recorded because the guard
+that caught it was looking the other way: without it the probe would have reported a clean red and
+left the fix gone.
+
+---
+
+### `#136` — the determinism test renders its OWN copy of the report twice, and the copy has drifted
+**Status**: FOUND 2026-10-01 while checking what else consumed the body line `#134` changed.
+Anchor-impacting: **no**. The `#133` sibling that was left behind, now with a measurement rather than
+a suspicion.
+
+`crates/forecast/tests/sharpe_comparison_determinism.rs:52`:
+
+```rust
+fn render_report(results: &[RerunResult; 4], _ctx: &ReportContext) -> String {
+```
+
+That is a **test-local re-implementation** of the renderer in `sharpe_comparison.rs`. The test that
+uses it, `test_render_deterministic` (`:238`), renders it twice and compares the two renders.
+
+Two things follow, and the second is the one that was not known before today.
+
+**It cannot fail in the way its name suggests.** It proves a function the product never calls is
+deterministic. Any change to the real renderer — including one that made it non-deterministic — leaves
+it green. The file already says this about its *other* half, in the docstring added on 2026-09-29:
+*"it renders a report twice and compares the two renders. Changing the constant changes both sides
+equally, so it stays green — a determinism tautology."* That sentence was written about the
+annualisation constant and is just as true of the whole render.
+
+**And the copy HAS drifted — measured, not feared.** Its notes line reads:
+
+```
+"- Read-only against the four -realdata reports listed in frontmatter."     (test copy, :163)
+"- Read-only against the five -realdata reports listed in frontmatter."     (the bin, :495)
+```
+
+Four versus five, and the signature is `&[RerunResult; 4]` against a bin arm that re-runs five
+scenarios. So this is no longer "two definitions that could diverge": they *have*, and nothing noticed,
+because the only thing comparing them is the copy against itself.
+
+#### Why it is being retired rather than re-synced
+
+`#133` fixed this file's other half the right way — the metrics were extracted to
+`forecast::metrics` so bin and test share one definition. The renderer was left, and the usual reason
+to keep a copy is that it is the only coverage there is. As of today it is not: the three
+`sharpe-comparison-*` rows have real reproduction gates in
+`crates/forecast/tests/anchored_report_reproduction.rs`, which re-run the **actual** binary and compare
+against the **anchored** body. That is strictly stronger than any self-comparison, and it is the
+condition under which deleting a test is safe — something real replaces it.
+
+`sqrt_hours_per_year_is_the_ratified_8575_constant_and_not_8760` stays: it compares against a pinned
+number, which is exactly why it was written and why it can fail.
+
+**Deletion HELD until the replacement is measured, 2026-10-01.** The argument above turns on the three
+`sharpe-comparison-*` reproduction gates being real coverage. They were written today and have not
+reported yet — the 1-29 measurement is still running, and recipes § 4.4 *predicts* two of them drift.
+Removing the old test on the strength of a replacement whose state is unknown is the same move as
+re-pinning an anchor to current output: it assumes the answer. The deletion lands once those three
+gates have a verdict, red or green; either is real coverage, which is the point.
+

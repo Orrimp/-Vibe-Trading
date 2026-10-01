@@ -109,6 +109,21 @@ Every required checkpoint and corpus file is present on this machine (verified b
    1-25's AC2", the silent-drop behaviour change must be disclosed in the two anchors' comments before
    any gate defends their bodies.
 
+   > **DISCHARGED and OVERRIDDEN 2026-10-01, recorded not escalated.** All three conditions this AC
+   > named are met: the operator ruled "fix `run_cell`" on 2026-09-29, the lane was repaired, and the
+   > behaviour change is disclosed in `anchors.toml` beside both rows — the re-emission comment states
+   > in full which of the three states is correct and why it is neither of the two previously pinned.
+   >
+   > The clause assigning the gates to the repair's story is overridden, because **1-30 shipped
+   > without them.** It re-emitted both bodies and built no re-run gate, so the two rows were gated
+   > nowhere — while this story's own omission note said they were "gated elsewhere". That note was a
+   > false provenance claim of exactly the species this story filed as `#134`, written into the file
+   > that files it, and found an hour later by checking rather than by reading what I had written.
+   >
+   > Both rows are therefore gated **here**, through the same runner (`Gate` gained a `package` field
+   > so the one `backtest` bin shares it rather than growing a second apparatus — `#112` req 0). The
+   > family is now **12 gated + 3 omitted = 15**, and `coverage_is_complete` enforces the total.
+
 9. **Standing floor.** `ANCHORS PASS (119 / 119)` before AND after (AD-2) — and note the gate now
    prints a *measured* pass count with a declared floor and cross-check (`#127`), so a row that stops
    being parsed fails loudly. FROZEN gate files byte-untouched (AD-1). `spec-lint` PASS. Verification
@@ -139,12 +154,70 @@ Every required checkpoint and corpus file is present on this machine (verified b
       Deferred with its reason: V-REG-1 is still NAMED for EM convergence while it tests *"the backtest
       completed"* — the table row already labels itself honestly, so the gap is the headline. Renaming
       is body-affecting and rides this story's own re-emission of `regime-verdict-bs1-realdata`.
-- [ ] AC2/AC3/AC4: the shared runner, then the 12 gates on top of it.
+- [x] **AC2/AC3/AC4 DONE 2026-10-01** — `crates/forecast/tests/anchored_report_reproduction.rs`.
+      Ten gates plus a candle-invariance measurement, all through ONE runner
+      (`assert_gate_reproduces` → `run_gate`), each declaring **binary × features × profile × CWD ×
+      invocation** as *fields on a struct* rather than as a convention a reader reconstructs. `""`
+      for features is a declaration and carries its own `features_means` — the companion test fails
+      a gate that declares a feature set without saying why.
+      - **The anchor is READ from `evidence/anchors.toml` at run time, never copied into the test.**
+        There is no second place for it to drift from. `anchored_sha` additionally asserts the
+        duplicate `(scenario, version)` rows **agree** (twelve of these carry two rows) and that the
+        gate's declared namespace is one that exists — `#120`, where a globally-pinned namespace
+        reported a reproducing scenario as drifted.
+      - **AC3 witnesses, with what each proves.** The clearest is `sigma_train`: `10.954250` plain
+        vs `0.018016` recalibrated is the single value `--metadata-path` moves, so a gate pointed at
+        the wrong overlay fails as *"you ran the other variant"* rather than as 64 opaque hex. The
+        `regime_verdict` witness is `#128c`'s: a non-zero bar count is what separates a measured run
+        from a swallowed refusal that zero-fills every statistic.
+      - **AC4 twice over** — structurally, because `--out-dir` is the runner's and the companion test
+        fails any gate whose argv contains it or names `evidence/`; and *measured*, because every run
+        compares `git status` over `evidence/` **and** the checkpoint dir across its own execution.
+      - The hasher is `scripts/hash_report.py` — the repo's own, the one `verify_anchors.sh` uses —
+        never a re-implementation. That is the Dev Note's warning taken literally.
+      - The companion `coverage_is_complete` **always runs** and is what makes the `#[ignore]`s
+        honest: `GATES ∪ OMITTED == 15`, no row in both, every omission carrying a real reason. It
+        earned its place on first execution by failing on two omission reasons I had written as
+        *"see the bs1 row"*.
 - [ ] AC6: run them. Triage each red to a cause at a `file:line`; batch the D6.b re-emissions rather
       than re-locking one row at a time.
-- [ ] AC7: architect + operator ruling on the two blocked rows.
-- [ ] Review: every gate probed by deliberate breakage (and the probe itself verified to have changed
-      something — two "probes" in the 1-27 pass were no-ops reporting OK on unmodified files).
+- [x] **AC7 RULED 2026-10-01 — (b) fix the body, re-emit, then gate. Bug-log `#134`.**
+      Reading the code to write the disposition found the reason the choice is not a judgement call.
+      `recalibrate_sigma_train.rs:457` renders `"- Read-only against \`{overlay_path}\` original
+      safetensors."` into the hashed body — and `overlay_path` (`:628`) is the
+      `.metadata.recalibrated.json` the run **wrote** three lines earlier. The body's sole read-only
+      claim names the only file the run created, and calls a JSON overlay *safetensors*. Both
+      anchored bodies carry it verbatim.
+      - **That kills option (a).** A gate whose procedure is *"run it, it rewrites X, assert X came
+        back identical"* would be certifying a body that says X is read-only — AC8's own language
+        about the threshold-sweep lane, in a second lane.
+      - **And the fix removes the blocker.** `#128e` blocks these rows because `--anchor-dir` (the
+        *write* target) reaches the hashed body; the *read* path does not (`:506` is a hardcoded
+        relative constant). A sentence naming the safetensors it actually read is stable under
+        `--anchor-dir <tempdir>`, so the gate sandboxes cleanly. One change closes a false claim and
+        the blocker without trading them off.
+      - Print the **relative constant**, not a resolved path: `resolve_anchors_dir` falls back to an
+        absolute `CARGO_MANIFEST_DIR` path, which would make the body machine-dependent — `#132`'s
+        shape rather than a cure for it.
+      - Remaining work, in order: the one-line fix + a RED-proven would-have-caught test, re-emit
+        both rows under ADR-0038 § D6.b (≈ 18 min: 487 s + 620 s measured), then move the two rows
+        from `OMITTED` to `GATES` — `coverage_is_complete` holds the total at 15 either way.
+- [x] **Review — probes DONE 2026-10-01, 6/6 RED with their intended messages.** Each mutates the
+      gate table, asserts the mutation actually landed (SHA-256 before vs after — a probe that
+      changed nothing proves nothing), runs the companion, greps for the specific message, and
+      restores. Harness: `scratchpad/probe-gates.sh`.
+      - P1 drop an `OMITTED` row → family accounting fires · P2 declare a namespace that does not
+        exist → `#120`'s message · P3 a gate owning `--out-dir` → AC4 · P4 argv naming `evidence/` →
+        AC4 · P5 one scenario both gated and omitted → "listed twice" · P6 an omission with no
+        reason → AC7's.
+      - **The probe harness itself had the defect it exists to catch.** Its restore was
+        `git checkout -- <file>`, which restores *HEAD* — and on the first real use it silently threw
+        away the uncommitted `#135` fix in the file it was probing. Caught only because the
+        no-op guard printed a before/after SHA that did not match. It now restores from a snapshot.
+        Recorded in the bug-log: the guard that caught it was looking the other way.
+      - The `#134`/`#135` tests were probed the same way: a deliberately absent fifth sentinel made
+        the read-only guard RED with *"UNMEASURED, not a pass"*, which is what makes its green mean
+        the sentinels were actually read.
 
 ## Dev Notes
 
