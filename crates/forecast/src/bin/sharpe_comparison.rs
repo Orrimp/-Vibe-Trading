@@ -865,6 +865,37 @@ mod render_vol_target {
         )
         .unwrap();
 
+        // bug-log #137, operator-ruled 2026-10-01: re-emit AND make the label's limits
+        // unmissable INSIDE the body. The T-classifier is a DELTA rule (ADR-0038 § D1.c,
+        // `net_delta >= 0.10 -> T-VOL-ALPHA-UNLOCKED`) and carries no claim about the SIGN of
+        // either arm — so on two loss-making arms the label invites a reading the numbers do not
+        // support. COMPUTED, never hardcoded: the strong sentence appears only when it is true,
+        // so this cannot become its own false claim if the numbers move.
+        let both_arms_lose = sharpe_baseline < 0.0 && sharpe_overlay < 0.0;
+        let loss_note = if both_arms_lose {
+            format!(
+                " **Both arms LOSE money here — baseline {sharpe_baseline:.6}, overlay \
+                 {sharpe_overlay:.6}, annualised Sharpe. The overlay loses LESS; it does not \
+                 earn.**"
+            )
+        } else {
+            String::new()
+        };
+        writeln!(
+            &mut body,
+            "\n**What this label does and does not say.** `{}` is ADR-0038 § D1.c's delta rule — \
+             `net_delta >= 0.10` — applied to `{:.6} − {:.6}`.{loss_note} And the baseline here is \
+             `top10-2023-1h-momentum`, which uses **synthetic GBM bars** and is forced to \
+             `Linear {{ bps: 8 }}` under Q-D1=(a). The same overlay measured against the \
+             **real-data** baseline is the separate `sharpe-comparison-vol-target-bs1-realbaseline` \
+             report — which exists precisely because this baseline was judged the wrong reference. \
+             Read that one before drawing any conclusion from the label above.",
+            verdict.label(),
+            sharpe_overlay,
+            sharpe_baseline,
+        )
+        .unwrap();
+
         // ── § Notes ──────────────────────────────────────────────────────────────
         writeln!(&mut body, "\n## Notes\n").unwrap();
         writeln!(
@@ -966,6 +997,84 @@ mod render_vol_target {
             );
             assert!(body.contains("## Verdict"), "missing Verdict");
             assert!(body.contains("T-VOL-"), "missing T-classifier label");
+        }
+
+        /// `#137` — the qualifier must state the loss when both arms lose, and must NOT when
+        /// they do not. A paragraph that always says the same thing is not a qualifier.
+        ///
+        /// Needs its own fixture: `make_result` builds a CONSTANT-factor curve, so its
+        /// log-returns have zero variance and its Sharpe is 0 either way — reversing it produces
+        /// a falling curve whose Sharpe is still not negative. That is why the first version of
+        /// this test failed, and the failure was the fixture rather than the assertion.
+        fn alternating(name: &str, a: &str, b: &str) -> RerunResult {
+            use rust_decimal::Decimal;
+            use std::str::FromStr;
+            let (fa, fb) = (Decimal::from_str(a).unwrap(), Decimal::from_str(b).unwrap());
+            let mut eq = vec![dec!(100_000)];
+            for i in 0..8760 {
+                let last = *eq.last().unwrap();
+                eq.push(last * if i % 2 == 0 { fa } else { fb });
+            }
+            let final_eq = *eq.last().unwrap();
+            RerunResult {
+                name: name.to_string(),
+                variant: "test".to_string(),
+                equity: eq,
+                bars: 8760,
+                trades: 1000,
+                final_equity: final_eq,
+                total_return: 0.0,
+                max_drawdown: 0.05,
+                dampen_rate: 0.0,
+            }
+        }
+
+        #[test]
+        fn label_qualifier_states_the_loss_only_when_both_arms_lose() {
+            let ctx = ReportContext {
+                generated: "2026-05-22T00:00:00Z".to_string(),
+                wall_clock_s: 10.0,
+                host: "test".to_string(),
+                git_commit: "abc".to_string(),
+                data_revision_sha: "def".to_string(),
+            };
+
+            // Negative drift WITH variance -> genuinely negative Sharpe on both arms.
+            let falling = render_report(
+                &alternating("top10-2023-1h-momentum", "0.9990", "1.0002"),
+                &alternating(
+                    "top10-2023-fy-vol-target-overlay-realdata",
+                    "0.9992",
+                    "1.0002",
+                ),
+                &ctx,
+            );
+            // Positive drift with variance -> positive Sharpe on both arms.
+            let rising = render_report(
+                &alternating("top10-2023-1h-momentum", "1.0012", "1.0002"),
+                &alternating(
+                    "top10-2023-fy-vol-target-overlay-realdata",
+                    "1.0014",
+                    "1.0002",
+                ),
+                &ctx,
+            );
+
+            assert!(
+                falling.contains("What this label does and does not say")
+                    && rising.contains("What this label does and does not say"),
+                "the qualifier itself must ALWAYS be present — only its loss sentence is conditional"
+            );
+            assert!(
+                falling.contains("Both arms LOSE money here"),
+                "both arms lose and the body does not say so. That is #137 exactly: a delta label \
+                 left to be read as a claim about the level."
+            );
+            assert!(
+                !rising.contains("Both arms LOSE money here"),
+                "neither arm loses, yet the body says both do — a sentence that is always printed \
+                 measures nothing."
+            );
         }
 
         #[test]

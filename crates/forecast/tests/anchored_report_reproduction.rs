@@ -336,6 +336,10 @@ const GATES: &[Gate] = &[
                 "| Overlay scenario  | top10-2023-fy-vol-target-overlay-realdata",
                 "the vol-target overlay arm",
             ),
+            (
+                "**What this label does and does not say.**",
+                "the `#137` qualifier is IN the body. The operator ruled that this row ships only                  with its label's limits stated inline, so a body carrying `T-VOL-ALPHA-UNLOCKED`                  without them must not pass this gate",
+            ),
         ],
         measured_s: 11,
     },
@@ -946,19 +950,16 @@ fn regime_verdict_bs1_reproduces_anchor() {
 
 /// R-SC-1 — `sharpe-comparison-vol-target-bs1-realdata`. ~11 s after the backtest build.
 ///
-/// **KNOWN RED as of 2026-10-01, deliberately, pending an operator ruling — bug-log `#137`.**
-/// Measured: anchor `d21db467…`, produced `29aac8e0…`, every witness passing. § 4.4 predicted the
-/// drift and the cause is the inherited § D6.b re-emission of both its sub-scenarios on
-/// 2026-09-26. Its two siblings were re-emitted and re-locked the same day; **this one was not**,
-/// because re-emitting it moves its verdict `T-VOL-NO-ALPHA` → `T-VOL-ALPHA-UNLOCKED`, which
-/// changes what the corpus claims (AD-19 + a standing stop condition).
+/// Defends the body re-emitted 2026-10-01 under § D6.b after an **operator ruling** (bug-log
+/// `#137`). This row's verdict moved `T-VOL-NO-ALPHA` → `T-VOL-ALPHA-UNLOCKED` when its inherited
+/// sub-scenario re-emissions landed, so it was escalated before landing (AD-19) and held while its
+/// two siblings went in. The ruling was not simply "re-emit": **re-emit and make the label's limits
+/// unmissable inside the body.**
 ///
-/// So this gate and `verify_anchors.sh` disagree about this row on purpose: the corpus holds the
-/// May body, the code produces a different one, and the resolution is a ruling rather than a
-/// commit. Do not "fix" it by re-pinning (`#77`) and do not land the new body without the ruling.
-/// `#137` carries the numbers and the three readings — the short version is that both Sharpes are
-/// negative, the flip belongs to the row with the SYNTHETIC baseline, and the purpose-built
-/// real-baseline comparison of the same overlay still says NO-ALPHA.
+/// The body therefore now carries a computed qualifier under the T-classifier row saying that both
+/// arms lose money, that the baseline is synthetic, and that the real-baseline comparison of the
+/// same overlay is still NO-ALPHA. One of this gate's witnesses asserts that qualifier is present,
+/// so the gate cannot go green on a body that prints the label without its limits.
 #[test]
 #[ignore = "corpus-gated + ~11 s run (the cost is the backtest release build): run with --ignored"]
 fn sharpe_comparison_vol_target_reproduces_anchor() {

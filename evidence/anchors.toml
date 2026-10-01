@@ -472,10 +472,49 @@ scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + noop-baseline"
 sha256   = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86"
 
+# == RE-EMITTED 2026-10-01 under ADR-0038 D6.b -- story 1-29, bug-log #137 ===========
+# OPERATOR-RULED 2026-10-01, and the ruling was NOT just "re-emit":
+#   re-emit AND make the label's limits unmissable INSIDE the body. Same ruling, same shape, as
+#   2026-09-29's threshold-sweep T-MARGINAL -> T-ALPHA-UNLOCKED escalation.
+#
+# SUPERSEDED BODY sha256=d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31
+#
+# THE VERDICT MOVED: T-VOL-NO-ALPHA -> T-VOL-ALPHA-UNLOCKED. Escalated BEFORE landing (AD-19) and
+#   held unlanded until ruled. Cause: this row is DERIVED, and both its sub-scenarios were
+#   re-emitted under D6.b on 2026-09-26 (the #94 sizer fix among them) after it was locked in May.
+#   Net Sharpe delta 0.008149 -> 0.260366, crossing D1.c's 0.10 threshold.
+#
+# WHAT THE NUMBERS ACTUALLY SAY -- all three readings point the same way, which is why the ruling
+# was a qualifier rather than a softened number:
+#   1. BOTH ARMS LOSE. Baseline -0.667765, overlay -0.407398 annualised Sharpe. The overlay loses
+#      LESS; it does not earn. D1.c's rule is `net_delta >= 0.10` and says nothing about either
+#      sign, so the label is literally correct and invites a reading the numbers do not support.
+#   2. THE FLIPPED ROW IS THE ONE WITH THE SYNTHETIC BASELINE. The identical overlay scores
+#      -0.407398 in BOTH rows of this family; the whole +0.26 is `top10-2023-1h-momentum` being
+#      0.34 Sharpe worse than the real-data baseline (synthetic GBM bars, forced to
+#      Linear { bps: 8 } under Q-D1=(a)).
+#   3. THE BETTER COMPARISON ALREADY EXISTS AND IS UNCHANGED. `-realbaseline` -- same overlay, real
+#      baseline -- is T-VOL-NO-ALPHA at delta -0.079, i.e. the overlay is WORSE than the baseline it
+#      should be measured against. That row exists because this baseline was judged wrong.
+#   So the era-qualified thesis is NOT contradicted by the stronger of the two comparisons the repo
+#   deliberately keeps side by side. The flip is an artefact of the weaker one.
+#
+# WHAT CHANGED, census taken BEFORE landing: the numbers (inherited from the sub-scenario
+#   re-emissions -- the old body carries $0.00 final equity and 87-98% drawdowns, the #94 sizer
+#   artefacts); the annualisation LABEL (sqrt(24*365) -> sqrt(8574.9998), printed value unchanged);
+#   and the new COMPUTED qualifier paragraph under the T-classifier row. The qualifier's strong
+#   sentence is conditional on `sharpe_baseline < 0 && sharpe_overlay < 0` and is pinned in BOTH
+#   directions by `label_qualifier_states_the_loss_only_when_both_arms_lose` -- a paragraph that is
+#   always printed measures nothing.
+#
+# CONDITION declared: cwd=workspace root - features=(none for the bin; the spawned
+#   target/release/backtest is built --features candle,realdata) - profile=release
+#   invocation=sharpe_comparison --scenario vol-target-bs1 --backtest-bin target/release/backtest
+#   --out-dir <tempdir> - corpus=data/binance at REVISION 3a8b96c4...
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
 version  = "v3.0.0-volatility + noop-baseline"
-sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
+sha256   = "d35073f8a8d8528b0cd82b16e514ef4ac6eeb150d9bd3d363246a16863b9cd80"
 
 # v3.0.0-volatility-rebaseline: 1-day re-baseline pass swapping the
 # synthetic v1 momentum baseline for a real-data un-targeted v1 momentum
@@ -813,7 +852,7 @@ sha256   = "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce"
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
-sha256   = "d21db467f1d25c36de78b405aa950c9025d61b03cb43952ccb7aadefed701a31"
+sha256   = "d35073f8a8d8528b0cd82b16e514ef4ac6eeb150d9bd3d363246a16863b9cd80"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"

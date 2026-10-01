@@ -3958,8 +3958,10 @@ describes what is left behind honestly.
 ---
 
 ### `#137` — a re-emission flipped a verdict to ALPHA-UNLOCKED, and it is the row with the synthetic baseline
-**Status**: ESCALATED to the operator 2026-10-01, unlanded. Anchor-impacting: **yes** — the body
-exists and is held out of `evidence/` pending the ruling. AD-19 / public-claim territory.
+**Status**: ESCALATED and RULED 2026-10-01. **Operator ruling: re-emit AND make the label's limits
+unmissable inside the body** — the same ruling, on the same shape, as the 2026-09-29 threshold-sweep
+escalation (`T-MARGINAL` → `T-ALPHA-UNLOCKED`). Landed under § D6.b as `d35073f8…`.
+Anchor-impacting: **yes**, two rows re-locked.
 
 Story 1-29's AC6 measurement found all three `sharpe-comparison` rows drifted, because their
 sub-scenario bodies were re-emitted under § D6.b on 2026-09-26 (bug-log `#94`'s sizer fix, among
@@ -4004,7 +4006,37 @@ Landing it changes what the project publicly claims. That is one of the four sta
 and AD-19 forbids shipping a moved verdict without an explicit human override. The other two rows'
 verdicts did not move and are landed.
 
-#### Not fixed, and NOT to be fixed by softening the number
+#### Ruled and done, 2026-10-01
+
+The body now carries a **computed** qualifier directly under the T-classifier row:
+
+> **What this label does and does not say.** `T-VOL-ALPHA-UNLOCKED` is ADR-0038 § D1.c's delta rule —
+> `net_delta >= 0.10` — applied to `-0.407398 − -0.667765`. **Both arms LOSE money here — baseline
+> -0.667765, overlay -0.407398, annualised Sharpe. The overlay loses LESS; it does not earn.** And the
+> baseline here is `top10-2023-1h-momentum`, which uses **synthetic GBM bars** and is forced to
+> `Linear { bps: 8 }` under Q-D1=(a). The same overlay measured against the **real-data** baseline is
+> the separate `sharpe-comparison-vol-target-bs1-realbaseline` report — which exists precisely because
+> this baseline was judged the wrong reference. Read that one before drawing any conclusion from the
+> label above.
+
+Three things about the shape of that fix, because the qualifier could easily have become the next
+false claim in this register:
+
+- **It is computed, not written down.** The loss sentence is conditional on
+  `sharpe_baseline < 0.0 && sharpe_overlay < 0.0`, so it disappears if the numbers ever stop
+  supporting it. A paragraph that is always printed measures nothing.
+- **It is pinned in BOTH directions.**
+  `label_qualifier_states_the_loss_only_when_both_arms_lose` asserts the sentence appears on a
+  losing fixture and is **absent** on a winning one. The first version of that test failed, and the
+  failure was the *fixture*: `make_result` builds a constant-factor equity curve, whose log-returns
+  have zero variance, so its Sharpe is 0 either way and reversing it does not make it negative. The
+  test needed variance, not just direction — recorded because a green version of that test built on
+  the broken fixture would have asserted nothing.
+- **The reproduction gate now defends it.** One of
+  `sharpe_comparison_vol_target_reproduces_anchor`'s witnesses is the qualifier's own heading, so a
+  body that prints `T-VOL-ALPHA-UNLOCKED` without its limits cannot pass.
+
+#### NOT fixed by softening the number, and that was never on the table
 
 The resolution is **not** to re-pin, re-scale, or re-thershold anything — that is `#77` with a
 different mask. The options are about what the body SAYS, not what it computes, and the FROZEN gate
