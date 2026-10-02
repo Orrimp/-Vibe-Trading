@@ -545,7 +545,9 @@ So the anchored surfaces do **not** run their short legs through the bypassed pa
 **Moral**: a `continue` that skips the shared path is a fork in the execution model, and forks drift. The long path has since gained a solvency guard, a side-blind cap, slippage and a venue filter; the short path inherited none of them, and nothing compares the two. When a ranked comparison spans two execution paths, the ranking measures the paths as much as the strategies — so any `// skip the matching-engine path` deserves a test that pins the two paths to the same friction.
 
 ### `#81` — The macro-regime arm's loader is NEVER COMPILED. `v0.macro_riskon` has run 100% cash in every build of the product since it shipped, and no amount of data can fix it.
-**Status**: OPEN (disclosed 2026-08-14 by the story-3-16 review). Anchor-impacting: **no** (every macro path runs `write_report = false`). **The most severe product defect of the burn-down**: not a distorted number, but a ranked strategy arm that has never once executed its own logic while being presented to the operator as one of the strategies tried.
+**Status**: HONESTY HALF FIXED 2026-08-14; the capability half deliberately NOT flipped and BLOCKED
+(see the sequencing note). Sharpened 2026-10-02 — it read a bare "OPEN", which understates a split
+that was a decision rather than an omission. Disclosed 2026-08-14 by the story-3-16 review. Anchor-impacting: **no** (every macro path runs `write_report = false`). **The most severe product defect of the burn-down**: not a distorted number, but a ranked strategy arm that has never once executed its own logic while being presented to the operator as one of the strategies tried.
 
 **The chain, every link orchestrator-verified at source:**
 1. `crates/backtest/src/macro_regime.rs` opens with `#![cfg(feature = "yahoo")]` — the entire loader module is gated on **`backtest`'s** `yahoo` feature.
@@ -2469,8 +2471,9 @@ against the current-generation anchor, and reports an absent precondition as unm
 `#112` requirement (0): extend the apparatus that is already right instead of maintaining a second one.
 
 ### `#117` — `verify_anchors.sh` re-implemented in Rust, inside `cargo test --workspace`, named as if it re-ran anything
-**Status**: OPEN — found 2026-09-26. A naming and framing defect, not a logic bug; the highest-value
-one to act on because of who reads it.
+**Status**: FIXED 2026-09-26 (see "Fix applied" below). Status line corrected 2026-10-02 — it had
+read OPEN since the fix landed. A naming and framing defect, not a logic bug; it was the
+highest-value one to act on because of who reads it.
 Anchor-impacting: no.
 
 `crates/reports/tests/strategy_anchors_unchanged.rs` holds three tests — `:436`, `:489`, `:542` —
@@ -2508,8 +2511,16 @@ The general point is worth keeping: when a misleading name is load-bearing in im
 fix is to put the correction where the reader lands, not to break the citation chain.
 
 ### `#118` — an anchor outlived its producer, and the corpus gate has reported PASS on it every day since
-**Status**: OPEN — needs a disposition decision, not a fix. Found 2026-09-26.
-Anchor-impacting: **yes** — 2 rows.
+**Status**: RULED 2026-09-27 and DOCUMENTED in three places; no fix is possible or wanted. Status
+line corrected 2026-10-02 — it had read OPEN since the ruling. Found 2026-09-26.
+Anchor-impacting: **yes** — 2 rows, both retained with a written no-reproduction-claim.
+
+The disposition now lives where each kind of reader lands: a `NO REPRODUCTION CLAIM (bug-log #118,
+ruled 2026-09-27)` comment beside the rows in `evidence/anchors.toml`; this entry; and — since
+2026-10-01 — the `OMITTED` table in `crates/forecast/tests/anchored_report_reproduction.rs`, where
+`coverage_is_complete` asserts the row is still *in* the corpus, so the omission cannot go stale
+without a test failing. That third place is the one a developer hits, and it did not exist when this
+entry was written.
 
 `sharpe-comparison-realdata` is pinned twice in `evidence/anchors.toml`. **No code path at HEAD emits
 the name** — verified: `grep -rl "sharpe-comparison-realdata" crates/` returns nothing.
@@ -3659,8 +3670,10 @@ the measurement landed was not, and the only reason it is not a defect in this r
 went back and checked rather than moving on.
 
 ### `#128c` — a run that exited 0 and wrote nothing still produced a verdict, computed from fabricated zeros
-**Status**: half FIXED 2026-09-30 (story 1-29 AC5); the naming half rides the next re-emission.
-Anchor-impacting: **no** for the fix; the rename is body-affecting and deferred deliberately.
+**Status**: FULLY FIXED — the substitution 2026-09-30 (story 1-29 AC5), the naming 2026-10-02.
+Anchor-impacting: **no**, for either half. The rename turned out to be anchor-NEUTRAL (the V-REG-1
+strings render only on the arm that fires, and no anchored body takes it) — see the 2026-10-02 note
+at the end of this entry, which also records why the deferral's stated premise was wrong.
 
 `crates/forecast/src/bin/regime_verdict.rs` spawns the `backtest` binary, then looks for the report it
 should have written. When it found none it substituted `String::new()` **unconditionally**, and every
@@ -3795,11 +3808,19 @@ false.** Nothing re-reads that sentence against the filesystem, nothing cross-ch
 the writes the bin declares, and the body-SHA gate pins whatever it says. A sentence is exactly as
 unfalsifiable as a gate with no assertion, and it is quoted more often.
 
-Two siblings already on the books, same class, both deferred to the re-emission that will carry them:
-the `sqrt(24*365) = 92.601295` label in the `sharpe_comparison` bodies (the value is √8574.9998, not
-√8760), and `V-REG-1`'s *"EM convergence failure"* headline over a check that tests *"the backtest
-completed"* (`#128c`). Three false strings in hashed bodies, found in one week, none of them caught by
-anything — because nothing was looking.
+Two siblings were already on the books, same class, both deferred to a re-emission that was meant to
+carry them: the `sqrt(24*365) = 92.601295` label in the `sharpe_comparison` bodies (the value is
+√8574.9998, not √8760), and `V-REG-1`'s *"EM convergence failure"* headline over a check that tests
+*"the backtest completed"* (`#128c`). Three false strings in hashed bodies, found in one week, none of
+them caught by anything — because nothing was looking.
+
+**All three are now closed, and the two deferrals closed for opposite reasons — which is the part
+worth keeping.** The `sqrt` label got **lucky**: story 1-29 found all three `sharpe-comparison` rows
+drifted, so its carrier arrived the next day and the fix cost nothing. V-REG-1's carrier **could never
+arrive** — its row reproduced GREEN, there was no re-emission, and the premise that it needed one was
+false anyway (the rename was anchor-neutral all along). Neither outcome was planned. So: **a deferral
+that names its carrier must also name what to do if the carrier never comes**, because until then
+"waiting" and "forgotten" look exactly alike from outside.
 
 #### And the test that should have caught it cannot — filed separately as `#135`
 
@@ -4076,3 +4097,64 @@ different mask. The options are about what the body SAYS, not what it computes, 
 (AD-1) is untouched either way: `classify_verdict` / `verdict_bands` / `compute_robustness_flag` /
 `rank_candidates` are not in this path at all. This is ADR-0038 § D1.c's T-classifier, a report-level
 label.
+
+---
+
+### `#138` — this register's own Status lines have no gate, and three of them were lying
+**Status**: FOUND 2026-10-02, three entries corrected, and **deliberately NOT gated** — the obvious
+check is 25% precise and would be worse than nothing. Anchor-impacting: **no**.
+
+While sweeping for deferrals whose carrier might never arrive (the `#128c` lesson), I spot-checked
+five entries marked `OPEN`. Three were wrong:
+
+| entry | said | was |
+|---|---|---|
+| `#119` | OPEN | FIXED in both prescribed sites — corrected 2026-10-01 |
+| `#117` | OPEN | its own body says **"Fix applied 2026-09-26"**, with a "What landed" list under it |
+| `#118` | OPEN, "needs a disposition decision" | RULED 2026-09-27 and documented in `anchors.toml` |
+| `#81` | OPEN | *"HONESTY HALF FIXED 2026-08-14; the capability half deliberately NOT flipped"* |
+
+`#81` is the interesting one of those four: "OPEN" is not false, it just flattens a deliberate split
+into an omission, which is the opposite of what the entry spent a page establishing.
+
+#### The obvious gate is a bad gate, measured
+
+A lint suggests itself: flag any entry whose Status says `OPEN` while its body contains a
+fix-landed marker. I wrote it and ran it over all 82 entries. It flagged **4**; reading them, **1**
+was a true positive.
+
+- `#93` — its "fixed 2026-08-23" is a **CI guard** fixed in passing. `#93` itself is that
+  `verify_anchors.sh` structurally cannot see code-vs-evidence drift, which is a design limitation,
+  not something a commit closes. Still correctly open.
+- `#99` — its "FIXED" is the **storm test's accounting**, a sub-item recorded inside the entry. The
+  aggregator defect the entry is about is untouched. Still correctly open.
+- `#81` — flagged on "HALF FIXED", which is exactly the word that makes it *not* a stale status.
+- `#117` — the one real hit.
+
+25% precision. And it **missed `#118`**, whose body says *"ruled"* rather than any form of "fixed".
+So the cheap check has both false positives and false negatives on an 82-row corpus, and shipping it
+would train everyone to ignore a red lint — which is how a gate becomes furniture. **Not built, on
+purpose, and this paragraph is the record of why** so the next person does not rediscover the idea
+and assume nobody tried it.
+
+#### What actually works, and `#117`/`#118` already showed it
+
+Both of those entries converged on the same move without naming it: **put the correction where the
+reader lands, not where the register can be tidy.**
+
+- `#117` could not rename three misleadingly-named tests, because their names are cited in
+  **byte-immutable** anchored reports. So it put a `## What this test does NOT prove` block at the
+  top of the module doc — the first thing anyone opening the file reads.
+- `#118`'s disposition was in `anchors.toml` and in this entry, and it became *reliable* only on
+  2026-10-01, when it also became a row in the `OMITTED` table of
+  `anchored_report_reproduction.rs` — where `coverage_is_complete` asserts the scenario is still in
+  the corpus, so the omission cannot go stale without a test going red.
+
+The generalisation: **a finding's status is trustworthy exactly where a gate can check it.** This
+file is prose, so its Status lines are the least trustworthy copy of any fact in it, and the right
+response is not to gate the prose but to keep moving the load-bearing parts into places that fail
+loudly. Everything this week that held up — the `OMITTED` table, the anchor-neutrality walk, the
+qualifier's two-directional test — is an instance of that.
+
+Three entries corrected above. The remaining 22 `OPEN` entries were not individually re-verified,
+which is stated rather than glossed: this is a sample with three hits, not an audit.
