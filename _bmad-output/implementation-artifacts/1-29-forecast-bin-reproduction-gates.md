@@ -154,6 +154,15 @@ Every required checkpoint and corpus file is present on this machine (verified b
       Deferred with its reason: V-REG-1 is still NAMED for EM convergence while it tests *"the backtest
       completed"* — the table row already labels itself honestly, so the gap is the headline. Renaming
       is body-affecting and rides this story's own re-emission of `regime-verdict-bs1-realdata`.
+      - **CLOSED 2026-10-02, and that deferral was wrong twice.** `regime-verdict-bs1-realdata` came
+        back **GREEN** in AC6, so there was no re-emission to ride — the carrier could never arrive.
+        And the premise was false regardless: `name()`/`follow_on()` reach the hashed body only for
+        the arm that **fires**, every anchored body took the Healthy arm, so the rename was
+        **anchor-neutral** all along (`ANCHORS PASS 119/119`, `evidence/` untouched). V-REG-1 is now
+        *"Backtest did not complete"*, its follow-on no longer presumes EM is the cause, and
+        `vreg1_strings_reach_no_anchored_body` turns the neutrality claim into a gate — 474 files
+        walked, probe-verified RED. A deferral that names its carrier must also say what to do if
+        the carrier never comes.
 - [x] **AC2/AC3/AC4 DONE 2026-10-01** — `crates/forecast/tests/anchored_report_reproduction.rs`.
       Ten gates plus a candle-invariance measurement, all through ONE runner
       (`assert_gate_reproduces` → `run_gate`), each declaring **binary × features × profile × CWD ×
