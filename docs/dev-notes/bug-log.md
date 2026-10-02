@@ -3688,6 +3688,39 @@ its own.
 Recorded rather than done quietly, because a rename that never happens is indistinguishable from a
 rename nobody thought was needed.
 
+> **2026-10-02 — DONE, and the deferral above rested on a WRONG PREMISE.** It said the rename
+> "changes the hashed body of `regime-verdict-bs1-realdata`" and would therefore ride story 1-29's
+> re-emission of that row. Two things were wrong with that.
+>
+> **The carrier never came.** Story 1-29 measured that row **GREEN** on 2026-10-01 — it reproduced
+> its anchor byte for byte, so there was no re-emission to ride. Had I left the deferral as written
+> it would have waited indefinitely, which is the state this very entry warns about one paragraph up.
+>
+> **And the premise was false anyway.** `name()` and `follow_on()` do render into the hashed body,
+> but only for **the arm that fires**, and every anchored `regime-verdict-*` body took the V-REG-5
+> (Healthy) arm. The V-REG-1 strings are in **none** of them, so the rename is **anchor-neutral**:
+> `ANCHORS PASS (119 / 119)` with `evidence/` untouched. It was free the whole time, and the thing
+> stopping it was a reading I never checked.
+>
+> What landed: `VReg1::name()` is now **"Backtest did not complete"**, which is what
+> `!stats.completed_ok` observes. `follow_on()` was a bare `regime-em-tune`, which presumed the same
+> diagnosis one layer down — tuning EM for a backtest that crashed is work aimed at a guess — and is
+> now *"diagnose why the backtest did not complete; regime-em-tune only once EM is confirmed as the
+> cause"*. The evidence string keeps saying EM failure is **suspected**, which is the right place
+> for a candidate cause, and a test now asserts it keeps hedging.
+>
+> **The anchor-neutrality claim is a GATE, not a reading.**
+> `vreg1_strings_reach_no_anchored_body` walks every `.md` under `evidence/` and fails if either
+> V-REG-1 string appears in any body — so if a future anchored run ever takes the failure arm, the
+> test goes red and names the moment the rename stops being free. It carries `#135`'s non-vacuity
+> floor (the walk must read more than 50 files; it reads **474**) and was probe-verified RED by
+> swapping one needle for a string the corpus does contain.
+>
+> The lesson is the pair, not either half. `#133`'s `sqrt(24*365)` deferral got **lucky** — its
+> carrier arrived the next day and the fix cost nothing. This one's carrier could never arrive.
+> Neither outcome was planned, and a deferral that names its carrier should also name **what to do
+> if the carrier never comes** — otherwise the two are indistinguishable while you wait.
+
 ---
 
 ### `#134` — the one line asserting the run was read-only names the only file the run wrote

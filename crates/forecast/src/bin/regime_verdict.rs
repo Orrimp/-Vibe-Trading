@@ -32,7 +32,7 @@
 //!
 //! ## V-REG priority tree (ADR-0049 § D4)
 //!
-//! V-REG-1 (Convergence failure)  →
+//! V-REG-1 (Backtest did not complete — proxy for EM non-convergence, bug-log #128c) →
 //! V-REG-2 (Trivial classifier)   →
 //! V-REG-3 (Flicker)              →
 //! V-REG-4 (Calibration drift)    →
@@ -194,7 +194,8 @@ impl RunStats {
 /// V-REG verdict per ADR-0049 § D4.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum VRegVerdict {
-    /// V-REG-1: EM convergence failure.
+    /// V-REG-1: the backtest did not complete. A **proxy** for EM convergence failure, not a
+    /// measurement of it — see `name()` and bug-log `#128c`.
     VReg1,
     /// V-REG-2: Trivial classifier (one regime > 95% of bars on the shared classifier).
     VReg2,
@@ -219,7 +220,12 @@ impl VRegVerdict {
 
     fn name(&self) -> &'static str {
         match self {
-            VRegVerdict::VReg1 => "Convergence failure",
+            // bug-log #128c: this gate tests `!stats.completed_ok` — the backtest did not
+            // complete. EM non-convergence is ONE possible cause and the one originally expected,
+            // but the check cannot distinguish it from a crash, an OOM, a refused feature set or a
+            // missing corpus. Naming it "Convergence failure" asserted a diagnosis the code never
+            // made; this names the observation and leaves the diagnosis to the evidence string.
+            VRegVerdict::VReg1 => "Backtest did not complete",
             VRegVerdict::VReg2 => "Trivial classifier",
             VRegVerdict::VReg3 => "Flicker",
             VRegVerdict::VReg4 => "Calibration drift",
@@ -229,7 +235,12 @@ impl VRegVerdict {
 
     fn follow_on(&self) -> &'static str {
         match self {
-            VRegVerdict::VReg1 => "regime-em-tune",
+            // Was bare `regime-em-tune`, which presumed EM was the cause — the same assumption
+            // the renamed label stopped making. Diagnose first; tuning EM for a backtest that
+            // crashed is work aimed at the wrong thing.
+            VRegVerdict::VReg1 => {
+                "diagnose why the backtest did not complete; regime-em-tune only once EM is confirmed as the cause"
+            }
             VRegVerdict::VReg2 => "prior-recalibrate",
             VRegVerdict::VReg3 => "stability-tune",
             VRegVerdict::VReg4 => "prior-recalibrate",
@@ -245,8 +256,8 @@ impl VRegVerdict {
 /// Priority tree per ADR-0049 § D4 (fall-through):
 /// V-REG-1 → V-REG-2 → V-REG-3 → V-REG-4 → V-REG-5
 pub(crate) fn classify_vreg(stats: &RunStats) -> (VRegVerdict, String) {
-    // V-REG-1: Convergence failure — EM didn't converge.
-    // Proxy: backtest did not complete successfully.
+    // V-REG-1: the backtest did not complete. EM non-convergence is the expected cause and is
+    // NOT established here — the evidence string says "suspected" for that reason (bug-log #128c).
     if !stats.completed_ok {
         let evidence = "Backtest did not complete successfully — EM convergence failure suspected."
             .to_string();
@@ -978,6 +989,104 @@ fn find_report_file(dir: &std::path::Path, scenario: &str) -> Result<PathBuf> {
 mod tests {
     use super::*;
 
+    /// `#128c` — V-REG-1 names the observation, not a diagnosis it never made.
+    ///
+    /// Pinned because the honest name is the whole point of the rename: `!stats.completed_ok`
+    /// cannot tell EM non-convergence from a crash, an OOM, a refused feature set or a missing
+    /// corpus, so a label asserting convergence failure claimed more than the check measures.
+    /// The evidence string still names EM as *suspected*, which is the right place for a guess.
+    #[test]
+    fn vreg1_names_what_it_tests_and_not_a_diagnosis() {
+        assert_eq!(VRegVerdict::VReg1.name(), "Backtest did not complete");
+        assert!(
+            !VRegVerdict::VReg1.name().to_lowercase().contains("converg"),
+            "V-REG-1's NAME asserts a convergence diagnosis again. The check is \
+             `!stats.completed_ok` and cannot establish the cause — keep the diagnosis in the \
+             evidence string, where it is marked `suspected` (bug-log #128c)."
+        );
+        assert!(
+            VRegVerdict::VReg1.follow_on().contains("diagnose"),
+            "V-REG-1's follow-on skipped back to tuning EM. For a backtest that did not complete, \
+             the cause is unknown and tuning EM is work aimed at a guess (bug-log #128c)."
+        );
+        // The evidence string is the one place the EM reading belongs, and it must keep hedging.
+        // `completed_ok: false` is the whole trigger, so this is V-REG-1's own path.
+        let (verdict, evidence) =
+            classify_vreg(&make_stats(false, 100, 900, 1000, 0.05, 105_000.0));
+        assert_eq!(
+            verdict,
+            VRegVerdict::VReg1,
+            "a run that did not complete must hit V-REG-1 regardless of its other statistics"
+        );
+        assert!(
+            evidence.contains("suspected"),
+            "the evidence dropped its hedge: {evidence:?}. EM is a candidate cause, not a finding."
+        );
+    }
+
+    /// `#128c` — the rename above is anchor-NEUTRAL, and this is what makes that a GATE rather
+    /// than a reading someone did once.
+    ///
+    /// `name()` and `follow_on()` both render into the **hashed** body, but only for the arm that
+    /// fires, and every anchored `regime-verdict-*` body took the V-REG-5 (Healthy) arm. So the
+    /// V-REG-1 strings are in none of them and renaming them moved no digest.
+    ///
+    /// Worth a test rather than a comment because of how the deferral that this closes was
+    /// written. It said the rename "changes the hashed body of `regime-verdict-bs1-realdata`" and
+    /// would therefore ride that row's § D6.b re-emission. Story 1-29 measured that row **GREEN**,
+    /// so no re-emission ever came — and the premise was false in the first place. A deferral
+    /// waiting for a carrier that cannot arrive is indistinguishable from a forgotten one.
+    ///
+    /// If a future anchored body ever DOES take the failure arm, this test goes red and says so,
+    /// which is the moment the rename would stop being free.
+    #[test]
+    fn vreg1_strings_reach_no_anchored_body() {
+        let evidence_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("locate workspace root")
+            .join("evidence");
+
+        let mut scanned = 0usize;
+        let mut offenders = Vec::new();
+        let mut stack = vec![evidence_root.clone()];
+        while let Some(dir) = stack.pop() {
+            let entries = std::fs::read_dir(&dir)
+                .unwrap_or_else(|e| panic!("reading {}: {e}", dir.display()));
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|x| x == "md") {
+                    scanned += 1;
+                    let body = std::fs::read_to_string(&path).unwrap_or_default();
+                    for needle in [VRegVerdict::VReg1.name(), VRegVerdict::VReg1.follow_on()] {
+                        if body.contains(needle) {
+                            offenders.push(format!("{} contains {needle:?}", path.display()));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Non-vacuity, bug-log #135: a walk that read nothing proves nothing, and that bug was
+        // exactly a path which resolved to no files while the test stayed green.
+        assert!(
+            scanned > 50,
+            "the evidence walk read only {scanned} .md file(s) under {} — too few for this corpus, \
+             so this test is UNMEASURED rather than passing (bug-log #135).",
+            evidence_root.display()
+        );
+        assert!(
+            offenders.is_empty(),
+            "V-REG-1's failure-path strings now appear in {} anchored body/bodies:\n{}\n\
+             That means renaming them is no longer anchor-neutral: the change becomes an \
+             ADR-0038 § D6.b re-emission of every row listed. Scanned {scanned} files.",
+            offenders.len(),
+            offenders.join("\n")
+        );
+    }
+
     fn make_stats(
         completed_ok: bool,
         suppressed_bars: u64,
@@ -1006,7 +1115,7 @@ mod tests {
 
     /// V-REG-1 fires when backtest did not complete.
     #[test]
-    fn vreg1_fires_on_convergence_failure() {
+    fn vreg1_fires_when_the_backtest_did_not_complete() {
         let stats = make_stats(false, 100, 8000, 10000, -0.05, 95_000.0);
         let (v, _) = classify_vreg(&stats);
         assert_eq!(v, VRegVerdict::VReg1, "V-REG-1 must fire on non-completion");
