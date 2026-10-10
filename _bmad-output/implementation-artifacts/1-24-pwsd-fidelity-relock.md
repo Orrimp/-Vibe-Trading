@@ -178,6 +178,64 @@ so that the robustness gate's null distribution is defensible against the exact 
         moved the numbers instead of *that* they moved.
       - Remaining in this task: flip the default to `PwsdVariant::Literature` and re-baseline the
         FP-C1.6 pin — **after** the 35-scenario L table, per the pre-registered ordering.
+- [x] **THE L TABLE — measured 2026-10-10, all 34 surfaces, seconds not hours.**
+      `param_robustness_sweep --report-block-length-only` reports the candidate table from the
+      **same** `path_gen` and corpus the real run uses, then exits before any backtest. It
+      self-checks: `shipped.mean_abs` must equal the generator's own `selected_block_length`, and
+      it **agreed on 34/34** — so the diagnostic is measuring the series the run resamples, which
+      is why it was factored out of `generate()` rather than copied.
+
+      **1. AC1's direction claim is CONFIRMED on real corpora: 32 longer, 0 shorter, 2 identical.**
+      The module doc's *"systematically SHORT"* reading holds — and the FP-C1.6 toy fixture, where
+      the two conventions agreed, was the exception rather than the rule. Good thing the fixture
+      was not generalised from.
+
+      | corpus shape | n | shipped L | literature L | clamp |
+      |---|---|---|---|---|
+      | 2023 full-year 1h | 14 | 204 | **281** | 281 ← **saturated** |
+      | 2024 full-year 1h | 12 | 200 | **282** | 282 ← **saturated** |
+      | 2023 4h | 2 | 80 | 115 | 141 |
+      | 2024 4h | 2 | 49 | 73 | 141 |
+      | 2023 daily | 2 | 9 | 14 | 58 |
+      | 2024 daily | 2 | 3 | 3 | 58 |
+
+      **2. The hazard flagged BEFORE measuring has materialised: 26 of 34 scenarios SATURATE the
+      clamp** under the literature convention. `ceil(min(3·√N, N/3))` is 281 for 2023 hourly and
+      282 for 2024, and the literature L lands exactly there. For those 26 the reported
+      `selected_block_length_L` stops being an estimate and becomes **the cap**.
+
+      **3. How much work the clamp does — measured, because a clamped value cannot show it.**
+      `politis_white_b_hat_unclamped` exposes the pre-clamp `b̂` through the same single pipeline
+      (one core, two views, so clamped and unclamped cannot disagree about the estimate). On
+      `v1-momentum-theta-surface-2023`: **raw b̂ shipped = 204.118** (clamp 281, *not* binding) and
+      **raw b̂ literature = 329.647** (capped to 281, binding by ~17%). So the clamp is a **mild
+      trim, not a fabrication** — but it is still the cap that gets reported.
+
+      **4. Consequence for AC2: the policy choice is UNOBSERVABLE on 26 of 34 scenarios.** Where
+      the clamp binds, `mean_abs`, `standardized_mean_abs`, `per_symbol_max` and
+      `per_symbol_median` all collapse to 281/282. AC2's decision is therefore only observable on
+      the **8** non-full-year surfaces, and there the policies differ materially — 2023 4h:
+      `mean_abs` 115 · `std_mean_abs` 89 · `per_sym_max` 124 · `per_sym_median` 67.
+
+      **5. Why this is ESCALATED rather than decided.** The pre-registered criterion said: adopt
+      the most literature-faithful candidate unless it moves AC4's direction guard adversely, then
+      escalate. The direction is *favourable* (longer L ⇒ wider null ⇒ same-or-fewer crowns), so
+      the criterion says proceed. But the criterion did not contemplate clamp saturation, and what
+      it implies is outside what a criterion about aggregation can settle:
+
+      - adopting Literature changes what the corpus's `selected_block_length_L` column **means**
+        for 26 rows — from "what the estimator selected" to "what the cap allowed". That is a
+        change in what the evidence claims about its own gate, which is stop-condition territory;
+      - the alternative — raising the clamp so the estimate is reported rather than trimmed —
+        means removing a **defensive bound** on a quantity that feeds the FROZEN gate's null. At
+        L=330 of 8759 returns a path holds ~26 independent blocks, and that is a different
+        bootstrap in character, not a tuning tweak. Not a change to make unilaterally.
+      - L 204 → 281 is a **38% longer** block on 26 anchored surfaces. Whether crowns move is
+        exactly what the 75–80 min regeneration measures, and AC4 makes an adverse move a
+        REGRESSION-class escalation. Spending that compute before the convention question is
+        settled would be spending it on bodies that may not ship.
+
+      Operator question put 2026-10-10. Everything above is the record it rests on.
 - [ ] *(superseded)* Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
 - [ ] Re-run + re-lock: regenerate, anchor under the new namespace, errata note (AC4).
 - [ ] Review: verify old rows byte-intact, new rows complete, verdict-delta table honest (AC5).

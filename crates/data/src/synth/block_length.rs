@@ -155,10 +155,35 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
 #[allow(clippy::float_arithmetic)]
 #[must_use]
 pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant) -> usize {
+    let (b_hat, upper) = pwsd_core(returns, variant);
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let b_clamped: usize = (b_hat.round() as usize).clamp(1, upper);
+    b_clamped
+}
+
+/// The estimator's **pre-clamp** `b̂` and the clamp bound that would be applied to it.
+///
+/// Story 1-24: the clamp `[1, ceil(min(3·√N, N/3))]` is a LOCAL defensive choice, not PW-2004's,
+/// and the 2026-10-10 measurement found the `Literature` convention **saturating** it on 26 of
+/// the 34 affected scenarios. A saturated `L` is not an estimate — it is a constant the clamp
+/// imposes, and every aggregation policy collapses onto it. Whether that is acceptable depends
+/// on how much work the clamp is doing, which a clamped value cannot show. This exposes the raw
+/// `b̂` so the question is answerable with a number instead of a guess.
+#[must_use]
+pub fn politis_white_b_hat_unclamped(returns: &[f64], variant: PwsdVariant) -> (f64, usize) {
+    pwsd_core(returns, variant)
+}
+
+/// The whole PWSD pipeline, returning `(raw b̂, clamp upper bound)`.
+///
+/// ONE implementation. Both public entry points are thin wrappers over this, so the clamped and
+/// unclamped views cannot disagree about the estimate — only about whether it is capped.
+#[allow(clippy::float_arithmetic)]
+fn pwsd_core(returns: &[f64], variant: PwsdVariant) -> (f64, usize) {
     let n = returns.len();
     if n < 4 {
         // Degenerate — not enough data for spectral estimation.
-        return 1;
+        return (1.0, 1);
     }
     // Non-finite guard: a NaN/±inf element poisons the mean, every
     // autocovariance, and the spectral estimates (NaN comparisons silently
@@ -171,7 +196,7 @@ pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant)
     // construction instead of by accident. The `usize` return signature is
     // frozen: the FROZEN robustness gate calls this fn and cannot change.
     if returns.iter().any(|r| !r.is_finite()) {
-        return 1;
+        return (1.0, 1);
     }
     let n_f = n as f64;
 
@@ -322,9 +347,7 @@ pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant)
     };
     let upper = upper.max(1);
 
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-    let b_clamped: usize = (b_hat.round() as usize).clamp(1, upper);
-    b_clamped
+    (b_hat, upper)
 }
 
 #[cfg(test)]

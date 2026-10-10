@@ -41,7 +41,10 @@ use rust_decimal_macros::dec;
 use time::OffsetDateTime;
 use trading_core::{Bar, Price, Quantity, Symbol, Timeframe, Timestamp, Venue};
 
-use crate::synth::block_length::politis_white_block_length;
+use crate::synth::block_length::{
+    PwsdVariant, politis_white_b_hat_unclamped, politis_white_block_length,
+    politis_white_block_length_variant,
+};
 use crate::synth::{BlockLengthPolicy, GeneratedPath, MonteCarloPathGen, SynthError};
 
 // ── Builder ───────────────────────────────────────────────────────────────────
@@ -214,6 +217,178 @@ impl BlockBootstrapPathGen {
         // invariant: source_bars is non-empty, all equal length.
         self.source_bars[0].1.len()
     }
+
+    /// Per-symbol log-return series: `returns_by_sym[s][k] = ln(close[k+1]/close[k])`.
+    ///
+    /// Extracted from `generate()` (story 1-24) so the block-length diagnostic measures the
+    /// **same** series `generate()` resamples. A second copy would answer a subtly different
+    /// question and nothing would notice — bug-log `#133`/`#136`.
+    ///
+    /// # Errors
+    ///
+    /// [`SynthError::SeriesTooShort`] if any symbol has fewer than `MIN_SOURCE_BARS` bars. This
+    /// is a defensive re-check: `new()` already enforces it, so it cannot fire through the
+    /// public API.
+    #[allow(clippy::float_arithmetic)]
+    pub fn build_returns_by_sym(&self) -> Result<Vec<Vec<f64>>, SynthError> {
+        let mut returns_by_sym: Vec<Vec<f64>> = Vec::with_capacity(self.source_bars.len());
+        for (sym, bars) in &self.source_bars {
+            if bars.len() < Self::MIN_SOURCE_BARS {
+                return Err(SynthError::SeriesTooShort {
+                    symbol: sym.to_string(),
+                    len: bars.len(),
+                });
+            }
+            let rets: Vec<f64> = bars
+                .windows(2)
+                .map(|w| {
+                    let c0 = decimal_to_f64(w[0].close.get());
+                    let c1 = decimal_to_f64(w[1].close.get());
+                    (c1 / c0).ln()
+                })
+                .collect();
+            returns_by_sym.push(rets);
+        }
+        Ok(returns_by_sym)
+    }
+
+    /// Every candidate auto-`L` for story 1-24's AC2 decision, on this generator's own source.
+    ///
+    /// Two conventions ([`PwsdVariant`]) × four aggregation policies. `Shipped` × `MeanAbs` is
+    /// what the 35 anchored bodies were produced with, so it doubles as a cross-check against
+    /// their recorded `selected_block_length_L`.
+    ///
+    /// Pure: no RNG, no I/O, no mutation. Costs one PWSD pass per cell — seconds, against the
+    /// 75–80 minutes a regeneration costs, which is why the re-lock plan measures before it
+    /// regenerates.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`Self::build_returns_by_sym`].
+    #[allow(clippy::float_arithmetic)]
+    pub fn block_length_candidates(&self) -> Result<BlockLengthCandidates, SynthError> {
+        let returns_by_sym = self.build_returns_by_sym()?;
+        let n_sym = returns_by_sym.len();
+        let n_returns = returns_by_sym[0].len();
+
+        // |r| per symbol — rule D-C1.4's transform, applied per symbol before any aggregation.
+        let abs_by_sym: Vec<Vec<f64>> = returns_by_sym
+            .iter()
+            .map(|rets| rets.iter().map(|r| r.abs()).collect())
+            .collect();
+
+        // (c) as-shipped: PWSD on the cross-symbol MEAN of |r|.
+        let mean_abs: Vec<f64> = (0..n_returns)
+            .map(|k| abs_by_sym.iter().map(|a| a[k]).sum::<f64>() / n_sym as f64)
+            .collect();
+
+        // (a) standardise each |r| series by its own sd BEFORE averaging. PWSD is
+        // scale-invariant per series, so this changes nothing for a per-symbol estimate — it
+        // matters only because the averaging happens first, which is exactly the defect.
+        let standardized_mean_abs: Vec<f64> = {
+            let sds: Vec<f64> = abs_by_sym
+                .iter()
+                .map(|a| {
+                    let mean = a.iter().sum::<f64>() / a.len() as f64;
+                    let var =
+                        a.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / a.len() as f64;
+                    let sd = var.sqrt();
+                    if sd > 0.0 { sd } else { 1.0 }
+                })
+                .collect();
+            (0..n_returns)
+                .map(|k| {
+                    abs_by_sym
+                        .iter()
+                        .zip(&sds)
+                        .map(|(a, sd)| a[k] / sd)
+                        .sum::<f64>()
+                        / n_sym as f64
+                })
+                .collect()
+        };
+
+        let (raw_shipped, clamp_upper) =
+            politis_white_b_hat_unclamped(&mean_abs, PwsdVariant::Shipped);
+        let (raw_lit, _) = politis_white_b_hat_unclamped(&mean_abs, PwsdVariant::Literature);
+        let mut out = BlockLengthCandidates {
+            n_symbols: n_sym,
+            n_returns,
+            clamp_upper,
+            raw_b_hat_shipped: raw_shipped,
+            raw_b_hat_literature: raw_lit,
+            ..BlockLengthCandidates::default()
+        };
+        for variant in [PwsdVariant::Shipped, PwsdVariant::Literature] {
+            let per_symbol: Vec<usize> = abs_by_sym
+                .iter()
+                .map(|a| politis_white_block_length_variant(a, variant).max(1))
+                .collect();
+            let mut sorted = per_symbol.clone();
+            sorted.sort_unstable();
+            let median = sorted[sorted.len() / 2];
+            let max = *sorted.last().unwrap_or(&1);
+
+            let cell = BlockLengthCell {
+                mean_abs: politis_white_block_length_variant(&mean_abs, variant).max(1),
+                standardized_mean_abs: politis_white_block_length_variant(
+                    &standardized_mean_abs,
+                    variant,
+                )
+                .max(1),
+                per_symbol_max: max,
+                per_symbol_median: median,
+                per_symbol: per_symbol.clone(),
+            };
+            match variant {
+                PwsdVariant::Shipped => out.shipped = cell,
+                PwsdVariant::Literature => out.literature = cell,
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Auto-`L` under one window/search convention, for each candidate aggregation policy.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockLengthCell {
+    /// As shipped: PWSD on the cross-symbol mean of `|r|` (rule D-C1.4).
+    pub mean_abs: usize,
+    /// Each `|r|` series divided by its own sd before averaging.
+    pub standardized_mean_abs: usize,
+    /// `max` over per-symbol estimates — conservative: a block shorter than any symbol's
+    /// dependence destroys it.
+    pub per_symbol_max: usize,
+    /// `median` over per-symbol estimates.
+    pub per_symbol_median: usize,
+    /// The per-symbol estimates themselves, in `source_bars` order, so the reduction can be
+    /// audited rather than taken on trust.
+    pub per_symbol: Vec<usize>,
+}
+
+/// Story 1-24 AC2's full candidate table for one scenario's own source series.
+// `Eq` is deliberately NOT derived: the struct carries raw `f64` b̂ values, and float equality is
+// not an equivalence relation. Diagnostic output only — nothing compares these for identity.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BlockLengthCandidates {
+    /// Universe size.
+    pub n_symbols: usize,
+    /// Log-returns per symbol (`T − 1`).
+    pub n_returns: usize,
+    /// The shipped window/search convention. `shipped.mean_abs` is what produced the anchors.
+    pub shipped: BlockLengthCell,
+    /// PW-2004's convention.
+    pub literature: BlockLengthCell,
+    /// The clamp's upper bound, `ceil(min(3·√N, N/3))` — a LOCAL defensive choice, not PW-2004's.
+    pub clamp_upper: usize,
+    /// Pre-clamp `b̂` on the shipped `mean_abs` series under each convention.
+    ///
+    /// Reported because a clamped `L` cannot show how much work the clamp is doing, and the
+    /// 2026-10-10 measurement found the literature convention saturating the bound on 26 of 34
+    /// scenarios — where every aggregation policy collapses onto the same imposed constant.
+    pub raw_b_hat_shipped: f64,
+    /// As `raw_b_hat_shipped`, under PW-2004's convention.
+    pub raw_b_hat_literature: f64,
 }
 
 // ── Trait impl ────────────────────────────────────────────────────────────────
@@ -287,26 +462,10 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
         let n_returns = t - 1; // number of log-returns available for resampling
 
         // Build log-return matrix: returns_by_sym[s][k] = ln(close[k+1]/close[k]).
-        let mut returns_by_sym: Vec<Vec<f64>> = Vec::with_capacity(self.source_bars.len());
-        for (sym, bars) in &self.source_bars {
-            // Defensive re-check only — `new()` already enforces the ≥ 3-bar
-            // minimum, so this cannot fire through the public API.
-            if bars.len() < Self::MIN_SOURCE_BARS {
-                return Err(SynthError::SeriesTooShort {
-                    symbol: sym.to_string(),
-                    len: bars.len(),
-                });
-            }
-            let rets: Vec<f64> = bars
-                .windows(2)
-                .map(|w| {
-                    let c0 = decimal_to_f64(w[0].close.get());
-                    let c1 = decimal_to_f64(w[1].close.get());
-                    (c1 / c0).ln()
-                })
-                .collect();
-            returns_by_sym.push(rets);
-        }
+        // Extracted (story 1-24) so `block_length_candidates` measures the SAME series this
+        // resamples — a second copy would answer a subtly different question and nothing would
+        // notice, which is what bug-log #133/#136 were filed for.
+        let returns_by_sym: Vec<Vec<f64>> = self.build_returns_by_sym()?;
 
         // ── Compute auto block length ─────────────────────────────────────────
         // For shared-index, we need ONE L for the whole universe.

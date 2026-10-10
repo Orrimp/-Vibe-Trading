@@ -145,6 +145,15 @@ impl GeneratorKind {
                   --direction reversion runs the MR family (§ D-MR.1) with --grid mr-tier1."
 )]
 struct Args {
+    /// Story 1-24: print the auto-block-length candidate table for this scenario and EXIT,
+    /// before running any backtest.
+    ///
+    /// The re-lock measures L before it regenerates — one PWSD pass per cell (seconds) against
+    /// 75–80 min for a full regeneration — so an adverse direction on AC4's guard escalates
+    /// before that compute is spent. Reports from the same `path_gen` and corpus the real run
+    /// uses; writes nothing.
+    #[arg(long, default_value_t = false)]
+    report_block_length_only: bool,
     /// Path generator to use.
     #[arg(long, value_enum, default_value = "block-bootstrap-real")]
     generator: GeneratorKind,
@@ -1759,6 +1768,82 @@ fn main() -> Result<()> {
     // given seed), so rayon's immutable borrow rule is satisfied.
     let (generator_label, bootstrap_mode, block_length_policy_str, selected_l, block_path_gen_opt) =
         prepare_generator_params(args.generator, &real_bars_by_symbol, ensemble_seed)?;
+
+    // ── Story 1-24: block-length diagnostic, then EXIT before any backtest ─────
+    //
+    // The re-lock plan measures L before it regenerates. A regeneration of the 35 affected
+    // surfaces costs 75–80 min measured; the candidate table costs one PWSD pass per cell,
+    // i.e. seconds — so an adverse direction on AC4's guard escalates BEFORE the compute is
+    // spent on bodies that must not ship.
+    //
+    // This reports from the SAME `path_gen` the real run uses, over the SAME corpus the real
+    // invocation loaded, so the numbers are the ones the scenario would actually select — not a
+    // re-implementation's opinion of them (#133/#136).
+    if args.report_block_length_only {
+        let Some(ref pg) = block_path_gen_opt else {
+            anyhow::bail!(
+                "--report-block-length-only needs the block-bootstrap-real generator; \
+                 `{generator_label}` has no auto block length to report."
+            );
+        };
+        let c = pg
+            .block_length_candidates()
+            .context("compute block-length candidates")?;
+        // Same name the real run reports under — built from the same fn and the same args, so
+        // the 35 rows join to `anchors.toml` and to the manifest without a mapping table.
+        let diag_scenario = build_scenario_name(
+            args.grid,
+            args.direction,
+            args.score_source,
+            args.selection_mode,
+            args.horizon,
+            args.year,
+            match args.generator {
+                GeneratorKind::BlockBootstrapReal => "block-bootstrap-real",
+                GeneratorKind::GbmSmoke => "gbm-smoke",
+            },
+            args.taker_fee_bps,
+        );
+        // TSV, one row per scenario, so 35 invocations concatenate into the AC4 table.
+        println!(
+            "BLOCKLEN\t{scenario}\tn_sym={n_sym}\tn_ret={n_ret}\t\
+             shipped.mean_abs={sa}\tshipped.std_mean_abs={ss}\tshipped.per_sym_max={sx}\tshipped.per_sym_median={sm}\t\
+             lit.mean_abs={la}\tlit.std_mean_abs={ls}\tlit.per_sym_max={lx}\tlit.per_sym_median={lm}\t\
+             clamp_upper={cu}\traw_b_hat.shipped={rbs:.3}\traw_b_hat.lit={rbl:.3}\t\
+             recorded_selected_l={rec:?}\tshipped.per_sym={sps:?}\tlit.per_sym={lps:?}",
+            scenario = diag_scenario,
+            n_sym = c.n_symbols,
+            n_ret = c.n_returns,
+            sa = c.shipped.mean_abs,
+            ss = c.shipped.standardized_mean_abs,
+            sx = c.shipped.per_symbol_max,
+            sm = c.shipped.per_symbol_median,
+            la = c.literature.mean_abs,
+            ls = c.literature.standardized_mean_abs,
+            lx = c.literature.per_symbol_max,
+            lm = c.literature.per_symbol_median,
+            cu = c.clamp_upper,
+            rbs = c.raw_b_hat_shipped,
+            rbl = c.raw_b_hat_literature,
+            rec = selected_l,
+            sps = c.shipped.per_symbol,
+            lps = c.literature.per_symbol,
+        );
+        // Self-check: `shipped.mean_abs` is by construction what the shipped run selects, so a
+        // mismatch against the generator's own `selected_block_length` means the diagnostic has
+        // drifted from the thing it claims to measure — the whole reason it was factored rather
+        // than copied.
+        if let Some(rec) = selected_l {
+            anyhow::ensure!(
+                rec == c.shipped.mean_abs,
+                "diagnostic DRIFT for {diag_scenario}: the generator selected L={rec} but \
+                 shipped.mean_abs={} — the candidate table is no longer measuring the series \
+                 the run resamples.",
+                c.shipped.mean_abs
+            );
+        }
+        return Ok(());
+    }
 
     // ── M-DEV-6/M-DEV-5: load sidecar data and build the sidecar path_gen ──────
     // For momentum/MR: `carry_path_gen_opt = None` → anchor-neutral by construction.
