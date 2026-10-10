@@ -260,7 +260,7 @@ so that the robustness gate's null distribution is defensible against the exact 
       Had the criterion not been written down before the numbers existed, `per_symbol_median`
       (shorter L ⇒ more crowns) would have been available to pick post-hoc. It was not picked
       because it was ruled out in advance, not because it looked wrong afterwards.
-- [ ] *(superseded)* Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
+- [x] *(superseded)* Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
 - [x] **AC1 + AC2 LANDED 2026-10-10.** `politis_white_block_length` now delegates to
       `PwsdVariant::Literature`, and the `Auto` arm estimates per symbol and reduces by `max`.
       The generator reports `selected_block_length = 281` for `v1-momentum-theta-surface-2023`,
@@ -438,6 +438,46 @@ so that the robustness gate's null distribution is defensible against the exact 
 - Do-not-build register: not implicated (this is gate-credibility maintenance, not alpha-chasing; the E-1 report-only boundary is untouched — L feeds the EXISTING gate's null, no crown-eligibility change).
 - The 1-13 pass pinned current behavior (`l_ar1 == 7` assert) precisely so this story's change is loud, not silent.
 - Direction-of-change guard (AC4) is the story's honesty core: the re-lock must PROVE the thesis-safe direction claim, not assume it.
+
+
+## Review Verdict — 2026-10-10
+
+> **This is a SELF-REVIEW.** The work under review is my own, written in this session, so this verdict is weaker than an independent pass and the reader is entitled to know which it is. What it can honestly do is re-run the gates, check each AC against the artifact rather than against my memory of it, and name the deviations and residual debts — which is what it does below. What it cannot do is notice a blind spot I had while writing the code.
+
+**VERDICT: PASS, with two ACs deviated-from-as-written and two residual debts named.**
+
+**Evidence re-run 2026-10-10, not quoted from the story:** `ANCHORS PASS (119 / 119) [declared 119 · floor 119]` · `spec-lint: PASS (0 violations)` · `check_determinism_anchors: OK — 35 of 35`.
+
+Story-specific: `cargo test -p data --lib` → 158 passed (FP-C1.6 green, the 20-input equivalence
+pin green, both ε-guard sites pinned). `advisor_block_length_direction` → 1 passed, 6 of 6
+non-degenerate cases longer, none shorter.
+
+### Findings
+
+1. **Two ACs were not met as written, and "all ACs discharged" should not be read as "as
+   specified".** AC4 prescribed a new live anchor namespace with the old rows frozen; the re-lock
+   landed **in place** instead, because `verify_anchors.sh` is namespace-aware by directory and a
+   live namespace would have implied the superseded bodies are still producible. AC1 prescribed
+   re-baselining the FP-C1.6 pin; the measurement showed the two conventions **agree** on that
+   fixture, so there was nothing to re-baseline. Both deviations are defended in the story at the
+   point of deviation. A reviewer's job is to say they happened, not to re-litigate them.
+2. **AC5 was discharged by substituting different evidence for the evidence asked for — and that
+   is now a pattern, not an incident.** AD-1 asked for an identity test; the change alters ranking
+   by moving a FROZEN gate's *input*, so a direction gate was measured instead. **1-25's AC6 did
+   the same thing**: its cited gate (`robustness_bootstrap_bites`) turned out not to measure the
+   claim, and the AC was discharged on independently verified evidence with the citation withdrawn.
+   Two stories, two ACs, both honestly discharged by replacement. The pattern is worth naming
+   because the next one will look equally reasonable, and three would be a habit.
+3. **Residual debt — 26 bodies report a cap as if it were an estimate.** `selected_block_length_L`
+   is 281/282 on the full-year hourly surfaces because the clamp binds (raw `b̂` 329.6). The
+   `anchors.toml` comment discloses it; a reader of the *body* sees a number that looks measured.
+   Operator-ruled to keep the clamp, so this is recorded debt rather than a defect.
+4. **Residual gap — the bakeoff path has no reproduction coverage at all** (`#139`). The estimator
+   reaches `compute_robustness_flag`, so the shipped advisor's flags changed on 2026-10-10 with no
+   regression evidence of any kind. The direction is measured safe; the *absence of coverage* is
+   the finding, and it is larger than this story.
+
+No finding blocks the story. Nothing routes to 1-25.
 
 ### References
 

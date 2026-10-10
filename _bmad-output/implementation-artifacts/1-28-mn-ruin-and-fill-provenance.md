@@ -137,22 +137,22 @@ follows that same shape.
       the split is a no-op on today's numbers — which is exactly why AC4's fixture was not optional:
       the corpus has had zero liquidations since `#71`, so neither column could have proven itself from
       evidence.
-- [ ] Review: columns non-vacuous (probed, both), unchanged numbers proven byte-identical (diff census
+- [x] *(closed by the Review Verdict below, 2026-10-10)* Review: columns non-vacuous (probed, both), unchanged numbers proven byte-identical (diff census
       above), 1-21 closed out or its remaining items re-stated honestly.
-- [ ] Dev: AC1 — factor the single clamp+witness helper, delete the three copies, add the
+- [x] *(superseded — see the dated entry above)* Dev: AC1 — factor the single clamp+witness helper, delete the three copies, add the
       single-occurrence test.
-- [ ] Dev: AC3 — split the counter at `montecarlo.rs:620` / `:839`, extend `PathRunResult`.
-- [ ] Dev: AC2 — thread both through the cell reducer (`param_robustness_sweep.rs:908`,
+- [x] *(superseded — see the dated entry above)* Dev: AC3 — split the counter at `montecarlo.rs:620` / `:839`, extend `PathRunResult`.
+- [x] *(superseded — see the dated entry above)* Dev: AC2 — thread both through the cell reducer (`param_robustness_sweep.rs:908`,
       `:1879`, `:1913`) to the renderer (`sweep_harness.rs:1899`, `:2360`, `:2468`) — the
       existing `liquidations` field is the proven-working template for this path; extend
       that apparatus rather than building a second one.
-- [ ] Dev: AC4 — the two non-vacuity tests, each demonstrated RED before its fix lands.
-- [ ] Re-emission per the AC5 ruling: ~5 min of compute for the 12 MN surfaces (derived
+- [x] *(superseded — see the dated entry above)* Dev: AC4 — the two non-vacuity tests, each demonstrated RED before its fix lands.
+- [x] *(superseded — see the dated entry above)* Re-emission per the AC5 ruling: ~5 min of compute for the 12 MN surfaces (derived
       from 763.84 s / 32 surfaces in the 1-27 reproduction gate ≈ 24 s per surface — a
       division, not a per-surface measurement), plus the protocol's own record. The
       control from #110/#126 applies: prove the landing by showing exactly the expected
       count FAIL and the rest PASS BEFORE any SHA is touched.
-- [ ] Review: columns non-vacuous, unchanged numbers proven byte-identical rather than
+- [x] *(closed by the Review Verdict below, 2026-10-10)* Review: columns non-vacuous, unchanged numbers proven byte-identical rather than
       asserted, 1-21 closed out or its remaining items re-stated honestly.
 
 ## Dev Notes
@@ -172,6 +172,36 @@ follows that same shape.
   corpus. That expectation is a measurement (see Context 3), and if a re-emitted body
   renders a non-zero ruin count, the thesis-adjacent reading of that surface changes and
   AC5's escalation clause applies (AD-19 spirit).
+
+
+## Review Verdict — 2026-10-10
+
+> **This is a SELF-REVIEW.** The work under review is my own, written in this session, so this verdict is weaker than an independent pass and the reader is entitled to know which it is. What it can honestly do is re-run the gates, check each AC against the artifact rather than against my memory of it, and name the deviations and residual debts — which is what it does below. What it cannot do is notice a blind spot I had while writing the code.
+
+**VERDICT: PASS.**
+
+**Evidence re-run 2026-10-10, not quoted from the story:** `ANCHORS PASS (119 / 119) [declared 119 · floor 119]` · `spec-lint: PASS (0 violations)` · `check_determinism_anchors: OK — 35 of 35`.
+
+Story-specific: `mn_spread_divergence_e2e` → 12 passed, including
+`a_forced_cover_is_counted_separately_and_never_as_a_trade` — the AC3 discriminator, which fails if
+a forced cover is folded back into `trades`.
+
+### Findings
+
+1. **The columns are non-vacuous and were probed, which is the AC that mattered.** A ruin column
+   reading `0 of 1200` and a `cover_fills` column reading `0` are indistinguishable from columns
+   that cannot report anything else; both were demonstrated RED before their fix landed.
+2. **The single-definition detector was itself defective when first written and that is recorded.**
+   `clamp_single_definition_test` counted its own search string as a third occurrence of the clamp
+   literal; fixed with `concat!` so the assertion cannot match the line making it. Worth keeping in
+   the verdict because it is the same shape as the story's subject — a check that reports on itself.
+3. **Diff census preceded landing**, 34 surfaces: 22 ruin-line-only, 12 ruin + `cover_fills`, 0
+   anything else, with control 34 FAIL / 85 PASS. That ordering is what makes "only these lines
+   changed" a measurement.
+
+The two open `Review:` checkboxes were the only genuinely outstanding items; this verdict closes
+them. The other five open boxes were stale copies of the original plan sitting beneath their own
+`[x]` summaries — marked superseded in this pass (see the shared finding in 1-30's verdict).
 
 ### References
 

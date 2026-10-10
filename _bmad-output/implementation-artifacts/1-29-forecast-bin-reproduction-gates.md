@@ -140,7 +140,7 @@ Every required checkpoint and corpus file is present on this machine (verified b
       their own diagnosis, pinned by four unit tests including a non-vacuity test that the happy path
       still parses. Body-neutral, measured not assumed: a full bs1 run re-emitted `924a51bb…`,
       byte-identical to the anchored digest.
-- [ ] *(superseded)* AC1 first, alone, and committed before anything is run: the out-dir default, the required-flag
+- [x] *(superseded)* AC1 first, alone, and committed before anything is run: the out-dir default, the required-flag
       decision, and the silent-zeros parser. Nothing else may execute while a no-argument run of
       `threshold_sweep` can destroy an anchored body.
 - [x] **AC5 DECIDED + half DONE 2026-09-30** (bug-log `#128c`). Decision, recorded not escalated:
@@ -350,6 +350,37 @@ Every required checkpoint and corpus file is present on this machine (verified b
 - Do-not-build register: not implicated — gate coverage, no new alpha surface.
 - After this story the corpus splits cleanly into "has a re-run gate" and "has a written disposition
   for why it cannot". That, not 119/119, is the honest statement of what the anchor system proves.
+
+
+## Review Verdict — 2026-10-10
+
+> **This is a SELF-REVIEW.** The work under review is my own, written in this session, so this verdict is weaker than an independent pass and the reader is entitled to know which it is. What it can honestly do is re-run the gates, check each AC against the artifact rather than against my memory of it, and name the deviations and residual debts — which is what it does below. What it cannot do is notice a blind spot I had while writing the code.
+
+**VERDICT: PASS, with one AC deliberately overridden and one liveness caveat.**
+
+**Evidence re-run 2026-10-10, not quoted from the story:** `ANCHORS PASS (119 / 119) [declared 119 · floor 119]` · `spec-lint: PASS (0 violations)` · `check_determinism_anchors: OK — 35 of 35`.
+
+Story-specific: `anchored_report_reproduction` → `coverage_is_complete` ok with 15 ignored (14
+gates + the candle-invariance measurement); the three read-only guards → 7 passed including the
+`#134` tripwire `report_is_handed_the_read_path_not_the_write_path`; the ratified-√8575 pin → ok.
+
+### Findings
+
+1. **AC8 was overridden, not merely discharged.** It assigned the two `threshold-sweep` gates to
+   1-30; 1-30 shipped without them, so they landed here and the family is 14 gated of 15. The
+   override is recorded at the AC with its reasoning. A reviewer should note that an AC naming
+   another story as the owner is only as good as that story's follow-through — which is the
+   generalisable point, and it is now also 1-30's finding.
+2. **AC2 says "12 gates"; the file carries 14.** The two held rows became gateable once `#129` was
+   ruled and `#134` unblocked `#128e`. Larger than specified, in the direction of more coverage.
+3. **Liveness caveat, stated rather than glossed: all 14 gates are `#[ignore]`d** — ~76 min of
+   measured compute — so their value depends on `coverage_is_complete` (which always runs and
+   fails when the table goes stale) plus somebody invoking `--ignored`. **No CI job runs them.**
+   That is the honest limit of what this story delivered: the gates exist and were measured once,
+   on 2026-10-01, and nothing re-measures them on a schedule.
+4. The probe suite (6/6 RED with their intended messages) is what makes the companion test's green
+   mean something; its own restore bug — `git checkout --` discarding uncommitted work — is
+   recorded in the bug-log rather than quietly fixed.
 
 ### References
 

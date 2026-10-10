@@ -123,9 +123,9 @@ a different cause, and folding it in destroys the evidence.
 - [x] Do not start the bisect while commits are unpushed. A bisect moves the working tree across four
       months of history; the five commits sitting unpushed on 2026-09-28 (the push is blocked on the
       operator's SSH agent) are the reason this is written down rather than already run.
-- [ ] AC1: bisect bs1 against `551cc2ab…`. bs2 as the confirmation, not as a second bisect.
-- [ ] AC2: attribute each mover.
-- [ ] AC5 before AC3 — the instrumentation is what makes AC3 answerable at all.
+- [x] *(superseded — see the dated entry above)* AC1: bisect bs1 against `551cc2ab…`. bs2 as the confirmation, not as a second bisect.
+- [x] *(superseded — see the dated entry above)* AC2: attribute each mover.
+- [x] *(superseded — see the dated entry above)* AC5 before AC3 — the instrumentation is what makes AC3 answerable at all.
 - [x] **AC4/AC5(part)/AC6/AC7 DONE 2026-09-29.** Escalated with the composition; operator ruled
       re-emit AND qualify in-body. The report now renders a qualifier COMPUTED FROM THE RUN (limits of
       the T-classifier, the delta's composition, and a negative-baseline sentence when it applies) —
@@ -163,6 +163,41 @@ a different cause, and folding it in destroys the evidence.
 - Direction honesty: `T-ALPHA-UNLOCKED` is a label this report computes, not a finding about the
   market. Nothing in this story may be summarised as an edge having been found, and the era-qualified
   thesis is untouched by a point estimate that never faced the robustness gate.
+
+
+## Review Verdict — 2026-10-10
+
+> **This is a SELF-REVIEW.** The work under review is my own, written in this session, so this verdict is weaker than an independent pass and the reader is entitled to know which it is. What it can honestly do is re-run the gates, check each AC against the artifact rather than against my memory of it, and name the deviations and residual debts — which is what it does below. What it cannot do is notice a blind spot I had while writing the code.
+
+**VERDICT: PASS, with one shipped-without finding already corrected elsewhere.**
+
+**Evidence re-run 2026-10-10, not quoted from the story:** `ANCHORS PASS (119 / 119) [declared 119 · floor 119]` · `spec-lint: PASS (0 violations)` · `check_determinism_anchors: OK — 35 of 35`.
+
+Story-specific: `gate_survivor_parser_tests` → 4 passed, including
+`a_partial_table_is_an_error_and_not_a_zero_filled_tail` and the non-vacuity companion
+`nine_rows_parse_to_nine_counts` — without that fourth test the three error-path tests would pass
+against a parser that can never succeed. `threshold_sweep_readonly` → 2 passed.
+
+### Findings
+
+1. **The story shipped without the two reproduction gates its sibling AC assigned to it.** 1-29
+   AC8 named this story as their owner on the reasoning that a gate belongs beside the repair. This
+   story re-emitted both bodies and closed without building them, so between 2026-09-29 and
+   2026-10-01 the two rows were re-emitted, correct, anchored — and **re-run-gated nowhere.**
+   Corrected: the gates now live in `anchored_report_reproduction.rs`, and the addendum at the foot
+   of this story records the handoff that did not happen rather than leaving it inferable from its
+   absence.
+2. **The two-step bisect is the story's durable contribution and it holds up.** Two different kinds
+   of cause, separated by instrument: `13955206` (a doc reorg) moved the **bytes** because the body
+   prints its predecessor's path — found on the body SHA over 766 commits in 10 steps; `11acd126`
+   (the `#67` fix) moved the **numbers** — found on v1 Sharpe in 11 steps. Bisecting the digest
+   alone would have stopped at the reorg and called it the cause.
+3. **Shared bookkeeping finding across all four of this session's stories.** `[x]` summary lines
+   were added *above* the original `[ ]` plan lines and the plan lines were never struck, so an
+   open-checkbox count overstated remaining work — 7 for 1-28 where the real answer was 2, 3 here
+   where it was 0. My own queue survey read those counts at face value before checking. Marked
+   superseded in this pass, consistently with how 1-24 and 1-29 already label theirs. Same shape as
+   bug-log `#138`: a status signal that cannot distinguish the states it is asked to carry.
 
 ### References
 
