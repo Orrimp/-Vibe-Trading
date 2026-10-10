@@ -1,0 +1,137 @@
+# Runbook — the hardening burn-down loop
+
+A `/loop` prompt for finishing the one thing this project still owes. **Draft for operator review
+(2026-10-10); not yet run.** Edit it in place and it is what the loop executes.
+
+## The goal, in the project's own words
+
+`README.md` § Status:
+
+> **FEATURE-COMPLETE (2026-07-09) · UNDER REVIEW HARDENING (since 2026-07-26)**
+> Its FEATURE LIST is complete; its PRODUCT STATE is mid-hardening.
+> The active-trading-thesis closure currently reads *direction-preserved pending re-lock*.
+
+So the goal is **not** to build anything. It is to retire that last clause: get the hardening
+burn-down to the point where the thesis closure is **re-locked** rather than pending, and the
+project's claims are provable rather than asserted. That is a terminal goal, and the loop should
+end when it is reached.
+
+## What stands between here and there
+
+Measured from `sprint-status.yaml` on 2026-10-10 — 151 done, 10 retired, and these open:
+
+| story | status | bearing on the goal |
+|---|---|---|
+| `1-24-pwsd-fidelity-relock` | **ready-for-dev** | **the critical path.** The last open CRITICAL re-lock; the thesis clause is pending on it |
+| `1-25-harness-fill-correctness-relock` | review | the other CRITICAL re-lock, dev-complete |
+| `1-28-mn-ruin-and-fill-provenance` | review | |
+| `1-29-forecast-bin-reproduction-gates` | review | |
+| `1-30-threshold-sweep-drift-bisect` | review | |
+| `3-15-advisor-options-impliedvol-probe` | review | |
+| `3-16-advisor-crossasset-macro-regime` | review | |
+| `2-1-lumen-design-adoption` | in-progress | UI; rendered-pixel proof required (AD-10) |
+| `6-9-cockpit-cross-platform` | in-progress | run-2 Linux/Windows shakeout, fix-forward |
+
+**Explicitly OUT of scope for this loop** — do not start these, and do not treat them as blocking:
+`2-63-lab-recipe-test-harness-v0-3-extension` (deferred by decision; infra, not required for
+feature-completeness), `3-18-advisor-reflection-decision-loop` (gated on an operator green-light),
+`3-19-advisor-eur-live-rate`, and anything in
+[`docs/dev-notes/do-not-build-register.md`](../dev-notes/do-not-build-register.md). No new features:
+the product is feature-complete and that was analyst-verified as an honest null.
+
+## The loop prompt
+
+Everything below the line is what gets pasted after `/loop`.
+
+---
+
+Goal: finish the hardening burn-down so `README.md` § Status can stop saying the
+active-trading-thesis closure is *"direction-preserved pending re-lock"*. Work the items below;
+decide and proceed; record every decision in the artifact it belongs to.
+
+**Order, and why.** `1-24-pwsd-fidelity-relock` first and alone — it is `ready-for-dev`, it is the
+last open CRITICAL re-lock, and the thesis clause is pending on it. Then the `review` queue, closest
+to shipped first. `2-1` and `6-9` last; they are `in-progress` and neither gates the thesis.
+
+**Each iteration:** read `sprint-status.yaml` and `docs/dev-notes/bug-log.md` for current state
+rather than assuming it, pick the one item that most advances the goal, do it to completion, run the
+gates, commit. Prefer finishing one item over touching three.
+
+**Non-negotiables that bite in a loop** (the full set is `CLAUDE.md`; these are the ones a long
+unattended run will walk into):
+
+- `bash scripts/verify_anchors.sh` → `ANCHORS PASS (119 / 119)` **before and after** any change
+  touching `evidence/` (AD-2). Anchored report bodies are byte-immutable; a body change is an
+  ADR-0038 § D6.b re-emission with its five steps, never a re-pin (`#77`).
+- The FROZEN robustness gate stays byte-untouched: `classify_verdict` / `verdict_bands` /
+  `compute_robustness_flag` / `rank_candidates` (AD-1).
+- Money math is `rust_decimal::Decimal`, never `f64` (AD-9). UI ships only on rendered-pixel proof
+  (AD-10). Any strategy overlay or sizing modifier needs its day-1 baseline-divergence e2e (AD-16).
+- Scope verification to the crates you touched. **Never** a workspace-wide `clippy --all-targets` —
+  one measured run took 52 minutes and grew `target/` to 155 GB.
+- `spec-lint` PASS, and the ADR-0082 triad moves together when a story flips to `done`: story
+  `Status:` ↔ `trace.toml` `state=` ↔ CHANGELOG line, in the same pass.
+- The ship-passive thesis is **ERA-QUALIFIED (2023+)**. Never state the universal form.
+- Work directly on `main`. Commit with `--no-gpg-sign`. Do not read or commit the three untracked
+  audit notes in `docs/dev-notes/` — they are not mine.
+
+**Running the gates costs real time, so plan for it.** The reproduction gates are ~76 min of
+measured compute; a single θ-surface pass is ~73 min. Run one load-sensitive measurement at a time,
+chain the next behind it rather than idling, and emit a copy-pasteable `watch -n N` block for
+anything over two minutes. **A gate run takes the corpus out of play**: `git commit` and any
+`evidence/` edit during one makes it report UNMEASURED, so settle the corpus, commit, *then* run.
+
+**House rules earned the hard way — apply them, do not re-derive them:**
+
+- A gate that cannot fail is indistinguishable from one that passes. Make the success path
+  observable; a skip is UNMEASURED, never a pass; and **probe every gate you add** by deliberate
+  breakage, verifying the probe actually changed something before trusting the red.
+- Derive a member list from the **criterion**, never from the symptoms you happened to see
+  (`#126`, and `#119`'s fix list which missed four siblings).
+- Never re-implement a measurement harness; extend the one that exists (`#133`, `#136`).
+- Put a correction where the reader lands, not where the register looks tidy (`#117`, `#138`).
+- A deferral must name **what happens if its carrier never arrives** (`#128c` waited for a
+  re-emission that could not come; `#133`'s got lucky the next day).
+- Restore a probed file from a snapshot, never `git checkout --` — it discards uncommitted work.
+
+**Stop and ask me — one short, concrete question, after writing the decision to disk — only for:**
+
+1. pushing or publishing outward (attempt a push once; if the 1Password SSH agent refuses, say so
+   with the exact error and the unlock step, and **do not retry in a loop**);
+2. deleting or overwriting evidence;
+3. shipping on a `REGRESSION` verdict (AD-19), or any verdict that **moves**;
+4. changing what the project publicly claims — the era-qualified thesis, the do-not-build register,
+   or `README.md` § Status.
+
+Everything else: decide, write down why, keep going. Never author an operator-ruling acceptance
+criterion outside those four.
+
+**A `review`-status story is dev-complete, so review it rather than re-implementing it.** Use
+`bmad-code-review`. Where the review is of my own work, **say so in the verdict** — it is weaker
+than an independent pass and the reader is entitled to know which it was.
+
+**The loop is done when** `1-24` is closed, every `review` story is either closed or has a written
+verdict, and `README.md` § Status has been updated to say what is true then — item 4 above, so bring
+me the proposed wording rather than landing it. Stop the loop at that point instead of finding more
+work; say what is left and that it is out of scope.
+
+---
+
+## Before you start it
+
+Two things the loop cannot do, worth knowing in advance:
+
+1. **It cannot clear the stop conditions.** A moved verdict parks it, exactly as bug-log `#137`
+   parked the 2026-10-01 run until you ruled on it. Expect to be asked a handful of times.
+2. **It cannot fix the 1Password SSH agent.** That blocked the push twice on 2026-10-01. The loop
+   will keep committing locally and the queue will grow behind a locked agent — `ssh-add -l` listing
+   keys while the push still fails means *locked*, not *down*.
+
+Invocation once the prompt above reads the way you want it:
+
+```bash
+/loop
+```
+
+with the body above as the prompt — no interval, so the pacing is chosen per iteration from what the
+run is actually waiting on (a finished measurement, a CI result, nothing).
