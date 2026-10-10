@@ -117,6 +117,27 @@ work; say what is left and that it is out of scope.
 
 ---
 
+## Operational note — long runs must be resumable (learned 2026-10-10)
+
+The 1-24 regeneration is 75–80 min, and a tracked background job was **killed at ~10.5 min**
+having completed 14 of 35 surfaces, taking its whole process group with it. Earlier runs in the
+same session completed at 49 and 39 min on an identical timeout, so the cap is not something to
+predict — and `setsid nohup … &` from inside a tool call does not escape it either; that was
+tried and the child did not survive.
+
+What works is making the kill cheap rather than preventing it:
+
+- **Skip work already done.** A surface whose `.md` exists is skipped on resume, so a kill costs
+  only the in-flight surface. Relaunching is then idempotent and needs no bookkeeping.
+- **Cheapest work first.** The two expensive θ-surfaces (~24 and ~37 min) cannot fit in any
+  single capped job, so they run LAST — a kill during the tail keeps all 33 cheap surfaces.
+- **Never write into `evidence/` from a long run.** Already the rule for AC4, and a partial run
+  makes it sharper: a job that dies halfway through landing bodies leaves the corpus in a state
+  nobody chose.
+
+A job that cannot be made resumable belongs in the operator's own terminal with a `watch` recipe,
+not in a capped background slot.
+
 ## Before you start it
 
 Two things the loop cannot do, worth knowing in advance:
