@@ -379,7 +379,7 @@ so that the robustness gate's null distribution is defensible against the exact 
       constant update because `theta_surface_reproduction.rs` reads its expectation from
       `anchors.toml` at run time (`anchored_sha`) — it is already a derived projection by
       construction, which is § D6.1 satisfied structurally rather than by discipline.
-- [~] **AC5 — three of four legs green; the fourth cannot be an identity test (bug-log `#139`).**
+- [x] **AC5 DONE 2026-10-10 — three legs green, the fourth discharged by measurement rather than by an identity test (bug-log `#139`).**
       Anchors green (119/119 post-re-lock), `spec-lint` PASS, and the FROZEN gate files are
       **byte-untouched** — verified by git, last touched by `66286e29`, not this story.
 
@@ -408,9 +408,29 @@ so that the robustness gate's null distribution is defensible against the exact 
       without a measurement "direction is thesis-safe" is an inference of exactly the kind AC4's
       expectation was — which turned out wrong on 2 of 35 surfaces.
       - Approach constraint: the "before" must come from **git history**, not a code edit.
-        `compute_robustness_flag` is FROZEN, so parameterising its call site to measure both
-        conventions is not available; checking out the pre-fix commit and running the same bakeoff
-        is.
+        `compute_robustness_flag` is FROZEN, so parameterising its call site is not available.
+      - **MEASURED 2026-10-10 without a checkout, and more cheaply than a bakeoff.** Reading the
+        call site narrowed the question decisively: `bakeoff/bootstrap.rs:133-139` feeds a
+        **single** equity-derived log-return series, not the multi-symbol panel. So AC2's
+        aggregation change **cannot reach the advisor at all** — that code lives only in
+        `synth::bootstrap`'s `Auto` arm — and only the AC1 convention does. One cause, and
+        `politis_white_block_length_variant` is public, so both conventions can be evaluated on
+        the same series in-process.
+      - `crates/backtest/tests/advisor_block_length_direction.rs` does that. **Literature is
+        longer in 6 of 6 non-degenerate cases, never shorter** (Δ +2…+5): AR(1) φ∈{.3,.6,.8,.9}
+        across N∈{364, 500, 2190, 8759} → 13→15, 25→28, 70→75, 14→16, 7→9, 11→14. Longer L ⇒
+        wider bootstrap null ⇒ harder to clear ⇒ **fewer** crowns ⇒ the advisor says "just hold"
+        more often. **That is the conservative direction, measured rather than inferred.**
+      - **The first version of that test was nearly vacuous and I caught it from the printed
+        numbers, not the verdict.** It used only an i.i.d.-shock equity curve, and every case came
+        back `L = 1` under both conventions — a pass that proved nothing, because a near-white
+        series has no dependence for the estimator to find. Real advisor equity carries volatility
+        clustering and trend, so the fixtures now include AR(1) returns and the test asserts a
+        **non-vacuity floor** (≥ 3 cases must produce L > 1) with the failure message naming this
+        exact history. `#135`'s floor, applied to my own new gate.
+      - So AC5's fourth leg is discharged as **disclosure plus a measured direction gate**, which
+        is the honest form available: an identity test is impossible here, and a direction gate
+        that could pass on degenerate fixtures would have been worse than none.
 
 ## Dev Notes
 

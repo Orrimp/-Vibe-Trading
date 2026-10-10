@@ -4226,3 +4226,25 @@ a FROZEN function (all four are byte-untouched, verified: last touched by `66286
 what they are fed. An identity test would either fail honestly or be written to compare the new
 behaviour against itself, which is this register's oldest shape. The obligation's honest discharge
 is disclosure plus a decision, not a green test.
+
+#### Discharged 2026-10-10 by measurement, and the first attempt was nearly vacuous
+
+Reading the call site narrowed it decisively: `bakeoff/bootstrap.rs:133-139` feeds a **single**
+equity-derived log-return series, not the multi-symbol panel. So story 1-24's AC2 aggregation
+change cannot reach the advisor at all — that code runs only in `synth::bootstrap`'s `Auto` arm —
+and only the window/search convention does. One cause, and
+`politis_white_block_length_variant` is public, so both conventions evaluate on the same series
+in-process: no checkout, no bakeoff run.
+
+`crates/backtest/tests/advisor_block_length_direction.rs`: **literature is longer in 6 of 6
+non-degenerate cases, never shorter** (Δ +2…+5). Longer L ⇒ wider null ⇒ fewer crowns ⇒ "just
+hold" more often, which is the conservative direction — now measured instead of inferred, which
+matters because AC4's inference of the same shape was wrong on 2 of 35 surfaces.
+
+**The first version of that test passed and proved nothing.** It used only an i.i.d.-shock equity
+curve, so every case returned `L = 1` under both conventions — a near-white series has no
+dependence for the estimator to find. It was caught by reading the printed numbers rather than the
+green verdict, which is the only reason it was caught at all. The fixtures now include AR(1)
+returns and the test carries a **non-vacuity floor** (≥ 3 cases must produce L > 1) whose failure
+message names this history, so the degenerate version cannot come back quietly. `#135`'s floor,
+applied to a gate I had just written.
