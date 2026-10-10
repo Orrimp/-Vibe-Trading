@@ -13,5 +13,20 @@
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 
-python3 "$root/scripts/spec_lint.py"
+# spec_lint.py declares `requires-python = ">=3.11"` in a PEP-723 header, and invoking it as
+# `python3 <script>` bypasses that declaration entirely — the gate then dies on
+# `ModuleNotFoundError: tomllib` if whatever `python3` resolves to is older. That is not
+# hypothetical: it happened on 2026-10-10, mid-session, when a Homebrew update (uv 0.13.0,
+# 2026-10-09) left `/usr/bin/python3` 3.9.6 as the only python3 on PATH. The gate had passed all
+# morning and then blocked every commit.
+#
+# `uv run` reads the PEP-723 header and selects (or fetches) a compatible interpreter, so the
+# script's own stated requirement is what decides — not whatever is first on PATH today. The
+# python3 fallback keeps the hook working on a clone without uv, where it will fail loudly for
+# the same reason rather than silently skipping.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/spec_lint.py"
+else
+  python3 "$root/scripts/spec_lint.py"
+fi
 bash "$root/scripts/verify_anchors.sh" | tail -1
