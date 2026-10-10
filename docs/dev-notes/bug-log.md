@@ -4240,6 +4240,40 @@ direction and consistent with 33 of 35 surfaces.
 > So the fix is not a new parallel gate but **outcome pins on the test that already exists**, which
 > is also the `#133`/`#136` lesson: extend the harness, never grow a second one.
 
+#### FIXED 2026-10-10 — T7.1 now pins what the gate concluded, and the pins were probed
+
+Baseline measured at the post-1-24 estimator (BTCUSDT H1-2024, `LAB_DEFAULT_SEED`,
+`Bootstrap { paths: 1000 }`): **crown `v0.buyhold`, outcome `BenchmarkWins`, reasons
+`[BenchmarkUndefeated]`, all 19 arms `Fragile`.**
+
+Four pins added, and what each is for:
+
+- **crown identity** — a different crown means an active arm now clears the bar, i.e. a change in
+  what the product *recommends*. The message says escalate under AD-19, not re-pin.
+- **recommendation outcome** — `BenchmarkWins` is the ship-passive conclusion in one field.
+- **zero non-Fragile active arms** — the pin story 1-24's direction claim actually rests on. Longer
+  L ⇒ wider null ⇒ harder to clear, so an arm becoming crown-eligible is the adverse direction
+  made visible rather than inferred.
+- **field size = 19, and every candidate carries a flag** — non-vacuity for the pin above, which
+  would otherwise pass just as happily over an empty or partly-unclassified field. `#81` is what a
+  silently vanished arm looks like.
+
+**Deliberately not pinned:** the Sharpe, return and drawdown figures. They are `f64`; pinning them
+would make this a platform-fragility detector rather than a conclusion gate.
+
+And the silent skip is gone: the corpus precondition `assert!`s with *"UNMEASURED, not passed"*
+instead of printing `T7.1 SKIP` and returning. The test is `#[ignore]`d, so nothing that used to
+be green goes red on a CI box without `data/`.
+
+**All four probed RED** by deliberate breakage — wrong crown, inverted eligibility filter, wrong
+arm count, missing corpus — each verifying the mutation changed the file before trusting the red,
+and restoring from a snapshot rather than `git checkout --` (which discarded uncommitted work
+earlier the same day).
+
+**What remains true:** T7.1 is still `#[ignore]`d and **no CI job runs `--ignored`**, so these pins
+fire when someone runs them, not on a schedule. That is a smaller gap than the one this entry
+opened with, and it is the honest remaining statement.
+
 **AC5's identity-test obligation cannot be discharged by an identity test.** AD-1 asks every
 analytics change to prove it does not alter ranking. This one *does* alter ranking — not by editing
 a FROZEN function (all four are byte-untouched, verified: last touched by `66286e29`) but by moving

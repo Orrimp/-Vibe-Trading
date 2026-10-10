@@ -458,13 +458,20 @@ mod bakeoff_full_wired_advisor {
         std::env::set_current_dir(&ws_root).expect("set_current_dir to workspace root");
 
         // Skip gracefully when corpus is absent (CI without data/ mounted).
-        if !ws_root
-            .join("data/binance/BTCUSDT/2024/01.parquet")
-            .is_file()
-        {
-            eprintln!("T7.1 SKIP: data/binance corpus absent");
-            return;
-        }
+        // Corpus precondition. This USED TO print "T7.1 SKIP" and `return` — a skip reported
+        // as a pass, which is bug-log #113 requirement 6 verbatim, in the one test that
+        // exercises the shipped advisor end to end. It now panics: UNMEASURED is not PASSED.
+        // On a CI box without `data/` mounted the test is `#[ignore]`d anyway, so nothing that
+        // used to be green goes red for the wrong reason.
+        assert!(
+            ws_root
+                .join("data/binance/BTCUSDT/2024/01.parquet")
+                .is_file(),
+            "UNMEASURED, not passed: T7.1 needs data/binance/BTCUSDT/2024/01.parquet and it is \
+             absent. This test is the only end-to-end coverage of the shipped advisor's crown \
+             and robustness flags; reporting its skip as a pass is what bug-log #113 req 6 was \
+             filed for."
+        );
 
         // Exact seed from `ui::leaderboard::runner::LAB_DEFAULT_SEED`
         // (= `ui::lab::defaults::LAB_DEFAULT_SEED = [0xC0, 0xFF, 0xEE, 0, …]`).
@@ -651,6 +658,87 @@ mod bakeoff_full_wired_advisor {
         assert!(
             any_flagged,
             "T7.1: Bootstrap robustness gate ran — at least one candidate must have a robustness flag"
+        );
+
+        // ── 6. OUTCOME PINS (story 1-24 AC5 / bug-log #139, added 2026-10-10) ─────────
+        //
+        // Everything above proves the gate RAN. None of it pins what the gate CONCLUDED:
+        // `crowned.is_some()` holds whatever the crown is, and `any_flagged` holds whatever
+        // the flags are. So story 1-24's change to the Politis-White block-length estimator —
+        // which reaches `compute_robustness_flag` through `bakeoff/bootstrap.rs:139` and
+        // therefore reaches `classify_verdict` and crown eligibility — could have moved every
+        // crown and every flag on this path and left this test green.
+        //
+        // These pins close that. Baseline measured 2026-10-10 at the post-1-24 estimator,
+        // BTCUSDT H1-2024, LAB_DEFAULT_SEED, Bootstrap{paths:1000}.
+        //
+        // DELIBERATELY NOT PINNED: the Sharpe/return/drawdown figures. Those are f64 and would
+        // make this a platform-fragility detector rather than a conclusion gate. What the
+        // product *claims* is the crown, the outcome and the eligibility — pin that.
+        let crowned_id = report
+            .crowned
+            .map(|i| report.candidates[i].strategy.0.clone())
+            .expect("crowned is Some, asserted above");
+        assert_eq!(
+            crowned_id, "v0.buyhold",
+            "T7.1: the advisor's CROWN moved to `{crowned_id}`. On the shipped config this has \
+             been `v0.buyhold` since the ship-passive conclusion; a different crown means an \
+             active arm now clears the bar, which is a change in what the product RECOMMENDS. \
+             Do not re-pin this to the new value: escalate it (AD-19), because the \
+             era-qualified thesis is the claim it would move."
+        );
+        assert_eq!(
+            format!("{:?}", report.rationale.outcome),
+            "BenchmarkWins",
+            "T7.1: the recommendation OUTCOME moved from BenchmarkWins to {:?}.",
+            report.rationale.outcome
+        );
+
+        // The eligibility pin — the one story 1-24's direction claim rests on. Longer L ⇒
+        // wider bootstrap null ⇒ harder to clear ⇒ arms stay Fragile. All 19 were Fragile at
+        // the baseline, so ANY non-Fragile active arm is the adverse direction made visible.
+        let non_fragile: Vec<&str> = report
+            .candidates
+            .iter()
+            .filter(|c| !c.is_benchmark)
+            .filter(|c| c.robustness.is_some_and(|f| f != RobustnessFlag::Fragile))
+            .map(|c| c.strategy.0.as_str())
+            .collect();
+        assert!(
+            non_fragile.is_empty(),
+            "T7.1: {} active arm(s) are now crown-ELIGIBLE (non-Fragile): {non_fragile:?}. At \
+             the 2026-10-10 baseline every active arm was Fragile. A longer block length should \
+             WIDEN the bootstrap null and make clearing the bar harder (story 1-24 AC5, measured \
+             over 6 of 6 non-degenerate cases) — so arms becoming eligible is the ADVERSE \
+             direction and is REGRESSION-class. Escalate; do not re-pin.",
+            non_fragile.len()
+        );
+
+        // Non-vacuity for the pin above: it would also pass on an empty or all-None field, so
+        // assert the field is the shipped one and the gate actually classified it. The count is
+        // the shipped 19 (4 rule engines + 8 vote ensembles + buyhold + the arms that run in
+        // this build); a silently vanished arm must fail rather than shrink the set the pin
+        // ranges over (bug-log #113 req 6).
+        let flagged = report
+            .candidates
+            .iter()
+            .filter(|c| c.robustness.is_some())
+            .count();
+        assert_eq!(
+            flagged,
+            report.candidates.len(),
+            "T7.1: only {flagged} of {} candidates carry a robustness flag — the non-Fragile pin \
+             above ranges over a partially-unclassified field and would weaken silently.",
+            report.candidates.len()
+        );
+        assert_eq!(
+            report.candidates.len(),
+            19,
+            "T7.1: the field is {} arms, not the 19 measured at the 2026-10-10 baseline. An arm \
+             appearing or vanishing changes what the crown was selected FROM, so the pins above \
+             are no longer comparing like with like (bug-log #81 is what a vanished arm looks \
+             like).",
+            report.candidates.len()
         );
     }
 }
