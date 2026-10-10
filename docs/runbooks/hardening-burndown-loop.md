@@ -200,6 +200,54 @@ than finding more work"*, and a goal that is out of reach is a better reason to 
 that is met. What the loop can hand over — an honest README wording that reflects the true state
 rather than retiring the clause — is below.
 
+## CORRECTION 2026-10-11 — the 1-25 framing in this runbook was stale by two days, and the goal WAS reachable
+
+Everything above about 1-25 being unreachable rests on
+`docs/dev-notes/1-25-ac-closure-audit-2026-09-27.md`. That audit was accurate when written and
+was **superseded on 2026-09-29**, two days later. I quoted it as current state, told the
+operator 1-25 was *"a programme, not an iteration"* and *"comparable to or larger than
+everything this loop accomplished on 1-24"*, and landed a README sentence asserting its
+findings. All of that was wrong. What the board actually records at
+`sprint-status.yaml:109`:
+
+- **AC2** — the audit's single genuinely-unmet hard criterion — was met by `3c104317`
+  (`run_cell` got per-symbol routing + the Bug-B pre-flight); story 1-30 then MEASURED that the
+  routing covers 80.9% of that lane's fills (148,719 of 183,751 over 47 cells) and the solvency
+  pre-flight fired 6 times.
+- **AC3.1** discharged via bug-log `#133` (both crates' docs said `sqrt(24*365)` while shipping
+  `sqrt(8574.9998)`, ~2.1% apart — corrected, constant de-duplicated, the tautological test
+  replaced by a pinned assertion probed RED and back).
+- **AC3.2** fixed (MC labels namespaced `MC-P50-*`, one body re-emitted under D6.b with
+  1 FAIL / 118 PASS proven before the SHA moved). **AC3.4** fixed (three finiteness checks were
+  `debug_assert!`, compiled OUT of exactly the `--release` builds that produce every anchored
+  surface — six real assertions now). **AC3.3 / 3.5 / 3.6 / AC6** ratified in writing with
+  consequences named.
+- **AC4 / AC5** were delivered by story 1-26, `done` 2026-09-27: 34 surfaces regenerated in
+  74.4 min — against a budget that said 10.3 h FLOOR and 15-20 h realistic, wrong by an order of
+  magnitude because 2 surfaces are 83% of the run.
+
+**And the seven CRITICALs I cited as 1-25's inventory were 1-26's regeneration inventory, which
+has been regenerated.** `#75` (the arm that never ran), `#76` (the inverted basis axis), `#72`
+and `#73` (funding mis-accrued ~10x) all had their code halves fixed and their surfaces
+re-derived. The errata's own bottom line: **312 verdicts re-derived against the frozen bands, 0
+mismatches; 136 cells FRAGILE→FRAGILE, 20 FRAGILE→MARGINAL, nothing became ROBUST; and across
+all 156 cells in both corpora exactly ZERO beat their own buy-and-hold.** Ship-passive survived
+the clean arithmetic. "Uniformly fragile" did not — 6 of 34 surfaces moved off
+`FAMILY-UNIFORM-FRAGILE`, all on the 2023 half.
+
+**So the loop's goal was reachable and I stopped short of it on stale evidence.** 1-25 needs a
+review verdict, which is the same bounded task as the four written on 2026-10-10 for 1-24, 1-28,
+1-29 and 1-30 — not a programme. The README sentence asserting the audit's findings was
+committed in `6d477e7b` and corrected immediately after.
+
+**The mechanism, because it will recur.** The audit is a dated document and the board is a live
+one. I read the dated document, found it detailed and well-evidenced, and never checked the
+board line that supersedes it — the same error in the opposite direction from the house one. The
+standing memory says *verify actual code before trusting spec status* because status LAGS code;
+this is status LEADING a dev-note, and the fix is the same: **the newest artifact wins, and
+`sprint-status.yaml` is the newest.** A 426-line audit is more persuasive than a one-line board
+entry and that is exactly why it is more dangerous.
+
 ## Operational note — long runs must be resumable (learned 2026-10-10)
 
 The 1-24 regeneration is 75–80 min, and a tracked background job was **killed at ~10.5 min**

@@ -17,19 +17,25 @@ mispricing that makes several anchored RESEARCH surfaces execution-artifact nois
 (#67) — and opened two CRITICAL re-lock stories (1-24, 1-25) plus three scoped
 builds. **What that does NOT touch:** the advisor's bakeoff gate resamples returns
 and never re-executes fills (verified three times adversarially), so crowns,
-verdicts and the era-qualified ship-passive conclusion stand independently. The
-active-trading-thesis closure reads **direction-preserved, pending the 1-25 harness-fill
-re-lock.** Of the two CRITICAL re-lock stories the burn-down opened, **1-24 (PWSD fidelity)
-closed 2026-10-10** — its 35 anchored surfaces were regenerated under a corrected
-Politis-White estimator, and the re-derivation moved two of them adversely (one family verdict
-off UNIFORM-FRAGILE), disclosed in
-[`docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md`](docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md).
-**1-25 remains open and is the binding one:** its own closure audit finds one acceptance
-criterion unmet in the source at HEAD and five of seven riders unmet, over an inventory of
-seven CRITICAL defects spanning anchors #86-#119 — including an arm that never ran (`#75`), an
-arm ranked inverted against its own spec (`#76`), and funding mis-accrued by ~10x on the carry
-lanes (`#72`/`#73`). Until those surfaces are re-derived from clean arithmetic, the direction of
-the closure is preserved and its magnitudes are not.
+verdicts and the era-qualified ship-passive conclusion stand independently. **The
+re-lock has RUN.** Both CRITICAL re-lock stories the burn-down opened are closed — 1-26
+(harness-fill regeneration, 34 surfaces) on 2026-09-27 and 1-24 (PWSD fidelity, 35 surfaces) on
+2026-10-10 — so the thesis now rests on re-derived arithmetic rather than on the contaminated
+surfaces the defects produced. What the re-derivation found, from
+[`evidence/v2/harness-relock/ERRATA.md`](evidence/v2/harness-relock/ERRATA.md):
+**312 verdicts re-derived against the frozen bands, 0 mismatches**; the movement is
+one-directional (136 cells FRAGILE→FRAGILE, 20 FRAGILE→MARGINAL, **nothing became ROBUST**);
+and the control that matters did not move at all — **across all 156 cells, in both corpora,
+exactly ZERO beat their own buy-and-hold.** So *ship-passive survived the clean arithmetic* and
+*"uniformly fragile" did not*: 6 of 34 surfaces moved off `FAMILY-UNIFORM-FRAGILE`, all on the
+2023 half, and `MARGINAL` is not an edge claim — every flipped cell is flagged
+`→ C5 DEFLATION REQUIRED` and none has been through that pass. The 1-24 re-derivation moved two
+of its surfaces adversely on the same pattern
+([`docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md`](docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md)).
+**What is still outstanding is a review verdict, not a re-run:** story 1-25 sits at `review`
+with every acceptance criterion discharged as of 2026-09-29, and until that verdict is written
+the closure is stated as direction-preserved with its magnitudes re-derived but not yet
+independently reviewed.
 Current honest state: `_bmad-output/implementation-artifacts/sprint-status.yaml`,
 `docs/dev-notes/bug-log.md`, `docs/dev-notes/product-review-2026-08-04.md`.
 
