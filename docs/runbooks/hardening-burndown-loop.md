@@ -138,8 +138,25 @@ pending reviews; it is `review` meaning two incompatible things — *"awaiting a
 Same shape as bug-log `#138`: a status line that cannot distinguish the states it is asked to
 carry. The lint cannot catch it either, since both are legitimately `review`.
 
-Both FAILs are the same root finding, and it is not a small one: **the product ranks arms that
-never ran, under labels saying they did.** `3-15`'s DVOL arm holds cash through warm-up and in a
+**CORRECTION 2026-10-11.** I characterised both FAILs as *"the product ranks arms that never ran,
+under labels saying they did"* — here and twice to the operator — and then checked. It is half
+right, and the half that is wrong matters:
+
+- **`v0.macro_riskon` is ABSENT** from the ranked field, verified in T7.1's 19-arm leaderboard.
+  That is `#81`'s honesty half working exactly as designed: the arm is dropped rather than shown
+  as a cash stub. **The product is honest here**; what remains open is the story, not the behaviour.
+- **`v0.dvol_regime` ran and traded 17 times** in that same leaderboard. Not inert on a machine
+  that has the corpus.
+- The real exposure is **conditional**: `/data/*` is gitignored (`.gitignore:23`), so on a fresh
+  clone or CI box the DVOL parquets are absent, `unwrap_or_default()` yields an empty series, and
+  the arm stays in the ranked field as a 100%-cash stub under an honest-sounding label. That is
+  `#78`, and the fix has an in-repo precedent: do for DVOL what `#81` already did for macro.
+
+Keeping the original framing below, superseded, because overstating a finding is the same class of
+error as the findings themselves.
+
+**Superseded framing:** the two FAILs are the same root finding, and it is not a small one: **the
+product ranks arms that never ran, under labels saying they did.** `3-15`'s DVOL arm holds cash through warm-up and in a
 calm window never trades (`#78`); `3-16`'s macro arm is **never compiled** — `macro_regime.rs` is
 gated on `backtest/yahoo` and nothing in the workspace enables it, so it has run 100% cash in every
 build since it shipped (`#81`), while the leaderboard renders *"Macro regime (hold when SPX up, DXY
