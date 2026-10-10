@@ -379,7 +379,38 @@ so that the robustness gate's null distribution is defensible against the exact 
       constant update because `theta_surface_reproduction.rs` reads its expectation from
       `anchors.toml` at run time (`anchored_sha`) — it is already a derived projection by
       construction, which is § D6.1 satisfied structurally rather than by discipline.
-- [ ] Review: verify old rows byte-intact, new rows complete, verdict-delta table honest (AC5).
+- [~] **AC5 — three of four legs green; the fourth cannot be an identity test (bug-log `#139`).**
+      Anchors green (119/119 post-re-lock), `spec-lint` PASS, and the FROZEN gate files are
+      **byte-untouched** — verified by git, last touched by `66286e29`, not this story.
+
+      **The identity-test obligation cannot be discharged by an identity test, and finding that
+      out cost me a near-miss worth recording.** Deriving the affected inventory I piped
+      `scripts/callers.sh politis_white_block_length` to `tail -12`. It reports 16 sites in 19
+      lines, and the line `tail` cut was
+      `crates/backtest/src/bakeoff/bootstrap.rs:139  [path-qualified call]` — grep-only,
+      invisible to CodeGraph because it is written through a crate name, which is *exactly* the
+      case `CLAUDE.md` says the union exists for. The tool was right and printed *"read the ✗
+      lines before any 'no callers' claim"*; I read only the end of output meant to be read whole.
+
+      That site is the compute path for **`compute_robustness_flag`**, one of AD-1's four FROZEN
+      functions. So L reaches `classify_verdict` and crown eligibility in `rank_candidates`:
+      the change alters ranking **not by editing a frozen function but by moving what it is fed.**
+      An identity test would therefore either fail honestly or be written to compare the new
+      behaviour against itself — this register's oldest shape.
+
+      **Corpus scope was right anyway, measured not assumed:** 0 of 119 anchored rows resolve into
+      an `advisor-*` or bakeoff directory, so no anchored body comes from that path and the 35-row
+      re-lock stands.
+
+      **OPERATOR RULED 2026-10-10: capture the advisor baseline before closing.** Run a bakeoff
+      with `RobustnessMode::Bootstrap` before and after the fix and measure the crown deltas. The
+      reasoning that earned it: the bakeoff path has **no reproduction coverage at all** today, and
+      without a measurement "direction is thesis-safe" is an inference of exactly the kind AC4's
+      expectation was — which turned out wrong on 2 of 35 surfaces.
+      - Approach constraint: the "before" must come from **git history**, not a code edit.
+        `compute_robustness_flag` is FROZEN, so parameterising its call site to measure both
+        conventions is not available; checking out the pre-fix commit and running the same bakeoff
+        is.
 
 ## Dev Notes
 
