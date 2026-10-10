@@ -76,6 +76,46 @@
 //!   spectral estimation*. Journal of Time Series Analysis, 16, 67–103.
 //!   (Source of the flat-top lag window `λ`.)
 
+/// Which of the two documented window/search conventions to evaluate.
+///
+/// Story 1-24 exists to move the shipped estimator onto `Literature`. This enum is how the
+/// move gets **measured before it is made**: the public
+/// [`politis_white_block_length`] keeps returning `Shipped` byte-identically — so the
+/// FP-C1.6 pin and all 35 anchored bodies stay valid — while
+/// [`politis_white_block_length_variant`] can be asked for `Literature` on the same inputs.
+///
+/// There is ONE implementation. The two conventions differ in two scalars, and
+/// parameterising them is the alternative to the copy that bug-log `#133`/`#136` were filed
+/// for: a second implementation would answer a subtly different question and nothing would
+/// notice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PwsdVariant {
+    /// What the code has always shipped: flat-top scale `s = k/m̂`, and the in-band search
+    /// checks `ρ̂(m), …, ρ̂(m+K_N−1)`. Deviations #1 and #2 in the module doc.
+    Shipped,
+    /// PW-2004 and both reference implementations: flat-top scale `s = k/(2m̂)`, and the
+    /// in-band search checks `ρ̂(m+1), …, ρ̂(m+K_N)`.
+    Literature,
+}
+
+impl PwsdVariant {
+    /// Denominator of the flat-top argument: `λ(k / (factor · m̂))`.
+    const fn window_denominator_factor(self) -> f64 {
+        match self {
+            Self::Shipped => 1.0,
+            Self::Literature => 2.0,
+        }
+    }
+
+    /// Lag offset the `m̂` in-band search starts at, relative to `m`.
+    const fn search_offset(self) -> usize {
+        match self {
+            Self::Shipped => 0,
+            Self::Literature => 1,
+        }
+    }
+}
+
 // f64 arithmetic is unavoidable for the spectral-density computation — all
 // quantities here are dimensionless return statistics, not money (ADR-0003).
 #[allow(clippy::float_arithmetic)]
@@ -99,6 +139,22 @@
 /// This is a **pure function**: no RNG, no I/O, no global state.
 #[must_use]
 pub fn politis_white_block_length(returns: &[f64]) -> usize {
+    politis_white_block_length_variant(returns, PwsdVariant::Shipped)
+}
+
+/// As [`politis_white_block_length`], but with the window/search convention named explicitly.
+///
+/// `PwsdVariant::Shipped` reproduces the shipped estimator exactly — pinned by
+/// `shipped_variant_is_byte_identical_to_the_public_fn`, so this parameterisation cannot
+/// drift from the function it factors.
+///
+/// # Panics
+///
+/// Never. Returns the degenerate `L = 1` on inputs too short or non-finite, as the public
+/// wrapper documents.
+#[allow(clippy::float_arithmetic)]
+#[must_use]
+pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant) -> usize {
     let n = returns.len();
     if n < 4 {
         // Degenerate — not enough data for spectral estimation.
@@ -159,9 +215,11 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
     } else {
         let mut found = m_cap; // default if no m satisfies the criterion.
         'outer: for m in 1..=m_cap {
-            // Check K_N consecutive autocorrelations starting at lag m.
+            // Check K_N consecutive autocorrelations starting at lag m (Shipped) or m+1
+            // (Literature) — module-doc deviation #2.
             let mut all_in_band = true;
-            for k in m..(m + k_n) {
+            let start = m + variant.search_offset();
+            for k in start..(start + k_n) {
                 let lag = k;
                 if lag > max_lag_clamped {
                     // Beyond what we computed — treat as in-band (small lag).
@@ -214,7 +272,7 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
     #[allow(clippy::needless_range_loop)]
     for k in 1..=lag_limit {
         let k_f = k as f64;
-        let lam = flat_top(k_f / m_hat_f);
+        let lam = flat_top(k_f / (variant.window_denominator_factor() * m_hat_f));
         // Both positive and negative k (symmetry: ×2 for k≠0).
         g_hat += 2.0 * lam * gamma[k];
         g_slope += 2.0 * lam * k_f * gamma[k];
@@ -249,6 +307,101 @@ pub fn politis_white_block_length(returns: &[f64]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Story 1-24 — the parameterisation must not drift from the function it factors.
+    ///
+    /// `politis_white_block_length` is called by the FROZEN robustness gate, so its result is
+    /// load-bearing for 35 anchored bodies. This asserts the refactor is behaviour-preserving
+    /// across a spread of inputs, not just on the one AR(1) fixture FP-C1.6 happens to use —
+    /// otherwise "shipped behaviour unchanged" would rest on a single sample.
+    #[test]
+    fn shipped_variant_is_byte_identical_to_the_public_fn() {
+        use rand::Rng;
+        use rand::SeedableRng;
+        use rand_chacha::ChaCha20Rng;
+
+        let mut rng = ChaCha20Rng::seed_from_u64(0x1_2400);
+        let mut cases: Vec<Vec<f64>> = vec![
+            vec![],
+            vec![0.1],
+            vec![0.1, -0.1, 0.1],
+            vec![0.0; 64],                                      // zero-variance
+            (0..128).map(|i| f64::from(i % 3) - 1.0).collect(), // deterministic cycle
+        ];
+        for phi in [0.0_f64, 0.3, 0.6, 0.9, -0.5] {
+            for n in [32_usize, 251, 1024] {
+                let mut s = vec![0.0_f64; n];
+                s[0] = rng.random::<f64>() * 2.0 - 1.0;
+                for i in 1..n {
+                    let eps = rng.random::<f64>() * 2.0 - 1.0;
+                    s[i] = phi * s[i - 1] + (1.0 - phi * phi).sqrt() * eps;
+                }
+                cases.push(s);
+            }
+        }
+
+        for (i, case) in cases.iter().enumerate() {
+            assert_eq!(
+                politis_white_block_length(case),
+                politis_white_block_length_variant(case, PwsdVariant::Shipped),
+                "case {i} (len {}): the parameterised core disagrees with the public fn. The \
+                 refactor was supposed to be behaviour-preserving; 35 anchored bodies and the \
+                 FP-C1.6 pin depend on that.",
+                case.len()
+            );
+        }
+    }
+
+    /// Story 1-24 AC1 — the first MEASUREMENT of the fix's direction, on the FP-C1.6 fixtures.
+    ///
+    /// The module doc claims the shipped window truncates at `|k| ≤ m̂` (half the literature's
+    /// width) so auto-`L` comes out *systematically short*, and that a longer `L` is the
+    /// thesis-safe direction. That claim is a reading of the algebra; this records what the two
+    /// conventions actually return. It asserts only that the two are COMPARABLE and prints both,
+    /// because asserting a direction here would pre-judge the thing the re-lock must measure
+    /// across all 35 scenarios — on real corpora, not on an AR(1) toy.
+    #[test]
+    fn literature_variant_direction_on_the_fp_c1_6_fixtures() {
+        use rand::Rng;
+        use rand::SeedableRng;
+        use rand_chacha::ChaCha20Rng;
+
+        let n = 500_usize;
+        let mut rng = ChaCha20Rng::seed_from_u64(0xDEAD_BEEF);
+        let phi = 0.6_f64;
+        let mut ar1 = vec![0.0_f64; n];
+        ar1[0] = rng.random::<f64>() * 2.0 - 1.0;
+        for i in 1..n {
+            let eps = rng.random::<f64>() * 2.0 - 1.0;
+            ar1[i] = phi * ar1[i - 1] + (1.0 - phi * phi).sqrt() * eps;
+        }
+        let iid: Vec<f64> = (0..n).map(|_| rng.random::<f64>() * 2.0 - 1.0).collect();
+
+        let ar1_shipped = politis_white_block_length_variant(&ar1, PwsdVariant::Shipped);
+        let ar1_lit = politis_white_block_length_variant(&ar1, PwsdVariant::Literature);
+        let iid_shipped = politis_white_block_length_variant(&iid, PwsdVariant::Shipped);
+        let iid_lit = politis_white_block_length_variant(&iid, PwsdVariant::Literature);
+
+        eprintln!(
+            "[1-24] FP-C1.6 fixtures (N=500): AR(1) φ=0.6  shipped L={ar1_shipped}  \
+             literature L={ar1_lit}   |   i.i.d.  shipped L={iid_shipped}  literature L={iid_lit}"
+        );
+
+        // The FP-C1.6 property must survive the convention change: serial dependence still
+        // selects a longer block than i.i.d. noise. That is the estimator being an estimator;
+        // if it fails, the Literature arm is miswired, not merely different.
+        assert!(
+            ar1_lit > iid_lit,
+            "under Literature, AR(1) L={ar1_lit} is not greater than i.i.d. L={iid_lit} — the \
+             selector has stopped detecting serial dependence, which is a wiring fault in the \
+             new arm rather than a change of convention."
+        );
+        assert_eq!(
+            (ar1_shipped, iid_shipped),
+            (7, 1),
+            "the shipped arm moved off its FP-C1.6 pin"
+        );
+    }
 
     /// FP-C1.6 — auto-`L` sanity: on an AR(1) series with φ=0.6, auto-L must
     /// satisfy `1 < L < N` and must be strictly greater than the L of an i.i.d.

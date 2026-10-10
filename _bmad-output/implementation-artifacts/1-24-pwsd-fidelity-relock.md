@@ -105,7 +105,39 @@ so that the robustness gate's null distribution is defensible against the exact 
       - **AC5's identity-test obligation**: the FROZEN gate calls this function, so the `usize`
         return signature is frozen and the identity test must show ranking is unchanged *given the
         same L* — i.e. it tests the gate, not the estimator.
-- [ ] Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
+- [~] **Dev — AC1 parameterised and MEASURABLE 2026-10-10, shipped behaviour byte-identical.**
+      `PwsdVariant::{Shipped, Literature}` names the two conventions and
+      `politis_white_block_length_variant` evaluates either; the public
+      `politis_white_block_length` delegates to `Shipped`, so its result is unchanged and all 35
+      anchored bodies plus the FP-C1.6 pin stay valid **while the fix is being measured**. One
+      implementation, two scalars (`window_denominator_factor`, `search_offset`) — the alternative
+      was a second copy, which is what `#133`/`#136` were filed for.
+      - `shipped_variant_is_byte_identical_to_the_public_fn` pins the refactor across 20 inputs
+        (empty, single, zero-variance, deterministic cycle, and AR(1) at φ ∈ {0, .3, .6, .9, −.5}
+        × N ∈ {32, 251, 1024}) rather than on the one fixture FP-C1.6 happens to use — otherwise
+        "behaviour preserved" would rest on a single sample.
+
+      **FIRST MEASUREMENT, and it undercuts the premise of AC1's direction claim.** On the FP-C1.6
+      fixtures the two conventions **agree**: AR(1) φ=0.6 → L=7 *both* ways; i.i.d. → L=1 both ways.
+      The two deviations partially **cancel**. At N=500 the band is `2·√(log₁₀500/500) = 0.147`, and
+      `ρ(k)=0.6^k` enters it at k=4, so the shipped search (`ρ̂(m..m+K_N−1)`) settles at **m̂=4**
+      while the literature search (`ρ̂(m+1..m+K_N)`) settles at **m̂=3** — and the literature's wider
+      window on the smaller m̂ (effective `|k| ≤ 2m̂ = 6`) lands on the same `b̂` after rounding as
+      the shipped narrow window on the larger one (`|k| ≤ m̂ = 4`).
+
+      So the module doc's *"auto-L comes out systematically SHORT"* — and AC1's and AC4's
+      expectation built on it — is an algebraic reading that **this fixture does not demonstrate**.
+      It is not refuted either; one fixture at one N and one φ settles nothing. What it does
+      establish is that the direction is genuinely open per scenario, and that the pre-registered
+      measure-first ordering was not ceremony: had the fix been landed on the strength of the
+      "systematically short" reading, the 80-minute regeneration would have been spent before
+      anyone checked whether the premise held.
+      - `literature_variant_direction_on_the_fp_c1_6_fixtures` records both numbers and asserts
+        only that the Literature arm still detects serial dependence (AR(1) L > i.i.d. L) — a
+        wiring check, not a direction claim, because asserting a direction here would pre-judge
+        what the 35-scenario measurement is for.
+      - Remaining in this task: the ε guard (AC2's scale-relative half) and the volume proxy (AC3).
+- [ ] *(superseded)* Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
 - [ ] Re-run + re-lock: regenerate, anchor under the new namespace, errata note (AC4).
 - [ ] Review: verify old rows byte-intact, new rows complete, verdict-delta table honest (AC5).
 
