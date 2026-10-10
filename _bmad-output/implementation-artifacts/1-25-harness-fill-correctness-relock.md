@@ -332,3 +332,90 @@ bodies and so per `#110` can never be cleared by a re-lock alone; (4) at flip ti
 
 - Trace: `REQ-HARNESS-FILL-CORRECTNESS-001` (state=`scoped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
+
+## Code review — 2026-10-11 — VERDICT: PASS
+
+**Self-review.** Written by the agent that also wrote the stale framing corrected below. Labelled
+so a later reader can discount it accordingly; every claim is backed by a command re-run today,
+not by the board.
+
+### The audit this story was being scoped from was two days out of date, and that is my error
+
+`docs/dev-notes/1-25-ac-closure-audit-2026-09-27.md` returned **NOT CLOSABLE** and is a careful
+426-line document. It was superseded on **2026-09-29**. I read the audit, found it persuasive, did
+not read the board line that supersedes it, and on that basis told the operator 1-25 was *"a
+programme, not an iteration"* and landed a README sentence asserting the audit's findings
+(`6d477e7b`, corrected in `debca9d3`). Recorded in full at
+`docs/runbooks/hardening-burndown-loop.md`.
+
+### Per-criterion, re-verified today against HEAD
+
+| # | criterion | verdict | what I ran or read |
+|---|---|---|---|
+| **AC1** | fill-symbol correctness, typed reject, no-op on live paths | **MET** | `cargo test -p backtest --lib paper::tests` → **12 passed / 0 failed / 0 ignored**, incl. `paper_step_rejects_order_for_a_different_symbol` (uses `.unwrap_err()`, so deleting the guard panics rather than passes), `..._is_noop_on_single_symbol_batches`, `..._is_all_or_nothing` |
+| **AC2** | BOTH lanes; `run_cell` gains the Bug-B guard | **MET** — the audit's one genuinely-unmet hard criterion | read `scenarios/threshold_sweep.rs` at the relevant sites: per-symbol routing (`last_bar_by_symbol` `:194`/`:199`, consumed `:257`/`:345`), Bug-B solvency pre-flight `:265-285` with `solvency_skips` counted `:174` and returned `:439`, and both `engine.step` calls converted from the no-else-arm `&& let Ok(fills)` to `match` with a LOUD `tracing::warn!("engine REFUSED a Buy — reported, not dropped")` at `:290`/`:355`. **The silent-drop behaviour the audit called "worse than unfixed" is gone**, and the module doc no longer claims the guard is absent. |
+| **AC3.1** | √8575 ratified + doc corrected | **MET** | the only surviving `24*365` strings are the corrected NEGATIVE labels (`sharpe_comparison.rs:776`/`:1223`/`:1559` — "sqrt(8574.9998) = … ; NOT sqrt(24*365) = 93.594872"). Via bug-log `#133`, whose re-sync trigger was a determinism tautology until a pinned assertion replaced it. |
+| **AC3.2** | hashed-body verdict vocabulary | **MET** | MC labels namespaced `MC-P50-*`, rule stated in-body, 1 body re-emitted under D6.b with 1 FAIL / 118 PASS proven before the SHA moved. C3 was already aligned. |
+| **AC3.3** | sentinel-zero pooling policy | **RATIFIED in writing** | AC3 permits it; § AC3.3 above carries the disposition and its consequence. |
+| **AC3.4** | negative-final Calmar / finiteness guards | **MET** | the three checks were `debug_assert!` — compiled OUT of exactly the `--release` builds that produce every anchored surface — and are now real assertions (`mc_harness.rs:323`, `param_robustness_sweep.rs:960`). `stats/mod.rs`'s finiteness gate returns `Err` (`NanValue`/`NonFiniteValue`), not an assert; the surviving `debug_assert!(n > 0)` at `:610` is a caller-bug precondition, not a finiteness check. |
+| **AC3.5** | slippage-aware solvency pre-flight | **RATIFIED in writing** | downstream fill-loop guard ratified as sufficient, gap quantified in § AC3.5. |
+| **AC3.6** | `FILL_SEED` domain separation | **RATIFIED in writing** | pointed at bug-log `#89`; the `0xC0FFEE` constants are the project-wide fixture seed. |
+| **AC3.7** | real exposure-cap enforcement (enforce or delete) | **MET on the inventory lane; gap on 8 others accurately disclosed** | counted today: **9** `Some(...)` declaring lanes against **1** enforcing read (`crates/risk/src/portfolio.rs`) — exactly `#95`'s claim, unchanged. `montecarlo.rs` (`run_path`, the lane behind all 34 inventory anchors) is the wired one. `#95` stays OPEN, named in the 1-26 errata § 9 as out of scope. |
+| **AC4 / AC5** | re-lock + band re-examination | **DELIVERED by story 1-26** (`done` 2026-09-27) | 34 surfaces regenerated in **74.4 min**; errata `evidence/v2/harness-relock/ERRATA.md`. |
+| **AC6** | advisor-gate independence re-proven | **MET, on substituted evidence — NOT the test originally credited** | `git log -- crates/backtest/src/bakeoff/bootstrap.rs` → last touched `3c297b3e`, which **predates all five of this story's commits**; and grepping `.step(` under `crates/backtest/src/bakeoff/` returns **nothing**, so the bake-off gate never reaches the engine this story changed. The audit was right that `robustness_bootstrap_bites` pins no baseline and cannot carry the claim; the claim is true anyway, and now rests on the evidence above instead. |
+
+### Two findings recorded with this verdict
+
+**1. bug-log `#141` (NEW, OPEN, needs a ruling) — `portfolio_breaches` reaches no report body.**
+ADR-0089 D2 made the cap all-or-nothing, and the field's own doc at `montecarlo.rs:108-111` calls
+surfacing the count *"the non-negotiable half of that policy — a silent skip reads exactly like a
+clean run, which is the failure class bug-log #66 was."* It is counted (`:662`) and returned
+(`:911`) — and `sweep_harness::CellResult` has no field for it, so it cannot reach
+`render_surface_report`. Grepping `portfolio_breach|breaches` across `evidence/v2/` returns
+nothing. Its only reader in the workspace is `tests/portfolio_controls_bind.rs:143`, the test that
+proves it increments. So an operator reading a regenerated θ-surface cannot distinguish *"the cap
+never bound"* from *"the cap refused rebalances and nobody wrote it down"* — and on the lanes the
+same doc says run hot, that distinction is live. **This does not fail AC3.7**, which asked for
+"enforce or delete" and got enforcement, bound by three RED-proven gates (3 passed / 0 ignored).
+It is D2's separate reporting clause. Not fixed here: the fix changes all 34 hashed bodies, which
+makes it a re-emission and therefore the operator's call.
+
+**2. The orphaned per-scenario gross non-compliance record — RE-HOMED HERE.**
+The audit's item 9 flagged that 1-26's errata owes a per-scenario record of the anchored MN
+surfaces breaching their own declared `exposure_cap=0.50`, that it appears in none of the errata's
+nine sections, and that 1-26 is `done` — so the obligation had no owner. It is still absent.
+Re-homed rather than left to lapse, from the figures source records at `montecarlo.rs:114`/`:140`:
+
+| family | gross target | vs the hashed `0.50` | record |
+|---|---|---|---|
+| momentum / MR | ~0.30 (`FIXED_FRACTION` 0.10 × `k_long` 3) | **compliant** — the cap does not bind, so a zero breach count is a true result, not a dead gate | source states it |
+| MN book | **~0.60** (6 legs × 0.10) | **exceeded** the value printed in its own hashed bodies | **this is the record that was owed** |
+| TS surfaces | **~0.90-1.00** | **exceeded**, by the widest margin | owed on the same ground |
+
+Honest scope: this describes the **pre-wiring** rows, because `size_portfolio_target` had no
+production caller until `723ca742` (2026-08-23). On those rows the printed cap was aspirational,
+and ADR-0089 D7's ruling that `exposure_cap` MEANS gross is what makes the breach official rather
+than arguable. On the **regenerated** rows the cap genuinely binds and a breach skips the
+rebalance; what cannot be read off those rows is whether it ever did — which is `#141`. The two
+findings are the same gap seen from either side of the re-lock.
+
+### Standing floor, re-run today
+
+`scripts/verify_anchors.sh` → **119/119** · `scripts/spec_lint.py` → **PASS (0 violations)** ·
+`cargo clippy -p backtest --tests -- -D warnings` → clean, with and without `realdata` (it was NOT
+clean before this session — bug-log `#140`) · `paper::tests` 12/12 · `portfolio_controls_bind` 3/3
+· both with **0 ignored**.
+
+### Verdict
+
+**PASS.** Every acceptance criterion is met or ratified-in-writing as AC3 expressly permits, and
+the two the 2026-09-27 audit found genuinely unmet — AC2 and AC6 — are now met: AC2 by code, AC6
+on substituted evidence I verified rather than inherited. The story is substantively complete.
+
+**Left at `review`, not flipped to `done`, deliberately.** This is a self-review, and the four
+verdicts written on 2026-10-10 (1-24, 1-28, 1-29, 1-30 — all PASS, all self-labelled) were all
+left at `review` too. Flipping five substantively-complete stories to `done` on the strength of my
+own reviews is a governance act rather than bookkeeping, and it is consistent to leave this one
+where its siblings sit. The flip needs, in one pass per ADR-0082: `Status: done`, this story's
+trace row `REQ-HARNESS-FILL-CORRECTNESS-001` moved from `state="scoped"` to a shipped-terminal
+value, and a CHANGELOG index line — `scripts/spec_lint.py` enforces all three.

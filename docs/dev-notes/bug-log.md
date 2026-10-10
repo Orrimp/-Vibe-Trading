@@ -4392,3 +4392,69 @@ a skip at least prints the word `ignored`. These 34 tests did not appear as skip
 or as anything at all — the target simply was not in the run. Adding a field to a struct that
 test fixtures construct by hand is a suite-wide edit, and the only thing that reliably says so
 is compiling the whole crate's targets.
+
+### `#141` — `portfolio_breaches` is counted, tested, and then dies at the aggregation boundary: ADR-0089 D2's "non-negotiable half" reaches no report body
+
+**Found** 2026-10-11 during the story 1-25 review, while discharging the orphaned per-scenario
+gross-exposure obligation.
+**Status: OPEN — needs an operator ruling.** The fix changes every regenerated surface's hashed
+body, so it is a re-emission, not a patch.
+
+ADR-0089 D2 made the portfolio exposure cap all-or-nothing: on a breach the ENTIRE rebalance is
+skipped and the book is left unchanged for that bar. The ADR and the code both state that
+surfacing the count is not optional. From `crates/backtest/src/scenarios/montecarlo.rs:108-111`,
+in the field's own doc:
+
+> Surfacing the count is the non-negotiable half of that policy — a silent skip reads exactly
+> like a clean run, which is the failure class bug-log `#66` was.
+
+It is not surfaced. The full chain:
+
+| site | what happens |
+|---|---|
+| `montecarlo.rs:117` | `pub portfolio_breaches: u64` on `PathRunResult` |
+| `montecarlo.rs:320` | initialised |
+| `montecarlo.rs:662` | incremented on a refused rebalance, with a `tracing` line |
+| `montecarlo.rs:911` | returned to the caller |
+| `sweep_harness::CellResult` | **no such field** — it carries `total_liquidations`, `total_liquidation_cover_fills`, `ruined_paths`, and not this |
+| `render_surface_report` | therefore cannot print it; `grep -rliE "portfolio_breach\|breaches" evidence/v2/` returns **nothing** |
+| `tests/portfolio_controls_bind.rs:143` | the **only** reader in the workspace |
+
+So the counter's sole consumer is the test that proves it increments. The aggregation step from
+`PathRunResult` to `CellResult` silently drops it, and an operator reading a regenerated θ-surface
+cannot distinguish *"the cap never bound"* from *"the cap refused rebalances and nobody wrote it
+down"*. For the momentum/MR cells the first is true and the code says so (~0.30 gross against a
+0.50 cap). For the lanes the same doc says run hot — **TS at ~90-100 % gross, the MN book at
+~60 %** — the second is the live possibility, and the artifact cannot tell them apart.
+
+**Why no gate caught it.** This is `#95`'s shape with the arrow reversed. `#95` is a value
+declared at nine sites and read at one; this is a value *produced* at one site and read only by
+its own test. Both pass every gate the project has, because a field that compiles, increments
+and is asserted upon looks finished from every angle except the one that matters — whether the
+number reaches the human. **The detector that would find both is the same: for each
+operator-facing quantity, ask what path carries it from where it is computed to where it is
+read, and name the hop.** Here the hop is `PathRunResult → CellResult` and it does not exist.
+
+**Why it is not fixed in this pass.** Adding the field and rendering it changes the hashed body of
+all 34 regenerated surfaces. Per ADR-0038 § D6 that is a re-emission with its own protocol, and
+per the standing rule a re-lock is the operator's call, not a reviewer's. The honest options:
+
+- **(a)** add `portfolio_breaches` to `CellResult`, render it, and re-emit the 34 surfaces under
+  D6.b. Cost is the same 74.4 min 1-26 measured. Makes the policy real in the artifact.
+- **(b)** ratify that the count stays internal, and state in the errata that no regenerated
+  surface reports whether its cap bound — which is the disclosure that is missing today either
+  way.
+
+**(a) is the one that matches what the ADR says**, and this entry recommends it; but a 34-surface
+re-emission is not a reviewer's decision.
+
+**What is NOT in doubt.** The cap itself genuinely binds — `portfolio_controls_bind` has three
+RED-proven gates (neutering the cap, the band, or `#94`'s delta sizing turns exactly one red),
+and all three pass with 0 ignored. This entry is about the *reporting* half, not the enforcement
+half. Story 1-25's AC3.7 asked for "enforce or delete" and enforcement landed; D2's surfacing
+clause is a separate obligation that AC3.7 never named.
+
+**Moral.** A number that is computed, incremented, returned and asserted upon can still be
+invisible, and "we count it" is not the same claim as "you can see it". The doc comment on this
+very field says a silent skip reads like a clean run — and then the silent skip reads like a
+clean run, one struct away from where the warning is written.
