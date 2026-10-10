@@ -277,7 +277,32 @@ so that the robustness gate's null distribution is defensible against the exact 
         `mc-robustness-2026-06` bodies were produced with, so the old numbers are superseded
         rather than lost, and `literature_variant_direction_on_the_fp_c1_6_fixtures` still pins
         the old arm at (7, 1).
-- [ ] Re-run + re-lock: regenerate, anchor under the new namespace, errata note (AC4).
+- [~] **AC4 — regeneration RUNNING 2026-10-10.** All 35 surfaces into the scratchpad, never
+      `evidence/`, so the diff census is taken **before** anything lands — the order the
+      1-26/1-27/1-28 passes established, and the only order in which "what changed" is a
+      measurement rather than a reading. First surface:
+      `v1-basis-reversal-fee00bps-theta-surface-2023` → `c8c2d2d1…` at **L=281**, confirming the
+      new policy is live in the regeneration and that bodies move.
+
+      **ADR-0045 § D6 is NOT the protocol I assumed, and reading it found an obligation.** AC4
+      cites it for the namespace bump; what § D6 actually governs is the reconciliation of the
+      **two** anchor systems — FILE-anchors (`anchors.toml`, which cannot see engine drift) and
+      IN-TEST re-run anchors (hardcoded `const ANCHOR` strings, which can). § D6.1 makes
+      `anchors.toml` canonical and the in-test constants a **derived projection** that is
+      re-locked *to* it, never hand-authored against a fresh run.
+
+      So the re-lock is incomplete until every in-test literal projecting from the 35 rows moves
+      with them. Derived rather than eyeballed, via `check_determinism_anchors.py`'s scanned set:
+
+      | literal | resolves to | affected? |
+      |---|---|---|
+      | `theta_surface_reproduction.rs:362` `937cb52f7186…` | `v1-momentum-2023-block-bootstrap-real-fy-mc` (`mc-robustness-2026-06`) | **YES — one of the 35** |
+      | `reproducibility_sample_figure.rs:49` `076929bb63d9…` | `btc-yahoo-2024-1d-sma-cross` (`lab-yahoo-realdata-v0.1.1`) | no — different family, no block bootstrap |
+
+      **Exactly one** in-test literal must move with this re-lock. The other 34 surfaces need no
+      constant update because `theta_surface_reproduction.rs` reads its expectation from
+      `anchors.toml` at run time (`anchored_sha`) — it is already a derived projection by
+      construction, which is § D6.1 satisfied structurally rather than by discipline.
 - [ ] Review: verify old rows byte-intact, new rows complete, verdict-delta table honest (AC5).
 
 ## Dev Notes
