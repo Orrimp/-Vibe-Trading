@@ -117,6 +117,39 @@ work; say what is left and that it is out of scope.
 
 ---
 
+## Queue survey, 2026-10-10 — "review" conflates two different states
+
+Checked rather than assumed, because this repo's status lines lag its code. The seven `review`
+stories are not seven stories awaiting a verdict:
+
+| story | verdict on file | what it actually needs |
+|---|---|---|
+| `3-15-advisor-options-impliedvol-probe` | **FAIL**, 2026-08-12, 16 findings all triaged | a **disposition**, not a review |
+| `3-16-advisor-crossasset-macro-regime` | **FAIL**, 2026-08-14, findings all triaged | a **disposition**, not a review |
+| `1-24-pwsd-fidelity-relock` | none | a verdict (my work — label the self-review) |
+| `1-25-harness-fill-correctness-relock` | none | a verdict |
+| `1-28-mn-ruin-and-fill-provenance` | none | a verdict (my work) |
+| `1-29-forecast-bin-reproduction-gates` | none | a verdict (my work) |
+| `1-30-threshold-sweep-drift-bisect` | none | a verdict (my work) |
+
+**Two stories have sat at `review` for two months holding FAIL verdicts.** That is not a queue of
+pending reviews; it is `review` meaning two incompatible things — *"awaiting a verdict"* and
+*"failed its verdict and awaiting a decision"* — with nothing in the status to tell them apart.
+Same shape as bug-log `#138`: a status line that cannot distinguish the states it is asked to
+carry. The lint cannot catch it either, since both are legitimately `review`.
+
+Both FAILs are the same root finding, and it is not a small one: **the product ranks arms that
+never ran, under labels saying they did.** `3-15`'s DVOL arm holds cash through warm-up and in a
+calm window never trades (`#78`); `3-16`'s macro arm is **never compiled** — `macro_regime.rs` is
+gated on `backtest/yahoo` and nothing in the workspace enables it, so it has run 100% cash in every
+build since it shipped (`#81`), while the leaderboard renders *"Macro regime (hold when SPX up, DXY
+down, rates calm)"*.
+
+So their disposition is **not** this loop's to take: it changes what the product claims on an
+honesty-first product, which is stop condition 4. `#81`'s capability half is already recorded as
+BLOCKED by design, so the choice is about the **labels and the ranked field**, not about building
+the arms.
+
 ## Operational note — long runs must be resumable (learned 2026-10-10)
 
 The 1-24 regeneration is 75–80 min, and a tracked background job was **killed at ~10.5 min**
