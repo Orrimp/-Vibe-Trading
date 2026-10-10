@@ -1109,7 +1109,7 @@ sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
 [[anchors]]
 scenario = "v1-momentum-2023-block-bootstrap-real-fy-mc"
 version  = "mc-robustness-2026-06"
-sha256   = "937cb52f7186ba6a2fea3f3142d72b80660da9d3984bb5dbfdf47299718efc3e"
+sha256   = "74c018d5c212bfda8b069bea73310ef321a8dab6d93198a7cb61c5638bc6c164"
 
 # C3 momentum parameter-robustness sweep — θ-surface anchor (2026-05-30).
 # Re-scoped 6-cell × N=200 grid (orchestrator 2026-05-30; was 14-cell × N=500).
@@ -1134,10 +1134,103 @@ sha256   = "937cb52f7186ba6a2fea3f3142d72b80660da9d3984bb5dbfdf47299718efc3e"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# == RE-LOCKED 2026-10-10 under ADR-0045 D6 -- story 1-24, PWSD fidelity ==============
+# OPERATOR-RULED 2026-10-10 twice: adopt PW-2004's convention and KEEP the clamp; then,
+# after AC4's direction guard tripped, DISCLOSE AND LAND.
+#
+# WHAT CHANGED IN THE CODE (3 defects + 1 unratified policy, all story 1-24):
+#   1. flat-top window scale  lambda(k/m_hat) -> lambda(k/(2*m_hat))   [PW-2004]
+#   2. m_hat in-band search   rho(m..m+K-1)   -> rho(m+1..m+K)         [PW-2004]
+#   3. zero-variance guards   absolute eps    -> SCALE-RELATIVE, at BOTH sites. The module
+#      doc's deviation #3 named one; there were two, and fixing one left the estimator
+#      magnitude-sensitive (a +-1e-9 series gave L=1 while its 1e9-scaled twin gave L=68).
+#   4. Auto aggregation      cross-symbol mean of |r| -> per-symbol estimate, max reduction.
+#      Old rule D-C1.4 estimated b for a mixture no symbol resamples; PWSD is scale-invariant
+#      per series, so the defect existed ONLY because averaging preceded estimation.
+#
+# L MOVED ON EVERY SURFACE, measured before regenerating (seconds, not the 80-min run):
+#   2023 full-year 1h  204 -> 281   |  2024 full-year 1h  200 -> 282
+#   2023 4h             80 -> 124   |  2024 4h             49 -> 134
+#   2023 daily           9 ->  22   |  2024 daily           3 ->  22
+#   281/282 IS THE CLAMP ceil(min(3*sqrt(N), N/3)). On 26 of 34 surfaces the literature
+#   convention SATURATES it: raw b_hat is 329.6 against a cap of 281, so L there is the CAP
+#   AND NOT THE ESTIMATE, and all four aggregation policies collapse onto it. Operator ruled
+#   to keep the clamp; this comment is the disclosure that ruling requires.
+#
+# AC4'S DIRECTION GUARD TRIPPED -- the expectation was "longer L => crowns same or fewer":
+#   33 of 35 moved SAFELY (several markedly: carry-horizon-daily-2023 4->3, carry-2023 2->1).
+#   2 of 35 moved ADVERSELY, each one cell g=0 going FRAGILE -> MARGINAL:
+#     v1-ts-horizon-daily-theta-surface-2023      0 -> 1 crown-eligible cells, AND its FAMILY
+#       VERDICT MOVED  FAMILY-UNIFORM-FRAGILE -> FAMILY-HAS-NON-FRAGILE-CELLS.
+#       L 9 -> 22; the cell's p50 Sharpe rose 0.005721 -> 0.105287, p95 0.792890 -> 0.941410.
+#     v1-basis-reversal-fee05bps-theta-surface-2023  2 -> 3 crown-eligible, family unchanged.
+#       L 204 -> 281; here p50 FELL (0.061623 -> 0.057358) and p95 (0.806264 -> 0.855675)
+#       crossed the band.
+#   MARGINAL IS CROWN-ELIGIBLE (bakeoff/robustness.rs:26 -- the comparator treats Fragile as
+#   the ONLY ineligible flag), so these are crown-eligibility changes, not cosmetic bands.
+#   NO CELL REACHED ROBUST anywhere in the 35. Nothing is crowned.
+#
+# WHY THE EXPECTATION INVERTED on those two, the part worth keeping: longer blocks widen the
+#   null (true 33 times) but ALSO preserve more trend and persistence structure, which for a
+#   trend-following or reversal cell can lift p50/p95 instead of widening the spread. AC4
+#   called it an "expectation", not a theorem, and that wording turned out load-bearing.
+#
+# WHY IN PLACE rather than a new live namespace, as AC4's letter says: verify_anchors.sh is
+#   namespace-aware BY DIRECTORY, so two live rows for one scenario with DIFFERENT digests
+#   need two evidence trees plus a resolver arm; and the namespaces that machinery exists for
+#   (zero/medium/sqrt friction) are CONFIGURATIONS THAT COEXIST. The pre-2026-10-10 estimator
+#   is not a configuration, it is a fixed defect -- PwsdVariant::Shipped stays reachable but
+#   no binary selects it. A live namespace implying those bodies are still producible would be
+#   bug-log #134's species of false claim, in the corpus instead of in a report.
+#
+# SUPERSEDED BODIES, kept verbatim so the correction is auditable rather than asserted. The
+# 2026-09-29 and earlier .md files remain on disk; the resolver takes the newest match, so
+# these digests are history and are deliberately no longer reproducible:
+#   v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy 3dde4b93445899580777c18457e09e3f231b5faa707ea4cbcb23cae6cc1cfeed
+#   v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy f20d4af16457e050b156014e31f30c3bb7ee4f092e0bd74fcf8b28ef092e4dbd
+#   v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy 444df2155efa13291d131e6fde995471da4b73c1379ce98aff9a1d6b5f03f2db
+#   v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy 343b62034afd1aa793a73c1ecbd71e5d9765d253a2ed3f995e7b54cbe116cc33
+#   v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy 1d53187c3b8b36f12e12828c89b69c204b083bf7359699e8e3c8bace29e6e60f
+#   v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy b7f0ed98872c7a937e281441d4f54e2bb556904a0289b4115f927aabd6eeb660
+#   v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy df189f476f4a87647187d6f746bea44229ffe3af8adc7c098ee6ef82bea2d53e
+#   v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy 167e7a030f221f5805ce11ee2f74e7678aa7e44c7ea457ec73c537c30fad3eeb
+#   v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy 8807fdb27698b0a9f93636b8118d0e026dd0ed45c9004f964b9129df38b3572f
+#   v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy 59cb1ff88b5747f77f769ade3af4c12154a76a114da94b0b4b6742e13fc25136
+#   v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy 0c4273e6568c165d068ea327ccda0cf8aa89c4e4798eeb625bb7c3103f6ec9e1
+#   v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy 0427481b54bc7c9151b9a2626d979cd8051c80028e4824afdc134c6afffb4888
+#   v1-carry-theta-surface-2023-block-bootstrap-real-fy            1f3dcc492184e409f2a954ca20b1661751eb72ef498283bd270a9ea25b3cbcdf
+#   v1-carry-theta-surface-2024-block-bootstrap-real-fy            4cf7f277f3996148ff7b2b62d5c11232e32cdd67b09d9c2c6296aa991ce96dcb
+#   v1-momentum-2023-block-bootstrap-real-fy-mc                    937cb52f7186ba6a2fea3f3142d72b80660da9d3984bb5dbfdf47299718efc3e
+#   v1-momentum-theta-surface-2023-block-bootstrap-real-fy         9d69176b1877bb20effcd3df55610e5f706ddbdc269c756f6f0cfe46eff08b20
+#   v1-mr-theta-surface-2023-block-bootstrap-real-fy               523c2edaa306cdbdaae6ef63e80272c40247f885dbf87c97451341d4628c2cf9
+#   v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy    0b39ccf2df7a1862604aa045e3ae0e063047d5fa618885baf67787094bfd52d1
+#   v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy    cb86000ad27468e9f2fec65ec634c4d600871656d752611f84bbf21558f3635f
+#   v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy 8198ed3670250bb471f7151bf18c595c86fbce806095ed84737befa30ba25349
+#   v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy bafd1f4ed5d9e8a62c486121fd711ec92c6e32882fdfb87d51466b24ef87dfbc
+#   v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy      bc47e196efd666b99d6944ccea18b731baf745400e9ba4bfcf01cb05c8b96f11
+#   v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy      112283e5876a30da8d15d7e302d6dfcee34f73d860b1b71c51bd0ead9489a009
+#   v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy 82528944f45b04cdec7b6b0135467fdd220571e1a737cb5fed3716dc73c31ad8
+#   v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy 9ffbde26f95fcfb64f6dd397c7482a12e633c65eb6b848eb8bc7b681b7221a2d
+#   v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy 7ed6add7a5728ea2411f7bea4d0db766540826eeb0ba574645dbfb1cf17fd4e8
+#   v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy 9c23740ebbd7f43b74d2d83524fe748e97725510b1181bc9d4b4f9b205bf94d2
+#   v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy f2be5aec4f6a9d56a2e5b35919b3c2555fe274871234805b4e51b55840eb35bd
+#   v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy 5a7cccfe4024233e6e4ccfbd20346a7dc780d40732a8f74b98611ed03a6f76d6
+#   v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy 164fb81e9eea978e8d5de671fab01652bff9d587041bcb51496209621396bc3c
+#   v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy 78a0df0a48362af6a1cb0de61c7c18001c42c92d8f1c7b244efe0c2900f3e4d8
+#   v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy ac134d559ae05c767d946e349ef57b33f3b6b0e2c3a0b3bba6d79877662009ca
+#   v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy bd7861ed4e18fdc825243e826ceafe219bdefc1fc8e422966c3222a3b59efb91
+#   v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy e9024299feb49433b2d0876428489c232845572a5e8b07095c2ef15dc3e9ec21
+#   v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy 735a6efeb79531926ef65fe4ad59c6f947d7754f6146aa0fb22efd7459a52959
+#
+# CONDITION declared: cwd=workspace root - features=candle,realdata - profile=release
+#   invocation=param_robustness_sweep <manifest argv> --out-dir <tempdir>  (34 surfaces)
+#              monte_carlo --generator block-bootstrap-real --paths 500 --ensemble-seed
+#                0xC0FFEE --year 2023                                      (the -mc row)
+#   corpus=data/binance (plus -funding and -basis) at REVISION 3a8b96c4...
 [[anchors]]
 scenario = "v1-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "9d69176b1877bb20effcd3df55610e5f706ddbdc269c756f6f0cfe46eff08b20"
+sha256   = "54aab726802ee561938ba33a47f6d801283362f611ee55e7edbea7e0ff3b1bd4"
 
 # C3 MR parameter-robustness sweep — θ-surface anchor #87 (2026-05-31).
 # Cross-sectional mean-reversion: 6-cell × N=200 LOCKED MR Tier-1 grid (§ D-MR.2-LOCKED).
@@ -1168,7 +1261,7 @@ sha256   = "9d69176b1877bb20effcd3df55610e5f706ddbdc269c756f6f0cfe46eff08b20"
 [[anchors]]
 scenario = "v1-mr-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "523c2edaa306cdbdaae6ef63e80272c40247f885dbf87c97451341d4628c2cf9"
+sha256   = "d4a9ac13f2969eb56ba63a5c31b34eef8ae92a213f4df7f105aab6e134239ff2"
 
 # C3 carry (funding) θ-surface anchor #88 (2026-06-02).
 # Cross-sectional funding carry (framing (a) long-only directional carry-tilt):
@@ -1203,7 +1296,7 @@ sha256   = "523c2edaa306cdbdaae6ef63e80272c40247f885dbf87c97451341d4628c2cf9"
 [[anchors]]
 scenario = "v1-carry-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "1f3dcc492184e409f2a954ca20b1661751eb72ef498283bd270a9ea25b3cbcdf"
+sha256   = "4c1a0011b161dd411997a167428a61c63a0f4d39f3037325aa5b9c1899e42941"
 
 # C3 carry (funding) θ-surface anchor #89 — 2024 OOS regime (2026-06-02).
 # Same LOCKED 6-cell carry Tier-1 grid as #88 but on 2024-FY real Binance data.
@@ -1235,7 +1328,7 @@ sha256   = "1f3dcc492184e409f2a954ca20b1661751eb72ef498283bd270a9ea25b3cbcdf"
 [[anchors]]
 scenario = "v1-carry-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "4cf7f277f3996148ff7b2b62d5c11232e32cdd67b09d9c2c6296aa991ce96dcb"
+sha256   = "83ae9abe05e296371a1c0388f95ba0f37f08cc9d378cbc98e656498340da1f3f"
 
 # C3 TS-momentum θ-surface anchor #90 — 2023-FY (2026-06-03).
 # Time-series (per-asset absolute) momentum: 6-cell × N=200 LOCKED TS Tier-1 grid (§ D-TSM.3-LOCKED).
@@ -1270,7 +1363,7 @@ sha256   = "4cf7f277f3996148ff7b2b62d5c11232e32cdd67b09d9c2c6296aa991ce96dcb"
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "bc47e196efd666b99d6944ccea18b731baf745400e9ba4bfcf01cb05c8b96f11"
+sha256   = "60279c79b34cd5cd237824c22ee24e4fd44e9176148b53b8aa8fb38c4d872f34"
 
 # C3 TS-momentum θ-surface anchor #91 — 2024-FY OOS regime (2026-06-03).
 # Same LOCKED 6-cell TS Tier-1 grid as #90 but on 2024-FY real Binance data.
@@ -1305,7 +1398,7 @@ sha256   = "bc47e196efd666b99d6944ccea18b731baf745400e9ba4bfcf01cb05c8b96f11"
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "112283e5876a30da8d15d7e302d6dfcee34f73d860b1b71c51bd0ead9489a009"
+sha256   = "61373d65304aaed24214e82ceffacf14170cc675397f290915cec8145ad6e0e4"
 
 # Horizon retest — coarser decision cadence (4h + daily) θ-surface anchors (2026-06-05).
 # Namespace: horizon-retest-robustness (NEW — distinct from mc-robustness-2026-06; the horizon
@@ -1348,7 +1441,7 @@ sha256   = "112283e5876a30da8d15d7e302d6dfcee34f73d860b1b71c51bd0ead9489a009"
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "0b39ccf2df7a1862604aa045e3ae0e063047d5fa618885baf67787094bfd52d1"
+sha256   = "23efeb697a311640106ab1c8b2e6d1ca3ab47b0b05475bc8c3901b05d1e593fb"
 
 # Anchor #93 — TS-momentum 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1369,7 +1462,7 @@ sha256   = "0b39ccf2df7a1862604aa045e3ae0e063047d5fa618885baf67787094bfd52d1"
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "cb86000ad27468e9f2fec65ec634c4d600871656d752611f84bbf21558f3635f"
+sha256   = "447f1ed05445fcee86eb1cadb6918ed0ade2bbb01dab46e9ca4d84e7c94722bc"
 
 # Anchor #94 — TS-momentum daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1390,7 +1483,7 @@ sha256   = "cb86000ad27468e9f2fec65ec634c4d600871656d752611f84bbf21558f3635f"
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "8198ed3670250bb471f7151bf18c595c86fbce806095ed84737befa30ba25349"
+sha256   = "b34e4c88e47ac6c8e1c9623503664a46b42f4aab11928be672e732b0db2665c4"
 
 # Anchor #95 — TS-momentum daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1411,7 +1504,7 @@ sha256   = "8198ed3670250bb471f7151bf18c595c86fbce806095ed84737befa30ba25349"
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "bafd1f4ed5d9e8a62c486121fd711ec92c6e32882fdfb87d51466b24ef87dfbc"
+sha256   = "0e4b93f509a099f6567b22f46b52ba3208d2039d811834f953db64eb865043d6"
 
 # Anchor #96 — Carry (funding) 4h horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1432,7 +1525,7 @@ sha256   = "bafd1f4ed5d9e8a62c486121fd711ec92c6e32882fdfb87d51466b24ef87dfbc"
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "8807fdb27698b0a9f93636b8118d0e026dd0ed45c9004f964b9129df38b3572f"
+sha256   = "2ca336459b1667a6b49dc3c8533238e76d14a89e326c15733ce42953ca77e66a"
 
 # Anchor #97 — Carry (funding) 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1453,7 +1546,7 @@ sha256   = "8807fdb27698b0a9f93636b8118d0e026dd0ed45c9004f964b9129df38b3572f"
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "59cb1ff88b5747f77f769ade3af4c12154a76a114da94b0b4b6742e13fc25136"
+sha256   = "67987f93cabf348acf0fcd0f3d7bdf3179f3d8f85c78150567c2f26c2b49f957"
 
 # Anchor #98 — Carry (funding) daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1474,7 +1567,7 @@ sha256   = "59cb1ff88b5747f77f769ade3af4c12154a76a114da94b0b4b6742e13fc25136"
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "0c4273e6568c165d068ea327ccda0cf8aa89c4e4798eeb625bb7c3103f6ec9e1"
+sha256   = "c0d09c1de3a1e5bff2698796cbb788856c8ff31405725ee2fe8a8d9c34548c85"
 
 # Anchor #99 — Carry (funding) daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1495,7 +1588,7 @@ sha256   = "0c4273e6568c165d068ea327ccda0cf8aa89c4e4798eeb625bb7c3103f6ec9e1"
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "0427481b54bc7c9151b9a2626d979cd8051c80028e4824afdc134c6afffb4888"
+sha256   = "266438490291f396fe2a7406643dd1e657cee51654e0fe1aff775bd3061814c6"
 
 # Anchor #100 — Basis-Reversal 0bps taker fee, 2023-FY (gross — no fee bleed)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1516,7 +1609,7 @@ sha256   = "0427481b54bc7c9151b9a2626d979cd8051c80028e4824afdc134c6afffb4888"
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "3dde4b93445899580777c18457e09e3f231b5faa707ea4cbcb23cae6cc1cfeed"
+sha256   = "c8c2d2d154fd703bef4d062f91a81fd9ff0934fb9c9d3331318fdadcb1097100"
 
 # Anchor #101 — Basis-Reversal 0bps taker fee, 2024-FY (tail-negative regime, gross)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1537,7 +1630,7 @@ sha256   = "3dde4b93445899580777c18457e09e3f231b5faa707ea4cbcb23cae6cc1cfeed"
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "f20d4af16457e050b156014e31f30c3bb7ee4f092e0bd74fcf8b28ef092e4dbd"
+sha256   = "ee0dae2b532fbc76f5736c15d01f2e17ca11744d482b1a73ef6fdbb13b174529"
 
 # Anchor #102 — Basis-Reversal 2bps taker fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1558,7 +1651,7 @@ sha256   = "f20d4af16457e050b156014e31f30c3bb7ee4f092e0bd74fcf8b28ef092e4dbd"
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "444df2155efa13291d131e6fde995471da4b73c1379ce98aff9a1d6b5f03f2db"
+sha256   = "5f7f152b003f4e839b77711d51021b164a2453ad7794182e325a2b579ec241dd"
 
 # Anchor #103 — Basis-Reversal 2bps taker fee, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1579,7 +1672,7 @@ sha256   = "444df2155efa13291d131e6fde995471da4b73c1379ce98aff9a1d6b5f03f2db"
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "343b62034afd1aa793a73c1ecbd71e5d9765d253a2ed3f995e7b54cbe116cc33"
+sha256   = "61dd4b1973c2a504cb17a622dac2d1244194a64a4971cc490b8a78621f257ad5"
 
 # Anchor #104 — Basis-Reversal 5bps taker fee, 2023-FY (realistic fee level)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1600,7 +1693,7 @@ sha256   = "343b62034afd1aa793a73c1ecbd71e5d9765d253a2ed3f995e7b54cbe116cc33"
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "1d53187c3b8b36f12e12828c89b69c204b083bf7359699e8e3c8bace29e6e60f"
+sha256   = "3b4d1e57958828ff3f5c3d6bb245cd609b0a2c37f492fe141c6a8d1eef4543be"
 
 # Anchor #105 — Basis-Reversal 5bps taker fee, 2024-FY (realistic fee level, tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1621,7 +1714,7 @@ sha256   = "1d53187c3b8b36f12e12828c89b69c204b083bf7359699e8e3c8bace29e6e60f"
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "b7f0ed98872c7a937e281441d4f54e2bb556904a0289b4115f927aabd6eeb660"
+sha256   = "2ec2aacd63b84e95982134b3e39c333da9a5e6c296ebe1b36a9f01e7551c1675"
 
 # Anchor #106 — Basis-Reversal 10bps taker fee, 2023-FY (high-fee stress)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1642,7 +1735,7 @@ sha256   = "b7f0ed98872c7a937e281441d4f54e2bb556904a0289b4115f927aabd6eeb660"
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "df189f476f4a87647187d6f746bea44229ffe3af8adc7c098ee6ef82bea2d53e"
+sha256   = "6a269324bab6675894c486f6de5c27aa1465711ebe7a60dc7808a87ae8fe5412"
 
 # Anchor #107 — Basis-Reversal 10bps taker fee, 2024-FY (high-fee stress, tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1663,7 +1756,7 @@ sha256   = "df189f476f4a87647187d6f746bea44229ffe3af8adc7c098ee6ef82bea2d53e"
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "167e7a030f221f5805ce11ee2f74e7678aa7e44c7ea457ec73c537c30fad3eeb"
+sha256   = "d0dd192748776f6e766034644cbea527d75224a0029abcb28fd234484361f74c"
 
 # Anchors #108-#119 — MN Spread v0.2.0 (perp-basis-mn-spread), 3 arms × 2 fees × 2 years
 # Arms AS RUN (corrected 2026-08-11, bug-log #75 — the labels below are what the
@@ -1702,7 +1795,7 @@ sha256   = "167e7a030f221f5805ce11ee2f74e7678aa7e44c7ea457ec73c537c30fad3eeb"
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "82528944f45b04cdec7b6b0135467fdd220571e1a737cb5fed3716dc73c31ad8"
+sha256   = "9ab4703695b5e5edc1448a4809a2b9b6ffcb26b83d1147c92a1bfcd7d19af198"
 
 # Anchor #109 — MN-Basis 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1723,7 +1816,7 @@ sha256   = "82528944f45b04cdec7b6b0135467fdd220571e1a737cb5fed3716dc73c31ad8"
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "9ffbde26f95fcfb64f6dd397c7482a12e633c65eb6b848eb8bc7b681b7221a2d"
+sha256   = "b119b97da48241b4cba0ec21dd1005dba76882136ebda5a7d3f39bc382fe6b76"
 
 # Anchor #110 — MN-Basis 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1744,7 +1837,7 @@ sha256   = "9ffbde26f95fcfb64f6dd397c7482a12e633c65eb6b848eb8bc7b681b7221a2d"
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "7ed6add7a5728ea2411f7bea4d0db766540826eeb0ba574645dbfb1cf17fd4e8"
+sha256   = "8dc5712389106214d74a145e8f8ac0467e99b35c2a691018b4bfdfdd7ebfdf2c"
 
 # Anchor #111 — MN-Basis 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1765,7 +1858,7 @@ sha256   = "7ed6add7a5728ea2411f7bea4d0db766540826eeb0ba574645dbfb1cf17fd4e8"
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "9c23740ebbd7f43b74d2d83524fe748e97725510b1181bc9d4b4f9b205bf94d2"
+sha256   = "e053a8c7d72d10c3dc126eb538b5e62542b5b40ba49056aa55e34c1bc7f0c5de"
 
 # Anchor #112 — MN-Funding 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1786,7 +1879,7 @@ sha256   = "9c23740ebbd7f43b74d2d83524fe748e97725510b1181bc9d4b4f9b205bf94d2"
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "ac134d559ae05c767d946e349ef57b33f3b6b0e2c3a0b3bba6d79877662009ca"
+sha256   = "1c915caaba77a26d6eb27f6cb28abb01544ab3ee1016d25d74007b0a1b3eabe1"
 
 # Anchor #113 — MN-Funding 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1807,7 +1900,7 @@ sha256   = "ac134d559ae05c767d946e349ef57b33f3b6b0e2c3a0b3bba6d79877662009ca"
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "bd7861ed4e18fdc825243e826ceafe219bdefc1fc8e422966c3222a3b59efb91"
+sha256   = "c6eb9b01d9b079fd37ff6e99114a580cf8a3741a7a155685ef5f6ebec3c5a2c9"
 
 # Anchor #114 — MN-Funding 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1828,7 +1921,7 @@ sha256   = "bd7861ed4e18fdc825243e826ceafe219bdefc1fc8e422966c3222a3b59efb91"
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "e9024299feb49433b2d0876428489c232845572a5e8b07095c2ef15dc3e9ec21"
+sha256   = "93c31b79160f209386f2d77eab5dea627f8eb68230b40d812052d3c7410ab211"
 
 # Anchor #115 — MN-Funding 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1849,7 +1942,7 @@ sha256   = "e9024299feb49433b2d0876428489c232845572a5e8b07095c2ef15dc3e9ec21"
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "735a6efeb79531926ef65fe4ad59c6f947d7754f6146aa0fb22efd7459a52959"
+sha256   = "579d92291323ed3f325aca51113362b8d6468b63ac911f93f07a8d98bb663dfd"
 
 # Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1870,7 +1963,7 @@ sha256   = "735a6efeb79531926ef65fe4ad59c6f947d7754f6146aa0fb22efd7459a52959"
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "f2be5aec4f6a9d56a2e5b35919b3c2555fe274871234805b4e51b55840eb35bd"
+sha256   = "0a570e1d1246dee2e711c0b57609ec4f172538daed90580231de4919a2bd4894"
 
 # Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1891,7 +1984,7 @@ sha256   = "f2be5aec4f6a9d56a2e5b35919b3c2555fe274871234805b4e51b55840eb35bd"
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "5a7cccfe4024233e6e4ccfbd20346a7dc780d40732a8f74b98611ed03a6f76d6"
+sha256   = "c6352ab07e3ed88c8383ab92d988bcb764679009fdf84ce1b4d72f5e116b03f5"
 
 # Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1912,7 +2005,7 @@ sha256   = "5a7cccfe4024233e6e4ccfbd20346a7dc780d40732a8f74b98611ed03a6f76d6"
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "164fb81e9eea978e8d5de671fab01652bff9d587041bcb51496209621396bc3c"
+sha256   = "72d0e1d9019217dc5c721ffb16c32509c71fe87b4bb84d68578e056b4b2408d3"
 
 # Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1933,4 +2026,4 @@ sha256   = "164fb81e9eea978e8d5de671fab01652bff9d587041bcb51496209621396bc3c"
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "78a0df0a48362af6a1cb0de61c7c18001c42c92d8f1c7b244efe0c2900f3e4d8"
+sha256   = "0acde522331f4fd03701984b9a17de57aa8044d175d2f0e0f5229c7fb2f41f24"

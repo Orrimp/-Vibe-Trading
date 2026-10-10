@@ -1,0 +1,85 @@
+---
+slug: time-series-momentum-robustness
+scenario: v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy
+generated: 2026-10-10T15:19:53Z
+wall_clock_s: 44.9
+host: M022517718D
+pid: 74015
+git_commit: 7a09d40cfbf934ddba475cca9444219d6dab5fb0
+data_revision_sha: 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7
+---
+# Time-Series Momentum θ-Surface — Parameter-Robustness Sweep — v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy
+
+## Ensemble parameters (shared across all θ-cells)
+
+| Field                    | Value                                                   |
+|--------------------------|----------------------------------------------------------|
+| master_seed              | 0xC0FFEE                                          |
+| fill_seed                | 0xC0FFEE                                          |
+| n_paths                  | 200                                                 |
+| sub_seed_rule            | "master + j*0x9E3779B9 (SAME paths across cells, ADR-0051 D6.1)" |
+| reduction_rule           | "index-order mean/std; total_cmp sort; type-7 linear pct" |
+| generator                | block-bootstrap-real                                        |
+| bootstrap_mode           | shared-index                                         |
+| block_length_policy      | auto                                    |
+| selected_block_length_L  | 281 (θ-independent — same L for all cells per OQ-3)      |
+| source_revision_sha      | 3a8b96c43f2d8980fd8039303197ff3ac5d01e8f9cebaecdf74c853622dbbfc7                                    |
+| held_constant            | selection_mode=time_series_long_flat score_source=vol_adjusted_return direction=momentum rebalance_minutes=60 exposure_cap=0.50 k_long=10(inert) vol_floor=inert k_short=0 size=equal_weight |
+
+## TS-momentum θ-grid definition (6-cell, LOCKED § D-TSM.3-LOCKED — changing this changes the SHA)
+
+grid_definition:
+  g=0 lookback=168 entry_threshold=0 k_long=10 drift=0.10
+  g=1 lookback=24 entry_threshold=0 k_long=10 drift=0.10
+  g=2 lookback=720 entry_threshold=0 k_long=10 drift=0.10
+  g=3 lookback=168 entry_threshold=0.02 k_long=10 drift=0.10
+  g=4 lookback=720 entry_threshold=0.02 k_long=10 drift=0.10
+  g=5 lookback=24 entry_threshold=0.02 k_long=10 drift=0.10
+
+## θ-surface (per-cell distribution + verdict)
+
+Notation: p5/p50/p95 Sharpe at {:.6}; prob_loss / P(Sharpe>1) at {:.6}; p95_maxdd at {:.2}%.
+Spread = p95_sharpe − p5_sharpe (interpretive, NOT verdict-forcing).
+Verdict: FRAGILE/MARGINAL/ROBUST via 5-signal weakest-link (frozen decision-rule § 0 bands).
+
+Ruined paths: **0 of 1200** — no path's equity reached zero or below at any bar. Stated rather than left to inference: equity <= 0 is clamped to 1e-6 before the metrics, so `p95_maxdd` near 100% would otherwise be indistinguishable from ruin (bug-log #127).
+
+time_in_market = fraction of bars where ≥1 long position was held (mean across N paths, D-TSM.6.4).
+
+| g  | lookback | threshold | k_long | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | time_in_market | verdict  | notes |
+|----|----------|-----------|--------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|----------------|----------|-------|
+|  0 |      168 | 0.00      |     10 | 0.10 | -0.411219 | 0.546820  | 1.531194  | 0.185000 | 0.195000    | 29.86%   | 1.942413 | 0.8261          | FRAGILE  |  |
+|  1 |       24 | 0.00      |     10 | 0.10 | -1.616844 | -0.688841  | 0.233314  | 0.890000 | 0.005000    | 49.11%   | 1.850158 | 0.8256          | FRAGILE  |  |
+|  2 |      720 | 0.00      |     10 | 0.10 | -0.270458 | 0.733927  | 1.742566  | 0.100000 | 0.340000    | 24.47%   | 2.013023 | 0.8029          | FRAGILE  |  |
+|  3 |      168 | 0.02      |     10 | 0.10 | -0.198966 | 0.631504  | 1.629884  | 0.110000 | 0.285000    | 26.37%   | 1.828850 | 0.7515          | FRAGILE  |  |
+|  4 |      720 | 0.02      |     10 | 0.10 | -0.183635 | 0.706364  | 1.787160  | 0.090000 | 0.370000    | 23.85%   | 1.970794 | 0.7854          | FRAGILE  |  |
+|  5 |       24 | 0.02      |     10 | 0.10 | -1.075261 | -0.190955  | 0.567743  | 0.670000 | 0.005000    | 34.59%   | 1.643004 | 0.6044          | FRAGILE  |  |
+
+## Buy-and-hold passive control (adversarial-review benchmark)
+
+Equal-weight, hold from bar 0 over the SAME N paths and auto-L bootstrap.
+Reference: adversarial review p50 Sharpe ≈ +1.78, P(loss) ≈ 4%, p95 MaxDD ≈ 51% at auto-L, N=500.
+
+| row       | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | verdict  |
+|-----------|-----------|------------|------------|-----------|-------------|-----------|----------|----------|
+| BUYHOLD   | 0.246190 | 1.812105  | 3.586571  | 0.045000 | 0.760000    | 51.73%   | 3.340381 | (passive — no verdict) |
+
+## Family verdict
+
+FAMILY-UNIFORM-FRAGILE
+
+Every active θ-cell is FRAGILE under the frozen decision-rule bands.
+No multiple-testing correction is needed for a uniform-negative result:
+C3 is not selecting a winner — it is reporting that no cell cleared the bar.
+Conclusion: v1 time-series momentum (per-asset long/flat on own trailing return) is
+structurally fragile across the tested parameter space on this 10-symbol 1h universe.
+Whipsaw/fee-bleed or late exits may have dominated the trend-capture benefit.
+This closes the active-trading thesis on this universe: no method (x-sec or time-series)
+beat passive buy-and-hold net of fees. Routes to broader-universe / horizon axis.
+
+Notes:
+- Decision-rule bands: frozen robustness-decision-rule-2026-05-30.md § 0.
+- Composite = weakest-link of 5 PRIMARY signals (p5_sharpe, p50_sharpe, prob_loss, P(Sharpe>1), p95_maxdd).
+- Spread and p50-vs-real-path are INTERPRETIVE (not verdict-forcing).
+- Generator: `block-bootstrap-real` only is anchor-grade.
+- Determinism scope: Apple-Silicon canonical box (ADR-0051 D5).

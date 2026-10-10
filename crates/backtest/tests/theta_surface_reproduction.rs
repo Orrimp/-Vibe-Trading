@@ -359,7 +359,7 @@ fn mc_reproduces_anchor() {
     // above is before it, and `mc-robustness-2026-06` is not the canonical namespace.
     // anchor-scenario: v1-momentum-2023-block-bootstrap-real-fy-mc
     // anchor-ns: mc-robustness-2026-06
-    const ANCHOR: &str = "937cb52f7186ba6a2fea3f3142d72b80660da9d3984bb5dbfdf47299718efc3e";
+    const ANCHOR: &str = "74c018d5c212bfda8b069bea73310ef321a8dab6d93198a7cb61c5638bc6c164";
 
     assert!(
         corpora_present(),
