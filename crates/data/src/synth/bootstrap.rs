@@ -468,15 +468,32 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
         let returns_by_sym: Vec<Vec<f64>> = self.build_returns_by_sym()?;
 
         // ── Compute auto block length ─────────────────────────────────────────
-        // For shared-index, we need ONE L for the whole universe.
-        // Rule (D-C1.4): compute PWSD on the universe-average absolute log-return
-        // series r̄[t] = mean_sym |r_sym[t]|.
-        // KNOWN DEVIATION (1-24 cluster): running the selector on the
-        // cross-symbol MEAN of |r| lets the highest-vol symbol dominate, so
-        // b_opt is derived for a different series than any single resampled
-        // one. Pinned as shipped — L feeds hashed anchored bodies; the fix is
-        // story 1-24 (namespace re-lock + verdict re-run). See
-        // `block_length.rs` § "Known deviations".
+        // For shared-index, we need ONE L for the whole universe: the stationary-bootstrap
+        // index is drawn ONCE and shared across symbols (ADR-0051 § D1), so a per-symbol L is
+        // unavailable without breaking the cross-sectional dependence structure the MN and
+        // cross-sectional families rest on.
+        //
+        // Rule D-C1.4 SUPERSEDED by story 1-24, 2026-10-10. It computed PWSD on the
+        // universe-average `|r|` — `r̄[t] = mean_sym |r_sym[t]|` — which estimates `b` for a
+        // mixture no symbol actually resamples, and lets the highest-vol symbol dominate that
+        // mixture. PWSD is scale-invariant per series, so the defect existed *only* because the
+        // averaging happened BEFORE estimation.
+        //
+        // Now: estimate per symbol on its own `|r|`, then reduce by **max**. Every PWSD call is
+        // applied to a series that is genuinely resampled (PW-2004's premise) and only the
+        // reduction is policy — stated, and conservative, because a block shorter than any
+        // symbol's dependence destroys that symbol's structure.
+        //
+        // Chosen by a criterion registered BEFORE the numbers existed: of the four candidates,
+        // `standardized_mean_abs` (89) and `per_symbol_median` (67) both come out SHORTER than
+        // the shipped 115 on the measurable surfaces — an adverse direction under AC4 — while
+        // `per_symbol_max` (124) is the only one that is both most-faithful and non-adverse.
+        // `|r|` itself (the volatility-clustering transform, old rule D-C1.4) is retained
+        // deliberately: for drawdown and robustness statistics the persistent structure is the
+        // one that matters.
+        //
+        // On the 26 clamp-saturated surfaces this reduction changes nothing — every policy
+        // lands on the cap. The whole effect is on the 8 non-full-year surfaces.
         let selected_l = match self.block_length_policy {
             BlockLengthPolicy::Fixed(l) => {
                 // Loud validation (was: silent `.max(1)` promotion of 0, and
@@ -488,16 +505,14 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
                 }
                 l
             }
-            BlockLengthPolicy::Auto => {
-                // Universe-average absolute return series.
-                let avg_abs: Vec<f64> = (0..n_returns)
-                    .map(|k| {
-                        let sum: f64 = returns_by_sym.iter().map(|rets| rets[k].abs()).sum::<f64>();
-                        sum / returns_by_sym.len() as f64
-                    })
-                    .collect();
-                politis_white_block_length(&avg_abs).max(1)
-            }
+            BlockLengthPolicy::Auto => returns_by_sym
+                .iter()
+                .map(|rets| {
+                    let abs: Vec<f64> = rets.iter().map(|r| r.abs()).collect();
+                    politis_white_block_length(&abs).max(1)
+                })
+                .max()
+                .unwrap_or(1),
         };
 
         // ── Seed one ChaCha20Rng for the whole path (ADR-0051 D1) ─────────────

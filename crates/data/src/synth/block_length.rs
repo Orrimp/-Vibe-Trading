@@ -139,7 +139,12 @@ impl PwsdVariant {
 /// This is a **pure function**: no RNG, no I/O, no global state.
 #[must_use]
 pub fn politis_white_block_length(returns: &[f64]) -> usize {
-    politis_white_block_length_variant(returns, PwsdVariant::Shipped)
+    // Story 1-24, operator-ruled 2026-10-10: PW-2004's convention is now the default. The
+    // pre-2026-10-10 behaviour remains reachable as `PwsdVariant::Shipped` — it is what the
+    // superseded `mc-robustness-2026-06` bodies were produced with, and keeping it callable is
+    // what lets `shipped_variant_still_reproduces_the_superseded_pin` prove the old numbers were
+    // not lost, only superseded.
+    politis_white_block_length_variant(returns, PwsdVariant::Literature)
 }
 
 /// As [`politis_white_block_length`], but with the window/search convention named explicitly.
@@ -354,14 +359,14 @@ fn pwsd_core(returns: &[f64], variant: PwsdVariant) -> (f64, usize) {
 mod tests {
     use super::*;
 
-    /// Story 1-24 — the parameterisation must not drift from the function it factors.
+    /// Story 1-24 — the public fn must not drift from the convention it declares.
     ///
     /// `politis_white_block_length` is called by the FROZEN robustness gate, so its result is
-    /// load-bearing for 35 anchored bodies. This asserts the refactor is behaviour-preserving
-    /// across a spread of inputs, not just on the one AR(1) fixture FP-C1.6 happens to use —
-    /// otherwise "shipped behaviour unchanged" would rest on a single sample.
+    /// load-bearing for 35 anchored bodies. Since the 2026-10-10 ruling it delegates to
+    /// `Literature`; this asserts that across a spread of inputs rather than on the one AR(1)
+    /// fixture FP-C1.6 uses, because a one-sample claim is not worth making.
     #[test]
-    fn shipped_variant_is_byte_identical_to_the_public_fn() {
+    fn public_fn_is_byte_identical_to_its_declared_convention() {
         use rand::Rng;
         use rand::SeedableRng;
         use rand_chacha::ChaCha20Rng;
@@ -389,10 +394,10 @@ mod tests {
         for (i, case) in cases.iter().enumerate() {
             assert_eq!(
                 politis_white_block_length(case),
-                politis_white_block_length_variant(case, PwsdVariant::Shipped),
-                "case {i} (len {}): the parameterised core disagrees with the public fn. The \
-                 refactor was supposed to be behaviour-preserving; 35 anchored bodies and the \
-                 FP-C1.6 pin depend on that.",
+                politis_white_block_length_variant(case, PwsdVariant::Literature),
+                "case {i} (len {}): the public fn disagrees with the convention it delegates to. \
+                 Since 2026-10-10 that is `Literature`; if this fires, the default was changed \
+                 without this pin following it.",
                 case.len()
             );
         }

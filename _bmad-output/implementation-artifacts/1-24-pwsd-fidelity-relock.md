@@ -235,8 +235,48 @@ so that the robustness gate's null distribution is defensible against the exact 
         REGRESSION-class escalation. Spending that compute before the convention question is
         settled would be spending it on bodies that may not ship.
 
-      Operator question put 2026-10-10. Everything above is the record it rests on.
+      **OPERATOR RULED 2026-10-10: adopt the Literature convention and KEEP the clamp.** L=281
+      for the 26 saturated surfaces; the direction is thesis-safe; the body must state
+      unmistakably that L there is the **cap, not the estimate**; then the regeneration and AC4's
+      verdict-level direction check. The clamp itself is explicitly not reopened in this story.
+
+      **AC2 DECIDED by the pre-registered criterion, which turned out to select on its own.** On
+      the 8 observable surfaces, measured against the current `mean_abs` of 115 (2023 4h):
+
+      | candidate | L | direction vs shipped | literature-faithful? |
+      |---|---|---|---|
+      | `mean_abs` (as-is) | 115 | — | no: estimates `b` for a mixture no symbol resamples |
+      | `standardized_mean_abs` | 89 | **shorter — adverse** | no: still a mixture |
+      | `per_symbol_median` | 67 | **shorter — adverse** | yes, but the reduction discards the binding symbol |
+      | **`per_symbol_max`** | **124** | **longer — safe** | **yes** |
+
+      `per_symbol_max` is the only candidate that is both most-faithful *and* non-adverse, so the
+      criterion picks it without a judgement call — which is what pre-registering it was for. It
+      is also the conservative reduction: one L is structural (the stationary-bootstrap index is
+      drawn once and shared, ADR-0051 § D1), and a block shorter than any symbol's dependence
+      destroys that symbol's structure. On the 26 clamped surfaces it is 281 like everything else,
+      so it changes nothing there — the whole effect is on the 8.
+
+      Had the criterion not been written down before the numbers existed, `per_symbol_median`
+      (shorter L ⇒ more crowns) would have been available to pick post-hoc. It was not picked
+      because it was ruled out in advance, not because it looked wrong afterwards.
 - [ ] *(superseded)* Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
+- [x] **AC1 + AC2 LANDED 2026-10-10.** `politis_white_block_length` now delegates to
+      `PwsdVariant::Literature`, and the `Auto` arm estimates per symbol and reduces by `max`.
+      The generator reports `selected_block_length = 281` for `v1-momentum-theta-surface-2023`,
+      equal to `literature.per_symbol_max` — self-checked by the diagnostic, which **fired the
+      moment the policy changed**, which is what a self-check is for.
+      - **AC1's re-baseline requirement turned out to be unnecessary, and that is a correction to
+        the AC rather than a shortcut.** It says *"the FP-C1.6 pin is re-baselined to the new
+        l_ar1 with the change stated in the assert message"* — but the measurement from the
+        previous iteration showed the two conventions **agree** on that fixture (AR(1) L=7,
+        i.i.d. L=1 both ways), so the pin does not move and there is nothing to re-baseline. It
+        is green unchanged. The AC assumed the fixture would move because the algebra says the
+        window widens; on that fixture the m̂ shift cancels it.
+      - `PwsdVariant::Shipped` stays reachable on purpose: it is what the superseded
+        `mc-robustness-2026-06` bodies were produced with, so the old numbers are superseded
+        rather than lost, and `literature_variant_direction_on_the_fp_c1_6_fixtures` still pins
+        the old arm at (7, 1).
 - [ ] Re-run + re-lock: regenerate, anchor under the new namespace, errata note (AC4).
 - [ ] Review: verify old rows byte-intact, new rows complete, verdict-delta table honest (AC5).
 

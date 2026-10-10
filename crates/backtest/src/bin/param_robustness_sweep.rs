@@ -1829,17 +1829,22 @@ fn main() -> Result<()> {
             sps = c.shipped.per_symbol,
             lps = c.literature.per_symbol,
         );
-        // Self-check: `shipped.mean_abs` is by construction what the shipped run selects, so a
-        // mismatch against the generator's own `selected_block_length` means the diagnostic has
-        // drifted from the thing it claims to measure — the whole reason it was factored rather
-        // than copied.
+        // Self-check against the CURRENT policy. Until 2026-10-10 the Auto arm selected
+        // `shipped.mean_abs`; after story 1-24's ruling it selects `literature.per_symbol_max`.
+        // Either way the generator's own `selected_block_length` must equal the cell the policy
+        // names, or the candidate table has drifted from the thing it claims to measure — which
+        // is the whole reason it was factored out of `generate()` rather than copied.
+        //
+        // This check caught the policy flip itself: it fired the moment the Auto arm changed,
+        // which is what a self-check is for.
         if let Some(rec) = selected_l {
             anyhow::ensure!(
-                rec == c.shipped.mean_abs,
+                rec == c.literature.per_symbol_max,
                 "diagnostic DRIFT for {diag_scenario}: the generator selected L={rec} but \
-                 shipped.mean_abs={} — the candidate table is no longer measuring the series \
-                 the run resamples.",
-                c.shipped.mean_abs
+                 literature.per_symbol_max={} — the candidate table is no longer measuring what \
+                 the Auto policy selects. If the policy changed deliberately, move this check \
+                 with it in the same commit.",
+                c.literature.per_symbol_max
             );
         }
         return Ok(());
