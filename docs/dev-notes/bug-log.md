@@ -4217,8 +4217,28 @@ this because no bakeoff report is anchored.
 
 Direction, from the same mechanism the θ-surface census measured: longer L ⇒ wider null ⇒ harder to
 clear ⇒ **fewer** crowns ⇒ the advisor says "just hold" more often. That is the thesis-safe
-direction and consistent with 33 of 35 surfaces. But it is a product-behaviour change with **no
-regression evidence of any kind**, which is the real gap this finding exposes.
+direction and consistent with 33 of 35 surfaces.
+
+> **CORRECTION 2026-10-10, same day: "no regression evidence of any kind" was WRONG.** I wrote that
+> here and repeated it to the operator. `crates/backtest/tests/bakeoff_e2e.rs` carries
+> `t7_1_full_wired_advisor_bakeoff_real_data`, which runs `run_bakeoff` with the **exact live
+> cockpit config** — 20 arms, the real `RobustnessMode::Bootstrap { paths: 1000 }`, the
+> `LAB_DEFAULT_SEED`, H1-2024 from the pinned corpus. A test exercising the whole path with the
+> real gate does exist, and I claimed its absence without looking.
+>
+> **What is true is narrower and still the finding.** Its assertions are **properties, not pins**:
+> buy-and-hold return > +20%, arms present-or-absent, ensembles distinct from members,
+> `report.crowned.is_some()`, and *"at least one candidate has a non-None robustness flag"*.
+> `crowned.is_some()` holds whatever the crown is; `any_flagged` holds whatever the flags are.
+> **The test proves the gate RAN; it pins nothing about what the gate CONCLUDED** — so an L change
+> that moved every crown and every flag would leave it green.
+>
+> Two further weaknesses in the same test, both this register's own shapes: it is `#[ignore]`d with
+> no CI job running `--ignored`, and on an absent corpus it prints `T7.1 SKIP` and **returns** —
+> a skip reported as a pass, which is `#113` requirement 6 verbatim.
+>
+> So the fix is not a new parallel gate but **outcome pins on the test that already exists**, which
+> is also the `#133`/`#136` lesson: extend the harness, never grow a second one.
 
 **AC5's identity-test obligation cannot be discharged by an identity test.** AD-1 asks every
 analytics change to prove it does not alter ranking. This one *does* alter ranking — not by editing
