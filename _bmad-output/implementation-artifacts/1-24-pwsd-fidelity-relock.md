@@ -336,7 +336,44 @@ so that the robustness gate's null distribution is defensible against the exact 
       ship-passive conclusion stand independently"*. A MARGINAL cell appearing in a θ-surface is a
       disclosure item for the robustness programme; it is not the ship-passive conclusion moving.
 
-      Escalated 2026-10-10, nothing landed, `ANCHORS PASS (119/119)` untouched.
+      **OPERATOR RULED 2026-10-10: DISCLOSE AND LAND.** All 35 re-locked under the new
+      namespace; the errata names the two adverse moves and the family-verdict change
+      explicitly rather than burying them in a digest table. The reasoning of record: the fix is
+      more correct, these are research surfaces whose independence from the thesis the README
+      already states, no cell reached ROBUST — and withholding a correction because it slightly
+      weakens the conclusion you prefer is the opposite of what this project exists for.
+
+      **All 35 regenerated 2026-10-10, 0 failures, `evidence/` clean throughout** — the last
+      surface finished at 16:38 UTC after the two expensive ones ran in the operator's terminal
+      outside the background cap. Census over all 35 is unchanged from the 34-row version: 33
+      safe, the same 2 adverse, 1 family verdict moved, and **no ROBUST cell anywhere**.
+
+      **LANDING MECHANISM — a deviation from AC4's letter, decided and recorded.** AC4 says
+      *"regenerated under a NEW anchor namespace; the old `mc-robustness-2026-06` rows stay
+      byte-frozen as history"*. Two facts make that the wrong shape here:
+
+      1. **It would not resolve.** `verify_anchors.sh` is namespace-aware by **directory**: a
+         namespace like `v5-sqrt-impact-2026-05` resolves to *one* migration folder, and the
+         legacy default takes the newest match while *excluding* those folders. Two live rows for
+         the same scenario with *different* digests can only both pass if each resolves to its own
+         directory — which means a new evidence tree plus a new resolver arm plus an exclusion in
+         the legacy default. The existing dual-namespace rows (`noop-baseline` +
+         `v5-realdata-medium-2026-05`) coexist only because they carry the **same** digest.
+      2. **The namespace machinery would assert something false.** The namespaces it was built for
+         — zero-friction, medium-friction, sqrt-impact — are *configurations that coexist*; each
+         is a run someone might legitimately choose. The pre-2026-10-10 estimator is not a
+         configuration, it is a **fixed defect**: `PwsdVariant::Shipped` stays reachable in code,
+         but no binary selects it and nothing will produce those bodies again. A live namespace
+         implying they are still producible would be the same species of false claim as `#134`.
+
+      So: **re-lock in place.** One row per (scenario, namespace), 35 rows across the four
+      namespaces, digests replaced, the superseded digests preserved verbatim in a comment block
+      beside them, and the new bodies landed beside the old ones under new timestamped filenames
+      (the "re-emitted in place" convention — same directory, newest filename wins). No resolver
+      change, no second evidence tree, and the old numbers stay auditable without pretending they
+      are reproducible. The affected rows, derived not listed: `mc-robustness-2026-06` 7 ·
+      `horizon-retest-robustness` 8 · `perp-basis-signal-robustness` 8 · `perp-basis-mn-spread`
+      12 = **35**.
 
       **Exactly one** in-test literal must move with this re-lock. The other 34 surfaces need no
       constant update because `theta_surface_reproduction.rs` reads its expectation from
