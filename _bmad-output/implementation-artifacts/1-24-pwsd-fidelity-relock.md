@@ -1,6 +1,6 @@
 # Story 1.24: pwsd-fidelity-relock
 
-Status: ready-for-dev
+Status: review
 
 <!-- Created 2026-07-31 by the 1-13 code-review decision (operator: "doc now + re-lock story").
      This story owns the CODE half of the PWSD-fidelity cluster; the doc half landed in the
@@ -105,7 +105,7 @@ so that the robustness gate's null distribution is defensible against the exact 
       - **AC5's identity-test obligation**: the FROZEN gate calls this function, so the `usize`
         return signature is frozen and the identity test must show ranking is unchanged *given the
         same L* — i.e. it tests the gate, not the estimator.
-- [~] **Dev — AC1 parameterised and MEASURABLE 2026-10-10, shipped behaviour byte-identical.**
+- [x] **Dev — AC1/AC2/AC3 DONE 2026-10-10.** Parameterised first so the fix was MEASURABLE before it was made; shipped behaviour byte-identical throughout that step.
       `PwsdVariant::{Shipped, Literature}` names the two conventions and
       `politis_white_block_length_variant` evaluates either; the public
       `politis_white_block_length` delegates to `Shipped`, so its result is unchanged and all 35
@@ -277,7 +277,7 @@ so that the robustness gate's null distribution is defensible against the exact 
         `mc-robustness-2026-06` bodies were produced with, so the old numbers are superseded
         rather than lost, and `literature_variant_direction_on_the_fp_c1_6_fixtures` still pins
         the old arm at (7, 1).
-- [~] **AC4 — regeneration RUNNING 2026-10-10.** All 35 surfaces into the scratchpad, never
+- [x] **AC4 DONE 2026-10-10 — all 35 regenerated, censused, and landed.** All 35 surfaces into the scratchpad, never
       `evidence/`, so the diff census is taken **before** anything lands — the order the
       1-26/1-27/1-28 passes established, and the only order in which "what changed" is a
       measurement rather than a reading. First surface:

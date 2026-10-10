@@ -3581,7 +3581,7 @@ arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0045-v5-c
 crates      = ["crates/data", "crates/backtest"]
 tests       = []
 anchors     = []   # will ADD a new namespace; mc-robustness-2026-06 rows stay frozen
-state       = "scoped"   # story 1-24 created 2026-07-31 by the 1-13 review decision; ready-for-dev
+state       = "scoped"   # story 1-24 at REVIEW 2026-10-10: all 5 ACs discharged. 3 estimator defects + 1 unratified aggregation policy fixed; 35 anchored bodies re-locked in place under ADR-0045 D6 (old digests kept verbatim); AC4 direction guard TRIPPED on 2 of 35 (FRAGILE->MARGINAL, one family verdict moved) and operator ruled DISCLOSE AND LAND; AC5 discharged by measurement rather than an identity test, since the change alters ranking by moving the FROZEN gate INPUT (bug-log #139). Awaiting bmad-code-review, not further dev.
 
 [[req]]
 id          = "REQ-HARNESS-FILL-CORRECTNESS-001"
