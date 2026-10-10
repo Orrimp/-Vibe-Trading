@@ -299,6 +299,45 @@ so that the robustness gate's null distribution is defensible against the exact 
       | `theta_surface_reproduction.rs:362` `937cb52f7186…` | `v1-momentum-2023-block-bootstrap-real-fy-mc` (`mc-robustness-2026-06`) | **YES — one of the 35** |
       | `reproducibility_sample_figure.rs:49` `076929bb63d9…` | `btc-yahoo-2024-1d-sma-cross` (`lab-yahoo-realdata-v0.1.1`) | no — different family, no block bootstrap |
 
+      **AC4's DIRECTION GUARD IS TRIPPED — 2026-10-10, census of 34 of 35 (the 35th still
+      running). This is the REGRESSION-class finding the AC was written to catch, and it is
+      escalated unlanded.**
+
+      AC4's expectation: *"longer L ⇒ crowns same or fewer ⇒ ship-passive strengthens — any
+      OPPOSITE movement is a REGRESSION-class finding requiring operator escalation before
+      ship."* Measured, per surface, crown-eligible cells before → after:
+
+      - **32 of 34 moved in the safe direction** (same or fewer). Several improved markedly:
+        `v1-carry-horizon-daily-2023` 4→3, `v1-carry-theta-2023` 2→1.
+      - **2 of 34 moved ADVERSELY**, both a single cell `g=0` going **FRAGILE → MARGINAL**:
+        - `v1-ts-horizon-daily-theta-surface-2023` — 0→1 clear, **and its FAMILY VERDICT MOVED
+          `FAMILY-UNIFORM-FRAGILE` → `FAMILY-HAS-NON-FRAGILE-CELLS`.** L 9 → 22. The cell's p50
+          Sharpe rose 0.0057 → 0.1053 and p95 0.7929 → 0.9414.
+        - `v1-basis-reversal-fee05bps-theta-surface-2023` — 2→3 clear, family verdict unchanged.
+          L 204 → 281. Here p50 actually *fell* (0.0616 → 0.0574); it was p95 (0.8063 → 0.8557)
+          that crossed the band.
+
+      **MARGINAL is crown-eligible, so this is a crown change and not merely a reported band.**
+      Checked rather than assumed — `bakeoff/robustness.rs:26`: *"The ranking comparator treats
+      `Fragile` as the **only** ineligible-to-crown flag; all other variants are crown-eligible."*
+      `ParamRobustnessVerdict` converts into `RobustnessFlag` at `:74`, so a MARGINAL θ-cell sits
+      in the crown-eligible class. **No cell reached ROBUST**; nothing is actually crowned.
+
+      **Why the inference inverted, which is worth keeping.** AC4's expectation came from the
+      review's direction analysis: longer blocks ⇒ wider null ⇒ harder to clear. That holds 32
+      times. But a longer block *also preserves more trend and persistence structure*, and for a
+      trend-following or reversal cell that can raise p50/p95 rather than widen the spread. The
+      inference was not wrong in general — it is simply not a theorem, and AC4 called it an
+      *expectation* for exactly this reason. This is what the guard existed to detect, working.
+
+      **Context the ruling needs: these are RESEARCH surfaces, not the thesis's load-bearing
+      evidence.** `README.md` § Status already records that the advisor's bakeoff gate resamples
+      returns and never re-executes fills, *"so crowns, verdicts and the era-qualified
+      ship-passive conclusion stand independently"*. A MARGINAL cell appearing in a θ-surface is a
+      disclosure item for the robustness programme; it is not the ship-passive conclusion moving.
+
+      Escalated 2026-10-10, nothing landed, `ANCHORS PASS (119/119)` untouched.
+
       **Exactly one** in-test literal must move with this re-lock. The other 34 surfaces need no
       constant update because `theta_surface_reproduction.rs` reads its expectation from
       `anchors.toml` at run time (`anchored_sha`) — it is already a derived projection by
