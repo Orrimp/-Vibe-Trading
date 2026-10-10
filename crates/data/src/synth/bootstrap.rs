@@ -479,12 +479,33 @@ impl MonteCarloPathGen for BlockBootstrapPathGen {
                 let open_ts = bar_ts(epoch_base, bar_i + 1);
                 let close_ts = bar_close_ts(epoch_base, bar_i + 1);
 
-                // Use the real bar's volume at the sampled index (from the
-                // first source symbol as a proxy — volume is not load-bearing
-                // for the strategy's return calculation).
-                let real_vol = self.source_bars[0]
+                // Story 1-24 AC3 — the real bar's volume for THIS symbol at the bar the
+                // sampled return ARRIVES AT.
+                //
+                // Was `source_bars[0].1.get(ret_idx)`: two defects in one expression. It took
+                // symbol 0's volume for every symbol in the universe (BTC's volume stamped
+                // onto XRP's bars), and it read the return's ORIGIN bar — return k spans bars
+                // k→k+1, and the bar being constructed here is that span's destination, so
+                // the volume belongs to `ret_idx + 1`.
+                //
+                // `sym_i` indexes `universe`, and `source_rets = &returns_by_sym[sym_i]` two
+                // dozen lines up already indexes per-symbol from the same ordering — only the
+                // volume reached for `[0]`.
+                //
+                // TRACED for AC3, and the old comment's "not load-bearing" claim survives
+                // scrutiny for these scenarios but NOT as stated: `volume_usd` (the only
+                // slippage input that could consume it) comes from
+                // `cfg.volume_usd_per_symbol`, a config map — never from `Bar::volume`. But
+                // `Bar::volume` IS read elsewhere: the resampler sums it (`resample.rs:316`),
+                // the TCN/PatchTST overlays feature `ln(1+volume)`, and the ADR-0071 OBV node
+                // accumulates it (`composed/node.rs:419`). None of those is on the 35 affected
+                // scenarios' path — they are cross-sectional sweeps, and OBV reaches only the
+                // `v0.obv` engine arm and the agent runtime. So this fix is anchor-neutral
+                // *for them*, and body-affecting for anything that ever adds an OBV or
+                // overlay surface over synthetic bars.
+                let real_vol = self.source_bars[sym_i]
                     .1
-                    .get(ret_idx)
+                    .get(ret_idx + 1)
                     .map(|b| decimal_to_f64(b.volume.get()))
                     .unwrap_or(100.0);
 

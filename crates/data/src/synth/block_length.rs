@@ -207,10 +207,21 @@ pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant)
     let band = 2.0_f64 * (log10_n / n_f).sqrt();
     let rho0 = gamma[0].abs(); // ρ̂(0) = variance; never divide by 0 if > 0.
 
-    let m_hat: usize = if rho0 < f64::EPSILON {
-        // Zero-variance series — block length = 1 (iid).
-        // NOTE: absolute-ε test (scale-dependent) — known deviation #3 in the
-        // module doc; pinned pending story 1-24.
+    // Story 1-24 AC2 — SCALE-RELATIVE zero-variance test, replacing the absolute
+    // `rho0 < f64::EPSILON` (module-doc deviation #3). `rho0` is a variance (units x²) and
+    // `scale` is a magnitude (units x), so the comparison is made on the standard deviation
+    // where the units match: a series counts as constant when its sd is negligible *relative
+    // to its own magnitude*, not relative to 1.0.
+    //
+    // Where this changes behaviour, exactly: a series whose variance is genuinely below
+    // ~2.2e-16 — e.g. returns oscillating ±1e-9 — was declared constant and given L = 1
+    // although it carries real structure at its own scale. Both tests agree on every input
+    // with realistic magnitude, which is why this is anchor-neutral for all 35 affected rows;
+    // `scale_relative_guard_differs_only_for_tiny_variance_series` pins that rather than
+    // asserting it.
+    let scale = returns.iter().fold(0.0_f64, |m, r| m.max(r.abs()));
+    let m_hat: usize = if rho0.sqrt() <= f64::EPSILON * scale {
+        // Constant series (or all-zero) — block length = 1 (iid).
         1
     } else {
         let mut found = m_cap; // default if no m satisfies the criterion.
@@ -284,7 +295,19 @@ pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant)
     //    = (ĝ² / Ĝ²)^{1/3} · N^{1/3}.
     //
     // Degenerate guard: if Ĝ ≈ 0 (white-noise with zero variance), return 1.
-    let b_hat: f64 = if g_hat.abs() < f64::EPSILON || g_slope == 0.0 {
+    //
+    // Story 1-24 AC2, SECOND site — and module-doc deviation #3 undercounted. It named the
+    // `m̂` guard's absolute ε test; this is a second one, and fixing only the first left the
+    // estimator magnitude-sensitive. Found by
+    // `scale_relative_guard_differs_only_for_tiny_variance_series`, which measured a ±1e-9
+    // series returning L=1 while its 1e9-scaled twin returned L=68 — so the fix was incomplete
+    // in precisely the way the test existed to catch.
+    //
+    // `Ĝ` is a variance-like quantity (units x²), so the relative comparison is against
+    // `scale²`. `g_slope == 0.0` stays an exact test: zero slope scales to zero slope, so it is
+    // already scale-invariant and is a true degeneracy rather than a tolerance.
+    let g_hat_floor = f64::EPSILON * scale * scale;
+    let b_hat: f64 = if g_hat.abs() <= g_hat_floor || g_slope == 0.0 {
         1.0
     } else {
         let ratio = (g_slope * g_slope) / (g_hat * g_hat);
@@ -350,6 +373,56 @@ mod tests {
                 case.len()
             );
         }
+    }
+
+    /// Story 1-24 AC2 — the scale-relative guard changes behaviour in EXACTLY one place.
+    ///
+    /// The comment at the guard claims the absolute and relative tests agree on every input of
+    /// realistic magnitude, and that this is why the change is anchor-neutral for all 35
+    /// affected rows. This pins the claim as a property, which is checkable without keeping the
+    /// old code around to call:
+    ///
+    /// - a **genuinely constant** series still collapses to `L = 1`, at any magnitude — the
+    ///   guard must not stop catching the case it exists for;
+    /// - a series with **real structure at a tiny magnitude** (±1e-9) now estimates instead of
+    ///   collapsing. Under the old absolute test its variance (~1e-18) fell below
+    ///   `f64::EPSILON` and it was declared constant, which is the defect: "small" was being
+    ///   read as "constant".
+    #[test]
+    fn scale_relative_guard_differs_only_for_tiny_variance_series() {
+        // Constant, across eleven orders of magnitude — must all still be L = 1.
+        for level in [0.0_f64, 1e-9, 1e-3, 0.05, 1.0, 1e3] {
+            let constant = vec![level; 256];
+            assert_eq!(
+                politis_white_block_length(&constant),
+                1,
+                "a constant series at level {level} must collapse to L=1 — the guard has \
+                 stopped catching the case it exists for"
+            );
+        }
+
+        // Real structure at a tiny magnitude: an AR(1)-like alternation scaled to ±1e-9.
+        // Variance ≈ 1e-18, i.e. BELOW f64::EPSILON, so the old absolute test called this
+        // constant. It is not constant; it is small.
+        let tiny: Vec<f64> = (0..512)
+            .map(|i| if i % 2 == 0 { 1e-9 } else { -1e-9 })
+            .collect();
+        let var = {
+            let mean = tiny.iter().sum::<f64>() / tiny.len() as f64;
+            tiny.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / tiny.len() as f64
+        };
+        assert!(
+            var < f64::EPSILON,
+            "fixture no longer exercises the case: its variance {var:e} is not below \
+             f64::EPSILON, so this test would pass for the wrong reason"
+        );
+        assert_eq!(
+            politis_white_block_length(&tiny),
+            politis_white_block_length(&tiny.iter().map(|v| v * 1e9).collect::<Vec<_>>()),
+            "the estimator is scale-invariant by construction (γ̂ scales by c², so ĝ²/Ĝ² and \
+             ρ̂ are unchanged), so scaling this series by 1e9 must not move L. If it does, the \
+             guard is still magnitude-sensitive somewhere."
+        );
     }
 
     /// Story 1-24 AC1 — the first MEASUREMENT of the fix's direction, on the FP-C1.6 fixtures.

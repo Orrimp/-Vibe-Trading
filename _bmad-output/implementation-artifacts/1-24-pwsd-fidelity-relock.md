@@ -136,7 +136,48 @@ so that the robustness gate's null distribution is defensible against the exact 
         only that the Literature arm still detects serial dependence (AR(1) L > i.i.d. L) — a
         wiring check, not a direction claim, because asserting a direction here would pre-judge
         what the 35-scenario measurement is for.
-      - Remaining in this task: the ε guard (AC2's scale-relative half) and the volume proxy (AC3).
+      **AC2's ε half and AC3 DONE 2026-10-10, and both are MEASURED anchor-neutral.**
+
+      - **AC2 ε — and module-doc deviation #3 UNDERCOUNTED: there are TWO absolute-ε tests, not
+        one.** The doc names the `m̂` guard (`ρ̂(0) < f64::EPSILON`); there is a second at the `b̂`
+        degenerate guard (`Ĝ.abs() < f64::EPSILON`). Both now compare on matching units — the
+        standard deviation against `scale`, and `Ĝ` against `scale²`, where
+        `scale = max|rₜ|` — so "small" stops being read as "constant".
+        **Found by the test, on my own fix**: `scale_relative_guard_differs_only_for_tiny_variance_series`
+        measured a ±1e-9 series returning L=1 while its 1e9-scaled twin returned L=68, so fixing
+        only the first site left the estimator magnitude-sensitive in exactly the way the test
+        existed to catch. `g_slope == 0.0` stays exact: zero slope scales to zero slope, so it is
+        a true degeneracy rather than a tolerance.
+      - **AC3 volume — two defects in one expression.** `source_bars[0].1.get(ret_idx)` took
+        symbol 0's volume for *every* symbol (BTC's volume stamped onto XRP's bars) and read the
+        return's **origin** bar, when return k spans bars k→k+1 and the bar being built is the
+        destination. Now `source_bars[sym_i].1.get(ret_idx + 1)`; `sym_i` was already in scope and
+        `returns_by_sym[sym_i]` two dozen lines up already indexed per-symbol — only the volume
+        reached for `[0]`.
+      - **AC3's required trace, and the old comment's claim survives but NOT as stated.**
+        `volume_usd` — the only slippage input that could consume it — comes from
+        `cfg.volume_usd_per_symbol`, a **config map**, never from `Bar::volume`; and it is read
+        only by the `SquareRoot` arm. But `Bar::volume` *is* read in three places: the resampler
+        sums it (`resample.rs:316`), the TCN/PatchTST overlays feature `ln(1+volume)`, and the
+        ADR-0071 **OBV** node accumulates it (`composed/node.rs:419`). None is on the 35
+        scenarios' path — they are cross-sectional sweeps, and OBV reaches only the engine's
+        `v0.obv` arm and the agent runtime. So "volume is not load-bearing" is true *for these
+        scenarios* and false as a general statement; it becomes body-affecting the moment an OBV
+        or overlay surface is run over synthetic bars.
+      - **NEUTRALITY MEASURED, not argued.** `v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy`
+        re-run with both fixes in reproduces **`0427481b54bc…` — byte-identical to its anchor**,
+        with L=3 unchanged. That surface is the strongest available case for the volume half: the
+        daily horizon is the one that exercises the volume-summing resampler, so if resampled
+        volume reached anything downstream, this is where it would have shown. `ANCHORS PASS
+        (119/119)`.
+        **Scope of that claim, stated rather than glossed: one surface, not 35.** It establishes
+        the mechanism is neutral; the family-wide confirmation comes with the regeneration.
+      - **Consequence for the re-lock — a clean attribution.** Because these two fixes move no
+        body, any delta the regeneration produces is attributable **solely** to AC1's convention
+        change plus AC2's aggregation policy. That is what lets the re-lock report say *what*
+        moved the numbers instead of *that* they moved.
+      - Remaining in this task: flip the default to `PwsdVariant::Literature` and re-baseline the
+        FP-C1.6 pin — **after** the 35-scenario L table, per the pre-registered ordering.
 - [ ] *(superseded)* Dev: window/m̂/ε/volume fixes + re-baselined pins (AC1-AC3).
 - [ ] Re-run + re-lock: regenerate, anchor under the new namespace, errata note (AC4).
 - [ ] Review: verify old rows byte-intact, new rows complete, verdict-delta table honest (AC5).
