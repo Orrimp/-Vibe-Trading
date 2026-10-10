@@ -18,7 +18,18 @@ mispricing that makes several anchored RESEARCH surfaces execution-artifact nois
 builds. **What that does NOT touch:** the advisor's bakeoff gate resamples returns
 and never re-executes fills (verified three times adversarially), so crowns,
 verdicts and the era-qualified ship-passive conclusion stand independently. The
-active-trading-thesis closure currently reads *direction-preserved pending re-lock*.
+active-trading-thesis closure reads **direction-preserved, pending the 1-25 harness-fill
+re-lock.** Of the two CRITICAL re-lock stories the burn-down opened, **1-24 (PWSD fidelity)
+closed 2026-10-10** — its 35 anchored surfaces were regenerated under a corrected
+Politis-White estimator, and the re-derivation moved two of them adversely (one family verdict
+off UNIFORM-FRAGILE), disclosed in
+[`docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md`](docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md).
+**1-25 remains open and is the binding one:** its own closure audit finds one acceptance
+criterion unmet in the source at HEAD and five of seven riders unmet, over an inventory of
+seven CRITICAL defects spanning anchors #86-#119 — including an arm that never ran (`#75`), an
+arm ranked inverted against its own spec (`#76`), and funding mis-accrued by ~10x on the carry
+lanes (`#72`/`#73`). Until those surfaces are re-derived from clean arithmetic, the direction of
+the closure is preserved and its magnitudes are not.
 Current honest state: `_bmad-output/implementation-artifacts/sprint-status.yaml`,
 `docs/dev-notes/bug-log.md`, `docs/dev-notes/product-review-2026-08-04.md`.
 

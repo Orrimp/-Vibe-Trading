@@ -70,7 +70,7 @@
 )]
 
 use backtest::{
-    BakeoffConfig, BakeoffRequest, DateRange,
+    BakeoffConfig, BakeoffRequest, DateRange, RobustnessFlag,
     bakeoff::{resolve_dvol_override, run_bakeoff},
     cancel::cancellation_pair,
     engine::ScenarioDataSource,
@@ -475,6 +475,223 @@ async fn dvol_regime_bakeoff_eth_ran_a_real_series() {
     println!("dvol_regime_bakeoff_eth_ran_a_real_series: PASS");
 }
 
+// ── Test 2c: the DECISIVE ETH verdict — a DURABLE vehicle for the conclusion ──
+
+/// The decisive 1000-path bootstrap verdict for `v0.dvol_regime` on **ETHUSDT**.
+///
+/// ## Why this test had to exist
+///
+/// Story 3-15's published conclusion — *"FRAGILE on BOTH BTCUSDT + ETHUSDT →
+/// BenchmarkWins"* — was produced by two throwaway artifacts: the BTC half from
+/// a pre-assertion stdout capture of a test that then failed on an unrelated
+/// stale count, and the ETH half from `_tester_dvol_eth_bootstrap.rs`, a
+/// tester-only file **deleted in the same pass that shipped the story**. So the
+/// number could not be reproduced by anything in the repo, and when the
+/// 2026-08-13 review withdrew the conclusion there was no vehicle to re-run it
+/// with. That is exactly the defect class story 1-29 was built to close: a
+/// published figure whose producer is not in the tree is not a measurement, it
+/// is a memory.
+///
+/// The BTC half now has a durable home — `bakeoff_e2e.rs::t7_1_full_wired_
+/// advisor_bakeoff_real_data` runs BTCUSDT H1_2024 at `Bootstrap { paths: 1000 }`
+/// under the same advisor seed. This is its ETH twin, and the field and both
+/// seeds are copied from it deliberately so the two coins are comparable rather
+/// than merely adjacent.
+///
+/// ## What it pins
+///
+/// The advisor's **conclusion**, not its arithmetic: the arm is present, it is
+/// flagged `Fragile`, buy-and-hold is crowned, and the outcome is
+/// `BenchmarkWins`. Sharpe / return / drawdown are PRINTED but never asserted —
+/// they are `f64` and pinning them would make this a float-equality gate.
+/// A verdict that moves turns this red, which is the point: under AD-19 a moved
+/// verdict is an operator decision, not a number to quietly re-baseline.
+///
+/// Non-vacuity: `trade_count >= 2`. An arm handed an empty DVOL series runs
+/// permanent warm-up — one fill, enter and hold — so a second fill requires a
+/// real regime flip. And `BenchmarkWins` is only meaningful if some active arm
+/// could in principle have been crowned, so the active field is asserted
+/// non-empty.
+///
+/// **Corpus-dependent on-machine test.** Requires `data/binance/ETHUSDT/2024/
+/// *.parquet` and `data/deribit-dvol/ETH/{2023,2024}.parquet` (2023 because the
+/// load span is pre-extended for the W=30 median warm-up). Declared in
+/// `CORPUS_GATED_TESTS` so the skip is counted and announced, never silent.
+///
+/// Measured runtime 2026-10-11: **28s** for the whole 19-arm field at 1000
+/// bootstrap paths. The first version of this doc guessed "~5-10 min" from the
+/// sibling wiring tests; the guess was wrong by an order of magnitude and is
+/// corrected here rather than left to misinform the next reader about whether
+/// this gate is affordable in a routine sweep. It is.
+#[tokio::test]
+#[ignore = "corpus-dependent on-machine test: the decisive ETH bootstrap verdict; requires real Binance + DVOL corpus (ETH); ~30s measured 2026-10-11"]
+async fn dvol_regime_decisive_eth_bootstrap_verdict() {
+    let ws_root = workspace_root();
+    std::env::set_current_dir(&ws_root).expect("set cwd to workspace root");
+
+    // A skip reported as a pass is the house defect this whole file is about.
+    // If the corpus is absent the verdict is UNMEASURED, and saying so loudly
+    // is the only honest rendering.
+    for needed in [
+        "data/binance/ETHUSDT/2024/01.parquet",
+        "data/deribit-dvol/ETH/2024.parquet",
+        "data/deribit-dvol/ETH/2023.parquet",
+    ] {
+        assert!(
+            ws_root.join(needed).is_file(),
+            "UNMEASURED, not passed: the decisive ETH verdict needs {needed} and it is \
+             absent. This test is the only durable producer of story 3-15's ETH half; \
+             reporting its skip as a pass is how that conclusion came to rest on a \
+             deleted file in the first place."
+        );
+    }
+
+    // The ADVISOR seed — `[0xC0, 0xFF, 0xEE, 0, …]`, not this file's LAB_SEED.
+    // Copied from `t7_1_full_wired_advisor_bakeoff_real_data` so the ETH run is
+    // comparable to the BTC one and to the original 2026-06-27 report.
+    let seed: [u8; 32] = {
+        let mut s = [0u8; 32];
+        s[0] = 0xC0;
+        s[1] = 0xFF;
+        s[2] = 0xEE;
+        s
+    };
+    let bootstrap_seed = u64::from_le_bytes([
+        seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
+    ]);
+
+    // The exact advisor field, same three unions as T7.1.
+    let mut field = BakeoffConfig::default_field();
+    field.extend(BakeoffConfig::default_ensemble_field());
+    field.extend(BakeoffConfig::default_macro_field());
+
+    let cfg = BakeoffConfig {
+        request: BakeoffRequest {
+            symbol: Symbol::new("ETHUSDT"),
+            range: DateRange::H1_2024,
+            seed,
+            field,
+            timeframe: Horizon::OneHour,
+            initial_capital: dec!(100_000),
+            fdr_ledger: None,
+        },
+        data_source: ScenarioDataSource::BinanceCache,
+        robustness: backtest::RobustnessMode::Bootstrap {
+            paths: 1000,
+            seed: bootstrap_seed,
+        },
+    };
+
+    eprintln!("\n=== DECISIVE ETH VERDICT — ETHUSDT H1_2024 (Bootstrap 1000) ===");
+    eprintln!("  Seed: [0xC0, 0xFF, 0xEE, 0, …]  Bootstrap seed: {bootstrap_seed:#018x}");
+
+    let (handle, cancel_rx) = cancellation_pair();
+    let report = run_bakeoff(
+        cfg,
+        cancel_rx,
+        ProgressSender::disabled(),
+        BakeoffProgressSender::disabled(),
+    )
+    .await
+    .expect("decisive ETH bakeoff must complete without error");
+    drop(handle);
+
+    // ── the leaderboard, printed in full so a report can cite it ──────────────
+    eprintln!(
+        "\n{:<28} {:>8} {:>12} {:>10} {:>7}  flag",
+        "strategy", "sharpe", "return(frac)", "maxDD(frac)", "trades"
+    );
+    for c in &report.candidates {
+        eprintln!(
+            "{:<28} {:>8.3} {:>12.6} {:>10.6} {:>7}  {:?}",
+            c.strategy.0.as_str(),
+            c.kpis.sharpe,
+            c.kpis.total_return_pct,
+            c.kpis.max_drawdown,
+            c.kpis.trade_count,
+            c.robustness,
+        );
+    }
+
+    let dvol = report
+        .candidates
+        .iter()
+        .find(|c| c.strategy.0.as_str() == "v0.dvol_regime")
+        .expect(
+            "v0.dvol_regime must be PRESENT for ETHUSDT. Absent means the DVOL series \
+             could not be resolved and the arm was correctly DROPPED (bug-log #78) — \
+             honest, but then there is no ETH verdict and the conclusion stays withdrawn.",
+        );
+
+    // Non-vacuity BEFORE the verdict pins: an arm that never flipped regime has
+    // nothing to be Fragile about.
+    assert!(
+        dvol.kpis.trade_count >= 2,
+        "v0.dvol_regime completed {} fill(s) on ETHUSDT H1-2024. trade_count <= 1 is \
+         the empty-series signature — the verdict below would be about a stub.",
+        dvol.kpis.trade_count
+    );
+
+    // `robustness` is `Option<RobustnessFlag>` and `None` means NOT COMPUTED —
+    // under `RobustnessMode::Bootstrap` that would mean the gate silently did not
+    // run. `Some(Fragile)` is therefore the pin, so a `None` reads as unmeasured
+    // rather than as "not Fragile".
+    assert_eq!(
+        dvol.robustness,
+        Some(RobustnessFlag::Fragile),
+        "the ETH verdict for v0.dvol_regime is not the published one: expected \
+         Some(Fragile) — the pre-registered null the 2026-06-27 report published — got \
+         {:?} at sharpe={:.3} over {} fills. A `None` means the bootstrap gate did not \
+         run at all (UNMEASURED, not a pass). Any other flag is a crown-eligibility \
+         change, because Fragile is the ONLY ineligible-to-crown value, and AD-19 makes \
+         that an operator decision rather than a re-baseline.",
+        dvol.robustness,
+        dvol.kpis.sharpe,
+        dvol.kpis.trade_count,
+    );
+
+    // Crown-eligible = a COMPUTED flag that is not Fragile. A `None` is not
+    // eligible, it is unmeasured, and lumping the two together is how a gate
+    // stops being able to fail.
+    let crown_eligible = report
+        .candidates
+        .iter()
+        .find(|c| matches!(c.robustness, Some(f) if f != RobustnessFlag::Fragile))
+        .map_or("(none — every computed flag is Fragile)", |c| {
+            c.strategy.0.as_str()
+        });
+    assert_eq!(
+        format!("{:?}", report.rationale.outcome),
+        "BenchmarkWins",
+        "the ETH OUTCOME moved: expected BenchmarkWins, got {:?} (crown-eligible arm: \
+         {crown_eligible})",
+        report.rationale.outcome,
+    );
+
+    // `BenchmarkWins` on an EMPTY active field would be a tautology.
+    let active = report
+        .candidates
+        .iter()
+        .filter(|c| c.strategy.0.as_str() != "v0.buyhold")
+        .count();
+    assert!(
+        active >= 9,
+        "only {active} active arm(s) faced the benchmark — BenchmarkWins over a field \
+         that small says nothing"
+    );
+
+    eprintln!(
+        "\nDECISIVE ETH VERDICT: v0.dvol_regime = Fragile (sharpe {:.3}, return {:.6}, \
+         maxDD {:.6}, {} fills; return/maxDD are FRACTIONS, 0.49 = +49%) over \
+         {active} active arms -> {:?}",
+        dvol.kpis.sharpe,
+        dvol.kpis.total_return_pct,
+        dvol.kpis.max_drawdown,
+        dvol.kpis.trade_count,
+        report.rationale.outcome,
+    );
+}
+
 // ── Test 3: SOLUSDT bakeoff runs clean with v0.dvol_regime arm ABSENT ─────────
 
 /// Regression: bakeoff on a non-BTC/ETH symbol (SOLUSDT) must complete cleanly
@@ -648,6 +865,7 @@ const CORPUS_GATED_TESTS: &[&str] = &[
     "resolve_dvol_override_returns_some_with_real_corpus",
     "dvol_regime_bakeoff_ran_a_real_series",
     "dvol_regime_bakeoff_eth_ran_a_real_series",
+    "dvol_regime_decisive_eth_bootstrap_verdict",
 ];
 
 /// **Review 3-15 MEDIUM — make the skips LOUD and COUNTED.**

@@ -1750,6 +1750,11 @@ mod clamp_witness_tests {
 }
 
 #[cfg(test)]
+// This module walks the source tree, so it does file I/O. The crate denies
+// `expect_used` at the root and every sibling test module carries the matching
+// allow; story 1-28 added this one without it, so `cargo clippy -p backtest
+// --tests -- -D warnings` — the gate CLAUDE.md names — has failed ever since.
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod clamp_single_definition_test {
     /// Story 1-28 AC1 — the clamp may exist exactly ONCE, and a fourth copy goes RED here.
     ///

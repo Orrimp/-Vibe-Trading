@@ -485,6 +485,34 @@ No warning reaches the screen in any of these cases. The gap widens by one day p
 
 **Moral**: graceful degradation must degrade to *nothing*, never to *something else wearing the original's name*. A probe that could not run has one honest rendering — "not run" — and a row that looks like a result is worse than an error, because an error gets investigated and a plausible row gets believed. Corollary for reviewers: whenever you see a fallback described as equivalent to some benign baseline, check that it actually *is* that baseline; the description is written at design time and the behaviour drifts.
 
+**RESOLVED + PROBED — 2026-10-11.** The drop-to-ABSENCE guard is at
+`crates/backtest/src/bakeoff/mod.rs:1280` and its comment names the gitignored-parquets
+fresh-clone case verbatim. Three distinct absence routes are now covered and each is
+reachable, not `#[ignore]`d:
+
+| route | predicate / guard | test |
+|-------|-------------------|------|
+| unsupported coin (not BTC/ETH) | `dvol_supported` via `dvol_corpus_symbol` | `solusdt_bakeoff_runs_clean_without_dvol_arm`, `build_field_excludes_dvol_when_unsupported` |
+| arm not compiled (`backtest/realdata` off) | `dvol_arm_compiled` | `arm_count_drops_the_dvol_arm_for_unsupported_coins` et al. |
+| **compiled + supported coin + corpus missing or window uncovered** | the `dvol_override.is_none()` `continue` | `btcusdt_bakeoff_drops_dvol_arm_when_series_unavailable` |
+| macro sibling, same shape | `macro_arm_compiled` + the `preloaded_macro_series.is_none()` guard | `macro_arm_is_absent_from_the_ranked_field_when_its_series_is_unavailable` |
+
+**And the guard was PROBED, not merely read.** Disabling the `continue` (`if false && …`)
+turned `btcusdt_bakeoff_drops_dvol_arm_when_series_unavailable` RED with the arm back in the
+field at `trade_count=1, total_return%=0.0077` — a near-flat stub wearing *"Implied-vol regime
+(hold when DVOL < 30-day median)"*, exactly this entry's shape. A guard that is present but
+unprobed is indistinguishable from a guard that cannot fail; this one can.
+
+**A correction to how this entry was being USED.** The hardening burn-down carried stories 3-15
+and 3-16 as *"the product ranks arms that never ran, under labels saying they did"*, and that
+framing was repeated to the operator twice. It is half wrong. `v0.macro_riskon` is **absent**
+from the live 19-arm field (the #81 honesty half, working as designed), and `v0.dvol_regime`
+**ran and traded 17 times** on a machine holding the corpus. The real exposure was always the
+conditional one this entry describes — and it was already closed. Stories 3-15 (`shipped`) and
+3-16 (`shipped-partial`) closed on that basis the same day. Overstating a finding is the same
+class of error as the findings themselves, which is why it is recorded here rather than quietly
+dropped.
+
 ### `#79` — €200 lot realism is INERT on the advisor path: `venue_filter` is configured into every bake-off arm and never reaches the engine. The "ADVISOR-PATH GATE" that names it asserts a constructor value and never calls production.
 **Status**: **FIXED 2026-08-12**, same session as the disclosure. 13 arms now thread `cfg.latency_slippage_sim` through `run_scenario` (14 total); the engine is built as `PaperEngine::new(..).with_venue_filter_mode(input.latency_slippage_sim.venue_filter)` at all three construction sites — the two in `sma_composed_run` plus the inline engine the 8 `v0.8.vote.*` arms build, which was outside the original diagnosis and would have left a third of the ranked field inert. The mis-named gate is re-pointed: five new tests call the production `run_scenario` with the ScenarioConfig `bakeoff/mod.rs` actually builds, and each asserts three independent witnesses — **traded** (non-empty fills, so it cannot pass by silently skipping), **mechanism** (every advisor fill is an exact multiple of `step_size` while the plain path has at least one that is not), and **effect** (terminal equities differ). The old constructor test is kept but stripped of its "ADVISOR-PATH GATE" claim and re-documented as proving nothing about the advisor on its own.
 **Mutation-proven, both links:** reverting the *apply* step fails 3 tests with `€200 lot realism is INERT in production — advisor-path fills NOT multiples of step_size=1: 10/10`; reverting the *threading* for a single arm fails only the multi-arm sweep while the single-arm test stays green — which is exactly why the sweep exists. Blast radius measured on the real 2024 corpus at €200: typical arms move **< 0.1%** of terminal equity, sign varying by design (rounding down deploys less capital, which helps in down-legs and hurts in up-legs). Anchors `119 / 119` before and after; no anchored path calls `run_scenario`, and every non-advisor caller passes `venue_filter: None`.
@@ -4302,3 +4330,65 @@ green verdict, which is the only reason it was caught at all. The fixtures now i
 returns and the test carries a **non-vacuity floor** (≥ 3 cases must produce L > 1) whose failure
 message names this history, so the degenerate version cannot come back quietly. `#135`'s floor,
 applied to a gate I had just written.
+
+### `#140` — four test targets have not COMPILED since story 1-28, taking 34 gates out of the suite — including AD-16 divergence gates and causality falsifiers — and the crate's own clippy gate failed with them
+
+**Found** 2026-10-11, while running the scoped `clippy -p backtest` gate for the 3-15/3-16 closures.
+**Status:** FIXED the same day, all 34 tests re-run green.
+
+Story 1-28 added two fields to `sweep_harness::CellResult` — `total_liquidation_cover_fills`
+(AC3, synthetic buy-to-cover fills) and `ruined_paths`. Four integration-test targets build a
+`CellResult` by hand in a fixture helper, and none was updated:
+
+| target | site | tests taken out |
+|--------|------|----------------:|
+| `horizon_divergence_e2e.rs` | `:831` | 10 |
+| `param_sweep_e2e.rs` | `:669` (`tiny_cell_result`) | 13 |
+| `ts_momentum_divergence_e2e.rs` | `:719` | 7 |
+| `mr_divergence_e2e.rs` | `:436` (`tiny_cell_result`) | 4 |
+
+`E0063: missing fields` is a hard compile error, so from 1-28 onward those four targets could
+not build and their **34** tests could not run. The fix was mechanical — `0` is the consistent
+value, since these fixtures take no liquidations and therefore produce no cover fills and ruin
+no paths — and all 34 pass unchanged on the first run after it. Nothing was wrong with the
+tests. They were simply not in the suite.
+
+**What was out of the suite matters more than the count.** Among the 34: `f_hr_5_two_run_byte_identity_daily`
+and `_4h`, `fp_mr_3_two_run_byte_identity`, `fp_c3_3_two_run_byte_identity` (determinism),
+`f_tsm_3_no_look_ahead_prefix_invariance` and `f_hr_4_no_look_ahead_coarse` (causality
+falsifiers), `f_hr_4_baseline_divergence_4h` / `f_tsm_1_baseline_divergence` /
+`f_tsm_2_signal_non_no_op` / `r_mr_1a_momentum_vs_reversion_diverge` (the AD-16 day-1
+baseline-divergence family), and `same_paths_seeding_invariant_adr0051_d6_1`. These are exactly
+the gates the non-negotiables name as mandatory, and the project ran without them.
+
+**A fifth site, same commit, same shape.** 1-28 also added `#[cfg(test)] mod clamp_single_definition_test`
+to `crates/backtest/src/stats/mod.rs` without the `#[allow(clippy::unwrap_used, clippy::expect_used)]`
+that every sibling test module in that file carries. The module does file I/O, the crate root
+declares `#![deny(clippy::expect_used)]`, so `cargo clippy -p backtest --tests -- -D warnings`
+— the gate CLAUDE.md names by name — has failed since. Three errors, in the crate's own lib
+test.
+
+**Why it was invisible, and this is the part worth keeping.** CLAUDE.md tells us to scope
+verification to the crates we touch and explicitly warns off the workspace-wide
+`--all-targets` sweep, for a good measured reason (52 minutes, 155 GB). But `-p backtest`
+*alone* was never run either: the habit became `--test <specific-target>`, which compiles only
+the target named. A broken sibling target is then invisible — cargo never tries to build it.
+So the guidance that protects the disk also hides this failure class, and nothing closed the
+gap. **`cargo clippy -p <crate> --tests` is the cheap middle rung**: it compiles every target
+in the crate without linking the other sixteen crates' 339 test binaries. It found all five
+sites in about ten seconds.
+
+**The review miss is mine.** I wrote the PASS verdict for story 1-28 earlier in this same
+session (`82f8f179`, labelled self-review). The verdict recorded that 1-28's own tests pass —
+which was true, and which is precisely the trap: I verified the story's new tests and never
+asked whether the story's new *struct fields* had broken anyone else's. A review that runs
+only the diff's own tests cannot see a gate it deleted elsewhere. The cheap fix is to make
+`cargo clippy -p <crate> --tests -- -D warnings` a standing part of any review whose diff
+touches a `pub struct` — adding a field is a breaking change to every hand-built literal, and
+the compiler will say so if anything asks it to.
+
+**Moral.** A gate that cannot compile is a gate that cannot fail, and it is quieter than a skip:
+a skip at least prints the word `ignored`. These 34 tests did not appear as skipped, as failed,
+or as anything at all — the target simply was not in the run. Adding a field to a struct that
+test fixtures construct by hand is a suite-wide edit, and the only thing that reliably says so
+is compiling the whole crate's targets.

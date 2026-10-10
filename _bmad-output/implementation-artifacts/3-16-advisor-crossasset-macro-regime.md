@@ -1,6 +1,6 @@
 # Story 3.16: advisor-crossasset-macro-regime
 
-Status: review
+Status: done
 
 <!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
@@ -42,7 +42,7 @@ so that the guided EUR-200 journey stays honest, reproducible, and robustness-ga
 
 **Status: stays `review`, does NOT close.** `done` is unreachable until at minimum the feature-gate and the drop-to-ABSENCE guard land, because the shipped product ranks an experiment that never ran under a label that says it did. The trace row's `state = "tested"` is honest and stays.
 
-- [ ] `advisor-crossasset-macro-regime` 0.1.0 - the base feature (tester-done)
+- [x] `advisor-crossasset-macro-regime` 0.1.0 - the base feature (tester-done) — closed 2026-10-11 as `shipped-partial`: (A) calendar layer shipped, (B) probe honestly ABSENT in the shipped build (see § Closure)
 
 ## Dev Notes
 
@@ -51,9 +51,67 @@ so that the guided EUR-200 journey stays honest, reproducible, and robustness-ga
 - CHANGELOG index: CHANGELOG § Advisor — `**advisor-crossasset-macro-regime**`.
 - Provenance: `git log -- spec/v1/advisor-crossasset-macro-regime` (full narrative); reports under `evidence/v1/advisor-crossasset-macro-regime/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
+
+## Closure — 2026-10-11 (orchestrator)
+
+**Status: `review` -> `done`. Trace state: `tested` -> `shipped-partial`.**
+
+All 13 review findings from the 2026-08-14 FAIL verdict are discharged (`[x]` above).
+The verdict stood for two months, so this records what closing it actually rests on.
+
+### The FAIL's root finding was overstated by the burn-down, not by the review
+
+The burn-down runbook carried this story and its 3-15 sibling as *"the product ranks arms
+that never ran, under labels saying they did"*. Verified 2026-10-11 against T7.1's live
+19-arm leaderboard: **`v0.macro_riskon` is ABSENT from the ranked field.** The #81 honesty
+half works exactly as designed — the arm is dropped rather than shown as a cash stub. The
+product is honest here. What was open was the story, not the behaviour. Correction recorded
+in `docs/runbooks/hardening-burndown-loop.md` and committed as `0fec9a1c`.
+
+### Why this closes as `shipped-partial` and not `shipped`
+
+Two deliverables, two different honest states:
+
+- **(A) the market-calendar layer — SHIPPED.** `crates/data/src/calendar.rs`
+  (`MarketCalendar`, `classify_ticker`, `expected_bars_for_calendar`), derived from the
+  ticker inside `load_cached` so the public signature is unchanged and crypto coverage is
+  byte-identical. Proven inert before the arm landed; 20 unit tests.
+- **(B) the `v0.macro_riskon` probe — DELIVERED AS CODE, STRUCTURALLY INERT, HONESTLY
+  ABSENT.** `macro_regime.rs` opens `#![cfg(feature = "yahoo")]` on **backtest's** feature,
+  and nothing in the workspace enables `backtest/yahoo`. That is a build-time fact: no
+  corpus, no fetch and no coin makes the arm run in the shipped build. It is therefore
+  dropped to ABSENCE at dispatch, which is the correct rendering and the one the product
+  ships.
+
+### There is no number to publish, and that is the finding
+
+`evidence/v1/advisor-crossasset-macro-regime/` does not exist (review finding, `[x]`), and
+it should not be created. The 2026-06-28 figures (Sharpe −0.041, "6 regime flips") were
+produced under `--features realdata,yahoo` — a feature set the product never builds — and
+the review established they are additionally cadence-inflated and cost-free while the 18
+ranked siblings pay 4bps a leg. Publishing them as the macro channel's measurement would
+re-commit the exact defect the review found. **The honest macro-channel coverage this story
+delivers is the absence, not a number.**
+
+Making the arm actually run would mean enabling `backtest/yahoo` in the shipped build and
+re-deriving the probe under the cost clause its own spec pre-registered. That is a new
+scope, not this story's closure, and the do-not-build register governs whether it is worth
+doing at all.
+
+### Gates at closure
+
+- `macro_regime_overlay_end_to_end.rs` S1–S5: **5/5 PASS** (divergence >= 1bp / always-ON
+  no-op control / S3 prefix-invariance causality falsifier / warm-up flat / T-CAL day count).
+- `macro_arm_is_absent_from_the_ranked_field_when_its_series_is_unavailable`: **PASS**,
+  and the sibling DVOL absence guard was **probed RED** on 2026-10-11 by disabling the
+  `continue` at `crates/backtest/src/bakeoff/mod.rs:1280` — the arm reappeared with
+  `trade_count=1, total_return%=0.0077`, confirming the guard is measured and not merely
+  present.
+- `verify_anchors` 119/119; `spec_lint` PASS.
+
 ### References
 
-- Trace: `REQ-ADVISOR-CROSSASSET-MACRO-REGIME-001` (state=`tested`)
+- Trace: `REQ-ADVISOR-CROSSASSET-MACRO-REGIME-001` (state=`shipped-partial`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 3 (Advisor MVP (F1-F9 + EUR-FX + dynamic data + PIT discipline))
 
 ## Dev Agent Record

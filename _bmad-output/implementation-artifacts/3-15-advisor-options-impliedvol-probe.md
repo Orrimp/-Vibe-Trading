@@ -1,6 +1,6 @@
 # Story 3.15: advisor-options-impliedvol-probe
 
-Status: review
+Status: done
 
 <!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
@@ -44,7 +44,7 @@ so that the guided EUR-200 journey stays honest, reproducible, and robustness-ga
 
 Probes CLEAR: **chain** — this arm writes **no anchored body** (`write_report=false`, `report_path = None`, `anchors = []`, zero DVOL rows in `anchors.toml`), and the standing bakeoff exemption is confirmed (the FRAGILE flags come from `bootstrap.rs`, which resamples log-returns and never re-executes fills). **#67** clear (single-symbol arm — every order in a batch carries the stepped bar's symbol); **#69** N/A (`portfolio_exposure_cap: None`); **#71** present in the path but not binding at 10% sizing against a 0.40 cap (latent, recorded); **#72/#73** clear (no funding accrual on this path). **AD-9** clear — `Decimal` end-to-end at the seam; the fetcher's `f64` is confined to a dimensionless volatility index and never crosses into money. **Seed-collision** clear (no seed arithmetic added). **Identity-forge** clear (the arm can never emit a body, so no scenario name is forgeable). **Loop-scope** clear for the shipped path (single-symbol, cursor advances once per instant), with the latent multi-symbol hazard recorded. **Channel** clear at the strategy layer (tests use the production constructor and runner; `dvol_override` has exactly one reader and no dual-purpose field) — the gap is the untested loader→join segment.
 
-- [ ] `advisor-options-impliedvol-probe` 0.2.0 - the base feature (tester-done)
+- [x] `advisor-options-impliedvol-probe` 0.2.0 - the base feature (tester-done) — closed 2026-10-11 as `shipped`: conclusion RESTORED by the corrected re-run, both coins still Fragile -> BenchmarkWins (see § Closure)
 
 ## Dev Notes
 
@@ -53,9 +53,79 @@ Probes CLEAR: **chain** — this arm writes **no anchored body** (`write_report=
 - CHANGELOG index: CHANGELOG § Advisor — `**advisor-options-impliedvol-probe**`.
 - Provenance: `git log -- spec/v1/advisor-options-impliedvol-probe` (full narrative); reports under `evidence/v1/advisor-options-impliedvol-probe/reports/` where present (anchored report bodies are byte-immutable - ADR-0038 §D6).
 
+## Closure — 2026-10-11 (orchestrator)
+
+**Status: `review` -> `done`. Trace state: `tested` -> `shipped`.**
+
+All 15 review findings from the 2026-08-13 FAIL verdict are discharged (`[x]` above). The
+verdict stood for two months because the code fixes landed in the review pass but the
+**conclusion** did not: it was withdrawn, and the CHANGELOG has said *"the conclusion awaits a
+corrected re-run"* ever since. The re-run is done.
+
+### The conclusion is RESTORED, on better evidence
+
+Corrected re-run report:
+`evidence/v1/advisor-options-impliedvol-probe/reports/test-2026-10-11-1420-advisor-options-impliedvol-probe-corrected-rerun.md`
+
+| Symbol | `v0.dvol_regime` Sharpe (withdrawn -> corrected) | Flag | Crowned | Outcome |
+|--------|--------------------------------------------------|------|---------|---------|
+| BTCUSDT H1_2024 | -0.190 -> **+0.386** | Fragile (unchanged) | v0.buyhold | BenchmarkWins |
+| ETHUSDT H1_2024 | +0.397 -> **+0.684** | Fragile (unchanged) | v0.buyhold | BenchmarkWins |
+
+The review predicted the direction of the bias and was right: the warm-up-holds-cash defect
+biased the measurement **toward** the pre-declared null, because on a window where BTC returned
++47.78% an arm sitting in cash is penalised for the wrong reason. Both coins now score HIGHER
+than the withdrawn figures and trade slightly more (15->17, 17->19) — and both are still
+`Fragile`, still ineligible to crown, with buy-and-hold still crowned. The null survives the
+removal of a bias that was pushing it in its own favour, which makes it worth more than the
+conclusion that was withdrawn.
+
+### The attribution control
+
+Both re-runs reproduce **every non-DVOL row of the 2026-06-27 tables exactly** — BTC
+`v0.buyhold` 1.486/+47.78/22.69, `v0.donchian_floor` 1.232/+4.42/3.59, `v0.8.vote.trend_pair`
+1.075, `v0.5.macd` 0.966, `v0.8.vote.k2of4` 0.495, `v0.5.rsi` 0.478; ETH `v0.buyhold`
+1.297/+49.78/29.63, `v0.roc_momentum` 1.685/+0.61/0.10, `v0.5.macd` 1.611/+2.41/1.38, `v0.sma`
+1.169/+2.77/2.39, `v0.donchian_floor` 1.114/+4.70/4.80. If the configuration, corpus or engine
+had drifted under the story, those rows would have moved too. Only the fixed arm moved.
+
+### The second defect this pass closed: the number had no producer
+
+The withdrawn figures came from two throwaway artifacts — the BTC half from a pre-assertion
+stdout capture of a test that then failed on an unrelated stale count, the ETH half from
+`crates/backtest/tests/_tester_dvol_eth_bootstrap.rs`, **a tester-only file deleted in the same
+pass that shipped the story**. Nothing in the tree could reproduce either. That is the defect
+class story 1-29 exists to close: a published figure whose producer is not in the repository is
+not a measurement, it is a memory. Both halves now have durable homes:
+
+- BTC — `bakeoff_e2e.rs::bakeoff_full_wired_advisor::t7_1_full_wired_advisor_bakeoff_real_data`
+  (pre-existing, `Bootstrap { paths: 1000 }`).
+- ETH — `dvol_bakeoff_path_gate.rs::dvol_regime_decisive_eth_bootstrap_verdict` (**new this
+  pass**), declared in that file's `CORPUS_GATED_TESTS` so its skip is counted and announced by
+  `corpus_gated_tests_are_declared_and_counted` instead of vanishing. It pins the advisor's
+  CONCLUSION — arm present, `Some(Fragile)`, `BenchmarkWins`, >= 2 fills, >= 9 active arms — and
+  deliberately pins no `f64` magnitude. Measured runtime 28s.
+
+### bug-log #78 was already fixed, and is now probed
+
+The burn-down runbook carried this story as *"the product ranks arms that never ran"*. Verified
+2026-10-11: the absence guard at `crates/backtest/src/bakeoff/mod.rs:1280` already covers the
+corpus-missing case on a supported coin, and its comment names the gitignored-parquets
+fresh-clone scenario verbatim. It is reachable, not `#[ignore]`d, and **probed RED** this pass:
+disabling the `continue` resurfaced the arm at `trade_count=1, total_return%=0.0077` — a
+near-flat stub wearing the probe's label, exactly #78's shape. Runbook framing corrected in
+`0fec9a1c`.
+
+### Gates at closure
+
+`verify_anchors` 119/119 before and after (both runs `write_report=false`; the 2026-06-27 report
+left byte-untouched so the record of the withdrawal survives) · `spec_lint` PASS ·
+`cargo fmt -p backtest` clean · `dvol_bakeoff_path_gate` 3/3 non-ignored PASS + 4 declared skips
+· decisive BTC and ETH gates both PASS.
+
 ### References
 
-- Trace: `REQ-ADVISOR-OPTIONS-IMPLIEDVOL-PROBE-001` (state=`tested`)
+- Trace: `REQ-ADVISOR-OPTIONS-IMPLIEDVOL-PROBE-001` (state=`shipped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 3 (Advisor MVP (F1-F9 + EUR-FX + dynamic data + PIT discipline))
 
 ## Dev Agent Record

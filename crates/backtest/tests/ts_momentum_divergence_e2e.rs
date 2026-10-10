@@ -725,6 +725,12 @@ fn run_seeded_ts_sweep_render(master_seed: u64, n_paths: usize, n_bars: usize) -
             total_time_in_market_bars: total_tim,
             total_bars_run,
             total_liquidations: 0,
+            // Story 1-28 added these two `CellResult` fields and did not reach the
+            // four test-target fixtures that build one by hand, so THIS TARGET HAS
+            // NOT COMPILED SINCE. Zero is the consistent value: no liquidations here,
+            // so no synthetic cover fills and no ruined paths.
+            total_liquidation_cover_fills: 0,
+            ruined_paths: 0,
         });
     }
 

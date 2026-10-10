@@ -837,6 +837,12 @@ fn run_locked_cell(
         total_time_in_market_bars,
         total_bars_run,
         total_liquidations: 0,
+        // Story 1-28 added these two fields to `CellResult` and did not reach the
+        // three test-target fixtures that build one by hand, so THIS TARGET HAS NOT
+        // COMPILED SINCE. Zero is the consistent value here: these fixtures take no
+        // liquidations, so they produce no synthetic cover fills and ruin no paths.
+        total_liquidation_cover_fills: 0,
+        ruined_paths: 0,
     }
 }
 
