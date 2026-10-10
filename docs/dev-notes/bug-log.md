@@ -4158,3 +4158,71 @@ qualifier's two-directional test — is an instance of that.
 
 Three entries corrected above. The remaining 22 `OPEN` entries were not individually re-verified,
 which is stated rather than glossed: this is a sample with three hits, not an audit.
+
+---
+
+### `#139` — I truncated the house caller tool's output and nearly under-scoped a FROZEN-gate input
+**Status**: FOUND 2026-10-10 while discharging story 1-24 AC5. Anchor-impacting: **no** (measured
+below). Product-behaviour-impacting: **yes** — escalated.
+
+Deriving story 1-24's affected inventory, I ran the house tool and piped it to `tail`:
+
+```
+bash scripts/callers.sh politis_white_block_length 2>&1 | tail -12
+```
+
+It reports **16 call sites in 19 lines**. `tail -12` cut the top of the list, and the line it cut
+was:
+
+```
+  ✗  crates/backtest/src/bakeoff/bootstrap.rs:139  (fn @120)  [path-qualified call]
+```
+
+`✗` means grep-only — invisible to CodeGraph because the call is written
+`data::synth::block_length::politis_white_block_length(...)`, fully path-qualified through a crate
+name. That is **exactly** the case `CLAUDE.md` says the union exists for: *"calls written through a
+module or crate name … are invisible to it"*, and the tool prints
+*"read the ✗ lines before any 'no callers' claim"* in its own summary.
+
+So the tool was right, the union did its job, and **I defeated it by reading only the end of output
+designed to be read whole.** No tooling defect; a reading defect. The same `tail` habit is all over
+this session's commands and it is cheap only until the one time it is not.
+
+#### What it nearly cost
+
+`bakeoff/bootstrap.rs` is the compute path for **`compute_robustness_flag`** — one of the four
+AD-1 **FROZEN gate** functions. Line 139 takes the block length from the estimator story 1-24
+changed, so the chain is:
+
+> `politis_white_block_length` → block length → moving-block bootstrap → `PathMetrics` →
+> `DistributionSummary` → FROZEN `classify_verdict` → `RobustnessFlag` → crown eligibility in
+> FROZEN `rank_candidates`
+
+I had derived the affected inventory as "35 anchored rows" from a caller list missing this. The
+derivation method was right (from the criterion, not the symptoms — `#126`); the *input* to it was
+truncated.
+
+#### The corpus scope was right anyway, measured not assumed
+
+Zero of the 119 anchored rows resolve into an `advisor-*` or bakeoff directory — checked by
+grouping `verify_anchors.sh --explain`'s resolutions by evidence directory. No anchored body is
+produced by the bakeoff path, so the 35-row re-lock scope stands and nothing landed wrongly.
+
+#### What is NOT covered, and why it is escalated
+
+The **shipped advisor's live behaviour** changes. `RobustnessMode::Bootstrap` feeds
+`compute_robustness_flag` on every bakeoff run, so from 2026-10-10 a user gets different robustness
+flags — and therefore possibly different crowns — than the day before. The anchor corpus cannot see
+this because no bakeoff report is anchored.
+
+Direction, from the same mechanism the θ-surface census measured: longer L ⇒ wider null ⇒ harder to
+clear ⇒ **fewer** crowns ⇒ the advisor says "just hold" more often. That is the thesis-safe
+direction and consistent with 33 of 35 surfaces. But it is a product-behaviour change with **no
+regression evidence of any kind**, which is the real gap this finding exposes.
+
+**AC5's identity-test obligation cannot be discharged by an identity test.** AD-1 asks every
+analytics change to prove it does not alter ranking. This one *does* alter ranking — not by editing
+a FROZEN function (all four are byte-untouched, verified: last touched by `66286e29`) but by moving
+what they are fed. An identity test would either fail honestly or be written to compare the new
+behaviour against itself, which is this register's oldest shape. The obligation's honest discharge
+is disclosure plus a decision, not a green test.
