@@ -150,6 +150,39 @@ honesty-first product, which is stop condition 4. `#81`'s capability half is alr
 BLOCKED by design, so the choice is about the **labels and the ranked field**, not about building
 the arms.
 
+## THE GOAL IS NOT REACHABLE AS WRITTEN — 1-25, not 1-24, is the blocker (2026-10-10)
+
+This runbook named `1-24` the critical path on the reading that it is *"the last open CRITICAL
+re-lock"* and that README § Status's *"direction-preserved pending re-lock"* clause is pending on
+it. **Half right, and the wrong half is load-bearing.** The README names **two** CRITICAL re-lock
+stories — 1-24 **and** 1-25 — and the clause is pending on both.
+
+1-24 is now done. **1-25 is NOT CLOSABLE**, by its own independent audit at
+`docs/dev-notes/1-25-ac-closure-audit-2026-09-27.md`: *"One AC is self-documented as unmet in the
+source at HEAD, and five of seven riders are unmet."* AC2 unmet, AC6 discharged only on substituted
+evidence after its cited gate turned out not to measure the claim.
+
+And its inventory is not a punch list — it is seven CRITICAL bug-log entries across anchors
+#86–#119, several of which invalidate what their surfaces are taken to show:
+
+- `#75` — the `mn-basis` arm **never ran**: `run_path` overwrote the score map with the accrual map,
+  so four anchored surfaces are duplicate funding runs.
+- `#76` — the residual arm ranks the basis axis **inverted** vs its own spec, so no anchored MN
+  surface ever tested the basis in its documented direction.
+- `#72` — carry-4h and carry-daily harvested ~1/4 and ~1/24 of the true funding; those bodies assert
+  a settlement cadence they never ran.
+- `#73` — funding accrued per symbol-bar rather than per settlement, so every carry lane over-accrued
+  by ~10× on the 10-symbol universe.
+
+Closing that is a re-lock of a further ~34 anchored surfaces plus the code fixes behind it —
+comparable to or larger than everything this loop accomplished on 1-24. **It is a programme, not an
+iteration**, and it is the operator's call whether to start it.
+
+**So the loop stopped here rather than grinding on.** Its own instruction is *"stop there rather
+than finding more work"*, and a goal that is out of reach is a better reason to stop than a goal
+that is met. What the loop can hand over — an honest README wording that reflects the true state
+rather than retiring the clause — is below.
+
 ## Operational note — long runs must be resumable (learned 2026-10-10)
 
 The 1-24 regeneration is 75–80 min, and a tracked background job was **killed at ~10.5 min**
@@ -189,3 +222,38 @@ Invocation once the prompt above reads the way you want it:
 
 with the body above as the prompt — no interval, so the pacing is chosen per iteration from what the
 run is actually waiting on (a finished measurement, a CI result, nothing).
+
+## Proposed README § Status wording — for operator sign-off, NOT landed
+
+Changing README § Status is stop condition 4, so this is a draft handed over rather than applied.
+It does **not** retire the "pending re-lock" clause, because that would be false; it scopes it to
+what is actually outstanding.
+
+> **Current wording:** *"The active-trading-thesis closure currently reads direction-preserved
+> pending re-lock."*
+
+> **Proposed:** *"The active-trading-thesis closure reads **direction-preserved, pending the 1-25
+> harness-fill re-lock.** Of the two CRITICAL re-lock stories the burn-down opened, **1-24
+> (PWSD fidelity) closed 2026-10-10** — its 35 anchored surfaces were regenerated under a corrected
+> Politis–White estimator, and the re-derivation moved two of them adversely (one family verdict
+> off UNIFORM-FRAGILE), disclosed in
+> `docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md` (a path relative to the repo root, where
+> this wording is destined — deliberately not a live link from here, since the lint resolves links
+> against the file they sit in and this is a draft for `README.md`).
+> **1-25 remains open and is the binding one:** its own closure audit finds one acceptance criterion
+> unmet in the source at HEAD and five of seven riders unmet, over an inventory of seven CRITICAL
+> defects spanning anchors #86–#119 — including an arm that never ran (`#75`), an arm ranked
+> inverted against its own spec (`#76`), and funding mis-accrued by ~10× on the carry lanes
+> (`#72`/`#73`). Until those surfaces are re-derived from clean arithmetic, the direction of the
+> closure is preserved and its magnitudes are not."*
+
+Three things that wording does deliberately:
+
+1. **It does not claim the re-lock is finished.** Retiring the clause was this loop's goal and the
+   evidence does not support it. Writing the goal into the README anyway is the exact failure the
+   whole burn-down exists to correct.
+2. **It separates direction from magnitude.** That is the distinction 1-25's own AC4 draws, and it
+   is what "direction-preserved" has always meant — the honest claim is narrower than the sentence
+   it replaces, not broader.
+3. **It names the defects rather than gesturing at them.** A reader who wants to know what "pending
+   re-lock" is pending *on* can now find out without reading four stories.
