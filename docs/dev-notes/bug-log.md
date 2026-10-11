@@ -4458,3 +4458,40 @@ clause is a separate obligation that AC3.7 never named.
 invisible, and "we count it" is not the same claim as "you can see it". The doc comment on this
 very field says a silent skip reads like a clean run — and then the silent skip reads like a
 clean run, one struct away from where the warning is written.
+
+### `#142` — the regeneration manifest's only guard has been RED since 2026-09-28, because a required D6.b disclosure comment pushed an anchor past its parser's 4-line window
+
+**Found** 2026-10-11, running `relock_manifest` before trusting `scripts/relock/surfaces.tsv` for
+the `#141` re-emission.
+**Status:** FIXED the same day.
+
+`crates/backtest/tests/relock_manifest.rs::every_anchored_surface_derives_from_exactly_one_accepted_tuple`
+is the only thing that checks the 34-surface regeneration manifest against the binary's own
+`required_*` tuples. It parsed `evidence/anchors.toml` by probing the **4 lines** after each
+`[[anchors]]` header for the `scenario` key.
+
+On 2026-09-28 a D6.b re-emission disclosure block was inserted between an `[[anchors]]` header
+and its key, putting `scenario = "eth-yahoo-2024-1d-sma-cross"` **36 lines** below the header
+(`evidence/anchors.toml:882`). The parser lost that row, the count assertion read **118** against
+a corpus `scripts/verify_anchors.sh` calls **119**, and the test has failed ever since.
+
+**The disagreement was between two parsers, not in the corpus.** `verify_anchors.sh` was right
+the whole time and stayed green; nothing was wrong with the anchors. But the failure mode is bad
+in a specific way: the red test is the guard on the manifest that drives a 34-surface re-lock, so
+anyone regenerating from `surfaces.tsv` had an unverified manifest and a red gate that said so in
+a test target nobody routinely runs. The project's own scoping guidance (`-p <crate> --test
+<target>`) means a target outside the current diff is never compiled, which is the same blind
+spot bug-log `#140` is about, reached by a different route.
+
+**The fix** scans to the next `[[anchors]]` instead of a fixed window. A fixed window was always
+the wrong shape for this file: ADR-0038 § D6.b **requires** those disclosure comments, so the
+rows are expected to accumulate prose without bound, and a parser that tolerates 4 lines of it is
+a parser with an expiry date.
+
+**Moral.** A gate can be broken by satisfying a different rule correctly. Nobody did anything
+wrong on 2026-09-28 — the disclosure block is mandatory and well-written — and it still took out
+the guard, because the guard encoded an assumption (`scenario` is within 4 lines) that no rule
+anywhere promised. When two parsers read the same file, the cheap invariant is to make them agree
+out loud: had this test compared its count against `verify_anchors.sh`'s instead of a hard-coded
+119, it would have reported a parser disagreement on the day it appeared rather than a bare
+`left: 118 right: 119` two weeks later.

@@ -681,6 +681,8 @@ fn tiny_cell_result(
         // liquidations, so they produce no synthetic cover fills and ruin no paths.
         total_liquidation_cover_fills: 0,
         ruined_paths: 0,
+        // bug-log #141: no breaches in these fixtures.
+        portfolio_breaches: 0,
     }
 }
 
@@ -716,6 +718,93 @@ fn render_with_grid(
         4,
         2,
     )
+}
+
+/// bug-log `#141` — the breach count must REACH the rendered body, and a zero must be
+/// printed rather than merely be true.
+///
+/// ADR-0089 D2 made the portfolio exposure cap all-or-nothing and called surfacing the
+/// refusal count *"the non-negotiable half of that policy"*, for a reason the field's own
+/// doc states: without it a reader cannot tell *"the cap never bound"* from *"the cap
+/// refused rebalances and nobody wrote it down"*. It was not surfaced. `run_path` counted
+/// it from `723ca742` onward, and `IndexedPathMetrics` — the only thing the per-cell
+/// aggregation sees — had no field for it, so the number died one hop before anything could
+/// sum it. For 34 regenerated anchored surfaces the count was computed and discarded.
+///
+/// This is the would-have-caught gate (ADR-0038 § D6.b step 3). It is RED under the defect
+/// in both directions:
+///
+/// 1. **Non-zero must appear.** A surface with 7 refusals must say 7. Under the defect the
+///    body contains no breach line at all, so this fails on the substring.
+/// 2. **Zero must appear TOO.** This is the half that is easy to get wrong: a gate that
+///    only checked the non-zero case would pass on a renderer that printed the line only
+///    when `breaches > 0` — and then a clean surface and an unsurfaced surface would be
+///    byte-identical again, which is the whole defect restored. An unprinted zero and an
+///    uncomputed zero read the same.
+/// 3. **The number must TRACK the input**, not be a constant: the 7-refusal body and the
+///    0-refusal body must differ.
+#[test]
+fn bug141_the_breach_count_reaches_the_body_and_a_zero_is_printed_too() {
+    use backtest::bakeoff::robustness::ParamRobustnessVerdict;
+    use backtest::sweep_harness::{GridKind, grid_for_kind};
+
+    let grid = grid_for_kind(GridKind::TwoCell);
+
+    let with_breaches: Vec<_> = grid
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let mut cr = tiny_cell_result(*c, 1.0 + i as f64, ParamRobustnessVerdict::Fragile);
+            // 3 + 4 = 7 across the surface, so the assertion cannot be satisfied by a
+            // renderer that prints one cell's count instead of the sum.
+            cr.portfolio_breaches = if i == 0 { 3 } else { 4 };
+            cr
+        })
+        .collect();
+    let clean: Vec<_> = grid
+        .iter()
+        .enumerate()
+        .map(|(i, c)| tiny_cell_result(*c, 1.0 + i as f64, ParamRobustnessVerdict::Fragile))
+        .collect();
+    assert!(
+        clean.iter().all(|cr| cr.portfolio_breaches == 0),
+        "the clean fixture must really carry zero, or case 2 proves nothing"
+    );
+
+    let hot_body = render_with_grid(grid, &with_breaches);
+    let clean_body = render_with_grid(grid, &clean);
+
+    // 1. the non-zero total is stated, and it is the SUM
+    assert!(
+        hot_body.contains("7 rebalance(s) refused"),
+        "bug-log #141: a surface whose cells refused 3 and 4 rebalances must report 7 in \
+         its body. The rendered body does not contain \"7 rebalance(s) refused\" — so the \
+         count is computed and discarded, and a reader cannot tell this surface from one \
+         where the cap never bound.\n--- body ---\n{hot_body}"
+    );
+
+    // 2. ZERO is stated explicitly — the half that keeps the gate honest
+    assert!(
+        clean_body.contains("0 rebalance(s) refused"),
+        "bug-log #141: a surface with no refusals must SAY zero, not stay silent. If the \
+         line is emitted only when the count is non-zero, a clean surface and an \
+         unsurfaced one are byte-identical again and the defect is back.\n--- body ---\n\
+         {clean_body}"
+    );
+
+    // 3. the number tracks the input rather than being a constant
+    assert_ne!(
+        hot_body, clean_body,
+        "bug-log #141: 7 refusals and 0 refusals rendered to the SAME bytes, so the \
+         printed count does not depend on the count"
+    );
+
+    // 4. ADR-0089 D2's semantics travel with the number — a bare integer in a report is
+    //    not a disclosure if the reader has to guess what a refusal did to the book.
+    assert!(
+        hot_body.contains("skips the WHOLE rebalance"),
+        "the line must state that a refusal is all-or-nothing, not just give a count"
+    );
 }
 
 /// FP-C3.2 (REAL): two renders differing ONLY in grid produce different

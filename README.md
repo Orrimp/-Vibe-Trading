@@ -32,10 +32,19 @@ exactly ZERO beat their own buy-and-hold.** So *ship-passive survived the clean 
 `→ C5 DEFLATION REQUIRED` and none has been through that pass. The 1-24 re-derivation moved two
 of its surfaces adversely on the same pattern
 ([`docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md`](docs/dev-notes/1-24-pwsd-relock-errata-2026-10-10.md)).
-**What is still outstanding is a review verdict, not a re-run:** story 1-25 sits at `review`
-with every acceptance criterion discharged as of 2026-09-29, and until that verdict is written
-the closure is stated as direction-preserved with its magnitudes re-derived but not yet
-independently reviewed.
+**The closure therefore stands on clean arithmetic, and the hedge is retired
+(2026-10-11):** the active-trading thesis is closed — **for the current era (2023+), on the
+channels reachable here, no active arm survived the frozen gate against simply holding the
+coin.** That claim is era-qualified and stays that way: real, cost-annex-robust,
+gate-crowned active edges did exist in 2017-20 and decayed to ~zero by 2023+, so the
+universal form of this sentence is false and is never the claim.
+
+**One sub-claim is withdrawn in the same breath.** "Uniformly fragile" did not survive the
+re-derivation: 6 of 34 surfaces moved to `FAMILY-HAS-NON-FRAGILE-CELLS`, all on the 2023 half.
+That weakens *how* the arms fail, not *whether* — `MARGINAL` is not an edge claim, every
+flipped cell is flagged `→ C5 DEFLATION REQUIRED`, and none has been through that pass. Story
+1-25 (the last re-lock story) passed review on 2026-10-11; it and four siblings sit at `review`
+on **self-reviews**, which is disclosed here rather than smoothed over.
 Current honest state: `_bmad-output/implementation-artifacts/sprint-status.yaml`,
 `docs/dev-notes/bug-log.md`, `docs/dev-notes/product-review-2026-08-04.md`.
 

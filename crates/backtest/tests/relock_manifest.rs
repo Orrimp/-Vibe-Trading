@@ -63,7 +63,26 @@ fn anchored_surfaces() -> Vec<String> {
     let mut scenarios = Vec::new();
     for (i, l) in lines.iter().enumerate() {
         if l.trim() == "[[anchors]]" {
-            for probe in lines.iter().skip(i + 1).take(4) {
+            // Scan to the NEXT `[[anchors]]` rather than probing a fixed window.
+            //
+            // This was `.take(4)`, and it silently lost an anchor on 2026-09-28: a D6.b
+            // re-emission disclosure block was inserted between `[[anchors]]` and its
+            // `scenario` key, putting the key **36 lines** below the header
+            // (`eth-yahoo-2024-1d-sma-cross`, `evidence/anchors.toml:882`). The count
+            // assertion below then read 118 against a corpus `verify_anchors.sh` calls
+            // 119, so this test — the ONLY guard on the regeneration manifest that drives
+            // a 34-surface re-lock — has been RED ever since, and the disagreement was
+            // between two parsers rather than in the corpus.
+            //
+            // A fixed window is the wrong shape for a file whose rows are expected to
+            // accumulate prose: the disclosure comments are REQUIRED by ADR-0038 § D6.b,
+            // so the parser has to tolerate them growing without bound.
+            let end = lines
+                .iter()
+                .skip(i + 1)
+                .position(|p| p.trim() == "[[anchors]]")
+                .map_or(lines.len(), |off| i + 1 + off);
+            for probe in &lines[i + 1..end] {
                 if let Some(rest) = probe.strip_prefix("scenario") {
                     scenarios.push(rest.split('"').nth(1).expect("quoted scenario").to_owned());
                     break;

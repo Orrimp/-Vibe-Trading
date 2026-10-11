@@ -1906,6 +1906,25 @@ pub struct CellResult {
     /// some bar, before the clamp to 1e-6 made that indistinguishable from a merely
     /// catastrophic path in every percentile (bug-log `#127`).
     pub ruined_paths: u64,
+    /// Rebalances refused outright by the portfolio exposure cap, across all N paths
+    /// (ADR-0089 D2; bug-log `#141`).
+    ///
+    /// The sizer is all-or-nothing: on a breach the ENTIRE rebalance is skipped and the
+    /// book is left unchanged for that bar. `PathRunResult::portfolio_breaches` has counted
+    /// that since `723ca742` — and this field did not exist, so the count died at the
+    /// `PathRunResult` → `CellResult` hop and reached no report body. Its only reader in
+    /// the workspace was the test proving it increments. ADR-0089 D2 calls surfacing the
+    /// count *"the non-negotiable half of that policy"* for a stated reason: without it a
+    /// reader cannot tell "the cap never bound" from "the cap refused rebalances and nobody
+    /// wrote it down". On the lanes that run hot — TS at ~90-100 % gross, the MN book at
+    /// ~60 % against a declared 0.50 — that is a live distinction, not a hypothetical.
+    ///
+    /// Legitimately `0` wherever the grid's gross target stays under the cap: at
+    /// `FIXED_FRACTION` 0.10 with `k_long` 3 the momentum/MR gross is ~0.30, so a zero here
+    /// is a true result rather than a dead gate. That is exactly why it must be PRINTED —
+    /// a zero that is never shown cannot be distinguished from a zero that is never
+    /// computed.
+    pub portfolio_breaches: u64,
 }
 
 // ── Report renderer (ADR-0051 D3 / § D6.4) ────────────────────────────────────
@@ -2313,7 +2332,26 @@ pub fn render_surface_report(
     body.push_str("## θ-surface (per-cell distribution + verdict)\n\n");
     body.push_str("Notation: p5/p50/p95 Sharpe at {:.6}; prob_loss / P(Sharpe>1) at {:.6}; p95_maxdd at {:.2}%.\n");
     body.push_str("Spread = p95_sharpe − p5_sharpe (interpretive, NOT verdict-forcing).\n");
-    body.push_str("Verdict: FRAGILE/MARGINAL/ROBUST via 5-signal weakest-link (frozen decision-rule § 0 bands).\n\n");
+    body.push_str("Verdict: FRAGILE/MARGINAL/ROBUST via 5-signal weakest-link (frozen decision-rule § 0 bands).\n");
+    // bug-log #141 / ADR-0089 D2: the breach count is surfaced on EVERY surface, in the
+    // notation block rather than as a per-cell column, so that it lands identically on all
+    // six render branches instead of reshaping five table layouts to reach the two lanes
+    // that can run hot. A zero is stated explicitly for the same reason the field doc gives:
+    // an unprinted zero and an uncomputed zero read the same.
+    {
+        let breaches: u64 = cell_results.iter().map(|cr| cr.portfolio_breaches).sum();
+        let _ = std::fmt::Write::write_fmt(
+            &mut body,
+            format_args!(
+                "Portfolio exposure cap (ADR-0089 D2, all-or-nothing): {breaches} rebalance(s) \
+                 refused across every cell and path of this surface. A refusal skips the WHOLE \
+                 rebalance and leaves the book unchanged for that bar; 0 means the cap never \
+                 bound, which is the expected reading wherever the grid's gross target stays \
+                 below it.\n"
+            ),
+        );
+    }
+    body.push('\n');
 
     // M-DEV-4 (original, MR): add `trades` column for MR only (R-MR.3 turnover legibility).
     // Gate on direction so momentum anchor #86 body-SHA stays byte-identical.

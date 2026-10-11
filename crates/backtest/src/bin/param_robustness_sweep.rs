@@ -410,6 +410,16 @@ struct IndexedPathMetrics {
     /// The clamp maps it to 1e-6 so the metrics stay finite, which makes ruin and a merely
     /// catastrophic loss the same number downstream (bug-log `#127`).
     ruined: bool,
+    /// Rebalances this path had refused outright by the portfolio exposure cap
+    /// (ADR-0089 D2; bug-log `#141`).
+    ///
+    /// **This struct is where the count was lost.** `run_path` has returned
+    /// `PathRunResult::portfolio_breaches` since `723ca742`, and this intermediate — the
+    /// only thing the per-cell aggregation sees — had no field for it. So the number was
+    /// computed, incremented, returned, and then discarded one hop before anything could
+    /// aggregate it, which is why no report body has ever carried it and why the only
+    /// reader in the workspace was the test proving it increments.
+    portfolio_breaches: u64,
 }
 
 // ── Buy-and-hold passive control ───────────────────────────────────────────────
@@ -999,6 +1009,7 @@ fn run_one_path_with_config(
         funding_harvested,
         time_in_market_bars,
         bars_run,
+        portfolio_breaches: result.portfolio_breaches,
         liquidations,
         liquidation_cover_fills,
         ruined: first_ruin_bar.is_some(),
@@ -1993,6 +2004,11 @@ fn main() -> Result<()> {
             .map(|r| r.liquidation_cover_fills as u64)
             .sum();
         let ruined_paths: u64 = indexed.iter().filter(|r| r.ruined).count() as u64;
+        // bug-log #141 / ADR-0089 D2: carry the breach count across the
+        // PathRunResult -> CellResult hop. It was counted and returned since
+        // 723ca742 and dropped here, so the "non-negotiable half" of the
+        // all-or-nothing cap policy reached no report body.
+        let portfolio_breaches: u64 = indexed.iter().map(|r| r.portfolio_breaches).sum();
         let metrics: Vec<backtest::stats::PathMetrics> =
             indexed.into_iter().map(|r| r.metrics).collect();
 
@@ -2029,6 +2045,7 @@ fn main() -> Result<()> {
             total_liquidations,
             total_liquidation_cover_fills,
             ruined_paths,
+            portfolio_breaches,
         });
     }
 

@@ -731,6 +731,8 @@ fn run_seeded_ts_sweep_render(master_seed: u64, n_paths: usize, n_bars: usize) -
             // so no synthetic cover fills and no ruined paths.
             total_liquidation_cover_fills: 0,
             ruined_paths: 0,
+            // bug-log #141: no breaches in these fixtures.
+            portfolio_breaches: 0,
         });
     }
 

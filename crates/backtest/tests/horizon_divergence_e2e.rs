@@ -843,6 +843,8 @@ fn run_locked_cell(
         // liquidations, so they produce no synthetic cover fills and ruin no paths.
         total_liquidation_cover_fills: 0,
         ruined_paths: 0,
+        // bug-log #141: no breaches in these fixtures.
+        portfolio_breaches: 0,
     }
 }
 
