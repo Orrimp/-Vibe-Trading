@@ -2000,6 +2000,56 @@ made them look scheduled when nothing was going to touch them.
 ### `#111` — the `#67` blast radius was scoped by LANE, and `#67` was fixed BENEATH the lanes
 **Status**: OPEN — cause bisected 2026-09-25 (story 1-27). Resolution is a D6.b re-lock, not a code
 fix; the scope of that re-lock is the open question.
+
+> **§ SCOPE ANSWERED — 2026-10-11.** This entry said *"possibly more (see § Scope)"* and left the
+> scope open. It is now enumerated. **Six further lanes still carry the un-fixed `#67` shape, at
+> eight call sites**, verified by reading each line at HEAD:
+>
+> | lane | sites |
+> |---|---|
+> | `scenarios/tcn_overlay.rs` | `:242`, `:291` |
+> | `scenarios/tcn_overlay_weights.rs` | `:221`, `:270` |
+> | `scenarios/patchtst_overlay_weights.rs` | `:228`, `:277` |
+> | `scenarios/momentum.rs` | `:380`, `:431` |
+> | `scenarios/garch_vol_target_overlay.rs` | `:305`, `:357` |
+> | `scenarios/pairs.rs` | `:248`, `:314` |
+>
+> Every one is `&& let Ok(fills) = engine.step(bar, vec![ord]).await` — the no-else-arm `if`-chain.
+> **The discriminator is one grep:** `last_bar_by_symbol` appears **4×** in each of the two lanes
+> story 1-25's AC2 fixed (`scenarios/montecarlo.rs`, `scenarios/threshold_sweep.rs`) and **0×** in
+> all six above.
+>
+> **And the shape is `#67` exactly, not merely similar.** `momentum.rs` accumulates
+> `mark_prices.insert(bar.symbol, …)`, takes multi-symbol `signals` from `momentum.on_bar(bar)`,
+> then inside ONE loop body sizes the order from `mark_prices.get(&sig.symbol)` — the correct
+> per-symbol lookup — while filling it with `engine.step(bar, …)`, the trigger bar. That is `#67`'s
+> own description: *"a divergence between sizing and filling inside ONE block"*. The `else { continue }`
+> on the mark lookup is proof the authors knew `sig.symbol != bar.symbol` is reachable.
+>
+> **Why it is worse now than when `#67` was written.** Before the guard, a cross-symbol order
+> filled at the wrong symbol's price — wrong, but visible as a fill. Since `11acd12` the guard
+> returns `Err`, which makes the `&&` chain false, so the order **vanishes with no fill, no error
+> and no counter**. Story 1-25's audit called that state *"worse than unfixed"* for `run_cell`; it
+> is still the state of these six.
+>
+> **A measured consequence, not a prediction.** The `pairs` anchored bodies
+> (`backtest-20260430-19231*-pairs-{2023,2024-h1}-zscore-mr.md`) report **16 trades** each and
+> were locked **2026-04-30 — before the guard**. So those 16 are `#67`-mispriced fills, and the
+> same orders at HEAD would be dropped instead. That is one reason this lane does not reproduce,
+> and it is the mechanism behind `#93`'s finding that `verify_anchors.sh` cannot see
+> code-vs-evidence drift.
+>
+> Per the 2026-10-11 trace, **49 of the 119 anchors sit on these 8 lanes** (threshold_sweep 4,
+> tcn_overlay 10, tcn_overlay_weights 10, garch 7, regime_dispatcher 6, momentum 5, pairs 4,
+> patchtst 3), plus 2 blind-spot rows whose names carry no lane token
+> (`sharpe-comparison-realdata`). Those counts are a sub-agent trace I have NOT re-derived
+> row-by-row; the 8 call sites and the `last_bar_by_symbol` discriminator I verified myself.
+>
+> **Bearing on story 1-25's PASS verdict (2026-10-11), stated rather than buried:** the verdict
+> stands. AC2 names exactly two lanes — `run_path` and `run_cell` — and both are genuinely fixed.
+> What this shows is that **the AC's scope was narrower than the defect's**, which is `#111`'s
+> whole point and the reason it was filed as a separate open entry rather than folded into 1-25.
+> No re-scoping of a closed AC is implied; the work belongs to `#111`'s re-lock.
 Anchor-impacting: **yes** — at minimum the 4 scenarios below; possibly more (see § Scope).
 
 The four `#[ignore]`d `determinism.rs` gates have been red since August and were believed to be a
@@ -4583,6 +4633,65 @@ to read `gh run list` after a push — one command, and it would have caught thi
 Both halves of the house rule are now on the board: a gate that cannot fail (`#140`, `#141`,
 `#66`) and a gate that cannot pass (`#142`, `#143`). The second is easier to fix and easier to
 ignore.
+
+### `#95` — SCOPED AND PRICED 2026-10-11, and the central finding inverts the ruling
+
+The entry below asks "enforce or delete". A 2026-10-11 trace of all 8 lanes (25 agents, each
+conclusion then challenged on anchored-ness and on exposure arithmetic) produced a decision memo
+at `docs/dev-notes/95-exposure-cap-lane-pricing-2026-10-11.md`. **Two of its findings change the
+question.**
+
+**1. All 8 lanes ARE anchored — 49 of 119 anchors.** Not one is decorative in the sense of having
+no anchored output. threshold_sweep 4, tcn_overlay 10, tcn_overlay_weights 10, garch 7,
+regime_dispatcher 6, momentum 5, pairs 4, patchtst 3, plus 2 blind-spot rows whose scenario names
+contain no lane token (`sharpe-comparison-realdata`, downstream of `tcn_overlay`) and which a
+name-based grep therefore never finds.
+
+**2. The false statement is NOT in the config field — it is a HARDCODED STRING in four report
+writers, and it is already printed throughout the corpus.** Verified directly:
+
+| writer | line | what it prints |
+|---|---|---|
+| `crates/backtest/src/report/pairs.rs` | `:121` | `- Size: binary_per_pair, exposure_cap_per_pair=25%` |
+| `crates/backtest/src/report/regime_dispatcher.rs` | `:155` | `- Size: equal_weight fraction=10%, exposure_cap=50%` |
+| `crates/backtest/src/report/momentum.rs` | `:113` | `- Size: equal_weight, exposure_cap=50%, k_long=3` |
+| `crates/backtest/src/report/tcn_overlay.rs` | `:196` | `- Size: equal_weight, exposure_cap=50%, k_long=3` |
+
+**So "delete the field" makes the corpus WORSE, not better.** Striking
+`portfolio_exposure_cap: Some(…)` is free — nothing reads it on these lanes — but it changes zero
+report bytes, so every body keeps asserting a cap while the only trace of the intent is gone.
+Nobody reading the corpus afterwards could tell the claim had been retired. **Correcting the
+printed line is the re-emission, in either branch** — which means the cheap-looking option is the
+one that costs a re-lock, and the expensive-looking one costs the same re-lock plus a behaviour
+change.
+
+**Per-lane disposition the memo recommends** (operator's ruling, not taken here):
+
+- **`garch_vol_target_overlay` — ENFORCE.** The one lane where 0.50 sits inside the live operating
+  range: 7 of 10 symbols pin at `scale_clamp_max` 2.0, so any 3-leg basket is 0.50–0.60 gross, and
+  its own body prints *"Dampen rate 100.00%"* next to *"exposure_cap=50%"*. 5 bodies / 7 rows.
+- **`momentum`, `pairs`, `tcn_overlay` — strike the field, and fix the printed line in the SAME
+  re-emission pass as garch.** Batching avoids two separate re-locks over the same corpus.
+- **`threshold_sweep`, `patchtst_overlay_weights`, `regime_dispatcher`, `tcn_overlay_weights` —
+  MEASURE FIRST.** Four instrumented runs printing peak gross and a refusal count to **stderr**,
+  never into a body: no anchor movement, one compute window. Four of the eight lanes had their
+  conclusion refuted by a challenger, and `regime_dispatcher`'s two challengers contradicted each
+  other, so ruling on them now would be ruling on a guess.
+- **Nothing routes through `size_portfolio_target`.** Doing so replaces each lane's hardcoded
+  `0.10`/leg with `exposure_cap / k_long` = 0.1667 — a **67 % sizing increase**. That is a strategy
+  change wearing a safety fix's clothes, and it moves all ~51 anchors.
+
+**Costing, for the ruling:** behaviour-only enforcement on garch is ~7 rows. A `#141`-style
+printed-count change touches every body *even where the count is zero*, so ~51 anchors ≈ 1.5× the
+`#141` run ⇒ budget ~2 h plus the `realdata`/`candle` gates.
+
+**What the trace could not settle, stated rather than rounded off:** realized peak gross on the
+four undetermined lanes. No lane emits an exposure series (`position_curve: Vec::new()`), so no
+artifact records it, and nothing short of an instrumented run will say whether their caps bind.
+
+*Provenance: the per-lane counts above are a sub-agent trace. I independently verified the four
+hardcoded report-writer strings, that the corpus prints them, and the `#111` call-site enumeration;
+the anchor counts per lane I did not re-derive row-by-row.*
 
 ### `#144` — the TS lanes cannot rebalance when 6 of 10 names signal long, so the all-or-nothing cap freezes them exactly at peak breadth
 
