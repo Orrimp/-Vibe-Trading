@@ -4525,3 +4525,61 @@ anywhere promised. When two parsers read the same file, the cheap invariant is t
 out loud: had this test compared its count against `verify_anchors.sh`'s instead of a hard-coded
 119, it would have reported a parser disagreement on the day it appeared rather than a bare
 `left: 118 right: 119` two weeks later.
+
+### `#143` — a commit titled "every gate is live again" left two gates dead, and CI was red on every push for 15 days
+
+**Found** 2026-10-11, checking CI after the operator pushed.
+**Status:** FIXED the same day. With `#142`, this clears all three of CI's failures.
+
+`gh run list` shows **25 consecutive CI failures** — every push from 2026-09-27 to 2026-10-11,
+on all three OSes of the matrix, failing *identically*. The full annotation list for a job
+(`--jq` over `annotation_level=="failure"`, not the first few lines) gives exactly three failing
+tests workspace-wide:
+
+| test | cause |
+|---|---|
+| `relock_manifest::every_anchored_surface_derives_from_exactly_one_accepted_tuple` | bug-log `#142` — a 4-line parser window broken by a mandatory D6.b disclosure comment |
+| `strategy_anchors_unchanged::t1937b_canonical_strategy_anchors_unchanged` | this entry |
+| `strategy_anchors_unchanged::t1937c_sqrt_impact_strategy_anchors_unchanged` | this entry |
+
+**What happened.** Story 1-27 re-emitted 15 non-reproducing anchors on 2026-09-26 under
+ADR-0038 § D6.b — correctly, with a disclosure and a record at
+`docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md`. It updated `evidence/anchors.toml`. It did
+not re-lock the **derived projection** of those digests held as `const` tables in
+`crates/reports/tests/strategy_anchors_unchanged.rs`, so 9 pins kept pointing at bodies that had
+been superseded.
+
+The commit is `70a0441b`, and its title is **"the 15 non-reproducing anchors are re-emitted, and
+every gate is live again"**. It left two gates dead. That is not a dig at the commit: the
+re-emission was properly disclosed and the corpus was left consistent. It is the shape of the
+defect — **ADR-0045 § D6.1 makes `anchors.toml` canonical and these constants a derived
+projection, and a projection not re-locked in the same pass silently contradicts its own
+source.**
+
+**Established before changing a single pin**, because "the files moved and the canonical store
+followed" has an innocent reading and a bad one: for all 9 scenarios `anchors.toml` agrees with
+the body on disk and with *neither* stale constant — **9 == file, 0 == stale const, 0 neither**.
+So this was a projection catching up to its source, not a regression being papered over. No body
+changed, no number moved, `verify_anchors.sh` read 119/119 throughout.
+
+**Why the pins stay hardcoded.** Per the module doc and bug-log `#117`, this test's job is
+**storage integrity** — proving committed evidence has not been edited or truncated — and it
+proves nothing about whether current code still produces those bodies. Deriving the expectation
+from `anchors.toml` would compare a file against a digest computed from that same file, which
+proves nothing at all. The independent pin is the design; this re-lock duty is its price. Both
+tables' freeze contracts permit an update "on a new re-emission trigger", and 1-27's is one, so
+the re-lock is authorised by the contract's own terms.
+
+**The part that matters more than the fix.** A gate that is always red is worth no more than a
+gate that cannot fail — and it is worse, because it teaches everyone to stop reading it. The
+3-OS matrix is story `6-9`'s entire deliverable, activated 2026-07-10 so that Linux and Windows
+would finally be verified; for 15 days it reported FAILURE into a void while 25 pushes landed on
+top of it, several of them mine. **I never looked at CI until today**, and the project's own
+scoping guidance is part of why: `-p <crate> --test <target>` never compiles a sibling crate's
+targets, so `crates/reports` was invisible to every gate I ran. The cheap habit that closes it is
+to read `gh run list` after a push — one command, and it would have caught this on 2026-09-27.
+
+**Moral.** Red is a state a gate can get stuck in, and nothing in this repo was watching for it.
+Both halves of the house rule are now on the board: a gate that cannot fail (`#140`, `#141`,
+`#66`) and a gate that cannot pass (`#142`, `#143`). The second is easier to fix and easier to
+ignore.

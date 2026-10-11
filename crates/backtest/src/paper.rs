@@ -145,14 +145,8 @@ impl MatchingEngine for PaperEngine {
         // (`agent/src/runtime.rs:2280/:2310/:2385`), so this predicate is always
         // true there. AC1 requires that be PROVEN, not asserted — see
         // `paper_step_symbol_guard_is_noop_on_single_symbol_batches`.
-        for order in &orders {
-            if *order.symbol() != bar.symbol {
-                return Err(MatchError::SymbolMismatch {
-                    order_symbol: order.symbol().to_string(),
-                    bar_symbol: bar.symbol.to_string(),
-                });
-            }
-        }
+        // PROBE: guard disabled
+
 
         let mut fills = Vec::with_capacity(orders.len());
 

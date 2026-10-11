@@ -199,6 +199,32 @@ const STRATEGY_ANCHORS: &[(&str, &str)] = &[
 ///
 /// **Migration freeze** (ADR-0047 D3): after v0.3.0 ship, this table is
 /// frozen. Future updates require a new ADR re-emission trigger.
+// ── PROJECTION RE-LOCK 2026-10-11 — the re-emission trigger the freeze contract requires ──
+//
+// The freeze contract above permits an update on "a new re-emission trigger". That trigger
+// exists and is documented: story 1-27 re-emitted 15 non-reproducing anchors on 2026-09-26
+// under ADR-0038 § D6.b (commit `70a0441b`, bug-log `#124`, record at
+// docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md). It updated `evidence/anchors.toml` and
+// did NOT re-lock this derived projection — so 9 pins here kept pointing at bodies that had
+// been superseded, and `t1937b` + `t1937c` went RED and STAYED red on every push for 15 days
+// (25 consecutive CI runs, all three OSes, identically).
+//
+// The commit that did it is titled "every gate is live again". It left two gates dead. That is
+// not a dig at the commit — the re-emission itself was correctly disclosed; it is the point of
+// bug-log `#143`: ADR-0045 § D6.1 makes `anchors.toml` canonical and these constants a DERIVED
+// PROJECTION, and a projection has to be re-locked in the same pass or it silently contradicts
+// its own source.
+//
+// Verified before changing a single pin: for all 9 scenarios `anchors.toml` agrees with the body
+// on disk, and with neither of the stale constants (9 == file, 0 == stale const, 0 neither). So
+// this is a projection catching up to its canonical source, NOT a regression being papered over.
+// No body changed, no number moved, `verify_anchors.sh` was 119/119 throughout.
+//
+// Why these pins stay HARDCODED rather than being read from anchors.toml: per the module doc and
+// bug-log `#117`, this test's job is STORAGE INTEGRITY — proving the committed evidence has not
+// been edited or truncated. Deriving the expectation from `anchors.toml` would make it compare a
+// file against a digest computed from that same file, which proves nothing. An independent pin is
+// the design; the cost of that design is exactly this re-lock duty.
 const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave C close (v5-latency-slippage-sim v0.3.0 M-DEV, 2026-05-27).
     // Reports in evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/
@@ -231,40 +257,40 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Group C: Momentum (unchanged from v0.2.0; wired in v0.1.0, synthetic data)
     (
         "top10-2023-1h-momentum",
-        "0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3",
+        "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15",
     ),
     (
         "top10-2024-h1-momentum",
-        "78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490",
+        "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052",
     ),
     // Group D: Pairs (newly wired in v0.3.0)
     (
         "pairs-2023-zscore-mr",
-        "01c9da4d4c5ce268b5de49c72f367ef729fcaccf04d572e5dc0fa1f1bd65e76e",
+        "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10",
     ),
     (
         "pairs-2024-h1-zscore-mr",
-        "6252819b4f719ce45bf5cfa70bfb38143c216e96dde8e5a43fdfe43055dce5e9",
+        "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b",
     ),
     // Group E: TCN overlay synthetic (newly wired in v0.3.0)
     (
         "top10-2023-fy-tcn-overlay",
-        "1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc",
+        "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1",
     ),
     (
         "top10-2024-fy-tcn-overlay",
-        "b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e",
+        "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d",
     ),
     // Group F: TCN overlay weights (candle feature — v0.4.0 re-emit, 2026-05-28)
     // Reports in evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/
     // Built with --features "candle realdata"; 2-run determinism verified.
     (
         "top10-2023-fy-tcn-overlay-weights",
-        "28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc",
+        "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462",
     ),
     (
         "top10-2024-fy-tcn-overlay-weights",
-        "0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137",
+        "3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab",
     ),
     // Group G: TCN overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
     (
@@ -311,6 +337,32 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
 ///
 /// **Freeze contract**: after v0.5.0 ship, this table is frozen. Future updates
 /// require a new re-emission trigger (v0.6.0 sub-namespace cleanup).
+// ── PROJECTION RE-LOCK 2026-10-11 — the re-emission trigger the freeze contract requires ──
+//
+// The freeze contract above permits an update on "a new re-emission trigger". That trigger
+// exists and is documented: story 1-27 re-emitted 15 non-reproducing anchors on 2026-09-26
+// under ADR-0038 § D6.b (commit `70a0441b`, bug-log `#124`, record at
+// docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md). It updated `evidence/anchors.toml` and
+// did NOT re-lock this derived projection — so 9 pins here kept pointing at bodies that had
+// been superseded, and `t1937b` + `t1937c` went RED and STAYED red on every push for 15 days
+// (25 consecutive CI runs, all three OSes, identically).
+//
+// The commit that did it is titled "every gate is live again". It left two gates dead. That is
+// not a dig at the commit — the re-emission itself was correctly disclosed; it is the point of
+// bug-log `#143`: ADR-0045 § D6.1 makes `anchors.toml` canonical and these constants a DERIVED
+// PROJECTION, and a projection has to be re-locked in the same pass or it silently contradicts
+// its own source.
+//
+// Verified before changing a single pin: for all 9 scenarios `anchors.toml` agrees with the body
+// on disk, and with neither of the stale constants (9 == file, 0 == stale const, 0 neither). So
+// this is a projection catching up to its canonical source, NOT a regression being papered over.
+// No body changed, no number moved, `verify_anchors.sh` was 119/119 throughout.
+//
+// Why these pins stay HARDCODED rather than being read from anchors.toml: per the module doc and
+// bug-log `#117`, this test's job is STORAGE INTEGRITY — proving the committed evidence has not
+// been edited or truncated. Deriving the expectation from `anchors.toml` would make it compare a
+// file against a digest computed from that same file, which proves nothing. An independent pin is
+// the design; the cost of that design is exactly this re-lock duty.
 const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave E close (v5-latency-slippage-sim v0.5.0 M-DEV, 2026-05-29).
     // Reports in evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/
@@ -321,7 +373,7 @@ const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Fixed 2026-05-29 at crates/backtest/src/scenarios/sim.rs + all 7 scenario files.
     (
         "top10-2023-fy-momentum-realdata",
-        "0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901",
+        "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef",
     ),
     (
         "top10-2023-fy-tcn-overlay-realdata",

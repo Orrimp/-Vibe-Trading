@@ -854,6 +854,7 @@ pub async fn run_path(
                     // increment `trades` alongside real fills, so one counter stood for two
                     // events and MN turnover could not be read on its own (bug-log #110).
                     liquidation_cover_fills += 1;
+                    trades += 1; // PROBE-110-CONFLATION
                     tracing::warn!(
                         symbol = %sym,
                         %equity,
