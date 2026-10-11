@@ -15,20 +15,48 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 `architecture/decisions/` ADRs) and **`docs/runbooks/`**.
 
 > **Program status — "The Honest Advisor" (single-coin paper advisor): FEATURE LIST
-> COMPLETE (2026-07-09); PRODUCT STATE mid-hardening.** The review burn-down that
-> began 2026-07-26 is **COMPLETE — 14/14 stories reviewed** (closed: 1-10…1-18,
-> 1-20, 2-15, 2-18; **three FAIL and did not close**: 1-21 — blocked on 1-25 —
-> plus 3-15 and 3-16). Disclosures now run **#65–#92**; of those, **#79, #80, #84,
-> #86 are FIXED**, #87/#89/#90 are part-fixed with the remainder ruled on, and the
-> harness CRITICALs **#67, #71, #75, #76 are FIXED** (2026-08-16→19, story 1-25).
-> **#68 + #69 turned out to be one defect** — `size_portfolio_target` implements
-> both the portfolio cap and the drift hold band and has zero production callers —
-> and wiring it is blocked on a prior question the corpus never answered: whether
-> `exposure_cap = 0.50` means gross, net, or long-only (the MN book reads 0.60 /
-> ~0.00 / 0.30 respectively, so compliance flips with the choice). The re-lock is
-> split out as story **1-26** (34 anchors = 29 % of the corpus; measured budget
-> 18.1 min/surface ⇒ ≥10.3 h). **The advisor bakeoff gate remains verified
-> independent of the contaminated research surfaces.** The terminal deliverable is the **advisor loop**: pick a coin + budget
+> COMPLETE (2026-07-09); the HARDENING burn-down and both CRITICAL re-locks are
+> now COMPLETE (2026-10-11).** The review burn-down that began 2026-07-26 reviewed
+> **14/14 stories**, and the **three that returned FAIL have all since closed**:
+> 1-21 (`done` 2026-09-29), and **3-15 (`shipped`) + 3-16 (`shipped-partial`) on
+> 2026-10-11** — 3-15's withdrawn conclusion was re-run and RESTORED (`v0.dvol_regime`
+> BTC −0.190 → +0.386, ETH +0.397 → +0.684, both still `Fragile` → `BenchmarkWins`),
+> and 3-16 closed on the finding that its probe is structurally inert in the shipped
+> build and therefore honestly ABSENT, so there is no number to publish.
+> Disclosures now run **#65–#142**. The harness CRITICALs **#67, #71, #75, #76 are
+> FIXED** (2026-08-16→19, story 1-25). **#68 + #69 turned out to be one defect** —
+> `size_portfolio_target` implements both the portfolio cap and the drift hold band
+> and had zero production callers — and the prior question that blocked it, whether
+> `exposure_cap = 0.50` means gross, net or long-only, was **RULED 2026-08-22:
+> GROSS** (ADR-0089 D7), then wired and bound by tests in `723ca742`.
+>
+> **Both re-locks have RUN.** Story **1-26** regenerated 34 surfaces (`done`
+> 2026-09-27) in **74.4 min** against a budget that said ≥10.3 h — wrong by an order
+> of magnitude, because 2 surfaces are 83 % of the run. Story **1-24** re-locked a
+> further 35 under a corrected Politis–White estimator (`done` 2026-10-10). The
+> re-derivation: **312 verdicts re-checked against the frozen bands, 0 mismatches**;
+> movement one-directional (136 cells FRAGILE→FRAGILE, 20 FRAGILE→MARGINAL,
+> **nothing became ROBUST**); and **across all 156 cells, in both corpora, exactly
+> ZERO beat their own buy-and-hold**. So *ship-passive survived the clean arithmetic*
+> and *"uniformly fragile" did not* — 6 of 34 surfaces moved off
+> `FAMILY-UNIFORM-FRAGILE`, all on the 2023 half, and `MARGINAL` is not an edge
+> claim (every flipped cell is flagged `→ C5 DEFLATION REQUIRED`; none has been
+> through that pass).
+>
+> **One disclosure from 2026-10-11 belongs in the headline** (bug-log `#141`): the
+> portfolio exposure cap was **binding on 18 of those 34 surfaces** — refusing
+> **1.4 %–8.2 %** of all rebalance opportunities — and **no report had ever said so**,
+> because the count was computed, returned, and dropped one struct short of the
+> renderer. It is now printed on every surface, zero included. No number moved
+> (34/34 byte-identical but for the added block), so this changes *why* a reader
+> understands those arms underperformed, not *whether* — but the TS lanes in
+> particular were never measured at their intended exposure, since they target
+> ~90–100 % gross against a 0.50 cap.
+> **The advisor bakeoff gate remains verified independent of the research surfaces**
+> (re-verified 2026-10-11: `bakeoff/bootstrap.rs` untouched since `3c297b3e`, which
+> predates every commit of story 1-25, and zero `.step(` calls exist under
+> `bakeoff/`). **Caveat stated rather than smoothed over:** five stories (1-24, 1-25,
+> 1-28, 1-29, 1-30) sit at `review` carrying PASS verdicts written as **self-reviews**. The terminal deliverable is the **advisor loop**: pick a coin + budget
 > (e.g. €200 XRPUSDT) → bake off *every* strategy over a configurable 2-week-to-4-year
 > window → rank & select the best by risk-adjusted Sharpe under a robustness gate → emit a
 > forward buy/sell plan → **paper-trade the budget forward** in the Live view with real P/L.
