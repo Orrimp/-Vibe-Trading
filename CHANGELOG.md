@@ -53,9 +53,14 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 > particular were never measured at their intended exposure, since they target
 > ~90–100 % gross against a 0.50 cap.
 > **The advisor bakeoff gate remains verified independent of the research surfaces**
-> (re-verified 2026-10-11: `bakeoff/bootstrap.rs` untouched since `3c297b3e`, which
-> predates every commit of story 1-25, and zero `.step(` calls exist under
-> `bakeoff/`). **Caveat stated rather than smoothed over:** five stories (1-24, 1-25,
+> (re-verified 2026-10-11, then CORRECTED the same day after an independent audit:
+> `bakeoff/bootstrap.rs` is untouched since `3c297b3e`, which predates every commit of
+> story 1-25 — but the claim that "zero `.step(` calls exist under `bakeoff/`" was a true
+> statement about a directory and a false one about the call graph. `bakeoff/mod.rs:1362`
+> calls `run_scenario`, which does call `engine.step` (`engine.rs:2751`). Independence
+> holds on the correct argument instead: that path is **single-symbol by construction**, and
+> for single-symbol batches the `#67` guard is a no-op proven by
+> `paper_step_symbol_guard_is_noop_on_single_symbol_batches`.) **Caveat stated rather than smoothed over:** five stories (1-24, 1-25,
 > 1-28, 1-29, 1-30) sit at `review` carrying PASS verdicts written as **self-reviews**. The terminal deliverable is the **advisor loop**: pick a coin + budget
 > (e.g. €200 XRPUSDT) → bake off *every* strategy over a configurable 2-week-to-4-year
 > window → rank & select the best by risk-adjusted Sharpe under a robustness gate → emit a

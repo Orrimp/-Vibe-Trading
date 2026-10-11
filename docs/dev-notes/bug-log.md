@@ -4768,3 +4768,58 @@ all-or-nothing policy is the honest choice for a limit *as long as the limit is 
 design* — and nothing checks that the declared cap is compatible with the grid's own sizing. Three
 constants (`FIXED_FRACTION`, the universe size, `exposure_cap`) are set in three different files
 by three different decisions, and their product is a strategy behaviour nobody specified.
+
+### `#145` — my audit's own probe leaked into two commits on `main`, because I gave the agents contradictory instructions and then ran `git add -A` while they were live
+
+**Found** 2026-10-11, from the audit's own report — it disclosed the incident rather than hiding
+it, which is the only reason this entry exists.
+**Status:** HEAD is CLEAN and verified. Two commits in unpushed history carry a poisoned
+intermediate state, disclosed below rather than rewritten away.
+
+An independent audit of five self-reviewed stories probed the `#67` engine guard the way this
+repo's house rule demands — snapshot with `cp`, break, measure, `cp` back. It shares **one working
+tree** with the orchestrator session, which committed three times while it ran. The result:
+
+| commit | what it swept up |
+|---|---|
+| `7cfdf1b1` | `crates/backtest/src/paper.rs` — the 8-line `#67` guard **deleted**, replaced by `// PROBE: guard disabled`; and `scenarios/montecarlo.rs:857` — `trades += 1; // PROBE-110-CONFLATION` **added** |
+| `595ecf3b` | the agent's **restore** of both |
+
+So the net effect across the pair is zero and **HEAD is correct** — verified: the guard is present
+at `paper.rs:148-155`, `grep -rn PROBE crates/backtest/src crates/reports/src` returns nothing,
+`paper::tests` 12/12 and `param_sweep_e2e` 14/14 green.
+
+**But `7cfdf1b1` is a poisoned commit**, and not harmlessly so. Anyone checking it out gets a
+build with the `#67` symbol-mismatch guard disabled AND `#110`'s liquidation-cover conflation
+re-introduced. **`#111` was found by bisecting** — that is the technique this repo actually uses on
+exactly this code — so a commit whose guard is silently off is a live trap for the next bisect.
+Its message, which lists gates as green, is also wrong about the tree it describes.
+
+**Not rewritten, deliberately.** The commits are unpushed, so `rebase` would be easy. Disclosing a
+mistake is this project's whole method, and rewriting history to make my own error disappear is the
+opposite of it. A bisect that lands on `7cfdf1b1` now finds this entry.
+
+**Two causes, both mine:**
+
+1. **I gave the sub-agents self-contradictory instructions.** The prompt said *"YOU ARE READ-ONLY.
+   Do not edit, write, or create any file anywhere"* and, sixteen lines later, *"PROBE a gate
+   before believing it: snapshot the file with `cp`, break the thing the gate guards, re-run,
+   confirm RED, then `cp` the snapshot BACK."* Those cannot both be followed. The 1-24 auditor
+   spotted the conflict and chose read-only, saying so in its `not_checked`; the 1-25 auditor
+   chose to probe. **Both readings were correct** — the fault is the prompt's, and it is the same
+   class of defect as everything else in this log: an instruction that cannot be satisfied is
+   indistinguishable from one that is.
+2. **I ran `git add -A` while agents were live.** The standing rules say sub-agents write files
+   only and never two agents in one crate; nothing covered the orchestrator *committing* over a
+   shared tree mid-run. `git add -A` does not distinguish my edits from theirs.
+
+**The fix for next time, concretely:** either tell read-only agents to probe **nothing** and keep
+probing for the orchestrator, or give probing agents `isolation: "worktree"` so their breakage
+cannot reach the shared tree. And stage by explicit path — `git add <the files I edited>` — never
+`-A`, while any agent is running.
+
+**What the probe actually proved, which is why it was worth the mess.** The agent re-added
+`trades += 1` beside the liquidation-cover increment and `a_forced_cover_is_counted_separately_and_never_as_a_trade`
+**did not go red** — its assertion set never reads `trades` on the liquidating run. That is a
+surviving HIGH finding against story 1-28's AC4, and no amount of reading would have established
+it as firmly.

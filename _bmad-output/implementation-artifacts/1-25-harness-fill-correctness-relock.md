@@ -362,7 +362,7 @@ programme, not an iteration"* and landed a README sentence asserting the audit's
 | **AC3.6** | `FILL_SEED` domain separation | **RATIFIED in writing** | pointed at bug-log `#89`; the `0xC0FFEE` constants are the project-wide fixture seed. |
 | **AC3.7** | real exposure-cap enforcement (enforce or delete) | **MET on the inventory lane; gap on 8 others accurately disclosed** | counted today: **9** `Some(...)` declaring lanes against **1** enforcing read (`crates/risk/src/portfolio.rs`) — exactly `#95`'s claim, unchanged. `montecarlo.rs` (`run_path`, the lane behind all 34 inventory anchors) is the wired one. `#95` stays OPEN, named in the 1-26 errata § 9 as out of scope. |
 | **AC4 / AC5** | re-lock + band re-examination | **DELIVERED by story 1-26** (`done` 2026-09-27) | 34 surfaces regenerated in **74.4 min**; errata `evidence/v2/harness-relock/ERRATA.md`. |
-| **AC6** | advisor-gate independence re-proven | **MET, on substituted evidence — NOT the test originally credited** | `git log -- crates/backtest/src/bakeoff/bootstrap.rs` → last touched `3c297b3e`, which **predates all five of this story's commits**; and grepping `.step(` under `crates/backtest/src/bakeoff/` returns **nothing**, so the bake-off gate never reaches the engine this story changed. The audit was right that `robustness_bootstrap_bites` pins no baseline and cannot carry the claim; the claim is true anyway, and now rests on the evidence above instead. |
+| **AC6** | advisor-gate independence re-proven | **MET — but my first reasoning for it was WRONG; see § AC6 correction below** | `git log -- crates/backtest/src/bakeoff/bootstrap.rs` → last touched `3c297b3e`, which **predates all five of this story's commits**; and grepping `.step(` under `crates/backtest/src/bakeoff/` returns **nothing**, so the bake-off gate never reaches the engine this story changed. The audit was right that `robustness_bootstrap_bites` pins no baseline and cannot carry the claim; the claim is true anyway, and now rests on the evidence above instead. |
 
 ### Two findings recorded with this verdict
 
@@ -419,3 +419,40 @@ own reviews is a governance act rather than bookkeeping, and it is consistent to
 where its siblings sit. The flip needs, in one pass per ADR-0082: `Status: done`, this story's
 trace row `REQ-HARNESS-FILL-CORRECTNESS-001` moved from `state="scoped"` to a shipped-terminal
 value, and a CHANGELOG index line — `scripts/spec_lint.py` enforces all three.
+
+
+## AC6 — CORRECTION, 2026-10-11 (independent audit)
+
+An independent adversarial re-audit refuted half of the reasoning in the verdict above, and it was
+right. Recorded here rather than quietly amended, because the wrong version was also stated to the
+operator and written into `CHANGELOG.md`.
+
+**What I claimed:** *"zero `.step(` calls exist under `crates/backtest/src/bakeoff/`, so the
+bake-off gate never reaches the engine this story changed."*
+
+**Why that was wrong.** It is a true statement about a DIRECTORY and a false one about the CALL
+GRAPH. `crates/backtest/src/bakeoff/mod.rs:1362` calls `run_scenario(...)`, and
+`crates/backtest/src/engine.rs:1052`'s `run_scenario` calls `engine.step(&bar, orders)` at
+`engine.rs:2751`. **The bake-off does reach the engine story 1-25 changed.** I grepped a directory
+and drew a reachability conclusion from it — the precise error CLAUDE.md warns about for
+"no callers" claims, which it requires be routed through `scripts/callers.sh` (CodeGraph ∪ grep)
+rather than any single-source grep.
+
+**AC6's conclusion nevertheless holds, by a different argument.** AC6 asks that the gate's
+*inputs and outputs* be unchanged by this story. Two halves:
+
+1. **The gate function itself is unchanged** — `bakeoff/bootstrap.rs` last touched `3c297b3e`,
+   which predates all five of this story's commits. That half of my verification stands.
+2. **Its inputs are unchanged** — not because the engine is unreachable, but because the path that
+   reaches it is **single-symbol by construction**: `run_scenario` iterates one symbol's
+   `bars_arc`, builds `orders` from `registry.on_bar(&bar)` signals on that bar, and steps the
+   batch against that same bar. Every order therefore carries `bar.symbol`, and for single-symbol
+   batches the `#67` guard is a no-op **proven by test**, not assumed —
+   `paper::tests::paper_step_symbol_guard_is_noop_on_single_symbol_batches`, pinned to literal
+   arithmetic so it cannot degenerate into a two-run tautology.
+
+So the independence claim survives and is now resting on the right evidence. **The distinction
+matters beyond bookkeeping:** "unreachable" would have made the guard irrelevant to the advisor
+forever, whereas "reachable but a proven no-op on this shape" means any future change that lets a
+multi-symbol batch onto the bake-off path WOULD affect the gate's inputs — and nothing currently
+watches for that.
