@@ -394,3 +394,56 @@ assertion, so its own plumbing stays exercised.
 **Coverage lost on Windows:** the script's `find`/`grep`/`strings` plumbing. Never
 the pattern list, never the artifacts — both are covered on every leg, which is
 strictly more than before, when the whole gate was absent there.
+
+## Why the Windows lane was never confirmed — CI has been red on EVERY push since 2026-09-27 (2026-10-11)
+
+The section above left this story `in-progress` pending "a green Windows lane". That lane could
+not have gone green, and not for any Windows reason: **the matrix has failed on every push for 15
+days, on all three OSes, identically.** `gh run list` shows **25 consecutive failures**
+(2026-09-27 → 2026-10-11).
+
+Reading the **full** annotation list for a job — `gh api repos/{owner}/{repo}/check-runs/<id>/annotations`
+filtered to `annotation_level=="failure"`, rather than the first few lines — gives exactly three
+failing tests workspace-wide, none of them platform-specific:
+
+| test | crate | cause |
+|---|---|---|
+| `every_anchored_surface_derives_from_exactly_one_accepted_tuple` | `backtest` | bug-log `#142` — a 4-line parser window broken by a *mandatory* ADR-0038 D6.b disclosure comment |
+| `t1937b_canonical_strategy_anchors_unchanged` | `reports` | bug-log `#143` — story 1-27's 2026-09-26 re-emission updated `anchors.toml` and never re-locked its derived projection |
+| `t1937c_sqrt_impact_strategy_anchors_unchanged` | `reports` | same |
+
+**All three are fixed as of 2026-10-11** (`#142` and `#143`), verified green locally:
+`relock_manifest` 2/2 and `strategy_anchors_unchanged` 4/4, where the latter was 2/4.
+
+### What this means for THIS story, stated carefully
+
+The two Windows fixes recorded above may well be correct — the `tokio::time::pause()` analysis is
+detailed and was reasoned from source. **But this story cannot claim them confirmed**, because a
+platform-INDEPENDENT failure has been masking the platform-specific signal for 15 days. Every run
+in that window went red for reasons that had nothing to do with Windows, so a Windows-specific red
+would have been indistinguishable from the noise, and a Windows-specific *green* equally
+invisible.
+
+The next push is therefore the first informative run this story has had since 2026-09-24. Two
+outcomes, both useful:
+
+- **All three lanes green** → the 2026-09-24 fixes are confirmed and this story's remaining
+  acceptance work is done.
+- **Only `windows-latest` red** → that is the real cross-platform signal, finally legible, and the
+  story continues from there with an actual failure to read.
+
+Either way the story stays `in-progress` until a run says which. What changed today is that the
+question is now *answerable*.
+
+### The process defect, which is worth more than the fix
+
+A gate stuck red is worth no more than a gate that cannot fail, and it is worse, because it
+teaches everyone to stop reading it. This matrix is this story's entire deliverable — activated
+2026-07-10 so Linux and Windows would finally be verified — and it spent 15 days reporting
+FAILURE into a void while 25 pushes landed on top of it.
+
+Part of why nobody saw it is structural, and it is the project's own guidance: CLAUDE.md
+(correctly) scopes verification to `-p <crate>`, and `cargo test -p backtest --test <target>`
+never compiles a sibling crate's targets — so `crates/reports` was invisible to every gate run
+locally for two weeks. The cheap habit that closes the gap is **reading `gh run list` after a
+push**: one command, and it would have surfaced this on 2026-09-27.
