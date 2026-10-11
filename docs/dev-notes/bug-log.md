@@ -4397,8 +4397,27 @@ is compiling the whole crate's targets.
 
 **Found** 2026-10-11 during the story 1-25 review, while discharging the orphaned per-scenario
 gross-exposure obligation.
-**Status: OPEN — needs an operator ruling.** The fix changes every regenerated surface's hashed
-body, so it is a re-emission, not a patch.
+**Status: FIXED + RE-EMITTED 2026-10-11.** Operator ruled (a): re-emit. All 34 surfaces
+regenerated, 0 failed; 34 digests re-locked under ADR-0038 § D6.b; anchors 119/119 before and
+after. Record: `docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md`.
+
+**What the disclosure revealed, which is the reason this was worth a compute window: the cap was
+binding on 18 of the 34 surfaces, and no report had ever said so.** Per-bar share of rebalance
+opportunities refused — `ts-horizon-daily` **7.96–8.18 %**, `ts-momentum` 3.70–3.95 %,
+`mn-basisperp` 3.66–3.76 %, `ts-horizon-4h` 3.72 %, `mn-basis` 1.67–1.99 %, `mn-funding`
+1.42–1.59 %; the other 16 surfaces are a true 0 % and now **print** that zero. Exactly the lanes
+`montecarlo.rs:114` predicted would run hot. A consistency check that passes: each
+`fee00bps`/`fee05bps` pair reports an identical count, as it must, since the cap is evaluated on
+notional before fees.
+
+**No number moved.** The negative invariant was checked per surface: 34/34 byte-identical to their
+predecessors apart from the inserted block, 0 moved. The cap was always binding on those 18
+surfaces and the anchored results always contained its effect — this disclosed a fact about the
+corpus rather than changing its arithmetic. It bears on **why** those arms underperformed, not
+**whether**; `exposure_cap = 0.50` is a hashed `grid_def` field, so they were measured as
+specified. The consequence worth naming anyway: **the TS lanes were never measured at their
+intended exposure**, since they target ~90-100 % gross against a 0.50 cap and the cap therefore
+wins by construction.
 
 ADR-0089 D2 made the portfolio exposure cap all-or-nothing: on a breach the ENTIRE rebalance is
 skipped and the book is left unchanged for that bar. The ADR and the code both state that

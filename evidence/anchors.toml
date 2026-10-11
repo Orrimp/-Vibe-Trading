@@ -1227,10 +1227,23 @@ sha256   = "74c018d5c212bfda8b069bea73310ef321a8dab6d93198a7cb61c5638bc6c164"
 #              monte_carlo --generator block-bootstrap-real --paths 500 --ensemble-seed
 #                0xC0FFEE --year 2023                                      (the -mc row)
 #   corpus=data/binance (plus -funding and -basis) at REVISION 3a8b96c4...
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 54aab726802ee561938ba33a47f6d801283362f611ee55e7edbea7e0ff3b1bd4
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-160035-v1-momentum-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "54aab726802ee561938ba33a47f6d801283362f611ee55e7edbea7e0ff3b1bd4"
+sha256   = "93634fc11faa68508c204d34a2dde4ca8fe569b46616d76ac75b264a3293709a"
 
 # C3 MR parameter-robustness sweep — θ-surface anchor #87 (2026-05-31).
 # Cross-sectional mean-reversion: 6-cell × N=200 LOCKED MR Tier-1 grid (§ D-MR.2-LOCKED).
@@ -1258,10 +1271,23 @@ sha256   = "54aab726802ee561938ba33a47f6d801283362f611ee55e7edbea7e0ff3b1bd4"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): d4a9ac13f2969eb56ba63a5c31b34eef8ae92a213f4df7f105aab6e134239ff2
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-163806-v1-mr-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-mr-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "d4a9ac13f2969eb56ba63a5c31b34eef8ae92a213f4df7f105aab6e134239ff2"
+sha256   = "b2abcd5cdd409232ad177e0986187721b202caf7234d6acc21a23f2f06127041"
 
 # C3 carry (funding) θ-surface anchor #88 (2026-06-02).
 # Cross-sectional funding carry (framing (a) long-only directional carry-tilt):
@@ -1293,10 +1319,23 @@ sha256   = "d4a9ac13f2969eb56ba63a5c31b34eef8ae92a213f4df7f105aab6e134239ff2"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 4c1a0011b161dd411997a167428a61c63a0f4d39f3037325aa5b9c1899e42941
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151327-v1-carry-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-carry-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "4c1a0011b161dd411997a167428a61c63a0f4d39f3037325aa5b9c1899e42941"
+sha256   = "d10766ce12f38288412aafbe40dd2e169271fb783fde178a6ab53c7351ddeacc"
 
 # C3 carry (funding) θ-surface anchor #89 — 2024 OOS regime (2026-06-02).
 # Same LOCKED 6-cell carry Tier-1 grid as #88 but on 2024-FY real Binance data.
@@ -1325,10 +1364,23 @@ sha256   = "4c1a0011b161dd411997a167428a61c63a0f4d39f3037325aa5b9c1899e42941"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 83ae9abe05e296371a1c0388f95ba0f37f08cc9d378cbc98e656498340da1f3f
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151405-v1-carry-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-carry-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "83ae9abe05e296371a1c0388f95ba0f37f08cc9d378cbc98e656498340da1f3f"
+sha256   = "e08e007e63f47ba7292a5009fac225e3c7344acf63c2b2997e5f923ebec4a3af"
 
 # C3 TS-momentum θ-surface anchor #90 — 2023-FY (2026-06-03).
 # Time-series (per-asset absolute) momentum: 6-cell × N=200 LOCKED TS Tier-1 grid (§ D-TSM.3-LOCKED).
@@ -1360,10 +1412,23 @@ sha256   = "83ae9abe05e296371a1c0388f95ba0f37f08cc9d378cbc98e656498340da1f3f"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 60279c79b34cd5cd237824c22ee24e4fd44e9176148b53b8aa8fb38c4d872f34
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151953-v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 388651 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "60279c79b34cd5cd237824c22ee24e4fd44e9176148b53b8aa8fb38c4d872f34"
+sha256   = "15911b32fff69bb0a1e619f6a3d922a32a710a899ee0ba21e7ce031b9fc7a275"
 
 # C3 TS-momentum θ-surface anchor #91 — 2024-FY OOS regime (2026-06-03).
 # Same LOCKED 6-cell TS Tier-1 grid as #90 but on 2024-FY real Binance data.
@@ -1395,10 +1460,23 @@ sha256   = "60279c79b34cd5cd237824c22ee24e4fd44e9176148b53b8aa8fb38c4d872f34"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 61373d65304aaed24214e82ceffacf14170cc675397f290915cec8145ad6e0e4
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152039-v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 416352 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "61373d65304aaed24214e82ceffacf14170cc675397f290915cec8145ad6e0e4"
+sha256   = "7cb33e29ce663ea0b85de1e8e8b5f244e0b1bd4c7aba57dd065656c24cc61b01"
 
 # Horizon retest — coarser decision cadence (4h + daily) θ-surface anchors (2026-06-05).
 # Namespace: horizon-retest-robustness (NEW — distinct from mc-robustness-2026-06; the horizon
@@ -1438,10 +1516,23 @@ sha256   = "61373d65304aaed24214e82ceffacf14170cc675397f290915cec8145ad6e0e4"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 23efeb697a311640106ab1c8b2e6d1ca3ab47b0b05475bc8c3901b05d1e593fb
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151836-v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 97853 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "23efeb697a311640106ab1c8b2e6d1ca3ab47b0b05475bc8c3901b05d1e593fb"
+sha256   = "abb0cdb46ee0f121accbeedf4df764f83f9720e70f569f26b1661a7bbd3354c8"
 
 # Anchor #93 — TS-momentum 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1459,10 +1550,23 @@ sha256   = "23efeb697a311640106ab1c8b2e6d1ca3ab47b0b05475bc8c3901b05d1e593fb"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 447f1ed05445fcee86eb1cadb6918ed0ade2bbb01dab46e9ca4d84e7c94722bc
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151848-v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 98159 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "447f1ed05445fcee86eb1cadb6918ed0ade2bbb01dab46e9ca4d84e7c94722bc"
+sha256   = "a0acb203b7491253a6928b4b548d72556eb603822c60a72f262d48b2e2e1f7c8"
 
 # Anchor #94 — TS-momentum daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1480,10 +1584,23 @@ sha256   = "447f1ed05445fcee86eb1cadb6918ed0ade2bbb01dab46e9ca4d84e7c94722bc"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): b34e4c88e47ac6c8e1c9623503664a46b42f4aab11928be672e732b0db2665c4
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151858-v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 174307 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "b34e4c88e47ac6c8e1c9623503664a46b42f4aab11928be672e732b0db2665c4"
+sha256   = "a7e3bcd50affa3678351f200872bdf8e0e8e09d2965b4b28fb12b47e23d534a0"
 
 # Anchor #95 — TS-momentum daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1501,10 +1618,23 @@ sha256   = "b34e4c88e47ac6c8e1c9623503664a46b42f4aab11928be672e732b0db2665c4"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 0e4b93f509a099f6567b22f46b52ba3208d2039d811834f953db64eb865043d6
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151908-v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 179674 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "0e4b93f509a099f6567b22f46b52ba3208d2039d811834f953db64eb865043d6"
+sha256   = "8cdec525b01da0e07386f6a9bd376e7754026b92868d8cff45b6bb1f9f24871a"
 
 # Anchor #96 — Carry (funding) 4h horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1522,10 +1652,23 @@ sha256   = "0e4b93f509a099f6567b22f46b52ba3208d2039d811834f953db64eb865043d6"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 2ca336459b1667a6b49dc3c8533238e76d14a89e326c15733ce42953ca77e66a
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151220-v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "2ca336459b1667a6b49dc3c8533238e76d14a89e326c15733ce42953ca77e66a"
+sha256   = "1eb337ecc0c146f0e8f0845ad6a709ae6ef7511abb3f24d2bc18ee8fadcee835"
 
 # Anchor #97 — Carry (funding) 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1543,10 +1686,23 @@ sha256   = "2ca336459b1667a6b49dc3c8533238e76d14a89e326c15733ce42953ca77e66a"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 67987f93cabf348acf0fcd0f3d7bdf3179f3d8f85c78150567c2f26c2b49f957
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151231-v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-carry-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "67987f93cabf348acf0fcd0f3d7bdf3179f3d8f85c78150567c2f26c2b49f957"
+sha256   = "a98dc0d751cd5f6f2a069b94557e1057f135acd00dde119a55fb358614fd3a15"
 
 # Anchor #98 — Carry (funding) daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1564,10 +1720,23 @@ sha256   = "67987f93cabf348acf0fcd0f3d7bdf3179f3d8f85c78150567c2f26c2b49f957"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): c0d09c1de3a1e5bff2698796cbb788856c8ff31405725ee2fe8a8d9c34548c85
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151240-v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "c0d09c1de3a1e5bff2698796cbb788856c8ff31405725ee2fe8a8d9c34548c85"
+sha256   = "c4f68e9b5e1b16237b43a61076c7ecc0469507ef6374335bfc988e90d0e3bbb6"
 
 # Anchor #99 — Carry (funding) daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1585,10 +1754,23 @@ sha256   = "c0d09c1de3a1e5bff2698796cbb788856c8ff31405725ee2fe8a8d9c34548c85"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 266438490291f396fe2a7406643dd1e657cee51654e0fe1aff775bd3061814c6
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151250-v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-carry-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "266438490291f396fe2a7406643dd1e657cee51654e0fe1aff775bd3061814c6"
+sha256   = "b74d8cf411211100c7cfefa55b26605619d54efa640090933c28d1865de01c56"
 
 # Anchor #100 — Basis-Reversal 0bps taker fee, 2023-FY (gross — no fee bleed)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1606,10 +1788,23 @@ sha256   = "266438490291f396fe2a7406643dd1e657cee51654e0fe1aff775bd3061814c6"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): c8c2d2d154fd703bef4d062f91a81fd9ff0934fb9c9d3331318fdadcb1097100
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-150733-v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "c8c2d2d154fd703bef4d062f91a81fd9ff0934fb9c9d3331318fdadcb1097100"
+sha256   = "3b7567e152cc9329931fd20c353e14489cdf4e99ffee692f088035a5a3f2c895"
 
 # Anchor #101 — Basis-Reversal 0bps taker fee, 2024-FY (tail-negative regime, gross)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1627,10 +1822,23 @@ sha256   = "c8c2d2d154fd703bef4d062f91a81fd9ff0934fb9c9d3331318fdadcb1097100"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): ee0dae2b532fbc76f5736c15d01f2e17ca11744d482b1a73ef6fdbb13b174529
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-150813-v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "ee0dae2b532fbc76f5736c15d01f2e17ca11744d482b1a73ef6fdbb13b174529"
+sha256   = "079efcf69767a50d026e53ce6be7316c23d99bb93a63eb04f357505ec3314a85"
 
 # Anchor #102 — Basis-Reversal 2bps taker fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1648,10 +1856,23 @@ sha256   = "ee0dae2b532fbc76f5736c15d01f2e17ca11744d482b1a73ef6fdbb13b174529"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 5f7f152b003f4e839b77711d51021b164a2453ad7794182e325a2b579ec241dd
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-150853-v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "5f7f152b003f4e839b77711d51021b164a2453ad7794182e325a2b579ec241dd"
+sha256   = "9c465bb67c5ff500d6efdeeddeb587df7e96c9217d10625138db5f53341db055"
 
 # Anchor #103 — Basis-Reversal 2bps taker fee, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1669,10 +1890,23 @@ sha256   = "5f7f152b003f4e839b77711d51021b164a2453ad7794182e325a2b579ec241dd"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 61dd4b1973c2a504cb17a622dac2d1244194a64a4971cc490b8a78621f257ad5
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-150933-v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee02bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "61dd4b1973c2a504cb17a622dac2d1244194a64a4971cc490b8a78621f257ad5"
+sha256   = "7dcb579a68743b18c552c23c6e5c533d5d1858586ce573893a1f5d0f1aa48fca"
 
 # Anchor #104 — Basis-Reversal 5bps taker fee, 2023-FY (realistic fee level)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1690,10 +1924,23 @@ sha256   = "61dd4b1973c2a504cb17a622dac2d1244194a64a4971cc490b8a78621f257ad5"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 3b4d1e57958828ff3f5c3d6bb245cd609b0a2c37f492fe141c6a8d1eef4543be
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151012-v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "3b4d1e57958828ff3f5c3d6bb245cd609b0a2c37f492fe141c6a8d1eef4543be"
+sha256   = "b58e9ae2e454c944155feb89b92e46ec0fc823f9561fb32b0da9d2e4459ede41"
 
 # Anchor #105 — Basis-Reversal 5bps taker fee, 2024-FY (realistic fee level, tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1711,10 +1958,23 @@ sha256   = "3b4d1e57958828ff3f5c3d6bb245cd609b0a2c37f492fe141c6a8d1eef4543be"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 2ec2aacd63b84e95982134b3e39c333da9a5e6c296ebe1b36a9f01e7551c1675
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151051-v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "2ec2aacd63b84e95982134b3e39c333da9a5e6c296ebe1b36a9f01e7551c1675"
+sha256   = "338bc6a9a83ca758a37e1f43889c6bb5f28c7564c42d9560a4b2d3c897ed4e57"
 
 # Anchor #106 — Basis-Reversal 10bps taker fee, 2023-FY (high-fee stress)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1732,10 +1992,23 @@ sha256   = "2ec2aacd63b84e95982134b3e39c333da9a5e6c296ebe1b36a9f01e7551c1675"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 6a269324bab6675894c486f6de5c27aa1465711ebe7a60dc7808a87ae8fe5412
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151130-v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "6a269324bab6675894c486f6de5c27aa1465711ebe7a60dc7808a87ae8fe5412"
+sha256   = "31a5722bb9c32ced02687389006fd31c492be48fb0da26b06f0c8f9d963ef424"
 
 # Anchor #107 — Basis-Reversal 10bps taker fee, 2024-FY (high-fee stress, tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1753,10 +2026,23 @@ sha256   = "6a269324bab6675894c486f6de5c27aa1465711ebe7a60dc7808a87ae8fe5412"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): d0dd192748776f6e766034644cbea527d75224a0029abcb28fd234484361f74c
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-151209-v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 0 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v1-basis-reversal-fee10bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-signal-robustness"
-sha256   = "d0dd192748776f6e766034644cbea527d75224a0029abcb28fd234484361f74c"
+sha256   = "3c07bb488843bea4d3f1dc9e5924a35d229688bd53264492ded4eeca2b5ac3a8"
 
 # Anchors #108-#119 — MN Spread v0.2.0 (perp-basis-mn-spread), 3 arms × 2 fees × 2 years
 # Arms AS RUN (corrected 2026-08-11, bug-log #75 — the labels below are what the
@@ -1792,10 +2078,23 @@ sha256   = "d0dd192748776f6e766034644cbea527d75224a0029abcb28fd234484361f74c"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 9ab4703695b5e5edc1448a4809a2b9b6ffcb26b83d1147c92a1bfcd7d19af198
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152057-v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 58523 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "9ab4703695b5e5edc1448a4809a2b9b6ffcb26b83d1147c92a1bfcd7d19af198"
+sha256   = "c6fc85ceeba2db155076c4cb82b4b23a4062239263906762c86a0ff907d80d14"
 
 # Anchor #109 — MN-Basis 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1813,10 +2112,23 @@ sha256   = "9ab4703695b5e5edc1448a4809a2b9b6ffcb26b83d1147c92a1bfcd7d19af198"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): b119b97da48241b4cba0ec21dd1005dba76882136ebda5a7d3f39bc382fe6b76
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152115-v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 69759 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "b119b97da48241b4cba0ec21dd1005dba76882136ebda5a7d3f39bc382fe6b76"
+sha256   = "0a414ac86b800e13210a4c0806428eb5d633869979664faaf191e065462e9a00"
 
 # Anchor #110 — MN-Basis 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1834,10 +2146,23 @@ sha256   = "b119b97da48241b4cba0ec21dd1005dba76882136ebda5a7d3f39bc382fe6b76"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 8dc5712389106214d74a145e8f8ac0467e99b35c2a691018b4bfdfdd7ebfdf2c
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152134-v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 58523 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "8dc5712389106214d74a145e8f8ac0467e99b35c2a691018b4bfdfdd7ebfdf2c"
+sha256   = "a450114a5ade3b3429ef00ef3e26873f4eec202ada6ba92f377f2f10d477eabc"
 
 # Anchor #111 — MN-Basis 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1855,10 +2180,23 @@ sha256   = "8dc5712389106214d74a145e8f8ac0467e99b35c2a691018b4bfdfdd7ebfdf2c"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): e053a8c7d72d10c3dc126eb538b5e62542b5b40ba49056aa55e34c1bc7f0c5de
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152152-v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 69759 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "e053a8c7d72d10c3dc126eb538b5e62542b5b40ba49056aa55e34c1bc7f0c5de"
+sha256   = "09baf1aa25c31600ed51d5f06683373d690c07283e568ea8d8ba5efdbce39746"
 
 # Anchor #112 — MN-Funding 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1876,10 +2214,23 @@ sha256   = "e053a8c7d72d10c3dc126eb538b5e62542b5b40ba49056aa55e34c1bc7f0c5de"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 1c915caaba77a26d6eb27f6cb28abb01544ab3ee1016d25d74007b0a1b3eabe1
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152331-v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 49617 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "1c915caaba77a26d6eb27f6cb28abb01544ab3ee1016d25d74007b0a1b3eabe1"
+sha256   = "0e372628efb2a61a72a2865b83befef05c34dfc17940a4d92f64d29b6047287c"
 
 # Anchor #113 — MN-Funding 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1897,10 +2248,23 @@ sha256   = "1c915caaba77a26d6eb27f6cb28abb01544ab3ee1016d25d74007b0a1b3eabe1"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): c6eb9b01d9b079fd37ff6e99114a580cf8a3741a7a155685ef5f6ebec3c5a2c9
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152350-v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 55966 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "c6eb9b01d9b079fd37ff6e99114a580cf8a3741a7a155685ef5f6ebec3c5a2c9"
+sha256   = "72946e45846d28242ba258b4788c41e2d62397335a1fdb10189bc1b1ea91c9a0"
 
 # Anchor #114 — MN-Funding 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1918,10 +2282,23 @@ sha256   = "c6eb9b01d9b079fd37ff6e99114a580cf8a3741a7a155685ef5f6ebec3c5a2c9"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 93c31b79160f209386f2d77eab5dea627f8eb68230b40d812052d3c7410ab211
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152408-v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 49617 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "93c31b79160f209386f2d77eab5dea627f8eb68230b40d812052d3c7410ab211"
+sha256   = "77a211c3b5b20d7dae11e853917a1cc56182845d2948fd3d07a3438f634a5faa"
 
 # Anchor #115 — MN-Funding 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1939,10 +2316,23 @@ sha256   = "93c31b79160f209386f2d77eab5dea627f8eb68230b40d812052d3c7410ab211"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 579d92291323ed3f325aca51113362b8d6468b63ac911f93f07a8d98bb663dfd
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152426-v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 55966 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "579d92291323ed3f325aca51113362b8d6468b63ac911f93f07a8d98bb663dfd"
+sha256   = "b8d4f1bc9ead6e5766eebf8d1bdbdf082cdfc52b647085ca7f222b014fa79f68"
 
 # Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1960,10 +2350,23 @@ sha256   = "579d92291323ed3f325aca51113362b8d6468b63ac911f93f07a8d98bb663dfd"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 0a570e1d1246dee2e711c0b57609ec4f172538daed90580231de4919a2bd4894
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152212-v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 128270 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "0a570e1d1246dee2e711c0b57609ec4f172538daed90580231de4919a2bd4894"
+sha256   = "f2722e541a486a26eaad4aeb0b661ec6851e89807e18759b95e8989ba6607477"
 
 # Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1981,10 +2384,23 @@ sha256   = "0a570e1d1246dee2e711c0b57609ec4f172538daed90580231de4919a2bd4894"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): c6352ab07e3ed88c8383ab92d988bcb764679009fdf84ce1b4d72f5e116b03f5
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152233-v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 132021 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "c6352ab07e3ed88c8383ab92d988bcb764679009fdf84ce1b4d72f5e116b03f5"
+sha256   = "cb29526c3e28c87d13b4b4279de65886780b97d7882179b55815f24ef6e4217d"
 
 # Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2002,10 +2418,23 @@ sha256   = "c6352ab07e3ed88c8383ab92d988bcb764679009fdf84ce1b4d72f5e116b03f5"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 72d0e1d9019217dc5c721ffb16c32509c71fe87b4bb84d68578e056b4b2408d3
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152253-v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 128270 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "72d0e1d9019217dc5c721ffb16c32509c71fe87b4bb84d68578e056b4b2408d3"
+sha256   = "a636a7082a4904c15437c94e407da19b86dacbf5346ca5a7dab95e7118f76804"
 
 # Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2023,7 +2452,20 @@ sha256   = "72d0e1d9019217dc5c721ffb16c32509c71fe87b4bb84d68578e056b4b2408d3"
 # RE-EMITTED 2026-09-29 under ADR-0038 D6.b — story 1-28 (ruin witness + fill
 #   provenance). ADDITIVE ONLY: no number moved. Full record, including the
 #   per-surface diff census: docs/dev-notes/1-28-d6b-re-emission-2026-09-29.md
+# ── RE-EMITTED 2026-10-11 under ADR-0038 § D6.b — bug-log #141 ──────────────
+#   Operator-ruled 2026-10-11: re-emit, make ADR-0089 D2's surfacing clause real.
+#   Superseded body-SHA (story 1-24's 2026-10-10 re-lock): 0acde522331f4fd03701984b9a17de57aa8044d175d2f0e0f5229c7fb2f41f24
+#   Superseded body file (kept on disk as history): robustness-sweep-20261010-152313-v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   WHAT CHANGED: one added block in the notation section reporting how many
+#     rebalances the portfolio exposure cap refused on this surface. NOTHING ELSE.
+#     This surface: 132021 refusal(s).
+#   NEGATIVE INVARIANT, checked per surface and the reason this is safe: #141 is
+#     additive REPORTING and changes no computation, so the regenerated body is
+#     byte-identical to its predecessor APART from that block. Verified 34/34,
+#     0 moved. A moved number here would have been a defect in the change, not a
+#     result — the inverse of a normal re-lock's expectation.
+#   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "0acde522331f4fd03701984b9a17de57aa8044d175d2f0e0f5229c7fb2f41f24"
+sha256   = "3270fdd64b88591a4fb2358e53e279e35a11c1af546bb7f64fc16ccb9a1c46b3"
