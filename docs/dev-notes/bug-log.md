@@ -4416,7 +4416,8 @@ It is not surfaced. The full chain:
 | `montecarlo.rs:320` | initialised |
 | `montecarlo.rs:662` | incremented on a refused rebalance, with a `tracing` line |
 | `montecarlo.rs:911` | returned to the caller |
-| `sweep_harness::CellResult` | **no such field** — it carries `total_liquidations`, `total_liquidation_cover_fills`, `ruined_paths`, and not this |
+| `param_robustness_sweep::IndexedPathMetrics` | **no such field — THIS is where it was lost**, one hop earlier than first written here. The per-cell aggregation only ever sees this intermediate, so the count was discarded before `CellResult` was built at all. Corrected 2026-10-11 while implementing the fix; the original entry named `CellResult` and that was the second missing hop, not the first. |
+| `sweep_harness::CellResult` | no such field either — it carries `total_liquidations`, `total_liquidation_cover_fills`, `ruined_paths`, and not this |
 | `render_surface_report` | therefore cannot print it; `grep -rliE "portfolio_breach\|breaches" evidence/v2/` returns **nothing** |
 | `tests/portfolio_controls_bind.rs:143` | the **only** reader in the workspace |
 
@@ -4447,6 +4448,16 @@ per the standing rule a re-lock is the operator's call, not a reviewer's. The ho
 
 **(a) is the one that matches what the ADR says**, and this entry recommends it; but a 34-surface
 re-emission is not a reviewer's decision.
+
+**RULED 2026-10-11: (a), re-emit.** Implemented in `f4d3ebd2` — both structs carry the field,
+`param_robustness_sweep` sums it, and `render_surface_report` states it once in the notation block
+rather than as a per-cell column, so it lands identically on all six render branches instead of
+reshaping five table layouts to reach the two lanes that can run hot. **A zero is printed
+explicitly**, because an unprinted zero and an uncomputed zero read the same — which is this
+entry's whole point. The would-have-caught gate is
+`param_sweep_e2e::bug141_the_breach_count_reaches_the_body_and_a_zero_is_printed_too`, probed RED
+in both directions: deleting the surfacing fails the non-zero case, and emitting the line only
+when `breaches > 0` fails the zero case.
 
 **What is NOT in doubt.** The cap itself genuinely binds — `portfolio_controls_bind` has three
 RED-proven gates (neutering the cap, the band, or `#94`'s delta sizing turns exactly one red),
