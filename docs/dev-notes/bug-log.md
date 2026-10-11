@@ -4583,3 +4583,79 @@ to read `gh run list` after a push — one command, and it would have caught thi
 Both halves of the house rule are now on the board: a gate that cannot fail (`#140`, `#141`,
 `#66`) and a gate that cannot pass (`#142`, `#143`). The second is easier to fix and easier to
 ignore.
+
+### `#144` — the TS lanes cannot rebalance when 6 of 10 names signal long, so the all-or-nothing cap freezes them exactly at peak breadth
+
+**Found** 2026-10-11, following `#141`'s disclosure through to what it implies.
+**Status: OPEN — needs an operator ruling, and it bears on how the TS surfaces should be read.**
+Filed deliberately WITHOUT a fix: any fix changes those surfaces' numbers, which is a re-lock.
+
+`#141` made the refusal count visible and showed the cap binding on 18 of 34 surfaces. Tracing
+*why* on the TS lanes gives a mechanism, not just a rate.
+
+**The chain, each link verified at HEAD:**
+
+| link | where | value |
+|---|---|---|
+| per-leg target weight | `scenarios/montecarlo.rs:145` (`FIXED_FRACTION`), applied at `:424`/`:453`/`:476` | **0.10**, signed |
+| TS selection mode | `sweep_harness.rs:339` (`TsTier1`/`Ts4h`/`TsDaily` → `TimeSeriesLongFlat`) | every name long-or-flat **independently**; `k_long` is **inert** — `sweep_harness.rs:1122` says so in its own comment: *"inert under TimeSeriesLongFlat (all names, no ranking)"* |
+| universe | `sweep_harness.rs:129`/`:777`/`:874`/`:968` | **10 symbols** |
+| ⇒ target gross | — | `0.10 × n_long`, so **0.00 … 1.00** |
+| declared cap | the hashed `grid_def` field, enforced at `crates/risk/src/portfolio.rs:243-247` | **0.50** |
+| breach condition | `total_gross_notional > cap` ⇒ `Err(PortfolioExposureBreach)` | **n_long ≥ 6** |
+| breach POLICY | `montecarlo.rs:653-669`, ADR-0089 D2 / R5.2 | **the ENTIRE rebalance is skipped.** Scaling the vector down was *explicitly rejected* — "it silently converts a breach into a smaller trade" |
+
+**So the TS arm is structurally unable to rebalance in any bar where 6 or more of its 10 names
+signal long.** It is not trimmed to five legs; the rebalance does not happen and the book is left
+unchanged.
+
+**Why that is worse than a flat 4-8 % throttle.** The refusals are not spread at random over
+bars — they fire *exactly* on the bars with the highest breadth, because breadth is the trigger. A
+long-only absolute-momentum arm's best bars are the ones where most names are in uptrends, and
+those are precisely the bars on which this arm is frozen. Measured refusal rates from `#141`:
+`ts-horizon-daily` **7.96–8.18 %**, `ts-momentum` **3.70–3.95 %**, `ts-horizon-4h` **3.72 %** of
+all rebalance opportunities, on windows (2023 and 2024) that were both strongly up.
+
+**What this does NOT establish, and the distinction is the whole point.** I have measured the
+MECHANISM and its FREQUENCY. I have **not** measured the counterfactual — nobody has run these
+lanes uncapped, so the effect on the verdicts is **unquantified**. It is not established that any
+TS cell would beat buy-and-hold without the cap, and the `#141` re-lock moved no number, so
+nothing in the corpus changes on account of this entry.
+
+What IS established is that **the TS lanes' measured underperformance is not cleanly attributable
+to absent edge**: a known, directional, breadth-triggered constraint contributed to it, and until
+today no artifact said so. For the era-qualified ship-passive conclusion that matters as a
+qualification on *those lanes'* contribution, not as a refutation — the conclusion also rests on
+the momentum, MR, carry, basis-reversal and MN families, 16 of whose surfaces had **zero**
+refusals, and on the 0-of-156-cells buy-and-hold control which is untouched.
+
+**Is it a defect or a configuration?** Genuinely arguable, which is why it is a ruling and not a
+patch:
+
+- **It is a configuration.** `exposure_cap = 0.50` is a hashed `grid_def` field, so the arm was
+  measured against its own declared limit. An arm that wants 1.00 gross and is capped at 0.50 is
+  simply an arm with a risk limit, and being honest about limits is the product's whole point.
+- **It is a defect.** Nothing chose 0.50 *for this lane*. It is the same 0.50 every other grid
+  declares, and on the other grids `0.10 × k_long 3 = 0.30` fits comfortably underneath. The TS
+  lane is the one place where the per-leg weight and the selection mode combine to exceed it, and
+  the interaction with an all-or-nothing policy means the limit does not cap exposure at all — it
+  intermittently disables the strategy. A limit that trims is a risk control; a limit that freezes
+  the book at peak signal is a different thing wearing the same name.
+
+**The options, with their costs:**
+
+1. **Rule it a configuration and disclose** — add the mechanism to the TS surfaces' narrative.
+   Cheapest; no re-lock. The surfaces then say what they measure.
+2. **Raise the cap for the TS grids** (to 1.00, their actual target) and re-lock those 6 surfaces.
+   Makes the arm measurable at its intended exposure. Costs a re-emission of 6 surfaces and
+   changes their numbers — and it is the only option that answers whether the edge was there.
+3. **Derive the per-leg weight from the cap** (`exposure_cap / n_names`, the domain
+   `TargetLeg` already documents) so gross can never exceed the cap and the breach path becomes
+   unreachable. Cleanest in principle; changes every lane's numbers, so it is the most expensive
+   and the 1-25 record already explains why the weight was held constant: attribution.
+
+**Moral.** `#141` made a number visible and the number turned out to be a symptom. An
+all-or-nothing policy is the honest choice for a limit *as long as the limit is reachable by
+design* — and nothing checks that the declared cap is compatible with the grid's own sizing. Three
+constants (`FIXED_FRACTION`, the universe size, `exposure_cap`) are set in three different files
+by three different decisions, and their product is a strategy behaviour nobody specified.
