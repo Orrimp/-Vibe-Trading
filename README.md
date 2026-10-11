@@ -43,8 +43,16 @@ universal form of this sentence is false and is never the claim.
 re-derivation: 6 of 34 surfaces moved to `FAMILY-HAS-NON-FRAGILE-CELLS`, all on the 2023 half.
 That weakens *how* the arms fail, not *whether* — `MARGINAL` is not an edge claim, every
 flipped cell is flagged `→ C5 DEFLATION REQUIRED`, and none has been through that pass. Story
-1-25 (the last re-lock story) passed review on 2026-10-11; it and four siblings sit at `review`
-on **self-reviews**, which is disclosed here rather than smoothed over.
+1-25 (the last re-lock story) passed review on 2026-10-11; it and four siblings sat at `review` on
+**self-reviews**, so those five were put through an **independent adversarial re-audit** the same
+day — and **four of the five verdicts did not hold** (full record:
+[`docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md`](docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md)).
+14 of 24 findings survived three-skeptic verification. Read what they are before reading that as
+worse than it is: they are **documentation and gate-strength** defects — a module doc contradicting
+its own code, a legend sentence appended rather than replaced, a test whose assertions never reach
+the thing it is named for — and **not one moves an anchored number.** The thesis numbers above are
+untouched. What the audit establishes is that those five verdicts were not reliable *as written*,
+which is precisely what a self-review cannot establish about itself.
 Current honest state: `_bmad-output/implementation-artifacts/sprint-status.yaml`,
 `docs/dev-notes/bug-log.md`, `docs/dev-notes/product-review-2026-08-04.md`.
 

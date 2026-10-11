@@ -60,8 +60,14 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 > calls `run_scenario`, which does call `engine.step` (`engine.rs:2751`). Independence
 > holds on the correct argument instead: that path is **single-symbol by construction**, and
 > for single-symbol batches the `#67` guard is a no-op proven by
-> `paper_step_symbol_guard_is_noop_on_single_symbol_batches`.) **Caveat stated rather than smoothed over:** five stories (1-24, 1-25,
-> 1-28, 1-29, 1-30) sit at `review` carrying PASS verdicts written as **self-reviews**. The terminal deliverable is the **advisor loop**: pick a coin + budget
+> `paper_step_symbol_guard_is_noop_on_single_symbol_batches`.) **Caveat stated rather than smoothed over, then acted on:** five stories (1-24,
+> 1-25, 1-28, 1-29, 1-30) sat at `review` carrying PASS verdicts written as **self-reviews**,
+> so they were put through an independent adversarial re-audit on 2026-10-11 — **four of the
+> five verdicts did not hold**, with 14 of 24 findings surviving three-skeptic verification
+> (`docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md`). The findings are
+> **documentation and gate-strength**, not arithmetic: **none moves an anchored number**, so
+> the figures in this status block stand. One correction they forced is already landed —
+> AC6's independence proof above. The terminal deliverable is the **advisor loop**: pick a coin + budget
 > (e.g. €200 XRPUSDT) → bake off *every* strategy over a configurable 2-week-to-4-year
 > window → rank & select the best by risk-adjusted Sharpe under a robustness gate → emit a
 > forward buy/sell plan → **paper-trade the budget forward** in the Live view with real P/L.
