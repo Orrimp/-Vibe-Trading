@@ -2277,8 +2277,23 @@ pub fn spawn_trading_loop(
                                                 equity,
                                             )
                                             .ok()
-                                            && let Ok(fills) = engine.step(&bar, vec![ord]).await
                                         {
+                                            // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                                            // The LIVE/agent path. Story 1-25 verified these callers pass single-symbol
+                                            // batches, so the guard cannot fire — but this is the product, and a
+                                            // refused order that leaves no trace is the one failure a paper
+                                            // advisor must never have.
+                                            let fills = match engine.step(&bar, vec![ord]).await {
+                                                Ok(f) => f,
+                                                Err(err) => {
+                                                    tracing::warn!(
+                                                        bar_symbol = %bar.symbol,
+                                                        error = %err,
+                                                        "engine REFUSED the order(s) — reported, not dropped"
+                                                    );
+                                                    continue;
+                                                }
+                                            };
                                             short_leg_strategy_id
                                                 .get_or_insert_with(|| sig.strategy_id.clone());
                                             short_leg_fills.extend(fills);
@@ -2307,8 +2322,23 @@ pub fn spawn_trading_loop(
                                                 equity,
                                             )
                                             .ok()
-                                            && let Ok(fills) = engine.step(&bar, vec![ord]).await
                                         {
+                                            // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                                            // The LIVE/agent path. Story 1-25 verified these callers pass single-symbol
+                                            // batches, so the guard cannot fire — but this is the product, and a
+                                            // refused order that leaves no trace is the one failure a paper
+                                            // advisor must never have.
+                                            let fills = match engine.step(&bar, vec![ord]).await {
+                                                Ok(f) => f,
+                                                Err(err) => {
+                                                    tracing::warn!(
+                                                        bar_symbol = %bar.symbol,
+                                                        error = %err,
+                                                        "engine REFUSED the order(s) — reported, not dropped"
+                                                    );
+                                                    continue;
+                                                }
+                                            };
                                             short_leg_strategy_id
                                                 .get_or_insert_with(|| sig.strategy_id.clone());
                                             short_leg_fills.extend(fills);

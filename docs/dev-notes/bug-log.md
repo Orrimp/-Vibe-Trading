@@ -2001,9 +2001,46 @@ made them look scheduled when nothing was going to touch them.
 **Status**: OPEN — cause bisected 2026-09-25 (story 1-27). Resolution is a D6.b re-lock, not a code
 fix; the scope of that re-lock is the open question.
 
-> **§ SCOPE ANSWERED — 2026-10-11.** This entry said *"possibly more (see § Scope)"* and left the
-> scope open. It is now enumerated. **Six further lanes still carry the un-fixed `#67` shape, at
-> eight call sites**, verified by reading each line at HEAD:
+> **§ SCOPE ANSWERED 2026-10-11, CODE FIXED 2026-10-12 (operator-ruled: fix, then re-lock).**
+>
+> **Arithmetic correction first:** this said "six further lanes … at **eight** call sites" while
+> its own table listed two per lane across six — i.e. **twelve**. Twelve is right. And twelve was
+> itself a lower bound: a workspace sweep found **nine more** `&& let Ok(fills) = engine.step`
+> sites outside the audit's list, in `sma_composed_run.rs` (×4), `regime_dispatcher.rs` (×2),
+> `engine.rs` (×1) and `agent/src/runtime.rs` (×2). `#111`'s own thesis — that this inventory is a
+> lower bound — held against the enumeration that was supposed to close it.
+>
+> **What landed 2026-10-12:**
+>
+> | treatment | sites | lanes | why |
+> |---|--:|---|---|
+> | **routed + loud** | **12** | `momentum`, `tcn_overlay`, `tcn_overlay_weights`, `patchtst_overlay_weights`, `garch_vol_target_overlay`, `pairs` | these carry the genuine `#67` shape — multi-symbol signals, per-symbol SIZING, trigger-bar FILLING. Each now looks the fill up in `last_bar_by_symbol`, the same remedy as the two AC2 lanes |
+> | **loud only** | **9** | `sma_composed_run` (4), `regime_dispatcher` (2), `engine.rs` (1), `agent/src/runtime.rs` (2) | `regime_dispatcher` already routed correctly via `make_fill_bar`; the rest are single-symbol by construction, so the guard cannot fire. Made observable anyway — *"should never"* and *"cannot"* are different claims and only one of them is checked |
+>
+> One site remains, in `crates/backtest/tests/determinism.rs:189` — a test, left deliberately.
+>
+> **The attribution is as clean as it gets, and it was the gates that produced it.** After the
+> change, `cargo test -p backtest` is green on 237 lib tests and every integration target EXCEPT
+> four `determinism.rs` reproduction gates, which **re-run** a scenario and compare against the
+> anchored SHA:
+>
+> - `t717_top10_{2023,2024}_momentum` and `tt1_top10_{2023,2024}_fy_tcn_overlay` — **FAILED**
+> - everything else, including `t622_sma_cross` on the loud-only `sma_composed_run` lane — **passed**
+>
+> So exactly the two lanes that received ROUTING moved, and every lane that received only a loud
+> `Err` arm did not. That is simultaneously proof the routing fix does what it claims and proof the
+> nine loud-only edits are behaviour-neutral. `verify_anchors.sh` is 119/119 throughout — the
+> corpus is intact and it is the code that moved, which is the precondition for the re-lock rather
+> than a problem with it.
+>
+> **Still owed:** the re-lock. The four moved scenarios plus the other routed lanes' surfaces need
+> re-emission under ADR-0038 § D6.b, with the direction of the delta measured — orders that were
+> silently dropped should now FILL, so trade counts should RISE, and that is the check that
+> distinguishes the fix from drift. Not done in this pass: it belongs with the `#144` and `#95`
+> changes so one re-lock covers all three rather than regenerating the same bodies three times.
+>
+> The original enumeration follows, with its table (the twelve sites), verified by reading each
+> line at HEAD:
 >
 > | lane | sites |
 > |---|---|

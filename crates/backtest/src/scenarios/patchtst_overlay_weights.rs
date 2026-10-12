@@ -158,6 +158,12 @@ pub async fn run(
         let mut cash = input.initial_capital;
         let mut position_book: std::collections::BTreeMap<Symbol, Decimal> =
             std::collections::BTreeMap::new();
+        // bug-log #111/#129 fix (2026-10-12, operator-ruled): the fill-side twin of
+        // `mark_prices`. This lane SIZED from the per-symbol mark and FILLED against the
+        // trigger bar — bug-log #67's exact shape — and since the #67 guard returns Err,
+        // those cross-symbol orders VANISHED with no fill, no error and no counter.
+        let mut last_bar_by_symbol: std::collections::HashMap<Symbol, trading_core::Bar> =
+            std::collections::HashMap::new();
         let mut mark_prices: std::collections::BTreeMap<Symbol, Decimal> =
             std::collections::BTreeMap::new();
 
@@ -177,6 +183,7 @@ pub async fn run(
 
         for bar in bars_arc.iter() {
             mark_prices.insert(bar.symbol.clone(), bar.close.get());
+            last_bar_by_symbol.insert(bar.symbol.clone(), bar.clone());
 
             let signals = overlay_strategy.on_bar(bar);
 
@@ -225,8 +232,30 @@ pub async fn run(
                                 &risk_limits,
                                 equity,
                             )
-                            && let Ok(fills) = engine.step(bar, vec![ord]).await
                         {
+                            // Route to the ORDER's symbol bar, not the trigger bar (bug-log #67).
+                            let Some(fill_bar) = last_bar_by_symbol.get(&sig.symbol) else {
+                                tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    "no bar seen yet for this symbol — order SKIPPED, and said so"
+                                );
+                                continue;
+                            };
+                            // A refusal is REPORTED, never dropped. The `&& let Ok(fills) = …` if-chain
+                            // this replaces had no else arm, so an Err made the whole chain false and the
+                            // order disappeared in silence (bug-log #129).
+                            let fills = match engine.step(fill_bar, vec![ord]).await {
+                                Ok(f) => f,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        order_symbol = %sig.symbol,
+                                        bar_symbol = %fill_bar.symbol,
+                                        error = %err,
+                                        "engine REFUSED the order — reported, not dropped"
+                                    );
+                                    continue;
+                                }
+                            };
                             for fill in fills {
                                 let notional_fill = fill.qty.get() * fill.price.get();
                                 // v5-latency-slippage-sim R1 wiring (ADR-0047 D2).
@@ -274,8 +303,30 @@ pub async fn run(
                                 &risk_limits,
                                 equity,
                             )
-                            && let Ok(fills) = engine.step(bar, vec![ord]).await
                         {
+                            // Route to the ORDER's symbol bar, not the trigger bar (bug-log #67).
+                            let Some(fill_bar) = last_bar_by_symbol.get(&sig.symbol) else {
+                                tracing::warn!(
+                                    symbol = %sig.symbol,
+                                    "no bar seen yet for this symbol — order SKIPPED, and said so"
+                                );
+                                continue;
+                            };
+                            // A refusal is REPORTED, never dropped. The `&& let Ok(fills) = …` if-chain
+                            // this replaces had no else arm, so an Err made the whole chain false and the
+                            // order disappeared in silence (bug-log #129).
+                            let fills = match engine.step(fill_bar, vec![ord]).await {
+                                Ok(f) => f,
+                                Err(err) => {
+                                    tracing::warn!(
+                                        order_symbol = %sig.symbol,
+                                        bar_symbol = %fill_bar.symbol,
+                                        error = %err,
+                                        "engine REFUSED the order — reported, not dropped"
+                                    );
+                                    continue;
+                                }
+                            };
                             for fill in fills {
                                 let notional_fill = fill.qty.get() * fill.price.get();
                                 // v5-latency-slippage-sim R1 wiring (ADR-0047 D2).

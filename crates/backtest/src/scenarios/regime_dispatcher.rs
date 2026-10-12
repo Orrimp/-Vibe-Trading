@@ -346,8 +346,25 @@ pub async fn run(
                             &risk_limits,
                             equity,
                         )
-                        && let Ok(fills) = engine.step(&fill_bar, vec![ord]).await
                     {
+                        // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                        // The `&& let Ok(fills) = …` if-chain this replaces had NO else arm, so an
+                        // Err made the whole chain false and the order vanished with no fill, no
+                        // error and no counter. This lane is believed single-symbol, which would
+                        // make the #67 guard unable to fire here — but "believed" is not a gate,
+                        // so the refusal is made OBSERVABLE rather than argued away. If it is
+                        // genuinely unreachable this arm never runs and nothing changes.
+                        let fills = match engine.step(&fill_bar, vec![ord]).await {
+                            Ok(f) => f,
+                            Err(err) => {
+                                tracing::warn!(
+                                    bar_symbol = %bar.symbol,
+                                    error = %err,
+                                    "engine REFUSED the order(s) — reported, not dropped"
+                                );
+                                continue;
+                            }
+                        };
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
                             let sim_slip_cost = sim_slippage_cost(
@@ -385,8 +402,25 @@ pub async fn run(
                             &risk_limits,
                             equity,
                         )
-                        && let Ok(fills) = engine.step(&fill_bar, vec![ord]).await
                     {
+                        // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                        // The `&& let Ok(fills) = …` if-chain this replaces had NO else arm, so an
+                        // Err made the whole chain false and the order vanished with no fill, no
+                        // error and no counter. This lane is believed single-symbol, which would
+                        // make the #67 guard unable to fire here — but "believed" is not a gate,
+                        // so the refusal is made OBSERVABLE rather than argued away. If it is
+                        // genuinely unreachable this arm never runs and nothing changes.
+                        let fills = match engine.step(&fill_bar, vec![ord]).await {
+                            Ok(f) => f,
+                            Err(err) => {
+                                tracing::warn!(
+                                    bar_symbol = %bar.symbol,
+                                    error = %err,
+                                    "engine REFUSED the order(s) — reported, not dropped"
+                                );
+                                continue;
+                            }
+                        };
                         for fill in fills {
                             let notional_fill = fill.qty.get() * fill.price.get();
                             let sim_slip_cost = sim_slippage_cost(

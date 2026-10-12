@@ -2747,9 +2747,25 @@ pub async fn run_scenario(
                     }
                 }
 
-                if !orders.is_empty()
-                    && let Ok(fills) = engine.step(&bar, orders).await
-                {
+                if !orders.is_empty() {
+                    // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                    // This is the path the bake-off reaches via `run_scenario` — the fact that story
+                    // 1-25's AC6 hinges on. It is single-symbol by construction (one symbol's
+                    // `bars_arc`, signals from that bar, batch stepped against that same bar), so
+                    // the #67 guard is a no-op here and the arm below should never run. Made
+                    // observable anyway: "should never" and "cannot" are different claims, and
+                    // only one of them is checked.
+                    let fills = match engine.step(&bar, orders).await {
+                        Ok(f) => f,
+                        Err(err) => {
+                            tracing::warn!(
+                                bar_symbol = %bar.symbol,
+                                error = %err,
+                                "engine REFUSED the order(s) — reported, not dropped"
+                            );
+                            continue;
+                        }
+                    };
                     for fill in &fills {
                         let sim_cost = sim_slippage_cost(
                             fill.qty.get(),

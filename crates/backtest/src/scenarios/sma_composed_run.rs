@@ -623,8 +623,25 @@ pub async fn run(
                                     )
                                 })
                                 .ok()
-                                && let Ok(fills) = engine.step(&bar, vec![ord]).await
                             {
+                                // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                                // The `&& let Ok(fills) = …` if-chain this replaces had NO else arm, so an
+                                // Err made the whole chain false and the order vanished with no fill, no
+                                // error and no counter. This lane is believed single-symbol, which would
+                                // make the #67 guard unable to fire here — but "believed" is not a gate,
+                                // so the refusal is made OBSERVABLE rather than argued away. If it is
+                                // genuinely unreachable this arm never runs and nothing changes.
+                                let fills = match engine.step(&bar, vec![ord]).await {
+                                    Ok(f) => f,
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            bar_symbol = %bar.symbol,
+                                            error = %err,
+                                            "engine REFUSED the order(s) — reported, not dropped"
+                                        );
+                                        continue;
+                                    }
+                                };
                                 for fill in &fills {
                                     let sim_slip_cost = sim_slippage_cost(
                                         fill.qty.get(),
@@ -674,8 +691,25 @@ pub async fn run(
                                     )
                                 })
                                 .ok()
-                                && let Ok(fills) = engine.step(&bar, vec![ord]).await
                             {
+                                // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+                                // The `&& let Ok(fills) = …` if-chain this replaces had NO else arm, so an
+                                // Err made the whole chain false and the order vanished with no fill, no
+                                // error and no counter. This lane is believed single-symbol, which would
+                                // make the #67 guard unable to fire here — but "believed" is not a gate,
+                                // so the refusal is made OBSERVABLE rather than argued away. If it is
+                                // genuinely unreachable this arm never runs and nothing changes.
+                                let fills = match engine.step(&bar, vec![ord]).await {
+                                    Ok(f) => f,
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            bar_symbol = %bar.symbol,
+                                            error = %err,
+                                            "engine REFUSED the order(s) — reported, not dropped"
+                                        );
+                                        continue;
+                                    }
+                                };
                                 for fill in &fills {
                                     let sim_slip_cost = sim_slippage_cost(
                                         fill.qty.get(),
@@ -752,9 +786,25 @@ pub async fn run(
             }
         }
 
-        if !orders.is_empty()
-            && let Ok(fills) = engine.step(&bar, orders).await
-        {
+        if !orders.is_empty() {
+            // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+            // The `&& let Ok(fills) = …` if-chain this replaces had NO else arm, so an
+            // Err made the whole chain false and the order vanished with no fill, no
+            // error and no counter. This lane is believed single-symbol, which would
+            // make the #67 guard unable to fire here — but "believed" is not a gate,
+            // so the refusal is made OBSERVABLE rather than argued away. If it is
+            // genuinely unreachable this arm never runs and nothing changes.
+            let fills = match engine.step(&bar, orders).await {
+                Ok(f) => f,
+                Err(err) => {
+                    tracing::warn!(
+                        bar_symbol = %bar.symbol,
+                        error = %err,
+                        "engine REFUSED the order(s) — reported, not dropped"
+                    );
+                    continue;
+                }
+            };
             for fill in &fills {
                 // v5-latency-slippage-sim R1 wiring (ADR-0047 D2).
                 // At slippage_bps == 0 (default) this returns Decimal::ZERO —
@@ -1199,9 +1249,25 @@ pub async fn run_with_strategy(
             }
         }
 
-        if !orders.is_empty()
-            && let Ok(fills) = engine.step(&bar, orders).await
-        {
+        if !orders.is_empty() {
+            // bug-log #129 (2026-10-12): an engine refusal is REPORTED, never dropped.
+            // The `&& let Ok(fills) = …` if-chain this replaces had NO else arm, so an
+            // Err made the whole chain false and the order vanished with no fill, no
+            // error and no counter. This lane is believed single-symbol, which would
+            // make the #67 guard unable to fire here — but "believed" is not a gate,
+            // so the refusal is made OBSERVABLE rather than argued away. If it is
+            // genuinely unreachable this arm never runs and nothing changes.
+            let fills = match engine.step(&bar, orders).await {
+                Ok(f) => f,
+                Err(err) => {
+                    tracing::warn!(
+                        bar_symbol = %bar.symbol,
+                        error = %err,
+                        "engine REFUSED the order(s) — reported, not dropped"
+                    );
+                    continue;
+                }
+            };
             for fill in &fills {
                 let sim_slip_cost = crate::scenarios::sim::sim_slippage_cost(
                     fill.qty.get(),
