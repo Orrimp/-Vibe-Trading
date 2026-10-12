@@ -122,7 +122,16 @@ Every required checkpoint and corpus file is present on this machine (verified b
    >
    > Both rows are therefore gated **here**, through the same runner (`Gate` gained a `package` field
    > so the one `backtest` bin shares it rather than growing a second apparatus — `#112` req 0). The
-   > family is now **12 gated + 3 omitted = 15**, and `coverage_is_complete` enforces the total.
+   > family is now **14 gated + 1 omitted = 15**, and `coverage_is_complete` enforces the total.
+   > *(Corrected 2026-10-11: this read "12 gated + 3 omitted" — a stale intermediate state. AC7
+   > gated the two `recalibrate-sigma-train` rows in the same pass, so `OMITTED` carries exactly
+   > one entry (`sharpe-comparison-realdata`), not three. The story stated the correct figure in
+   > three other places — the module doc's "gates 14 of them", AC7's "14 gated of 15", AC6's
+   > "14 of 14 gated rows" — so this line was the outlier, and it erred toward UNDER-claiming
+   > coverage. Found by an independent audit, filed LOW. Also corrected the same day:
+   > `coverage_is_complete` no longer trusts a hardcoded `FAMILY_SIZE` literal; it derives the
+   > family from `evidence/anchors.toml` by name prefix and asserts SET EQUALITY, probed RED in
+   > both directions — a 16th corpus row, and a gate quietly leaving the file.)*
 
 9. **Standing floor.** `ANCHORS PASS (119 / 119)` before AND after (AD-2) — and note the gate now
    prints a *measured* pass count with a declared floor and cross-check (`#127`), so a row that stops

@@ -1431,4 +1431,41 @@ fn a_forced_cover_is_counted_separately_and_never_as_a_trade() {
         control.trades > 0,
         "the long-only control placed no trades at all, so the comparison below is vacuous"
     );
+    // ── THE HALF THIS TEST IS NAMED FOR, AND DID NOT HAVE ────────────────────
+    //
+    // Added 2026-10-11. Until now the assertions above were, in full:
+    // liquidations >= 1, liquidation_cover_fills >= 1, control.liquidation_cover_fills == 0,
+    // control.trades > 0. **Not one of them read `liquidated.trades`** — so the
+    // "...and never as a trade" half of this test's own name was unasserted, and the
+    // test could not fail for the defect it exists to prevent (bug-log #110's conflation).
+    //
+    // That is not inferred. An independent audit of story 1-28 re-added
+    // `trades += 1;` beside the `liquidation_cover_fills += 1;` at
+    // `scenarios/montecarlo.rs:857` and this test stayed GREEN (bug-log #145 records how
+    // that probe then leaked into a commit).
+    //
+    // A LITERAL pin, not a property. `trades > 0` or `trades != cover_fills` would both
+    // survive the conflation; only a pinned count moves when one extra increment fires.
+    // Measured at HEAD: strategy fills 3, forced covers 1. Re-add the increment and this
+    // reads 4.
+    assert_eq!(
+        liquidated.trades, 3,
+        "liquidated.trades is {} with {} forced cover(s). Expected 3 — the strategy's own \
+         fills, with the covers counted SEPARATELY. A value of 4 is bug-log #110 restored: \
+         one counter standing for a strategy decision and a forced exit, which is what made \
+         MN turnover unreadable. If the fixture legitimately changed, re-measure and re-pin \
+         here deliberately — do not relax this to an inequality, because an inequality is \
+         what let the defect through.",
+        liquidated.trades, liquidated.liquidation_cover_fills
+    );
+
+    // Semantic form of the same claim, kept alongside the pin because it survives a
+    // fixture re-measure: the forced cover must add NOTHING to the trade count, so the
+    // liquidating run's strategy fills match the long-only control's.
+    assert_eq!(
+        liquidated.trades, control.trades,
+        "the liquidating run reports {} trades against the control's {}. The forced cover \
+         must not inflate the trade count — that gap IS the conflation.",
+        liquidated.trades, control.trades
+    );
 }

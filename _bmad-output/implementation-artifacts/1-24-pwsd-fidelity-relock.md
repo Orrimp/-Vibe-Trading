@@ -483,3 +483,32 @@ No finding blocks the story. Nothing routes to 1-25.
 
 - Trace: `REQ-PWSD-FIDELITY-RELOCK-001` (state=`scoped`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 1 (Strategy & Backtest Engine (v0-v5 ladder + robustness program))
+
+
+## AC5 — two further consumers were not enumerated (independent audit, 2026-10-11)
+
+AC5's scope statement — *"0 of 119 anchored rows resolve into an advisor-\* namespace"* — is
+correct about the ANCHORED corpus, and the audit confirmed it. What it does not say, and should,
+is that **two further production-data consumers of the changed estimator exist outside that
+corpus** and were named in neither the story nor the errata:
+
+| consumer | site |
+|---|---|
+| `realdata_simple_strategy_overfit_guard` | `crates/backtest/tests/realdata_simple_strategy_overfit_guard.rs:292` |
+| `realdata_simple_strategy_bear_survey` | `crates/backtest/tests/realdata_simple_strategy_bear_survey.rs` |
+
+Both construct `BlockBootstrapPathGen` with `BlockLengthPolicy::Auto`, so both now run the
+`Literature` convention and a per-symbol/max reduction where they previously ran `Shipped` on a
+cross-symbol mean. **Their published p5/p50/drawdown figures therefore moved on 2026-10-10 and no
+artifact says so.**
+
+Honest scope of the finding, which is what the audit itself recorded: it is that the move is
+**undisclosed**, not that any conclusion flips. Neither harness is anchored, so no body-SHA and no
+`verify_anchors` row is involved; and the direction of the estimator change is the conservative
+one (wider window ⇒ longer `L` ⇒ more conservative bootstrap ⇒ fewer crowns), so a 9-cell
+all-FRAGILE result is the expected outcome either way. **Nobody has re-run them to confirm it**,
+and that is the open item: `cargo test -p backtest --test realdata_simple_strategy_overfit_guard
+-- --ignored` plus the bear-survey twin, then record the before/after in the errata.
+
+AC5 is not re-opened by this. Its claim was about the anchored corpus and is true of it. The
+scope statement should have added "and two un-anchored realdata harnesses also consume `Auto`".

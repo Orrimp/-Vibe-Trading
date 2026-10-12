@@ -19,12 +19,15 @@
 //!
 //! 3. **Flat-top lag window** (Politis–Romano 1995):
 //!    `λ(s) = 1` for `|s| ≤ 0.5`, `λ(s) = 2(1-|s|)` for `0.5 < |s| ≤ 1`, else 0.
-//!    Compute spectral-density estimates with the **shipped window scale
-//!    `s = k/m̂`** (a deviation from the literature — see below):
-//!    `Ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/m̂) · γ̂(|k|)`   (DC component)
-//!    `ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/m̂) · |k| · γ̂(|k|)` (slope component)
-//!    Since `λ(s) = 0` for `|s| > 1`, lags `m̂ < |k| ≤ 2m̂` contribute nothing —
-//!    the effective summation window is `|k| ≤ m̂`.
+//!    Compute spectral-density estimates at the **PW-2004 window scale
+//!    `s = k/(2m̂)`**, which is what [`politis_white_block_length`] uses since
+//!    story 1-24 (2026-10-10):
+//!    `Ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/(2m̂)) · γ̂(|k|)`   (DC component)
+//!    `ĝ = Σ_{k=-2m̂}^{2m̂} λ(k/(2m̂)) · |k| · γ̂(|k|)` (slope component)
+//!    The effective summation window is therefore the full `|k| ≤ 2m̂`.
+//!    The pre-1-24 scale `s = k/m̂` — which truncated at `|k| ≤ m̂`, half the
+//!    literature width — is still reachable as [`PwsdVariant::Shipped`]; see
+//!    § Convention history.
 //!
 //! 4. **`b̂` (SB corrected, PPW-2009)**:
 //!    `D_SB = 2 · Ĝ²`  (stationary bootstrap constant, PPW-2009 / Nordman 2008).
@@ -32,38 +35,50 @@
 //!    (simplifies to `(ĝ² / Ĝ²)^{1/3} · N^{1/3}` since `D_SB = 2·Ĝ²`).
 //!    Clamp to `[1, ceil(min(3·sqrt(N), N/3))]`, round to nearest integer ≥ 1.
 //!
-//! ## Known deviations from the literature (pinned; re-lock = story 1-24)
+//! ## Convention history — the deviations are RESOLVED, not pending
+//!
+//! **This section described the pre-1-24 estimator as authoritative until
+//! 2026-10-11, by which point the code had said otherwise for a day.** Story
+//! 1-24 changed the behaviour and re-locked 35 anchored surfaces; it did not
+//! touch a single line of this doc (`git diff` over the story's range reports
+//! zero changed `//!` lines). An independent audit found the doc asserting the
+//! opposite of HEAD and the old text telling readers *"Do NOT change any of
+//! these without story 1-24"* — which is the story that changed them. Rewritten
+//! here rather than deleted, because the superseded convention is still
+//! reachable and the `mc-robustness-2026-06` bodies were produced with it.
 //!
 //! The 2026-07-31 code review (story 1-13) confirmed the PR-1994 core, the
-//! PPW-2009 `D_SB` constant, and the shared-index wiring are correct, and
-//! identified the following deviations from PW-2004 / the reference
-//! implementations. Selected `L` values flow into **hashed anchored report
-//! bodies** (the `mc-robustness-2026-06` namespace), so fixing them is NOT a
-//! doc patch — it requires an ADR-0045 §D6-class namespace re-lock plus a
-//! verdict re-run. That work is **story 1-24**. Until then the shipped
-//! behaviour below is authoritative and is pinned bit-exactly by the
-//! `fp_c1_6_auto_l_grows_with_serial_dependence` asserts (AR(1) φ=0.6 fixture
-//! → `L = 7`; i.i.d. fixture → `L = 1`). Do NOT change any of these without
-//! story 1-24:
+//! PPW-2009 `D_SB` constant and the shared-index wiring, and identified three
+//! departures from PW-2004. **All three were resolved by story 1-24**, and each
+//! is selectable via [`PwsdVariant`] so the old numbers remain reproducible:
 //!
-//! 1. **Window scale**: the flat-top window runs `λ(k/m̂)` where PW-2004 and
-//!    both reference implementations use `λ(k/(2m̂))`. The shipped window
-//!    therefore truncates at `|k| ≤ m̂` (half the literature's effective
-//!    width) → auto-`L` comes out systematically SHORT. Empirically
-//!    thesis-safe: a longer `L` ⇒ fewer crowns ⇒ the ship-passive conclusion
-//!    only strengthens.
-//! 2. **`m̂` search window**: the in-band check starts at lag `m`
-//!    (`ρ̂(m), …, ρ̂(m+K_N−1)`) where the literature checks
-//!    `ρ̂(m+1), …, ρ̂(m+K_N)`.
-//! 3. **Zero-variance guard**: `ρ̂(0) < f64::EPSILON` is an absolute-ε test —
-//!    scale-dependent (a series with variance genuinely below ~2.2e-16 is
-//!    treated as constant; a relative test is the literature-clean form).
+//! | # | pre-1-24 behaviour (`PwsdVariant::Shipped`) | at HEAD (`PwsdVariant::Literature`, the default) |
+//! |---|---|---|
+//! | 1 | flat-top window ran `λ(k/m̂)`, truncating at `|k| ≤ m̂` — half the literature's width, so auto-`L` came out systematically SHORT | runs `λ(k/(2m̂))` per PW-2004 |
+//! | 2 | the `m̂` in-band check started at lag `m`: `ρ̂(m), …, ρ̂(m+K_N−1)` | starts at `m+1`: `ρ̂(m+1), …, ρ̂(m+K_N)` |
+//! | 3 | zero-variance guard was an absolute-ε test (`ρ̂(0) < f64::EPSILON`), scale-dependent | **scale-relative at BOTH sites** — the m̂ guard and the b̂ guard. The pre-1-24 text named only ONE site; there are two, and a ±1e-9 series disagreeing with its 1e9-scaled twin is what found the second |
 //!
-//! (The `Auto` policy's choice to run this selector on the cross-symbol mean
-//! of |r| — so the highest-vol symbol dominates and `b_opt` is derived for a
-//! different series than the one resampled — is a
-//! [`super::bootstrap::BlockBootstrapPathGen`] call-site concern in the same
-//! 1-24 cluster; see the `Auto` arm there.)
+//! Direction of the fix, worth keeping because it is why the re-lock was
+//! thesis-safe: the literature window is wider ⇒ `L` comes out LONGER ⇒ the
+//! bootstrap is more conservative ⇒ fewer crowns. A correction that can only
+//! make the ship-passive conclusion stronger is one you can take without
+//! waiting to see which way it lands.
+//!
+//! Pinned by `public_fn_is_byte_identical_to_its_declared_convention` (20
+//! inputs, the public fn against its declared variant) and
+//! `literature_variant_direction_on_the_fp_c1_6_fixtures`.
+//! `fp_c1_6_auto_l_grows_with_serial_dependence` asserts the ORDERING
+//! (`l_ar1 > 1`, i.i.d. `L = 1`) — an inequality, not the bit-exact `L = 7` the
+//! pre-1-24 text claimed for it.
+//!
+//! **The `Auto` call-site concern is also resolved.** It used to run this
+//! selector on the **cross-symbol mean of `|r|`**, so the highest-vol symbol
+//! dominated and `b_opt` was derived for a series nobody resampled. Since 1-24
+//! [`super::bootstrap::BlockBootstrapPathGen`]'s `Auto` arm estimates
+//! **per symbol** and reduces by **max**. That the pre-averaging was the whole
+//! defect follows from PWSD being scale-invariant per series: `γ̂` scales by
+//! `c²`, so `ĝ²/Ĝ²` and `ρ̂` are scale-free, and averaging across symbols
+//! before estimating is the one step that destroys that.
 //!
 //! ## References
 //!
@@ -168,7 +183,16 @@ pub fn politis_white_block_length_variant(returns: &[f64], variant: PwsdVariant)
 
 /// The estimator's **pre-clamp** `b̂` and the clamp bound that would be applied to it.
 ///
-/// Story 1-24: the clamp `[1, ceil(min(3·√N, N/3))]` is a LOCAL defensive choice, not PW-2004's,
+/// Story 1-24: the clamp is `[1, ceil(min(3·√N, N/3))]`.
+///
+/// **Attribution corrected 2026-10-11.** This said the clamp was "a LOCAL defensive choice,
+/// not PW-2004's". An independent audit identified that expression as the documented default
+/// of `Bmax` in the `np::b.star` reference implementation of PW-2004 / PPW-2009 — the exact
+/// expression, not a coincidence — so it is the cited method's own bound rather than a local
+/// invention, and the original note had the provenance backwards. The external reference is
+/// not checkable from inside this repo, so it is recorded as the audit's finding rather than
+/// asserted here; what is certain is that the previous wording claimed more than it knew.
+/// The substantive point below is unaffected either way:
 /// and the 2026-10-10 measurement found the `Literature` convention **saturating** it on 26 of
 /// the 34 affected scenarios. A saturated `L` is not an estimate — it is a constant the clamp
 /// imposes, and every aggregation policy collapses onto it. Whether that is acceptable depends

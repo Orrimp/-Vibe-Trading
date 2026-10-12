@@ -35,6 +35,55 @@ reliable as written, which is exactly what a self-review cannot establish about 
 
 ---
 
+## Disposition — worked the same day (2026-10-11)
+
+**7 of the 14 survivors are FIXED and verified; 3 more are coupled to an anchored re-lock and
+therefore the operator's call; 4 are recorded open with the reason.** Plus all 4 of 1-29's
+findings, which the audit raised but never verified because its verifiers died on a session limit.
+
+### FIXED and verified
+
+| finding | what was done | verification |
+|---|---|---|
+| **1-24 HIGH** — module doc documents the SUPERSEDED estimator as authoritative | rewrote `crates/data/src/synth/block_length.rs`'s § "Known deviations" as § "Convention history", corrected step 3's window scale to `k/(2m̂)`, the `Auto` parenthetical, and the false *"pinned bit-exactly → L = 7"* claim (the test asserts `l_ar1 > 1`, an inequality) | `cargo test -p data --lib synth::block_length` 8/8; clippy `-D warnings` clean |
+| **1-25 MEDIUM** — three live `sqrt(24*365)` sites | `crates/forecast/src/metrics.rs:49`/`:68` corrected — they were the doc-comments on the LIVE `compute_sharpe_hourly`/`compute_sortino_hourly` whose bodies use `SQRT_HOURS_PER_YEAR` = √8574.9998, ~2.1% apart, with the constant's own doc 14 lines above stating it correctly | `cargo test -p forecast --lib metrics` 5/5; clippy clean |
+| **1-24 MEDIUM** — clamp provenance backwards | the comment claimed the clamp was *"a LOCAL defensive choice, not PW-2004's"*; corrected to record the audit's identification of it as `np::b.star`'s documented `Bmax` default, without asserting the external fact I cannot check offline | n/a (doc) |
+| **1-28 HIGH** — `a_forced_cover_is_counted_separately_and_never_as_a_trade` never read `trades` | added a LITERAL pin (`liquidated.trades == 3`) plus the semantic form (`== control.trades`), with a comment explaining why an inequality cannot work here | **PROBED RED**: re-adding `trades += 1` at `montecarlo.rs:857` now fails with *"liquidated.trades is 4"*; restored, 12/12 green |
+| **1-29 MEDIUM** — `FAMILY_SIZE` could not detect a corpus row | replaced the hardcoded literal with `FAMILY_PREFIXES` + `family_in_corpus()`, asserting **set equality** against `evidence/anchors.toml` (stronger than a count — it also catches a swap), with an empty-parse guard so it cannot pass vacuously | **PROBED RED both ways**: a 16th corpus row (the case the literal missed) and a gate leaving the file; restored, anchors 119/119 |
+| **1-29 MEDIUM** — the `bs2-realdata` witness set is satisfied by its neighbour's body | added `\| sigma_train      \| 6.916286 \|` as a discriminating witness — the right one semantically, since `sigma_train` is what recalibration changes (6.916286 → 0.011914, a 580× separation) | verified present verbatim in its own body and absent from the recalibrated neighbour |
+| **1-29 LOW** — AC8's note said "12 gated + 3 omitted" | corrected to 14 + 1, with the reason (AC7 gated the two `recalibrate-sigma-train` rows in the same pass) and a note that it erred toward UNDER-claiming coverage | n/a (artifact text) |
+
+### Coupled to an anchored re-lock — operator's call, NOT done
+
+Each of these is a renderer change, so fixing it moves report body-SHAs and would turn
+`theta_surface_reproduction` red until the affected surfaces are re-emitted under ADR-0038 D6.b.
+
+| finding | why it is a re-lock |
+|---|---|
+| **1-28 HIGH** — 19-cell header against an 18-cell delimiter row, so 12 MN tables do not render under GFM | the delimiter row is emitted by `sweep_harness.rs:2448`; correcting it re-renders every MN body |
+| **1-28 MEDIUM** — the MN legend caveat was appended, not replaced, and the surviving sentence is now FALSE in the present tense | same renderer (`sweep_harness.rs:2345-2348`), same coupling |
+| **1-24 MEDIUM** — two un-anchored `BlockLengthPolicy::Auto` consumers moved undisclosed | no anchor involved, but confirming the move needs two `--ignored` realdata runs; recorded in the 1-24 story with the exact commands |
+
+### Open, with the reason
+
+- **1-28 MEDIUM — nothing asserts `ruined_paths` end-to-end.** `ruined` is not a field on
+  `PathRunResult` at all; it is computed in the **bin** (`param_robustness_sweep.rs:2006`) from
+  `clamp_equity_for_metrics`. So an e2e assertion requires running the sweep binary, which writes
+  reports — not something to start unattended. The existing coverage is a unit test on a
+  hand-written 4-element array (`stats/mod.rs:1708`), which is real but is not the AC's claim.
+- **1-30 HIGH — the 80.9 % / 0.003 % figure is a frequency presented as a contribution**, with no
+  counterfactual run. Fixing it means either running the counterfactual or re-wording the claim;
+  the wording change touches what the story concludes, so it is left for the operator alongside
+  `#144`.
+- **1-30 MEDIUM / LOW ×2** — the `report_filename` no-op, the two unpinned digests, and the
+  `#132` attribution. All artifact-text corrections, none load-bearing, batched for the next pass.
+- **1-29 LOW** — the two `threshold-sweep` gates' binary reads a dated anchored body out of
+  `evidence/` and renders that path into the hashed body. Real, and it means AC4's
+  read-prohibition cannot see it; the fix is a binary change that moves two body-SHAs, so it
+  joins the re-lock list.
+
+---
+
 ## The 14 surviving findings
 
 ### [HIGH] 1-24 — AC1 / AC2-ε / claim (c) — "the module doc once named one site when there are two"

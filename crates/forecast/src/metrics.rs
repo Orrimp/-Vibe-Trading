@@ -46,7 +46,14 @@ fn log_returns(equity: &[Decimal]) -> Vec<f64> {
 
 /// Hourly-annualised Sharpe ratio (rf = 0).
 ///
-/// Formula: `mean_r / std_r * sqrt(24 * 365)`.
+/// Formula: `mean_r / std_r * SQRT_HOURS_PER_YEAR`, i.e. `* sqrt(8574.9998)`.
+///
+/// **This said `sqrt(24 * 365)` until 2026-10-11** while the body 14 lines below has always
+/// used [`SQRT_HOURS_PER_YEAR`] — two different numbers ~2.1% apart, with the constant's own
+/// doc at the top of this file stating the correct one. Found by an independent audit of
+/// story 1-25, whose AC3.1 is the rider that was supposed to clear exactly this (bug-log
+/// `#133`); the AC's own verdict claimed no `sqrt(24*365)` string survived, and these two
+/// did.
 /// Returns 0.0 for series with fewer than 2 bars or zero std.
 pub fn compute_sharpe_hourly(equity: &[Decimal]) -> f64 {
     let rets = log_returns(equity);
@@ -65,7 +72,8 @@ pub fn compute_sharpe_hourly(equity: &[Decimal]) -> f64 {
 
 /// Hourly-annualised Sortino ratio (rf = 0).
 ///
-/// Formula: `mean_r / downside_std_r * sqrt(24 * 365)`.
+/// Formula: `mean_r / downside_std_r * SQRT_HOURS_PER_YEAR`, i.e. `* sqrt(8574.9998)`.
+/// (Same 2026-10-11 correction as [`compute_sharpe_hourly`] above.)
 /// `downside_std_r = sqrt(mean(min(r, 0)^2))`.
 /// Returns 0.0 for series with fewer than 2 bars or zero downside std.
 pub fn compute_sortino_hourly(equity: &[Decimal]) -> f64 {

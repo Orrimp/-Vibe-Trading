@@ -175,6 +175,24 @@ const GATES: &[Gate] = &[
                 "the BS-2 checkpoint",
             ),
             (REVISION_SHA, "the corpus revision, recorded in the body"),
+            // DISCRIMINATING witness, added 2026-10-11. The two witnesses above are BOTH
+            // satisfied verbatim by the body of this gate's nearest-neighbour condition,
+            // `forecast-distribution-bs2-realdata-recalibrated` — same checkpoint
+            // `model_revision`, same `REVISION_SHA`. So if this gate were ever invoked with
+            // one extra argv (`--metadata-path <BS2 overlay>`), every declared witness would
+            // still pass and the SHA mismatch would read as corpus DRIFT rather than as the
+            // changed CONDITION it actually is. AC3 exists to prevent exactly that
+            // confusion; found by an independent audit of this story, filed MEDIUM.
+            //
+            // `sigma_train` is the right discriminator rather than an arbitrary unique line:
+            // it is the quantity recalibration CHANGES, so it separates the two conditions by
+            // what distinguishes them. Verified the only line present here and absent from the
+            // recalibrated body.
+            (
+                "| sigma_train      | 6.916286 |",
+                "the PRE-recalibration sigma_train — absent from the recalibrated body, so \
+                 this witness set can no longer be satisfied by the neighbouring condition",
+            ),
         ],
         measured_s: 510,
     },
@@ -539,9 +557,56 @@ const OMITTED: &[(&str, &str)] = &[(
          not gateable, and the ruling is recorded in anchors.toml beside the row itself.",
 )];
 
-/// The audit's independent count of the family. If this stops matching `GATES ∪ OMITTED`,
-/// either a row was added to the corpus or one quietly left this file.
-const FAMILY_SIZE: usize = 15;
+/// The scenario-name prefixes that define the forecast-binary family in the corpus.
+///
+/// **This replaced a hardcoded `const FAMILY_SIZE: usize = 15` on 2026-10-11, because that
+/// constant could not do the job its own doc claimed.** The old doc said: *"If this stops
+/// matching `GATES ∪ OMITTED`, either a row was added to the corpus or one quietly left this
+/// file."* The first disjunct was false. `FAMILY_SIZE` was a literal living in the SAME file
+/// as `GATES` (14 entries) and `OMITTED` (1), so the check was `14 + 1 == 15` — three
+/// co-located constants agreeing with each other. Nothing read the corpus for a count, and
+/// `coverage_is_complete`'s only corpus reads were per-LISTED-row lookups. **A 16th
+/// forecast-family row added to `evidence/anchors.toml` would have been invisible**, which is
+/// precisely the case the constant was there to catch. Found by an independent audit of story
+/// 1-29 (whose gates I wrote), filed as a MEDIUM against AC7/AC8.
+///
+/// Derived instead: the family is every anchored scenario whose name starts with one of these,
+/// read out of the corpus at run time. Verified 2026-10-11 to select exactly the 15 rows in
+/// `GATES ∪ OMITTED`, with zero difference in either direction.
+const FAMILY_PREFIXES: &[&str] = &[
+    "forecast-distribution-",
+    "recalibrate-sigma-train-",
+    "regime-verdict-",
+    "sharpe-comparison-",
+    "threshold-sweep-",
+    "vol-verdict-",
+];
+
+/// Every scenario in `evidence/anchors.toml` belonging to the forecast-binary family.
+fn family_in_corpus() -> std::collections::BTreeSet<String> {
+    let text = std::fs::read_to_string(workspace_root().join("evidence/anchors.toml"))
+        .expect("evidence/anchors.toml must be readable");
+    let found: std::collections::BTreeSet<String> = text
+        .lines()
+        .filter_map(|l| {
+            let rest = l.trim().strip_prefix("scenario")?;
+            let name = rest.split('"').nth(1)?;
+            FAMILY_PREFIXES
+                .iter()
+                .any(|p| name.starts_with(p))
+                .then(|| name.to_owned())
+        })
+        .collect();
+    // A parse that silently finds nothing would make the set-equality assertion below pass
+    // vacuously in the one direction that matters, so refuse an empty read outright.
+    assert!(
+        !found.is_empty(),
+        "parsed ZERO family scenarios out of evidence/anchors.toml — the corpus cannot be \
+         empty, so this is a parse failure, and a parse failure here would make the coverage \
+         gate unable to fail"
+    );
+    found
+}
 
 // ── Plumbing ─────────────────────────────────────────────────────────────────
 
@@ -1059,12 +1124,32 @@ fn vol_verdict_is_candle_invariant() {
 /// **invisible**.
 #[test]
 fn coverage_is_complete() {
+    // Corpus-derived coverage: a 16th family row in evidence/anchors.toml, or a row quietly
+    // leaving this file, both turn this red. Set equality rather than a count, because a
+    // count also passes when one row is swapped for another.
+    let in_corpus = family_in_corpus();
+    let listed: std::collections::BTreeSet<String> = GATES
+        .iter()
+        .map(|g| g.scenario.to_owned())
+        .chain(OMITTED.iter().map(|(s, _)| (*s).to_owned()))
+        .collect();
+    assert_eq!(
+        listed,
+        in_corpus,
+        "the forecast-binary family in evidence/anchors.toml does not match what this file \
+         lists.\n  in the corpus but NOT gated or omitted here: {:?}\n  listed here but NOT \
+         in the corpus: {:?}\nAdding a family row to the corpus without gating it is the case \
+         this check exists for; the superseded `FAMILY_SIZE` literal could not see it.",
+        in_corpus.difference(&listed).collect::<Vec<_>>(),
+        listed.difference(&in_corpus).collect::<Vec<_>>(),
+    );
     assert_eq!(
         GATES.len() + OMITTED.len(),
-        FAMILY_SIZE,
-        "the forecast-binary family is {FAMILY_SIZE} anchored rows \
+        in_corpus.len(),
+        "the forecast-binary family is {} anchored rows \
          (anchor-gate-coverage-audit-2026-09-26.md § 2). This file accounts for {} gated + {} \
          omitted. A row that is neither is a row nobody is watching.",
+        in_corpus.len(),
         GATES.len(),
         OMITTED.len()
     );
