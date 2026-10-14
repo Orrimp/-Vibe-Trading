@@ -1875,6 +1875,39 @@ pub fn ts_grid_def_string(grid: &[ThetaCell]) -> String {
     s
 }
 
+/// The GROSS portfolio exposure cap for a sweep family (ADR-0089 D7; bug-log `#144`).
+///
+/// **One source of truth, consumed by both the renderer and the binary**, so the cap a body
+/// PRINTS cannot diverge from the cap the run ENFORCES. That divergence is bug-log `#95`'s
+/// exact shape and it was live here: `exposure_cap=0.50` was a hardcoded STRING in the
+/// `held_constant` line while the actual limit came from
+/// `config/strategies/top10_momentum_h1.toml`. They agreed, so nothing noticed — which is
+/// precisely why the next change would not have.
+///
+/// **Why TS is 1.00 and everything else 0.50 (operator-ruled 2026-10-12, bug-log `#144`).**
+/// Under `TimeSeriesLongFlat` every name is long-or-flat independently and `k_long` is inert
+/// — "all names, no ranking" — so over a 10-symbol universe at `FIXED_FRACTION` 0.10 the
+/// gross target runs 0.00…**1.00**. Against a 0.50 cap that breaches at 6 concurrent longs,
+/// and ADR-0089 D2's policy is all-or-nothing by design: the ENTIRE rebalance is skipped.
+/// So the arm was frozen on exactly the bars where breadth was highest — which for a
+/// long-only absolute-momentum arm are its best ones — on 3.70–8.18% of all rebalance
+/// opportunities across two strongly-up years. A limit that trims is a risk control; a limit
+/// that intermittently disables the strategy at peak signal is a different thing wearing the
+/// same name. 1.00 is that grid's own declared target, so this measures the arm at the
+/// exposure it was specified for.
+///
+/// Every other family targets ~0.30 gross (0.10 × `k_long` 3) and is unaffected: `{:.2}` on
+/// `dec!(0.50)` renders the same `0.50` those bodies already carry, so only the TS surfaces
+/// move.
+#[must_use]
+pub fn exposure_cap_for(selection_mode: SweepSelectionMode) -> Decimal {
+    if selection_mode.is_ts() {
+        rust_decimal_macros::dec!(1.00)
+    } else {
+        rust_decimal_macros::dec!(0.50)
+    }
+}
+
 // ── Per-cell result ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -2201,7 +2234,12 @@ pub fn render_surface_report(
     // selection_mode + rebalance + k_long(inert) for TS runs; basis fields for basis runs.
     // The body field is part of the hash — each family's string differs from others.
     let held_constant_str: String = if selection_mode.is_ts() {
-        "| held_constant            | selection_mode=time_series_long_flat score_source=vol_adjusted_return direction=momentum rebalance_minutes=60 exposure_cap=0.50 k_long=10(inert) vol_floor=inert k_short=0 size=equal_weight |\n".to_string()
+        format!(
+            "| held_constant            | selection_mode=time_series_long_flat \
+             score_source=vol_adjusted_return direction=momentum rebalance_minutes=60 \
+             exposure_cap={:.2} k_long=10(inert) vol_floor=inert k_short=0 size=equal_weight |\n",
+            exposure_cap_for(selection_mode)
+        )
     } else {
         match score_source {
             SweepScoreSource::Carry => {

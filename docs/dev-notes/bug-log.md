@@ -4733,8 +4733,29 @@ the anchor counts per lane I did not re-derive row-by-row.*
 ### `#144` — the TS lanes cannot rebalance when 6 of 10 names signal long, so the all-or-nothing cap freezes them exactly at peak breadth
 
 **Found** 2026-10-11, following `#141`'s disclosure through to what it implies.
-**Status: OPEN — needs an operator ruling, and it bears on how the TS surfaces should be read.**
-Filed deliberately WITHOUT a fix: any fix changes those surfaces' numbers, which is a re-lock.
+**Status: CODE FIXED 2026-10-12 — operator ruled option 2 (raise the cap on the TS grids and
+re-lock the 6).** The re-lock itself is pending, bundled with `#111` and `#95` so one pass covers
+all three instead of regenerating the same bodies three times.
+
+**What landed.** A single source of truth — `sweep_harness::exposure_cap_for(selection_mode)` —
+returning **1.00 for the TS families** and 0.50 for everything else, consumed by BOTH:
+
+- the binary (`param_robustness_sweep`, which now sets `base_cfg.exposure_cap` from it), and
+- the renderer (the `held_constant` line, which `format!`s it rather than hardcoding `0.50`).
+
+**That coupling is the durable half.** The printed cap and the enforced cap used to be two
+independent facts — a shared TOML value and a hardcoded string — that happened to agree, so
+nothing noticed, which is exactly why the next change would not have. It is `#95`'s shape living
+inside the sweep renderer, and `#144` is what it cost. Bound by
+`ts_momentum_divergence_e2e::bug144_the_rendered_ts_cap_is_the_configured_ts_cap`, which asserts
+the rendered body carries the configured value, pins the ruling (TS = 1.00, non-TS = 0.50), and
+pins the `held_constant` line's exact shape so deriving the number cannot reflow the whitespace
+and move every TS body-SHA for the wrong reason.
+
+Only the TS surfaces move: `{:.2}` on `dec!(0.50)` renders the same `0.50` every other family's
+body already carries.
+
+**Original entry, as filed:**
 
 `#141` made the refusal count visible and showed the cap binding on 18 of 34 surfaces. Tracing
 *why* on the TS lanes gives a mechanism, not just a rate.

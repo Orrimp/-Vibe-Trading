@@ -1892,11 +1892,34 @@ fn main() -> Result<()> {
     // ── Load base config (for universe, frozen fields) ────────────────────────
     let rel_path = std::path::PathBuf::from("config/strategies/top10_momentum_h1.toml");
     let toml_path = backtest::paths::resolve_workspace_path(&rel_path);
-    let base_cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
+    let mut base_cfg = strategy::CrossSectionalMomentumConfig::from_file(&toml_path)
         .with_context(|| format!("load base momentum config: {}", rel_path.display()))?;
 
     // ── Select grid ───────────────────────────────────────────────────────────
     let grid = grid_for_kind(args.grid);
+
+    // bug-log #144 (operator-ruled 2026-10-12): the GROSS cap is per-family, and it comes
+    // from the SAME function the report renderer formats into `held_constant` — so the cap
+    // this run ENFORCES and the cap its body PRINTS cannot drift apart. They used to be two
+    // independent facts (a shared TOML value and a hardcoded string) that happened to agree.
+    //
+    // For the TS families this raises 0.50 -> 1.00. Under `TimeSeriesLongFlat` every name is
+    // long-or-flat independently and `k_long` is inert, so at `FIXED_FRACTION` 0.10 over the
+    // 10-symbol universe the gross target reaches 1.00; against 0.50 it breached at 6
+    // concurrent longs, and ADR-0089 D2 skips the WHOLE rebalance on a breach. The arm was
+    // therefore frozen on 3.70-8.18% of rebalance opportunities — selectively the
+    // highest-breadth bars, which for long-only absolute momentum are its best. 1.00 is that
+    // grid's own target, so the re-run measures the arm at its specified exposure.
+    //
+    // Every other family targets ~0.30 gross and keeps 0.50, so only the TS surfaces move.
+    base_cfg.exposure_cap =
+        backtest::sweep_harness::exposure_cap_for(args.grid.required_selection_mode());
+    info!(
+        grid = ?args.grid,
+        selection_mode = ?args.grid.required_selection_mode(),
+        exposure_cap = %base_cfg.exposure_cap,
+        "gross exposure cap resolved from sweep_harness::exposure_cap_for (bug-log #144)"
+    );
 
     info!(
         n_cells = grid.len(),

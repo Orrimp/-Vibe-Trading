@@ -787,3 +787,66 @@ fn run_seeded_ts_sweep_render(master_seed: u64, n_paths: usize, n_bars: usize) -
         0, // slippage_bps
     )
 }
+
+// ── bug-log #144 / #95: the PRINTED cap must be the CONFIGURED cap ──────────────
+//
+// `exposure_cap=0.50` used to be a hardcoded STRING in the TS `held_constant` line while
+// the enforced limit came from `config/strategies/top10_momentum_h1.toml`. They agreed, so
+// nothing noticed — which is exactly why the next change would not have. That is bug-log
+// `#95`'s shape (a config claim printed into a body with nothing binding it to reality),
+// and `#144` is what it cost: the TS grids target up to 1.00 gross against a printed-and-
+// enforced 0.50, so the all-or-nothing cap froze the arm on 3.70-8.18% of rebalances, at
+// precisely the highest-breadth bars.
+//
+// Both the renderer and the binary now read `sweep_harness::exposure_cap_for`, so they
+// cannot diverge. This test is what makes that structural rather than merely true today.
+
+#[test]
+fn bug144_the_rendered_ts_cap_is_the_configured_ts_cap() {
+    use backtest::sweep_harness::{SweepSelectionMode, exposure_cap_for};
+
+    let body = run_seeded_ts_sweep_render(0xC0FFEE, 2, 64);
+    let configured = exposure_cap_for(SweepSelectionMode::TimeSeriesLongFlat);
+    let needle = format!("exposure_cap={configured:.2}");
+
+    assert!(
+        body.contains(&needle),
+        "the rendered TS body does not carry `{needle}` — the cap it PRINTS has diverged \
+         from the cap `exposure_cap_for` defines, which is the whole defect this guards.\n\
+         held_constant line as rendered:\n  {}",
+        body.lines()
+            .find(|l| l.contains("held_constant"))
+            .unwrap_or("<no held_constant line at all>")
+    );
+
+    // The operator ruling, pinned: TS is 1.00 (its own declared target), not 0.50.
+    assert_eq!(
+        configured,
+        rust_decimal_macros::dec!(1.00),
+        "bug-log #144 ruled the TS grids' gross cap to 1.00 — their actual target under \
+         TimeSeriesLongFlat, where k_long is inert and all 10 names can be long at 0.10 \
+         each. A value of 0.50 is the state where the cap freezes the arm at peak breadth."
+    );
+
+    // And the non-TS families are untouched, so only the TS surfaces move in the re-lock.
+    assert_eq!(
+        exposure_cap_for(SweepSelectionMode::CrossSectionalTopK),
+        rust_decimal_macros::dec!(0.50),
+        "non-TS families must stay at 0.50 — they target ~0.30 gross and the cap never bound"
+    );
+
+    // The line must otherwise be byte-unchanged: deriving the value must not have
+    // reflowed the whitespace around it.
+    let line = body
+        .lines()
+        .find(|l| l.contains("held_constant"))
+        .expect("rendered body must carry a held_constant line");
+    assert_eq!(
+        line,
+        "| held_constant            | selection_mode=time_series_long_flat \
+score_source=vol_adjusted_return direction=momentum rebalance_minutes=60 exposure_cap=1.00 \
+k_long=10(inert) vol_floor=inert k_short=0 size=equal_weight |",
+        "the held_constant line's SHAPE changed, not just its cap value. Only the number was \
+         meant to move; a reflow would alter every TS body-SHA for the wrong reason."
+    );
+}
