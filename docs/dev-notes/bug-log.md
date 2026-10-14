@@ -2033,6 +2033,46 @@ fix; the scope of that re-lock is the open question.
 > corpus is intact and it is the code that moved, which is the precondition for the re-lock rather
 > than a problem with it.
 >
+> **MEASURED 2026-10-14 — the direction is the one that matters, and it is large.** One changed
+> scenario regenerated via `backtest --scenario top10-2023-1h-momentum --seed 0xC0FFEE
+> --reports-dir <scratchpad>` (the flag exists precisely so a re-run cannot touch `evidence/`),
+> diffed against the body story 1-27 locked on 2026-09-26:
+>
+> | | anchored | corrected | |
+> |---|--:|--:|---|
+> | **Trades** | 592 | **5277** | **8.9x** |
+> | Buys / Sells | 296 / 296 | 2640 / 2637 | |
+> | Final equity | $87,606.01 | $62,071.17 | −29% |
+> | Total return | −12.39% | **−37.93%** | |
+> | Max drawdown | 14.34% | **41.51%** | |
+> | Total fees | $2,255.39 | $17,311.18 | 7.7x |
+>
+> **~89% of this lane's orders were being silently dropped.** The 1-25 audit agent measured the
+> same thing by a different route — *"87.7% of orders discarded on top10-2023-1h-momentum"* — and
+> independent agreement to ~1pp on a number neither of us pinned is about as good as attribution
+> gets here.
+>
+> **The drops were FLATTERING the arm**, which is the part worth stating plainly: an order that
+> never fills pays no fee, takes no adverse excursion and cannot draw down. So the anchored body
+> showed a lane trading 592 times for −12.39% at 14.34% max drawdown, when the strategy it
+> actually specifies trades 5277 times for −37.93% at 41.51%. Correcting it makes the ACTIVE arm
+> look substantially worse — so for the era-qualified ship-passive conclusion the re-lock moves in
+> the conservative direction on this lane, exactly as `#67`'s original write-up predicted for its
+> own class ("a deviation that biases the measurement toward the pre-declared null" — here the
+> bias ran the other way and is now removed).
+>
+> The same diff also shows `#95`'s corrected claim landing: `- Size: equal_weight, k_long=3` and
+> `- Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane`
+> replacing the two false cap assertions. One regeneration, both fixes visible.
+>
+> **Re-lock scope, DERIVED (not read off the suite).** The test output shows only 4 failures
+> because the other changed lanes have no re-run gate — bug-log `#93` — so the scope was derived
+> by mapping every anchored scenario to its producing lane: **~25 of the 77 distinct scenarios**.
+> 6 TS theta-surfaces (`#144`), plus momentum 4, tcn_overlay 4, tcn_overlay_weights 4, garch 3,
+> patchtst 2, pairs 2 (`#111`, three of them also carrying `#95`'s corrected line). The TS six
+> have a driver (`scripts/relock/run_surfaces.sh`); the other 19 go through
+> `backtest --scenario … --reports-dir`, with the candle/realdata families needing that build.
+>
 > **Still owed:** the re-lock. The four moved scenarios plus the other routed lanes' surfaces need
 > re-emission under ADR-0038 § D6.b, with the direction of the delta measured — orders that were
 > silently dropped should now FILL, so trade counts should RISE, and that is the check that
