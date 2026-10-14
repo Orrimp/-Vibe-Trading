@@ -152,7 +152,18 @@ pub async fn run(
     let risk_limits = RiskLimits {
         per_symbol_exposure_cap: dec!(0.40),
         price_sanity_band: dec!(0.20),
-        portfolio_exposure_cap: Some(dec!(0.75)), // v1.5a: lifted per T714 comment
+        // bug-log #95 (operator-ruled 2026-10-12): STRUCK. This lane declared a
+        // `portfolio_exposure_cap` that nothing on it could enforce — the only enforcer is
+        // `risk::size_portfolio_target`, whose sole production caller is the theta-sweep
+        // lane (`scenarios/montecarlo.rs`). The value was printed into every report body as
+        // `exposure_cap=…` / `portfolio cap=…` while `Order::new` never consulted it.
+        //
+        // Striking the field alone would have made the corpus WORSE, not better: it changes
+        // zero report bytes, so every body would keep asserting a cap with the only trace of
+        // the intent gone. The report writer's claim is corrected in the same pass, which is
+        // the half that costs a re-lock. `per_symbol_exposure_cap` below IS enforced
+        // (`core/src/order.rs:211`) and is left exactly as it was.
+        portfolio_exposure_cap: None,
     };
 
     let mut cash = input.initial_capital;

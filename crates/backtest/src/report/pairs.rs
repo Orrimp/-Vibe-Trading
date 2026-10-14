@@ -118,8 +118,8 @@ fn build_content(
          - v1.5a mean-reversion pairs: {strat_id}\n\
          - Formulation C: long-only on `a` leg; `b` leg is observed only.\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
-         - Size: binary_per_pair, exposure_cap_per_pair=25%\n\
-         - Risk: per-symbol cap=40%, portfolio cap=75% (v1.5a)\n\
+         - Size: binary_per_pair\n\
+         - Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane (bug-log #95)\n\
          - Data: synthetic hourly bars, 4 independent ChaCha20Rng streams\n",
         scenario_name = input.scenario_name,
         seed = seed,

@@ -193,8 +193,8 @@ fn build_content(
          - v2.5 TCN overlay momentum: {strat_id}\n\
          - Forecaster: {forecaster_label}\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
-         - Size: equal_weight, exposure_cap=50%, k_long=3\n\
-         - Risk: per-symbol cap=40%, portfolio cap=50%\n\
+         - Size: equal_weight, k_long=3\n\
+         - Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane (bug-log #95)\n\
          - {data_notes_line}\n",
         scenario_name = input.scenario_name,
         seed = seed,
