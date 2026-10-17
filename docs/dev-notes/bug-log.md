@@ -4921,3 +4921,56 @@ cannot reach the shared tree. And stage by explicit path — `git add <the files
 **did not go red** — its assertion set never reads `trades` on the liquidating run. That is a
 surviving HIGH finding against story 1-28's AC4, and no amount of reading would have established
 it as firmly.
+
+### `#146` — "Dampen rate 100.00%" next to 5119 trades: one field, two overlays, a label true for only one of them
+
+**Found** 2026-10-17, checking the `#95` memo's premise for the garch lane before building an
+enforcement path for it.
+**Status:** FIXED the same day (labels + an in-body definition). The affected bodies were already
+in the pending re-lock scope, so the correction is free.
+
+Every anchored vol-target body carries this, in one table:
+
+```
+| Trades               | 5119   |
+| Dampened to Hold     | 6203   |
+| Dampen rate          | 100.00%|
+```
+
+Those cannot all describe the same thing. If every signal had been dampened to Hold, the 5119
+fills could not exist.
+
+**The mechanism.** `scenarios/garch_vol_target_overlay.rs:500-504` reuses the TCN overlay's result
+fields, and says so in its own comment:
+
+> `// Reuse TCN overlay fields for vol-targeting diagnostics.`
+> `// dampened_signals → signals_scaled (bars where scale != 1.0)`
+
+So the number means *"the vol-target scale was not exactly 1.0"* — the position was **RESIZED** —
+while the shared renderer at `report/tcn_overlay.rs:183` labelled it **"Dampened to Hold"**, which
+is the TCN overlays' literal meaning: the signal was **SUPPRESSED**. One field, one label, two
+consumers, and the two readings are *opposite*: suppressed-everything implies an inert arm,
+resized-everything is the textbook behaviour of a continuous vol-targeting overlay.
+
+**So the alarming number was the expected one.** A 100.00% modification rate on a vol-target lane
+is what a working continuous overlay looks like. The author knew about the remap — it is in the
+comment — and the rendered label simply never followed.
+
+**Why it mattered beyond tidiness.** I was about to build a gross-exposure enforcement path for
+garch on the `#95` memo's premise that *"7 of 10 symbols pin at `scale_clamp_max` 2.0, so any
+3-leg basket is 0.50-0.60 gross"*. Read with the old label, the body says the opposite — every
+signal dampened to Hold, so gross ≈ 0 and a cap could never bind. Two artifacts pointing opposite
+ways on the one question that decides whether the work is worth doing. The memo was right and the
+label was wrong, and I only know that because the trade count in the same table contradicted it.
+
+**The fix.** Rows renamed to `Modified by overlay` / `Modification rate` — true for both
+consumers — plus an in-body definition naming BOTH meanings, the date of the change, and the
+trade-count cross-check that disambiguates them. Not resolved by string-matching the forecaster
+label to branch the wording: that would make the renderer's output depend on a name, which is the
+kind of coupling that rots.
+
+**Moral.** Reusing a result field is cheap and reusing its LABEL is not. `dampened_signals` was a
+reasonable thing to borrow; what travelled with it was a sentence that had been true exactly once.
+When one field serves two callers, the label belongs to the field's definition, not to whichever
+caller was written first — and the tell was available the whole time, in the same table, two rows
+up.

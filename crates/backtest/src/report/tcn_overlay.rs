@@ -180,9 +180,21 @@ fn build_content(
          | Metric               | Value                         |\n\
          |----------------------|-------------------------------|\n\
          | Passed through       | {passed_through}              |\n\
-         | Dampened to Hold     | {dampened}                    |\n\
+         | Modified by overlay  | {dampened}                    |\n\
          | Warming-up (no overlay) | {warmup}                  |\n\
-         | Dampen rate          | {dampen_rate:.2}%             |\n\
+         | Modification rate    | {dampen_rate:.2}%             |\n\
+         \n\
+         Metric definition (bug-log #146). \"Modified by overlay\" is ONE field\n\
+         (`dampened_signals`) written by every overlay that uses this renderer, and it\n\
+         means different things to them: for the TCN/PatchTST overlays a modified signal was\n\
+         DAMPENED TO HOLD, while for the vol-targeting overlay it means the scale was != 1.0,\n\
+         i.e. the position was RESIZED, not suppressed. The rows above were labelled\n\
+         \"Dampened to Hold\" / \"Dampen rate\" until 2026-10-17, which was true for the TCN\n\
+         consumers and false for the vol-target one -- and the two readings are opposite. A\n\
+         vol-target body reading a 100.00%% modification rate means every bar was RESIZED,\n\
+         which is the expected behaviour of a continuous vol-targeting overlay, NOT an inert\n\
+         arm. The trade count in the table above is the check: an arm that had every signal\n\
+         suppressed could not have placed those fills.\n\
          \n\
          ## Universe\n\
          \n\
