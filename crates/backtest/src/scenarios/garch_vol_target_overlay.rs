@@ -222,6 +222,11 @@ pub async fn run(
     };
 
     let mut cash = input.initial_capital;
+    // bug-log #95 (operator-ruled 2026-10-12: ENFORCE on this lane). Counted and SURFACED
+    // into the report body — a refusal that leaves no trace reads exactly like a clean run,
+    // which is #66's class and what #141 cost the last time a cap counter stopped one struct
+    // short of the renderer.
+    let mut portfolio_gross_refusals: u64 = 0;
     let mut position_book: std::collections::BTreeMap<Symbol, Decimal> =
         std::collections::BTreeMap::new();
     // bug-log #111/#129 fix (2026-10-12, operator-ruled): the fill-side twin of
@@ -295,6 +300,43 @@ pub async fn run(
                     let qty_raw = notional / mark;
                     if qty_raw <= Decimal::ZERO {
                         continue;
+                    }
+                    // ── bug-log #95: the portfolio GROSS cap, now actually enforced ──
+                    //
+                    // This lane declared `portfolio_exposure_cap: Some(0.50)` and nothing
+                    // read it: the only enforcer is `risk::size_portfolio_target`, whose
+                    // single production caller is the theta-sweep lane, and this lane builds
+                    // no target vector at all. The 2026-10-12 trace found 0.50 sits INSIDE
+                    // this lane's live operating range — `scale_clamp_max` is 2.0, so a
+                    // 3-leg basket at `fraction` 0.10 scaled to 2.0 reaches 0.60 gross — so
+                    // the declaration was both false and load-bearing.
+                    //
+                    // Shape: an ENTRY GATE on RESULTING exposure, which is #71's discipline
+                    // (that cap was evadable by splitting precisely because it tested the
+                    // INCREMENT rather than the resulting total). `position_value` is this
+                    // lane's gross notional because it is long-only (`k_short = 0`), so the
+                    // resulting gross fraction is `(position_value + notional) / equity`.
+                    //
+                    // Per-order refusal, NOT the theta lane's all-or-nothing rebalance skip:
+                    // there is no rebalance batch here to skip. The order is refused, counted
+                    // and logged; the book is left as it was.
+                    if let Some(cap) = risk_limits.portfolio_exposure_cap
+                        && equity > Decimal::ZERO
+                    {
+                        let resulting_gross =
+                            resulting_gross_fraction(position_value, notional, equity);
+                        if would_breach_gross_cap(position_value, notional, equity, cap) {
+                            portfolio_gross_refusals += 1;
+                            tracing::warn!(
+                                symbol = %sig.symbol,
+                                %resulting_gross,
+                                %cap,
+                                %notional,
+                                "portfolio GROSS cap would be breached — Buy REFUSED and \
+                                 counted (bug-log #95); the book is unchanged"
+                            );
+                            continue;
+                        }
                     }
                     let pos_snap = Position::empty(sig.symbol.clone());
                     if let Ok(qty) = Quantity::new(qty_raw)
@@ -504,6 +546,7 @@ pub async fn run(
         dampened_signals: stats.signals_scaled,
         passed_through_signals: stats.signals_passthrough,
         warmup_signals: stats.bars_no_model,
+        portfolio_gross_refusals,
         forecaster_label,
         equity_curve,
         fills: all_fills,
@@ -512,4 +555,118 @@ pub async fn run(
         // scenario (garch overlay). Defaults to empty — anchor-additive.
         position_curve: Vec::new(),
     })
+}
+
+// ── bug-log #95: the gross-cap predicate, extracted so the arithmetic is testable ──
+
+/// Gross exposure as a fraction of equity AFTER the proposed order fills.
+///
+/// This lane is long-only (`k_short = 0`), so `position_value` — the mark-to-market value of
+/// the book — IS its gross notional, and the resulting gross is simply the book plus the
+/// order.
+#[must_use]
+fn resulting_gross_fraction(
+    position_value: rust_decimal::Decimal,
+    notional: rust_decimal::Decimal,
+    equity: rust_decimal::Decimal,
+) -> rust_decimal::Decimal {
+    if equity <= rust_decimal::Decimal::ZERO {
+        return rust_decimal::Decimal::ZERO;
+    }
+    (position_value + notional) / equity
+}
+
+/// Would the proposed order push RESULTING gross exposure past `cap`?
+///
+/// **Resulting, not incremental — this is bug-log `#71`'s lesson.** That cap tested the
+/// order's own notional against the limit, so it was *evadable by splitting*: at 0.39 of
+/// equity a top-up ending at 0.44 passed on its own 0.05. A predicate on the resulting total
+/// cannot be split past.
+#[must_use]
+fn would_breach_gross_cap(
+    position_value: rust_decimal::Decimal,
+    notional: rust_decimal::Decimal,
+    equity: rust_decimal::Decimal,
+    cap: rust_decimal::Decimal,
+) -> bool {
+    equity > rust_decimal::Decimal::ZERO
+        && resulting_gross_fraction(position_value, notional, equity) > cap
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod gross_cap_tests {
+    use super::{resulting_gross_fraction, would_breach_gross_cap};
+    use rust_decimal_macros::dec;
+
+    #[test]
+    fn a_fitting_order_passes_and_an_overshooting_one_is_refused() {
+        let equity = dec!(100_000);
+        // book at 0.30 gross, order adds 0.10 -> 0.40 resulting: under a 0.50 cap.
+        assert!(!would_breach_gross_cap(
+            dec!(30_000),
+            dec!(10_000),
+            equity,
+            dec!(0.50)
+        ));
+        // book at 0.30, order adds 0.25 -> 0.55 resulting: over.
+        assert!(would_breach_gross_cap(
+            dec!(30_000),
+            dec!(25_000),
+            equity,
+            dec!(0.50)
+        ));
+    }
+
+    #[test]
+    fn the_cap_is_not_evadable_by_splitting_the_order() {
+        // bug-log #71 found the previous cap was evadable exactly this way: a small
+        // INCREMENT passes on its own notional while the RESULTING total breaches. At 0.49
+        // of equity a 0.05 top-up is tiny, and it still must be refused because it lands at
+        // 0.54.
+        let equity = dec!(100_000);
+        let cap = dec!(0.50);
+        assert!(
+            would_breach_gross_cap(dec!(49_000), dec!(5_000), equity, cap),
+            "a 0.05-of-equity order on a 0.49 book resolves to 0.54 gross and MUST be \
+             refused; passing it is #71's split-evasion restored"
+        );
+        // And the increment alone is nowhere near the cap, which is why an incremental
+        // predicate would have let it through.
+        assert!(
+            dec!(5_000) / equity < cap,
+            "fixture sanity: the increment must be small relative to the cap, or this test \
+             does not exercise the evasion it is named for"
+        );
+    }
+
+    #[test]
+    fn exactly_at_the_cap_is_allowed_and_a_hair_over_is_not() {
+        let equity = dec!(100_000);
+        let cap = dec!(0.50);
+        assert!(
+            !would_breach_gross_cap(dec!(40_000), dec!(10_000), equity, cap),
+            "resulting gross of exactly the cap must PASS — the enforcer in \
+             risk::portfolio uses `>` too, and a lane that refused its own declared limit \
+             would be enforcing something it does not print"
+        );
+        assert!(would_breach_gross_cap(
+            dec!(40_000),
+            dec!(10_001),
+            equity,
+            cap
+        ));
+    }
+
+    #[test]
+    fn zero_or_negative_equity_never_breaches_rather_than_dividing_by_it() {
+        // A ruined path must not panic or produce a NaN-ish refusal storm here.
+        assert!(!would_breach_gross_cap(
+            dec!(1),
+            dec!(1),
+            dec!(0),
+            dec!(0.50)
+        ));
+        assert_eq!(resulting_gross_fraction(dec!(1), dec!(1), dec!(0)), dec!(0));
+    }
 }

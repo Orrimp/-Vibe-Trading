@@ -41,6 +41,14 @@ pub struct TcnOverlayRunResult {
     pub dampened_signals: u64,
     pub passed_through_signals: u64,
     pub warmup_signals: u64,
+    /// Orders refused by the portfolio GROSS exposure cap on this lane (bug-log `#95`,
+    /// operator-ruled 2026-10-12: ENFORCE on the vol-target lane).
+    ///
+    /// Surfaced into the report body deliberately. A refusal that leaves no trace reads
+    /// exactly like a clean run — bug-log `#66`'s class, and `#141` is what it cost the last
+    /// time a cap counter stopped one struct short of the renderer. `0` on every lane that
+    /// declares no cap, which is a true zero and is printed as one.
+    pub portfolio_gross_refusals: u64,
     pub forecaster_label: String,
     /// Per-bar equity curve. Populated when `emit_equity_bin` is set.
     pub equity_curve: Vec<Decimal>,
@@ -458,6 +466,8 @@ pub async fn run(
         dampened_signals: stats.dampened,
         passed_through_signals: stats.passed_through,
         warmup_signals: stats.window_warming_up,
+        // This lane declares no portfolio gross cap (bug-log #95: struck 2026-10-12).
+        portfolio_gross_refusals: 0,
         forecaster_label: "passthrough (no-candle mode — degrades to v1 momentum)".to_string(),
         equity_curve,
         fills: all_fills,

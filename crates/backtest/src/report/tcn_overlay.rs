@@ -115,6 +115,9 @@ fn build_universe_list(result: &TcnOverlayRunResult) -> String {
 
 // ── Report body builder ───────────────────────────────────────────────────────
 
+// A report template: one long format literal, same as the sibling writers
+// (`momentum.rs:27`, `regime_dispatcher.rs:63`, `sma.rs:50` all carry this allow).
+#[allow(clippy::too_many_lines)]
 fn build_content(
     input: &TcnScenarioInput,
     result: &TcnOverlayRunResult,
@@ -183,6 +186,7 @@ fn build_content(
          | Modified by overlay  | {dampened}                    |\n\
          | Warming-up (no overlay) | {warmup}                  |\n\
          | Modification rate    | {dampen_rate:.2}%             |\n\
+         | Gross-cap refusals   | {gross_refusals}              |\n\
          \n\
          Metric definition (bug-log #146). \"Modified by overlay\" is ONE field\n\
          (`dampened_signals`) written by every overlay that uses this renderer, and it\n\
@@ -235,6 +239,7 @@ fn build_content(
         slippage_bps = input.slippage_bps,
         taker_fee_bps = input.taker_fee_bps,
         forecaster_label = result.forecaster_label,
+        gross_refusals = result.portfolio_gross_refusals,
         data_notes_line = data_notes_line,
     )
 }

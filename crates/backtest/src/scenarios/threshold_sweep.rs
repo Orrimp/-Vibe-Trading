@@ -458,6 +458,8 @@ pub async fn run_cell(
             dampened_signals: stats.dampened,
             passed_through_signals: stats.passed_through,
             warmup_signals: stats.window_warming_up,
+            // No portfolio gross cap enforced on this lane (bug-log #95).
+            portfolio_gross_refusals: 0,
             forecaster_label,
             equity_curve,
             fills: all_fills,
