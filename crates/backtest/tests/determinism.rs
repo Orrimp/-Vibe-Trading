@@ -767,7 +767,13 @@ fn t717_bbands_mean_revert_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `3b60ef07…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_top10_2023_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15";
+    // PROJECTION RE-LOCK 2026-10-29 (bug-log #143's lesson, applied in the same pass this
+    // time). ADR-0045 D6.1 makes evidence/anchors.toml canonical and these in-test ANCHOR
+    // constants a DERIVED PROJECTION. The #111/#95/#146 re-lock moved the canonical digest;
+    // re-locking the corpus without re-locking this constant is exactly what left #143's two
+    // gates red for 15 days. Superseded digest kept in the line below.
+    // superseded: b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15
+    const ANCHOR: &str = "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -782,7 +788,13 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `1f33534f…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_top10_2024_momentum_anchor_hash_unchanged() {
-    const ANCHOR: &str = "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052";
+    // PROJECTION RE-LOCK 2026-10-29 (bug-log #143's lesson, applied in the same pass this
+    // time). ADR-0045 D6.1 makes evidence/anchors.toml canonical and these in-test ANCHOR
+    // constants a DERIVED PROJECTION. The #111/#95/#146 re-lock moved the canonical digest;
+    // re-locking the corpus without re-locking this constant is exactly what left #143's two
+    // gates red for 15 days. Superseded digest kept in the line below.
+    // superseded: 37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052
+    const ANCHOR: &str = "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -808,7 +820,13 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `01d02584…` replaced with canonical 8-bps SHA.
 #[test]
 fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1";
+    // PROJECTION RE-LOCK 2026-10-29 (bug-log #143's lesson, applied in the same pass this
+    // time). ADR-0045 D6.1 makes evidence/anchors.toml canonical and these in-test ANCHOR
+    // constants a DERIVED PROJECTION. The #111/#95/#146 re-lock moved the canonical digest;
+    // re-locking the corpus without re-locking this constant is exactly what left #143's two
+    // gates red for 15 days. Superseded digest kept in the line below.
+    // superseded: 64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1
+    const ANCHOR: &str = "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9";
     let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -823,7 +841,13 @@ fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `e24c85ac…` replaced with canonical 8-bps SHA.
 #[test]
 fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
-    const ANCHOR: &str = "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d";
+    // PROJECTION RE-LOCK 2026-10-29 (bug-log #143's lesson, applied in the same pass this
+    // time). ADR-0045 D6.1 makes evidence/anchors.toml canonical and these in-test ANCHOR
+    // constants a DERIVED PROJECTION. The #111/#95/#146 re-lock moved the canonical digest;
+    // re-locking the corpus without re-locking this constant is exactly what left #143's two
+    // gates red for 15 days. Superseded digest kept in the line below.
+    // superseded: 908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d
+    const ANCHOR: &str = "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd";
     let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -925,7 +949,14 @@ fn scenario_body_hex_candle(scenario: &str) -> String {
 #[cfg(feature = "candle")]
 #[test]
 fn m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged() {
-    const ANCHOR: &str = "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462";
+    // PROJECTION RE-LOCK 2026-10-29 — an #[ignore]d gate, re-locked anyway (bug-log #148).
+    // This pin is candle+LFS-gated, so it would not have gone red in a routine run: it would
+    // have fired the next time someone passed --ignored, reading as fresh drift of unknown
+    // cause. That is #111's own history — four determinism gates sat red for weeks and were
+    // believed to be an older, separate drift. A stale pin behind an #[ignore] is the same
+    // trap with a longer fuse. Superseded digest below.
+    // superseded: 175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462
+    const ANCHOR: &str = "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf";
     let hex = scenario_body_hex_candle("top10-2023-fy-tcn-overlay-weights");
     assert_eq!(
         hex, ANCHOR,
@@ -943,7 +974,14 @@ fn m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged() {
 #[cfg(feature = "candle")]
 #[test]
 fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
-    const ANCHOR: &str = "3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab";
+    // PROJECTION RE-LOCK 2026-10-29 — an #[ignore]d gate, re-locked anyway (bug-log #148).
+    // This pin is candle+LFS-gated, so it would not have gone red in a routine run: it would
+    // have fired the next time someone passed --ignored, reading as fresh drift of unknown
+    // cause. That is #111's own history — four determinism gates sat red for weeks and were
+    // believed to be an older, separate drift. A stale pin behind an #[ignore] is the same
+    // trap with a longer fuse. Superseded digest below.
+    // superseded: 3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab
+    const ANCHOR: &str = "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845";
     let hex = scenario_body_hex_candle("top10-2024-fy-tcn-overlay-weights");
     assert_eq!(
         hex, ANCHOR,

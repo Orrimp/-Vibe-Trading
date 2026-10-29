@@ -141,7 +141,13 @@ fn pairs_2023_zscore_mr_reproduces_anchor() {
     // `v1.5a + v5-realdata-medium-2026-05`, whose version CONTAINS the canonical suffix, so
     // `scripts/check_determinism_anchors.py` resolves it by default and uniquely — the
     // `v1.5a + noop-baseline` sibling does not contain that suffix (bug-log #131).
-    const ANCHOR: &str = "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10";
+    // PROJECTION RE-LOCK 2026-10-29 — the THIRD copy of these digests (bug-log #148).
+    // anchors.toml is canonical (ADR-0045 D6.1); determinism.rs,
+    // reports/tests/strategy_anchors_unchanged.rs and this file each keep their own derived
+    // pin, so one corpus change needs three re-locks and each is a separate way to leave a
+    // gate red. Superseded digest on the line below.
+    // superseded: ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10
+    const ANCHOR: &str = "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e";
     assert_pairs_reproduces("pairs-2023-zscore-mr", ANCHOR);
 }
 
@@ -152,7 +158,13 @@ fn pairs_2024_h1_zscore_mr_reproduces_anchor() {
     // `v1.5a + v5-realdata-medium-2026-05`, whose version CONTAINS the canonical suffix, so
     // `scripts/check_determinism_anchors.py` resolves it by default and uniquely — the
     // `v1.5a + noop-baseline` sibling does not contain that suffix (bug-log #131).
-    const ANCHOR: &str = "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b";
+    // PROJECTION RE-LOCK 2026-10-29 — the THIRD copy of these digests (bug-log #148).
+    // anchors.toml is canonical (ADR-0045 D6.1); determinism.rs,
+    // reports/tests/strategy_anchors_unchanged.rs and this file each keep their own derived
+    // pin, so one corpus change needs three re-locks and each is a separate way to leave a
+    // gate red. Superseded digest on the line below.
+    // superseded: 5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b
+    const ANCHOR: &str = "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632";
     assert_pairs_reproduces("pairs-2024-h1-zscore-mr", ANCHOR);
 }
 

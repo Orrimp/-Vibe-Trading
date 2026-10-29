@@ -225,6 +225,15 @@ const STRATEGY_ANCHORS: &[(&str, &str)] = &[
 // been edited or truncated. Deriving the expectation from `anchors.toml` would make it compare a
 // file against a digest computed from that same file, which proves nothing. An independent pin is
 // the design; the cost of that design is exactly this re-lock duty.
+// ── PROJECTION RE-LOCK 2026-10-29 — the #111/#95/#146 lane re-lock ──────────────
+//
+// Same duty as the 2026-10-11 block above, discharged in the SAME pass as the corpus change
+// this time rather than 15 days later. The lane re-lock moved 14 canonical digests; these
+// pins are a DERIVED PROJECTION of anchors.toml (ADR-0045 D6.1), so they move with it.
+//
+// The sqrt-impact table below is deliberately UNTOUCHED: that namespace resolves to the
+// v0.5.0 directory only, a default run does not reproduce it, and its own gate t1937c passed
+// throughout — which is the check that the landing stayed inside the canonical namespace.
 const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave C close (v5-latency-slippage-sim v0.3.0 M-DEV, 2026-05-27).
     // Reports in evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/
@@ -257,68 +266,68 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Group C: Momentum (unchanged from v0.2.0; wired in v0.1.0, synthetic data)
     (
         "top10-2023-1h-momentum",
-        "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15",
+        "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943",
     ),
     (
         "top10-2024-h1-momentum",
-        "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052",
+        "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f",
     ),
     // Group D: Pairs (newly wired in v0.3.0)
     (
         "pairs-2023-zscore-mr",
-        "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10",
+        "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e",
     ),
     (
         "pairs-2024-h1-zscore-mr",
-        "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b",
+        "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632",
     ),
     // Group E: TCN overlay synthetic (newly wired in v0.3.0)
     (
         "top10-2023-fy-tcn-overlay",
-        "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1",
+        "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9",
     ),
     (
         "top10-2024-fy-tcn-overlay",
-        "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d",
+        "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd",
     ),
     // Group F: TCN overlay weights (candle feature — v0.4.0 re-emit, 2026-05-28)
     // Reports in evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/
     // Built with --features "candle realdata"; 2-run determinism verified.
     (
         "top10-2023-fy-tcn-overlay-weights",
-        "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462",
+        "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf",
     ),
     (
         "top10-2024-fy-tcn-overlay-weights",
-        "3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab",
+        "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845",
     ),
     // Group G: TCN overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-tcn-overlay-realdata",
-        "10fd4502d9057f9390d4869c32ef1c65dc93d91b8574a740b198f995b2563d37",
+        "23346eecd3d004b2a7ee61603b0aecd0609fe740363b6d2a0d0a293c9692c071",
     ),
     (
         "top10-2024-fy-tcn-overlay-realdata",
-        "87dfad459bcbb0640dd70985063f25da985dbb4f39776c99bbe9056ccceda61b",
+        "46ae6ea705fb9e83fe8d315c2c16fc78729c0ec2aa1714dc2c31ea52deb2c92c",
     ),
     // Group H: TCN overlay weights+realdata (both features — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-tcn-overlay-weights-realdata",
-        "123d8228e50536c9094bc8605ecae2e0aadbdcd8a4bf854e5ae3e5f3414413a7",
+        "cdf813af4eef452f2f6deba2ac55250d4e7c42607720af5398602aaaa5049592",
     ),
     (
         "top10-2024-fy-tcn-overlay-weights-realdata",
-        "21bec3c9f9da750853ddcc571246ba00d00b3903d18a0f6989b1434f8c72b612",
+        "8017735d320c481908a1d0817e3db2fc1175d625496c24dd232a5a0b868ea360",
     ),
     // Group I: PatchTST overlay realdata (candle+realdata features — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-patchtst-overlay-realdata",
-        "55c5b715e6f5573e73c2db4b9aae859cf6d52472cbac6918920ac7afd7f36e6b",
+        "c3709c8f7f28dff4754c25f4da6bc90a86256a2811a832e0537c1ebd82679b07",
     ),
     // Group J: Vol-target GARCH overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-vol-target-overlay-realdata",
-        "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce",
+        "435fc0fc29927d05db99ee92af3c9888946ed6c6d183d74e5addbd56f5c92f83",
     ),
 ];
 

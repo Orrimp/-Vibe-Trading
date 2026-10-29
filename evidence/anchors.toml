@@ -632,10 +632,21 @@ sha256   = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=0f6f6eb8d943fefa866c4883be034f1beb3caff169fe76ec73bf3c29041a8ba3 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212144-top10-2023-1h-momentum.md
+#   MEASURED delta — trades 592 -> 5277, total return -12.39% -> -37.93%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-1h-momentum"
 version  = "v1 + v5-realdata-medium-2026-05"
-sha256   = "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15"
+sha256   = "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943"
 
 # top10-2024-h1-momentum
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -646,10 +657,21 @@ sha256   = "b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=78976062cf3d62b9bbb2ab579e91822cb49f0d12464dedf912edb427e66c7490 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212149-top10-2024-h1-momentum.md
+#   MEASURED delta — trades 295 -> 2693, total return -3.81% -> -18.48%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2024-h1-momentum"
 version  = "v1 + v5-realdata-medium-2026-05"
-sha256   = "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052"
+sha256   = "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f"
 
 # pairs-2023-zscore-mr
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -660,10 +682,21 @@ sha256   = "37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=01c9da4d4c5ce268b5de49c72f367ef729fcaccf04d572e5dc0fa1f1bd65e76e — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212159-pairs-2023-zscore-mr.md
+#   MEASURED delta — trades 0 -> 430, total return 0.00% -> 0.48%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "pairs-2023-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10"
+sha256   = "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e"
 
 # pairs-2024-h1-zscore-mr
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -674,10 +707,21 @@ sha256   = "ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=6252819b4f719ce45bf5cfa70bfb38143c216e96dde8e5a43fdfe43055dce5e9 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212200-pairs-2024-h1-zscore-mr.md
+#   MEASURED delta — trades 0 -> 216, total return 0.00% -> -6.34%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "pairs-2024-h1-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b"
+sha256   = "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632"
 
 [[anchors]]
 scenario = "report-sample-7d"
@@ -698,10 +742,21 @@ sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=1460fcc70029746b650ae6f1298a7f2291603e96c54531f26bf6f24c558250fc — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212151-top10-2023-fy-tcn-overlay.md
+#   MEASURED delta — trades 130 -> 1247, total return 0.27% -> -6.22%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1"
+sha256   = "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9"
 
 # top10-2024-fy-tcn-overlay
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -712,10 +767,21 @@ sha256   = "64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=b8e9186bb36abe6539917245f7dec99685792dcc955e11ba52380a7a5293ad1e — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212158-top10-2024-fy-tcn-overlay.md
+#   MEASURED delta — trades 440 -> 3987, total return -8.09% -> -23.96%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d"
+sha256   = "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd"
 
 # top10-2023-fy-tcn-overlay-weights
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -726,10 +792,21 @@ sha256   = "908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=28379df8913e987bf41b0b1d1913c77781306b5934432c495277723033993fdc — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212220-top10-2023-fy-tcn-overlay-weights.md
+#   MEASURED delta — trades 130 -> 1247, total return 0.27% -> -6.22%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462"
+sha256   = "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf"
 
 # top10-2024-fy-tcn-overlay-weights
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -740,30 +817,85 @@ sha256   = "175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=0c13ed0bd5e7d4e502e3d4bd70912336193ac43b21247151257ddb5312b90137 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260926-212302-top10-2024-fy-tcn-overlay-weights.md
+#   MEASURED delta — trades 440 -> 3987, total return -8.09% -> -23.96%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab"
+sha256   = "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845"
 
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260528-182204-top10-2023-fy-tcn-overlay-realdata.md
+#   MEASURED delta — trades 6203 -> 6203, total return -23.00% -> -27.52%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "10fd4502d9057f9390d4869c32ef1c65dc93d91b8574a740b198f995b2563d37"
+sha256   = "23346eecd3d004b2a7ee61603b0aecd0609fe740363b6d2a0d0a293c9692c071"
 
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260528-182214-top10-2024-fy-tcn-overlay-realdata.md
+#   MEASURED delta — trades 5917 -> 5917, total return -24.60% -> -22.32%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "87dfad459bcbb0640dd70985063f25da985dbb4f39776c99bbe9056ccceda61b"
+sha256   = "46ae6ea705fb9e83fe8d315c2c16fc78729c0ec2aa1714dc2c31ea52deb2c92c"
 
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260528-182304-top10-2023-fy-tcn-overlay-weights-realdata.md
+#   MEASURED delta — trades 6203 -> 6203, total return -23.00% -> -27.52%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "123d8228e50536c9094bc8605ecae2e0aadbdcd8a4bf854e5ae3e5f3414413a7"
+sha256   = "cdf813af4eef452f2f6deba2ac55250d4e7c42607720af5398602aaaa5049592"
 
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260528-182352-top10-2024-fy-tcn-overlay-weights-realdata.md
+#   MEASURED delta — trades 5917 -> 5917, total return -24.60% -> -22.32%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "21bec3c9f9da750853ddcc571246ba00d00b3903d18a0f6989b1434f8c72b612"
+sha256   = "8017735d320c481908a1d0817e3db2fc1175d625496c24dd232a5a0b868ea360"
 
 [[anchors]]
 scenario = "forecast-distribution-bs1-realdata"
@@ -834,20 +966,42 @@ scenario = "forecast-distribution-patchtst-bs1-realdata"
 version  = "v2.5a.0-patchtst + v5-realdata-medium-2026-05"
 sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260528-182438-top10-2023-fy-patchtst-overlay-realdata.md
+#   MEASURED delta — trades 3187 -> 3187, total return 5.97% -> 41.81%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v2.5a.0-patchtst + v5-realdata-medium-2026-05"
-sha256   = "55c5b715e6f5573e73c2db4b9aae859cf6d52472cbac6918920ac7afd7f36e6b"
+sha256   = "c3709c8f7f28dff4754c25f4da6bc90a86256a2811a832e0537c1ebd82679b07"
 
 [[anchors]]
 scenario = "vol-verdict-bs1-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
 sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 
+# ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
+#   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
+#   Superseded body file (kept on disk as history): backtest-20260528-182448-top10-2023-fy-vol-target-overlay-realdata.md
+#   MEASURED delta — trades 5119 -> 3266, total return -46.71% -> -27.67%.
+#   CAUSE: this lane sized from the per-symbol mark and FILLED against the trigger bar
+#     (bug-log #67's shape). Since the #67 guard began returning Err those cross-symbol
+#     orders VANISHED silently, so the superseded body reports a lane that lost most of
+#     its orders. Trades rise here because the fix lets them fill.
+#   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
+#     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
+#   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
-sha256   = "4edd8cc5f3041e308d4c83cfcf35109da9b9e4a363d7b6bc6d8d4407e50aa8ce"
+sha256   = "435fc0fc29927d05db99ee92af3c9888946ed6c6d183d74e5addbd56f5c92f83"
 
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
