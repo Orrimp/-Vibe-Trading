@@ -4974,3 +4974,53 @@ reasonable thing to borrow; what travelled with it was a sentence that had been 
 When one field serves two callers, the label belongs to the field's definition, not to whichever
 caller was written first — and the tell was available the whole time, in the same table, two rows
 up.
+
+### `#147` — the Command Line Tools' new SDK has a malformed `Security.tbd`, so nothing in this workspace links
+
+**Found** 2026-10-29, building the re-lock driver's binary.
+**Status:** WORKED AROUND in both re-lock drivers. The real fix is the operator's and is not
+blocking.
+
+```
+ld: multiple errors: tapi error: malformed file
+    '/Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk/System/Library/Frameworks/Security.framework/Security.tbd'
+clang: error: linker command failed with exit code 1
+```
+
+**Scope, measured rather than assumed — it is total.** Every binary in this workspace links
+`-framework Security` (via `reqwest` → `native-tls` → `security-framework`), so:
+
+| build | result |
+|---|---|
+| `backtest` bin, **debug**, default features | **FAILS** |
+| `backtest` bin, release, `candle,realdata` | **FAILS** |
+| `param_robustness_sweep`, release, `candle,realdata` | **FAILS** — and this exact command built fine on 2026-10-11 |
+
+So the Command Line Tools were updated between 2026-10-17 and 2026-10-29, adding
+`MacOSX27.0.sdk` (`MacOSX27.sdk` symlink alongside), and its `Security.tbd` is malformed. Apple
+clang 21.0.0 / clang-2100.1.1.101. `cargo test` still links, which is why this did not surface
+until a driver needed an actual binary.
+
+**Workaround, applied:** the previous SDKs are still installed, and pinning to one links cleanly:
+
+```bash
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk cargo build --bin backtest
+```
+
+Both `scripts/relock/run_surfaces.sh` and `scripts/relock/run_lane_scenarios.sh` now export
+`SDKROOT` themselves when it is unset and a sound SDK is present, announcing it on the way past.
+Deliberately NOT fixed by changing the host's `xcode-select`: a re-lock driver has no business
+mutating the operator's toolchain, and the env var is scoped to the run.
+
+**Operator's fix when convenient** (not blocking): reinstall or update the Command Line Tools so
+the 27.x SDK ships a sound `Security.tbd` —
+`sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install` — or point
+`xcode-select` at a full Xcode. Both need a password, so neither is mine to run.
+
+**Why it is in this log at all.** It is not a project defect, but it is an hour of someone's life
+the next time it happens, and the symptom points at the wrong place: a linker error naming
+`Security.framework` in the middle of a Rust build reads like a dependency problem, and the
+instinct is to go looking at `reqwest` features. The tell is `tapi error: malformed file` — that
+is the SDK's text-based stub being unreadable, not anything about this code. **And it would have
+read as a re-lock failure**: had the driver run before I built by hand, a 25-surface regeneration
+would have failed at surface 1 with a message about TLS.

@@ -40,6 +40,30 @@
 #
 set -euo pipefail
 
+# ── Host-toolchain workaround (bug-log #147) ──────────────────────────────────
+#
+# The Command Line Tools shipped a MacOSX27.0.sdk whose
+# System/Library/Frameworks/Security.framework/Security.tbd is MALFORMED:
+#   ld: tapi error: malformed file ... Security.tbd
+# Nothing that links `-framework Security` builds against it — which is every binary in
+# this workspace, in debug AND release, including ones that built fine on 2026-10-11.
+#
+# Pinning SDKROOT to the previous SDK links cleanly. Done here rather than by changing the
+# host's `xcode-select`, because a re-lock driver has no business mutating the operator's
+# toolchain. Override by setting SDKROOT yourself; remove this block once the CLT ships a
+# sound 27.x SDK.
+if [ -z "${SDKROOT:-}" ]; then
+  for _sdk in /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
+              /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk; do
+    if [ -d "$_sdk" ]; then
+      export SDKROOT="$_sdk"
+      echo "SDKROOT pinned to $(basename "$_sdk") (bug-log #147: the 27.0 SDK's Security.tbd is malformed)"
+      break
+    fi
+  done
+fi
+
+
 MANIFEST="${MANIFEST:-$(dirname "$0")/surfaces.tsv}"
 THREADS="${RELOCK_THREADS:-8}"
 NICENESS="${RELOCK_NICE:-19}"
