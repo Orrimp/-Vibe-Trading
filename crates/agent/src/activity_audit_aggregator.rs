@@ -219,8 +219,25 @@ pub async fn run_aggregator_loop(mut agg: Aggregator) {
                         agg.handle = Some(h);
                     }
                     // (n>0, Some(h)) — continuing burst: tick the existing handle.
+                    //
+                    // `counter.swap(0)` above already REMOVED these n events from the
+                    // counter, so a throttled `tick()` destroys them rather than
+                    // delaying them. And `TICK_THROTTLE` and `AGGREGATION_WINDOW` are
+                    // BOTH 100 ms, so whether the throttle has expired at a boundary is
+                    // decided by scheduler jitter — under load it loses, repeatedly.
+                    // Measured 2026-11-07 (bug-log `#155`): CI's ubuntu-latest lane
+                    // reported 208 of a 5 000-event storm, and waiting 20 s recovered
+                    // none of it, because those events were not pending — they had been
+                    // swapped out and thrown away, one window at a time.
+                    //
+                    // Putting the count back coalesces the REPORT and loses no
+                    // MEASUREMENT: the next boundary ticks the sum. It also stops the
+                    // `(0, Some(_))` arm above from reading a swapped-out window as idle
+                    // and closing the handle mid-burst.
                     (n, Some(h)) => {
-                        h.tick(n as u64);
+                        if !h.tick(n as u64) {
+                            agg.counter.fetch_add(n, Ordering::Relaxed);
+                        }
                     }
                 }
             }

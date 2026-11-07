@@ -5388,3 +5388,67 @@ same thing, and nothing in the build notices.** The honest reading of today's me
 convention looks like *before* it costs anything. And the near-miss above is the sharper lesson:
 the gate I wrote to enforce fidelity was itself, for about an hour, a gate that could not fail.
 
+### `#155` — a throttled progress tick threw the window's count away, and a CI red that looked like a flake was the only witness
+
+Found and fixed 2026-11-07. ADR-0100. **Third instance of one shape, first with a user-visible
+consequence.**
+
+**How it surfaced.** CI's `ubuntu-latest` lane went red on `9478ad4e` — a commit that changed
+**only markdown, yaml and toml** — while the identical Rust was green one commit earlier on
+`bdc2c12a`, on **all three OS lanes** (`windows-latest` included, which separately answers story
+6-9's open question). One failing test:
+
+```
+test audit_aggregator_handles_10k_event_storm ... FAILED
+aggregator coverage < 90 %: start_label=760 + ticks=0 = 760 / 5000 = 0.152
+```
+
+A docs-only commit cannot regress Rust, so the obvious reading was "load-sensitive test on a
+shared runner, weaken it or ignore it". That reading was wrong, and acting on it would have
+buried a real defect behind a lowered threshold.
+
+**Two hypotheses, both refuted by measurement.** Recorded because the refutations are the content.
+1. *Late broadcast subscription* — if the aggregator task subscribed after the storm, the events
+   would never be delivered. **Refuted:** `spawn_aggregator` calls `sender.subscribe()`
+   **synchronously** before `tokio::spawn` (`activity_audit_aggregator.rs:264`), so the receiver
+   exists before any send and the 16 384-slot buffer holds all 5 000.
+2. *Scheduler starvation* — the task simply did not get enough CPU inside the test's fixed 350 ms
+   wait. **Refuted by the strongest measurement of the day:** replacing the fixed sleep with a
+   wait-for-the-condition loop and a **20 000 ms** deadline recovered **nothing**. Three runs:
+   208/5000, 505/5000, then 5000/5000. In both failures `ticks=0` and `start=1` and
+   `end_success=1`, unchanged across twenty seconds. The events were not slow. They were gone.
+
+**The defect.** `ActivityHandle::tick(current)` returned `()` and silently returned early inside
+`TICK_THROTTLE`. The aggregator, at each window boundary, does
+`let n = counter.swap(0, Relaxed)` — removing the count from the only place it lives — and then
+`h.tick(n as u64)`. A throttled call therefore **destroys** it. And `AGGREGATION_WINDOW` is also
+**100 ms**, exactly `TICK_THROTTLE`, so whether the throttle has expired at a boundary is decided
+by scheduler jitter. Under load it loses, window after window. The `(0, Some(_))` arm then reads
+the swapped-out counter as an idle window and closes the activity handle mid-burst, which is why
+only one `Start` ever appeared.
+
+Consequence beyond CI: the cockpit's **"Audit: N writes"** under-reported real ledger writes
+whenever the machine was busy, and nothing in the tree could have told anyone.
+
+**The fix.** `tick` returns `bool`; the aggregator does
+`if !h.tick(n as u64) { agg.counter.fetch_add(n, Relaxed); }`. The report coalesces, the
+measurement does not. Rejected alternatives are priced in ADR-0100 — notably **decoupling the two
+100 ms periods**, which lowers the collision probability without removing the discard, and
+**lowering the test's 90 % floor**, which is the move this log exists to prevent. The test was
+right and the code was wrong.
+
+**Proven by measurement, not argument.** Before: 2 of 3 runs failed at ordinary load (3.2–3.6).
+After: **6 of 6 pass at 100.0 % coverage under HIGHER load (6.78)**, accounting complete in
+106–187 ms against a 20 000 ms deadline. Unit side:
+`throttled_tick_reports_that_it_dropped_the_value` asserts false-inside / true-after and that the
+throttled value never reaches the wire — reverting `tick` to `-> ()` makes it fail to **compile**.
+
+**Two morals, and the second is the useful one.**
+1. `#141` lost a breach count, `#153` lost a ruin witness, this lost an audit window. Three
+   disclosures, one mechanism: a value computed, carried one hop, and dropped.
+2. **A flaky gate and a broken gate are indistinguishable from the outside, and "flaky" is the
+   lazier of the two readings.** The only thing that separated them here was replacing a fixed
+   wall-clock wait with a wait on the actual condition — after which the absence of progress was
+   information instead of noise. A test that measures the runner tells you about the runner; a
+   test that waits for the invariant tells you about the code.
+

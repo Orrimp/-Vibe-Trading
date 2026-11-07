@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 
-use agent::activity::{ActivityKind, ActivityOutcome, ActivityPhase};
+use agent::activity::{ActivityEvent, ActivityKind, ActivityOutcome, ActivityPhase};
 use agent::activity_audit_aggregator::spawn_aggregator;
 use agent::bus::EventBus;
 use agent::config::BusConfig;
@@ -54,6 +54,81 @@ use audit::tick::{AuditContext, AuditEvent, AuditTick};
 /// 2026-08-29, bug-log #98 sibling; the K2 truncation path itself is unit-tested
 /// by `format_label_truncates_above_k2_threshold`.)
 const TOTAL_EVENTS: usize = 5_000;
+
+/// Fraction of the storm the aggregator must have accounted for (assertion 4).
+///
+/// ONE constant, read by both the waiter in step 5 and the assertion in step 8.
+/// Two copies would let the waiter stop below the bar the assertion then applies.
+const COVERAGE_FLOOR: f64 = 0.90;
+
+/// How long step 5 will wait for the aggregator to finish accounting.
+///
+/// Generous on purpose. It is not a performance budget — it is the point past
+/// which "the aggregator never accounted for the storm" becomes the only
+/// remaining explanation. See step 5 for why a fixed sleep was wrong.
+const ACCOUNTING_DEADLINE: Duration = Duration::from_secs(20);
+
+// ── Running tally of drained activity events ────────────────────────────
+
+/// Accumulates activity events across BOTH drain points — the poll loop in step 5
+/// and the final drain in step 7. It exists because the test now drains while it
+/// waits instead of sleeping and draining once; the same accounting has to survive
+/// being fed twice.
+#[derive(Default)]
+struct Tally {
+    start: usize,
+    tick: usize,
+    end_success: usize,
+    failed: usize,
+    max_tick_current: u64,
+    cumulative: u64,
+    start_labels: Vec<String>,
+}
+
+impl Tally {
+    fn absorb(&mut self, evt: &ActivityEvent) {
+        match &evt.phase {
+            ActivityPhase::Start { .. } => {
+                self.start += 1;
+                // Window 1's count lives ONLY here — see TOTAL_EVENTS above.
+                self.start_labels.push(evt.label.clone());
+            }
+            ActivityPhase::Tick { current, .. } => {
+                self.tick += 1;
+                self.cumulative += current;
+                if *current > self.max_tick_current {
+                    self.max_tick_current = *current;
+                }
+            }
+            ActivityPhase::End(ActivityOutcome::Success) => self.end_success += 1,
+            ActivityPhase::End(ActivityOutcome::Failed(_)) => self.failed += 1,
+            ActivityPhase::End(ActivityOutcome::Cancelled) => {}
+        }
+        assert_eq!(
+            evt.kind,
+            ActivityKind::AuditLedgerWrite,
+            "all activity events must be AuditLedgerWrite kind"
+        );
+    }
+
+    /// The first non-empty window reports through the Start label, never a Tick,
+    /// so any count that leaves this out measures the aggregator's throttle
+    /// rather than its accounting.
+    fn start_label_count(&self) -> u64 {
+        self.start_labels
+            .iter()
+            .filter_map(|l| {
+                l.strip_prefix("Audit: ")
+                    .and_then(|r| r.strip_suffix(" writes"))
+                    .and_then(|n| n.parse::<u64>().ok())
+            })
+            .sum()
+    }
+
+    fn observed(&self) -> u64 {
+        self.cumulative + self.start_label_count()
+    }
+}
 
 // ── Helper: synthetic AuditTick ───────────────────────────────────────────────
 
@@ -140,55 +215,68 @@ fn audit_aggregator_handles_10k_event_storm() {
             "=== storm: sent {TOTAL_EVENTS} events in {storm_elapsed_ms} ms ==="
         );
 
-        // ── 5. Wait for aggregator to process at least one window ─────────────
-        // 300 ms covers 3 × 100 ms windows. The aggregator should have:
-        //   - Received all (or nearly all) events from the storm.
-        //   - Emitted 1-3 Tick events on the activity channel.
-        //   - Emitted End{Success} after the first idle window.
-        sleep(Duration::from_millis(350)).await;
+        // ── 5. Wait until the aggregator has ACCOUNTED for the storm ──────────
+        //
+        // Was `sleep(350 ms)`, which made this test measure how much CPU the
+        // aggregator task happened to get rather than whether it accounts for the
+        // storm. It went red on CI's ubuntu-latest lane on 2026-11-07 with
+        // `start_label=760 + ticks=0 = 760 / 5000 = 0.152` — on a commit that
+        // changed only markdown, yaml and toml, while the identical code was green
+        // one commit earlier. So: not a regression, a throughput assertion on a
+        // shared runner (bug-log `#155`).
+        //
+        // The aggregator owns its own 100 ms interval and alternates `rx.recv()`
+        // with `interval.tick()`; `tick_tx` is only the inflow. While it is alive
+        // it keeps emitting, so the fix is to keep draining until the accounting
+        // is actually complete — the invariant this test is for — instead of
+        // betting a fixed wall-clock on it. Draining as we go also removes a
+        // second flake source: the activity broadcast could previously `Lagged`
+        // while we slept.
+        //
+        // Note the ordering: this MUST run before `tick_tx` is dropped in step 6,
+        // because the aggregator discards its current window's partial count when
+        // the channel closes (see step 4's note).
+        let mut tally = Tally::default();
+        let coverage_target = (TOTAL_EVENTS as f64 * COVERAGE_FLOOR).ceil() as u64;
+        let wait_start = Instant::now();
+        loop {
+            while let Ok(evt) = activity_rx.try_recv() {
+                tally.absorb(&evt);
+            }
+            if tally.observed() >= coverage_target {
+                break;
+            }
+            if wait_start.elapsed() >= ACCOUNTING_DEADLINE {
+                break;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+        let wait_elapsed_ms = wait_start.elapsed().as_millis() as u64;
+        println!(
+            "=== accounting: observed {} of target {coverage_target} after {wait_elapsed_ms} ms \
+             (deadline {} ms) ===",
+            tally.observed(),
+            ACCOUNTING_DEADLINE.as_millis()
+        );
 
         // ── 6. Close the tick bus → aggregator exits ──────────────────────────
         drop(tick_tx);
         let _ = tokio::time::timeout(Duration::from_millis(500), agg_handle).await;
 
-        // ── 7. Drain all activity events ──────────────────────────────────────
-        let mut start_count = 0usize;
-        let mut tick_count = 0usize;
-        let mut end_success_count = 0usize;
-        let mut failed_count = 0usize;
-        let mut max_tick_current: u64 = 0;
-        let mut cumulative_counter: u64 = 0;
-        let mut start_labels: Vec<String> = Vec::new();
-
+        // ── 7. Drain whatever the aggregator emitted on its way out ───────────
+        // Into the SAME tally step 5 filled, including the End{Success} that only
+        // arrives after the first idle window.
         while let Ok(evt) = activity_rx.try_recv() {
-            match &evt.phase {
-                ActivityPhase::Start { .. } => {
-                    start_count += 1;
-                    // The first window's count lives ONLY here — see TOTAL_EVENTS.
-                    start_labels.push(evt.label.clone());
-                }
-                ActivityPhase::Tick { current, .. } => {
-                    tick_count += 1;
-                    cumulative_counter += current;
-                    if *current > max_tick_current {
-                        max_tick_current = *current;
-                    }
-                }
-                ActivityPhase::End(ActivityOutcome::Success) => {
-                    end_success_count += 1;
-                }
-                ActivityPhase::End(ActivityOutcome::Failed(_)) => {
-                    failed_count += 1;
-                }
-                ActivityPhase::End(ActivityOutcome::Cancelled) => {}
-            }
-            // All events must be AuditLedgerWrite.
-            assert_eq!(
-                evt.kind,
-                ActivityKind::AuditLedgerWrite,
-                "all activity events must be AuditLedgerWrite kind"
-            );
+            tally.absorb(&evt);
         }
+
+        let start_count = tally.start;
+        let tick_count = tally.tick;
+        let end_success_count = tally.end_success;
+        let failed_count = tally.failed;
+        let max_tick_current = tally.max_tick_current;
+        let cumulative_counter = tally.cumulative;
+        let start_labels = tally.start_labels.clone();
 
         // The FIRST non-empty window reports through the Start label, never a
         // Tick (see TOTAL_EVENTS above), so every count must include it or it
@@ -238,10 +326,13 @@ fn audit_aggregator_handles_10k_event_storm() {
         );
 
         // ── Assertion 2: activity-channel rate cap ────────────────────────────
-        // Budget: ≤ (elapsed_ms / 100) + 1 Tick events. The storm elapsed
-        // time (+ 350 ms wait) gives the denominator. We use the wait time
-        // (350 ms) as the safe upper bound since the storm itself is << 100 ms.
-        let elapsed_budget_ms = storm_elapsed_ms + 350; // storm + wait
+        // Budget: ≤ (elapsed_ms / 100) + 1 Tick events. The denominator is the
+        // storm plus the MEASURED step-5 wait, not a literal — step 5 now exits as
+        // soon as the accounting is complete, so on a healthy machine this stays as
+        // tight as the old hard-coded 350 ms, and on a loaded one it widens exactly
+        // as much as the extra observation window legitimately permits. A rate cap
+        // fed a constant while the observation window varies is not a rate cap.
+        let elapsed_budget_ms = storm_elapsed_ms + wait_elapsed_ms;
         let tick_budget = (elapsed_budget_ms / 100) + 1;
         assert!(
             tick_count as u64 <= tick_budget,
@@ -284,7 +375,7 @@ fn audit_aggregator_handles_10k_event_storm() {
         let observed = cumulative_counter + start_label_count;
         let coverage = observed as f64 / TOTAL_EVENTS as f64;
         assert!(
-            coverage >= 0.90,
+            coverage >= COVERAGE_FLOOR,
             "aggregator coverage < 90 %: start_label={start_label_count} + \
              ticks={cumulative_counter} = {observed} / {TOTAL_EVENTS} = {:.3}",
             coverage

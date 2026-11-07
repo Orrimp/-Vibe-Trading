@@ -23,7 +23,7 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 > BTC −0.190 → +0.386, ETH +0.397 → +0.684, both still `Fragile` → `BenchmarkWins`),
 > and 3-16 closed on the finding that its probe is structurally inert in the shipped
 > build and therefore honestly ABSENT, so there is no number to publish.
-> Disclosures now run **#65–#154**. The harness CRITICALs **#67, #71, #75, #76 are
+> Disclosures now run **#65–#155**. The harness CRITICALs **#67, #71, #75, #76 are
 > FIXED** (2026-08-16→19, story 1-25). **#68 + #69 turned out to be one defect** —
 > `size_portfolio_target` implements both the portfolio cap and the drift hold band
 > and had zero production callers — and the prior question that blocked it, whether
@@ -269,6 +269,8 @@ gate-strength defects.
 - **visual-fail-html-reporter** — HTML viewer for visual-test failures.
 
 ## Core infrastructure
+
+- **throttled-tick count preservation** (ADR-0100, bug-log `#155`) — `ActivityHandle::tick` returned `()`, so a caller could not tell a deferred report from a destroyed measurement, and `activity_audit_aggregator` is the worst possible caller: it does `counter.swap(0)` first, so a throttled tick **destroyed** that window's events. `TICK_THROTTLE` and `AGGREGATION_WINDOW` are both 100 ms, so scheduler jitter decided, and under load it lost window after window — the cockpit's "Audit: N writes" under-reported real ledger writes whenever the machine was busy. Surfaced as a CI red on a commit that changed **only markdown, yaml and toml**, one commit after an all-three-OS-lanes green, which made "flaky test, weaken it" the obvious and wrong reading. Two hypotheses were refuted by measurement before the real one: late broadcast subscription (`subscribe()` is synchronous, before the spawn) and scheduler starvation (**a 20 000 ms wait recovered nothing** — the events were gone, not pending, with `ticks=0` unchanged across twenty seconds). `tick` now returns `bool` and the aggregator puts the count back: the report coalesces, the measurement does not. Before: 2 of 3 runs failed at load 3.2–3.6. After: **6 of 6 pass at 100.0 % coverage at load 6.78**. The storm test also stopped waiting a fixed 350 ms and now waits for the accounting condition — which is what turned the absence of progress from noise into evidence.
 
 - **reflection-memory** (+ trader-wiring) — persistent lesson-card store with retrieval at decision time, wired through the sanctioned ADR-0041 layering seam.
 - **operator-success-reports** — auto-generated "is this working?" reports (equity, Sharpe/Sortino/drawdown, attribution, system health).

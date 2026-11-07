@@ -124,10 +124,24 @@ impl ActivityHandle {
     ///
     /// Rate-limited: if fewer than 100 ms have elapsed since the last emit
     /// this call is a no-op (R1.4 / Q7=(a)).
-    pub fn tick(&self, current: u64) {
+    /// Returns `true` when the event was emitted, `false` when the call was
+    /// throttled (less than `TICK_THROTTLE` since the last emission).
+    ///
+    /// **A throttled tick does not defer `current` — it drops it.** Callers that
+    /// removed `current` from a counter in order to make this call therefore own
+    /// the `false` case: ignoring it destroys that window's measurement, so the
+    /// events happened, were counted, and then became unobservable.
+    /// `activity_audit_aggregator` does exactly that with `counter.swap(0)` and
+    /// did ignore it — bug-log `#155`, the same shape as `#141` (a breach count
+    /// returned and dropped one hop before aggregation) and `#153` (a ruin
+    /// witness computed three times and thrown away). It now puts the count back.
+    ///
+    /// Before 2026-11-07 this returned `()`, which made a delayed report and a
+    /// destroyed measurement indistinguishable at every call site.
+    pub fn tick(&self, current: u64) -> bool {
         let now = Instant::now();
         if now.duration_since(self.last_tick.get()) < TICK_THROTTLE {
-            return; // throttled — silent no-op
+            return false; // throttled — `current` was NOT emitted; the caller owns it
         }
         self.last_tick.set(now);
         let elapsed_ms = now.duration_since(self.started_at).as_millis() as u64;
@@ -141,6 +155,7 @@ impl ActivityHandle {
             },
             ts_ms: now_ms(),
         });
+        true
     }
 
     /// Record a failure reason. The `End { Failed(reason) }` event is emitted
@@ -275,6 +290,51 @@ mod activity_types {
         );
         // No further events.
         assert!(rx.try_recv().is_err(), "unexpected extra event");
+    }
+
+    /// Bug-log `#155` — a throttled tick must SAY that it dropped the value.
+    ///
+    /// `tick()` returned `()` until 2026-11-07, so a caller holding a count it had
+    /// already removed from a counter could not distinguish "reported later" from
+    /// "destroyed". The aggregator is such a caller (`counter.swap(0)`), and under
+    /// load it lost almost every window: CI's ubuntu-latest lane reported 208 of
+    /// 5000 events, and waiting 20 s recovered none of them, because they were not
+    /// pending — they were gone.
+    ///
+    /// Probed by reverting `tick` to `-> ()`: this test then fails to compile,
+    /// which is the loudest possible red.
+    #[test]
+    fn throttled_tick_reports_that_it_dropped_the_value() {
+        let (tx, mut rx) = broadcast::channel::<ActivityEvent>(16);
+        let sender = ActivitySender(tx);
+        // `start()` sets `last_tick = now`, so an immediate tick is inside the throttle.
+        let handle = sender.start(ActivityKind::AuditLedgerWrite, "Audit: 41 writes");
+
+        assert!(
+            !handle.tick(41),
+            "a tick inside TICK_THROTTLE must report false, not silently succeed"
+        );
+        std::thread::sleep(TICK_THROTTLE + Duration::from_millis(20));
+        assert!(
+            handle.tick(42),
+            "a tick after TICK_THROTTLE must report true"
+        );
+
+        // Exactly one Tick reached the wire, and it carries 42. The 41 was never
+        // emitted — which is precisely why the return value has to exist.
+        let mut ticks: Vec<u64> = Vec::new();
+        drop(handle);
+        while let Ok(ev) = rx.try_recv() {
+            if let ActivityPhase::Tick { current, .. } = ev.phase {
+                ticks.push(current);
+            }
+        }
+        assert_eq!(
+            ticks,
+            vec![42],
+            "the throttled 41 must be absent from the wire; a caller that ignored \
+             the false would have lost it"
+        );
     }
 
     /// T-D-N3 — Tight-loop tick calls are throttled: ≤ 11 Tick events arrive
