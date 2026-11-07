@@ -54,10 +54,13 @@ mod tests {
             headline_return: dec!(150.00),
             realized: dec!(100.00),
             unrealized: dec!(50.00),
+            unrealized_measured: true,
+            realized_period: dec!(100.00),
+            // 10.00, not 0 — 100 + 50 - 10 = 140 = equity_delta (bug-log #156).
+            fees: dec!(10.00),
             sum_by_strategy: dec!(100.00),
             sum_by_symbol: dec!(100.00),
             equity_delta: dec!(140.00),
-            equity_check_sum: dec!(140.00),
         }
     }
 

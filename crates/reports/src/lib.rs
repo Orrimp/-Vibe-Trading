@@ -63,11 +63,43 @@ pub enum ReportError {
     /// CSV writer error.
     #[error("csv: {0}")]
     Csv(String),
+    /// Reconciliation identity #1 has no report side: the headline section
+    /// this function rendered could not be read back (bug-log `#156`).
+    #[error("reconciliation: {0}")]
+    Reconcile(String),
 }
 
 impl From<csv_artifacts::CsvError> for ReportError {
     fn from(e: csv_artifacts::CsvError) -> Self {
         ReportError::Csv(e.to_string())
+    }
+}
+
+/// Read the published strategy-return figure back out of the rendered R2 section.
+///
+/// Reconciliation identity #1's REPORT side must come from what the report
+/// actually published, not from the variable its LEDGER side is also built from
+/// — that is precisely what made the row a tautology until 2026-11-07
+/// (bug-log `#156`). The figure is parsed at the scale it was published, two
+/// decimal places, which is this ledger's unit of account, so the comparison
+/// stays exact-cent rather than approximate.
+///
+/// Returns `None` when the line cannot be parsed, and the caller turns that into
+/// a hard error. It must NEVER fall back to zero: a zero report side would
+/// reconcile against a zero ledger side on an empty period and re-create the
+/// unfailable row this function exists to retire.
+fn published_strategy_return(rendered_headline: &str) -> Option<Decimal> {
+    let line = rendered_headline
+        .lines()
+        .find(|l| l.starts_with("Strategy return:"))?;
+    let inner = line.split_once('(')?.1.strip_suffix(" USDT)")?;
+    let (sign, rest) = inner.split_at(inner.char_indices().nth(1)?.0);
+    let digits = rest.strip_prefix('$')?;
+    let value: Decimal = digits.parse().ok()?;
+    match sign {
+        "+" => Some(value),
+        "-" => Some(-value),
+        _ => None,
     }
 }
 
@@ -181,17 +213,7 @@ pub async fn generate(
     let sum_by_strategy: Decimal = pnl_by_strategy.iter().map(|r| r.realized.amount()).sum();
     let sum_by_symbol: Decimal = pnl_by_symbol.iter().map(|(_, m)| m.amount()).sum();
     let headline_return_usdt = realized.amount() + unrealized;
-    let recon_inputs = ReconciliationInputs {
-        headline_return: headline_return_usdt,
-        realized: realized.amount(),
-        unrealized,
-        sum_by_strategy,
-        sum_by_symbol,
-        equity_delta: realized_period.amount() + unrealized,
-        equity_check_sum: realized_period.amount() + unrealized,
-    };
-    let recon = reconcile::compute(&recon_inputs);
-    let recon_pass = recon.all_passed();
+    // The reconciliation now runs AFTER R2 and R3 — see the block below § 5.
 
     // ── 5. Body assembly ────────────────────────────────────────────────────
     let active_strategies: BTreeSet<String> = strategy_events
@@ -218,15 +240,89 @@ pub async fn generate(
         ReportWindow::Days7 | ReportWindow::Weekly => 1,
         _ => 5,
     };
-    let period_curve =
-        sample_equity_curve(cash.amount(), period_start, period_end, cadence_minutes);
-    let inception_curve =
-        sample_equity_curve(cash.amount(), inception, period_end, cadence_minutes.max(5));
+    // Cumulative ledger deltas from a ZERO baseline; `ledger_equity_curve` then
+    // anchors the level so the curve ends at the measured cash balance.
+    let period_points = audit::query::equity_series(
+        &ledger,
+        period_start,
+        period_end,
+        Decimal::ZERO,
+        Decimal::ZERO,
+    )
+    .await?;
+    let inception_points =
+        audit::query::equity_series(&ledger, inception, period_end, Decimal::ZERO, Decimal::ZERO)
+            .await?;
+    let period_curve = ledger_equity_curve(
+        &period_points,
+        cash.amount(),
+        period_start,
+        period_end,
+        cadence_minutes,
+    );
+    let inception_curve = ledger_equity_curve(
+        &inception_points,
+        cash.amount(),
+        inception,
+        period_end,
+        cadence_minutes.max(5),
+    );
     let r3 = render::equity_curve::render(&render::equity_curve::EquityCurveInputs {
         window_label: window.slug(),
         period_curve: period_curve.iter().map(|s| s.equity_total).collect(),
         since_inception_curve: inception_curve.iter().map(|s| s.equity_total).collect(),
     });
+
+    // ── Reconciliation (R11) ────────────────────────────────────────────────
+    //
+    // Deliberately placed AFTER R2 and R3. The table's own columns are
+    // `| Identity | Report | Ledger | Δ | Pass? |`, so identity #1's left side is
+    // the figure this function PUBLISHED in the headline, read back out of it, and
+    // identity #4's left side is the endpoint delta of the equity curve it
+    // PUBLISHED. Both need the rendered sections to exist.
+    //
+    // Until 2026-11-07 this block sat before them and fed a ledger value into both
+    // columns of #1 and #4 — for #4, the character-identical expression
+    // `realized_period.amount() + unrealized` into the two fields `compute`
+    // subtracts — so two of the four rows published `Δ = 0 | PASS` unconditionally,
+    // for every input, in four committed operator-facing bodies (bug-log `#156`).
+    // `ReconciliationInputs` no longer has an `equity_check_sum` field, so a caller
+    // cannot supply both sides of any identity again.
+    let fees_period = audit::query::total_fees_since(&ledger, period_start).await?;
+    let published_headline = published_strategy_return(&r2).ok_or_else(|| {
+        ReportError::Reconcile(
+            "could not read the published strategy return back out of the rendered \
+             headline; identity #1 would have no report side"
+                .to_string(),
+        )
+    })?;
+    // `equity_period_end - equity_period_start`, from the curve the report ships.
+    // NOTE, and this is a real residual the row will now SURFACE rather than hide:
+    // `sample_equity_curve` is a documented approximation that holds equity constant
+    // at cash (see its doc comment and `equity_total: cash`), so this delta is 0
+    // until that curve is ledger-derived. The ledger side is not 0 whenever the
+    // period had P&L. A FAILING row there is the correct output of a gate that
+    // finally measures something; it is not a defect in this wiring.
+    let equity_delta = match (period_curve.first(), period_curve.last()) {
+        (Some(first), Some(last)) => last.equity_total - first.equity_total,
+        _ => Decimal::ZERO,
+    };
+    let recon_inputs = ReconciliationInputs {
+        headline_return: published_headline,
+        realized: realized.amount(),
+        unrealized,
+        // Declared, not assumed: a period-end mark miss zeroes `unrealized`, so
+        // identities #1 and #4 are UNMEASURED rather than passing over a zero
+        // the report itself substituted (bug-log `#156`).
+        unrealized_measured: !mark_unavailable_footnote,
+        realized_period: realized_period.amount(),
+        fees: fees_period.amount(),
+        sum_by_strategy,
+        sum_by_symbol,
+        equity_delta,
+    };
+    let recon = reconcile::compute(&recon_inputs);
+    let recon_pass = recon.all_passed();
 
     // R4 inputs.
     let curve_dec: Vec<Decimal> = period_curve.iter().map(|s| s.equity_total).collect();
@@ -503,11 +599,30 @@ fn sibling_failure_json_path(md: &Path) -> PathBuf {
     parent.join(format!("{stem}_reconciliation_failure.json"))
 }
 
-/// Build a constant equity sample series spanning `[start, end]` at a
-/// fixed cadence.  v1+ orchestrator approximation: equity = cash
-/// throughout the period (open-position marks ship in v2+).
-fn sample_equity_curve(
-    cash: Decimal,
+/// Build the published equity curve from the ledger's own movements.
+///
+/// Replaces `sample_equity_curve`, which held equity CONSTANT at cash and set
+/// the `realized_pnl` and `unrealized_pnl` columns to literal zero — its own doc
+/// called it a "v1+ orchestrator approximation". The consequence was not only a
+/// flat picture: reconciliation identity #4 is declared as
+/// `equity_period_end - equity_period_start`, so with a constant curve it had
+/// nothing real to compare, and the row shipped PASS over a measured -5.17 of fee
+/// spend in a committed operator-facing body (bug-log `#156`).
+///
+/// `points` carries cumulative ledger deltas from a zero baseline. The curve is
+/// sampled on the same cadence grid as before — so the chart's x-axis and the CSV
+/// row count are unchanged — with each sample taking the last movement at or
+/// before its tick, i.e. a step function, which is what a ledger is.
+///
+/// `end_anchor` is the equity level the curve must END at (the known cash balance
+/// at `end`). Every sample is offset so the last one lands there, which keeps the
+/// published LEVEL anchored to a measured quantity while the SHAPE and the
+/// period delta come from the journal. The alternative — treating `cash` as the
+/// level at `start` — would end the curve at `cash + Σmovements` and overstate it
+/// by exactly the period's P&L.
+fn ledger_equity_curve(
+    points: &[audit::query::EquityPoint],
+    end_anchor: Decimal,
     start: Timestamp,
     end: Timestamp,
     cadence_minutes: u32,
@@ -519,20 +634,29 @@ fn sample_equity_curve(
     if to <= from {
         return out;
     }
+    // Offset so the final cumulative equity lands on `end_anchor`.
+    let cumulative_end = points.last().map_or(Decimal::ZERO, |p| p.equity_total);
+    let offset = end_anchor - cumulative_end;
+
     let mut cursor = from;
+    let mut idx: usize = 0;
     while cursor <= to {
+        // Advance to the last point at or before this tick (points are ordered).
+        while idx < points.len() && points[idx].ts.unix_millis() <= cursor {
+            idx += 1;
+        }
+        let at = idx.checked_sub(1).map(|i| &points[i]);
         let ts_nanos = i128::from(cursor) * 1_000_000;
         let dt = OffsetDateTime::from_unix_timestamp_nanos(ts_nanos)
             .unwrap_or(OffsetDateTime::UNIX_EPOCH);
         out.push(csv_artifacts::EquitySample {
             ts: Timestamp::new(dt),
-            equity_total: cash,
-            realized_pnl: Decimal::ZERO,
-            unrealized_pnl: Decimal::ZERO,
-            cash_balance: cash,
+            equity_total: at.map_or(Decimal::ZERO, |p| p.equity_total) + offset,
+            realized_pnl: at.map_or(Decimal::ZERO, |p| p.realized_pnl),
+            unrealized_pnl: at.map_or(Decimal::ZERO, |p| p.unrealized_pnl),
+            cash_balance: at.map_or(Decimal::ZERO, |p| p.cash_balance) + offset,
         });
-        // Cap output length to avoid pathological cases (1 year × 1m =
-        // 525_600 samples — still fine, but cap at 1M defensively).
+        // Same defensive cap as the sampler this replaces (1 year x 1m is fine).
         if out.len() >= 1_000_000 {
             break;
         }

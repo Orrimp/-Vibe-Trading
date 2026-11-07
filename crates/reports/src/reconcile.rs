@@ -34,7 +34,23 @@ pub struct ReconciliationRow {
     /// `report_side - ledger_side`.  `passed = (delta == 0)`.
     pub delta: Decimal,
     /// Exact-cent equality result (`delta == Decimal::ZERO`).
+    ///
+    /// Meaningless when `measured` is `false` — read that first.
     pub passed: bool,
+    /// Whether this identity's inputs were actually available.
+    ///
+    /// `false` when a required input was declared absent rather than measured
+    /// — today that is a period-end mark miss, which zeroes `unrealized` and so
+    /// makes identities #1 and #4 uncomputable. Such a row renders `unmeasured`
+    /// and is excluded from [`ReconciliationReport::all_passed`].
+    ///
+    /// Added 2026-11-07 (bug-log `#156`). Before, a mark miss left all four rows
+    /// claiming PASS with a footnote underneath: the report zeroed an input and
+    /// then reconciled against the zero. This project's rule is that a skip is
+    /// unmeasured, never a pass — and symmetrically it is not a FAIL either,
+    /// because the T1006 V6 contract requires a mark miss to degrade gracefully
+    /// rather than block the report.
+    pub measured: bool,
 }
 
 impl ReconciliationRow {
@@ -42,6 +58,20 @@ impl ReconciliationRow {
     /// `passed` are derived.
     #[must_use]
     pub fn new(identity: &'static str, report_side: Decimal, ledger_side: Decimal) -> Self {
+        Self::new_with(true, identity, report_side, ledger_side)
+    }
+
+    /// Build a row that declares whether its inputs were measured at all.
+    ///
+    /// `measured: false` is for an identity whose input was zeroed because it was
+    /// unavailable, not computed — see [`ReconciliationRow::measured`].
+    #[must_use]
+    pub fn new_with(
+        measured: bool,
+        identity: &'static str,
+        report_side: Decimal,
+        ledger_side: Decimal,
+    ) -> Self {
         let delta = report_side - ledger_side;
         Self {
             identity,
@@ -49,6 +79,7 @@ impl ReconciliationRow {
             ledger_side,
             delta,
             passed: delta == Decimal::ZERO,
+            measured,
         }
     }
 }
@@ -63,7 +94,7 @@ pub struct ReconciliationReport {
     /// `Σ pnl_by_symbol = Σ realized`.
     pub by_symbol: ReconciliationRow,
     /// `equity_period_end - equity_period_start
-    ///    = realized + unrealized + fees_delta`.
+    ///    = realized + unrealized - fees`.
     pub equity: ReconciliationRow,
 }
 
@@ -82,15 +113,56 @@ pub struct ReconciliationInputs {
     /// R11 identity #1, ledger-side: unrealized P&L at `period_end`
     /// (mark-to-market over open positions).
     pub unrealized: Decimal,
+    /// Whether `unrealized` above was MEASURED or zeroed because a period-end
+    /// mark was unavailable (`mark_misses > 0` in `crate::generate`).
+    ///
+    /// Identities #1 and #4 both consume `unrealized`, so both are unmeasured
+    /// when this is `false`. #2 and #3 read only realized figures and stay
+    /// measured. Declaring the condition in the inputs — rather than taking a
+    /// second argument to `compute` — keeps the caller's claim about its own
+    /// data quality next to the data (bug-log `#156`).
+    pub unrealized_measured: bool,
+    /// R11 identity #4, ledger-side: realized P&L **over the window**
+    /// (`realized_pnl_since(period_start)`), which is a DIFFERENT quantity
+    /// from `realized` above (`realized_pnl_since(inception)`).
+    ///
+    /// The old wiring conflated them: identity #1 was fed the inception
+    /// figure and identity #4 the period figure, from one `realized` field,
+    /// and nothing said so. Identity #4 is a period identity — its report
+    /// side is `equity_period_end - equity_period_start` — so it takes the
+    /// period figure, and the two now have separate fields (bug-log `#156`).
+    pub realized_period: Decimal,
+    /// R11 identity #4, ledger-side: fee spend over the window
+    /// (`expense:fees:taker` + `expense:fees:maker`), a POSITIVE number
+    /// that identity #4 subtracts.
+    ///
+    /// Added 2026-11-07, bug-log `#156`: the identity's label has always
+    /// read `+ fees_delta` while no fees term existed in the computation
+    /// at all — `grep fees_delta` found three doc comments and the label
+    /// string. The sign was wrong too: fees reduce equity.
+    pub fees: Decimal,
     /// R11 identity #2: `Σ pnl_by_strategy.realized` over the window.
     pub sum_by_strategy: Decimal,
     /// R11 identity #3: `Σ pnl_by_symbol.realized` over the window.
     pub sum_by_symbol: Decimal,
-    /// R11 identity #4: `equity_period_end - equity_period_start`.
+    /// R11 identity #4, REPORT-side: `equity_period_end -
+    /// equity_period_start`, taken from the equity curve the report
+    /// actually publishes.
+    ///
+    /// There is deliberately **no** `equity_check_sum` field beside this
+    /// one. Until 2026-11-07 there was, and `crate::generate` assigned
+    /// the identical expression `realized_period.amount() + unrealized`
+    /// to both — so `compute` subtracted a value from itself and the row
+    /// published `Δ = 0 | PASS` unconditionally, for every input, in four
+    /// committed operator-facing bodies (bug-log `#156`).
+    ///
+    /// Identities #1, #2 and #3 never had that defect because `compute`
+    /// derives their ledger side itself from the primitives above. #4 was
+    /// the only one that let the caller supply both sides. Removing the
+    /// field makes the shape **impossible by construction** rather than
+    /// merely fixed: a caller can now supply report-side values and
+    /// ledger primitives, and nothing else.
     pub equity_delta: Decimal,
-    /// R11 identity #4, ledger-side: `realized + unrealized +
-    /// fees_delta`.
-    pub equity_check_sum: Decimal,
 }
 
 /// Run all four reconciliation identities and return a populated
@@ -100,7 +172,8 @@ pub struct ReconciliationInputs {
 /// every invocation.
 #[must_use]
 pub fn compute(inputs: &ReconciliationInputs) -> ReconciliationReport {
-    let headline = ReconciliationRow::new(
+    let headline = ReconciliationRow::new_with(
+        inputs.unrealized_measured,
         "headline_return = realized + unrealized",
         inputs.headline_return,
         inputs.realized + inputs.unrealized,
@@ -115,10 +188,11 @@ pub fn compute(inputs: &ReconciliationInputs) -> ReconciliationReport {
         inputs.sum_by_symbol,
         inputs.realized,
     );
-    let equity = ReconciliationRow::new(
-        "equity_delta = realized + unrealized + fees_delta",
+    let equity = ReconciliationRow::new_with(
+        inputs.unrealized_measured,
+        "equity_delta = realized + unrealized - fees",
         inputs.equity_delta,
-        inputs.equity_check_sum,
+        inputs.realized_period + inputs.unrealized - inputs.fees,
     );
     ReconciliationReport {
         headline,
@@ -131,11 +205,12 @@ pub fn compute(inputs: &ReconciliationInputs) -> ReconciliationReport {
 impl ReconciliationReport {
     /// Returns `true` iff every identity has `delta == 0`.
     #[must_use]
+    /// An UNMEASURED row neither passes nor fails: it is excluded here, because
+    /// a report whose period-end mark was unavailable must still be produced
+    /// (T1006 V6) and must not claim a reconciliation it could not perform
+    /// (bug-log `#156`). Read `measured` on each row to tell the two apart.
     pub fn all_passed(&self) -> bool {
-        self.headline.passed
-            && self.by_strategy.passed
-            && self.by_symbol.passed
-            && self.equity.passed
+        self.rows().iter().all(|r| !r.measured || r.passed)
     }
 
     /// Iterator over the four rows in the locked render order.
@@ -161,7 +236,13 @@ impl ReconciliationReport {
         out.push_str("| Identity | Report | Ledger | Δ | Pass? |\n");
         out.push_str("|----------|--------|--------|---|-------|\n");
         for row in self.rows() {
-            let pass_cell = if row.passed { "PASS" } else { "FAIL" };
+            let pass_cell = if !row.measured {
+                "unmeasured"
+            } else if row.passed {
+                "PASS"
+            } else {
+                "FAIL"
+            };
             let _ = writeln!(
                 out,
                 "| {} | {} | {} | {} | {} |",
@@ -202,6 +283,7 @@ impl ReconciliationReport {
             let _ = writeln!(out, "      \"report_side\": \"{}\",", row.report_side);
             let _ = writeln!(out, "      \"ledger_side\": \"{}\",", row.ledger_side);
             let _ = writeln!(out, "      \"delta\": \"{}\",", row.delta);
+            let _ = writeln!(out, "      \"measured\": {},", row.measured);
             let _ = writeln!(out, "      \"passed\": {}", row.passed);
             out.push_str("    }");
             if i + 1 < rows.len() {
@@ -226,10 +308,14 @@ mod tests {
             headline_return: dec!(150.00),
             realized: dec!(100.00),
             unrealized: dec!(50.00),
+            unrealized_measured: true,
+            realized_period: dec!(100.00),
+            // 10.00, not 0: a zero fees term would be pinned by nothing.
+            // 100 + 50 - 10 = 140 = equity_delta.
+            fees: dec!(10.00),
             sum_by_strategy: dec!(100.00),
             sum_by_symbol: dec!(100.00),
             equity_delta: dec!(140.00),
-            equity_check_sum: dec!(140.00),
         }
     }
 

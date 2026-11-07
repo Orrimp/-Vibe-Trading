@@ -136,6 +136,165 @@ pub async fn total_fees(ledger: &Ledger) -> Result<Money<Usdt>, LedgerError> {
     Ok(Money::from_decimal(total))
 }
 
+/// Fee spend since `ts` (debits on `expense:fees:taker` and `expense:fees:maker`).
+///
+/// The period-scoped sibling of [`total_fees`]. Added 2026-11-07 for bug-log
+/// `#156`: reconciliation identity #4 is declared as
+/// `equity_delta = realized + unrealized - fees` and there was no query for the
+/// fees term, so the identity shipped with the term missing from the computation
+/// and present only in the row's label.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error or parse failure.
+pub async fn total_fees_since(ledger: &Ledger, ts: Timestamp) -> Result<Money<Usdt>, LedgerError> {
+    let ts_str = ts
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT debit_amount, credit_amount \
+         FROM journal_entries \
+         WHERE account_id IN ('expense:fees:taker', 'expense:fees:maker') AND ts >= ?",
+    )
+    .bind(&ts_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut total = dec!(0);
+    for (dr, _cr) in rows {
+        let dr: Decimal = dr
+            .parse()
+            .map_err(|_| LedgerError::Database("parse error".into()))?;
+        total += dr;
+    }
+    Ok(Money::from_decimal(total))
+}
+
+/// One point of the portfolio equity series, with a running sum per account class.
+///
+/// Added 2026-11-07 for bug-log `#156`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EquityPoint {
+    /// Journal row timestamp.
+    pub ts: Timestamp,
+    /// `baseline + Σ(credit - debit)` over `income:*` and `expense:*` up to `ts`.
+    pub equity_total: Decimal,
+    /// `Σ(credit - debit)` over `income:realized_pnl` up to `ts`.
+    pub realized_pnl: Decimal,
+    /// `Σ(credit - debit)` over `income:unrealized_pnl` up to `ts`.
+    pub unrealized_pnl: Decimal,
+    /// `cash_baseline + Σ(debit - credit)` over `assets:cash:USDT` up to `ts`
+    /// — an ASSET account, so a debit increases it, which is the opposite sign
+    /// convention from the income and expense accounts above.
+    pub cash_balance: Decimal,
+}
+
+/// The portfolio equity series over `[since, until)`, oldest first.
+///
+/// Equity moves with the `income:*` and `expense:*` accounts, and
+/// **`credit - debit` is the correct contribution for both**: an income credit
+/// raises equity, and an expense debit makes `credit - debit` negative, which
+/// lowers it. One uniform rule therefore covers `income:realized_pnl`,
+/// `income:unrealized_pnl`, `expense:fees:{taker,maker}` and every pre-seeded
+/// cost account. `assets:cash:USDT` is read too, for the cash column, under the
+/// opposite convention.
+///
+/// Added 2026-11-07 for bug-log `#156`. The reports orchestrator built its
+/// published equity curve from `sample_equity_curve`, whose own doc called it a
+/// "v1+ orchestrator approximation" and which set `equity_total` and
+/// `cash_balance` to a constant and `realized_pnl` and `unrealized_pnl` to
+/// literal zero. So the curve the operator saw could not move whatever the
+/// ledger recorded, the published `equity-*.csv` P&L columns were zeros, and
+/// reconciliation identity #4 — declared as
+/// `equity_period_end - equity_period_start` — had nothing real to compare.
+/// Measured on the committed fixture: the curve said 0.000 while the ledger said
+/// -5.17, all of it fee spend, and the row published PASS.
+///
+/// Unlike [`equity_curve_for_strategy`] this is portfolio-wide, is not filtered
+/// by `strategy_id`, and carries fees and unrealized marks rather than
+/// `income:realized_pnl` alone.
+///
+/// An empty result is a legitimately flat window, not an error; the caller
+/// renders the baseline. (`equity_curve_for_strategy` returns `EmptyWindow`
+/// instead because its cockpit consumer needs to draw an explicit empty state.)
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error or parse failure.
+pub async fn equity_series(
+    ledger: &Ledger,
+    since: Timestamp,
+    until: Timestamp,
+    equity_baseline: Decimal,
+    cash_baseline: Decimal,
+) -> Result<Vec<EquityPoint>, LedgerError> {
+    let since_str = since
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+    let until_str = until
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let rows: Vec<(String, String, String, String)> = sqlx::query_as(
+        "SELECT ts, account_id, debit_amount, credit_amount \
+         FROM journal_entries \
+         WHERE (account_id LIKE 'income:%' \
+             OR account_id LIKE 'expense:%' \
+             OR account_id = 'assets:cash:USDT') \
+           AND ts >= ? AND ts < ? \
+         ORDER BY ts ASC, id ASC",
+    )
+    .bind(&since_str)
+    .bind(&until_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut equity = equity_baseline;
+    let mut realized = dec!(0);
+    let mut unrealized = dec!(0);
+    let mut cash = cash_baseline;
+    let mut points: Vec<EquityPoint> = Vec::with_capacity(rows.len());
+
+    for (ts_str, account, dr_str, cr_str) in rows {
+        let ts = OffsetDateTime::parse(&ts_str, &Rfc3339)
+            .map(Timestamp::new)
+            .map_err(|e| LedgerError::Database(e.to_string()))?;
+        let dr: Decimal = dr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("equity_series: parse debit".into()))?;
+        let cr: Decimal = cr_str
+            .parse()
+            .map_err(|_| LedgerError::Database("equity_series: parse credit".into()))?;
+
+        if account.starts_with("income:") || account.starts_with("expense:") {
+            equity += cr - dr;
+            if account == "income:realized_pnl" {
+                realized += cr - dr;
+            } else if account == "income:unrealized_pnl" {
+                unrealized += cr - dr;
+            }
+        } else {
+            // assets:cash:USDT — asset convention: a debit increases the balance.
+            cash += dr - cr;
+        }
+
+        points.push(EquityPoint {
+            ts,
+            equity_total: equity,
+            realized_pnl: realized,
+            unrealized_pnl: unrealized,
+            cash_balance: cash,
+        });
+    }
+    Ok(points)
+}
+
 // ── LLM cache observability (T1910 / Q5d) ────────────────────────────────────
 
 /// 24-hour aggregate cache-hit ratio across LLM cost events.
