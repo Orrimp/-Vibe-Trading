@@ -5452,3 +5452,63 @@ throttled value never reaches the wire — reverting `tick` to `-> ()` makes it 
    information instead of noise. A test that measures the runner tells you about the runner; a
    test that waits for the invariant tells you about the code.
 
+### `#156` — two of the four AD-9 reconciliation identities compare an expression to itself, and four committed bodies publish them as PASS
+
+Found 2026-11-07 by the completeness critic of the cannot-fail-gate sweep
+([`cannot-fail-gate-sweep-2026-11-07.md`](cannot-fail-gate-sweep-2026-11-07.md)), after the
+sweep's seven find-angles had all missed it — **none of them searched the repo's own
+first-listed sub-shape**, "the expectation and the measurement come from the same place."
+*reimplements-subject* asks whether a TEST holds a copy of its subject; it never asks whether
+the two sides of a SHIPPED identity are independently sourced. **OPEN — needs an operator
+ruling; see below.**
+
+**Verified by the orchestrator directly rather than taken from the agent's report**, because two
+claims that day had already needed correcting. `crates/reports/src/lib.rs:190-191`:
+
+```rust
+equity_delta:     realized_period.amount() + unrealized,
+equity_check_sum: realized_period.amount() + unrealized,
+```
+
+Two **character-identical** expressions, assigned to the two fields `reconcile::compute`
+subtracts at `reconcile.rs:119-122`. `delta == Decimal::ZERO` unconditionally, for every input.
+Identity 1 is the same defect one hop out: `lib.rs:183` defines
+`headline_return_usdt = realized.amount() + unrealized` and passes it alongside both summands,
+and `reconcile.rs:104-106` compares the one against the sum of the other two.
+
+And the row's label names a term the computation does not contain. `grep -rn 'fees_delta'
+crates/ --include='*.rs'` returns four hits: three doc comments and the label string itself. So a
+row that advertises `realized + unrealized + fees_delta` checks two terms, and the absent one is
+**fees** — on the invariant (AD-9) whose whole purpose is exact-cent reconciliation in a
+double-entry ledger.
+
+**Published.** Four committed operator-facing bodies carry a four-row table, all PASS, two of
+them unfailable: `success-fixed-report-sample-{7d,90d}.md` and
+`operator-success-{soak,research-replay}-2026-06-19.md`. Only identities 2 and 3 are
+independently sourced — exactly the two the single FAIL-path test breaks
+(`tests/reconciliation_mismatch.rs:4-11`). Every fixture in the tree hand-builds
+`ReconciliationInputs`, so all of them test `compute`'s arithmetic and none tests the wiring.
+
+**Why it is open rather than fixed.** Two reasons, and both are the operator's call.
+
+1. **The fix is a design question, not a typo.** Making identity 4 real needs an equity snapshot
+   pair and a fees total at that call site. If they are not obtainable there, the honest
+   alternative is to stop publishing the row as PASS and publish it as **unmeasured** — this
+   log's own rule is that a skip is unmeasured, never a pass. Either path changes what the
+   project publishes.
+2. **Two of the four bodies are anchored, and a filename grep says otherwise.**
+   `anchors.toml`'s `report-sample-7d` / `report-sample-90d` resolve to `success-*-<scenario>.md`
+   under `evidence/v1/operator-success-reports/reports/`. Grepping `anchors.toml` for any of the
+   four filenames returns **zero** hits — the documented false negative, since anchors are keyed
+   by scenario NAME. Correcting the tables moves two body-SHAs and needs ADR-0038 § D6.b.
+
+**Moral.** `#154` concluded that a test and its subject must not be the same thing. This is the
+same sentence applied one level down: **an identity's two sides must not be the same
+expression.** A reconciliation that subtracts a value from itself is not a weak check, it is a
+rendered zero — and because the gate publishes `Δ = 0 | PASS`, the output of a gate that cannot
+fail is indistinguishable here from the output of a ledger that balances perfectly. That is the
+house rule's worst case: not a silent gate, but a loud and reassuring one.
+
+The sweep's other 17 findings, their evidence, the 31 candidates dropped at the per-angle cap,
+and the disposition of each are in the sweep note.
+

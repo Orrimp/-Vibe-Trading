@@ -23,7 +23,7 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 > BTC −0.190 → +0.386, ETH +0.397 → +0.684, both still `Fragile` → `BenchmarkWins`),
 > and 3-16 closed on the finding that its probe is structurally inert in the shipped
 > build and therefore honestly ABSENT, so there is no number to publish.
-> Disclosures now run **#65–#155**. The harness CRITICALs **#67, #71, #75, #76 are
+> Disclosures now run **#65–#156**. The harness CRITICALs **#67, #71, #75, #76 are
 > FIXED** (2026-08-16→19, story 1-25). **#68 + #69 turned out to be one defect** —
 > `size_portfolio_target` implements both the portfolio cap and the drift hold band
 > and had zero production callers — and the prior question that blocked it, whether
