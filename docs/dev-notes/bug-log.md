@@ -5108,3 +5108,56 @@ both red.
 this argues for is the one the fix encodes: when a value is assembled from several sources, make
 the function pure in them and test the assembly, because eyeballing the output only tells you the
 parts that vary.
+
+### `#151` — every lane report publishes an arm's return with no benchmark beside it, so the number cannot be read
+
+**Found** 2026-10-29, trying to decide whether a corrected `+41.81 %` was good news or bad.
+**Status: OPEN — needs a ruling, because the fix is a per-window compute budget.**
+
+Measured, not assumed: of the seven report writers under `crates/backtest/src/report/`
+(`momentum`, `pairs`, `regime_dispatcher`, `sma`, `tcn_overlay`, `yahoo`, `mod`), **not one**
+emits a buy-and-hold control. The only renderer in the workspace that does is
+`sweep_harness.rs` — the θ-surface one — and its control is a **Sharpe** distribution, not a
+total return, so it is not comparable with what the lane bodies print. Spot-checked across the
+rendered lane bodies: none carries one.
+
+**So every lane report states a total return and leaves the reader no way to judge it.** The
+live case is `top10-2023-fy-patchtst-overlay-realdata`, whose canonical body moved from
+**+5.97 % to +41.81 %** in the `#111` re-lock. Is +41.81 % a result worth attention, or a
+disappointment? On a 10-symbol crypto basket over FY2023 the honest prior is that passive did
+far better — but **the corpus cannot answer it**, and "the honest prior" is not evidence. I
+could not settle it when it mattered, which is how this entry came to exist.
+
+**This is `#78`'s class, one level up.** `#78` was an arm sitting in a ranked field under a
+label implying it had been tested. This is an arm reported with a number that implies it has
+been *judged*. In both cases the artifact is formally true and practically misleading, and in
+both the missing thing is the comparison that gives the number meaning.
+
+**It also bounds how far the `#111` re-lock can be read.** The re-lock made those bodies more
+correct — fills now priced at their own symbol's bar — and it did not make them *interpretable*.
+Anyone reading the new figures to say something about active-vs-passive is reading past what the
+bodies support. The era-qualified ship-passive conclusion is unaffected, because it rests on the
+θ-surface corpus where buy-and-hold **is** the control and 0 of 156 cells beat it.
+
+**Options, with costs:**
+
+1. **Add a BH control to the lane renderers** (equal-weight, same universe, same window, same
+   friction config, printed beside the arm's return). Makes the bodies self-contained, which is
+   what every other part of this project already requires of its evidence. Costs a BH run per
+   anchored window plus a re-emission of the affected bodies — the largest option and the only
+   one that answers the question.
+2. **Print the absence.** A line in each lane body saying no benchmark is computed on this lane
+   and pointing at the θ-surface corpus for the controlled comparison. Cheap, honest, and leaves
+   every number still unjudgeable.
+3. **Ratify the lane reports as diagnostics, not findings** — rename their headline so a return
+   there reads as instrumentation rather than a result. No compute; changes what the bodies
+   claim to be.
+
+Option 1 is the one that matches how this project treats its other evidence, and it is the one I
+would do if the compute is available.
+
+**Moral.** A number with no comparator is not a weak result, it is not a result. This corpus has
+known that since the bake-off was built — buy-and-hold is wired in as the control *there*
+precisely because a crown means nothing without it — and the lane reports were simply never held
+to the same standard. Nobody decided they should not be; they predate the standard and nothing
+went back.

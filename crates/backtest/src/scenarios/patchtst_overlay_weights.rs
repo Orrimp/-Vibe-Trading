@@ -171,6 +171,8 @@ pub async fn run(
         let mut buys = 0usize;
         let mut sells = 0usize;
         let mut total_fees = Decimal::ZERO;
+        // bug-log #95 MEASURE-FIRST: see the tracking site below.
+        let mut peak_gross_observed = Decimal::ZERO;
         let mut equity_curve: Vec<Decimal> = vec![input.initial_capital];
         let mut peak_equity = input.initial_capital;
         let mut max_drawdown = Decimal::ZERO;
@@ -369,6 +371,28 @@ pub async fn run(
                 .sum();
             let equity = cash + position_value;
             equity_curve.push(equity);
+            // bug-log #95 MEASURE-FIRST (2026-11-07). This lane declares a
+            // `portfolio_exposure_cap` that nothing on it enforces, and the 2026-10-12 trace
+            // could NOT establish whether that cap would bind — its two challengers either
+            // refuted the estimate or contradicted each other. Ruling on it would have been
+            // ruling on a guess, so the operator's disposition was: measure first.
+            //
+            // Instrumentation ONLY: peak gross exposure to stderr via tracing, never into the
+            // report body, so no anchored body-SHA moves and this needs no re-lock. The lane
+            // is long-only here, so `position_value` IS gross notional. Logging each new peak
+            // rather than a total at the end means the LAST such line is the answer and this
+            // needs exactly one insertion point.
+            if equity > Decimal::ZERO {
+                let gross = position_value / equity;
+                if gross > peak_gross_observed {
+                    peak_gross_observed = gross;
+                    tracing::info!(
+                        lane = "patchtst_overlay_weights",
+                        %gross,
+                        "MEASURE-95: new peak gross exposure (fraction of equity)"
+                    );
+                }
+            }
             if equity > peak_equity {
                 peak_equity = equity;
             }
