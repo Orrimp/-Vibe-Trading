@@ -1064,28 +1064,20 @@ fn main() -> Result<()> {
     );
 
     // ── Step 7: Render and write report ──────────────────────────────────────
-    let generated = {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        // Format as ISO-8601 (seconds precision).
-        let secs = now;
-        let mins = secs / 60 % 60;
-        let hours = secs / 3600 % 24;
-        let _days_since_epoch = secs / 86400;
-        // Approximate date from epoch days (good enough for advisory frontmatter).
-        // Use a simple calculation: not worth pulling in a full date library.
-        format!(
-            "{}-{}-{}T{:02}:{:02}:{:02}Z",
-            2026,
-            "05",
-            "21",
-            hours,
-            mins,
-            secs % 60
-        )
-    };
+    //
+    // bug-log #150: this used to build the stamp from the hardcoded literals `2026, "05",
+    // "21"` while computing `_days_since_epoch` and discarding it — so EVERY run, on any
+    // date, emitted `generated: 2026-05-21T<live time>Z` and therefore the filename
+    // `…-20260521.md`. Story 1-30's AC6 rider claimed to have removed "the condition under
+    // which a run overwrites an anchored body" by deriving the filename from `generated`;
+    // deriving it from a constant achieves nothing, and a default-path re-run on any date
+    // still lands on the SAME filename and overwrites the anchored body in place.
+    //
+    // `generated` is front matter, which `scripts/hash_report.py` strips, so making it real
+    // moves no body-SHA. What it moves is the FILENAME — which is the whole point: a re-run
+    // now lands as a NEW dated file, which is what ADR-0038 § D6.b requires and what
+    // `verify_anchors.sh` resolves by.
+    let generated = report_stamp(time::OffsetDateTime::now_utc());
 
     let host = read_hostname();
     let git_commit = read_git_commit();
@@ -1227,6 +1219,70 @@ mod gate_survivor_parser_tests {
         assert!(
             msg.contains("of 9 gate-survivor rows"),
             "the error must say how many rows it got. Got: {msg}"
+        );
+    }
+}
+
+/// ISO-8601 stamp (second precision) for the report front matter and the filename.
+///
+/// Pure in its argument so the formatting is testable without a clock — see
+/// `report_stamp_tests`. bug-log #150: the predecessor hardcoded the date parts.
+fn report_stamp(now: time::OffsetDateTime) -> String {
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod report_stamp_tests {
+    use super::report_stamp;
+
+    /// bug-log #150 — the stamp must come from the clock it is handed, not from a literal.
+    ///
+    /// The defect this guards was invisible in the obvious way: the stamp LOOKED like a
+    /// timestamp, its hours/minutes/seconds were genuinely live, and only the date was
+    /// frozen. A run on 2026-10-11 produced `generated: 2026-05-21T13:49:06Z` — a plausible
+    /// string that is wrong in exactly the field the filename is cut from.
+    #[test]
+    fn the_stamp_is_derived_from_the_instant_it_is_given() {
+        // 2026-11-07T08:09:10Z (verified: calendar.timegm -> 1794038950)
+        let t = time::OffsetDateTime::from_unix_timestamp(1_794_038_950).unwrap();
+        let s = report_stamp(t);
+        assert_eq!(
+            &s[..10],
+            "2026-11-07",
+            "date must track the instant, got {s}"
+        );
+        assert!(
+            s.ends_with('Z') && s.len() == 20,
+            "ISO-8601 second precision, got {s}"
+        );
+
+        // A DIFFERENT day must produce a different filename stem. This is the assertion the
+        // old code could not pass: its stem was `20260521` for every instant in history.
+        let other = time::OffsetDateTime::from_unix_timestamp(1_794_038_950 + 86_400).unwrap();
+        assert_ne!(
+            report_stamp(t)[..10].replace('-', ""),
+            report_stamp(other)[..10].replace('-', ""),
+            "two instants a day apart produced the SAME filename stem — a re-run would \
+             overwrite the previous day's anchored body instead of landing beside it"
+        );
+    }
+
+    #[test]
+    fn the_stamp_is_not_the_frozen_literal_the_predecessor_emitted() {
+        let t = time::OffsetDateTime::from_unix_timestamp(1_794_038_950).unwrap();
+        assert_ne!(
+            &report_stamp(t)[..10],
+            "2026-05-21",
+            "the hardcoded date is back (bug-log #150)"
         );
     }
 }

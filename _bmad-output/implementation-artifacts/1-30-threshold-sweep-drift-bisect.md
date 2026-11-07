@@ -26,7 +26,7 @@ Six distinct body digests for two scenarios across three states:
 |---|---|---|
 | ANCHOR — locked 2026-05-21 at `447c0432` | `551cc2ab…` | `755bc380…` |
 | PRE-FIX — HEAD with `run_cell` untouched | `1dc4855f…` | `811f0c01…` |
-| POST-FIX — HEAD with the `#129` repair | `04564535…` | `f7008296…` |
+| POST-FIX — HEAD with the `#129` repair | `924a51bb…` | `f60d3bdd…` | *(was `04564535…`/`f7008296…` until 2026-11-07 — the measured POST-FIX digests, superseded by the in-body verdict qualifier before the re-lock; neither appears in any anchor row)*
 
 **PRE-FIX ≠ ANCHOR**, so the lane stopped reproducing before any of today's work, while
 `verify_anchors.sh` reported 119/119 throughout. That is the third such family after 1-26's 34
@@ -103,6 +103,14 @@ a different cause, and folding it in destroys the evidence.
 ## Tasks / Subtasks
 
 - [x] **AC1 DONE 2026-09-28 — first divergence is `13955206`, a documentation reorg** (bug-log `#132`).
+      *(Evidence corrected 2026-11-07, independent audit: calling `13955206` "a documentation
+      reorg" is false as a statement about git. Of its 7 changed lines in that file, 4 are `//!`
+      doc comments and 3 are LIVE CODE — the string literals in `fn gate_survivor_report()`,
+      `"spec/v25-tcn-recalibrate/reports/…"` → `"spec/v1/v25-tcn-recalibrate/reports/…"`. That
+      literal is the path the body prints, so it IS the moved byte. The conclusion AC1 reaches is
+      right and in fact BETTER supported than the evidence it cited: the mechanism is a changed
+      code literal, not a comment reflow. Recorded because an argument that understates its own
+      evidence invites someone to re-open a settled question.)*
       766 commits, no path restriction, GOOD `42e084e0` (verified to reproduce `551cc2ab…` before the
       bisect started — and note the anchored body's own `git_commit: 447c0432` names a commit at which
       the producing binary did not yet exist, so that stamp records the repo pointer, not the code that
@@ -113,7 +121,7 @@ a different cause, and folding it in destroys the evidence.
       there. Mechanism confirmed from the other end: `run_cell` never got the routing half, so once the
       engine guard returned `Err`, its else-less `let Ok(fills)` chain dropped cross-symbol orders in
       silence. Same commit 1-27 bisected to for its 15 rows, reached independently here.
-      **Consequence for AC6: the re-lock pins the POST-FIX bodies (`04564535…`, `f7008296…`).** The
+      **Consequence for AC6: the re-lock pins the POST-FIX bodies (`924a51bb…`, `f60d3bdd…`).** *(Corrected 2026-11-07, independent audit: those two digests are pinned NOWHERE. The re-lock pins `924a51bb…` (bs1) and `f60d3bdd…` (bs2) — the operator-ruled in-body verdict qualifier was added AFTER the 2026-09-27 POST-FIX measurement and moved both. The story states the right values at line 151; this is the place a reader goes to ask what the re-lock pinned, and it answered with a digest that appears in no anchor row.)* The
       anchored body is `#67`-contaminated (mispriced fills) and the pre-fix state is drop-contaminated;
       only today's code is correct.
 - [x] *(superseded)* **AC2 — bisect the ARITHMETIC step on a NUMBER, not on the body SHA.** The digest is polluted by

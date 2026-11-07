@@ -3627,7 +3627,7 @@ found it.
 | POST-FIX | `−0.693194` | `+1.155769` | `T-ALPHA-UNLOCKED` | routed correctly + solvency guard |
 
 The anchored body is `#67`-contaminated; the state the corpus silently drifted into is drop-contaminated;
-only today's code is correct. A re-lock therefore pins the POST-FIX bodies (`04564535…`, `f7008296…`),
+only today's code is correct. A re-lock therefore pins the POST-FIX bodies (`924a51bb…`, `f60d3bdd…` — corrected 2026-11-07; the measured `04564535…`/`f7008296…` were superseded by the in-body verdict qualifier before the re-lock landed and appear in no anchor row),
 not the pre-fix ones — the same conclusion 1-27 reached for its 15 rows, arrived at independently here.
 
 #### The verdict flip survives the correction, and that is the thing to escalate
@@ -5067,3 +5067,44 @@ had falsified. **Adding a column to a markdown table is two edits, and adding a 
 paragraph is also two edits.** The first was invisible because nothing rendered the branch; the
 second was visible to anyone who read the paragraph to the end, and was in twelve published
 bodies for six weeks.
+
+### `#150` — the report stamp's date was three literals, so every `threshold_sweep` run on any date overwrites the same anchored body
+
+**Found** by the 2026-10-11 independent audit (story 1-30, MEDIUM); **fixed** 2026-11-07.
+
+`bin/threshold_sweep.rs` built its `generated` stamp like this:
+
+```rust
+let _days_since_epoch = secs / 86400;   // computed, then DISCARDED
+format!("{}-{}-{}T{:02}:{:02}:{:02}Z", 2026, "05", "21", hours, mins, secs % 60)
+```
+
+Hours, minutes and seconds were live. **The date was three literals.** So every run, on any
+date, emitted `generated: 2026-05-21T<live time>Z` — and because the report filename is cut from
+that stamp (`&generated[..10].replace('-', "")`), every run also wrote
+`…-20260521.md`. The auditor's run on 2026-10-11 produced exactly that filename.
+
+**Why that is a hazard and not a cosmetic slip.** Story 1-30's AC6 rider claimed this change
+"removed the condition under which a run overwrites an anchored body", by deriving the filename
+from `generated` instead of a hardcoded string. Deriving a filename from a *constant* removes
+nothing: a default-path re-run lands on the **same filename** and overwrites the anchored body in
+place. That is the one thing ADR-0038 § D6.b forbids — a re-emission must land beside its
+predecessor, not on top of it — and it is the reason `--reports-dir` exists.
+
+**Anchor-safe to fix.** `generated` is front matter, which `scripts/hash_report.py` strips, so a
+real date moves no body-SHA. What it moves is the filename, which is the point:
+`verify_anchors.sh` resolves by newest filename, so a dated re-run now lands as a NEW file.
+
+**The fix is a pure function, because the defect was invisible in a specific way.** The stamp
+*looked* like a timestamp — well-formed ISO-8601, with genuinely live hours/minutes/seconds — and
+was wrong in exactly the field the filename is cut from. `report_stamp(now: OffsetDateTime)` is
+now pure in its argument, with two gates: the date tracks the instant it is handed, and two
+instants a day apart must produce **different** filename stems (the assertion the old code could
+not pass for any pair of instants in history). **Probed**: re-freezing the three literals turns
+both red.
+
+**Moral.** A number that is partly live is worse than one that is obviously dead. Nobody reading
+`generated: 2026-05-21T13:49:06Z` in a report doubts it — the seconds move every run. The habit
+this argues for is the one the fix encodes: when a value is assembled from several sources, make
+the function pure in them and test the assembly, because eyeballing the output only tells you the
+parts that vary.
