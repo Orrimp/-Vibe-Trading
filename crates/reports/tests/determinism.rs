@@ -86,6 +86,46 @@ async fn t814_determinism_two_runs_same_seed_byte_identical_body() {
     let db_path = dir.path().join("audit.db");
     build_minimal_ledger(&db_path).await;
 
+    // ── Why this test is safe to run against the WALL CLOCK (bug-log #158) ──
+    //
+    // The body assertion below is "two renders ten seconds apart produce
+    // byte-identical bodies". Since 2026-11-07 the equity curve is derived from
+    // the ledger and sampled on a grid running to `period_end`, which `Days7`
+    // resolves to `now` — so a ten-second shift moves every tick by ten seconds
+    // and a movement the grid steps across changes the sampled series. This test
+    // is immune only because `build_minimal_ledger` writes a bootstrap row and
+    // NO journal entries: zero movements, so the curve is constant whatever the
+    // grid does.
+    //
+    // That is exactly the undeclared accident #158 was about, so it is declared
+    // and CHECKED here. Add fees or fills to the fixture and this assertion fires
+    // with the reason, instead of the test flaking on a cadence boundary a few
+    // runs out of a hundred. (Pinning the clock is not an option: `generated:`
+    // is `fmt_ts_micros(now)`, so a pinned clock would defeat assertion 1.)
+    {
+        let ledger = Ledger::open(db_path.to_str().unwrap()).await.unwrap();
+        let inception = audit::query::ledger_inception_ts(&ledger).await.unwrap();
+        let now = trading_core::Timestamp::new(time::OffsetDateTime::now_utc());
+        let points = audit::query::equity_series(
+            &ledger,
+            inception,
+            now,
+            rust_decimal::Decimal::ZERO,
+            rust_decimal::Decimal::ZERO,
+        )
+        .await
+        .unwrap();
+        assert!(
+            points.is_empty(),
+            "this test asserts byte-identical BODIES across a ten-second wall-clock \
+             shift, which only holds while the ledger has no movements for the \
+             equity curve to sample ({} found). The fixture gained journal entries: \
+             either keep it movement-free, or move the body assertion to a pinned \
+             clock via `reports::generate_at` and drop the `generated:` check.",
+            points.len(),
+        );
+    }
+
     let frozen = FrozenMarkSource::from_csv_str("symbol,close_time,close\n").unwrap();
     let out_a = dir.path().join("a.md");
     let out_b = dir.path().join("b.md");

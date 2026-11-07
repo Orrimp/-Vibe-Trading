@@ -89,11 +89,38 @@ use crate::build_ledger_90d::{
 // local run on 2026-05-12 against the FIXTURE_SEED = 0xC0FFEE
 // fixtures. evidence/anchors.toml lines 67–75 receive these values at
 // T_FINAL_V2_LLM_STRATEGY (tester only).
-const EXPECTED_SHA_7D: &str = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3";
+//
+// 2026-11-07 (bug-log #156, ADR-0038 § D6.b re-emission) — re-captured twice in
+// one pass, and the two captures are worth keeping apart:
+//
+//   520b1f29 -> d4b964c7   the reconciliation fix + ledger-derived equity curve.
+//                          Identity #4 stopped comparing an expression to itself,
+//                          and the equity curve stopped being a constant — which
+//                          also moved Sharpe 0.0000 -> -3.8294, max drawdown
+//                          0.00% -> 50.00% ($5.17), and raised a drawdown risk the
+//                          flat curve had suppressed.
+//   d4b964c7 -> b6126992   pinning the clock. `period_end` came from
+//                          `now_utc()`, so the sampled grid grew by a day every
+//                          day and the ratios moved with it. d4b964c7 would have
+//                          gone red tomorrow. See `generate_at`.
+//   b6126992 -> e1b286d5   restating identity 4. The first version asserted
+//                          `equity_delta = realized + unrealized - fees`, but
+//                          NOTHING in the repo posts to `income:unrealized_pnl`
+//                          (bug-log #159) — so that identity cannot hold for any
+//                          ledger with an open position, and it passed here only
+//                          because these two fixtures hold none. Caught by
+//                          t1003's open-positions test, not by this file.
+//                          The row now asserts what the journal can witness:
+//                          `realized - fees - other_expense`.
+//
+// Re-emitted body: evidence/v1/operator-success-reports/reports/
+//   success-relock-20261107-report-sample-7d.md (the superseded
+//   success-fixed-report-sample-7d.md stays on disk as history — D6.b).
+const EXPECTED_SHA_7D: &str = "e1b286d5539279521534bb69b459d01711e1838d5fd32e8089eb97ab5decbd94";
 
 /// Locked body-SHA256 for `report-sample-90d`.  Same ownership notes
 /// as [`EXPECTED_SHA_7D`].
-const EXPECTED_SHA_90D: &str = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333";
+const EXPECTED_SHA_90D: &str = "f8ecc2579cc24044174cca661bec98ca7297ebf9cb55379a81b545656e54c0f9";
 
 /// Slice off the front-matter and return the body bytes the
 /// `scripts/hash_report.py` regex considers the "body".
@@ -128,9 +155,11 @@ async fn render_scenario(
     db_path: &Path,
     out_path: &Path,
     period_start: trading_core::Timestamp,
+    now: trading_core::Timestamp,
 ) -> String {
     let frozen = FrozenMarkSource::from_csv_str("symbol,close_time,close\n").unwrap();
-    reports::generate(
+    reports::generate_at(
+        now,
         ReportWindow::Since(period_start),
         db_path,
         &frozen,
@@ -172,7 +201,89 @@ fn publish_success_copy(dest_root: &Path, src_full_md: &Path, scenario: &str) ->
     // avoids accumulating stale copies on every test re-run.
     let dest = dest_dir.join(format!("success-fixed-{scenario}.md"));
     std::fs::copy(src_full_md, &dest).expect("publish success copy");
+    reemit_if_opted_in(src_full_md, scenario);
     dest
+}
+
+/// ADR-0038 § D6.b re-emission opt-in.
+///
+/// The ordinary test run publishes only into its own `TempDir` (see the NOTE
+/// above — publishing into the tracked corpus on every run was retired in
+/// 2026-07-12 because it littered an untracked root dir). But a D6.b
+/// re-emission has to land a body exactly where `scripts/verify_anchors.sh`
+/// hashes it, and hand-copying a body out of a `TempDir` that the test has
+/// already deleted is how a re-emission silently lands the wrong bytes.
+///
+/// So the write-path exists, gated on an env var nobody sets by accident:
+///
+/// ```text
+/// REEMIT_DIR="$PWD/evidence/v1/operator-success-reports/reports" \
+/// REEMIT_STAMP=relock-20261107 \
+///   cargo test -p reports --test report_scenarios -- --nocapture
+/// ```
+///
+/// ## Why the stamp is mandatory
+///
+/// The committed body is `success-fixed-<scenario>.md`. `verify_anchors.sh`
+/// resolves a scenario by `find … | sort | tail -1` over FULL PATHS under
+/// `LC_COLLATE=C`, so the re-emitted sibling is only resolved if its name
+/// sorts AFTER `success-fixed-`. `success-relock-…` does (`r` > `f`);
+/// `success-20261107-…` does NOT (`2` < `f`) and would leave the gate
+/// hashing the superseded body. An unstamped write would instead OVERWRITE
+/// the superseded body, which D6.b forbids — the correction has to stay
+/// legible next to what it corrects.
+///
+/// `REEMIT_DIR` must be ABSOLUTE. `cargo test` runs with CWD at the CRATE
+/// root, so a repo-relative path lands the body in `crates/reports/evidence/…`.
+/// That is not hypothetical: it is what the first run of this write-path did,
+/// and only the printed destination made it visible — hence the canonicalised
+/// path in the log line below.
+///
+/// Both failure modes are refusals, not warnings: a missing stamp panics, and
+/// the path actually written is printed so the re-emission's success path is
+/// observable rather than assumed.
+fn reemit_if_opted_in(src_full_md: &Path, scenario: &str) {
+    let Ok(dir) = std::env::var("REEMIT_DIR") else {
+        return;
+    };
+    let stamp = std::env::var("REEMIT_STAMP").unwrap_or_else(|_| {
+        panic!(
+            "REEMIT_DIR={dir} was set without REEMIT_STAMP. An unstamped write lands on \
+             success-fixed-{scenario}.md and OVERWRITES the superseded body, which \
+             ADR-0038 § D6.b forbids. Pass a stamp that sorts after `fixed` under \
+             LC_COLLATE=C — e.g. REEMIT_STAMP=relock-20261107."
+        )
+    });
+    assert!(
+        stamp.as_str() > "fixed",
+        "REEMIT_STAMP={stamp:?} sorts BEFORE `fixed` under LC_COLLATE=C, so \
+         verify_anchors.sh would keep resolving the superseded \
+         success-fixed-{scenario}.md and the re-emitted body would never be hashed. \
+         Pick a stamp that sorts later (e.g. relock-20261107)."
+    );
+    let dest_dir = PathBuf::from(&dir);
+    // MEASURED 2026-11-07: the first run of this path passed a repo-relative
+    // REEMIT_DIR and landed both bodies in `crates/reports/evidence/…`, because
+    // `cargo test` runs with CWD at the CRATE root, not the workspace root. The
+    // eprintln below printed that relative path, so it read as correct — and
+    // `verify_anchors.sh` would have gone on hashing the superseded body while
+    // the re-emission sat unreferenced two directories down. Refusing a relative
+    // path is the only form of this check that cannot be misread.
+    assert!(
+        dest_dir.is_absolute(),
+        "REEMIT_DIR={dir:?} is relative, and `cargo test` runs with CWD at the crate \
+         root (crates/reports), not the workspace root — a relative path lands the \
+         body in crates/reports/{dir} where verify_anchors.sh will never hash it. \
+         Pass an absolute path, e.g. REEMIT_DIR=\"$PWD/evidence/v1/…/reports\"."
+    );
+    std::fs::create_dir_all(&dest_dir)
+        .unwrap_or_else(|e| panic!("create re-emission dir {dir}: {e}"));
+    let dest = dest_dir.join(format!("success-{stamp}-{scenario}.md"));
+    std::fs::copy(src_full_md, &dest)
+        .unwrap_or_else(|e| panic!("re-emit {scenario} to {}: {e}", dest.display()));
+    // Print the CANONICAL path — the relative one is what hid the misplaced write.
+    let shown = dest.canonicalize().unwrap_or(dest);
+    eprintln!("D6.b RE-EMITTED {scenario} -> {}", shown.display());
 }
 
 // ── 7-day scenario ─────────────────────────────────────────────────────────────
@@ -191,14 +302,19 @@ async fn t816_report_sample_7d_determinism_and_anchor_lock() {
         .unwrap(),
         "fixture period_start parses round-trip clean",
     );
-    let _ = fixture_7d_period_end();
+    // The pinned clock. The fixture has carried `PERIOD_END_RFC3339` since T816
+    // and this test used to compute it and throw it away, because `generate` had
+    // no way to accept it. It does now (`generate_at`), and the anchor needs it:
+    // the ledger-derived equity curve samples the grid up to `period_end`, so a
+    // wall-clock `now` would lengthen the grid every day and move Sharpe with it.
+    let now_7d = fixture_7d_period_end();
 
     let out_a = dir.path().join("a.md");
     let out_b = dir.path().join("b.md");
 
     // Two sequential renders — same seed, same fixture.
-    let body_a = render_scenario(&db_path, &out_a, fixture_7d_period_start()).await;
-    let body_b = render_scenario(&db_path, &out_b, fixture_7d_period_start()).await;
+    let body_a = render_scenario(&db_path, &out_a, fixture_7d_period_start(), now_7d).await;
+    let body_b = render_scenario(&db_path, &out_b, fixture_7d_period_start(), now_7d).await;
     // Publish the `out_a` rendering to `evidence/v1/operator-success-reports/reports/`
     // so the verify-anchors gate can pick it up via the success-* glob (the
     // body bytes match `out_b` byte-for-byte by V4 — either copy works).
@@ -233,6 +349,76 @@ async fn t816_report_sample_7d_determinism_and_anchor_lock() {
     );
 }
 
+// ── The pinned clock is load-bearing, not decorative ─────────────────────────
+
+/// ADR-0038 § D6.b step 3 for bug-log `#156`'s second half: the anchored body
+/// must be a function of (fixture, seed, pinned `now`) and nothing else.
+///
+/// The two anchor-lock tests above pin `now` to the fixture's
+/// `PERIOD_END_RFC3339`. Nothing in those tests would notice if someone
+/// "simplified" them back to `reports::generate` (wall clock) — the SHA would
+/// still match on the day of the edit and start drifting afterwards, going red
+/// on an unrelated commit weeks later. That is how the ORIGINAL defect hid: the
+/// constant equity curve made the body clock-independent by accident, so no
+/// test ever had to state the requirement.
+///
+/// This test states it. It renders the same fixture at two pinned instants 30
+/// days apart and asserts the bodies DIFFER — proving `now` reaches the body,
+/// so the pin in the anchor tests is doing real work. Paired with those tests'
+/// own two-renders-at-one-instant determinism assertion, the body's dependence
+/// on time is pinned from both sides.
+///
+/// RED-proven: against the pre-fix `sample_equity_curve` (equity held CONSTANT
+/// at cash, `realized_pnl`/`unrealized_pnl` literal zero) the two bodies are
+/// byte-identical and this assertion fails — which is exactly the state that
+/// let the 7d/90d anchors hold for six months without anyone declaring why.
+#[tokio::test]
+async fn t816_anchored_body_depends_on_the_pinned_clock() {
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("audit-clock.db");
+    let _ = build_ledger_7d(&db_path).await.expect("build 7d fixture");
+
+    let pinned = fixture_7d_period_end();
+    let later = trading_core::Timestamp::new(pinned.inner() + time::Duration::days(30));
+    assert_ne!(
+        pinned.unix_millis(),
+        later.unix_millis(),
+        "the two instants must actually differ for this test to measure anything",
+    );
+
+    let out_a = dir.path().join("at-pinned.md");
+    let out_b = dir.path().join("at-pinned-plus-30d.md");
+    let body_at_pinned = render_scenario(&db_path, &out_a, fixture_7d_period_start(), pinned).await;
+    let body_30d_later = render_scenario(&db_path, &out_b, fixture_7d_period_start(), later).await;
+
+    assert_ne!(
+        body_sha256_hex(&body_at_pinned),
+        body_sha256_hex(&body_30d_later),
+        "the body did NOT change when `now` moved 30 days, so `now` no longer \
+         reaches the body — which means the anchor tests' pinned clock is \
+         decorative and `reports::generate` (wall clock) would lock the same \
+         bytes today and different bytes later. Either the equity curve went \
+         back to being a constant, or the sampler stopped using `period_end`. \
+         Re-derive before rotating any anchor.",
+    );
+
+    // Name WHICH observable moved, so a future failure here is diagnosable
+    // rather than just "something changed".
+    let sharpe_line = |b: &str| {
+        b.lines()
+            .find(|l| l.starts_with("| Sharpe "))
+            .unwrap_or("<no Sharpe row>")
+            .to_string()
+    };
+    assert_ne!(
+        sharpe_line(&body_at_pinned),
+        sharpe_line(&body_30d_later),
+        "Sharpe is computed over the sampled equity curve, so a 30-day longer \
+         window with no new ledger movement must move it; if only some OTHER \
+         part of the body moved, the sampling path changed shape",
+    );
+}
+
 // ── 90-day scenario ────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -240,13 +426,13 @@ async fn t816_report_sample_90d_determinism_and_anchor_lock() {
     let dir = TempDir::new().unwrap();
     let db_path = dir.path().join("audit-90d.db");
     let _ = build_ledger_90d(&db_path).await.expect("build 90d fixture");
-    let _ = fixture_90d_period_end();
+    let now_90d = fixture_90d_period_end(); // pinned clock — see the 7d test
 
     let out_a = dir.path().join("a.md");
     let out_b = dir.path().join("b.md");
 
-    let body_a = render_scenario(&db_path, &out_a, fixture_90d_period_start()).await;
-    let body_b = render_scenario(&db_path, &out_b, fixture_90d_period_start()).await;
+    let body_a = render_scenario(&db_path, &out_a, fixture_90d_period_start(), now_90d).await;
+    let body_b = render_scenario(&db_path, &out_b, fixture_90d_period_start(), now_90d).await;
     let _published = publish_success_copy(dir.path(), &out_a, "report-sample-90d");
 
     let sha_a = body_sha256_hex(&body_a);
@@ -294,6 +480,7 @@ async fn t816_v10_cron_friendly_3x_parallel_renders_atomic() {
     let canonical = dir.path().join("v10-out").join("report.md");
     std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
     let period_start = fixture_7d_period_start();
+    let now_7d = fixture_7d_period_end();
 
     // Spawn a background poller that watches the canonical path while
     // the three renders race.  Any time the file exists, it must parse
@@ -337,7 +524,9 @@ async fn t816_v10_cron_friendly_3x_parallel_renders_atomic() {
         let out = canonical.clone();
         tasks.push(tokio::spawn(async move {
             let frozen = FrozenMarkSource::from_csv_str("symbol,close_time,close\n").unwrap();
-            reports::generate(
+            // Pinned clock — this test locks against EXPECTED_SHA_7D too.
+            reports::generate_at(
+                now_7d,
                 ReportWindow::Since(period_start),
                 &db,
                 &frozen,
@@ -411,6 +600,9 @@ async fn t816_v10_cron_friendly_3x_parallel_bin_processes() {
     let workspace_root = workspace_root();
     let period_arg = format!("since:{}", build_ledger_7d::PERIOD_START_RFC3339);
     let seed_arg = format!("0x{FIXTURE_SEED:X}");
+    // Pinned clock for the spawned bin — this test locks against
+    // EXPECTED_SHA_7D, and the bin would otherwise read the wall clock.
+    let now_arg = build_ledger_7d::PERIOD_END_RFC3339.to_string();
 
     let mut handles: Vec<std::thread::JoinHandle<(i32, PathBuf)>> = Vec::with_capacity(3);
     for n in 0..3 {
@@ -420,6 +612,7 @@ async fn t816_v10_cron_friendly_3x_parallel_bin_processes() {
         let workspace_root = workspace_root.clone();
         let period_arg = period_arg.clone();
         let seed_arg = seed_arg.clone();
+        let now_arg = now_arg.clone();
         handles.push(std::thread::spawn(move || {
             let status = std::process::Command::new(&cargo_cmd)
                 .args([
@@ -438,6 +631,8 @@ async fn t816_v10_cron_friendly_3x_parallel_bin_processes() {
                     out.to_str().unwrap(),
                     "--seed",
                     &seed_arg,
+                    "--now",
+                    &now_arg,
                 ])
                 .current_dir(&workspace_root)
                 .stdout(Stdio::null())

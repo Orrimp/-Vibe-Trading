@@ -56,11 +56,14 @@ mod tests {
             unrealized: dec!(50.00),
             unrealized_measured: true,
             realized_period: dec!(100.00),
-            // 10.00, not 0 — 100 + 50 - 10 = 140 = equity_delta (bug-log #156).
+            // fees 10 and other_expense 7: both non-zero and DIFFERENT, so the
+            // identity pins each term separately and a swap of the two is caught.
+            // 100 - 10 - 7 = 83 = equity_delta (bug-log #156, #159).
             fees: dec!(10.00),
+            other_expense: dec!(7.00),
             sum_by_strategy: dec!(100.00),
             sum_by_symbol: dec!(100.00),
-            equity_delta: dec!(140.00),
+            equity_delta: dec!(83.00),
         }
     }
 

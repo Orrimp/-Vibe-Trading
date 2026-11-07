@@ -41,7 +41,8 @@ mod build_ledger_7d;
 mod build_ledger_with_open_positions_7d;
 
 use crate::build_ledger_7d::{
-    FIXTURE_SEED, build_ledger_7d, fixture_period_start as fixture_7d_period_start,
+    FIXTURE_SEED, build_ledger_7d, fixture_period_end as fixture_7d_period_end,
+    fixture_period_start as fixture_7d_period_start,
 };
 use crate::build_ledger_with_open_positions_7d::{
     build_ledger_with_open_positions_7d, fixture_period_end as fixture_open_period_end,
@@ -57,7 +58,7 @@ use crate::build_ledger_with_open_positions_7d::{
 // T1935 / T1936 (v2-llm-strategy, pass 6) — re-anchored post-System-Health
 // renderer rewrite (Q11 denominator $135 → $200 + Q5d Cache hit ratio row).
 // Same value pinned in `crates/reports/tests/report_scenarios.rs::EXPECTED_SHA_7D`.
-const EXPECTED_SHA_7D: &str = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3";
+const EXPECTED_SHA_7D: &str = "e1b286d5539279521534bb69b459d01711e1838d5fd32e8089eb97ab5decbd94";
 
 /// Slice off the front-matter and return the body bytes — same
 /// convention as `scripts/hash_report.py` and the anchor regression
@@ -83,11 +84,16 @@ async fn render_with_marks(
     db_path: &Path,
     out_path: &Path,
     period_start: trading_core::Timestamp,
+    now: trading_core::Timestamp,
     marks_csv: &str,
     seed: u64,
 ) -> String {
     let frozen = FrozenMarkSource::from_csv_str(marks_csv).expect("frozen marks parse");
-    reports::generate(
+    // Pinned clock: this file locks EXPECTED_SHA_7D, and the ledger-derived
+    // equity curve samples the grid up to `period_end` (= `now`), so a
+    // wall-clock read would move the body every day. See `reports::generate_at`.
+    reports::generate_at(
+        now,
         ReportWindow::Since(period_start),
         db_path,
         &frozen,
@@ -107,12 +113,14 @@ async fn render_full_body(
     db_path: &Path,
     out_path: &Path,
     period_start: trading_core::Timestamp,
+    now: trading_core::Timestamp,
     marks_csv: &str,
 ) -> String {
     render_with_marks(
         db_path,
         out_path,
         period_start,
+        now,
         marks_csv,
         crate::build_ledger_with_open_positions_7d::FIXTURE_SEED,
     )
@@ -138,6 +146,7 @@ async fn t1003_orchestrator_with_zero_open_positions_keeps_anchor_byte_identical
         &db_path,
         &out_path,
         fixture_7d_period_start(),
+        fixture_7d_period_end(),
         // Empty mark source — same as `report_scenarios.rs`.  No open
         // positions in the fixture, so the loop never calls `close_at`.
         "symbol,close_time,close\n",
@@ -198,7 +207,14 @@ async fn t1003_orchestrator_with_open_positions_computes_unrealized() {
     );
 
     let out_path = dir.path().join("report.md");
-    let body = render_full_body(&db_path, &out_path, fixture_open_period_start(), &marks_csv).await;
+    let body = render_full_body(
+        &db_path,
+        &out_path,
+        fixture_open_period_start(),
+        fixture_open_period_end(),
+        &marks_csv,
+    )
+    .await;
 
     // The R11 reconciliation appendix carries the unrealized cell.
     // Render order: `headline_return = realized + unrealized` is row 1.
@@ -263,6 +279,7 @@ async fn t1003_orchestrator_handles_mark_miss() {
         &db_path,
         &out_path,
         fixture_open_period_start(),
+        fixture_open_period_end(),
         "symbol,close_time,close\n",
     )
     .await;

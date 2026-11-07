@@ -116,11 +116,13 @@ pub struct ReconciliationInputs {
     /// Whether `unrealized` above was MEASURED or zeroed because a period-end
     /// mark was unavailable (`mark_misses > 0` in `crate::generate`).
     ///
-    /// Identities #1 and #4 both consume `unrealized`, so both are unmeasured
-    /// when this is `false`. #2 and #3 read only realized figures and stay
-    /// measured. Declaring the condition in the inputs — rather than taking a
-    /// second argument to `compute` — keeps the caller's claim about its own
-    /// data quality next to the data (bug-log `#156`).
+    /// Identity #1 is the only row that consumes `unrealized`, so it is the only
+    /// one unmeasured when this is `false`. #2, #3 and #4 read journal figures
+    /// only and stay measured — #4 deliberately excludes unrealized, because
+    /// the journal never records it (bug-log `#159`). Declaring the condition in
+    /// the inputs — rather than taking a second argument to `compute` — keeps
+    /// the caller's claim about its own data quality next to the data
+    /// (bug-log `#156`).
     pub unrealized_measured: bool,
     /// R11 identity #4, ledger-side: realized P&L **over the window**
     /// (`realized_pnl_since(period_start)`), which is a DIFFERENT quantity
@@ -141,6 +143,17 @@ pub struct ReconciliationInputs {
     /// at all — `grep fees_delta` found three doc comments and the label
     /// string. The sign was wrong too: fees reduce equity.
     pub fees: Decimal,
+    /// R11 identity #4, ledger-side: every NON-fee expense over the window
+    /// (`expense:%` minus `expense:fees:%`), a POSITIVE number that identity #4
+    /// subtracts.
+    ///
+    /// Added 2026-11-07, bug-log `#159`. Identity #4's ledger side walks the
+    /// journal by account CLASS, so it sums every `income:%` and `expense:%`
+    /// row. Without this term the identity holds only for a ledger whose sole
+    /// expense is trading fees; the live advisor also posts `expense:llm:%`,
+    /// and the row would FAIL on a real ledger for a reason that is not a real
+    /// imbalance.
+    pub other_expense: Decimal,
     /// R11 identity #2: `Σ pnl_by_strategy.realized` over the window.
     pub sum_by_strategy: Decimal,
     /// R11 identity #3: `Σ pnl_by_symbol.realized` over the window.
@@ -188,11 +201,27 @@ pub fn compute(inputs: &ReconciliationInputs) -> ReconciliationReport {
         inputs.sum_by_symbol,
         inputs.realized,
     );
-    let equity = ReconciliationRow::new_with(
-        inputs.unrealized_measured,
-        "equity_delta = realized + unrealized - fees",
+    // Identity #4 asserts only what the JOURNAL can witness, which deliberately
+    // excludes `unrealized` — see bug-log `#159`. `income:unrealized_pnl` and
+    // `assets:position_mark:*` are created by `audit::bootstrap` and **nothing
+    // in the repo ever posts to them**: unrealized P&L is computed at render
+    // time from the mark source, never journalled. An identity of the form
+    // `equity_delta = realized + unrealized - fees` therefore cannot hold for
+    // any ledger with an open position and a mark that moved, and the first
+    // version of this fix shipped exactly that — passing only because the two
+    // anchored fixtures hold no open positions, which is the same accident the
+    // tautology it replaced had been living on.
+    //
+    // Unrealized is still reconciled: identity #1 checks it against the
+    // published headline. This row checks the journal against itself from two
+    // independent directions — a class walk over `income:%`/`expense:%` on the
+    // left, three targeted account queries on the right — so it fails if an
+    // income or expense account moves that the report does not attribute. It is
+    // `measured` unconditionally, because no term in it depends on a mark.
+    let equity = ReconciliationRow::new(
+        "equity_delta = realized - fees - other_expense (journal only; excl. unrealized)",
         inputs.equity_delta,
-        inputs.realized_period + inputs.unrealized - inputs.fees,
+        inputs.realized_period - inputs.fees - inputs.other_expense,
     );
     ReconciliationReport {
         headline,
@@ -310,12 +339,14 @@ mod tests {
             unrealized: dec!(50.00),
             unrealized_measured: true,
             realized_period: dec!(100.00),
-            // 10.00, not 0: a zero fees term would be pinned by nothing.
-            // 100 + 50 - 10 = 140 = equity_delta.
+            // fees 10 and other_expense 7: both non-zero and DIFFERENT, so the
+            // identity pins each term separately and a swap of the two is caught.
+            // 100 - 10 - 7 = 83 = equity_delta (bug-log #156, #159).
             fees: dec!(10.00),
+            other_expense: dec!(7.00),
             sum_by_strategy: dec!(100.00),
             sum_by_symbol: dec!(100.00),
-            equity_delta: dec!(140.00),
+            equity_delta: dec!(83.00),
         }
     }
 
@@ -352,6 +383,109 @@ mod tests {
         assert!(!r.by_strategy.passed);
         assert!(r.by_symbol.passed);
         assert!(r.equity.passed);
+    }
+
+    // ── Identity #4's FAIL path, one test per term (bug-log #156 / #159) ──────
+    //
+    // Every other row had a one-cent FAIL-path test; this one had none. That is
+    // not incidental to how the tautology survived — the row that could never
+    // fail was also the row nothing asserted could fail, so the missing test and
+    // the missing computation hid each other. Each of the three ledger-side terms
+    // gets its own perturbation, so no term can go missing from the identity
+    // again without a named test going red.
+
+    #[test]
+    fn t808_one_cent_fee_delta_only_fails_the_equity_row() {
+        let mut inp = balanced_inputs();
+        inp.fees = dec!(10.01);
+        let r = compute(&inp);
+        assert!(!r.all_passed());
+        assert!(!r.equity.passed, "the fees term must be load-bearing");
+        assert_eq!(r.equity.delta, dec!(0.01));
+        assert!(r.headline.passed);
+        assert!(r.by_strategy.passed);
+        assert!(r.by_symbol.passed);
+    }
+
+    #[test]
+    fn t808_one_cent_other_expense_delta_only_fails_the_equity_row() {
+        let mut inp = balanced_inputs();
+        inp.other_expense = dec!(7.01);
+        let r = compute(&inp);
+        assert!(!r.all_passed());
+        assert!(
+            !r.equity.passed,
+            "the other_expense term must be load-bearing — without it a non-fee              expense moves journal equity and the row still passes"
+        );
+        assert_eq!(r.equity.delta, dec!(0.01));
+        assert!(r.headline.passed);
+    }
+
+    /// `realized` (inception) and `realized_period` (window) are separate fields.
+    /// Before 2026-11-07 one field fed both identity #1 and identity #4, so the
+    /// two quantities were conflated with nothing saying so. Perturbing the
+    /// PERIOD figure must move identity #4 and leave identity #1 alone.
+    #[test]
+    fn t808_realized_period_is_wired_only_to_the_equity_row() {
+        let mut inp = balanced_inputs();
+        inp.realized_period = dec!(100.01);
+        let r = compute(&inp);
+        assert!(!r.all_passed());
+        assert!(!r.equity.passed);
+        // delta = report - ledger, and `realized_period` ADDS to the ledger side
+        // while `fees`/`other_expense` SUBTRACT from it — so this perturbation
+        // signs the opposite way from the two above. Asserting the sign, not just
+        // the magnitude, is what distinguishes a term that is added from one that
+        // is subtracted; the original defect's label had the fee sign backwards.
+        assert_eq!(r.equity.delta, dec!(-0.01));
+        assert!(
+            r.headline.passed,
+            "identity #1 reads `realized` (inception), not `realized_period`"
+        );
+        assert!(r.by_strategy.passed, "identity #2 reads `realized` too");
+        assert!(r.by_symbol.passed);
+    }
+
+    /// Identity #4 must NOT consume `unrealized`: nothing in the repo posts to
+    /// `income:unrealized_pnl`, so a journal-walked equity delta can never
+    /// contain it (bug-log #159). Moving `unrealized` must move identity #1 only.
+    #[test]
+    fn t808_unrealized_does_not_reach_the_equity_row() {
+        let mut inp = balanced_inputs();
+        inp.unrealized = dec!(999.00);
+        let r = compute(&inp);
+        assert!(
+            r.equity.passed,
+            "identity #4 is journal-only; if an unrealized move breaks it, the \
+             row has gone back to asserting a term the ledger never records"
+        );
+        assert!(
+            !r.headline.passed,
+            "identity #1 is where unrealized is checked"
+        );
+    }
+
+    /// A period-end mark miss zeroes `unrealized`, so identity #1 is UNMEASURED
+    /// rather than passing over a zero the report itself substituted. Identity #4
+    /// reads journal figures only and stays MEASURED (bug-log #156 / #159).
+    #[test]
+    fn t808_mark_miss_unmeasures_only_the_headline_row() {
+        let mut inp = balanced_inputs();
+        inp.unrealized_measured = false;
+        let r = compute(&inp);
+        assert!(!r.headline.measured, "#1 consumes unrealized");
+        assert!(r.equity.measured, "#4 is journal-only and stays measured");
+        assert!(r.by_strategy.measured);
+        assert!(r.by_symbol.measured);
+        // An unmeasured row is excluded from all_passed() rather than counted
+        // as a pass — a skip is unmeasured, never a pass.
+        inp.headline_return = dec!(999.99);
+        let r = compute(&inp);
+        assert!(
+            r.all_passed(),
+            "an UNMEASURED row must not fail the report either — it is excluded"
+        );
+        assert!(!r.headline.measured);
     }
 
     #[test]

@@ -117,6 +117,59 @@ fn fmt_ts_micros(ts: Timestamp) -> String {
 /// Top-level entry point — orchestrates the read-only queries +
 /// renders the report + atomic-writes the markdown and companion CSVs.
 ///
+/// Reads the wall clock. See [`generate_at`] for the clock-injected form and
+/// for why an anchored render MUST use it.
+///
+/// # Errors
+///
+/// Same as [`generate_at`].
+pub async fn generate(
+    window: ReportWindow,
+    audit_db_path: &Path,
+    marks: &dyn MarkSource,
+    out: &Path,
+    seed: Option<u64>,
+) -> Result<ReportArtifacts, ReportError> {
+    generate_at(
+        Timestamp::new(OffsetDateTime::now_utc()),
+        window,
+        audit_db_path,
+        marks,
+        out,
+        seed,
+    )
+    .await
+}
+
+/// [`generate`] with the clock injected — the form every anchored render uses.
+///
+/// `now` is what every [`ReportWindow`] variant resolves `period_end` to.
+///
+/// ## Why this seam exists (bug-log `#156`)
+///
+/// Until 2026-11-07 the equity curve was a CONSTANT, so the body could not
+/// depend on the clock no matter how `period_end` moved: a flat curve yields
+/// all-zero returns, and Sharpe/Sortino/Calmar are 0.0 for any sample count.
+/// The locked `report-sample-7d` / `-90d` body-SHAs therefore held for six
+/// months — not because anything enforced clock-independence, but because the
+/// curve carried no information. The comment at the old `now` binding even
+/// asserted the invariant ("front-matter only — never in body") with nothing
+/// checking it.
+///
+/// Making the curve ledger-derived broke that accident. The curve samples the
+/// grid from `period_start` to `period_end`, so a report rendered a day later
+/// over the same journal carries a longer flat tail and every ratio computed
+/// over the sampled returns moves. That is CORRECT for the product — a month of
+/// genuinely flat equity is information — and fatal for an anchored body.
+/// `crates/reports/src/lib.rs`'s `clock_sensitivity_tests` keeps the
+/// measurement executable.
+///
+/// So anchored renders pin `now` (the fixtures have carried a fixed
+/// `PERIOD_END_RFC3339` for exactly this purpose since T816) and the product
+/// keeps the wall clock via [`generate`]. The `report` bin exposes it as
+/// `--now <RFC3339>`, which also makes "re-render the report as of T"
+/// reproducible.
+///
 /// # Errors
 ///
 /// - [`ReportError::Window`] — invalid `--period` value.
@@ -126,7 +179,8 @@ fn fmt_ts_micros(ts: Timestamp) -> String {
 /// - [`ReportError::Reconciliation`] — at least one R11 identity has
 ///   `delta != 0`.  The bin maps this to `exit 1` (R1.6).
 #[allow(clippy::too_many_lines)] // orchestration glue
-pub async fn generate(
+pub async fn generate_at(
+    now: Timestamp,
     window: ReportWindow,
     audit_db_path: &Path,
     marks: &dyn MarkSource,
@@ -144,8 +198,9 @@ pub async fn generate(
     })?;
     let ledger = audit::Ledger::open(ledger_path_str).await?;
 
-    // Wall-clock now — front-matter only (never in body).
-    let now = Timestamp::new(OffsetDateTime::now_utc());
+    // `now` is a PARAMETER, not a wall-clock read. It reaches the body through
+    // `period_end` -> the equity-curve sample grid, so the dependency has to be
+    // visible at the call site; see this function's doc block.
     // Inception: query if needed, fallback to now to avoid panics.
     let inception = match audit::query::ledger_inception_ts(&ledger).await {
         Ok(t) => t,
@@ -289,6 +344,11 @@ pub async fn generate(
     // `ReconciliationInputs` no longer has an `equity_check_sum` field, so a caller
     // cannot supply both sides of any identity again.
     let fees_period = audit::query::total_fees_since(&ledger, period_start).await?;
+    // Every NON-fee expense over the window. Identity #4's ledger side walks the
+    // journal by account CLASS, so it sums every `expense:%` row — including
+    // `expense:llm:%`, which the live advisor posts. Without this term the row
+    // FAILS on a real ledger for a reason that is not an imbalance (bug-log #159).
+    let other_expense_period = audit::query::other_expense_since(&ledger, period_start).await?;
     let published_headline = published_strategy_return(&r2).ok_or_else(|| {
         ReportError::Reconcile(
             "could not read the published strategy return back out of the rendered \
@@ -297,12 +357,12 @@ pub async fn generate(
         )
     })?;
     // `equity_period_end - equity_period_start`, from the curve the report ships.
-    // NOTE, and this is a real residual the row will now SURFACE rather than hide:
-    // `sample_equity_curve` is a documented approximation that holds equity constant
-    // at cash (see its doc comment and `equity_total: cash`), so this delta is 0
-    // until that curve is ledger-derived. The ledger side is not 0 whenever the
-    // period had P&L. A FAILING row there is the correct output of a gate that
-    // finally measures something; it is not a defect in this wiring.
+    // The curve is ledger-derived as of 2026-11-07, so this delta is a MEASURED
+    // journal quantity rather than the constant zero `sample_equity_curve` used to
+    // produce. It walks `income:%` + `expense:%` by account class; identity #4
+    // checks it against three targeted account queries, and deliberately leaves
+    // `unrealized` out, because nothing in this repo ever posts to
+    // `income:unrealized_pnl` (bug-log #159).
     let equity_delta = match (period_curve.first(), period_curve.last()) {
         (Some(first), Some(last)) => last.equity_total - first.equity_total,
         _ => Decimal::ZERO,
@@ -312,11 +372,13 @@ pub async fn generate(
         realized: realized.amount(),
         unrealized,
         // Declared, not assumed: a period-end mark miss zeroes `unrealized`, so
-        // identities #1 and #4 are UNMEASURED rather than passing over a zero
-        // the report itself substituted (bug-log `#156`).
+        // identity #1 is UNMEASURED rather than passing over a zero the report
+        // itself substituted (bug-log `#156`). #4 no longer consumes unrealized
+        // and stays measured (bug-log `#159`).
         unrealized_measured: !mark_unavailable_footnote,
         realized_period: realized_period.amount(),
         fees: fees_period.amount(),
+        other_expense: other_expense_period.amount(),
         sum_by_strategy,
         sum_by_symbol,
         equity_delta,
@@ -711,4 +773,100 @@ fn btc_baseline(
 fn gethostname_or_unknown() -> String {
     // Avoid a new dependency by reading `HOSTNAME` env var.
     std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod clock_sensitivity_tests {
+    use super::*;
+    use audit::query::EquityPoint;
+
+    fn ts(ms: i64) -> Timestamp {
+        Timestamp::new(
+            OffsetDateTime::from_unix_timestamp_nanos(i128::from(ms) * 1_000_000)
+                .expect("ms in range"),
+        )
+    }
+
+    /// Three movements early in the window, then nothing.
+    fn points() -> Vec<EquityPoint> {
+        [(0_i64, "0"), (60_000, "-3"), (120_000, "-5.17")]
+            .into_iter()
+            .map(|(ms, eq)| EquityPoint {
+                ts: ts(ms),
+                equity_total: eq.parse().unwrap(),
+                realized_pnl: Decimal::ZERO,
+                unrealized_pnl: Decimal::ZERO,
+                cash_balance: eq.parse().unwrap(),
+            })
+            .collect()
+    }
+
+    fn curve_dec(end_ms: i64) -> Vec<Decimal> {
+        ledger_equity_curve(&points(), Decimal::from(5), ts(0), ts(end_ms), 1)
+            .iter()
+            .map(|s| s.equity_total)
+            .collect()
+    }
+
+    /// MEASURE, don't assume: the ledger-derived curve samples the grid from
+    /// `period_start` to `period_end`, and `generate` derives `period_end` from
+    /// `OffsetDateTime::now_utc()`. So a report rendered a day later over the SAME
+    /// journal carries a longer flat tail — and every ratio computed over the
+    /// sampled return series moves with it.
+    ///
+    /// For the product that is correct: a month of genuinely flat equity IS
+    /// information. For an ANCHORED body it is fatal, and it is why the constant
+    /// curve `ledger_equity_curve` replaced was load-bearing for anchor stability
+    /// without anyone having declared it: all-zero returns give Sharpe 0.0 for any
+    /// sample count, so the 7d/90d body-SHAs held for six months by accident.
+    ///
+    /// This test keeps that measurement executable. The anchor's own protection is
+    /// structural — the scenario tests pin `now` via `generate_at` — not this test.
+    #[test]
+    fn extending_the_window_without_new_movements_moves_the_ratios() {
+        let short = curve_dec(10 * 60_000);
+        let long = curve_dec(40 * 60_000);
+        assert_eq!(
+            short.len(),
+            11,
+            "11 one-minute ticks inclusive of both ends"
+        );
+        assert_eq!(
+            long.len(),
+            41,
+            "the longer window samples the same grid further"
+        );
+        assert_eq!(
+            short.last(),
+            long.last(),
+            "the flat tail adds no movement — the LEVEL is unchanged",
+        );
+
+        let s_short = render::risk_metrics::sharpe(&short, 1);
+        let s_long = render::risk_metrics::sharpe(&long, 1);
+        // A MATERIAL difference, not merely `!=`. `assert_ne!` on two f64s would
+        // also be satisfied by a last-bit rounding artefact, which would make this
+        // test pass while proving nothing about the anchor's exposure to the clock.
+        // The floor is declared and the gap is MEASURED, not assumed: this
+        // fixture gives short=-343.85, long=-164.22, relative=0.5224 — the ratio
+        // roughly HALVES when the window triples, which is 5x the floor. Probed by
+        // raising the floor to 1e9 and reading the failure message back.
+        let relative = (s_short - s_long).abs() / s_short.abs().max(f64::MIN_POSITIVE);
+        assert!(
+            relative > 0.10,
+            "Sharpe must MOVE materially with window length. Measured \
+             short={s_short} long={s_long} relative={relative:.4}, floor 0.10. \
+             If this drops to ~0, the sampling or the ratio changed and the \
+             anchor's reason for pinning `now` needs re-deriving.",
+        );
+
+        // Drawdown is scale-free over a flat tail, so it does NOT move — recording
+        // which metrics are and are not clock-sensitive, rather than lumping them.
+        assert_eq!(
+            render::risk_metrics::max_drawdown(&short),
+            render::risk_metrics::max_drawdown(&long),
+            "max drawdown is unaffected by a flat tail",
+        );
+    }
 }

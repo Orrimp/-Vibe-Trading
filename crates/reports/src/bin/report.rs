@@ -47,6 +47,16 @@ struct Cli {
     /// produce byte-identical bodies.
     #[arg(long)]
     seed: Option<String>,
+
+    /// Render as of this RFC-3339 instant instead of the wall clock.
+    ///
+    /// Every `--period` form resolves its `period_end` to this value, so a
+    /// pinned `--now` makes the rendered body reproducible: the ledger-derived
+    /// equity curve samples the grid up to `period_end`, and a later wall clock
+    /// lengthens that grid (see `reports::generate_at`). Anchored renders and
+    /// "re-render the report as of T" both need it; ordinary cron runs omit it.
+    #[arg(long)]
+    now: Option<String>,
 }
 
 fn parse_seed(s: &str) -> Option<u64> {
@@ -82,7 +92,33 @@ async fn main() -> std::process::ExitCode {
         }
     };
 
-    match reports::generate(window, &cli.ledger, &frozen, &cli.output, seed).await {
+    // A malformed `--now` is a refusal, not a silent fall back to the wall
+    // clock: falling back would render a DIFFERENT body than the caller asked
+    // for and still exit 0, which is how an anchored re-render would lock the
+    // wrong bytes.
+    let pinned_now = match cli.now.as_deref() {
+        None => None,
+        Some(raw) => {
+            match time::OffsetDateTime::parse(raw, &time::format_description::well_known::Rfc3339) {
+                Ok(dt) => Some(trading_core::Timestamp::new(dt)),
+                Err(e) => {
+                    eprintln!(
+                        "invalid --now {raw:?}: {e} (expected RFC-3339, e.g. 2026-04-28T00:00:00Z)"
+                    );
+                    return std::process::ExitCode::from(2);
+                }
+            }
+        }
+    };
+
+    let rendered = match pinned_now {
+        Some(now) => {
+            reports::generate_at(now, window, &cli.ledger, &frozen, &cli.output, seed).await
+        }
+        None => reports::generate(window, &cli.ledger, &frozen, &cli.output, seed).await,
+    };
+
+    match rendered {
         Ok(artifacts) => {
             println!(
                 "wrote {} (run_id={})",

@@ -90,15 +90,76 @@ sha256   = "14f50a598ba8343fc9be198a78716d036407d585c641c0b054eae6c062f1507f"
 # anchors at lines 15-58 stay byte-identical (R14.2 / V8 enforced by
 # T1937 negative-invariant gate).
 
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #156 ───────────────
+#   Operator-ruled: build the real reconciliation identity, and make the equity
+#   curve ledger-derived. Both landed in cd14098c.
+#   Bug site: crates/reports/src/lib.rs:190-191 (pre-fix) assigned the
+#     character-identical expression `realized_period.amount() + unrealized` to BOTH
+#     fields `reconcile::compute` subtracts, so identity #4
+#     (`equity_delta = realized + unrealized - fees`) published `Δ = 0 | PASS`
+#     unconditionally. The label advertised a `fees_delta` term that was computed
+#     nowhere — and with the wrong sign, since fees REDUCE equity.
+#   Second defect in the same bodies: `sample_equity_curve` held equity CONSTANT at
+#     cash and set the realized/unrealized columns to literal zero (its own doc called
+#     it a "v1+ orchestrator approximation"). So identity #4 had nothing real to
+#     compare AND every published risk metric was computed over a flat line.
+#   MEASURED delta on these two bodies — not just the reconciliation row:
+#     identity #4 (7d)       0 | 0 | 0 | PASS   ->  -5.170 | -5.17 | 0.000 | PASS
+#     identity #4 (90d)      0 | 0 | 0 | PASS   ->  -11.870 | -11.87 | 0.000 | PASS
+#     Sharpe                 0.0000             ->  -3.8294   (7d)
+#     Sortino                0.0000             ->  -0.0528   (7d)
+#     Calmar                 0.0000             ->  -2.4122   (7d)
+#     Max drawdown           0.00% ($0.00)      ->  50.00% ($5.17)   (7d)
+#     Open risks             (none for drawdown) ->  "Drawdown approaching limit"
+#     equity sparkline       flat ▁▁▁…           ->  █▃▁▁…
+#   The -5.17 is ALL FEE SPEND: identity #1 shows realized and unrealized both zero.
+#   Four committed operator-facing bodies published a flat account, zero drawdown and
+#   no drawdown alert while the ledger recorded 5.17 USDT of fees — and the row meant
+#   to catch exactly that published PASS.
+#   THREE captures in one pass; the two discarded ones are the point:
+#     520b1f29 -> d4b964c7  the reconciliation fix + ledger-derived equity curve.
+#     d4b964c7 -> b6126992  pinning the clock (bug-log #158). The curve samples the
+#       grid up to `period_end`, which `generate` took from `now_utc()`, so the grid
+#       grew by a day every day and the ratios moved with it — d4b964c7 would have
+#       gone RED the next morning. `generate_at` injects the clock, the anchor tests
+#       pin it to the fixtures' PERIOD_END_RFC3339 (carried since T816 for exactly
+#       this and until now computed and thrown away), and
+#       `t816_anchored_body_depends_on_the_pinned_clock` RED-proves the pin is
+#       load-bearing. The constant curve had held these anchors stable for six months
+#       BY ACCIDENT — all-zero returns give Sharpe 0.0 at any sample count.
+#     b6126992 -> e1b286d5  restating identity #4 (bug-log #159). The first version
+#       asserted `equity_delta = realized + unrealized - fees`, but NOTHING in the
+#       repo posts to `income:unrealized_pnl` or `assets:position_mark:*` — both are
+#       created by `audit::bootstrap` and never written. Unrealized P&L is computed at
+#       render time from marks, never journalled, so that identity cannot hold for any
+#       ledger with an open position and a moved mark. It passed on THESE two bodies
+#       only because both fixtures hold no open positions — the same accident the
+#       tautology it replaced had been living on. Caught by t1003's open-positions
+#       test. The row now asserts what the journal can witness:
+#       `realized - fees - other_expense`, and says so in its own label.
+#   Landed (both namespaces resolve to the same file):
+#     evidence/v1/operator-success-reports/reports/success-relock-20261107-report-sample-7d.md
+#     evidence/v1/operator-success-reports/reports/success-relock-20261107-report-sample-90d.md
+#   Superseded bodies kept on disk as history (D6.b — never deleted):
+#     success-fixed-report-sample-7d.md   sha256=520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3
+#     success-fixed-report-sample-90d.md  sha256=c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333
+#   NOTE on resolution: verify_anchors.sh resolves by `find … | sort | tail -1` over
+#     FULL PATHS under LC_COLLATE=C, so `success-relock-…` wins over
+#     `success-fixed-…` (`r` > `f`). A stamp sorting BEFORE `fixed` would leave the
+#     gate hashing the superseded body; the re-emission write-path refuses one
+#     (crates/reports/tests/report_scenarios.rs::reemit_if_opted_in).
+#   Record: docs/dev-notes/156-d6b-re-emission-2026-11-07.md
+#   Projections re-locked in the same pass (ADR-0045 § D6.1): report_scenarios.rs
+#     EXPECTED_SHA_7D / EXPECTED_SHA_90D, t1003_orchestrator_smoke.rs EXPECTED_SHA_7D.
 [[anchors]]
 scenario = "report-sample-7d"
 version  = "v2.0.0 + noop-baseline"
-sha256   = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3"
+sha256   = "e1b286d5539279521534bb69b459d01711e1838d5fd32e8089eb97ab5decbd94"
 
 [[anchors]]
 scenario = "report-sample-90d"
 version  = "v2.0.0 + noop-baseline"
-sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
+sha256   = "f8ecc2579cc24044174cca661bec98ca7297ebf9cb55379a81b545656e54c0f9"
 
 # v2.5 TCN overlay scenarios (T-T-1 / M7).  Locked by tester on 2026-05-18;
 # updated by developer on 2026-05-18 to canonical scenario names per feature.md
@@ -747,15 +808,76 @@ scenario = "pairs-2024-h1-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
 sha256   = "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632"
 
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #156 ───────────────
+#   Operator-ruled: build the real reconciliation identity, and make the equity
+#   curve ledger-derived. Both landed in cd14098c.
+#   Bug site: crates/reports/src/lib.rs:190-191 (pre-fix) assigned the
+#     character-identical expression `realized_period.amount() + unrealized` to BOTH
+#     fields `reconcile::compute` subtracts, so identity #4
+#     (`equity_delta = realized + unrealized - fees`) published `Δ = 0 | PASS`
+#     unconditionally. The label advertised a `fees_delta` term that was computed
+#     nowhere — and with the wrong sign, since fees REDUCE equity.
+#   Second defect in the same bodies: `sample_equity_curve` held equity CONSTANT at
+#     cash and set the realized/unrealized columns to literal zero (its own doc called
+#     it a "v1+ orchestrator approximation"). So identity #4 had nothing real to
+#     compare AND every published risk metric was computed over a flat line.
+#   MEASURED delta on these two bodies — not just the reconciliation row:
+#     identity #4 (7d)       0 | 0 | 0 | PASS   ->  -5.170 | -5.17 | 0.000 | PASS
+#     identity #4 (90d)      0 | 0 | 0 | PASS   ->  -11.870 | -11.87 | 0.000 | PASS
+#     Sharpe                 0.0000             ->  -3.8294   (7d)
+#     Sortino                0.0000             ->  -0.0528   (7d)
+#     Calmar                 0.0000             ->  -2.4122   (7d)
+#     Max drawdown           0.00% ($0.00)      ->  50.00% ($5.17)   (7d)
+#     Open risks             (none for drawdown) ->  "Drawdown approaching limit"
+#     equity sparkline       flat ▁▁▁…           ->  █▃▁▁…
+#   The -5.17 is ALL FEE SPEND: identity #1 shows realized and unrealized both zero.
+#   Four committed operator-facing bodies published a flat account, zero drawdown and
+#   no drawdown alert while the ledger recorded 5.17 USDT of fees — and the row meant
+#   to catch exactly that published PASS.
+#   THREE captures in one pass; the two discarded ones are the point:
+#     520b1f29 -> d4b964c7  the reconciliation fix + ledger-derived equity curve.
+#     d4b964c7 -> b6126992  pinning the clock (bug-log #158). The curve samples the
+#       grid up to `period_end`, which `generate` took from `now_utc()`, so the grid
+#       grew by a day every day and the ratios moved with it — d4b964c7 would have
+#       gone RED the next morning. `generate_at` injects the clock, the anchor tests
+#       pin it to the fixtures' PERIOD_END_RFC3339 (carried since T816 for exactly
+#       this and until now computed and thrown away), and
+#       `t816_anchored_body_depends_on_the_pinned_clock` RED-proves the pin is
+#       load-bearing. The constant curve had held these anchors stable for six months
+#       BY ACCIDENT — all-zero returns give Sharpe 0.0 at any sample count.
+#     b6126992 -> e1b286d5  restating identity #4 (bug-log #159). The first version
+#       asserted `equity_delta = realized + unrealized - fees`, but NOTHING in the
+#       repo posts to `income:unrealized_pnl` or `assets:position_mark:*` — both are
+#       created by `audit::bootstrap` and never written. Unrealized P&L is computed at
+#       render time from marks, never journalled, so that identity cannot hold for any
+#       ledger with an open position and a moved mark. It passed on THESE two bodies
+#       only because both fixtures hold no open positions — the same accident the
+#       tautology it replaced had been living on. Caught by t1003's open-positions
+#       test. The row now asserts what the journal can witness:
+#       `realized - fees - other_expense`, and says so in its own label.
+#   Landed (both namespaces resolve to the same file):
+#     evidence/v1/operator-success-reports/reports/success-relock-20261107-report-sample-7d.md
+#     evidence/v1/operator-success-reports/reports/success-relock-20261107-report-sample-90d.md
+#   Superseded bodies kept on disk as history (D6.b — never deleted):
+#     success-fixed-report-sample-7d.md   sha256=520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3
+#     success-fixed-report-sample-90d.md  sha256=c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333
+#   NOTE on resolution: verify_anchors.sh resolves by `find … | sort | tail -1` over
+#     FULL PATHS under LC_COLLATE=C, so `success-relock-…` wins over
+#     `success-fixed-…` (`r` > `f`). A stamp sorting BEFORE `fixed` would leave the
+#     gate hashing the superseded body; the re-emission write-path refuses one
+#     (crates/reports/tests/report_scenarios.rs::reemit_if_opted_in).
+#   Record: docs/dev-notes/156-d6b-re-emission-2026-11-07.md
+#   Projections re-locked in the same pass (ADR-0045 § D6.1): report_scenarios.rs
+#     EXPECTED_SHA_7D / EXPECTED_SHA_90D, t1003_orchestrator_smoke.rs EXPECTED_SHA_7D.
 [[anchors]]
 scenario = "report-sample-7d"
 version  = "v2.0.0 + v5-realdata-medium-2026-05"
-sha256   = "520b1f2968ad52d5981a1cdb3749235416c77c058364bd8c11ebd7d2468f46a3"
+sha256   = "e1b286d5539279521534bb69b459d01711e1838d5fd32e8089eb97ab5decbd94"
 
 [[anchors]]
 scenario = "report-sample-90d"
 version  = "v2.0.0 + v5-realdata-medium-2026-05"
-sha256   = "c656414ebf6f526372c27ae2d537301c68a0bc71d896f5a7cbc65a02edd60333"
+sha256   = "f8ecc2579cc24044174cca661bec98ca7297ebf9cb55379a81b545656e54c0f9"
 
 # top10-2023-fy-tcn-overlay
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.

@@ -5459,8 +5459,8 @@ Found 2026-11-07 by the completeness critic of the cannot-fail-gate sweep
 sweep's seven find-angles had all missed it — **none of them searched the repo's own
 first-listed sub-shape**, "the expectation and the measurement come from the same place."
 *reimplements-subject* asks whether a TEST holds a copy of its subject; it never asks whether
-the two sides of a SHIPPED identity are independently sourced. **OPEN — needs an operator
-ruling; see below.**
+the two sides of a SHIPPED identity are independently sourced. **Filed OPEN pending an operator ruling;
+RESOLVED 2026-11-07 — see § Resolution at the end of this entry.**
 
 **Verified by the orchestrator directly rather than taken from the agent's report**, because two
 claims that day had already needed correcting. `crates/reports/src/lib.rs:190-191`:
@@ -5511,4 +5511,243 @@ house rule's worst case: not a silent gate, but a loud and reassuring one.
 
 The sweep's other 17 findings, their evidence, the 31 candidates dropped at the per-angle cap,
 and the disposition of each are in the sweep note.
+
+### `#156` § Resolution — fixed 2026-11-07 (`cd14098c` + this commit)
+
+**Operator ruling**, both halves: build the real identity, and make the equity curve
+ledger-derived. Both landed.
+
+**Structural, not corrective.** `ReconciliationInputs` no longer *has* an `equity_check_sum`
+field. Identities 1–3 never had the defect because `compute` derives their ledger side itself;
+4 was the only one that let the caller supply both sides. With the field gone the shape is
+unrepresentable rather than merely fixed — the pre-fix call site no longer type-checks.
+`realized` and `realized_period` became separate fields in the same pass; the old wiring fed
+identity 1 the inception figure and identity 4 the period figure through one field and said
+nothing about it.
+
+**The curve was the bigger half.** `sample_equity_curve` held `equity_total`/`cash_balance` at
+`cash` and set `realized_pnl`/`unrealized_pnl` to literal zero. Replaced by
+`audit::query::equity_series` + `ledger_equity_curve`: one uniform `credit - debit` rule over
+`income:*` and `expense:*` (an expense debit makes it negative, which is exactly right), the
+cash column under the opposite asset convention, sampled on the same cadence grid, anchored so
+the curve ENDS at the measured cash balance rather than starting there — the latter would
+overstate the level by exactly the period's P&L.
+
+**What the fix measured.** The row reads `-5.170 | -5.17 | 0.000 | PASS`, and the −5.17 is
+**all fee spend** (identity 1 shows realized and unrealized both zero). But the flat curve had
+been suppressing far more than one row:
+
+| 7d body | before | after |
+|---|---|---|
+| Sharpe | `0.0000` | `-3.8294` |
+| Sortino | `0.0000` | `-0.0528` |
+| Calmar | `0.0000` | `-2.4122` |
+| Max drawdown | `0.00% ($0.00)` | `50.00% ($5.17)` |
+| Open risks | no drawdown entry | `Drawdown approaching limit … (observed 50.00%)` |
+
+The 90d body carries a second previously-invisible figure: identity 4 reads `-11.870 | -11.87`,
+so that run spent **11.87 USDT** of fees under a table that published `0 | 0 | 0 | PASS`.
+
+So the tautology was the visible symptom of a constant that had zeroed **every published risk
+metric** and suppressed a drawdown alert in four operator-facing bodies. A reader of those
+bodies was told the account was flat, the drawdown was zero, and there was nothing to worry
+about.
+
+**A third state, because two contracts collided.** A missing period-end mark zeroes
+`unrealized`, and T1006 V6 requires the report to be produced anyway. Reconciling against a zero
+the report itself substituted is this log's own failure mode, so `ReconciliationRow` gained
+`measured`: identities 1 and 4 render `unmeasured` when the mark was unavailable and are
+excluded from `all_passed()`. A skip is unmeasured, never a pass.
+
+**The identity as first written was wrong, and `#159` is why.** The row initially read
+`equity_delta = realized + unrealized - fees`, matching the label the defect had advertised.
+But **nothing in this repo ever posts to `income:unrealized_pnl`** — so that identity cannot
+hold for any ledger with an open position and a mark that moved. It passed on the two anchored
+bodies only because both fixtures hold no open positions: the same accident the tautology had
+been living on. It was caught by `t1003`'s open-positions test, not by the anchor tests. The
+row now asserts what the journal can witness —
+`equity_delta = realized - fees - other_expense (journal only; excl. unrealized)` — and says
+so in its own label. Unrealized stays reconciled by identity 1 against the published headline.
+
+**Re-emission.** ADR-0038 § D6.b, recorded in full at
+[`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md): 4 anchor rows
+(2 scenarios × 2 namespaces), `520b1f29…`→`e1b286d5…` and `c656414e…`→`f8ecc257…`,
+115 rows byte-identical, `ANCHORS PASS (119 / 119)` before and after, the three in-test
+projections re-locked in the same pass under ADR-0045 § D6.1, the gate probed with a
+one-digit corruption, and the superseded bodies kept on disk. **Three captures, and the two
+discarded ones are the content:** `d4b964c7` (would have gone red the next morning — `#158`)
+and `b6126992` (the wrong identity — `#159`).
+
+**Two of the four bodies are NOT re-emitted and cannot be.**
+`operator-success-{soak,research-replay}-2026-06-19.md` came from a live soak against
+`/tmp/soak-audit.db`, a ledger that no longer exists. Re-rendering is impossible and inventing a
+replacement would be fabricating evidence for an unreproducible run. They stay as published, and
+**what the true identity would have said for those two runs is unmeasurable.** That is the final
+state, not a pending task.
+
+Three further defects surfaced while fixing this one — `#157`, `#158` and `#159` below.
+
+### `#157` — the anchor gate resolves by lexicographic path order, so a re-emitted body can be silently out-resolved by the body it supersedes
+
+Found 2026-11-07 while landing `#156`'s D6.b re-emission. Pre-existing; `fixed` (guarded).
+
+`scripts/verify_anchors.sh` resolves each scenario's body with `find … | sort | tail -1` over
+FULL PATHS. Its own header calls this "the NEWEST match", and for the backtest corpus that is
+true, because those filenames are `backtest-YYYYMMDD-HHMMSS-…` and byte order *is* time order.
+It is not true in general. This machine runs `LC_COLLATE=C`, so resolution is plain byte order
+over whatever names happen to be on disk.
+
+The committed body for `report-sample-7d` is `success-fixed-report-sample-7d.md` — a
+deliberately un-timestamped name (`report_scenarios.rs`: "a stable filename avoids accumulating
+stale copies"). So the obvious re-emission name, `success-20261107-report-sample-7d.md`,
+**loses** the sort: `2` < `f`. Land that body, and the gate goes on hashing the superseded one.
+
+| outcome | if the anchor row is also re-locked | if it is not |
+|---|---|---|
+| gate result | FAIL — new digest vs old body | **PASS** — old digest vs old body |
+| what shipped | caught, loudly | a re-emitted body nothing hashes |
+
+The right-hand column is the cannot-fail shape: a body lands, the gate reports `119/119`, and
+nothing ever reads the new bytes. The script's `--explain` flag exists precisely because "a
+corpus directory holding both a superseded body and its re-emitted successor is resolved
+silently" — but `--explain` is opt-in, and nothing requires it.
+
+**Guarded** at the write-path rather than by convention: `reemit_if_opted_in` asserts
+`stamp > "fixed"` and refuses otherwise, naming the consequence. The chosen stamp
+(`relock-20261107`) wins because `r` > `f`, and `anchors.toml`'s comment block states the
+dependency so the next re-emission does not have to rediscover it. Probed: a `20261107` stamp is
+refused.
+
+**Near-miss in the same hour, recorded because it is the same class.** The first run of that
+write-path passed a repo-relative `REEMIT_DIR` and landed both bodies in
+`crates/reports/evidence/v1/…` — `cargo test` runs with CWD at the *crate* root. The log line
+printed the relative path, so it read as correct; only hashing the destination exposed it.
+The write-path now refuses a relative `REEMIT_DIR` and prints the canonicalised path. Nothing
+from that run was committed.
+
+**Moral.** "Newest" was a property of one corpus's naming convention, documented as a property
+of the resolver. The resolver sorts bytes. A gate's selection rule is part of the gate, and a
+selection rule that silently prefers the wrong file is a gate that cannot fail.
+
+### `#158` — two anchored report bodies were clock-independent only because the equity curve was a constant, and an unenforced comment claimed the invariant
+
+Found 2026-11-07 while landing `#156`. Pre-existing latent; `fixed`.
+
+`crates/reports/src/lib.rs` carried:
+
+```rust
+// Wall-clock now — front-matter only (never in body).
+let now = Timestamp::new(OffsetDateTime::now_utc());
+```
+
+A comment stating an invariant with nothing checking it. And the invariant was **not** a property
+of the code — it was a property of the data: `period_end` resolves from `now` for every
+`ReportWindow` variant and reaches the equity-curve sampler, so `now` always reached the body.
+It just could not *change* the body, because `sample_equity_curve` returned a constant: a flat
+curve yields all-zero returns, and `sharpe`/`sortino`/`calmar` all return `0.0` for any sample
+count. The `report-sample-7d` / `-90d` body-SHAs therefore held byte-stable across six months of
+daily-varying wall clock **by accident**.
+
+Making the curve real (`#156`) removed the accident. The first capture of that fix,
+`d4b964c7…` / `5cb31966…`, was computed over a window running from the fixture's April
+`period_start` to the wall clock in November — ~6.5 months of invented flat tail — and the
+sampled grid grows by one day per day, so every ratio moves with it. **Locking those digests
+would have put a red anchor in CI the next morning, attributed to whatever commit landed next.**
+
+Measured rather than reasoned:
+`clock_sensitivity_tests::extending_the_window_without_new_movements_moves_the_ratios` holds the
+measurement, and records that max drawdown does *not* move (a flat tail cannot deepen it) rather
+than lumping the metrics together.
+
+**Fix** per the CLAUDE.md rule that external I/O goes behind a seam so tests can fake it — a
+clock is the canonical case. `reports::generate_at(now, …)` takes the clock as a parameter;
+`generate` wraps it and reads the wall clock; the `report` bin exposes `--now <RFC3339>` and
+exits `2` on a malformed value rather than falling back to the wall clock (a fallback would
+render different bytes than the caller asked for and still exit 0). The anchor tests pin `now`
+to the fixtures' `PERIOD_END_RFC3339` — which the fixtures have carried since T816 for exactly
+this purpose, and which those tests used to compute and **throw away** (`let _ =
+fixture_7d_period_end();`) because `generate` had no way to accept it. The seam that was missing
+was the reason the constant was load-bearing.
+
+The product keeps the wall clock: a month of genuinely flat equity is information, so the
+sensitivity is correct for a real paper soak and fatal only for an anchored body.
+
+**The pin is itself gated**, because nothing would otherwise notice someone "simplifying" the
+anchor tests back to `generate` — the SHA would still match on the day of the edit and drift
+afterwards. `t816_anchored_body_depends_on_the_pinned_clock` renders the same fixture at two
+pinned instants 30 days apart and asserts the bodies DIFFER, proving the pin does real work.
+RED-proven against the pre-fix constant-curve shape, where the two bodies come out
+byte-identical and the assertion fails.
+
+**Moral.** The anchor held for six months, so the invariant looked enforced. It was not enforced
+by anything — it was unobservable, because the quantity under test carried no information. A
+gate whose subject is a constant cannot fail, and the comment asserting the invariant was the
+only thing that ever claimed otherwise.
+
+### `#159` — the chart of accounts declares two accounts nothing ever posts to, so the report's unrealized P&L has no journal witness and the identity asserting one cannot hold
+
+Found 2026-11-07 while fixing `#156`, by its own replacement row failing. Pre-existing;
+`fixed` (identity restated).
+
+`audit::bootstrap` creates `income:unrealized_pnl` and `assets:position_mark:<ASSET>`.
+**Nothing in the repository ever writes to either.** `grep -rn 'unrealized_pnl'
+crates/audit/src/*.rs` returns the bootstrap row, the reader added for `#156`, and nothing
+else; the accounts `journal.rs` actually posts to are `assets:cash:%`, `assets:position:%`,
+`equity:opening_balance`, `expense:fees:taker`, `expense:llm:%` and `income:realized_pnl`.
+Unrealized P&L is computed at **render time** from the mark source
+(`marks.close_at(symbol, period_end)`) and never journalled.
+
+So an identity of the form
+
+```
+equity_delta  =  realized + unrealized - fees
+```
+
+compares a journal-walked left side, which cannot contain unrealized, against a right side
+that does. **It is unsatisfiable for any ledger holding an open position whose mark moved** —
+off by exactly `unrealized`. That is what `#156`'s first fix shipped, because the label it was
+repairing had promised that term.
+
+**Why the anchor tests did not catch it.** `build_ledger_{7d,90d}` hold twelve symmetric
+(Buy, Sell) pairs — `open_positions_at(period_end) = []`, so `unrealized = 0` and the term
+vanished. Both bodies passed. The replacement row was therefore **passing for the same reason
+the tautology had been passing**: a fixture in which the untested term is zero. The test that
+caught it was `t1003_orchestrator_with_open_positions_computes_unrealized`, whose whole purpose
+is the open-position path — and it failed by returning `ReportError::Reconciliation`, i.e. the
+new row did its job on the one fixture that could exercise it.
+
+**Fix.** Identity 4 now asserts what the journal can witness, and labels itself that way:
+
+```
+equity_delta = realized - fees - other_expense (journal only; excl. unrealized)
+```
+
+Left side: a class walk over `income:%` + `expense:%` via `audit::query::equity_series`.
+Right side: three targeted account queries — `realized_pnl_since`, `total_fees_since`, and a
+new `other_expense_since` (`expense:%` minus `expense:fees:%`). Independently sourced in both
+directions, so the row still fails if an income or expense account moves that the report does
+not attribute. `other_expense` is not padding: the live advisor posts `expense:llm:%`, and
+without that term the row would FAIL on a real ledger for something that is not an imbalance.
+The row is `measured` unconditionally now, since no term in it depends on a mark; identity 1
+remains the one that reconciles unrealized, against the published headline.
+
+The three `ReconciliationInputs` fixtures were re-pinned with `fees = 10` and
+`other_expense = 7` — non-zero and **different**, so each term is pinned separately and a swap
+of the two is caught.
+
+**What stays true and is now stated.** The published equity curve and the `equity-*.csv`
+`unrealized_pnl` column are **structurally zero**, because they read an account nothing writes.
+That is unchanged behaviour — `sample_equity_curve` set the column to a literal zero — but it
+was undocumented, and a column named `unrealized_pnl` that can only ever be `0` invites exactly
+the misreading `#156` was. Whether mark-to-market should be journalled (making
+`assets:position_mark:*` and `income:unrealized_pnl` real, and letting the curve carry
+open-position value) is a product question, not a bug fix, and is left to the operator.
+
+**Moral.** `#154`: a test and its subject must not be the same thing. `#156`: an identity's two
+sides must not be the same expression. This one is the next step: **an identity may only assert
+what its data source can witness.** A reconciliation row naming a term the ledger never records
+is not a strong check that happens to fail — it is a false statement about where the number
+came from, and the fixture that makes it pass is the thing hiding it. Note the sequence: the
+replacement for a gate that could not fail was itself passing for an accidental reason, on the
+same two fixtures, within the same hour.
 

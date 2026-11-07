@@ -136,13 +136,61 @@ pub async fn total_fees(ledger: &Ledger) -> Result<Money<Usdt>, LedgerError> {
     Ok(Money::from_decimal(total))
 }
 
+/// Expense spend since `ts` on every expense account that is NOT a trading fee
+/// (debits − credits over `expense:%` excluding `expense:fees:%`).
+///
+/// Added 2026-11-07 for bug-log `#159`. Reconciliation identity 4 compares a
+/// journal-walked equity delta — which sums **every** `income:%` and `expense:%`
+/// account — against the report's own components. Without this term the identity
+/// holds only for a ledger whose sole expense is trading fees, and the live
+/// advisor also posts `expense:llm:%`. A missing term here does not weaken the
+/// row, it makes it FAIL on a real ledger, which is how it was found.
+///
+/// # Errors
+///
+/// Returns [`LedgerError::Database`] on SQL error or parse failure.
+pub async fn other_expense_since(
+    ledger: &Ledger,
+    ts: Timestamp,
+) -> Result<Money<Usdt>, LedgerError> {
+    let ts_str = ts
+        .inner()
+        .format(&Rfc3339)
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT debit_amount, credit_amount \
+         FROM journal_entries \
+         WHERE account_id LIKE 'expense:%' \
+           AND account_id NOT LIKE 'expense:fees:%' AND ts >= ?",
+    )
+    .bind(&ts_str)
+    .fetch_all(&ledger.pool)
+    .await
+    .map_err(|e| LedgerError::Database(e.to_string()))?;
+
+    let mut total = dec!(0);
+    for (dr, cr) in rows {
+        let dr: Decimal = dr
+            .parse()
+            .map_err(|_| LedgerError::Database("parse error".into()))?;
+        let cr: Decimal = cr
+            .parse()
+            .map_err(|_| LedgerError::Database("parse error".into()))?;
+        // expense: a debit increases spend, a credit (refund/reversal) reduces it
+        total += dr - cr;
+    }
+    Ok(Money::from_decimal(total))
+}
+
 /// Fee spend since `ts` (debits on `expense:fees:taker` and `expense:fees:maker`).
 ///
 /// The period-scoped sibling of [`total_fees`]. Added 2026-11-07 for bug-log
 /// `#156`: reconciliation identity #4 is declared as
-/// `equity_delta = realized + unrealized - fees` and there was no query for the
-/// fees term, so the identity shipped with the term missing from the computation
-/// and present only in the row's label.
+/// `equity_delta = realized - fees - other_expense` and there was no query for
+/// the fees term, so the identity shipped with the term missing from the
+/// computation and present only in the row's label. (The identity's shape was
+/// corrected the same day — see [`other_expense_since`] and bug-log `#159`.)
 ///
 /// # Errors
 ///
