@@ -512,3 +512,34 @@ and that is the open item: `cargo test -p backtest --test realdata_simple_strate
 
 AC5 is not re-opened by this. Its claim was about the anchored corpus and is true of it. The
 scope statement should have added "and two un-anchored realdata harnesses also consume `Auto`".
+
+### MEASURED 2026-11-07 — the move is real, the conclusions hold
+
+Both harnesses re-run under `--ignored`. The audit left this as its single
+highest-value unmeasured item; here is the answer.
+
+| harness | cells | verdicts | `block_length(Auto)` |
+|---|--:|---|---|
+| `realdata_simple_strategy_overfit_guard` | 9 | **9 FRAGILE** | 281 ×1, 282 ×8 |
+| `realdata_simple_strategy_bear_survey` | 17 | **16 FRAGILE, 1 ROBUST** | 281 ×17 |
+
+**The estimator change is live here** — `Auto` returns 281/282, the `Literature` convention's
+value, where the pre-1-24 `Shipped` convention came out systematically SHORT. So the finding
+stands: these two harnesses' published numbers did move on 2026-10-10 and no artifact said so.
+
+**And `Auto` is SATURATING THE CLAMP on every cell.** 281 and 282 are exactly
+`ceil(min(3·√N, N/3))` for 2023 and 2024 full-year hourly — the clamp ceiling, not an estimate.
+This is the same saturation the 1-24 errata measured on 26 of the 34 anchored scenarios, now
+confirmed on the un-anchored pair too. A saturated `L` is a constant the clamp imposes, which is
+what `politis_white_b_hat_unclamped` exists to expose; it means the aggregation policy is moot
+on these cells.
+
+**No verdict flipped into crown eligibility.** 25 of 26 cells are FRAGILE. The single `ROBUST` is
+`SOLUSDT · 2021`, which the harness itself labels **"up-market contrast"** and prints as
+`ROBUST (contrast)` — a deliberate control cell, in a window that is **not the current era**.
+That is precisely the shape the era-qualified thesis asserts: real edges existed 2017-20 and
+decayed to ~zero by 2023+. A robust 2021 up-market cell alongside fragile 2022 and current-era
+cells is the efficiency-migration story, not a counterexample to it.
+
+So the residual closes as: **disclosed, measured, conclusions unchanged.** No re-lock is owed —
+neither harness is anchored, and `verify_anchors.sh` read 119/119 throughout.
