@@ -1579,10 +1579,21 @@ sha256   = "e08e007e63f47ba7292a5009fac225e3c7344acf63c2b2997e5f923ebec4a3af"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130037-v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 0
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2023-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "15911b32fff69bb0a1e619f6a3d922a32a710a899ee0ba21e7ce031b9fc7a275"
+sha256   = "db7de13631aa8054874a176d445731f1c281cb9cf4011e6a84539e3823c1a8fd"
 
 # C3 TS-momentum θ-surface anchor #91 — 2024-FY OOS regime (2026-06-03).
 # Same LOCKED 6-cell TS Tier-1 grid as #90 but on 2024-FY real Binance data.
@@ -1627,10 +1638,21 @@ sha256   = "15911b32fff69bb0a1e619f6a3d922a32a710a899ee0ba21e7ce031b9fc7a275"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130123-v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 0
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v1-ts-momentum-theta-surface-2024-block-bootstrap-real-fy"
 version  = "mc-robustness-2026-06"
-sha256   = "7cb33e29ce663ea0b85de1e8e8b5f244e0b1bd4c7aba57dd065656c24cc61b01"
+sha256   = "b9b379195ac441b31651ca6604154fe43b030b56f1b5fefe2fa71eadb1f121a3"
 
 # Horizon retest — coarser decision cadence (4h + daily) θ-surface anchors (2026-06-05).
 # Namespace: horizon-retest-robustness (NEW — distinct from mc-robustness-2026-06; the horizon
@@ -1683,10 +1705,21 @@ sha256   = "7cb33e29ce663ea0b85de1e8e8b5f244e0b1bd4c7aba57dd065656c24cc61b01"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-125923-v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 0
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "abb0cdb46ee0f121accbeedf4df764f83f9720e70f569f26b1661a7bbd3354c8"
+sha256   = "d68a66f333a2671186f26f1877cc758a5ba48e78674b373a0bb616eb2782973d"
 
 # Anchor #93 — TS-momentum 4h horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1717,10 +1750,21 @@ sha256   = "abb0cdb46ee0f121accbeedf4df764f83f9720e70f569f26b1661a7bbd3354c8"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-125934-v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 0
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v1-ts-horizon-4h-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "a0acb203b7491253a6928b4b548d72556eb603822c60a72f262d48b2e2e1f7c8"
+sha256   = "adfb4ad8e44e43f31f4494b1e3cca2f23771c54f9c75640f43ac9b1aa54bc2d8"
 
 # Anchor #94 — TS-momentum daily horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1751,10 +1795,21 @@ sha256   = "a0acb203b7491253a6928b4b548d72556eb603822c60a72f262d48b2e2e1f7c8"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-125943-v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-HAS-NON-FRAGILE-CELLS -> FAMILY-UNIFORM-FRAGILE   *** MOVED ***
+#   gross-cap refusals on this surface: 0
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2023-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "a7e3bcd50affa3678351f200872bdf8e0e8e09d2965b4b28fb12b47e23d534a0"
+sha256   = "f8a68d420c78f7b1d37578f5a0612b26ab72c2307b5e6d1d65e0a92cb4493c69"
 
 # Anchor #95 — TS-momentum daily horizon, 2024-FY (tail-negative regime)
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -1785,10 +1840,21 @@ sha256   = "a7e3bcd50affa3678351f200872bdf8e0e8e09d2965b4b28fb12b47e23d534a0"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-125953-v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 0
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v1-ts-horizon-daily-theta-surface-2024-block-bootstrap-real-fy"
 version  = "horizon-retest-robustness"
-sha256   = "8cdec525b01da0e07386f6a9bd376e7754026b92868d8cff45b6bb1f9f24871a"
+sha256   = "331aa9e3427022431332e4a85b9c6899c273b7f3007e1404dc4668bd89d6e1e0"
 
 # Anchor #96 — Carry (funding) 4h horizon, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2245,10 +2311,21 @@ sha256   = "3c07bb488843bea4d3f1dc9e5924a35d229688bd53264492ded4eeca2b5ac3a8"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130141-v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 58523
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "c6fc85ceeba2db155076c4cb82b4b23a4062239263906762c86a0ff907d80d14"
+sha256   = "96e9329ebb07ad48410e141f3c32be91fb98e86188d6345ed7bf5b76188f60cd"
 
 # Anchor #109 — MN-Basis 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2279,10 +2356,21 @@ sha256   = "c6fc85ceeba2db155076c4cb82b4b23a4062239263906762c86a0ff907d80d14"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130159-v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 69759
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basis-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "0a414ac86b800e13210a4c0806428eb5d633869979664faaf191e065462e9a00"
+sha256   = "b1c9504ee5c2214ae4af8e01a062ca03c7b956e315124427af9160850f96f084"
 
 # Anchor #110 — MN-Basis 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2313,10 +2401,21 @@ sha256   = "0a414ac86b800e13210a4c0806428eb5d633869979664faaf191e065462e9a00"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130218-v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 58523
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "a450114a5ade3b3429ef00ef3e26873f4eec202ada6ba92f377f2f10d477eabc"
+sha256   = "3d6abbe8bdd94ccd4839bff588a76bed44077672e4217046ce9ce09ae19231af"
 
 # Anchor #111 — MN-Basis 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2347,10 +2446,21 @@ sha256   = "a450114a5ade3b3429ef00ef3e26873f4eec202ada6ba92f377f2f10d477eabc"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130238-v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 69759
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basis-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "09baf1aa25c31600ed51d5f06683373d690c07283e568ea8d8ba5efdbce39746"
+sha256   = "0b234a7a3bdc7e0cd9e8507b847410d3c1e217eb5310b095bf90e08ae7718328"
 
 # Anchor #112 — MN-Funding 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2381,10 +2491,21 @@ sha256   = "09baf1aa25c31600ed51d5f06683373d690c07283e568ea8d8ba5efdbce39746"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130415-v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 49617
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "0e372628efb2a61a72a2865b83befef05c34dfc17940a4d92f64d29b6047287c"
+sha256   = "e78670cba4abff6b0cf1960a0824955732043c49e7cfe4d181083ea9fe011b5d"
 
 # Anchor #113 — MN-Funding 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2415,10 +2536,21 @@ sha256   = "0e372628efb2a61a72a2865b83befef05c34dfc17940a4d92f64d29b6047287c"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130433-v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 55966
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-funding-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "72946e45846d28242ba258b4788c41e2d62397335a1fdb10189bc1b1ea91c9a0"
+sha256   = "8ff94377527160718df3630de3917f1383dcb2c261459cb6926c8409d6f25e8b"
 
 # Anchor #114 — MN-Funding 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2449,10 +2581,21 @@ sha256   = "72946e45846d28242ba258b4788c41e2d62397335a1fdb10189bc1b1ea91c9a0"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130452-v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 49617
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "77a211c3b5b20d7dae11e853917a1cc56182845d2948fd3d07a3438f634a5faa"
+sha256   = "3980fa83e0cf2a22500d848e1c3084beb6001a6abf12b9c4b74332091e7c6e9c"
 
 # Anchor #115 — MN-Funding 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2483,10 +2626,21 @@ sha256   = "77a211c3b5b20d7dae11e853917a1cc56182845d2948fd3d07a3438f634a5faa"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130510-v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 55966
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-funding-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "b8d4f1bc9ead6e5766eebf8d1bdbdf082cdfc52b647085ca7f222b014fa79f68"
+sha256   = "89562ddb19e8b3d644717f5b4b93a23137f11a5d96e1df7b02caefda947461d6"
 
 # Anchor #116 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2517,10 +2671,21 @@ sha256   = "b8d4f1bc9ead6e5766eebf8d1bdbdf082cdfc52b647085ca7f222b014fa79f68"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130257-v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 128270
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "f2722e541a486a26eaad4aeb0b661ec6851e89807e18759b95e8989ba6607477"
+sha256   = "0f5e7a2a70d04ee6054750eaa845e5e0cf7f5ec6f0d8125a6b4648fb54a20da1"
 
 # Anchor #117 — MN-BasisPerp (BasisFundingResidual) 0bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2551,10 +2716,21 @@ sha256   = "f2722e541a486a26eaad4aeb0b661ec6851e89807e18759b95e8989ba6607477"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130317-v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 132021
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee00bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "cb29526c3e28c87d13b4b4279de65886780b97d7882179b55815f24ef6e4217d"
+sha256   = "6beb1a5f84059f074b4ca9dd8c84a605c522480a7d099bbae9481fae700a8ab8"
 
 # Anchor #118 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2023-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2585,10 +2761,21 @@ sha256   = "cb29526c3e28c87d13b4b4279de65886780b97d7882179b55815f24ef6e4217d"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130337-v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 128270
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2023-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "a636a7082a4904c15437c94e407da19b86dacbf5346ca5a7dab95e7118f76804"
+sha256   = "114eb8ac3ac4d653786e52b7417c952ea15d89c37845d9adad218889645fd874"
 
 # Anchor #119 — MN-BasisPerp (BasisFundingResidual) 5bps fee, 2024-FY
 # RE-EMITTED 2026-09-25 under ADR-0038 § D6.b by story 1-26's harness re-lock.
@@ -2619,7 +2806,18 @@ sha256   = "a636a7082a4904c15437c94e407da19b86dacbf5346ca5a7dab95e7118f76804"
 #     0 moved. A moved number here would have been a defect in the change, not a
 #     result — the inverse of a normal re-lock's expectation.
 #   Record: docs/dev-notes/1-141-d6b-re-emission-2026-10-11.md
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #144 / #149 ───────────
+#   Superseded body (kept as history): robustness-sweep-20261011-130357-v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy.md
+#   family verdict: FAMILY-UNIFORM-FRAGILE -> FAMILY-UNIFORM-FRAGILE  (unchanged)
+#   gross-cap refusals on this surface: 132021
+#   #144: the TS grids' gross cap was raised 0.50 -> 1.00, their own declared target.
+#     At 0.50 the all-or-nothing cap skipped the WHOLE rebalance whenever 6+ of 10 names
+#     signalled long, freezing the arm at peak breadth on 3.70-8.18% of opportunities.
+#   #149: the MN table's delimiter row carried 18 cells against a 19-cell header, so the
+#     table did not render under GFM at all; and the legend above it asserted in the
+#     present tense a caveat its own next sentence said was replaced.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "v2-mn-basisperp-fee05bps-theta-surface-2024-block-bootstrap-real-fy"
 version  = "perp-basis-mn-spread"
-sha256   = "3270fdd64b88591a4fb2358e53e279e35a11c1af546bb7f64fc16ccb9a1c46b3"
+sha256   = "a04c4ae846c5e547337a0114f602989a4c9418dd0d8d95111bafce743baf3d09"
