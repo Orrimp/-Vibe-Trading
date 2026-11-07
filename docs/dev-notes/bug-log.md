@@ -5223,8 +5223,21 @@ and the first probe attempt did NOT turn it red, because my regex missed the rea
 was unverified until I found `let ruined: u64 = cell_results.iter().map(…).sum()` and hardcoded
 that. An unprobed gate is the thing this log is mostly about, including when it is mine.
 
-A full end-to-end assertion still needs the sweep BINARY, since `ruined` is derived there rather
-than in `run_path`. This is the renderer half, which is where a reader meets the number.
+That gate is the renderer half, which is where a reader meets the number. **The other half landed
+the same day.** `ruined` is derived in the sweep BINARY, not in `run_path`: eight per-cell
+reductions sat inline in `main`'s cell loop, where no test could call them. They are now one named
+`reduce_cell_totals` with its own `CellTotals` return, and six unit tests in the binary's own module
+gate all eight — `ruined_paths` counts the ruined paths and *can saturate at both ends* (a column
+that can only read 0 is the failure mode), `portfolio_breaches` sums rather than counts, cover legs
+stay out of `trades`, and each remaining field is fed a distinct prime from a distinct path so a
+cross-wire reads the wrong number instead of the right one by luck. **Four probes, all RED**: ruin
+decayed to a literal `0` (2 tests red), breaches counted instead of summed, cover fills folded into
+`trades` (2 red), and `bars_run` cross-wired to `time_in_market_bars`. Nothing was re-emitted — the
+arithmetic moved verbatim, so no body-SHA moved, and the anchor gate held 119/119 across the change.
+
+The shape worth naming: this is the same seam as `#141`, which lost a number here for the whole life
+of the cap policy, and as `#140`, where two fields were added without their fixtures. **Three
+disclosures at one hop is not three accidents.** The hop was unreachable by construction.
 
 **(b) 1-30's AC3 reported a frequency as a contribution.** It read *"the solvency guard
 contributed 0.003 %"*. Six skips out of 183 751 fills is a **frequency**, and a contribution to a

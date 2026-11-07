@@ -203,6 +203,53 @@ The two open `Review:` checkboxes were the only genuinely outstanding items; thi
 them. The other five open boxes were stale copies of the original plan sitting beneath their own
 `[x]` summaries — marked superseded in this pass (see the shared finding in 1-30's verdict).
 
+## Residual closed — 2026-11-07
+
+The `#153` gate landed on 2026-11-07 asserted the **renderer** half: that a `CellResult` carrying
+a ruin count makes the rendered body say that count. Its stated residual was that a full
+end-to-end assertion needs the sweep **binary**, because `ruined` is derived there and not in
+`run_path`. That half is now closed, and closing it turned out to be worth more than the ruin
+count alone.
+
+**What was actually wrong.** The derivation was not merely untested — it was *unreachable*. Eight
+per-cell totals were computed by eight inline `.iter()` chains inside `main`'s cell loop
+(`param_robustness_sweep.rs:2013-2034` as it then stood). Nothing outside `main` could call them,
+so nothing could gate them. That is the same seam that lost `#141`'s breach count for the whole
+life of the cap policy, and the same seam `#140` broke by adding two `CellResult` fields without
+their fixtures. Three disclosures at one hop is not three accidents: the hop had no test surface.
+
+**What landed.**
+
+- `CellTotals` + `fn reduce_cell_totals(&[IndexedPathMetrics]) -> CellTotals` — the eight
+  reductions moved **verbatim**, each carrying its own provenance comment into a field doc. The
+  cell loop is now one call on a borrow, taken before the consuming `.into_iter()`.
+- Six unit tests in the binary's own `mod tests`:
+  `counts_exactly_the_ruined_paths` (2 of 5, with the complement and the path count as
+  discriminating non-witnesses) · `ruin_count_reaches_both_zero_and_n` (the column must be able
+  to **saturate at both ends** — today's corpus reads 0 everywhere, which is exactly what a
+  broken reduction would also produce) · `sums_portfolio_breaches_rather_than_counting_paths`
+  (3 + 4 = 7, not 2) · `keeps_cover_fills_out_of_trades` (the `#110` shape) ·
+  `reads_each_field_from_its_own_source` (a distinct prime per field from a distinct path, so a
+  cross-wire reads the wrong number rather than the right one by luck — the `#140` shape) ·
+  `of_no_paths_is_all_zero`.
+- **Four probes, all RED, each hitting exactly the tests that claim to cover it:** ruin decayed to
+  a literal `0` (2 red), breaches counted instead of summed (1), cover fills folded into `trades`
+  (2), `bars_run` cross-wired to `time_in_market_bars` (1). Restored green afterwards.
+
+**No surface was re-emitted and none needed to be.** The arithmetic is textually identical, so no
+rendered body can move; `scripts/verify_anchors.sh` held **119/119** across the change, and
+`param_sweep_e2e` 16/16, `mn_spread_divergence_e2e` 12/12 and `relock_manifest` 2/2 passed. Clippy
+re-linted under force (`touch`, 19 s of real work — a 3 s "Finished" is the cache lying) clean
+under `-D warnings`.
+
+**What this still does not prove.** No test runs the sweep binary end to end against real bars and
+reads the resulting file. That would cost a full θ-surface run per assertion and is not worth it
+for a reduction whose inputs are now gated at the hop above and whose output is gated at the hop
+below. The honest claim is: the chain
+`clamp_equity_for_metrics` → `ruined` → `reduce_cell_totals` → `CellResult` → rendered body is
+now covered at every link by a probed test, which is not the same as having run the whole chain
+once in anger.
+
 ### References
 
 - Trace: `REQ-MN-RUIN-FILL-PROVENANCE-001` (state=`scoped`)

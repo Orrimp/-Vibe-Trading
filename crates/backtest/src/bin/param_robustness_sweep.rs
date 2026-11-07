@@ -422,6 +422,67 @@ struct IndexedPathMetrics {
     portfolio_breaches: u64,
 }
 
+// ── Per-cell reduction ─────────────────────────────────────────────────────────
+
+/// The N-path totals a single θ-cell reduces to, before the cell is pushed.
+///
+/// **Why this is a named struct and a named function instead of eight inline
+/// `.iter()` chains in `main`'s cell loop.** Every field here sits on a hop that has
+/// already lost a number once. `portfolio_breaches` was counted, returned, and then
+/// discarded at exactly this seam for the whole life of the cap policy (bug-log
+/// `#141`); `ruined_paths` was derived here and asserted by nothing (bug-log `#153`);
+/// and `#140` was two `CellResult` fields added without their fixtures, which hid 34
+/// tests by making four targets fail to compile. Inline inside `main`, none of these
+/// reductions could be called by a test — and a reduction that cannot be called
+/// cannot be gated, which makes it indistinguishable from one that is always right.
+/// Extracted, all eight are under `reduce_cell_totals_*` in this file's test module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CellTotals {
+    /// Fills across all N paths. EXCLUDES liquidation cover legs since `#110`.
+    trades: u64,
+    /// M-DEV-6: per-cell realized funding harvested = sum of the per-path funding
+    /// cashflow across all N paths. ZERO for momentum/MR (`funding_override` is None
+    /// → the accrual block is never entered).
+    funding_harvested: Decimal,
+    /// M-DEV-4: bars where ≥1 long position was held, across all N paths.
+    time_in_market_bars: u64,
+    /// M-DEV-4: denominator for the time-in-market fraction.
+    bars_run: u64,
+    /// M-DEV-5 (D-MN.8): maintenance-margin liquidation events across all N paths.
+    /// 0 for all non-MN runs → anchor-neutral by construction.
+    liquidations: u64,
+    /// Story 1-28 AC3: synthetic buy-to-cover fills forced by a liquidation, counted
+    /// apart from `trades` so MN turnover can be read on its own (bug-log `#110`).
+    liquidation_cover_fills: u64,
+    /// Story 1-28 AC2: how many of the N paths reached equity ≤ 0 before the clamp
+    /// mapped it to 1e-6 (bug-log `#127`, `#153`). A count that can only ever read 0
+    /// is evidence of nothing, which is why it has a test and not just a renderer.
+    ruined_paths: u64,
+    /// ADR-0089 D2 / bug-log `#141`: rebalances refused outright by the portfolio
+    /// exposure cap. The all-or-nothing policy's "non-negotiable half".
+    portfolio_breaches: u64,
+}
+
+/// Reduce the N per-path results of one θ-cell to its totals.
+///
+/// Takes a slice rather than the owned `Vec` because `main` consumes `indexed` into
+/// `Vec<PathMetrics>` immediately afterwards; the reduction must run first.
+fn reduce_cell_totals(indexed: &[IndexedPathMetrics]) -> CellTotals {
+    CellTotals {
+        trades: indexed.iter().map(|r| r.trades as u64).sum(),
+        funding_harvested: indexed.iter().map(|r| r.funding_harvested).sum(),
+        time_in_market_bars: indexed.iter().map(|r| r.time_in_market_bars).sum(),
+        bars_run: indexed.iter().map(|r| r.bars_run).sum(),
+        liquidations: indexed.iter().map(|r| r.liquidations).sum(),
+        liquidation_cover_fills: indexed
+            .iter()
+            .map(|r| r.liquidation_cover_fills as u64)
+            .sum(),
+        ruined_paths: indexed.iter().filter(|r| r.ruined).count() as u64,
+        portfolio_breaches: indexed.iter().map(|r| r.portfolio_breaches).sum(),
+    }
+}
+
 // ── Buy-and-hold passive control ───────────────────────────────────────────────
 
 /// Run a buy-and-hold (equal-weight, hold from bar 0) over one path.
@@ -2010,28 +2071,10 @@ fn main() -> Result<()> {
 
         indexed.sort_by_key(|r| r.j);
 
-        let total_trades: u64 = indexed.iter().map(|r| r.trades as u64).sum();
-        // M-DEV-6: per-cell realized funding harvested = sum of the per-path funding
-        // cashflow across all N paths (run_path now surfaces it). ZERO for momentum/MR
-        // (funding_override is None → the accrual block is never entered). Summed via
-        // .iter() BEFORE the consuming .into_iter() below, mirroring total_trades.
-        let total_funding_harvested: Decimal = indexed.iter().map(|r| r.funding_harvested).sum();
-        // M-DEV-4: time-in-market totals across all N paths. Summed before consuming iter.
-        let total_time_in_market_bars: u64 = indexed.iter().map(|r| r.time_in_market_bars).sum();
-        let total_bars_run: u64 = indexed.iter().map(|r| r.bars_run).sum();
-        // M-DEV-5 (D-MN.8): total liquidations across all N paths.
-        // 0 for all non-MN runs → anchor-neutral by construction.
-        let total_liquidations: u64 = indexed.iter().map(|r| r.liquidations).sum();
-        let total_liquidation_cover_fills: u64 = indexed
-            .iter()
-            .map(|r| r.liquidation_cover_fills as u64)
-            .sum();
-        let ruined_paths: u64 = indexed.iter().filter(|r| r.ruined).count() as u64;
-        // bug-log #141 / ADR-0089 D2: carry the breach count across the
-        // PathRunResult -> CellResult hop. It was counted and returned since
-        // 723ca742 and dropped here, so the "non-negotiable half" of the
-        // all-or-nothing cap policy reached no report body.
-        let portfolio_breaches: u64 = indexed.iter().map(|r| r.portfolio_breaches).sum();
+        // The eight per-cell totals, in ONE named + unit-tested reduction
+        // (`reduce_cell_totals`; its doc says why it is not inline here). Runs on a
+        // borrow BEFORE the consuming `.into_iter()` below.
+        let totals = reduce_cell_totals(&indexed);
         let metrics: Vec<backtest::stats::PathMetrics> =
             indexed.into_iter().map(|r| r.metrics).collect();
 
@@ -2052,7 +2095,7 @@ fn main() -> Result<()> {
             prob_loss = summary.prob_loss,
             max_dd_p95 = summary.max_dd_tail_p95,
             verdict = verdict.as_str(),
-            total_trades,
+            total_trades = totals.trades,
             cell_elapsed_s = cell_elapsed,
             "θ-cell complete"
         );
@@ -2061,14 +2104,14 @@ fn main() -> Result<()> {
             cell: *cell,
             summary,
             verdict,
-            total_trades,
-            total_funding_harvested,
-            total_time_in_market_bars,
-            total_bars_run,
-            total_liquidations,
-            total_liquidation_cover_fills,
-            ruined_paths,
-            portfolio_breaches,
+            total_trades: totals.trades,
+            total_funding_harvested: totals.funding_harvested,
+            total_time_in_market_bars: totals.time_in_market_bars,
+            total_bars_run: totals.bars_run,
+            total_liquidations: totals.liquidations,
+            total_liquidation_cover_fills: totals.liquidation_cover_fills,
+            ruined_paths: totals.ruined_paths,
+            portfolio_breaches: totals.portfolio_breaches,
         });
     }
 
@@ -4237,5 +4280,177 @@ mod tests {
             SweepDirection::Momentum,
         );
         assert_eq!(carry, custom, "explicit --out-dir must win for carry");
+    }
+
+    // ── Per-cell reduction (story 1-28 residual; bug-log #110, #140, #141, #153) ──
+
+    /// A per-path result with every total-bearing field at ZERO.
+    ///
+    /// Each test below sets only the fields it asserts, so a total wired to the wrong
+    /// source field reads 0 instead of coincidentally reading the right number. That
+    /// is the whole point: `#140` was two `CellResult` fields added without their
+    /// fixtures, and `#141` was a field summed from a struct that never carried it.
+    fn zero_path(j: usize) -> IndexedPathMetrics {
+        IndexedPathMetrics {
+            j,
+            metrics: backtest::stats::PathMetrics {
+                sharpe: 0.0,
+                sortino: 0.0,
+                calmar: 0.0,
+                max_drawdown: 0.0,
+                total_return: 0.0,
+                final_equity: dec!(1),
+                initial_equity: dec!(1),
+            },
+            trades: 0,
+            funding_harvested: Decimal::ZERO,
+            time_in_market_bars: 0,
+            bars_run: 0,
+            liquidations: 0,
+            liquidation_cover_fills: 0,
+            ruined: false,
+            portfolio_breaches: 0,
+        }
+    }
+
+    /// Story 1-28 AC2 / bug-log `#153`: the ruin count is a COUNT of ruined paths.
+    ///
+    /// `param_sweep_e2e::bug153_the_rendered_body_states_the_ruin_count_…` gates the
+    /// renderer half — that a `CellResult` carrying 7 makes the body say 7. This is
+    /// the half above it: that the per-path witness actually becomes that 7. Before
+    /// `reduce_cell_totals` existed the reduction lived inline in `main`'s cell loop
+    /// and no test could reach it, so `ruined: first_ruin_bar.is_some()` could have
+    /// decayed to `false` and every surface would still have rendered a clean 0 —
+    /// and a ruin count that can only read 0 is evidence of nothing at all.
+    #[test]
+    fn reduce_cell_totals_counts_exactly_the_ruined_paths() {
+        let mut paths: Vec<IndexedPathMetrics> = (0..5).map(zero_path).collect();
+        paths[1].ruined = true;
+        paths[4].ruined = true;
+
+        let totals = reduce_cell_totals(&paths);
+
+        assert_eq!(
+            totals.ruined_paths, 2,
+            "2 of 5 paths reached equity <= 0; the cell must say 2"
+        );
+        // Discriminating witnesses: 2 is neither the path count nor the complement,
+        // so a reduction that counted `!ruined` (3) or every path (5) fails here.
+        assert_ne!(totals.ruined_paths, 5, "must not count un-ruined paths");
+        assert_ne!(totals.ruined_paths, 3, "must not count the complement");
+    }
+
+    /// The two saturating ends. A count stuck at 0 and a count stuck at N are the two
+    /// ways this column lies while looking plausible, and today's corpus renders 0
+    /// everywhere — so 0 is exactly the value a broken reduction would also produce.
+    #[test]
+    fn reduce_cell_totals_ruin_count_reaches_both_zero_and_n() {
+        let clean: Vec<IndexedPathMetrics> = (0..4).map(zero_path).collect();
+        assert_eq!(
+            reduce_cell_totals(&clean).ruined_paths,
+            0,
+            "no ruined path must read 0, not 1 and not 4"
+        );
+
+        let all_ruined: Vec<IndexedPathMetrics> = (0..4)
+            .map(|j| {
+                let mut p = zero_path(j);
+                p.ruined = true;
+                p
+            })
+            .collect();
+        assert_eq!(
+            reduce_cell_totals(&all_ruined).ruined_paths,
+            4,
+            "every path ruined must read 4 — the column must be able to saturate"
+        );
+    }
+
+    /// Bug-log `#141` / ADR-0089 D2: breaches are SUMMED per path, not counted.
+    ///
+    /// The fixture discriminates the two: 2 paths carry breaches, totalling 7. A
+    /// reduction that counted paths-with-breaches would read 2 and still look like a
+    /// working column. This is the hop where the number was discarded entirely.
+    #[test]
+    fn reduce_cell_totals_sums_portfolio_breaches_rather_than_counting_paths() {
+        let mut paths: Vec<IndexedPathMetrics> = (0..4).map(zero_path).collect();
+        paths[0].portfolio_breaches = 3;
+        paths[2].portfolio_breaches = 4;
+
+        let totals = reduce_cell_totals(&paths);
+
+        assert_eq!(totals.portfolio_breaches, 7, "3 + 4 breaches = 7");
+        assert_ne!(
+            totals.portfolio_breaches, 2,
+            "must be the breach SUM, not the count of paths that had one"
+        );
+    }
+
+    /// Bug-log `#110`: `trades` and `liquidation_cover_fills` are two events, and for
+    /// a while they were one number. A cover leg must not land in `trades`.
+    #[test]
+    fn reduce_cell_totals_keeps_cover_fills_out_of_trades() {
+        let mut paths: Vec<IndexedPathMetrics> = (0..3).map(zero_path).collect();
+        paths[0].trades = 11;
+        paths[1].liquidation_cover_fills = 5;
+        paths[2].liquidations = 2;
+
+        let totals = reduce_cell_totals(&paths);
+
+        assert_eq!(totals.trades, 11, "trades must exclude the 5 cover legs");
+        assert_eq!(totals.liquidation_cover_fills, 5);
+        assert_eq!(totals.liquidations, 2);
+        assert_ne!(
+            totals.trades, 16,
+            "16 is the #110 regression: one number, two events"
+        );
+    }
+
+    /// Every remaining total, each fed a DISTINCT prime from a DISTINCT path.
+    ///
+    /// Distinct primes mean a field wired to the wrong source reads the wrong number
+    /// rather than the right one by luck — the `#140` failure mode, where a field was
+    /// added and nothing proved which source it read.
+    #[test]
+    fn reduce_cell_totals_reads_each_field_from_its_own_source() {
+        let mut paths: Vec<IndexedPathMetrics> = (0..6).map(zero_path).collect();
+        paths[0].trades = 13;
+        paths[1].funding_harvested = dec!(17.5);
+        paths[2].time_in_market_bars = 19;
+        paths[3].bars_run = 23;
+        paths[4].liquidations = 29;
+        paths[5].liquidation_cover_fills = 31;
+
+        let totals = reduce_cell_totals(&paths);
+
+        assert_eq!(totals.trades, 13);
+        assert_eq!(totals.funding_harvested, dec!(17.5));
+        assert_eq!(totals.time_in_market_bars, 19);
+        assert_eq!(totals.bars_run, 23);
+        assert_eq!(totals.liquidations, 29);
+        assert_eq!(totals.liquidation_cover_fills, 31);
+        assert_eq!(totals.ruined_paths, 0, "no path was marked ruined");
+        assert_eq!(totals.portfolio_breaches, 0, "no path carried a breach");
+    }
+
+    /// A cell with no paths reduces to all zeros, not to a 1 from a `count()` on the
+    /// wrong collection. `main` can only reach this if a cell ran zero paths, which
+    /// would itself be a bug — but then the totals must not invent a number.
+    #[test]
+    fn reduce_cell_totals_of_no_paths_is_all_zero() {
+        let totals = reduce_cell_totals(&[]);
+        assert_eq!(
+            totals,
+            CellTotals {
+                trades: 0,
+                funding_harvested: Decimal::ZERO,
+                time_in_market_bars: 0,
+                bars_run: 0,
+                liquidations: 0,
+                liquidation_cover_fills: 0,
+                ruined_paths: 0,
+                portfolio_breaches: 0,
+            }
+        );
     }
 }
