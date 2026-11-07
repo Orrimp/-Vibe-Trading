@@ -1123,3 +1123,54 @@ fn tier1_scenario_name_byte_unchanged_twocell_distinct() {
         "probe grids must carry the discriminator (M2): {twocell}"
     );
 }
+
+/// bug-log `#153` — the rendered body must state the ruin count, and it must track the field.
+///
+/// Story 1-28 AC2/AC4 added `ruined_paths` and the renderer prints it ("Ruined paths: N of M").
+/// The 2026-10-11 audit found that **no test asserted anything about it**: the only ruin
+/// coverage was a unit test on `clamp_equity_for_metrics` over a hand-written 4-element array,
+/// which never touches the field or the body. So the line could have silently become a constant
+/// — and a ruin count that is always 0 is indistinguishable from a ruin count that is never
+/// computed, which is exactly what `#127` filed about the clamp in the first place.
+///
+/// A full end-to-end assertion needs the sweep BINARY, because `ruined` is derived there rather
+/// than in `run_path`. This is the renderer half, which is where the reader meets the number.
+#[test]
+fn bug153_the_rendered_body_states_the_ruin_count_and_it_tracks_the_field() {
+    use backtest::bakeoff::robustness::ParamRobustnessVerdict;
+    use backtest::sweep_harness::{GridKind, grid_for_kind};
+
+    let grid = grid_for_kind(GridKind::TwoCell);
+    let mut clean: Vec<_> = grid
+        .iter()
+        .enumerate()
+        .map(|(i, c)| tiny_cell_result(*c, 1.0 + i as f64, ParamRobustnessVerdict::Fragile))
+        .collect();
+    assert!(
+        clean.iter().all(|cr| cr.ruined_paths == 0),
+        "fixture sanity: the clean case must really be zero or the contrast below is empty"
+    );
+    let clean_body = render_with_grid(grid, &clean);
+    assert!(
+        clean_body.contains("Ruined paths"),
+        "the body must STATE the ruin count even when it is zero — an unstated zero and an \
+         uncomputed zero read the same (bug-log #127's own argument).\n{clean_body}"
+    );
+
+    // Now ruin some paths and require the printed number to follow.
+    clean[0].ruined_paths = 7;
+    let ruined_body = render_with_grid(grid, &clean);
+    assert!(
+        ruined_body.contains("**7 of") || ruined_body.contains("7 of "),
+        "7 ruined paths were reported by the cell and the body does not say 7, so the printed \
+         count does not track the field.\n{}",
+        ruined_body
+            .lines()
+            .find(|l| l.contains("Ruined paths"))
+            .unwrap_or("<no ruin line>")
+    );
+    assert_ne!(
+        clean_body, ruined_body,
+        "a 0-ruin and a 7-ruin surface rendered to the SAME bytes"
+    );
+}

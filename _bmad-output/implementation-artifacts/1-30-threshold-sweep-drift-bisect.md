@@ -155,7 +155,16 @@ a different cause, and folding it in destroys the evidence.
       cannot log a refusal — it never hands a foreign bar to the engine, so that branch is unreachable
       by construction. Measured over 47 cells: `cross_symbol_routed` **148 719 of 183 751 fills
       (80.9 %)**, `solvency_skips` **6** (zero in 44 of 47 cells). **AC3's answer: the routing half
-      moved the result; the solvency guard contributed 0.003 %.** Body proven neutral — the diagnostic
+      moved the result; the solvency pre-flight fired on 6 of 183 751 fills (0.003 %).**
+      *(Corrected 2026-11-07, independent audit HIGH. The original wording — "the solvency guard
+      contributed 0.003 %" — states a FREQUENCY as if it were a CONTRIBUTION to a path-dependent
+      number, and those are not the same quantity: a skip early in a compounding path can move a
+      final equity by far more than its share of the fill census, and one late can move it by
+      nothing. Six skips out of 183 751 fills is a true and useful fact about how often the guard
+      fired. It is not a measurement of what those six did to the result, and NO counterfactual
+      was run — nothing in the tree measures this lane with routing repaired and the pre-flight
+      disabled. What AC3 actually establishes is that the routing half moved the result; the
+      pre-flight's effect is unquantified, not small.)* Body proven neutral — the diagnostic
       run re-emitted bs1 at `924a51bb…`, byte-identical to the re-locked row.
       Per-cell rendering deliberately NOT added; reasoning recorded in the bug-log.
 

@@ -5205,3 +5205,35 @@ of rows, the enforcement needs to be a property of the family, not a line copied
 them. The cheap version of that is a test asserting that every gate whose body can emit
 `T-VOL-ALPHA-UNLOCKED` declares the qualifier witness — which would have failed on the day the
 ruling was implemented.
+
+### `#153` — `ruined_paths` was rendered and never asserted, and a frequency was reported as a contribution
+
+Two 1-28/1-30 audit findings, both closed 2026-11-07.
+
+**(a) Nothing asserted the ruin count.** Story 1-28 added `ruined_paths` and the renderer prints
+it, but the audit found no test touching either. The only ruin coverage was a unit test on
+`clamp_equity_for_metrics` over a hand-written 4-element array, which never reaches the field or
+the body. So the line could have become a constant — and **a ruin count that is always 0 is
+indistinguishable from one that is never computed**, which is precisely what `#127` filed about
+the clamp that makes ruin invisible in the percentiles.
+
+`param_sweep_e2e::bug153_…` now asserts the body states the count even at zero, that a
+7-ruin cell makes the body say 7, and that the 0-ruin and 7-ruin bodies differ. **Probed RED** —
+and the first probe attempt did NOT turn it red, because my regex missed the real site; the gate
+was unverified until I found `let ruined: u64 = cell_results.iter().map(…).sum()` and hardcoded
+that. An unprobed gate is the thing this log is mostly about, including when it is mine.
+
+A full end-to-end assertion still needs the sweep BINARY, since `ruined` is derived there rather
+than in `run_path`. This is the renderer half, which is where a reader meets the number.
+
+**(b) 1-30's AC3 reported a frequency as a contribution.** It read *"the solvency guard
+contributed 0.003 %"*. Six skips out of 183 751 fills is a **frequency**, and a contribution to a
+path-dependent number is a different quantity: a skip early in a compounding path can move final
+equity by far more than its share of the census, and one late can move it by nothing. **No
+counterfactual was run** — nothing in the tree measures that lane with routing repaired and the
+pre-flight disabled. Restated: the routing half moved the result; the pre-flight's effect is
+**unquantified, not small**.
+
+**Moral.** Both halves are the same error in different costumes: a number that looks like an
+answer to a question nobody actually asked it. The ruin count looked like evidence of no ruin
+when it was evidence of nothing; 0.003 % looked like a magnitude when it was a rate.
