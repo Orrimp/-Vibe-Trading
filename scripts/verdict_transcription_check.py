@@ -20,11 +20,25 @@ and ADR-0049 D4 each cite the one before, and the justification is real — inli
 the tests free of the `candle` / `realdata` feature gates. All three files state that the
 copy is *verbatim*.
 
-Nothing enforced that word. Edit a shipped threshold and all fifteen fixtures plus three
-100-sample mutual-exclusivity properties keep passing, green, forever. Measured on
-2026-11-07 the copies were predicate-faithful, but two of four functions had already
-drifted in code (dropped fields, an inlined method, a renamed local, omitted evidence
-construction) with nothing to say so. This gate is that something.
+Nothing enforced that word. Measured on 2026-11-07 the copies were predicate-faithful, but
+two of four functions had already drifted in code (dropped fields, an inlined method, a
+renamed local, omitted evidence construction) with nothing to say so. This gate is that
+something.
+
+The transcription is NOT the only coverage, and the first version of this doc wrongly implied
+it was. `vol_verdict` carries 8 bin-local unit tests and `regime_verdict` 11, all calling the
+shipped function and all running under default features; only `forecast_distribution` has none
+for `classify`, and that binary is `required-features = ["candle"]`, so its targets are skipped
+outright. What those running tests do and do not catch was probed, not assumed:
+
+    loosen V-REG-2  0.95 -> 0.80   ->  3 of 11 bin-local tests RED    (caught)
+    loosen V4       < 7  -> < 3    ->  8 of  8 bin-local tests GREEN   (MISSED)
+
+V4's fixture sets *zero* symbols improving, which satisfies `< 3` as happily as `< 7`: it pins
+the label and not the boundary. So this gate earns its place three different ways -- the only
+check of `classify` at all; the only check that sees a loosened V boundary; and for V-REG,
+redundant on thresholds yet still the only thing pinning the transcription, which is what keeps
+the external mutual-exclusivity property testing the shipped algorithm rather than a copy.
 
 ## What it checks, and what it deliberately does not
 

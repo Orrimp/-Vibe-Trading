@@ -34,6 +34,18 @@ local, omitted evidence construction. Harmless, every one. Also unannounced, eve
 faithful copies and two silent divergences is what an unenforced convention looks like
 *before* it costs anything.
 
+> **CORRECTION 2026-11-07 (same day, after this ADR was accepted).** The paragraph above
+> implies the transcription is the *only* coverage. Measured afterwards, it is not: `vol_verdict`
+> carries 8 bin-local tests and `regime_verdict` 11, all calling the shipped function and all
+> running under default features. Only `forecast_distribution` has none for `classify`, and that
+> binary is `required-features = ["candle"]` so its targets are skipped outright. Probed: loosening
+> V-REG-2 `0.95 → 0.80` turns 3 of 11 red; loosening V4 `< 7 → < 3` leaves 8 of 8 green, because
+> that fixture sets zero symbols improving and so sits nowhere near its boundary. The decision
+> below stands unchanged — D1–D5 are what they were — but its justification is narrower and more
+> precise: for F1–F4 the gate is the only check of `classify`; for V1–V5 it is the only check that
+> sees a loosened boundary; for V-REG it is redundant on thresholds and still the only thing
+> pinning the transcription. See bug-log `#154` for the probes.
+
 ## Decision
 
 Keep the three ADRs' self-contained-test practice; make its stated invariant mechanical.

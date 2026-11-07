@@ -5304,6 +5304,58 @@ conditions with comments and string literals stripped, and asserts set equality 
 passing. That floor is not optional here: `#142` was precisely a source-reading gate whose
 four-line window silently matched nothing for fifteen days.
 
+**CORRECTION, 2026-11-07, same day — the framing above was wrong for two of the three, and the
+measurement that settles it came after the gate had already landed.** I wrote that because a
+`[[bin]]` cannot be called from an integration test, the transcription is therefore the only
+coverage. The first half is true; the second does not follow, and I asserted it without looking.
+Two of the three binaries carry **bin-local unit tests that call the real function and that run
+under default features**:
+
+| classifier | bin-local tests calling the shipped fn | do they run? | is a LOOSENED threshold caught by them? |
+|---|---|---|---|
+| F1–F4 `verdict::classify` | **0** | the whole bin is `required-features = ["candle"]`, so even `hist`'s six are skipped | no — nothing to catch it |
+| V1–V5 `classify_verdict` | **8** | **yes** | **NO — measured** |
+| V-REG-1..5 `classify_vreg` | **11** | **yes** | **yes — measured** |
+
+Both right-hand columns are probes, not readings. Loosening the shipped V-REG-2 threshold
+`0.95 → 0.80` turned **3 of 11** bin-local tests red: fixtures built for V-REG-3/4/5 start
+tripping V-REG-2 first, so the suite notices. Loosening the shipped V4 threshold `< 7 → < 3`
+left **8 of 8 green** — its fixture sets *zero* symbols improving, which is `< 3` as happily as
+it is `< 7`, so the fixture sits nowhere near the boundary it is supposed to pin. Both mutations
+were caught by the new gate.
+
+So the gate earns its place on all three, but for three different reasons, and only one of them
+is the reason I originally gave:
+
+- **F1–F4** — it is the only fidelity check that exists, and the only check of `classify` at all.
+- **V1–V5** — it is the only check that sees a *loosened* boundary. The eight running tests pin
+  the labels; they do not pin the thresholds.
+- **V-REG** — redundant for threshold moves, since the eleven running tests do catch those. It
+  still pins the transcription, which is what keeps the external mutual-exclusivity property
+  testing the shipped algorithm rather than a copy of it.
+
+**The sharper finding, which I did not have when I filed this**: a boundary-insensitive fixture.
+`verdict_v4_on_no_improvement` asserts the right label from a point far inside the region, so it
+proves the branch is reachable and proves nothing about where the branch begins. That is a third
+variant of this log's one subject, distinct from an absent test and from an unreachable one, and
+it is invisible to a census that counts tests — which is exactly how I missed it while counting
+them.
+
+**Fixed, in the bin's own test module.** `verdict_v4_fires_at_six_improving` and
+`verdict_v4_does_not_fire_at_seven_improving` sit either side of the edge, each first asserting
+that its fixture lands on the intended count (6 and 7) so the pair cannot silently stop pinning
+anything. Both directions probed: loosening `< 7 → < 3` fails the six-case only; tightening
+`< 7 → < 9` fails the seven-case only. **And in both probes `verdict_v4_on_no_improvement` stayed
+green**, which is the finding demonstrated rather than argued. The fixtures hold the other three
+V-branches silent by construction (CoV 0.2, dispersion 1.17, calibration ratio 1.0), stated in the
+helpers' docs so a later edit knows what they are load-bearing for.
+
+**And the process note, which is the part worth keeping.** I filed this entry, wrote ADR-0099,
+landed the gate and committed all of it before running `cargo test -p forecast` and looking at
+which targets cargo actually built. One command, available the whole time, and it would have
+corrected the framing before it reached four artifacts. This is the `#78` lesson a second time in
+one session: the claim that sounds like the finding is the one to measure first, not last.
+
 **What landed.** `scripts/verdict_transcription_check.py`, in the `spec_lint.py` seam, run by
 `.githooks/pre-commit` and by CI. Four checks: three branch-condition sets (3 + 4 + 4 conditions)
 that must match each other **and a set declared in the script**, plus a struct-surface check for

@@ -19,6 +19,11 @@
 // nothing checked it: editing a shipped threshold left all five fixtures and the
 // 100-sample mutual-exclusivity property passing, green, indefinitely, and this file
 // would have been measuring its own transcription rather than the shipped classifier.
+// That is literally true HERE and only here, which is worth knowing: `verdict::classify`
+// has no bin-local test of its own, and forecast_distribution is required-features =
+// ["candle"], so its targets are skipped under the default feature set CI runs. The two
+// sibling transcription files are backed by 8 and 11 RUNNING bin-local tests; this one is
+// backed by nothing (bug-log #154, corrected after measuring).
 // scripts/verdict_transcription_check.py now pins the branch-condition set on BOTH
 // sides against a set declared in the script, and runs in .githooks/pre-commit and CI.
 // A threshold change must touch three places in one commit; that third place is the

@@ -14,9 +14,16 @@
 //!
 //! ## That word "verbatim" is now mechanical (ADR-0099, bug-log `#154`)
 //!
-//! Until 2026-11-07 nothing checked it. Editing a shipped threshold left every fixture
-//! and the mutual-exclusivity property passing, green, indefinitely — this file would
-//! have been measuring its own transcription. `scripts/verdict_transcription_check.py`
+//! Until 2026-11-07 nothing checked it — this file could have drifted into measuring
+//! its own transcription. Two things to keep straight, both measured rather than assumed
+//! (bug-log `#154`, which was filed with the wrong framing and corrected the same day):
+//! the shipped classifier in the bin ALSO has bin-local unit tests that call it and that
+//! run under the default feature set, so this file was never the only coverage; and those
+//! tests pin LABELS, not always boundaries — loosening the shipped V4 threshold `< 7` to
+//! `< 3` leaves all 8 of them green, because that fixture sets zero symbols improving and
+//! so sits nowhere near the boundary it appears to pin.
+//!
+//! `scripts/verdict_transcription_check.py`
 //! now pins the branch-condition set on BOTH sides against a set declared in the script,
 //! and runs in `.githooks/pre-commit` and CI. A threshold change must therefore touch
 //! three places in one commit; that third place is the review this practice was missing.

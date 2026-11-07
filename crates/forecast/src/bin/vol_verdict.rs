@@ -1121,6 +1121,62 @@ mod tests {
         );
     }
 
+    // ── V4's boundary, pinned from BOTH sides (bug-log `#154`) ──────────────────
+
+    /// A symbol that counts as improving: (0.20 − 0.17) / 0.20 = 15 % ≥ the 10 % bar.
+    fn improving_symbol(i: usize) -> PerSymbolStats {
+        make_stats(&format!("UP{i}"), 0.17, 0.20, 0.010, 0.010, 0.002, 0.003)
+    }
+
+    /// A symbol that does not: (0.20 − 0.199) / 0.20 = 0.5 %. Chosen close to zero but not
+    /// at it, and with the same σ fields, so V1 (CoV), V2 (dispersion 0.199/0.17 = 1.17) and
+    /// V3 (ratio 1.0) all stay silent and V4 is the branch under test.
+    fn flat_symbol(i: usize) -> PerSymbolStats {
+        make_stats(&format!("FLAT{i}"), 0.199, 0.20, 0.010, 0.010, 0.002, 0.003)
+    }
+
+    /// `verdict_v4_on_no_improvement` above asserts V4 from a fixture with **zero** symbols
+    /// improving — which satisfies `< 7` exactly as happily as it satisfies `< 3`. Measured
+    /// 2026-11-07: loosening the shipped threshold to `< 3` left all eight bin-local tests
+    /// green. A fixture deep inside a region proves the branch is reachable and proves nothing
+    /// about where the branch begins. This pair sits either side of the edge, so the threshold
+    /// cannot move in EITHER direction without one of them failing.
+    #[test]
+    fn verdict_v4_fires_at_six_improving() {
+        let mut per_symbol: Vec<PerSymbolStats> = (0..6_usize).map(improving_symbol).collect();
+        per_symbol.extend((0..4_usize).map(flat_symbol));
+        let agg = compute_aggregate(&per_symbol);
+        assert_eq!(
+            agg.n_symbols_improving, 6,
+            "fixture must sit exactly one below the edge, or this test pins nothing"
+        );
+        let v = classify_verdict(&agg, &per_symbol);
+        assert!(
+            matches!(v, Verdict::V4 { .. }),
+            "6 improving is < 7, so V4 must fire; got {}",
+            v.label()
+        );
+    }
+
+    /// The other side of the same edge: 7 is not `< 7`, so V4 must NOT fire and the fallback
+    /// takes it. Catches a threshold TIGHTENED to `< 9`, which the pair above cannot see.
+    #[test]
+    fn verdict_v4_does_not_fire_at_seven_improving() {
+        let mut per_symbol: Vec<PerSymbolStats> = (0..7_usize).map(improving_symbol).collect();
+        per_symbol.extend((0..3_usize).map(flat_symbol));
+        let agg = compute_aggregate(&per_symbol);
+        assert_eq!(
+            agg.n_symbols_improving, 7,
+            "fixture must sit exactly ON the edge, or this test pins nothing"
+        );
+        let v = classify_verdict(&agg, &per_symbol);
+        assert!(
+            matches!(v, Verdict::V5 { .. }),
+            "7 is not < 7, so V4 must not fire; got {}",
+            v.label()
+        );
+    }
+
     #[test]
     fn verdict_exactly_one_fires() {
         // Property: exactly one verdict fires for all test fixtures.
