@@ -12,6 +12,17 @@
 //! this test file is self-contained and does NOT require the `realdata` feature.
 //! This mirrors the `vol_verdict_mutual_exclusivity.rs` precedent (ADR-0038 § D1.b).
 //!
+//! ## That word "verbatim" is now mechanical (ADR-0099, bug-log `#154`)
+//!
+//! Until 2026-11-07 nothing checked it. Editing a shipped threshold left every fixture
+//! and the mutual-exclusivity property passing, green, indefinitely — this file would
+//! have been measuring its own transcription. `scripts/verdict_transcription_check.py`
+//! now pins the branch-condition set on BOTH sides against a set declared in the script,
+//! and runs in `.githooks/pre-commit` and CI. A threshold change must therefore touch
+//! three places in one commit; that third place is the review this practice was missing.
+//! What the gate does NOT prove is that the two implementations compute the same numbers
+//! — only that they cannot diverge in a branch condition in silence.
+//!
 //! ## Threshold notes (from ADR-0049 § D4)
 //!
 //! - V-REG-1: backtest did not complete (EM convergence failure proxy).

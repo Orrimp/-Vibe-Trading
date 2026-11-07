@@ -14,6 +14,16 @@
 //
 // We inline the exact algorithm from forecast_distribution.rs so the
 // test file is self-contained and does NOT require the candle feature.
+//
+// THAT WORD "exact" IS NOW MECHANICAL (ADR-0099, bug-log #154). Until 2026-11-07
+// nothing checked it: editing a shipped threshold left all five fixtures and the
+// 100-sample mutual-exclusivity property passing, green, indefinitely, and this file
+// would have been measuring its own transcription rather than the shipped classifier.
+// scripts/verdict_transcription_check.py now pins the branch-condition set on BOTH
+// sides against a set declared in the script, and runs in .githooks/pre-commit and CI.
+// A threshold change must touch three places in one commit; that third place is the
+// review this practice was missing. It does NOT prove the two implementations compute
+// the same numbers — only that they cannot diverge in a branch condition in silence.
 
 use rand::Rng;
 use rand::SeedableRng;

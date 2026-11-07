@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Governance pre-commit gate (2026-07-27 adversarial-review hardening).
 #
-# Runs the two constitutional checks — the ADR-0082 triad lint and the AD-2
-# anchor byte-immutability gate — before every commit. Both are fast
+# Runs the constitutional checks — the ADR-0082 triad lint, the AD-2 anchor
+# byte-immutability gate, and (since 2026-11-07, bug-log #154) the verdict-
+# transcription fidelity check — before every commit. All are fast
 # (~seconds; pure python3 + bash, no cargo). Until this hook existed, the
 # gates ran only when an agent remembered (bug-log #66 documents what
 # discipline-only enforcement ships).
@@ -30,3 +31,14 @@ else
   python3 "$root/scripts/spec_lint.py"
 fi
 bash "$root/scripts/verify_anchors.sh" | tail -1
+
+# bug-log #154 (2026-11-07): the F / V / V-REG verdict classifiers each live in a [[bin]],
+# so no integration test can call them and each is instead "tested" by a file that
+# re-implements it. All three claim the copy is verbatim; nothing enforced the word. This
+# pins both sides' branch conditions against a set declared in the script. Same uv-vs-python3
+# reasoning as above.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/verdict_transcription_check.py"
+else
+  python3 "$root/scripts/verdict_transcription_check.py"
+fi

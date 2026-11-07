@@ -12,6 +12,17 @@
 //! this test file is self-contained and does NOT require the `candle` feature.
 //! This mirrors the `forecast_distribution_verdict.rs` precedent (ADR-0033 § D3.d).
 //!
+//! ## That word "verbatim" is now mechanical (ADR-0099, bug-log `#154`)
+//!
+//! Until 2026-11-07 nothing checked it. Editing a shipped threshold left every fixture
+//! and the mutual-exclusivity property passing, green, indefinitely — this file would
+//! have been measuring its own transcription. `scripts/verdict_transcription_check.py`
+//! now pins the branch-condition set on BOTH sides against a set declared in the script,
+//! and runs in `.githooks/pre-commit` and CI. A threshold change must therefore touch
+//! three places in one commit; that third place is the review this practice was missing.
+//! What the gate does NOT prove is that the two implementations compute the same numbers
+//! — only that they cannot diverge in a branch condition in silence.
+//!
 //! ## Threshold notes (from ADR-0038 § D1.b)
 //!
 //! - V1: CoV(σ̂) = std_sigma_hat / mean_sigma_hat < 1e-3 on EVERY symbol.

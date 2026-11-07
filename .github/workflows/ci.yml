@@ -81,6 +81,12 @@ jobs:
           bash scripts/verify_anchors.sh | tail -1
           python3 scripts/spec_lint.py
           python3 scripts/spec_lint.py --self-test
+          # bug-log #154: the three verdict classifiers live in [[bin]]s, so their tests
+          # re-implement them and test the copy. This pins the branch conditions on both
+          # sides against a set declared in the script, and its --self-test re-measures
+          # the gate's own teeth on every run rather than trusting that they are still there.
+          python3 scripts/verdict_transcription_check.py
+          python3 scripts/verdict_transcription_check.py --self-test
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

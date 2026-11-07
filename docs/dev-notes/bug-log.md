@@ -5250,3 +5250,89 @@ pre-flight disabled. Restated: the routing half moved the result; the pre-flight
 **Moral.** Both halves are the same error in different costumes: a number that looks like an
 answer to a question nobody actually asked it. The ruin count looked like evidence of no ruin
 when it was evidence of nothing; 0.003 % looked like a magnitude when it was a rate.
+
+### `#154` — three verdict classifiers are gated only by transcriptions of themselves, and the word "verbatim" has no gate behind it
+
+Found 2026-11-07 while censusing the workspace for the `#153` shape (a derivation no test
+can call). **FIXED the same day** — ADR-0099, `scripts/verdict_transcription_check.py`, wired
+into `.githooks/pre-commit` and the CI gate step. No live defect was present; the risk was
+latent, is now measured, and is now enforced.
+
+**The pattern.** Three binaries each carry a verdict classifier and each is tested by a file
+that re-declares the types and re-implements the algorithm, then tests its own copy:
+
+| verdict | shipped | its "test" | ratified in |
+|---|---|---|---|
+| F1–F4 (forecaster checkpoint) | `forecast/src/bin/forecast_distribution.rs:539` `verdict::classify` | `forecast/tests/forecast_distribution_verdict.rs:69` | ADR-0033 § D3.d |
+| V1–V5 (vol forecaster) | `forecast/src/bin/vol_verdict.rs:218,333` `compute_aggregate` + `classify_verdict` | `forecast/tests/vol_verdict_mutual_exclusivity.rs:90,124` | ADR-0038 § D1.b |
+| V-REG-1–5 (regime dispatcher) | `forecast/src/bin/regime_verdict.rs:258` `classify_vreg` | `forecast/tests/vreg_mutual_exclusivity.rs:100` | ADR-0049 § D4 |
+
+This is **not a sloppy test**: it is a decided practice with a precedent chain, each file citing
+the one before it, and a stated justification — a bin is not a lib, so the test cannot call into
+it, and inlining keeps the test free of the `candle` / `realdata` feature gates. The decision is
+defensible. What nobody priced is that all three files claim the copy is **verbatim**, and that
+word is an assertion with nothing behind it. Edit a shipped threshold and all fifteen fixtures plus
+three 100-sample mutual-exclusivity properties keep passing, green, forever.
+
+**Measured 2026-11-07, which is the point of this entry.** All four transcribed functions are
+**predicate-faithful today.** Every branch condition, threshold and comparison matches:
+F1 `abs_p95 < 1e-6` · F2 `std > 0.1·σ_train && gate < 1e-6` · F3 `survival[5] >= 1e-4 &&
+frac_inside_ε > 0.5` · V2 `dispersion > 3.0` · V3 `ratio < 0.7 || > 1.4` · V4 `improving < 7` ·
+V-REG-2 `> 0.95` · V-REG-3 `> 20.0` · V-REG-4 `final_equity < 0 || total_return < -0.90 ||
+(suppress < 0.01 && bars > 1000)`. The V-REG copy's inlined literals resolve to the shipped
+`trivial_threshold = 0.95` / `switch_threshold = 20.0` bindings exactly.
+
+**But two of the four have already drifted in code**, which is the finding: the copies DO move, and
+nothing said so. All of it is presentational — and it was presentational by luck, not by a rule:
+
+- `compute_aggregate`: the copy omits `qlike_garch_mean` and `qlike_constant_mean`. **Checked: no
+  predicate reads either** (the classifier reads only `qlike_dispersion`, `qlike_garch_max/min`,
+  `mean_calibration_ratio`, `n_symbols_improving`), so they are report-only fields. The copy also
+  inlines `calibration_ratio()` as `mean_sigma_hat / mean_sigma_realized.max(1e-12)` — **checked
+  byte-equal** to the shipped method body at `vol_verdict.rs:194`.
+- `classify_verdict`: a local renamed (`worst_symbol` → `worst`) and three evidence strings shortened.
+- `classify_vreg`: the copy returns a bare `VRegVerdict` where shipped returns `(VRegVerdict, String)`
+  and omits all evidence construction — 71 shipped code lines against 21. The largest divergence in
+  the corpus, and still predicate-identical.
+
+**Why this is filed rather than fixed.** The fix is not to retire the practice — three ADRs chose
+it deliberately and moving the modules into `forecast`'s lib would drag the feature gates the
+decision exists to avoid. The fix is to make the word *verbatim* mechanical: a gate that reads both
+sources, resolves `let NAME = <literal>;` bindings inside each function, extracts the set of branch
+conditions with comments and string literals stripped, and asserts set equality per pair — with a
+**declared expected count per function** so that a parser finding nothing fails loudly instead of
+passing. That floor is not optional here: `#142` was precisely a source-reading gate whose
+four-line window silently matched nothing for fifteen days.
+
+**What landed.** `scripts/verdict_transcription_check.py`, in the `spec_lint.py` seam, run by
+`.githooks/pre-commit` and by CI. Four checks: three branch-condition sets (3 + 4 + 4 conditions)
+that must match each other **and a set declared in the script**, plus a struct-surface check for
+`compute_aggregate`. Design notes in ADR-0099; two of its five decisions are worth repeating here.
+
+- **D3 — the zero-branch refusal.** `compute_aggregate` contains no `if`. Running the branch check
+  over it would compare the empty set to the empty set and print `OK`. That is this entry's own
+  subject, so it is refused: the function gets a check on the predicate's *input surface* instead
+  (every `agg.<field>` the shipped classifier reads must exist on BOTH `AggregateStats`
+  declarations). A gate reporting PASS over nothing is worse than no gate, because it occupies the
+  slot where someone would otherwise notice.
+- **D1 — why the expected set is written down, learned the hard way *while writing the gate*.** My
+  first normaliser stripped parentheses around any bare literal, which silently turned
+  `.max(1e-12)` into `.max1e-12`. **On both sides.** Both-sides equality therefore held, and a gate
+  built on both-sides equality alone would have reported PASS over a mangled comparison. It failed
+  only because the expected condition set is declared independently and the mangled form did not
+  match it. I had written that floor in for `#142`'s reason — a parser that matches nothing — and
+  it caught a different failure within the hour.
+
+**Probed.** `--self-test` carries four probes plus a clean control, all CAUGHT, and CI runs them on
+every pass so the teeth are re-measured rather than remembered. Then the hook itself was probed
+end to end: the shipped V-REG-2 threshold was loosened 0.95 → 0.80, `git commit` was **blocked**,
+HEAD stayed at `0cac43ba`, and the message named the file to update and the two other places that
+must move with it. Restored, clean.
+
+**Moral.** `#153` was a derivation no test could call. This is a derivation three tests call — a
+different one. Both are the same sentence: **the thing under test and the thing tested are not the
+same thing, and nothing in the build notices.** The honest reading of today's measurement is not
+"we got lucky"; it is that four faithful copies and two already-drifted ones is what an unenforced
+convention looks like *before* it costs anything. And the near-miss above is the sharper lesson:
+the gate I wrote to enforce fidelity was itself, for about an hour, a gate that could not fail.
+
