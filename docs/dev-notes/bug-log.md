@@ -5024,3 +5024,46 @@ instinct is to go looking at `reqwest` features. The tell is `tapi error: malfor
 is the SDK's text-based stub being unreadable, not anything about this code. **And it would have
 read as a re-lock failure**: had the driver run before I built by hand, a 25-surface regeneration
 would have failed at surface 1 with a message about TLS.
+
+### `#149` — twelve anchored MN bodies do not render their table at all, and the legend above it contradicts itself in the same paragraph
+
+**Found** by the 2026-10-11 independent audit (two separate findings); **fixed** 2026-11-07 ahead
+of the θ-surface re-lock so both land in one pass.
+
+**(a) The table does not render.** `sweep_harness.rs`'s MN branch emitted a **19-cell header**
+against an **18-cell delimiter row**. GFM/CommonMark require the delimiter row to match the
+header; when it does not, the table is not a table — so every MN body showed raw pipe-delimited
+text where a reader expected a grid of numbers. The missing cell was `trades`, between
+`cover_fills` and `funding`, which is exactly where story 1-28 added a column.
+
+**It survived because nothing rendered an MN surface in any test.** The MN branch of
+`render_surface_report` had **zero** coverage: `grep` for `show_mn` / `MnBasisSpread` across
+`crates/backtest/tests/` hit only `relock_manifest.rs`, which reads names and never renders. A
+column could be added to that branch and no gate would look at the result.
+
+The new gate is deliberately **generic, not MN-specific**:
+`param_sweep_e2e::bug149_every_rendered_table_is_well_formed_under_gfm` renders **five**
+score-source/selection-mode branches, finds every delimiter row by its GFM signature, and asserts
+each matches its header's cell count — plus a non-vacuity floor, because a detector that matched
+nothing would otherwise pass the loop having asserted nothing. **Probed RED**: removing the cell
+again fails with *"MN basis-spread: header has 19 cells, its delimiter row has 18"*.
+
+**(b) The legend contradicted itself.** The paragraph above that table read, in the **present
+tense**: *"Trades = total trade count across all N paths. NOTE: this count INCLUDES synthetic
+liquidation covers…"* — and then, three sentences later, that the caveat *"is replaced by the
+numbers"*. Both in one paragraph. Story 1-28 AC3 **appended** its correction instead of replacing
+the claim, so a reader who stopped at the first sentence got the opposite of the truth, and one
+who read on got a self-contradicting artifact.
+
+Rewritten so the CURRENT meaning leads (`trades` = real fills only, `cover_fills` separate, MN
+turnover therefore comparable with the long-only families) and the superseded caveat is
+unambiguously historical, with its date and the reason bodies emitted before it carry the combined
+count.
+
+**Moral.** Two different shapes of the same root cause, and both were introduced by a *correct*
+change. 1-28 genuinely split the counter — it added the column and it appended the explanation —
+and the two things it did not do were update the delimiter row and delete the sentence its own fix
+had falsified. **Adding a column to a markdown table is two edits, and adding a correction to a
+paragraph is also two edits.** The first was invisible because nothing rendered the branch; the
+second was visible to anyone who read the paragraph to the end, and was in twelve published
+bodies for six weeks.

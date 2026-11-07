@@ -2460,17 +2460,22 @@ pub fn render_surface_report(
         body.push_str(
             "Liquidations = total maintenance-margin liquidation events across all N paths (MN only, D-MN.8).\n",
         );
+        // bug-log #149: this read "Trades … INCLUDES synthetic liquidation covers" in the
+        // PRESENT tense and then, three sentences later, said that caveat was replaced. Both
+        // in one paragraph, so a reader who stopped at the first sentence got the opposite of
+        // the truth. Story 1-28 AC3 appended its correction instead of replacing the claim.
+        // Rewritten so the CURRENT meaning leads and the superseded caveat is unambiguously
+        // historical.
         body.push_str(
-            "Trades = total trade count across all N paths. NOTE: this count INCLUDES synthetic\n",
+            "Trades = REAL fills only, across all N paths. Cover_fills = the synthetic \
+             buy-to-cover legs a maintenance-margin liquidation forces. The two are \
+             SEPARATE columns, so MN turnover is directly comparable with the long-only \
+             families.\n",
         );
         body.push_str(
-            "liquidation covers, so MN turnover was not directly comparable with the long-only\n",
-        );
-        body.push_str(
-            "families. SPLIT 2026-09-29 (story 1-28 AC3): `trades` is real fills only and \
-             `cover_fills` is the synthetic buy-to-cover legs a maintenance-margin \
-             liquidation forces. Bug-log #110 shipped this caveat because the report could \
-             not make the distinction; it can now, so the caveat is replaced by the numbers.\n",
+            "  (History: until the 2026-09-29 split (story 1-28 AC3) `trades` DID include the \
+             synthetic covers, one counter standing for a strategy decision and a forced \
+             exit — bug-log #110. Bodies emitted before that date carry the combined count.)\n",
         );
         body.push_str(
             "Funding = total realized funding cashflow across all N paths, in quote currency. The MN short\n",
@@ -2483,7 +2488,11 @@ pub fn render_surface_report(
         );
         body.push_str("from this report rather than from outside it.\n\n");
         body.push_str("| g  | lookback | rebalance | k_long | k_short | drift | p5_sharpe | p50_sharpe | p95_sharpe | prob_loss | P(Sharpe>1) | p95_maxdd | spread   | liquidations | cover_fills | trades     | funding        | verdict  | notes |\n");
-        body.push_str("|----|----------|-----------|--------|---------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------|------------|----------------|----------|-------|\n");
+        // bug-log #149: this delimiter row carried 18 cells against a 19-cell header,
+        // so under GFM/CommonMark the table did not render AT ALL — every MN body showed
+        // raw pipe-delimited text instead of numbers. The missing cell was `trades`,
+        // between `cover_fills` and `funding`. Bound by `mn_table_renders_under_gfm`.
+        body.push_str("|----|----------|-----------|--------|---------|-------|-----------|------------|------------|-----------|-------------|-----------|----------|--------------|------------|------------|----------------|----------|-------|\n");
     } else if show_trades {
         body.push_str(
             "Trades = total trade count across all N paths (turnover legibility — R-MR.3).\n\n",

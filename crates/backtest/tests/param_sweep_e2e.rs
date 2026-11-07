@@ -719,6 +719,135 @@ fn render_with_grid(
         2,
     )
 }
+#[allow(clippy::too_many_arguments)]
+fn render_with_grid_as(
+    score_source: backtest::sweep_harness::SweepScoreSource,
+    selection_mode: backtest::sweep_harness::SweepSelectionMode,
+    grid: &[backtest::sweep_harness::ThetaCell],
+    cell_results: &[backtest::sweep_harness::CellResult],
+) -> String {
+    backtest::sweep_harness::render_surface_report(
+        "2026-08-03T00:00:00Z",
+        1.0,
+        "testhost",
+        1,
+        "deadbeef",
+        "test-revision-sha",
+        "test-scenario",
+        0xC0FFEE,
+        0xC0FFEE,
+        3,
+        "block-bootstrap-real",
+        "stationary",
+        "auto",
+        Some(7),
+        "test-source-sha",
+        grid,
+        cell_results,
+        &tiny_summary(1.5),
+        backtest::sweep_harness::SweepDirection::Momentum,
+        score_source,
+        None,
+        selection_mode,
+        backtest::resample::Horizon::OneHour,
+        4,
+        2,
+    )
+}
+
+// ── bug-log #149: every markdown table in a rendered body must be WELL-FORMED ──────
+//
+// The MN branch emitted a 19-cell header against an 18-cell delimiter row, and under
+// GFM/CommonMark a table whose delimiter row does not match its header does not render at
+// all — so twelve anchored MN bodies showed raw pipe-delimited text where a reader expected
+// numbers. The missing cell was `trades`, between `cover_fills` and `funding`.
+//
+// It survived because NOTHING rendered an MN surface in any test: the MN branch of
+// `render_surface_report` had no coverage whatsoever. This gate is generic over every table
+// in the body and is run across all four score-source/selection-mode branches, so the next
+// column added to any of them cannot repeat it.
+#[test]
+fn bug149_every_rendered_table_is_well_formed_under_gfm() {
+    use backtest::bakeoff::robustness::ParamRobustnessVerdict;
+    use backtest::sweep_harness::{GridKind, SweepScoreSource, SweepSelectionMode, grid_for_kind};
+
+    let grid = grid_for_kind(GridKind::TwoCell);
+    let cells: Vec<_> = grid
+        .iter()
+        .enumerate()
+        .map(|(i, c)| tiny_cell_result(*c, 1.0 + i as f64, ParamRobustnessVerdict::Fragile))
+        .collect();
+
+    // `show_mn = is_mn_run && !selection_mode.is_ts()`, so the MN layout is selected by the
+    // SCORE SOURCE with any non-TS selection mode; there is no `LongShort` variant.
+    let branches = [
+        (
+            "MN basis-spread",
+            SweepScoreSource::MnBasisSpread,
+            SweepSelectionMode::CrossSectionalTopK,
+        ),
+        (
+            "MN funding-spread",
+            SweepScoreSource::MnFundingSpread,
+            SweepSelectionMode::CrossSectionalTopK,
+        ),
+        (
+            "carry",
+            SweepScoreSource::Carry,
+            SweepSelectionMode::CrossSectionalTopK,
+        ),
+        (
+            "vol-adjusted (TS)",
+            SweepScoreSource::VolAdjustedReturn,
+            SweepSelectionMode::TimeSeriesLongFlat,
+        ),
+        (
+            "vol-adjusted (XS)",
+            SweepScoreSource::VolAdjustedReturn,
+            SweepSelectionMode::CrossSectionalTopK,
+        ),
+    ];
+
+    let mut checked = 0usize;
+    for (label, ss, sm) in branches {
+        let body = render_with_grid_as(ss, sm, grid, &cells);
+        let lines: Vec<&str> = body.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            // A delimiter row is the GFM tell: pipes and only -, : and space between them.
+            let trimmed = l.trim();
+            if !trimmed.starts_with('|') || !trimmed.contains("---") {
+                continue;
+            }
+            if !trimmed.chars().all(|c| matches!(c, '|' | '-' | ':' | ' ')) {
+                continue;
+            }
+            let hdr = lines
+                .get(i.wrapping_sub(1))
+                .copied()
+                .unwrap_or("<no preceding line>");
+            let count = |s: &str| s.trim().trim_matches('|').split('|').count();
+            assert_eq!(
+                count(hdr),
+                count(trimmed),
+                "{label}: a markdown table is MALFORMED — header has {} cells, its delimiter \
+                 row has {}. Under GFM/CommonMark the table then does not render AT ALL and \
+                 the reader sees raw pipes instead of numbers (bug-log #149, which shipped in \
+                 twelve anchored MN bodies).\n  header:    {hdr}\n  delimiter: {trimmed}",
+                count(hdr),
+                count(trimmed),
+            );
+            checked += 1;
+        }
+    }
+    // Non-vacuity: a body with no tables, or a delimiter detector that matched nothing, would
+    // pass the loop above without asserting anything.
+    assert!(
+        checked >= branches.len(),
+        "found only {checked} delimiter row(s) across {} branches — the detector matched \
+         nothing, so this gate asserted nothing",
+        branches.len()
+    );
+}
 
 /// bug-log `#141` — the breach count must REACH the rendered body, and a zero must be
 /// printed rather than merely be true.
