@@ -1,6 +1,6 @@
 # Story 1.29: forecast-bin-reproduction-gates
 
-Status: review
+Status: done
 
 <!-- Created 2026-09-27 by the orchestrator. #126 closed the backtest/param_robustness_sweep/
      monte_carlo family: every scenario those three binaries can produce now has a re-run

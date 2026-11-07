@@ -1,6 +1,6 @@
 # Story 1.30: threshold-sweep-drift-bisect
 
-Status: review
+Status: done
 
 <!-- 2026-09-29: AC1, AC2, AC4, AC6 and AC7 are DELIVERED (both bisects run, re-lock landed,
      citations moved). AC3 and the AC5 remainder are NOT: the lane still installs no tracing

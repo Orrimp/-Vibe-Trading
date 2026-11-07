@@ -3581,7 +3581,7 @@ arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0045-v5-c
 crates      = ["crates/data", "crates/backtest"]
 tests       = []
 anchors     = []   # will ADD a new namespace; mc-robustness-2026-06 rows stay frozen
-state       = "scoped"   # story 1-24 at REVIEW 2026-10-10: all 5 ACs discharged. 3 estimator defects + 1 unratified aggregation policy fixed; 35 anchored bodies re-locked in place under ADR-0045 D6 (old digests kept verbatim); AC4 direction guard TRIPPED on 2 of 35 (FRAGILE->MARGINAL, one family verdict moved) and operator ruled DISCLOSE AND LAND; AC5 discharged by measurement rather than an identity test, since the change alters ranking by moving the FROZEN gate INPUT (bug-log #139). Awaiting bmad-code-review, not further dev.
+state       = "shipped"   # story 1-24 at REVIEW 2026-10-10: all 5 ACs discharged. 3 estimator defects + 1 unratified aggregation policy fixed; 35 anchored bodies re-locked in place under ADR-0045 D6 (old digests kept verbatim); AC4 direction guard TRIPPED on 2 of 35 (FRAGILE->MARGINAL, one family verdict moved) and operator ruled DISCLOSE AND LAND; AC5 discharged by measurement rather than an identity test, since the change alters ranking by moving the FROZEN gate INPUT (bug-log #139). Awaiting bmad-code-review, not further dev.  [CLOSED 2026-11-07 — hardening re-lock program. Verdict was a SELF-REVIEW; the 2026-10-11 independent adversarial re-audit contradicted 4 of the 5 sibling verdicts (14 of 24 findings survived three-skeptic verification) and those findings were worked through — record at docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md. None moved an anchored number. CHANGELOG: § Hardening re-lock program.]
 
 [[req]]
 id          = "REQ-HARNESS-FILL-CORRECTNESS-001"
@@ -3592,7 +3592,7 @@ arch        = ["docs/dev-notes/robustness-decision-rule-2026-05-30.md"]
 crates      = ["crates/backtest"]
 tests       = []
 anchors     = []   # will ADD a new namespace; existing mc-robustness/threshold-sweep rows stay frozen
-state       = "scoped"   # story 1-25 created 2026-07-31 by the 1-14 review decision; ready-for-dev
+state       = "shipped"   # story 1-25 created 2026-07-31 by the 1-14 review decision; ready-for-dev  [CLOSED 2026-11-07 — hardening re-lock program. Verdict was a SELF-REVIEW; the 2026-10-11 independent adversarial re-audit contradicted 4 of the 5 sibling verdicts (14 of 24 findings survived three-skeptic verification) and those findings were worked through — record at docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md. None moved an anchored number. CHANGELOG: § Hardening re-lock program.]
 
 [[req]]
 id          = "REQ-ADVISOR-HONESTY-SURFACE-001"
@@ -3693,7 +3693,7 @@ arch        = [
 crates      = ["crates/backtest"]
 tests       = []
 anchors     = []   # re-emission protocol is an ENTRY GATE (story AC5) — architect + operator rule before any SHA moves
-state       = "scoped"   # story 1-28 created 2026-09-27 from the two items story 1-21 records as explicitly NOT delivered (bug-log #110); ready-for-dev, blocked on the AC5 protocol ruling
+state       = "shipped"   # story 1-28 created 2026-09-27 from the two items story 1-21 records as explicitly NOT delivered (bug-log #110); ready-for-dev, blocked on the AC5 protocol ruling  [CLOSED 2026-11-07 — hardening re-lock program. Verdict was a SELF-REVIEW; the 2026-10-11 independent adversarial re-audit contradicted 4 of the 5 sibling verdicts (14 of 24 findings survived three-skeptic verification) and those findings were worked through — record at docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md. None moved an anchored number. CHANGELOG: § Hardening re-lock program.]
 [[req]]
 id          = "REQ-FORECAST-BIN-REPRODUCTION-GATES-001"
 title       = "Give every anchored scenario the forecast/report binaries can produce a gate that re-runs it and compares against the ANCHOR, so verify_anchors reporting 119/119 stops meaning 'the committed bodies still hash to what we wrote down' for a fifth of the corpus. Member list DERIVED from the criterion (every anchors.toml scenario no test file and no run manifest names): 15, matching the independent coverage audit; three of them have no literal occurrence in the tree because their names are built with format!, which a grep-only inventory would have declared producer-less. 10 measurable now, 2 (threshold-sweep-bs{1,2}-realdata-recalibrated) HELD on bug-log #129 because their producing lane run_cell silently drops cross-symbol orders since the #67 guard, 2 blocked because the anchored SHA encodes an input path (#128e), 1 without a producer at HEAD (#118). Entry gate: threshold_sweep's default --out-dir points INTO the corpus while its filename hardcodes a date, so a no-argument run overwrites a byte-immutable body."
@@ -3706,7 +3706,7 @@ arch        = [
 crates      = ["crates/backtest", "crates/forecast"]
 tests       = []
 anchors     = []   # gates only; any red is triaged to a D6.b candidate with its cause named at a file:line
-state       = "scoped"   # story 1-29 at REVIEW 2026-10-01: all ACs discharged. 14 of 15 family rows gated and all 14 measured GREEN; the 15th is #118's producer-less row with a written disposition. 4 re-emissions under D6.b (#134 x2, #137 x1 operator-ruled, + the sharpe pair), 6/6 probes RED. Awaiting bmad-code-review, not further dev.
+state       = "shipped"   # story 1-29 at REVIEW 2026-10-01: all ACs discharged. 14 of 15 family rows gated and all 14 measured GREEN; the 15th is #118's producer-less row with a written disposition. 4 re-emissions under D6.b (#134 x2, #137 x1 operator-ruled, + the sharpe pair), 6/6 probes RED. Awaiting bmad-code-review, not further dev.  [CLOSED 2026-11-07 — hardening re-lock program. Verdict was a SELF-REVIEW; the 2026-10-11 independent adversarial re-audit contradicted 4 of the 5 sibling verdicts (14 of 24 findings survived three-skeptic verification) and those findings were worked through — record at docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md. None moved an anchored number. CHANGELOG: § Hardening re-lock program.]
 [[req]]
 id          = "REQ-THRESHOLD-SWEEP-DRIFT-BISECT-001"
 title       = "Trace the threshold-sweep lane's divergence to the commits that caused it before re-pinning its anchors, so the re-emission records a cause rather than a new number and the T-MARGINAL -> T-ALPHA-UNLOCKED verdict flip reaches a reader explained. Measured 2026-09-27: six distinct body digests for two scenarios across ANCHOR / PRE-FIX / POST-FIX; PRE-FIX != ANCHOR, so the lane stopped reproducing before the #129 repair while verify_anchors reported 119/119 — the third such family after 1-26's 34 theta-surfaces and 1-27's 15 rows, outside both inventories. Unlike 1-27's single-cause bisect, 54 commits touch the feeding files across four months, several of which move money arithmetic on their own, so the deliverable is a per-commit attribution list and not a single SHA. Of the verdict delta's growth, 38% is the CONTROL getting worse, not the strategy improving; the FROZEN gate is uninvolved and T-* is this one report's vocabulary over a 45-cell grid with no bootstrap, DSR or multiple-testing correction."
@@ -3719,4 +3719,4 @@ arch        = [
 crates      = ["crates/backtest"]
 tests       = []
 anchors     = []   # 2 scenarios / 4 rows, re-pinned only after AC4's escalation is ruled
-state       = "scoped"   # story 1-30 created 2026-09-28 by the operator's ruling on bug-log #129 (bisect first, then re-lock); ready-for-dev, bisect held until the unpushed commits land
+state       = "shipped"   # story 1-30 created 2026-09-28 by the operator's ruling on bug-log #129 (bisect first, then re-lock); ready-for-dev, bisect held until the unpushed commits land  [CLOSED 2026-11-07 — hardening re-lock program. Verdict was a SELF-REVIEW; the 2026-10-11 independent adversarial re-audit contradicted 4 of the 5 sibling verdicts (14 of 24 findings survived three-skeptic verification) and those findings were worked through — record at docs/dev-notes/independent-audit-five-self-reviews-2026-10-11.md. None moved an anchored number. CHANGELOG: § Hardening re-lock program.]

@@ -1,6 +1,6 @@
 # Story 1.28: mn-ruin-and-fill-provenance
 
-Status: review
+Status: done
 
 <!-- Created 2026-09-27 by the orchestrator, from the two items story 1-21 records as
      explicitly NOT delivered (1-21 lines 94-98, bug-log #110). 1-21 shipped the honest

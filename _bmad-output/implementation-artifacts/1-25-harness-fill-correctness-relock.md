@@ -1,6 +1,6 @@
 # Story 1.25: harness-fill-correctness-relock
 
-Status: review
+Status: done
 
 <!-- 2026-08-19: the CODE half of AC1-AC3 is landed and pushed; AC4 (regeneration) and
      AC5 (band re-examination) are NOT started and are gated on two operator rulings

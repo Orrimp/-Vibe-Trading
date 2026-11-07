@@ -1,6 +1,6 @@
 # Story 1.24: pwsd-fidelity-relock
 
-Status: review
+Status: done
 
 <!-- Created 2026-07-31 by the 1-13 code-review decision (operator: "doc now + re-lock story").
      This story owns the CODE half of the PWSD-fidelity cluster; the doc half landed in the
