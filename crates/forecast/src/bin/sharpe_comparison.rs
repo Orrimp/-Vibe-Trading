@@ -1236,6 +1236,44 @@ mod render_vol_target_rebaseline {
         )
         .unwrap();
 
+        // ── bug-log #152: the `#137` qualifier, which this module was missing ────
+        //
+        // The operator ruled that a row carrying `T-VOL-ALPHA-UNLOCKED` ships ONLY with its
+        // label's limits stated inline. That was implemented in `render_vol_target` and NOT
+        // in this sibling, so every `…-realbaseline` body since 2026-05-22 published
+        // ALPHA-UNLOCKED bare — including the 2026-10-01 re-emission, which was the very
+        // pass that added the qualifier next door. The gate could not catch it either: its
+        // witness list carries the qualifier on the `realdata` row and not on this one.
+        //
+        // That omission is mine. Same shape as `#95` and `#78`: a rule applied to one
+        // instance of a pair.
+        //
+        // COMPUTED, never hardcoded — the strong sentence appears only when it is true, so
+        // it cannot become its own false claim if the numbers move.
+        let both_arms_lose = sharpe_baseline < 0.0 && sharpe_overlay < 0.0;
+        let loss_note = if both_arms_lose {
+            format!(
+                " **Both arms LOSE money here — baseline {sharpe_baseline:.6}, overlay \
+                 {sharpe_overlay:.6}, annualised Sharpe. The overlay loses LESS; it does not \
+                 earn.**"
+            )
+        } else {
+            String::new()
+        };
+        writeln!(
+            &mut body,
+            "\n**What this label does and does not say.** `{}` is ADR-0038 § D1.c's delta rule \
+             — `net_delta >= 0.10` — applied to `{:.6} − {:.6}`.{loss_note} The baseline here \
+             is the REAL-data `top10-2023-fy-momentum-realdata`, which is why this report \
+             exists: the synthetic-baseline sibling \
+             `sharpe-comparison-vol-target-bs1-realdata` was judged the wrong reference. A \
+             label above the threshold still says only that the DELTA cleared it.",
+            verdict.label(),
+            sharpe_overlay,
+            sharpe_baseline,
+        )
+        .unwrap();
+
         // ── § Comparison table ───────────────────────────────────────────────────
         writeln!(&mut body, "\n## Comparison table\n").unwrap();
         writeln!(

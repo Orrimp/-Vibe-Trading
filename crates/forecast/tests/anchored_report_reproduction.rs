@@ -382,6 +382,17 @@ const GATES: &[Gate] = &[
                 "the REAL-data baseline — the single difference from the row above, and \
                  therefore the line that must not be allowed to read as drift",
             ),
+            // bug-log #152, added 2026-11-07. This witness existed on the `realdata` gate
+            // and NOT here, so the operator's ruling — a row carrying
+            // `T-VOL-ALPHA-UNLOCKED` ships only with its label's limits inline — was
+            // enforced on one of two sibling rows. Every `realbaseline` body since
+            // 2026-05-22 shipped the label bare and no gate objected.
+            (
+                "**What this label does and does not say.**",
+                "the `#137` qualifier is IN the body. A body carrying \
+                 `T-VOL-ALPHA-UNLOCKED` without its limits stated inline must not pass this \
+                 gate — the same bar the sibling row has carried since 2026-10-01",
+            ),
             (
                 "| Overlay scenario  | top10-2023-fy-vol-target-overlay-realdata",
                 "the same overlay arm as the row above",

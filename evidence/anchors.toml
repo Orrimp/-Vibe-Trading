@@ -511,10 +511,22 @@ sha256   = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86"
 #   target/release/backtest is built --features candle,realdata) - profile=release
 #   invocation=sharpe_comparison --scenario vol-target-bs1 --backtest-bin target/release/backtest
 #   --out-dir <tempdir> - corpus=data/binance at REVISION 3a8b96c4...
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — downstream of #111/#95, plus #152 ──
+#   Superseded body (kept as history): sharpe-comparison-vol-target-bs1-realdata-20261001.md
+#   WHY: this report RE-RUNS its baseline and overlay scenarios, both of which the
+#     2026-10-29 lane re-lock moved. The deltas here are exactly those inputs:
+#     top10-2023-1h-momentum 592->5277 fills, vol-target-overlay 1138->3266,
+#     momentum-realdata 1138->6203. Both arms' Sharpes become MORE negative.
+#   AND #152: the realbaseline body carried T-VOL-ALPHA-UNLOCKED with NO inline
+#     statement of the label's limits, from 2026-05-22 until this pass. The operator
+#     ruled that row ships only with them; the qualifier was implemented in
+#     render_vol_target and not in its render_vol_target_rebaseline sibling, and the
+#     gate's witness list had it on one row and not the other.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
 version  = "v3.0.0-volatility + noop-baseline"
-sha256   = "d35073f8a8d8528b0cd82b16e514ef4ac6eeb150d9bd3d363246a16863b9cd80"
+sha256   = "8e46f56960c0e0a010f61900db81f31a0826fc4528c737ae7611cba38fd34283"
 
 # v3.0.0-volatility-rebaseline: 1-day re-baseline pass swapping the
 # synthetic v1 momentum baseline for a real-data un-targeted v1 momentum
@@ -576,10 +588,22 @@ sha256   = "d35073f8a8d8528b0cd82b16e514ef4ac6eeb150d9bd3d363246a16863b9cd80"
 #   invocation=sharpe_comparison --scenario <vol-target-bs1-rebaseline|regime-dispatcher-bs1>
 #   --backtest-bin target/release/backtest --out-dir <tempdir>
 #   corpus=data/binance at REVISION 3a8b96c4...
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — downstream of #111/#95, plus #152 ──
+#   Superseded body (kept as history): sharpe-comparison-vol-target-bs1-realbaseline-20261001.md
+#   WHY: this report RE-RUNS its baseline and overlay scenarios, both of which the
+#     2026-10-29 lane re-lock moved. The deltas here are exactly those inputs:
+#     top10-2023-1h-momentum 592->5277 fills, vol-target-overlay 1138->3266,
+#     momentum-realdata 1138->6203. Both arms' Sharpes become MORE negative.
+#   AND #152: the realbaseline body carried T-VOL-ALPHA-UNLOCKED with NO inline
+#     statement of the label's limits, from 2026-05-22 until this pass. The operator
+#     ruled that row ships only with them; the qualifier was implemented in
+#     render_vol_target and not in its render_vol_target_rebaseline sibling, and the
+#     gate's witness list had it on one row and not the other.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline + noop-baseline"
-sha256   = "b82f3132dd8eb3c7cf8b1a1016f888437ce6ceb324ee21231e891dc21afac2db"
+sha256   = "7409a588c1a54aef1f08592fbbb8882f27f0d42c3d1f6301e740b0a88a5cb69f"
 
 # ── v5 v0.3.0 canonical-friction anchor set ──────────────────────────────────
 # Re-emitted under LatencySlippageSimConfig { latency_ms_min: 30,
@@ -1003,15 +1027,39 @@ scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
 sha256   = "435fc0fc29927d05db99ee92af3c9888946ed6c6d183d74e5addbd56f5c92f83"
 
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — downstream of #111/#95, plus #152 ──
+#   Superseded body (kept as history): sharpe-comparison-vol-target-bs1-realdata-20261001.md
+#   WHY: this report RE-RUNS its baseline and overlay scenarios, both of which the
+#     2026-10-29 lane re-lock moved. The deltas here are exactly those inputs:
+#     top10-2023-1h-momentum 592->5277 fills, vol-target-overlay 1138->3266,
+#     momentum-realdata 1138->6203. Both arms' Sharpes become MORE negative.
+#   AND #152: the realbaseline body carried T-VOL-ALPHA-UNLOCKED with NO inline
+#     statement of the label's limits, from 2026-05-22 until this pass. The operator
+#     ruled that row ships only with them; the qualifier was implemented in
+#     render_vol_target and not in its render_vol_target_rebaseline sibling, and the
+#     gate's witness list had it on one row and not the other.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
-sha256   = "d35073f8a8d8528b0cd82b16e514ef4ac6eeb150d9bd3d363246a16863b9cd80"
+sha256   = "8e46f56960c0e0a010f61900db81f31a0826fc4528c737ae7611cba38fd34283"
 
+# ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — downstream of #111/#95, plus #152 ──
+#   Superseded body (kept as history): sharpe-comparison-vol-target-bs1-realbaseline-20261001.md
+#   WHY: this report RE-RUNS its baseline and overlay scenarios, both of which the
+#     2026-10-29 lane re-lock moved. The deltas here are exactly those inputs:
+#     top10-2023-1h-momentum 592->5277 fills, vol-target-overlay 1138->3266,
+#     momentum-realdata 1138->6203. Both arms' Sharpes become MORE negative.
+#   AND #152: the realbaseline body carried T-VOL-ALPHA-UNLOCKED with NO inline
+#     statement of the label's limits, from 2026-05-22 until this pass. The operator
+#     ruled that row ships only with them; the qualifier was implemented in
+#     render_vol_target and not in its render_vol_target_rebaseline sibling, and the
+#     gate's witness list had it on one row and not the other.
+#   Record: docs/dev-notes/relock-theta-2026-11-07.md
 [[anchors]]
 scenario = "sharpe-comparison-vol-target-bs1-realbaseline"
 version  = "v3.0.0-volatility-rebaseline + v5-realdata-medium-2026-05"
-sha256   = "b82f3132dd8eb3c7cf8b1a1016f888437ce6ceb324ee21231e891dc21afac2db"
+sha256   = "7409a588c1a54aef1f08592fbbb8882f27f0d42c3d1f6301e740b0a88a5cb69f"
 
 # lab-yahoo-realdata v0.1.1 Yahoo anchor (2026-05-27).
 # First real-data Yahoo anchor in the registry.  Source: data/yahoo/BTC-USD/1d/2024

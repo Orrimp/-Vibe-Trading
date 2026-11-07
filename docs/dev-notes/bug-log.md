@@ -5161,3 +5161,47 @@ known that since the bake-off was built — buy-and-hold is wired in as the cont
 precisely because a crown means nothing without it — and the lane reports were simply never held
 to the same standard. Nobody decided they should not be; they predate the standard and nothing
 went back.
+
+### `#152` — the operator's `T-VOL-ALPHA-UNLOCKED` ruling was implemented on one of two sibling rows, and the gate enforcing it was wired to the same one
+
+**Found** 2026-11-07, checking a regenerated body before landing it.
+**Status:** FIXED the same day (renderer + gate witness + re-emission).
+
+The operator ruled that a report carrying `T-VOL-ALPHA-UNLOCKED` ships **only** with its label's
+limits stated inline — the `#137` qualifier. Measured across every body on disk:
+
+| body | label | qualifier |
+|---|---|---|
+| `…-realdata-20260522` | `T-VOL-ALPHA-UNLOCKED` | missing |
+| `…-realdata-20261001` | `T-VOL-ALPHA-UNLOCKED` | **present** |
+| `…-realbaseline-20260522` | `T-VOL-ALPHA-UNLOCKED` | missing |
+| `…-realbaseline-20261001` | `T-VOL-ALPHA-UNLOCKED` | **missing** |
+
+So the ruling landed on `realdata` and not on its sibling. `sharpe_comparison.rs` has **three**
+render modules — `render`, `render_vol_target`, `render_vol_target_rebaseline` — and the
+qualifier was added to the second. The `realbaseline` row has published the strong label bare
+since 2026-05-22, and the 2026-10-01 re-emission did not fix it: that was the very pass that
+added the qualifier next door.
+
+**The omission is mine.** I added that qualifier, to one module, and did not look for a sibling.
+
+**And no gate could catch it**, which is the half that made it durable. The reproduction gate's
+witness list carries `"**What this label does and does not say.**"` on the `realdata` row and
+**not** on `realbaseline` — so the rule was enforced on exactly the row that already satisfied
+it. A witness list is a per-row artifact and nothing checks that two rows under one ruling carry
+the same witnesses.
+
+**Fixed:** the qualifier added to `render_vol_target_rebaseline`, computed the same way (the
+"both arms LOSE" sentence appears only when both Sharpes are negative, so it cannot become its
+own false claim if the numbers move); the missing witness added to the `realbaseline` gate; both
+bodies re-emitted under D6.b. Both gates now pass — they were failing before this pass for an
+unrelated reason (their inputs moved in the lane re-lock), which is how I came to be looking at
+the body at all.
+
+**Moral.** This is `#78`'s and `#95`'s shape, and now mine: a rule applied to one instance of a
+pair. What is new is the second half — **the gate inherited the same asymmetry**, because
+witnesses are written per row by whoever last touched that row. When a ruling covers a *family*
+of rows, the enforcement needs to be a property of the family, not a line copied into one of
+them. The cheap version of that is a test asserting that every gate whose body can emit
+`T-VOL-ALPHA-UNLOCKED` declares the qualifier witness — which would have failed on the day the
+ruling was implemented.
