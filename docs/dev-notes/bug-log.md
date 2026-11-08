@@ -5751,3 +5751,100 @@ came from, and the fixture that makes it pass is the thing hiding it. Note the s
 replacement for a gate that could not fail was itself passing for an accidental reason, on the
 same two fixtures, within the same hour.
 
+### `#160` — the AD-19 secret redactor's entropy rule had no detecting fixture: the threshold could be raised to the arithmetic maximum and the whole suite stayed green
+
+Found 2026-11-07 by the cannot-fail-gate sweep (finding F1); fixed 2026-11-08.
+`crates/llm/src/redact_layer.rs:121` (`ENTROPY_THRESHOLD = 4.5`), `:122`
+(`ENTROPY_MIN_LEN = 32`), rule at `:330`. Shape: **boundary-insensitive fixture, stacked on
+expectation-from-the-measurement.**
+
+`entropy_fallback` is the redactor's last line: `>= 32` bytes + Shannon entropy
+`>= ENTROPY_THRESHOLD` + a field name containing `key`/`token`/`secret`. It is what catches a
+credential no regex knows the shape of. Exactly two assertions could notice a change to its
+constants, and **both used the same string** —
+`aB3#kP9@mZ2$nQ7&rX4!sY1*tW6^vU0_wV5`, 35 distinct bytes, so
+`H = log2(35) = 5.129283`: **the arithmetic maximum for its length.**
+
+Measured consequences, before the fix:
+
+| perturbation | suite |
+|---|---|
+| `ENTROPY_THRESHOLD` anywhere in (0, **5.129283**] | **green** |
+| `ENTROPY_THRESHOLD = 5.2` | 2 failed (first redness) |
+| `ENTROPY_MIN_LEN` 32 → 33, 34, **35** | **green** |
+| `ENTROPY_MIN_LEN = 36` | red (first redness) |
+
+Three units of silent headroom on the length, and headroom on the threshold all the way to the
+maximum a 35-byte string can have. At `5.12` the rule is **provably unreachable** for any
+32-byte value, since `log2(32) = 5.0 < 5.12` — so every 32–39-char key/token/secret value
+would silently stop being redacted with 31/31 tests green. The sweep's consequence probe
+confirmed it on the real `apply_redaction_for_field`: at `5.12`, fields whose only matching
+fragment is `key` (`signing_key`, `private_key`) carrying a textbook 40-char AWS secret flip to
+`redacted=false rule=<NONE>`, because regex rule 6 matches but is `continue`d on field-name
+context.
+
+The second assertion is the clearer half of the diagnosis. `entropy_high_for_mixed` read
+
+```rust
+assert!(shannon_entropy(FIXTURE) >= ENTROPY_THRESHOLD, …);
+```
+
+**Its expectation IS the shipped constant.** It holds for any threshold at or below the
+fixture's entropy, so it can never pin an absolute value — the same defect class as `#154`
+(a test that re-implements its subject) and `#156` (an identity whose two sides are the same
+expression), here as *a test whose expected value is read out of the thing under test*.
+
+`grep -rn 'entropy|ENTROPY' --include=*.rs .` outside this file returns nothing, and the
+end-to-end consumer test carries only `sk-ant-` values, which regex rule 0 catches. So the one
+file was the whole gate.
+
+**Fix: seven fixtures whose entropies are DERIVED, not measured.** For a string of length `n`
+in which `a` bytes occur twice and the rest once, `H = log2(n) - 2a/n`. That closed form lets
+each fixture straddle 4.5 by a known margin computed from its own composition, with no
+reference to the shipped constant:
+
+| fixture | n | a | H | expected |
+|---|---|---|---|---|
+| `ENT_32_BELOW` | 32 | 9 | 4.437500 | not redacted |
+| `ENT_32_AT` | 32 | 8 | **4.500000** | redacted — pins the `>=` operator |
+| `ENT_32_ABOVE` | 32 | 7 | 4.562500 | redacted |
+| `ENT_40_BELOW` | 40 | 17 | 4.471928 | not redacted |
+| `ENT_40_ABOVE` | 40 | 16 | 4.521928 | redacted |
+| `ENT_LEN_31` | 31 | 0 | 4.954196 | not redacted — one byte under `MIN_LEN` |
+| `ENT_LEN_32` | 32 | 0 | 5.000000 | redacted — exactly at `MIN_LEN` |
+
+40 bytes is the AWS-secret length and is tested separately from 32 because the two are caught
+by different code paths. The 40-byte fixtures contain `_` so regex rule 6 cannot match and the
+entropy path is what decides; the field name is `session_key`, which has the rule's context and
+is *not* an exact member of `PASSWORD_FIELD_NAMES` (that list short-circuits ahead of the
+entropy rule, which is why `api_key` would have tested nothing). `entropy_high_for_mixed` now
+asserts `|H - log2(35)| < 1e-9` instead of comparing against the constant, and
+`entropy_fixture_entropies_are_derived_not_measured` checks all seven against the closed form,
+so a fixture that stops straddling fails loudly instead of drifting to one side. The old
+fixture's comment also read `// 36 chars` for a 35-byte string.
+
+**Probed, and the first probe was broken — which is the lesson.** A shell loop split its
+patterns on `:` and so mangled every substitution; all four perturbations ran **unmodified**
+code and reported `0 FAILED`, which reads exactly like "the tests do not catch it." The rewrite
+diffs the file against its snapshot and refuses to report a result when the probe changed
+nothing. With that in place:
+
+| perturbation | result |
+|---|---|
+| `ENTROPY_THRESHOLD` 4.5 → 4.6 | 2 failed (both threshold tests) |
+| `ENTROPY_THRESHOLD` 4.5 → 4.4 | 2 failed |
+| `ENTROPY_THRESHOLD` 4.5 → **5.12** | **3 failed** (was: whole suite green) |
+| `ENTROPY_MIN_LEN` 32 → 33 | 2 failed |
+| `ENTROPY_MIN_LEN` 32 → 31 | 1 failed |
+| `ENTROPY_MIN_LEN` 32 → **35** | **2 failed** (was: green) |
+| control | 112 passed, 0 failed |
+
+**Moral.** A fixture at the arithmetic maximum of its own measure cannot detect a raise — it
+has the most headroom any string of its length could have, so it is the *worst* possible choice
+for pinning a threshold, while looking like the most convincing one. And the house rule gained
+a corollary from my own broken probe: **verify the probe changed something before believing
+what it reports.** A probe that silently no-ops is a gate that cannot fail, one level up.
+
+Related: `#154` (test re-implements subject), `#156` (identity's two sides are one expression),
+`#159` (identity asserts what its source cannot witness).
+

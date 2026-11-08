@@ -795,7 +795,12 @@ mod tests {
     fn entropy_fallback_redacted_for_key_field() {
         // "session_token_value" contains "token" → entropy_fallback context.
         // NOT in PASSWORD_FIELD_NAMES (not an exact match).
-        let high_entropy = "aB3#kP9@mZ2$nQ7&rX4!sY1*tW6^vU0_wV5"; // 36 chars
+        // 35 bytes, all distinct → H = log2(35) = 5.129283: the arithmetic
+        // MAXIMUM for its length, and three units above ENTROPY_MIN_LEN. The
+        // comment here read "36 chars" until 2026-11-08. This fixture pins the
+        // rule's CONTEXT (field name), not either of its boundaries — those are
+        // pinned by the derived-entropy tests below.
+        let high_entropy = "aB3#kP9@mZ2$nQ7&rX4!sY1*tW6^vU0_wV5";
         let (out, rule) = apply_redaction_for_field(high_entropy, "session_token_value");
         assert!(
             out.contains("***"),
@@ -811,6 +816,146 @@ mod tests {
         assert!(
             !out.contains("***"),
             "entropy_fallback incorrectly fired on non-key field: {out}"
+        );
+    }
+
+    // ── entropy_fallback boundaries (bug-log #160, sweep finding F1) ──────────
+    //
+    // Until 2026-11-08 the ONLY fixture that made this rule fire was
+    // `aB3#kP9@mZ2$nQ7&rX4!sY1*tW6^vU0_wV5` — 35 distinct bytes, H = log2(35) =
+    // 5.129283, the arithmetic MAXIMUM for its length. Measured consequence:
+    // `ENTROPY_THRESHOLD` could be raised anywhere in (0, 5.129283] and the whole
+    // 31-test suite stayed green; first redness at 5.2. `ENTROPY_MIN_LEN` could go
+    // 32 → 35 green, first redness at 36. So neither constant had a detecting
+    // fixture, and AD-19 ("no secrets in git", keys via env/secret store) was
+    // resting on a redactor whose two numbers nothing pinned.
+    //
+    // At 5.12 the rule is provably unreachable for any 32-byte value, since
+    // log2(32) = 5.0 < 5.12 — i.e. a 32–39-char key/token/secret value would stop
+    // being redacted with the suite still green.
+    //
+    // The fixtures below are DERIVED, not measured. For a string of length `n` in
+    // which `a` bytes occur twice and the remaining `n - 2a` occur once:
+    //
+    //     H = log2(n) - 2a/n
+    //
+    // because each doubled byte contributes 2·(1/n)·log2(n/2)... collapsing to the
+    // closed form above. That lets each fixture straddle 4.5 by a known margin
+    // computed from its own composition, with no reference to the shipped
+    // constant. `entropy_fixture_entropies_are_derived_not_measured` checks the
+    // arithmetic, so a fixture that stops straddling fails loudly instead of
+    // silently drifting to one side.
+    //
+    // Field name is `session_key`: contains "key" (so the rule's context holds),
+    // and NOT an exact member of PASSWORD_FIELD_NAMES, which would short-circuit
+    // ahead of the entropy rule. The 40-byte fixtures contain `_` so regex rule 6
+    // (`[A-Za-z0-9/+=]{40}`) cannot match and the entropy path is what decides.
+
+    /// n=32, a=9 → H = 5 - 18/32 = 4.4375, just BELOW the 4.5 threshold.
+    const ENT_32_BELOW: &str = "aajbbkccmddneepffqggrhhsiituvwxy";
+    /// n=32, a=8 → H = 5 - 16/32 = 4.5 EXACTLY. The comparison is `>=`, so this
+    /// must redact; it is the fixture that pins the operator, not just the value.
+    const ENT_32_AT: &str = "aaibbjcckddmeenffpggqhhrstuvwxyz";
+    /// n=32, a=7 → H = 5 - 14/32 = 4.5625, just ABOVE the threshold.
+    const ENT_32_ABOVE: &str = "aahbbiccjddkeemffnggpqrstuvwxyzA";
+    /// n=40, a=17 → H = log2(40) - 34/40 = 4.471928, just BELOW.
+    const ENT_40_BELOW: &str = "aa_bbuccvddweexffygghhiijjkkmmnnppqqrrss";
+    /// n=40, a=16 → H = log2(40) - 32/40 = 4.521928, just ABOVE.
+    const ENT_40_ABOVE: &str = "aa_bbtccuddveewffxggyhhziijjkkmmnnppqqrr";
+    /// 31 distinct bytes → H = log2(31) = 4.954196, comfortably over the
+    /// threshold. Must NOT redact: it is one byte short of ENTROPY_MIN_LEN, so
+    /// only the LENGTH check can stop it.
+    const ENT_LEN_31: &str = "abcdefghijkmnpqrstuvwxyzABCDEFG";
+    /// 32 distinct bytes → H = log2(32) = 5.0. Must redact: same composition, at
+    /// exactly ENTROPY_MIN_LEN.
+    const ENT_LEN_32: &str = "abcdefghijkmnpqrstuvwxyzABCDEFGH";
+
+    fn ent_redacts(value: &str) -> bool {
+        let (out, rule) = apply_redaction_for_field(value, "session_key");
+        let fired = rule == RULE_ENTROPY_FALLBACK;
+        assert_eq!(
+            fired,
+            out.contains("***"),
+            "rule name and output disagree for {value:?}: rule={rule} out={out}"
+        );
+        fired
+    }
+
+    /// The fixtures' entropies are what the closed form says, independent of
+    /// `ENTROPY_THRESHOLD`. If this fails, the fixtures below no longer straddle
+    /// the threshold and the boundary tests have stopped measuring a boundary.
+    #[test]
+    fn entropy_fixture_entropies_are_derived_not_measured() {
+        for (label, value, n, a) in [
+            ("ENT_32_BELOW", ENT_32_BELOW, 32.0_f64, 9.0_f64),
+            ("ENT_32_AT", ENT_32_AT, 32.0, 8.0),
+            ("ENT_32_ABOVE", ENT_32_ABOVE, 32.0, 7.0),
+            ("ENT_40_BELOW", ENT_40_BELOW, 40.0, 17.0),
+            ("ENT_40_ABOVE", ENT_40_ABOVE, 40.0, 16.0),
+            ("ENT_LEN_31", ENT_LEN_31, 31.0, 0.0),
+            ("ENT_LEN_32", ENT_LEN_32, 32.0, 0.0),
+        ] {
+            assert_eq!(
+                value.len(),
+                n as usize,
+                "{label}: length disagrees with its derivation"
+            );
+            let expected = n.log2() - 2.0 * a / n;
+            let actual = shannon_entropy(value);
+            assert!(
+                (actual - expected).abs() < 1e-9,
+                "{label}: derived H = log2({n}) - 2*{a}/{n} = {expected}, measured {actual}"
+            );
+        }
+    }
+
+    #[test]
+    fn entropy_threshold_boundary_at_len_32() {
+        assert!(
+            !ent_redacts(ENT_32_BELOW),
+            "H = 4.4375 is below the 4.5 threshold and must NOT redact — if this \
+             fires, the threshold was lowered"
+        );
+        assert!(
+            ent_redacts(ENT_32_AT),
+            "H = 4.5 exactly must redact: the comparison is `>=`"
+        );
+        assert!(
+            ent_redacts(ENT_32_ABOVE),
+            "H = 4.5625 is above the threshold and must redact — if this stops \
+             firing, the threshold was raised and 32-byte secrets stopped being \
+             caught"
+        );
+    }
+
+    #[test]
+    fn entropy_threshold_boundary_at_len_40() {
+        assert!(
+            !ent_redacts(ENT_40_BELOW),
+            "H = 4.471928 is below the threshold and must NOT redact"
+        );
+        assert!(
+            ent_redacts(ENT_40_ABOVE),
+            "H = 4.521928 is above the threshold and must redact. 40 bytes is the \
+             AWS-secret length; the only other thing that catches it is regex rule \
+             6, which is `continue`d unless the field name contains \
+             secret/access/token — so for a field like `session_key` this rule is \
+             the only line of defence"
+        );
+    }
+
+    #[test]
+    fn entropy_min_len_boundary() {
+        assert!(
+            !ent_redacts(ENT_LEN_31),
+            "31 bytes is below ENTROPY_MIN_LEN and must NOT redact, even at \
+             H = 4.954196"
+        );
+        assert!(
+            ent_redacts(ENT_LEN_32),
+            "32 bytes is exactly ENTROPY_MIN_LEN and must redact — if this stops \
+             firing, ENTROPY_MIN_LEN was raised. It could previously go 32 → 35 \
+             with the whole suite green"
         );
     }
 
@@ -891,8 +1036,16 @@ mod tests {
 
     #[test]
     fn entropy_high_for_mixed() {
+        // Was `assert!(e >= ENTROPY_THRESHOLD)` until 2026-11-08. That compares the
+        // measurement against the shipped constant, so it holds for ANY threshold
+        // at or below the fixture's entropy and can never pin an absolute value —
+        // raising ENTROPY_THRESHOLD to 5.12 left it green. The expectation is now
+        // an independently derived number: 35 distinct bytes give H = log2(35).
         let e = shannon_entropy("aB3#kP9@mZ2$nQ7&rX4!sY1*tW6^vU0_wV5");
-        assert!(e >= ENTROPY_THRESHOLD, "mixed string entropy too low: {e}");
+        assert!(
+            (e - 35.0_f64.log2()).abs() < 1e-9,
+            "35 all-distinct bytes must give exactly log2(35) = 5.129283, got {e}"
+        );
     }
 
     // ── env-var mode parse ────────────────────────────────────────────────────

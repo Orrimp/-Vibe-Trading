@@ -119,6 +119,30 @@ hygiene pass. Highest value first: F1 (the AD-19 redactor's single maximum-entro
 F2 (four of five AD-1 ROBUST bands widenable into no-ops with 368 tests green, `classify_verdict`
 itself untouched).
 
+### Closed since this note was written
+
+- **`#156` / F-A — CLOSED 2026-11-07/08.** The operator ruled "build the real identity" + "make
+  the equity curve ledger-derived"; both landed, and the D6.b re-emission landed with them
+  (`cd14098c`, `23374613`). It took **three** captures — the two discarded ones became `#158`
+  (the anchors had been clock-independent only because the curve was a constant; the first
+  capture would have gone red the next morning) and `#159` (the replacement identity asserted
+  `unrealized`, which **nothing in the repo ever posts to the journal** — so it passed on the
+  two anchored bodies for the same accidental reason the tautology had, both fixtures having no
+  open positions). `#157` records that `verify_anchors.sh` resolves bodies by byte order over
+  full paths, so the obvious re-emission filename would have left the gate hashing the
+  superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
+  The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F1 — CLOSED 2026-11-08 as `#160`** (ranked action 1). Seven fixtures whose entropies are
+  *derived* from a closed form (`H = log2(n) - 2a/n`) rather than measured, straddling 4.5 at
+  both length 32 and length 40, plus a 31-vs-32-byte pair closing the `MIN_LEN` headroom;
+  `entropy_high_for_mixed`'s self-referential assertion replaced with an absolute value. Probed
+  in both directions on both constants: the two values this note recorded as **silently green**
+  now fail — `ENTROPY_THRESHOLD = 5.12` → 3 failed, `ENTROPY_MIN_LEN = 35` → 2 failed, control
+  112 passed / 0 failed. The first probe was itself broken (a shell loop split its patterns on
+  `:`, so all four perturbations ran unmodified code and reported `0 FAILED`); the rewrite
+  refuses to report a result unless the file differs from its snapshot — a corollary for the
+  house rule, since a probe that silently no-ops is a gate that cannot fail one level up.
+
 **Correctly out of scope:** do not wire DSR as a crown veto (do-not-build E-1, ADR-0075 D2) and
 do not move any threshold — every fix here is a fixture or a floor, never a band.
 
