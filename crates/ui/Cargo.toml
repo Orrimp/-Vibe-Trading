@@ -278,7 +278,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 2026-06-13 (simple-strategies-realdata T-B5): `binance` added to default so
 # the everyday `cargo run -p ui --bin cockpit_live` ships the Binance Lab
 # source chip alongside Yahoo (operator chose both-in-Lab, three-way toggle).
-default = ["live", "yahoo", "binance"]
+# 2026-11-08 (story 3-19 / ADR-0101 D2): `live-fx` added to default so the
+# everyday `cargo run -p ui --bin cockpit_live` quotes the live ECB EUR/USD
+# reference rate (falling back to the configured static rate on any failure).
+default = ["live", "yahoo", "binance", "live-fx"]
 
 # `fixtures` — enables ui::fixtures with deterministic in-memory generators.
 # Used by `cargo run --bin cockpit --features fixtures` to smoke-test the
@@ -318,6 +321,22 @@ yahoo = ["dep:data", "data/yahoo", "data/yahoo-online"]
 # import the `agent` crate un-gated). Encoding the dependency makes the
 # dead combination unrepresentable instead of a `-D warnings` landmine.
 binance = ["live", "dep:data"]
+
+# `live-fx` — story 3-19 / ADR-0101 D2. Enables the live EUR/USD reference-rate
+# fetch at the forward-launch seams (`data::fx_rate::HttpRateSource`) plus the
+# operator's "Refresh rate" affordance on the bake-off input panel.
+#
+# Pulls only `dep:data` — the fetcher is an un-gated module in that crate. It is
+# a feature OF ITS OWN rather than a rider on `yahoo`/`binance` for two reasons:
+# `dep:data` creates no implicit `data` feature to `cfg` on, and the FX rate must
+# not depend on which market-data source happens to be compiled in. With the
+# feature OFF the static config path is the whole path — exactly the state the
+# binary shipped in before this story — which is what keeps `cargo check -p ui
+# --no-default-features --features fixtures` (ci.yml) compiling.
+#
+# The blocking bridge in `live_fx.rs` additionally needs `live` (for `tokio`),
+# so it is gated on `all(live-fx, live)`; `live-fx` alone compiles.
+live-fx = ["dep:data"]
 
 # `render-debug` — ui-quality-gate-overhaul M2-A + M2-B opt-in. Composes
 # two surfaces under one flag per architect Q7 resolution

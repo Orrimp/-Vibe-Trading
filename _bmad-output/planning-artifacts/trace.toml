@@ -3539,11 +3539,20 @@ id          = "REQ-ADVISOR-EUR-LIVE-RATE-001"
 title       = "Live-fetched EUR/USD rate for the advisor's EUR display/plan annotation (ADR-0065 § D6 v0.3 path, PRD §13 Q1 decided BUILD 2026-07-27): RateSource trait behind a test fake, fetch at plan render/explicit refresh only (no boot network), static config rate (DEFAULT_EUR_USD_RATE) as permanent offline fallback; Decimal-only via checked FxRate::new (AD-9); display/annotation only — ranking FX-invariant, anchored CLI never reads the rate."
 feature     = "advisor-eur-live-rate"
 product     = "_bmad-output/planning-artifacts/PRD.md"
-arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0065-eur-usdt-budget-conversion-seam.md"]
-crates      = ["crates/core", "crates/ui"]
-tests       = []
-anchors     = []
-state       = "scoped"   # analyst story 3-19 drafted 2026-07-27 (operator decision PRD §13 Q1 = BUILD); ready-for-dev
+arch        = [
+  "_bmad-output/planning-artifacts/architecture/decisions/0065-eur-usdt-budget-conversion-seam.md",
+  "_bmad-output/planning-artifacts/architecture/decisions/0101-the-live-eur-usd-rate-seam.md",
+]
+crates      = ["crates/core", "crates/data", "crates/ui"]
+tests       = [
+  "crates/data/src/fx_rate.rs",
+  "crates/data/tests/fx_rate_decimal_boundary.rs",
+  "crates/ui/src/live_fx.rs",
+  "crates/ui/tests/advisor_live_fx_rate.rs",
+  "crates/ui/tests/advisor_live_fx_render.rs",
+]
+anchors     = []   # EXPECTED NONE by construction — the anchored CLI path is USDT-denominated and never reads the rate (ADR-0101 Consequences). verify_anchors.sh 119/119 BEFORE and AFTER (developer 2026-11-08); if it had moved, the live path had leaked into the engine.
+state       = "shipped"   # developer 2026-11-08: the four implementation tasks built per ADR-0101 (M-T1 was the architect's). `crates/data/src/fx_rate.rs` = RateSource trait + HttpRateSource (api.frankfurter.dev, 2 s timeout, no retry) + fixtures-gated FakeRateSource, all returning a validated FxRate through the checked ctor; the rate is parsed from the raw JSON TOKEN via serde_json RawValue -> Decimal::from_str, never f64 (D6), pinned two-sidedly by fx_rate_decimal_boundary.rs (a 20-digit token DETECTS an f64 hop; the measured 1.1165 token provably cannot — the control that keeps the guard honest) and PROBED RED by temporarily reintroducing the hop. ui gains `live-fx = ["dep:data"]` in default; `ui::live_fx` owns the D5 policy (any failure -> static config rate) + the bounded bridge (spawn on the agent runtime, recv_timeout — NOT Handle::block_on, which panics inside an async context). Both forward seams in bin/cockpit_live.rs now convert at ONE resolved rate (fetch at plan render + explicit "Refresh rate" on the pre-launch hint only — no boot fetch, no poll, no subscription); provenance reaches the FxNote labels through one formatter (`fmt_fx_provenance`), and `fmt_rate` widened 2dp->4dp-trimmed so the displayed rate reproduces the displayed amount. Gates: `cargo test -p ui` 657+ passed / 0 failed; `cargo test -p data` all passed; `cargo clippy -p data -p ui -- -D warnings` clean (and with `--tests`); `cargo fmt -p data -p ui --check` clean; `bash scripts/verify_anchors.sh` 119/119 BEFORE and AFTER; `uv run --python 3.11 scripts/spec_lint.py` PASS. AD-10: rendered-pixel proof in advisor_live_fx_render.rs (live note vs config note vs no-note, PNGs read by eye) + a structural guard that the two renders differ ONLY in the budget-line band; probed RED by dropping the as-of from the label. FROZEN gate untouched; no evidence/ file touched; no SHA literal in crates/ changed. FILES ONLY (orchestrator commits).
 
 [[req]]
 id          = "REQ-ADVISOR-ONLINE-FDR-ANNEX-001"

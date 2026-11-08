@@ -44,7 +44,7 @@ use crate::strings::{
     LIVE_SYSTEM_HEALTH_LABEL, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
 use crate::theme::{ThemeMode, color, layout, space, text};
-use crate::widgets::num::{fmt_eur_plain, fmt_rate, fmt_usdt_plain};
+use crate::widgets::num::{fmt_eur_plain, fmt_fx_provenance, fmt_rate, fmt_usdt_plain};
 use crate::widgets::{agent_feed, equity_curve, kpi_strip, latency, positions};
 
 /// Render the Live screen body (R2.1 / R2.2).
@@ -368,7 +368,10 @@ fn build_forward_pnl_block<'a>(
             .replace("{eur}", &fmt_eur_plain(note.eur))
             .replace("{usdt}", &fmt_usdt_plain(note.usdt))
             .replace("{rate}", &fmt_rate(note.rate))
-            .replace("{source}", note.source.as_str())
+            // Story 3-19 / ADR-0101 — the provenance carries its as-of label, so
+            // a live rate reads "live:ecb as of 2026-11-06" and a config rate
+            // still reads "config".
+            .replace("{source}", &fmt_fx_provenance(&note.source, &note.as_of))
     } else {
         use trading_core::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxRate};
         let fx = FxRate::config(DEFAULT_EUR_USD_RATE);
@@ -377,7 +380,10 @@ fn build_forward_pnl_block<'a>(
             .replace("{eur}", &fmt_eur_plain(conv.eur()))
             .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
             .replace("{rate}", &fmt_rate(conv.rate().rate()))
-            .replace("{source}", conv.rate().source())
+            .replace(
+                "{source}",
+                &fmt_fx_provenance(conv.rate().source(), conv.rate().as_of()),
+            )
     };
     let fx_note_widget = Text::new(fx_note_text)
         .size(text::SMALL)

@@ -172,7 +172,10 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         st.lookback,
         st.timeframe,
         &st.start_capital_input,
-        model.advisor_eur_usd_rate,
+        // Story 3-19 / ADR-0101 — the live rate when a fetch succeeded, the
+        // configured static rate otherwise. One resolution, shared with the
+        // forward-launch seams.
+        &model.resolved_fx_rate(),
         mode,
     );
 

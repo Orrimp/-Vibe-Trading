@@ -12,10 +12,10 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use trading_core::{
-    BacktestMetrics, Bar, DEFAULT_EUR_USD_RATE, EquitySeries, FillView, FxNote, JournalEntry,
-    MarketHealth, Money, PnlSnapshot, PositionView, Side, Signal, SignalView, StrategyEventKind,
-    StrategyEventView, StrategyId, StrategyLoadError, StrategyLoaded, StrategySwapped, Symbol,
-    Tick, Timestamp, Usdt, Venue,
+    BacktestMetrics, Bar, DEFAULT_EUR_USD_RATE, EquitySeries, FillView, FxNote, FxRate,
+    JournalEntry, MarketHealth, Money, PnlSnapshot, PositionView, Side, Signal, SignalView,
+    StrategyEventKind, StrategyEventView, StrategyId, StrategyLoadError, StrategyLoaded,
+    StrategySwapped, Symbol, Tick, Timestamp, Usdt, Venue,
 };
 
 use trading_core::ActivityEvent;
@@ -1377,6 +1377,25 @@ pub struct Cockpit {
     ///
     /// A UI-display constant — never read by the anchored CLI / scenario runner.
     pub advisor_eur_usd_rate: Decimal,
+
+    /// F7 — the operator's as-of label for the configured rate
+    /// (`AdvisorConfig::eur_usd_rate_as_of`), captured beside the rate itself.
+    ///
+    /// Empty when unconfigured, which is what makes the FX note render the bare
+    /// `"config"` provenance exactly as it did before story 3-19.
+    pub advisor_eur_usd_as_of: SmolStr,
+
+    /// Story 3-19 / ADR-0101 — the last LIVE EUR/USD rate that was successfully
+    /// fetched, if any.
+    ///
+    /// `None` at boot, always: nothing fetches at boot (ADR-0101 D7). Set by the
+    /// binary when a plan render or an explicit operator refresh gets a rate, and
+    /// CLEARED when such a fetch fails — so the provenance the operator reads is
+    /// always the provenance of the most recent attempt, never a stale success
+    /// wearing a fresh label.
+    ///
+    /// Read only through [`Cockpit::resolved_fx_rate`].
+    pub advisor_live_fx: Option<FxRate>,
 }
 
 impl std::fmt::Debug for Cockpit {
@@ -1457,7 +1476,9 @@ impl std::fmt::Debug for Cockpit {
             .field("settings_active_tab", &self.settings_active_tab)
             .field("forward_budget", &self.forward_budget)
             .field("forward_fx", &self.forward_fx)
-            .field("advisor_eur_usd_rate", &self.advisor_eur_usd_rate);
+            .field("advisor_eur_usd_rate", &self.advisor_eur_usd_rate)
+            .field("advisor_eur_usd_as_of", &self.advisor_eur_usd_as_of)
+            .field("advisor_live_fx", &self.advisor_live_fx);
         dbg.finish()
     }
 }
@@ -1534,6 +1555,9 @@ impl Default for Cockpit {
             forward_budget: None,
             forward_fx: None,
             advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
+            advisor_eur_usd_as_of: SmolStr::default(),
+            // ADR-0101 D7 — no fetch at boot, so no live rate at boot.
+            advisor_live_fx: None,
             lab_state_path: None,
             lab_restore: crate::lab::persistence::RestoreOutcome::default(),
             lab_persist: crate::lab::persistence::PersistenceDebouncer::default(),
@@ -1685,6 +1709,9 @@ impl Cockpit {
             forward_budget: None,
             forward_fx: None,
             advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
+            advisor_eur_usd_as_of: SmolStr::default(),
+            // ADR-0101 D7 — no fetch at boot, so no live rate at boot.
+            advisor_live_fx: None,
             // A fixture cockpit persists NOTHING: `None` here is the
             // switch that keeps it off the operator's real session file.
             lab_state_path: None,
@@ -1692,6 +1719,22 @@ impl Cockpit {
             lab_persist: crate::lab::persistence::PersistenceDebouncer::default(),
             session_log: None,
         }
+    }
+
+    /// Story 3-19 / ADR-0101 — the rate every display surface converts at.
+    ///
+    /// The live rate when the most recent fetch succeeded, the configured static
+    /// rate (with its `"config"` provenance) otherwise. This is the ONE place
+    /// the choice is made, so the pre-launch budget hint, the forward plan and
+    /// the Live screen cannot show three different provenances; the forward
+    /// seams in `bin/cockpit_live.rs` build their `BudgetConversion` from the
+    /// same resolution, which is what keeps display and engine identical
+    /// (story AC3 / AC4(c)).
+    #[must_use]
+    pub fn resolved_fx_rate(&self) -> FxRate {
+        self.advisor_live_fx.clone().unwrap_or_else(|| {
+            crate::live_fx::static_fx_rate(self.advisor_eur_usd_rate, &self.advisor_eur_usd_as_of)
+        })
     }
 
     /// cockpit-live-dashboard-wiring v0.1.0 (D5) — append one live equity
@@ -2636,6 +2679,18 @@ pub enum Message {
     ///
     /// ADR-0060 § D5 / F5 Live P/L framing.
     ForwardPaperTradeStarted(Money<Usdt>, Option<FxNote>),
+
+    // ── Story 3-19 — live EUR/USD rate (ADR-0101) ─────────────────────────────
+    /// The operator pressed "Refresh rate" beside the budget hint — the
+    /// explicit-refresh half of ADR-0101 D7 (the other half is the fetch at
+    /// plan render).
+    ///
+    /// The pure arm does nothing: fetching is I/O, which this layer never does.
+    /// The binary watches for this message (the `PromoteSweptConfig` dispatch
+    /// precedent), performs the one bounded fetch on the agent runtime, and
+    /// writes `Cockpit::advisor_live_fx`. In a build without `live-fx` the
+    /// button does not exist, so the message is never emitted.
+    FxRateRefreshRequested,
 }
 
 /// lab-polish-round-2 R2 — parse SMA window text input.
@@ -4000,6 +4055,13 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             // F7 (ADR-0065) — also store the FX note for the honest EUR display.
             model.forward_budget = Some(budget);
             model.forward_fx = fx_note;
+        }
+        Message::FxRateRefreshRequested => {
+            // Story 3-19 / ADR-0101 — deliberately a no-op here. The fetch is
+            // I/O and belongs to the binary (which owns the `RateSource` and the
+            // agent runtime); it writes `advisor_live_fx` when the attempt
+            // resolves. Keeping the pure layer inert is what lets every state
+            // test stay I/O-free.
         }
     }
 }

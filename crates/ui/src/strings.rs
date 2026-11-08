@@ -1974,6 +1974,9 @@ pub fn all() -> &'static [(&'static str, &'static str)] {
             LEADERBOARD_BUDGET_PLACEHOLDER,
         ),
         ("LEADERBOARD_BUDGET_HINT_FMT", LEADERBOARD_BUDGET_HINT_FMT),
+        // story 3-19 / ADR-0101 — the live-rate provenance + refresh affordance
+        ("FX_PROVENANCE_WITH_AS_OF_FMT", FX_PROVENANCE_WITH_AS_OF_FMT),
+        ("LEADERBOARD_FX_REFRESH_LABEL", LEADERBOARD_FX_REFRESH_LABEL),
         (
             "LEADERBOARD_BUDGET_CONTEXT_FMT",
             LEADERBOARD_BUDGET_CONTEXT_FMT,
@@ -3743,6 +3746,22 @@ pub const LEADERBOARD_BUDGET_PLACEHOLDER: &str = "200";
 /// Example: "€200 ≈ $216.00 (at 1.08 EUR/USD, config)"
 pub const LEADERBOARD_BUDGET_HINT_FMT: &str =
     "\u{20ac}{eur} \u{2248} ${usdt} (at {rate} EUR/USD, {source})";
+
+/// Story 3-19 / ADR-0101 — the provenance token inside every FX note, when the
+/// rate carries an as-of label. `{source}` = provenance (e.g. "live:ecb" or
+/// "config"), `{as_of}` = the label the rate came with (e.g. "2026-11-06").
+///
+/// Reads "as of", never "now" or "current": the ECB publishes once per working
+/// day, so a live rate asked for on a Sunday is Friday's (ADR-0101 D4). A rate
+/// with no as-of label renders the bare `{source}` instead of this.
+/// Example: "live:ecb as of 2026-11-06"
+pub const FX_PROVENANCE_WITH_AS_OF_FMT: &str = "{source} as of {as_of}";
+
+/// Story 3-19 / ADR-0101 D7 — the operator's explicit "fetch the rate now"
+/// affordance, beside the budget hint. Pre-launch by design: it changes the
+/// rate the NEXT run converts at, never the rate a running engine already
+/// sized against.
+pub const LEADERBOARD_FX_REFRESH_LABEL: &str = "Refresh rate";
 
 /// Budget-context header shown above the leaderboard once a budget is set
 /// (R: "ranking strategies for €200 in XRPUSDT"). `{budget}` / `{coin}` are

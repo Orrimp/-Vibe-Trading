@@ -83,6 +83,11 @@ pub mod lab;
 /// `strategy`/`exec`/`forecast`/`llm`). The screen body lives at
 /// `screens::leaderboard`.
 pub mod leaderboard;
+/// Story 3-19 / ADR-0101 — which `FxRate` reaches the budget seam (live ECB
+/// reference rate when a fetch succeeded, the configured static rate on ANY
+/// failure). The policy lives here rather than in `bin/cockpit_live.rs` so the
+/// live-success and forced-failure paths are provable through a fake.
+pub mod live_fx;
 /// cockpit-reports-viewer v0.1.0 — browse + render committed backtest
 /// reports in-cockpit. Houses `reports::loader` (the shared report-load
 /// parse, lifted from `bin/viewer.rs` so the viewer bin + the Reports

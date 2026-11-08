@@ -224,10 +224,41 @@ pub fn fmt_usdt_signed(d: Decimal) -> String {
 /// Format a EUR/USD exchange rate — two decimal places, no thousands separators.
 /// Used for the "at 1.08 EUR/USD" display in the honest FX note (F7 / ADR-0065).
 /// Example: `dec!(1.08)` → `"1.08"`.
+///
+/// Story 3-19 / ADR-0101: widened from 2 dp to **up to 4 dp, trailing zeros
+/// trimmed**, because a live ECB rate has four (1.1165) and rounding it to
+/// "1.12" would print a rate that does not reproduce the converted amount
+/// beside it — an honesty label whose arithmetic the operator cannot check.
+/// Configured 2-dp rates are unaffected: `1.08` still renders `"1.08"` and
+/// `1.0` still renders `"1.00"` (the 2-dp minimum is kept).
 #[must_use]
 pub fn fmt_rate(d: Decimal) -> String {
-    let rounded = d.round_dp(2);
-    pad_fractional(&rounded.to_string(), 2)
+    let rendered = d.round_dp(4).normalize().to_string();
+    // `pad_fractional` TRUNCATES anything longer than `places`, so it is only
+    // used to lift a short rate up to the 2-dp floor — never to cut a live
+    // rate's four decimals back down to two.
+    match rendered.split_once('.') {
+        Some((_, frac)) if frac.len() >= 2 => rendered,
+        _ => pad_fractional(&rendered, 2),
+    }
+}
+
+/// Format the provenance token inside an FX note: the `source` label alone, or
+/// "`source` as of `as_of`" when the rate carries an as-of label.
+///
+/// Story 3-19 / ADR-0101 D4 — the single place the source/as-of pair becomes
+/// display text, so the Live screen, the forward plan and the plan export
+/// cannot drift from each other. A config rate with no as-of label renders
+/// exactly as it did before this story (`"config"`).
+#[must_use]
+pub fn fmt_fx_provenance(source: &str, as_of: &str) -> String {
+    if as_of.is_empty() {
+        source.to_owned()
+    } else {
+        crate::strings::FX_PROVENANCE_WITH_AS_OF_FMT
+            .replace("{source}", source)
+            .replace("{as_of}", as_of)
+    }
 }
 
 /// Format a USDT amount without the " USDT" suffix — used in the FX note where
@@ -257,6 +288,36 @@ pub fn fmt_eur_plain(d: Decimal) -> String {
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
+
+    /// Story 3-19 / ADR-0101 — the rate renders at the precision it was quoted
+    /// at, so the label's arithmetic checks out, and the pre-existing 2-dp
+    /// config rates are untouched.
+    #[test]
+    fn rate_format_keeps_live_precision_without_padding_config_rates() {
+        // The config rates that shipped before this story — unchanged.
+        assert_eq!(fmt_rate(dec!(1.08)), "1.08");
+        assert_eq!(fmt_rate(dec!(1.0)), "1.00");
+        // The live ECB rate measured 2026-11-08 — all four decimals survive,
+        // so 200 x 1.1165 = 223.30 reads as arithmetic the operator can redo.
+        assert_eq!(fmt_rate(dec!(1.1165)), "1.1165");
+        // Beyond four decimals it rounds (a display cap, not a money change).
+        assert_eq!(fmt_rate(dec!(1.116337)), "1.1163");
+    }
+
+    /// The provenance token: bare source without an as-of, the "as of" form
+    /// with one. Never "now" / "current" (ADR-0101 D4).
+    #[test]
+    fn fx_provenance_adds_the_as_of_only_when_there_is_one() {
+        assert_eq!(fmt_fx_provenance("config", ""), "config");
+        assert_eq!(
+            fmt_fx_provenance("live:ecb", "2026-11-06"),
+            "live:ecb as of 2026-11-06"
+        );
+        assert_eq!(
+            fmt_fx_provenance("config", "2026-06-22"),
+            "config as of 2026-06-22"
+        );
+    }
 
     #[test]
     fn thousands_sep_basic() {

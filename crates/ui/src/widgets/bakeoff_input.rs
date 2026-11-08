@@ -53,6 +53,8 @@ use trading_core::{BudgetConversion, FxRate, Symbol};
 
 use crate::leaderboard::{BakeoffTimeframe, LeaderboardLookback};
 use crate::state::Message;
+#[cfg(feature = "live-fx")]
+use crate::strings::LEADERBOARD_FX_REFRESH_LABEL;
 use crate::strings::{
     LEADERBOARD_BUDGET_HINT_FMT, LEADERBOARD_BUDGET_LABEL, LEADERBOARD_BUDGET_PLACEHOLDER,
     LEADERBOARD_CAPITAL_HINT, LEADERBOARD_CAPITAL_LABEL, LEADERBOARD_CAPITAL_PLACEHOLDER,
@@ -83,9 +85,11 @@ const CAPITAL_FIELD_WIDTH: f32 = 140.0;
 ///   a different strategy.
 /// - `start_capital_input` — the raw start-capital text (round-trips keystrokes).
 ///   Does NOT affect ranking; scales absolute equity + forward sizing.
-/// - `eur_usd_rate` — the EUR/USD rate to use for the honest FX hint
-///   (F7 / ADR-0065). Pass `trading_core::DEFAULT_EUR_USD_RATE` when no
-///   operator override is configured.
+/// - `fx` — the rate to use for the honest FX hint, WITH its provenance
+///   (F7 / ADR-0065; story 3-19 / ADR-0101 made the provenance variable).
+///   Callers pass `Cockpit::resolved_fx_rate()`, which is the live ECB rate
+///   when a fetch succeeded and the configured static rate otherwise — the
+///   same resolution the forward-launch seams convert at.
 /// - `mode` — active theme mode.
 ///
 /// Returns the form as a titled `frame::panel` so it reads as one coherent
@@ -98,7 +102,7 @@ pub fn view<'a>(
     lookback: LeaderboardLookback,
     timeframe: BakeoffTimeframe,
     start_capital_input: &str,
-    eur_usd_rate: Decimal,
+    fx: &FxRate,
     mode: ThemeMode,
 ) -> crate::Element<'a> {
     // ── Coin row ──────────────────────────────────────────────────────────────
@@ -132,21 +136,42 @@ pub fn view<'a>(
     // when blank / unparseable. The conversion is used only for display here —
     // the engine uses the same BudgetConversion built at the seam in cockpit_live.rs.
     let hint_text: String = {
-        use crate::widgets::num::{fmt_eur_plain, fmt_rate, fmt_usdt_plain};
+        use crate::widgets::num::{fmt_eur_plain, fmt_fx_provenance, fmt_rate, fmt_usdt_plain};
         use rust_decimal_macros::dec;
         let eur: Decimal =
             crate::leaderboard::state::parse_budget(budget_input).unwrap_or(dec!(200));
-        let fx = FxRate::config(eur_usd_rate);
-        let conv = BudgetConversion::new(eur, fx);
+        let conv = BudgetConversion::new(eur, fx.clone());
         LEADERBOARD_BUDGET_HINT_FMT
             .replace("{eur}", &fmt_eur_plain(conv.eur()))
             .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
             .replace("{rate}", &fmt_rate(conv.rate().rate()))
-            .replace("{source}", conv.rate().source())
+            // Story 3-19 / ADR-0101 — "config", or "live:ecb as of 2026-11-06".
+            .replace(
+                "{source}",
+                &fmt_fx_provenance(conv.rate().source(), conv.rate().as_of()),
+            )
     };
-    let hint = Text::new(hint_text)
+    let hint_label = Text::new(hint_text)
         .size(text::MICRO)
         .color(color::FG_3.current(mode));
+
+    // Story 3-19 / ADR-0101 D7 — the explicit-refresh affordance sits HERE, on
+    // the pre-launch surface, and nowhere else. A refresh must never restate the
+    // rate of a run the engine already sized against (that is the one way
+    // display and engine could drift); before launch there is no engine, so
+    // re-quoting is free and the operator sees the rate the next run will use.
+    //
+    // Without `live-fx` there is nothing to refresh and no button is built.
+    #[cfg(feature = "live-fx")]
+    let hint: crate::Element<'a> = Row::new()
+        .spacing(space::S)
+        .align_y(iced::alignment::Vertical::Center)
+        .push(hint_label)
+        .push(fx_refresh_button(mode))
+        .width(Length::Fill)
+        .into();
+    #[cfg(not(feature = "live-fx"))]
+    let hint: crate::Element<'a> = hint_label.into();
 
     // ── Timeframe + start-capital row (side by side) ──────────────────────────
     let timeframe_block = Column::new()
@@ -248,6 +273,29 @@ fn coin_chip<'a>(sym_str: &str, active: bool, mode: ThemeMode) -> crate::Element
     let symbol = Symbol::new(sym_str);
     button(chip)
         .on_press(Message::BakeoffSelectCoin(symbol))
+        .padding(0)
+        .style(|_t: &iced::Theme, _s: button::Status| button::Style {
+            background: None,
+            ..Default::default()
+        })
+        .width(Length::Shrink)
+        .into()
+}
+
+/// Story 3-19 / ADR-0101 D7 — the "Refresh rate" affordance beside the FX hint.
+///
+/// A quiet `MICRO` text button (no chip fill — it is an action on the hint, not
+/// a selection), dispatching [`Message::FxRateRefreshRequested`]. The binary
+/// performs the one bounded fetch; on any failure the hint falls back to the
+/// configured rate's `"config"` provenance, which is itself the visible answer
+/// to "did it work?".
+#[cfg(feature = "live-fx")]
+fn fx_refresh_button<'a>(mode: ThemeMode) -> crate::Element<'a> {
+    let label = Text::new(LEADERBOARD_FX_REFRESH_LABEL)
+        .size(text::MICRO)
+        .color(color::ACCENT.current(mode));
+    button(label)
+        .on_press(Message::FxRateRefreshRequested)
         .padding(0)
         .style(|_t: &iced::Theme, _s: button::Status| button::Style {
             background: None,
@@ -494,7 +542,7 @@ mod tests {
                 LeaderboardLookback::OneMonth,
                 BakeoffTimeframe::OneHour,
                 "100000",
-                trading_core::DEFAULT_EUR_USD_RATE,
+                &trading_core::FxRate::config(trading_core::DEFAULT_EUR_USD_RATE),
                 mode,
             );
         }
@@ -510,7 +558,7 @@ mod tests {
                 LeaderboardLookback::H1_2024,
                 tf,
                 "50000",
-                trading_core::DEFAULT_EUR_USD_RATE,
+                &trading_core::FxRate::config(trading_core::DEFAULT_EUR_USD_RATE),
                 ThemeMode::Dark,
             );
         }

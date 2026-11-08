@@ -614,7 +614,7 @@ fn render_bakeoff_input(_model: &Cockpit) -> iced::Element<'_, Message> {
         LeaderboardLookback::OneMonth,
         BakeoffTimeframe::OneHour,
         "100000",
-        trading_core::DEFAULT_EUR_USD_RATE,
+        &trading_core::FxRate::config(trading_core::DEFAULT_EUR_USD_RATE),
         ThemeMode::Dark,
     )
 }

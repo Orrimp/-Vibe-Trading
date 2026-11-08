@@ -10,9 +10,9 @@ use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use time::OffsetDateTime;
 use trading_core::{
-    BacktestMetrics, Bar, EquitySeries, FeeTier, FillView, Money, PnlSnapshot, PositionView, Price,
-    Quantity, Side, StrategyEventKind, StrategyEventView, StrategyId, Symbol, Tick, Timeframe,
-    Timestamp, Usdt, Venue,
+    BacktestMetrics, Bar, BudgetConversion, EquitySeries, FeeTier, FillView, FxRate, Money,
+    PnlSnapshot, PositionView, Price, Quantity, Side, StrategyEventKind, StrategyEventView,
+    StrategyId, Symbol, Tick, Timeframe, Timestamp, Usdt, Venue,
 };
 
 use crate::state::{
@@ -3113,6 +3113,41 @@ pub fn fake_cockpit_leaderboard_with_fx_rate(budget_input: &str, eur_usd_rate: D
         budget_input: budget_input.to_string(),
         ..Default::default()
     };
+    cockpit
+}
+
+/// Story 3-19 / ADR-0101 — the leaderboard with a LIVE rate already fetched, so
+/// the pre-launch budget hint renders "€200 ≈ $223.30 (at 1.1165 EUR/USD,
+/// live:ecb as of 2026-11-06)" instead of the configured `"config"` label.
+///
+/// `eur_usd_rate` stays the configured fallback, exactly as the binary holds it,
+/// so a render test can show the live rate WINNING over it rather than merely
+/// being the only rate present. Synthetic — no fetch, no engine.
+#[must_use]
+pub fn fake_cockpit_leaderboard_with_live_fx_rate(
+    budget_input: &str,
+    live_rate: Decimal,
+    as_of: &str,
+) -> Cockpit {
+    let mut cockpit = fake_cockpit_leaderboard_with_fx_rate(budget_input, dec!(1.08));
+    cockpit.advisor_live_fx =
+        Some(FxRate::new(live_rate, "live:ecb", as_of).unwrap_or(FxRate::config(live_rate)));
+    cockpit
+}
+
+/// Story 3-19 / ADR-0101 — a Forward-plan cockpit whose LAUNCHED run converted
+/// €200 at `fx`, so the sizing block renders that rate's note.
+///
+/// The budget and the note come from ONE [`BudgetConversion`], which is the
+/// whole anti-drift point (ADR-0065 D2): a fixture that set them separately
+/// could show an engine budget the label contradicts, and no render test would
+/// notice. Synthetic — no engine, no launch.
+#[must_use]
+pub fn fake_cockpit_forward_plan_with_fx(fx: FxRate) -> Cockpit {
+    let mut cockpit = fake_cockpit_forward_plan(PanelState::Ready(fake_forward_plan()));
+    let conversion = BudgetConversion::new(dec!(200), fx);
+    cockpit.forward_budget = Some(conversion.usdt());
+    cockpit.forward_fx = Some(conversion.fx_note());
     cockpit
 }
 

@@ -24,6 +24,12 @@ pub mod daily_volume;
 pub mod dynamic_cache;
 pub mod fake_feed;
 pub mod funding;
+/// Live EUR/USD reference-rate fetcher (story 3-19 / ADR-0101).
+///
+/// Always compiled (not gated): the trait + HTTP impl are plain `reqwest`,
+/// which is already a non-optional dep here. The *fake* inside is gated on
+/// `fixtures`, like `mock_feed`.
+pub mod fx_rate;
 pub mod kraken;
 #[cfg(any(test, feature = "fixtures"))]
 pub mod mock_feed;
@@ -48,6 +54,12 @@ pub use daily_volume::{
 };
 pub use fake_feed::{FakeFeed, bar_cross_check_delta, trade_aggregation};
 pub use funding::{BinanceFundingClient, FundingPollError, FundingPoller};
+pub use fx_rate::{
+    FRANKFURTER_EUR_USD_URL, FxRateFetchError, HttpRateSource, LIVE_RATE_SOURCE, LIVE_RATE_TIMEOUT,
+    RateSource, parse_frankfurter_eur_usd,
+};
+#[cfg(any(test, feature = "fixtures"))]
+pub use fx_rate::{FakeRateOutcome, FakeRateSource};
 pub use kraken::{KrakenFeed, kraken_symbol_map};
 #[cfg(any(test, feature = "fixtures"))]
 pub use mock_feed::MockFeed;

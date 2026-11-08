@@ -719,6 +719,10 @@ fn main() -> Result<()> {
     // F7 — seed the advisor EUR/USD rate into the Cockpit so display surfaces
     // (leaderboard hint, forward-plan, live screen) use the same rate as the seam.
     cockpit.advisor_eur_usd_rate = advisor_eur_usd_rate;
+    // Story 3-19 — the operator's as-of label travels with the rate so the FX
+    // note can say "config as of 2026-06-22" when one is configured (it read
+    // the bare "config" before, discarding a label the config already carried).
+    cockpit.advisor_eur_usd_as_of = smol_str::SmolStr::new(&advisor_eur_usd_as_of);
     if let Some(first) = universe_pairs.first() {
         cockpit.selected_symbol = Some(first.clone());
     }
@@ -840,6 +844,27 @@ fn main() -> Result<()> {
         // moved into RunHandles.
         advisor_eur_usd_rate,
         advisor_eur_usd_as_of,
+        // Story 3-19 / ADR-0101 — build the live rate source (one GET, 2 s
+        // timeout, no retry). A client that cannot be built is logged once and
+        // then simply means the static path, like every other failure (D5).
+        #[cfg(feature = "live-fx")]
+        fx_source: match data::fx_rate::HttpRateSource::new() {
+            Ok(source) => {
+                info!(
+                    url = data::fx_rate::FRANKFURTER_EUR_USD_URL,
+                    "live EUR/USD rate source wired (fetches at plan render and on refresh only)"
+                );
+                Some(std::sync::Arc::new(source) as std::sync::Arc<dyn data::fx_rate::RateSource>)
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "could not build the live EUR/USD rate client; the configured \
+                     static rate is the whole path for this session"
+                );
+                None
+            }
+        },
     };
 
     // ui-session-journal-iced-tester v0.1 (T03 — REVISED) — recorder
@@ -1312,6 +1337,17 @@ struct AppState {
     // FxNote to the display. A UI-input constant — never read by the anchored CLI.
     advisor_eur_usd_rate: rust_decimal::Decimal,
     advisor_eur_usd_as_of: String,
+
+    /// Story 3-19 / ADR-0101 — the live EUR/USD [`data::fx_rate::RateSource`].
+    ///
+    /// `Some` on a `live-fx` build where the HTTPS client could be constructed;
+    /// `None` if it could not, which is simply the static path (D5) for the rest
+    /// of the process. Behind an `Arc` because the bounded fetch runs on the
+    /// agent runtime, not on iced's thread.
+    ///
+    /// NOTHING fetches at boot (D7) — this is a handle, not a value.
+    #[cfg(feature = "live-fx")]
+    fx_source: Option<std::sync::Arc<dyn data::fx_rate::RateSource>>,
 }
 
 // ── Manual Clone for AppState ─────────────────────────────────────────────────
@@ -1383,6 +1419,9 @@ impl Clone for AppState {
             // F7 — advisor FX rate: plain-value copy.
             advisor_eur_usd_rate: self.advisor_eur_usd_rate,
             advisor_eur_usd_as_of: self.advisor_eur_usd_as_of.clone(),
+            // Story 3-19 — an `Arc` refcount bump; the clone shares the source.
+            #[cfg(feature = "live-fx")]
+            fx_source: self.fx_source.clone(),
         }
     }
 }
@@ -1402,6 +1441,56 @@ impl AppState {
     /// flips the modal sub-state into `Loading` is owned by
     /// `ui::state::update`; the binary owns only the I/O wiring
     /// (Q5 — separation of pure state from side-channel I/O).
+    /// Story 3-19 / ADR-0101 D7 — run ONE bounded live-rate fetch and record
+    /// its outcome in the model.
+    ///
+    /// Called at a plan render and on an explicit operator refresh, and nowhere
+    /// else: no boot fetch, no poll, no subscription. A success caches the rate;
+    /// a failure CLEARS the cache, so the provenance the operator reads always
+    /// describes the latest attempt rather than an older success (D5).
+    #[cfg(feature = "live-fx")]
+    fn refresh_live_fx_rate(&mut self) {
+        let Some(source) = self.fx_source.as_ref() else {
+            // No client was built at boot — the static path, already logged once.
+            self.cockpit.advisor_live_fx = None;
+            return;
+        };
+        match ui::live_fx::fetch_live_fx_blocking(
+            source,
+            &self.rt_handle,
+            ui::live_fx::PLAN_FETCH_BUDGET,
+        ) {
+            Ok(rate) => {
+                info!(
+                    rate = %rate.rate(),
+                    source = rate.source(),
+                    as_of = rate.as_of(),
+                    "live EUR/USD rate fetched"
+                );
+                self.cockpit.advisor_live_fx = Some(rate);
+            }
+            Err(e) => {
+                warn!(
+                    error = %e,
+                    "live EUR/USD fetch failed; falling back to the configured static rate"
+                );
+                self.cockpit.advisor_live_fx = None;
+            }
+        }
+    }
+
+    /// The [`trading_core::FxRate`] a forward launch converts at.
+    ///
+    /// Fetches first (ADR-0101 D7 — "at plan render"), then resolves: the live
+    /// rate on success, the configured static rate on ANY failure. The caller
+    /// builds exactly one `BudgetConversion` from the result, so the engine's
+    /// budget and the label the operator reads are the same number (AC3).
+    fn plan_fx_rate(&mut self) -> trading_core::FxRate {
+        #[cfg(feature = "live-fx")]
+        self.refresh_live_fx_rate();
+        self.cockpit.resolved_fx_rate()
+    }
+
     fn update(&mut self, msg: Message) -> iced::Task<Message> {
         // Capture the tx_id before delegating so we can dispatch the
         // async fetch after `update` mutates the model.
@@ -1551,6 +1640,27 @@ impl AppState {
         #[cfg(feature = "live")]
         let promote_requested = matches!(&msg, Message::PromoteSweptConfig(_));
 
+        // ── Story 3-19 / ADR-0101 — the two fetch triggers, and ONLY these ────
+        //
+        // (a) the explicit operator refresh: "Refresh rate" beside the pre-launch
+        //     budget hint. Re-quotes the rate the NEXT run will convert at; it
+        //     never restates a running engine's budget.
+        // (b) the plan render: a bake-off that crowned a row, or a promoted Tune
+        //     config — the two messages that build a `BudgetConversion` below.
+        //     Resolved ONCE here and shared by both seams, so a single render
+        //     costs at most one bounded fetch.
+        #[cfg(feature = "live-fx")]
+        if matches!(msg, Message::FxRateRefreshRequested) {
+            self.refresh_live_fx_rate();
+        }
+        let plan_render_fetch = matches!(&msg, Message::BakeoffRunCompleted(Ok(mirror)) if mirror.crowned_row().is_some())
+            || matches!(&msg, Message::PromoteSweptConfig(_));
+        let plan_fx: Option<trading_core::FxRate> = if plan_render_fetch {
+            Some(self.plan_fx_rate())
+        } else {
+            None
+        };
+
         // F5-LAUNCH (ADR-0060 § D6) — when a bake-off completes with a crowned
         // row, build a ForwardRunConfig from the crowned/picked strategy + bake-off
         // coin + F3 budget, then send ForwardCommand::Launch(cfg) to the
@@ -1578,20 +1688,14 @@ impl AppState {
                     .budget_eur()
                     .unwrap_or(dec!(200));
 
-                // F7 seam: build FxRate from config-resolved rate, then BudgetConversion.
-                // The ONLY EUR→USDT multiply in the codebase (grep guard in T7 / core tests).
-                let fx = trading_core::FxRate::config(self.advisor_eur_usd_rate);
-                // If the operator supplied an as_of label, replace the empty one.
-                let fx = if self.advisor_eur_usd_as_of.is_empty() {
-                    fx
-                } else {
-                    trading_core::FxRate::new(
-                        self.advisor_eur_usd_rate,
-                        "config",
-                        self.advisor_eur_usd_as_of.as_str(),
-                    )
-                    .unwrap_or(fx)
-                };
+                // F7 seam: ONE FxRate → ONE BudgetConversion. The rate is the
+                // live ECB reference rate when the fetch above succeeded and the
+                // configured static rate otherwise (story 3-19 / ADR-0101 D5);
+                // the multiply itself is unchanged and still the only EUR→USDT
+                // arithmetic in the codebase (grep guard in core's tests).
+                let fx = plan_fx
+                    .clone()
+                    .unwrap_or_else(|| self.cockpit.resolved_fx_rate());
                 let conversion = trading_core::BudgetConversion::new(budget_eur, fx);
                 let budget: trading_core::Money<trading_core::Usdt> = conversion.usdt();
                 let fx_note = Some(conversion.fx_note());
@@ -1896,18 +2000,11 @@ impl AppState {
                 .unwrap_or(dec!(200));
 
             // F7 seam: the ONLY EUR→USDT multiply (the crowned-path FX block,
-            // verbatim — one converted value shared by engine + display).
-            let fx = trading_core::FxRate::config(self.advisor_eur_usd_rate);
-            let fx = if self.advisor_eur_usd_as_of.is_empty() {
-                fx
-            } else {
-                trading_core::FxRate::new(
-                    self.advisor_eur_usd_rate,
-                    "config",
-                    self.advisor_eur_usd_as_of.as_str(),
-                )
-                .unwrap_or(fx)
-            };
+            // verbatim — one converted value shared by engine + display), over
+            // the same resolved rate the crowned path uses (story 3-19).
+            let fx = plan_fx
+                .clone()
+                .unwrap_or_else(|| self.cockpit.resolved_fx_rate());
             let conversion = trading_core::BudgetConversion::new(budget_eur, fx);
             let budget: trading_core::Money<trading_core::Usdt> = conversion.usdt();
             let fx_note = Some(conversion.fx_note());

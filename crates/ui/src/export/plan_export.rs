@@ -90,7 +90,9 @@ use crate::strings::{
     PLAN_EXPORT_SECTION_STANDING_RULES, PLAN_EXPORT_SECTION_TRUST,
     PLAN_EXPORT_SECTION_WHAT_THIS_IS_NOT, PLAN_EXPORT_TITLE, SHORT_UNBOUNDED_LOSS_DISCLAIMER,
 };
-use crate::widgets::num::{fmt_eur, fmt_eur_plain, fmt_price, fmt_qty, fmt_rate, fmt_usdt_plain};
+use crate::widgets::num::{
+    fmt_eur, fmt_eur_plain, fmt_fx_provenance, fmt_price, fmt_qty, fmt_rate, fmt_usdt_plain,
+};
 
 // ── Layout primitives (serialiser-emitted, NOT `crate::strings` consts) ───────
 
@@ -604,7 +606,9 @@ fn budget_line_text(plan: &ForwardPlanView, fx: Option<&FxNote>) -> String {
             .replace("{eur}", &fmt_eur_plain(note.eur))
             .replace("{usdt}", &fmt_usdt_plain(note.usdt))
             .replace("{rate}", &fmt_rate(note.rate))
-            .replace("{source}", note.source.as_str())
+            // Story 3-19 / ADR-0101 — the exported plan carries the same
+            // provenance string the screen shows (one formatter, no drift).
+            .replace("{source}", &fmt_fx_provenance(&note.source, &note.as_of))
     } else {
         use trading_core::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxRate};
         let rate = FxRate::config(DEFAULT_EUR_USD_RATE);
@@ -613,7 +617,10 @@ fn budget_line_text(plan: &ForwardPlanView, fx: Option<&FxNote>) -> String {
             .replace("{eur}", &fmt_eur_plain(conv.eur()))
             .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
             .replace("{rate}", &fmt_rate(conv.rate().rate()))
-            .replace("{source}", conv.rate().source())
+            .replace(
+                "{source}",
+                &fmt_fx_provenance(conv.rate().source(), conv.rate().as_of()),
+            )
     }
 }
 

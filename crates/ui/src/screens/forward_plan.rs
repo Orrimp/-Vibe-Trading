@@ -111,7 +111,9 @@ use crate::strings::{
 };
 use crate::theme::{ThemeMode, color, radius, space, text};
 use crate::widgets::frame;
-use crate::widgets::num::{fmt_eur_plain, fmt_price, fmt_qty, fmt_rate, fmt_usdt_plain};
+use crate::widgets::num::{
+    fmt_eur_plain, fmt_fx_provenance, fmt_price, fmt_qty, fmt_rate, fmt_usdt_plain,
+};
 
 /// Render the Forward-plan screen body.
 ///
@@ -931,7 +933,8 @@ fn sizing_block<'a>(
             .replace("{eur}", &fmt_eur_plain(note.eur))
             .replace("{usdt}", &fmt_usdt_plain(note.usdt))
             .replace("{rate}", &fmt_rate(note.rate))
-            .replace("{source}", note.source.as_str())
+            // Story 3-19 / ADR-0101 — provenance + its as-of label.
+            .replace("{source}", &fmt_fx_provenance(&note.source, &note.as_of))
     } else {
         // Fallback: build from the plan's budget + default rate.
         use trading_core::{BudgetConversion, DEFAULT_EUR_USD_RATE, FxRate};
@@ -941,7 +944,10 @@ fn sizing_block<'a>(
             .replace("{eur}", &fmt_eur_plain(conv.eur()))
             .replace("{usdt}", &fmt_usdt_plain(conv.usdt().amount()))
             .replace("{rate}", &fmt_rate(conv.rate().rate()))
-            .replace("{source}", conv.rate().source())
+            .replace(
+                "{source}",
+                &fmt_fx_provenance(conv.rate().source(), conv.rate().as_of()),
+            )
     };
     col = col.push(
         Text::new(budget_line)

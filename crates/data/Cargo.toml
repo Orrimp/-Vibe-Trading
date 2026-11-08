@@ -32,7 +32,11 @@ audit = { path = "../audit" }
 # for subscriber migration across fetch_binance_klines + fetch_yahoo_klines bins.
 llm = { path = "../llm" }
 serde.workspace = true
-serde_json.workspace = true
+# `raw_value` (ADR-0101 D6): `serde_json` parses every JSON float into an `f64`
+# unless told otherwise, so the live FX rate is deserialized as a `RawValue` —
+# the untouched JSON token — and handed to `Decimal::from_str`. The feature is
+# purely additive (it adds the `RawValue` type; no parsing behaviour changes).
+serde_json = { workspace = true, features = ["raw_value"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
