@@ -6305,3 +6305,80 @@ green for the same structural reason the tautology in `#156` was green, one laye
 stack. The fix is not a better assertion but a second view at a different resolution, with each
 one's blind spot written next to it.
 
+### `#168` — three documents told the reader to run a command that has never existed, and the 2026-08-15 audit drew the wrong conclusion from one of them
+
+Found 2026-11-08 while re-verifying sweep finding F9, whose bonus observation was the thread.
+Shape: **a pointer that cannot resolve**, plus **an audit that searched for the pointer instead
+of the property.**
+
+**ADR-0039, two dead pointers.** Its `## Enforced by` list and `## New files` both name
+`crates/strategy/tests/llm_forecaster_verdict_mutual_exclusivity.rs`, which **has never
+existed** — `grep -rn` over `crates/` returns zero hits for that symbol — and
+<!-- dead-citation-ok: both stale pointers are quoted verbatim as the finding -->
+`cargo test -p strategy --test llm_forecaster_neutrality`, whose file is at
+`crates/trader/tests/llm_forecaster_neutrality.rs`. The whole `llm_forecaster` module moved
+`strategy` → `trader` under ADR-0041 D1 and this ADR's file list was never repointed. Four
+references corrected in place with dated markers.
+
+**But the invariant was enforced all along.** The mutual-exclusivity gate shipped as
+`crates/trader/tests/llm_verdict_priority_tree.rs`: **20 tests**, header citing
+"ADR-0039 § D1.b", `mutual_exclusivity_exactly_one_verdict_per_run` at `:494`, plus the three
+priority-order pairs and a 2-run byte-identity check. Run: 20 passed.
+
+**And that is the finding worth keeping.** `docs/dev-notes/claims-ledger-2026-08-15.md` row V10
+already recorded this, as:
+
+> <!-- dead-citation-ok: the ledger row is quoted verbatim -->
+> ADR-0039: "`cargo test -p strategy --test llm_forecaster_verdict_mutual_exclusivity`" |
+> **MISSING** | No such file or symbol anywhere in `crates/`; ADR status `accepted` | `del`
+
+The first half is true and I confirmed it. The implied conclusion — an unenforced invariant —
+is false. **The audit searched for the POINTER and not for the PROPERTY**, and its own `del`
+provenance tag says what that means: *"a read-only delegated sweep reported it; I did not
+re-open the file."* Eleven other rows in that ledger carry the same tag. Row V10 is amended with
+what the enforcement actually is and re-tagged `src`+`run`.
+
+**A third one, in a runbook, with operational cost.** The new rule below immediately found
+`docs/runbooks/llm-replay.md:89`:
+
+```bash
+# Compute the hash the caller would see.
+# dead-citation-ok — the broken command is quoted verbatim below, as the finding.
+cargo test -p llm --test request_hash_test -- --nocapture
+```
+
+No such target exists; an operator following that step gets
+`error: no test target named 'request_hash_test'`. `request_hash` is a `pub fn` at
+`crates/llm/src/replay.rs:163` and its tests live in that module's own `#[cfg(test)]`, so it is
+reached with `--lib`, not `--test`. Corrected to
+`cargo test -p llm --lib replay::tests::t1920` — verified, 3 passed. **And the old step promised
+something it could not have delivered even if the target had existed:** those tests *assert*
+determinism, they do not *print* a digest, which the corrected text now says.
+
+**Fix: a new `spec_lint.py` rule, `dead-cargo-citation`.** Every
+`cargo test -p <pkg> --test <target>` cited in a tracked `.md` (plus `CHANGELOG.md`) must
+resolve to `crates/<dir>/tests/<target>.rs` or to a `[[test]]` of that name. A citation that
+cannot be resolved is a dead link in executable clothing, so it belongs beside
+`check_dead_links`. A per-line `dead-citation-ok` marker exempts a row that *quotes* a dead
+pointer in order to document it — both this bug-log's own sources needed it.
+
+**The rule's first run reported a false dead citation, and the cause is the self-test's fourth
+case.** My scan mapped package name → directory name. Exactly one crate in this workspace
+breaks that: package `trading_core` lives in `crates/core`, so
+`cargo test -p trading_core --test trybuild` (ADR-0091) read as dead when
+`crates/core/tests/trybuild.rs` is right there. The shipped rule builds the real map from each
+manifest's `name =`, and the self-test's live-citation fixture **deliberately uses a crate whose
+package and directory names differ**, so that specific error cannot come back.
+
+Result: **18 distinct citations across the ADR corpus, 0 dead.** Self-test: four cases — live
+citation silent (package name ≠ directory name), dead citation flagged, quoted dead citation
+exempt, unknown package flagged. Probed live too: rewriting the corrected runbook command to a
+non-existent target flags it, exit 1.
+
+**Moral.** Two of today's entries are about gates that could not fail. This one is about
+**documentation that could not be run** — the same defect in prose, and worse in a runbook than
+in an ADR, because a runbook is executed by a person who then has to work out whether the repo
+or the instruction is wrong. And the audit lesson generalises past this row: when a claim names
+its own enforcement, verifying the NAME is not verifying the ENFORCEMENT. A missing file and an
+unenforced invariant look identical from a grep and are not the same finding.
+

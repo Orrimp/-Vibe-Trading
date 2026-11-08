@@ -114,6 +114,7 @@ CATEGORIES = (
     "story-done-changelog-missing",
     "trace-broken-path",
     "adr-not-registered",
+    "dead-cargo-citation",
 )
 
 
@@ -402,6 +403,112 @@ def check_dead_links(md_path: Path, text: str, report: Report) -> None:
 # ---------------------------------------------------------------------------
 # Check: required frontmatter (soft, PRD/architecture only now)
 # ---------------------------------------------------------------------------
+
+_CARGO_TEST_CITE_RE = re.compile(
+    r"cargo test\s+-p\s+([A-Za-z0-9_\-]+)\s+--test\s+([A-Za-z0-9_]+)"
+)
+
+
+def _package_dirs(root: Path) -> dict[str, Path]:
+    """Real package-name -> crate-directory map.
+
+    NOT an assumption that they match: exactly one crate in this workspace is a
+    mismatch (`trading_core` lives in `crates/core`), and assuming otherwise is
+    what made the first run of this check report a false dead citation
+    (bug-log `#168`).
+    """
+    out: dict[str, Path] = {}
+    for manifest in sorted((root / "crates").glob("*/Cargo.toml")):
+        m = re.search(r'^name\s*=\s*"([^"]+)"', manifest.read_text(encoding="utf-8"), re.M)
+        if m:
+            out[m.group(1)] = manifest.parent
+    return out
+
+
+def check_cargo_citations(
+    roots: Iterable[Path],
+    report: Report,
+    pkg_dirs: dict[str, Path] | None = None,
+    extra_files: Iterable[Path] | None = None,
+) -> int:
+    """Every `cargo test -p X --test Y` cited in a tracked .md must resolve.
+
+    bug-log `#168`. ADR-0039 cited two test targets under `-p strategy` that have
+    never existed there: the whole `llm_forecaster` module moved
+    `strategy` -> `trader` under ADR-0041 D1 and the ADR's "Enforced by" list was
+    never repointed. One of them, `llm_forecaster_verdict_mutual_exclusivity`, has
+    never existed under ANY package — the gate shipped as
+    `crates/trader/tests/llm_verdict_priority_tree.rs`.
+
+    The 2026-08-15 claims ledger had already flagged that row as MISSING, and drew
+    the wrong conclusion from it: the invariant was enforced all along, under a
+    different name. **The audit searched for the pointer and not for the
+    property.** A citation that cannot be resolved is a dead link in executable
+    clothing, so it is checked here with the rest of them.
+
+    Returns the number of citations examined, so a PASS states what it measured.
+    """
+    # `pkg_dirs` / `extra_files` are injection points for `--self-test`, which
+    # must exercise this rule against synthetic fixtures rather than the live
+    # tree (where a PASS proves nothing about whether the rule still bites).
+    if pkg_dirs is None:
+        pkg_dirs = _package_dirs(REPO_ROOT)
+    seen = 0
+    # The tree roots plus CHANGELOG.md, which makes capability claims too and
+    # sits outside them (it lives at the repo root by ratified decision D3).
+    scanned = list(iter_tree_md(roots)) if roots else []
+    if extra_files is not None:
+        scanned.extend(extra_files)
+    elif CHANGELOG_PATH.is_file():
+        scanned.append(CHANGELOG_PATH)
+    for md in scanned:
+        try:
+            text = md.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        lines = text.splitlines()
+        for m in _CARGO_TEST_CITE_RE.finditer(text):
+            pkg, target = m.group(1), m.group(2)
+            # A document may QUOTE a known-dead citation in order to document it
+            # — the opposite of a stale pointer, and it must not be flagged.
+            # Marked with `dead-citation-ok`, mirroring the
+            # `# noqa: queue-staleness` convention in queue_staleness_check.py.
+            #
+            # The marker is honoured on the citation's own line OR on either of
+            # the two lines above it, because a quoted command usually sits
+            # inside a fenced block where an HTML comment would corrupt the very
+            # text being quoted. This bug-log's own `#168` entry is that case.
+            line_no = text.count("\n", 0, m.start())
+            window = lines[max(0, line_no - 2) : line_no + 1]
+            if any("dead-citation-ok" in l for l in window):
+                continue
+            seen += 1
+            crate_dir = pkg_dirs.get(pkg)
+            if crate_dir is None:
+                report.add(
+                    "dead-cargo-citation",
+                    md,
+                    f"cites `cargo test -p {pkg} --test {target}` but no crate in "
+                    f"crates/ declares package `{pkg}`",
+                )
+                continue
+            if (crate_dir / "tests" / f"{target}.rs").is_file():
+                continue
+            # A [[test]] block may give an explicit non-default path.
+            if re.search(
+                r'name\s*=\s*"%s"' % re.escape(target),
+                (crate_dir / "Cargo.toml").read_text(encoding="utf-8"),
+            ):
+                continue
+            report.add(
+                "dead-cargo-citation",
+                md,
+                f"cites `cargo test -p {pkg} --test {target}`, but neither "
+                f"{crate_dir.name}/tests/{target}.rs nor a [[test]] named "
+                f"`{target}` exists in {crate_dir.name}/Cargo.toml",
+            )
+    return seen
+
 
 def check_frontmatter(md_path: Path, text: str, report: Report) -> None:
     soft = SOFT_FRONTMATTER.get(md_path.name)
@@ -989,12 +1096,84 @@ def _self_test_story_done_changelog_missing() -> bool:
         return ok
 
 
+def _self_test_dead_cargo_citation() -> bool:
+    """Synthetic-fixture probe for `dead-cargo-citation` (bug-log `#168`).
+
+    Four cases, because the rule has four ways to be wrong: miss a dead
+    citation, flag a live one, flag a deliberately quoted dead one, and — the
+    one that actually bit — resolve a package to the wrong directory.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        # A synthetic crate whose PACKAGE NAME differs from its DIRECTORY name,
+        # which is the real shape in this workspace (`trading_core` in
+        # `crates/core`) and the shape that made the first run of this rule
+        # report a false dead citation.
+        crate = tmp / "core"
+        (crate / "tests").mkdir(parents=True)
+        (crate / "Cargo.toml").write_text('[package]\nname = "trading_core"\n', encoding="utf-8")
+        (crate / "tests" / "trybuild.rs").write_text("// live target\n", encoding="utf-8")
+        pkg_dirs = {"trading_core": crate}
+
+        def hits_for(body: str) -> list[Violation]:
+            md = tmp / "doc.md"
+            md.write_text(body, encoding="utf-8")
+            r = Report()
+            check_cargo_citations([], r, pkg_dirs=pkg_dirs, extra_files=[md])
+            return [v for v in r.violations if v.category == "dead-cargo-citation"]
+
+        live = hits_for("run `cargo test -p trading_core --test trybuild` to check\n")
+        dead = hits_for("run `cargo test -p trading_core --test nope` to check\n")
+        quoted = hits_for(
+            "it used to say `cargo test -p trading_core --test nope` "
+            "<!-- dead-citation-ok: quoted -->\n"
+        )
+        unknown_pkg = hits_for("run `cargo test -p no_such_pkg --test whatever`\n")
+        # The fenced-block form: marker two lines above, inside neither the
+        # fence nor the command. This is how a quoted command is exempted
+        # without altering the text being quoted.
+        fenced = hits_for(
+            "<!-- dead-citation-ok: quoted below -->\n"
+            "```bash\n"
+            "cargo test -p trading_core --test nope\n"
+            "```\n"
+        )
+        # And the negative control for the window: a marker THREE lines above
+        # must NOT exempt, or the window would silently swallow real citations.
+        too_far = hits_for(
+            "<!-- dead-citation-ok: too far -->\n"
+            "\n"
+            "```bash\n"
+            "cargo test -p trading_core --test nope\n"
+            "```\n"
+        )
+
+        checks = [
+            ("live citation silent (package name != directory name)", len(live) == 0),
+            ("dead citation flagged", len(dead) == 1),
+            ("quoted dead citation exempt", len(quoted) == 0),
+            ("unknown package flagged", len(unknown_pkg) == 1),
+            ("fenced quote exempt via marker 2 lines above", len(fenced) == 0),
+            ("marker 3 lines above does NOT exempt", len(too_far) == 1),
+        ]
+        ok = all(passed for _, passed in checks)
+        detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
+        print(
+            "spec-lint --self-test (dead-cargo-citation): "
+            + (f"PASS — {detail}" if ok else f"FAIL — {detail}")
+        )
+        return ok
+
+
 def self_test() -> int:
     """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
     results = [
         _self_test_status_drift(),
         _self_test_story_done_trace_drift(),
         _self_test_story_done_changelog_missing(),
+        _self_test_dead_cargo_citation(),
     ]
     return 0 if all(results) else 1
 
@@ -1063,6 +1242,7 @@ def main(argv: list[str]) -> int:
         anchors = check_anchors(EVIDENCE_DIR, report)
         check_trace(report, anchors)
         check_story_done_no_tests(report)
+        cargo_cites = check_cargo_citations(roots, report)
         check_status_drift(report)
         check_story_done_trace_drift(report)
         check_story_done_changelog_missing(report)

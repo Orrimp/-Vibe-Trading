@@ -273,9 +273,18 @@ enum LVerdict {
 
 **Mutual exclusivity** — L1 → L2 → L3 → L4 → L0 fallthrough in
 priority order. The first triggering case returns. A unit test in
-`crates/strategy/tests/llm_forecaster_verdict_mutual_exclusivity.rs`
+`crates/trader/tests/llm_verdict_priority_tree.rs`
 asserts mutual exclusivity over a hand-built fixture grid + a
-property test (random fixture → exactly one verdict returned). Same
+property test (random fixture → exactly one verdict returned).
+> **POINTER CORRECTED 2026-11-08 (bug-log `#168`).** Every reference in this ADR to
+> `crates/strategy/tests/llm_forecaster_verdict_mutual_exclusivity.rs` named a file that
+> **has never existed** — `grep -rn` over `crates/` returns zero hits for that symbol. The
+> gate itself is real and has 20 tests: it lives at
+> `crates/trader/tests/llm_verdict_priority_tree.rs`, its own header cites "ADR-0039 § D1.b",
+> and `mutual_exclusivity_exactly_one_verdict_per_run` is at `:494`. The whole
+> `llm_forecaster` module moved from `strategy` to `trader` (ADR-0041 D1) and this ADR's
+> file list was never repointed.
+ Same
 shape as `crates/forecast/tests/vol_verdict_mutual_exclusivity.rs`
 (ADR-0038 § D1.b precedent) and
 `crates/forecast/tests/forecast_distribution_verdict.rs`
@@ -560,7 +569,7 @@ preserved.
 **New files (this ADR scope):**
 - This file: `_bmad-output/planning-artifacts/architecture/decisions/0039-llm-forecaster-verdict-criteria.md`
 - `crates/strategy/src/llm_forecaster/verdict.rs` (~150 LoC; D1 priority tree + L_ALPHA classifier; analyst pass).
-- `crates/strategy/tests/llm_forecaster_verdict_mutual_exclusivity.rs` (~120 LoC; fixture grid + property test; mirrors `vol_verdict_mutual_exclusivity.rs`).
+- `crates/trader/tests/llm_verdict_priority_tree.rs` (20 tests; fixture grid + priority-order pairs + `mutual_exclusivity_exactly_one_verdict_per_run` at `:494`; mirrors `vol_verdict_mutual_exclusivity.rs`). **Shipped under this name in `trader`, not as `crates/strategy/tests/llm_forecaster_verdict_mutual_exclusivity.rs`** — see the correction note in § D1.b (bug-log `#168`).
 
 **Modified files (this ADR scope):**
 - `crates/forecast/src/bin/sharpe_comparison.rs` (additive:
@@ -591,10 +600,16 @@ preserved.
   + trace quality are computed downstream of the context shape).
 
 **Enforced by:**
-- `cargo test -p strategy --test llm_forecaster_verdict_mutual_exclusivity` —
-  one fixture per L-label + mutual-exclusivity property test (mirrors
-  `vol_verdict_mutual_exclusivity.rs`).
-- `cargo test -p strategy --test llm_forecaster_neutrality` —
+- `cargo test -p trader --test llm_verdict_priority_tree` —
+  one fixture per L-label + the mutual-exclusivity property test
+  (`mutual_exclusivity_exactly_one_verdict_per_run`, `:494`) + the three
+  priority-order pairs + 2-run byte-identity on the report body. 20 tests.
+  **Corrected 2026-11-08** from `-p strategy --test
+  llm_forecaster_verdict_mutual_exclusivity`, which has never existed
+  (bug-log `#168`).
+- `cargo test -p trader --test llm_forecaster_neutrality` — **corrected 2026-11-08**
+  from `-p strategy` (bug-log `#168`; the file is at
+  `crates/trader/tests/llm_forecaster_neutrality.rs`) —
   R10.2 carry-forward; re-runs `top10-2023-fy-tcn-overlay-realdata`
   and asserts body-SHA `8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642`
   unchanged after registry add.
@@ -613,7 +628,7 @@ preserved.
 - An L-verdict authored without the algorithm (e.g. hand-written in
   a report body) → mutual-exclusivity check fails or evidence string
   doesn't match the values, the orchestrator cannot route. Caught
-  by `llm_forecaster_verdict_mutual_exclusivity`.
+  by `llm_verdict_priority_tree` (corrected name, bug-log `#168`).
 - A future ship silently adding an L5 priority branch (e.g. retrieval-
   relevance) → defeats the architect cap on priority expansion and
   the comparable-measurement-bar property. Surfaces at code review

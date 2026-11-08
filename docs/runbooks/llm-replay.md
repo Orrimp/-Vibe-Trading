@@ -85,9 +85,21 @@ not match any row in the cache. Common reasons:
 1. **The system prompt drifted.** Even one whitespace change in the
    project / role / dynamic system block flips the hash. To compare:
    ```bash
-   # Compute the hash the caller would see.
-   cargo test -p llm --test request_hash_test -- --nocapture
+   # Exercise the hash function the caller uses (3 tests: 1000x determinism,
+   # correlation_id exclusion, temperature None-vs-Some(0) divergence).
+   cargo test -p llm --lib replay::tests::t1920 -- --nocapture
    ```
+
+   **Corrected 2026-11-08 (bug-log `#168`).** This step used to read
+   `cargo test -p llm --test request_hash_test` <!-- dead-citation-ok: quoted to document it -->, and **no such test target has
+   ever existed** — an operator following this runbook got
+   `error: no test target named 'request_hash_test'`. `request_hash` is a
+   `pub fn` at `crates/llm/src/replay.rs:163` and its tests live in that
+   module's own `#[cfg(test)]`, so it is reached with `--lib`, not `--test`.
+   Note also what the old step promised and could not deliver: these tests
+   **assert** determinism, they do not **print** the digest. To see an actual
+   hash, call `llm::replay::request_hash(&req)` from a scratch binary, or read
+   it out of the `request_hash` column in the query below.
    Then `sqlite3 data/llm-replay.db 'SELECT request_hash FROM replay_entries
    WHERE provider = "anthropic" AND role = "trader";'` and diff.
 2. **A new prompt was added** without a fresh paper-mode recording —
