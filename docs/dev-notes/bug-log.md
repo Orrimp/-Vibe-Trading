@@ -6223,3 +6223,85 @@ three the gate's own author had written down what it was for. The fix in every c
 pair: **a floor that refuses to report on an empty set, and a count in the output so a PASS
 states what it measured.**
 
+### `#167` — ADR-0035 D2's named gate tested a five-line hand copy, and the test I replaced it with passed for the wrong reason too
+
+Found 2026-11-07 (sweep finding F4); fixed 2026-11-08. Shape: **re-implements-subject**, and
+then — in my own replacement — **a comparison whose resolution cannot see the thing it asserts.**
+
+**The original.** ADR-0035 D2 says exactly one field is substituted in the recalibrated metadata
+overlay, and names `crates/forecast/tests/recalibrate_sigma_train_field_invariance.rs` as the
+gate. That file hand-copied the overlay logic into a local `apply_overlay` and tested the copy.
+Measured by the verification pass: `nm -a` on the test binary finds `write_overlay` **0** times
+and `apply_overlay` twice; perturbing the copy reddens the gate and **no edit to the shipped
+function can**. The subject is `bin/recalibrate_sigma_train.rs:225`, a `[[bin]]` — unlinkable
+from an integration test — which additionally carries `required-features = ["candle"]`, so its
+own `#[cfg(test)]` module is never built by CI either (`#163`).
+
+**Fix.** The substitution moved to `forecast::provenance::overlay_with_sigma_train`; the bin's
+`write_overlay` keeps its signature and its canonicalise-and-write half, so its single
+production call site is unchanged. The four existing tests now call the shipped function through
+a one-line shim. Two new tests assert the **committed** `{original, recalibrated}` pairs
+directly — both are git-tracked, non-LFS plain JSON, so no forward pass, no `candle`, no network
+— with a floor of exactly 2 pairs so a renamed checkpoint reads RED rather than skipping.
+
+**Probed on the SHIPPED function, three ways, all red** — which is precisely what the old gate
+could not be: touching a second field → 3 tests red; substituting the wrong field → 3 red;
+merely ROUNDING the value to 6 dp → 2 red.
+
+**And then my own new test turned out to pass for the wrong reason.** It asserted that exactly
+`sigma_train` differs between the committed pairs. It passed — but `python3 -c json.loads` says
+**two** top-level keys differ in the BS-2 pair:
+
+```
+original : "final_val_loss":0.000010510055290069431
+overlay  : "final_val_loss":0.000010510055290069433
+```
+
+Measured in Rust rather than guessed:
+
+```text
+str::parse::<f64>  "…069431" -> bits 3ee60a8b00000000    "…069433" -> bits 3ee60a8b00000001
+serde_json         "…069431" -> bits 3ee60a8b00000001    "…069433" -> bits 3ee60a8b00000001
+```
+
+**`serde_json`'s float parser is off by one ULP on that literal.** Rust's own `str::parse` and
+Python's `float()` round correctly and give two distinct f64s; serde_json gives one. So the
+pipeline read the original, serde_json rounded `…431` to the f64 whose shortest form is `…433`,
+the substitution touched nothing but `sigma_train`, and `canonicalise` wrote `final_val_loss`
+back with different text. **D2 holds** — the field was never substituted; it made a lossy
+round-trip through the JSON library — but my test's green came from the comparison being blind
+to the difference, not from the difference being absent.
+
+A third test now pins the **file-text** view with the BS-2 artefact as a *declared* entry
+(`["final_val_loss", "sigma_train"]`), so a new divergence on any other field fails and must be
+explained before the declaration widens. Probed both ways: hiding the artefact → red; claiming
+BS-1 has it → red; breaking the raw splitter → red on the floor. The three tests' doc comments
+now state which resolution each works at, so none is mistaken for a stronger claim than it
+makes.
+
+**Part C is operator-ruled: document, do not re-emit.** The `## Field invariance` table's Match
+column is the literal `✓` and its "Recalibrated" cells print `original_metadata`-derived
+variables, so the table asserts an outcome it never computes — and the BS-2 `final_val_loss` row
+carries that `✓` over the one field whose on-disk text differs, with `.5e` hiding it. Making it
+real moves the two body-SHAs at `anchors.toml:326-327`. The operator chose the deviation record:
+[`recalibrate-field-invariance-deviation-2026-11-08.md`](recalibrate-field-invariance-deviation-2026-11-08.md),
+which also notes that an honest Match column would print `✓` on that row anyway, because the
+comparison it would perform is the one that cannot see the ULP. **Making a table truthful and
+making it sensitive are two different jobs.**
+
+**Recorded, not opened:** `model_revision` is SHA-256 over `canonicalise` output, which
+serialises numbers via `serde_json::Number::to_string()`. So every `model_revision` here is
+computed over serde_json's rounding, not over correctly-rounded f64s. Harmless and in fact
+stabilising while one parser produces and verifies everything — and `canonicalise` is called
+only from `crates/forecast` — but it would not survive a second JSON implementation. Changing
+the number format would move every `model_revision` and every anchored body printing one, so it
+is a property of the system, not a defect to fix here.
+
+**Moral.** `#154` and this entry's first half are the same shape: a test and its subject must
+not be the same thing. The second half is the sharper lesson, and it is mine: **a comparison can
+only gate what its resolution can distinguish.** My replacement test compared through
+`serde_json::Value`, which collapses the exact difference it was asserting about — so it was
+green for the same structural reason the tautology in `#156` was green, one layer down in the
+stack. The fix is not a better assertion but a second view at a different resolution, with each
+one's blind spot written next to it.
+

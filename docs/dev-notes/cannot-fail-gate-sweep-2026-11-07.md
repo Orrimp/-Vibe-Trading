@@ -132,6 +132,15 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F4 — Parts A+B CLOSED 2026-11-08 as `#167`; Part C operator-ruled DOCUMENT-NOT-RE-EMIT.**
+  The gate now calls the shipped substitution (`forecast::provenance::overlay_with_sigma_train`)
+  and asserts the two committed checkpoint pairs behind a floor. This finding's `measured_evidence`
+  was right about the `✓` and about the ULP's cause, and **wrong that the two values are
+  "identical as a value"**: `json.loads` and `str::parse::<f64>` both give two distinct f64s;
+  only serde_json collapses them, because its float parser is off by one ULP on that literal.
+  That is why the first replacement test passed for the wrong reason, and why a third,
+  text-level test now declares the BS-2 artefact explicitly. Deviation record:
+  [`recalibrate-field-invariance-deviation-2026-11-08.md`](recalibrate-field-invariance-deviation-2026-11-08.md).
 - **F10, F7, F5 — CLOSED 2026-11-08 as `#164`, `#165`, `#166`** (ranked action 4). All three
   got a floor that refuses to report on an empty set plus a count in the output. **F5's stated
   fix in this note was a no-op:** the gate is blind in TWO independent places (capture AND

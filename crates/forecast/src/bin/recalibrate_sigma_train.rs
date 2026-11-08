@@ -227,11 +227,11 @@ fn write_overlay(
     sigma_train_recal: f64,
     overlay_path: &std::path::Path,
 ) -> Result<()> {
-    // Clone the original metadata and substitute only sigma_train.
-    let mut overlay = original_metadata.clone();
-    let sigma_json = serde_json::Number::from_f64(sigma_train_recal)
-        .context("sigma_train is not a finite JSON number")?;
-    overlay["sigma_train"] = serde_json::Value::Number(sigma_json);
+    // The substitution itself lives in the library so a test can reach it
+    // (bug-log #167); this function keeps the canonicalise-and-write half.
+    let overlay =
+        forecast::provenance::overlay_with_sigma_train(original_metadata, sigma_train_recal)
+            .context("sigma_train is not a finite JSON number")?;
 
     // Canonicalise (ADR-0029 key ordering + no whitespace).
     let canonical_bytes = canonicalise(&overlay);

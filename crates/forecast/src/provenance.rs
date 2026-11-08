@@ -42,6 +42,36 @@ pub fn canonicalise(value: &Value) -> Vec<u8> {
     buf
 }
 
+/// Build the recalibrated metadata overlay: `original` with `sigma_train`
+/// substituted and **nothing else touched** (ADR-0035 D2).
+///
+/// Returns `None` when `sigma_train` is not a finite JSON number, which is the
+/// only way the substitution can fail.
+///
+/// ## Why this lives in the library (bug-log `#167`)
+///
+/// It used to live inline in `bin/recalibrate_sigma_train.rs::write_overlay`,
+/// where no test could reach it — a `[[bin]]` is not linkable from an
+/// integration test, and that bin additionally carries
+/// `required-features = ["candle"]`, so its own `#[cfg(test)]` module is never
+/// even built by CI (bug-log `#163`). The gate that ADR-0035 D2's "Enforced by"
+/// list names, `tests/recalibrate_sigma_train_field_invariance.rs`, therefore
+/// tested a five-line hand copy of the logic: measured with
+/// `nm -a` on that test's binary, `write_overlay` appeared **0** times and the
+/// test-local `apply_overlay` appeared twice. Perturbing the copy reddened the
+/// gate; no edit to the shipped function could.
+///
+/// Moving it here makes the invariant's gate call the shipped code. The bin's
+/// `write_overlay` keeps its own signature and its canonicalise-and-write body,
+/// so its single production call site is unchanged.
+#[must_use]
+pub fn overlay_with_sigma_train(original: &Value, sigma_train: f64) -> Option<Value> {
+    let number = serde_json::Number::from_f64(sigma_train)?;
+    let mut overlay = original.clone();
+    overlay["sigma_train"] = Value::Number(number);
+    Some(overlay)
+}
+
 fn write_canonical(buf: &mut Vec<u8>, value: &Value) {
     match value {
         Value::Null => buf.extend_from_slice(b"null"),
