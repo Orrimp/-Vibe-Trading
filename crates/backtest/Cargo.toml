@@ -33,8 +33,23 @@ required-features = ["realdata"]
 
 [features]
 # Enable real TCN-weights backtest scenarios (top10-*-tcn-overlay-weights).
-# Requires `--features candle` at build time; without it those scenarios emit
-# a clear compile-time-gated error rather than silently falling back.
+# CORRECTED 2026-11-08 (bug-log #163). This comment used to read "Requires
+# `--features candle` at build time; without it those scenarios emit a clear
+# compile-time-gated error rather than silently falling back." The second half
+# is still true; the first is NOT. Line 63 below depends on `strategy` with
+# `features = ["forecast"]` UNCONDITIONALLY, and `strategy/forecast` pulls
+# `forecast/candle` — so candle-core is compiled in every default build (17
+# `libcandle_core*` rlibs in `target/debug/deps`) and this feature enables
+# nothing new in the dependency graph.
+#
+# What it still does: flips this crate's own 7 `#[cfg(feature = "candle")]`
+# sites (scenarios/{tcn,patchtst}_overlay_weights.rs, scenarios/threshold_sweep.rs)
+# and unlocks the two `required-features = ["candle", "realdata"]` targets, which
+# `cargo test` otherwise skips in SILENCE. The consequence is that CI pays the ML
+# compile cost on every run and gets none of the ML-gated scenarios or tests.
+# Enabling it in CI is an operator decision, tracked in bug-log #163; the
+# inventory of what that costs is declared in
+# scripts/feature_gated_targets_check.py.
 candle = ["strategy/forecast"]
 # Enable real-Binance-data backtest scenarios (top10-*-tcn-overlay-realdata).
 # Requires data/binance/REVISION.toml to be present at runtime.

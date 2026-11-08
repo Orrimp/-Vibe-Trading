@@ -42,3 +42,14 @@ if command -v uv >/dev/null 2>&1; then
 else
   python3 "$root/scripts/verdict_transcription_check.py"
 fi
+
+# bug-log #163: `cargo test` skips a target whose required-features are not enabled
+# SILENTLY — no warning, exit 0. 46 test fns across 13 targets had never run in CI and
+# nothing said so. This does not decide which features CI enables; it makes every
+# feature-gated target DECLARED, so a new silent exclusion cannot be added unseen.
+# Same uv-vs-python3 reasoning as above.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/feature_gated_targets_check.py"
+else
+  python3 "$root/scripts/feature_gated_targets_check.py"
+fi

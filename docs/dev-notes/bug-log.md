@@ -5981,3 +5981,97 @@ and it had been doing duty as one for the single crate that renders anchored bod
 comment names the consequence of divergence that precisely, that is the specification for a
 gate, and its absence is the finding.
 
+### `#163` — 46 test functions across 13 targets have never run in CI, because `cargo test` skips an unmet `required-features` target in silence — while CI compiles the ML backend anyway
+
+Found 2026-11-08 while re-verifying sweep finding F6; the finding is wider than F6 and its
+cause is not what either of the two prior records said.
+
+**The mechanism.** `cargo test` does not warn when a target's `required-features` are unmet.
+Named explicitly it errors:
+
+```
+$ cargo test -p backtest --test threshold_sweep_readonly --no-run
+error: target `threshold_sweep_readonly` in package `backtest` requires the features: `candle`, `realdata`
+```
+
+Under `cargo test --workspace --exclude ui` — what CI runs
+(`.github/workflows/ci.yml:202`) — the same target is passed over with **no warning, no note,
+exit 0**.
+
+**MEASURED: 46 test functions in 13 test targets CI never builds**, 36 of them not even
+`#[ignore]`d:
+
+| target | tests | `#[ignore]` |
+|---|---|---|
+| `backtest/threshold_sweep_readonly` | 2 | 0 |
+| `backtest/run_yahoo_sma_ticker_flag` | 6 | 0 |
+| `backtest/p2_verdict_rerun` | 15 | 7 |
+| `forecast/metal_cpu_drift` | 2 | 0 |
+| `forecast/train_tcn_golden_cli` | 3 | 0 |
+| `forecast/train_tcn_audit_emits` | 2 | 0 |
+| `forecast/train_tcn_no_audit_db_writes_nothing` | 1 | 0 |
+| `forecast/recalibrate_sigma_train_readonly` | 4 | 1 |
+| `forecast/sigma_train_not_in_safetensors` | 1 | 0 |
+| `forecast/sigma_train_not_in_safetensors_patchtst` | 2 | 1 |
+| `forecast/forward_determinism_patchtst` | 2 | 0 |
+| `forecast/patchtst_overlay_neutrality` | 1 | 1 |
+| `strategy/tcn_overlay_tuned_builder` | 5 | 0 |
+
+Plus the bin-local `#[cfg(test)]` modules inside 7 feature-gated bins — including
+`threshold_sweep.rs`'s 6, which are the only coverage `t_classifier` has (sweep F6), and
+`forecast_distribution`, the one verdict classifier with **no** bin-local test for `classify`
+at all (`#154`).
+
+**Two prior records disagreed, and both were wrong.**
+
+| record | claim | measured |
+|---|---|---|
+| [`feature-reachability-audit-2026-08-15.md:316`](feature-reachability-audit-2026-08-15.md) | "CI's `cargo test --workspace --exclude ui` **unifies candle on**, so this bites only a developer" | half right. candle-core **does** compile — 17 `libcandle_core*` rlibs in a default `target/debug/deps` — but that does not satisfy `required-features`, which is checked against **backtest's own feature names**. The targets still do not build. |
+| the F6 verification agent | CI does not build them | **correct**, but its implied reason (candle unavailable) is wrong. candle is linked; the *feature flag* is what is off. |
+
+**And the reason candle compiles anyway is the sharper half.**
+`crates/backtest/Cargo.toml:63` reads
+`strategy = { path = "../strategy", features = ["forecast"] }` — **unconditional** — and
+`strategy/forecast` → `forecast/candle`. So backtest's own feature,
+`candle = ["strategy/forecast"]` (`:38`), enables **nothing new in the dependency graph**: it is
+already on. Its Cargo.toml comment — *"Requires `--features candle` at build time; without it
+those scenarios emit a clear compile-time-gated error rather than silently falling back"* — is
+no longer true about build-time availability. What `--features candle` still does is flip
+backtest's own 7 `#[cfg(feature = "candle")]` sites (3 scenario files) and unlock 2 targets.
+
+**So CI pays the ML compile cost on every run and gets none of the ML-gated scenarios or
+tests.** That inverts the usual trade-off: the reason to leave `candle` off in CI was its cost,
+and the cost is already being paid. Whether to enable it is still an operator decision —
+`realdata` additionally wants `data/binance/REVISION.toml` at runtime, which CI does not
+provision — so this entry does not flip it.
+
+**Fix: make the exclusion declared, not silent.**
+`scripts/feature_gated_targets_check.py` scans every `crates/*/Cargo.toml` for
+`[[bin]]`/`[[test]]`/`[[bench]]`/`[[example]]` blocks carrying `required-features` and requires
+each to appear in a `DECLARED` table with its feature set, a `built`/`invisible` CI status, and
+a **reason**. It fails on an undeclared gated target (a new silent exclusion), a declared target
+that no longer exists (rot), a required-features drift under a declared row, an `invisible` row
+some CI invocation would actually build, an exclusion with no stated cost, and a count below a
+measured floor. Every run prints `N scanned [floor] · B built by CI · I invisible to CI`, so the
+number is in the CI log rather than inferred. Wired into `.githooks/pre-commit` and `ci.yml`
+beside `spec_lint.py` and `verdict_transcription_check.py`.
+
+**The gate caught two errors in its own first run, both mine.** My hand enumeration of the
+inventory said 26 gated targets and attributed `required-features` to `ui/bench/cockpit_render`;
+the stricter parser found 25 and no such row — my shell regex had absorbed the following block.
+And the first `MAYBE-BUILT` check searched ci.yml as one string, so
+`cargo test -p backtest --features yahoo --test reproducibility_sample_figure` read as
+"`yahoo` is on for the package" and falsely flagged two targets. It is now per-line and
+narrowing-aware.
+
+**Self-test: 6 probes, each matching its own violation KIND** — not merely "some new
+violation", because the floor probe initially fired `UNDECLARED` while the `FLOOR` branch it
+targeted was never reached, and still read as OK. That is the day's lesson applied to a probe
+twice over: `#160` taught that a probe must change something, and this one adds that it must
+change *the thing under test*.
+
+**Moral.** The repo's non-vacuity discipline had been applied to what gates *measure*. This is
+the same discipline applied to whether a gate **runs at all** — and a skipped target is the
+purest form of the shape: not a weak assertion, no assertion, reported as a pass. `cargo` will
+not tell you; something has to.
+

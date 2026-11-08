@@ -87,6 +87,15 @@ jobs:
           # the gate's own teeth on every run rather than trusting that they are still there.
           python3 scripts/verdict_transcription_check.py
           python3 scripts/verdict_transcription_check.py --self-test
+          # bug-log #163: a target whose required-features are unmet is skipped by
+          # `cargo test` SILENTLY. Measured: 46 test fns across 13 targets have never
+          # run in this workflow — including every candle-gated forecast test, while
+          # candle-core compiles anyway (crates/backtest/Cargo.toml:63 pulls
+          # forecast/candle unconditionally). This gate does not turn those features
+          # on; it makes the exclusion declared and counted, printing the invisible
+          # count on every run so the silence is in the log.
+          python3 scripts/feature_gated_targets_check.py
+          python3 scripts/feature_gated_targets_check.py --self-test
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

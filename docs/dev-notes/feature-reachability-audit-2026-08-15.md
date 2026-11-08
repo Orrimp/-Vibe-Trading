@@ -314,6 +314,18 @@ degraded value while believing it got a tensor. It is also ✅ everywhere. **[CA
 `cargo test -p forecast` **alone** resolves `forecast=default` with candle **OFF**, which
 silently skips all 13 `required-features = ["candle"]` targets in `crates/forecast/Cargo.toml`.
 CI's `cargo test --workspace --exclude ui` unifies candle on, so this bites only a developer
+> **CORRECTION 2026-11-08 (bug-log `#163`).** The sentence above is half right and the
+> half it gets wrong matters. candle-core **is** compiled under that command — 17
+> `libcandle_core*` rlibs land in a default `target/debug/deps`, because
+> `crates/backtest/Cargo.toml:63` depends on `strategy` with `features = ["forecast"]`
+> unconditionally. But cargo checks `required-features` against the package's **own**
+> feature names, and `backtest`'s `candle` / `forecast`'s `candle` are still OFF. So the
+> feature-gated **targets do not build**, and `cargo test` skips them in silence:
+> 46 test functions across 13 test targets have never run in CI. Measured:
+> `cargo test -p backtest --test threshold_sweep_readonly --no-run` → `error: target …
+> requires the features: candle, realdata`. The inventory is now declared and gated by
+> `scripts/feature_gated_targets_check.py`.
+
 running the crate in isolation.
 
 ⁵ `ui/chart-build-probe`'s off-arm is a deliberate zero-sized no-op so the chart `draw`
