@@ -623,6 +623,65 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../docs/archive/pre-b
 
 **Precedent**: this is the **first** invocation of D6.b. Future wiring-bug discoveries inherit the 5-step protocol verbatim. If the protocol itself needs revision (e.g. multi-overlay wire-up bugs requiring batched re-emissions), the revision lands as **D6.c** (additive amendment subsection, not in-place mutation of D6.b).
 
+### D6.c — Report-content-addition re-emission protocol (amendment, 2026-11-08)
+
+Adopted under bug-log [`#151`](../../../../docs/dev-notes/bug-log.md) (buy-and-hold control) +
+[`#178`](../../../../docs/dev-notes/bug-log.md) (derived risk line). § D6.b anticipated this
+subsection by name: *"If the protocol itself needs revision … the revision lands as **D6.c**
+(additive amendment subsection, not in-place mutation of D6.b)."*
+
+**Why D6.b does not cover it.** § D6.b legitimises re-emission when *"the recorded body
+reflects a demonstrated wiring bug."* It then bounds the scope: *"only rows whose body cites
+the load-bearing observable that the bug perturbed."* A report that **gains content every
+body should always have carried** is neither. `#151` added a buy-and-hold control to six
+writers; the unit of change is the RENDERER, so it touches **95 of the 119** anchored rows,
+and no observable was perturbed at all. Stretching D6.b to cover that would dissolve its
+scope clause, which is the clause that stops a wiring fix from laundering unrelated body
+edits. So the additive case gets its own protocol, with a stricter proof obligation in
+exchange for the wider scope.
+
+1. **The addition is a standard the corpus already holds elsewhere, not a preference.** Cite
+   where. (`#151`: buy-and-hold is wired in as the bake-off's OWN control precisely because a
+   crown means nothing without one; the lane reports predate that standard and nothing went
+   back. A number with no comparator is not a weak result, it is not a result.) An addition
+   that cannot cite an existing standard is a feature request and goes through a story, not
+   through this protocol.
+2. **Enumerate affected rows BY WRITER, mechanically, and record the count.** The scope is
+   every anchored row rendered by a writer in the diff — not a hand-picked list, because the
+   renderer cannot tell which of its callers are anchored. The enumeration script and its
+   output go in the dev-note.
+3. **Prove the change is content-only, not behaviour — the obligation that buys the wider
+   scope.** For every re-emitted body, the arm's OWN figures must be byte-identical to the
+   superseded body. The diff between old and new body MUST consist solely of the declared
+   added or derived lines; a single changed digit in equity, return, drawdown, trade count or
+   fees means this is not a content addition and the row leaves this protocol. Record the
+   declared line set and the per-row diff verdict.
+4. **Rows whose figures DO move are refused by this protocol and routed to § D6.b** on their
+   own merits, with their own smoking gun and would-have-caught test. The two sets are
+   disjoint and both are recorded. (`#95`'s cap enforcement moves figures on four lanes — 9
+   refusals on `top10-2023-fy-tcn-overlay-weights-realdata`, 294 on
+   `top10-2023-fy-patchtst-overlay-realdata` — so those rows are D6.b rows in the same pass,
+   never D6.c rows.)
+5. **In-place under existing namespaces**, never bifurcated, never deleted, with a comment
+   block above the affected rows citing the fix-feature slug + the dev-note slug — verbatim
+   as § D6.b step 4.
+6. **Negative invariant**: every row rendered by an UNCHANGED writer stays byte-identical,
+   and the count of unchanged rows is recorded alongside the changed ones.
+   `ANCHORS PASS (N / N)` is the gate; a regression to `FAIL` halts the ship.
+7. **The in-test projection re-locks in the SAME pass** (ADR-0045 § D6.1). `determinism.rs`
+   holds System 2 — in-test anchor-reproduction pins that RE-RUN these lanes. Bug-log
+   [`#177`](../../../../docs/dev-notes/bug-log.md) is what happens when it does not: three
+   commits changed report body text on 2026-10-14/17, the 2026-10-29 re-lock covered the
+   canonical namespace only, and ten gates sat red for three weeks while
+   `verify_anchors.sh` reported `119 / 119` — correctly, because it asks whether the corpus
+   hashes, not whether the code can still produce it. Those are different questions and only
+   System 2 can tell them apart.
+
+**Not in scope**: anything § D6.b excludes (silent mutation, namespace bifurcation, row
+deletion), and additionally any change that alters a figure — step 4 routes those out by
+construction. A protocol that accepted both would be indistinguishable from "re-emit whenever
+convenient."
+
 ## Alternatives considered
 
 1. **Extend ADR-0033 § D3 with vol-classifier branches.** Rejected
@@ -833,3 +892,17 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../docs/archive/pre-b
   to ADR-0033 § D3, NOT extension (Q4=(b) operator default;
   retrospective lesson #2 honored). Cross-refs
   `REQ-V3-VOL-FORECASTER-001` in `_bmad-output/planning-artifacts/trace.toml`.
+- 2026-11-08 (orchestrator, bug-log `#151` + `#177` + `#178`): **§ D6.c added** —
+  report-content-addition re-emission protocol, the subsection § D6.b named in advance.
+  D6.b legitimises re-emission for a demonstrated wiring bug and bounds scope to the rows
+  citing the perturbed observable; a report that GAINS content every body should have carried
+  is neither, and `#151`'s buy-and-hold control touches 95 of 119 rows by renderer. § D6.c
+  trades the wider scope for a stricter obligation: the arm's own figures must be
+  byte-identical across the re-emission (step 3), and any row whose figures DO move is refused
+  and routed back to § D6.b on its own merits (step 4) — which is where `#95`'s cap
+  enforcement sends four lanes, measured at 9 and 294 refusals. Step 7 makes the ADR-0045
+  § D6.1 in-test re-lock part of the same pass, because `#177` measured what omitting it costs:
+  ten reproduction gates red for three weeks while `verify_anchors.sh` reported `119 / 119`,
+  correctly — it asks whether the corpus hashes, not whether the code can still produce it.
+  No new ADR file and no Registry row: § D6.b set the precedent that a protocol amendment is
+  an additive subsection of this ADR.
