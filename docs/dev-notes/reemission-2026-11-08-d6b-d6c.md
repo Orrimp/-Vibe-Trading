@@ -246,3 +246,57 @@ accounts for exactly the remainder. Neither number is an estimate. That the fric
 changes prices but not the decision sequence is the same property the `eth-2024-h1-sma-cross`
 re-emission relied on: "Trades/Buys/Sells are UNCHANGED, so this is a pricing change, not a
 decision change."
+
+## REFUTED — I inferred the namespace mapping from reproduction, which this project's own record forbids
+
+I concluded, from three scenarios whose default-invocation body hashed to their **canonical**
+row, that the nine R-REPRO gates were pinned to the wrong row and the fix was to re-point
+their constants. I put that to an adversarial check before acting on it. It was **refuted**,
+and the two citations that settle it verify verbatim:
+
+**1. Frozen evidence defines the namespaces, and canonical is 8 bps.**
+`evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/sharpe-delta-2026-05-29.md:14-17`:
+
+> "Linear baseline = v0.4.0 re-emission under v5-realdata-medium-2026-05 namespace (**8 bps
+> linear slippage**). Sqrt = v0.5.0 run under v5-sqrt-impact-2026-05 namespace (alpha=1.0,
+> 90-day Binance parquet V proxy). **Noop baseline = pre-v5 zero-sim-slippage report**"
+
+`anchors.toml:9-11` says the same: noop-baseline is the "pre-friction historical oracle",
+`v5-realdata-medium-2026-05` the "canonical friction".
+
+**2. `#123` forbids my method by name.** `docs/dev-notes/bug-log.md:2981-2983`:
+
+> "For this whole family **no constructible invocation reproduces any anchored row**, which
+> means the row assignment cannot be settled by reproduction — only by provenance. … its own
+> suggested upgrade test presupposes an undrifted row, which is the thing that fails."
+
+Since every row in the family is drifted, a body matching one row is not evidence it belongs
+to that row. My three "exact matches" are explained the other way: the 2026-10-29 re-lock
+wrote **default (zero-slippage)** output into the **canonical** rows, so of course a default
+run now reproduces them. My own `--sim-slippage-bps 8` measurement is the corroboration —
+`top10-2023-fy-tcn-overlay-realdata` at **−55.88%** against the canonical row's **−27.52%**,
+a 28 pp gap that is exactly what a canonical row holding zero-slippage content looks like.
+
+The source I had leaned on, `relock-lane-deltas-2026-10-29.md:105-108`, asserts that canonical
+"is the namespace a default run reproduces" with no derivation and no code citation, against
+both the frozen evidence and `#123`. Its own table betrays the conflation: for
+`top10-2023-fy-tcn-overlay-realdata` it reports "−89.89% → −27.52%", and −89.89% is the
+**sqrt** row's body, not a canonical one.
+
+### So the state of the corpus is worse than `#177` said, in a specific way
+
+| rows | state | what they need |
+|---|---|---|
+| 9 `noop-baseline` realdata rows | **stale** — hold the `#67`-broken state (1138 trades) that `#111/#129` fixed (→6203) | re-emit with the **default** invocation |
+| 6 canonical realdata rows | **corrupted 2026-10-29** — hold default (zero-slippage) output instead of 8 bps | re-emit with **`--sim-slippage-bps 8`** |
+| sqrt rows | already drifted as of 2026-09-26, per `#123` — never fixed | re-emit with the declared sqrt flags |
+
+### The trap I had not seen
+
+Re-emitting the noop rows with the default invocation while leaving the canonical rows alone
+gives both rows **the same body**. Two namespaces — the pre-friction oracle and "the current
+reference for paper-trading alpha" (`anchors.toml:10-11`) — silently collapse into one. And
+because `#151` changes every body anyway, both rows would just receive the same new SHA and
+`verify_anchors.sh` would still print `119 / 119`. **The collapse is invisible to every gate
+in the repo.** That is the single most dangerous thing in this pass, and it is not something
+the pass would have told me about.

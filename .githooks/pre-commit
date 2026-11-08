@@ -53,3 +53,18 @@ if command -v uv >/dev/null 2>&1; then
 else
   python3 "$root/scripts/feature_gated_targets_check.py"
 fi
+
+# bug-log #179 (2026-11-08): `verify_anchors.sh` above asks whether each anchors.toml row's
+# SHA matches a committed body. It is perfectly happy when TWO rows of one scenario point at
+# the SAME body — so a re-emission that runs one invocation and writes its output to two rows
+# silently merges two friction namespaces, and the gate still prints 119/119. That already
+# happened once (the 2026-10-29 re-lock put default zero-slippage output into six CANONICAL
+# rows, measured as a 28 pp gap against a real --sim-slippage-bps 8 run) and the next
+# re-emission was about to do the mirror of it. This declares how many DISTINCT bodies each
+# scenario's rows point at, so neither a collapse nor a split can land unseen.
+# Same uv-vs-python3 reasoning as above.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/anchor_namespace_collapse_check.py"
+else
+  python3 "$root/scripts/anchor_namespace_collapse_check.py"
+fi

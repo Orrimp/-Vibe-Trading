@@ -7392,3 +7392,99 @@ should print values, and sentences about values should be functions of them. Any
 report that asserts a configuration is a copy of that configuration, and copies drift. The two
 gates I wrote this session are both of the form "is X wired?"; neither is of the form "does the
 prose agree with X?", and that second form is where this project keeps bleeding.
+
+### `#179` — two anchor rows can point at the same body, which silently merges two friction namespaces, and no gate in the repo could see it
+
+**Found** 2026-11-08, by putting my own re-emission plan to an adversarial check before
+executing it. The check refuted the plan and, in passing, named a failure mode I had not
+considered and nothing was watching. **Gate shipped in this pass; the re-emission itself is
+held — see the bottom.**
+
+#### The mechanism
+
+A scenario carries one `anchors.toml` row per friction condition: the pre-friction
+`noop-baseline` oracle, the canonical `v5-realdata-medium-2026-05` reference, and
+`v5-sqrt-impact-2026-05`. Those rows exist *because* the conditions differ.
+
+`verify_anchors.sh` asks, per row, "does this SHA match a committed body?" It never asks
+"do two rows of one scenario point at the SAME body?" So a re-emission that runs ONE
+invocation and writes its output to two rows merges two namespaces into one, and the gate
+prints `ANCHORS PASS (119 / 119)` — correctly, by its own definition.
+
+#### It already happened once, and I was about to do the mirror of it
+
+**Already happened:** the 2026-10-29 re-lock (`952274b2`) wrote **default (zero-slippage)**
+output into the **canonical** rows of six real-data scenarios. Measured, not inferred: a real
+`--sim-slippage-bps 8` run of `top10-2023-fy-tcn-overlay-realdata` returns **−55.88%** while
+its canonical row's body says **−27.52%** — a 28 pp gap, and the canonical namespace is
+defined as 8 bps by frozen evidence
+(`evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/sharpe-delta-2026-05-29.md:14-17`:
+"Linear baseline = … (8 bps linear slippage) … Noop baseline = pre-v5 zero-sim-slippage
+report").
+
+**About to happen:** my plan was to re-emit the nine stale `noop-baseline` rows with the
+default invocation. Since the canonical rows now ALSO hold default output, both rows of those
+six scenarios would have received the same new SHA — `#151` changes every body anyway — and
+"the current reference for paper-trading alpha" (`anchors.toml:9-11`) would have ceased to
+exist, with every gate green.
+
+#### Why I nearly did it: I used a method this log already forbids
+
+I had concluded the R-REPRO gates were pinned to the wrong row, because three scenarios'
+default-invocation bodies hashed to their canonical row exactly. `#123` answers that directly
+at `docs/dev-notes/bug-log.md:2981-2983`:
+
+> "For this whole family **no constructible invocation reproduces any anchored row**, which
+> means the row assignment cannot be settled by reproduction — only by provenance."
+
+When every row of a family is drifted, a body matching one row is not evidence it belongs to
+that row. My three "exact matches" have the opposite explanation: the canonical rows hold
+default output, so a default run reproduces them. The document I had leaned on,
+`relock-lane-deltas-2026-10-29.md:105-108`, asserts the contrary with no derivation and no
+code citation — and its own table misattributes a **sqrt** body (−89.89%) to the canonical
+namespace, which is the conflation that produced the claim.
+
+#### The gate
+
+`scripts/anchor_namespace_collapse_check.py`, wired into `.githooks/pre-commit` and CI.
+
+It declares, per scenario, how many DISTINCT bodies its rows point at, and fails if that
+number shrinks (**COLLAPSE**) or grows (**SPLIT** — possibly a repair, but a declared one).
+The check is deliberately not "all rows differ": fifteen scenarios legitimately share one SHA
+across rows, which `verify_anchors.sh` documents itself as "canonical SHA = noop SHA for
+non-re-emittable scenarios". 36 of 77 scenarios are multi-row; the partition is what is
+pinned, in both directions.
+
+Probed four ways in `--self-test` (clean control, a collapse, a split, an undeclared multi-row
+scenario) **and** against real input: pointing one canonical row at its own noop SHA in a
+mutated copy of `anchors.toml` produces
+
+```
+top10-2023-fy-tcn-overlay-realdata: COLLAPSE — 3 row(s) now point at 2 distinct body(ies),
+declared 3. Two conditions have been merged into one body.
+```
+
+while the real file still passes. The real-input probe exists because a self-test over
+synthetic dicts exercises the logic and not the parser, and this gate's whole value is that it
+reads the actual corpus.
+
+#### Why the re-emission is held
+
+The corrected picture needs **three** invocations against **different** row sets, and the row
+assignment rests on provenance at `#123`'s own stated confidence of `PROBABLE`, which it says
+"cannot be raised by measurement today". Getting it wrong does not produce a red gate; it
+produces a corpus that still says `119 / 119` while two of its three reference conditions mean
+the same thing. That is a decision about what the evidence corpus MEANS, so it goes to the
+operator with the numbers rather than being inferred a second time.
+
+#### Moral
+
+The gate I wrote for `#95` asks "is the control wired?". The gate for `#151` asks "does every
+writer print a benchmark?". `#178`'s asks "does the prose match the value?". None of them asks
+"do two things that must differ still differ?" — and that is the shape of this one. A corpus
+that keeps N conditions needs a gate on N, not only on each.
+
+The reason this was caught at all is that I asked something else to try to refute a conclusion
+I had already written down and was about to act on. The conclusion was wrong, the method was
+one my own bug-log had already banned in writing, and I had cited that same entry earlier the
+same day for a different purpose.

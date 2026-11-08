@@ -97,6 +97,18 @@ jobs:
           python3 scripts/feature_gated_targets_check.py
           python3 scripts/feature_gated_targets_check.py --self-test
 
+          # bug-log #179: verify_anchors.sh above asks whether each row's SHA matches a
+          # committed body. It is content for TWO rows of one scenario to point at the
+          # SAME body — so a re-emission that runs one invocation and writes it to two
+          # rows silently merges two friction namespaces while the gate still prints
+          # 119/119. Measured: the 2026-10-29 re-lock put default zero-slippage output
+          # into six CANONICAL rows (a 28 pp gap against a real --sim-slippage-bps 8
+          # run), and the next re-emission was about to do the mirror of it. This
+          # declares the distinct-body count per scenario so neither a collapse nor a
+          # split lands unseen.
+          python3 scripts/anchor_namespace_collapse_check.py
+          python3 scripts/anchor_namespace_collapse_check.py --self-test
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
