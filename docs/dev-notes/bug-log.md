@@ -5079,10 +5079,61 @@ Both `scripts/relock/run_surfaces.sh` and `scripts/relock/run_lane_scenarios.sh`
 Deliberately NOT fixed by changing the host's `xcode-select`: a re-lock driver has no business
 mutating the operator's toolchain, and the env var is scoped to the run.
 
-**Operator's fix when convenient** (not blocking): reinstall or update the Command Line Tools so
-the 27.x SDK ships a sound `Security.tbd` —
-`sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install` — or point
-`xcode-select` at a full Xcode. Both need a password, so neither is mine to run.
+**Operator's fix when convenient** (not blocking) — **but see the re-diagnosis below before
+choosing one**: `sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install`, or
+point `xcode-select` at a full Xcode. Both need a password, so neither is mine to run.
+
+---
+
+## § Re-diagnosed 2026-11-08 — still live, broader than recorded, and NOT a corrupt download
+
+**Still live.** `env -u SDKROOT cargo build -p backtest --bin backtest` fails today.
+
+**Broader than recorded.** The entry names `Security.tbd`. `ld` actually names at least four
+files, including the C library itself:
+
+```
+tapi error: malformed file in '…/MacOSX27.0.sdk/usr/lib/libiconv.tbd';
+tapi error: malformed file in '…/MacOSX27.0.sdk/usr/lib/libSystem.tbd';
+tapi error: malformed file in '…/MacOSX27.0.sdk/usr/lib/libc.tbd'; …
+```
+
+**The default symlink is NOT the cause**, which is worth knowing before anyone repoints it:
+`SDKs/MacOSX.sdk → MacOSX26.5.sdk` — the SOUND one — yet
+`xcrun --show-sdk-path` returns `…/MacOSX27.0.sdk`. The selection happens above the symlink.
+
+**And the files are not malformed.** This is the correction that changes the advice. Line 3 of
+27.0's `libiconv.tbd` ends in a trailing comma, and the flow sequence **continues on line 4**:
+
+```yaml
+targets:         [ x86_64-macos, x86_64-maccatalyst, arm64e-macos, arm64e-maccatalyst,
+                   arm64e.x1-macos, arm64e.x1-maccatalyst ]
+```
+
+26.5 declares those first four and closes the list. **27.0 adds two new target triples for an
+`arm64e.x1` sub-architecture.** The YAML is well-formed and `tbd-version: 4` is identical on
+both; this `ld` simply does not know `arm64e.x1` and reports the whole file as malformed.
+
+```
+Apple clang version 21.0.0 (clang-2100.1.1.101)
+ld-1267, BUILD Jun  8 2026
+```
+
+**So it is a toolchain-version mismatch, not a damaged install — and that inverts half the
+recommended fix.** A plain `rm -rf && xcode-select --install` that reinstalls the *same* 27.0 SDK
+alongside the *same* `ld-1267` will reproduce it exactly. What helps is an update that bumps the
+**linker** (a newer CLT or a full Xcode whose `ld` understands `arm64e.x1`) — or the pin already
+in place.
+
+**A near-miss worth recording, because it would have cost the operator a password and an hour.**
+I first read line 3's trailing comma as a truncated FILE and was about to report "corrupt
+download, reinstall will fix it". It was my own `cut -c1-150` that truncated the line, not Apple
+that truncated the file — the same mistake as `#166`'s probe reporting `0 FAILED` because it
+never patched anything. Reading the file verbatim is what corrected it. **An error in the
+diagnosis is an error in the remedy**, and this one pointed at a reinstall that cannot work.
+
+**Workaround status: unchanged and sufficient.** `SDKROOT=…/MacOSX26.5.sdk` links cleanly, both
+re-lock drivers export it when unset, and every cargo invocation in this session used it.
 
 **Why it is in this log at all.** It is not a project defect, but it is an hour of someone's life
 the next time it happens, and the symptom points at the wrong place: a linker error naming
