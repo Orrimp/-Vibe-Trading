@@ -69,11 +69,25 @@ else
   python3 "$root/scripts/anchor_namespace_collapse_check.py"
 fi
 
+# bug-log #183 durable fix (2026-11-08): the tool that maps every in-test SHA literal to its
+# anchors.toml row was never GATED — it appeared in this hook and in CI only inside comments
+# ABOUT it. So the 75 pins it checks were verified when somebody remembered to run it, and
+# the stale pin of #181 was caught by a Rust test on three CI legs instead, hours later.
+# It is pure Python over source + anchors.toml: no cargo, no build, nothing to wait for.
+# Same uv-vs-python3 reasoning as above.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/check_determinism_anchors.py" --pre-commit
+else
+  python3 "$root/scripts/check_determinism_anchors.py" --pre-commit
+fi
+
 # bug-log #183 (2026-11-08): a body SHA is pinned in anchors.toml AND copied into source.
-# `check_determinism_anchors.py` syncs five files; measured, NINE files mirror a current
-# anchors row, and the uncovered one with 35 of them took CI red on all three legs. This
-# answers "how many places is a SHA pinned?" mechanically and pins the answer, so a stale
-# copy (which stops matching, dropping the file's count) cannot land unseen.
+# When #183 was filed, `check_determinism_anchors.py` synced five of the NINE files that
+# mirror a current anchors row, and the uncovered one holding 35 of them took CI red on
+# all three legs. The #183 durable fix put eight of the nine under that tool (gated just
+# above); this census answers "how many places is a SHA pinned?" mechanically and pins
+# the answer, so a stale copy — which stops matching, dropping the file's count — cannot
+# land unseen. Its uncovered count is DERIVED from the sync tool's own file list.
 # Same uv-vs-python3 reasoning as above.
 if command -v uv >/dev/null 2>&1; then
   uv run --quiet "$root/scripts/sha_mirror_census.py"

@@ -116,10 +116,24 @@ use crate::build_ledger_90d::{
 // Re-emitted body: evidence/v1/operator-success-reports/reports/
 //   success-relock-20261107-report-sample-7d.md (the superseded
 //   success-fixed-report-sample-7d.md stays on disk as history — D6.b).
+// Synced by scripts/check_determinism_anchors.py (bug-log #183). This const's NAME
+// does not contain ANCHOR, so the declaration below is what makes it a checked site.
+// Both anchors.toml rows for the scenario (`v2.0.0 + noop-baseline` and `v2.0.0 +
+// v5-realdata-medium-2026-05`) carry the same body-SHA today, so the undeclared
+// default namespace resolves unambiguously; a future divergence would need an
+// explicit namespace line here too.
+// anchor-scenario: report-sample-7d
 const EXPECTED_SHA_7D: &str = "e1b286d5539279521534bb69b459d01711e1838d5fd32e8089eb97ab5decbd94";
 
 /// Locked body-SHA256 for `report-sample-90d`.  Same ownership notes
 /// as [`EXPECTED_SHA_7D`].
+// Synced by scripts/check_determinism_anchors.py (bug-log #183). This const's NAME
+// does not contain ANCHOR, so the declaration below is what makes it a checked site.
+// Both anchors.toml rows for the scenario (`v2.0.0 + noop-baseline` and `v2.0.0 +
+// v5-realdata-medium-2026-05`) carry the same body-SHA today, so the undeclared
+// default namespace resolves unambiguously; a future divergence would need an
+// explicit namespace line here too.
+// anchor-scenario: report-sample-90d
 const EXPECTED_SHA_90D: &str = "f8ecc2579cc24044174cca661bec98ca7297ebf9cb55379a81b545656e54c0f9";
 
 /// Slice off the front-matter and return the body bytes the

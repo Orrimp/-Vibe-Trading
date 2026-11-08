@@ -7913,3 +7913,110 @@ still differ; `#180` could diagnose but not repair; `#181` compared a map agains
 `#182` had a bucket whose safest-sounding name was the unsafe one; this one answers a counting
 question nobody had asked. The counting question turned out to be the root: you cannot keep
 N copies consistent without knowing N, and N was 66 while the tooling assumed 26.
+
+#### Durable fix — the sync tool learns the table shape, same day
+
+The entry above filed it: *"Teaching the sync tool to parse a `&[(&str, &str)]` table is a
+separate change; pretending the asymmetry is gone would be worse than printing it."* This is
+that change. `check_determinism_anchors.py` now covers **8 files / 75 pins** (was 5 / 35),
+and the census's uncovered count went **40 → 2**.
+
+#### The mapping was already there, and measuring it first is what kept this small
+
+The three tables in `strategy_anchors_unchanged.rs` select reports by *directory* —
+`Namespace::{Noop, Canonical, SqrtImpact}`, where `Canonical` is three feature dirs and
+`Noop` is an **exclusion** rule. None of that is expressible as the single `version`
+substring `sha_for` takes, so the obvious reading is "the resolver needs a new shape".
+
+It does not. `anchors.toml`'s `version` column is `"<feature> + <namespace>"`, and the three
+tables map onto exactly three substrings: `noop-baseline`, `v5-realdata-medium-2026-05`,
+`v5-sqrt-impact-2026-05`. Measured before writing anything: **37 of 37** rows resolve
+through the untouched resolver under that hypothesis, zero mismatches. So this is a *parser*
+extension — a second reader feeding the one resolver — and `resolve_expected` is unchanged.
+Two readers of two syntaxes is not the `#180` disease; two copies of the resolution ORDER
+was. The table declares its namespace in the source, with the same `// anchor-ns:` a scalar
+site uses — not a table→namespace map inside the script, which would have been copy three.
+
+#### Both things I got wrong were declarations that were not read, or read when they were not one
+
+1. I wrote the declaration at the **top** of a five-line explanatory note. The backwards
+   window is three lines wide *on purpose* (a wider one lets one site's declaration bleed
+   into the next — probe P7). So all three tables resolved as undeclared, and 24 pins came
+   up stale. Now pinned two-sided by **P13**: adjacent is read, five lines up is not.
+2. My note for the two `EXPECTED_SHA_*` consts explained that a divergence "needs an
+   `// anchor-ns:` line" — and that prose, inside the window, **is** a declaration, of
+   whatever word follows the colon. `declared_ns` became `` "`" ``, no row matched, and the
+   three sites hard-errored. Same shape as the previous task's P11, which fired on a comment
+   quoting the syntax it was grepping for. The patch now ends with a guard that rejects any
+   declaration in those files naming something outside the allowed set, and **P14** pins
+   that an unresolvable declaration is a hard error and never a quiet fall back to canonical.
+
+#### Probing the gate found two probes that measured nothing
+
+Seven regressions injected into a mirrored copy, each expected to be caught by a *named*
+probe rather than a traceback:
+
+| injected regression | caught by |
+|---|---|
+| table parser ignores the ns declaration | P12, P13, P14, P16 |
+| declaration window widened to 8 lines | **P13 only** |
+| bad declaration falls back to canonical | **P14 only** |
+| rows matched by a single-line-only regex | P12, P13, P14, P15, P16 |
+| writer replaces the literal file-wide | **P16 only** |
+| non-ANCHOR const needs no declaration | **P17 only** |
+| the citation file is also scanned | **P18 only** |
+
+Five of the seven are caught by exactly one probe, so none of the new probes is decoration.
+Getting there took two corrections, both of the kind `#161` is about:
+
+* **P14 passed against its own regression.** Its fixture had no canonical row, so "falls
+  back to canonical" had nothing to fall back *to* and resolved to `None` either way. Fixed
+  by giving the scenario a canonical row, so the two paths have two outcomes.
+* **P16 could not see a file-wide replace.** Its stale literal appeared once, so both a
+  per-line writer and a file-wide one changed exactly one line. The fixture now holds the
+  **same** literal on two rows with only the second stale — which is not contrived:
+  `btc-2023-1m-sma-cross` and `-sma-baseline-refresh` really do share `fc2e3b4a…`. A
+  file-wide replace drags the correct row along, and the probe counts it.
+
+A third correction was about the signal, not the gate: the probes indexed `sites[0]`, so a
+parser returning no rows produced an `IndexError` instead of naming what broke. Guarded.
+
+#### Two mirrors are excluded BY DECISION, and that is now a probe
+
+`forecast_distribution.rs`'s two `predecessor_sha` fields are documented in the struct as
+"(for citation)": they name the **pre**-recalibration body a report supersedes. They equal a
+current row today only because that scenario has not been re-emitted since; after the next
+§ D6.b re-emission the correct value is the **old** one — exactly what a sync would
+overwrite. § D6.b requires keeping the superseded SHA. So the census is right to *count*
+them and this tool must *refuse* them, and `EXCLUDED_CITATION_SITES` says so with the
+reason. **P18** fires if a later sweep adds that file to close the gap by fiat.
+
+#### Two more copies, found while fixing the first
+
+* The census hardcoded `SYNCED_BY_TOOL` — a frozenset of five paths duplicating the sync
+  tool's `SCANNED_FILES`, with nothing checking the two agreed. The `#180` shape *inside the
+  gate written to catch the `#180` shape*. Unfixed, its PASS line would have gone on
+  reporting 40 hand-synced mirrors after 38 of them stopped being hand-synced — in the one
+  place a reader looks. It now imports that list and derives the count.
+* **The sync tool was never gated.** It was named in `.githooks/pre-commit` and in `ci.yml`
+  only inside comments *about the census*. So the 75 pins it checks were verified whenever
+  somebody remembered to run it, and `#181`'s stale pin was caught by a Rust test on three
+  CI legs hours later instead. It is pure Python over source + `anchors.toml`; it now runs
+  in both, and its `--self-test` runs in CI.
+
+#### What is NOT verified here
+
+The three Rust files took **comment-only** additions — no literal, no code — and
+`cargo fmt --check` passes, which means rustfmt parsed all three. They were **not
+compiled**: this host cannot link a two-line `fn main`, because
+`/Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk` declares an `arm64e.x1`
+architecture the bundled clang rejects, so every `cargo check` dies in a dependency's build
+script. CI compiles them on three OSes.
+
+#### Moral
+
+`#183` counted the copies and printed the number it could not fix. Fixing it turned up two
+more copies the count had not reached — one of them inside `#183`'s own gate — and the
+discovery that the tool meant to keep 66 copies honest was not wired to anything. The
+counting question was the root, and the answer to "how many places is a SHA pinned?" is
+worth less than the answer to "and which of them does anything check?"

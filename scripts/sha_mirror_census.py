@@ -12,9 +12,12 @@ itself, and on 2026-11-08 four separate ones bit in a single session:
   * and `crates/reports/tests/strategy_anchors_unchanged.rs`, holding **35** mirrors and
     scanned by nothing, which took CI red on all three legs.
 
-`scripts/check_determinism_anchors.py` syncs five files. Measured here: **nine** files mirror
-a current anchors row. So the question "how many places is a SHA pinned?" had no answer, and
-every answer given was too low. This script answers it mechanically and pins the answer.
+When this script was written, `scripts/check_determinism_anchors.py` synced five of the
+**nine** files that mirror a current anchors row. So the question "how many places is a SHA
+pinned?" had no answer, and every answer given was too low. This script answers it
+mechanically and pins the answer. (The sync tool took over three more files the same day —
+the `#183` durable fix — so the uncovered count the PASS line prints is now small; it is
+DERIVED from that tool's own list, never restated here.)
 
 A **mirror** is a 64-hex literal equal to some CURRENT `anchors.toml` SHA. That definition is
 deliberately narrow: a superseded SHA quoted in a comment is NOT a mirror (it names history,
@@ -38,6 +41,7 @@ Bug-log: `#183`.
 from __future__ import annotations
 
 import glob
+import importlib.util
 import pathlib
 import re
 import sys
@@ -64,16 +68,32 @@ MIRROR_FLOOR: dict[str, int] = {
     "crates/reports/tests/t1003_orchestrator_smoke.rs": 1,
 }
 
-# Which files `check_determinism_anchors.py` keeps in sync. The REST are synced by hand, and
-# that asymmetry is the standing risk this census exists to keep visible rather than fix by
-# fiat — teaching the sync tool to parse a `&[(&str, &str)]` table is a separate change.
-SYNCED_BY_TOOL = frozenset({
-    "crates/backtest/tests/determinism.rs",
-    "crates/backtest/tests/multi_pair_determinism.rs",
-    "crates/backtest/tests/reproducibility_sample_figure.rs",
-    "crates/backtest/tests/run_yahoo_sma_ticker_flag.rs",
-    "crates/backtest/tests/theta_surface_reproduction.rs",
-})
+def _synced_by_tool() -> frozenset[str]:
+    """Which files `check_determinism_anchors.py` keeps in sync — read FROM that tool.
+
+    bug-log #183 durable fix. This was a hardcoded set of five paths: a second copy of
+    that tool's `SCANNED_FILES`, with nothing checking the two agreed. Which is the #180
+    shape inside a gate written to catch the #180 shape. The same day the sync tool took
+    over three more files, and the copy would still have said five — so the PASS line
+    would have gone on reporting 40 mirrors as hand-synced after 38 of them stopped being
+    hand-synced, in the one place a reader looks to find out.
+
+    Derived, it cannot say that. A failure to import is raised, never swallowed: falling
+    back to a literal list is how the copy got here.
+    """
+    tool = pathlib.Path(__file__).resolve().parent / "check_determinism_anchors.py"
+    spec = importlib.util.spec_from_file_location("_cda_for_census", tool)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {tool} to read its SCANNED_FILES (bug-log #183)")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return frozenset(
+        str(pathlib.Path(p).resolve().relative_to(mod.REPO_ROOT))
+        for p in mod.SCANNED_FILES
+    )
+
+
+SYNCED_BY_TOOL = _synced_by_tool()
 
 
 def current_shas(text: str) -> set[str]:

@@ -50,13 +50,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ANCHORS_TOML = REPO_ROOT / "evidence" / "anchors.toml"
 TESTS_DIR = REPO_ROOT / "crates" / "backtest" / "tests"
 DETERMINISM_RS = TESTS_DIR / "determinism.rs"
+# bug-log #183 durable fix — the reports crate holds the OTHER pin locations.
+REPORTS_TESTS_DIR = REPO_ROOT / "crates" / "reports" / "tests"
 
 # bug-log #131 — every file that carries an in-test anchor-SHA literal, not just the
 # first one anybody wrote. Derived mechanically on 2026-09-28 with
 #   grep -rln 'const [A-Z_]*ANCHOR[A-Z_]*\s*:\s*&str' crates/ --include='*.rs'
 # and re-derivable the same way; `crates/ui/src/strings.rs` also matches that NAME grep
 # and is correctly absent here because its value is the UI label "Anchor: ", not a digest
-# (the hex VALUE filter in `const_anchor_re` is what rules it out — see below).
+# (the hex VALUE filter in `const_sha_re` is what rules it out — see below).
 #
 # A file added to this list needs the floor below raised in the same edit. A file REMOVED
 # from it shows up as a missing per-file row in the summary line, which is the point: the
@@ -68,6 +70,34 @@ SCANNED_FILES: tuple[Path, ...] = (
     TESTS_DIR / "run_yahoo_sma_ticker_flag.rs",
     TESTS_DIR / "theta_surface_reproduction.rs",
     TESTS_DIR / "reproducibility_sample_figure.rs",
+    # bug-log #183 — the four files above were 26 of the repo's 66 mirror literals. These
+    # three hold 38 more, and until this change nothing synced them: #181 (a stale pin in
+    # strategy_anchors_unchanged.rs taking CI red on three legs) and #182 both came out of
+    # this gap. The first of them carries its SHAs in `&[(&str, &str)]` TABLES rather than
+    # scalar consts, which is why `parse_anchor_tables` exists.
+    REPORTS_TESTS_DIR / "strategy_anchors_unchanged.rs",
+    REPORTS_TESTS_DIR / "report_scenarios.rs",
+    REPORTS_TESTS_DIR / "t1003_orchestrator_smoke.rs",
+)
+
+# bug-log #183 durable fix — mirror literals this tool deliberately does NOT sync, with the
+# reason, so the next sweep does not "finish the job" by adding them.
+#
+# `sha_mirror_census.py` is right to COUNT these: they are 64-hex copies of a current row,
+# and if the row's value changed they would stop matching. But counting a copy and syncing a
+# copy are different acts. A citation names ONE historical body on purpose; the sync tool
+# writes whatever the row says now. Pointing the second at the first deletes the citation.
+EXCLUDED_CITATION_SITES: tuple[tuple[str, int, str], ...] = (
+    (
+        "crates/forecast/src/bin/forecast_distribution.rs",
+        2,
+        "two `predecessor_sha` fields, documented in the struct as '(for citation)'. They "
+        "name the PRE-recalibration body that a recalibrated report supersedes. They equal "
+        "a current `forecast-distribution-bs{1,2}-realdata` row today only because that "
+        "scenario has not been re-emitted since; after the next ADR-0038 § D6.b "
+        "re-emission the CORRECT value is the old one, which is exactly what a sync would "
+        "overwrite. § D6.b requires keeping the superseded SHA; this tool must refuse it.",
+    ),
 )
 
 # bug-log #115 non-vacuity floor: the number of anchor-literal sites this tool must at
@@ -78,7 +108,12 @@ SCANNED_FILES: tuple[Path, ...] = (
 #   were in the tree all along, in four files the tool never opened: 2 in
 #   multi_pair_determinism.rs, 2 in run_yahoo_sma_ticker_flag.rs, 1 in
 #   theta_surface_reproduction.rs, 1 in reproducibility_sample_figure.rs.
-MIN_EXPECTED_SITES = 35
+# 2026-11-08: 35 -> 75 with the #183 durable fix. The +40 are not new gates either —
+#   37 table rows in strategy_anchors_unchanged.rs, 2 in report_scenarios.rs, 1 in
+#   t1003_orchestrator_smoke.rs. 37 rows mirror 35 DISTINCT SHAs (two scenario pairs
+#   share a body), which is why the census floor for that file reads 35 and this one
+#   counts 37: this tool checks every pin, the census counts distinct values.
+MIN_EXPECTED_SITES = 75
 
 # Version tag that marks the canonical in-test SHA namespace.
 CANONICAL_VERSION_SUFFIX = "v5-realdata-medium-2026-05"
@@ -130,11 +165,29 @@ class InTestSite(NamedTuple):
     # `// anchor-ns: <substring>`. None = the canonical suffix, which is what every
     # pre-#115 site meant implicitly.
     declared_ns: str | None = None
+    # bug-log #183: which SYNTAX this site was read from, so the writer edits the right
+    # shape. "const" is `const NAME: &str = "<sha>"`; "table-row" is one `("<scenario>",
+    # "<sha>")` row of a `&[(&str, &str)]` table, where the SHA usually sits alone on its
+    # line and there is no const name on it to match. Resolution does not branch on this —
+    # only the text edit does.
+    shape: str = "const"
 
 
 # ---------------------------------------------------------------------------
 # anchors.toml parser
 # ---------------------------------------------------------------------------
+
+# bug-log #115 — what a SCENARIO NAME looks like. Hoisted to module scope by the #183
+# durable fix because the table parser needs the same answer, and two regexes that must
+# agree on "is this a scenario" is the #180 shape all over again.
+SCENARIO_SHAPE_RE = re.compile(r'"([a-z][a-z0-9]*(?:-[a-z0-9]+){2,})"')
+
+# bug-log #115/#123/#131 — how a site DECLARES what it pins. Module scope for the same
+# reason as SCENARIO_SHAPE_RE: the table parser reads the identical declarations, and a
+# second copy of either pattern could drift from this one without any test noticing.
+ANCHOR_NS_RE = re.compile(r'//\s*anchor-ns:\s*(\S+)')
+ANCHOR_SCENARIO_RE = re.compile(r'//\s*anchor-scenario:\s*(\S+)')
+
 
 def parse_anchors_toml(path: Path) -> list[AnchorEntry]:
     """Parse evidence/anchors.toml into a list of AnchorEntry records.
@@ -241,8 +294,26 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
     # `crates/ui/src/strings.rs`'s `STRATEGY_REGISTRY_LAST_ANCHOR_PREFIX: &str = "Anchor: "`
     # matches the name grep and can never match this, because `"Anchor: "` is not hex. The
     # value shape is the correct filter; the name never was.
-    const_anchor_re = re.compile(
-        r'const\s+([A-Za-z0-9_]*ANCHOR[A-Za-z0-9_]*)\s*:\s*&str\s*=\s*"([0-9a-fA-F]{8,64})"'
+    # bug-log #183 — the NAME filter is gone from the regex. It used to require ANCHOR in
+    # the const name, which meant `report_scenarios.rs::EXPECTED_SHA_7D` and
+    # `t1003_orchestrator_smoke.rs::EXPECTED_SHA_7D` — two copies of one anchored SHA,
+    # and the pair that bug-log #181 found stale — could not be seen even once their files
+    # were scanned. Renaming them was rejected: `t1003`'s own comment cites the other by
+    # name, and `strategy_anchors_unchanged.rs` records why names in this area are not
+    # churned (anchored reports and ADR-0043 cite them).
+    #
+    # So the regex matches ANY const holding an 8–64 hex string, and the decision "is this
+    # an anchor mirror?" moves below, where the declarations are already parsed: a const is
+    # a site if its name contains ANCHOR (the old rule, unchanged) OR it carries an
+    # explicit `// anchor-scenario:`. That keeps an unrelated digest — a data revision, a
+    # model checkpoint — out by default, while letting a site opt IN by saying what it
+    # pins. It is the same principle as the resolver's: the site knows, so the site says.
+    #
+    # This regex is ALSO the backwards-window boundary below, deliberately the same object:
+    # a window that stopped at a narrower set of consts than it matched would let one
+    # site's declaration bleed into the next, which is the bleed probe P7 exists for.
+    const_sha_re = re.compile(
+        r'const\s+([A-Za-z0-9_]+)\s*:\s*&str\s*=\s*"([0-9a-fA-F]{8,64})"'
     )
     # bug-log #115 — this used to be `scenario_body_hex\("([^"]+)"\)` ONLY. Sites whose
     # runner is spelled differently — `scenario_body_hex_candle(`,
@@ -255,7 +326,7 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
     # Match the SCENARIO rather than the runner: any quoted argument in the window that
     # has a scenario name's shape. A new runner spelling then needs no change here, which
     # is the point — the old regex made every new helper invisible by default.
-    scenario_call_re = re.compile(r'"([a-z][a-z0-9]*(?:-[a-z0-9]+){2,})"')
+    scenario_call_re = SCENARIO_SHAPE_RE
     # bug-log #115/#123 — a site's target NAMESPACE is a property of the site, not a
     # global constant. The old tool assumed every pin mirrored the
     # `v5-realdata-medium-2026-05` row; once it could see all 25 sites it reported 9 of
@@ -266,7 +337,7 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
     # So the SITE declares it, with `// anchor-ns: <substring of the version field>`
     # within its window. No declaration means the canonical suffix, which keeps every
     # pre-existing site working unchanged.
-    anchor_ns_re = re.compile(r'//\s*anchor-ns:\s*(\S+)')
+    anchor_ns_re = ANCHOR_NS_RE
     # bug-log #131 — the EXPLICIT scenario declaration. The forward scan below finds a
     # scenario only when a scenario-shaped quoted string happens to sit within 7 lines of the
     # const; that is true inside a test fn and false at file scope, where
@@ -277,7 +348,7 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
     #
     # Read in the same narrow backwards window as `// anchor-ns:`, and it WINS over the
     # forward scan: an explicit declaration must not be overridable by a nearby coincidence.
-    anchor_scenario_re = re.compile(r'//\s*anchor-scenario:\s*(\S+)')
+    anchor_scenario_re = ANCHOR_SCENARIO_RE
     fn_decl_re = re.compile(r'^\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)')
 
     # We also need to track the current test fn name for ANCHOR context.
@@ -309,7 +380,7 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
         brace_depth += stripped.count("{") - stripped.count("}")
 
         # Detect const ANCHOR / ANCHOR_PREFIX inside current fn scope.
-        const_m = const_anchor_re.search(line)
+        const_m = const_sha_re.search(line)
         if const_m:
             const_name = const_m.group(1)
             literal = const_m.group(2)
@@ -352,7 +423,7 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
                 # first one's declarations: probe P7 caught exactly that, one level down
                 # from the bleed P3 caught. A declaration above a const belongs to THAT
                 # const.
-                if const_anchor_re.search(lines[j]):
+                if const_sha_re.search(lines[j]):
                     break
                 if declared_ns is None:
                     ns_m = anchor_ns_re.search(lines[j])
@@ -375,7 +446,14 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
                         scenario = sc_m.group(1)
                         break
 
-            if scenario is None:
+            # bug-log #183 — the NAME filter, moved here so it can consult the
+            # declaration. An ANCHOR-named const is a site exactly as before. A
+            # differently-named one is a site only if it SAYS so with
+            # `// anchor-scenario:`; otherwise it is some other digest and is passed over
+            # in silence, not reported unresolved, because it was never ours to check.
+            if "ANCHOR" not in const_name and declared_scenario is None:
+                pass
+            elif scenario is None:
                 # bug-log #115: an unresolvable site is a FINDING, not a silent drop.
                 unresolved.append(UnresolvedSite(
                     file=path.name,
@@ -405,6 +483,110 @@ def parse_anchor_literals(path: Path) -> tuple[list[InTestSite], list[Unresolved
     return sites, unresolved
 
 
+def parse_anchor_tables(path: Path) -> tuple[list[InTestSite], list[UnresolvedSite]]:
+    """Extract every row of every `&[(&str, &str)]` scenario→SHA table in `path`.
+
+    bug-log #183. `crates/reports/tests/strategy_anchors_unchanged.rs` pins 37 anchored
+    SHAs — more than every scalar const in this tool's original scope put together — in
+    three tables of `("<scenario>", "<sha>")` rows. `parse_anchor_literals` cannot see one:
+    there is no `const NAME: &str` on the line, the SHA usually sits alone, and the
+    scenario it belongs to is the quoted string above it. So the shape gets its own reader.
+
+    Two readers, one resolver. That is the line this change is careful about: #180 was two
+    copies of the RESOLUTION ORDER, and the fix was to have exactly one. This function
+    resolves nothing and compares nothing — it reads syntax and emits `InTestSite`, which
+    `resolve_expected` and `literal_matches` then treat identically to a const site. The
+    only thing that branches on `shape` afterwards is the text edit in `apply_write`.
+
+    The table's namespace is declared ONCE, above the `const`, with the same
+    `// anchor-ns:` syntax a scalar site uses — not inferred from the const's name and not
+    mapped in a table in this script, which would be a second place to keep in step. The
+    three tables in that file mirror three namespaces (`noop-baseline`,
+    `v5-realdata-medium-2026-05`, `v5-sqrt-impact-2026-05`) and all 37 rows resolve through
+    the ordinary resolver once the declaration is there.
+
+    Rows are read token-by-token in order rather than by a row-shaped regex, because
+    rustfmt wraps a long row over four lines and keeps a trailing comma inside the paren —
+    `("scen",\n "sha",\n)`. A regex written against the single-line form matches none of
+    them, silently, which is how the first draft of this function reported zero rows for
+    all three tables while claiming to have parsed them. A SHA with no scenario above it is
+    reported unresolved, never dropped.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    sites: list[InTestSite] = []
+    unresolved: list[UnresolvedSite] = []
+
+    table_decl_re = re.compile(
+        r'const\s+([A-Za-z0-9_]+)\s*:\s*&\[\(&str,\s*&str\)\]\s*='
+    )
+    quoted_re = re.compile(r'"([^"]*)"')
+    hex_re = re.compile(r'^[0-9a-fA-F]{8,64}$')
+
+    i = 0
+    while i < len(lines):
+        decl = table_decl_re.search(lines[i])
+        if decl is None:
+            i += 1
+            continue
+        const_name = decl.group(1)
+
+        # The namespace declaration belongs to THIS table: the same narrow backwards
+        # window a scalar site uses, stopping at a `fn` or the previous table.
+        declared_ns: str | None = None
+        for j in range(i - 1, max(-1, i - 4), -1):
+            if "fn " in lines[j] or table_decl_re.search(lines[j]):
+                break
+            ns_m = ANCHOR_NS_RE.search(lines[j])
+            if ns_m:
+                declared_ns = ns_m.group(1)
+                break
+
+        # Find the end of the table literal. `];` on its own line closes it.
+        end = None
+        for j in range(i + 1, len(lines)):
+            if lines[j].strip() == "];":
+                end = j
+                break
+        if end is None:
+            raise RuntimeError(
+                f"{path.name}:{i + 1}: table {const_name} has no closing '];' — refusing "
+                "to guess where it ends (bug-log #183)"
+            )
+
+        pending_scenario: str | None = None
+        for j in range(i + 1, end):
+            for tok_m in quoted_re.finditer(lines[j]):
+                tok = tok_m.group(1)
+                if hex_re.match(tok):
+                    if pending_scenario is None:
+                        unresolved.append(UnresolvedSite(
+                            file=path.name,
+                            lineno=j + 1,
+                            fn_name=f"(table {const_name})",
+                            const_name=const_name,
+                            literal=tok,
+                        ))
+                        continue
+                    sites.append(InTestSite(
+                        file=path.name,
+                        lineno=j + 1,
+                        fn_name=f"(table {const_name})",
+                        scenario=pending_scenario,
+                        const_name=const_name,
+                        literal=tok,
+                        cfg_gated=False,
+                        declared_ns=declared_ns,
+                        shape="table-row",
+                    ))
+                    pending_scenario = None
+                elif SCENARIO_SHAPE_RE.fullmatch(f'"{tok}"'):
+                    pending_scenario = tok
+
+        i = end + 1
+
+    return sites, unresolved
+
+
 def scan_files(
     paths: tuple[Path, ...] | list[Path],
 ) -> tuple[list[InTestSite], list[UnresolvedSite], dict[str, int]]:
@@ -428,6 +610,11 @@ def scan_files(
                 "vanished reads as 'no literals' unless this fails (bug-log #131)"
             )
         s, u = parse_anchor_literals(path)
+        # bug-log #183 — and the table shape, from the same file, counted into the same
+        # per-file row. A file whose pins live in tables read as "0 literals" before this.
+        ts, tu = parse_anchor_tables(path)
+        s = s + ts
+        u = u + tu
         sites.extend(s)
         unresolved.extend(u)
         per_file[path.name] = len(s) + len(u)
@@ -713,7 +900,21 @@ def apply_write(
         # substitution silently no-op while `rewrites` still counted it — a --write that
         # reports having fixed a literal it did not touch.
         base_name = site.const_name.removesuffix("_PREFIX")
-        if _is_prefix_site(site.const_name):
+        if site.shape == "table-row":
+            # bug-log #183 — a table row has no const on its line to match, so the edit is
+            # keyed on the literal itself. It must occur EXACTLY once on the line: two
+            # copies and there is no way to tell which row this site is, so refuse rather
+            # than rewrite the wrong one. The const path below is untouched, which is what
+            # keeps the five original files byte-identical through this change.
+            needle = f'"{site.literal}"'
+            if old_line.count(needle) != 1:
+                raise RuntimeError(
+                    f"--write could not rewrite {site.file}:{site.lineno} (table "
+                    f"{site.const_name}): the literal appears {old_line.count(needle)} "
+                    "times on its line, so the row is ambiguous — refusing"
+                )
+            lines_out[lineno_0] = old_line.replace(needle, f'"{target}"')
+        elif _is_prefix_site(site.const_name):
             new_line = re.sub(
                 rf'const\s+{re.escape(site.const_name)}\s*:\s*&str\s*=\s*"[0-9a-fA-F]+"',
                 f'const {base_name}: &str = "{target}"',
@@ -1133,6 +1334,223 @@ def _self_test() -> int:  # noqa: C901
             f"callers naming the maps directly: {offenders or 'none'}; "
             f"resolve_expected names {sorted(resolver_reads)} (must be both, else this "
             "probe is measuring nothing)",
+        )
+
+        # ── bug-log #183 — the TABLE shape and the declaration-gated const ──────────
+        #
+        # Every pair below differs in ONE dimension and expects DIFFERENT outcomes on the
+        # two sides (bug-log #161: 368 green tests pinned nothing because every fixture
+        # agreed). The values are DERIVED — built here, not measured off the subject.
+        tbl_s1 = "probe-table-scenario-one"
+        tbl_s2 = "probe-table-scenario-two"
+        ns_a, ns_b = "probe-ns-alpha", "probe-ns-beta"
+        sha_a, sha_b, sha_a2 = "a" * 64, "b" * 64, "c" * 64
+        # tbl_s1 ALSO gets a canonical row, and P14 is the reason. Without one, a
+        # regression that let an unresolvable declaration fall through to the canonical
+        # map would have nothing to fall through TO in this fixture, so P14 would pass
+        # while measuring nothing — the shape bug-log #161 is about. With it, the correct
+        # behaviour (hard error) and the regression (quietly resolving to this value) are
+        # two different outcomes, which is what makes the probe a probe.
+        sha_canon = "e" * 64
+        tbl_anchors = [
+            AnchorEntry(tbl_s1, ns_a, sha_a),
+            AnchorEntry(tbl_s1, ns_b, sha_b),
+            AnchorEntry(tbl_s1, CANONICAL_VERSION_SUFFIX, sha_canon),
+            AnchorEntry(tbl_s2, ns_a, sha_a2),
+        ]
+        tbl_canonical = canonical_sha_map(tbl_anchors)
+
+        def _table_fixture(
+            name: str, ns: str, rows: list[tuple[str, str]], gap: int = 0
+        ) -> Path:
+            """A rustfmt-shaped table, with `gap` comment lines between decl and const."""
+            p = tmp / name
+            filler = "// an explanation line, declaring nothing\n" * gap
+            body = "".join(
+                f'    (\n        "{sc}",\n        "{hx}",\n    ),\n' for sc, hx in rows
+            )
+            p.write_text(
+                f"// anchor-ns: {ns}\n"
+                + filler
+                + "const PROBE_ANCHORS: &[(&str, &str)] = &[\n"
+                + body
+                + "];\n",
+                encoding="utf-8",
+            )
+            return p
+
+        # P12 — the declaration is READ, and selects between two rows of the same scenario.
+        # If it were ignored both sides would land on the same value (or on None), so the
+        # probe cannot pass while the namespace is being dropped.
+        f12a = _table_fixture("p12a.rs", ns_a, [(tbl_s1, sha_a)])
+        f12b = _table_fixture("p12b.rs", ns_b, [(tbl_s1, sha_b)])
+        s12a, _ = parse_anchor_tables(f12a)
+        s12b, _ = parse_anchor_tables(f12b)
+        # Indexed defensively on purpose: a regression that makes the parser return NO
+        # rows (a row regex written against the single-line form does exactly that) must
+        # land as a NAMED probe failure, not an IndexError traceback that says only that
+        # something went wrong somewhere.
+        def _first_ns(sites: list[InTestSite]) -> str | None | object:
+            return sites[0].declared_ns if sites else "<no site>"
+
+        got12a = (
+            resolve_expected(s12a[0], tbl_anchors, tbl_canonical)
+            if s12a else (None, "<no site>")
+        )
+        got12b = (
+            resolve_expected(s12b[0], tbl_anchors, tbl_canonical)
+            if s12b else (None, "<no site>")
+        )
+        probe(
+            "P12 a table's anchor-ns declaration selects its row (two-sided)",
+            len(s12a) == len(s12b) == 1
+            and got12a == (sha_a, "declared-ns")
+            and got12b == (sha_b, "declared-ns")
+            and sha_a != sha_b,
+            f"ns={ns_a} → {got12a}; ns={ns_b} → {got12b} (must differ and match their rows)",
+        )
+
+        # P13 — the window is three lines WIDE ON PURPOSE, and this is the mistake that
+        # cost a round trip while writing #183: the declaration was put at the TOP of a
+        # five-line note, out of reach, and all three tables silently resolved as
+        # undeclared. Adjacent is read; five lines up is not.
+        f13 = _table_fixture("p13.rs", ns_a, [(tbl_s1, sha_a)], gap=4)
+        s13, _ = parse_anchor_tables(f13)
+        probe(
+            "P13 a declaration five lines above the const is NOT read (two-sided)",
+            len(s13) == 1
+            and len(s12a) == 1
+            and s13[0].declared_ns is None
+            and s12a[0].declared_ns == ns_a,
+            f"adjacent → {_first_ns(s12a)!r}; gap=4 → {_first_ns(s13)!r} "
+            "(must be the ns, then None)",
+        )
+
+        # P14 — a declaration naming no row is a HARD ERROR, never a quiet fall back to
+        # canonical. The other half of the same round trip: prose reading
+        # "needs an // anchor-ns: line" inside the window IS a declaration, of the word
+        # that follows it. It must fail loudly, because that is what made it findable.
+        f14 = _table_fixture("p14.rs", "probe-ns-matching-no-row", [(tbl_s1, sha_a)])
+        s14, _ = parse_anchor_tables(f14)
+        got14 = (
+            resolve_expected(s14[0], tbl_anchors, tbl_canonical)
+            if s14 else (None, "<no site>")
+        )
+        mm14, _ = detect_drift(s14, tbl_canonical, tbl_anchors)
+        probe(
+            "P14 a declaration that matches no row hard-errors, not falls back",
+            got14 == (None, None) and len(mm14) == 1,
+            f"bogus ns resolved to {got14} with {len(mm14)} mismatch row(s) — must be "
+            f"(None, None) and 1; resolving to ({sha_canon[:8]}…, 'canonical') means a "
+            "declaration that names no row silently became the canonical default",
+        )
+
+        # P15 — both row SHAPES, because a regex written against the single-line form
+        # matches none of the wrapped ones and reports zero rows while claiming success;
+        # that is exactly what the first draft of parse_anchor_tables did. And an orphan
+        # SHA with no scenario above it is a finding, not a silent drop.
+        p15 = tmp / "p15.rs"
+        p15.write_text(
+            f"// anchor-ns: {ns_a}\n"
+            "const PROBE_ANCHORS: &[(&str, &str)] = &[\n"
+            f'    (\n        "{tbl_s1}",\n        "{sha_a}",\n    ),\n'
+            f'    ("{tbl_s2}", "{sha_a2}"),\n'
+            "];\n",
+            encoding="utf-8",
+        )
+        s15, u15 = parse_anchor_tables(p15)
+        p15b = tmp / "p15b.rs"
+        p15b.write_text(
+            f"// anchor-ns: {ns_a}\n"
+            "const PROBE_ANCHORS: &[(&str, &str)] = &[\n"
+            f'    "{sha_a}",\n'
+            "];\n",
+            encoding="utf-8",
+        )
+        s15b, u15b = parse_anchor_tables(p15b)
+        probe(
+            "P15 wrapped AND single-line rows parse; an orphan SHA is unresolved",
+            {(x.scenario, x.literal) for x in s15}
+            == {(tbl_s1, sha_a), (tbl_s2, sha_a2)}
+            and not u15
+            and len(s15b) == 0
+            and len(u15b) == 1,
+            f"mixed-shape table → {len(s15)} site(s) {sorted((x.scenario for x in s15))}; "
+            f"orphan → {len(s15b)} site(s) / {len(u15b)} unresolved (must be 0 / 1)",
+        )
+
+        # P16 — the writer edits ONE row. A row has no const on its line, so the edit is
+        # keyed on the literal; keyed wrongly it would rewrite the whole table and still
+        # report one rewrite. The "exactly one line differs" clause is what catches that.
+        # The two rows carry the SAME literal, and only the second one is stale: row 1
+        # legitimately pins `sha_a`, row 2 holds `sha_a` but its row says `sha_a2`. That is
+        # not a contrived shape — `strategy_anchors_unchanged.rs` really does pin one body
+        # under two scenarios (`btc-2023-1m-sma-cross` and `-sma-baseline-refresh` share
+        # `fc2e3b4a…`). A writer that replaced the literal file-wide instead of on the
+        # site's own line would drag the CORRECT row along with the stale one, and the
+        # first version of this probe could not tell the two apart: its stale value
+        # appeared once, so both writers changed exactly one line and it passed.
+        f16 = _table_fixture("p16.rs", ns_a, [(tbl_s1, sha_a), (tbl_s2, sha_a)])
+        before16 = f16.read_text(encoding="utf-8")
+        s16, _ = parse_anchor_tables(f16)
+        wrote16 = apply_write(f16, s16, tbl_canonical, tbl_anchors)
+        after16 = f16.read_text(encoding="utf-8")
+        changed16 = [
+            (b, a)
+            for b, a in zip(before16.splitlines(), after16.splitlines())
+            if b != a
+        ]
+        probe(
+            "P16 --write fixes only the stale table row",
+            wrote16 == 1
+            and len(changed16) == 1
+            and after16.count(sha_a) == 1
+            and after16.count(sha_a2) == 1,
+            f"{wrote16} rewrite(s), {len(changed16)} line(s) changed (must be 1 and 1); "
+            f"correct row survived: {after16.count(sha_a)} × sha_a (must be 1 — 0 means "
+            f"the writer dragged it along), stale row fixed: {after16.count(sha_a2)} × "
+            "sha_a2 (must be 1)",
+        )
+
+        # P17 — a const whose NAME lacks ANCHOR is a site only when it declares its
+        # scenario. The negative side is load-bearing: an unrelated digest (a data
+        # revision, a model checkpoint) must be passed over in SILENCE, not reported
+        # unresolved, or this tool starts failing on constants that were never its business.
+        p17a = tmp / "p17a.rs"
+        p17a.write_text(
+            f"// anchor-scenario: {syn_scenario}\n"
+            f'const EXPECTED_SHA_X: &str = "{syn_sha}";\n',
+            encoding="utf-8",
+        )
+        p17b = tmp / "p17b.rs"
+        p17b.write_text(
+            f'const EXPECTED_SHA_X: &str = "{syn_sha}";\n', encoding="utf-8"
+        )
+        s17a, u17a = parse_anchor_literals(p17a)
+        s17b, u17b = parse_anchor_literals(p17b)
+        probe(
+            "P17 a non-ANCHOR const is a site only if it declares its scenario (two-sided)",
+            len(s17a) == 1
+            and s17a[0].scenario == syn_scenario  # noqa: B011 — guarded by the len above
+            and not u17a
+            and len(s17b) == 0
+            and len(u17b) == 0,
+            f"declared → {len(s17a)} site(s) / {len(u17a)} unresolved; bare → "
+            f"{len(s17b)} / {len(u17b)} (must be 1/0 then 0/0)",
+        )
+
+        # P18 — the two `predecessor_sha` citations are excluded BY DECISION. If a later
+        # sweep adds that file to SCANNED_FILES to "finish" the census gap, this
+        # contradiction fires and sends the reader to the reason.
+        excluded_paths = {rel for rel, _n, _why in EXCLUDED_CITATION_SITES}
+        scanned_rel = {str(p.relative_to(REPO_ROOT)) for p in SCANNED_FILES}
+        probe(
+            "P18 the citation file is excluded deliberately and is not also scanned",
+            "crates/forecast/src/bin/forecast_distribution.rs" in excluded_paths
+            and not (excluded_paths & scanned_rel)
+            and all(len(why) > 120 for _r, _n, why in EXCLUDED_CITATION_SITES),
+            f"excluded={sorted(excluded_paths)}; overlap with SCANNED_FILES="
+            f"{sorted(excluded_paths & scanned_rel) or 'none'}",
         )
 
     if failures:

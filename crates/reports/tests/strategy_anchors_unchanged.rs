@@ -148,6 +148,11 @@ fn is_sqrt_impact_path(path: &Path) -> bool {
 /// These SHAs are NOOP-BASELINE (no v5 sim applied). They are pinned
 /// forever — future canonical re-emissions only add to
 /// `CANONICAL_STRATEGY_ANCHORS` below, never change this table.
+// Synced by scripts/check_determinism_anchors.py (bug-log #183). The line below names
+// the anchors.toml `version` substring whose rows this table mirrors; `--write` pulls
+// these SHAs from that namespace. Nothing synced this file before 2026-11-08, and a
+// stale pin here took CI red on three legs (bug-log #181).
+// anchor-ns: noop-baseline
 const STRATEGY_ANCHORS: &[(&str, &str)] = &[
     (
         "btc-2023-1m-sma-cross",
@@ -234,6 +239,11 @@ const STRATEGY_ANCHORS: &[(&str, &str)] = &[
 // The sqrt-impact table below is deliberately UNTOUCHED: that namespace resolves to the
 // v0.5.0 directory only, a default run does not reproduce it, and its own gate t1937c passed
 // throughout — which is the check that the landing stayed inside the canonical namespace.
+// Synced by scripts/check_determinism_anchors.py (bug-log #183). The line below names
+// the anchors.toml `version` substring whose rows this table mirrors; `--write` pulls
+// these SHAs from that namespace. Nothing synced this file before 2026-11-08, and a
+// stale pin here took CI red on three legs (bug-log #181).
+// anchor-ns: v5-realdata-medium-2026-05
 const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave C close (v5-latency-slippage-sim v0.3.0 M-DEV, 2026-05-27).
     // Reports in evidence/v5-latency-slippage-sim-v0.3.0-full-path-wiring/reports/
@@ -372,6 +382,11 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
 // been edited or truncated. Deriving the expectation from `anchors.toml` would make it compare a
 // file against a digest computed from that same file, which proves nothing. An independent pin is
 // the design; the cost of that design is exactly this re-lock duty.
+// Synced by scripts/check_determinism_anchors.py (bug-log #183). The line below names
+// the anchors.toml `version` substring whose rows this table mirrors; `--write` pulls
+// these SHAs from that namespace. Nothing synced this file before 2026-11-08, and a
+// stale pin here took CI red on three legs (bug-log #181).
+// anchor-ns: v5-sqrt-impact-2026-05
 const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Populated at Wave E close (v5-latency-slippage-sim v0.5.0 M-DEV, 2026-05-29).
     // Reports in evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/

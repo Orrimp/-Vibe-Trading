@@ -109,11 +109,21 @@ jobs:
           python3 scripts/anchor_namespace_collapse_check.py
           python3 scripts/anchor_namespace_collapse_check.py --self-test
 
+          # bug-log #183 durable fix: this tool maps every in-test SHA literal to its
+          # anchors.toml row, and until now it was named in this workflow only inside a
+          # comment about something else — never run. The stale pin of #181 was caught by
+          # a Rust test on all three legs instead. It is pure Python; it costs seconds.
+          python3 scripts/check_determinism_anchors.py
+          python3 scripts/check_determinism_anchors.py --self-test
+
           # bug-log #183: a body SHA lives in anchors.toml and is COPIED into source.
-          # check_determinism_anchors.py syncs five files; measured, NINE files mirror a
-          # current anchors row, and the uncovered one holding 35 of them took this
-          # workflow red on all three legs. A stale copy stops matching, so the file's
-          # mirror count drops below its declared floor and this fails.
+          # When #183 was filed, check_determinism_anchors.py synced five of the NINE
+          # files that mirror a current anchors row, and the uncovered one holding 35
+          # of them took this workflow red on all three legs. The durable fix put eight
+          # of the nine under that tool (gated just above); this census pins the count
+          # itself. A stale copy stops matching, so the file's mirror count drops below
+          # its declared floor and this fails. Its uncovered count is DERIVED from the
+          # sync tool's own file list, so it cannot go stale when that list grows.
           python3 scripts/sha_mirror_census.py
           python3 scripts/sha_mirror_census.py --self-test
 

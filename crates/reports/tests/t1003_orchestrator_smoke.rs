@@ -58,6 +58,13 @@ use crate::build_ledger_with_open_positions_7d::{
 // T1935 / T1936 (v2-llm-strategy, pass 6) — re-anchored post-System-Health
 // renderer rewrite (Q11 denominator $135 → $200 + Q5d Cache hit ratio row).
 // Same value pinned in `crates/reports/tests/report_scenarios.rs::EXPECTED_SHA_7D`.
+// Synced by scripts/check_determinism_anchors.py (bug-log #183). This const's NAME
+// does not contain ANCHOR, so the declaration below is what makes it a checked site.
+// Both anchors.toml rows for the scenario (`v2.0.0 + noop-baseline` and `v2.0.0 +
+// v5-realdata-medium-2026-05`) carry the same body-SHA today, so the undeclared
+// default namespace resolves unambiguously; a future divergence would need an
+// explicit namespace line here too.
+// anchor-scenario: report-sample-7d
 const EXPECTED_SHA_7D: &str = "e1b286d5539279521534bb69b459d01711e1838d5fd32e8089eb97ab5decbd94";
 
 /// Slice off the front-matter and return the body bytes — same
