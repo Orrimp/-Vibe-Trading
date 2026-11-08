@@ -7685,3 +7685,85 @@ corpus's invariant is "every pinned SHA is reproducible from a declared invocati
 whose body was never emitted cannot satisfy it, and a map compared against itself cannot
 report that. `--force-synthetic-bars` reproducing the value is the part that makes this pin
 honest now, and that was discovered while looking for something else.
+
+### `#182` — "I produced no body for it" is not "nothing changed it", and reading it that way took CI red
+
+**Found** 2026-11-08, by reading CI after the re-emission push — the thing I had failed to do
+one push earlier (`#181`). **Fixed in this pass.**
+
+`fc76fff3` was still running when its **ubuntu leg** already showed
+`FAILED STEP: Test workspace (non-ui crates)`. The single-leg failure was the clue: the
+ADR-0097 reproducibility gate is ubuntu-only by design, and
+`reproducibility_sample_figure.rs` carries `#![cfg(feature = "yahoo")]`, which only that leg
+enables.
+
+Reproduced locally in one command:
+
+```
+cargo test -p backtest --test reproducibility_sample_figure --features yahoo
+  left: "135edd9b19943ee3214fba8c4c8730ed9df3ba7480924d86c4aa0f99f076d10f"
+ right: "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0"
+```
+
+Plus `run_yahoo_sma_ticker_flag::{btc_default_sha_matches_anchor_69,eth_ticker_sha_matches_anchor_70}`.
+
+#### The defect is a bucket name
+
+`report/sma.rs` is shared by the **yahoo** path: `bin/run_yahoo_sma` →
+`report/yahoo.rs::emit_sma_report` → `report/sma.rs::write`. `#151` changed that writer, so
+the yahoo bodies moved too.
+
+My classifier put both yahoo rows in `UNRUN`, documented as "no new body, because the scenario
+is rendered by code outside the `backtest` CLI … **unchanged by construction**." The first
+clause was true. The second did not follow, and the two are not the same claim:
+
+- *rendered by code not in the diff* → genuinely unchanged.
+- *rendered by a CHANGED writer, via a binary my sweep did not run* → **changed, and invisible
+  to the sweep.**
+
+The sweep drove only `target/release/backtest --scenario …`, so it produced no yahoo body and
+reported the absence as compliance. The pass's own dev-note had already enumerated the callers
+of the changed writers and **listed `bin/run_yahoo_sma.rs` among them** — the correct fact was
+written down two sections above the bucket that threw it away.
+
+#### Fixed, both the instance and the class
+
+**Instance.** Both rows re-emitted under § D6.c with the declared invocation
+(`run_yahoo_sma --cache-root data/yahoo --ticker {BTC,ETH}-USD`), figures byte-identical — the
+diff is exactly the two added rows. Three test constants re-locked. All 7 yahoo tests pass.
+Exactly 2 `sha256` lines changed, **117 of 119 untouched**.
+
+A detail worth keeping: btc-yahoo reproduces **identically** from the committed
+`data/yahoo-sample` slice and from the full `data/yahoo` cache, so ADR-0097's "one real-data
+figure reproduces from a fresh clone" was re-verified by this repair rather than assumed
+through it. eth-yahoo's corpus is gitignored and its row's own comment already says "CI cannot
+reproduce this row" — a stated pre-existing limit, not a new one.
+
+**Class.** `reemission_classify.py` now splits `UNRUN` into `UNRUN` and **`NOT-COVERED`**,
+driven by a declared `EXTERNALLY_RENDERED` map naming each such scenario *and the command that
+produces it*. A `NOT-COVERED` row prints that command and **exits non-zero**:
+
+```
+── NOT COVERED by this sweep — rendered by another binary (bug-log #182) ──
+  btc-yahoo-2024-1d-sma-cross  [lab-yahoo-realdata-v0.1.1]
+      produce with: target/release/run_yahoo_sma --cache-root data/yahoo --ticker BTC-USD …
+  These rows are NOT 'unchanged by construction'.
+```
+
+The sweep can no longer be silent about what it did not cover.
+
+#### What it cost, and what caught it
+
+Three red legs, twice: `409facc4` for ~90 minutes (`#181`) and `fc76fff3` for the yahoo rows.
+Both were caught by **reading CI** — the first after the fact, the second while it was still
+running, from a single leg's step name. Two requests of a 60-per-hour budget each time.
+
+#### Moral
+
+A bucket called `UNRUN` collapsed two facts with opposite consequences, and the harmless
+reading won by default. `#179` was a gate that never asked whether two things still differ;
+`#180` a gate that could diagnose but not repair; `#181` a map compared against itself. This
+one is a *classifier* whose safest-sounding category was the unsafe one. The shape they share
+is a check whose silence is indistinguishable from a pass — and the only reliable way these
+surfaced was using each tool for the job it exists for, and then looking at what the build
+said afterwards.

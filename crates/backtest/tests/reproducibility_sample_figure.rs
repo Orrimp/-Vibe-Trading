@@ -46,7 +46,7 @@ use std::process::Command;
 /// (bug-log #131), and the scenario is declared because this const is at file scope.
 // anchor-scenario: btc-yahoo-2024-1d-sma-cross
 // anchor-ns: lab-yahoo-realdata-v0.1.1
-const ANCHORED_BODY_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0";
+const ANCHORED_BODY_SHA: &str = "135edd9b19943ee3214fba8c4c8730ed9df3ba7480924d86c4aa0f99f076d10f";
 
 /// The human-readable figure the body carries, quoted in the runbook so the claim is
 /// legible to someone who will not read a hash.

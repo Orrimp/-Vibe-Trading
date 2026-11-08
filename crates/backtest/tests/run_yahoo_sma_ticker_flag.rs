@@ -151,7 +151,7 @@ fn pinned_table_allowed_yahoo_tickers_matches_data_crate() {
 /// the two copies and the anchors.toml row from drifting apart.
 // anchor-scenario: btc-yahoo-2024-1d-sma-cross
 // anchor-ns: lab-yahoo-realdata-v0.1.1
-const BTC_ANCHOR_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0";
+const BTC_ANCHOR_SHA: &str = "135edd9b19943ee3214fba8c4c8730ed9df3ba7480924d86c4aa0f99f076d10f";
 
 /// ETH body SHA under the v0.1.3 emit shape (no `rev=` in body; `revision_sha:` in frontmatter).
 ///
@@ -167,7 +167,7 @@ const BTC_ANCHOR_SHA: &str = "076929bb63d9bec03ec83684b85ced818ee32c0b2da4114071
 /// this const is at file scope, so its scenario is declared, not inferred.
 // anchor-scenario: eth-yahoo-2024-1d-sma-cross
 // anchor-ns: lab-yahoo-realdata-v0.1.3
-const ETH_ANCHOR_SHA: &str = "c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2";
+const ETH_ANCHOR_SHA: &str = "1370f4154f284bfa3f9d0d7a6d168d0d48177c933e2de67085ddd91648d9eabe";
 
 #[cfg(feature = "yahoo")]
 #[test]

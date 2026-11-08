@@ -407,3 +407,37 @@ Both bodies printed their own return for their entire existence with nothing bes
 does not change the era-qualified ship-passive thesis — that rests on the θ-surface corpus,
 where buy-and-hold already *is* the control and 0 of 156 cells beat it — but it is the first
 time a LANE body says the same thing on its own.
+
+## POSTSCRIPT — the pass missed two rows, and CI said so
+
+`fc76fff3` took the **ubuntu** leg red. One leg, which is the clue: the ADR-0097
+reproducibility gate is ubuntu-only and `reproducibility_sample_figure.rs` carries
+`#![cfg(feature = "yahoo")]`, which only that leg enables.
+
+**Two yahoo rows were missed, and the bucket name is the defect.** `report/sma.rs` is shared
+by the yahoo path (`bin/run_yahoo_sma` → `report/yahoo.rs` → `report/sma.rs`), so `#151` moved
+those bodies too. The classifier filed them `UNRUN`, which this very note described as "no new
+body … **unchanged by construction**". The first half was true; the second does not follow:
+
+- rendered by code not in the diff → genuinely unchanged;
+- rendered by a CHANGED writer via a binary the sweep did not run → **changed and invisible**.
+
+§ *How the bodies were produced* above says the sweep drove `target/release/backtest` only —
+and § *D6.c step 2* above correctly lists `bin/run_yahoo_sma.rs` as a caller of the changed
+writers. The right fact was two sections above the bucket that discarded it.
+
+Repaired under § D6.c: both rows re-emitted with their declared invocation, figures
+byte-identical (the diff is exactly the two added rows), three test constants re-locked, all 7
+yahoo tests green. **Exactly 2 `sha256` lines changed; 117 of 119 untouched.** btc-yahoo
+reproduces identically from the committed `data/yahoo-sample` slice and from the full
+`data/yahoo` cache, so ADR-0097's premise was re-verified by the repair rather than assumed
+through it.
+
+The class is closed in the tool: `UNRUN` now splits into `UNRUN` and **`NOT-COVERED`**, the
+latter driven by a declared `EXTERNALLY_RENDERED` map that names each scenario *and the command
+that produces it*, printed on every run and **exiting non-zero**. A sweep can no longer be
+silent about what it did not cover. Bug-log [`#182`](bug-log.md).
+
+**Running total for this pass: 39 of 119 rows re-emitted** (37 + these 2), 28 frozen oracles
+untouched, 52 rows rendered outside any changed writer, 2 rows now permanently flagged as
+needing their own binary.

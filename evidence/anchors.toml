@@ -1366,9 +1366,24 @@ sha256   = "7409a588c1a54aef1f08592fbbb8882f27f0d42c3d1f6301e740b0a88a5cb69f"
 # Verify with: scripts/verify_anchors.sh  (expects 69 / 69 PASS)
 
 [[anchors]]
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #151 / #182 ──
+#   Condition DECLARED: `run_yahoo_sma --cache-root data/yahoo --ticker BTC-USD`.
+#   This row is rendered by `report/yahoo.rs` -> `report/sma.rs`, NOT by the
+#   `backtest` binary — which is exactly how the pass missed it.
+#   CAUSE: bug-log #151 added the buy-and-hold rows to `report/sma.rs`, shared by the
+#   yahoo path. The 2026-11-08 re-emission bucketed this row UNRUN because the
+#   `backtest` scenario loop produces no body for it — which is NOT the same as
+#   nothing having changed it. It went to CI red on the ubuntu leg (bug-log #182).
+#   Figures byte-identical: the diff is exactly the two added rows.
+#   reproduced IDENTICALLY from both `data/yahoo-sample` (the committed slice) and the full
+#   `data/yahoo` cache, so ADR-0097’s "one figure reproduces from a fresh clone" premise
+#   is re-verified by this re-emission rather than assumed through it.
+#   Superseded body kept on disk as history: backtest-20260528-203343-btc-yahoo-2024-1d-sma-cross.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0 — kept verbatim in this comment.
 scenario = "btc-yahoo-2024-1d-sma-cross"
 version  = "lab-yahoo-realdata-v0.1.1"
-sha256   = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0"
+sha256   = "135edd9b19943ee3214fba8c4c8730ed9df3ba7480924d86c4aa0f99f076d10f"
 
 # lab-yahoo-realdata v0.1.2 Yahoo anchor (2026-05-27).
 # Second real-data Yahoo anchor in the registry.  Source: data/yahoo/ETH-USD/1d/2024
@@ -1414,9 +1429,24 @@ sha256   = "076929bb63d9bec03ec83684b85ced818ee32c0b2da41140712ec1d01de6a1e0"
 #   (D6.b forbids row deletion; historical evidence stays linked). Its +2.76 % total return
 #   carries the H1 hypothesis discharge cited at anchors.toml elsewhere in this file — the
 #   number is UNCHANGED by this re-emission, which is why the discharge still stands.
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #151 / #182 ──
+#   Condition DECLARED: `run_yahoo_sma --cache-root data/yahoo --ticker ETH-USD`.
+#   This row is rendered by `report/yahoo.rs` -> `report/sma.rs`, NOT by the
+#   `backtest` binary — which is exactly how the pass missed it.
+#   CAUSE: bug-log #151 added the buy-and-hold rows to `report/sma.rs`, shared by the
+#   yahoo path. The 2026-11-08 re-emission bucketed this row UNRUN because the
+#   `backtest` scenario loop produces no body for it — which is NOT the same as
+#   nothing having changed it. It went to CI red on the ubuntu leg (bug-log #182).
+#   Figures byte-identical: the diff is exactly the two added rows.
+#   produced from the full `data/yahoo` cache, which is gitignored — the pre-existing limit
+#   this row’s own comment above already states ("CI cannot reproduce this row"). The new
+#   digest matches the value `run_yahoo_sma_ticker_flag` itself produced.
+#   Superseded body kept on disk as history: backtest-20260927-215928-eth-yahoo-2024-1d-sma-cross.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2 — kept verbatim in this comment.
 scenario = "eth-yahoo-2024-1d-sma-cross"
 version  = "lab-yahoo-realdata-v0.1.3"
-sha256   = "c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2"
+sha256   = "1370f4154f284bfa3f9d0d7a6d168d0d48177c933e2de67085ddd91648d9eabe"
 
 # lab-yahoo-realdata v0.1.3 Binance ETH H1 anchor (2026-05-28).
 # Third real-data anchor in the registry.  Source: data/binance/ETHUSDT/2024/

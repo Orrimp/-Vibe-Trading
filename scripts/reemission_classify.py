@@ -28,6 +28,10 @@ Buckets
 ``ORACLE``     a `noop-baseline` row on a SYNTHETIC scenario: a frozen pre-friction
                oracle, unreachable from current code by design (Q-D1=(a) forces
                `Linear{bps:8}` there). Never re-emitted.
+``NOT-COVERED`` no new body AND the scenario is rendered by a binary other than
+               `backtest` (see EXTERNALLY_RENDERED). Reported loudly with the command that
+               produces it, and exits non-zero — "I produced no body" is not "nothing
+               changed it" (bug-log #182).
 ``UNRUN``      no new body: the scenario is rendered by code outside the `backtest` CLI
                (`crates/forecast`'s sharpe-comparison and verdict bins, `crates/reports`,
                the threshold-sweep bin), or needs a feature this binary lacks. Unchanged by
@@ -114,6 +118,25 @@ FORCED_SYNTHETIC = frozenset({
     "btc-2023-1m-sma-cross",
     "btc-2023-1m-sma-baseline-refresh",
 })
+
+
+# Scenarios rendered by a binary OTHER than `backtest`, with the command that produces
+# them. A row here is NOT covered by a `backtest --scenario` sweep, so a sweep that finds no
+# body for it must say "not covered, run this" — never "unchanged by construction".
+#
+# This distinction cost a red CI leg (bug-log #182). The 2026-11-08 pass bucketed the two
+# yahoo rows UNRUN because the `backtest` loop produced no body for them, and read that as
+# compliance. But `report/sma.rs` — which #151 changed — is shared by the yahoo path through
+# `report/yahoo.rs`, so their bodies HAD moved. The pass's own dev-note even listed
+# `bin/run_yahoo_sma.rs` as a caller of a changed writer; the bucket threw that away.
+EXTERNALLY_RENDERED: dict[str, str] = {
+    "btc-yahoo-2024-1d-sma-cross":
+        "target/release/run_yahoo_sma --cache-root data/yahoo --ticker BTC-USD "
+        "--reports-dir <dir>   [renders through report/yahoo.rs -> report/sma.rs]",
+    "eth-yahoo-2024-1d-sma-cross":
+        "target/release/run_yahoo_sma --cache-root data/yahoo --ticker ETH-USD "
+        "--reports-dir <dir>   [renders through report/yahoo.rs -> report/sma.rs]",
+}
 
 
 def invocation_for(scenario: str, version: str) -> str:
@@ -242,7 +265,7 @@ def run(dirs: dict[str, Path]) -> int:
     committed = index_committed_bodies()
     buckets: dict[str, list[tuple[dict[str, str], list[str]]]] = {
         "UNCHANGED": [], "D6C": [], "D6B": [], "UNRUN": [], "ORACLE": [],
-        "NO-OLD-BODY": [],
+        "NOT-COVERED": [], "NO-OLD-BODY": [],
     }
 
     for row in rows:
@@ -253,7 +276,12 @@ def run(dirs: dict[str, Path]) -> int:
         src = dirs.get(inv)
         new = find_new_body(src, row["scenario"]) if src and src.is_dir() else None
         if new is None:
-            buckets["UNRUN"].append((row, [f"invocation={inv}"]))
+            if row["scenario"] in EXTERNALLY_RENDERED:
+                buckets["NOT-COVERED"].append(
+                    (row, [f"produce with: {EXTERNALLY_RENDERED[row['scenario']]}"])
+                )
+            else:
+                buckets["UNRUN"].append((row, [f"invocation={inv}"]))
             continue
         old_path = committed.get(row["sha"])
         if old_path is None:
@@ -271,7 +299,8 @@ def run(dirs: dict[str, Path]) -> int:
 
     total = len(rows)
     print(f"re-emission classification over {total} anchor row(s)\n")
-    for name in ("D6B", "D6C", "UNCHANGED", "ORACLE", "UNRUN", "NO-OLD-BODY"):
+    for name in ("D6B", "D6C", "UNCHANGED", "ORACLE", "NOT-COVERED", "UNRUN",
+                 "NO-OLD-BODY"):
         items = buckets[name]
         print(f"  {name:12s} {len(items):3d}")
     print()
@@ -285,6 +314,16 @@ def run(dirs: dict[str, Path]) -> int:
             for n in notes:
                 print(f"      {n}")
         print()
+    if buckets["NOT-COVERED"]:
+        print("\u2500\u2500 NOT COVERED by this sweep \u2014 rendered by another binary "
+              "(bug-log #182) \u2500\u2500")
+        for row, notes in buckets["NOT-COVERED"]:
+            print(f"  {row['scenario']}  [{row['version']}]")
+            for n in notes:
+                print(f"      {n}")
+        print("  These rows are NOT 'unchanged by construction'. If a writer they share was\n"
+              "  touched, their bodies moved and this sweep cannot see it. Produce them with\n"
+              "  the commands above and re-run, or state explicitly why they are exempt.\n")
     if buckets["NO-OLD-BODY"]:
         print("── NO-OLD-BODY (a row whose SHA matches no committed body — investigate) ──")
         for row, _ in buckets["NO-OLD-BODY"]:
@@ -293,7 +332,7 @@ def run(dirs: dict[str, Path]) -> int:
     # A pass where nothing differs means the run did not exercise the change.
     if not buckets["D6C"] and not buckets["D6B"]:
         print("NOTE  no row differs. Either the change is inert, or --new-dir is wrong.")
-    return 1 if buckets["NO-OLD-BODY"] else 0
+    return 1 if (buckets["NO-OLD-BODY"] or buckets["NOT-COVERED"]) else 0
 
 
 def self_test() -> int:
