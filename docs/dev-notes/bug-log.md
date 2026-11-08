@@ -8013,6 +8013,13 @@ compiled**: this host cannot link a two-line `fn main`, because
 architecture the bundled clang rejects, so every `cargo check` dies in a dependency's build
 script. CI compiles them on three OSes.
 
+**Corrected the same day (bug-log `#184`): they compile.** The host is still broken by
+default, but only the *default* SDK is — `SDKROOT=/Library/Developer/CommandLineTools/SDKs/
+MacOSX26.sdk cargo check -p reports --tests` finishes clean in 1m02s, no warnings on any of
+the three files. "Cannot be compiled here" was true of the command I ran and not of the
+machine, and one `rustc` call against each of the three installed SDKs was all it took to
+tell those apart. The claim above stands only as the state of a plain `cargo` invocation.
+
 #### Moral
 
 `#183` counted the copies and printed the number it could not fix. Fixing it turned up two
@@ -8020,3 +8027,88 @@ more copies the count had not reached — one of them inside `#183`'s own gate �
 discovery that the tool meant to keep 66 copies honest was not wired to anything. The
 counting question was the root, and the answer to "how many places is a SHA pinned?" is
 worth less than the answer to "and which of them does anything check?"
+
+### `#184` — the one test that re-runs the producer for two freshly re-emitted anchors is the one CI never built, and the gate that inventories such gaps only checked one direction
+
+**Found** 2026-11-08, going after `#183`'s residual once the host toolchain turned out to be
+only half-broken. **Fixed in this pass.**
+
+#### The unblock came first, and it was one command
+
+`#183` recorded that Rust could not be compiled here. Wrong, in the way that matters: the
+DEFAULT clang SDK is broken, not the toolchain. `xcrun --show-sdk-path` resolves to
+`MacOSX27.0.sdk`, whose `.tbd` files declare an `arm64e.x1` slice the bundled clang rejects,
+so every link fails — including a two-line `fn main(){}`, which is how it was isolated from
+"a dependency is broken". Three SDKs are installed; `rustc` was pointed at each in turn and
+**`MacOSX26.sdk` links**. So `SDKROOT=…/MacOSX26.sdk cargo …` works, nothing needs
+installing, and `#183`'s "not compiled" caveat is now discharged: `cargo check -p reports
+--tests` is clean in 1m02s.
+
+#### Measured: the invisible yahoo tests were green all along
+
+First local run of both yahoo-gated targets — **7 tests, 7 passed, 0 failed, 0 ignored, 0
+filtered out**. So no breakage was hiding behind the feature gate, and the finding is not a
+bug in the tests; it is that nothing ran them.
+
+#### Two things I said while chasing this were wrong, and the corrections narrow the claim
+
+1. "The repo's only second-party reproduction gate has never run in CI." **False.**
+   `ci.yml` has a dedicated Ubuntu step — `cargo test -p backtest --features yahoo --test
+   reproducibility_sample_figure` — and `#183` itself says that run is a separate step. I
+   had read the feature inventory (which does not list that target at all, because it is
+   `#![cfg]`-gated rather than `required-features`-gated) and generalised from an absence.
+2. The candle-gated targets are not an open question either: `#163` was **operator-approved
+   the same day** and the `forecast candle-gated tests` step exists.
+
+What survives both corrections is one target. `run_yahoo_sma_ticker_flag` needs **only**
+`yahoo` — not `realdata`, so not the provisioning decision that blocks the other two — and
+the repro-sample step already builds this very package with that feature. It now has its own
+step, sharing that build: a test run and no compile. `#163`'s "23 test functions in 3
+targets" is **17 in 2**, both waiting on the same `realdata` question, which stays the
+operator's.
+
+#### Why this target and not just any coverage
+
+Two of its six tests invoke the `run_yahoo_sma` **binary** and hash its output:
+`btc_default_sha_matches_anchor_69` and `eth_ticker_sha_matches_anchor_70`. Those are the
+two rows **`#182` re-emitted hours earlier**, and a binary invocation RE-RUNS THE PRODUCER —
+the thing `verify_anchors.sh` and `strategy_anchors_unchanged.rs` structurally cannot do
+(`#93`, `#111`: they hash bodies off disk, so they prove storage integrity and nothing about
+whether the current code still produces those bodies). Until this step, the only CI evidence
+for `#182`'s re-emission was that the committed bytes had not changed.
+
+#### The inventory gate was itself one-directional
+
+`feature_gated_targets_check.py` checks that a row claiming `invisible` is not secretly
+built — and says so in a comment, "the staleness check in the direction that matters". It
+is the direction that mattered when it was written. But `built` is a claim too, and nothing
+held it to anything: delete the step behind a row and it goes on asserting that CI covers
+six tests which no longer run. `UNBUILT-CLAIM` now checks that direction.
+
+**Measuring before implementing is what kept it exact.** The naive form — "every `built` row
+must be matched by a ci.yml invocation" — flags **2 of 18** rows on a correct tree:
+
+| row | why it is not matched |
+|---|---|
+| `strategy/test/tcn_overlay_tuned_builder` | DEP-SATISFIED: `forecast` names a non-optional dependency |
+| `ui/bin/cockpit_live` | `live` is in `ui`'s `default = ["live", "yahoo", "binance"]` |
+
+Shipping the naive version would have failed a clean tree twice over. Both are real exempt
+classes — a target whose features are satisfied unconditionally is not gated by CI at all —
+and the default set is resolved **transitively**, because a default feature may enable
+another and taking the literal list would reintroduce the same false positive one level
+down. With both exemptions: 16 matched, 2 exempt, 0 violations.
+
+The probe deletes the new step from an in-memory copy of `ci.yml` and requires
+`UNBUILT-CLAIM`; its subject is chosen because `backtest` declares **no** default features,
+so nothing else in the tree would build that target. It asserts the line it removes exists,
+or it would pass while testing nothing — the inert-probe trap this file's own P5 fell into
+earlier the same day.
+
+#### Moral
+
+Two of today's five gates were written to catch a silence and then left a symmetrical
+silence of their own: `#183`'s census duplicated the list it measured, and this one audited
+exclusions while taking inclusions on trust. A claim is not safer for being the optimistic
+one. And "I cannot verify this here" deserves the same suspicion as any other measurement —
+it cost one `rustc` invocation to find out it was false.

@@ -261,6 +261,42 @@ jobs:
         shell: bash
         run: scripts/ci_run_annotated.sh "repro-sample" cargo test -p backtest --features yahoo --test reproducibility_sample_figure
 
+      # ── backtest's other yahoo-gated target (bug-log #184) ────────────────
+      #
+      # bug-log #163 left three targets invisible and named the blocker for each.
+      # Two of them need `realdata`, which wants data/binance/REVISION.toml
+      # provisioned in CI — a separate operator decision. This one needs ONLY
+      # `yahoo`, and the step above already pays for the `yahoo` build of this very
+      # package, so adding it costs a test run and no compile.
+      #
+      # What it recovers is not generic coverage. Two of its six tests,
+      # `btc_default_sha_matches_anchor_69` and `eth_ticker_sha_matches_anchor_70`,
+      # invoke the `run_yahoo_sma` BINARY and hash its output — a second witness that
+      # RE-RUNS THE PRODUCER, which is the thing the on-disk anchor gates structurally
+      # cannot do (bug-log #93, #111, and the header of
+      # crates/reports/tests/strategy_anchors_unchanged.rs). Those are precisely the
+      # two rows bug-log #182 re-emitted, and until this step nothing in CI re-derived
+      # them. The other four pin the ALLOWED_YAHOO_TICKERS cross-crate mirror, the two
+      # scenario-name formats, and the unknown-ticker exit code.
+      #
+      # MEASURED locally 2026-11-08 before this step was added:
+      #   cargo test -p backtest --features yahoo --test run_yahoo_sma_ticker_flag
+      #   -> 6 passed, 0 failed, 0 ignored, 0 filtered out, 0.80 s
+      # It reads the committed 100 KB data/yahoo-sample corpus and needs no network
+      # (crates/data/Cargo.toml: "yahoo" is the cache read path; "yahoo-online" is the
+      # fetching one and stays out).
+      #
+      # Ubuntu only, for the same reason as the step above: these assert properties of
+      # the data, the engine and the CLI contract, not of the operating system, and the
+      # other legs would each pay a fresh `yahoo` feature build to re-assert them.
+      # A SEPARATE step rather than a second --test on the step above so its CI
+      # annotation carries its own label — logs are 403 here, annotations are how a
+      # failure gets read.
+      - name: backtest yahoo-gated ticker-flag tests (bug-log #184)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: scripts/ci_run_annotated.sh "yahoo-ticker-flag" cargo test -p backtest --features yahoo --test run_yahoo_sma_ticker_flag
+
       # ── forecast's candle-gated tests (bug-log #163, operator-approved 2026-11-08) ──
       #
       # `cargo test` SKIPS a target whose `required-features` are unmet in silence:

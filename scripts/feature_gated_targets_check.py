@@ -27,6 +27,12 @@ ci.yml gained a `forecast candle-gated tests` step — `cargo test -p forecast
 `threshold_sweep_readonly` (2). `realdata` wants `data/binance/REVISION.toml`
 provisioned in CI, which is a separate operator decision.
 
+**Narrowed again 2026-11-08 (bug-log `#184`).** `run_yahoo_sma_ticker_flag` needed
+only `yahoo` — no `realdata`, so no provisioning decision — and the repro-sample
+step already built this package with that feature. It now has its own step, so
+**17 test functions in 2 targets remain invisible**, both blocked on the same
+`realdata` provisioning question.
+
 (First stated as "46 across 13". Corrected 2026-11-08 the same day: one of those
 targets, `strategy/test/tcn_overlay_tuned_builder` (5 test fns), is gated on a
 name that is a NON-OPTIONAL DEPENDENCY rather than a feature, which cargo
@@ -106,8 +112,12 @@ DECLARED: dict[str, dict[str, object]] = {
     },
     "backtest/test/run_yahoo_sma_ticker_flag": {
         "feats": ["yahoo"],
-        "ci": "invisible",
-        "why": "bug-log #163 — 6 test fns, 0 ignored. Same single-target `yahoo` scope.",
+        "ci": "built",
+        "why": "bug-log #184 — ci.yml `backtest yahoo-gated ticker-flag tests`, "
+               "Ubuntu only, sharing the `yahoo` build the repro-sample step already "
+               "pays for. 6 test fns, 0 ignored (measured 6 passed / 0.80 s). Two of "
+               "them re-run the run_yahoo_sma BINARY to witness anchors 69 and 70 — "
+               "the rows #182 re-emitted — which no on-disk hash gate can do.",
     },
     "backtest/test/p2_verdict_rerun": {
         "feats": ["realdata", "yahoo"],
@@ -289,6 +299,45 @@ def scan_dep_satisfied() -> dict[str, list[str]]:
     return out
 
 
+_FEATURES_SECTION_RE = re.compile(r"^\[features\]\s*$(.*?)(?=^\[|\Z)", re.M | re.S)
+_FEATURE_ENTRY_RE = re.compile(r'^\s*([A-Za-z0-9_-]+)\s*=\s*\[([^\]]*)\]', re.M)
+
+
+def default_features(crate: str) -> set[str]:
+    """`crate`'s default feature set, resolved TRANSITIVELY.
+
+    bug-log #184. A target whose `required-features` are all defaults is not gated by
+    any CI invocation — it builds under a plain `cargo test -p <crate>`. `ui/bin/
+    cockpit_live` is the live example: its row claims `built` and is right, because
+    `live` sits in `default = ["live", "yahoo", "binance"]` (promoted there 2026-05-25),
+    and no ci.yml line names the feature at all.
+
+    Transitive, not just the literal `default` list, because a default feature may enable
+    another: taking the list at face value would flag such a target as an unbacked claim
+    and FAIL a correct tree. Only bare names are followed — `dep:x` is a dependency and
+    `other/x` is another crate's feature; neither enables a local one.
+    """
+    manifest = CRATES / crate / "Cargo.toml"
+    if not manifest.is_file():
+        return set()
+    section = _FEATURES_SECTION_RE.search(manifest.read_text(encoding="utf-8"))
+    if not section:
+        return set()
+    table = {
+        m.group(1): [f.strip().strip('"') for f in m.group(2).split(",") if f.strip()]
+        for m in _FEATURE_ENTRY_RE.finditer(section.group(1))
+    }
+    out: set[str] = set()
+    queue = list(table.get("default", []))
+    while queue:
+        feat = queue.pop()
+        if feat in out or ":" in feat or "/" in feat:
+            continue
+        out.add(feat)
+        queue.extend(table.get(feat, []))
+    return out
+
+
 def scan() -> dict[str, list[str]]:
     """Every `<crate>/<kind>/<name>` carrying required-features, with that set."""
     found: dict[str, list[str]] = {}
@@ -340,6 +389,7 @@ def _any_ci_invocation_would_build(
 
 def check(found: dict[str, list[str]], ci: str) -> list[str]:
     violations: list[str] = []
+    dep_sat = scan_dep_satisfied()
 
     for key in sorted(found):
         if key not in DECLARED:
@@ -385,10 +435,38 @@ def check(found: dict[str, list[str]], ci: str) -> list[str]:
                     f"            does not narrow to another target. Re-measure: if CI does\n"
                     f"            build it, flip the row to `built` and say where."
                 )
+        # bug-log #184 — and the OTHER direction, which this gate did not check. The
+        # comment above says "the direction that matters", and for a row that wrongly
+        # claims exclusion it is. But a row claiming `built` is a claim too, and nothing
+        # held it to anything: delete the ci.yml step that backs it and the row goes on
+        # saying CI covers 6 tests that no longer run — the exact silence this file
+        # exists to break, pointing the other way.
+        #
+        # Exempt: a target is not gated by CI at all when its features are satisfied
+        # unconditionally — by a non-optional dependency (DEP-SATISFIED above) or by
+        # sitting in the crate's default set. Measured 2026-11-08 across the 18 `built`
+        # rows: 16 are matched by an invocation, `ui/bin/cockpit_live` is default-
+        # satisfied and `strategy/test/tcn_overlay_tuned_builder` is dep-satisfied. So
+        # this check is exact today rather than approximately right.
+        if row["ci"] == "built":
+            crate, kind, name = key.split("/", 2)
+            defaults = default_features(crate)
+            satisfied_anyway = key in dep_sat or all(f in defaults for f in got)
+            if not satisfied_anyway and not _any_ci_invocation_would_build(
+                ci, crate, kind, name, got
+            ):
+                violations.append(
+                    f"UNBUILT-CLAIM {key} is declared `built`, but no ci.yml invocation\n"
+                    f"            selects package `{crate}` with every feature in {got},\n"
+                    f"            and {got} is neither default nor dependency-satisfied.\n"
+                    f"            Either the step that backed this row was removed — in\n"
+                    f"            which case its tests are silently not running — or the\n"
+                    f"            row should say `invisible` and what that costs."
+                )
     # A required-feature naming a NON-OPTIONAL dependency is satisfied
     # unconditionally, so the target is not gated at all and must not be declared
     # invisible. See non_optional_deps() for how this was found.
-    for key, names in sorted(scan_dep_satisfied().items()):
+    for key, names in sorted(dep_sat.items()):
         row = DECLARED.get(key)
         if row is not None and row["ci"] == "invisible":
             violations.append(
@@ -486,6 +564,24 @@ def self_test() -> int:
         ("dep-satisfied row declared invisible", "DEP-SATISFIED", check(base_found, base_ci))
     )
     DECLARED["strategy/test/tcn_overlay_tuned_builder"]["ci"] = saved_ci
+
+    # P7 — the ci.yml step backing a `built` row is deleted. Subject: the yahoo
+    # ticker-flag step (bug-log #184), chosen because `backtest` declares NO default
+    # features, so nothing else in the tree would build that target — if the step goes,
+    # the row is simply false. The clean run above is the other side of the pair: with
+    # the step present there is no violation, so this probe cannot pass by accident.
+    ci_without = "\n".join(
+        ln for ln in base_ci.splitlines()
+        if "--test run_yahoo_sma_ticker_flag" not in ln
+    )
+    assert ci_without != base_ci, (
+        "P7 is INERT: no ci.yml line narrows to run_yahoo_sma_ticker_flag, so deleting "
+        "it changes nothing and the probe tests nothing (bug-log #184)"
+    )
+    probes.append(
+        ("ci step backing a `built` row deleted", "UNBUILT-CLAIM",
+         check(base_found, ci_without))
+    )
 
     # P6 — an exclusion declared with no stated cost.
     saved = DECLARED["forecast/test/metal_cpu_drift"]["why"]
