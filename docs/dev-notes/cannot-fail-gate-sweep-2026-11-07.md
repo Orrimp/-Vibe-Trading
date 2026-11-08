@@ -132,6 +132,10 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F8 — CLOSED 2026-11-08 as `#169`** (ranked action 5, first third). Two-sided pair reaching
+  the shipped predicate, the three worked examples reading the constant, and a non-vacuity count
+  on the downward half. Probed both ways including this note's own 1.1: 3 failed where the whole
+  suite was green. Interval (0.7804, +∞) → (0.949630, 0.950499]. DSR stays report-only.
 - **F4 — Parts A+B CLOSED 2026-11-08 as `#167`; Part C operator-ruled DOCUMENT-NOT-RE-EMIT.**
   The gate now calls the shipped substitution (`forecast::provenance::overlay_with_sigma_train`)
   and asserts the two committed checkpoint pairs behind a floor. This finding's `measured_evidence`

@@ -618,7 +618,14 @@ async fn gbm_null_rarely_crowns_and_dsr_rejects_when_it_does() {
     }
 
     assert_active_wins_below_ceiling("GBM", &outcomes);
-    assert_active_wins_are_dsr_rejected("GBM", &outcomes);
+    let dsr_examined = assert_active_wins_are_dsr_rejected("GBM", &outcomes);
+    // Deliberately NOT asserted non-zero: on a true null, ActiveWins is
+    // reachable but not guaranteed, so demanding one would make this test
+    // depend on chance — the opposite of what this file is for. The count is
+    // PRINTED so a run that examined nothing is legible in the CI log rather
+    // than silent (bug-log #169). The upward half of the pin does not depend
+    // on chance at all, which is why it carries the hard assertion.
+    let _ = dsr_examined;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -643,7 +650,14 @@ async fn garch11_null_rarely_crowns_and_dsr_rejects_when_it_does() {
     }
 
     assert_active_wins_below_ceiling("GARCH(1,1)", &outcomes);
-    assert_active_wins_are_dsr_rejected("GARCH(1,1)", &outcomes);
+    let dsr_examined = assert_active_wins_are_dsr_rejected("GARCH(1,1)", &outcomes);
+    // Deliberately NOT asserted non-zero: on a true null, ActiveWins is
+    // reachable but not guaranteed, so demanding one would make this test
+    // depend on chance — the opposite of what this file is for. The count is
+    // PRINTED so a run that examined nothing is legible in the CI log rather
+    // than silent (bug-log #169). The upward half of the pin does not depend
+    // on chance at all, which is why it carries the hard assertion.
+    let _ = dsr_examined;
 }
 
 /// Assert the primary gate's aggregate false-positive-crown rate stays
@@ -679,9 +693,29 @@ fn assert_active_wins_below_ceiling(process_name: &str, outcomes: &[(u64, FieldO
 /// clears the bar, the entire two-layer credibility story is broken: the
 /// primary gate missed AND the safety net also missed. THAT is the one
 /// honest failure condition this file exists to catch.
-fn assert_active_wins_are_dsr_rejected(process_name: &str, outcomes: &[(u64, FieldOutcome)]) {
+///
+/// ## Why it returns a count (bug-log `#169`)
+///
+/// Every assertion here sits inside `if outcome == ActiveWins`. On a true null
+/// that branch is reachable but not guaranteed, so a run in which **no** seed
+/// produced an `ActiveWins` crown examines **nothing** and this function is
+/// silent — indistinguishable from a run that checked several crowns and
+/// rejected them all. It is the DOWNWARD half of the `DSR_THRESHOLD` pin (the
+/// upward half is `scorecard.rs`'s
+/// `compute_scorecard_crown_clears_dsr_is_pinned_from_both_sides`), so a vacuous
+/// pass here quietly removes the only lower bound on that constant.
+///
+/// The count is returned and printed UNCONDITIONALLY — a plain `println!`, not
+/// behind `NULL_GATE_DEBUG` — so `scripts/ci_run_annotated.sh` carries the
+/// number into CI's output instead of leaving it inferred.
+fn assert_active_wins_are_dsr_rejected(
+    process_name: &str,
+    outcomes: &[(u64, FieldOutcome)],
+) -> usize {
+    let mut examined = 0usize;
     for (seed, outcome) in outcomes {
         if outcome.ranking.outcome == RecommendationOutcome::ActiveWins {
+            examined += 1;
             assert!(
                 !outcome.scorecard.crown_clears_dsr,
                 "FALSIFICATION: {process_name} seed {seed} — the primary gate crowned \
@@ -698,6 +732,13 @@ fn assert_active_wins_are_dsr_rejected(process_name: &str, outcomes: &[(u64, Fie
             );
         }
     }
+    println!(
+        "[dsr-pin] {process_name}: examined {examined} ActiveWins crown(s) of {} \
+         realization(s) — the DOWNWARD half of the DSR_THRESHOLD pin; at 0 it \
+         measured nothing",
+        outcomes.len()
+    );
+    examined
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

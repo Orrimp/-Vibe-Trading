@@ -6410,3 +6410,69 @@ or the instruction is wrong. And the audit lesson generalises past this row: whe
 its own enforcement, verifying the NAME is not verifying the ENFORCEMENT. A missing file and an
 unenforced invariant look identical from a grep and are not the same finding.
 
+### `#169` — `DSR_THRESHOLD` could be raised to a value the metric cannot reach, and the whole suite stayed green
+
+Found 2026-11-07 (sweep finding F8); fixed 2026-11-08.
+`crates/backtest/src/bakeoff/scorecard.rs:106`, predicate at `:748`.
+Shape: **no fixture puts the flag on its true side as computed.**
+
+MEASURED: `DSR_THRESHOLD` 0.95 → **1.1** — which makes `crown_clears_dsr` a constant `false`,
+since `dsr()` ends in `normal_cdf(z)` and is therefore bounded in [0, 1] — left **26 scorecard
+unit tests green and `null_data_no_crown` 3/3**, with its `NULL_GATE_DEBUG` lines byte-identical
+to the unperturbed run (`dsr=0.3077 / 0.7804 / 0.6506`, `clears_dsr=false`).
+
+**Why nothing caught it.** Only two assertions in the tree touched the flag, and neither
+reaches the predicate:
+
+| site | what it reaches |
+|---|---|
+| `scorecard.rs:1167` | the **degenerate early return** at `:714`, where the field is the literal `false` — `:748` is never evaluated |
+| `scorecard.rs:1291` | a projection identity (`summary.crown_clears_dsr == sc.crown_clears_dsr`) |
+
+So the TRUE side of `dsr_val >= DSR_THRESHOLD` had never been reached by any test. Downward the
+constant was pinned only by `null_data_no_crown`'s observed crown DSRs (highest 0.7804), and the
+three research worked examples compared against a **hard-coded `0.95`** rather than the
+constant, so they moved with nothing. Undetected interval: **(0.7804, +∞)**.
+
+**Fix, three parts, all test-only.** The flag stays REPORT-ONLY — no threshold moved and DSR is
+not wired as a crown veto (do-not-build E-1, ADR-0075 D2):
+
+1. `compute_scorecard_crown_clears_dsr_is_pinned_from_both_sides` — same equity shape as the
+   existing single-candidate test, only the crown Sharpe moves: `4.75` → DSR 0.949630 (below),
+   `4.80` → DSR 0.951419 (above). Each leg asserts its **fixture premise first** (that it
+   actually lands on the intended side), so a fixture that drifts off the boundary fails loudly
+   instead of silently proving nothing.
+2. The three worked examples now read `DSR_THRESHOLD` instead of `0.95`, and interpolate it into
+   their failure messages. The `dsr_val > 0.80` assertion is left alone — that is a
+   research-reproduction bound, not the policy bar.
+3. A **non-vacuity count** on the downward half. Every assertion in
+   `assert_active_wins_are_dsr_rejected` sits inside `if outcome == ActiveWins`, which on a true
+   null is reachable but **not guaranteed** — so a run that crowned nothing examined nothing and
+   was silent, indistinguishable from one that rejected several crowns. It now returns the count
+   and prints it unconditionally (a plain `println!`, not behind `NULL_GATE_DEBUG`, so
+   `ci_run_annotated.sh` carries it): `[dsr-pin] GBM: examined 1 ActiveWins crown(s) of 5
+   realization(s)`, `GARCH(1,1): examined 2 of 5`. Deliberately **not** asserted non-zero —
+   demanding a crown would make the test depend on chance, which is the opposite of what that
+   file is for. The upward half carries the hard assertion precisely because it depends on no
+   chance at all.
+
+**Probed, both directions:**
+
+| perturbation | result |
+|---|---|
+| 0.95 → **1.1** (the sweep's value — was FULLY GREEN) | **3 failed**: the new pair + both clearing worked examples |
+| 0.95 → 0.96 (past the upper leg) | 3 failed |
+| 0.95 → 0.94 (past the lower leg) | 1 failed (the pair) |
+| 0.95 → 0.90 (past the non-clearing example) | 2 failed |
+| 0.95 → 0.30 (below the observed crown DSRs) | `null_data_no_crown` **FALSIFICATION** on 2 of 3 |
+| control | 27 passed, 0 failed; `null_data_no_crown` 3/3 |
+
+**Undetected interval: (0.7804, +∞) → (0.949630, 0.950499]**, about 9×10⁻⁴ wide, bounded on
+both sides by assertions that reach the shipped predicate.
+
+**Moral.** `#161` was a conjunct no negative fixture ever decided. This is the same thing on a
+single predicate: the flag was asserted twice and **neither assertion evaluated it** — one hit
+an early return that hard-codes the answer, the other compared the field to a copy of itself.
+A field can be referenced by name in two tests and still be computed by none of them, and the
+only way to tell is to ask which side of its predicate a fixture has ever reached.
+

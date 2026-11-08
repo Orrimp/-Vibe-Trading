@@ -1049,8 +1049,8 @@ mod tests {
 
         // Research: DSR ≈ 0.90 < 0.95 → NOT a discovery at N=100.
         assert!(
-            dsr_val < 0.95,
-            "DSR should be < 0.95 at N=100 (fat tails), got {dsr_val:.4}"
+            dsr_val < DSR_THRESHOLD,
+            "DSR should be < {DSR_THRESHOLD} at N=100 (fat tails), got {dsr_val:.4}"
         );
         assert!(
             dsr_val > 0.80,
@@ -1080,8 +1080,8 @@ mod tests {
         let dsr_val = normal_cdf(z);
         // Research: clears 0.95 at N=46.
         assert!(
-            dsr_val >= 0.95,
-            "DSR should be ≥ 0.95 at N=46, got {dsr_val:.4}"
+            dsr_val >= DSR_THRESHOLD,
+            "DSR should be ≥ {DSR_THRESHOLD} at N=46, got {dsr_val:.4}"
         );
     }
 
@@ -1107,8 +1107,8 @@ mod tests {
         let dsr_val = normal_cdf(z);
         // Research: clears at N=88 with Normal returns.
         assert!(
-            dsr_val >= 0.95,
-            "DSR should be ≥ 0.95 at N=88 Normal, got {dsr_val:.4}"
+            dsr_val >= DSR_THRESHOLD,
+            "DSR should be ≥ {DSR_THRESHOLD} at N=88 Normal, got {dsr_val:.4}"
         );
     }
 
@@ -1266,6 +1266,64 @@ mod tests {
         assert!(sc.n_eff <= 1.0 + 1e-10);
         assert!(sc.min_btl_years >= 0.0);
         assert!(sc.pbo.is_none(), "PBO must be None in v2");
+    }
+
+    /// Boundary pair for `crown_clears_dsr` AS COMPUTED — the first assertion in
+    /// this tree that reaches the predicate at `compute_scorecard`'s
+    /// `dsr_val >= DSR_THRESHOLD` rather than hand-setting the field.
+    ///
+    /// ## What was unpinned (bug-log `#169`, sweep finding F8)
+    ///
+    /// MEASURED: `DSR_THRESHOLD` could be raised from 0.95 to **1.1** — which
+    /// makes the flag a constant `false`, since `dsr()` ends in `normal_cdf(z)`
+    /// and is therefore bounded in [0, 1] — and the whole suite stayed green:
+    /// 26 scorecard unit tests passed, `null_data_no_crown` passed 3/3, and its
+    /// `NULL_GATE_DEBUG` lines came out byte-identical (dsr=0.3077 / 0.7804 /
+    /// 0.6506, `clears_dsr=false`). Nothing in the tree had ever put the flag on
+    /// its TRUE side through the predicate: the only `crown_clears_dsr`
+    /// assertions were `:1167`, which reaches the degenerate early return where
+    /// the field is the literal `false`, and `:1291`, a projection identity.
+    /// Downward, the null-data gate pins it only to > 0.7804 (its highest
+    /// observed crown DSR), and the three worked examples below compared against
+    /// a hard-coded `0.95` rather than the constant.
+    ///
+    /// Same equity shape as `compute_scorecard_single_candidate`; only the crown
+    /// Sharpe moves. MEASURED 2026-11-08: 4.75 -> DSR 0.949630 (below the bar),
+    /// 4.80 -> DSR 0.951419 (above it). The legs bracket `DSR_THRESHOLD` from
+    /// BOTH sides, so moving the constant out of (0.949630, 0.951419] reddens
+    /// this test.
+    ///
+    /// The flag stays REPORT-ONLY. This pins the published number; it does not
+    /// make DSR a crown veto (do-not-build E-1, ADR-0075 D2).
+    #[test]
+    fn compute_scorecard_crown_clears_dsr_is_pinned_from_both_sides() {
+        let equity: Vec<Decimal> = (0..=1000)
+            .map(|i| dec!(100_000) + Decimal::from(i * 100))
+            .collect();
+
+        let below = compute_scorecard(&[4.75], &equity, 1000);
+        assert!(
+            below.deflated_sharpe < DSR_THRESHOLD,
+            "fixture premise: the negative leg must sit BELOW the bar, got {}              (if this fires, the fixture drifted off the boundary and the              assertion under it proves nothing)",
+            below.deflated_sharpe
+        );
+        assert!(
+            !below.crown_clears_dsr,
+            "DSR {} < DSR_THRESHOLD {DSR_THRESHOLD}: the flag must be false",
+            below.deflated_sharpe
+        );
+
+        let above = compute_scorecard(&[4.80], &equity, 1000);
+        assert!(
+            above.deflated_sharpe >= DSR_THRESHOLD,
+            "fixture premise: the positive leg must sit ABOVE the bar, got {}              — raising DSR_THRESHOLD past 0.951419 breaks this first, which is              the point",
+            above.deflated_sharpe
+        );
+        assert!(
+            above.crown_clears_dsr,
+            "DSR {} >= DSR_THRESHOLD {DSR_THRESHOLD}: the flag must be true.              This is the ONLY assertion in the tree that reaches the true side              through the predicate rather than a hand-set field.",
+            above.deflated_sharpe
+        );
     }
 
     // ── ScorecardSummary / Scorecard::summary() tests (P0-3) ──────────────────
