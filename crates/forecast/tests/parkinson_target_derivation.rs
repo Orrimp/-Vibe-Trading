@@ -1,7 +1,25 @@
 //! Parkinson target derivation unit test (T-D-N10, ADR-0038 § D3, T-AR-3).
 //!
-//! Builds a 25-bar hand-crafted OHLCV fixture and calls `windows_for_symbol`
-//! with `vol_target_kind = Some(VolTargetKind::Parkinson)` + `target_horizon_bars = 1`.
+//! **CORRECTED 2026-11-08 (bug-log `#173`).** This header used to claim the file
+//! "calls `windows_for_symbol` with `vol_target_kind =
+//! Some(VolTargetKind::Parkinson)`". **It does not call into the `forecast` crate
+//! at all** — measured: this file compiles and passes under `rustc --test` with no
+//! `forecast` crate in scope, and `nm -a` on its binary finds the test-local
+//! `parkinson_sigma_single_bar` and nothing from the shipped arm.
+//!
+//! So what this file checks is **closed-form algebra**, which is worth checking and
+//! is kept. What it does NOT check — despite ADR-0038 § D3 / T-AR-3 naming it as the
+//! gate — is the shipped implementation. MEASURED: zeroing `parkinson_var`,
+//! dropping the `4` from `1/(4·ln2)`, and removing the per-bar `high >= low` guard
+//! each leave this file **4 passed / 0 failed**.
+//!
+//! The real gate is
+//! `crates/forecast/src/features.rs::tests::window_iterator_parkinson_arm_is_the_shipped_formula_and_guard`,
+//! which drives the private `WindowIterator` directly and reddens on all three of
+//! those perturbations. It has to be in-crate: `WindowIterator::new` is private and
+//! `RawBar` is `pub(crate)`.
+//!
+//! Builds a 25-bar hand-crafted OHLCV fixture and checks the analytic formula.
 //!
 //! The expected `target_parkinson_vol` for each window is computed analytically
 //! via the closed-form Parkinson formula:
@@ -39,7 +57,17 @@
 //! - ADR-0038 § D3 — GARCH + Parkinson baseline contract
 //! - `crates/forecast/src/features.rs` — implementation site
 
-/// Parkinson formula for a single bar, replicated from `WindowIterator::next()`.
+/// Parkinson formula for a single bar — an INDEPENDENT closed-form statement, not
+/// a replica of `WindowIterator::next()`.
+///
+/// The doc used to say "replicated from `WindowIterator::next()`", which was both
+/// false and the reason the divergence went unnoticed: the shipped arm carries a
+/// per-bar `high > 0 && low > 0 && high >= low` guard that contributes 0 for an
+/// invalid bar, and this helper has none. Deliberately left without one — its job
+/// is the algebra on valid input, and the guard is now gated where it lives
+/// (`features.rs::tests::window_iterator_parkinson_arm_is_the_shipped_formula_and_guard`,
+/// assertion (c)). Calling this a replica invited the reader to believe the two
+/// sides had been compared (bug-log `#173`).
 ///
 /// With H=1 and a single bar:
 ///   σ̂_P = sqrt( (1/(4·ln2)) · (ln(high/low))² )

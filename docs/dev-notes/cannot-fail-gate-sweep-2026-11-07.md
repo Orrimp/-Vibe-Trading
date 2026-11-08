@@ -132,6 +132,11 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F3 — CLOSED 2026-11-08 as `#173`** (ranked action 3, first half). One in-crate test drives
+  the real private `WindowIterator`. The demonstration this finding deserved: all three
+  perturbations of the shipped formula leave the ADR-named gate **4/4 green** and redden the new
+  one. Three artefacts corrected — and the ADR's own sentence turned out to be ACCURATE; listing
+  it under "Enforced by" was the defect, not the wording.
 - **F9 — CLOSED 2026-11-08 as `#171`** (ranked action 5, last third). Seven two-sided tests,
   each asserting its driving metric's exact value first. **This note's L1 numbers were wrong:**
   0.97 is green and 0.9701 reddens, so the interval is (0.95, 0.97] not (0.95, 0.98) — it tested

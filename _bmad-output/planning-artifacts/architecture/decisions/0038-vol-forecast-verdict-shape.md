@@ -684,7 +684,7 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../docs/archive/pre-b
 - `crates/backtest/src/scenarios/garch_vol_target_overlay.rs` (~250 LoC; sibling of `tcn_overlay_weights.rs`)
 - `crates/forecast/tests/garch_fit_determinism.rs` (~80 LoC; R11.4)
 - `crates/forecast/tests/vol_verdict_mutual_exclusivity.rs` (~120 LoC; R11.5)
-- `crates/forecast/tests/parkinson_target_derivation.rs` (~60 LoC; R11.4 vol-target fixture)
+- `crates/forecast/tests/parkinson_target_derivation.rs` (~60 LoC; R11.4 vol-target fixture — **closed-form algebra only**, it calls no `forecast` code; the shipped arm's gate is `features.rs::tests::window_iterator_parkinson_arm_is_the_shipped_formula_and_guard`, see bug-log `#173`)
 - `crates/strategy/tests/vol_targeting_overlay.rs` (~80 LoC; R11.6)
 - `crates/forecast/tests/tcn_byte_identity.rs` (~30 LoC; R11.7 K-vol-3 guard)
 - `crates/forecast/tests/patchtst_byte_identity.rs` (~30 LoC; R11.8 K-vol-3 guard)
@@ -723,9 +723,21 @@ Adopted under [v3-volatility-forecaster-noop-fix](../../../../docs/archive/pre-b
   (mirrors `forecast_distribution_verdict.rs`).
 - `cargo test -p forecast --test garch_fit_determinism` — 2-run
   byte-identity of per-symbol `(ω, α, β)` JSON outputs.
+- `cargo test -p forecast --lib window_iterator_parkinson` — the SHIPPED
+  Parkinson arm driven through the real (private) `WindowIterator`: the
+  closed-form value, the per-bar `high >= low` guard contributing 0, and the
+  `None` path staying `None`. **Added 2026-11-08, bug-log `#173`.**
 - `cargo test -p forecast --test parkinson_target_derivation` —
   Parkinson formula on a hand-built fixture matches the
   closed-form value.
+  **Scope note (2026-11-08, bug-log `#173`): this sentence is accurate and was
+  never the problem — listing it here was.** That file checks the ALGEBRA and
+  calls no `forecast` code at all: measured, it compiles and passes under
+  `rustc --test` with no `forecast` crate in scope, and zeroing `parkinson_var`,
+  dropping the `4` from `1/(4·ln2)`, or removing the per-bar guard each leave it
+  **4 passed / 0 failed**. So it does not enforce the shipped arm, and the entry
+  above is what does. An "Enforced by" list is read as a claim about the
+  implementation; a closed-form check belongs in it only with this said out loud.
 - `cargo test -p strategy --test vol_targeting_overlay` — overlay
   wraps inner strategy correctly + scale clamp invariants hold.
 - `cargo test -p forecast --test tcn_byte_identity` — K-vol-3

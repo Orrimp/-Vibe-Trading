@@ -6681,3 +6681,72 @@ non-vacuity probe of its own, since a UI render test that fails intermittently u
 exactly the shape this log's other 100-odd entries are about), or a github.com credential so the
 failing assertion can be read. The latter is an operator action: `gh auth login -h github.com`.
 
+### `#173` — the gate ADR-0038 names for the Parkinson formula contains no production code, and stays 4/4 green while the shipped formula is zeroed
+
+Found 2026-11-07 (sweep finding F3); fixed 2026-11-08.
+Subject: `crates/forecast/src/features.rs:778-804` (formula at `:797`).
+Named gate: `crates/forecast/tests/parkinson_target_derivation.rs`.
+Shape: **re-implements-subject**, in its purest form — the "gate" shares no code with its
+subject at all.
+
+ADR-0038 § D3 / T-AR-3 lists `cargo test -p forecast --test parkinson_target_derivation` under
+`## Enforced by`. MEASURED: **that file does not call into the `forecast` crate.** It compiles
+and passes under `rustc --test` with no `forecast` crate in scope, and `nm -a` on its binary
+finds the test-local `parkinson_sigma_single_bar` and nothing from the shipped arm.
+
+**The demonstration, which is the entry:**
+
+| perturbation of the SHIPPED formula | the named gate | the new in-crate gate |
+|---|---|---|
+| `parkinson_var = 0.0 * …` (zero it) | **4 passed / 0 failed** | 1 failed |
+| drop the `4` from `1/(4·ln2)` | **4 passed / 0 failed** | 1 failed |
+| remove the per-bar `high >= low` guard | **4 passed / 0 failed** | 1 failed |
+| control | 4 passed | 1 passed |
+
+**Why it could not have been an integration test even in principle.**
+`WindowIterator::new` is private and `RawBar` is `pub(crate)`, so nothing outside the crate can
+drive this code path. That also retires the subject file header's stated excuse — *"since
+`windows_for_symbol` reads parquet…"* — because `new` takes
+`Result<Vec<RawBar>, FeatureError>` directly and no parquet is involved. The excuse named a real
+obstacle to the wrong approach.
+
+**Fix: one in-crate test**,
+`features.rs::tests::window_iterator_parkinson_arm_is_the_shipped_formula_and_guard`, driving
+the real `WindowIterator` over a 5-bar fixture. Four assertions, each closing a different way to
+be wrong:
+
+- **(floor)** the fixture yields exactly 2 windows, or the indexed assertions pass by never
+  running;
+- **(a)** `Some(Parkinson)` populates the field at all;
+- **(b)** it is THIS formula — one bar at `high/low = 2/1` with `H=1` gives
+  `σ̂_P = sqrt(ln2 / 4) = 0.41627731`, **derived here, not read off the implementation**;
+- **(c)** a bar with `high < low` contributes `0` via the guard, not `NaN`;
+- **(d)** `vol_target_kind = None` leaves the field `None`, so (a) cannot be trivially true for
+  every configuration.
+
+**Three documents corrected, and one of them was not wrong.**
+
+1. The test file's header claimed it "calls `windows_for_symbol` with
+   `vol_target_kind = Some(VolTargetKind::Parkinson)`" — **false**, and now says what it
+   actually checks and names the real gate. The file is **kept**: closed-form algebra is worth
+   checking.
+2. Its helper's doc said "replicated from `WindowIterator::next()`" — false, and the reason the
+   divergence went unnoticed: the shipped arm carries the per-bar guard and the helper has none.
+   Now stated as an *independent* closed-form statement, deliberately without a guard, with the
+   guard gated where it lives.
+3. **ADR-0038's `## Enforced by` sentence is accurate** — "Parkinson formula on a hand-built
+   fixture matches the closed-form value" is exactly what the file does. **Listing it there was
+   the problem, not the wording.** An "Enforced by" list is read as a claim about the
+   implementation; a closed-form check belongs in one only with its scope said out loud. The
+   real gate is now the first entry, and the old one carries that scope note.
+
+Also corrected: `docs/dev-notes/retired-surface-inventory-2026-05-22.md`, which lists the file
+among `vol_verdict.rs`'s gates.
+
+**Moral.** `#167` was a gate holding a five-line copy of its subject. This is the limit of that
+shape: a gate that shares **no** code with its subject, named in an ADR's enforcement list,
+passing every perturbation of the thing it is said to enforce. And the lesson for the ADR is
+narrower and more useful than "the claim was false": the claim was *true and insufficient*, and
+the list it sat in supplied the false part. What an "Enforced by" entry asserts is not what the
+test does — it is that the decision cannot regress unnoticed.
+

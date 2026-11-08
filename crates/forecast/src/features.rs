@@ -1047,6 +1047,99 @@ mod tests {
         assert!(results[0].is_err(), "should be an error");
     }
 
+    /// The SHIPPED Parkinson arm driven through the real `WindowIterator` —
+    /// not a hand-written copy of it.
+    ///
+    /// ## Why this exists (bug-log `#173`, sweep finding F3)
+    ///
+    /// ADR-0038 § D3 / T-AR-3 names
+    /// `crates/forecast/tests/parkinson_target_derivation.rs` as the gate for this
+    /// formula. MEASURED: that file **contains no production code**. It compiles
+    /// and passes under `rustc --test` with **no `forecast` crate in scope at
+    /// all** — its helpers are test-local re-implementations, and `nm -a` on its
+    /// binary finds the local `parkinson_sigma_single_bar` and nothing from the
+    /// shipped arm. So perturbing the real formula could not redden it.
+    ///
+    /// It also could not be reached from an integration test even in principle:
+    /// `WindowIterator::new` is private and `RawBar` is `pub(crate)`. That retires
+    /// the subject file header's stated excuse — "since `windows_for_symbol`
+    /// reads parquet…" — because `new` takes `Result<Vec<RawBar>, FeatureError>`
+    /// directly and no parquet is involved.
+    #[test]
+    fn window_iterator_parkinson_arm_is_the_shipped_formula_and_guard() {
+        let mk = |i: i64, high: f64, low: f64, close: f64| RawBar {
+            open_time_ms: i * 3_600_000,
+            close_time_ms: (i + 1) * 3_600_000 - 1,
+            open: close,
+            high,
+            low,
+            close,
+            volume: (i as f64 + 1.0) * 1000.0,
+        };
+        // warmup=2, context=1, H=1 => cursor_start=2, max_cursor=len-2=3.
+        // The window at cursor=2 takes its target from bars[3] (valid, h/l = 2/1);
+        // the one at cursor=3 from bars[4], whose high < low, so the per-bar guard
+        // must contribute 0 rather than a NaN.
+        let bars = vec![
+            mk(0, 101.0, 99.0, 100.0),
+            mk(1, 101.0, 99.0, 100.0),
+            mk(2, 101.0, 99.0, 100.0),
+            mk(3, 2.0, 1.0, 100.0),
+            mk(4, 1.0, 2.0, 100.0),
+        ];
+
+        let it = WindowIterator::new(
+            Ok(bars.clone()),
+            "TESTUSDT".to_string(),
+            2,
+            1,
+            1,
+            5,
+            Some(VolTargetKind::Parkinson),
+        );
+        let w: Vec<FeatureWindow> = it.map(|x| x.expect("window")).collect();
+
+        // NON-VACUITY FLOOR: the fixture must actually produce the two windows the
+        // assertions below index, or they would pass by never running.
+        assert_eq!(
+            w.len(),
+            2,
+            "fixture must yield exactly 2 windows, got {}",
+            w.len()
+        );
+
+        // (a) the arm is wired at all.
+        let got = w[0]
+            .target_parkinson_vol
+            .expect("Some(Parkinson) must populate target_parkinson_vol");
+
+        // (b) and it is THIS formula. One bar at high/low = 2/1 with H=1 gives
+        //     σ̂_P = sqrt( (1/(4·ln2)) · (ln2)² / 1 ) = sqrt(ln2 / 4) = 0.41627731.
+        //     Derived here, not read off the implementation.
+        let expected = (f64::ln(2.0) / 4.0).sqrt() as f32;
+        assert!(
+            (got - expected).abs() < 1e-6,
+            "shipped arm gave {got:.8}, closed form sqrt(ln2/4) is {expected:.8}"
+        );
+
+        // (c) the per-bar guard: high < low contributes 0, not inf or NaN.
+        assert_eq!(
+            w[1].target_parkinson_vol.expect("populated"),
+            0.0_f32,
+            "a bar with high < low must contribute 0 via the guard"
+        );
+
+        // (d) and the None path stays None, so (a) cannot be trivially true for
+        //     every configuration.
+        let none_it = WindowIterator::new(Ok(bars), "TESTUSDT".to_string(), 2, 1, 1, 5, None);
+        assert!(
+            none_it
+                .map(|x| x.expect("window"))
+                .all(|x| x.target_parkinson_vol.is_none()),
+            "vol_target_kind=None must leave target_parkinson_vol None"
+        );
+    }
+
     /// FeatureConfig defaults match spec values.
     #[test]
     fn feature_config_defaults() {
