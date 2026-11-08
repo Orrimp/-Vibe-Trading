@@ -49,8 +49,28 @@ fn code_only(src: &str) -> String {
         .join("\n")
 }
 
+/// The directory scanned. `GROSS_CAP_SCAN_DIR` overrides it so the gate can be pointed at a
+/// tree other than this checkout's.
+///
+/// That override exists for ADR-0038 § D6.b step 3, which requires the would-have-caught test
+/// to be *run against the pre-fix code* and its literal FAIL captured. Without it the proof
+/// is a one-off I describe in prose; with it anyone can re-derive it:
+///
+/// ```text
+/// mkdir -p /tmp/prefix && git archive f54cab2a crates/backtest/src/scenarios \
+///   | tar -x -C /tmp/prefix --strip-components=4
+/// GROSS_CAP_SCAN_DIR=/tmp/prefix cargo test -p backtest \
+///   --test gross_cap_declared_is_gross_cap_enforced
+/// ```
+///
+/// `f54cab2a` is the commit before the gate was wired. The override does not weaken the
+/// gate: unset — which is how CI runs it — it scans this checkout, and the floor assertion
+/// means a wrong path fails rather than passing vacuously.
 fn scenarios_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/scenarios")
+    match std::env::var("GROSS_CAP_SCAN_DIR") {
+        Ok(d) if !d.is_empty() => PathBuf::from(d),
+        _ => Path::new(env!("CARGO_MANIFEST_DIR")).join("src/scenarios"),
+    }
 }
 
 /// Measured on 2026-11-08: 6 scenario files declare a cap. The floor is a
