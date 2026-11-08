@@ -300,3 +300,110 @@ because `#151` changes every body anyway, both rows would just receive the same 
 `verify_anchors.sh` would still print `119 / 119`. **The collapse is invisible to every gate
 in the repo.** That is the single most dangerous thing in this pass, and it is not something
 the pass would have told me about.
+
+## What was executed — operator-ruled "full repair, one pass"
+
+### The classification, final
+
+| bucket | rows | disposition |
+|---|---|---|
+| **D6B** | 24 | re-emitted; figures moved, each cause quantified |
+| **D6C** | 13 | re-emitted; arm's figures byte-identical, content only |
+| **ORACLE** | 28 | **not touched** — frozen pre-friction baselines, unreachable from current code by design |
+| **UNRUN** | 54 | not touched — rendered by `crates/forecast`'s sharpe-comparison and verdict bins, `crates/reports`, and the threshold-sweep bin, none of which calls a changed writer |
+| | **119** | all accounted for |
+
+Zero rows carried the `ALL n shared figures moved` warning, which is what makes the 24 D6B
+rows credible as drift rather than as runs under a wrong condition.
+
+### Placement, and the invariant that protects the oracles
+
+Each new body went into **the directory that already serves its row**, as reported by
+`verify_anchors.sh --explain` — the authoritative resolver, rather than my reading of its
+`find | sort | tail -1` logic. The fresh bodies are already named `backtest-20261108-*`, which
+sorts after every superseded name under `LC_COLLATE=C`, so resolution picks them without any
+renaming. Nothing was overwritten: 37 *new* files, asserted non-existent before the copy.
+
+One invariant was asserted per row before anything was written, and it is the one that could
+have destroyed something silently:
+
+> A `noop-baseline` row resolves to the newest body **outside** the
+> `v5-latency-slippage-sim` migration dirs. 28 such rows are frozen oracles I am deliberately
+> not re-emitting. If a **canonical** body landed outside those dirs it would become the
+> newest-outside body for its scenario and hijack that scenario's oracle row — destroying the
+> pre-friction baseline while every gate stayed green.
+
+So: canonical and sqrt bodies must land INSIDE a migration dir, noop and legacy bodies
+OUTSIDE. Both directions asserted; all 37 passed.
+
+### Verification
+
+- **exactly 37** `sha256` lines changed in `anchors.toml`; **82 unchanged** — the § D6.b step 5
+  / § D6.c step 6 negative invariant, counted rather than claimed.
+- **exactly 37** rows now resolve to a `20261108` body under `--explain`; 119 rows PASS.
+- `scripts/verify_anchors.sh` → **ANCHORS PASS (119 / 119)**.
+- `scripts/anchor_namespace_collapse_check.py` → **PASS, all partitions intact** — the
+  namespaces did NOT collapse, which was the specific danger of this pass.
+- Every row carries a comment block naming its protocol section (§ D6.b or § D6.c), its
+  **declared condition** (which invocation produced it), its cause, its measured deltas, the
+  superseded body filename, the superseded SHA verbatim, and this record.
+
+### System 2 re-locked in the same pass (§ D6.c step 7 / ADR-0045 § D6.1)
+
+`check_determinism_anchors.py` → **OK, 35 of 35 resolved literals match** (12 canonical, 17
+declared-ns, 6 synthetic; 0 skipped, 0 unresolved). Getting there required fixing the tool
+twice — it could detect a stale pin but not repair one, and once taught to, it wrote three
+wrong values. That is bug-log `#180`.
+
+## The proof
+
+```
+cargo test -p backtest --test determinism --features candle,realdata
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 324.18s
+```
+
+**Green for the first time since 2026-10-17.** The sequence, because the middle step is the
+interesting one:
+
+| run | result | |
+|---|---|---|
+| before the pass | 29 passed · **10 failed** | the drift `#177` found |
+| after re-emission + re-lock | 33 passed · **6 failed** | the ten fixed — and six DIFFERENT ones now red |
+| after `#181` | **39 passed · 0 failed** | — |
+
+Those six were not a regression from the repair; they were a **third pin location** the repair
+made visible. `SYNTHETIC_DETERMINISM_SHAS` holds SHAs for three bodies that exist nowhere on
+disk, and the consistency checker compares the in-test literal against that map — a copy
+checked against its own copy, which always passes. `#151` moved those bodies and nothing could
+report it. Re-locked with the cause established four ways (see `#181`), including a
+**second, independent invocation** (`--force-synthetic-bars`) that reproduces the values to
+the byte — so the pin is now backed by a declared invocation rather than a tempdir side
+effect.
+
+## Final state
+
+| gate | result |
+|---|---|
+| `scripts/verify_anchors.sh` | **ANCHORS PASS (119 / 119)** |
+| `scripts/anchor_namespace_collapse_check.py` | **PASS** — 36 multi-row scenarios, all partitions intact |
+| `scripts/check_determinism_anchors.py` | **OK — 35 of 35** (12 canonical · 17 declared-ns · 6 synthetic · 0 unresolved) |
+| `cargo test --test determinism --features candle,realdata` | **39 passed · 0 failed** |
+| `scripts/spec_lint.py` (+ `--self-test`) | **PASS** |
+
+37 new bodies, every one carrying the buy-and-hold control, none truncated; 82 anchor rows
+byte-identical; 28 frozen oracles untouched.
+
+## What the control says, now that there is one
+
+The first thing `#151`'s benchmark does on real data is answer the question the corpus could
+not:
+
+| arm | its return | buy-and-hold, same window | gap |
+|---|---|---|---|
+| `top10-2023-fy-tcn-overlay-weights-realdata` | −27.63% | **+196.10%** | **−223.73 pp** |
+| `btc-2023-1m-macd-trend` (synthetic) | −97.42% | **+42.45%** | **−139.87 pp** |
+
+Both bodies printed their own return for their entire existence with nothing beside it. This
+does not change the era-qualified ship-passive thesis — that rests on the θ-surface corpus,
+where buy-and-hold already *is* the control and 0 of 156 cells beat it — but it is the first
+time a LANE body says the same thing on its own.

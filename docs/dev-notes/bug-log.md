@@ -7317,6 +7317,37 @@ corpus. `#151`'s own blocker is gone: it was parked on "a BH run per anchored wi
 the run results already carry `bars: Arc<Vec<Bar>>`, so the control is a pure function of
 each symbol's first and last close — no second backtest at all.
 
+#### CORRECTION, same day — the canonical namespace was not "fine", it was corrupted
+
+This entry concluded that the 2026-10-29 re-lock "re-emitted **14 canonical bodies**" and that
+"the nine R-REPRO gates target the *other* namespace", i.e. that canonical was swept correctly
+and only noop was left behind. Half right, and the wrong half matters more.
+
+Measured while executing the re-emission: that re-lock wrote **default (zero-slippage)** output
+into the **canonical** rows of six real-data scenarios. The canonical namespace is defined as
+**8 bps linear slippage** by frozen evidence
+(`evidence/v5-latency-slippage-sim-v0.5.0-square-root-market-impact/reports/sharpe-delta-2026-05-29.md:14-17`),
+and a real `--sim-slippage-bps 8` run of `top10-2023-fy-tcn-overlay-realdata` returns
+**−55.88%** against that row's **−27.52%** — 28 percentage points apart.
+
+So the corpus held **two** faults, not one:
+
+| rows | fault |
+|---|---|
+| 9 `noop-baseline` realdata | **stale** — pinned to the `#67`-broken state (1138 trades) that `#111/#129` fixed (→6203) |
+| 6 canonical realdata | **corrupted** — hold zero-slippage output where 8 bps belongs |
+| sqrt rows | already drifted as of 2026-09-26 per `#123`, never repaired |
+
+And the two faults together set a trap: repairing only the noop rows with a default run would
+have given both rows of those six scenarios the **same body**, collapsing the pre-friction
+oracle and "the current reference for paper-trading alpha" into one — with every gate green.
+That is bug-log [`#179`](bug-log.md), and the gate now watching for it.
+
+I reached the wrong half by inferring the row→condition mapping from reproduction, which
+`#123` forbids in writing at `docs/dev-notes/bug-log.md:2981-2983`: "the row assignment cannot
+be settled by reproduction — only by provenance." Full account in
+[`reemission-2026-11-08-d6b-d6c.md`](reemission-2026-11-08-d6b-d6c.md) § REFUTED.
+
 #### Moral
 
 Two gates, one question, and only one of them was being asked. "The corpus hashes
@@ -7488,3 +7519,145 @@ The reason this was caught at all is that I asked something else to try to refut
 I had already written down and was about to act on. The conclusion was wrong, the method was
 one my own bug-log had already banned in writing, and I had cited that same entry earlier the
 same day for a different purpose.
+
+### `#180` — the tool that detects a stale pin could not fix one, and when taught to, it wrote three wrong values
+
+**Found** 2026-11-08, executing the re-emission. **Both halves fixed in this pass.**
+
+`scripts/check_determinism_anchors.py` is System 2 of the dual-anchor model: it checks that
+the in-test `const ANCHOR` literals still match their `anchors.toml` rows. Its failure message
+ends `Run with --write to auto-sync.`
+
+#### Half one: `--write` refused every time it mattered
+
+Running it did nothing — 0 literals changed, 25 still reported stale. The reason is at
+`check_determinism_anchors.py:1039-1050`: `--write` **refuses outright** if any site declares
+a non-canonical namespace, because the writer "only knows the canonical map". Writing would
+re-pin a correct `noop-baseline` or sqrt gate to the canonical row, which is `#77`'s mistake
+by the hand of the tool meant to catch it. The refusal is *right*; what is wrong is the gap it
+covers for.
+
+17 of the 35 sites declare a namespace via `// anchor-ns:`. So `--write` was unusable on every
+real re-emission, while the message told the reader to run it. **The DETECTOR was already
+namespace-aware** —
+`synth = None if site.declared_ns is not None else SYNTHETIC_DETERMINISM_SHAS.get(...)`, and
+`sha_for(anchors, site.scenario, site.declared_ns)` — so the tool could diagnose precisely and
+repair nothing. Its own refusal named the fix: "teach `--write` to honour `// anchor-ns:`
+first." Done: the writer now resolves through the same `sha_for(..., site.declared_ns)` the
+detector uses, and the blanket refusal is replaced by a per-site one for a declared namespace
+that has **no** matching row — writing one of those would mean picking a row on the site's
+behalf, which is the thing `#77` forbids.
+
+#### Half two: taught to write, it wrote three wrong values
+
+`--write` then rewrote 25 literals and the re-check still reported **3** stale —
+`realdata_row_btc_2023_1m_{macd_trend,rsi_reversion,bbands_mean_revert}`. The writer had
+resolved them from `SYNTHETIC_DETERMINISM_SHAS`, which takes precedence in its lookup order,
+and had **overwritten three correct canonical pins with the synthetic bodies' SHAs**.
+
+Those three sites declare `// anchor-ns: v5-realdata-medium-2026-05` and exist *because* of
+`#125`, which found both `anchors.toml` rows of that family uncovered. The detector states the
+governing rule at its mirror site:
+
+> "sites can pin the same scenario under different conditions — `btc-2023-1m-*` has a t622 pin
+> for the synthetic path and a real-data pin for the canonical row … **The site knows which
+> row it asserts; the site wins.**"
+
+The writer took the synthetic value unconditionally. Fixed by mirroring the detector's one
+line. Final state: **35 of 35 resolved literals match** — 12 canonical, 17 declared-ns, 6
+synthetic, 0 skipped, 0 unresolved.
+
+#### What made it visible, and what would have hidden it
+
+Only that the detector disagreed with the writer *afterwards*. A tool whose two halves resolve
+differently prints `rewrote 25 stale literal(s)` and leaves the file wrong; had the three
+sites not declared a namespace the detector would have agreed with the writer and both would
+have been wrong together, silently.
+
+That the halves could diverge at all is the defect under the defect. `detect_drift` and
+`apply_write` each carry their own copy of a resolution order, with a comment in the second
+saying "same order as detect_drift" — a *claim* of agreement, enforced by nothing. This is
+bug-log `#154`'s shape (a classifier re-implemented in its own test and called "verbatim") and
+`#178`'s (a sentence asserting a value instead of deriving it). The durable fix is one
+resolver called twice, which is a refactor of this script, not of a pin — filed, not done
+here, because doing it mid-re-emission would mean changing the tool and the corpus in one
+pass with nothing independent left to check either against.
+
+#### Moral
+
+A gate that reports a problem it cannot fix is half a gate, and the half that remains trains
+you to ignore it. Two of today's entries are now the same shape: `#179`'s
+`verify_anchors.sh` answers "does each row hash?" and never "do two rows differ?"; this one
+answers "is this literal stale?" and, in practice, never "make it current." Both were
+discovered by trying to USE the tool for the job it exists for, which is the only test that
+finds this class.
+
+### `#181` — a third pin location nothing was watching, and a comment table where three of seven values had rotted
+
+**Found** 2026-11-08, re-running the System-2 suite after the re-emission. The ten gates
+`#177` found red were green; **six NEW ones had gone red.** **Fixed in this pass.**
+
+```
+before the pass:  29 passed · 10 failed
+after:            33 passed ·  6 failed   ← different six
+```
+
+The six were `t622_{macd_trend,rsi_reversion,bbands_mean_revert}` and their `t717_` twins.
+
+#### A third place a SHA is pinned
+
+`anchors.toml` is System 1. The in-test `const ANCHOR` literals are System 2. There is a
+**third**: `check_determinism_anchors.py::SYNTHETIC_DETERMINISM_SHAS`, a hardcoded dict for
+the synthetic-path bodies of three scenarios. Those bodies exist **nowhere on disk** — no
+committed report hashes to them — because the `t622_*`/`t717_*` harnesses run from a tempdir
+where the parquet lookup misses, and nobody ever emitted that body into the corpus.
+
+So when `#151` added two rows to `report/sma.rs`, those bodies moved and nothing could see
+it. The consistency checker compares the in-test literal against **the map** — and the map
+agreed with itself. Checking a copy against its own copy always passes; it is the same shape
+as `#179`'s (a gate asking whether each row hashes, never whether two rows differ).
+
+#### Re-locked with the cause established, not assumed
+
+`#77` forbids re-pinning to a produced value, so the cause was pinned down first:
+
+1. **The run path is untouched.** `git diff f54cab2a..HEAD` does not include
+   `scenarios/sma_composed_run.rs`; the scenario files that did change are all multi-symbol
+   overlay/momentum/pairs lanes these three never use. `engine.rs`'s entire diff for this
+   path is `+ &report.bars,` nine times — argument passing. `risk/`'s change is two added
+   `pub fn`s, proven inert by garch reproducing its 1469 refusals exactly. So the only code
+   reaching these bodies is `report/sma.rs` + `report/mod.rs::risk_line`.
+2. **The writer's change moves no figures — measured on the twin.** The REAL-DATA rows of
+   these same three scenarios were classified **D6C, figures byte-identical**, by
+   `scripts/reemission_classify.py`. Same writer, same change, different data.
+3. **Two independent paths produce the new values, to the byte.** The tempdir harness, and
+   `--force-synthetic-bars` run from the repo. Both give macd `9c07d2c3…`, rsi `14572b60…`,
+   bbands `fa390116…`. The second path also means the condition is reproducible from a
+   DECLARED invocation rather than from a tempdir side effect.
+4. The new body shows the cause directly: two added rows,
+   `| Buy and hold (equal-wt) | +42.45% … |` and `| vs buy and hold | -139.87 pp |`, and
+   nothing else.
+
+Worth its own line: that MACD arm returns **−97.42%** where buying and holding returned
+**+42.45%** — a 139-point gap, on a body that printed the −97.42% and nothing to read it
+against for its whole existence. `#151` in one line.
+
+#### The comment table
+
+Updating the map surfaced a reference block in `determinism.rs` listing seven scenario→SHA
+pairs. **Three of the seven had rotted:** `top10-{2023,2024}-*-momentum` carried values
+matching no `anchors.toml` row, current *or* superseded, and the two `sma` rows carried a
+pre-re-emission SHA. Nobody noticed, because a comment gates nothing.
+
+It is now a table of **sources** — which file and namespace each pin resolves against — with
+no SHAs in it. Refreshing the values would only have reset the clock on the same rot; the
+values live in `anchors.toml` and in the map, and `check_determinism_anchors.py` is what
+proves the consts match them. Same move as `#178`: stop copying a value, point at it.
+
+#### Moral
+
+Three pin locations, and the one with no body on disk was the one nothing could check. The
+corpus's invariant is "every pinned SHA is reproducible from a declared invocation"; a pin
+whose body was never emitted cannot satisfy it, and a map compared against itself cannot
+report that. `--force-synthetic-bars` reproducing the value is the part that makes this pin
+honest now, and that was discovered while looking for something else.

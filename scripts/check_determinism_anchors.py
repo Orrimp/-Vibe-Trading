@@ -91,10 +91,20 @@ CANONICAL_VERSION_SUFFIX = "v5-realdata-medium-2026-05"
 #
 # R4: these values live in BOTH this dict AND the in-test constants. They must
 # stay identical. If the engine moves these synthetic SHAs, update BOTH places.
+# RE-LOCKED 2026-11-08 (bug-log #151 / #181). The synthetic-path body gained the
+# buy-and-hold control rows, so all three SHAs moved. Cause established, not assumed:
+#   * `sma_composed_run.rs` — the run path for these three — is UNTOUCHED in the diff; the
+#     only code reaching their bodies is `report/sma.rs` + `report/mod.rs::risk_line`.
+#   * the REAL-DATA twin of these same three scenarios was classified D6C (figures
+#     byte-identical) by scripts/reemission_classify.py, so the writer's change moves no
+#     figure — measured on the twin condition, not argued.
+#   * the new values were reproduced TWICE by independent paths: the tempdir-based t622/t717
+#     harness, and `--force-synthetic-bars` run from the repo. Both agree to the byte.
+# Superseded: macd 4d8192af… / rsi 4a744788… / bbands 5037accb…
 SYNTHETIC_DETERMINISM_SHAS: dict[str, str] = {
-    "btc-2023-1m-macd-trend":         "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a",
-    "btc-2023-1m-rsi-reversion":      "4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7",
-    "btc-2023-1m-bbands-mean-revert": "5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894",
+    "btc-2023-1m-macd-trend":         "9c07d2c3fa3dbcb7645307790d03e710e3acc90e3435e7c6b43581492bb93077",
+    "btc-2023-1m-rsi-reversion":      "14572b60986e9f94feb4ee5db59233d877655e75884ca9d15d3df876736a81d2",
+    "btc-2023-1m-bbands-mean-revert": "fa390116c31ac9c0c5d87b6b930688bf41c45cdb0ede55eb01aef7badcc1b97c",
 }
 
 
@@ -573,12 +583,22 @@ def apply_write(
     path: Path,
     sites: list[InTestSite],
     canonical: dict[str, str],
+    anchors: list[AnchorEntry] | None = None,
 ) -> int:
     """Rewrite stale ANCHOR literals in determinism.rs using the dual-map.
 
     Resolution order (mirrors detect_drift, EX-4 v2 / ADR-0045 § D7.1b):
       1. SYNTHETIC_DETERMINISM_SHAS[scenario] — written as full ANCHOR equality.
-      2. canonical[scenario] (v5-realdata-medium-2026-05 anchors.toml row).
+      2. `sha_for(anchors, scenario, site.declared_ns)` — the row this site DECLARES via
+         `// anchor-ns:`, falling back to the canonical suffix when it declares nothing.
+         Until 2026-11-08 this read `canonical[scenario]` only, which is why `--write` had
+         to REFUSE outright whenever any site declared a non-canonical namespace: it would
+         have re-pinned a correct noop-baseline or sqrt gate to the canonical row, turning a
+         caught drift into a silent one (bug-log #77). The DETECTOR was already
+         namespace-aware; only the writer was not — so the tool could diagnose 25 stale
+         literals and then decline to fix any of them while telling the reader to run the
+         flag that refuses. Its own refusal named the fix, "teach --write to honour
+         `// anchor-ns:` first", and this is it (bug-log #180).
       3. Neither map → skip with a warning (HARD ERROR only at check time;
          --write cannot fabricate a correct value).
 
@@ -601,11 +621,27 @@ def apply_write(
             continue
 
         # --- Dual-map resolution for --write (same order as detect_drift) ---
-        synth = SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
+        # bug-log #180, second half: a DECLARED namespace suppresses the synthetic map, which
+        # is the rule `detect_drift` already states at the mirror site — "sites can pin the
+        # same scenario under different conditions … the site knows which row it asserts; the
+        # site wins." The writer took the synthetic value unconditionally, so for the three
+        # `realdata_row_btc_2023_1m_*` gates — which declare
+        # `// anchor-ns: v5-realdata-medium-2026-05` and exist precisely to cover the
+        # real-data rows that `#125` found uncovered — it overwrote three CORRECT canonical
+        # pins with the synthetic bodies' SHAs. Caught only because the detector disagreed
+        # with the writer afterwards; a tool whose two halves resolve differently reports
+        # success and leaves the file wrong.
+        synth = (
+            None if site.declared_ns is not None
+            else SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
+        )
         if synth is not None:
             target = synth
         else:
-            target = canonical.get(site.scenario)
+            if anchors is not None:
+                target = sha_for(anchors, site.scenario, site.declared_ns)
+            else:
+                target = canonical.get(site.scenario)
             if target is None:
                 # Neither map — cannot write a correct value; skip with warning.
                 print(
@@ -1041,18 +1077,31 @@ def main() -> int:  # noqa: C901
         # that declares a different namespace that would re-pin a CORRECT gate to the wrong
         # row, which is bug-log #77: converting a caught drift into a silent one, by the
         # hand of the tool meant to catch it. Refuse rather than do it partially.
-        declared = [s for s in sites if s.declared_ns is not None]
-        if declared:
+        # bug-log #180: `--write` now resolves every site through
+        # `sha_for(..., site.declared_ns)` — the same resolver `detect_drift` uses — so a
+        # declared namespace is HONOURED instead of refused. The blanket refusal below
+        # existed because the writer knew only the canonical map; it no longer does.
+        #
+        # What is still refused, per-site and never guessed: a site declaring a namespace
+        # that has no matching anchors.toml row. Writing one of those would mean choosing a
+        # row on the site's behalf, which is bug-log #77's mistake with the tool's own hand.
+        unresolvable = [
+            st for st in sites
+            if st.declared_ns is not None
+            and anchors is not None
+            and sha_for(anchors, st.scenario, st.declared_ns) is None
+            and st.scenario not in SYNTHETIC_DETERMINISM_SHAS
+        ]
+        if unresolvable:
             print(
-                f"REFUSING --write: {len(declared)} site(s) declare a non-canonical "
-                "namespace, and --write only knows the canonical map. Writing would re-pin "
-                "correct gates to the wrong rows (bug-log #77). Fix the literals by hand, "
-                "or teach --write to honour `// anchor-ns:` first. Sites:",
+                f"REFUSING --write: {len(unresolvable)} site(s) declare a namespace with no "
+                "matching anchors.toml row, so writing would have to pick a row for them "
+                "(bug-log #77). Fix the declaration or add the row. Sites:",
                 file=sys.stderr,
             )
-            for s in declared:
+            for st in unresolvable:
                 print(
-                    f"  {s.file}:{s.lineno} fn {s.fn_name} — anchor-ns: {s.declared_ns}",
+                    f"  {st.file}:{st.lineno} fn {st.fn_name} — anchor-ns: {st.declared_ns}",
                     file=sys.stderr,
                 )
             return 1
@@ -1063,7 +1112,7 @@ def main() -> int:  # noqa: C901
         for path in SCANNED_FILES:
             mine = [s for s in sites if s.file == path.name]
             if mine:
-                n += apply_write(path, mine, canonical)
+                n += apply_write(path, mine, canonical, anchors)
         if n:
             print(f"check_determinism_anchors: rewrote {n} stale literal(s)")
         else:

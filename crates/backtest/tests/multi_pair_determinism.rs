@@ -147,7 +147,7 @@ fn pairs_2023_zscore_mr_reproduces_anchor() {
     // pin, so one corpus change needs three re-locks and each is a separate way to leave a
     // gate red. Superseded digest on the line below.
     // superseded: ac647a593a962c5d6612ec052cf2b7d89ab40a9967e493b0554f0ebee0e30f10
-    const ANCHOR: &str = "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e";
+    const ANCHOR: &str = "bad563a231cf88314490c3601a29613952c2226bcc64feb0dd5207b82a83e127";
     assert_pairs_reproduces("pairs-2023-zscore-mr", ANCHOR);
 }
 
@@ -164,7 +164,7 @@ fn pairs_2024_h1_zscore_mr_reproduces_anchor() {
     // pin, so one corpus change needs three re-locks and each is a separate way to leave a
     // gate red. Superseded digest on the line below.
     // superseded: 5bee5e9cf6a80a838bf9bf667a6733712563eede0b21ff5b9dfd19b933d75e6b
-    const ANCHOR: &str = "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632";
+    const ANCHOR: &str = "f426674f53ad2ea246390f047e1af57e1fb96dea61cda7448ff47277c75b9251";
     assert_pairs_reproduces("pairs-2024-h1-zscore-mr", ANCHOR);
 }
 

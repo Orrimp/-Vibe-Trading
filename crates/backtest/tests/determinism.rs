@@ -507,7 +507,7 @@ fn scenario_body_hex(scenario: &str) -> String {
 /// Stale noop-baseline SHA `fc2e3b4a…` replaced with canonical 8-bps SHA.
 #[test]
 fn t622_sma_cross_anchor_hash_unchanged() {
-    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
+    const ANCHOR: &str = "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3";
     let hex = scenario_body_hex("btc-2023-1m-sma-cross");
     assert_eq!(
         hex, ANCHOR,
@@ -522,7 +522,7 @@ fn t622_sma_cross_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 #[test]
 fn t622_sma_baseline_refresh_anchor_hash_unchanged() {
-    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
+    const ANCHOR: &str = "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3";
     let hex = scenario_body_hex("btc-2023-1m-sma-baseline-refresh");
     assert_eq!(
         hex, ANCHOR,
@@ -541,7 +541,7 @@ fn t622_sma_baseline_refresh_anchor_hash_unchanged() {
 /// held in D7.1's SYNTHETIC_DETERMINISM_SHAS dict (check_determinism_anchors.py).
 #[test]
 fn t622_macd_trend_anchor_hash_unchanged() {
-    const ANCHOR: &str = "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a";
+    const ANCHOR: &str = "9c07d2c3fa3dbcb7645307790d03e710e3acc90e3435e7c6b43581492bb93077";
     let hex = scenario_body_hex("btc-2023-1m-macd-trend");
     assert_eq!(
         hex, ANCHOR,
@@ -559,7 +559,7 @@ fn t622_macd_trend_anchor_hash_unchanged() {
 /// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py).
 #[test]
 fn t622_rsi_reversion_anchor_hash_unchanged() {
-    const ANCHOR: &str = "4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7";
+    const ANCHOR: &str = "14572b60986e9f94feb4ee5db59233d877655e75884ca9d15d3df876736a81d2";
     let hex = scenario_body_hex("btc-2023-1m-rsi-reversion");
     assert_eq!(
         hex, ANCHOR,
@@ -577,7 +577,7 @@ fn t622_rsi_reversion_anchor_hash_unchanged() {
 /// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py).
 #[test]
 fn t622_bbands_mean_revert_anchor_hash_unchanged() {
-    const ANCHOR: &str = "5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894";
+    const ANCHOR: &str = "fa390116c31ac9c0c5d87b6b930688bf41c45cdb0ede55eb01aef7badcc1b97c";
     let hex = scenario_body_hex("btc-2023-1m-bbands-mean-revert");
     assert_eq!(
         hex, ANCHOR,
@@ -598,13 +598,23 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 // MACD/RSI/BBands re-locked to SYNTHETIC SHAs (ADR-0045 § D6.3): the v5-realdata-medium
 // rows for these 3 were emitted from the REAL-DATA path (17544-bar Binance bodies);
 // the determinism tests run the v0 synthetic fallback (CWD=tempdir, 525600 bars).
-//   btc-2023-1m-sma-cross             d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0
-//   btc-2023-1m-sma-baseline-refresh  d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0
-//   btc-2023-1m-macd-trend            4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a  (SYNTHETIC)
-//   btc-2023-1m-rsi-reversion         4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7  (SYNTHETIC)
-//   btc-2023-1m-bbands-mean-revert    5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894  (SYNTHETIC)
-//   top10-2023-1h-momentum            b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15
-//   top10-2024-h1-momentum            37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052
+// Which SOURCE each of these pins resolves against — the VALUES deliberately live in one
+// place each, not here (bug-log #181):
+//
+//   btc-2023-1m-sma-cross             anchors.toml  `v0 + v5-realdata-medium-2026-05`
+//   btc-2023-1m-sma-baseline-refresh  anchors.toml  `v0 + v5-realdata-medium-2026-05`
+//   btc-2023-1m-macd-trend            SYNTHETIC_DETERMINISM_SHAS  (synthetic path)
+//   btc-2023-1m-rsi-reversion         SYNTHETIC_DETERMINISM_SHAS  (synthetic path)
+//   btc-2023-1m-bbands-mean-revert    SYNTHETIC_DETERMINISM_SHAS  (synthetic path)
+//   top10-2023-1h-momentum            anchors.toml  `v1 + v5-realdata-medium-2026-05`
+//   top10-2024-h1-momentum            anchors.toml  `v1 + v5-realdata-medium-2026-05`
+//
+// This block listed the SHAs themselves until 2026-11-08. Three of the seven had rotted —
+// `top10-{2023,2024}-*-momentum` carried values matching no anchors.toml row, current or
+// superseded, and the two sma rows carried a pre-re-emission SHA. Nothing noticed, because a
+// comment gates nothing: it is a copy of a value, and copies drift (bug-log #178, #180). The
+// live values are in `anchors.toml` and in `check_determinism_anchors.py`, and
+// `scripts/check_determinism_anchors.py` is what proves the consts match them.
 //
 // NOTE: T715 (pairs backtest) introduced a data_source regression where the
 // momentum scenarios were emitting "synthetic (seeded RNG, v1.5a multi-symbol)"
@@ -617,7 +627,7 @@ fn t622_bbands_mean_revert_anchor_hash_unchanged() {
 /// Stale noop-baseline SHA `fc2e3b4a…` replaced with canonical 8-bps SHA.
 #[test]
 fn t717_sma_cross_anchor_hash_unchanged() {
-    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
+    const ANCHOR: &str = "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3";
     let hex = scenario_body_hex("btc-2023-1m-sma-cross");
     assert_eq!(
         hex, ANCHOR,
@@ -631,7 +641,7 @@ fn t717_sma_cross_anchor_hash_unchanged() {
 /// Re-locked to `v5-realdata-medium-2026-05` namespace (ADR-0045 § D6).
 #[test]
 fn t717_sma_baseline_refresh_anchor_hash_unchanged() {
-    const ANCHOR: &str = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0";
+    const ANCHOR: &str = "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3";
     let hex = scenario_body_hex("btc-2023-1m-sma-baseline-refresh");
     assert_eq!(
         hex, ANCHOR,
@@ -649,7 +659,7 @@ fn t717_sma_baseline_refresh_anchor_hash_unchanged() {
 /// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py, D7.1).
 #[test]
 fn t717_macd_trend_anchor_hash_unchanged() {
-    const ANCHOR: &str = "4d8192af7238f5e6ab4b8c95462c402210ae846a97f2484db1c600fb6e5e9d2a";
+    const ANCHOR: &str = "9c07d2c3fa3dbcb7645307790d03e710e3acc90e3435e7c6b43581492bb93077";
     let hex = scenario_body_hex("btc-2023-1m-macd-trend");
     assert_eq!(
         hex, ANCHOR,
@@ -667,7 +677,7 @@ fn t717_macd_trend_anchor_hash_unchanged() {
 /// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py, D7.1).
 #[test]
 fn t717_rsi_reversion_anchor_hash_unchanged() {
-    const ANCHOR: &str = "4a7447885164b0b2f762402d8a580e7a546543b95ed8d6f8a52feff2ce1d8ab7";
+    const ANCHOR: &str = "14572b60986e9f94feb4ee5db59233d877655e75884ca9d15d3df876736a81d2";
     let hex = scenario_body_hex("btc-2023-1m-rsi-reversion");
     assert_eq!(
         hex, ANCHOR,
@@ -685,7 +695,7 @@ fn t717_rsi_reversion_anchor_hash_unchanged() {
 /// SYNTHETIC_DETERMINISM_SHAS (check_determinism_anchors.py, D7.1).
 #[test]
 fn t717_bbands_mean_revert_anchor_hash_unchanged() {
-    const ANCHOR: &str = "5037accb3118d3aafe654c58b60878e75d884bc1ce6dbaf82748c2379c80a894";
+    const ANCHOR: &str = "fa390116c31ac9c0c5d87b6b930688bf41c45cdb0ede55eb01aef7badcc1b97c";
     let hex = scenario_body_hex("btc-2023-1m-bbands-mean-revert");
     assert_eq!(
         hex, ANCHOR,
@@ -773,7 +783,7 @@ fn t717_top10_2023_momentum_anchor_hash_unchanged() {
     // re-locking the corpus without re-locking this constant is exactly what left #143's two
     // gates red for 15 days. Superseded digest kept in the line below.
     // superseded: b655e5e7f3edf1cec7c3e3c019876372b0d2840ee59028264e8ad891cabada15
-    const ANCHOR: &str = "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943";
+    const ANCHOR: &str = "470367c48d6bc85fa56f26441b8ecbf27b1d3296a377ce292bd52f25883cf22a";
     let hex = scenario_body_hex("top10-2023-1h-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -794,7 +804,7 @@ fn t717_top10_2024_momentum_anchor_hash_unchanged() {
     // re-locking the corpus without re-locking this constant is exactly what left #143's two
     // gates red for 15 days. Superseded digest kept in the line below.
     // superseded: 37ce69e9f0da7bc2f322d5f3cba34f41cef5c6f8286e236d1229169d51b5e052
-    const ANCHOR: &str = "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f";
+    const ANCHOR: &str = "60179c6285692a4aa196e5dd5771a2392d625fc4cd71fa1dcfb32d3a1f08ccaa";
     let hex = scenario_body_hex("top10-2024-h1-momentum");
     assert_eq!(
         hex, ANCHOR,
@@ -826,7 +836,7 @@ fn tt1_top10_2023_fy_tcn_overlay_anchor_hash_unchanged() {
     // re-locking the corpus without re-locking this constant is exactly what left #143's two
     // gates red for 15 days. Superseded digest kept in the line below.
     // superseded: 64f51802e91ead6f7d555e91915b25582a2562814ab2e9a0346f58540dc1f9b1
-    const ANCHOR: &str = "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9";
+    const ANCHOR: &str = "8da7ad5fdac42816ecc3d28bc72260f00ea8d8bbeba6e963476ae0f0c16a6f9f";
     let hex = scenario_body_hex("top10-2023-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -847,7 +857,7 @@ fn tt1_top10_2024_fy_tcn_overlay_anchor_hash_unchanged() {
     // re-locking the corpus without re-locking this constant is exactly what left #143's two
     // gates red for 15 days. Superseded digest kept in the line below.
     // superseded: 908b66e146c2c2f2ad5a6e0d22a2d62b22610e6e47b435e3e5b75371f143e63d
-    const ANCHOR: &str = "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd";
+    const ANCHOR: &str = "7c605e310c2ed61b7cdfed24198edad3912074657341615bfa9e86f2414e1b0b";
     let hex = scenario_body_hex("top10-2024-fy-tcn-overlay");
     assert_eq!(
         hex, ANCHOR,
@@ -956,7 +966,7 @@ fn m3_top10_2023_fy_tcn_overlay_weights_anchor_hash_unchanged() {
     // believed to be an older, separate drift. A stale pin behind an #[ignore] is the same
     // trap with a longer fuse. Superseded digest below.
     // superseded: 175173b654aa59bde041f290cb4db5120df22104b1c6fd43d38e2803ca5e9462
-    const ANCHOR: &str = "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf";
+    const ANCHOR: &str = "2a6dc6b3cd85349228a3f523a5ddb2e481e363f41e3ce2513965127cfba34b39";
     let hex = scenario_body_hex_candle("top10-2023-fy-tcn-overlay-weights");
     assert_eq!(
         hex, ANCHOR,
@@ -981,7 +991,7 @@ fn m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged() {
     // believed to be an older, separate drift. A stale pin behind an #[ignore] is the same
     // trap with a longer fuse. Superseded digest below.
     // superseded: 3c1178fb3ee4c6727de17905b8fa5144a65a906738126eaa7f7bbeafa628acab
-    const ANCHOR: &str = "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845";
+    const ANCHOR: &str = "798e04e9fbe6bc8b0e13e4c250da2ac46ba5bc8ebbce47f1c68ccd39cd4efc05";
     let hex = scenario_body_hex_candle("top10-2024-fy-tcn-overlay-weights");
     assert_eq!(
         hex, ANCHOR,
@@ -1548,7 +1558,7 @@ fn realdata_2024_fy_tcn_overlay_weights_determinism() {
 #[test]
 fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
     // anchor-ns: noop-baseline
-    const ANCHOR: &str = "b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8";
+    const ANCHOR: &str = "d9db83385912f8f0ceac5432517133e5afd1dee04ba8c25b9d85521bf34d481a";
     assert_reproduces_with_flags("top10-2023-fy-tcn-overlay-realdata", ANCHOR, &[]);
 }
 
@@ -1557,7 +1567,7 @@ fn realdata_2023_fy_tcn_overlay_reproduces_anchor() {
 #[test]
 fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
     // anchor-ns: noop-baseline
-    const ANCHOR: &str = "b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd";
+    const ANCHOR: &str = "49f346764b7df09f9fd40a65b3bc3740fe4eeac3480bfccda17a43822145a480";
     assert_reproduces_with_flags("top10-2024-fy-tcn-overlay-realdata", ANCHOR, &[]);
 }
 
@@ -1566,7 +1576,7 @@ fn realdata_2024_fy_tcn_overlay_reproduces_anchor() {
 #[test]
 fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
     // anchor-ns: noop-baseline
-    const ANCHOR: &str = "fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d";
+    const ANCHOR: &str = "d580ffdae9107188b4addd24c5bf1bc99e1410378d1641f581f0a21cac56dc4f";
     assert_reproduces_with_flags("top10-2023-fy-tcn-overlay-weights-realdata", ANCHOR, &[]);
 }
 
@@ -1575,7 +1585,7 @@ fn realdata_2023_fy_tcn_overlay_weights_reproduces_anchor() {
 #[test]
 fn realdata_2024_fy_tcn_overlay_weights_reproduces_anchor() {
     // anchor-ns: noop-baseline
-    const ANCHOR: &str = "0d6cc994094a2d6e0038725cb06dba92a5031e40b8d3c4b35a3195cfb2ef5d99";
+    const ANCHOR: &str = "8eb080e7812d48291b970c8b4ab04107b250855af7d017fcb415193d263ae0ff";
     assert_reproduces_with_flags("top10-2024-fy-tcn-overlay-weights-realdata", ANCHOR, &[]);
 }
 
@@ -1615,7 +1625,7 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
     // the whole point: the row names `SquareRoot { alpha=1.0, lookback=90 }`, so the
     // gate names it too.
     // anchor-ns: v5-sqrt-impact-2026-05
-    const ANCHOR: &str = "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef";
+    const ANCHOR: &str = "c08e93655790c7126087513567e2171ef914192efa4f7f6c1ff0a0c0221c9c8d";
     assert_reproduces_with_flags(
         "top10-2023-fy-momentum-realdata",
         ANCHOR,
@@ -1633,7 +1643,7 @@ fn realdata_2023_fy_momentum_reproduces_anchor() {
 #[test]
 fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
     // anchor-ns: noop-baseline
-    const ANCHOR: &str = "f704c4f2f71b539e1b927ce157ec2c348b353dd3fa6af5bab015dc0a1b59b486";
+    const ANCHOR: &str = "b228c0011be608336f7d53630f6ab83782f2f740d9e6af2635c19576911f312c";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-patchtst-overlay-realdata", ANCHOR);
 }
 
@@ -1652,7 +1662,7 @@ fn realdata_2023_fy_patchtst_overlay_reproduces_anchor() {
 #[test]
 fn realdata_2023_fy_regime_dispatcher_reproduces_anchor() {
     // anchor-ns: v3.0.0-regime
-    const ANCHOR: &str = "f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775";
+    const ANCHOR: &str = "321500b1e6ca39e910ce1dc894e0a5ec61b71dfeb0976fb40c71087d58031d8d";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-regime-dispatcher-realdata", ANCHOR);
 }
 
@@ -1663,7 +1673,7 @@ fn realdata_2023_fy_regime_dispatcher_reproduces_anchor() {
 #[test]
 fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
     // anchor-ns: v3.0.0-regime
-    const ANCHOR: &str = "691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e";
+    const ANCHOR: &str = "0c85046f61393982cc6789e4b04bc914e0353aac934859a629eaf5068bb948cf";
     assert_reproduces_or_report_unmeasured("top10-2024-fy-regime-dispatcher-realdata", ANCHOR);
 }
 
@@ -1672,7 +1682,7 @@ fn realdata_2024_fy_regime_dispatcher_reproduces_anchor() {
 #[test]
 fn realdata_2023_fy_vol_target_overlay_reproduces_anchor() {
     // anchor-ns: noop-baseline
-    const ANCHOR: &str = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86";
+    const ANCHOR: &str = "97a11ad3d97400fdaad0fadbbfb0219660e97c6d3b0b7c3f55d6ccf8d87e8812";
     assert_reproduces_or_report_unmeasured("top10-2023-fy-vol-target-overlay-realdata", ANCHOR);
 }
 
@@ -1839,7 +1849,7 @@ fn assert_realdata_row(scenario: &str, anchor: &str) {
 #[test]
 fn realdata_row_btc_2023_1m_macd_trend() {
     // anchor-ns: v5-realdata-medium-2026-05
-    const ANCHOR: &str = "6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5";
+    const ANCHOR: &str = "9bc8b6598ec85886ed37987c83838d6009d447f05404bec69573af016be6392f";
     assert_realdata_row("btc-2023-1m-macd-trend", ANCHOR);
 }
 
@@ -1847,7 +1857,7 @@ fn realdata_row_btc_2023_1m_macd_trend() {
 #[test]
 fn realdata_row_btc_2023_1m_rsi_reversion() {
     // anchor-ns: v5-realdata-medium-2026-05
-    const ANCHOR: &str = "87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695";
+    const ANCHOR: &str = "b2de9ef01828326a44afad23de450ee4fa67639df5446e942ecc4c04de8e8fcf";
     assert_realdata_row("btc-2023-1m-rsi-reversion", ANCHOR);
 }
 
@@ -1855,7 +1865,7 @@ fn realdata_row_btc_2023_1m_rsi_reversion() {
 #[test]
 fn realdata_row_btc_2023_1m_bbands_mean_revert() {
     // anchor-ns: v5-realdata-medium-2026-05
-    const ANCHOR: &str = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd";
+    const ANCHOR: &str = "d29a84f16498b8ac2d70b8f31ef002c47255976e2ad453dc934e355adc264580";
     assert_realdata_row("btc-2023-1m-bbands-mean-revert", ANCHOR);
 }
 
@@ -1878,6 +1888,6 @@ fn realdata_row_btc_2023_1m_bbands_mean_revert() {
 #[test]
 fn realdata_row_eth_2024_h1_sma_cross() {
     // anchor-ns: lab-yahoo-realdata-v0.1.3
-    const ANCHOR: &str = "405c2816c8791221049216351bb08fc781598d34b42dd83e222ccdb604f11846";
+    const ANCHOR: &str = "7ca89a5cc29684060c5f1fe9c3447e75911cde83f896ae60998ff94f75420853";
     assert_realdata_row("eth-2024-h1-sma-cross", ANCHOR);
 }

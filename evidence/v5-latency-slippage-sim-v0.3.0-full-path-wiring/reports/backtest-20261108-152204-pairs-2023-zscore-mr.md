@@ -1,0 +1,69 @@
+---
+scenario: pairs-2023-zscore-mr
+seed: 0xC0FFEE
+generated: 2026-11-08T15:22:04Z
+wall_clock_s: 0.3
+data_source: synthetic (seeded RNG, v1.5a multi-symbol)
+baseline_report: n/a
+ledger_imbalance_total: 0
+llm_spend_usd: 0.00
+strategy:
+id: pairs_mr_h1
+kind: mean_reversion_pairs
+content_hash: 442a2e46f96c547c596e8d85f565350de626ec1230ae1cbe96c0efe85a390a5d
+source: config/strategies/pairs_mr_h1.toml
+signal: zscore_spread(lookback=60,z_entry=2.0,z_exit=0.5)
+---
+
+# Backtest Report — pairs-2023-zscore-mr
+
+## Summary
+
+| Metric               | Value                         |
+|----------------------|-------------------------------|
+| Scenario             | pairs-2023-zscore-mr               |
+| Universe             | 4 symbols      |
+| Start year           | 2023                  |
+| Bars (total)         | 35040                   |
+| Initial capital      | $100000.00 USDT            |
+| Final equity         | $100475.65 USDT           |
+| Total return         | 0.48%                     |
+| Buy and hold (equal-wt) | +35.54% ($135537.43 USDT, 4 legs, $40.00 fees)                 |
+| vs buy and hold        | -35.06 pp                    |
+| Max drawdown         | 15.19%                  |
+| Trades               | 430                      |
+| Buys                 | 215                        |
+| Sells                | 215                       |
+| Total fees           | $4286.695423 USDT               |
+| Ledger imbalances    | 0                             |
+| Seed                 | 0xC0FFEE                    |
+| Data source          | synthetic (seeded RNG, v1.5a multi-symbol)                 |
+
+## Per-Pair Summary (R8.5)
+
+| Pair                 | Trades |
+|----------------------|--------|
+| (BNBUSDT, BTCUSDT) | 142 |
+| (BTCUSDT, ETHUSDT) | 142 |
+| (ETHUSDT, SOLUSDT) | 146 |
+
+## Universe
+
+- BNBUSDT
+- BTCUSDT
+- ETHUSDT
+- SOLUSDT
+
+## Reconciliation
+
+Reconciler ran at every bar close.
+`ledger_imbalance_total == 0` — PASS.
+
+## Notes
+
+- v1.5a mean-reversion pairs: pairs_mr_h1
+- Formulation C: long-only on `a` leg; `b` leg is observed only.
+- Slippage: 2 bps, Taker fee: 4 bps
+- Size: binary_per_pair
+- Risk: per-symbol cap=40% (ENFORCED in Order::new); portfolio gross cap: none declared on this lane (bug-log #95)
+- Data: synthetic hourly bars, 4 independent ChaCha20Rng streams

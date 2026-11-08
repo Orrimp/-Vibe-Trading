@@ -215,10 +215,17 @@ sha256   = "23c24dae0873df8e808897416d9d8fab75c4bd25dcd7b2933099ff061efe9f2b"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=8fa47f49e887df480509f30dfc08afcb9febecdb6a5bbdbb04023f241a9d9642 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 569 -> 3103; Final equity: $95306.77 USDT -> $72483.57 USDT; Max drawdown: 9.58% -> 41.80%; Sells: 569 -> 3100
+#   Superseded body kept on disk as history: backtest-20260926-212330-top10-2023-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8"
+sha256   = "d9db83385912f8f0ceac5432517133e5afd1dee04ba8c25b9d85521bf34d481a"
 
 # top10-2024-fy-tcn-overlay-realdata
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -229,10 +236,17 @@ sha256   = "b6d88fa64ca42235e5d5bd4890f3f694142c8759ad2eb94d098851dac05b89f8"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=fd8191dff1ca106ca24416a1819bd8a002c705da7f3747831f48d60733ee76f3 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 515 -> 2960; Final equity: $96846.59 USDT -> $77683.17 USDT; Max drawdown: 9.28% -> 44.31%; Sells: 515 -> 2957
+#   Superseded body kept on disk as history: backtest-20260926-212334-top10-2024-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd"
+sha256   = "49f346764b7df09f9fd40a65b3bc3740fe4eeac3480bfccda17a43822145a480"
 
 # top10-2023-fy-tcn-overlay-weights-realdata
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -243,10 +257,17 @@ sha256   = "b5efe7b63fcff442a74bde3895e67ef6ded72f69a8e29b8910516fc0fc49cbcd"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=552d7df294bc93ff6f887874f919aeeb8106a62caae4ad5ec5de7c5b49665d70 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 569 -> 3094; Final equity: $95306.77 USDT -> $72368.35 USDT; Max drawdown: 9.58% -> 41.89%; Sells: 569 -> 3091
+#   Superseded body kept on disk as history: backtest-20260926-212407-top10-2023-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d"
+sha256   = "d580ffdae9107188b4addd24c5bf1bc99e1410378d1641f581f0a21cac56dc4f"
 
 # top10-2024-fy-tcn-overlay-weights-realdata
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -257,10 +278,17 @@ sha256   = "fa09a7692620121a346f8cc36b5ae713a125878ec6fceef76490e36498cef99d"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=2a65c4347964a0748877606d9c3a8b261b7fee6e069a814e64aaa024419f2f2c — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 515 -> 2948; Final equity: $96846.59 USDT -> $76762.43 USDT; Max drawdown: 9.28% -> 44.16%; Sells: 515 -> 2945
+#   Superseded body kept on disk as history: backtest-20260926-212440-top10-2024-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=0d6cc994094a2d6e0038725cb06dba92a5031e40b8d3c4b35a3195cfb2ef5d99 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + noop-baseline"
-sha256   = "0d6cc994094a2d6e0038725cb06dba92a5031e40b8d3c4b35a3195cfb2ef5d99"
+sha256   = "8eb080e7812d48291b970c8b4ab04107b250855af7d017fcb415193d263ae0ff"
 
 # v2.5 alpha-investigation reports (T-T-1).  Locked by tester on 2026-05-19
 # against the data/binance/ REVISION.toml manifest SHA
@@ -489,10 +517,17 @@ sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=5f303cc0812d421e6efdc40c0f412dd8cc0625891c677442bf2d7d2d5336ab4c — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 290 -> 1392; Final equity: $103558.77 USDT -> $133311.29 USDT; Max drawdown: 2.91% -> 11.66%; Sells: 290 -> 1390
+#   Superseded body kept on disk as history: backtest-20260926-212511-top10-2023-fy-patchtst-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=f704c4f2f71b539e1b927ce157ec2c348b353dd3fa6af5bab015dc0a1b59b486 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v2.5a.0-patchtst + noop-baseline"
-sha256   = "f704c4f2f71b539e1b927ce157ec2c348b353dd3fa6af5bab015dc0a1b59b486"
+sha256   = "b228c0011be608336f7d53630f6ab83782f2f740d9e6af2635c19576911f312c"
 
 # v3.0.0-volatility GARCH vol-targeting scenarios (T-T2 / M-FINAL).  Locked by
 # tester on 2026-05-22 against data/binance/ REVISION.toml manifest SHA
@@ -528,10 +563,17 @@ sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=9fa64d467f35797939750fe70a492974a01aee0af197310bbfc0521ef57d2d5f — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 569 -> 1634; Final equity: $89478.53 USDT -> $72330.48 USDT; Max drawdown: 19.05% -> 40.33%; Sells: 569 -> 1632
+#   Superseded body kept on disk as history: backtest-20260926-212515-top10-2023-fy-vol-target-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + noop-baseline"
-sha256   = "91848e2334103fe2992039ea0f55d98e6fb10a86497a03fa1329a8d0b83a0e86"
+sha256   = "97a11ad3d97400fdaad0fadbbfb0219660e97c6d3b0b7c3f55d6ccf8d87e8812"
 
 # == RE-EMITTED 2026-10-01 under ADR-0038 D6.b -- story 1-29, bug-log #137 ===========
 # OPERATOR-RULED 2026-10-01, and the ruling was NOT just "re-emit":
@@ -683,30 +725,65 @@ sha256   = "7409a588c1a54aef1f08592fbbb8882f27f0d42c3d1f6301e740b0a88a5cb69f"
 #   (not built in default CI binary); SHA unchanged from v0.2.0.
 # - Investigation/analysis reports and operator success reports: SHA unchanged.
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--force-synthetic-bars` (ADR-0047 D1 — this row pins a SYNTHETIC body even though real parquet exists).
+#   CAUSE: bug-log #151's benchmark rows and #178's derived risk line; figures unmoved.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20260527-181323-btc-2023-1m-sma-cross.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0 — kept verbatim in this comment.
 [[anchors]]
 scenario = "btc-2023-1m-sma-cross"
 version  = "v0 + v5-realdata-medium-2026-05"
-sha256   = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0"
+sha256   = "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--force-synthetic-bars` (ADR-0047 D1 — this row pins a SYNTHETIC body even though real parquet exists).
+#   CAUSE: bug-log #151's benchmark rows and #178's derived risk line; figures unmoved.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20260527-181324-btc-2023-1m-sma-baseline-refresh.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0 — kept verbatim in this comment.
 [[anchors]]
 scenario = "btc-2023-1m-sma-baseline-refresh"
 version  = "v0 + v5-realdata-medium-2026-05"
-sha256   = "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0"
+sha256   = "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20260527-181331-btc-2023-1m-macd-trend.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5 — kept verbatim in this comment.
 [[anchors]]
 scenario = "btc-2023-1m-macd-trend"
 version  = "v0.5 + v5-realdata-medium-2026-05"
-sha256   = "6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5"
+sha256   = "9bc8b6598ec85886ed37987c83838d6009d447f05404bec69573af016be6392f"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20260527-181331-btc-2023-1m-rsi-reversion.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695 — kept verbatim in this comment.
 [[anchors]]
 scenario = "btc-2023-1m-rsi-reversion"
 version  = "v0.5 + v5-realdata-medium-2026-05"
-sha256   = "87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695"
+sha256   = "b2de9ef01828326a44afad23de450ee4fa67639df5446e942ecc4c04de8e8fcf"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20260527-181331-btc-2023-1m-bbands-mean-revert.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd — kept verbatim in this comment.
 [[anchors]]
 scenario = "btc-2023-1m-bbands-mean-revert"
 version  = "v0.5 + v5-realdata-medium-2026-05"
-sha256   = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd"
+sha256   = "d29a84f16498b8ac2d70b8f31ef002c47255976e2ad453dc934e355adc264580"
 
 # top10-2023-1h-momentum
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -728,10 +805,17 @@ sha256   = "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210115-top10-2023-1h-momentum.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-1h-momentum"
 version  = "v1 + v5-realdata-medium-2026-05"
-sha256   = "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943"
+sha256   = "470367c48d6bc85fa56f26441b8ecbf27b1d3296a377ce292bd52f25883cf22a"
 
 # top10-2024-h1-momentum
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -753,10 +837,17 @@ sha256   = "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210117-top10-2024-h1-momentum.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-h1-momentum"
 version  = "v1 + v5-realdata-medium-2026-05"
-sha256   = "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f"
+sha256   = "60179c6285692a4aa196e5dd5771a2392d625fc4cd71fa1dcfb32d3a1f08ccaa"
 
 # pairs-2023-zscore-mr
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -778,10 +869,17 @@ sha256   = "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210121-pairs-2023-zscore-mr.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e — kept verbatim in this comment.
 [[anchors]]
 scenario = "pairs-2023-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e"
+sha256   = "bad563a231cf88314490c3601a29613952c2226bcc64feb0dd5207b82a83e127"
 
 # pairs-2024-h1-zscore-mr
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -803,10 +901,17 @@ sha256   = "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210121-pairs-2024-h1-zscore-mr.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632 — kept verbatim in this comment.
 [[anchors]]
 scenario = "pairs-2024-h1-zscore-mr"
 version  = "v1.5a + v5-realdata-medium-2026-05"
-sha256   = "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632"
+sha256   = "f426674f53ad2ea246390f047e1af57e1fb96dea61cda7448ff47277c75b9251"
 
 # ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — bug-log #156 ───────────────
 #   Operator-ruled: build the real reconciliation identity, and make the equity
@@ -899,10 +1004,17 @@ sha256   = "f8ecc2579cc24044174cca661bec98ca7297ebf9cb55379a81b545656e54c0f9"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210123-top10-2023-fy-tcn-overlay.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9"
+sha256   = "8da7ad5fdac42816ecc3d28bc72260f00ea8d8bbeba6e963476ae0f0c16a6f9f"
 
 # top10-2024-fy-tcn-overlay
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -924,10 +1036,17 @@ sha256   = "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210125-top10-2024-fy-tcn-overlay.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay"
 version  = "v2.5.0 + v5-realdata-medium-2026-05"
-sha256   = "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd"
+sha256   = "7c605e310c2ed61b7cdfed24198edad3912074657341615bfa9e86f2414e1b0b"
 
 # top10-2023-fy-tcn-overlay-weights
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -949,10 +1068,17 @@ sha256   = "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20261029-210142-top10-2023-fy-tcn-overlay-weights.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf"
+sha256   = "2a6dc6b3cd85349228a3f523a5ddb2e481e363f41e3ce2513965127cfba34b39"
 
 # top10-2024-fy-tcn-overlay-weights
 # RE-EMITTED 2026-09-26 under ADR-0038 § D6.b — story 1-27 harness re-lock.
@@ -974,10 +1100,17 @@ sha256   = "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 1995 -> 1992; Final equity: $76038.83 USDT -> $75472.78 USDT; Gross-cap refusals: 0 -> 3; Max drawdown: 30.77% -> 31.28%
+#   Superseded body kept on disk as history: backtest-20261029-210220-top10-2024-fy-tcn-overlay-weights.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights"
 version  = "v2.5.0-tcn-weights + v5-realdata-medium-2026-05"
-sha256   = "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845"
+sha256   = "798e04e9fbe6bc8b0e13e4c250da2ac46ba5bc8ebbce47f1c68ccd39cd4efc05"
 
 # ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
 #   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
@@ -990,10 +1123,17 @@ sha256   = "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-bps 8` (the canonical friction this namespace is DEFINED as, per evidence/v5-.../sharpe-delta-2026-05-29.md:14-17).
+#   CAUSE: the 2026-10-29 re-lock wrote DEFAULT (zero-slippage) output into this canonical row; measured 28 pp apart from a real 8 bps run. Restored to 8 bps here.
+#   MEASURED deltas: Final equity: $72483.57 USDT -> $44123.54 USDT; Max drawdown: 41.80% -> 61.33%; Total fees: $20221.254479 USDT -> $16289.405778 USDT; Total return: -27.52% -> -55.88%
+#   Superseded body kept on disk as history: backtest-20261029-210129-top10-2023-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=23346eecd3d004b2a7ee61603b0aecd0609fe740363b6d2a0d0a293c9692c071 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "23346eecd3d004b2a7ee61603b0aecd0609fe740363b6d2a0d0a293c9692c071"
+sha256   = "5fcc557d7e00b33d04b2e414a53883eb183e6c8d2208a1a0585422bcde04157e"
 
 # ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
 #   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
@@ -1006,10 +1146,17 @@ sha256   = "23346eecd3d004b2a7ee61603b0aecd0609fe740363b6d2a0d0a293c9692c071"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-bps 8` (the canonical friction this namespace is DEFINED as, per evidence/v5-.../sharpe-delta-2026-05-29.md:14-17).
+#   CAUSE: the 2026-10-29 re-lock wrote DEFAULT (zero-slippage) output into this canonical row; measured 28 pp apart from a real 8 bps run. Restored to 8 bps here.
+#   MEASURED deltas: Final equity: $77683.17 USDT -> $48389.69 USDT; Max drawdown: 44.31% -> 59.17%; Total fees: $19878.095954 USDT -> $16091.477232 USDT; Total return: -22.32% -> -51.61%
+#   Superseded body kept on disk as history: backtest-20261029-210133-top10-2024-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=46ae6ea705fb9e83fe8d315c2c16fc78729c0ec2aa1714dc2c31ea52deb2c92c — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "46ae6ea705fb9e83fe8d315c2c16fc78729c0ec2aa1714dc2c31ea52deb2c92c"
+sha256   = "43144f9bb30971fefd9881b518bf11d3635b5a9b098767a4d8dea7339e7a6249"
 
 # ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
 #   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
@@ -1022,10 +1169,17 @@ sha256   = "46ae6ea705fb9e83fe8d315c2c16fc78729c0ec2aa1714dc2c31ea52deb2c92c"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-bps 8` (the canonical friction this namespace is DEFINED as, per evidence/v5-.../sharpe-delta-2026-05-29.md:14-17).
+#   CAUSE: the 2026-10-29 re-lock wrote DEFAULT (zero-slippage) output into this canonical row; measured 28 pp apart from a real 8 bps run. Restored to 8 bps here.
+#   MEASURED deltas: Buys: 3103 -> 3093; Final equity: $72483.57 USDT -> $44135.50 USDT; Gross-cap refusals: 0 -> 10; Max drawdown: 41.80% -> 61.32%
+#   Superseded body kept on disk as history: backtest-20261029-210320-top10-2023-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=cdf813af4eef452f2f6deba2ac55250d4e7c42607720af5398602aaaa5049592 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "cdf813af4eef452f2f6deba2ac55250d4e7c42607720af5398602aaaa5049592"
+sha256   = "94152fc3ad30d11ec4c2d05b056cb38325a4c1660b3919e12ea7041d36c7f6ec"
 
 # ── RE-EMITTED 2026-10-29 under ADR-0038 § D6.b — bug-log #111 / #95 / #146 ─────
 #   Operator-ruled: fix the #67 per-symbol fill routing, THEN re-lock.
@@ -1038,10 +1192,17 @@ sha256   = "cdf813af4eef452f2f6deba2ac55250d4e7c42607720af5398602aaaa5049592"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-bps 8` (the canonical friction this namespace is DEFINED as, per evidence/v5-.../sharpe-delta-2026-05-29.md:14-17).
+#   CAUSE: the 2026-10-29 re-lock wrote DEFAULT (zero-slippage) output into this canonical row; measured 28 pp apart from a real 8 bps run. Restored to 8 bps here.
+#   MEASURED deltas: Buys: 2960 -> 2947; Final equity: $77683.17 USDT -> $47949.15 USDT; Gross-cap refusals: 0 -> 13; Max drawdown: 44.31% -> 58.99%
+#   Superseded body kept on disk as history: backtest-20261029-210402-top10-2024-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=8017735d320c481908a1d0817e3db2fc1175d625496c24dd232a5a0b868ea360 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v2.6.0-realdata + v5-realdata-medium-2026-05"
-sha256   = "8017735d320c481908a1d0817e3db2fc1175d625496c24dd232a5a0b868ea360"
+sha256   = "a8ad333faefb477c6e7e8d2b31a568102bc6fca60071e567b390e4ca9acce40d"
 
 [[anchors]]
 scenario = "forecast-distribution-bs1-realdata"
@@ -1123,10 +1284,17 @@ sha256   = "c55c6c5178374f230f5273df1e20d121589ff0b879c20062ee6cbdca7f4646dd"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-bps 8` (the canonical friction this namespace is DEFINED as, per evidence/v5-.../sharpe-delta-2026-05-29.md:14-17).
+#   CAUSE: the 2026-10-29 re-lock wrote DEFAULT (zero-slippage) output into this canonical row; measured 28 pp apart from a real 8 bps run. Restored to 8 bps here.
+#   MEASURED deltas: Buys: 1595 -> 1395; Final equity: $141811.85 USDT -> $107323.18 USDT; Gross-cap refusals: 0 -> 292; Max drawdown: 12.67% -> 16.92%
+#   Superseded body kept on disk as history: backtest-20261029-210444-top10-2023-fy-patchtst-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=c3709c8f7f28dff4754c25f4da6bc90a86256a2811a832e0537c1ebd82679b07 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v2.5a.0-patchtst + v5-realdata-medium-2026-05"
-sha256   = "c3709c8f7f28dff4754c25f4da6bc90a86256a2811a832e0537c1ebd82679b07"
+sha256   = "2eb390c17541308e889ddcb52881f189be24597c32f052d92d8daf9ee96c45e7"
 
 [[anchors]]
 scenario = "vol-verdict-bs1-realdata"
@@ -1144,10 +1312,17 @@ sha256   = "99c2189210d2091aebf199a5fc1cc8a448d14da6911130e3d6ebb163e686cd21"
 #   Also in this body: #95's corrected cap claim (the lane declared a portfolio gross cap
 #     nothing enforced) and, on the overlay lanes, #146's corrected metric labels.
 #   Record: docs/dev-notes/relock-lane-deltas-2026-10-29.md
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-bps 8` (the canonical friction this namespace is DEFINED as, per evidence/v5-.../sharpe-delta-2026-05-29.md:14-17).
+#   CAUSE: the 2026-10-29 re-lock wrote DEFAULT (zero-slippage) output into this canonical row; measured 28 pp apart from a real 8 bps run. Restored to 8 bps here.
+#   MEASURED deltas: Buys: 1634 -> 1633; Final equity: $72330.48 USDT -> $43998.36 USDT; Gross-cap refusals: 1469 -> 1470; Max drawdown: 40.33% -> 62.60%
+#   Superseded body kept on disk as history: backtest-20261029-210449-top10-2023-fy-vol-target-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=435fc0fc29927d05db99ee92af3c9888946ed6c6d183d74e5addbd56f5c92f83 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v3.0.0-volatility + v5-realdata-medium-2026-05"
-sha256   = "435fc0fc29927d05db99ee92af3c9888946ed6c6d183d74e5addbd56f5c92f83"
+sha256   = "2f1339c6d2822ae66ac0ee458af929729e931bc29b05cdaf90a0ee41732c32b8"
 
 # ── RE-EMITTED 2026-11-07 under ADR-0038 § D6.b — downstream of #111/#95, plus #152 ──
 #   Superseded body (kept as history): sharpe-comparison-vol-target-bs1-realdata-20261001.md
@@ -1266,10 +1441,17 @@ sha256   = "c854ff2b2a97a876deb978a9db1cd0bf132de2ce5649f16a06d8dfa6cb475da2"
 #   Q-D1=(a) does not touch — proven by btc-yahoo-2024-1d-sma-cross's green CI gate.
 #   Landed: evidence/v1/v0-paper-sma/reports/backtest-20260927-123805-eth-2024-h1-sma-cross.md
 # SUPERSEDED BODY sha256=bd4001e42475955f518421d75cab207c85d0db3ba3a9d45fbdceff4f4b4e5441 — kept verbatim below:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.c ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   Figures byte-identical — a content addition, proven row by row by scripts/reemission_classify.py.
+#   Superseded body kept on disk as history: backtest-20260927-123805-eth-2024-h1-sma-cross.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=405c2816c8791221049216351bb08fc781598d34b42dd83e222ccdb604f11846 — kept verbatim in this comment.
 [[anchors]]
 scenario = "eth-2024-h1-sma-cross"
 version  = "lab-yahoo-realdata-v0.1.3"
-sha256   = "405c2816c8791221049216351bb08fc781598d34b42dd83e222ccdb604f11846"
+sha256   = "7ca89a5cc29684060c5f1fe9c3447e75911cde83f896ae60998ff94f75420853"
 
 # v3.0.0-regime RegimeDispatcher anchors (2026-05-29).
 # Wave E: 4 new anchors under v3.0.0-regime namespace (71 → 75).
@@ -1281,15 +1463,29 @@ sha256   = "405c2816c8791221049216351bb08fc781598d34b42dd83e222ccdb604f11846"
 # All 4 anchors: body SHA identical on 2 independent runs each.
 # Verify with: scripts/verify_anchors.sh  (expects 75 / 75 PASS)
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 3425 -> 3405; Final equity: $87431.52 USDT -> $88052.86 USDT; Max drawdown: 40.49% -> 40.07%; Sells: 3422 -> 3402
+#   Superseded body kept on disk as history: backtest-20260529-055141-top10-2023-fy-regime-dispatcher-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-regime-dispatcher-realdata"
 version  = "v3.0.0-regime"
-sha256   = "f37bbb8d3520c7bae2ff1d48fa71d704a8b122d84a3d843d443bafa359664775"
+sha256   = "321500b1e6ca39e910ce1dc894e0a5ec61b71dfeb0976fb40c71087d58031d8d"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: DEFAULT real-data invocation (Linear{bps:0}, zero sim slippage).
+#   CAUSE: bug-log #111/#129's per-symbol fill routing (orders that vanished now fill) PLUS bug-log #95's gross-cap entry gate. Both quantified in the record.
+#   MEASURED deltas: Buys: 3123 -> 3113; Final equity: $94000.97 USDT -> $91210.02 USDT; Max drawdown: 38.21% -> 38.40%; Sells: 3120 -> 3110
+#   Superseded body kept on disk as history: backtest-20260529-055810-top10-2024-fy-regime-dispatcher-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-regime-dispatcher-realdata"
 version  = "v3.0.0-regime"
-sha256   = "691a70568f4d0e6e74e51e7318f55236b7c3e0f97968bf6aabfdacd308ba9f4e"
+sha256   = "0c85046f61393982cc6789e4b04bc914e0353aac934859a629eaf5068bb948cf"
 
 [[anchors]]
 scenario = "regime-verdict-bs1-realdata"
@@ -1325,50 +1521,113 @@ sha256   = "4f5d35c8e9ac0197870380687b9cd034b5e326942b5c1ccbd7bdc905d67d70d2"
 #   Record: docs/dev-notes/1-27-d6b-re-emission-2026-09-26.md
 # SUPERSEDED BODY sha256=0867d232b5d4e3813992d25b7ca23eb07bf530e41d44262e3ee2bc9c6c1c9901 — kept verbatim below so the correction
 # is legible next to what it corrects:
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 569 -> 3103; Final equity: $55768.17 USDT -> $11344.04 USDT; Max drawdown: 45.65% -> 89.18%; Sells: 569 -> 3100
+#   Superseded body kept on disk as history: backtest-20260926-212519-top10-2023-fy-momentum-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-momentum-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef"
+sha256   = "c08e93655790c7126087513567e2171ef914192efa4f7f6c1ff0a0c0221c9c8d"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Final equity: $10105.53 USDT -> $11344.04 USDT; Max drawdown: 97.42% -> 89.18%; Total fees: $5492.627412 USDT -> $8339.938318 USDT; Total return: -89.89% -> -88.66%
+#   Superseded body kept on disk as history: backtest-20260529-133858-top10-2023-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a"
+sha256   = "b206edc2bfa2e84f3158624e347f82a6eb5aacb606090474c54b2235453ffc2b"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Final equity: $22419.44 USDT -> $20505.46 USDT; Max drawdown: 90.05% -> 80.63%; Total fees: $6122.463934 USDT -> $10451.253862 USDT; Total return: -77.58% -> -79.49%
+#   Superseded body kept on disk as history: backtest-20260529-133905-top10-2024-fy-tcn-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c"
+sha256   = "f695f65b8a6814f1f5e2301535469f94e34ebbc682e5bdb80d2d08a6acbb01cf"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 3103 -> 3091; Final equity: $10105.53 USDT -> $11318.82 USDT; Max drawdown: 97.42% -> 89.20%; Sells: 3100 -> 3088
+#   Superseded body kept on disk as history: backtest-20260529-133954-top10-2023-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-tcn-overlay-weights-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175"
+sha256   = "1b4bcc89c07695da115819e0e287d29727771bc891103a1ffe58bf4a419d3f17"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 2960 -> 2946; Final equity: $22419.44 USDT -> $20379.27 USDT; Max drawdown: 90.05% -> 80.51%; Sells: 2957 -> 2943
+#   Superseded body kept on disk as history: backtest-20260529-134039-top10-2024-fy-tcn-overlay-weights-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-tcn-overlay-weights-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6"
+sha256   = "84f72b7c4b0ec2580fb6bb8ccf097d9b153a576a631b4bf5dacd5f88fa465952"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 1595 -> 1378; Final equity: $21531.28 USDT -> $41640.03 USDT; Max drawdown: 94.09% -> 62.31%; Sells: 1592 -> 1376
+#   Superseded body kept on disk as history: backtest-20260529-134115-top10-2023-fy-patchtst-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-patchtst-overlay-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4"
+sha256   = "1c7c31eb5a65b9277bdfd4347646b6444a51ee3ac019e38c37edc172dfefe2fa"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 2295 -> 1635; Final equity: $61472.09 USDT -> $7587.48 USDT; Max drawdown: 98.66% -> 93.20%; Sells: 2290 -> 1633
+#   Superseded body kept on disk as history: backtest-20260529-134120-top10-2023-fy-vol-target-overlay-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-vol-target-overlay-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf"
+sha256   = "0316254fe54338aa2d0cf7b7add3fe7ddf55463d0180dbd0bd6ceac4488c345f"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 3425 -> 3401; Final equity: $11677.13 USDT -> $11842.97 USDT; Max drawdown: 89.86% -> 89.71%; Sells: 3422 -> 3398
+#   Superseded body kept on disk as history: backtest-20260529-134334-top10-2023-fy-regime-dispatcher-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2023-fy-regime-dispatcher-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6"
+sha256   = "2db118980ecaa88511317241ef19ba301675085d8194c6e0ed94667add08c090"
 
+# ── RE-EMITTED 2026-11-08 under ADR-0038 § D6.b ─ bug-log #95 / #151 / #177 / #178 / #179 ──
+#   Condition DECLARED: `--sim-slippage-sqrt-alpha 1.0 --sim-slippage-sqrt-lookback-days 90`.
+#   CAUSE: already drifted as of 2026-09-26 per bug-log #123 and never repaired.
+#   MEASURED deltas: Buys: 3123 -> 3111; Final equity: $22463.08 USDT -> $21899.14 USDT; Sells: 3120 -> 3108; Total fees: $11390.719601 USDT -> $11350.186676 USDT
+#   Superseded body kept on disk as history: backtest-20260529-134402-top10-2024-fy-regime-dispatcher-realdata.md
+#   Record: docs/dev-notes/reemission-2026-11-08-d6b-d6c.md
+# SUPERSEDED BODY sha256=519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1 — kept verbatim in this comment.
 [[anchors]]
 scenario = "top10-2024-fy-regime-dispatcher-realdata"
 version  = "v5-sqrt-impact-2026-05"
-sha256   = "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1"
+sha256   = "1ebf18e06bfb5c7837fbba4209f8a5ba10ace31d228ab97a9293cc7cb77b02ec"
 
 # strategy-robustness-harness v0.1.1 Monte-Carlo anchor (2026-05-30).
 # RE-EMISSION per ADR-0038 §D6.b (wiring-bug-fix protocol).
