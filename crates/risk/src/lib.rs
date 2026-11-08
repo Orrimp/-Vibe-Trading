@@ -5,5 +5,8 @@
 pub mod portfolio;
 pub mod sizing;
 
-pub use portfolio::{PortfolioSizeError, TargetLeg, size_portfolio_target};
+pub use portfolio::{
+    PortfolioSizeError, TargetLeg, resulting_gross_fraction, size_portfolio_target,
+    would_breach_gross_cap,
+};
 pub use sizing::{FixedFractionSizer, SizingError, size_and_validate};

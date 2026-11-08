@@ -258,6 +258,7 @@ pub async fn run(
     let mut total_fees = Decimal::ZERO;
     // bug-log #95 MEASURE-FIRST: see the tracking site below.
     let mut peak_gross_observed = Decimal::ZERO;
+    let mut portfolio_gross_refusals: u64 = 0;
     let mut equity_curve: Vec<Decimal> = vec![input.initial_capital];
     let mut peak_equity = input.initial_capital;
     let mut max_drawdown = Decimal::ZERO;
@@ -325,6 +326,41 @@ pub async fn run(
                     let notional = equity * fraction;
                     let qty_raw = notional / mark;
                     if qty_raw <= Decimal::ZERO {
+                        continue;
+                    }
+                    // ── bug-log #95: the portfolio GROSS cap, now actually ENFORCED ──
+                    //
+                    // Operator-ruled 2026-11-08 ("wire the three lanes, then re-emit"). Until this
+                    // line the lane declared `portfolio_exposure_cap: Some(0.50)` and nothing read
+                    // it: the only enforcer in the tree is `risk::size_portfolio_target`, which
+                    // needs a target VECTOR, and this lane emits one order at a time.
+                    //
+                    // Shape: an ENTRY GATE on RESULTING exposure — bug-log #71's discipline, since
+                    // a cap that tests the INCREMENT is evadable by splitting. Per-order refusal,
+                    // NOT the theta lane's all-or-nothing rebalance skip: there is no batch here.
+                    //
+                    // Unlike the patchtst / tcn lanes, `RegimeDispatcherRunResult` has no
+                    // `portfolio_gross_refusals` field and this lane's report writer has no
+                    // `Gross-cap refusals` row, so the count goes to stderr — ALWAYS logged at the
+                    // end of the run, so a zero is visible rather than merely unobserved (#160).
+                    // Adding the row would mutate this body, and so its anchor, even at a count of
+                    // zero; that belongs to bug-log #151's renderer pass, which re-emits these
+                    // bodies anyway. This lane emits `regime-verdict-bs1-realdata`, so a refusal
+                    // here could move a published verdict — which is why the count is reported
+                    // before any row is added, not after.
+                    if let Some(cap) = risk_limits.portfolio_exposure_cap
+                        && risk::would_breach_gross_cap(position_value, notional, equity, cap)
+                    {
+                        portfolio_gross_refusals += 1;
+                        tracing::warn!(
+                            symbol = %sig.symbol,
+                            resulting_gross =
+                                %risk::resulting_gross_fraction(position_value, notional, equity),
+                            %cap,
+                            %notional,
+                            "portfolio GROSS cap would be breached — Buy REFUSED and counted \
+                             (bug-log #95); the book is unchanged"
+                        );
                         continue;
                     }
                     let pos_snap = Position::empty(sig.symbol.clone());
@@ -505,6 +541,7 @@ pub async fn run(
         suppressed_bars = suppressed_bars,
         momentum_bars = momentum_bars,
         warmup_bars = warmup_bars,
+        portfolio_gross_refusals = portfolio_gross_refusals,
         "regime-dispatcher backtest complete"
     );
 

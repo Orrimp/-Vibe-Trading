@@ -6969,3 +6969,301 @@ comment described a guarantee it was structurally incapable of providing, naming
 script that does not run tests. The fix is not a stronger assertion but a **witness**: you
 cannot verify an absence without first proving you would have seen a presence.
 
+
+### `#176` — three magnitudes stated from too little evidence, each corrected by running the thing
+
+**Found** 2026-11-08, implementing the operator's `#95` ruling ("wire the three
+lanes, then re-emit"). **Status:** code shipped; **nothing held, nothing to re-emit** —
+measured, the gate is inert on these lanes' recorded data. The entry keeps the wrong
+inference that preceded that measurement, because the inference is the lesson.
+
+#### What the ruling asked for, and what shipped
+
+`#95` was the declared-but-unenforced `portfolio_exposure_cap`. One lane
+(`garch_vol_target_overlay`) had been wired with a per-order entry gate; the rest
+declared `Some(0.50)` and nothing read it. Shipped in this pass:
+
+1. **The two gate helpers moved out of the garch lane into `crates/risk/src/portfolio.rs`**
+   as `pub fn resulting_gross_fraction` / `pub fn would_breach_gross_cap`, beside the
+   cap's *other* enforcer `size_portfolio_target`. They were private to one scenario
+   file, so the other lanes would have needed copies (`#167`'s lesson), and their
+   tests sat behind `--features realdata`, which CI does not pass (`#170`'s lesson).
+   `risk` is compiled by every CI leg with no feature opt-in. garch's 4 tests moved
+   with them; garch's behaviour is byte-identical (4/4 green through `risk::`).
+2. **Four more lanes wired** — `patchtst_overlay_weights`, `tcn_overlay_weights`,
+   `regime_dispatcher`, `threshold_sweep` — each with the counter reaching the
+   report's existing `Gross-cap refusals` row, except `regime_dispatcher`, whose
+   result type has no such field and whose writer has no such row; its count goes to
+   stderr, always logged so a zero is visible, because *adding* the row would mutate
+   that body even at a count of zero.
+3. **A class-level gate**, `crates/backtest/tests/gross_cap_declared_is_gross_cap_enforced.rs`:
+   it scans the scenarios directory, finds every file declaring
+   `portfolio_exposure_cap: Some(..)`, and requires each to reach one of the two
+   enforcers — so a *future* lane inheriting the field by copy-paste fails by name.
+   It also pins that the gate call precedes the first `Order::new(`, since a predicate
+   evaluated after the order is built is an observation, not a gate.
+
+#### Three corrections to my own prior work, all by measurement
+
+- **The census said three lanes. It was four.** `threshold_sweep` declares
+  `Some(dec!(0.50))`, emits its own Buy orders, and reached neither enforcer. It was
+  missed because I grouped it with the θ-*surface* anchors, which are
+  `montecarlo`'s. Wired as the fourth.
+- **`would_breach_gross_cap`'s `equity > Decimal::ZERO` conjunct was pinned by
+  nothing.** Delete it and all four inherited tests still pass: with `equity <= 0`
+  the helper already returns zero, and `0 > cap` is false for every non-negative cap.
+  The only input that separates guarded from unguarded is a NEGATIVE cap, and nothing
+  validates `portfolio_exposure_cap > 0`. Added
+  `the_zero_equity_conjunct_is_what_a_negative_cap_separates`, then PROBED it:
+  deleting the conjunct fails exactly 1 of 6 and leaves the other 5 green, which *is*
+  the measurement that the four did not pin it. This is `#173`'s shape.
+- **I called a sentence in six files false, and it is not.** I read
+  "`size_portfolio_target`, whose sole production caller is the theta-sweep lane" as
+  naming `threshold_sweep.rs`, which never calls it. `pairs.rs:157` spells the
+  parenthetical out — "the theta-sweep lane (`scenarios/montecarlo.rs`)" — and
+  `montecarlo.rs:534` does call it. The sentence is accurate; two files with
+  near-identical names made it *read* false. My own comment asserting otherwise was
+  corrected before commit, and an attempted "fix" to two of the six was reversed to
+  byte-identical with HEAD. Same failure as `#147`: a verdict before reading the file.
+
+#### The measurement I first read as forcing a re-emission — SUPERSEDED, see below
+
+Taken from the **committed** anchored bodies, not from a re-run — the garch lane has
+been shipping enforced since 2026-10-12, so its body already carries a real count:
+
+| lane | anchored body | Buys | Gross-cap refusals |
+|------|---------------|------|--------------------|
+| `garch_vol_target_overlay` (enforced) | `top10-2023-fy-vol-target-overlay-realdata` | 1634 | **1469** |
+| `tcn_overlay_weights` (unenforced) | `top10-2023-fy-tcn-overlay-weights-realdata` | 3103 | 0 |
+
+`1634 + 1469 = 3103`, exactly the unenforced sibling's Buy count. The two lanes
+attempt the same Buy sequence and the gate refused **47%** of it. So wiring the other
+four does not change a counter in one row — it roughly halves their trade counts and
+moves final equity, Sharpe and drawdown with them.
+
+**Why the cap binds that hard.** The universe is `top10_symbols_with_prices()` — ten
+symbols. Every lane sizes each Buy at a flat `fraction = dec!(0.10)` of equity. A
+fully-invested book is therefore `10 × 0.10 = 1.00` gross, against a declared cap of
+`0.50`: the declaration permits at most five of the ten legs. The strategy's own
+sizing does not agree with the lane's — `cross_sectional::selector::top_k_long`
+assigns each leg `exposure_cap / k`, which for a 0.50 cap over 10 symbols is 0.05, half
+the lane's 0.10. The reason the two were never reconciled is structural:
+`trading_core::Signal` has **no weight field**, so the strategy's computed weight
+cannot cross the signal boundary, and each lane picks a size itself.
+
+#### CORRECTION 1 — running ONE lane: no refusals, body byte-identical (and this correction over-generalises; see CORRECTION 2)
+
+Everything above about *magnitude* was inference from the committed table, and the
+inference was wrong. Measured by running `top10-2023-fy-tcn-overlay-weights` through the
+binary with `--reports-dir` pointed outside `evidence/` (the `#113` isolation flag):
+
+| measured | value |
+|----------|-------|
+| peak gross exposure reached | **0.368** |
+| declared cap | 0.50 |
+| gross-cap refusals | **0** |
+| body SHA-256 | `a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf` |
+| the pin in `determinism.rs` | `a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf` |
+
+**Byte-identical. The gate refused nothing and the body did not move.**
+
+What I got wrong: `10 × 0.10 = 1.00` is what a *fully invested* book would reach, and
+these lanes never hold ten legs at once — a position opens only on a signal with
+`current_qty <= 0`, and the measured peak of 0.368 is about 3.7 concurrent legs. So the
+declared 0.50 sits ABOVE this lane's live range, not inside it.
+
+The committed table was right; its reading was not. `1634 + 1469 = 3103` does mean both
+lanes attempt the same 3103 Buys — but garch breaches the cap because it is the one lane
+that SCALES its notional (`scale_clamp_max = 2.0`), so its 0.368 becomes ~0.74. The four
+lanes wired here apply a flat `fraction` with no scaler and stay at 0.368. The cap binds
+on the scaling lane and only on it, which is exactly what garch's own comment said before
+I overrode it with arithmetic: "a 3-leg basket at `fraction` 0.10 scaled to 2.0 reaches
+0.60 gross".
+
+So **there is no calibration question and nothing to re-emit** on the evidence of this
+run: the declared limit is now genuinely enforced on all six lanes, and on the four just
+wired it is inert on the recorded data. Confirmation across the `-realdata` variants
+(5× the Buy count) and the regime lane is the System-2 determinism gate,
+`cargo test -p backtest --test determinism --features candle,realdata`, whose six
+anchor-reproduction pins re-run these lanes; its result is recorded below.
+
+**An inert gate is the shape this bug-log distrusts most**, so the non-vacuity does not
+rest on the production run at all. It rests on the two-sided unit tests in
+`risk::portfolio::gross_cap_tests` (five, one of which exists solely to separate the
+`equity > 0` conjunct from its absence, all probed by deletion) and on the class-level
+scan test (both assertions probed with throwaway fixtures that fail by name). That was
+built before this measurement, which is the only reason the measurement can be reported
+as "refused nothing" rather than "we think it works".
+
+**The third correction in this entry is therefore mine, again, and the same one:** I
+reasoned from a table to a magnitude instead of running the thing. `#147` and the
+"six false sentences" item above are the same mistake inside one day.
+
+#### CORRECTION 2 — running the OTHER lanes: the cap does bind, and Correction 1 generalised from a single scenario
+
+Correction 1 measured `top10-2023-fy-tcn-overlay-weights` — the **synthetic** window — and
+concluded "inert on these lanes' recorded data" for all four. Wrong, and wrong the same way
+as the inference it was correcting: one measurement, four lanes.
+
+Running the `-realdata` windows:
+
+| scenario | Buys before | Buys now | refusals | effect |
+|----------|-------------|----------|----------|--------|
+| `top10-2023-fy-tcn-overlay-weights` (synthetic) | 625 | 625 | **0** | body **byte-identical** (`a25a3693…`) |
+| `top10-2023-fy-tcn-overlay-weights-realdata` | 3103 | 3094 | **9** | body **moves** |
+| `top10-2023-fy-patchtst-overlay-realdata` | 1392+294 | 1392 | **294** | body **moves**; total return **+41.81 % → +33.31 %** |
+
+`3103 − 9 = 3094` and `1392 + 294 = 1686` are both exact: every refusal is one Buy that no
+longer happens.
+
+So the cap's live range is per-scenario, not per-lane. The synthetic window peaks at 0.363
+gross; the realdata windows reach **0.598** — the refusal warnings name the symbol and the
+resulting fraction, e.g. `XRPUSDT resulting_gross=0.5976 cap=0.50`. The difference is leg
+COUNT, not leg size: at a flat `fraction` of 0.10 a book of five legs sits at ~0.498 and the
+sixth breaches. patchtst's forecaster dampens fewer signals than TCN's, so it carries more
+concurrent legs and crosses where TCN does not.
+
+Which also means Correction 1's mechanism was only half right. garch breaches because it
+SCALES (0.363 × 2.0); patchtst breaches without any scaler at all, purely by holding a sixth
+leg. Both are real; the scaling one is not the only one.
+
+**The 0.50 cap therefore IS inside the live operating range of at least one unscaled lane**,
+which is what the 2026-10-12 trace could not establish and the MEASURE-FIRST instrumentation
+was added to settle. Settled: it binds.
+
+**So there is a re-emission after all**, and the calibration question is live again rather
+than dissolved — with one fact it did not have before: enforcing the declared cap moves
+patchtst's published total return by **8.5 percentage points**, on the very body `#151`
+cites as the number nobody could judge.
+
+**The lesson is the repetition, not the arithmetic.** Three times in one entry I stated a
+magnitude from less evidence than the claim needed: from a committed table, then from one
+synthetic scenario, then — in Correction 1 — while explicitly writing up the first instance
+of exactly that mistake. The fix was never more reasoning; each time it was running the
+thing.
+
+#### State of the gates
+
+- `bash scripts/verify_anchors.sh` → **ANCHORS PASS (119 / 119)**, before and after. No
+  file under `evidence/` was touched by this pass.
+- `cargo clippy -p risk -p backtest --tests` → clean (forced re-lint; the cache lies both
+  ways).
+- `cargo test -p risk` → 22 lib tests green, including the five gross-cap tests.
+- `crates/backtest/tests/gross_cap_declared_is_gross_cap_enforced.rs` → 2/2, reporting
+  `6 cap-declaring lane(s) [floor 6] · 1 via the batch enforcer · 5 via the per-order
+  entry gate` and `entry-gate-before-order verified on 5 lane(s)`.
+- `scripts/spec_lint.py` → PASS (0 violations).
+- The `top10-2023-fy-tcn-overlay-weights` body reproduces its System-2 pin
+  **byte-identically** with the gate wired.
+
+#### Status
+
+**Nothing is held.** The ruling was "wire the lanes, then re-emit"; the lanes are wired
+and, measured, there is nothing to re-emit — the gate is inert on these lanes' recorded
+data because the declared 0.50 sits above their 0.368 live range. The calibration
+question raised above answered itself by measurement and needs no operator decision.
+
+The remaining confirmation is breadth, not principle: the `-realdata` variants carry 5×
+the Buy count of the scenario measured here, and `regime_dispatcher` was not exercised at
+all. The System-2 determinism gate
+(`cargo test -p backtest --test determinism --features candle,realdata`) re-runs exactly
+those and is the gate that would catch it; its result is appended here.
+
+### `#177` — ten anchor-reproduction gates have been red for three weeks, and the gate that was supposed to notice says PASS
+
+**Found** 2026-11-08, running the System-2 half of the dual-anchor system to check whether
+`#176`'s gate wiring moved any body. It had not. Something else had.
+
+```
+cargo test -p backtest --test determinism --features candle,realdata
+test result: FAILED. 29 passed; 10 failed; finished in 406.67s
+```
+
+#### The ten
+
+Nine are `R-REPRO` gates asserting *the default real-data invocation reproduces the
+scenario's `noop-baseline` row* (the zero-sim-slippage generation). One is the canonical
+`m3` pin for the 2024 TCN-weights window.
+
+| gate | lane file | in my diff? |
+|------|-----------|-------------|
+| `realdata_2023_fy_momentum_reproduces_anchor` | `momentum.rs` | **no** |
+| `realdata_2023_fy_tcn_overlay_reproduces_anchor` | `tcn_overlay.rs` | **no** |
+| `realdata_2024_fy_tcn_overlay_reproduces_anchor` | `tcn_overlay.rs` | **no** |
+| `realdata_2023_fy_vol_target_overlay_reproduces_anchor` | `garch_vol_target_overlay.rs` | helpers lifted only |
+| `realdata_{2023,2024}_fy_tcn_overlay_weights_reproduces_anchor` | `tcn_overlay_weights.rs` | yes |
+| `realdata_2023_fy_patchtst_overlay_reproduces_anchor` | `patchtst_overlay_weights.rs` | yes |
+| `realdata_{2023,2024}_fy_regime_dispatcher_reproduces_anchor` | `regime_dispatcher.rs` | yes |
+| `m3_top10_2024_fy_tcn_overlay_weights_anchor_hash_unchanged` | `tcn_overlay_weights.rs` | yes |
+
+**Three are on lanes this diff does not touch at all** — `momentum.rs` and `tcn_overlay.rs`
+declare `portfolio_exposure_cap: None`, contain no gate call, and are byte-identical to
+HEAD. Whatever moved them is not `#176`.
+
+#### It is not mine, and that is measured rather than argued
+
+`top10-2023-fy-tcn-overlay-weights` was run through the binary with the gate wired and its
+body hashes `a25a3693…` — **byte-identical to the committed body** at
+`evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/backtest-20261029-210142-…`,
+and `diff` over the two bodies is empty. Its `m3` gate passes in the same run that fails
+the 2024 one. The gate's only effect is a `continue` on breach; at zero breaches the code
+path is identical, and the helper lift is a pure-function move proven by its four tests
+passing unchanged through `risk::`.
+
+#### What actually moved the bodies
+
+Three commits changed report **body text**, and the `noop-baseline` pins were never
+re-locked for them:
+
+| commit | date | what it changed in the body |
+|--------|------|------------------------------|
+| `20961036` fix(#95) | 2026-10-14 | struck the printed `exposure_cap=` / `portfolio cap=` claim from the lane bodies |
+| `8115386f` fix(#146) | 2026-10-17 | relabelled "Dampened to Hold" / "Dampen rate" → "Modified by overlay" / "Modification rate" |
+| `b8685821` feat(#95) | 2026-10-17 | added the `Gross-cap refusals` row to `report/tcn_overlay.rs` |
+
+The re-lock that followed — `952274b2 relock(#111,#95,#146)` on 2026-10-29 — re-emitted
+**14 canonical bodies**. The nine R-REPRO gates target the *other* namespace. They were
+left pinned to bodies that the renderer can no longer produce, and have been failing since
+2026-10-17.
+
+#### Why nothing caught it, which is the part that matters
+
+- **`verify_anchors.sh` says PASS (119 / 119), and it is not wrong.** It hashes *committed*
+  report files. The `noop-baseline` bodies are frozen October artifacts that still hash to
+  their own rows. The gate answers "is the corpus internally consistent?", not "can this
+  code still produce the corpus?" Those came apart on 2026-10-17 and only System 2 can see
+  the difference. This is precisely why ADR-0045 § D6/§ D7 specifies **two** systems — and
+  System 2 was not run.
+- **CI cannot see nine of the ten.** They need `--features candle,realdata`; CI passes
+  candle (since earlier today) but not realdata, whose cost was measured at **162 s** for
+  the compile-plus-test leg.
+- **The tenth, `m3_top10_2024_…`, is candle-only — so it is in CI's reach as of today.**
+  That makes it the one item here with an immediate consequence rather than a latent one.
+- The 2026-10-29 re-lock ran while `#150`'s bug was live — "the report stamp's date was
+  three literals, so every run overwrote the same anchored body", fixed only on 2026-11-07
+  in `393927ec`. Any pin that pass set by reading a written file could have read a file
+  another run had overwritten. That is a candidate explanation for why the 2023 `m3` pin is
+  correct and the 2024 one, re-locked in the same pass, is not. **Candidate, not
+  conclusion** — it is not yet measured.
+
+#### Not re-locked here, deliberately
+
+Re-pinning ten gates to whatever the code emits today would clear the red and prove
+nothing — it is the failure mode this log exists to catch. A re-lock is only honest once
+each body's delta is confirmed to be *exactly* the three intended text changes above and
+nothing numeric.
+
+That confirmation needs the nine bodies re-emitted under ADR-0038 § D6.b, which is a pass
+of its own. It should be **the same pass as `#151`** — that one adds a buy-and-hold row to
+these very writers, so re-emitting now and again in a week would be two passes over one
+corpus. `#151`'s own blocker is gone: it was parked on "a BH run per anchored window", and
+the run results already carry `bars: Arc<Vec<Bar>>`, so the control is a pure function of
+each symbol's first and last close — no second backtest at all.
+
+#### Moral
+
+Two gates, one question, and only one of them was being asked. "The corpus hashes
+correctly" and "the code can still produce the corpus" are different claims; a project
+that re-emits bodies routinely will separate them the first time it changes a renderer
+without re-running System 2. The dual-anchor design anticipated this exactly, which means
+the failure was not in the design but in which half got run.

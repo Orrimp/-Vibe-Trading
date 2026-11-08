@@ -256,6 +256,64 @@ pub fn size_portfolio_target(
     Ok(orders)
 }
 
+// ── Per-order gross-exposure entry gate (bug-log `#95` / `#71`) ──────────────
+//
+// `size_portfolio_target` above enforces the gross cap the OTHER way: over a whole
+// target vector, all-or-nothing (R5.2). A scenario lane that emits one order at a
+// time cannot use it — it has no vector — so it needs a predicate it can ask before
+// each order. These two are that predicate.
+//
+// They were private to `backtest::scenarios::garch_vol_target_overlay` until
+// 2026-11-08 (bug-log `#95`), where exactly one of the four overlay lanes could
+// reach them. Lifted here so the other three share ONE implementation rather than
+// three copies (`#167`'s lesson), and so their tests live in a crate CI compiles
+// without an opt-in feature (`#170`'s lesson).
+
+/// Gross exposure as a fraction of equity AFTER a proposed order fills.
+///
+/// # Precondition — long-only books
+///
+/// `position_value` is taken to BE the book's gross notional, so the resulting gross
+/// is simply book + order. That identity holds for a long-only book
+/// (`k_short == 0`), which is what every overlay lane runs. On a book carrying
+/// shorts, mark-to-market value is a NET figure and this would understate gross;
+/// such a caller must compute gross itself and pass it in.
+///
+/// Returns zero on non-positive equity — a wiped-out book has no meaningful exposure
+/// fraction, and [`would_breach_gross_cap`] is the place that decides what to do
+/// about that.
+#[must_use]
+pub fn resulting_gross_fraction(
+    position_value: Decimal,
+    notional: Decimal,
+    equity: Decimal,
+) -> Decimal {
+    if equity <= Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+    (position_value + notional) / equity
+}
+
+/// Would the proposed order push RESULTING gross exposure past `cap`?
+///
+/// **Resulting, not incremental — this is bug-log `#71`'s lesson.** That cap tested
+/// the order's own notional against the limit, so it was *evadable by splitting*: at
+/// 0.39 of equity a top-up ending at 0.44 passed on its own 0.05. A predicate on the
+/// resulting total cannot be split past.
+///
+/// Non-positive equity returns `false`: there is nothing left to over-expose, and
+/// refusing orders on a zeroed book would change a lane's fill history rather than
+/// cap it.
+#[must_use]
+pub fn would_breach_gross_cap(
+    position_value: Decimal,
+    notional: Decimal,
+    equity: Decimal,
+    cap: Decimal,
+) -> bool {
+    equity > Decimal::ZERO && resulting_gross_fraction(position_value, notional, equity) > cap
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -559,6 +617,117 @@ mod tests {
         assert!(
             orders.iter().all(|o| o.side() == Side::Buy),
             "an all-positive target vector must still emit only Buys"
+        );
+    }
+}
+
+// ── Gross-cap entry-gate tests (bug-log `#95`, moved here 2026-11-08) ─────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod gross_cap_tests {
+    use super::{resulting_gross_fraction, would_breach_gross_cap};
+    use rust_decimal_macros::dec;
+
+    #[test]
+    fn a_fitting_order_passes_and_an_overshooting_one_is_refused() {
+        let equity = dec!(100_000);
+        // book at 0.30 gross, order adds 0.10 -> 0.40 resulting: under a 0.50 cap.
+        assert!(!would_breach_gross_cap(
+            dec!(30_000),
+            dec!(10_000),
+            equity,
+            dec!(0.50)
+        ));
+        // book at 0.30, order adds 0.25 -> 0.55 resulting: over.
+        assert!(would_breach_gross_cap(
+            dec!(30_000),
+            dec!(25_000),
+            equity,
+            dec!(0.50)
+        ));
+    }
+
+    #[test]
+    fn the_cap_is_not_evadable_by_splitting_the_order() {
+        // bug-log #71 found the previous cap was evadable exactly this way: a small
+        // INCREMENT passes on its own notional while the RESULTING total breaches. At 0.49
+        // of equity a 0.05 top-up is tiny, and it still must be refused because it lands at
+        // 0.54.
+        let equity = dec!(100_000);
+        let cap = dec!(0.50);
+        assert!(
+            would_breach_gross_cap(dec!(49_000), dec!(5_000), equity, cap),
+            "a 0.05-of-equity order on a 0.49 book resolves to 0.54 gross and MUST be \
+             refused; passing it is #71's split-evasion restored"
+        );
+        // And the increment alone is nowhere near the cap, which is why an incremental
+        // predicate would have let it through.
+        assert!(
+            dec!(5_000) / equity < cap,
+            "fixture sanity: the increment must be small relative to the cap, or this test \
+             does not exercise the evasion it is named for"
+        );
+    }
+
+    #[test]
+    fn exactly_at_the_cap_is_allowed_and_a_hair_over_is_not() {
+        let equity = dec!(100_000);
+        let cap = dec!(0.50);
+        assert!(
+            !would_breach_gross_cap(dec!(40_000), dec!(10_000), equity, cap),
+            "resulting gross of exactly the cap must PASS — the enforcer in \
+             risk::portfolio uses `>` too, and a lane that refused its own declared limit \
+             would be enforcing something it does not print"
+        );
+        assert!(would_breach_gross_cap(
+            dec!(40_000),
+            dec!(10_001),
+            equity,
+            cap
+        ));
+    }
+
+    #[test]
+    fn zero_or_negative_equity_never_breaches_rather_than_dividing_by_it() {
+        // A ruined path must not panic or produce a NaN-ish refusal storm here.
+        assert!(!would_breach_gross_cap(
+            dec!(1),
+            dec!(1),
+            dec!(0),
+            dec!(0.50)
+        ));
+        assert_eq!(resulting_gross_fraction(dec!(1), dec!(1), dec!(0)), dec!(0));
+    }
+
+    /// The `equity > Decimal::ZERO` conjunct in [`would_breach_gross_cap`] is PINNED
+    /// here, and nowhere else.
+    ///
+    /// Written 2026-11-08 because the four tests above do not distinguish it: delete
+    /// the conjunct and every one of them still passes. With `equity <= 0`,
+    /// [`resulting_gross_fraction`] already returns zero, and `0 > cap` is false for
+    /// every non-negative cap — so for all *realistic* inputs the conjunct is
+    /// decoration. That is bug-log `#173`'s exact shape: a term in a formula that no
+    /// fixture tells apart from its absence.
+    ///
+    /// The one input that separates them is a NEGATIVE cap, where `0 > -0.1` is true
+    /// and only the conjunct prevents a refusal on a ruined book. Nothing validates
+    /// `portfolio_exposure_cap > 0`, so that input is constructible. The fixture is
+    /// deliberately a nonsense cap: its job is to make the term checkable, not to
+    /// claim a negative cap is meaningful.
+    #[test]
+    fn the_zero_equity_conjunct_is_what_a_negative_cap_separates() {
+        // WITH the conjunct: a ruined book never breaches, whatever the cap.
+        assert!(
+            !would_breach_gross_cap(dec!(1), dec!(1), dec!(0), dec!(-0.1)),
+            "the `equity > 0` conjunct must short-circuit before the comparison"
+        );
+        // WITHOUT it, this is what the body would compute — the opposite answer.
+        // Asserting the inequality directly is what makes the two sides differ.
+        assert!(
+            resulting_gross_fraction(dec!(1), dec!(1), dec!(0)) > dec!(-0.1),
+            "fixture sanity: the bare comparison must be TRUE here, or this test \
+             does not separate the guarded body from the unguarded one"
         );
     }
 }

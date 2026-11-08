@@ -173,6 +173,7 @@ pub async fn run(
         let mut total_fees = Decimal::ZERO;
         // bug-log #95 MEASURE-FIRST: see the tracking site below.
         let mut peak_gross_observed = Decimal::ZERO;
+        let mut portfolio_gross_refusals: u64 = 0;
         let mut equity_curve: Vec<Decimal> = vec![input.initial_capital];
         let mut peak_equity = input.initial_capital;
         let mut max_drawdown = Decimal::ZERO;
@@ -217,6 +218,37 @@ pub async fn run(
                         let notional = equity * fraction;
                         let qty_raw = notional / mark;
                         if qty_raw <= Decimal::ZERO {
+                            continue;
+                        }
+                        // ── bug-log #95: the portfolio GROSS cap, now actually ENFORCED ──
+                        //
+                        // Operator-ruled 2026-11-08 ("wire the three lanes, then re-emit"). Until this
+                        // line the lane declared `portfolio_exposure_cap: Some(0.50)` and nothing read
+                        // it: the only enforcer in the tree is `risk::size_portfolio_target`, which
+                        // needs a target VECTOR, and this lane emits one order at a time. So the
+                        // declaration was inert — and, per the MEASURE-FIRST instrumentation further
+                        // down, 0.50 sits inside the range this lane can actually reach by
+                        // appreciation (three legs at `fraction` each, cash held flat).
+                        //
+                        // Shape: an ENTRY GATE on RESULTING exposure — bug-log #71's discipline, since
+                        // a cap that tests the INCREMENT is evadable by splitting (at 0.39 of equity a
+                        // top-up ending at 0.44 passes on its own 0.05). Per-order refusal, NOT the
+                        // theta lane's all-or-nothing rebalance skip: there is no batch here to skip.
+                        // The order is refused, counted into the report's `Gross-cap refusals` row and
+                        // logged; the book is left as it was.
+                        if let Some(cap) = risk_limits.portfolio_exposure_cap
+                            && risk::would_breach_gross_cap(position_value, notional, equity, cap)
+                        {
+                            portfolio_gross_refusals += 1;
+                            tracing::warn!(
+                                symbol = %sig.symbol,
+                                resulting_gross =
+                                    %risk::resulting_gross_fraction(position_value, notional, equity),
+                                %cap,
+                                %notional,
+                                "portfolio GROSS cap would be breached — Buy REFUSED and counted \
+                                 (bug-log #95); the book is unchanged"
+                            );
                             continue;
                         }
                         let pos_snap = Position::empty(sig.symbol.clone());
@@ -440,7 +472,7 @@ pub async fn run(
             passed_through_signals: stats.passed_through,
             warmup_signals: stats.window_warming_up,
             // No portfolio gross cap enforced on this lane (bug-log #95).
-            portfolio_gross_refusals: 0,
+            portfolio_gross_refusals,
             forecaster_label,
             equity_curve,
             fills: all_fills,

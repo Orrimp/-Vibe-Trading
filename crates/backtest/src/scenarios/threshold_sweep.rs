@@ -175,6 +175,7 @@ pub async fn run_cell(
         let mut total_fees = Decimal::ZERO;
         // bug-log #95 MEASURE-FIRST: see the tracking site below.
         let mut peak_gross_observed = Decimal::ZERO;
+        let mut portfolio_gross_refusals: u64 = 0;
         let mut equity_curve: Vec<Decimal> = vec![input.initial_capital];
         let mut peak_equity = input.initial_capital;
         let mut max_drawdown = Decimal::ZERO;
@@ -230,6 +231,38 @@ pub async fn run_cell(
                         let notional = equity * fraction;
                         let qty_raw = notional / mark;
                         if qty_raw <= Decimal::ZERO {
+                            continue;
+                        }
+                        // ── bug-log #95: the portfolio GROSS cap, now actually ENFORCED ──
+                        //
+                        // Wired 2026-11-08 under the operator's "wire the lanes, then re-emit" ruling.
+                        // That ruling said THREE lanes, on my own census. The census was wrong: this
+                        // is a FOURTH. It declares `portfolio_exposure_cap: Some(0.50)`, emits its own
+                        // Buy orders below, and reaches NEITHER enforcer — not the per-order gate and
+                        // not `risk::size_portfolio_target`, whose only production caller is
+                        // `scenarios/montecarlo.rs` — the lane the stock comment elsewhere calls
+                        // "the theta-sweep lane", which is NOT this file. Two sweeps with
+                        // near-identical names: montecarlo runs the θ-SURFACE (and is anchored as
+                        // `*-theta-surface-*`), this file runs one θ-THRESHOLD cell. I misread that
+                        // as a false claim before reading `pairs.rs:157`, which spells the
+                        // parenthetical out; it does not.
+                        //
+                        // Shape: an ENTRY GATE on RESULTING exposure — bug-log #71's discipline, since
+                        // a cap that tests the INCREMENT is evadable by splitting. The order is
+                        // refused, counted into the report's `Gross-cap refusals` row and logged.
+                        if let Some(cap) = risk_limits.portfolio_exposure_cap
+                            && risk::would_breach_gross_cap(position_value, notional, equity, cap)
+                        {
+                            portfolio_gross_refusals += 1;
+                            tracing::warn!(
+                                symbol = %sig.symbol,
+                                resulting_gross =
+                                    %risk::resulting_gross_fraction(position_value, notional, equity),
+                                %cap,
+                                %notional,
+                                "portfolio GROSS cap would be breached — Buy REFUSED and counted \
+                                 (bug-log #95); the book is unchanged"
+                            );
                             continue;
                         }
                         let pos_snap = Position::empty(sig.symbol.clone());
@@ -483,7 +516,7 @@ pub async fn run_cell(
             passed_through_signals: stats.passed_through,
             warmup_signals: stats.window_warming_up,
             // No portfolio gross cap enforced on this lane (bug-log #95).
-            portfolio_gross_refusals: 0,
+            portfolio_gross_refusals,
             forecaster_label,
             equity_curve,
             fills: all_fills,

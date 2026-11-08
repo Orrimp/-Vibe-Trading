@@ -28,6 +28,7 @@ use anyhow::Result;
 
 use crate::scenarios::sim::sim_slippage_cost;
 use crate::scenarios::tcn_overlay::TcnOverlayRunResult;
+use risk::{resulting_gross_fraction, would_breach_gross_cap};
 
 // ── GARCH checkpoint loader (inline) ─────────────────────────────────────────
 
@@ -566,114 +567,9 @@ pub async fn run(
 
 // ── bug-log #95: the gross-cap predicate, extracted so the arithmetic is testable ──
 
-/// Gross exposure as a fraction of equity AFTER the proposed order fills.
-///
-/// This lane is long-only (`k_short = 0`), so `position_value` — the mark-to-market value of
-/// the book — IS its gross notional, and the resulting gross is simply the book plus the
-/// order.
-#[must_use]
-fn resulting_gross_fraction(
-    position_value: rust_decimal::Decimal,
-    notional: rust_decimal::Decimal,
-    equity: rust_decimal::Decimal,
-) -> rust_decimal::Decimal {
-    if equity <= rust_decimal::Decimal::ZERO {
-        return rust_decimal::Decimal::ZERO;
-    }
-    (position_value + notional) / equity
-}
-
-/// Would the proposed order push RESULTING gross exposure past `cap`?
-///
-/// **Resulting, not incremental — this is bug-log `#71`'s lesson.** That cap tested the
-/// order's own notional against the limit, so it was *evadable by splitting*: at 0.39 of
-/// equity a top-up ending at 0.44 passed on its own 0.05. A predicate on the resulting total
-/// cannot be split past.
-#[must_use]
-fn would_breach_gross_cap(
-    position_value: rust_decimal::Decimal,
-    notional: rust_decimal::Decimal,
-    equity: rust_decimal::Decimal,
-    cap: rust_decimal::Decimal,
-) -> bool {
-    equity > rust_decimal::Decimal::ZERO
-        && resulting_gross_fraction(position_value, notional, equity) > cap
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod gross_cap_tests {
-    use super::{resulting_gross_fraction, would_breach_gross_cap};
-    use rust_decimal_macros::dec;
-
-    #[test]
-    fn a_fitting_order_passes_and_an_overshooting_one_is_refused() {
-        let equity = dec!(100_000);
-        // book at 0.30 gross, order adds 0.10 -> 0.40 resulting: under a 0.50 cap.
-        assert!(!would_breach_gross_cap(
-            dec!(30_000),
-            dec!(10_000),
-            equity,
-            dec!(0.50)
-        ));
-        // book at 0.30, order adds 0.25 -> 0.55 resulting: over.
-        assert!(would_breach_gross_cap(
-            dec!(30_000),
-            dec!(25_000),
-            equity,
-            dec!(0.50)
-        ));
-    }
-
-    #[test]
-    fn the_cap_is_not_evadable_by_splitting_the_order() {
-        // bug-log #71 found the previous cap was evadable exactly this way: a small
-        // INCREMENT passes on its own notional while the RESULTING total breaches. At 0.49
-        // of equity a 0.05 top-up is tiny, and it still must be refused because it lands at
-        // 0.54.
-        let equity = dec!(100_000);
-        let cap = dec!(0.50);
-        assert!(
-            would_breach_gross_cap(dec!(49_000), dec!(5_000), equity, cap),
-            "a 0.05-of-equity order on a 0.49 book resolves to 0.54 gross and MUST be \
-             refused; passing it is #71's split-evasion restored"
-        );
-        // And the increment alone is nowhere near the cap, which is why an incremental
-        // predicate would have let it through.
-        assert!(
-            dec!(5_000) / equity < cap,
-            "fixture sanity: the increment must be small relative to the cap, or this test \
-             does not exercise the evasion it is named for"
-        );
-    }
-
-    #[test]
-    fn exactly_at_the_cap_is_allowed_and_a_hair_over_is_not() {
-        let equity = dec!(100_000);
-        let cap = dec!(0.50);
-        assert!(
-            !would_breach_gross_cap(dec!(40_000), dec!(10_000), equity, cap),
-            "resulting gross of exactly the cap must PASS — the enforcer in \
-             risk::portfolio uses `>` too, and a lane that refused its own declared limit \
-             would be enforcing something it does not print"
-        );
-        assert!(would_breach_gross_cap(
-            dec!(40_000),
-            dec!(10_001),
-            equity,
-            cap
-        ));
-    }
-
-    #[test]
-    fn zero_or_negative_equity_never_breaches_rather_than_dividing_by_it() {
-        // A ruined path must not panic or produce a NaN-ish refusal storm here.
-        assert!(!would_breach_gross_cap(
-            dec!(1),
-            dec!(1),
-            dec!(0),
-            dec!(0.50)
-        ));
-        assert_eq!(resulting_gross_fraction(dec!(1), dec!(1), dec!(0)), dec!(0));
-    }
-}
+// The gross-cap entry gate's tests MOVED to `crates/risk/src/portfolio.rs`
+// on 2026-11-08 (bug-log `#95`), together with the two helpers themselves.
+//
+// They were here, behind `--features realdata`, which CI does not pass — so the
+// only tests of a cap that four lanes now depend on were invisible to CI
+// (`#170`'s lesson). `risk` is compiled by every CI leg with no feature opt-in.
