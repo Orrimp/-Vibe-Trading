@@ -2,7 +2,7 @@
 slug: operator-side-pending-ledger
 status: living
 owner: orchestrator
-updated: 2026-05-30 (operator-ledger-schema-lint v0.1.0 validation wired)
+updated: 2026-11-08 (2 operator decisions surfaced; bug-log #165 made the row counts visible)
 validated_by: scripts/operator_ledger_check.py  # operator-ledger-schema-lint v0.1.0
 ---
 
@@ -30,6 +30,8 @@ to avoid re-surfacing stale items.
 
 | Date surfaced | Recipe | Cost | Unblocks | Status | Notes |
 |---|---|---|---|---|---|
+| 2026-11-08 | **Enable `candle` in CI?** — decide whether `.github/workflows/ci.yml:202` should run with `--features candle`. The compile cost is ALREADY PAID (`crates/backtest/Cargo.toml:63` pulls `forecast/candle` unconditionally; 17 `libcandle_core*` rlibs in a default build), so the usual reason to keep it off no longer holds. Turning it on starts building 9 candle-gated `forecast` test targets. Does NOT cover `realdata`, which additionally needs `data/binance/REVISION.toml` provisioned in CI. | ~1 decision + one CI run to measure the added wall-clock | 24 of the 46 CI-invisible test fns start running; closes the live half of bug-log #163 | pending | bug-log #163. Inventory + per-target cost declared in `scripts/feature_gated_targets_check.py`. The gate already makes the exclusion visible, so this is an upgrade, not a leak. |
+| 2026-11-08 | **Re-emit the two `recalibrate-sigma-train-bs{1,2}` bodies under ADR-0038 § D6.b?** — their `## Field invariance` table's Match column is the literal string `✓` and the "Recalibrated" cells print the same `original_metadata`-derived variables as the "Original" cells, so the table asserts a comparison the code never performs. Making either real moves the body-SHAs at `evidence/anchors.toml:326-327`. | ~487 s + ~620 s of measured compute, behind `#[ignore]`, plus the D6.b protocol | sweep finding F4 Part C; Parts A and B ship without this | pending | The BS-2 body prints `\| final_val_loss \| 1.05101e-5 \| 1.05101e-5 \| ✓ \|` and `final_val_loss` is the ONE field whose on-disk text differs between original and overlay (…069431 → …069433, 1 ULP, serde_json parse rounding) — the `.5e` format hides it. No published number moves (a training diagnostic, not a verdict) but an anchored body states something false. Alternative: leave it and record the deviation in a dev-note. |
 ## Done recipes (audit trail)
 
 | Date surfaced | Recipe | Cost | Completed | Outcome |
@@ -48,6 +50,8 @@ to avoid re-surfacing stale items.
 |---|---|---|---|---|
 
 ## Changelog
+
+- 2026-11-08 (orchestrator): **first two Pending rows since the table was created.** bug-log #165 made this file's emptiness visible — the lint reported clean in total silence over a Pending table that had held zero rows for months, so nobody could tell "no pending work" from "the parser stopped matching". The lint now prints `pending=N done=N cancelled=N` on every clean run, and refuses to parse a ledger whose canonical headings do not all resolve. Surfaced: (1) enable `candle` in CI? — its compile cost is already paid unconditionally, so the usual reason to keep it off is gone (bug-log #163); (2) re-emit the two `recalibrate-sigma-train-bs{1,2}` bodies under ADR-0038 § D6.b? — their field-invariance table carries a literal `✓` on the one row whose on-disk values differ (sweep finding F4 Part C).
 
 - 2026-05-29 (orchestrator): file created per weekly-retro-2026-05-27-to-2026-05-29 fix-improve (c). Backfilled 2 pending + 2 done rows from session history. Going forward: every new operator-run recipe appends a row here at surface time.
 - 2026-05-29 (orchestrator): Yahoo bulk fetch v0.1.4 → done. 9 mid-cap tickers cached; REVISION.toml hash-locked. Bug #64 D.1.1 visual-verify remains pending.
