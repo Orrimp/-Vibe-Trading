@@ -132,6 +132,13 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F11 — CLOSED 2026-11-08 as `#162`.** The field is deleted. **Two of this finding's own
+  supporting claims were false** and are corrected in `#162`: `crates/backtest` *does* have a
+  `reports` dependency (a documented acyclic dev edge), and `reports::generate` *does* render
+  anchored files — 4 anchor rows resolve to its output. AD-2 held anyway, because the wrong
+  digest had no reader. The finding's real yield was elsewhere: the Rust/python convention
+  agreement was gated by a doc comment, in the one crate that renders anchored bodies, and is
+  now a test that execs the canonical hasher.
 - **F2 — CLOSED 2026-11-08 as `#161`** (ranked action 2). Every ROBUST edge now pinned from
   both sides: exactly-at the band → ROBUST (catches narrowing, pins the inclusive comparison),
   just-outside with the other four held inside → MARGINAL (catches widening), plus

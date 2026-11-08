@@ -5920,3 +5920,64 @@ The count of tests says nothing; what matters is whether any expected outcome wo
 given term were removed. Four of five terms here could be deleted in effect, and the suite's
 368 green tests were all still telling the truth about `A`.
 
+### `#162` — `ReportArtifacts.body_sha256` was computed on the wrong side of a one-byte boundary and read by nothing, and the convention it got wrong was gated only by a comment
+
+Found 2026-11-07 by the cannot-fail-gate sweep (finding F11); fixed 2026-11-08.
+`crates/reports/src/render/mod.rs:39` (doc at `:29-30`), assigned `crates/reports/src/lib.rs`.
+Shape: **computed, returned, never consumed** — plus a third definition of a convention that
+already had two agreeing ones.
+
+`grep -rn '\.body_sha256' --include='*.rs' crates/` returns **zero** readers. Both production
+callers print `run_id` and `markdown_path` only (`bin/report.rs`, `agent/src/cron.rs`), and the
+struct's doc sentence — "Used by tests and the bin to surface the run-id and the body SHA" — was
+half false.
+
+The sharper half: the field hashed the **in-memory** body, while `scripts/hash_report.py` — the
+canonical body-hash function `verify_anchors.sh` execs for all 119 anchors — strips
+`^---\n.*?\n---\n` and therefore keeps the blank line that follows the closing fence.
+**Measured on a real anchored body:** canonical `e1b286d5539279…` vs the field's
+`532b09de77fe73…`, exactly one leading newline apart, since v1, with 119/119 green throughout.
+
+**Three of F11's supporting claims were wrong, and I corrected them before fixing.** The
+conclusion ("AD-2 is not weakened") holds, but not for the stated reasons:
+
+| F11 said | measured |
+|---|---|
+| "`crates/backtest` has no `reports` dependency" | **false** — `crates/backtest/Cargo.toml:140` has `reports = { path = "../reports" }` (a dev edge, documented as acyclic) |
+| "`reports::generate` writes none of the 119 anchored files" | **false** — **4** anchor rows (`report-sample-7d` / `-90d` × two namespaces) resolve to bodies rendered by exactly that function |
+
+The real reason AD-2 held is simply that the wrong digest **had no reader**, so it never
+participated in any gate. Same verdict, different premise — the `#154` pattern again.
+
+**Fix: deleted rather than corrected.** The repo already has two definitions of this convention
+that agree — `hash_report.py` and `report_scenarios.rs::body_after_fence` — and the house rule
+is to extend the apparatus that is already right instead of building a second one. A third with
+no reader is a trap, not a cross-check. The field, its computation and the now-unused `sha2`
+import are gone, and the struct's doc records what it got wrong and why.
+
+**And the real gap it exposed.** `body_after_fence`'s own doc comment says why the convention
+matters — *"diverging would silently miss real anchor drift"* — and **that sentence was the
+entire gate.** Six tests elsewhere exec the python hasher
+(`forecast/tests/{patchtst_overlay_neutrality,anchored_report_reproduction,recalibrate_sigma_train_readonly}.rs`,
+`trader/tests/llm_forecaster_neutrality.rs`, `backtest/tests/theta_surface_reproduction.rs` ×2)
+— but **none in `crates/reports`**, the crate that renders two of the anchored bodies. So the
+agreement the anchors rest on was asserted in prose, with no fixture that would vary if it
+broke. `crates/reports/tests/body_hash_convention.rs` now renders a body, hashes it with the
+Rust slice, execs `scripts/hash_report.py` on the same file, and asserts the two agree — with a
+non-vacuity floor (body > 200 bytes) and a shape assertion (the slice must START with the blank
+line after the fence), so it cannot pass on an empty slice.
+
+**Probed, both assertions independently:**
+
+| perturbation | result |
+|---|---|
+| trim one more byte at the fence (the deleted field's wrong convention) | FAIL — and the **shape** assertion fires first, naming the cause |
+| corrupt only the digest, leaving the slice correct | FAIL — `ee392bf5…` vs canonical `e1b286d5…` |
+| control | 1 passed |
+
+**Moral.** The field is the mild half. The instructive half is that a doc comment saying "this
+must match X or we silently miss drift" is **a statement of a requirement, not a test of it** —
+and it had been doing duty as one for the single crate that renders anchored bodies. When a
+comment names the consequence of divergence that precisely, that is the specification for a
+gate, and its absence is the finding.
+

@@ -34,7 +34,6 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use rust_decimal::Decimal;
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::OffsetDateTime;
 use trading_core::{LedgerError, Money, StrategyEventKind, Symbol, Timestamp, Usdt};
@@ -533,9 +532,6 @@ pub async fn generate_at(
     // ── 7. Front-matter ─────────────────────────────────────────────────────
     let ledger_sha = audit::query::ledger_snapshot_sha(audit_db_path)?;
     let run_id_hex = run_id::compute(&window, &ledger_sha, seed);
-    let mut h = Sha256::new();
-    h.update(body.as_bytes());
-    let body_sha: [u8; 32] = h.finalize().into();
     let elapsed = started.elapsed().as_secs_f64();
 
     let fm = render::front_matter::FrontMatter {
@@ -649,7 +645,6 @@ pub async fn generate_at(
         markdown_path: out.to_path_buf(),
         run_id: run_id_hex,
         csv_paths,
-        body_sha256: body_sha,
     })
 }
 
