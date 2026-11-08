@@ -6623,3 +6623,61 @@ policy value is 2.0. The pair that existed is what made the gap visible — it i
 other three now follow. A verdict tree with one two-sided band and three one-sided ones does not
 degrade gracefully: it reports confidently on all four.
 
+### `#172` — one ui-linux CI failure that cannot be diagnosed from here, recorded rather than called a flake
+
+Observed 2026-11-08. **OPEN as an observation, not a diagnosis.** No test was weakened and no
+code changed; this entry exists so a second instance is a pattern instead of a surprise.
+
+Run `42463577247` on commit `637c6998` (`#161`, the AD-1 ROBUST bands): `ubuntu-latest`
+**failure**, `macos-latest` success, `windows-latest` success. The failing step is **11, "Test ui
+(headless, Linux)"** — `xvfb-run -a … cargo test -p ui --features fixtures --no-fail-fast`.
+
+**What argues for a one-off**, stated so it can be weighed rather than asserted:
+
+- `637c6998`'s diff touches **only** `crates/backtest/src/bakeoff/robustness.rs`'s `#[cfg(test)]`
+  module, `CHANGELOG.md` and two dev-notes. It cannot reach `crates/ui`.
+- The same step passed on the run immediately **before** (`23374613`, all three legs green) and
+  immediately **after** (`f05409ef`, all three legs green) — and `f05409ef` **contains** `#161`.
+- No prior bug-log entry mentions this step, `xvfb` or the Linux leg, so there is no known
+  history to attach it to.
+- GitHub's own API returned **HTTP 504 Gateway Timeout** twice during this investigation, which
+  is at least consistent with a rough patch on their side.
+
+**What I could NOT establish, and why that is the real finding.** The step's actual assertion
+failure is unreadable from this machine. `gh` has no github.com credential, so
+`gh run view --log-failed` is 403, and — contrary to what
+[`reference_ci_logs_403_use_annotations`](bug-log.md) recorded as the workaround — the
+**annotations endpoint also returned HTML, not JSON**, on both attempts. So the documented
+fallback did not work either.
+
+**What DID work, and is now the recipe:**
+
+```bash
+# 1. run id for a sha, 1 request
+gh run list --limit 10 --json databaseId,headSha \
+  --jq '.[] | select(.headSha | startswith("637c6998")) | .databaseId'
+# 2. which LEG failed, 1 request
+gh run view 42463577247 --json jobs --jq '.jobs[] | "\(.conclusion)  \(.name)"'
+# 3. which STEP failed — no logs, no annotations, 1 request
+gh run view 42463577247 --json jobs \
+  --jq '.jobs[] | select(.conclusion=="failure") | .steps[]
+        | select(.conclusion!="success") | "\(.conclusion)  step \(.number): \(.name)"'
+```
+
+Step 3 is the part that was missing: **per-step conclusions come back inside `--json jobs`**, so
+the failing step can be named without a credential. That narrows an opaque red to one command's
+worth of surface, which is the difference between "CI is red" and "the Linux headless UI leg is
+red".
+
+**Deliberately not done.** No test marked `#[ignore]`, no timeout widened, no assertion
+loosened. `#155` is the precedent that matters here in the opposite direction: a CI red that
+"looked like a flake" turned out to be a real throttling defect, and the cost of assuming
+otherwise was three weeks. The honest state is *one unexplained failure on a leg the commit
+cannot reach, bracketed by two green runs of the same step, with the message unreadable from
+this machine* — and the correct response to that is to write it down, not to make it quieter.
+
+**What would close it.** Either a second instance (then it is a real flake and the step needs a
+non-vacuity probe of its own, since a UI render test that fails intermittently under xvfb is
+exactly the shape this log's other 100-odd entries are about), or a github.com credential so the
+failing assertion can be read. The latter is an operator action: `gh auth login -h github.com`.
+
