@@ -132,6 +132,11 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F9 — CLOSED 2026-11-08 as `#171`** (ranked action 5, last third). Seven two-sided tests,
+  each asserting its driving metric's exact value first. **This note's L1 numbers were wrong:**
+  0.97 is green and 0.9701 reddens, so the interval is (0.95, 0.97] not (0.95, 0.98) — it tested
+  {0.96, 0.98} and interpolated. Probed nine ways including all three values it called green.
+  Its bonus observation became `#168`.
 - **F6 — CLOSED 2026-11-08 as `#170`.** `t_classifier` lifted into `backtest::stats` (anchors
   119/119 unmoved — pure fn, no state), both bands pinned two-sided in the lib, the IEEE `-0.0`
   trap stated, a three-distinct-labels floor, and a band-prose gate reading the bin via

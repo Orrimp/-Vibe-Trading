@@ -652,3 +652,193 @@ fn routes_to_correct_for_all_verdicts() {
     ));
     assert_eq!(v_l3.routes_to(), "v3-llm-forecaster-cost-tune");
 }
+
+// ── Boundary pairs for L1 / L3 / L4 (bug-log #171, sweep finding F9) ─────────
+//
+// Mirrors the already-ratified `l2_positive_near_threshold` /
+// `l2_negative_at_threshold` pair, which was the ONLY two-sided one in the file.
+//
+// MEASURED before these existed — and the sweep note's own numbers for L1 were
+// wrong, so these are the re-measured ones:
+//
+//   L1  `hold_frac >= 0.95`       green over [0.941, 0.97]   (the note said
+//                                 0.96 green and only 0.98 red, interpolating
+//                                 from {0.96, 0.98}; 0.9701 already reddens)
+//   L3  `overrun_ratio > 2.0`     green over (1.0, 2.5]
+//   L4  `short_frac > 0.50` and
+//       `duplicate_frac > 0.50`   green over [0.0, 0.59]
+//
+// Each test asserts the DRIVING METRIC's exact value FIRST. That is the
+// non-vacuity floor: a fixture that drifts off the boundary then fails loudly
+// instead of silently re-widening the interval it was added to close.
+//
+// Every fixture passes `confidence_outcome_corr = 0.15` so the L2 arm stays
+// quiet and the priority tree reaches the band under test.
+//
+// Three float facts the fixtures are built around, verified in python3 and
+// asserted here rather than assumed:
+//   duplicate_frac  1.0 - 41.0/100.0  == 0.5900000000000001
+//   100 x 0.001 sums to 0.10000000000000007, so a "healthy" overrun_ratio is
+//     1.0000000000000007 and the l3 fixture's is 2.5000000000000018
+// — which is why the cost fixtures use 4 rows at $0.25 (f64-exact $1.00)
+// instead of 100 rows at $0.001.
+
+const LONG: &str =
+    "A sufficiently long reasoning trace of well over fifty characters for the gate.";
+
+/// L1 fires at hold_frac == 0.95 exactly (`>=` is inclusive).
+#[test]
+fn l1_positive_at_threshold() {
+    let mut rows: Vec<LlmForecastRow> = (0..95)
+        .map(|i| make_row("HOLD", 0.5, LONG, &format!("h_{i}"), 0.001))
+        .collect();
+    for i in 0..5 {
+        rows.push(make_row("BUY", 0.7, LONG, &format!("b_{i}"), 0.001));
+    }
+    let stats = aggregate_rows(&rows, 0.10, 100.0, 0.15, "l1-at".to_string());
+    assert_eq!(stats.hold_frac(), 0.95, "fixture must sit ON the boundary");
+    assert!(
+        matches!(classify_l(&stats), LVerdict::L1 { .. }),
+        "L1 must fire at hold_frac == 0.95"
+    );
+}
+
+/// Four rows at $0.25 → cost_actual is exactly $1.00 in f64 (no accumulation drift).
+fn exact_dollar_fixture() -> Vec<LlmForecastRow> {
+    (0..4)
+        .map(|i| make_row("BUY", 0.7, LONG, &format!("x_{i}"), 0.25))
+        .collect()
+}
+
+/// L3 does NOT fire at overrun_ratio == 2.0 exactly (`>` is strict).
+#[test]
+fn l3_negative_at_threshold() {
+    let rows = exact_dollar_fixture();
+    let stats = aggregate_rows(&rows, 0.50, 100.0, 0.15, "l3-at".to_string());
+    assert_eq!(stats.cost_actual_usd, 1.0, "cost must be f64-exact");
+    assert_eq!(
+        stats.overrun_ratio(),
+        2.0,
+        "fixture must sit ON the boundary"
+    );
+    assert!(
+        !matches!(classify_l(&stats), LVerdict::L3 { .. }),
+        "L3 must NOT fire at overrun_ratio == 2.0"
+    );
+}
+
+/// L3 fires just above the boundary (ratio 2.0004).
+#[test]
+fn l3_positive_near_threshold() {
+    let rows = exact_dollar_fixture();
+    let stats = aggregate_rows(&rows, 0.4999, 100.0, 0.15, "l3-near".to_string());
+    assert!(
+        stats.overrun_ratio() > 2.0 && stats.overrun_ratio() < 2.001,
+        "fixture must sit JUST above the boundary, got {}",
+        stats.overrun_ratio()
+    );
+    assert!(
+        matches!(classify_l(&stats), LVerdict::L3 { .. }),
+        "L3 must fire just above overrun_ratio 2.0"
+    );
+}
+
+fn short_trace_fixture(n_short: usize) -> Vec<LlmForecastRow> {
+    (0..100)
+        .map(|i| {
+            let t = if i < n_short { "short" } else { LONG };
+            make_row("BUY", 0.7, t, &format!("s_{i}"), 0.001)
+        })
+        .collect()
+}
+
+/// L4 does NOT fire at short_frac == 0.50 exactly (`>` is strict).
+#[test]
+fn l4_negative_short_frac_at_threshold() {
+    let stats = aggregate_rows(
+        &short_trace_fixture(50),
+        0.10,
+        100.0,
+        0.15,
+        "l4s-at".to_string(),
+    );
+    assert_eq!(stats.short_frac(), 0.50, "fixture must sit ON the boundary");
+    assert_eq!(stats.duplicate_frac(), 0.0, "other L4 arm must be quiet");
+    assert!(
+        !matches!(classify_l(&stats), LVerdict::L4 { .. }),
+        "L4 must NOT fire at short_frac == 0.50"
+    );
+}
+
+/// L4 fires one call above the boundary (short_frac 0.51).
+#[test]
+fn l4_positive_short_frac_near_threshold() {
+    let stats = aggregate_rows(
+        &short_trace_fixture(51),
+        0.10,
+        100.0,
+        0.15,
+        "l4s-near".to_string(),
+    );
+    assert_eq!(stats.short_frac(), 0.51, "fixture must sit ONE CALL above");
+    assert!(
+        matches!(classify_l(&stats), LVerdict::L4 { .. }),
+        "L4 must fire at short_frac == 0.51"
+    );
+}
+
+fn dup_trace_fixture(n_dup: usize) -> Vec<LlmForecastRow> {
+    (0..100)
+        .map(|i| {
+            let sha = if i < n_dup {
+                "same".to_string()
+            } else {
+                format!("u_{i}")
+            };
+            make_row("BUY", 0.7, LONG, &sha, 0.001)
+        })
+        .collect()
+}
+
+/// L4 does NOT fire at duplicate_frac == 0.50 exactly.
+#[test]
+fn l4_negative_duplicate_frac_at_threshold() {
+    let stats = aggregate_rows(
+        &dup_trace_fixture(51),
+        0.10,
+        100.0,
+        0.15,
+        "l4d-at".to_string(),
+    );
+    assert_eq!(
+        stats.duplicate_frac(),
+        0.50,
+        "fixture must sit ON the boundary"
+    );
+    assert_eq!(stats.short_frac(), 0.0, "other L4 arm must be quiet");
+    assert!(
+        !matches!(classify_l(&stats), LVerdict::L4 { .. }),
+        "L4 must NOT fire at duplicate_frac == 0.50"
+    );
+}
+
+/// L4 fires one unique trace below the boundary (duplicate_frac 0.51).
+#[test]
+fn l4_positive_duplicate_frac_near_threshold() {
+    let stats = aggregate_rows(
+        &dup_trace_fixture(52),
+        0.10,
+        100.0,
+        0.15,
+        "l4d-near".to_string(),
+    );
+    assert!(
+        (stats.duplicate_frac() - 0.51).abs() < 1e-12,
+        "fixture must sit ONE TRACE above, got {}",
+        stats.duplicate_frac()
+    );
+    assert!(
+        matches!(classify_l(&stats), LVerdict::L4 { .. }),
+        "L4 must fire at duplicate_frac == 0.51"
+    );
+}

@@ -6550,3 +6550,76 @@ evaluated. This one adds the placement dimension: **a gate in a target CI cannot
 weaker gate, it is no gate** — and the sweep that found the blindness proposed putting two more
 tests in exactly that spot. The fix was not a better fixture but a better address.
 
+### `#171` — three of the four movable literals in `classify_l` had no fixture that detected a move
+
+Found 2026-11-07 (sweep finding F9); fixed 2026-11-08.
+`crates/trader/src/llm_forecaster/verdict.rs`, predicates at `:215`/`:231`/`:247`/`:268`.
+Shape: **boundary-insensitive fixtures** — one band had a two-sided pair and the other three
+did not.
+
+The L-verdict routes LLM-forecaster funding decisions and is written into a report body. Four
+movable literals; only L2's `|ρ| < 0.05` had a ratified pair
+(`l2_positive_near_threshold` / `l2_negative_at_threshold`). MEASURED green intervals for the
+other three:
+
+| band | literal | green over | width |
+|---|---|---|---|
+| L1 | `hold_frac >= 0.95` | **[0.941, 0.97]** | 0.029 |
+| L3 | `overrun_ratio > 2.0` | **(1.0, 2.5]** | 1.5 |
+| L4 | `short_frac > 0.50` / `duplicate_frac > 0.50` | **[0.0, 0.59]** | 0.59 |
+
+**The sweep note's L1 numbers were wrong and are corrected here.** It reported "`>= 0.96` is
+green; only 0.98 reddens", having tested `{0.96, 0.98}` and interpolated. Re-measured:
+**0.96 and 0.97 are both green, and `>= 0.9701` already reddens two tests.** So the undetected
+upward interval is `(0.95, 0.97]`, not `(0.95, 0.98)`. It also under-reported L1 in the other
+direction — `>= 0.941` is green too, so L1's real interval is two-sided and **one to two orders
+of magnitude tighter** than L3's or L4's. "L1 has no fixture that detects a move" is true for a
+1–2 point move and false for a 3 point move.
+
+**Fix: seven two-sided tests**, each asserting the **driving metric's exact value first** — the
+non-vacuity floor, so a fixture that drifts off the boundary fails loudly instead of silently
+re-widening the interval it was added to close. Every fixture passes
+`confidence_outcome_corr = 0.15` so the L2 arm stays quiet and the priority tree actually
+reaches the band under test.
+
+Three float facts the fixtures are built around, verified rather than assumed:
+`1.0 - 41.0/100.0 == 0.5900000000000001`; 100 × `0.001` sums to `0.10000000000000007`, so a
+"healthy" `overrun_ratio` is `1.0000000000000007`. That is why the cost fixtures use **4 rows at
+$0.25** (f64-exact `$1.00`) instead of 100 at `$0.001`.
+
+**Probed, nine perturbations — every band, both directions:**
+
+| perturbation | result |
+|---|---|
+| L1 0.95 → **0.97** (the note said green) | 1 failed |
+| L1 0.95 → 0.96 (the note said green) | 1 failed |
+| L1 0.95 → 0.94 | 1 failed |
+| L3 2.0 → **2.5** (the note said green) | 1 failed |
+| L3 2.0 → 1.5 | 1 failed |
+| L4 short 0.50 → **0.59** (the note said green) | 1 failed |
+| L4 short 0.50 → 0.40 | 1 failed |
+| L4 dup 0.50 → **0.59** (the note said green) | 1 failed |
+| L4 dup 0.50 → 0.40 | 1 failed |
+| control | 27 passed (was 20), 0 failed |
+
+Intervals after: L1 **(0.94, 0.95]**, L3 **[2.0, 2.0004)**, L4 pinned at 0.50 from both sides
+by one call / one trace out of 100.
+
+**Two probes reported `PATCH FAILED` rather than a false pass**, which is the harness earning
+its place: `short_frac > 0.50` and `duplicate_frac > 0.50` each appear **four** times in that
+file (doc comments, the module header, the verdict's own message string, and the predicate), so
+a single-occurrence anchor refused to apply. The probe re-ran against the unique full predicate
+line at `:268`. A probe that silently patched one of the doc comments would have reported the
+band as unpinned.
+
+**Bonus, and stronger than the note's version of it.** The note said ADR-0039's "Enforced by"
+list "answers it with nothing". Worse: one of its five named gates **did not exist**. That is
+`#168`, filed and fixed separately — the gate is real, it is
+`crates/trader/tests/llm_verdict_priority_tree.rs` (this file), and the ADR had never been
+repointed after the module moved `strategy` → `trader`.
+
+**Moral.** Four literals, one pair, and the three without one spanned up to 1.5 in a ratio whose
+policy value is 2.0. The pair that existed is what made the gap visible — it is the template the
+other three now follow. A verdict tree with one two-sided band and three one-sided ones does not
+degrade gracefully: it reports confidently on all four.
+
