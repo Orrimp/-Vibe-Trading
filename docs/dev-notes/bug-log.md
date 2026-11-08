@@ -1095,6 +1095,73 @@ anchors) or deleting the declarations and saying so in the reports that print
 them. **Neither should be chosen silently**, which is why this is logged rather
 than fixed.
 
+---
+
+## § Re-measured 2026-11-08 — the census moved a long way, and the live residual is a PUBLISHED claim
+
+The `OPEN` status above is still right, but its **scope is badly stale** and the shape of what
+remains has changed. Re-running the census today:
+
+| lane | declares | enforces | how |
+|---|---|---|---|
+| `montecarlo` (= `run_path`) | yes | **YES** | `risk::size_portfolio_target` at `:534`, `PortfolioExposureBreach` handled at `:661`, and a PAIRED binding test (`tests/portfolio_controls_bind.rs`, ADR-0089 D5: `exposure_cap` 0.25 breach vs 0.50 fits) |
+| `garch_vol_target_overlay` | yes | **YES** | its own entry gate at `:323` — per-order refusal on RESULTING gross, counted and logged, with a rationale citing this entry and `#71`'s discipline |
+| `patchtst_overlay_weights` | yes | no | disclosed in-source, 2026-10-12 trace |
+| `regime_dispatcher` | yes | no | disclosed |
+| `tcn_overlay_weights` | yes | no | disclosed |
+| `threshold_sweep` | yes | no | disclosed |
+| `momentum`, `pairs`, `tcn_overlay` | **no** | — | declaration REMOVED, disclosure kept |
+
+So **"eight lanes declare a cap they cannot enforce" is now four**, every one of them disclosed
+at the declaration site. Two were wired — one through the sizer, one with its own gate — and
+three dropped the declaration. Both halves of the choice this entry refused to make silently
+were in fact taken, per lane, and recorded in source.
+
+**A correction to my own census method.** My first pass reported `montecarlo` as declaring but
+not reading, because it grepped for the field NAME outside a field-initialiser. The lane passes
+the whole `risk_limits` struct to the sizer, so the name never appears at the read site. That is
+`#173`'s lesson aimed at me: **verifying the name is not verifying the enforcement.** The
+corrected question is "does this lane reach `size_portfolio_target`, or carry its own gate".
+
+### The live residual, and it is worse than an inert struct field
+
+An inert declaration costs nothing. A **published** one does. Measured against the files
+`verify_anchors.sh` actually resolves:
+
+> **14 ANCHORED bodies print a portfolio cap that was not enforced when they were produced.**
+
+They carry the line
+
+```text
+- Risk: per-symbol cap=40%, portfolio cap=50%
+```
+
+| producing lane | anchored bodies | lane today |
+|---|---|---|
+| `tcn_overlay_weights` | **6** | still does NOT enforce |
+| `regime_dispatcher` | **5** | still does NOT enforce |
+| `patchtst_overlay_weights` | **2** | still does NOT enforce |
+| `garch_vol_target_overlay` | **1** (`…20260926…`) | enforces NOW — its gate cites a 2026-10-12 trace, so that body predates it |
+
+`threshold_sweep` declares inertly but **publishes no cap at all** (`grep` → 0 on both its
+anchored bodies), so it needs nothing beyond the disclosure it already has.
+
+Verified on one body end to end:
+`evidence/v1/v25-tcn-overlay/reports/backtest-20260521-092554-top10-2023-fy-tcn-overlay-weights.md:68`
+publishes `portfolio cap=50%`, while `scenarios/tcn_overlay_weights.rs:148` declares
+`Some(dec!(0.50))` with **0** calls to `size_portfolio_target` and **0** own gross-cap gate.
+
+**This is `#156`'s shape in published evidence**: a hashed, operator-facing body stating a
+control that the code producing it does not apply. Unlike `#156` the number itself is not wrong
+— nothing is miscomputed — but the body asserts a limit was in force, and it was not.
+
+**Why it is still not fixed here.** Correcting the published line means re-emitting up to 14
+anchored bodies under ADR-0038 § D6.b, several of them real-data backtests with substantial
+compute. That is an operator decision on three axes — wire the three lanes then re-emit, re-emit
+with the line corrected, or leave the bodies and record the deviation per lane as F4 Part C was
+ruled — and it is surfaced as such rather than chosen. The census, the per-lane status and the
+13-plus-1 body list above are the input to that decision.
+
 ### `#96` — the P0-1 "show your work" credibility block renders ENTIRELY below the fold, and its pixel gate has been measuring the scrollbar
 **Status**: FIXED 2026-09-16 — ADR-0092 (placement) + a rewritten gate. Found 2026-08-23
 while piloting #88; bisected. Anchor-impacting: **no** (cockpit surface).
