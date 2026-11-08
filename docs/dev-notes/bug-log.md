@@ -7767,3 +7767,82 @@ one is a *classifier* whose safest-sounding category was the unsafe one. The sha
 is a check whose silence is indistinguishable from a pass — and the only reliable way these
 surfaced was using each tool for the job it exists for, and then looking at what the build
 said afterwards.
+
+### `#183` — "how many places is a SHA pinned?" had no answer, and every answer given was too low
+
+**Found** 2026-11-08, chasing the real cause of the `fc76fff3` CI failure after my first
+diagnosis of it was wrong. **Gate shipped in this pass.**
+
+#### My diagnosis of the red leg was wrong, and the correction matters
+
+I saw `ubuntu-latest: FAILED STEP: Test workspace (non-ui crates)`, noted that only ubuntu
+failed, and concluded it was the ADR-0097 reproducibility gate, which is ubuntu-only. Then I
+read `ci.yml`: that step runs `cargo test --workspace --exclude ui`, **which does not enable
+`yahoo`** — so `run_yahoo_sma_ticker_flag` is `required-features`-skipped there and
+`reproducibility_sample_figure` (`#![cfg(feature = "yahoo")]`) compiles to zero tests. Neither
+could have failed in that step. The ubuntu-only reproducibility run is a *separate* step.
+
+The yahoo breakage was real and `#182` fixes it. But it was **not** what the step pointed at,
+and I had matched "ubuntu-only failure" to "the ubuntu-only gate" without checking which step
+enables what.
+
+#### The actual cause: a fourth pin location, holding 35 mirrors
+
+`cargo test -p backtest --no-fail-fast` → **0 failures**. The failing tests were in another
+crate, which `-p backtest` cannot compile — the sibling-crate blind spot already recorded in
+`feedback_read_ci_after_push`.
+
+`crates/reports/tests/strategy_anchors_unchanged.rs` holds three `&[(&str, &str)]` tables of
+scenario → expected body SHA, resolves the newest body on disk, and compares. Two of its four
+tests failed; `t1937_nine_strategy_anchors_unchanged` passed, and that is itself informative —
+its table is the `noop-baseline` one, i.e. the frozen oracles the re-emission correctly did
+not touch. 28 literals re-locked from `anchors.toml`; all 4 tests green.
+
+#### The census, because the question deserved a number
+
+| | |
+|---|---|
+| files mirroring a CURRENT `anchors.toml` SHA | **9** |
+| mirror literals in total | **66** |
+| files `check_determinism_anchors.py` syncs | **5** |
+| mirror literals it does **not** cover | **40** |
+
+Uncovered: `reports/tests/strategy_anchors_unchanged.rs` (35),
+`forecast/src/bin/forecast_distribution.rs` (2), `reports/tests/report_scenarios.rs` (2),
+`reports/tests/t1003_orchestrator_smoke.rs` (1).
+
+So the sync tool covered 26 of 66 copies, and nothing stated the other 40 existed. Four
+separate instances of this one shape bit today — `#180`, `#181`, `#182`, and this — each
+found by stumbling into it rather than by looking.
+
+#### The gate
+
+`scripts/sha_mirror_census.py`, wired into `.githooks/pre-commit` and CI. It declares a
+per-file floor of **distinct current-anchor mirrors** and fails when a file drops below it.
+
+The definition of "mirror" is what makes the floor stable: a 64-hex literal equal to some
+**current** row. A superseded SHA quoted in a comment is not a mirror — it names history, and
+§ D6.b *requires* keeping it — and a data-revision or checkpoint digest is not one either. So
+a re-emission that adds history does not move the count, while a mirror going stale stops
+matching and drops it. Gaining mirrors is allowed; a NEW file mirroring anything must be
+declared. Five probes in `--self-test`, plus a real-input probe: corrupting one hex digit in
+the 35-mirror file yields
+
+```
+strategy_anchors_unchanged.rs: 34 mirror(s) of current anchors, floor 35. 1 literal(s) that
+used to match a row no longer do — they are STALE copies. Sync them from anchors.toml (this
+file is NOT synced by check_determinism_anchors.py — by hand).
+```
+
+The PASS line prints the uncovered count on every run — `40 mirror(s) in files the sync tool
+does NOT cover` — so the asymmetry stays visible instead of being rediscovered. Teaching the
+sync tool to parse a `&[(&str, &str)]` table is a separate change; pretending the asymmetry is
+gone would be worse than printing it.
+
+#### Moral
+
+Five gates this session, one shape: `#179` never asked whether two things that must differ
+still differ; `#180` could diagnose but not repair; `#181` compared a map against itself;
+`#182` had a bucket whose safest-sounding name was the unsafe one; this one answers a counting
+question nobody had asked. The counting question turned out to be the root: you cannot keep
+N copies consistent without knowing N, and N was 66 while the tooling assumed 26.

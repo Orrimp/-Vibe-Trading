@@ -109,6 +109,14 @@ jobs:
           python3 scripts/anchor_namespace_collapse_check.py
           python3 scripts/anchor_namespace_collapse_check.py --self-test
 
+          # bug-log #183: a body SHA lives in anchors.toml and is COPIED into source.
+          # check_determinism_anchors.py syncs five files; measured, NINE files mirror a
+          # current anchors row, and the uncovered one holding 35 of them took this
+          # workflow red on all three legs. A stale copy stops matching, so the file's
+          # mirror count drops below its declared floor and this fails.
+          python3 scripts/sha_mirror_census.py
+          python3 scripts/sha_mirror_census.py --self-test
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 

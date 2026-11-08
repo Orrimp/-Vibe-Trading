@@ -244,90 +244,90 @@ const CANONICAL_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Group A: SMA synthetic (Q1=(a) --force-synthetic-bars)
     (
         "btc-2023-1m-sma-cross",
-        "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0",
+        "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3",
     ),
     (
         "btc-2023-1m-sma-baseline-refresh",
-        "d2fa7616c5ba763784f70eb6de5072866fe66f41bcb055f62f187e80703990e0",
+        "6fdfacc3fc4c895ebe8909475a17aa910c315c68d8767942fc072ccc11cde4c3",
     ),
     // Group B: Composed strategies (real Binance data, SMA path now wired)
     (
         "btc-2023-1m-macd-trend",
-        "6cb14ac55350325c2785284f6e9a8db29693def83a31b144e1d4607f5baf53f5",
+        "9bc8b6598ec85886ed37987c83838d6009d447f05404bec69573af016be6392f",
     ),
     (
         "btc-2023-1m-rsi-reversion",
-        "87b4e1cc1b949a5b60420bf4fa2319e40035a57de6590d8b8987eb5357845695",
+        "b2de9ef01828326a44afad23de450ee4fa67639df5446e942ecc4c04de8e8fcf",
     ),
     (
         "btc-2023-1m-bbands-mean-revert",
-        "5b6237d11f962b98e9ce0f0deb4b7ec7d7638bbcb15f5e418f3909f07a3393cd",
+        "d29a84f16498b8ac2d70b8f31ef002c47255976e2ad453dc934e355adc264580",
     ),
     // Group C: Momentum (unchanged from v0.2.0; wired in v0.1.0, synthetic data)
     (
         "top10-2023-1h-momentum",
-        "5506b314245989e0f10ae84c3453e707cd9f45a72e2c5e941e295cbf9fb60943",
+        "470367c48d6bc85fa56f26441b8ecbf27b1d3296a377ce292bd52f25883cf22a",
     ),
     (
         "top10-2024-h1-momentum",
-        "75f17854e64be77b5d2d428c8f73e916ce0c2bd8a1ade9d19a8d4a2386e53b0f",
+        "60179c6285692a4aa196e5dd5771a2392d625fc4cd71fa1dcfb32d3a1f08ccaa",
     ),
     // Group D: Pairs (newly wired in v0.3.0)
     (
         "pairs-2023-zscore-mr",
-        "115fc78cba9e3ef859a64a3cc683f1fd605ae93b4ff23de888dff24c9faa2f0e",
+        "bad563a231cf88314490c3601a29613952c2226bcc64feb0dd5207b82a83e127",
     ),
     (
         "pairs-2024-h1-zscore-mr",
-        "9170c55c5f470ebb3be9b5df35bc960ab527ac91218c9152122b7dc39326e632",
+        "f426674f53ad2ea246390f047e1af57e1fb96dea61cda7448ff47277c75b9251",
     ),
     // Group E: TCN overlay synthetic (newly wired in v0.3.0)
     (
         "top10-2023-fy-tcn-overlay",
-        "cd07d4dcfff238797fd1306b2e20c0d7d17af1394f672800fe5389de05ccf6e9",
+        "8da7ad5fdac42816ecc3d28bc72260f00ea8d8bbeba6e963476ae0f0c16a6f9f",
     ),
     (
         "top10-2024-fy-tcn-overlay",
-        "66ef404218a7efd39e85d27ac26986b1586b2577e4609daa4cf69407a15991fd",
+        "7c605e310c2ed61b7cdfed24198edad3912074657341615bfa9e86f2414e1b0b",
     ),
     // Group F: TCN overlay weights (candle feature — v0.4.0 re-emit, 2026-05-28)
     // Reports in evidence/v5-latency-slippage-sim-v0.4.0-candle-feature-gated-re-emit/reports/
     // Built with --features "candle realdata"; 2-run determinism verified.
     (
         "top10-2023-fy-tcn-overlay-weights",
-        "a25a3693c13d0e93341a6dd262e262383e5aa0ce069565ac8103ae0330b0e9cf",
+        "2a6dc6b3cd85349228a3f523a5ddb2e481e363f41e3ce2513965127cfba34b39",
     ),
     (
         "top10-2024-fy-tcn-overlay-weights",
-        "3c38dda3faef64fa25089dfa277e3388cb6641fbc45371f829714c6dc7073845",
+        "798e04e9fbe6bc8b0e13e4c250da2ac46ba5bc8ebbce47f1c68ccd39cd4efc05",
     ),
     // Group G: TCN overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-tcn-overlay-realdata",
-        "23346eecd3d004b2a7ee61603b0aecd0609fe740363b6d2a0d0a293c9692c071",
+        "5fcc557d7e00b33d04b2e414a53883eb183e6c8d2208a1a0585422bcde04157e",
     ),
     (
         "top10-2024-fy-tcn-overlay-realdata",
-        "46ae6ea705fb9e83fe8d315c2c16fc78729c0ec2aa1714dc2c31ea52deb2c92c",
+        "43144f9bb30971fefd9881b518bf11d3635b5a9b098767a4d8dea7339e7a6249",
     ),
     // Group H: TCN overlay weights+realdata (both features — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-tcn-overlay-weights-realdata",
-        "cdf813af4eef452f2f6deba2ac55250d4e7c42607720af5398602aaaa5049592",
+        "94152fc3ad30d11ec4c2d05b056cb38325a4c1660b3919e12ea7041d36c7f6ec",
     ),
     (
         "top10-2024-fy-tcn-overlay-weights-realdata",
-        "8017735d320c481908a1d0817e3db2fc1175d625496c24dd232a5a0b868ea360",
+        "a8ad333faefb477c6e7e8d2b31a568102bc6fca60071e567b390e4ca9acce40d",
     ),
     // Group I: PatchTST overlay realdata (candle+realdata features — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-patchtst-overlay-realdata",
-        "c3709c8f7f28dff4754c25f4da6bc90a86256a2811a832e0537c1ebd82679b07",
+        "2eb390c17541308e889ddcb52881f189be24597c32f052d92d8daf9ee96c45e7",
     ),
     // Group J: Vol-target GARCH overlay realdata (realdata feature — v0.4.0 re-emit, 2026-05-28)
     (
         "top10-2023-fy-vol-target-overlay-realdata",
-        "435fc0fc29927d05db99ee92af3c9888946ed6c6d183d74e5addbd56f5c92f83",
+        "2f1339c6d2822ae66ac0ee458af929729e931bc29b05cdaf90a0ee41732c32b8",
     ),
 ];
 
@@ -382,39 +382,39 @@ const SQRT_IMPACT_STRATEGY_ANCHORS: &[(&str, &str)] = &[
     // Fixed 2026-05-29 at crates/backtest/src/scenarios/sim.rs + all 7 scenario files.
     (
         "top10-2023-fy-momentum-realdata",
-        "1fc0e85d14297bc48d683571811643a394e234187f09b95e41584be0bde337ef",
+        "c08e93655790c7126087513567e2171ef914192efa4f7f6c1ff0a0c0221c9c8d",
     ),
     (
         "top10-2023-fy-tcn-overlay-realdata",
-        "1157af76be96f4ffd3a43740366252b747ad4ee077516759aababd8100c4895a",
+        "b206edc2bfa2e84f3158624e347f82a6eb5aacb606090474c54b2235453ffc2b",
     ),
     (
         "top10-2024-fy-tcn-overlay-realdata",
-        "39a02c7955b547963ff57898a2a78a524138a91b766e6454895da8920a9e995c",
+        "f695f65b8a6814f1f5e2301535469f94e34ebbc682e5bdb80d2d08a6acbb01cf",
     ),
     (
         "top10-2023-fy-tcn-overlay-weights-realdata",
-        "38736839a3c6dab3394b59a9a831873dea5eeece5e25c79ec63b09ace16a2175",
+        "1b4bcc89c07695da115819e0e287d29727771bc891103a1ffe58bf4a419d3f17",
     ),
     (
         "top10-2024-fy-tcn-overlay-weights-realdata",
-        "582dabab182b786aa211e0c44b29b85634cc2f77c696ee6241500e29b36447f6",
+        "84f72b7c4b0ec2580fb6bb8ccf097d9b153a576a631b4bf5dacd5f88fa465952",
     ),
     (
         "top10-2023-fy-patchtst-overlay-realdata",
-        "b015b56420d9b20387ea988d0f7f46669ae153e97387e3a9a901fff6fec73aa4",
+        "1c7c31eb5a65b9277bdfd4347646b6444a51ee3ac019e38c37edc172dfefe2fa",
     ),
     (
         "top10-2023-fy-vol-target-overlay-realdata",
-        "6adc4334be91269de5cf3ca2f6cdc52d5b51d0f1a2c1ec3ff25a2294029f5edf",
+        "0316254fe54338aa2d0cf7b7add3fe7ddf55463d0180dbd0bd6ceac4488c345f",
     ),
     (
         "top10-2023-fy-regime-dispatcher-realdata",
-        "857f949486184846bf9c27c22ea664e39abf64b90c14e7018ec9ec3739f250b6",
+        "2db118980ecaa88511317241ef19ba301675085d8194c6e0ed94667add08c090",
     ),
     (
         "top10-2024-fy-regime-dispatcher-realdata",
-        "519886dc2cc514f4d63dabdb9572ee2809ec1ebfa6c7cf5d3d0ceac95693a0d1",
+        "1ebf18e06bfb5c7837fbba4209f8a5ba10ace31d228ab97a9293cc7cb77b02ec",
     ),
 ];
 

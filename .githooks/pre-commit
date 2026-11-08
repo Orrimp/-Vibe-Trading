@@ -68,3 +68,15 @@ if command -v uv >/dev/null 2>&1; then
 else
   python3 "$root/scripts/anchor_namespace_collapse_check.py"
 fi
+
+# bug-log #183 (2026-11-08): a body SHA is pinned in anchors.toml AND copied into source.
+# `check_determinism_anchors.py` syncs five files; measured, NINE files mirror a current
+# anchors row, and the uncovered one with 35 of them took CI red on all three legs. This
+# answers "how many places is a SHA pinned?" mechanically and pins the answer, so a stale
+# copy (which stops matching, dropping the file's count) cannot land unseen.
+# Same uv-vs-python3 reasoning as above.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/sha_mirror_census.py"
+else
+  python3 "$root/scripts/sha_mirror_census.py"
+fi
