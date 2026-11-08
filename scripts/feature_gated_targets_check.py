@@ -15,8 +15,15 @@ enabled **silently**: no warning, no note, exit 0. Measured on this repo:
 That error appears only when the target is named explicitly. Under
 `cargo test --workspace --exclude ui` — which is what CI runs
 (`.github/workflows/ci.yml:202`) — the same target is passed over without a word.
-So **46 test functions across 13 test targets have never run in CI**, and nothing
+So **41 test functions across 12 test targets have never run in CI**, and nothing
 said so.
+
+(First stated as "46 across 13". Corrected 2026-11-08 the same day: one of those
+targets, `strategy/test/tcn_overlay_tuned_builder` (5 test fns), is gated on a
+name that is a NON-OPTIONAL DEPENDENCY rather than a feature, which cargo
+satisfies unconditionally — so it always builds. The `DEP-SATISFIED` check below
+now detects that class, because the first version of this file asserted the
+wrong thing about exactly the row it was built to describe.)
 
 This gate does not decide which features CI should enable; that is a cost
 decision for the operator. It makes the exclusion **declared** instead of
@@ -150,7 +157,15 @@ DECLARED: dict[str, dict[str, object]] = {
     },
     # ── strategy ─────────────────────────────────────────────────────────────
     "strategy/test/tcn_overlay_tuned_builder": {
-        "feats": ["forecast"], "ci": "invisible", "why": "bug-log #163 — 5 test fns, 0 ignored.",
+        "feats": ["forecast"], "ci": "built",
+        "why": "CORRECTED 2026-11-08: first declared `invisible` with '5 test fns, 0 ignored', "
+               "and that was WRONG. `required-features = [\"forecast\"]` names strategy's "
+               "non-optional DEPENDENCY `forecast` (crates/strategy/Cargo.toml:21), not the "
+               "same-named feature at :11 — and cargo satisfies a required-feature that names "
+               "a non-optional dependency UNCONDITIONALLY. Measured: `cargo test -p strategy "
+               "--test tcn_overlay_tuned_builder --no-run` finishes clean, where the same "
+               "command for a genuinely gated target errors. So this target always builds, and "
+               "the gate below now detects the whole class rather than trusting this row.",
     },
     # ── ui (excluded from the workspace run; has its own matrix legs) ────────
     "ui/bin/cockpit": {
@@ -185,6 +200,67 @@ TARGET_BLOCK_RE = re.compile(
 )
 NAME_RE = re.compile(r'^\s*name\s*=\s*"([^"]+)"', re.MULTILINE)
 REQ_RE = re.compile(r'^\s*required-features\s*=\s*\[([^\]]*)\]', re.MULTILINE)
+
+
+DEP_INLINE_RE = re.compile(r"^\s*([A-Za-z0-9_\-]+)\s*=", re.MULTILINE)
+DEP_TABLE_RE = re.compile(r"^\[(?:dev-|build-)?dependencies\.([A-Za-z0-9_\-]+)\]", re.MULTILINE)
+DEP_SECTION_RE = re.compile(
+    r"^\[(?:dev-|build-)?dependencies\]\n(.*?)(?=\n\[|\Z)", re.MULTILINE | re.DOTALL
+)
+
+
+def non_optional_deps(text: str) -> set[str]:
+    """Dependency names that are NOT optional, so cargo always has them.
+
+    Why this matters (bug-log `#163`, corrected 2026-11-08): cargo satisfies a
+    `required-features` entry that names a **non-optional dependency**
+    unconditionally. An OPTIONAL dependency creates an implicit feature of the
+    same name, so gating on it is a real gate; a non-optional one is not. A target
+    gated only on such a name therefore always builds, and declaring it
+    `invisible` is simply false — which is exactly what the first version of this
+    file did for `strategy/test/tcn_overlay_tuned_builder`.
+    """
+    names: set[str] = set()
+    for m in DEP_SECTION_RE.finditer(text):
+        names.update(DEP_INLINE_RE.findall(m.group(1)))
+    names.update(DEP_TABLE_RE.findall(text))
+
+    optional: set[str] = set()
+    for name in names:
+        inline = re.search(
+            r"^\s*" + re.escape(name) + r"\s*=\s*\{[^}]*optional\s*=\s*true",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+        table = re.search(
+            r"^\[(?:dev-|build-)?dependencies\."
+            + re.escape(name)
+            + r"\]\n(?:(?!\n\[).*\n)*?\s*optional\s*=\s*true",
+            text,
+            re.MULTILINE,
+        )
+        if inline or table:
+            optional.add(name)
+    return names - optional
+
+
+def scan_dep_satisfied() -> dict[str, list[str]]:
+    """`<crate>/<kind>/<name>` -> required features that a non-optional dep satisfies."""
+    out: dict[str, list[str]] = {}
+    for manifest in sorted(CRATES.glob("*/Cargo.toml")):
+        crate = manifest.parent.name
+        text = manifest.read_text(encoding="utf-8")
+        deps = non_optional_deps(text)
+        for m in TARGET_BLOCK_RE.finditer(text):
+            kind, body = m.group(1), m.group(2)
+            name_m, req_m = NAME_RE.search(body), REQ_RE.search(body)
+            if not (name_m and req_m):
+                continue
+            feats = [f.strip().strip('"') for f in req_m.group(1).split(",") if f.strip()]
+            satisfied = [f for f in feats if f in deps]
+            if satisfied:
+                out[f"{crate}/{kind}/{name_m.group(1)}"] = satisfied
+    return out
 
 
 def scan() -> dict[str, list[str]]:
@@ -283,6 +359,20 @@ def check(found: dict[str, list[str]], ci: str) -> list[str]:
                     f"            does not narrow to another target. Re-measure: if CI does\n"
                     f"            build it, flip the row to `built` and say where."
                 )
+    # A required-feature naming a NON-OPTIONAL dependency is satisfied
+    # unconditionally, so the target is not gated at all and must not be declared
+    # invisible. See non_optional_deps() for how this was found.
+    for key, names in sorted(scan_dep_satisfied().items()):
+        row = DECLARED.get(key)
+        if row is not None and row["ci"] == "invisible":
+            violations.append(
+                f"DEP-SATISFIED {key} is declared `invisible`, but its required\n"
+                f"            feature(s) {names} name NON-OPTIONAL dependencies, which cargo\n"
+                f"            satisfies unconditionally — so this target ALWAYS builds.\n"
+                f"            Declare it `built`. (An OPTIONAL dependency would create an\n"
+                f"            implicit feature of the same name and would be a real gate.)"
+            )
+
     if len(found) < MIN_EXPECTED_GATED:
         violations.append(
             f"FLOOR       found {len(found)} gated target(s), floor is {MIN_EXPECTED_GATED}.\n"
@@ -335,6 +425,15 @@ def self_test() -> int:
         "\n        run: cargo test -p forecast --features candle --no-fail-fast\n"
     )
     probes.append(("invisible row that CI would build", "MAYBE-BUILT", check(base_found, fake_ci)))
+
+    # P7 — a dep-satisfied target wrongly declared invisible. Flip the one row
+    # that IS dep-satisfied back to `invisible` and require the new kind.
+    saved_ci = DECLARED["strategy/test/tcn_overlay_tuned_builder"]["ci"]
+    DECLARED["strategy/test/tcn_overlay_tuned_builder"]["ci"] = "invisible"
+    probes.append(
+        ("dep-satisfied row declared invisible", "DEP-SATISFIED", check(base_found, base_ci))
+    )
+    DECLARED["strategy/test/tcn_overlay_tuned_builder"]["ci"] = saved_ci
 
     # P6 — an exclusion declared with no stated cost.
     saved = DECLARED["forecast/test/metal_cpu_drift"]["why"]

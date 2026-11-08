@@ -5998,8 +5998,22 @@ Under `cargo test --workspace --exclude ui` — what CI runs
 (`.github/workflows/ci.yml:202`) — the same target is passed over with **no warning, no note,
 exit 0**.
 
-**MEASURED: 46 test functions in 13 test targets CI never builds**, 36 of them not even
+**MEASURED: 41 test functions in 12 test targets CI never builds**, 31 of them not even
 `#[ignore]`d:
+
+> **COUNT CORRECTED 2026-11-08, same day, and the correction is its own finding.** First
+> published as "46 across 13". One of those rows — `strategy/test/tcn_overlay_tuned_builder`,
+> 5 test fns — is **not gated at all**. Its `required-features = ["forecast"]` names strategy's
+> **non-optional dependency** `forecast` (`crates/strategy/Cargo.toml:21`), not the same-named
+> feature at `:11`, and cargo satisfies a required-feature that names a non-optional dependency
+> **unconditionally**. Measured: `cargo test -p strategy --test tcn_overlay_tuned_builder
+> --no-run` finishes clean, where that command errors for a genuinely gated target. An
+> *optional* dependency would create an implicit feature of the same name and would be a real
+> gate; a non-optional one is not. Exactly one target in the workspace has this shape, found by
+> cross-checking every required-feature name against its crate's dependency table — and
+> `scripts/feature_gated_targets_check.py` now does that check itself (`DEP-SATISFIED`), because
+> the first version of that file asserted the wrong thing about the one row it was built to
+> describe. The row is now declared `built`.
 
 | target | tests | `#[ignore]` |
 |---|---|---|
@@ -6015,7 +6029,6 @@ exit 0**.
 | `forecast/sigma_train_not_in_safetensors_patchtst` | 2 | 1 |
 | `forecast/forward_determinism_patchtst` | 2 | 0 |
 | `forecast/patchtst_overlay_neutrality` | 1 | 1 |
-| `strategy/tcn_overlay_tuned_builder` | 5 | 0 |
 
 Plus the bin-local `#[cfg(test)]` modules inside 7 feature-gated bins — including
 `threshold_sweep.rs`'s 6, which are the only coverage `t_classifier` has (sweep F6), and
