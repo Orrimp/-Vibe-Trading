@@ -6083,10 +6083,38 @@ targeted was never reached, and still read as OK. That is the day's lesson appli
 twice over: `#160` taught that a probe must change something, and this one adds that it must
 change *the thing under test*.
 
+**RESOLVED IN PART, same day, by operator ruling.** Asked whether CI should enable `candle`
+given that its compile cost is already being paid, the operator said yes. `ci.yml` gained a
+separate `forecast candle-gated tests` step — `cargo test -p forecast --features candle
+--no-fail-fast`, Ubuntu leg — which **recovered 18 test functions across 9 targets.** A separate
+step rather than `--features` on the workspace run, because a feature there changes resolution
+for every crate in the run: this needed to add 13 targets, not perturb 300. Measured before
+enabling, so the step could not be the thing that turned CI red: **33 targets, 191 passed, 0
+failed, 18 ignored** (the pre-existing long/corpus-gated ones; the step does not pass
+`--ignored`), 507 s from a cold build.
+
+**23 test functions in 3 targets remain invisible**, all needing `realdata` and/or `yahoo`:
+`p2_verdict_rerun` (15, of which 7 already `#[ignore]`), `run_yahoo_sma_ticker_flag` (6) and
+`threshold_sweep_readonly` (2). `realdata` additionally wants `data/binance/REVISION.toml`
+provisioned in CI, which is its own operator decision and is left open rather than guessed.
+The gate's line now reads `25 scanned · 17 built by CI · 8 invisible to CI`.
+
+**And the gate caught its own stale declaration on the very next run** — which is the whole
+point of `MAYBE-BUILT`. Adding the ci.yml step made 13 rows' `invisible` claim false, and the
+gate said so by name before I had updated them. Its self-test then FAILED, for a related
+reason worth recording: the `MAYBE-BUILT` probe had hard-coded a faked
+`-p forecast --features candle` line, that line became REAL, every forecast row flipped to
+`built`, and **the probe went inert while still reading as a pass**. It now selects its subject
+from the live `invisible` set and asserts that one exists.
+
 **Moral.** The repo's non-vacuity discipline had been applied to what gates *measure*. This is
 the same discipline applied to whether a gate **runs at all** — and a skipped target is the
 purest form of the shape: not a weak assertion, no assertion, reported as a pass. `cargo` will
-not tell you; something has to.
+not tell you; something has to. The coda is that a probe whose subject the world can change out
+from under it is the same defect one level up: **the third time in one day that a probe stopped
+testing what it claimed** (`#160` changed nothing, `#163`'s floor probe hit the wrong branch,
+`#166`'s was invalid Python) — and the only reason each was caught is that the probe's expected
+outcome was declared, not inferred from its own result.
 
 ### `#164` — `check_presentation.sh` certified "approval block UN-ticked" on a deck with no approval block
 

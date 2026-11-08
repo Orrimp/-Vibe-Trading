@@ -231,6 +231,40 @@ jobs:
         shell: bash
         run: scripts/ci_run_annotated.sh "repro-sample" cargo test -p backtest --features yahoo --test reproducibility_sample_figure
 
+      # ── forecast's candle-gated tests (bug-log #163, operator-approved 2026-11-08) ──
+      #
+      # `cargo test` SKIPS a target whose `required-features` are unmet in silence:
+      # no warning, no note, exit 0. The workspace step above runs with default
+      # features, so until this step existed, 9 forecast test targets had NEVER run
+      # in CI and nothing said so.
+      #
+      # The usual reason to keep an ML feature out of CI is its compile cost, and
+      # that reason does not apply here: `crates/backtest/Cargo.toml:63` depends on
+      # `strategy` with `features = ["forecast"]` UNCONDITIONALLY, which pulls
+      # `forecast/candle`, so candle-core is compiled on every default run already
+      # (17 `libcandle_core*` rlibs in a default `target/debug/deps`). CI was paying
+      # for the ML backend and getting none of the tests that need it.
+      #
+      # A SEPARATE step rather than `--features` on the workspace run: adding a
+      # feature there changes resolution for every crate in the run, and this needs
+      # to add 13 targets, not perturb 300. Same shape as the yahoo step above.
+      #
+      # MEASURED locally 2026-11-08 before this step was added:
+      #   cargo test -p forecast --features candle --no-fail-fast
+      #   -> 33 targets, 191 passed, 0 failed, 18 ignored, 507 s from a cold build
+      # The 18 ignored are the pre-existing long/corpus-gated ones (~487 s and
+      # ~620 s forward passes); this step does not pass `--ignored`.
+      #
+      # Ubuntu only, for the same reason as the step above: these assert properties
+      # of the model code and its checkpoints, not of the operating system, and the
+      # candle build is the expensive part. `scripts/feature_gated_targets_check.py`
+      # declares what each leg does and does not build, so this scope is recorded
+      # rather than assumed.
+      - name: forecast candle-gated tests (bug-log #163)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: scripts/ci_run_annotated.sh "forecast-candle" cargo test -p forecast --features candle --no-fail-fast
+
       # ── Ubuntu: headless ui tests (smokes only — visual baselines not compiled) ──
       # xvfb-run provides a virtual X display for winit window creation.
       # The visual snapshot tests are compiled OUT on Linux (#![cfg(target_os="macos")])

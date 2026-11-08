@@ -15,8 +15,17 @@ enabled **silently**: no warning, no note, exit 0. Measured on this repo:
 That error appears only when the target is named explicitly. Under
 `cargo test --workspace --exclude ui` — which is what CI runs
 (`.github/workflows/ci.yml:202`) — the same target is passed over without a word.
-So **41 test functions across 12 test targets have never run in CI**, and nothing
+So **41 test functions across 12 test targets had never run in CI**, and nothing
 said so.
+
+**Resolved in part the same day.** The operator approved enabling `candle`, and
+ci.yml gained a `forecast candle-gated tests` step — `cargo test -p forecast
+--features candle` — which recovered **18 test functions across 9 targets**
+(measured: 33 targets, 191 passed, 0 failed, 18 ignored). **23 test functions in
+3 targets remain invisible**, all of them needing `realdata` and/or `yahoo`:
+`p2_verdict_rerun` (15, 7 already ignored), `run_yahoo_sma_ticker_flag` (6) and
+`threshold_sweep_readonly` (2). `realdata` wants `data/binance/REVISION.toml`
+provisioned in CI, which is a separate operator decision.
 
 (First stated as "46 across 13". Corrected 2026-11-08 the same day: one of those
 targets, `strategy/test/tcn_overlay_tuned_builder` (5 test fns), is gated on a
@@ -113,47 +122,56 @@ DECLARED: dict[str, dict[str, object]] = {
     },
     # ── forecast (candle = the ML backend) ───────────────────────────────────
     "forecast/bin/train_tcn": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — training bin.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/bin/forecast_distribution": {
-        "feats": ["candle"], "ci": "invisible",
-        "why": "bug-log #163. Also the one verdict classifier with NO bin-local test "
-               "for `classify` (bug-log #154), and its target is skipped outright.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/bin/recalibrate_sigma_train": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — overlay writer.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/bin/train_patchtst": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — training bin.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/test/metal_cpu_drift": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 2 test fns, 0 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/train_tcn_golden_cli": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 3 test fns, 0 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/train_tcn_audit_emits": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 2 test fns, 0 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/train_tcn_no_audit_db_writes_nothing": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 1 test fn, 0 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/recalibrate_sigma_train_readonly": {
-        "feats": ["candle"], "ci": "invisible",
-        "why": "bug-log #163 — 4 test fns, 1 ignored. One of the two gates named in "
-               "ADR-0035's field-invariance invariant (sweep finding F4).",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/sigma_train_not_in_safetensors": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 1 test fn, 0 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/sigma_train_not_in_safetensors_patchtst": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 2 test fns, 1 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/forward_determinism_patchtst": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 2 test fns, 0 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/patchtst_overlay_neutrality": {
-        "feats": ["candle"], "ci": "invisible", "why": "bug-log #163 — 1 test fn, 1 ignored.",
+        "feats": ["candle"], "ci": "built",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     # ── strategy ─────────────────────────────────────────────────────────────
     "strategy/test/tcn_overlay_tuned_builder": {
@@ -421,10 +439,36 @@ def self_test() -> int:
     probes.append(("floor", "FLOOR", check(shrunk, base_ci)))
 
     # P5 — a row claims `invisible` while CI would build it.
-    fake_ci = base_ci + (
-        "\n        run: cargo test -p forecast --features candle --no-fail-fast\n"
+    #
+    # The probe must target a row that is ACTUALLY still invisible, or it goes
+    # inert while reading as OK. It did exactly that on 2026-11-08: it faked a
+    # `-p forecast --features candle` line, and then that line became REAL in
+    # ci.yml and all 13 forecast rows flipped to `built`, leaving the probe
+    # nothing to flag. So the subject is now chosen from the live `invisible`
+    # set rather than hard-coded, and the probe asserts it found one.
+    invisible_now = [
+        (k, list(DECLARED[k]["feats"]))
+        for k in sorted(DECLARED)
+        if DECLARED[k]["ci"] == "invisible" and k in base_found
+    ]
+    assert invisible_now, (
+        "no `invisible` row left to probe MAYBE-BUILT with — either every target "
+        "is built by CI now (delete this probe and say so) or the declaration is wrong"
     )
-    probes.append(("invisible row that CI would build", "MAYBE-BUILT", check(base_found, fake_ci)))
+    probe_key, probe_feats = invisible_now[0]
+    probe_pkg = probe_key.split("/", 1)[0]
+    fake_ci = base_ci + (
+        f"\n        run: cargo test -p {probe_pkg} "
+        + " ".join(f"--features {f}" for f in probe_feats)
+        + " --no-fail-fast\n"
+    )
+    probes.append(
+        (
+            f"invisible row that CI would build ({probe_key})",
+            "MAYBE-BUILT",
+            check(base_found, fake_ci),
+        )
+    )
 
     # P7 — a dep-satisfied target wrongly declared invisible. Flip the one row
     # that IS dep-satisfied back to `invisible` and require the new kind.
