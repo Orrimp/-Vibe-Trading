@@ -8112,3 +8112,93 @@ silence of their own: `#183`'s census duplicated the list it measured, and this 
 exclusions while taking inclusions on trust. A claim is not safer for being the optimistic
 one. And "I cannot verify this here" deserves the same suspicion as any other measurement —
 it cost one `rustc` invocation to find out it was false.
+
+### `#185` — CI has been red on `main` since the last push, in a Windows-only `ui` test, and the two mechanisms I proposed for it are both disproved
+
+**Found** 2026-11-08 by the operator, who said "the build failed in test". **Diagnosed to the
+exact test. NOT fixed — the cause is not established, and this entry exists so the next
+person does not re-derive the two dead ends below.**
+
+#### What is actually red
+
+Run `42520878572` (the push carrying `3ca2ed53`, `6b41af51`, `19abf84e`): **ubuntu success,
+macOS success, windows-latest FAILURE** at step `Test ui (non-visual, Windows)`.
+
+```text
+test t906_stitch_kill_confirmed_via_state_update_writes_both_audit_rows ... FAILED
+panicked at crates\ui\tests\cockpit_live_kill_button_writes_audit.rs:92:14:
+all_transaction_ids: Database("error returned from database:
+  (code: 1) no such table: journal_transactions")
+```
+
+`scripts/ci_run_annotated.sh` earned its keep: three requests named the failing test and its
+panic without a single log byte, which `--log-failed` would have refused with 403.
+
+**It is not from those commits.** They touch `scripts/`, `.githooks/`, `.github/`,
+`docs/` and three comment-only files under `crates/reports/tests/`; nothing in `crates/ui`
+or `crates/audit`. The immediately preceding run (`e9e5a150`) was green on all three legs, so
+this is intermittent rather than a new break. It is also **not** story 3-19's work, which was
+unpushed at the time.
+
+#### Mechanism 1, DISPROVED: "each `sqlite::memory:` connection is its own empty database"
+
+`Ledger::open(":memory:")` (`crates/audit/src/ledger.rs:41-55`) connects to
+`sqlite::memory:` with `SqlitePool::connect`, which takes sqlx's default ceiling of ten
+connections, and then runs the migrations against the POOL. The textbook failure is that each
+connection gets a private empty database, so migrations land on one and queries hit others.
+That would explain the error exactly, and `Ledger::in_memory` has **66 callers**, so it would
+have been a suite-wide reliability bug.
+
+It is wrong here. Probed directly: hold connection #1, force the pool to open #2, query on
+it — **it sees the schema** (`pool.size()` 2, query returns 0 rows, no error). sqlx 0.8
+shares the in-memory database across the pool. I had already written a two-sided guard
+asserting `max_connections == 1` for `:memory:` and `> 1` for file-backed; the structural
+half went red, which looked like confirmation, and it was asserting a requirement that **does
+not exist**. Deleted. Capping the pool would have been a fix for nothing, shipped with a
+bug-log entry built on a false cause.
+
+#### Mechanism 2, NOT REPRODUCED: the creating runtime is dropped
+
+The failing test builds its ledger on a throwaway runtime and then discards it
+(`cockpit_live_kill_button_writes_audit.rs`, ~`:118-125`):
+
+```rust
+let bootstrap_rt = tokio::runtime::Builder::new_current_thread().enable_all().build()…;
+let ledger = bootstrap_rt.block_on(async { Arc::new(open_ledger().await) });
+drop(bootstrap_rt);
+```
+
+A `sqlite::memory:` database lives exactly as long as a connection to it does. So if dropping
+that runtime closed the pool's last connection, the database would be gone and the next
+connection would create an empty one — which is the observed error.
+
+Measured, and it is **live but not sufficient**: dropping `rt1` really does destroy
+connections — `pool.size()` goes **3 → 2** — but two remain, the database survives, and a
+query from a second runtime succeeds 3 runs out of 3 on macOS. So the coupling is real and
+the reproduction is not. Whether Windows reaps the last one is untested, because this host
+cannot run that leg.
+
+#### Where it stands
+
+A plausible, evidence-backed mechanism (the in-memory database's lifetime is tied to
+connections surviving a runtime drop, and nothing in the test guarantees one does) with **no
+reproduction**. The honest options are to pin the ledger's runtime for the test's lifetime, or
+to stop using `:memory:` for a ledger that outlives its creating runtime — both of which
+change what a test somebody else designed is exercising, on a failure I cannot make happen.
+So it is recorded, not patched. A re-run of that CI leg is the cheapest next measurement.
+
+#### Fixed in this pass, separately
+
+`cargo fmt --all -- --check` was red on `crates/backtest/tests/report_prose_is_derived_not_asserted.rs:50`
+— a closure body rustfmt wants re-wrapped, from `409facc4`, unrelated to any of this and
+caught by the 3-19 session while formatting its own work. Whitespace only; the test still
+passes.
+
+#### Moral
+
+Two mechanisms, each textbook-plausible, each wrong, and the first one had already produced a
+green-looking guard asserting a requirement that does not exist. A diagnosis is a measurement
+like any other: the probe that killed mechanism 1 took one temporary test, and without it this
+entry would have shipped a confident false cause plus a pool cap nobody needed. "The build
+failed in test" also turned out to be CI rather than the local build everyone was watching —
+worth asking which build, first.

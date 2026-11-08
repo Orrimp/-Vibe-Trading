@@ -50,15 +50,13 @@ fn no_writer_asserts_a_cap_percentage_as_a_literal() {
     // `cap` followed by `=` or `= `, then digits, then `%` — the shape all four defects had.
     let re_like = |l: &str| {
         let lower = l.to_lowercase();
-        lower
-            .match_indices("cap")
-            .any(|(i, _)| {
-                let rest: String = lower[i + 3..]
-                    .chars()
-                    .take_while(|c| *c == '=' || *c == ' ' || c.is_ascii_digit() || *c == '%')
-                    .collect();
-                rest.contains('%') && rest.chars().any(|c| c.is_ascii_digit())
-            })
+        lower.match_indices("cap").any(|(i, _)| {
+            let rest: String = lower[i + 3..]
+                .chars()
+                .take_while(|c| *c == '=' || *c == ' ' || c.is_ascii_digit() || *c == '%')
+                .collect();
+            rest.contains('%') && rest.chars().any(|c| c.is_ascii_digit())
+        })
     };
 
     let mut offenders: Vec<String> = Vec::new();
