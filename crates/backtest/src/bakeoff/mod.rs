@@ -897,9 +897,28 @@ pub struct Recommendation {
     pub outcome: RecommendationOutcome,
     /// The crowned strategy id (== `candidates[crowned].strategy`).
     pub winner: StrategyId,
-    /// The benchmark arm's KPIs, so the UI can always show "vs just holding…".
+    /// The benchmark arm's KPIs.
+    ///
+    /// **Populated and currently read by nothing (bug-log `#174`).** This doc
+    /// used to say "so the UI can always show \"vs just holding…\"", and the UI
+    /// does show that — by re-locating the benchmark itself at
+    /// `crates/ui/src/screens/leaderboard.rs:1119-1126`. It never reads this
+    /// field. `RecommendationMirror` (`crates/ui/src/leaderboard/state.rs`)
+    /// declares four fields and none of them carry a KPI across the mirror seam,
+    /// so there is no path by which it could.
+    ///
+    /// Kept rather than deleted: the value is correct, the six-KPI contract
+    /// ADR-0059 § D2 and ADR-0064 declare IS satisfied (by re-derivation), and a
+    /// reader deciding whether to use this field should see why it is unused
+    /// rather than find a confident sentence about a consumer that is not one.
     pub benchmark_kpis: CandidateKpis,
     /// The winner's KPIs.
+    ///
+    /// **Populated and currently read by nothing (bug-log `#174`).** Its nearest
+    /// consumer, `crates/agent/src/narration.rs:1032`, builds a local of the same
+    /// name by linear-searching `facts.candidate_kpi_strings` for the winner — so
+    /// the KPIs do reach the narration, just not from here. Same reasoning as
+    /// `benchmark_kpis` above for keeping it.
     pub winner_kpis: CandidateKpis,
     /// The winner's robustness flag (echoed for the "…and it's robust/fragile" clause).
     pub winner_robustness: Option<RobustnessFlag>,

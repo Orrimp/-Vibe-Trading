@@ -13,10 +13,18 @@
 //!
 //! ## Backtests
 //!
-//! Backtests construct the paper engine with [`NullPublisher`], which
-//! is a no-op zero-sized type.  Backtest output bytes are unchanged
-//! by this wiring (R15 / verify-anchors invariant) — the publisher
-//! is only consulted on the live-mode path.
+//! **CORRECTED 2026-11-08 (bug-log `#175`).** This used to say "Backtests
+//! construct the paper engine with [`NullPublisher`] … (R15 / verify-anchors
+//! invariant)". Measured: `grep -rn PaperEnginePublisher crates/backtest/`
+//! returns **0** — no backtest constructs the paper engine at all — and
+//! `scripts/verify_anchors.sh` contains no `cargo` invocation, so it hashes
+//! committed bodies and cannot be the invariant's enforcer.
+//!
+//! What stands: [`NullPublisher`] is a no-op, and the publisher is consulted
+//! only on the live-mode path (`crates/agent/src/runtime.rs:1818`). The
+//! no-op property is measured by
+//! `exec/tests/paper_engine_publishes.rs::
+//! t903a_null_publisher_observes_nothing_and_the_probe_proves_the_channel`.
 //!
 //! ## Backpressure
 //!

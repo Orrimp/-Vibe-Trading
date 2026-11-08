@@ -90,6 +90,15 @@ gate-identity tests (`scorecard_does_not_change_ranking`,
 - **The Sharpe-mechanism telemetry** (return-vol ρ) gives the operator an
   explicit, per-coin, per-window answer to whether vol-targeting can even
   mechanistically help — eliminates a category of false hope.
+  > **CORRECTED 2026-11-08 (bug-log `#174`): this consequence has no delivery
+  > path and did not have one when it was written.** `return_vol_correlation` is
+  > computed in `crates/strategy/src/vol_targeting_overlay.rs` and has **zero
+  > readers anywhere in `crates/`** — it reaches no report, no log line and no UI
+  > surface, so no operator has ever seen a per-coin ρ from it. The *decision*
+  > above stands (computing it is right, and the sibling counters are now logged);
+  > what was false was the tense. Delivering it — a report annex or a log line —
+  > is unscheduled work, not a bug fix, and is deliberately not done here rather
+  > than being invented to make this bullet true retroactively.
 - **Backward compatibility preserved** — `Default` matches pre-P1-4 behaviour
   byte-for-byte; `p1_4_defaults()` is the honest opt-in.
 

@@ -524,6 +524,13 @@ pub async fn run(
         signals_scaled = stats.signals_scaled,
         signals_passthrough = stats.signals_passthrough,
         bars_no_model = stats.bars_no_model,
+        // bug-log #174: these two were computed and rendered NOWHERE, while their
+        // four siblings above were logged here. Measured in a scratch crate over
+        // 600 bars: production `VolTargetingConfig::default()` pins both at 0, and
+        // `p1_4_defaults()` drives them to 600 / 599 — so the ONLY configuration
+        // that makes them non-zero had no way to report it.
+        band_suppressed = stats.band_suppressed,
+        derisk_suppressed = stats.derisk_suppressed,
         "garch-vol-target-overlay backtest complete"
     );
 

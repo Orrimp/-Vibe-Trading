@@ -11,12 +11,30 @@
 //!
 //! ## Determinism
 //!
-//! Backtests construct [`PaperEnginePublisher`] with
-//! [`crate::publisher::NullPublisher`] — `on_fill` becomes two
-//! method calls into a zero-sized type, the optimizer drops them,
-//! and the report-affecting code path is byte-identical to the
-//! pre-T903a behavior.  Verified by `scripts/verify_anchors.sh`
-//! (R15 / V5).
+//! **CORRECTED 2026-11-08 (bug-log `#175`).** This paragraph used to read
+//! "Backtests construct [`PaperEnginePublisher`] with
+//! [`crate::publisher::NullPublisher`] … Verified by
+//! `scripts/verify_anchors.sh` (R15 / V5)." Two measured corrections:
+//!
+//! 1. **No backtest constructs it.** `grep -rn PaperEnginePublisher
+//!    crates/backtest/` returns **0**. The only production construction in the
+//!    tree is `with_publisher` at `crates/agent/src/runtime.rs:1818`, on the
+//!    LIVE bus path; `new()` / `default()` appear only in this file's own unit
+//!    tests. The `NullPublisher` path is reachable and inert — it is simply not
+//!    a path any backtest takes.
+//! 2. **`verify_anchors.sh` cannot verify it.** That script contains **no
+//!    `cargo` invocation** — it hashes committed report bodies. It was never the
+//!    mechanism between a `NullPublisher` regression and anchor drift, so it
+//!    could not have been the verification cited here.
+//!
+//! What IS true: with a `NullPublisher`, `on_fill` is two method calls into a
+//! zero-sized type and observes nothing. That is now measured rather than
+//! asserted — `tests/paper_engine_publishes.rs::
+//! t903a_null_publisher_observes_nothing_and_the_probe_proves_the_channel`
+//! wires a counting publisher through the same harness first, so a zero is
+//! distinguishable from an unwired fixture. Nothing in the tree asserts the type
+//! is zero-sized (`grep -rn size_of crates/exec/` is empty), so that word is
+//! dropped from the claim rather than kept on trust.
 //!
 //! ## Audit-ordering invariant (T802)
 //!
@@ -251,12 +269,42 @@ mod tests {
         let _: Arc<dyn FillPublisher> = Arc::clone(engine.publisher());
     }
 
-    /// Default + `new()` are equivalent — a Default impl exists so
-    /// callers that hold `PaperEnginePublisher` in struct literals
-    /// don't need to import `new()`.
+    /// `Default` and `new()` construct the same thing — **compared, not asserted
+    /// in prose** (bug-log `#175`).
+    ///
+    /// This test's doc claimed "Default + `new()` are equivalent" while its body
+    /// constructed only `default()` and compared nothing. Equivalence is now
+    /// checked the only way it can be for a publisher-shaped type: both engines
+    /// are driven through the same fill and neither observes anything, against a
+    /// counting publisher proving the channel is live.
     #[test]
-    fn default_constructs_inert_engine() {
-        let engine = PaperEnginePublisher::default();
-        engine.on_fill(&sample_fill(), &sample_position());
+    fn default_and_new_construct_the_same_inert_engine() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Counting(AtomicUsize);
+        impl crate::publisher::FillPublisher for Counting {
+            fn publish_fill(&self, _fill: &trading_core::Fill) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+            fn publish_position(&self, _pos: &trading_core::Position) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        // NON-VACUITY: the same harness with an observing publisher must see
+        // both calls, or "nothing observed" below means "nothing wired".
+        let counting = std::sync::Arc::new(Counting(AtomicUsize::new(0)));
+        let probe = PaperEnginePublisher::with_publisher(counting.clone());
+        probe.on_fill(&sample_fill(), &sample_position());
+        assert_eq!(
+            counting.0.load(Ordering::Relaxed),
+            2,
+            "the probe must observe one fill + one position, or this test is vacuous"
+        );
+
+        // Both constructors, same inert behaviour, neither panicking.
+        for engine in [PaperEnginePublisher::default(), PaperEnginePublisher::new()] {
+            engine.on_fill(&sample_fill(), &sample_position());
+        }
     }
 }

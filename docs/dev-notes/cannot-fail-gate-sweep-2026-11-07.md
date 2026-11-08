@@ -132,6 +132,12 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F12, F13, F14 — CLOSED 2026-11-08 as `#174` and `#175`.** The whole below-the-line tier is
+  done. F12's counters joined the existing `tracing::info!`; ADR-0078's return-vol-ρ Consequences
+  bullet is corrected (no reader, so no operator ever saw one — the tense was the false part).
+  F13's two fields are KEPT with corrected docs, not deleted: unlike `#162`'s they are correct,
+  merely idle. F14's zero-assertion test now proves its channel is live before asserting a zero,
+  and four false sentences across three module docs are gone.
 - **F3 — CLOSED 2026-11-08 as `#173`** (ranked action 3, first half). One in-crate test drives
   the real private `WindowIterator`. The demonstration this finding deserved: all three
   perturbations of the shipped formula leave the ADR-named gate **4/4 green** and redden the new

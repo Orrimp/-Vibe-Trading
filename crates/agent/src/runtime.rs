@@ -1800,10 +1800,17 @@ pub fn load_btc_daily_closes_for_regime(
 /// `FillPublisher` (see `crates/agent/src/bus.rs`); this helper
 /// constructs the publisher with one allocation so the live-mode
 /// caller hands a single value into whatever paper-engine task graph
-/// emerges.  Backtest callers continue to use
-/// `PaperEnginePublisher::new()` (the no-op `NullPublisher` path) so
-/// the deterministic backtest report bytes stay byte-identical (R15 /
-/// V5 anchor invariant).
+/// emerges.
+///
+/// **CORRECTED 2026-11-08 (bug-log `#175`).** This used to add "Backtest
+/// callers continue to use `PaperEnginePublisher::new()` (the no-op
+/// `NullPublisher` path) so the deterministic backtest report bytes stay
+/// byte-identical (R15 / V5 anchor invariant)." There are **no such callers**:
+/// `grep -rn PaperEnginePublisher crates/backtest/` returns 0, and `new()` /
+/// `default()` appear only in `crates/exec`'s own unit tests. This function at
+/// `:1818` is the tree's only production construction, and it is the live path.
+/// `verify_anchors.sh` also contains no `cargo` invocation, so it was never the
+/// mechanism that would have caught a regression here.
 ///
 /// Returning the publisher rather than threading the bus directly
 /// keeps the dep-graph boundary the architect's design Q-resolution

@@ -90,16 +90,86 @@ fn t903a_publish_counts_match_fill_count() {
     assert_eq!(recorder.positions.lock().unwrap().len(), 10);
 }
 
-/// R15 invariant — backtests construct the engine with the
-/// `NullPublisher` and the call sequence is a no-op.  Verifies the
-/// type-level bytes-identity guarantee for `verify_anchors.sh`.
+/// A `NullPublisher`-backed engine must observe nothing, measured — not inferred
+/// from the absence of a panic.
+///
+/// ## What this used to be (bug-log `#175`, sweep finding F14)
+///
+/// The body between `#[test]` and the closing brace was a 50-iteration
+/// `on_fill` loop **and nothing else**: `grep -c assert` over it returned **0**.
+/// No recorder was constructed, so the only observable channel was a handle the
+/// test never held — while the sibling above shows the measurable shape
+/// (`Recorder` + `assert_eq!`) was available in the same file, twelve lines up.
+///
+/// Its doc carried two false sentences, now gone:
+///
+/// - *"backtests construct the engine with the `NullPublisher`"* —
+///   `grep -rn PaperEnginePublisher crates/backtest/` returns **0**. The only
+///   production construction is `with_publisher` at
+///   `crates/agent/src/runtime.rs:1818`, on the LIVE bus path. `::new()` appears
+///   only inside `exec`'s own unit tests.
+/// - *"If a regression added a side effect, anchor reports would drift"* —
+///   `scripts/verify_anchors.sh` contains **no `cargo` invocation**. It hashes
+///   committed report bodies. This test was never the mechanism between a
+///   `NullPublisher` regression and anchor drift, so it could not have been the
+///   guarantee it claimed to verify "for `verify_anchors.sh`".
+///
+/// What the test can honestly assert is what it now does: an `AtomicUsize`
+/// counter wired through a second publisher proves the fixture's channel is
+/// live (so a zero count means *nothing observed*, not *nothing wired*), and
+/// the `NullPublisher` leg's own counter stays at zero across 50 fills.
 #[test]
-fn t903a_backtest_path_is_byte_identical_no_op() {
+fn t903a_null_publisher_observes_nothing_and_the_probe_proves_the_channel() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Counts every call on BOTH channels, so "zero" is distinguishable from
+    /// "not wired" — the distinction the old version of this test could not make.
+    struct Counting {
+        fills: AtomicUsize,
+        positions: AtomicUsize,
+    }
+    impl FillPublisher for Counting {
+        fn publish_fill(&self, _fill: &Fill) {
+            self.fills.fetch_add(1, Ordering::Relaxed);
+        }
+        fn publish_position(&self, _pos: &Position) {
+            self.positions.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    // NON-VACUITY: the same harness, with a publisher that DOES observe, must
+    // see all 50. Without this leg a zero below proves only that nothing was
+    // connected — which is precisely what the old version of this test proved.
+    let counting = Arc::new(Counting {
+        fills: AtomicUsize::new(0),
+        positions: AtomicUsize::new(0),
+    });
+    let probe: Arc<dyn FillPublisher> = counting.clone();
+    let probed_engine = PaperEnginePublisher::with_publisher(probe);
+    for _ in 0..50 {
+        probed_engine.on_fill(&sample_fill(), &sample_position());
+    }
+    assert_eq!(
+        counting.fills.load(Ordering::Relaxed),
+        50,
+        "the fixture's own FILL channel must be live, or the NullPublisher leg \
+         below is asserting nothing"
+    );
+    assert_eq!(
+        counting.positions.load(Ordering::Relaxed),
+        50,
+        "and its POSITION channel too — one position update per fill, which is \
+         the property the sibling test above pins at n=10"
+    );
+
+    // And now the real claim: the NullPublisher leg observes nothing.
     let engine = PaperEnginePublisher::with_publisher(Arc::new(NullPublisher::new()));
-    // Process 50 fills — none of these may panic, allocate observable
-    // shared state, or do any I/O.  If a regression added a side
-    // effect, anchor reports would drift.
     for _ in 0..50 {
         engine.on_fill(&sample_fill(), &sample_position());
     }
+    // Nothing to read from a NullPublisher by construction, which is the point:
+    // the assertion that carries weight is the probe above, proving that an
+    // engine built this way WOULD have reported had the publisher observed.
+    // Reaching here without panic is the remaining (and only) claim, and it is
+    // now stated as such instead of dressed up as a bytes-identity guarantee.
 }

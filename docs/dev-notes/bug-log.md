@@ -6750,3 +6750,104 @@ narrower and more useful than "the claim was false": the claim was *true and ins
 the list it sat in supplied the false part. What an "Enforced by" entry asserts is not what the
 test does — it is that the decision cannot regress unnoticed.
 
+### `#174` — three values computed for an operator nobody can show them to, one of them an ADR consequence stated in the present tense
+
+Found 2026-11-07 (sweep findings F12 + F13); fixed 2026-11-08. Hygiene by severity — no gate
+loses teeth and no published number is wrong — but three doc claims were false, and `#173` is
+the day's argument for why that matters.
+
+**F12 — two suppression counters and a correlation map, zero readers.** Verified myself:
+`band_suppressed`, `derisk_suppressed` and `return_vol_correlation` each have **0** references
+anywhere in `crates/` outside `crates/strategy/src/vol_targeting_overlay.rs`. The two counters
+have four siblings (`bars_total`, `signals_scaled`, `signals_passthrough`, `bars_no_model`) that
+ARE rendered, in the `tracing::info!` at
+`crates/backtest/src/scenarios/garch_vol_target_overlay.rs:518`. The sweep's scratch measurement:
+production `VolTargetingConfig::default()` pins both at **0**, and `p1_4_defaults()` drives them
+to **600 / 599** over 600 bars. So the only configuration that makes them non-zero had no way to
+say so. **Fixed by two lines in that existing `info!`** — the cheapest possible honest fix, and
+the house rule's own prescription: make the success path observable.
+
+Explicitly **not** an AD-16 no-op overlay: the policies being off is ADR-0078's documented
+backward-compat decision, and total suppression WOULD flip the anchored body's
+"Modified by overlay / Modification rate" rows from 100.00% to 0.00%, so the inert outcome is
+rendered. The counters were the missing telemetry, not a missing effect.
+
+**`return_vol_correlation` is the sharper half.** ADR-0078's Consequences states the
+return-vol-ρ telemetry *"gives the operator an explicit, per-coin, per-window answer to whether
+vol-targeting can even mechanistically help — eliminates a category of false hope."* It has zero
+readers: no report, no log line, no UI surface. **No operator has ever seen a per-coin ρ from
+it.** The ADR is corrected in place: the decision stands (computing it is right), what was false
+was **the tense**. Delivering it is unscheduled work and is deliberately not done here rather
+than invented to make the bullet true retroactively.
+
+**F13 — `Recommendation.benchmark_kpis` / `.winner_kpis`, zero readers, and both named consumers
+re-derive.** Verified, and the verification needed care: `benchmark_kpis` shows **12** grep hits,
+but all of them outside `bakeoff` are a **same-named field on a different struct**
+(`ui::tune::SweepBenchmarkKpis`). Filtered to the real type, the only sites are the declaration
+(`:901`), the computation (`:1403`) and the construction (`:1506`). For `winner_kpis`,
+`narration.rs:1032` looks like a read and is a **local variable** built by linear-searching
+`facts.candidate_kpi_strings` for the winner — so the KPIs do reach the narration, just not from
+this field. The UI likewise re-locates the benchmark itself
+(`screens/leaderboard.rs:1119-1126`), which is exactly the *"vs just holding…"* comparison
+`benchmark_kpis`' doc named as its purpose.
+
+**Kept, not deleted, and the docs corrected instead.** Unlike `#162`'s field, these values are
+**correct** — they are a parallel copy, not a wrong one — and the six-KPI contract ADR-0059 § D2
+and ADR-0064 declare IS satisfied, by re-derivation. Deleting two `pub` fields that two ADRs
+discuss is a design call that does not need making today; what needed making is the reader's:
+each doc now states that the field is populated and unread, and names where its would-be
+consumer re-derives instead. `#162`'s field was deleted because it was **wrong**; these are kept
+because they are **right and idle**, and the distinction is the whole decision.
+
+**Moral.** `#173` established that an "Enforced by" entry asserts the decision cannot regress.
+This is the same sentence for a Consequences bullet: it asserts the consequence **has arrived**.
+Three values here were computed faithfully and shown to nobody, and in one case an ADR said
+otherwise in the present tense for months. A value with no reader is cheap; a sentence claiming
+it has a reader is not.
+
+### `#175` — a zero-assertion test certified a bytes-identity guarantee "for `verify_anchors.sh`", which contains no `cargo` invocation
+
+Found 2026-11-07 (sweep finding F14); fixed 2026-11-08.
+`crates/exec/tests/paper_engine_publishes.rs`, plus three module docs and one unit test.
+Shape: **vacuous assertion**, wrapped in four false sentences.
+
+`t903a_backtest_path_is_byte_identical_no_op`'s body between `#[test]` and the closing brace was
+a 50-iteration `engine.on_fill(...)` loop **and nothing else** — `grep -c assert` over it
+returned **0**. No recorder was constructed, so the only observable channel was a handle the
+test never held. The measurable shape was available **twelve lines up**: its sibling
+`t903a_publish_counts_match_fill_count` builds a `Recorder` and asserts `len == 10`.
+
+**Four claims, each verified false before being touched:**
+
+| claim | where | measured |
+|---|---|---|
+| "Backtests construct `PaperEnginePublisher` with `NullPublisher`" | `exec/src/paper.rs:14` | `grep -rn PaperEnginePublisher crates/backtest/` → **0** |
+| "Backtests construct the paper engine with `NullPublisher`" | `exec/src/publisher.rs:16` | same |
+| "Backtest callers continue to use `PaperEnginePublisher::new()`" | `agent/src/runtime.rs:1804` | `new()`/`default()` appear **only** in `exec`'s own unit tests; the tree's sole production construction is `with_publisher` at `runtime.rs:1818`, the LIVE path |
+| "If a regression added a side effect, anchor reports would drift" — "Verified by `scripts/verify_anchors.sh`" | the test's doc, `paper.rs:18` | that script contains **no `cargo` invocation** (`grep -c cargo` → 0); it hashes committed bodies, so it was never the mechanism between a `NullPublisher` regression and anchor drift |
+
+Also struck: nothing in the tree asserts the type is zero-sized — `grep -rn size_of crates/exec/`
+is empty — so "zero-sized" is dropped from the claim rather than kept on trust.
+
+And a fifth, in a unit test: `paper.rs`'s `default_constructs_inert_engine` was documented
+"Default + `new()` are equivalent" while its body constructed **only** `default()` and compared
+nothing.
+
+**Fix: make the zero measurable.** The property a `NullPublisher` test can honestly assert is
+"observes nothing" — and a count of zero is worthless unless you have shown the channel was
+live. So both rewritten tests wire a counting publisher through the **same harness first** and
+assert it sees everything, then run the `NullPublisher` leg. That turns "zero" into *nothing
+observed* rather than *nothing wired*, which is exactly what the old version could not
+distinguish. The `Default`/`new()` test now drives both constructors.
+
+**Probed:** removing `self.publisher.publish_position(position)` from `PaperEnginePublisher::on_fill`
+reddens the new non-vacuity leg on its POSITION-channel assertion (and both siblings). Before the
+fix, that same perturbation left `t903a_backtest_path_is_byte_identical_no_op` green — it had no
+assertion to break.
+
+**Moral.** This one is the house rule's purest specimen and it is worth being exact about why.
+The test was not weak; it asserted **nothing at all**, and three module docs plus its own doc
+comment described a guarantee it was structurally incapable of providing, naming an enforcement
+script that does not run tests. The fix is not a stronger assertion but a **witness**: you
+cannot verify an absence without first proving you would have seen a presence.
+
