@@ -7592,6 +7592,73 @@ answers "is this literal stale?" and, in practice, never "make it current." Both
 discovered by trying to USE the tool for the job it exists for, which is the only test that
 finds this class.
 
+#### Durable fix — one resolver, same day
+
+The refactor this entry filed ("one resolver called twice") is done, separately from the
+re-emission so that the tool and the corpus were never changing in one pass.
+
+`resolve_expected(site, anchors, canonical) -> (sha, label)` now holds the order and its
+reasoning in one docstring, and `literal_matches(site, expected)` holds the comparison —
+which had drifted the same way and nobody had noticed: a `*_PREFIX` site resolving to a
+synthetic SHA was compared by FULL equality in the detector and by prefix in the writer. Zero
+such sites ship, which is why that half was invisible rather than why it was harmless.
+
+`detect_drift`, `apply_write`, the `--write` refusal predicate and the summary counts all call
+it. That is **four** call sites, not two: the refusal re-derived the order as
+`sha_for(...) is None and scenario not in SYNTHETIC_...`, and the summary counted
+`n_canonical = n_ok - n_synth - n_declared` — a remainder column, which can absorb any
+disagreement between copies without ever looking wrong. Both were copies three and four of
+the thing this entry is about, written while it was being written.
+
+**Measured, not asserted.** Re-introducing only the synthetic-precedence half — the exact
+divergence half two found — and running `--write` against a mirrored tree
+(`anchors.toml` + the five scanned files) where **all 35 literals are correct** rewrites
+**3** of them, to byte-exactly the three current `SYNTHETIC_DETERMINISM_SHAS` values
+(`9c07d2c3…` / `14572b60…` / `fa390116…`). The shipped resolver leaves the tree
+byte-identical. The cost of the divergence is the same 3 pins on the re-locked corpus as it
+was on the old one.
+
+**The probes** (`--self-test` goes 9 → 13), and each was checked against a regression that
+should break it:
+
+* **P9** — the precedence rule, two-sided: the same scenario with and without a declaration,
+  expecting **different** values. One fixture would pass against either order (`#161`).
+* **P10a/P10b** — the two *paths*, not the one function: parse a fixture file, run detection
+  over it, then run the writer over it. P10a, a correct declared-ns pin: detection silent,
+  writer touches nothing. P10b is the negative control, because P10a also passes if both
+  paths do nothing — a wrong literal must make detection fire **and** make the writer write
+  the row detection named, never the synthetic one.
+* **P11** — the structural property the other two rest on: `resolve_expected` is the only
+  function naming `SYNTHETIC_DETERMINISM_SHAS` or `sha_for`. No value-level probe can see a
+  second copy *appear*, which is the defect itself.
+
+Probed three ways: the full pre-fix writer fails P10a/P10b/P11; the synthetic-precedence half
+alone fails the same three (so P10 catches the specific divergence, not just gross breakage);
+a bare direct read put back into `detect_drift` fails P11 **alone**, with both write probes
+still green — so P10 and P11 are not measuring the same thing.
+
+P11's first version was itself the failure this log is full of. It grepped the source text and
+flagged `main` for the characters `sha_for(` sitting inside a comment explaining this very
+refactor. A gate that fires on prose is a gate that gets switched off, so it reads the AST
+instead: a `Name` node is a read, a comment is not, and the AST does not contain comments at
+all. It carries a positive control — the resolver must name **both** maps — because a broken
+walk would otherwise report every function clean and measure nothing.
+
+**Two behaviour changes, both in configurations no site has**, stated rather than buried:
+the dropped `scenario not in SYNTHETIC_DETERMINISM_SHAS` clause means a site declaring a BAD
+namespace on one of the three synthetic scenarios is now REFUSED rather than warned-and-skipped
+(the detector already hard-errors on it, so refusing is the consistent answer, and it is what
+the refusal's own message describes); and a `*_PREFIX` site resolving to a synthetic SHA now
+compares by prefix in both paths rather than by prefix in one and full equality in the other.
+
+#### Moral, second half
+
+The repair on the morning of 2026-11-08 copied the detector's lines into the writer. That was
+correct and it fixed both symptoms — and it left the repo with two copies that agreed, which
+is precisely the state that produced the bug in the first place. "Make the second copy match"
+is not a fix for "there are two copies"; it resets the clock on it. The fix for duplication is
+one of the thing.
+
 ### `#181` — a third pin location nothing was watching, and a comment table where three of seven values had rotted
 
 **Found** 2026-11-08, re-running the System-2 suite after the re-emission. The ten gates

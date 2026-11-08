@@ -435,6 +435,98 @@ def scan_files(
 
 
 # ---------------------------------------------------------------------------
+# Expected-SHA resolution — the ONE order (bug-log #180, durable fix)
+# ---------------------------------------------------------------------------
+
+def resolve_expected(
+    site: InTestSite,
+    anchors: list[AnchorEntry] | None,
+    canonical: dict[str, str],
+) -> tuple[str | None, str | None]:
+    """The SHA this site asserts, and which map answered. The only copy of that order.
+
+    bug-log #180 — this order used to exist TWICE, once in `detect_drift` and once in
+    `apply_write`, the second under a comment reading "same order as detect_drift". That
+    comment was the entire guarantee of agreement, and it was false in two independent
+    ways: the writer read `SYNTHETIC_DETERMINISM_SHAS` BEFORE looking at the site's own
+    declaration, and resolved through `canonical[scenario]` instead of `sha_for`. Both
+    cost something real. The first made `--write` overwrite the three correct canonical
+    pins of `realdata_row_btc_2023_1m_{macd_trend,rsi_reversion,bbands_mean_revert}` with
+    the synthetic bodies' SHAs; the second made `--write` refuse every re-emission that
+    mattered, because `canonical[...]` cannot see a non-canonical row at all.
+
+    Both were repaired on 2026-11-08 by copying the detector's lines into the writer —
+    which left the repo with two copies that agreed, which is the state that produced the
+    bug. `#180` filed the durable fix in its own words: "one resolver called twice". This
+    is it. Agreement between two functions is a claim nothing enforces; one function is
+    the enforcement.
+
+    The order, and why each step is where it is:
+
+      1. The site declares `// anchor-ns: <substring>` → its row is
+         `sha_for(anchors, scenario, declared_ns)` and NOTHING else. A declared namespace
+         SUPPRESSES the synthetic map. Two sites can pin the same scenario under different
+         conditions — `btc-2023-1m-*` has a synthetic-path pin and a real-data row pin —
+         and a scenario-keyed override would compare the second against the first's
+         expectation and call a correct gate stale (bug-log #123).
+         **The site knows which row it asserts; the site wins.**
+      2. The site declares nothing → `SYNTHETIC_DETERMINISM_SHAS[scenario]`, when that
+         scenario has one. The determinism tests run the v0 synthetic fallback (525600
+         bars, CWD=tempdir); the v5 rows were emitted from the real-data path
+         (ADR-0045 § D6.3 / § D7.1b), so the scenario name alone does not say which.
+      3. Otherwise the canonical `v5-realdata-medium-2026-05` row — the implicit meaning
+         of every site written before bug-log #115.
+      4. Nothing resolved → `(None, None)`. A pin whose row cannot be identified is a
+         finding, never a skip: `detect_drift` makes it a HARD ERROR, and `--write`
+         refuses the site rather than picking a row on its behalf (bug-log #77).
+
+    Returns `(expected_sha, source_label)`, the label one of "declared-ns", "synthetic",
+    "canonical", or None exactly when no SHA resolved. The summary line counts these
+    labels, so the printed breakdown reports what resolution DID rather than what a
+    scenario name suggests — which is the same reason the labels exist at all.
+
+    `anchors=None` is the degraded legacy call shape: `canonical` is then the only map
+    available, so a declared namespace cannot be honoured; the label still says
+    "declared-ns", because that is the site's claim. This tool's own entrypoint always
+    passes `anchors`.
+    """
+    if site.declared_ns is not None:
+        sha = (
+            sha_for(anchors, site.scenario, site.declared_ns)
+            if anchors is not None
+            else canonical.get(site.scenario)
+        )
+        return (sha, "declared-ns") if sha is not None else (None, None)
+
+    synth = SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
+    if synth is not None:
+        return synth, "synthetic"
+
+    sha = (
+        sha_for(anchors, site.scenario, None)
+        if anchors is not None
+        else canonical.get(site.scenario)
+    )
+    return (sha, "canonical") if sha is not None else (None, None)
+
+
+def literal_matches(site: InTestSite, expected: str) -> bool:
+    """Whether the site's literal satisfies `expected` — the ONE comparison.
+
+    The second half of the bug-log #180 duplication, and it had drifted the same way: a
+    `*_PREFIX` site resolving to a SYNTHETIC SHA was compared by FULL equality in
+    `detect_drift` and by prefix in `apply_write`, so the two could disagree about one
+    site. Whether a site compares a prefix is a property of the SITE (its const name),
+    not of the map that answered — so prefix wins wherever it is declared, which is what
+    `apply_write` already did. The repo ships zero `*_PREFIX` sites (EX-2 converted them
+    all), which is why this divergence was invisible rather than why it was harmless.
+    """
+    if _is_prefix_site(site.const_name):
+        return expected.startswith(site.literal)
+    return site.literal == expected
+
+
+# ---------------------------------------------------------------------------
 # Drift detection
 # ---------------------------------------------------------------------------
 
@@ -468,18 +560,18 @@ def detect_drift(
     canonical: dict[str, str],
     anchors: list[AnchorEntry] | None = None,
 ) -> tuple[list[DriftRow], list[DriftRow]]:
-    """Return (mismatches, skipped) from comparing sites against the dual-map.
+    """Return (mismatches, skipped) from comparing sites against their resolved row.
 
-    Resolution order (ADR-0045 § D7.1b / EX-4 v2):
-      1. SYNTHETIC_DETERMINISM_SHAS[scenario] if present — full equality.
-      2. canonical[scenario] (v5-realdata-medium-2026-05 anchors.toml row) — full
-         equality; ANCHOR_PREFIX sites use startswith until EX-2 converts them.
-      3. Neither map has the scenario → HARD ERROR (added to mismatches, not
-         skipped). This closes the blind spot the old "not in anchors.toml → skip"
-         branch would reopen for any newly added but unmapped test fn.
+    Which row a site means is NOT decided here — `resolve_expected` is the single copy of
+    that order and `literal_matches` the single copy of the comparison (bug-log #180,
+    which this function used to hold one of two copies of). This turns their answer into
+    report rows and nothing else.
 
     skipped: cfg-gated sites only (R3).
-    mismatches: sites where in-test literal != expected, OR scenario is in neither map.
+    mismatches: sites whose in-test literal != the resolved SHA, OR whose row could not be
+      resolved at all. The second is a HARD ERROR rather than a skip: it closes the blind
+      spot the old "not in anchors.toml → skip" branch would reopen for any newly added
+      but unmapped test fn.
     """
     mismatches: list[DriftRow] = []
     skipped: list[DriftRow] = []
@@ -498,79 +590,51 @@ def detect_drift(
             ))
             continue
 
-        # --- Dual-map resolution (step 1: synthetic override) ---
-        #
-        # An EXPLICIT `// anchor-ns:` declaration beats this scenario-keyed default. Two
-        # sites can pin the same scenario under different conditions — `btc-2023-1m-*` has
-        # a t622 pin for the synthetic path and a real-data pin for the canonical row — and
-        # a scenario-level override would compare the second against the first's expectation
-        # and call a correct gate stale. The site knows which row it asserts; the site wins.
-        synth = None if site.declared_ns is not None else SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
-        if synth is not None:
-            match = site.literal == synth
-            row = DriftRow(
+        expected, source = resolve_expected(site, anchors, canonical)
+
+        if expected is None:
+            # --- HARD ERROR — closes the blind spot ---
+            # A non-cfg-gated site whose row cannot be identified is an unanchored
+            # constant: it cannot be validated. Always a configuration error, so fail
+            # loudly rather than skip — skipping is what the pre-#115 tool did for 11 of
+            # 25 sites while printing "0 skipped".
+            mismatches.append(DriftRow(
                 file=site.file,
                 lineno=site.lineno,
                 fn_name=site.fn_name,
                 scenario=site.scenario,
-                in_test=site.literal[:16] + "…",
-                canonical=synth[:16] + "… (synthetic)",
-                match=match,
-                note="SYNTHETIC_DETERMINISM_SHAS" if match else "synthetic SHA mismatch",
-            )
-            if not match:
-                mismatches.append(row)
+                in_test=site.literal[:16] + "\u2026",
+                canonical="(HARD ERROR: no row for the declared namespace)",
+                match=False,
+                note=(
+                    f"declared ns={site.declared_ns!r} matches no single anchors.toml row "
+                    "for this scenario — fix the declaration or add the row"
+                    if site.declared_ns is not None
+                    else "add the scenario to the synthetic map or to anchors.toml"
+                ),
+            ))
             continue
 
-        # --- Dual-map resolution (step 2: anchors.toml, NAMESPACE-AWARE) ---
-        # bug-log #123: resolve the row this site DECLARES, falling back to the canonical
-        # suffix when it declares nothing. Comparing a noop-baseline pin against the
-        # canonical row reports a correct gate as stale — and `--write` would then "fix"
-        # it by breaking it (bug-log #77).
-        if anchors is not None:
-            can = sha_for(anchors, site.scenario, site.declared_ns)
+        match = literal_matches(site, expected)
+        if source == "synthetic":
+            shown = expected[:16] + "\u2026 (synthetic)"
+            note = "SYNTHETIC map" if match else "synthetic SHA mismatch"
         else:
-            can = canonical.get(site.scenario)
-        if can is not None:
-            # For ANCHOR_PREFIX, check starts_with; for ANCHOR, full equality.
-            if _is_prefix_site(site.const_name):
-                match = can.startswith(site.literal)
-            else:
-                match = site.literal == can
+            shown = expected[:16] + "\u2026"
+            note = "" if site.declared_ns is None else f"ns={site.declared_ns}"
 
-            row = DriftRow(
-                file=site.file,
-                lineno=site.lineno,
-                fn_name=site.fn_name,
-                scenario=site.scenario,
-                in_test=site.literal[:16] + "…",
-                canonical=can[:16] + "…",
-                match=match,
-                note="" if site.declared_ns is None else f"ns={site.declared_ns}",
-            )
-            if not match:
-                mismatches.append(row)
-            continue
-
-        # --- Dual-map resolution (step 3: HARD ERROR — closes blind spot) ---
-        # A non-cfg-gated *_anchor_hash_unchanged fn whose scenario is in
-        # neither map is an unanchored constant — it cannot be validated.
-        # This is always a configuration error; fail loudly.
-        mismatches.append(DriftRow(
+        row = DriftRow(
             file=site.file,
             lineno=site.lineno,
             fn_name=site.fn_name,
             scenario=site.scenario,
-            in_test=site.literal[:16] + "…",
-            canonical="(HARD ERROR: no row for the declared namespace)",
-            match=False,
-            note=(
-                f"declared ns={site.declared_ns!r} matches no single anchors.toml row for "
-                "this scenario — fix the declaration or add the row"
-                if site.declared_ns is not None
-                else "add scenario to SYNTHETIC_DETERMINISM_SHAS or anchors.toml"
-            ),
-        ))
+            in_test=site.literal[:16] + "\u2026",
+            canonical=shown,
+            match=match,
+            note=note,
+        )
+        if not match:
+            mismatches.append(row)
 
     return mismatches, skipped
 
@@ -585,22 +649,20 @@ def apply_write(
     canonical: dict[str, str],
     anchors: list[AnchorEntry] | None = None,
 ) -> int:
-    """Rewrite stale ANCHOR literals in determinism.rs using the dual-map.
+    """Rewrite stale ANCHOR literals in `path` to the SHA `resolve_expected` names.
 
-    Resolution order (mirrors detect_drift, EX-4 v2 / ADR-0045 § D7.1b):
-      1. SYNTHETIC_DETERMINISM_SHAS[scenario] — written as full ANCHOR equality.
-      2. `sha_for(anchors, scenario, site.declared_ns)` — the row this site DECLARES via
-         `// anchor-ns:`, falling back to the canonical suffix when it declares nothing.
-         Until 2026-11-08 this read `canonical[scenario]` only, which is why `--write` had
-         to REFUSE outright whenever any site declared a non-canonical namespace: it would
-         have re-pinned a correct noop-baseline or sqrt gate to the canonical row, turning a
-         caught drift into a silent one (bug-log #77). The DETECTOR was already
-         namespace-aware; only the writer was not — so the tool could diagnose 25 stale
-         literals and then decline to fix any of them while telling the reader to run the
-         flag that refuses. Its own refusal named the fix, "teach --write to honour
-         `// anchor-ns:` first", and this is it (bug-log #180).
-      3. Neither map → skip with a warning (HARD ERROR only at check time;
-         --write cannot fabricate a correct value).
+    Resolution is NOT re-derived here, and that is the whole point. bug-log #180: this
+    function carried its own copy of the order under a comment claiming it was "the same
+    order as detect_drift", and the two disagreed twice over — once by taking the
+    synthetic SHA for a site that had declared its namespace (three correct canonical pins
+    overwritten), once by resolving through `canonical[scenario]`, which cannot see a
+    non-canonical row at all (every real re-emission refused). Copying the detector's
+    lines in here on 2026-11-08 fixed the symptom and left the cause: two copies that
+    agree. `--write` must write the value the CHECK demands or it is not a fix, so both
+    now call `resolve_expected` / `literal_matches` and read no map themselves.
+
+    A site whose row cannot be resolved is skipped with a warning: `--write` cannot
+    fabricate a correct value, and `main()` refuses such a site up front.
 
     For ANCHOR (full-hash) sites: updates the literal in place.
     For ANCHOR_PREFIX sites: updates the literal AND renames the const to ANCHOR,
@@ -620,44 +682,27 @@ def apply_write(
         if site.cfg_gated:
             continue
 
-        # --- Dual-map resolution for --write (same order as detect_drift) ---
-        # bug-log #180, second half: a DECLARED namespace suppresses the synthetic map, which
-        # is the rule `detect_drift` already states at the mirror site — "sites can pin the
-        # same scenario under different conditions … the site knows which row it asserts; the
-        # site wins." The writer took the synthetic value unconditionally, so for the three
-        # `realdata_row_btc_2023_1m_*` gates — which declare
-        # `// anchor-ns: v5-realdata-medium-2026-05` and exist precisely to cover the
-        # real-data rows that `#125` found uncovered — it overwrote three CORRECT canonical
-        # pins with the synthetic bodies' SHAs. Caught only because the detector disagreed
-        # with the writer afterwards; a tool whose two halves resolve differently reports
-        # success and leaves the file wrong.
-        synth = (
-            None if site.declared_ns is not None
-            else SYNTHETIC_DETERMINISM_SHAS.get(site.scenario)
-        )
-        if synth is not None:
-            target = synth
-        else:
-            if anchors is not None:
-                target = sha_for(anchors, site.scenario, site.declared_ns)
-            else:
-                target = canonical.get(site.scenario)
-            if target is None:
-                # Neither map — cannot write a correct value; skip with warning.
-                print(
-                    f"WARN: --write skipped {site.fn_name} ({path.name}:{site.lineno}): "
-                    f"scenario '{site.scenario}' not in SYNTHETIC_DETERMINISM_SHAS "
-                    f"or anchors.toml — add it manually.",
-                    file=sys.stderr,
-                )
-                continue
+        # The ONE resolver — the order and its reasoning live in its docstring (#180).
+        target, _source = resolve_expected(site, anchors, canonical)
+        if target is None:
+            # No row identifiable, so there is no correct value to write. Skip with a
+            # warning; the hard failure for this is detect_drift's, at check time, and
+            # main() refuses a declared-but-unresolvable site before reaching here.
+            where = (
+                f" under declared ns '{site.declared_ns}'"
+                if site.declared_ns is not None
+                else ""
+            )
+            print(
+                f"WARN: --write skipped {site.fn_name} ({path.name}:{site.lineno}): no "
+                f"row resolves for scenario '{site.scenario}'{where} — fix the "
+                "declaration or add the row manually.",
+                file=sys.stderr,
+            )
+            continue
 
-        # Check if already current (using dual-map expected value).
-        if _is_prefix_site(site.const_name):
-            is_match = target.startswith(site.literal)
-        else:
-            is_match = site.literal == target
-        if is_match:
+        # Already current? The same comparison the check uses, for the same reason.
+        if literal_matches(site, target):
             continue
 
         lineno_0 = site.lineno - 1  # 0-based index
@@ -810,6 +855,16 @@ def _self_test() -> int:  # noqa: C901
     - **P7** the explicit `// anchor-scenario:` form, and that it too does not bleed.
     - **P8** the file list itself: non-empty, all present, and a vanished entry raises
       rather than silently contributing zero sites.
+    - **P9** the precedence rule a declared namespace has over the synthetic map. Two
+      fixtures differing in exactly that dimension and expecting DIFFERENT values —
+      one value pinned by a single fixture is a value nothing holds (bug-log #161).
+    - **P10** that the CHECK path and the `--write` path resolve one site to the same
+      value, on the configuration that broke: a site declaring `// anchor-ns:` for a
+      scenario the synthetic map also knows. With a negative control, because a probe
+      where both paths agree on "nothing to do" would also pass if both did nothing.
+    - **P11** the structural property P9/P10 rest on: `resolve_expected` is the only
+      reader of the two maps. No value-level probe can see a second copy appear; this
+      one fails the moment one does.
 
     A linter without this mode is exactly the thing bug-log `#115` is about: it reports a
     number nobody has checked it can fail to produce.
@@ -817,8 +872,11 @@ def _self_test() -> int:  # noqa: C901
     import tempfile
 
     failures: list[str] = []
+    n_probes = 0
 
     def probe(name: str, ok: bool, detail: str) -> None:
+        nonlocal n_probes
+        n_probes += 1
         if ok:
             print(f"  self-test {name}: FIRED (correct)")
         else:
@@ -952,6 +1010,131 @@ def _self_test() -> int:  # noqa: C901
             "scan_files() returned normally for a nonexistent path",
         )
 
+        # ---------------------------------------------------------------- bug-log #180
+        # The fixture below IS the configuration that broke: a site declaring
+        # `// anchor-ns:` for a scenario that ALSO has a synthetic SHA. Three such sites
+        # ship (`realdata_row_btc_2023_1m_*`). Detection suppressed the synthetic map for
+        # them; `--write` did not. Nothing could see the disagreement, because `--write`
+        # was unreachable behind a refusal — so the fixture is the gate, not the refusal.
+        syn_scenario = next(iter(SYNTHETIC_DETERMINISM_SHAS))
+        syn_sha = SYNTHETIC_DETERMINISM_SHAS[syn_scenario]
+        # DERIVED, not measured off the subject: any value that is not the synthetic one.
+        declared_sha = "0123456789abcdef" * 4
+        assert declared_sha != syn_sha
+        fx_anchors = [AnchorEntry(syn_scenario, CANONICAL_VERSION_SUFFIX, declared_sha)]
+        fx_canonical = canonical_sha_map(fx_anchors)
+
+        # P9 — the precedence rule itself, two-sided. The pair differs in ONE dimension
+        # (declared_ns present or absent) and expects DIFFERENT values; a single fixture
+        # would pass against either order, which is how an order gets "pinned" by nothing.
+        site_declared = InTestSite(
+            file="p9.rs", lineno=3, fn_name="r", scenario=syn_scenario,
+            const_name="ANCHOR", literal=declared_sha, cfg_gated=False,
+            declared_ns=CANONICAL_VERSION_SUFFIX,
+        )
+        site_bare = site_declared._replace(declared_ns=None, literal=syn_sha)
+        got_declared = resolve_expected(site_declared, fx_anchors, fx_canonical)
+        got_bare = resolve_expected(site_bare, fx_anchors, fx_canonical)
+        probe(
+            "P9 a declared namespace suppresses the synthetic map",
+            got_declared == (declared_sha, "declared-ns")
+            and got_bare == (syn_sha, "synthetic"),
+            f"expected declared→({declared_sha[:8]}…, 'declared-ns') and "
+            f"bare→({syn_sha[:8]}…, 'synthetic'); got {got_declared} / {got_bare}",
+        )
+
+        # P10 — the two PATHS, not the one function: parse a real file, run detection over
+        # it, then run the writer over it, and require them to agree. Pre-#180 `apply_write`
+        # resolved `syn_sha` here and would have rewritten a CORRECT literal to it.
+        def _fixture(name: str, literal: str) -> Path:
+            p = tmp / name
+            p.write_text(
+                "fn r() {\n"
+                f"    // anchor-ns: {CANONICAL_VERSION_SUFFIX}\n"
+                f'    const ANCHOR: &str = "{literal}";\n'
+                f'    scenario_body_hex("{syn_scenario}");\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            return p
+
+        # P10a — literal already correct for the DECLARED row: detection is silent and the
+        # writer touches nothing. The old writer rewrote it to the synthetic SHA.
+        p10a = _fixture("p10a.rs", declared_sha)
+        s10a, _ = parse_anchor_literals(p10a)
+        before = p10a.read_text(encoding="utf-8")
+        mm_a, _ = detect_drift(s10a, fx_canonical, fx_anchors)
+        wrote_a = apply_write(p10a, s10a, fx_canonical, fx_anchors)
+        probe(
+            "P10a check and write agree that a declared-ns pin is current",
+            len(s10a) == 1 and not mm_a and wrote_a == 0
+            and p10a.read_text(encoding="utf-8") == before,
+            f"parsed {len(s10a)} site(s), {len(mm_a)} mismatch(es), {wrote_a} rewrite(s); "
+            f"file {'unchanged' if p10a.read_text(encoding='utf-8') == before else 'CHANGED'}",
+        )
+
+        # P10b — the negative control. Without it, P10a would also pass if both paths did
+        # nothing at all. A wrong literal must make detection fire AND make the writer
+        # write the value detection named — the declared row, never the synthetic one.
+        p10b = _fixture("p10b.rs", "f" * 64)
+        s10b, _ = parse_anchor_literals(p10b)
+        mm_b, _ = detect_drift(s10b, fx_canonical, fx_anchors)
+        wrote_b = apply_write(p10b, s10b, fx_canonical, fx_anchors)
+        after_b = p10b.read_text(encoding="utf-8")
+        probe(
+            "P10b a stale declared-ns pin is written to the row the CHECK named",
+            len(mm_b) == 1 and wrote_b == 1
+            and declared_sha in after_b and syn_sha not in after_b,
+            f"{len(mm_b)} mismatch(es), {wrote_b} rewrite(s); declared row "
+            f"{'present' if declared_sha in after_b else 'ABSENT'}, synthetic "
+            f"{'PRESENT' if syn_sha in after_b else 'absent'}",
+        )
+
+        # P11 — the structural property P9/P10 rest on. Those two check what the resolver
+        # RETURNS; neither can see a second copy of the order growing back inside a caller,
+        # which is the defect itself. So: `resolve_expected` must be the only function that
+        # names `SYNTHETIC_DETERMINISM_SHAS` or `sha_for`.
+        #
+        # Read off the AST, not the source text. My first version grepped the source and
+        # flagged `main` for the words `sha_for(` sitting inside a COMMENT explaining this
+        # very refactor — a gate that fires on prose is a gate that gets switched off. A
+        # Name node is a read; a comment and a docstring are neither, and the AST does not
+        # contain them at all.
+        import ast
+
+        maps = {"SYNTHETIC_DETERMINISM_SHAS", "sha_for"}
+        module = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+        defs = {
+            node.name: node
+            for node in module.body
+            if isinstance(node, ast.FunctionDef)
+        }
+
+        def names_read(fn_name: str) -> set[str]:
+            node = defs.get(fn_name)
+            if node is None:
+                return {"<FUNCTION NOT FOUND: " + fn_name + ">"}
+            return {
+                n.id for n in ast.walk(node)
+                if isinstance(n, ast.Name) and n.id in maps
+            }
+
+        offenders = {
+            name: sorted(names_read(name))
+            for name in ("detect_drift", "apply_write", "main")
+            if names_read(name)
+        }
+        # Positive control: if the AST walk were broken, every set would be empty and the
+        # offender check would pass while measuring nothing. The resolver MUST read both.
+        resolver_reads = names_read("resolve_expected")
+        probe(
+            "P11 resolve_expected is the only reader of the two maps",
+            not offenders and resolver_reads == maps,
+            f"callers naming the maps directly: {offenders or 'none'}; "
+            f"resolve_expected names {sorted(resolver_reads)} (must be both, else this "
+            "probe is measuring nothing)",
+        )
+
     if failures:
         print(
             f"\ncheck_determinism_anchors --self-test: FAIL — {len(failures)} probe(s) did not "
@@ -959,7 +1142,7 @@ def _self_test() -> int:  # noqa: C901
             file=sys.stderr,
         )
         return 1
-    print("check_determinism_anchors --self-test: OK — 9 probes fired")
+    print(f"check_determinism_anchors --self-test: OK — {n_probes} probes fired")
     return 0
 
 
@@ -1085,12 +1268,19 @@ def main() -> int:  # noqa: C901
         # What is still refused, per-site and never guessed: a site declaring a namespace
         # that has no matching anchors.toml row. Writing one of those would mean choosing a
         # row on the site's behalf, which is bug-log #77's mistake with the tool's own hand.
+        #
+        # bug-log #180 durable fix — this predicate was a FOURTH place that re-derived the
+        # order (`sha_for(...) is None and scenario not in SYNTHETIC_...`). It now asks the
+        # resolver, which already answers exactly this question: a declared site that
+        # resolves to nothing. The dropped `scenario not in SYNTHETIC_DETERMINISM_SHAS`
+        # clause only ever downgraded the refusal to a per-site WARN for a site declaring a
+        # BAD namespace on one of the three synthetic scenarios — a configuration no site
+        # has, and one the detector already treats as a hard error. Refusing it is the
+        # consistent answer and what this refusal's own message describes.
         unresolvable = [
             st for st in sites
             if st.declared_ns is not None
-            and anchors is not None
-            and sha_for(anchors, st.scenario, st.declared_ns) is None
-            and st.scenario not in SYNTHETIC_DETERMINISM_SHAS
+            and resolve_expected(st, anchors, canonical)[0] is None
         ]
         if unresolvable:
             print(
@@ -1131,23 +1321,30 @@ def main() -> int:  # noqa: C901
     n_total = len(sites)
     n_skip = len(skipped)
     n_ok = n_total - n_skip
-    # Count synthetic vs canonical matches for informational output.
-    # Count what the RESOLUTION did, not what the scenario name suggests. The synthetic
-    # override is skipped for a site that declares its namespace, so a scenario-keyed count
-    # over-reports — the same "a number nobody measured" shape this tool exists to catch,
-    # in its own summary line.
-    n_synth = sum(
-        1 for s in sites
-        if not s.cfg_gated
-        and s.declared_ns is None
-        and s.scenario in SYNTHETIC_DETERMINISM_SHAS
-    )
-    # bug-log #131 — split the declared-namespace sites out instead of folding them into
-    # "canonical". 13 of the 29 determinism.rs sites target a NON-canonical row; calling
-    # them canonical in the summary is the same species of unstated assumption as scanning
-    # one file and saying "29 of 29".
-    n_declared = sum(1 for s in sites if not s.cfg_gated and s.declared_ns is not None)
-    n_canonical = n_ok - n_synth - n_declared
+    # Count what the RESOLUTION did, not what the scenario name suggests — a scenario-keyed
+    # count over-reports, because a site that declares its namespace suppresses the
+    # synthetic map. That is the same "a number nobody measured" shape this tool exists to
+    # catch, appearing in its own summary line.
+    #
+    # bug-log #180 durable fix — and the count is taken by ASKING the resolver, not by
+    # re-deriving its order here. This block was the THIRD copy of that order, and the
+    # arithmetic `n_ok - n_synth - n_declared` made the canonical column a remainder that
+    # could absorb any disagreement between the copies without ever looking wrong.
+    #
+    # bug-log #131 — declared-namespace sites are a column of their own rather than folded
+    # into "canonical". 13 of the 29 determinism.rs sites target a NON-canonical row;
+    # calling them canonical is the same unstated assumption as scanning one file and
+    # saying "29 of 29".
+    label_counts: dict[str, int] = {"canonical": 0, "declared-ns": 0, "synthetic": 0}
+    for s in sites:
+        if s.cfg_gated:
+            continue
+        _, source = resolve_expected(s, anchors, canonical)
+        if source is not None:
+            label_counts[source] += 1
+    n_synth = label_counts["synthetic"]
+    n_declared = label_counts["declared-ns"]
+    n_canonical = label_counts["canonical"]
     # The per-file breakdown. A file dropping out of scope is then visible in the output
     # rather than only in the total — the finding this whole change is about.
     per_file_str = " · ".join(f"{name} {n}" for name, n in per_file.items())
