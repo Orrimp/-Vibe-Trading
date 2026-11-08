@@ -44,9 +44,41 @@ impl Ledger {
             format!("sqlite://{db_path}?mode=rwc")
         };
 
-        let pool = sqlx::SqlitePool::connect(&url)
-            .await
-            .map_err(|e| LedgerError::Database(e.to_string()))?;
+        // bug-log #185 — an in-memory SQLite database lives exactly as long as ONE
+        // connection to it stays open. `sqlx::SqlitePool::connect` takes the default
+        // `min_connections = 0` with an `idle_timeout` and a `max_lifetime` that are
+        // both `Some`, so the pool is free to reap its way to ZERO open connections —
+        // at which point the database is destroyed, the next acquire creates a fresh
+        // empty one, and the migrations are never re-run. Every query after that is
+        // `no such table: journal_transactions`, which is precisely the intermittent,
+        // Windows-only CI failure in `ui`'s `t906_stitch_kill_confirmed_…` test.
+        //
+        // Measured (the probe this comment exists to record): a pool with
+        // `min_connections(0)` and a 50 ms idle timeout goes size 1 → 0 and then
+        // fails with that exact string. `crates/audit/tests/
+        // in_memory_schema_outlives_the_pool.rs` keeps both halves executable.
+        //
+        // So for `:memory:` only, pin the floor at one connection and disable both
+        // reapers. The cap stays at the default because sqlx 0.8 DOES share the
+        // in-memory database across the pool (separately probed: a second, freshly
+        // opened connection sees the schema), so extra connections are harmless —
+        // it is reaching zero that is fatal, not having several.
+        //
+        // A file-backed ledger keeps sqlx's defaults untouched: its schema is on
+        // disk and cannot evaporate, and pinning a connection open or disabling
+        // `max_lifetime` for the real database would be a production change made to
+        // fix a test-only property.
+        let pool = if db_path == ":memory:" {
+            sqlx::sqlite::SqlitePoolOptions::new()
+                .min_connections(1)
+                .idle_timeout(None)
+                .max_lifetime(None)
+                .connect(&url)
+                .await
+        } else {
+            sqlx::SqlitePool::connect(&url).await
+        }
+        .map_err(|e| LedgerError::Database(e.to_string()))?;
 
         // Run embedded migrations (001..009)
         sqlx::migrate!("./migrations")

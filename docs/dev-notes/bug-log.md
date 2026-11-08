@@ -8178,14 +8178,51 @@ query from a second runtime succeeds 3 runs out of 3 on macOS. So the coupling i
 the reproduction is not. Whether Windows reaps the last one is untested, because this host
 cannot run that leg.
 
-#### Where it stands
+#### Mechanism 3, **CONFIRMED** — reproduced locally, same error string, no Windows needed
 
-A plausible, evidence-backed mechanism (the in-memory database's lifetime is tied to
-connections surviving a runtime drop, and nothing in the test guarantees one does) with **no
-reproduction**. The honest options are to pin the ledger's runtime for the test's lifetime, or
-to stop using `:memory:` for a ledger that outlives its creating runtime — both of which
-change what a test somebody else designed is exercising, on a failure I cannot make happen.
-So it is recorded, not patched. A re-run of that CI leg is the cheapest next measurement.
+The two disproofs above share a blind spot, and the 3-19 session named it within minutes of
+the entry shipping: **neither of them tests the pool reaching ZERO.** "sqlx shares the
+in-memory database across the pool" is true *while a connection survives*, and the 3 → 2
+observation leaves two — which is exactly why that query succeeded. An in-memory SQLite
+database exists only while at least one connection to it does. The failure needs the count at
+zero, however briefly; then the next acquire creates a fresh empty database and the
+migrations, which ran once at construction, are never re-run.
+
+That is testable here, and it did not need the Windows host or a CI push the hypothesis
+originally called for — sqlx's own idle reaper gets to zero on demand:
+
+```text
+pool = min_connections(0), idle_timeout(50 ms), "sqlite::memory:"
+CREATE TABLE journal_transactions (…)      -> pool size 1
+wait for the reaper                        -> pool size 0
+SELECT COUNT(*) FROM journal_transactions  -> no such table: journal_transactions
+```
+
+Byte-for-byte the CI error. **`Ledger::open` was wide open to this:**
+`sqlx::SqlitePool::connect` takes `min_connections = 0` with an `idle_timeout` AND a
+`max_lifetime` that are both `Some`, so nothing stopped the pool reaping its way to zero.
+
+#### Fixed
+
+For the `:memory:` branch only: `min_connections(1)`, `idle_timeout(None)`,
+`max_lifetime(None)`. The cap stays at sqlx's default, because the separately-probed sharing
+result means extra connections are harmless — reaching **zero** is what is fatal, not having
+several. A file-backed ledger keeps sqlx's defaults untouched: its schema is on disk and
+cannot evaporate, and pinning a production connection open to fix a test-only property would
+be the wrong trade. Two-sided guard in
+`crates/audit/tests/in_memory_schema_outlives_the_pool.rs`: the destruction demonstration is
+the **why** (and turns red first if a future sqlx stops tying the lifetime to a connection,
+saying the guard may relax), the configuration assertion is the **guard**. Probed: with the
+fix reverted the guard fails naming `min_connections = 0`, while the demonstration stays
+green — so the two halves measure different things.
+
+#### What is still NOT established
+
+This closes the **reaping** path, which is confirmed. It does not prove that is what Windows
+hit: the runtime-drop path also destroys connections (3 → 2 measured), and whether Windows
+takes the *last* one is still untested. With `min_connections(1)` the pool now treats one
+connection as a floor rather than an accident, which should blunt that path too, but "should"
+is not a measurement. The next CI run of that leg is the test.
 
 #### Fixed in this pass, separately
 
@@ -8196,8 +8233,12 @@ passes.
 
 #### Moral
 
-Two mechanisms, each textbook-plausible, each wrong, and the first one had already produced a
-green-looking guard asserting a requirement that does not exist. A diagnosis is a measurement
+Three mechanisms: two textbook-plausible and wrong, the third correct and found by someone
+reading my disproofs rather than my conclusion. Both of my probes left a connection alive, so
+neither could see the only state that matters — and I wrote "no third candidate" while holding
+the measurement that would have produced one. A disproof is only as wide as the state it
+visits. The first wrong mechanism had also already produced a green-looking guard asserting a
+requirement that does not exist. A diagnosis is a measurement
 like any other: the probe that killed mechanism 1 took one temporary test, and without it this
 entry would have shipped a confident false cause plus a pool cap nobody needed. "The build
 failed in test" also turned out to be CI rather than the local build everyone was watching —
