@@ -132,6 +132,13 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F2 — CLOSED 2026-11-08 as `#161`** (ranked action 2). Every ROBUST edge now pinned from
+  both sides: exactly-at the band → ROBUST (catches narrowing, pins the inclusive comparison),
+  just-outside with the other four held inside → MARGINAL (catches widening), plus
+  `classifier_robust_does_not_collapse_to_p5_alone`. Probed: all four widened at once → 2
+  failed; each individually → 1 failed; the narrowing control → 1 failed; control 7 passed.
+  `classify_verdict` and `verdict_bands` stayed byte-frozen — verified by diffing both against
+  HEAD, and by the diff being a single pure insertion inside `mod tests`.
 - **F1 — CLOSED 2026-11-08 as `#160`** (ranked action 1). Seven fixtures whose entropies are
   *derived* from a closed form (`H = log2(n) - 2a/n`) rather than measured, straddling 4.5 at
   both length 32 and length 40, plus a 31-vs-32-byte pair closing the `MIN_LEN` headroom;

@@ -5848,3 +5848,75 @@ what it reports.** A probe that silently no-ops is a gate that cannot fail, one 
 Related: `#154` (test re-implements subject), `#156` (identity's two sides are one expression),
 `#159` (identity asserts what its source cannot witness).
 
+### `#161` — four of the five ROBUST bands in the AD-1 frozen classifier could be widened into no-ops with 368 shipped tests green
+
+Found 2026-11-07 by the cannot-fail-gate sweep (finding F2); fixed 2026-11-08.
+`crates/backtest/src/bakeoff/robustness.rs:102,104,106,108`, used at `:146-149`.
+Shape: **boundary-insensitive fixtures.** `classify_verdict` and `verdict_bands` are
+BYTE-FROZEN by AD-1 and were not touched — the entire gap was in `mod tests`.
+
+MEASURED: `P50_SHARPE_ROBUST` 1.0 → 0.0, `PROB_LOSS_ROBUST` 0.15 → 0.99,
+`PROB_SHARPE_GT1_ROBUST` 0.60 → 0.0 and `P95_MAXDD_ROBUST` 0.50 → 0.99 — **all four at
+once**, which reduces ROBUST from a five-signal weakest-link rule to "not FRAGILE and
+p5 ≥ 0.5" — left **241 lib + 43 bin + 84 integration = 368** shipped tests green.
+
+**Why, precisely.** The one existing ROBUST-boundary fixture,
+`param_robustness_sweep.rs:2582 classifier_robust_boundary_all_just_above`, sets all five
+signals **exactly at** their band. That pins the inclusive side, so it catches a band being
+*narrowed*. And all four MARGINAL fixtures in the tree (p5 = 0.0, 0.3, 0.3, 0.3) are Marginal
+via `p5 < P5_SHARPE_ROBUST` **alone** — so once p5 fails, the other four criteria are never the
+reason for any expected outcome, and widening them changes no test's result. Only the FRAGILE
+five and `P5_SHARPE_ROBUST` were two-sided. **Every unpinned direction labels MORE candidates
+ROBUST**, which is the one direction that matters for a credibility gate.
+
+Nothing else could catch it: the constants are referenced nowhere outside the file; `scripts/`
+and `.githooks/` contain zero references; `verdict_transcription_check.py` (`#154`) covers only
+the three forecast classifiers; `rank.rs:70,74,152` treats Marginal and Robust identically
+(only `Some(Fragile)` is ineligible), so the AD-1 ranking-identity tests are blind to it; and
+`theta_surface_reproduction.rs`, the one gate that re-runs verdict-bearing bodies, is
+`#![cfg(feature="realdata")]` + `#[ignore]`.
+
+**Latent, not live — and that is why no anchor could catch it.** The anchored per-cell verdicts
+are **784 FRAGILE / 80 MARGINAL / 0 ROBUST**, and max p5 on any MARGINAL cell is **0.182983**.
+Widening those four bands relabels nothing in the current corpus, so all 119 anchors stay
+byte-identical through the whole perturbation. The gap is in what the gate would do to a
+*future* candidate. Blast radius of a wrong label is display-only today
+(`crates/ui/src/leaderboard/state.rs:833`, `crates/agent/src/narration.rs:162`).
+
+**Fix: every ROBUST edge pinned from both sides.** A declared `ROBUST_BASELINE` with all five
+signals comfortably inside ROBUST and comfortably clear of FRAGILE; then per edge, one fixture
+**exactly at** the band (must be ROBUST — catches narrowing, and pins the inclusive
+comparison) and one **just outside** it with the other four held inside (must be MARGINAL —
+catches widening). Plus `classifier_robust_does_not_collapse_to_p5_alone`: p5 clears ROBUST,
+the other four each sit just outside, nothing is FRAGILE — the candidate that the collapsed
+rule would crown and the intact rule must not. The baseline is asserted ROBUST first, so a
+drifted baseline fails loudly instead of making every per-edge case compare against a verdict
+reached for some other reason, and the collapse fixture asserts `!= Fragile` before asserting
+`== Marginal`, so its premise is checked rather than assumed.
+
+**Probed:**
+
+| perturbation | result |
+|---|---|
+| all four widened (the measured scenario) | **2 failed** (both new tests) |
+| `P50_SHARPE_ROBUST` 1.0 → 0.0 | 1 failed |
+| `PROB_LOSS_ROBUST` 0.15 → 0.99 | 1 failed |
+| `PROB_SHARPE_GT1_ROBUST` 0.60 → 0.0 | 1 failed |
+| `P95_MAXDD_ROBUST` 0.50 → 0.99 | 1 failed |
+| `P50_SHARPE_ROBUST` 1.0 → 1.05 (narrowing control) | 1 failed |
+| control | 7 passed, 0 failed |
+
+Each probe diffed the file against its snapshot first and refused to report a result if nothing
+changed — the corollary `#160` earned the hard way.
+
+**AD-1 verified, not asserted.** `git diff -U0` on the file is a single hunk,
+`@@ -214,0 +215,108 @@ mod tests {` — a pure insertion inside a module that begins at line
+159 — and `classify_verdict` and `verdict_bands` both diff byte-identical against `HEAD`.
+
+**Moral.** `#160` was a fixture at the arithmetic maximum of the measure it gated. This is the
+structural version: when a composite rule is `A && B && C && D && E` and every negative fixture
+fails on `A`, then `B..E` are untested *by construction*, no matter how many fixtures there are.
+The count of tests says nothing; what matters is whether any expected outcome would change if a
+given term were removed. Four of five terms here could be deleted in effect, and the suite's
+368 green tests were all still telling the truth about `A`.
+

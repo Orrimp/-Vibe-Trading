@@ -212,6 +212,114 @@ mod tests {
         }
     }
 
+    // ── Every ROBUST edge pinned from BOTH sides (bug-log #161, sweep F2) ─────
+    //
+    // `classify_verdict` and `verdict_bands` are BYTE-FROZEN by AD-1 and are not
+    // touched here. The gap was entirely in the fixtures.
+    //
+    // MEASURED 2026-11-07: `P50_SHARPE_ROBUST` 1.0 -> 0.0, `PROB_LOSS_ROBUST`
+    // 0.15 -> 0.99, `PROB_SHARPE_GT1_ROBUST` 0.60 -> 0.0 and `P95_MAXDD_ROBUST`
+    // 0.50 -> 0.99 — ALL FOUR AT ONCE, which reduces ROBUST to "not FRAGILE and
+    // p5 >= 0.5" — left 241 lib + 43 bin + 84 integration = 368 shipped tests
+    // GREEN. Only the FRAGILE five and `P5_SHARPE_ROBUST` were two-sided.
+    //
+    // The reason is specific and worth keeping: the one existing ROBUST-boundary
+    // fixture, `param_robustness_sweep.rs::classifier_robust_boundary_all_just_
+    // above`, sets all five signals EXACTLY at their band. That pins the
+    // inclusive side, so it catches NARROWING a band. And all four MARGINAL
+    // fixtures in the tree (p5 = 0.0, 0.3, 0.3, 0.3) are Marginal via
+    // `p5 < P5_SHARPE_ROBUST` ALONE — so once p5 fails, the other four
+    // criteria are never the reason for any expected outcome, and widening them
+    // changes no test's result. Every unpinned direction labels MORE candidates
+    // ROBUST, which is the direction that matters for a credibility gate.
+    //
+    // Latent, not live: the anchored per-cell verdicts are 784 FRAGILE / 80
+    // MARGINAL / 0 ROBUST, and max p5 on any MARGINAL cell is 0.182983 — so the
+    // gap relabels nothing today. That is exactly why no anchor could catch it.
+
+    /// Every signal comfortably inside its ROBUST band AND comfortably clear of
+    /// every FRAGILE band. Each boundary case below moves exactly ONE signal and
+    /// leaves the other four here, so a flip is attributable to that one edge.
+    ///
+    /// Order matches `make_summary`: p5 Sharpe, p50 Sharpe, `prob_loss`,
+    /// P(Sharpe>1), p95 `MaxDD`.
+    const ROBUST_BASELINE: [f64; 5] = [0.8, 1.5, 0.05, 0.80, 0.30];
+
+    fn summary_from(v: [f64; 5]) -> DistributionSummary {
+        make_summary(v[0], v[1], v[2], v[3], v[4])
+    }
+
+    /// Two-sided pin per ROBUST edge: exactly AT the band must be ROBUST (the
+    /// comparisons are inclusive), and just OUTSIDE it must be MARGINAL with the
+    /// other four held inside. Narrowing an edge breaks the first assertion;
+    /// widening it breaks the second, and before 2026-11-08 nothing did.
+    #[test]
+    fn classifier_every_robust_edge_is_pinned_from_both_sides() {
+        // Non-vacuity: the baseline must itself be ROBUST, or every case below
+        // would be comparing against a verdict reached for another reason.
+        assert_eq!(
+            classify_verdict(&summary_from(ROBUST_BASELINE)),
+            ParamRobustnessVerdict::Robust,
+            "the baseline must be ROBUST for the per-edge cases to attribute \
+             anything; if this fails the baseline drifted into a band"
+        );
+
+        for (label, idx, at_band, just_outside) in [
+            ("P5_SHARPE_ROBUST (>= 0.5)", 0usize, 0.5, 0.499),
+            ("P50_SHARPE_ROBUST (>= 1.0)", 1, 1.0, 0.999),
+            ("PROB_LOSS_ROBUST (<= 0.15)", 2, 0.15, 0.151),
+            ("PROB_SHARPE_GT1_ROBUST (>= 0.60)", 3, 0.60, 0.599),
+            ("P95_MAXDD_ROBUST (<= 0.50)", 4, 0.50, 0.501),
+        ] {
+            let mut at = ROBUST_BASELINE;
+            at[idx] = at_band;
+            assert_eq!(
+                classify_verdict(&summary_from(at)),
+                ParamRobustnessVerdict::Robust,
+                "{label}: a signal EXACTLY at the band must still be ROBUST — the \
+                 comparison is inclusive. A failure here means the band was \
+                 NARROWED (or the operator flipped to a strict comparison)."
+            );
+
+            let mut outside = ROBUST_BASELINE;
+            outside[idx] = just_outside;
+            assert_eq!(
+                classify_verdict(&summary_from(outside)),
+                ParamRobustnessVerdict::Marginal,
+                "{label}: just outside the band, with the other four held \
+                 comfortably inside and nothing in a FRAGILE band, must be \
+                 MARGINAL. A failure here means the band was WIDENED and this \
+                 candidate is now crowned ROBUST on {label} alone."
+            );
+        }
+    }
+
+    /// The measured collapse, made visible. Widening P50 / `PROB_LOSS` /
+    /// P(Sharpe>1) / P95 `MaxDD` together reduces ROBUST to "not FRAGILE and
+    /// p5 >= `P5_SHARPE_ROBUST`". This fixture is a candidate that would be
+    /// crowned under that collapsed rule and must NOT be: p5 clears ROBUST, the
+    /// other four each sit just outside, and no signal is in a FRAGILE band.
+    #[test]
+    fn classifier_robust_does_not_collapse_to_p5_alone() {
+        let summary = make_summary(0.8, 0.999, 0.151, 0.599, 0.501);
+        // Stated explicitly so the fixture's premise is checked, not assumed:
+        // nothing here is FRAGILE, so the verdict turns only on the ROBUST set.
+        assert_ne!(
+            classify_verdict(&summary),
+            ParamRobustnessVerdict::Fragile,
+            "fixture premise broken: no signal should be in a FRAGILE band \
+             (p5 0.8 >= 0.0, p50 0.999 >= 0.5, loss 0.151 <= 0.35, \
+             P(S>1) 0.599 >= 0.35, dd 0.501 <= 0.70)"
+        );
+        assert_eq!(
+            classify_verdict(&summary),
+            ParamRobustnessVerdict::Marginal,
+            "ROBUST must require ALL FIVE signals, not p5 alone. If this reads \
+             ROBUST, four of the five bands have been widened into no-ops and \
+             the gate now crowns on one signal."
+        );
+    }
+
     /// T1.3a — FRAGILE: p5 Sharpe < 0 triggers FRAGILE.
     #[test]
     fn fragile_p5_sharpe_below_zero() {
