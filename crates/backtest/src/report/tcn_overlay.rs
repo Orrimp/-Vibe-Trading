@@ -130,6 +130,17 @@ fn build_content(
     let (total_return_pct, max_dd_pct, fees_f, initial_f, final_f, dampen_rate_pct) =
         kpi_floats(result);
 
+    // bug-log #151 — a total return with no benchmark beside it cannot be read. The control
+    // is a pure function of the bars this run already carries, so it costs no compute: see
+    // `super::benchmark`.
+    let bh_raw = super::benchmark::equal_weight_buy_and_hold(
+        &result.bars,
+        result.initial_equity,
+        input.taker_fee_bps,
+    );
+    let bh =
+        super::benchmark::bh_cells(bh_raw.as_ref(), result.initial_equity, result.final_equity);
+
     let data_source_section = build_data_source_section(input, data_revision_sha, loaded_bar_info);
 
     let data_notes_line = if loaded_bar_info.is_some() {
@@ -170,6 +181,8 @@ fn build_content(
          | Initial capital      | ${initial:.2} USDT            |\n\
          | Final equity         | ${final_eq:.2} USDT           |\n\
          | Total return         | {ret:.2}%                     |\n\
+         | Buy and hold (equal-wt) | {bh_control}                 |\n\
+         | vs buy and hold        | {bh_delta}                    |\n\
          | Max drawdown         | {max_dd:.2}%                  |\n\
          | Trades               | {trades}                      |\n\
          | Buys                 | {buys}                        |\n\
@@ -210,7 +223,7 @@ fn build_content(
          - Forecaster: {forecaster_label}\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
          - Size: equal_weight, k_long=3\n\
-         - Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane (bug-log #95)\n\
+         - Risk: {risk_line}\n\
          - {data_notes_line}\n",
         scenario_name = input.scenario_name,
         seed = seed,
@@ -240,6 +253,12 @@ fn build_content(
         taker_fee_bps = input.taker_fee_bps,
         forecaster_label = result.forecaster_label,
         gross_refusals = result.portfolio_gross_refusals,
+        bh_control = bh.control,
+        bh_delta = bh.delta,
+        risk_line = super::risk_line(
+            result.per_symbol_exposure_cap,
+            result.portfolio_exposure_cap,
+        ),
         data_notes_line = data_notes_line,
     )
 }

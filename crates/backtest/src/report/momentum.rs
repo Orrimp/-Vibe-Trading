@@ -32,6 +32,15 @@ pub fn write(
     data_source: &str,
     report_path: &Path,
 ) -> Result<()> {
+    // bug-log #151 — a total return with no benchmark beside it cannot be read. The control
+    // is a pure function of the bars this run already carries, so it costs no compute.
+    let bh_raw = super::benchmark::equal_weight_buy_and_hold(
+        &result.bars,
+        result.initial_equity,
+        input.taker_fee_bps,
+    );
+    let bh =
+        super::benchmark::bh_cells(bh_raw.as_ref(), result.initial_equity, result.final_equity);
     let total_return_pct = if result.initial_equity > Decimal::ZERO {
         let r = (result.final_equity - result.initial_equity) / result.initial_equity;
         f64::try_from(r).unwrap_or(0.0) * 100.0
@@ -94,6 +103,8 @@ pub fn write(
          | Initial capital      | ${initial:.2} USDT            |\n\
          | Final equity         | ${final_eq:.2} USDT           |\n\
          | Total return         | {ret:.2}%                     |\n\
+         | Buy and hold (equal-wt) | {bh_control}                 |\n\
+         | vs buy and hold        | {bh_delta}                    |\n\
          | Max drawdown         | {max_dd:.2}%                  |\n\
          | Trades               | {trades}                      |\n\
          | Buys                 | {buys}                        |\n\
@@ -111,7 +122,7 @@ pub fn write(
          - v1 cross-sectional momentum: {strat_id}\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
          - Size: equal_weight, k_long=3\n\
-         - Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane (bug-log #95)\n\
+         - Risk: {risk_line}\n\
          - Data: synthetic hourly bars, 10 independent ChaCha20Rng streams\n",
         scenario_name = input.scenario_name,
         seed = seed,
@@ -126,6 +137,12 @@ pub fn write(
         initial = initial_f,
         final_eq = final_f,
         ret = total_return_pct,
+        bh_control = bh.control,
+        bh_delta = bh.delta,
+        risk_line = super::risk_line(
+            result.per_symbol_exposure_cap,
+            result.portfolio_exposure_cap,
+        ),
         max_dd = max_dd_pct,
         trades = result.trades,
         buys = result.buys,

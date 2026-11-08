@@ -5230,7 +5230,8 @@ parts that vary.
 ### `#151` — every lane report publishes an arm's return with no benchmark beside it, so the number cannot be read
 
 **Found** 2026-10-29, trying to decide whether a corrected `+41.81 %` was good news or bad.
-**Status: OPEN — needs a ruling, because the fix is a per-window compute budget.**
+**Status: FIXED 2026-11-08 (option 1) — and the compute budget this entry was parked on does
+not exist. See § Resolution at the end.**
 
 Measured, not assumed: of the seven report writers under `crates/backtest/src/report/`
 (`momentum`, `pairs`, `regime_dispatcher`, `sma`, `tcn_overlay`, `yahoo`, `mod`), **not one**
@@ -5279,6 +5280,62 @@ known that since the bake-off was built — buy-and-hold is wired in as the cont
 precisely because a crown means nothing without it — and the lane reports were simply never held
 to the same standard. Nobody decided they should not be; they predate the standard and nothing
 went back.
+
+#### Resolution, 2026-11-08 — option 1, and the blocker was imaginary
+
+Operator ruling: "BH control into the renderers, re-emission later." Option 1 shipped.
+
+**The premise of the parking was wrong.** This entry priced option 1 at "a BH run per
+anchored window" and deferred it on that. There is no run: every lane result already carries
+`bars: Arc<Vec<Bar>>` (`TcnOverlayRunResult`, `MomentumRunResult`, `PairsRunResult`,
+`RegimeDispatcherRunResult`, and `RunReport` for the SMA path), and an equal-weight
+buy-and-hold is a pure function of each symbol's FIRST and LAST observed close. No second
+backtest, no data load, no engine. I parked a fix for a year's compute that costs one pass
+over a `Vec` already in memory — the cost was asserted, never measured, which is this log's
+recurring shape and is `#176`'s lesson in the same week.
+
+**What shipped.**
+
+- `crates/backtest/src/report/benchmark.rs` — `equal_weight_buy_and_hold` +
+  `bh_cells`. Decimal end to end (AD-9); the arm's own return is recomputed inside
+  `bh_cells` from its initial and final equity so the delta is not a difference of two
+  roundings. Semantics are stated and bounded: equal weight at entry then HELD (no
+  rebalancing — that would not be buy-and-hold), **entry friction only** (the terminal value
+  is a mark, exactly as the arm's `final_equity` is a mark of its open book; charging the
+  control an exit the arm is not charged would bias the comparison toward the arm), and
+  first/last **observed** close rather than calendar bounds, since a late-listing symbol is
+  held for less of the window in the same stream the arm traded.
+- Two rows in every lane table: `Buy and hold (equal-wt)` and `vs buy and hold` (in
+  percentage POINTS). Six writers carry it — `momentum`, `pairs`, `regime_dispatcher`,
+  `sma`, `tcn_overlay`, and `yahoo` by delegating to `sma`. `mod.rs` writes an equity
+  companion with no return figure, so there is nothing there to benchmark.
+- `None` renders as **"not computed (no bars in the run result)"**, never a dash and never a
+  zero. A zero in that column would read as "passive returned nothing", which is a claim.
+- Eight unit tests, every expected value DERIVED by hand rather than read off the subject:
+  equal weight averages the legs (two legs with *different* returns, so the fixture
+  distinguishes an average from "whatever the first symbol did"); a mid-window 10× spike
+  does not change the hold (first and last, not the extremes); the fee rate changes the
+  answer *and by the derived amount* ($1000, 1 leg, 50 bps → fee $5, qty 9.95, final $1194);
+  a falling market returns negative (pins the sign); a third leg splits the same capital
+  three ways (pins the division); the `None` paths each paired with the `Some` control that
+  proves the fixture is otherwise valid; and the delta's sign from **both** directions.
+- `crates/backtest/tests/every_lane_writer_prints_a_benchmark.rs` — the class-level
+  closure. It scans `src/report/` rather than listing writers: any writer rendering a
+  `Total return` row must render both cells, and any writer rendering the cells must
+  actually CALL the computation (otherwise it could print "not computed" forever and read in
+  a diff exactly like the real thing). Floor of 5, both assertions probed with throwaway
+  scan fixtures that fail by name.
+
+**Still open: the re-emission.** Adding two rows changes every lane body, so the anchored
+corpus must be re-emitted under ADR-0038 § D6.b — up to 85 of the 119 rows are
+non-θ-surface. That pass should also clear the ten reproduction gates `#177` found red, since
+those cover the same bodies and re-emitting twice over one corpus would be two passes for
+one result.
+
+**What the entry's own question now looks like.** `+41.81 %` was the number nobody could
+judge. Two things changed it: this control arrives beside it, and `#176`'s cap enforcement
+moves the figure itself to **+33.31 %**. The judgement the entry wanted is available for the
+first time — from the next re-emission, not from this commit.
 
 ### `#152` — the operator's `T-VOL-ALPHA-UNLOCKED` ruling was implemented on one of two sibling rows, and the gate enforcing it was wired to the same one
 
@@ -7267,3 +7324,71 @@ correctly" and "the code can still produce the corpus" are different claims; a p
 that re-emits bodies routinely will separate them the first time it changes a renderer
 without re-running System 2. The dual-anchor design anticipated this exactly, which means
 the failure was not in the design but in which half got run.
+
+### `#178` — I shipped a gate and left the report body saying the gate does not exist
+
+**Found** 2026-11-08, minutes after committing `#95`/`#176`, while rendering a body to check
+something unrelated (that `#151`'s new benchmark rows looked right). **Fixed in this pass.**
+
+The rendered body's Notes section read:
+
+```
+- Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane (bug-log #95)
+```
+
+That sentence was in three writers as a **literal string**. It was true when written. `#95`'s
+gate wiring, committed the same day, made it false for **four of the five lanes** rendered by
+`report/tcn_overlay.rs` — patchtst, tcn-weights, threshold_sweep and garch all now enforce a
+portfolio gross cap, and one of them (patchtst) refuses 294 orders because of it. So the body
+denied a control while the row three lines above it counted that control's refusals.
+
+**How it was caught is the uncomfortable part.** Not by a test, not by review, and not by
+either of the two class-level gates I had just written. By looking at a rendered body for a
+different reason. Had I not needed to eyeball `#151`'s rows, this would have shipped into the
+next re-emission as published text.
+
+#### Why no gate caught it
+
+`#95`'s new gate asks "does every lane that declares a cap enforce it?" — it passed, because
+the lanes do. `#151`'s asks "does every writer that prints a return print a benchmark?" — it
+passed too. Neither asks the question this needed: **does what the body SAYS about a value
+match the value?** That question has no general gate, and a literal string cannot be checked
+against a limit it never reads.
+
+#### The fix: derive the sentence from the value
+
+`report::gross_cap_line(Option<Decimal>)` renders the line from the cap the lane actually ran
+with, and `portfolio_exposure_cap: Option<Decimal>` is now carried on `TcnOverlayRunResult`,
+`MomentumRunResult` and `PairsRunResult`, populated at all seven construction sites from the
+`RiskLimits` the lane built. `None` renders "none declared on this lane"; `Some(c)` renders
+the percentage **of `c`** plus the enforcement mechanism. Two tests, both two-sided: declared
+vs absent must differ and an absent cap must not claim enforcement; and the printed percentage
+tracks the cap it is given (0.35 → `35%`, 1.00 → `100%`, and 0.35 must NOT render `50%`) —
+without that second test the line would be the old bug with an extra step.
+
+The three lanes whose cap is genuinely `None` (momentum, pairs, tcn_overlay) now print that as
+a derived fact rather than a coincidence, so the same rot cannot recur there either.
+
+**A fourth writer had the mirror defect.** `report/regime_dispatcher.rs` printed
+`- Risk: per-symbol cap=40%, portfolio cap=50%` — asserting enforcement of a cap that was
+declared-but-unenforced for as long as `#95` was open, i.e. false in the OTHER direction, and
+true now only by coincidence. Also derived.
+
+**One literal survives, declared rather than silent.** `report/sma.rs:153` prints
+`per-symbol exposure cap = 40%`. Deriving it needs the cap threaded through ten `sma::write`
+call sites, and unlike the four above it is *currently true*: I first wrote here that
+`sma_composed_run.rs:470`'s `Decimal::MAX` falsified it, then read the surrounding code —
+that is `cover_limits`, a deliberate per-leg override for the short-cover leg under `#80`, not
+a lane limit. So it is a latent literal, not a wrong one. It is now named in
+`crates/backtest/tests/report_prose_is_derived_not_asserted.rs` as an explicit grandfathered
+exception, which is the difference between a known debt and an invisible one — a NEW literal
+in any writer fails that test.
+
+#### Moral
+
+This is bug-log `#175`'s class — a hardcoded claim about a value — and it recurred *in the same
+commit that fixed the thing the claim was about*. The general rule it keeps pointing at: a body
+should print values, and sentences about values should be functions of them. Any sentence in a
+report that asserts a configuration is a copy of that configuration, and copies drift. The two
+gates I wrote this session are both of the form "is X wired?"; neither is of the form "does the
+prose agree with X?", and that second form is where this project keeps bleeding.

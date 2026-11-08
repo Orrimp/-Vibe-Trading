@@ -59,9 +59,17 @@ fn build_content(
     stamp: &str,
     strategy_meta: &StrategyMeta,
     revision_sha: Option<&str>,
+    bars: &[trading_core::Bar],
 ) -> String {
     let (total_return_pct, sharpe, max_dd_pct, fees_f, initial_f, final_f) =
         kpi_floats(state, initial_capital, final_equity);
+
+    // bug-log #151 — the buy-and-hold control. These lanes are single-symbol, so the
+    // control is simply "hold the instrument for the same window", which is exactly the
+    // comparison a reader of an SMA arm's return wants and never had.
+    let bh_raw =
+        super::benchmark::equal_weight_buy_and_hold(bars, initial_capital, input.taker_fee_bps);
+    let bh = super::benchmark::bh_cells(bh_raw.as_ref(), initial_capital, final_equity);
 
     let baseline_line = input.baseline_report.as_deref().map_or_else(
         || "baseline_report: n/a".to_string(),
@@ -118,6 +126,8 @@ fn build_content(
          | Initial capital      | ${initial:.2} USDT         |\n\
          | Final equity         | ${final_eq:.2} USDT        |\n\
          | Total return         | {ret:.2}%                  |\n\
+         | Buy and hold (equal-wt) | {bh_control}            |\n\
+         | vs buy and hold      | {bh_delta}                 |\n\
          | Sharpe ratio (ann.)  | {sharpe:.4}                |\n\
          | Max drawdown         | {max_dd:.2}%               |\n\
          | Trades               | {trades}                   |\n\
@@ -159,6 +169,8 @@ fn build_content(
         initial = initial_f,
         final_eq = final_f,
         ret = total_return_pct,
+        bh_control = bh.control,
+        bh_delta = bh.delta,
         sharpe = sharpe,
         max_dd = max_dd_pct,
         trades = state.trades,
@@ -200,6 +212,9 @@ pub fn write(
     report_path: &Path,
     strategy_meta: &StrategyMeta,
     revision_sha: Option<&str>,
+    // bug-log #151 — bars for the buy-and-hold control. Empty renders as
+    // "not computed" rather than a zero.
+    bars: &[trading_core::Bar],
 ) -> Result<()> {
     let now = OffsetDateTime::now_utc();
     let stamp = format!(
@@ -223,6 +238,7 @@ pub fn write(
         &stamp,
         strategy_meta,
         revision_sha,
+        bars,
     );
     std::fs::write(report_path, content).context("write report")?;
     Ok(())

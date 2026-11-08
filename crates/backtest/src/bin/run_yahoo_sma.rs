@@ -284,6 +284,7 @@ async fn main() -> Result<()> {
         elapsed_secs,
         &report_path,
         &strategy_meta,
+        &result.bars,
     )?;
 
     println!("Report       : {}", report_path.display());

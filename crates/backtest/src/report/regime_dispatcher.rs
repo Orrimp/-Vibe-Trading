@@ -72,6 +72,16 @@ pub fn write(
     let (total_return_pct, max_dd_pct, fees_f, initial_f, final_f, suppress_rate_pct) =
         kpi_floats(result);
 
+    // bug-log #151 — a total return with no benchmark beside it cannot be read. The control
+    // is a pure function of the bars this run already carries, so it costs no compute.
+    let bh_raw = super::benchmark::equal_weight_buy_and_hold(
+        &result.bars,
+        result.initial_equity,
+        input.taker_fee_bps,
+    );
+    let bh =
+        super::benchmark::bh_cells(bh_raw.as_ref(), result.initial_equity, result.final_equity);
+
     let now = OffsetDateTime::now_utc();
     let stamp = format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
@@ -123,6 +133,8 @@ pub fn write(
          | Initial capital      | ${initial:.2} USDT            |\n\
          | Final equity         | ${final_eq:.2} USDT           |\n\
          | Total return         | {ret:.2}%                     |\n\
+         | Buy and hold (equal-wt) | {bh_control}                 |\n\
+         | vs buy and hold        | {bh_delta}                    |\n\
          | Max drawdown         | {max_dd:.2}%                  |\n\
          | Trades               | {trades}                      |\n\
          | Buys                 | {buys}                        |\n\
@@ -152,8 +164,8 @@ pub fn write(
          \n\
          - v3.0.0-regime dispatcher: {strat_id}\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
-         - Size: equal_weight fraction=10%, exposure_cap=50%\n\
-         - Risk: per-symbol cap=40%, portfolio cap=50%\n\
+         - Size: equal_weight fraction=10%, exposure_cap={size_cap}\n\
+         - Risk: {risk_line}\n\
          - Data: real Binance hourly bars, 10 symbols\n",
         scenario_name = input.scenario_name,
         universe_count = result.universe.len(),
@@ -162,6 +174,16 @@ pub fn write(
         initial = initial_f,
         final_eq = final_f,
         ret = total_return_pct,
+        bh_control = bh.control,
+        bh_delta = bh.delta,
+        size_cap = result.portfolio_exposure_cap.map_or_else(
+            || "none".to_string(),
+            |c| format!("{}%", (c * rust_decimal::Decimal::from(100u32)).normalize())
+        ),
+        risk_line = super::risk_line(
+            result.per_symbol_exposure_cap,
+            result.portfolio_exposure_cap,
+        ),
         max_dd = max_dd_pct,
         trades = result.trades,
         buys = result.buys,

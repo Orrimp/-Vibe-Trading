@@ -125,6 +125,11 @@ pub struct RegimeDispatcherRunResult {
     pub equity_curve: Vec<Decimal>,
     /// All fills produced during the run.
     pub fills: Vec<FillView>,
+    /// The portfolio gross cap this lane ran with (bug-log #178).
+    pub portfolio_exposure_cap: Option<Decimal>,
+    /// The per-symbol exposure cap this lane ran with — the body's risk line is derived
+    /// from it rather than asserting a literal (bug-log #178).
+    pub per_symbol_exposure_cap: Decimal,
     /// All bars (Arc-shared).
     pub bars: Arc<Vec<Bar>>,
     /// Descriptive label for the forecaster / classifier configuration.
@@ -546,6 +551,8 @@ pub async fn run(
     );
 
     Ok(RegimeDispatcherRunResult {
+        portfolio_exposure_cap: risk_limits.portfolio_exposure_cap,
+        per_symbol_exposure_cap: risk_limits.per_symbol_exposure_cap,
         trades,
         buys,
         sells,

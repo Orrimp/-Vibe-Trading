@@ -473,6 +473,8 @@ pub async fn run(
             warmup_signals: stats.window_warming_up,
             // No portfolio gross cap enforced on this lane (bug-log #95).
             portfolio_gross_refusals,
+            portfolio_exposure_cap: risk_limits.portfolio_exposure_cap,
+            per_symbol_exposure_cap: risk_limits.per_symbol_exposure_cap,
             forecaster_label,
             equity_curve,
             fills: all_fills,

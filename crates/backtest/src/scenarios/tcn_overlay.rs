@@ -49,6 +49,12 @@ pub struct TcnOverlayRunResult {
     /// time a cap counter stopped one struct short of the renderer. `0` on every lane that
     /// declares no cap, which is a true zero and is printed as one.
     pub portfolio_gross_refusals: u64,
+    /// The portfolio gross cap this lane actually ran with, so the report body's
+    /// risk line is DERIVED from the limit rather than asserting one (bug-log #178).
+    pub portfolio_exposure_cap: Option<Decimal>,
+    /// The per-symbol exposure cap this lane ran with — the body's risk line is derived
+    /// from it rather than asserting a literal (bug-log #178).
+    pub per_symbol_exposure_cap: Decimal,
     pub forecaster_label: String,
     /// Per-bar equity curve. Populated when `emit_equity_bin` is set.
     pub equity_curve: Vec<Decimal>,
@@ -468,6 +474,8 @@ pub async fn run(
         warmup_signals: stats.window_warming_up,
         // This lane declares no portfolio gross cap (bug-log #95: struck 2026-10-12).
         portfolio_gross_refusals: 0,
+        portfolio_exposure_cap: risk_limits.portfolio_exposure_cap,
+        per_symbol_exposure_cap: risk_limits.per_symbol_exposure_cap,
         forecaster_label: "passthrough (no-candle mode — degrades to v1 momentum)".to_string(),
         equity_curve,
         fills: all_fills,

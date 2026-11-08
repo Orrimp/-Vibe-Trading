@@ -1417,6 +1417,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None, // rev_sha: None for synthetic/engine path
+                        &report.bars,
                     )
                 },
             )?;
@@ -1501,6 +1502,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -1583,6 +1585,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -1669,6 +1672,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -1753,6 +1757,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -1828,6 +1833,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -1903,6 +1909,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -1978,6 +1985,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;
@@ -2053,6 +2061,7 @@ pub async fn run_scenario(
                         path,
                         &result.strategy_meta,
                         None,
+                        &report.bars,
                     )
                 },
             )?;

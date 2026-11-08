@@ -555,6 +555,8 @@ pub async fn run(
         passed_through_signals: stats.signals_passthrough,
         warmup_signals: stats.bars_no_model,
         portfolio_gross_refusals,
+        portfolio_exposure_cap: risk_limits.portfolio_exposure_cap,
+        per_symbol_exposure_cap: risk_limits.per_symbol_exposure_cap,
         forecaster_label,
         equity_curve,
         fills: all_fills,

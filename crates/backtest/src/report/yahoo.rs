@@ -91,6 +91,8 @@ pub fn emit_sma_report(
     elapsed_secs: f64,
     report_path: &Path,
     strategy_meta: &StrategyMeta,
+    // bug-log #151 — bars for the buy-and-hold control.
+    bars: &[trading_core::Bar],
 ) -> Result<()> {
     let data_source = ctx.data_source();
     crate::report::sma::write(
@@ -104,6 +106,7 @@ pub fn emit_sma_report(
         report_path,
         strategy_meta,
         Some(ctx.revision_sha),
+        bars,
     )
 }
 

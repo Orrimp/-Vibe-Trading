@@ -48,6 +48,10 @@ fn build_pair_summary(result: &PairsRunResult) -> String {
 
 // ── Report body builder ───────────────────────────────────────────────────────
 
+// The report-body template is one long format! — the same convention the sibling writers
+// follow (`momentum.rs`, `regime_dispatcher.rs`, `sma.rs`, `tcn_overlay.rs` all carry this
+// allow). Crossed the 100-line threshold when the bug-log #151 benchmark rows were added.
+#[allow(clippy::too_many_lines)]
 fn build_content(
     input: &PairsScenarioInput,
     result: &PairsRunResult,
@@ -56,6 +60,16 @@ fn build_content(
     stamp: &str,
 ) -> String {
     let (total_return_pct, max_dd_pct, fees_f, initial_f, final_f) = kpi_floats(result);
+
+    // bug-log #151 — a total return with no benchmark beside it cannot be read. The control
+    // is a pure function of the bars this run already carries, so it costs no compute.
+    let bh_raw = super::benchmark::equal_weight_buy_and_hold(
+        &result.bars,
+        result.initial_equity,
+        input.taker_fee_bps,
+    );
+    let bh =
+        super::benchmark::bh_cells(bh_raw.as_ref(), result.initial_equity, result.final_equity);
     let pair_summary = build_pair_summary(result);
 
     format!(
@@ -89,6 +103,8 @@ fn build_content(
          | Initial capital      | ${initial:.2} USDT            |\n\
          | Final equity         | ${final_eq:.2} USDT           |\n\
          | Total return         | {ret:.2}%                     |\n\
+         | Buy and hold (equal-wt) | {bh_control}                 |\n\
+         | vs buy and hold        | {bh_delta}                    |\n\
          | Max drawdown         | {max_dd:.2}%                  |\n\
          | Trades               | {trades}                      |\n\
          | Buys                 | {buys}                        |\n\
@@ -119,7 +135,7 @@ fn build_content(
          - Formulation C: long-only on `a` leg; `b` leg is observed only.\n\
          - Slippage: {slippage_bps} bps, Taker fee: {taker_fee_bps} bps\n\
          - Size: binary_per_pair\n\
-         - Risk: per-symbol cap=40% (ENFORCED in Order::new); NO portfolio gross cap on this lane (bug-log #95)\n\
+         - Risk: {risk_line}\n\
          - Data: synthetic hourly bars, 4 independent ChaCha20Rng streams\n",
         scenario_name = input.scenario_name,
         seed = seed,
@@ -134,6 +150,12 @@ fn build_content(
         initial = initial_f,
         final_eq = final_f,
         ret = total_return_pct,
+        bh_control = bh.control,
+        bh_delta = bh.delta,
+        risk_line = super::risk_line(
+            result.per_symbol_exposure_cap,
+            result.portfolio_exposure_cap,
+        ),
         max_dd = max_dd_pct,
         trades = result.trades,
         buys = result.buys,

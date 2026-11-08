@@ -2469,6 +2469,7 @@ async fn main() -> Result<()> {
         &report_path,
         &strategy_meta,
         None, // Binance/synthetic path — None preserves 33 existing SMA anchors byte-identically
+        &result.bars,
     )?;
     backtest::report::write_equity_companion(
         &report_path,

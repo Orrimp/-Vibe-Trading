@@ -24,6 +24,12 @@ use crate::scenarios::sim::sim_slippage_cost;
 
 /// Result of the v1.5a mean-reversion pairs backtest.
 pub struct PairsRunResult {
+    /// The portfolio gross cap this lane actually ran with — the report body's risk
+    /// line is derived from it rather than asserting one (bug-log #178).
+    pub portfolio_exposure_cap: Option<Decimal>,
+    /// The per-symbol exposure cap this lane ran with — the body's risk line is derived
+    /// from it rather than asserting a literal (bug-log #178).
+    pub per_symbol_exposure_cap: Decimal,
     pub trades: usize,
     pub buys: usize,
     pub sells: usize,
@@ -469,6 +475,8 @@ pub async fn run(
     let pair_trades: Vec<(String, usize)> = pair_trade_counts.into_iter().collect();
 
     Ok(PairsRunResult {
+        portfolio_exposure_cap: risk_limits.portfolio_exposure_cap,
+        per_symbol_exposure_cap: risk_limits.per_symbol_exposure_cap,
         trades,
         buys,
         sells,
