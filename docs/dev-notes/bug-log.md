@@ -6075,3 +6075,138 @@ the same discipline applied to whether a gate **runs at all** — and a skipped 
 purest form of the shape: not a weak assertion, no assertion, reported as a pass. `cargo` will
 not tell you; something has to.
 
+### `#164` — `check_presentation.sh` certified "approval block UN-ticked" on a deck with no approval block
+
+Found 2026-11-07 (sweep finding F10); fixed 2026-11-08. `scripts/check_presentation.sh`.
+Shape: **affirms a property of a set it never proves non-empty.**
+
+The script exists because the presenter agent shipped `[x] Approved — ship` pre-ticked twice,
+and its header says so: *"The agent self-claims to verify but doesn't. This script is the gate
+that doesn't take the agent's word for it."* It grepped for **pre-ticked** boxes and printed
+`PRESENTATION CHECK PASS ($target — approval block UN-ticked)` when it found none. A deck with
+**no approval block at all** therefore certified clean — and a missing block is the likelier
+presenter failure of the two, since omitting a section is easier than mis-ticking one.
+
+**Fix.** A non-vacuity floor, before the violation scan: count boxes in **either** state with a
+deliberately WIDER regex than the violation one (so an off-template or bolded bullet cannot make
+the count read zero and restore the old behaviour), exit 2 at zero, and put the count in the
+PASS line so it states what it measured. Exit 2 now also means "no approval block".
+
+**`--self-test`, following the in-repo shell precedent** (`check_no_raw_asof_join.sh:84` —
+`mktemp -d` + `trap … RETURN`): a no-block fixture must count 0, a clean 3-box fixture must
+count 3 with no violation, and a pre-ticked fixture must yield 1 violation and still count 2.
+Each probe names which regex is at fault when it fires.
+
+**Checked against the real corpus, and the population matters.** Run over all 18 committed
+`*/presentations/*.md`: 4 PASS, 11 exit 1, 3 exit 2. **None of that is a regression.** The 11
+carry the operator's own post-approval mark (`- [x] Approved — ship — operator, 2026-06-15`),
+and this gate's contract is *after the presenter writes, before the operator ticks* — so exit 1
+on an approved historical deck is the gate working. The 3 exit-2 files are not decks: one is an
+artifact under `presentations/artifacts/`, two are `ERRATA-*.md` notes. The gate takes an
+explicit path from the `present-results` skill's post-write step and is never pointed at those.
+Recording this because my sweep over `find … -path '*/presentations/*.md'` was the wrong
+population, and a future reader running the same command will see the same 14 non-zeros.
+
+### `#165` — `operator_ledger_check.py` reported clean having parsed zero tables, and "silent success" was a declared requirement
+
+Found 2026-11-07 (sweep finding F7); fixed 2026-11-08. `scripts/operator_ledger_check.py`.
+Shape: **affirms a property of a set it never proves non-empty**, with the silence codified.
+
+`parse_ledger` resolves `## ` headings against a `SCHEMA` map and returns whatever it matched.
+Rename `## Pending recipes` to `## Pending` and the lookup misses, every per-row check iterates
+an empty list, no issue is raised — and the run exits 0 emitting **nothing at all**, because
+`main` ends with `# Clean — silent success (R2.3).` So "clean over a renamed heading" and
+"clean over a verified ledger" were byte-identical, and both were silence.
+
+Worth noting what the live ledger looks like: its `## Pending recipes` table is **empty**, and
+all 7 rows are in `## Done`. So the gate's primary subject has had zero rows for months, and the
+output said nothing either way.
+
+**Fix, two parts.** `LedgerStructureError` is raised when any canonical heading was never
+matched, mapped to **exit 2** (script failure) — an unparseable ledger is not a clean ledger —
+with the missing headings named and the tolerated variations stated. And `summarize()` prints
+one line on the clean path: `operator-ledger: PASS (7 row(s) across 3/3 tables · pending=0
+done=7 cancelled=0)`.
+
+**`R2.3` is deliberately superseded**, not overlooked. It survives only as that source comment —
+the story `6-5-operator-ledger-schema-lint.md` is a compressed stub carrying no live AC for it —
+and it predates the house rule that a gate must make its SUCCESS path observable: print how many
+items the walk read and assert on that number. The new `summarize()` doc records the
+supersession and why.
+
+**Self-test grew 8 → 10 cases**, and the new one is RED-proven: case 9 feeds a ledger whose
+`## Pending recipes` heading is renamed and asserts **exit 2**, with the intact fixture as a
+control; case 10 pins the summary's counts so the line cannot print zeros and still read as a
+PASS. Probed by neutering the `raise` on a copy — `FAIL [C9-exit-is-2-not-0]: got 0, expected
+2`, which is precisely the old silent clean. **Each of cases 1–8 passes on the case-9 fixture**,
+which is why none of them caught it.
+
+### `#166` — `queue_staleness_check.py` reconciled 0 of its cited slugs, and the sweep's own stated fix was a no-op
+
+Found 2026-11-07 (sweep finding F5); fixed 2026-11-08. `scripts/queue_staleness_check.py`.
+Shape: **affirms a property of a set it never proves non-empty** — and a worked example of why
+a finding's prescription needs verifying as much as its diagnosis.
+
+The gate reconciles backlog Queue/Active entries against story `Status:` lines. **Both of its
+two steps were broken, independently**, and the sweep note named only one:
+
+**(A) Capture.** The two slug markers are `(slug/feature.md)` and `` (`slug`) `` — both
+pre-migration `spec/` forms. Since 2026-07-25 the Queue writes
+
+```
+  tracked as story
+  `6-9-cockpit-cross-platform` (`in-progress`).
+```
+
+so the backtick-in-paren marker captured the **status word** and not the story id. Measured on
+the live backlog: the extracted "slugs" were
+`['in-progress', 'backlog', 'backlog', 'arch-done', 'ready-for-dev']` — five lifecycle words,
+zero story ids.
+
+**(B) Resolution.** `_read_status` globs `*-{slug}.md`, which assumes a prefix **before** the
+slug. All 160 story files are `<epic>-<story>-<slug>.md` with the id at the FRONT. Measured:
+`*-6-9-cockpit-cross-platform.md` → **0** files; `6-9-cockpit-cross-platform.md` → **1**.
+
+So the note's "smallest fix" — one regex for the committed citation form — **resolves nothing
+on its own**: the verification measured exit 0 and zero bytes of output even after rewriting a
+backlog line to be captured, against 160 stories all forced to `Status: done`. Two blockers, and
+the note saw one. (It also called the self-test "13-case"; it is 11 fixtures / 14 assertions.)
+
+**Fix, three parts.** A story-id marker matched **structurally** (`` `<digits>-<digits>-<slug>` ``)
+rather than by looking for the adjacent word "story", because the id usually sits on its own
+continuation line and a digit-led id cannot collide with a lifecycle word. A bare-basename
+fallback in `_read_status`. And a `_STATUS_WORD_DENYLIST` so the lifecycle words stop being
+counted as subjects and inflating the denominator — the vocabulary measured from the corpus,
+not assumed (`grep -ohE '^Status: *[a-z-]+'` over all 160 stories gives exactly
+{done, retired, backlog, ready-for-dev, in-progress}).
+
+Live result: **4 of 4** cited slugs resolve, where it was 0 of 5.
+
+**Plus the floor.** A `Coverage` record counts cited vs reconciled, `main` exits **2** when
+`reconciled == 0` — every downstream check iterates the reconciled set, so zero reconciled means
+the run verified nothing — and the clean path prints
+`queue-staleness-check: PASS (0 drift · 4 of 4 cited slug(s) reconciled)`. `R2.3`'s silence is
+superseded here for the same reason as in `#165`.
+
+**Five probes added, all RED-proven on copies**, and the self-test's existing 11 fixtures are
+exactly why this was invisible: every one of them uses pre-migration markup and a `9-1-`-prefixed
+story file, so both live blockers were unreachable from the gate's own tests.
+
+| reverted | assertions red |
+|---|---|
+| capture (drop the story-id marker) | 5 |
+| resolution (prefix glob only) | 3 |
+| denylist | 4 |
+| control | all pass |
+
+**And the probe discipline earned its keep twice in one hour.** The first capture probe produced
+a Python **syntax error**, so it exited 1 with zero named assertions — which reads exactly like
+"the probe does not bite". The rerun compiles the patched copy with `py_compile` before believing
+its result. `#160` taught that a probe must change something; `#163` added that it must change
+*the thing under test*; this adds that it must still be **valid** after you change it.
+
+**Moral for all three.** `#164`, `#165` and `#166` are one shape in three languages, and in all
+three the gate's own author had written down what it was for. The fix in every case is the same
+pair: **a floor that refuses to report on an empty set, and a count in the output so a PASS
+states what it measured.**
+

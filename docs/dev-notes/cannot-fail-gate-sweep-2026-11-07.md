@@ -132,6 +132,19 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F10, F7, F5 — CLOSED 2026-11-08 as `#164`, `#165`, `#166`** (ranked action 4). All three
+  got a floor that refuses to report on an empty set plus a count in the output. **F5's stated
+  fix in this note was a no-op:** the gate is blind in TWO independent places (capture AND
+  story-file resolution) and the note named one — verified by measuring exit 0 with zero output
+  after rewriting a backlog line to be captured. This note's "13-case `--self-test`" for F5 is
+  also 11 fixtures / 14 assertions. F10's floor was checked against all 18 committed decks and
+  the 14 non-zeros are not regressions — see `#164` for why that population is the wrong one.
+- **F6 — superseded in scope by `#163`.** Its prescription (two bin-local tests) was
+  **inapplicable**: measured, `cargo test -p backtest --bins` silently skips
+  `src/bin/threshold_sweep.rs` entirely, so the 6 tests already in that module have never run
+  in CI either and a 7th and 8th would join them. That measurement generalised into `#163` —
+  46 test fns across 13 targets invisible to CI — and the remaining F6 work (lift `t_classifier`
+  into `stats/` where CI reaches it, then two-sided pairs) is still open.
 - **F11 — CLOSED 2026-11-08 as `#162`.** The field is deleted. **Two of this finding's own
   supporting claims were false** and are corrected in `#162`: `crates/backtest` *does* have a
   `reports` dependency (a documented acyclic dev edge), and `reports::generate` *does* render

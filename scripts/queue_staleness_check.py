@@ -70,6 +70,48 @@ EXCLUDE_MARKERS: list[str] = [
 _LINK_MARKER_RE = re.compile(r"\(([a-z0-9][a-z0-9.\-]*)/feature\.md\)")
 # 2. Backtick-in-paren slug: (`slug`)
 _BACKTICK_MARKER_RE = re.compile(r"\(`([a-z0-9][a-z0-9.\-]+)`\)")
+# 3. BMAD story id in backticks: `6-9-cockpit-cross-platform` (bug-log `#166`).
+#
+# The two markers above are both pre-migration `spec/` forms. Since the
+# 2026-07-25 BMAD migration the Queue cites work as a story id, and the
+# committed shape is
+#
+#     tracked as story
+#     `6-9-cockpit-cross-platform` (`in-progress`).
+#
+# so `_BACKTICK_MARKER_RE` matched the STATUS WORD in the parens and not the
+# story id at all. Measured on the live backlog before this: the extracted
+# "slugs" were ['in-progress', 'backlog', 'backlog', 'arch-done',
+# 'ready-for-dev'] — five status words, zero story ids, none resolvable.
+#
+# Matched STRUCTURALLY (`<digits>-<digits>-<slug>`) rather than by looking for
+# the adjacent word "story": the id often sits on its own continuation line, and
+# a digit-led id cannot collide with a status word, so this needs no denylist.
+_STORY_ID_MARKER_RE = re.compile(r"`([0-9]+-[0-9]+-[a-z0-9][a-z0-9.\-]*)`")
+
+# Status words the Queue writes in the SAME `(`...`)` shape as a feature slug, so
+# `_BACKTICK_MARKER_RE` captures them as subjects. They can never resolve to a
+# story file, so before bug-log `#166` they were the gate's entire candidate set
+# and the "0 reconciled" denominator read as 9. Measured from the corpus:
+# `grep -ohE '^Status: *[a-z-]+' _bmad-output/implementation-artifacts/*.md`
+# yields exactly {done, retired, backlog, ready-for-dev, in-progress}; the other
+# three are the lifecycle words the BMAD workflows use on the board.
+_STATUS_WORD_DENYLIST = frozenset(
+    {
+        "done",
+        "retired",
+        "backlog",
+        "ready-for-dev",
+        "in-progress",
+        "arch-done",
+        "review",
+        "dev-done",
+        "shipped",
+        "shipped-partial",
+        "open",
+        "cancelled",
+    }
+)
 
 # H2 heading pattern for section boundary detection.
 _H2_RE = re.compile(r"^## ", re.MULTILINE)
@@ -152,6 +194,14 @@ def _extract_slugs(entry_text: str) -> list[str]:
             seen.add(slug)
     for m in _BACKTICK_MARKER_RE.finditer(stripped):
         slug = m.group(1)
+        if slug in _STATUS_WORD_DENYLIST:
+            # A lifecycle word, not a subject — see _STATUS_WORD_DENYLIST.
+            continue
+        if slug not in seen:
+            slugs.append(slug)
+            seen.add(slug)
+    for m in _STORY_ID_MARKER_RE.finditer(stripped):
+        slug = m.group(1)
         if slug not in seen:
             slugs.append(slug)
             seen.add(slug)
@@ -206,7 +256,17 @@ def _read_status(stories_dir: Path, slug: str) -> str | None:
     """
     if not stories_dir.is_dir():
         return None
-    matches = sorted(stories_dir.glob(f"*-{slug}.md"))
+    # Two shapes, and only the second matches a BMAD story (bug-log `#166`).
+    # `*-{slug}.md` assumes a prefix before the slug — true for the retired
+    # `spec/` feature folders, false for all 160 story files, which are named
+    # `<epic>-<story>-<slug>.md` with the id AT THE FRONT. Measured:
+    # `*-6-9-cockpit-cross-platform.md` matches 0 files, `6-9-…​.md` matches 1.
+    # So capturing the story id (A) is necessary but NOT sufficient — without
+    # this fallback it still resolves nothing, which is why the sweep's stated
+    # one-line fix was a no-op on its own.
+    matches = sorted(stories_dir.glob(f"*-{slug}.md")) or sorted(
+        stories_dir.glob(f"{slug}.md")
+    )
     if not matches:
         return None
     try:
@@ -238,6 +298,22 @@ class DriftRow:
     folder_status: str
 
 
+@dataclass(frozen=True)
+class Coverage:
+    """What the sweep actually read (bug-log `#166`).
+
+    `cited` = subject slugs extracted from non-excluded Active/Queue entries.
+    `reconciled` = how many of those resolved to a story file WITH a `Status:`
+    line. Everything downstream iterates only the reconciled set, so a run with
+    `reconciled == 0` has checked nothing at all — and until 2026-11-08 that was
+    the live state (5 cited, all of them status words, 0 reconciled) reported as a
+    silent exit 0.
+    """
+
+    cited: int
+    reconciled: int
+
+
 def detect_drift(
     backlog_text: str,
     stories_dir: Path,
@@ -266,6 +342,8 @@ def detect_drift(
         raise SystemExit(2)
 
     rows: list[DriftRow] = []
+    cited = 0
+    reconciled = 0
 
     for section_name, section_lines in (("Active", active_lines), ("Queue", queue_lines)):
         entries = _extract_entries(section_lines)
@@ -274,10 +352,12 @@ def detect_drift(
                 continue
             slugs = _extract_slugs(entry)
             for slug in slugs:
+                cited += 1
                 status = _read_status(stories_dir, slug)
                 if status is None:
                     # No matching story file (R6.1) or no Status: line (R6.2) — skip.
                     continue
+                reconciled += 1
                 if status in SHIPPED_STATUSES:
                     rows.append(
                         DriftRow(
@@ -290,6 +370,7 @@ def detect_drift(
 
     # Sort by (section, slug) for byte-stability (D4.3).
     rows.sort(key=lambda r: (r.section, r.slug))
+    detect_drift.last_coverage = Coverage(cited=cited, reconciled=reconciled)  # type: ignore[attr-defined]
     return rows
 
 
@@ -464,13 +545,92 @@ def run_self_test() -> None:
         rows_no_active = detect_drift(backlog_no_active, stories_dir)
         assert_eq("No-Active-section drift-count", len(rows_no_active), 1)
 
+        # ── bug-log #166 probes. Every case above uses PRE-migration markup
+        # (`(`feat-a`)`) and a `9-1-`-prefixed story file, which is exactly why
+        # the regression was invisible: the fixtures matched the two legacy
+        # markers and the `*-{slug}.md` glob, so both live blockers were
+        # unreachable from the self-test. These cases use the COMMITTED shapes.
+        with tempfile.TemporaryDirectory() as bmad_dir:
+            bmad = Path(bmad_dir)
+            # Story files as they actually exist: id AT THE FRONT, no prefix.
+            (bmad / "6-9-cockpit-cross-platform.md").write_text(
+                "# Story 6.9\n\nStatus: in-progress\n", encoding="utf-8"
+            )
+            (bmad / "2-7-lumen-phase-6-assistant-slot.md").write_text(
+                "# Story 2.7\n\nStatus: done\n", encoding="utf-8"
+            )
+
+            # SC-M1 — the committed citation shape, on its own continuation line,
+            # with the STATUS in the parens where the legacy marker looks.
+            backlog_m1 = (
+                "## Active\n\n## Queue\n"
+                "- **cockpit-cross-platform CI** \u2014 shakeout open \u2014 tracked as story\n"
+                "  `6-9-cockpit-cross-platform` (`in-progress`).\n\n"
+                "## Recent (shipped)\n"
+            )
+            slugs_m1 = _extract_slugs(
+                "- **x** \u2014 tracked as story\n  `6-9-cockpit-cross-platform` (`in-progress`)."
+            )
+            assert_eq("SC-M1 story id captured", "6-9-cockpit-cross-platform" in slugs_m1, True)
+            assert_eq(
+                "SC-M1 status word NOT captured as a subject",
+                "in-progress" in slugs_m1,
+                False,
+            )
+            assert_eq("SC-M1 exactly one subject", len(slugs_m1), 1)
+
+            # SC-M2 — resolution against a bare-basename story file.
+            assert_eq(
+                "SC-M2 bare-basename resolves",
+                _read_status(bmad, "6-9-cockpit-cross-platform"),
+                "in-progress",
+            )
+
+            # SC-M3 — end to end: in-progress is NOT shipped, so no drift, and
+            # the coverage record must say it reconciled something.
+            rows_m3 = detect_drift(backlog_m1, bmad)
+            cov_m3 = detect_drift.last_coverage  # type: ignore[attr-defined]
+            assert_eq("SC-M3 drift-count", len(rows_m3), 0)
+            assert_eq("SC-M3 cited", cov_m3.cited, 1)
+            assert_eq("SC-M3 reconciled", cov_m3.reconciled, 1)
+
+            # SC-M4 — end to end with a SHIPPED story: drift must be detected
+            # through the new marker, not just reconciled. Without this, SC-M3
+            # alone would pass on a marker that captures but never drifts.
+            backlog_m4 = (
+                "## Active\n\n## Queue\n"
+                "- **lumen phase 6** \u2014 tracked as story\n"
+                "  `2-7-lumen-phase-6-assistant-slot` (`backlog`).\n\n"
+                "## Recent (shipped)\n"
+            )
+            rows_m4 = detect_drift(backlog_m4, bmad)
+            assert_eq("SC-M4 drift detected via the story-id marker", len(rows_m4), 1)
+            if rows_m4:
+                assert_eq("SC-M4 slug", rows_m4[0].slug, "2-7-lumen-phase-6-assistant-slot")
+
+            # SC-M5 — the floor: a Queue citing only status words reconciles
+            # nothing, and that must NOT read as clean.
+            backlog_m5 = (
+                "## Active\n\n## Queue\n- **something** (`ready-for-dev`).\n\n"
+                "## Recent (shipped)\n"
+            )
+            rows_m5 = detect_drift(backlog_m5, bmad)
+            cov_m5 = detect_drift.last_coverage  # type: ignore[attr-defined]
+            assert_eq("SC-M5 no rows", len(rows_m5), 0)
+            assert_eq("SC-M5 reconciled is zero", cov_m5.reconciled, 0)
+            assert_eq(
+                "SC-M5 status word denylisted, so nothing is even cited",
+                cov_m5.cited,
+                0,
+            )
+
     if failures:
         print("queue-staleness-check --self-test: FAILED", file=sys.stderr)
         for f in failures:
             print(f, file=sys.stderr)
         raise SystemExit(1)
     else:
-        print("queue-staleness-check --self-test: all cases PASS")
+        print("queue-staleness-check --self-test: all cases PASS (incl. 5 bug-log #166 probes)")
 
 
 # ---------------------------------------------------------------------------
@@ -536,12 +696,44 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as e:
         return int(e.code) if e.code is not None else 2
 
+    cov: Coverage = getattr(
+        detect_drift, "last_coverage", Coverage(cited=0, reconciled=0)
+    )
+
+    # NON-VACUITY FLOOR (bug-log #166). Every check below iterates the RECONCILED
+    # set, so zero reconciled means the sweep examined nothing — regardless of how
+    # many slugs it cited. That was the live state until 2026-11-08 and it exited
+    # 0 in silence. `cited == 0` is also a failure: the Queue always names at least
+    # one tracked story, so an empty citation set means the markers stopped
+    # matching, not that the backlog is empty.
+    if cov.reconciled == 0:
+        print(
+            "queue-staleness-check: FAIL — reconciled 0 of "
+            f"{cov.cited} cited slug(s). Every staleness check iterates the "
+            "reconciled set, so this run verified NOTHING. Either the Queue's "
+            "citation markers no longer match what it writes (see "
+            "_STORY_ID_MARKER_RE) or story-file resolution broke (see "
+            "_read_status). A clean exit here would be a gate that cannot fail.",
+            file=sys.stderr,
+        )
+        return 2
+
     if not rows:
-        # Clean — silent success (R2.3).
+        # Clean, and no longer silent: R2.3's silence made "0 drift over 4
+        # reconciled stories" byte-identical to "0 drift over nothing".
+        print(
+            f"queue-staleness-check: PASS (0 drift · "
+            f"{cov.reconciled} of {cov.cited} cited slug(s) reconciled)"
+        )
         return 0
 
     # Drift detected — emit table to stdout (D1.4).
     print(format_drift_table(rows))
+    print(
+        f"queue-staleness-check: {len(rows)} drift row(s) · "
+        f"{cov.reconciled} of {cov.cited} cited slug(s) reconciled",
+        file=sys.stderr,
+    )
     return 1
 
 

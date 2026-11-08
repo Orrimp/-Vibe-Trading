@@ -55,6 +55,19 @@ CANONICAL_STATUS: frozenset[str] = frozenset({"pending", "FAILED", "done", "canc
 # prefix; extra trailing columns are accepted (K2 forward-compat).
 # "status_col": name of the Status column, or None.
 # "completion_col": name of the completion/cancel date column, or None.
+class LedgerStructureError(Exception):
+    """A canonical table heading was never matched (bug-log `#165`).
+
+    Until 2026-11-08 `parse_ledger` returned whatever it happened to find. Rename
+    `## Pending recipes` to `## Pending` and every per-row check iterates an empty
+    list: zero rows, zero issues, exit 0, and — per the `R2.3` silent-success
+    contract — not a single byte of output. The gate reported clean having
+    reconciled nothing, which is indistinguishable from reporting clean having
+    reconciled everything. Raised now, and mapped to exit 2 (script failure),
+    because an unparseable ledger is not a clean ledger.
+    """
+
+
 SCHEMA: dict[str, dict] = {
     "pending": {
         "heading": "pending recipes",
@@ -186,6 +199,9 @@ def parse_ledger(text: str) -> tuple[dict[str, list[ParsedRow]], list[Issue]]:
     active_table: str | None = None
     header_seen: set[str] = set()
     separator_seen: set[str] = set()
+    # Non-vacuity: which canonical headings did we actually resolve? See
+    # LedgerStructureError.
+    tables_seen: set[str] = set()
 
     for i, line in enumerate(lines, start=1):
         stripped = line.rstrip()
@@ -195,6 +211,8 @@ def parse_ledger(text: str) -> tuple[dict[str, list[ParsedRow]], list[Issue]]:
             heading_raw = stripped[3:].strip()
             heading_norm = _HEADING_STRIP_RE.sub("", heading_raw).strip().lower()
             active_table = heading_map.get(heading_norm)
+            if active_table is not None:
+                tables_seen.add(active_table)
             # Reset per-table tracking on each new heading.
             continue
 
@@ -262,6 +280,18 @@ def parse_ledger(text: str) -> tuple[dict[str, list[ParsedRow]], list[Issue]]:
             continue
 
         rows_by_table[active_table].append(ParsedRow(cells=cells, line_no=i, table_key=active_table))
+
+    missing = [SCHEMA[k]["heading"] for k in SCHEMA if k not in tables_seen]
+    if missing:
+        raise LedgerStructureError(
+            "ledger is missing table heading(s): "
+            + ", ".join(f"'## {h.title()}'" for h in missing)
+            + ". Headings are matched case-insensitively with a trailing "
+            "parenthetical stripped, and nothing else is tolerated. Every "
+            "per-row check iterates a table this parser resolved, so an "
+            "unmatched heading silently empties the row set and the gate "
+            "reports clean having reconciled nothing (bug-log #165)."
+        )
 
     return rows_by_table, structural_issues
 
@@ -483,6 +513,27 @@ def format_soft_block(soft_lines: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def summarize(rows_by_table: dict[str, list]) -> str:
+    """One line stating what the walk actually read (bug-log `#165`).
+
+    Supersedes the `R2.3` silent-success contract, deliberately. `R2.3` survives
+    only as a source comment — the story
+    `_bmad-output/implementation-artifacts/6-5-operator-ledger-schema-lint.md` is a
+    compressed stub carrying no live AC for it — and the house rule it predates is
+    that a gate must make its SUCCESS path observable: print how many items the
+    walk read and assert on that number, rather than reporting the absence of
+    findings in a set nobody proved non-empty. A clean run over an EMPTY pending
+    table and a clean run over a renamed heading were byte-identical before this,
+    and both were silence.
+    """
+    per = " ".join(f"{k}={len(rows_by_table.get(k, []))}" for k in SCHEMA)
+    total = sum(len(rows_by_table.get(k, [])) for k in SCHEMA)
+    return (
+        f"operator-ledger: PASS ({total} row(s) across "
+        f"{len(SCHEMA)}/{len(SCHEMA)} tables · {per})"
+    )
+
+
 def run_check(
     ledger_path: Path,
     today: datetime.date,
@@ -508,7 +559,11 @@ def run_check(
         )
         return 2, [], []
 
-    rows_by_table, structural_issues = parse_ledger(text)
+    try:
+        rows_by_table, structural_issues = parse_ledger(text)
+    except LedgerStructureError as e:
+        print(f"error: structurally unparseable ledger: {e}", file=sys.stderr)
+        return 2, [], []
 
     hard_issues, soft_lines = check_rows(rows_by_table, today)
     all_hard = structural_issues + hard_issues
@@ -689,13 +744,56 @@ def run_self_test() -> None:
         assert_eq("C8-exit", code8, 0)
         assert_eq("C8-hard-count", len(hard8), 0)
 
+        # --- Case 9: a RENAMED heading must be exit 2, not a silent clean ---
+        # bug-log #165. This is the probe the gate lacked: before 2026-11-08 a
+        # ledger whose `## Pending recipes` heading was edited parsed to an empty
+        # row set, every per-row check iterated nothing, and the run exited 0
+        # emitting no output at all. Each of cases 1-8 would also have passed on
+        # this fixture, which is why none of them caught it.
+        ledger9 = _make_ledger(
+            pending_rows=["| 2026-05-28 | A recipe | ~5 min | something | pending | - |"],
+        ).replace("## Pending recipes", "## Pending")
+        f9 = tmp / "c9.md"
+        f9.write_text(ledger9, encoding="utf-8")
+        code9, hard9, _soft9 = run_check(f9, today)
+        assert_eq("C9-exit-is-2-not-0", code9, 2)
+        assert_eq("C9-no-row-issues-reported", len(hard9), 0)
+        # And the control: the SAME fixture with the heading intact is parseable.
+        f9b = tmp / "c9b.md"
+        f9b.write_text(
+            _make_ledger(
+                pending_rows=["| 2026-05-28 | A recipe | ~5 min | something | pending | - |"],
+            ),
+            encoding="utf-8",
+        )
+        code9b, _h9b, _s9b = run_check(f9b, today)
+        assert_eq("C9b-control-parses", code9b, 0)
+
+        # --- Case 10: the summary states what the walk actually read ---
+        # Without this the count line could print zeros and still read as a PASS.
+        rows10, _ = parse_ledger(
+            _make_ledger(
+                pending_rows=["| 2026-05-28 | R | ~5 min | u | pending | - |"],
+                done_rows=[
+                    "| 2026-05-27 | D1 | ~3 min | 2026-05-27 | ok |",
+                    "| 2026-05-26 | D2 | ~3 min | 2026-05-26 | ok |",
+                ],
+            )
+        )
+        summary10 = summarize(rows10)
+        assert_contains("C10-total", summary10, "3 row(s)")
+        assert_contains("C10-tables", summary10, "3/3 tables")
+        assert_contains("C10-pending", summary10, "pending=1")
+        assert_contains("C10-done", summary10, "done=2")
+        assert_contains("C10-cancelled", summary10, "cancelled=0")
+
     if failures:
         print("operator-ledger-check --self-test: FAILED", file=sys.stderr)
         for f in failures:
             print(f, file=sys.stderr)
         raise SystemExit(1)
     else:
-        print("self-test: 8 passed")
+        print("self-test: 10 passed")
 
 
 # ---------------------------------------------------------------------------
@@ -779,7 +877,17 @@ def main(argv: list[str] | None = None) -> int:
         print(format_hard_table(hard_issues), file=sys.stderr)
         return 1
 
-    # Clean — silent success (R2.3).
+    # Clean. NOT silent any more — see summarize() for why R2.3 is superseded.
+    # Re-parsing here rather than widening run_check's 3-tuple, which eight
+    # self-test cases unpack; the parse is pure and the file is small.
+    try:
+        rows_by_table, _ = parse_ledger(ledger_path.read_text(encoding="utf-8"))
+        print(summarize(rows_by_table))
+    except (OSError, LedgerStructureError):
+        # run_check already returned >= 2 for both of these, so this is
+        # unreachable; the guard exists so a summary failure can never turn a
+        # clean verdict into a crash.
+        pass
     return 0
 
 
