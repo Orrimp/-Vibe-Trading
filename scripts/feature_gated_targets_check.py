@@ -79,8 +79,16 @@ DECLARED: dict[str, dict[str, object]] = {
     "backtest/bin/threshold_sweep": {
         "feats": ["candle", "realdata"],
         "ci": "invisible",
-        "why": "bug-log #163. Its 6 bin-local unit tests (incl. the only t_classifier "
-               "coverage) never run in CI. NOTE: candle-core compiles anyway — "
+        "why": "bug-log #163. Its 6 bin-local unit tests never run in CI. UPDATED "
+               "2026-11-08: `t_classifier` was LIFTED out of this bin into "
+               "`backtest::stats` (bug-log #170) precisely because its only coverage "
+               "lived here, where CI cannot reach it — those tests now run under "
+               "`cargo test -p backtest --lib`, and the report body's band prose is "
+               "checked lib-side via `include_str!`, needing no features at all. The 6 "
+               "remaining bin-local tests (gate-survivor parser + report stamp) are "
+               "still invisible; enabling `realdata` to reach them would pull `polars` "
+               "into the CI build, which is the operator's open row. NOTE: candle-core "
+               "compiles anyway — "
                "crates/backtest/Cargo.toml:63 depends on strategy with features=[\"forecast\"] "
                "unconditionally, which pulls forecast/candle — so CI pays the ML compile "
                "cost and gets none of the ML-gated tests.",

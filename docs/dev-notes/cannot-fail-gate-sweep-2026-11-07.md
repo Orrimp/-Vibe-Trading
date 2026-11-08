@@ -132,6 +132,12 @@ itself untouched).
   full paths, so the obvious re-emission filename would have left the gate hashing the
   superseded body. Record: [`156-d6b-re-emission-2026-11-07.md`](156-d6b-re-emission-2026-11-07.md).
   The two unanchored soak bodies are **not** re-emitted and cannot be — their ledger is gone.
+- **F6 — CLOSED 2026-11-08 as `#170`.** `t_classifier` lifted into `backtest::stats` (anchors
+  119/119 unmoved — pure fn, no state), both bands pinned two-sided in the lib, the IEEE `-0.0`
+  trap stated, a three-distinct-labels floor, and a band-prose gate reading the bin via
+  `include_str!`. **This note's own fix for F6 was inapplicable** and is superseded: two
+  bin-local tests would never have run in CI (see the `#163` entry above). Probed 8 ways
+  including this note's 1.0 and the `-1e9` collapse.
 - **F8 — CLOSED 2026-11-08 as `#169`** (ranked action 5, first third). Two-sided pair reaching
   the shipped predicate, the three worked examples reading the constant, and a non-vacuity count
   on the downward half. Probed both ways including this note's own 1.1: 3 failed where the whole

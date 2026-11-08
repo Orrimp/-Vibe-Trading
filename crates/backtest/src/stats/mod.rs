@@ -332,6 +332,43 @@ pub fn compute_max_drawdown_f64(equity: &[Decimal]) -> f64 {
     max_dd
 }
 
+/// T-classifier thresholds (ADR-0049 Q4=(c)).
+///
+/// - `T-ALPHA-UNLOCKED` ⇔ max Sharpe delta ≥ +0.10
+/// - `T-MARGINAL`       ⇔ max Sharpe delta ∈ [0.0, +0.10)
+/// - `T-NO-ALPHA`       ⇔ max Sharpe delta < 0
+///
+/// Lifted verbatim from `bin/threshold_sweep.rs:231` (R-NR.5, same move M-DEV-1
+/// already made for the five calculators below). Pure `f64 -> &'static str`, no
+/// state, so both hashed report bodies stay byte-identical — only the module
+/// path changes.
+///
+/// ## Why it had to move (bug-log `#170`, sweep finding F6)
+///
+/// This verdict is written into two anchored report bodies, and nothing could
+/// detect a move of either threshold. MEASURED: `>= 0.10` could be raised to
+/// anywhere in **(-∞, 1.086583]** — at `>= -1e9` the classifier collapses to the
+/// constant `"T-ALPHA-UNLOCKED"` — and both anchored bodies stayed byte-identical
+/// with `verify_anchors.sh` printing `ANCHORS PASS (119 / 119)`, because the two
+/// anchored deltas (1.155769 and 1.086583) both sit far inside the ALPHA region
+/// and the `>= 0.0` arm is **unreachable** for either of them.
+///
+/// Its only tests lived in the bin's own `#[cfg(test)]` module, and
+/// `threshold_sweep` carries `required-features = ["candle", "realdata"]`, so
+/// `cargo test -p backtest --bins` skips that target **in silence** and those 6
+/// tests have never run in CI (bug-log `#163`). Adding more there would have
+/// joined them. Here, `cargo test -p backtest --lib` runs them.
+#[must_use]
+pub fn t_classifier(max_sharpe_delta: f64) -> &'static str {
+    if max_sharpe_delta >= 0.10 {
+        "T-ALPHA-UNLOCKED"
+    } else if max_sharpe_delta >= 0.0 {
+        "T-MARGINAL"
+    } else {
+        "T-NO-ALPHA"
+    }
+}
+
 /// Total return from initial to final equity (as a fraction, NOT percentage).
 ///
 /// Lifted verbatim from `bin/threshold_sweep.rs:333` (R-NR.5).
@@ -1689,6 +1726,181 @@ mod tests {
             "median_terminal_wealth must not be NaN"
         );
         assert!(!s.skew.is_nan(), "skew must not be NaN");
+    }
+}
+
+#[cfg(test)]
+mod t_classifier_boundary_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::t_classifier;
+    use std::collections::HashSet;
+
+    /// Both thresholds pinned from both sides, per
+    /// `docs/dev-notes/unpinned-dimension-rule-2026-11-08.md`: baseline first,
+    /// then exactly AT the boundary, then just outside it.
+    ///
+    /// MEASURED before this existed (bug-log `#170`, sweep finding F6): `>= 0.10`
+    /// could be raised anywhere in **(-∞, 1.086583]** and both anchored report
+    /// bodies stayed byte-identical with `ANCHORS PASS (119 / 119)`. At
+    /// `>= -1e9` the classifier collapses to the constant `"T-ALPHA-UNLOCKED"`
+    /// and the corpus still could not tell.
+    #[test]
+    fn t_classifier_boundaries_are_pinned_from_both_sides() {
+        // ── Baseline: the two deltas actually written into anchored bodies ──
+        //
+        // evidence/v1/v25-tcn-threshold-tuning/reports/
+        //   threshold-sweep-bs1-realdata-recalibrated-20260929.md:138
+        //     "best cell +0.462575 − v1 baseline -0.693194 = +1.155769"
+        //   threshold-sweep-bs2-realdata-recalibrated-20260929.md:138
+        //     "best cell +0.639450 − v1 baseline -0.447133 = +1.086583"
+        //
+        // Both sit FAR inside the ALPHA region, which is exactly why they could
+        // not detect a threshold move: the `>= 0.0` arm is unreachable for them.
+        assert_eq!(
+            t_classifier(1.155_769),
+            "T-ALPHA-UNLOCKED",
+            "BS1's published delta must still classify as it does in the anchored body"
+        );
+        assert_eq!(
+            t_classifier(1.086_583),
+            "T-ALPHA-UNLOCKED",
+            "BS2's published delta must still classify as it does in the anchored body"
+        );
+
+        // ── ALPHA boundary (0.10) ──
+        assert_eq!(
+            t_classifier(0.10),
+            "T-ALPHA-UNLOCKED",
+            "exactly AT the bar must be ALPHA — the comparison is `>=`. Raising              the threshold breaks this first."
+        );
+        // The tightest possible witness: the next representable f64 below 0.10,
+        // so no loosening of the bar survives, however small.
+        let just_below = f64::from_bits(0.10_f64.to_bits() - 1);
+        assert!(just_below < 0.10 && just_below > 0.0999, "{just_below}");
+        assert_eq!(
+            t_classifier(just_below),
+            "T-MARGINAL",
+            "one ULP below the bar must be MARGINAL. Lowering the threshold              breaks this, and a single ULP is the smallest detectable move."
+        );
+
+        // ── MARGINAL boundary (0.0) ──
+        assert_eq!(
+            t_classifier(0.0),
+            "T-MARGINAL",
+            "exactly zero must be MARGINAL — again `>=`"
+        );
+        assert_eq!(
+            t_classifier(-f64::EPSILON),
+            "T-NO-ALPHA",
+            "just below zero must be NO-ALPHA"
+        );
+        // IEEE-754 trap, stated so nobody reaches for `-0.0` as the negative
+        // witness: `-0.0 >= 0.0` is TRUE, so `-0.0` classifies as MARGINAL and
+        // would silently fail to pin the lower boundary at all.
+        assert_eq!(
+            t_classifier(-0.0),
+            "T-MARGINAL",
+            "`-0.0 >= 0.0` is true in IEEE-754, so -0.0 is NOT a valid negative              witness for this boundary. Use -f64::EPSILON."
+        );
+    }
+
+    /// The band prose written into the two anchored report bodies must agree with
+    /// the shipped thresholds.
+    ///
+    /// `bin/threshold_sweep.rs:628-630` writes the bands as LITERAL text:
+    ///
+    /// ```text
+    /// - `T-ALPHA-UNLOCKED` ⇔ max-cell Sharpe delta ≥ +0.10
+    /// - `T-MARGINAL`       ⇔ max-cell Sharpe delta ∈ [0.0, +0.10)
+    /// ```
+    ///
+    /// Nothing derives those numerals from `t_classifier`, so a threshold move
+    /// would leave both hashed bodies describing the OLD bands. The lib tests
+    /// above catch the move itself; this catches the prose going stale against it,
+    /// which is a different failure and the one a reader of the report would hit.
+    ///
+    /// Deliberately in the LIB and reading the bin's source with `include_str!`,
+    /// not as a bin-local test: `threshold_sweep` carries
+    /// `required-features = ["candle", "realdata"]`, so a test inside it never runs
+    /// in CI (bug-log `#163`), and enabling `realdata` there would pull `polars`
+    /// into the CI build — a cost decision that is still the operator's open row.
+    /// `include_str!` needs no features at all.
+    #[test]
+    fn band_prose_in_the_report_body_matches_the_shipped_thresholds() {
+        let src = include_str!("../bin/threshold_sweep.rs");
+
+        // Pull the numerals out of the exact literals the body emits, rather than
+        // restating them here — restating is how the prose drifted in the first
+        // place.
+        let alpha_line = src
+            .lines()
+            .find(|l| l.contains("`T-ALPHA-UNLOCKED` ⇔ max-cell Sharpe delta ≥"))
+            .expect(
+                "the ALPHA band line vanished from bin/threshold_sweep.rs — this test                  reads the literal the hashed body emits, so a rename means it is now                  checking nothing",
+            );
+        let marginal_line = src
+            .lines()
+            .find(|l| l.contains("`T-MARGINAL`       ⇔ max-cell Sharpe delta ∈"))
+            .expect("the MARGINAL band line vanished from bin/threshold_sweep.rs");
+
+        let num = |line: &str, after: &str| -> f64 {
+            let tail = &line[line.find(after).expect("marker present") + after.len()..];
+            let digits: String = tail
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit() && *c != '-')
+                .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+                .collect();
+            digits
+                .parse()
+                .unwrap_or_else(|e| panic!("cannot parse {digits:?} out of {line:?}: {e}"))
+        };
+
+        let alpha_bar = num(alpha_line, "≥");
+        let marginal_lo = num(marginal_line, "∈ [");
+
+        // Non-vacuity: the parse must have produced the numbers, not zeros from a
+        // silently-failed scan.
+        assert!(
+            (alpha_bar - 0.10).abs() < 1e-12,
+            "parsed ALPHA bar {alpha_bar} from the body prose; expected the shipped 0.10.              Either a threshold moved and the prose did not, or this parse broke."
+        );
+        assert!(
+            marginal_lo.abs() < 1e-12,
+            "parsed MARGINAL lower bound {marginal_lo} from the body prose; expected 0.0"
+        );
+
+        // And the prose's own numbers must classify the way the prose claims.
+        assert_eq!(
+            t_classifier(alpha_bar),
+            "T-ALPHA-UNLOCKED",
+            "the body says ≥ {alpha_bar} is ALPHA; the shipped classifier disagrees"
+        );
+        assert_eq!(
+            t_classifier(f64::from_bits(alpha_bar.to_bits() - 1)),
+            "T-MARGINAL",
+            "the body says the MARGINAL band runs UP TO {alpha_bar} exclusive; the              shipped classifier disagrees one ULP below it"
+        );
+        assert_eq!(
+            t_classifier(marginal_lo),
+            "T-MARGINAL",
+            "the body says the MARGINAL band STARTS at {marginal_lo} inclusive"
+        );
+    }
+
+    /// NON-VACUITY FLOOR. Without this, the degenerate perturbation — collapsing
+    /// the classifier to a constant, e.g. `>= -1e9` — leaves every assertion
+    /// above satisfiable by the single label `"T-ALPHA-UNLOCKED"`.
+    #[test]
+    fn t_classifier_fixture_set_produces_all_three_labels() {
+        let labels: HashSet<&str> = [-1.0_f64, 0.0, 0.10]
+            .into_iter()
+            .map(t_classifier)
+            .collect();
+        assert_eq!(
+            labels.len(),
+            3,
+            "the three fixtures must produce three DISTINCT labels, got {labels:?}.              If this collapses, the classifier has become (near-)constant and the              boundary assertions above are being satisfied by one label."
+        );
     }
 }
 

@@ -223,27 +223,12 @@ fn read_data_revision_sha(data_root: &std::path::Path) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-/// T-classifier thresholds (D-AR-1.i / Q4=(c)).
-///
-/// - `T-ALPHA-UNLOCKED` ⇔ max Sharpe delta ≥ +0.10
-/// - `T-MARGINAL`       ⇔ max Sharpe delta ∈ [0.0, +0.10)
-/// - `T-NO-ALPHA`       ⇔ max Sharpe delta < 0
-fn t_classifier(max_sharpe_delta: f64) -> &'static str {
-    if max_sharpe_delta >= 0.10 {
-        "T-ALPHA-UNLOCKED"
-    } else if max_sharpe_delta >= 0.0 {
-        "T-MARGINAL"
-    } else {
-        "T-NO-ALPHA"
-    }
-}
-
 // ── Metric calculators — re-imported from backtest::stats (R-NR.5) ────────────
 // These were lifted verbatim to `backtest::stats` (M-DEV-1). We import them
 // here so the threshold_sweep bin behaves byte-identically (R-NR.5).
 use backtest::stats::{
     compute_calmar, compute_max_drawdown_f64, compute_sharpe_hourly, compute_sortino_hourly,
-    compute_total_return,
+    compute_total_return, t_classifier,
 };
 
 /// Parse gate-survivor counts from the predecessor recalibrate report body.

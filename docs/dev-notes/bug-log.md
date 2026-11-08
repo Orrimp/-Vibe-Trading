@@ -6476,3 +6476,77 @@ an early return that hard-codes the answer, the other compared the field to a co
 A field can be referenced by name in two tests and still be computed by none of them, and the
 only way to tell is to ask which side of its predicate a fixture has ever reached.
 
+### `#170` — the T-verdict written into two anchored bodies could be collapsed to a constant with the corpus still byte-identical
+
+Found 2026-11-07 (sweep finding F6); fixed 2026-11-08.
+`t_classifier`, was `bin/threshold_sweep.rs:231`, now `backtest::stats`.
+Shape: **non-deciding anchored fixtures**, on a verdict that ships in hashed evidence — plus
+**a gate placed where CI cannot reach it.**
+
+MEASURED: the ALPHA bar `>= 0.10` could be raised anywhere in **(−∞, 1.086583]** and both
+anchored report bodies stayed byte-identical, with `verify_anchors.sh` printing
+`ANCHORS PASS (119 / 119)`. At `>= -1e9` the classifier collapses to the constant
+`"T-ALPHA-UNLOCKED"` — both other bands deleted — and the corpus still could not tell.
+
+**Why the anchors are blind to it.** The two anchored deltas are
+`+1.155769` (BS1) and `+1.086583` (BS2), both read out of the bodies themselves
+(`…-20260929.md:138`, "best cell +0.462575 − v1 baseline -0.693194 = +1.155769"). Both sit
+**far inside** the ALPHA region, so the `>= 0.0` arm is **unreachable** for either input and the
+rendered verdict does not change when the bar moves under it. The fixtures assert the right
+label from deep inside a region — the same sub-shape `#154` filed for one classifier, here on
+one whose output is hashed.
+
+**And the sweep's own prescription was inapplicable**, which the verification pass caught:
+it proposed two bin-local tests in the `#[cfg(test)]` module that already exists in
+`threshold_sweep.rs`. That target carries `required-features = ["candle", "realdata"]`, so
+`cargo test -p backtest --bins` **skips it in silence** and the 6 tests already there have never
+run in CI (`#163`). Adding a 7th and 8th would have joined them — reproducing the exact
+invisibility the finding was about.
+
+**Fix: move the subject to where a gate can reach it.** `t_classifier` lifted verbatim into
+`backtest::stats` beside the five calculators M-DEV-1 moved for the same reason; the bin imports
+it, so its single call site and both hashed bodies are unchanged — **anchors 119/119 before and
+after**. A pure `f64 -> &'static str` with no state, so the lift cannot move a byte.
+
+Then, in the lib where `cargo test -p backtest --lib` runs 250 tests:
+
+1. **Two-sided pairs on both bands.** Baseline first (the two anchored deltas, with their report
+   paths in the comment, so a drifted baseline fails loudly), then AT each boundary, then just
+   outside it. The ALPHA negative witness is `f64::from_bits(0.10f64.to_bits() - 1)` — one ULP
+   below the bar, the tightest possible witness, so no loosening survives however small.
+2. **The IEEE-754 trap, stated.** `t_classifier(-0.0)` is asserted to be `"T-MARGINAL"`, because
+   `-0.0 >= 0.0` is **true**, so `-0.0` is NOT a valid negative witness for the lower boundary.
+   The real one is `-f64::EPSILON`.
+3. **A non-vacuity floor:** `[-1.0, 0.0, 0.10]` must produce three DISTINCT labels. Without it
+   the `>= -1e9` collapse leaves every boundary assertion satisfiable by one label.
+4. **The band prose, checked against the constant.** `bin/threshold_sweep.rs:628-630` writes the
+   bands as literal text (`≥ +0.10`, `∈ [0.0, +0.10)`) that nothing derives from
+   `t_classifier`, so a threshold move would leave both hashed bodies describing the OLD bands.
+   A lib test reads the bin's source with `include_str!`, parses the numerals **out of those
+   literals** rather than restating them, and asserts they classify as the prose claims.
+   Deliberately lib-side: a bin-local test would not run in CI, and enabling `realdata` to reach
+   one would pull `polars` into the CI build — the operator's open row. `include_str!` needs no
+   features at all.
+
+**Probed, eight perturbations:**
+
+| perturbation | result |
+|---|---|
+| ALPHA bar 0.10 → **1.0** (the sweep's value; anchors stayed byte-identical) | 2 failed |
+| ALPHA bar → 0.0999999 | 1 failed |
+| ALPHA bar → **−1e9** (classifier becomes a constant) | 2 failed — incl. the non-vacuity floor |
+| MARGINAL bar 0.0 → 1e9 | 2 failed |
+| MARGINAL bar 0.0 → −1.0 | 2 failed |
+| prose says 0.15 while the constant stays 0.10 | 1 failed, printing `parsed ALPHA bar 0.15` |
+| prose MARGINAL starts at 0.5 | 1 failed |
+| the ALPHA band line renamed away | 1 failed (the floor) |
+| control | 3 passed; anchors 119/119 |
+
+**Also:** the lifted doc comment drops the dangling `D-AR-1.i` citation — its only occurrence in
+the repo, pointing at a `decomp.md` that does not exist — and names ADR-0049 Q4=(c) instead.
+
+**Moral.** `#161` was four conjuncts no negative fixture decided; `#169` a predicate no fixture
+evaluated. This one adds the placement dimension: **a gate in a target CI cannot build is not a
+weaker gate, it is no gate** — and the sweep that found the blindness proposed putting two more
+tests in exactly that spot. The fix was not a better fixture but a better address.
+
