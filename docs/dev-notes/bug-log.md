@@ -6861,6 +6861,16 @@ non-vacuity probe of its own, since a UI render test that fails intermittently u
 exactly the shape this log's other 100-odd entries are about), or a github.com credential so the
 failing assertion can be read. The latter is an operator action: `gh auth login -h github.com`.
 
+**CLOSED-BY-DELETION 2026-11-09 — the subject is gone, not explained.** The operator had the
+`ubuntu-latest` leg removed from the matrix, and with it step 11, "Test ui (headless, Linux)": an
+`xvfb-run` smoke of the winit/tiny-skia stack on an X11 virtual framebuffer, a Linux property with
+no Linux leg left to hold it. It carried no test of its own away — `crates/ui/src/lib.rs` declares
+`pub mod fixtures;` unconditionally, so `--features fixtures` gated only the bins, and macOS runs
+all 116 integration targets. But the "wait for a second instance" path this entry was opened to
+keep open is **closed**: there will not be one. The single red stays unexplained, and the honest
+record is that it was retired rather than diagnosed. Anyone restoring a Linux leg should expect
+this to be the first thing that reappears.
+
 ### `#173` — the gate ADR-0038 names for the Parkinson formula contains no production code, and stays 4/4 green while the shipped formula is zeroed
 
 Found 2026-11-07 (sweep finding F3); fixed 2026-11-08.

@@ -9,24 +9,84 @@
 # │ very file producing them (bug-log `#188`).                                 │
 # └──────────────────────────────────────────────────────────────────────────┘
 #
-# cockpit-cross-platform v0.1 — First CI in the repo (ADR feature D8).
+# cockpit-cross-platform v0.1 — first CI in the repo (ADR feature D8), narrowed
+# from three legs to two on 2026-11-09 by operator decision.
 #
-# Matrix: { ubuntu-latest, macos-latest, windows-latest }
+# Matrix: { macos-latest, windows-latest }
 # Scope:
-#   - All legs: build the ui crate (cockpit + fixtures) + test the non-UI workspace crates.
-#   - ubuntu-latest: headless winit via xvfb-run + the Q5-researched apt deps
-#     (validate on first CI run — see docs/runbooks/cockpit-cross-platform.md §Q5).
-#     Runs the ui headless smokes. Visual baselines are compiled OUT on Linux by
-#     the #![cfg(target_os="macos")] source gate (ADR-0057 D2) — no --skip filter needed.
-#   - macos-latest: full cargo test -p ui including all 56 visual baselines (canonical gate).
-#   - windows-latest: build + non-visual cargo test -p ui (D5 scope).
+#   - Both legs: build the ui crate (cockpit + fixtures) + test the non-UI
+#     workspace crates.
+#   - macos-latest is the CANONICAL leg: the full `cargo test -p ui` including all
+#     56 visual baselines (ADR-0057 D1/D2), plus every repo-governance gate and
+#     every feature-gated cargo invocation whose subject is the code rather than
+#     the operating system.
+#   - windows-latest: build + non-visual `cargo test -p ui` (D5 scope) + the
+#     workspace test run.
 #
-# TLS: reqwest is now rustls-tls (D1) — no libssl-dev/pkg-config needed on any leg.
-# tokio-tungstenite still uses native-tls for WebSocket connections (data crate);
-# on Ubuntu that requires libssl-dev. On Windows it uses schannel (no extra setup).
+# ── WHY ubuntu-latest IS GONE, AND WHERE ITS WORK WENT ────────────────────────
 #
-# Keep it minimal — no caching, no release pipeline, no matrix-fanciness at v0.1.
-# The goal is a green build + non-visual test floor, not a release pipeline.
+# The Ubuntu leg was not a third copy of the same steps. ELEVEN steps carried
+# `if: matrix.os == 'ubuntu-latest'` and ran NOWHERE ELSE — among them every
+# governance gate and the only clippy invocation in the repo. Deleting the leg
+# without re-homing them would have removed the entire constitutional gate suite
+# from CI while the matrix went on reporting green, which is the one defect shape
+# this project's bug-log is mostly about. Measured per-step from run
+# `42575316185`, the last all-green 3-OS run (`gh run view <id> --json jobs`
+# carries per-step startedAt/completedAt and needs no credential):
+#
+#   step                                       ubuntu   now runs on
+#   Governance gates (anchors + spec-lint)      0.12 m   macos-latest
+#   Install Linux system deps                   0.23 m   DROPPED (apt + xvfb)
+#   Clippy (libs + bins)                        4.58 m   macos-latest
+#   Check ui minimal build                      1.25 m   macos-latest
+#   Reproduce the sample figure (story 6-12)    5.22 m   macos-latest
+#   backtest yahoo-gated ticker-flag tests      0.02 m   macos-latest
+#   backtest realdata p2 verdict rerun          (new)    macos-latest
+#   backtest realdata threshold-sweep guard     (new)    macos-latest
+#   forecast candle-gated tests                 1.72 m   macos-latest
+#   Test ui (headless, Linux)                   4.57 m   DROPPED
+#   Report corpus-gated skips (informational)   0.23 m   DROPPED
+#
+# The two DROPPED test steps, on the record here rather than only in a diff:
+#
+#   - "Test ui (headless, Linux)" was `xvfb-run -a cargo test -p ui --features
+#     fixtures`. What it tested was whether the cockpit's winit/tiny-skia stack
+#     comes up on an X11 virtual framebuffer: a Linux property, with no Linux leg
+#     left to hold it. It took no TEST with it. `crates/ui/src/lib.rs` declares
+#     `pub mod fixtures;` UNCONDITIONALLY (see its comment at :117), so
+#     `--features fixtures` gates only `[[bin]] required-features` and
+#     bin/cockpit.rs's default state — not the 116 integration-test targets. macOS
+#     runs every one of them, visual baselines included; Windows runs them minus
+#     the `#![cfg(target_os="macos")]` visual set. Side effect worth naming:
+#     bug-log `#172` — one unexplained red of THIS step, recorded as an open
+#     observation — loses its subject, and with it the "wait for a second
+#     instance" path to closing it.
+#
+#   - "Report corpus-gated skips (informational)" could not fail by construction:
+#     `|| true` on both commands and no assertion anywhere. Its premise was also
+#     false. It printed "expected >0 in CI — the pinned corpus is machine-local",
+#     but `data/binance` has been tracked since 2026-09-27 (241 paths) and this
+#     workflow checks out `lfs: true` — which is exactly what bug-log `#186`
+#     established two steps further down this file. What it was reaching for —
+#     "did the corpus-gated guards actually execute?" — is now carried by the p2
+#     step's PRECONDITION below, which asserts the corpus is present and FAILS
+#     when it is not, instead of printing a count into a log that nobody here can
+#     download (403).
+#
+# TLS: reqwest is rustls-tls (D1) — no pkg-config/libssl on either leg. The
+# `libssl-dev` note that used to sit here covered Ubuntu's native-tls build of
+# tokio-tungstenite; Windows uses schannel and macOS Secure Transport, so no
+# system-package step remains at all.
+#
+# ── Caching (added 2026-11-09) ────────────────────────────────────────────────
+#
+# This file said "Keep it minimal — no caching" from its first commit, and the
+# measurement says what that cost: `Build ui (fixtures)` took 17.80 min on macOS
+# and 18.22 min on Windows from a cold runner, nearly all of it third-party
+# dependency compilation — the workspace root optimizes ALL dependencies at
+# `opt-level = 3` even in dev (`Cargo.toml:64`, load-bearing: the 40x debug-tax
+# note above it). `Swatinem/rust-cache` caches exactly that and nothing of ours.
+# No step's coverage changes; see the step itself for the two risks it carries.
 
 name: CI
 
@@ -54,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -66,14 +126,24 @@ jobs:
           # shakeout finding, run #2 2026-07-12).
           lfs: true
 
-      # ── Ubuntu: repo governance gates (fail fast, before any compile) ──────
+      # ── Canonical leg: repo governance gates (fail fast, before any compile) ──
       # The constitutional invariants — AD-2 anchors byte-immutability and the
       # ADR-0082 story↔trace↔CHANGELOG triad — were previously enforced ONLY by
       # agent discipline (2026-07-27 adversarial-review hardening; bug-log #66
       # showed what discipline-only enforcement ships). One leg suffices: these
-      # check repo STATE, not platform behavior. Both scripts are stdlib-only.
+      # check repo STATE, not platform behaviour, and every one of them is
+      # stdlib-only Python or bash.
+      #
+      # MOVED from the Ubuntu leg to macOS on 2026-11-09 with the matrix narrowing.
+      # The move's own risk is portability, so it was MEASURED on the dev box
+      # (macOS 26.7.2, bash 5.3.20, python3 3.15.2) before it landed: all thirteen
+      # commands below ran and passed — `ANCHORS PASS  (119 / 119)`, spec-lint
+      # `PASS (0 violations)`, and the five other gates each with its `--self-test`
+      # (4, 20, 4 and 5 probes fired respectively). They stay the FIRST step of the
+      # job, ahead of the toolchain install and the cache restore, so a
+      # constitutional failure still costs seconds instead of an hour.
       - name: Governance gates (anchors + spec-lint)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'macos-latest'
         # `shell: bash` is LOAD-BEARING, not style (bug-log #84, 2026-08-15).
         # GitHub's default `run:` shell is `bash -e {0}` — WITHOUT `pipefail` — so
         # `verify_anchors.sh | tail -1` exited with *tail's* status (always 0) and
@@ -135,37 +205,58 @@ jobs:
           python3 scripts/sha_mirror_census.py
           python3 scripts/sha_mirror_census.py --self-test
 
+      # `components: clippy` is explicit rather than inherited. The clippy step
+      # below was proven on the Ubuntu image and now runs on the macOS one, and
+      # what made it work was the runner image's pre-installed toolchain, not this
+      # action — `dtolnay/rust-toolchain` installs with `--profile minimal`, which
+      # does NOT include clippy. Naming the component means the step depends on a
+      # declaration instead of on an image's contents. Costs seconds; it is already
+      # installed on the hosted images, so this is a no-op there and insurance
+      # anywhere else.
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
-      # ── Ubuntu: headless display + winit X11 deps ──────────────────────────
-      # Q5 note (cockpit-cross-platform ADR D9): winit 0.30.x on Linux requires
-      # an X/Wayland display for window creation even when tiny-skia renders
-      # fully CPU-side. xvfb-run provides the virtual X display. The libxkb* +
-      # libx11 packages are required by winit's x11rb backend.
-      # libssl-dev is required by tokio-tungstenite native-tls (WebSocket, data crate).
-      # VALIDATE ON FIRST CI RUN — if winit panics with "no display server",
-      # add libwayland-dev or check xvfb startup. See the runbook Q5 section.
-      - name: Install Linux system deps
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            xvfb \
-            libxkbcommon-dev \
-            libxkbcommon-x11-0 \
-            libx11-dev \
-            libssl-dev \
-            pkg-config \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libwayland-dev \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev
+      # ── Dependency cache ──────────────────────────────────────────────────
+      #
+      # The action keys the entry itself — job_id + rustc release/host/hash + a hash
+      # of Cargo.lock, the Cargo.toml files and .cargo config — so the two legs never
+      # share an entry and a toolchain bump invalidates cleanly. It also sets
+      # `CARGO_INCREMENTAL=0`, which is what CI wants: incremental artifacts are
+      # large and worthless across runs.
+      #
+      # EXPECTED saving, and stated as expected because nothing here has run it: the
+      # dependency share of `Build ui (fixtures)` — 17.80 min macOS / 18.22 min
+      # Windows on run 42575316185. Inside one job that compile is paid ONCE and the
+      # later steps reuse it, so that step is the only place a cache can win. It
+      # cannot touch the 34.4 min (macOS) / 52.2 min (Windows) workspace test step,
+      # whose cost is this repo's own 17 crates and ~339 test binaries — artifacts
+      # rust-cache deliberately prunes rather than saves.
+      #
+      # TWO RISKS, both readable off the next runs instead of guessed:
+      #  1. GitHub allows 10 GB of cache per repository and evicts oldest-first past
+      #     that (docs.github.com "Dependency caching reference"; the action's README
+      #     says the same). The dependency set here is candle + polars + arrow +
+      #     iced at opt-level 3, so two entries may be a large fraction of it. If they
+      #     thrash, every run is cold AND pays the restore attempt on top. Measure:
+      #       gh api repos/<owner>/<repo>/actions/caches \
+      #         --jq '.actions_caches[] | "\(.size_in_bytes)  \(.key)"'
+      #  2. A restored `target/` that does not match the source is a correctness
+      #     risk in principle; cargo's own fingerprinting is what rules it out, and
+      #     the action prunes anything that is not a dependency before saving.
+      #
+      # `save-if` keeps PR runs read-only, so they restore but never evict main's
+      # entries. `cache-on-failure` is ON deliberately: this workflow was red on
+      # every push for a 15-day stretch (docs/dev-notes/bug-log.md), and with the
+      # default `false` every run in such a stretch is also a cold run.
+      - name: Cache cargo registry + dependency build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: "true"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      # ── Ubuntu: clippy, which CI has never run ────────────────────────────
+      # ── Clippy — canonical leg, macOS since 2026-11-09 ─────────────────────
       #
       # CLAUDE.md states `cargo clippy -- -D warnings` MUST pass, and until now
       # nothing enforced it remotely: `grep -c clippy ci.yml` returned 0. The gap
@@ -180,17 +271,29 @@ jobs:
       # finish is not a gate. Test-target lints stay a local, per-crate concern
       # (`cargo clippy -p <crate> --tests`).
       #
-      # One leg only: clippy findings are not OS-specific, and three copies would
-      # triple the cost for no extra signal.
-      - name: Clippy (libs + bins, ubuntu only)
-        if: always() && matrix.os == 'ubuntu-latest'
+      # One leg only: clippy findings are not OS-specific, and a second copy would
+      # double the cost for no extra signal.
+      #
+      # MOVED to macOS 2026-11-09 with the matrix narrowing. The move changes WHICH
+      # cfg-gated code gets linted, so it was measured in both directions rather
+      # than assumed:
+      #   - nothing loses coverage — `grep -rl 'target_os *= *"linux"' crates/`
+      #     finds ZERO files, so there is no Linux-only code that only this leg saw;
+      #   - the macOS-only code it now lints for the FIRST time is clean —
+      #     `cargo clippy --workspace -- -D warnings` on the dev box finished with
+      #     exit 0 and zero warnings (`Finished dev profile in 39.93s`; a warm
+      #     target dir, so that is a cleanliness result and not a CI-time estimate).
+      # Had that come back dirty, the move would have been a red first run rather
+      # than a note in a report.
+      - name: Clippy (libs + bins, canonical leg only)
+        if: always() && matrix.os == 'macos-latest'
         run: cargo clippy --workspace -- -D warnings
 
       # ── All legs: build the ui crate (fixtures binary) ────────────────────
       - name: Build ui (fixtures)
         run: cargo build -p ui --bin cockpit --features fixtures
 
-      # ── Ubuntu: the MINIMAL build (bug-log #92) ───────────────────────────
+      # ── The MINIMAL build (bug-log #92) — canonical leg ────────────────────
       # `crates/ui/Cargo.toml` documents `--no-default-features` as a supported
       # opt-out ("for the gallery-only bin"). NOTHING built it, so it rotted: from
       # roughly the 2026-05-25 promotion of `live` to a default feature until
@@ -202,16 +305,17 @@ jobs:
       # Cheap by design — `cargo check`, one leg, no tests. The point is coverage
       # of a build configuration, not of behaviour. A documented capability that
       # nothing exercises is the defect class this whole burn-down keeps finding.
+      #
+      # macOS since 2026-11-09 (was Ubuntu). `always() &&` for the same reason as
+      # every other gate on this leg: an earlier red must not silently cancel it.
       - name: Check ui minimal build (--no-default-features)
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'macos-latest'
         run: cargo check -p ui --no-default-features --features fixtures
 
-      # ── All legs: test the non-UI workspace crates ─────────────────────────
-      # Excludes `ui` because:
-      #   - ubuntu/windows: visual snapshots are compiled out by the
-      #     #![cfg(target_os="macos")] source gate, but headless smokes need
-      #     the platform-specific step below.
-      #   - macos: full ui test suite runs in a dedicated step below.
+      # ── Both legs: test the non-UI workspace crates ────────────────────────
+      # Excludes `ui` because each leg runs its own ui step below:
+      #   - macos: the full ui suite, the 56 visual baselines included (canonical).
+      #   - windows: the same suite minus the #![cfg(target_os="macos")] visual set.
       # ── A FAILING STEP MUST NOT CANCEL THE GATES BELOW IT ────────────────
       #
       # Measured 2026-08-23: with this step red, steps 9-12 all reported
@@ -251,11 +355,14 @@ jobs:
       # Story 6-12 — the reproducibility sample. The ONE real-data figure in this
       # repo that a second party can reproduce from a fresh clone.
       #
-      # Ubuntu only: this proves reproducibility from the committed bytes, which is a
-      # property of the data and the engine, not of the operating system. Running it on
-      # three legs would triple the cost of the `yahoo` feature build to re-assert the
-      # same fact. (If cross-OS float determinism is ever in question, that is a
-      # separate, measured decision — the same one ADR-0057 D2 made for the pixel gates.)
+      # ONE LEG ONLY — macOS since 2026-11-09, previously Ubuntu. This proves
+      # reproducibility from the committed bytes, which is a property of the data and
+      # the engine, not of the operating system. Running it on both legs would double
+      # the cost of the `yahoo` feature build to re-assert the same fact. (If cross-OS
+      # float determinism is ever in question, that is a separate, measured decision —
+      # the same one ADR-0057 D2 made for the pixel gates.) It cost 5.22 min on the
+      # Ubuntu runner; expect more here, since macOS ran `Build ui` at 1.86x and the
+      # workspace test at 1.47x Ubuntu's time on run 42575316185.
       #
       # It needs the `yahoo` feature, which the workspace test step above does not
       # enable, and `python3` for the canonical body hash — already a prerequisite of
@@ -265,7 +372,7 @@ jobs:
       # and the day the engine drifts away from the anchor nobody finds out. Bug-log #93
       # is what that looks like when it happens unobserved.
       - name: Reproduce the sample figure (story 6-12)
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "repro-sample" cargo test -p backtest --features yahoo --test reproducibility_sample_figure
 
@@ -304,14 +411,17 @@ jobs:
       # (crates/data/Cargo.toml: "yahoo" is the cache read path; "yahoo-online" is the
       # fetching one and stays out).
       #
-      # Ubuntu only, for the same reason as the step above: these assert properties of
-      # the data, the engine and the CLI contract, not of the operating system, and the
-      # other legs would each pay a fresh `yahoo` feature build to re-assert them.
+      # One leg only — macOS since 2026-11-09 — for the same reason as the step
+      # above: these assert properties of the data, the engine and the CLI contract,
+      # not of the operating system, and the other leg would pay a fresh `yahoo`
+      # feature build to re-assert them. It stays immediately after the repro step so
+      # it keeps reusing that step's `yahoo` build (0.02 min on Ubuntu: a test run and
+      # no compile).
       # A SEPARATE step rather than a second --test on the step above so its CI
       # annotation carries its own label — logs are 403 here, annotations are how a
       # failure gets read.
       - name: "backtest yahoo-gated ticker-flag tests (bug-log #184)"
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "yahoo-ticker-flag" cargo test -p backtest --features yahoo --test run_yahoo_sma_ticker_flag
 
@@ -321,12 +431,22 @@ jobs:
       # file for them were false (see the corrected block above), so what remained
       # was cost and evidence, and both are now measured.
       #
-      # COST. On run 42575316185 — the first all-green 3-OS run — windows paced the
-      # matrix at 82.5 min while ubuntu finished in 51.1, so an ubuntu-only step has
-      # ~31 min of headroom before it moves the matrix wall clock at all. These two
-      # spend a backtest recompile under realdata,candle,yahoo plus ~50 s of test
-      # time (measured locally 2026-11-09: build 24 s; p2_verdict_rerun 21.2 s →
-      # 8 passed / 0 failed / 7 ignored; threshold_sweep_readonly 22.4 s → 2 passed).
+      # COST. These two spend a backtest recompile under realdata,candle,yahoo plus
+      # ~50 s of test time (measured locally 2026-11-09: build 24 s; p2_verdict_rerun
+      # 21.2 s → 8 passed / 0 failed / 7 ignored; threshold_sweep_readonly 22.4 s →
+      # 2 passed).
+      #
+      # The headroom argument that used to stand here died with the Ubuntu leg, and
+      # is replaced rather than deleted. It read: windows paced run 42575316185 at
+      # 82.5 min while ubuntu finished in 51.1, so an ubuntu-only step had ~31 min of
+      # slack before it moved the matrix wall clock. After the 2026-11-09 narrowing
+      # the slack belongs to macOS, which finished that run in 59.4 min — ~23 min
+      # behind windows — and the re-homed Ubuntu-only steps summed to 12.9 min of
+      # UBUNTU time, which at the 1.47-1.86x macOS multiplier measured on the same
+      # run is roughly 19-24 min. So the slack is now approximately spent and macOS
+      # may take over as the pacer. That is a wall-clock statement, not a coverage
+      # one, and the first two-leg run settles it: read it with
+      #   gh run view <id> --json jobs --jq '.jobs[] | "\(.name) \(.startedAt) \(.completedAt)"'
       # The second step reuses the first step's build — same feature set — and is a
       # separate step only so its annotation carries its own label, for the same
       # reason as the step above: logs are 403 here, annotations are how a failure
@@ -339,7 +459,10 @@ jobs:
       # (10 symbols × 24 months + REVISION.toml = 241 tracked paths) each over 10 KB:
       # the real files are 24.4–27.8 KB, an LFS pointer stub is ~130 B, so the size
       # floor distinguishes "checked out" from "pointer only" rather than merely
-      # "present".
+      # "present". Its portability to this leg is measured, not assumed: the block
+      # below was re-run VERBATIM on the macOS dev box on 2026-11-09 and printed
+      # "24 parquet files, smallest 24441 bytes" before passing both tests — which is
+      # what the `-exec wc -c` form (rather than GNU `find -printf`) was chosen for.
       #
       # WHAT THE LOCAL MEASUREMENT DOES AND DOES NOT COVER. It visits CI's data state,
       # not a richer one: data/deribit-dvol and data/yahoo-macro hold only
@@ -355,7 +478,7 @@ jobs:
       # No `| head` in these pipelines: `shell: bash` means pipefail (bug-log #84),
       # and head closing the pipe early SIGPIPEs its producer into a false failure.
       - name: "backtest realdata-gated p2 verdict rerun (bug-log #186)"
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: |
           test -f data/binance/REVISION.toml
@@ -370,7 +493,7 @@ jobs:
           scripts/ci_run_annotated.sh "p2-verdict-rerun" cargo test -p backtest --features realdata,candle,yahoo --test p2_verdict_rerun -- --nocapture
 
       - name: "backtest realdata-gated threshold-sweep read-only guard (bug-log #186)"
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "threshold-sweep-readonly" cargo test -p backtest --features realdata,candle,yahoo --test threshold_sweep_readonly
 
@@ -398,39 +521,20 @@ jobs:
       # The 18 ignored are the pre-existing long/corpus-gated ones (~487 s and
       # ~620 s forward passes); this step does not pass `--ignored`.
       #
-      # Ubuntu only, for the same reason as the step above: these assert properties
-      # of the model code and its checkpoints, not of the operating system, and the
-      # candle build is the expensive part. `scripts/feature_gated_targets_check.py`
-      # declares what each leg does and does not build, so this scope is recorded
-      # rather than assumed.
+      # One leg only — macOS since 2026-11-09 — for the same reason as the step
+      # above: these assert properties of the model code and its checkpoints, not of
+      # the operating system, and the candle build is the expensive part.
+      # `scripts/feature_gated_targets_check.py` declares what each leg does and does
+      # not build, so this scope is recorded rather than assumed.
+      #
+      # Note on the two numbers: the 507 s above is a COLD local build, while this
+      # step took 1.72 min on the Ubuntu runner — because the workspace test step
+      # ahead of it has already compiled candle-core, exactly as the paragraph above
+      # says it does. Only the forecast crate and its 33 targets are left to build.
       - name: "forecast candle-gated tests (bug-log #163)"
-        if: matrix.os == 'ubuntu-latest'
+        if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "forecast-candle" cargo test -p forecast --features candle --no-fail-fast
-
-      # ── Ubuntu: headless ui tests (smokes only — visual baselines not compiled) ──
-      # xvfb-run provides a virtual X display for winit window creation.
-      # The visual snapshot tests are compiled OUT on Linux (#![cfg(target_os="macos")])
-      # so this runs only the headless smokes: headless_emulator_smoke,
-      # cockpit_live_lab_run_smoke, and all other non-visual ui integration tests.
-      - name: Test ui (headless, Linux)
-        # `always() &&` so a failure in an EARLIER step cannot silently cancel this
-        # gate — see the block above `Test workspace`.
-        if: always() && matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: xvfb-run -a scripts/ci_run_annotated.sh "ui-linux" cargo test -p ui --features fixtures --no-fail-fast
-
-      # ── Ubuntu: skip-visibility (bug-log #66 class) ────────────────────────
-      # Corpus-gated real-data tests self-skip wherever data/binance is absent
-      # — in CI, always. Surface the skip count so a green run is never read as
-      # "the real-data guards executed" (they run for real on the canonical box
-      # only). Informational: never fails the build.
-      - name: Report corpus-gated skips (informational)
-        if: always() && matrix.os == 'ubuntu-latest'
-        run: |
-          OUT=$(xvfb-run -a cargo test -p ui --test lab_binance_divergence --test lab_binance_persist_compare -- --nocapture 2>&1 || true)
-          N=$(printf '%s' "$OUT" | grep -c "\[skip\]" || true)
-          echo "corpus-gated [skip] lines: $N (expected >0 in CI — the pinned corpus is machine-local; 0 + green means the corpus was unexpectedly present and the guards ran for real)"
 
       # ── macOS: full ui test suite including the 56 visual baselines ────────
       # This is the canonical visual regression gate (ADR-0057 D1/D2, R-NR.1).

@@ -13,8 +13,11 @@ enabled **silently**: no warning, no note, exit 0. Measured on this repo:
            features: `candle`, `realdata`
 
 That error appears only when the target is named explicitly. Under
-`cargo test --workspace --exclude ui` — which is what CI runs
-(`.github/workflows/ci.yml:202`) — the same target is passed over without a word.
+`cargo test --workspace --exclude ui` — which is what CI runs (the
+`Test workspace (non-ui crates)` step of `.github/workflows/ci.yml`; steps are
+named rather than line-numbered from here on, because the three line references
+this file used to carry had every one of them drifted by the time anyone
+followed them) — the same target is passed over without a word.
 So **41 test functions across 12 test targets had never run in CI**, and nothing
 said so.
 
@@ -39,9 +42,21 @@ step already built this package with that feature. It now has its own step, so
 **Closed 2026-11-09 (bug-log `#186`).** Both are in CI, as ci.yml's `backtest
 realdata-gated p2 verdict rerun` and `backtest realdata-gated threshold-sweep
 read-only guard` steps: 10 live test functions recovered (8 passed/7 ignored +
-2 passed), ~50 s of Ubuntu test time against the ~31 min of headroom that leg
-has while windows paces the matrix. **No `realdata`-gated test function is
-invisible to CI any more.**
+2 passed), ~50 s of test time. **No `realdata`-gated test function is invisible
+to CI any more.**
+
+**Re-homed the same day, hours later.** The operator narrowed the matrix to
+`{macos-latest, windows-latest}`, and every "Ubuntu only" step in ci.yml — both
+of the above, the two yahoo steps, the forecast candle step, clippy and the whole
+governance block — moved to the macOS leg. The cost argument those rows used to
+carry ("~31 min of headroom while windows paces the matrix") describes nothing
+now: the slack belongs to macOS, which finished run `42575316185` in 59.4 min
+against windows' 82.5, and the re-homed steps summed to 12.9 min of UBUNTU time,
+which at that run's measured 1.47-1.86x macOS multiplier is roughly 19-24 min —
+so the slack is approximately spent. The rows below name macOS because that is
+where the invocations now are. What they claim about COVERAGE is unchanged, and
+the `UNBUILT-CLAIM` check below is what holds each one to the workflow rather
+than to this prose.
 
 The sentence above used to end "blocked on its `polars` compile cost, NOT on
 corpus provisioning (bug-log `#186`)". The corpus half of it was corrected on
@@ -127,8 +142,9 @@ DECLARED: dict[str, dict[str, object]] = {
         "feats": ["candle", "realdata"],
         "ci": "built",
         "why": "bug-log #163 — 2 test fns, 0 ignored. WIRED 2026-11-09 (bug-log #186) as "
-               "ci.yml `backtest realdata-gated threshold-sweep read-only guard`, Ubuntu "
-               "only, reusing the build of the p2 step above it (same feature set). "
+               "ci.yml `backtest realdata-gated threshold-sweep read-only guard` — "
+               "Ubuntu then, the macOS leg since the 2026-11-09 matrix narrowing — "
+               "reusing the build of the p2 step above it (same feature set). "
                "NEITHER filed blocker was real: the corpus has been tracked since "
                "2026-09-27, and `polars` is non-optional in data/forecast/reports. "
                "Measured 22.4 s, 2 passed / 0 failed under `--features "
@@ -140,15 +156,17 @@ DECLARED: dict[str, dict[str, object]] = {
     "backtest/bin/run_yahoo_sma": {
         "feats": ["yahoo"],
         "ci": "invisible",
-        "why": "bug-log #163. CI enables `yahoo` only for the single named target "
-               "reproducibility_sample_figure (ci.yml:223), not for the package.",
+        "why": "bug-log #163. CI enables `yahoo` only for NAMED targets — the "
+               "`Reproduce the sample figure (story 6-12)` and `backtest yahoo-gated "
+               "ticker-flag tests` steps, both `--test`-narrowed — never for the "
+               "package, so this bin's own #[cfg(test)] module stays unbuilt.",
     },
     "backtest/test/run_yahoo_sma_ticker_flag": {
         "feats": ["yahoo"],
         "ci": "built",
-        "why": "bug-log #184 — ci.yml `backtest yahoo-gated ticker-flag tests`, "
-               "Ubuntu only, sharing the `yahoo` build the repro-sample step already "
-               "pays for. 6 test fns, 0 ignored (measured 6 passed / 0.80 s). Two of "
+        "why": "bug-log #184 — ci.yml `backtest yahoo-gated ticker-flag tests`, one leg "
+               "only — Ubuntu then, the macOS leg since the 2026-11-09 matrix narrowing — "
+               "sharing the `yahoo` build the repro-sample step already pays for. 6 test fns, 0 ignored (measured 6 passed / 0.80 s). Two of "
                "them re-run the run_yahoo_sma BINARY to witness anchors 69 and 70 — "
                "the rows #182 re-emitted — which no on-disk hash gate can do.",
     },
@@ -163,8 +181,9 @@ DECLARED: dict[str, dict[str, object]] = {
                "committed 2026-09-27 by operator decision as plain `binary` (NOT lfs), and "
                "ci.yml checks out with `lfs: true`. Nor is `polars` a cost: it is a "
                "NON-OPTIONAL dep of data/forecast/reports, already in every build. "
-               "WIRED 2026-11-09 as ci.yml `backtest realdata-gated p2 verdict rerun`, "
-               "Ubuntu only: 21.2 s, 8 passed / 0 failed / 7 ignored under `--features "
+               "WIRED 2026-11-09 as ci.yml `backtest realdata-gated p2 verdict rerun` "
+               "(Ubuntu for a few hours, then the macOS leg when the matrix was narrowed "
+               "the same day): 21.2 s, 8 passed / 0 failed / 7 ignored under `--features "
                "realdata,candle,yahoo`. That step carries a PRECONDITION on the corpus "
                "(24 parquets, each >10 KB so an LFS pointer stub fails it) because the one "
                "disk-touching live test, s4_binance_2324_base_smoke, SKIPs and RETURNS on "
@@ -190,55 +209,55 @@ DECLARED: dict[str, dict[str, object]] = {
     # ── forecast (candle = the ML backend) ───────────────────────────────────
     "forecast/bin/train_tcn": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/bin/forecast_distribution": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/bin/recalibrate_sigma_train": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/bin/train_patchtst": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09): `cargo test -p forecast --features candle --no-fail-fast`. Operator-approved after bug-log #163 measured that candle-core compiles on every default run anyway (crates/backtest/Cargo.toml:63 pulls forecast/candle unconditionally), so CI was paying for the backend and skipping its tests. A bin's own #[cfg(test)] module now builds with it.",
     },
     "forecast/test/metal_cpu_drift": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/train_tcn_golden_cli": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/train_tcn_audit_emits": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/train_tcn_no_audit_db_writes_nothing": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/recalibrate_sigma_train_readonly": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/sigma_train_not_in_safetensors": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/sigma_train_not_in_safetensors_patchtst": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/forward_determinism_patchtst": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     "forecast/test/patchtst_overlay_neutrality": {
         "feats": ["candle"], "ci": "built",
-        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, Ubuntu leg). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
+        "why": "Built since 2026-11-08 by the `forecast candle-gated tests` step (ci.yml, macOS leg; Ubuntu until 2026-11-09). MEASURED before enabling: 33 targets, 191 passed, 0 failed, 18 ignored (the pre-existing long/corpus-gated ones; the step does not pass --ignored). bug-log #163.",
     },
     # ── strategy ─────────────────────────────────────────────────────────────
     "strategy/test/tcn_overlay_tuned_builder": {
@@ -255,12 +274,21 @@ DECLARED: dict[str, dict[str, object]] = {
     # ── ui (excluded from the workspace run; has its own matrix legs) ────────
     "ui/bin/cockpit": {
         "feats": ["fixtures"], "ci": "built",
-        "why": "ci.yml:144 `cargo build -p ui --bin cockpit --features fixtures`, and the "
-               "linux/windows legs run `cargo test -p ui --features fixtures`.",
+        "why": "ci.yml's `Build ui (fixtures)` step runs `cargo build -p ui --bin "
+               "cockpit --features fixtures` on BOTH legs, and the windows leg's `Test ui "
+               "(non-visual, Windows)` runs `cargo test -p ui --features fixtures`. That "
+               "second clause read `linux/windows` until 2026-11-09; the Linux leg and its "
+               "xvfb ui step are gone.",
     },
     "ui/bin/ui-gallery": {
         "feats": ["fixtures"], "ci": "built",
-        "why": "Same `--features fixtures` legs as cockpit.",
+        "why": "Built by the one UNNARROWED `--features fixtures` invocation left in "
+               "ci.yml: the windows leg's `cargo test -p ui --features fixtures`, which "
+               "builds a package's bins as well as its tests. `Build ui (fixtures)` cannot "
+               "cover it — that step narrows to `--bin cockpit` — and the macOS canonical "
+               "step passes no `--features fixtures` at all. So since the 2026-11-09 matrix "
+               "narrowing this bin compiles on ONE leg, down from two. It carries no test "
+               "fns, so what that costs is build coverage, not assertions.",
     },
     "ui/bin/cockpit_live": {
         "feats": ["live"], "ci": "built",

@@ -113,8 +113,8 @@ clap = { workspace = true }
 # iced — GUI framework. Pinned explicitly per ui-designer constraint.
 # Do NOT use a range. Update in lockstep across ui/cockpit/viewer.
 #
-# `x11` + `wayland` are LOAD-BEARING ON LINUX — do not drop them (CI ubuntu leg,
-# task #11 / 2026-08-15). `default-features = false` disables iced's defaults,
+# `x11` + `wayland` are LOAD-BEARING ON LINUX — do not drop them (task #11 /
+# 2026-08-15). `default-features = false` disables iced's defaults,
 # which cascade to `iced_winit`'s own `default = ["x11", "wayland"]`. With both
 # off, `softbuffer`'s Linux backends (its own `default = [kms, x11, x11-dlopen,
 # wayland, wayland-dlopen]`) are never selected, so its `make_dispatch!` macro
@@ -123,6 +123,12 @@ clap = { workspace = true }
 # plus E0282/E0283/E0392). macOS is unaffected — it uses the Cocoa backend —
 # which is exactly why this was invisible on the dev box and only ever broke
 # the ubuntu CI leg. Reproduced in a rust:latest container mirroring ci.yml.
+#
+# ⚠️ NOTHING GUARDS THIS ANY MORE. The ubuntu leg was removed from ci.yml on
+# 2026-11-09 (matrix narrowed to {macos-latest, windows-latest}), and it was the
+# only thing that ever compiled this dependency graph for a Linux target. Dropping
+# either feature now produces a clean CI and a 25-error build for anyone on Linux.
+# Read this paragraph as the whole of the protection: a comment, not a gate.
 # NO `fira-sans`. That feature compiles FiraSans-Regular.ttf (431 KiB) in and
 # loads it into the global cosmic-text font DB, but it never SELECTS it: the
 # `default_font` auto-switch at `iced_graphics/src/settings.rs:42` is gated on
