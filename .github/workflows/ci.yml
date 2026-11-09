@@ -1,11 +1,12 @@
 # ┌──────────────────────────────────────────────────────────────────────────┐
-# │ DEFERRED — NOT ACTIVE. Parked as `.deferred` so GitHub Actions does NOT    │
-# │ run it (only *.yml / *.yaml under .github/workflows/ are processed).       │
-# │ Operator decision 2026-06-15: activating cross-platform CI is deferred to  │
-# │ NEAR PROJECT COMPLETION. To activate at that milestone:                    │
-# │     git mv .github/workflows/ci.yml.deferred .github/workflows/ci.yml      │
-# │ Pushing the activated file starts GitHub Actions on the operator's repo    │
-# │ and runs on every push/PR thereafter. Until the milestone, leave parked.   │
+# │ ACTIVE since 2026-07-10 — this file runs on every push and PR to `main`.   │
+# │                                                                            │
+# │ It was parked as `ci.yml.deferred` under a 2026-06-15 operator decision to │
+# │ defer cross-platform CI to near project completion. That milestone came,   │
+# │ the operator activated the matrix, and the file was renamed — but the      │
+# │ banner saying "DEFERRED — NOT ACTIVE" rode along unchanged and was still   │
+# │ here on 2026-11-09, four months and several hundred runs later, on the     │
+# │ very file producing them (bug-log `#188`).                                 │
 # └──────────────────────────────────────────────────────────────────────────┘
 #
 # cockpit-cross-platform v0.1 — First CI in the repo (ADR feature D8).
@@ -34,6 +35,13 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # Manual trigger. Without it, a cancelled run can be restarted ONLY by
+  # re-running it or by pushing a commit, and both are writes to the Actions
+  # API — which the dev box cannot make: its unauthenticated `gh` READS runs
+  # fine (60/hour by IP) but every write returns HTTP 401. Added 2026-11-09,
+  # after four concurrent runs were cancelled and starting a fresh one would
+  # otherwise have required inventing a commit.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always

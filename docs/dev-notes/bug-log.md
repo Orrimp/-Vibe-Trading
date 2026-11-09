@@ -8631,3 +8631,18 @@ directory layout that was retired on 2026-07-25, and the tree is orphaned — no
 and CLAUDE.md's repository map does not mention it. Repointing six links and qualifying nine
 sentences does not make a stale manual current. Whether `doc/` is rewritten, folded into `docs/`,
 or retired to `docs/archive/` is a scoping decision, and it is now at least *visible* to the gate.
+
+**A third instance, in the file that produces the runs.** `.github/workflows/ci.yml` opened with a
+boxed banner reading *"DEFERRED — NOT ACTIVE. Parked as `.deferred` so GitHub Actions does NOT run
+it"*, under a 2026-06-15 operator decision to defer cross-platform CI. That decision was reversed on
+2026-07-10: the matrix was activated and the file renamed from `ci.yml.deferred`. The banner rode
+through the rename unchanged and was still there on 2026-11-09 — on the file that had just produced
+four concurrent runs — telling every reader the opposite of what the repository was doing. A comment
+is not checkable by a lint; what makes this one the same bug as the rest is that the rename and the
+banner were one edit apart and nothing connected them.
+
+Corrected, and `workflow_dispatch:` added in the same pass: without it a cancelled run can be
+restarted only by re-running it or by pushing a commit, and **both are Actions-API writes the dev
+box cannot make** — unauthenticated `gh` reads runs at 60/hour by IP but every write is HTTP 401.
+The operator cancelled four runs and asked for fresh ones; without a manual trigger the only lever
+left is a commit, so the trigger is now there and the next restart costs a click.
