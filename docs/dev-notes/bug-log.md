@@ -8413,3 +8413,116 @@ individually above rather than summed: a list survives the next discovery, a sum
 and the gate should assert it: a feature claimed to pull a dependency is a `cargo tree` query,
 and a runtime path claimed absent in CI is a `git ls-files` query. Neither was run for six
 weeks because neither was required.
+
+### `#187` — the re-baseline I offered was finished two months ago, and the gate I checked it with cannot fail when a baseline is missing
+
+**Found** 2026-11-09 by the orchestrator, on starting the "one-time visual re-baseline (ADR-0093)"
+it had offered the operator one message earlier. **The re-baseline landed 2026-09-16 in `aec1edbc`.
+The offer was false. Checking it turned up two real defects in the pixel gate — a missing baseline
+is a silent pass, and one of four byte-compare entry points never had the guard ADR-0093 D5 says
+they all have — both fixed here.**
+
+#### The offer was false, and the operator acted on it
+
+The closing line of the previous turn named "the one-time visual re-baseline left over from the
+Inter embedding (ADR-0093)" as the next available work. Its source was an agent memory reading
+*"only the one-time re-baseline remains"*. One command disproves it:
+
+```
+git log --format='%h %ad %s' --date=short -- crates/ui/tests/visual-baselines/
+aec1edbc 2026-09-16 test(ui): re-baseline all 56 visual baselines under the embedded face
+```
+
+All 56 PNGs were last touched by that commit — the same day as ADR-0093, by the commit after it.
+Its message records per-screen operator approval, a second consecutive run passing byte-identically,
+and the capture environment. The memory was accurate for a few hours on 2026-09-16 and was never
+updated; the work it described had already been done when it was written.
+
+The operator answered **"Start re-baseline"** — they committed a turn to work that did not exist,
+on my statement. This is `#186`'s shape (a status claim restated without reading the artifact it
+describes) with the claim in the position that does the most damage: the recommendation at the end
+of a turn, where it is the thing the operator decides on.
+
+#### What checking it found — probed, not reasoned
+
+Three probes against `compare__steady_state_populated__typical`, each a single `cargo test`:
+
+| probe | state of the baseline file | verdict | file after |
+|-------|---------------------------|---------|-----------|
+| A (control) | as committed | **ok** | unchanged |
+| B | replaced by a *different* same-size baseline | **FAILED**, diff triple written | unchanged |
+| C | deleted | **ok** | **silently re-created** |
+
+B proves the comparison is live. C is the defect: the test reports success having compared
+nothing, and mints a baseline from whatever rendered.
+
+#### Defect 1 — the documented way to accept a change was the way to disarm the gate
+
+`visual_diff::matches_screenshot` wrote the frame and returned `Ok(())` whenever the baseline was
+absent, and all three harnesses told the operator to use it:
+
+> `(a) accept the change: delete the baseline + rerun (helper auto-rewrites), or`
+
+So the repo instructed a human to put the gate into the state where it cannot fail, on exactly the
+run where a wrong render is most likely — the one where a render changed. The exposure is one run
+wide, which is also all it needs to be: a baseline minted from a broken render becomes the thing
+every later run is measured against.
+
+**Fix.** Capture is now explicit — `UI_BASELINE_CAPTURE=1` — and absence is a failure:
+
+```
+no baseline at crates/ui/tests/visual-baselines/compare__steady_state_populated__typical.png
+ — a render with nothing to compare against is not a pass. If this frame is the one that
+should be recorded, re-run with `UI_BASELINE_CAPTURE=1` to capture it.
+```
+
+The decision is a pure function, `baseline_action(baseline_exists, capture_requested)`, so it can
+be pinned on both sides of both dimensions — four inputs, three outcomes — without a filesystem or
+a process environment. `UI_BASELINE_CAPTURE=1` also *re*-captures existing baselines, which makes
+the one-pass re-baseline of ADR-0093 one command instead of "delete 56 files, then run".
+
+Four self-tests, in `fixtures/visual_diff.rs` so they compile into all three byte-compare targets
+(12 executions): the decision table; that only an explicit `1` captures (a stray `0`, `true` or
+empty value must not rewrite 56 baselines); that the compare path refuses an absent baseline **and
+writes nothing**; that the capture path writes a frame which then compares clean. The
+"writes nothing" assertion is the one that would have caught this — the old failure mode was not a
+wrong verdict, it was a file appearing.
+
+Re-probed after the fix: C now **FAILS** and creates no file; `UI_BASELINE_CAPTURE=1` captures it
+back **byte-identically**; `UI_BASELINE_CAPTURE=0` does not capture.
+
+#### Defect 2 — "every baseline entry point" was three of four
+
+ADR-0093 D5: *"Every baseline entry point asserts `Program::settings().default_font ==
+theme::font::UI` BEFORE rendering, so a baseline drawn through the OS font database cannot even be
+captured."* `assert_embedded_default_font` had three call sites — `viewport_matrix.rs`,
+`render_snapshots.rs`, `gallery_snapshots.rs`. The fourth entry point, the bootstrap Charts triple
+in `visual_snapshots.rs`, rendered and byte-compared with no such assert.
+
+No wrong baseline resulted: `program_from_cockpit` names the embedded face itself
+(`test_support.rs:104`), so the three `charts_screen_dark_*` PNGs are sound, and
+`embedded_font_contract.rs` scans every `iced::application` chain, which is a second layer. But the
+guard D5 claims as universal was absent on a quarter of the surface, and the ADR has read as though
+it were not since 2026-09-16. The call site is added and ADR-0093 carries a dated correction.
+
+#### What did hold, measured
+
+The baselines were captured on **macOS 26.6.2 (build 25G83)**. This box is now on **macOS 26.7.2
+(build 25G332)** — a point release and a build later. All 56 compare **byte-identical**, and the
+file deleted in probe C came back byte-identical when captured today. The 2026-07-27 drift class
+turned 62 baselines red across an OS update; this OS update produced zero. ADR-0093's central
+claim — that the face is no longer a property of the machine — is now measured rather than
+predicted.
+
+#### Moral
+
+**The skip was the success path.** The house rule from `#161`/`#163` says a skip is unmeasured and
+the success path must be observable; here the unmeasured state *returned* `Ok(())` and wrote a
+file, which is worse than a skip — it leaves evidence of work having happened.
+
+**And the memory is the same artifact class as the stale comment.** `#183` counted pin locations
+nobody had counted; `#186` found a reason nobody had run. This one was a note to myself with
+nothing checking it against the directory it describes — and unlike a comment, it is read at the
+moment I decide what to recommend. It has been corrected. The general form: a claim that some work
+*remains* is checkable by the same means as a claim that it is *done*, and neither is believable
+unprobed. `git log -- <the files>` is one command, and I offered the work without running it.

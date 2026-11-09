@@ -116,3 +116,30 @@ a baseline drawn through the OS font database cannot even be captured.
   and the ui's own report fixtures are free of them, so no gate depends on the fallback
   today — but a Reports baseline would drift until the sparkline is DRAWN rather than
   typed. Recorded as bug-log #100.
+
+---
+
+## Correction (2026-11-09) — D5 held at three of its four entry points
+
+D5 says *"Every baseline entry point asserts `Program::settings().default_font ==
+theme::font::UI` BEFORE rendering"*. When it was written that was true of three:
+`fixtures/viewport_matrix.rs`, `render_snapshots.rs` and `gallery_snapshots.rs`. The fourth —
+`run_slot` in `visual_snapshots.rs`, the bootstrap Charts triple that renders and byte-compares
+`charts_screen_dark_{floor,typical,operator}` — had no such assert.
+
+No baseline was drawn through the OS font database. `program_from_cockpit` names the embedded face
+itself (`crates/ui/src/test_support.rs:104`), and `embedded_font_contract.rs` fails on any
+`iced::application` chain that does not, so the three Charts baselines are sound: what was missing
+was the guard, not its effect. The call site is now present and D5 reads true as written.
+
+Found while probing the gate on 2026-11-09. The same probe found that a **missing** baseline was a
+silent pass — the helper wrote whatever had just rendered and returned `Ok(())`, which is bug-log
+`#187`. Capturing now requires `UI_BASELINE_CAPTURE=1`, and that switch also re-captures existing
+baselines, so the "single pass" this ADR's Consequences describe is one command rather than
+"delete 56 files, then run".
+
+**The cross-update claim now has evidence.** The re-capture landed 2026-09-16 in `aec1edbc` on
+macOS 26.6.2 (build 25G83). On 2026-11-09, on macOS 26.7.2 (build 25G332) — a point release later,
+the first OS update since — all 56 baselines compare byte-identical, and one deleted on purpose was
+re-captured byte-identical. The 2026-07-27 drift turned 62 baselines red across an OS update; this
+one turned none.

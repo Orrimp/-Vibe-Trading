@@ -26,11 +26,14 @@
 //! - `visual_diff_helper_writes_diff_png_on_mismatch` (V9 self-test):
 //!   no viewport, no expansion.
 //!
-//! ## First-run semantics
+//! ## Capturing a baseline
 //!
-//! On a missing baseline the `viewport_matrix::snapshot_widget_at_slot`
-//! helper auto-writes the actual PNG as the new baseline and returns
-//! `Ok(())`. Operator visually reviews, then commits.
+//! A baseline that is not on disk is a FAILURE. `UI_BASELINE_CAPTURE=1` is what
+//! writes one, and it rewrites every baseline the run touches — the one-pass
+//! re-baseline of ADR-0093, without deleting anything first. Until 2026-11-09 a
+//! missing baseline was auto-written and the test reported ok, so the documented
+//! way to accept a change was also the way to make that gate unfalsifiable for a
+//! run (bug-log `#187`).
 //!
 //! ## Determinism
 //!
@@ -125,6 +128,12 @@ fn run_slot(slot_name: &str) {
 
     let cockpit = charts_screen_with_hovered_marker();
     let program = program_from_cockpit(cockpit);
+    // ADR-0093 D5 — every byte-compare entry point refuses a render drawn
+    // through the OS font database. This one, the bootstrap Charts triple,
+    // was the entry point the D5 sweep missed: `program_from_cockpit` does
+    // name the embedded face, so the three charts baselines are sound, but
+    // nothing here was checking it (bug-log `#187`).
+    fixtures::visual_diff::assert_embedded_default_font(&program);
     let theme = iced::Theme::Dark;
 
     let screenshot = iced_test::screenshot(
@@ -155,7 +164,8 @@ fn run_slot(slot_name: &str) {
         panic!(
             "visual snapshot mismatch for slot `{slot_name}`:\n{err}\n\n\
              Review the baseline / actual / diff triple, then either:\n  \
-             (a) accept the change: delete the baseline + rerun (helper auto-rewrites), or\n  \
+             (a) accept the change: re-run with `UI_BASELINE_CAPTURE=1`, which rewrites\n      \
+             the baseline (deleting it no longer captures — that is now a failure), or\n  \
              (b) reject the change: fix the producing widget code."
         )
     });

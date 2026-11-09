@@ -26,11 +26,14 @@
 //! the old path and are exercised by the renamed `run_panel_slot_legacy`
 //! helper. The new matrix expansion writes NEW files alongside them.
 //!
-//! ## First-run semantics
+//! ## Capturing a baseline
 //!
-//! `viewport_matrix::snapshot_widget_at_slot` auto-writes the baseline on
-//! first run when it doesn't exist. The orchestrator owns the capture-and-
-//! commit cycle.
+//! A baseline that is not on disk is a FAILURE. `UI_BASELINE_CAPTURE=1` is what
+//! writes one, and it rewrites every baseline the run touches — the one-pass
+//! re-baseline of ADR-0093, without deleting anything first. Until 2026-11-09 a
+//! missing baseline was auto-written and the test reported ok, so the documented
+//! way to accept a change was also the way to make that gate unfalsifiable for a
+//! run (bug-log `#187`).
 //!
 //! ## Opt-outs (D-VPM-4)
 //!
@@ -115,7 +118,8 @@ fn run_panel_slot_legacy(panel_name: &str, slot_name: &str, cockpit: ui::Cockpit
         panic!(
             "render-snapshot mismatch for `{panel_name}` slot `{slot_name}`:\n{err}\n\n\
              Review the baseline / actual / diff triple, then either:\n  \
-             (a) accept the change: delete the baseline + rerun (helper auto-rewrites), or\n  \
+             (a) accept the change: re-run with `UI_BASELINE_CAPTURE=1`, which rewrites\n      \
+             the baseline (deleting it no longer captures — that is now a failure), or\n  \
              (b) reject the change: fix the producing widget code."
         )
     });

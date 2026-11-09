@@ -14,9 +14,11 @@
 //! baseline-vs.-actual comparison directly against
 //! `Screenshot { rgba, size, scale_factor }`:
 //!
-//! - First run: baseline doesn't exist → write the actual rgba as the
-//!   baseline PNG and return `Ok(())`. Operator visually reviews,
-//!   commits.
+//! - No baseline on disk: a FAILURE, not a pass. `UI_BASELINE_CAPTURE=1` is
+//!   what writes one — see [`baseline_action`]. Until 2026-11-09 a missing
+//!   baseline was written silently and the test reported ok, so deleting a
+//!   PNG — the documented way to accept a change — was also the way to make
+//!   that gate unfalsifiable for a run (bug-log `#187`).
 //! - Subsequent runs: byte-compare actual rgba against the baseline
 //!   PNG's decoded rgba. On match: `Ok(())`. On mismatch: write
 //!   `target/visual-diff/<test_name>.png` via
@@ -33,6 +35,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, dead_code)]
 
+use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -63,21 +66,82 @@ fn visual_diff_dir() -> PathBuf {
 
 /// Compare a freshly-captured `Screenshot` against a baseline PNG.
 ///
-/// `baseline_path` is relative to the workspace root or absolute. On
-/// first run the baseline is written from `screenshot.rgba`; the test
-/// passes so the operator can review-and-commit. On subsequent runs
-/// the actual rgba is byte-compared against the decoded baseline; a
-/// mismatch writes the perceptual-diff PNG via
-/// `image_compare::rgb_hybrid_compare` and returns `Err(Mismatch)`.
+/// `baseline_path` is relative to the workspace root or absolute. The actual
+/// rgba is byte-compared against the decoded baseline; a mismatch writes the
+/// perceptual-diff PNG via `image_compare::rgb_hybrid_compare` and returns
+/// `Err(Mismatch)`. A baseline that is not on disk returns
+/// `Err(MissingBaseline)` — unless `UI_BASELINE_CAPTURE=1` asked for a
+/// capture, in which case the frame is written and `Ok(())` returned.
 ///
 /// The function does NOT panic — it returns `Result` so the integration
 /// test can choose to panic with `.expect(...)` (preserving an
 /// operator-friendly multi-line failure message) or to assert in a
 /// `catch_unwind` (for the V9 self-test).
+/// Environment variable that turns a capture on.
+///
+/// Unset — the normal case, and CI — means a baseline that is not on disk is a
+/// failure. Set to exactly `1`, every baseline the run touches is rewritten
+/// from what rendered: that is the one-pass re-baseline ADR-0093 describes,
+/// and it no longer requires deleting the files first.
+pub const CAPTURE_ENV: &str = "UI_BASELINE_CAPTURE";
+
+/// Does this raw environment value ask for a capture? Only an explicit `1`.
+///
+/// Deliberately narrow: `true`, `yes` and a bare empty value do NOT capture,
+/// because a variable left set by a previous shell command must not silently
+/// rewrite 56 baselines.
+pub fn capture_requested(raw: Option<&OsStr>) -> bool {
+    raw.and_then(OsStr::to_str) == Some("1")
+}
+
+/// What to do about the baseline file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaselineAction {
+    /// Byte-compare the render against the file on disk.
+    Compare,
+    /// Write the render to disk as the baseline.
+    Capture,
+    /// Nothing to compare against, and no capture was asked for.
+    Missing,
+}
+
+/// The whole decision, as a pure function of its two inputs, so it can be
+/// tested on both sides of both dimensions without touching a filesystem or a
+/// process environment.
+///
+/// The `(false, false)` row is the one this function exists for: a render with
+/// nothing to compare it against is not evidence of anything, and reporting it
+/// as a pass is how a deleted baseline stayed invisible (bug-log `#187`).
+pub fn baseline_action(baseline_exists: bool, capture_requested: bool) -> BaselineAction {
+    match (baseline_exists, capture_requested) {
+        (_, true) => BaselineAction::Capture,
+        (true, false) => BaselineAction::Compare,
+        (false, false) => BaselineAction::Missing,
+    }
+}
+
 pub fn matches_screenshot(
     screenshot: &iced::window::Screenshot,
     baseline_path: &str,
     test_name: &str,
+) -> Result<(), VisualDiffError> {
+    matches_screenshot_with_capture(
+        screenshot,
+        baseline_path,
+        test_name,
+        capture_requested(std::env::var_os(CAPTURE_ENV).as_deref()),
+    )
+}
+
+/// [`matches_screenshot`] with the capture decision passed in rather than read
+/// from the environment — the form the self-tests drive, since a test that
+/// mutated `UI_BASELINE_CAPTURE` would be mutating it for every other test
+/// rendering in the same process.
+pub fn matches_screenshot_with_capture(
+    screenshot: &iced::window::Screenshot,
+    baseline_path: &str,
+    test_name: &str,
+    capture: bool,
 ) -> Result<(), VisualDiffError> {
     let baseline = Path::new(baseline_path);
 
@@ -98,15 +162,20 @@ pub fn matches_screenshot(
     let actual: RgbaImage = ImageBuffer::from_raw(width, height, rgba_vec)
         .ok_or(VisualDiffError::RgbaFromRaw { width, height })?;
 
-    if !baseline.exists() {
-        // First-run: persist the baseline so subsequent runs have
-        // something to compare. Operator reviews the PNG before
-        // committing (H2 falsifier in feature.md).
-        if let Some(parent) = baseline.parent() {
-            fs::create_dir_all(parent).map_err(VisualDiffError::Io)?;
+    match baseline_action(baseline.exists(), capture) {
+        BaselineAction::Capture => {
+            if let Some(parent) = baseline.parent() {
+                fs::create_dir_all(parent).map_err(VisualDiffError::Io)?;
+            }
+            actual.save(baseline).map_err(VisualDiffError::Image)?;
+            return Ok(());
         }
-        actual.save(baseline).map_err(VisualDiffError::Image)?;
-        return Ok(());
+        BaselineAction::Missing => {
+            return Err(VisualDiffError::MissingBaseline {
+                path: baseline.to_path_buf(),
+            });
+        }
+        BaselineAction::Compare => {}
     }
 
     // Decode the baseline PNG. Use `image::open` and convert to
@@ -304,6 +373,9 @@ pub enum VisualDiffError {
         diff: PathBuf,
         actual: PathBuf,
     },
+    /// No baseline on disk and no capture requested. Before `#187` this was
+    /// a silent pass that wrote whatever had just rendered.
+    MissingBaseline { path: PathBuf },
     /// Dimensions don't match — usually a viewport/scale_factor drift.
     DimensionMismatch {
         baseline_w: u32,
@@ -336,6 +408,13 @@ impl std::fmt::Display for VisualDiffError {
                 baseline.display(),
                 actual.display(),
                 diff.display()
+            ),
+            VisualDiffError::MissingBaseline { path } => write!(
+                f,
+                "no baseline at {} — a render with nothing to compare against is not a \
+                 pass. If this frame is the one that should be recorded, re-run with \
+                 `{CAPTURE_ENV}=1` to capture it.",
+                path.display(),
             ),
             VisualDiffError::DimensionMismatch {
                 baseline_w,
@@ -426,5 +505,90 @@ mod tests {
             "diff PNG must exist at {}",
             diff_path(test_name).display()
         );
+    }
+
+    // ── #187: a missing baseline is a failure, and that is tested on both
+    // sides of both dimensions ───────────────────────────────────────────────
+
+    /// The decision table in full. Four inputs, three distinct outcomes: a
+    /// fixture that only ever asked `baseline_action(true, false)` would pin
+    /// nothing, because every wrong implementation also returns `Compare`
+    /// there.
+    #[test]
+    fn a_render_with_no_baseline_to_compare_against_is_not_a_pass() {
+        assert_eq!(baseline_action(true, false), BaselineAction::Compare);
+        assert_eq!(baseline_action(false, false), BaselineAction::Missing);
+        assert_eq!(baseline_action(false, true), BaselineAction::Capture);
+        assert_eq!(baseline_action(true, true), BaselineAction::Capture);
+    }
+
+    /// Only an explicit `1`. A variable left over as `0`, `true` or empty must
+    /// not rewrite 56 baselines on the next run.
+    #[test]
+    fn only_an_explicit_1_asks_for_a_capture() {
+        assert!(capture_requested(Some(OsStr::new("1"))));
+        assert!(!capture_requested(None));
+        assert!(!capture_requested(Some(OsStr::new("0"))));
+        assert!(!capture_requested(Some(OsStr::new(""))));
+        assert!(!capture_requested(Some(OsStr::new("true"))));
+        assert!(!capture_requested(Some(OsStr::new("yes"))));
+    }
+
+    /// A 2x2 red frame, so the two end-to-end cases below cost no renderer.
+    fn probe_screenshot() -> iced::window::Screenshot {
+        let rgba: Vec<u8> = [255u8, 0, 0, 255].repeat(4);
+        iced::window::Screenshot::new(rgba, iced::Size::new(2, 2), 1.0)
+    }
+
+    fn probe_path(leaf: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "ui-baseline-probe-{}-{leaf}.png",
+            std::process::id()
+        ))
+    }
+
+    /// The failing side, through the real entry point: no file, no capture →
+    /// `MissingBaseline`, and nothing written. The second assertion is the
+    /// one that would have caught `#187`: the old code's failure mode was not
+    /// a wrong verdict, it was a file appearing.
+    #[test]
+    fn the_compare_path_refuses_an_absent_baseline_and_writes_nothing() {
+        let path = probe_path("refuses");
+        let _ = fs::remove_file(&path);
+
+        let result = matches_screenshot_with_capture(
+            &probe_screenshot(),
+            path.to_str().expect("probe path is utf-8"),
+            "probe_refuses",
+            false,
+        );
+
+        assert!(
+            matches!(result, Err(VisualDiffError::MissingBaseline { .. })),
+            "an absent baseline must be reported, not minted; got {result:?}"
+        );
+        assert!(
+            !path.exists(),
+            "the refusing path must not leave a baseline behind at {}",
+            path.display()
+        );
+    }
+
+    /// The capturing side: same inputs, capture asked for → the frame lands on
+    /// disk and compares clean on the next call.
+    #[test]
+    fn the_capture_path_writes_the_frame_and_the_next_compare_matches_it() {
+        let path = probe_path("captures");
+        let _ = fs::remove_file(&path);
+        let as_str = path.to_str().expect("probe path is utf-8").to_owned();
+
+        matches_screenshot_with_capture(&probe_screenshot(), &as_str, "probe_captures", true)
+            .expect("a requested capture must succeed");
+        assert!(path.exists(), "capture must write {}", path.display());
+
+        matches_screenshot_with_capture(&probe_screenshot(), &as_str, "probe_captures", false)
+            .expect("the captured frame must compare clean against itself");
+
+        let _ = fs::remove_file(&path);
     }
 }

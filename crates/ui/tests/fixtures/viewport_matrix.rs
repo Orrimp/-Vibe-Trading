@@ -25,12 +25,17 @@
 //! `fixture_name` (including the `_dark_` segment) so this helper stays
 //! convention-agnostic.
 //!
-//! ## First-run semantics
+//! ## Capturing a baseline
 //!
-//! On a missing baseline the underlying `visual_diff::matches_screenshot`
-//! auto-writes the actual PNG as the new baseline and returns `Ok(())`.
-//! Subsequent runs byte-compare; any mismatch panics with the multi-line
-//! path-triple message and emits an HTML artifact via the sibling
+//! A baseline that is not on disk is a FAILURE. `UI_BASELINE_CAPTURE=1` is what
+//! writes one, and it rewrites every baseline the run touches — the one-pass
+//! re-baseline of ADR-0093, without deleting anything first. Until 2026-11-09 a
+//! missing baseline was auto-written and the test reported ok, so the documented
+//! way to accept a change was also the way to make that gate unfalsifiable for a
+//! run (bug-log `#187`).
+//!
+//! A run that finds its baseline byte-compares it; any mismatch panics with the
+//! multi-line path-triple message and emits an HTML artifact via the sibling
 //! visual-fail-html-reporter helper.
 //!
 //! ## Determinism
@@ -156,7 +161,8 @@ pub fn snapshot_widget_at_slot<P, B>(
         panic!(
             "visual snapshot mismatch for fixture `{fixture_name}` slot `{slot_name}`:\n{err}\n\n\
              Review the baseline / actual / diff triple, then either:\n  \
-             (a) accept the change: delete the baseline + rerun (helper auto-rewrites), or\n  \
+             (a) accept the change: re-run with `UI_BASELINE_CAPTURE=1`, which rewrites\n      \
+             the baseline (deleting it no longer captures — that is now a failure), or\n  \
              (b) reject the change: fix the producing widget code."
         )
     });
