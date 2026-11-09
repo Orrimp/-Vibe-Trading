@@ -10,15 +10,16 @@
 >
 > **The honest thesis.** The 2026-06 research program concluded across all three
 > reachable channels (price/OHLCV, derivatives-positioning, on-chain) that **no
-> active strategy robustly beats simply holding the coin, net of cost.** That
+> active strategy robustly beats simply holding the coin, net of cost, on the
+> current market era (2023+)** — era-qualified, never universal (ADR-0084). That
 > result is not a failure the product hides — it is the product's *spine*. The
 > advisor sells **measured honesty, not asserted alpha**: a transparent,
 > reproducible, risk-aware bake-off where **buy-and-hold is always the
 > benchmark arm**, and a frozen robustness gate decides whether anything earns
 > a crown.
 >
-> Canonical companions: [`spec/product.md`](../spec/product.md) (what it IS /
-> ISN'T), [`spec/architecture.md`](../spec/architecture.md) (the section-file +
+> Canonical companions: [`PRD.md`](../_bmad-output/planning-artifacts/PRD.md) (what it IS /
+> ISN'T), [`architecture.md`](../_bmad-output/planning-artifacts/architecture.md) (the section-file +
 > ADR index this document summarizes), and [`CHANGELOG.md`](../CHANGELOG.md)
 > (what's built).
 

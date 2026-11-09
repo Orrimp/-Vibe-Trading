@@ -8587,3 +8587,47 @@ when the tree had a different shape ages exactly like a comment: `spec-lint: PAS
 every commit for months and was perfectly true of the tree it walked. Checkable form: when a rule is
 added, name the set it runs over and assert the set — a self-test that proves the rule works on a
 fixture says nothing about whether the production call ever reaches the fixture's real counterpart.
+
+#### Addendum, same day — the fix above was itself a hand-written list, and it missed a whole manual
+
+The first fix added `sorted(REPO_ROOT.glob("*.md"))` to a list of three trees. That is the same
+construction the entry is about, and it failed the same way within the hour: **`doc/`** — a
+six-file, user-facing documentation set (README, architecture, structure, processes, end-to-end,
+user manual, added 2026-06-26) — is not `docs/`, is in no root, and is referenced by **no other
+markdown in the repository**. Walking it reported **six more dead links**, all `../spec/...`, all
+from the same Phase-4 migration.
+
+It also carried something worse than a dead link. **Nine statements of the ship-passive thesis in
+the universal form**, in the most user-facing text the project has:
+
+> *its honest, repeatedly-validated finding is that no active strategy robustly beats just holding*
+> — `doc/README.md`
+
+The 2026-07-10 era-qualification (ADR-0084) came with a remediation inventory
+(`docs/dev-notes/p2-wobble-thesis-analysis-2026-07-10.md` § 320-327) naming the files to correct:
+the do-not-build register, `spec/product.md`, `README.md`, `CHANGELOG.md`. `doc/` had existed for
+two weeks by then and is not on that list, so the correction swept the places someone had
+enumerated and nothing checked the enumeration. **Four months in the user manual.**
+
+**Measured, then fixed.** A sweep over every tracked markdown file for the claim pattern, testing
+for an era clause within ±320 characters: **15 live instances with no era clause**. Ten were the
+thesis and are now qualified — nine in `doc/`, one in `backlog.md` — with `doc/README.md` carrying
+the reason in full rather than nine terse clauses. **Five were inspected and deliberately left**,
+because they are bounded measurements and not the thesis: `CHANGELOG.md:39` and
+`hardening-burndown-loop.md:233` ("across all 156 cells, in both corpora, exactly ZERO beat their
+own buy-and-hold" — a named corpus, a counted result), `PRD.md:57` ("for this coin over this
+window, nothing beat simply holding" — per-run product copy), `PRD.md:64` (naming `BenchmarkWins`
+as an outcome type), and `advisor-end-to-end-demo.md:17` ("almost always"). The sweep now reads
+**40 qualified / 5 bounded / 0 bare**.
+
+**The enumeration is gone.** `default_roots()` now *walks* the repository and subtracts
+`UNWALKED_TREES`, a dict whose every entry carries the measured cost of excluding it — `.claude`
+says "37 dead links on 2026-11-09, every one inside the vendored BMAD skills install", which is a
+number a future reader can re-run and argue with. The self-test gained a third fixture, `manual/`,
+standing for exactly this: a tree nobody added to a list. Whole-repo run: 0.6 s.
+
+**Still open, not fixed here.** `doc/structure.md` § 5 is titled "The `spec/` tree" and documents a
+directory layout that was retired on 2026-07-25, and the tree is orphaned — nothing links to it,
+and CLAUDE.md's repository map does not mention it. Repointing six links and qualifying nine
+sentences does not make a stale manual current. Whether `doc/` is rewritten, folded into `docs/`,
+or retired to `docs/archive/` is a scoping decision, and it is now at least *visible* to the gate.

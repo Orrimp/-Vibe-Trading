@@ -20,8 +20,9 @@ updated: 2026-07-25
 >
 > **Strategy research is CONCLUDED (2026-06-08) → ship passive.** Across all three
 > reachable channels (price/OHLCV, derivatives-positioning, on-chain) no active
-> strategy beat passive buy-and-hold net of cost under the frozen block-bootstrap
-> robustness rule. **No active-strategy bets remain.** Terminal verdict + scope:
+> strategy beat passive buy-and-hold net of cost **on the current era (2023+)**
+> under the frozen block-bootstrap robustness rule (era-qualified 2026-07-10 by
+> ADR-0084; never state the universal form). **No active-strategy bets remain.** Terminal verdict + scope:
 > [`PRD.md`](PRD.md).
 >
 > **Status (2026-07-09): FEATURE-COMPLETE.** The advisor MVP, the v2 research-driven

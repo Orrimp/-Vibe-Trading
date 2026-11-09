@@ -9,7 +9,8 @@
 > tool** for one retail investor with a small fixed budget. It promises
 > **measured robustness, not asserted alpha**. The 2026-06 research program
 > concluded *no active strategy robustly beat passive buy-and-hold net of cost*
-> on the large-cap sample. That result is a **feature** here: buy-and-hold is
+> on the large-cap sample, **for the current market era (2023+)** — era-qualified,
+> never universal (ADR-0084). That result is a **feature** here: buy-and-hold is
 > always the benchmark arm, the robustness gate is the credibility layer, and
 > the most common honest outcome on real crypto is **"just holding is the
 > least-bad choice on this window"**. **PAPER / SIM ONLY — the €200 is
@@ -90,7 +91,7 @@ flowchart TD
         Watch[paper-trade forward on real bars<br/>running P/L on simulated €200]
     end
 
-    Watch --> Honest([Honest thesis: no active strategy<br/>robustly beats holding. PAPER/SIM, not advice.])
+    Watch --> Honest([Honest thesis, current era 2023+:<br/>no active strategy robustly beats holding.<br/>PAPER/SIM, not advice.])
 
     classDef honesty fill:#3a2a1a,stroke:#c89058,color:#f0d8b8;
     class BMW1,BMW2,Honest honesty;
@@ -420,7 +421,8 @@ A concrete run, walked through the screens:
    streams as `BakeoffProgress` chips.
 3. **Rank.** On real crypto over a six-month window, the **modal outcome** is
    that **every active arm is FRAGILE** (the central robustness truth: no active
-   strategy robustly beats holding). `rank_candidates` finds `all_active_fragile
+   strategy robustly beats holding on the current era, 2023+). `rank_candidates`
+   finds `all_active_fragile
    = true`, the benchmark is the top crown-eligible arm → **`BenchmarkWins`**.
    - **What the screens show.** The Leaderboard headline reads as the
      benchmark-wins case: *"For XRPUSDT over 2024 H1, nothing active cleared the

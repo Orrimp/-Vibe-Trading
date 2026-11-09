@@ -1183,9 +1183,13 @@ def _self_test_root_markdown_scanned() -> bool:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         (tmp / "docs").mkdir()
+        # `manual/` stands for a tree nobody added to a hand-written list — which
+        # is what `doc/` was for four months.
+        (tmp / "manual").mkdir()
         (tmp / "TODO.md").write_text("see [gone](spec/v1/gone.md)\n", encoding="utf-8")
         (tmp / "README.md").write_text("see [here](docs/live.md)\n", encoding="utf-8")
         (tmp / "docs" / "live.md").write_text("# live\n", encoding="utf-8")
+        (tmp / "manual" / "guide.md").write_text("see [vanished](../spec/x.md)\n", encoding="utf-8")
 
         def dead_links_for(roots: list[Path]) -> list[Violation]:
             r = Report()
@@ -1196,15 +1200,17 @@ def _self_test_root_markdown_scanned() -> bool:
         with_root = dead_links_for(default_roots(tmp))
         trees_only = dead_links_for([tmp / "docs", tmp / "evidence", tmp / "_bmad-output"])
 
-        ok_flagged = len(with_root) == 1 and "gone.md" in with_root[0].detail
+        found = {v.detail.rsplit("/", 1)[-1] for v in with_root}
+        ok_flagged = found == {"gone.md", "x.md"}
         ok_missed = trees_only == []
         ok_live_silent = all("live.md" not in v.detail for v in with_root)
 
     print(
         "spec-lint --self-test (root-markdown-scanned): "
         + (
-            "PASS — root-level dead link flagged via default_roots=ok, "
-            "invisible to the three trees alone=ok, live root link silent=ok"
+            "PASS — root-level AND unlisted-subtree dead links flagged via "
+            "default_roots=ok, both invisible to the three hand-listed trees=ok, "
+            "live root link silent=ok"
             if (ok_flagged and ok_missed and ok_live_silent)
             else f"FAIL — flagged={ok_flagged} missed-without-root-glob={ok_missed} "
             f"live-silent={ok_live_silent}"
@@ -1255,24 +1261,42 @@ def iter_tree_md(roots: Iterable[Path]) -> Iterable[Path]:
                 yield p
 
 
-def default_roots(repo_root: Path = REPO_ROOT) -> list[Path]:
-    """What a bare `spec_lint.py` walks: the three trees, plus the repo's own
-    front-door markdown.
+# Trees deliberately NOT walked, each with the cost of excluding it MEASURED on
+# the day it was excluded. An exclusion with no number beside it is how `#188`
+# happened: three trees were listed, and nothing said what the rest contained.
+UNWALKED_TREES: dict[str, str] = {
+    ".git": "not content",
+    ".codegraph": "gitignored index, not content",
+    "target": "build output, untracked",
+    "vendor": "upstream source (the operator-locked iced_tiny_skia fork) — bug reports go upstream",
+    ".claude": (
+        "37 dead links on 2026-11-09, every one inside the vendored BMAD skills install "
+        "(bmad-document-project 28, bmad-index-docs 5, bmad-quick-dev 4). CLAUDE.md forbids "
+        "editing those in place, so covering this tree is its own task, not a drive-by."
+    ),
+}
 
-    The root-level files — README, CLAUDE, AGENT, CHANGELOG, TODO — were outside
-    every root until 2026-11-09, so a dead link in the four most-read documents
-    in the repository was invisible to the lint whose job is dead links.
-    Measured when the gap was found: 99 links across the other root files, all
-    live; `TODO.md` alone carried seven dead ones, every one of them created by
-    the Phase-4 migration that moved their targets and did not follow up here
-    (bug-log `#187`).
+
+def default_roots(repo_root: Path = REPO_ROOT) -> list[Path]:
+    """Every markdown-bearing tree in the repository, minus `UNWALKED_TREES`.
+
+    WALKED, not listed. Until 2026-11-09 this was a hand-written list of three
+    directories, so two whole bodies of documentation sat outside every root:
+    the repo's front-door markdown (`README.md`, `CLAUDE.md`, `AGENT.md`,
+    `CHANGELOG.md`, `TODO.md`) and `doc/`, the user-facing manual. `TODO.md`
+    carried seven dead links, `doc/` six — all created by the migration that
+    moved their targets — and `doc/` additionally stated the ship-passive thesis
+    in the universal form the era-qualification forbids, in nine places, for four
+    months. A hand-written list ages exactly like a comment; a walk with named,
+    costed exclusions does not (bug-log `#187`, `#188`).
     """
-    return [
-        repo_root / "docs",
-        repo_root / "evidence",
-        repo_root / "_bmad-output",
-        *sorted(repo_root.glob("*.md")),
+    roots = sorted(repo_root.glob("*.md"))
+    roots += [
+        p
+        for p in sorted(repo_root.iterdir())
+        if p.is_dir() and p.name not in UNWALKED_TREES
     ]
+    return roots
 
 
 def main(argv: list[str]) -> int:

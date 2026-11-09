@@ -22,7 +22,8 @@ This document narrates those sources — when they disagree with this file, they
 > €200 budget, bake off every strategy, rank the survivors under a **frozen
 > robustness gate** (buy-and-hold benchmark), build a forward plan, and watch it
 > paper-trade the simulated €200. **PAPER / SIM ONLY.** The honest thesis is that
-> no active strategy robustly beats holding — the process below exists to keep that
+> no active strategy robustly beats holding **on the current era (2023+)** —
+> era-qualified, never universal (ADR-0084). The process below exists to keep that
 > answer honest under change.
 
 ---

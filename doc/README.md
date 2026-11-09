@@ -8,7 +8,17 @@ It works by **baking off every strategy** on your `(coin, window)`, **ranking** 
 **frozen robustness gate** (with buy-and-hold always in the field as the benchmark), and then
 **paper-trading** the pick forward on real data. It is **paper/sim only** and **not financial
 advice** — and its honest, repeatedly-validated finding is that *no active strategy robustly
-beats just holding*, so the product sells **measured honesty, not asserted alpha**.
+beats just holding **on the current market era (2023+)***, so the product sells **measured
+honesty, not asserted alpha**.
+
+> **Why the era clause is not decoration.** The 2026-07-10 corpus expansion (ADR-0084) ran the
+> same frozen gate across 2017-18, 2020, 2021-22 and 2023-26 and found **real, gate-crowned,
+> cost-annex-robust active edges on the older eras**, decaying to ~zero by 2023+ — the
+> efficiency-migration pattern. The universal form of this claim ("no active strategy ever beats
+> holding") is therefore **false and forbidden**; see CLAUDE.md § Non-negotiables and
+> [`../docs/dev-notes/do-not-build-register.md`](../docs/dev-notes/do-not-build-register.md).
+> Those old-era edges are unreachable by this product, which only ever advises windows ending
+> "now".
 
 > These docs describe the product as of the 2026-06-19 advisor pivot and the work shipped since.
 > For the authoritative sources see

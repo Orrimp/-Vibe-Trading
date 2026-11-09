@@ -8,11 +8,12 @@
 >
 > **PAPER / SIM ONLY — no live trading, no real orders; the €200 is simulated.
 > Not financial advice.** The cockpit is built around an honest thesis: across
-> every channel tested, **no active strategy robustly beat just holding** — so
+> every channel tested, **no active strategy robustly beat just holding on the
+> current market era (2023+)** (era-qualified, never universal — ADR-0084) — so
 > the most common, expected result is *"just hold,"* and the UI says so plainly.
 
 This manual is task-oriented. If you want the product rationale read
-[`README.md`](../README.md) and [`spec/product.md`](../spec/product.md); if you
+[`README.md`](../README.md) and [`PRD.md`](../_bmad-output/planning-artifacts/PRD.md); if you
 want to know what's built read [`CHANGELOG.md`](../CHANGELOG.md). Here we cover
 **how to drive the screens**.
 
@@ -316,7 +317,7 @@ that weight:
   crowned or promoted**.
 - **"Just hold" is a valid — and expected — answer.** The whole research program
   concluded *ship passive*: no active strategy robustly beat buy-and-hold net of
-  cost. So when the recommendation says **"No active strategy cleared the
+  cost **on the current era (2023+)**. So when the recommendation says **"No active strategy cleared the
   robustness bar on this window,"** that is the tool being honest, not broken.
   Buy-and-hold is always present as the benchmark for exactly this reason.
 - **The promotion lock.** "Use this config" is **disabled and labelled
