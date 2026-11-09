@@ -24,14 +24,19 @@ ci.yml gained a `forecast candle-gated tests` step — `cargo test -p forecast
 (measured: 33 targets, 191 passed, 0 failed, 18 ignored). **23 test functions in
 3 targets remain invisible**, all of them needing `realdata` and/or `yahoo`:
 `p2_verdict_rerun` (15, 7 already ignored), `run_yahoo_sma_ticker_flag` (6) and
-`threshold_sweep_readonly` (2). `realdata` wants `data/binance/REVISION.toml`
-provisioned in CI, which is a separate operator decision.
+`threshold_sweep_readonly` (2). Both need `realdata`. (This sentence used to end
+"`realdata` wants `data/binance/REVISION.toml` provisioned in CI, which is a
+separate operator decision" — **wrong, corrected 2026-11-09, bug-log `#186`**:
+CI provisions the corpus already, and `polars` is non-optional in
+data/forecast/reports so every build compiles it anyway. `realdata` adds NOTHING
+to the dependency graph; both targets are measured green. See the rows below.)
 
 **Narrowed again 2026-11-08 (bug-log `#184`).** `run_yahoo_sma_ticker_flag` needed
 only `yahoo` — no `realdata`, so no provisioning decision — and the repro-sample
 step already built this package with that feature. It now has its own step, so
-**17 test functions in 2 targets remain invisible**, both blocked on the same
-`realdata` provisioning question.
+**17 test functions in 2 targets remain invisible**, both needing `realdata` —
+blocked on its `polars` compile cost, NOT on corpus provisioning (bug-log
+`#186`).
 
 (First stated as "46 across 13". Corrected 2026-11-08 the same day: one of those
 targets, `strategy/test/tcn_overlay_tuned_builder` (5 test fns), is gated on a
@@ -92,8 +97,12 @@ DECLARED: dict[str, dict[str, object]] = {
                "`cargo test -p backtest --lib`, and the report body's band prose is "
                "checked lib-side via `include_str!`, needing no features at all. The 6 "
                "remaining bin-local tests (gate-survivor parser + report stamp) are "
-               "still invisible; enabling `realdata` to reach them would pull `polars` "
-               "into the CI build, which is the operator's open row. NOTE: candle-core "
+               "still invisible. CORRECTED 2026-11-09 (bug-log #186): this row used to "
+               "add that reaching them \"would pull `polars` into the CI build, which is "
+               "the operator's open row\". False. `polars` is a NON-OPTIONAL dependency of "
+               "data, forecast and reports, so every build already compiles it and "
+               "`realdata` adds nothing to the graph — the SAME mistake as the candle one "
+               "recorded in the next clause, three lines away. NOTE: candle-core "
                "compiles anyway — "
                "crates/backtest/Cargo.toml:63 depends on strategy with features=[\"forecast\"] "
                "unconditionally, which pulls forecast/candle — so CI pays the ML compile "
@@ -102,7 +111,12 @@ DECLARED: dict[str, dict[str, object]] = {
     "backtest/test/threshold_sweep_readonly": {
         "feats": ["candle", "realdata"],
         "ci": "invisible",
-        "why": "bug-log #163 — 2 test fns, 0 ignored.",
+        "why": "bug-log #163 — 2 test fns, 0 ignored. MEASURED 2026-11-09 (bug-log #186): "
+               "passes 2/0/0 under `--features realdata,candle,yahoo`, and NEITHER filed "
+               "blocker was real (corpus tracked since 2026-09-27; `polars` already "
+               "non-optional). Still `invisible` only because that run is macOS-local "
+               "while the step would be Ubuntu — sequenced after the #185 Windows verdict "
+               "so two experiments do not ride one CI run.",
     },
     "backtest/bin/run_yahoo_sma": {
         "feats": ["yahoo"],
@@ -122,8 +136,17 @@ DECLARED: dict[str, dict[str, object]] = {
     "backtest/test/p2_verdict_rerun": {
         "feats": ["realdata", "yahoo"],
         "ci": "invisible",
-        "why": "bug-log #163 — 15 test fns, 7 already #[ignore]. `realdata` additionally "
-               "needs data/binance/REVISION.toml at runtime, which CI does not provision.",
+        "why": "bug-log #163 — 15 test fns, 7 already #[ignore]. CORRECTED 2026-11-09 "
+               "(bug-log #186). This row used to read \"`realdata` additionally needs "
+               "data/binance/REVISION.toml at runtime, which CI does not provision\" — CI "
+               "DOES provision it, and did when that was written. `git ls-files "
+               "data/binance` is 241 paths (10 symbols x 24 months + REVISION.toml), "
+               "committed 2026-09-27 by operator decision as plain `binary` (NOT lfs), and "
+               "ci.yml checks out with `lfs: true`. Nor is `polars` a cost: it is a "
+               "NON-OPTIONAL dep of data/forecast/reports, already in every build. "
+               "MEASURED 2026-11-09: passes 8/0/7 under `--features realdata,candle,yahoo`. "
+               "Still `invisible` only because that run is macOS-local while the step would "
+               "be Ubuntu — sequenced after the #185 Windows verdict.",
     },
     "backtest/example/passive_baseline_equity": {
         "feats": ["realdata"],
@@ -335,6 +358,122 @@ def default_features(crate: str) -> set[str]:
             continue
         out.add(feat)
         queue.extend(table.get(feat, []))
+    return out
+
+
+WORKSPACE_CRATES = {p.parent.name for p in CRATES.glob("*/Cargo.toml")}
+
+NORMAL_DEP_SECTION_RE = re.compile(r"^\[dependencies\]\n(.*?)(?=\n\[|\Z)", re.M | re.S)
+NORMAL_DEP_TABLE_RE = re.compile(r"^\[dependencies\.([A-Za-z0-9_\-]+)\]", re.M)
+_FEAT_DEP_RE = re.compile(r"^dep:([A-Za-z0-9_\-]+)$")
+
+
+def normal_non_optional_deps(text: str) -> set[str]:
+    """Non-optional names from `[dependencies]` ONLY — not dev- or build-.
+
+    Deliberately narrower than `non_optional_deps`. This feeds the build closure
+    below, where a name wrongly counted as present would make the gate print a
+    FALSE "already in the graph" — the exact failure bug-log `#186` is about. A
+    dev-dependency of a *dependency* is not compiled, so it must not count.
+    """
+    names: set[str] = set()
+    for m in NORMAL_DEP_SECTION_RE.finditer(text):
+        names.update(DEP_INLINE_RE.findall(m.group(1)))
+    names.update(NORMAL_DEP_TABLE_RE.findall(text))
+    optional: set[str] = set()
+    for name in names:
+        inline = re.search(
+            r"^\s*" + re.escape(name) + r"\s*=\s*\{[^}]*optional\s*=\s*true",
+            text, re.MULTILINE | re.DOTALL,
+        )
+        table = re.search(
+            r"^\[dependencies\." + re.escape(name) + r"\]\n(?:(?!\n\[).*\n)*?\s*optional\s*=\s*true",
+            text, re.MULTILINE,
+        )
+        if inline or table:
+            optional.add(name)
+    return names - optional
+
+
+def build_closure(crate: str, _crates: set[str] | None = None) -> set[str]:
+    """Every dependency name cargo already compiles for a default build of `crate`.
+
+    Walks non-optional `[dependencies]` transitively through WORKSPACE crates, the
+    only manifests we can read. Third-party manifests are not followed, so the set
+    is a **lower bound** — it can miss a dependency that is in fact already present,
+    but it cannot invent one. That is the safe direction for the claim it supports.
+    """
+    crates = WORKSPACE_CRATES if _crates is None else _crates
+    seen: set[str] = set()
+    out: set[str] = set()
+    queue = [crate]
+    while queue:
+        c = queue.pop()
+        if c in seen:
+            continue
+        seen.add(c)
+        manifest = CRATES / c / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        deps = normal_non_optional_deps(manifest.read_text(encoding="utf-8"))
+        out |= deps
+        queue.extend(d for d in deps if d in crates)
+    return out - {crate}
+
+
+def feature_dep_additions(crate: str, feat: str) -> list[str]:
+    """The `dep:X` names `feat` claims to add, following local bare features."""
+    manifest = CRATES / crate / "Cargo.toml"
+    if not manifest.is_file():
+        return []
+    section = _FEATURES_SECTION_RE.search(manifest.read_text(encoding="utf-8"))
+    if not section:
+        return []
+    table = {
+        m.group(1): [f.strip().strip('"') for f in m.group(2).split(",") if f.strip()]
+        for m in _FEATURE_ENTRY_RE.finditer(section.group(1))
+    }
+    adds: list[str] = []
+    seen: set[str] = set()
+    queue = [feat]
+    while queue:
+        f = queue.pop()
+        if f in seen:
+            continue
+        seen.add(f)
+        for entry in table.get(f, []):
+            m = _FEAT_DEP_RE.match(entry)
+            if m:
+                adds.append(m.group(1))
+            elif ":" not in entry and "/" not in entry:
+                queue.append(entry)
+    return sorted(set(adds))
+
+
+def graph_noop_report() -> list[tuple[str, str, list[str]]]:
+    """(crate, feature, deps-already-present) for every DECLARED row's features.
+
+    bug-log `#186`. `realdata = ["dep:toml", "dep:polars"]` LOOKS like it pulls
+    polars into the build; polars is a non-optional dependency of `data`, which
+    `backtest` depends on non-optionally, so every build compiles it already and
+    the feature adds nothing to the graph. That false cost was copied into six
+    places and justified keeping 10 green tests out of CI for six weeks, because
+    the gate checked only that a reason EXISTED, never that it was TRUE.
+
+    Printed on every run rather than raised as a violation: the fact is what was
+    missing, and a line in the CI log is unwritable-over. Deciding whether a cost
+    is worth paying stays a human call; discovering the cost is zero does not.
+    """
+    out: list[tuple[str, str, list[str]]] = []
+    closures: dict[str, set[str]] = {}
+    for key in sorted(DECLARED):
+        crate = key.split("/")[0]
+        if crate not in closures:
+            closures[crate] = build_closure(crate)
+        for feat in DECLARED[key]["feats"]:  # type: ignore[union-attr]
+            already = [d for d in feature_dep_additions(crate, feat) if d in closures[crate]]
+            if already and (crate, feat, already) not in out:
+                out.append((crate, feat, already))
     return out
 
 
@@ -606,6 +745,44 @@ def self_test() -> int:
             print(f"  FAIL  {kind:11} INERT on: {label} \u2014 no new violation at all")
             rc = 1
 
+    # ── probes for the graph-noop computation (bug-log #186) ───────────────
+    # Not a violation KIND, so it cannot ride the loop above. These assert the
+    # computation in BOTH directions, because a reporter that can only stay silent
+    # is the same defect as a guard that can only skip.
+    import tempfile
+    for label, optional_in_dep, want in (
+        ("non-optional in the dep  -> reported", False, True),
+        ("OPTIONAL in the dep      -> silent",   True,  False),
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "aa").mkdir()
+            (root / "bb").mkdir()
+            (root / "aa" / "Cargo.toml").write_text(
+                "[features]\nfeat = [\"dep:thing\"]\n\n"
+                "[dependencies]\nbb = { path = \"../bb\" }\n"
+                "thing = { version = \"1\", optional = true }\n"
+            )
+            dep_line = (
+                'thing = { version = "1", optional = true }\n' if optional_in_dep
+                else 'thing = "1"\n'
+            )
+            (root / "bb" / "Cargo.toml").write_text("[dependencies]\n" + dep_line)
+            saved_crates = globals()["CRATES"]
+            globals()["CRATES"] = root
+            try:
+                adds = feature_dep_additions("aa", "feat")
+                closure = build_closure("aa", {"aa", "bb"})
+                got = bool([d for d in adds if d in closure])
+            finally:
+                globals()["CRATES"] = saved_crates
+        if got == want:
+            print(f"  OK    graph-noop  {label}")
+        else:
+            print(f"  FAIL  graph-noop  {label} \u2014 got {got}, want {want} "
+                  f"(adds={adds}, in-closure={sorted(set(adds) & closure)})")
+            rc = 1
+
     if clean:
         print(f"  note  the live tree has {len(clean)} violation(s); see a plain run")
     else:
@@ -638,6 +815,15 @@ def main(argv: list[str]) -> int:
         f"[floor {MIN_EXPECTED_GATED}] · {len(built)} built by CI · "
         f"{len(invisible)} invisible to CI"
     )
+    noop = graph_noop_report()
+    for crate, feat, already in noop:
+        print(
+            f"  graph-noop  {crate}/{feat} declares dep:{{{','.join(already)}}} "
+            f"which a default {crate} build ALREADY compiles — enabling it adds "
+            f"NOTHING to the dependency graph (bug-log #186)"
+        )
+    if not noop:
+        print("  graph-noop  none: every declared feature adds something to the graph")
     if violations:
         for v in violations:
             print(v)

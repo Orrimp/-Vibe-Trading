@@ -979,7 +979,7 @@ panicking on every CI runner, red on all three legs, from 2026-08-22 until it wa
 clean clone and fixed 2026-08-23. The failure mode is worth naming: `root.exists()` was TRUE on the
 runners *because* one metadata file is tracked, so the guard never fired while every byte it guarded
 was absent. **A guard that checks a proxy for its condition is not a guard** — which is the sentence
-this whole log keeps writing about other people's code.
+this whole log keeps writing about other people's code. **⚠ SUPERSEDED 2026-09-27, pointer added 2026-11-09 (`#186`): the parquet corpus IS tracked now.** An operator decision committed 720 parquets across `data/binance`, `data/binance-funding` and `data/binance-basis` (`git ls-files data/binance` = 241 paths: 10 symbols x 24 months + `REVISION.toml`), declared `binary` in `.gitattributes`. So on every runner since, the corpus is PRESENT and these guards take their run-for-real arm. The reasoning below is still correct about the period it describes, and the proxy-vs-condition moral is untouched — but do NOT carry "the corpus is absent in CI" forward as a current fact. That is what `#186` corrected in four places. (The DVOL corpus is a different story and IS still untracked.)
 
 **The superseded (wrong) text, kept because the mistake is the lesson:** The CI failure was first
 diagnosed as "the machine-local corpus is absent on runners" and a skip-guard was written for it.
@@ -1403,7 +1403,7 @@ self-diagnosing.
 - 2026-08-29 (orchestrator): **#97 added and FIXED — AD-2's byte-immutability did not survive a Windows checkout.** `.gitattributes` had no text/eol rules, so `evidence/**` fell back to `core.autocrlf`, which is `true` on windows-latest. Measured: the same anchored report checks out as **3103 bytes / 81 CRLF** on Windows vs **3022 / 0** on the canonical box — `552d7df2…` vs `0f4c4bad…`. All 119 anchors fail on such a checkout; `t1937*` on the windows leg is exactly that. Worse, the gate SCRIPTS get CRLF too, so `verify_anchors.sh` dies with `set: pipefail: invalid option name` — the gate cannot even run there. It looked safe only because the gate runs on ubuntu alone. Fixed with `* text=auto eol=lf` + `evidence/** -text` + `-text` on the two vendored CRLF CSVs; verified in throwaway clones BOTH ways (Windows-style checkout now 0 CRLF / 3022 bytes, and `ANCHORS PASS 119/119` inside that clone), with zero re-normalization churn locally. Same shape as ADR-0091's unpinned compiler, found the same week, and both surfaced only because a CI leg finally executed.
 - 2026-08-23 (orchestrator): **the same proxy-probe defect found in THREE more files, and it was red on two CI legs.** `crates/ui/tests/lab_binance_{divergence,persist_compare,render}.rs` all guarded on `data/binance/REVISION.toml.is_file()` — the ONE tracked path under `data/binance` — as a stand-in for the gitignored parquet corpus. On every runner the probe is TRUE, the skip never fires, `preload` errors, and the tests panic through an arm that literally reads *"corpus PRESENT ... hard FAIL, not a skip"*. Four sites now share one root cause (the fourth was `forecast::features`), and in each the guard checked a proxy rather than the condition. The probes now name the months the loader actually reads (`data/binance/BTCUSDT/2023/01..06.parquet`). **Verified in BOTH directions, which is the part that matters for a skip-guard:** corpus present -> the tests RUN for real (3/1/3 passed); corpus absent (clean clone = the CI condition) -> visible `[skip]` lines, no panic. A guard that only ever skips is the same defect in a new coat. These failures were invisible until the UI steps stopped being cancelled by an earlier failing step (6753ff1) and CI failures became readable without repo admin (7c126db).
 - 2026-08-23 (orchestrator): **#96 added (OPEN — needs a product decision).** The P0-1 "show your work" credibility block renders ENTIRELY below the fold, and `leaderboard_scorecard_render` has been measuring the SCROLLBAR. Bisected to `67f2a9d` (the DATA-stage quality panel), which spent the vertical budget the test had bought with a deliberate 2-row fixture. Diagnosed at the pixels: the two 1920x1080 renders differ in exactly one 10px-wide strip at `x=1894..1904` — the scrollbar — for 1986 pixels, matching the reported `delta=-1980`. Adding content below the fold lengthens the scroll extent, shortens the thumb, and removes foreground, so the gate reads NEGATIVE. The block contributes zero visible pixels. Two maskings kept it invisible (the macOS UI step was cancelled by an earlier failure; logs need repo admin), both now fixed — so no CI run has ever reported a regression that has been live since `67f2a9d`. Fix is (a) move the block above Data quality or (b) scroll/enlarge the harness and state that the block lives below the fold; NOT re-baselining a threshold fitted to scrollbar noise (#77).
-- 2026-08-23 (orchestrator): **CI was RED on all three legs since 2026-08-22, and it was my own #93 correction that did it.** The failing step is `cargo test --workspace --exclude ui`; it PASSES locally and fails on any fresh checkout, so it was reproduced in a clean `git clone` — one test, `forecast::features::tests::windows_determinism_on_real_data`. Root cause: `git ls-files data/binance` returns **exactly one path** (`REVISION.toml`). The DIRECTORY is tracked; the PARQUET CORPUS is not. So `root.exists()` is TRUE on every runner while every byte the test reads is absent — the skip never fired, `windows_for_symbol` returned `Err`, and the test panicked. **#93's note claiming "the CI failure is NOT missing corpus — `data/binance` is TRACKED and present on runners" is now marked wrong in place**, along with the skip-guard removal it justified. Fixed by guarding on the two parquet files the test actually reads and emitting a VISIBLE `[skip]` line (bug-log #66). Verified both ways: skips in the clean clone, runs for real locally.
+- 2026-08-23 (orchestrator): **CI was RED on all three legs since 2026-08-22, and it was my own #93 correction that did it.** The failing step is `cargo test --workspace --exclude ui`; it PASSES locally and fails on any fresh checkout, so it was reproduced in a clean `git clone` — one test, `forecast::features::tests::windows_determinism_on_real_data`. Root cause: `git ls-files data/binance` returns **exactly one path** (`REVISION.toml`). The DIRECTORY is tracked; the PARQUET CORPUS is not. So `root.exists()` is TRUE on every runner while every byte the test reads is absent — the skip never fired, `windows_for_symbol` returned `Err`, and the test panicked. **#93's note claiming "the CI failure is NOT missing corpus — `data/binance` is TRACKED and present on runners" is now marked wrong in place**, along with the skip-guard removal it justified. Fixed by guarding on the two parquet files the test actually reads and emitting a VISIBLE `[skip]` line (bug-log #66). Verified both ways: skips in the clean clone, runs for real locally. **⚠ SUPERSEDED 2026-09-27, pointer added 2026-11-09 (`#186`): the parquet corpus IS tracked now.** An operator decision committed 720 parquets across `data/binance`, `data/binance-funding` and `data/binance-basis` (`git ls-files data/binance` = 241 paths: 10 symbols x 24 months + `REVISION.toml`), declared `binary` in `.gitattributes`. So on every runner since, the corpus is PRESENT and these guards take their run-for-real arm. The reasoning below is still correct about the period it describes, and the proxy-vs-condition moral is untouched — but do NOT carry "the corpus is absent in CI" forward as a current fact. That is what `#186` corrected in four places. (The DVOL corpus is a different story and IS still untracked.)
 - 2026-08-23 (orchestrator): **#82 RE-MEASURED — mechanism 1 FIXED by #71, gate added and RED-proven; point 3 RETRACTED.** `v0.sma_cross_ls` now takes **128 / 262 short legs** (was 0 / 0) with `max_pos` down from **28.2 / 39.2 units to 1.83 / 0.98** and terminal equity positive on both windows (was −9 235 / −14 146). The leverage ratchet is gone: the arm returns to flat, so the short entry fires. `assert_no_ratchet_and_shorts_taken` is the assertion #82's own moral asked for; restoring the side-blind cap fails BOTH windows with `took 0 short legs`, reproducing the original measurement exactly. **Mechanism 2 unchanged and still open** — `macd_ls`/`rsi_ls`/`bbands_ls` still alternate perfectly and take zero shorts, exactly as #82 predicted, and the gate deliberately does not assert on them. **Point 3 was wrong**: `v0.always_short` dispatches to `run_alwaysshort_path`, a closed-form equity path that emits no `Fill` by construction — `v0.buyhold` reports `fills=0` in the same table, and the sanity gate shows the arm returns 100 000 → 156 210 on the bear window. Reasoning from a symptom without tracing the implementation, in the one entry that already self-corrected for it once.
 - 2026-08-23 (orchestrator): **#95 added (OPEN — needs a ruling)** — `portfolio_exposure_cap` is declared at **9** sites and read at **1** across the whole workspace; the single read is inside `size_portfolio_target`, and `Order::new` never consults it. Wiring `run_path` (#69) binds the cap on the lane behind **all 34** inventory anchors — #86-#119 are θ-surfaces from `param_robustness_sweep`, which routes through it. Eight other lanes still declare a cap they cannot enforce (`pairs` declares 0.75). Also corrects the 1-25 architect note: `scenarios::threshold_sweep::run_cell` is the candle-gated TCN τ/ε sweep and produces NONE of the inventory anchors, so D1 was dischargeable on `run_path` alone.
 - 2026-08-23 (orchestrator): **#94 added and FIXED — the sizer's resize order was the TARGET, not the delta.** Found by wiring ADR-0089 D1: `size_portfolio_target` emitted `|target_notional / mark|` on every action, correct only against a "set position to X" API, while every path here fills incrementally. A leg targeted at 10 % of equity accumulated another 10 % per rebalance — measured **−74 % equity, `min_cash_seen` 43.8 / 100 000**, with TS and always-long returning byte-identical results. Survived because #69 meant no caller AND because all 13 of its unit tests start from a flat position, where delta and target coincide. **It also disabled #68**: an overshooting order leaves the leg outside the band every bar, so the hold band could never have held anything (10 fills delta-sized vs 50 absolute-sized on the binding fixture). Fixing it first is what let #68's gate be RED-proven at all.
@@ -6229,9 +6229,11 @@ backtest's own 7 `#[cfg(feature = "candle")]` sites (3 scenario files) and unloc
 
 **So CI pays the ML compile cost on every run and gets none of the ML-gated scenarios or
 tests.** That inverts the usual trade-off: the reason to leave `candle` off in CI was its cost,
-and the cost is already being paid. Whether to enable it is still an operator decision —
-`realdata` additionally wants `data/binance/REVISION.toml` at runtime, which CI does not
-provision — so this entry does not flip it.
+and the cost is already being paid. Whether to enable it is still an operator decision — so this
+entry does not flip it. (This sentence used to justify that with *"`realdata` additionally
+wants `data/binance/REVISION.toml` at runtime, which CI does not provision"*. **That is
+wrong and is corrected in `#186`**: the corpus has been tracked since 2026-09-27. The cost
+that remains is the `polars` compile.)
 
 **Fix: make the exclusion declared, not silent.**
 `scripts/feature_gated_targets_check.py` scans every `crates/*/Cargo.toml` for
@@ -6270,8 +6272,9 @@ failed, 18 ignored** (the pre-existing long/corpus-gated ones; the step does not
 
 **23 test functions in 3 targets remain invisible**, all needing `realdata` and/or `yahoo`:
 `p2_verdict_rerun` (15, of which 7 already `#[ignore]`), `run_yahoo_sma_ticker_flag` (6) and
-`threshold_sweep_readonly` (2). `realdata` additionally wants `data/binance/REVISION.toml`
-provisioned in CI, which is its own operator decision and is left open rather than guessed.
+`threshold_sweep_readonly` (2). (This passage used to add that *"`realdata` additionally
+wants `data/binance/REVISION.toml` provisioned in CI, which is its own operator decision"* —
+**wrong, see `#186`**; the remaining cost is `polars`, not provisioning.)
 The gate's line now reads `25 scanned · 17 built by CI · 8 invisible to CI`.
 
 **And the gate caught its own stale declaration on the very next run** — which is the whole
@@ -6699,9 +6702,11 @@ Then, in the lib where `cargo test -p backtest --lib` runs 250 tests:
    `t_classifier`, so a threshold move would leave both hashed bodies describing the OLD bands.
    A lib test reads the bin's source with `include_str!`, parses the numerals **out of those
    literals** rather than restating them, and asserts they classify as the prose claims.
-   Deliberately lib-side: a bin-local test would not run in CI, and enabling `realdata` to reach
-   one would pull `polars` into the CI build — the operator's open row. `include_str!` needs no
-   features at all.
+   Deliberately lib-side: a bin-local test would not run in CI, and `include_str!` needs no
+   features at all — which is reason enough and is why the choice still stands.
+   (This point used to justify it additionally with *"enabling `realdata` to reach one would
+   pull `polars` into the CI build — the operator's open row"*. **Wrong, see `#186`:** `polars`
+   is a non-optional dependency of data/forecast/reports, so it is in every build already.)
 
 **Probed, eight perturbations:**
 
@@ -8243,3 +8248,100 @@ like any other: the probe that killed mechanism 1 took one temporary test, and w
 entry would have shipped a confident false cause plus a pool cap nobody needed. "The build
 failed in test" also turned out to be CI rather than the local build everyone was watching —
 worth asking which build, first.
+
+---
+
+### `#186` — the two reasons 10 green tests are kept out of CI are both false, and I wrote one of them yesterday
+
+**Found** 2026-11-09 by the orchestrator, while grounding a wrap-up question about the
+`realdata` "operator decision" that `#163` and `#184` had left open. **Both blockers are
+measured false. The 10 test functions are green. Corrected in six places; the CI wiring is
+measured and deliberately NOT landed yet — see the sequencing note.**
+
+#### The two claims
+
+`#163` left three gated targets invisible to CI, `#184` closed one, and the remaining two —
+`backtest/test/p2_verdict_rerun` (15 test fns, 7 `#[ignore]`) and
+`backtest/test/threshold_sweep_readonly` (2) — were filed as blocked on `realdata`, for two
+stated reasons:
+
+1. *"`realdata` needs `data/binance/REVISION.toml` at runtime, which CI does not provision."*
+2. *"enabling `realdata` would pull `polars` into the CI build — the operator's open row."*
+
+#### Both are false, and (1) was false when written
+
+**(1) The corpus is provisioned.** `git ls-files data/binance` returns **241 paths** — 10
+symbols × 24 months of parquet, plus `REVISION.toml` — committed **2026-09-27** by operator
+decision (720 parquets across `data/binance`, `data/binance-funding`, `data/binance-basis`,
+each verified against its per-file SHA-256 before landing). They are declared `binary` in
+`.gitattributes:54`, are **not** LFS (`git check-attr filter` → `unspecified`), and `ci.yml:59`
+checks out with `lfs: true` regardless. So the runtime requirement has been satisfied on every
+runner for six weeks. I wrote the claim on 2026-11-08 without running `git ls-files`.
+
+**(2) `polars` is already in every build.** It is a **non-optional** dependency of `data`
+(`crates/data/Cargo.toml:51`), `forecast` (`:199`) and `reports` (`:36`).
+`cargo tree -e normal -i polars` under default features shows all three, reached from `agent`,
+`backtest`, `trader` and `ui`. `realdata = ["dep:toml", "dep:polars"]` therefore adds **nothing
+to the dependency graph** — it only flips backtest's own `cfg` sites and unlocks the two
+targets.
+
+**That is `#163`'s candle discovery, repeated verbatim.** `#163` established exactly this about
+`candle`: *"CI pays the ML compile cost on every run and gets none of the ML-gated tests"*,
+because `backtest` depends on `strategy/forecast` unconditionally. The polars claim sat **three
+lines away from that sentence, inside the same Python string**, and I wrote it anyway. The
+lesson had been recorded, in the file I was editing, in the row above the one I was writing.
+
+#### Measured
+
+```
+cargo test -p backtest --features realdata,candle,yahoo \
+  --test p2_verdict_rerun --test threshold_sweep_readonly --test run_yahoo_sma_ticker_flag
+-> p2_verdict_rerun          8 passed, 0 failed, 7 ignored  (21.4 s)
+   run_yahoo_sma_ticker_flag 6 passed, 0 failed, 0 ignored  ( 1.5 s)
+   threshold_sweep_readonly  2 passed, 0 failed, 0 ignored  (13.4 s)
+```
+
+16 live test functions, 0 failures, one shared build. The 7 `#[ignore]`s are the
+`data/binance-{1718,2020,2122,2526}` / `data/coinbase` corpora, which genuinely are **not**
+tracked and stay ignored. `s4_binance_2324_base_smoke` **runs for real** against the tracked
+corpus — a real-data backtest smoke that CI has never executed.
+
+#### Why it is not wired in this commit
+
+The measurement is **macOS-local** and the step would run on **Ubuntu**, and this repo has lost
+a day to a cross-OS divergence before. More decisively: `#185`'s fix is in flight on CI right
+now, and the Windows leg of that run is the only test of it. A step that could redden Ubuntu in
+the same run would confound the one verdict the previous commit was pushed to obtain. `#163`'s
+own rule was *"measured before enabling, so the step could not be the thing that turned CI
+red"* — honouring it here means one experiment per run, not two. The step is drafted in the
+corrected `ci.yml` comment block and the rows carry the measurement; landing it is a follow-up,
+not an open question.
+
+#### A third stale fact, found in the same sweep
+
+`#66`, `#93` and `#94` all state that the parquet corpus is absent on every CI box — **true
+when written (2026-08-23), false since 2026-09-27.** That premise is precisely what once
+justified removing a skip-guard and took CI red on all three legs for a day, so a reader
+carrying it forward as current is a live hazard. Forward pointers added at both sites; the
+proxy-vs-condition moral they exist to teach is untouched. (The DVOL corpus **is** still
+untracked, so `#94`'s DVOL note stands as written — checked, not assumed.)
+
+#### Moral
+
+**One claim, six copies, nothing checking any of them against the world.** The false reasons
+were in `scripts/feature_gated_targets_check.py` (×4, counting the module docstring and three
+`DECLARED` rows), `.github/workflows/ci.yml`'s comment block, `#163` (×2) and `#170` — in a
+gate whose entire purpose is that *"an exclusion with no stated cost"* fails. The gate checked
+that a reason **exists**. Nothing checked that the reason is **true**. That is the `#180` shape
+one level up: `#180` was two copies of a resolver, this is six copies of a justification, and a
+stated-but-unverified reason is a gate that cannot fail.
+
+Worth recording that **my first correction repeated the error**: the fix for (1) ended "the
+real and only CI cost of `realdata` is its `polars` compile" — written before I ran
+`cargo tree`. Correcting an unmeasured claim with another unmeasured claim is the cheapest way
+to look diligent while changing nothing. Both the claim and its correction had to be measured.
+
+**Checkable form.** A declared exclusion must name a cost that is *falsifiable from the repo*,
+and the gate should assert it: a feature claimed to pull a dependency is a `cargo tree` query,
+and a runtime path claimed absent in CI is a `git ls-files` query. Neither was run for six
+weeks because neither was required.

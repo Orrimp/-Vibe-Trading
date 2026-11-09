@@ -264,10 +264,19 @@ jobs:
       # ── backtest's other yahoo-gated target (bug-log #184) ────────────────
       #
       # bug-log #163 left three targets invisible and named the blocker for each.
-      # Two of them need `realdata`, which wants data/binance/REVISION.toml
-      # provisioned in CI — a separate operator decision. This one needs ONLY
-      # `yahoo`, and the step above already pays for the `yahoo` build of this very
-      # package, so adding it costs a test run and no compile.
+      # This one needs ONLY `yahoo`, and the step above already pays for the `yahoo`
+      # build of this very package, so adding it costs a test run and no compile.
+      #
+      # CORRECTED 2026-11-09 (bug-log #186). This block used to say the other two
+      # "need `realdata`, which wants data/binance/REVISION.toml provisioned in CI —
+      # a separate operator decision". BOTH halves of that are false and were when
+      # written: the corpus has been tracked since 2026-09-27 (241 paths under
+      # data/binance, declared `binary`, and this workflow checks out `lfs: true`),
+      # and `polars` is a NON-OPTIONAL dependency of data/forecast/reports, so
+      # `dep:polars` under `realdata` adds nothing to the graph that every build
+      # already compiles. Measured: the two targets pass, 10 live test fns
+      # (8 passed/7 ignored + 2 passed). They are NOT wired here yet only because
+      # that measurement is macOS-local and this step runs on Ubuntu; see #186.
       #
       # What it recovers is not generic coverage. Two of its six tests,
       # `btc_default_sha_matches_anchor_69` and `eth_ticker_sha_matches_anchor_70`,
