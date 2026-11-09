@@ -2,15 +2,21 @@
 
 _As of 2026-06-11, HEAD `40f5de9`. Starting points + gotchas for picking this back up._
 
+> **Closed snapshot.** All four numbered items below are done (see the ✅ markers); nothing here is
+> outstanding work. Its links were repointed on 2026-11-09: the `spec/` tree they pointed into was
+> retired by the 2026-07-25 BMAD migration, which moved the targets and left seven dead links in
+> this file — invisible for fifteen weeks because `spec_lint.py` walked `docs/`, `evidence/` and
+> `_bmad-output/` but never the repo's own root markdown. It does now (bug-log `#187`).
+
 The cockpit's **Live view works**: `cargo run -p ui --release --bin cockpit_live --features live`
 boots the paper agent in research mode (`config/agent.toml`), replays `data/binance`
 through the `sma_crossover` strategy, and shows a live fills tape, positions, a growing
 equity curve, and a KPI strip. Total-return units are correct, and the agent trades real
 ~$10k clips. The items below are what's left.
 
-**Read first:** [`spec/v1/cockpit-live-dashboard-wiring/feature.md`](spec/v1/cockpit-live-dashboard-wiring/feature.md)
-(design) + [`spec/v1/cockpit-live-dashboard-wiring/tasks.md`](spec/v1/cockpit-live-dashboard-wiring/tasks.md)
-(v0.1.x follow-ups, incl. the reverted I1). Relevant commits: `40f5de9` (bar-time revert),
+**Read first:** [`docs/archive/pre-bmad-spec/v1/cockpit-live-dashboard-wiring/feature.md`](docs/archive/pre-bmad-spec/v1/cockpit-live-dashboard-wiring/feature.md)
+(design). Its `tasks.md` companion — the v0.1.x follow-ups incl. the reverted I1 — was deleted in the
+2026-06-17 stub compression and survives only in `git log`. Relevant commits: `40f5de9` (bar-time revert),
 `72d0138` (Live wiring), `40c9be3` (paced replay), `4b478ad` (replay path/pace fix).
 
 ---
@@ -108,9 +114,9 @@ Deprecation warning gone; cockpit-smoke PASS on the fixtures boot.
   `trading` bin can pass `--fast-replay` for as-fast-as-possible.
 - **The "$4 buys/sells" were never a bug** — that's the 4 bps taker fee on ~$10k clips
   (`fixed_fraction = 0.10` × $100k). The **Notional** column shows the real ~$10k trade size.
-- **Parked:** [`spec/v1/cockpit-reports-viewer/feature.md`](spec/v1/cockpit-reports-viewer/feature.md)
+- **Parked:** [`docs/archive/pre-bmad-spec/v1/cockpit-reports-viewer/feature.md`](docs/archive/pre-bmad-spec/v1/cockpit-reports-viewer/feature.md)
   (candidate — no backtest report has equity-curve companion data, so it'd be a metrics/writeup
-  browser only). [`spec/v1/cockpit-chart-cache/feature.md`](spec/v1/cockpit-chart-cache/feature.md)
+  browser only). [`docs/archive/pre-bmad-spec/v1/cockpit-chart-cache/feature.md`](docs/archive/pre-bmad-spec/v1/cockpit-chart-cache/feature.md)
   (measured NO-GO — `canvas::Cache` saves <0.1% of a frame).
 
 ---
@@ -118,9 +124,15 @@ Deprecation warning gone; cockpit-smoke PASS on the fixtures boot.
 ## Broader project state
 
 The active-vs-passive **research program is concluded** — across price/OHLCV, derivatives-
-positioning, and on-chain, no active strategy beat passive buy-and-hold net of cost; the shipped
-approach is passive. See [`spec/product.md`](spec/product.md) (terminal verdict) and
-[`docs/dev-notes/presentations/program-capstone-2026-06-08.md`](spec/archive/presentations-2026-Q2.tar.gz).
+positioning, and on-chain, **no active strategy beat passive buy-and-hold net of cost on the current
+era (2023+)**; the shipped approach is passive. (That qualifier is not decoration: the 2026-07-10
+corpus expansion found real, gate-crowned, cost-annex-robust edges on 2017-20 that had decayed to
+~zero by 2023+, and the universal form of this sentence — which is what this file said until
+2026-11-09 — is forbidden by the era-qualified thesis. See CLAUDE.md § Non-negotiables and
+[`docs/dev-notes/do-not-build-register.md`](docs/dev-notes/do-not-build-register.md).)
+See [`_bmad-output/planning-artifacts/PRD.md`](_bmad-output/planning-artifacts/PRD.md) (terminal
+verdict) and the Q2 deck archive
+[`docs/archive/presentations-2026-Q2.tar.gz`](docs/archive/presentations-2026-Q2.tar.gz).
 The cockpit is the post-research build-out: a Baseline panel (the shipped BH result), the Live
 monitor (this file's subject), a 24–40× interaction-perf fix, and a repaired visual-regression gate.
-[`spec/backlog.md`](spec/backlog.md) holds the wind-down state.
+[`_bmad-output/planning-artifacts/backlog.md`](_bmad-output/planning-artifacts/backlog.md) holds the wind-down state.

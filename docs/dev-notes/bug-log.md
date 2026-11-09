@@ -8526,3 +8526,64 @@ nothing checking it against the directory it describes — and unlike a comment,
 moment I decide what to recommend. It has been corrected. The general form: a claim that some work
 *remains* is checkable by the same means as a claim that it is *done*, and neither is believable
 unprobed. `git log -- <the files>` is one command, and I offered the work without running it.
+
+### `#188` — the lint that exists to find dead links never looked at the repo's front door, and `TODO.md` had seven of them
+
+**Found** 2026-11-09 by the orchestrator, auditing the agent-memory corpus after `#187`.
+**`scripts/spec_lint.py` walked `docs/`, `evidence/` and `_bmad-output/` and nothing else, so the
+repository's root-level markdown — `README.md`, `CLAUDE.md`, `AGENT.md`, `CHANGELOG.md`, `TODO.md` —
+sat outside every root. `TODO.md` had carried seven dead links for fifteen weeks, created by the
+migration that moved their targets, and stated the universal form of the ship-passive thesis that
+the era-qualification forbids.**
+
+#### The blind spot, measured
+
+Six root-level markdown files. Five of them hold **99 relative links, every one live**. `TODO.md`
+holds seven, **all dead** — `spec/v1/...`, `spec/product.md`, `spec/backlog.md`,
+`spec/archive/presentations-2026-Q2.tar.gz`. So the gate's blindness had cost exactly one file, and
+that file was the one nobody opened.
+
+It was not drift. Commit `d3a069c3` (2026-07-25, Phase 4, *"211 renames"*) moved `spec/` to
+`docs/archive/pre-bmad-spec/` and repointed the links in the trees it walked. `TODO.md` was not one
+of those trees, so the same commit that made the links dead also guaranteed nothing would say so.
+
+CLAUDE.md § *Where to start* names `README.md` first and `CHANGELOG.md` second — the two documents
+a new reader or agent opens before anything else. Neither was covered by the dead-link check.
+
+#### The thesis sentence
+
+`TODO.md` § Broader project state read: *"no active strategy beat passive buy-and-hold net of
+cost"*. That is the **universal form**, which CLAUDE.md § Non-negotiables forbids outright ("NEVER
+state the universal form") because the 2026-07-10 corpus expansion found real, gate-crowned,
+cost-annex-robust edges on 2017-20 that decayed to ~zero by 2023+. Corrected in place, with the
+qualifier and one sentence on why it is not decoration.
+
+**One more instance exists and was NOT corrected here:** `CHANGELOG.md:115`, the
+`advisor-short-selling` entry, ends *"no active strategy beats holding robustly"* unqualified. It
+was written in 2026-06, before the qualification, in an append-only index whose own line 199 states
+that the universal form is forbidden. Editing a shipped feature's entry to restate the thesis is the
+operator's call, not a drive-by, so it is flagged rather than changed.
+
+#### Fix
+
+`default_roots()` is now the three trees **plus** `sorted(REPO_ROOT.glob("*.md"))`, and
+`iter_tree_md` tolerates a root outside the repository so the rule can be driven over a fixture.
+
+The self-test pins **the enumeration, not the rule** — `check_dead_links` already worked; what was
+missing was being called. So its two sides differ in exactly that dimension: the same dead link, in
+the same file, is flagged when the root glob is present and **missed when the roots are the three
+trees alone**. A fixture asserting only "dead link flagged" would have passed throughout the fifteen
+weeks the file was invisible.
+
+Probed on the real repository in both directions: before the `TODO.md` repoint the extended gate
+printed `FAIL (7 violations)` naming each one; after it, `PASS`; and a dead link planted in
+`README.md` — a file the gate could not previously see — fails it by name and passes again on
+restore.
+
+#### Moral
+
+`#187` one level up. **A gate's SCOPE is as much a part of it as its RULE**, and a scope written
+when the tree had a different shape ages exactly like a comment: `spec-lint: PASS` has printed on
+every commit for months and was perfectly true of the tree it walked. Checkable form: when a rule is
+added, name the set it runs over and assert the set — a self-test that proves the rule works on a
+fixture says nothing about whether the production call ever reaches the fixture's real counterpart.

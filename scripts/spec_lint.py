@@ -1167,6 +1167,52 @@ def _self_test_dead_cargo_citation() -> bool:
         return ok
 
 
+def _self_test_root_markdown_scanned() -> bool:
+    """Synthetic-fixture probe for the root-markdown enumeration (bug-log `#187`).
+
+    The rule under test is not `check_dead_links` — that one already worked. It
+    is `default_roots`: whether the repo's root-level markdown is WALKED. So the
+    two sides differ in exactly that dimension and expect different outcomes:
+    the same dead link, in the same file, is flagged when the root glob is in
+    the roots and missed when it is not. A fixture that only asserted "dead link
+    flagged" would have passed for three years against roots that never looked
+    at the file.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        (tmp / "docs").mkdir()
+        (tmp / "TODO.md").write_text("see [gone](spec/v1/gone.md)\n", encoding="utf-8")
+        (tmp / "README.md").write_text("see [here](docs/live.md)\n", encoding="utf-8")
+        (tmp / "docs" / "live.md").write_text("# live\n", encoding="utf-8")
+
+        def dead_links_for(roots: list[Path]) -> list[Violation]:
+            r = Report()
+            for md in iter_tree_md(roots):
+                check_dead_links(md, md.read_text(encoding="utf-8"), r)
+            return [v for v in r.violations if v.category == "dead-link"]
+
+        with_root = dead_links_for(default_roots(tmp))
+        trees_only = dead_links_for([tmp / "docs", tmp / "evidence", tmp / "_bmad-output"])
+
+        ok_flagged = len(with_root) == 1 and "gone.md" in with_root[0].detail
+        ok_missed = trees_only == []
+        ok_live_silent = all("live.md" not in v.detail for v in with_root)
+
+    print(
+        "spec-lint --self-test (root-markdown-scanned): "
+        + (
+            "PASS — root-level dead link flagged via default_roots=ok, "
+            "invisible to the three trees alone=ok, live root link silent=ok"
+            if (ok_flagged and ok_missed and ok_live_silent)
+            else f"FAIL — flagged={ok_flagged} missed-without-root-glob={ok_missed} "
+            f"live-silent={ok_live_silent}"
+        )
+    )
+    return ok_flagged and ok_missed and ok_live_silent
+
+
 def self_test() -> int:
     """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
     results = [
@@ -1174,6 +1220,7 @@ def self_test() -> int:
         _self_test_story_done_trace_drift(),
         _self_test_story_done_changelog_missing(),
         _self_test_dead_cargo_citation(),
+        _self_test_root_markdown_scanned(),
     ]
     return 0 if all(results) else 1
 
@@ -1188,7 +1235,14 @@ def iter_tree_md(roots: Iterable[Path]) -> Iterable[Path]:
             yield root
         elif root.is_dir():
             for p in sorted(root.rglob("*.md")):
-                rel = p.relative_to(REPO_ROOT).as_posix()
+                try:
+                    rel = p.relative_to(REPO_ROOT).as_posix()
+                except ValueError:
+                    # A root outside the repository — only `--self-test` does
+                    # this. Both skips below are repo-specific paths, so there
+                    # is nothing to skip.
+                    yield p
+                    continue
                 # Skip archived content — frozen by design (this now covers
                 # BOTH the pre-existing `docs/archive/` tarball convention AND
                 # the Phase 5b `docs/archive/pre-bmad-spec/` retired-spec tree).
@@ -1199,6 +1253,26 @@ def iter_tree_md(roots: Iterable[Path]) -> Iterable[Path]:
                 if rel.startswith("evidence/v1/") and "/reports/" in rel:
                     continue
                 yield p
+
+
+def default_roots(repo_root: Path = REPO_ROOT) -> list[Path]:
+    """What a bare `spec_lint.py` walks: the three trees, plus the repo's own
+    front-door markdown.
+
+    The root-level files — README, CLAUDE, AGENT, CHANGELOG, TODO — were outside
+    every root until 2026-11-09, so a dead link in the four most-read documents
+    in the repository was invisible to the lint whose job is dead links.
+    Measured when the gap was found: 99 links across the other root files, all
+    live; `TODO.md` alone carried seven dead ones, every one of them created by
+    the Phase-4 migration that moved their targets and did not follow up here
+    (bug-log `#187`).
+    """
+    return [
+        repo_root / "docs",
+        repo_root / "evidence",
+        repo_root / "_bmad-output",
+        *sorted(repo_root.glob("*.md")),
+    ]
 
 
 def main(argv: list[str]) -> int:
@@ -1224,9 +1298,7 @@ def main(argv: list[str]) -> int:
         return 99
 
     roots = (
-        [Path(p).resolve() for p in args.paths]
-        if args.paths
-        else [DOCS_DIR, EVIDENCE_DIR, BMAD_OUTPUT_DIR]
+        [Path(p).resolve() for p in args.paths] if args.paths else default_roots()
     )
     report = Report()
 
