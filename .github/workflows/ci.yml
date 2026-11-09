@@ -275,8 +275,9 @@ jobs:
       # and `polars` is a NON-OPTIONAL dependency of data/forecast/reports, so
       # `dep:polars` under `realdata` adds nothing to the graph that every build
       # already compiles. Measured: the two targets pass, 10 live test fns
-      # (8 passed/7 ignored + 2 passed). They are NOT wired here yet only because
-      # that measurement is macOS-local and this step runs on Ubuntu; see #186.
+      # (8 passed/7 ignored + 2 passed). WIRED 2026-11-09 in the two steps below,
+      # once the #185 Windows verdict came back green (run 42575316185, all three
+      # legs success) so this would be the only experiment riding its own run.
       #
       # What it recovers is not generic coverage. Two of its six tests,
       # `btc_default_sha_matches_anchor_69` and `eth_ticker_sha_matches_anchor_70`,
@@ -301,10 +302,69 @@ jobs:
       # A SEPARATE step rather than a second --test on the step above so its CI
       # annotation carries its own label — logs are 403 here, annotations are how a
       # failure gets read.
-      - name: backtest yahoo-gated ticker-flag tests (bug-log #184)
+      - name: "backtest yahoo-gated ticker-flag tests (bug-log #184)"
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "yahoo-ticker-flag" cargo test -p backtest --features yahoo --test run_yahoo_sma_ticker_flag
+
+      # ── backtest's realdata-gated targets (bug-log #186) ──────────────────
+      #
+      # The last two targets bug-log #163 left invisible. Both of the blockers on
+      # file for them were false (see the corrected block above), so what remained
+      # was cost and evidence, and both are now measured.
+      #
+      # COST. On run 42575316185 — the first all-green 3-OS run — windows paced the
+      # matrix at 82.5 min while ubuntu finished in 51.1, so an ubuntu-only step has
+      # ~31 min of headroom before it moves the matrix wall clock at all. These two
+      # spend a backtest recompile under realdata,candle,yahoo plus ~50 s of test
+      # time (measured locally 2026-11-09: build 24 s; p2_verdict_rerun 21.2 s →
+      # 8 passed / 0 failed / 7 ignored; threshold_sweep_readonly 22.4 s → 2 passed).
+      # The second step reuses the first step's build — same feature set — and is a
+      # separate step only so its annotation carries its own label, for the same
+      # reason as the step above: logs are 403 here, annotations are how a failure
+      # gets read.
+      #
+      # THE PRECONDITION IS LOAD-BEARING, not decoration. `s4_binance_2324_base_smoke`
+      # SKIPs and RETURNS when data/binance/BTCUSDT is absent, so without it this
+      # step could report success having measured nothing — the "gate that cannot
+      # fail" shape of #135 / #161 / #186. The declared condition is 24 parquet files
+      # (10 symbols × 24 months + REVISION.toml = 241 tracked paths) each over 10 KB:
+      # the real files are 24.4–27.8 KB, an LFS pointer stub is ~130 B, so the size
+      # floor distinguishes "checked out" from "pointer only" rather than merely
+      # "present".
+      #
+      # WHAT THE LOCAL MEASUREMENT DOES AND DOES NOT COVER. It visits CI's data state,
+      # not a richer one: data/deribit-dvol and data/yahoo-macro hold only
+      # REVISION.toml on the dev box too, so `v0.dvol_regime` is DROPPED and
+      # `v0.macro_riskon` runs warm-up-only in BOTH places (24 candidates ranked,
+      # crowned v0.buyhold). Those absence paths are non-fatal by construction —
+      # bakeoff/mod.rs returns None and logs, per #78's "never degrade a probe into a
+      # stub that keeps the probe's label". The one dimension the local run does not
+      # visit is the OS; s4's assertions are structural (a crowned candidate exists,
+      # candidates are non-empty, the benchmark is present), not SHA-pinned, so there
+      # is no platform-float surface here.
+      #
+      # No `| head` in these pipelines: `shell: bash` means pipefail (bug-log #84),
+      # and head closing the pipe early SIGPIPEs its producer into a false failure.
+      - name: "backtest realdata-gated p2 verdict rerun (bug-log #186)"
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          test -f data/binance/REVISION.toml
+          n=$(find data/binance/BTCUSDT -name '*.parquet' | wc -l)
+          # `wc -c` via -exec, not find's -printf: -printf is GNU-only, and a
+          # precondition I cannot run on the dev box is the one unmeasured line in a
+          # step that exists to be measured. This form runs on both.
+          smallest=$(find data/binance/BTCUSDT -name '*.parquet' -exec wc -c {} \; | awk '{print $1}' | sort -n | sed -n '1p')
+          echo "precondition: data/binance/BTCUSDT holds $n parquet files, smallest $smallest bytes"
+          test "$n" -eq 24
+          test "$smallest" -gt 10000
+          scripts/ci_run_annotated.sh "p2-verdict-rerun" cargo test -p backtest --features realdata,candle,yahoo --test p2_verdict_rerun -- --nocapture
+
+      - name: "backtest realdata-gated threshold-sweep read-only guard (bug-log #186)"
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: scripts/ci_run_annotated.sh "threshold-sweep-readonly" cargo test -p backtest --features realdata,candle,yahoo --test threshold_sweep_readonly
 
       # ── forecast's candle-gated tests (bug-log #163, operator-approved 2026-11-08) ──
       #
@@ -335,7 +395,7 @@ jobs:
       # candle build is the expensive part. `scripts/feature_gated_targets_check.py`
       # declares what each leg does and does not build, so this scope is recorded
       # rather than assumed.
-      - name: forecast candle-gated tests (bug-log #163)
+      - name: "forecast candle-gated tests (bug-log #163)"
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: scripts/ci_run_annotated.sh "forecast-candle" cargo test -p forecast --features candle --no-fail-fast

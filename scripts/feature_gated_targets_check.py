@@ -34,9 +34,24 @@ to the dependency graph; both targets are measured green. See the rows below.)
 **Narrowed again 2026-11-08 (bug-log `#184`).** `run_yahoo_sma_ticker_flag` needed
 only `yahoo` — no `realdata`, so no provisioning decision — and the repro-sample
 step already built this package with that feature. It now has its own step, so
-**17 test functions in 2 targets remain invisible**, both needing `realdata` —
-blocked on its `polars` compile cost, NOT on corpus provisioning (bug-log
-`#186`).
+**17 test functions in 2 targets remained invisible**, both needing `realdata`.
+
+**Closed 2026-11-09 (bug-log `#186`).** Both are in CI, as ci.yml's `backtest
+realdata-gated p2 verdict rerun` and `backtest realdata-gated threshold-sweep
+read-only guard` steps: 10 live test functions recovered (8 passed/7 ignored +
+2 passed), ~50 s of Ubuntu test time against the ~31 min of headroom that leg
+has while windows paces the matrix. **No `realdata`-gated test function is
+invisible to CI any more.**
+
+The sentence above used to end "blocked on its `polars` compile cost, NOT on
+corpus provisioning (bug-log `#186`)". The corpus half of it was corrected on
+2026-11-09 and the `polars` half was left standing **in the same pass**, cited
+to the entry that disproves it: `polars` is non-optional in data, forecast and
+reports, so there was never a `polars` compile cost to be blocked on. That was
+the EIGHTH copy of this claim in the repo, and the SECOND time a correction of
+it carried the error forward one clause over. The `graph_noop_report` printed on
+every run below exists so the next reader gets the fact from a measurement
+instead of from prose like this.
 
 (First stated as "46 across 13". Corrected 2026-11-08 the same day: one of those
 targets, `strategy/test/tcn_overlay_tuned_builder` (5 test fns), is gated on a
@@ -110,13 +125,17 @@ DECLARED: dict[str, dict[str, object]] = {
     },
     "backtest/test/threshold_sweep_readonly": {
         "feats": ["candle", "realdata"],
-        "ci": "invisible",
-        "why": "bug-log #163 — 2 test fns, 0 ignored. MEASURED 2026-11-09 (bug-log #186): "
-               "passes 2/0/0 under `--features realdata,candle,yahoo`, and NEITHER filed "
-               "blocker was real (corpus tracked since 2026-09-27; `polars` already "
-               "non-optional). Still `invisible` only because that run is macOS-local "
-               "while the step would be Ubuntu — sequenced after the #185 Windows verdict "
-               "so two experiments do not ride one CI run.",
+        "ci": "built",
+        "why": "bug-log #163 — 2 test fns, 0 ignored. WIRED 2026-11-09 (bug-log #186) as "
+               "ci.yml `backtest realdata-gated threshold-sweep read-only guard`, Ubuntu "
+               "only, reusing the build of the p2 step above it (same feature set). "
+               "NEITHER filed blocker was real: the corpus has been tracked since "
+               "2026-09-27, and `polars` is non-optional in data/forecast/reports. "
+               "Measured 22.4 s, 2 passed / 0 failed under `--features "
+               "realdata,candle,yahoo`. Both tests spawn a NESTED `cargo run --bin "
+               "threshold_sweep`; all six checkpoint sentinels they read are tracked, so "
+               "CI has what they need, and `sentinel_bytes` PANICS on an absent one "
+               "(bug-log #135) rather than comparing None to None.",
     },
     "backtest/bin/run_yahoo_sma": {
         "feats": ["yahoo"],
@@ -135,7 +154,7 @@ DECLARED: dict[str, dict[str, object]] = {
     },
     "backtest/test/p2_verdict_rerun": {
         "feats": ["realdata", "yahoo"],
-        "ci": "invisible",
+        "ci": "built",
         "why": "bug-log #163 — 15 test fns, 7 already #[ignore]. CORRECTED 2026-11-09 "
                "(bug-log #186). This row used to read \"`realdata` additionally needs "
                "data/binance/REVISION.toml at runtime, which CI does not provision\" — CI "
@@ -144,9 +163,16 @@ DECLARED: dict[str, dict[str, object]] = {
                "committed 2026-09-27 by operator decision as plain `binary` (NOT lfs), and "
                "ci.yml checks out with `lfs: true`. Nor is `polars` a cost: it is a "
                "NON-OPTIONAL dep of data/forecast/reports, already in every build. "
-               "MEASURED 2026-11-09: passes 8/0/7 under `--features realdata,candle,yahoo`. "
-               "Still `invisible` only because that run is macOS-local while the step would "
-               "be Ubuntu — sequenced after the #185 Windows verdict.",
+               "WIRED 2026-11-09 as ci.yml `backtest realdata-gated p2 verdict rerun`, "
+               "Ubuntu only: 21.2 s, 8 passed / 0 failed / 7 ignored under `--features "
+               "realdata,candle,yahoo`. That step carries a PRECONDITION on the corpus "
+               "(24 parquets, each >10 KB so an LFS pointer stub fails it) because the one "
+               "disk-touching live test, s4_binance_2324_base_smoke, SKIPs and RETURNS on "
+               "absence — a green step without it would have measured nothing. "
+               "data/deribit-dvol and data/yahoo-macro hold only REVISION.toml on the dev "
+               "box TOO, so the local run visits CI's data state rather than a richer one: "
+               "v0.dvol_regime DROPPED, v0.macro_riskon warm-up-only, 24 candidates "
+               "ranked, in both places.",
     },
     "backtest/example/passive_baseline_equity": {
         "feats": ["realdata"],
@@ -583,10 +609,14 @@ def check(found: dict[str, list[str]], ci: str) -> list[str]:
         #
         # Exempt: a target is not gated by CI at all when its features are satisfied
         # unconditionally — by a non-optional dependency (DEP-SATISFIED above) or by
-        # sitting in the crate's default set. Measured 2026-11-08 across the 18 `built`
-        # rows: 16 are matched by an invocation, `ui/bin/cockpit_live` is default-
-        # satisfied and `strategy/test/tcn_overlay_tuned_builder` is dep-satisfied. So
-        # this check is exact today rather than approximately right.
+        # sitting in the crate's default set. Re-measured 2026-11-09 across the 20
+        # `built` rows (18 on 2026-11-08, before the two #186 rows flipped): 18 are
+        # matched by an invocation, `ui/bin/cockpit_live` is default-satisfied and
+        # `strategy/test/tcn_overlay_tuned_builder` is dep-satisfied. So this check is
+        # exact today rather than approximately right. The two rows flipped on
+        # 2026-11-09 were PROBED against this check before the flip landed: with their
+        # ci.yml steps stripped, both raise UNBUILT-CLAIM, so `built` is held to the
+        # workflow rather than merely stored.
         if row["ci"] == "built":
             crate, kind, name = key.split("/", 2)
             defaults = default_features(crate)

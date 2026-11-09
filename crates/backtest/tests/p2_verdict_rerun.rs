@@ -58,9 +58,16 @@
 //! Each corpus's test fn returns early (`eprintln!` SKIP) when the
 //! gitignored parquets are absent — mirrors the null-CI + `bear_survey`
 //! SKIP guards, so CI without the (large, multi-hour-fetch) corpora stays
-//! green. The `data/binance` smoke test (S4, the existing PINNED corpus)
-//! runs **un-ignored** so the harness is exercised in CI-less reality even
-//! before the new P2 corpora land; S1/S2/S3/S5/S6 (the new corpora, which
+//! green. **That is true of every corpus here except the one that runs.**
+//! S1/S2/S3/S5/S6 and `data/coinbase` are still ignored (one tracked path
+//! each, `REVISION.toml`), but `data/binance` has been TRACKED IN FULL since
+//! 2026-09-27 — 240 parquets plus the manifest — so S4's guard is unreachable
+//! in a normal checkout and S4 always runs. A SKIP would still report as a
+//! PASS, so the CI step added 2026-11-09 asserts the corpus is present before
+//! invoking this target (bug-log #186). The `data/binance` smoke test (S4, the
+//! existing PINNED corpus) runs **un-ignored** so the harness is exercised
+//! even before the new P2 corpora land — in CI itself since 2026-11-09, and
+//! "in CI-less reality" until then; S1/S2/S3/S5/S6 (the new corpora, which
 //! land via long-running background fetches per ADR-0084) are `#[ignore]`d
 //! like the bear-survey / t14 precedent — run explicitly once fetched.
 //!
@@ -608,7 +615,12 @@ async fn s3_binance_2122_all_ten() {
 /// `run_field_and_rank` → gate + scorecard) even on machines without the new
 /// P2 corpora, and doubles as the S4 reference/baseline row in the
 /// per-corpus verdict table. SKIP-guards on absence exactly like the other
-/// scenarios, so a fresh checkout without the gitignored parquets stays green.
+/// scenarios — but unlike them that guard is UNREACHABLE in a normal checkout:
+/// `data/binance` has been tracked in full since 2026-09-27 (240 parquets), so
+/// this test always runs. This line used to end "so a fresh checkout without the
+/// gitignored parquets stays green", which stopped being true that day (bug-log
+/// #186). Since a SKIP here would still be reported as a PASS, the CI step that
+/// runs this target asserts the corpus is present before invoking it.
 #[tokio::test]
 async fn s4_binance_2324_base_smoke() {
     let root = workspace_root().join("data/binance");
@@ -616,7 +628,8 @@ async fn s4_binance_2324_base_smoke() {
     let Some(bars) = load_corpus_symbol_bars(&root, &sym).await else {
         eprintln!(
             "SKIP s4_binance_2324_base_smoke: data/binance/BTCUSDT absent under {} \
-             (gitignored parquets not fetched on this machine)",
+             — data/binance is TRACKED IN FULL since 2026-09-27, so reaching this \
+             branch means an INCOMPLETE CHECKOUT, not an unfetched corpus (bug-log #186)",
             root.display()
         );
         return;

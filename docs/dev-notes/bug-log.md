@@ -8255,8 +8255,9 @@ worth asking which build, first.
 
 **Found** 2026-11-09 by the orchestrator, while grounding a wrap-up question about the
 `realdata` "operator decision" that `#163` and `#184` had left open. **Both blockers are
-measured false. The 10 test functions are green. Corrected in six places; the CI wiring is
-measured and deliberately NOT landed yet — see the sequencing note.**
+measured false. The 10 test functions are green. Corrected in six places; the CI wiring
+LANDED 2026-11-09 once the `#185` verdict came back green on all three legs — see below, along
+with a seventh and an eighth copy of the claim found in the same follow-up.**
 
 #### The two claims
 
@@ -8306,16 +8307,66 @@ cargo test -p backtest --features realdata,candle,yahoo \
 tracked and stay ignored. `s4_binance_2324_base_smoke` **runs for real** against the tracked
 corpus — a real-data backtest smoke that CI has never executed.
 
-#### Why it is not wired in this commit
+#### Why it was not wired in that commit, and what landed next
 
-The measurement is **macOS-local** and the step would run on **Ubuntu**, and this repo has lost
-a day to a cross-OS divergence before. More decisively: `#185`'s fix is in flight on CI right
-now, and the Windows leg of that run is the only test of it. A step that could redden Ubuntu in
-the same run would confound the one verdict the previous commit was pushed to obtain. `#163`'s
-own rule was *"measured before enabling, so the step could not be the thing that turned CI
-red"* — honouring it here means one experiment per run, not two. The step is drafted in the
-corrected `ci.yml` comment block and the rows carry the measurement; landing it is a follow-up,
-not an open question.
+The commit left the step unwired on purpose: `#185`'s fix was in flight and the Windows leg of
+that run was the only test of it, so a step that could redden Ubuntu on the same run would
+confound the one verdict the commit was pushed to obtain. `#163`'s own rule — *"measured before
+enabling, so the step could not be the thing that turned CI red"* — means one experiment per
+run, not two.
+
+Run `42575316185` returned **success on all three legs**, so the wiring landed the same day: two
+Ubuntu-only steps sharing one build, `backtest realdata-gated p2 verdict rerun` and
+`backtest realdata-gated threshold-sweep read-only guard`. Re-measured before landing: build
+24 s; `p2_verdict_rerun` 21.2 s → 8 passed / 0 failed / 7 ignored; `threshold_sweep_readonly`
+22.4 s → 2 passed. Both rows flipped to `built`, and the flip was **probed**: with the two new
+`ci.yml` steps stripped, each row raises `UNBUILT-CLAIM`, so `built` is held to the workflow
+rather than merely stored.
+
+**The last objection standing was cost, and it is a number: zero.** Per-job durations on that
+run were windows 82.5 min, macos 59.4, ubuntu **51.1**. Windows paces the matrix, so an
+Ubuntu-only step has ~31 minutes of headroom before it moves the matrix wall clock at all. Like
+the other two reasons, "it would cost CI time" had never been measured.
+
+**The macOS-vs-Ubuntu worry dissolved on inspection rather than being argued away.** The local
+run turns out to visit CI's data state, not a richer one: `data/deribit-dvol` and
+`data/yahoo-macro` hold only `REVISION.toml` on the dev box too, so `v0.dvol_regime` is DROPPED
+and `v0.macro_riskon` runs warm-up-only in *both* places (24 candidates ranked, crowned
+`v0.buyhold`). Both absence paths are non-fatal by construction — `bakeoff/mod.rs` logs and
+returns `None`, per `#78`'s *never degrade a probe into a stub that keeps the probe's label*.
+The one dimension the local run does **not** visit is the OS, and S4's assertions are structural
+(a crowned candidate exists, candidates are non-empty, the benchmark is present) rather than
+SHA-pinned, so there is no platform-float surface. That is the honest width of the measurement,
+stated rather than implied — `#185`'s lesson applied on purpose this time.
+
+#### The step needed a precondition, because the test it runs cannot fail on its own
+
+`s4_binance_2324_base_smoke` is the only live test in `p2_verdict_rerun` that touches disk, and
+it SKIPs and *returns* when `data/binance/BTCUSDT` is absent. Wired as-is, the step would report
+green and prove nothing the moment a checkout came up short — `#135`/`#161` again, in the very
+commit that exists to stop declaring unchecked things. So the step asserts the condition first:
+**24 parquet files, each over 10 KB.** The size floor is load-bearing, not padding: the real
+files are 24.4–27.8 KB and an LFS pointer stub is ~130 B, so the check distinguishes *checked
+out* from *pointer only*, not merely *present*.
+
+**And the precondition itself was probed, both directions, before it landed** — the house rule
+about proving a gate has teeth applies to the gate you add in the commit that complains about
+gates without teeth. Against the real corpus it passes (24 files, smallest 24,441 B); against a
+directory of 24 synthetic LFS pointer stubs it exits 1 (24 files, smallest **130 B** — the
+predicted size, measured rather than assumed). It is written with `wc -c` via `-exec` instead of
+find's `-printf` for exactly this reason: `-printf` is GNU-only, so the macOS dev box could not
+have run the probe at all, and a precondition I cannot execute here would have been the one
+unmeasured line in a step whose purpose is to be measured.
+
+#### A seventh copy — in the prose of the test being wired
+
+The same sweep found the claim inside `crates/backtest/tests/p2_verdict_rerun.rs` itself, three
+times: the module's SKIP-safe section and S4's doc comment both said a fresh checkout without
+the "gitignored parquets" stays green, and the SKIP message told the operator the corpus was
+"not fetched on this machine". For `data/binance` all three stopped being true on 2026-09-27.
+Corrected — and only for S4: S1/S2/S3/S5/S6 and `data/coinbase` really are still ignored (one
+tracked path each, `REVISION.toml`), so that half of the sentence stayed as written. Checked per
+corpus with `git ls-files`, not assumed from the family name.
 
 #### A third stale fact, found in the same sweep
 
@@ -8340,6 +8391,23 @@ Worth recording that **my first correction repeated the error**: the fix for (1)
 real and only CI cost of `realdata` is its `polars` compile" — written before I ran
 `cargo tree`. Correcting an unmeasured claim with another unmeasured claim is the cheapest way
 to look diligent while changing nothing. Both the claim and its correction had to be measured.
+
+**An eighth copy, and it was in the paragraph I corrected.**
+`scripts/feature_gated_targets_check.py:38` still read *"blocked on its `polars` compile cost,
+NOT on corpus provisioning (bug-log `#186`)"*. The 2026-11-09 pass fixed the **corpus** half of
+that sentence and left the **`polars`** half standing one clause over — citing, as its
+authority, the entry that disproves it. So twice now a correction of this claim has carried the
+error forward, and the second time it happened *inside the fix for the first*. A correction pass
+reads for the clause it came to change and does not see the clause beside it. That is an
+argument for a check that runs, not for reading more carefully next time, which is why
+`graph_noop_report()` prints the dependency fact on every run instead of leaving it to prose.
+
+**The tally in this entry's own headline was never checked either.** "Corrected in six places"
+sits above an enumeration that lists eight — four in the gate, one in `ci.yml`, two in `#163`,
+one in `#170` — and the follow-up added three more in
+`crates/backtest/tests/p2_verdict_rerun.rs` plus the one above. A count asserted in prose with
+nothing counting it is this entry's own defect, one level up again. Sites are therefore named
+individually above rather than summed: a list survives the next discovery, a sum does not.
 
 **Checkable form.** A declared exclusion must name a cost that is *falsifiable from the repo*,
 and the gate should assert it: a feature claimed to pull a dependency is a `cargo tree` query,
