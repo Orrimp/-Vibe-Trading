@@ -51,9 +51,35 @@ on it, and the honest accounting is three lines rather than one:
   *verified* by anything, and a future regression in it will be invisible until a human
   builds on Linux.
 
-Do not flip this story to `done` on the strength of this section. It flips when AC1's two
-lanes are green on a push to `main`, with the trace row and the CHANGELOG line moving in the
-same pass (ADR-0082).
+### The closure fork — written down 2026-11-10, awaiting one ruling
+
+AC1's bar was met the same day it was written: on run `42762269706` (a push to `main`)
+**`macos-latest` finished 19/19 with zero failures** and `windows-latest` was on its final
+step with none. By the letter of AC1 this story is closable.
+
+**I am not closing it, and the reason is this session's own subject.** The story is named
+*cockpit-cross-platform* and its first line asks for *"the cockpit on Linux/Windows"*. One of
+those two platforms is now **unverifiable by construction** — nothing builds the Linux
+dependency graph any more (D3 of ADR-0102). A `done` on a cross-platform story whose Linux
+half nobody can check is exactly the status-versus-reality gap bug-log `#92`, `#188` and
+`#189` are about: honest in the body, misleading to anyone reading the board.
+
+But leaving it `in-progress` for ever is the **other** defect — `#92` sat `open` for 80 days
+after it was fixed, because no artifact said so. Neither default is right, so this is a scope
+question rather than a bookkeeping one, and scope on a story belongs to the operator:
+
+| option | what it records |
+|---|---|
+| **(a) close as Windows-complete** | the story delivered what remains checkable; Linux portability becomes a NEW backlog item owning ADR-0102's costed build-only `cargo check` leg. Honest if the closing note says Linux is unguarded, not working. |
+| **(b) keep open pending the Linux leg** | the story stays the home for the whole original ask, and closes when something builds Linux again. Honest, but the board carries an item nothing is working on. |
+| **(c) close and drop Linux from scope** | the cleanest board, and the one that loses the information — I do not recommend it. |
+
+The orchestrator's preference is **(a)**: it is the only option where the board matches
+reality on both halves, and it leaves the Linux work priced rather than implied. Recorded here
+rather than acted on, and asked as one question.
+
+Until that ruling, `Status:` stays `in-progress` and the trace row is non-terminal for this
+reason and not for the stale "run-2 shakeout" reason its old comment gave.
 
 ## Tasks / Subtasks
 
