@@ -9409,7 +9409,8 @@ English, not secrets.**
 
 **Status**: **`partial-fix` 2026-11-10 — `ee767c87` (the ten-step split) + `8b5c5f6a` (the
 clock-gate step split three ways) + `6ccad4c0` (the `bash >= 4` requirement and the explicit
-selection).** The failing gate is **identified** and the exit code **measured** (134, SIGABRT);
+selection). The cause is now ESTABLISHED by measurement (see "Established" at the end of this
+entry); what is still pending is one green CI run of the step that provides bash >= 4.** The failing gate is **identified** and the exit code **measured** (134, SIGABRT);
 the cause is **inferred and not yet proven**, and the guard added here is what will settle it in
 one read — which is exactly why this is `partial-fix` and not `fixed`. Anchor-impacting: **no**.
 
@@ -9542,6 +9543,43 @@ can log.** The right size for a CI step is "small enough that its name is the di
 and when the log API is closed to you, that is the *only* size that works. `#187` rule ·
 `#188` scope · `#189` subject · `#190` wiring · `#191` citation · `#192` environment ·
 `#193` coverage · **`#194` granularity.**
+
+#### Established 2026-11-10, evening: the abort reproduces on the dev box, and it depends on heap layout
+
+> Appended (append-only). The inference above is now measured, not argued.
+
+- **Reproduced.** With the bash >= 4 guard removed, the clock gate's body under `/bin/bash`
+  3.2.57 on this box died with **SIGABRT in 37 of 80 heap layouts**: one environment variable
+  padded from 0 to 3950 bytes in 50-byte steps. The result is deterministic per layout (3
+  aborts in 3 runs at pad 50). Homebrew bash 5.3.20 ran the same body **0 of 80**. The PIT gate
+  never aborted.
+- **Where.** At pad 50 the crash is inside `scan_tree`'s file × pattern loop: after file 63
+  of 76, third pattern. Every top-level definition loads cleanly (0/40 at every truncation
+  point). There is no `malloc` diagnostic.
+- **Why it looked environment-dependent.** It is one layout-dependent fault. The 30/30 pass in
+  a pristine clone, the abort on the runner, and an abort here at pad 0 that disappears with a
+  47 KB environment are the same bug at different layouts. Path length and content were
+  excluded earlier for this reason, and the exclusions still stand.
+- **Refuted, each 0/80 in isolation:** the `=~` regex; process substitution at top level;
+  process substitution inside a function; 2,000 process substitutions in one function. In the
+  real body, also no change (37/80 each): `is_comment_line` rewritten as `case`,
+  `marker_in_block_above` stubbed out, `local -i` replaced by plain `local`.
+- **Decision.** The declared bash >= 4 requirement in `6ccad4c0` is the fix, not a
+  workaround. I did not attempt a 3.2-safe rewrite: with the trigger unisolated, "not
+  observed in N layouts" would not be proof, and an interpreter from 2007 with a heap fault
+  in a 60-line loop does not get the benefit of the doubt.
+- **CI, run `42889516346` (`c08d01d7`).** The step that picked an interpreter and ran the
+  gates failed with **exit code 1** in under a second. The annotation says so; the log is 403.
+  It was not 134, so nothing aborted under a selected bash >= 4. Exit 1 is what the step
+  printed for "no bash >= 4 on this runner", but it is also a gate violation, so that alone is
+  one bit short of proof.
+- **The provisioning is now its own step**, `Governance — AD-10 provide bash >= 4 (bug-log
+  #194)`. It installs Homebrew's bash when nothing qualifies, reports every candidate's version
+  and the outcome in a `::notice::` **annotation** (readable without the logs), and exits **3**
+  when it cannot provide one, distinct from a gate's 1 (violation) or 2 (wrong interpreter).
+  Replayed locally under the Actions shell in four cases: found, installed (stub `brew`), install
+  failed (exit 3 with an `::error::` annotation), and nothing provided to the gate step (exit 3).
+  The `#192` comment that still said the gate was pinned to the oldest interpreter is gone.
 
 ### `#195` — this file documents a Status schema that a third of its own entries do not follow
 

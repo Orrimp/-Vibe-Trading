@@ -356,86 +356,68 @@ jobs:
           bash scripts/check_no_secrets_in_llm_artifacts.sh --scan-spec --min-files 1300
           bash scripts/check_no_secrets_in_llm_artifacts.sh --self-test
 
-      # ── SPLIT AGAIN, 2026-11-10 (bug-log `#194`) ────────────────────────────
+      # ── AD-10 clocks + PIT joins need bash >= 4 (bug-log `#194`) ────────────
       #
-      # Run `42790539820` named this gate — which is exactly what the ten-step
-      # split was built to do, and the PIT gate I had found fragile and refused
-      # to blame came back GREEN, so declining that lead was right. But the step
-      # holds SIX commands across two interpreters, and all six pass locally in
-      # a pristine clone under bash 3.2 AND 5.3, so "this gate" is still not an
-      # answer. Split into three so the next run says WHICH invocation:
-      #   · the modern-bash gate (is the gate itself wrong?)
-      #   · the two `--version` probes (is it the pipes?)
-      #   · the bash-3.2 gate (is it my `#192` oldest-interpreter pin?)
-      # Re-merge once the answer is in; this granularity is a diagnostic, not a
-      # permanent shape.
-          # AD-10 — the visual baselines are byte-compared, so a clock or RNG call
-          # on the snapshot path makes them non-deterministic. Rebuilt 2026-11-10:
-          # it had been RED on two doc comments and one marker whose reason wrapped
-          # onto a second line, while nothing ran it but a hand-invoked skill.
-          # bug-log #192: `shell: bash` resolves to whatever bash is on PATH, and
-          # this leg is macOS, whose SYSTEM bash is 3.2.57 — where `set -u` plus
-          # `"${arr[@]}"` on an EMPTY array aborts with `unbound variable`. That is
-          # not hypothetical: the gate above did exactly that for its
-          # missing-watchlist path, so on 3.2 it reported a crash where it meant to
-          # report a diagnosis, and its own probe could not tell the two apart.
-          # Fixed with `${arr[@]+"${arr[@]}"}`, and pinned HERE by running the
-          # self-test under the OLDEST interpreter this matrix can hand it. Without
-          # this line, a 3.2-only regression is invisible whenever PATH happens to
-          # offer a newer bash. Costs ~0.3 s. Also prints the version, so the log
-          # says which bash ran everything else in this step.
-      # ── Pick a bash that WORKS, and say which (bug-log `#194`) ──────────────
-      #
-      # `shell: bash` resolves bash from PATH, and on `macos-latest` that may be
-      # Apple's `/bin/bash` **3.2.57** — under which both of these gates died
-      # with `exit code 134` (SIGABRT, no output). They now refuse legibly with
-      # **exit 2** instead, so this step's own exit code is the diagnosis: 2 means
-      # the interpreter, anything else means something I have not found yet.
-      #
-      # `#192` pinned the clock gate AGAINST 3.2 on purpose, to stop a 3.2-only
-      # regression returning. That inverted a cost — **pinning the oldest
-      # interpreter is only sound if the oldest interpreter works** — so the pin
-      # is replaced by a declared requirement plus an explicit modern bash.
-      # The selection FAILS LOUDLY when no bash >= 4 exists rather than skipping:
-      # a gate that quietly does not run is the whole subject of `#190`.
-      - name: "Governance — AD-10 clocks + PIT joins (bash >= 4)"
+      # MEASURED 2026-11-10: the clock gate's body aborts Apple's `/bin/bash`
+      # 3.2.57 with SIGABRT in 37 of 80 heap layouts, and Homebrew bash 5.3 in
+      # 0 of 80. It is a layout-dependent fault, which is why it passed in fresh
+      # clones and died here. Both gates therefore DECLARE bash >= 4 and exit 2
+      # under 3.2. Run `42889516346` then failed the single step that picked an
+      # interpreter AND ran the gates with exit 1 in under a second: consistent
+      # with this runner offering no bash >= 4, but a gate violation is exit 1
+      # too. So providing the interpreter is now its own step. It installs
+      # Homebrew's bash when nothing qualifies, and it reports what it found in a
+      # `::notice::` ANNOTATION, because annotations are readable without the
+      # logs (403 here). Exit 3 means "could not provide bash >= 4", distinct
+      # from a gate's 1 (violation) or 2 (wrong interpreter). This replaces the
+      # `#192` pin to the oldest interpreter: pinning the oldest one is only
+      # sound if the oldest one works.
+      - name: "Governance — AD-10 provide bash >= 4 (bug-log #194)"
         if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: |
-          # Report every candidate, so the log says what this runner actually has
-          # even when the choice is obvious.
-          echo "PATH bash: $(command -v bash || echo '<none>') -> $(bash --version | head -1)"
-          for cand in /opt/homebrew/bin/bash /usr/local/bin/bash /bin/bash; do
+          seen=""
+          for cand in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash || true)" /bin/bash; do
             [ -x "$cand" ] || continue
-            echo "candidate: $cand -> $("$cand" --version | head -1)"
+            case " $seen " in *" $cand="*) continue ;; esac
+            seen="$seen $cand=$("$cand" -c 'echo $BASH_VERSION' 2>/dev/null || echo '?')"
           done
-
-          BASH4=""
-          for cand in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash || true)"; do
-            [ -x "$cand" ] || continue
-            major="$("$cand" -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null || echo 0)"
-            if [ "${major:-0}" -ge 4 ]; then BASH4="$cand"; break; fi
-          done
-          if [ -z "$BASH4" ]; then
-            echo "FAIL  no bash >= 4 on this runner; these two gates cannot run." >&2
-            echo "      Declared requirement, not a skip (bug-log #194 / #190)." >&2
-            exit 1
+          pick() {
+            local cand major
+            for cand in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash || true)"; do
+              [ -x "$cand" ] || continue
+              major="$("$cand" -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null || echo 0)"
+              if [ "${major:-0}" -ge 4 ]; then echo "$cand"; return 0; fi
+            done
+            return 1
+          }
+          how="found"
+          if ! BASH4="$(pick)"; then
+            how="installed"
+            if ! HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_ENV_HINTS=1 brew install bash; then
+              echo "::error title=bug-log #194::no bash >= 4 on this runner (${seen# }) and brew install bash failed"
+              exit 3
+            fi
+            if ! BASH4="$(pick)"; then
+              echo "::error title=bug-log #194::brew install bash succeeded but no bash >= 4 is reachable (${seen# })"
+              exit 3
+            fi
           fi
-          echo "using: $BASH4 -> $("$BASH4" --version | head -1)"
+          echo "::notice title=bug-log #194 bash::${how} $BASH4 ($("$BASH4" -c 'echo $BASH_VERSION')); candidates before:${seen}"
+          echo "BASH4=$BASH4" >> "$GITHUB_ENV"
 
+      - name: "Governance — AD-10 clocks + PIT joins (bug-log #194)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          if [ -z "${BASH4:-}" ]; then
+            echo "::error title=bug-log #194::no bash >= 4 was provided (see the step above); these gates cannot run"
+            exit 3
+          fi
           "$BASH4" scripts/check_no_clocks_in_ui_tests.sh
           "$BASH4" scripts/check_no_clocks_in_ui_tests.sh --self-test
           "$BASH4" scripts/check_no_raw_asof_join.sh
           "$BASH4" scripts/check_no_raw_asof_join.sh --self-test
-
-      # Kept deliberately: its exit code is a second, independent read on which
-      # bash this runner offers, and it cost nothing when the gate step was red.
-      - name: "Governance — AD-10 which bash is which"
-        if: always() && matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          bash --version | head -1
-          /bin/bash --version | head -1
 
       - name: "Governance — operator ledger + backlog queue (bug-log #190)"
         if: always() && matrix.os == 'macos-latest'
