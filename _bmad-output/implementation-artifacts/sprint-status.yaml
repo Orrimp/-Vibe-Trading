@@ -180,7 +180,7 @@ development_status:
   2-60-visual-fail-html-reporter: done
   2-61-iced-ecosystem-evaluation: backlog
   2-62-cockpit-app-bundle: backlog
-  2-63-lab-recipe-test-harness-v0-3-extension: ready-for-dev  # 2026-07-27 analyst story drafted (PRD §13 Q2 = SCHEDULE)
+  2-63-lab-recipe-test-harness-v0-3-extension: in-progress  # 2026-11-10 dev started; AC1 inventory + wave plan in the story Dev Agent Record (PRD §13 Q2 = SCHEDULE)
   epic-2-retrospective: optional
 
   # -- Epic 3: Advisor MVP (F1-F9 + EUR-FX + dynamic data + PIT discipline)

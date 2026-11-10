@@ -3579,7 +3579,7 @@ arch        = ["_bmad-output/planning-artifacts/architecture/decisions/0048-lab-
 crates      = ["crates/ui", "crates/agent"]
 tests       = []
 anchors     = []
-state       = "scoped"   # analyst story 2-63 drafted 2026-07-27 (operator decision PRD §13 Q2 = SCHEDULE); ready-for-dev
+state       = "in-progress"   # 2026-11-10 dev started (story 2-63; inventory in its Dev Agent Record). Drafted 2026-07-27, operator decision PRD §13 Q2 = SCHEDULE
 
 [[req]]
 id          = "REQ-PWSD-FIDELITY-RELOCK-001"

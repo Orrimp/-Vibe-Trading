@@ -60,7 +60,7 @@ _(open / deferred items)_
   robustness gate cleared, awaiting an analyst spawn. **Still wanted** — re-confirmed in the
   v3 close-out (2026-07-09) as the one genuinely-open forward *build* item; it is infra, NOT
   required for product feature-completeness (see [`../../CHANGELOG.md`](../../CHANGELOG.md)
-  § Deferred). Tracked as story `2-63-lab-recipe-test-harness-v0-3-extension` (`backlog`).
+  § Deferred). Tracked as story `2-63-lab-recipe-test-harness-v0-3-extension` (`in-progress`: dev started 2026-11-10, the AC1 inventory and wave plan are in its Dev Agent Record).
 
 ### Gated on the parked v2 LLM strategy
 - **Lumen Phase 6 — right-rail Assistant slot** — reserved column-track in the shell grid;
