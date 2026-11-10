@@ -150,6 +150,16 @@ jobs:
           # gets pointer stubs and the checkpoint-anchor tests fail (first-CI
           # shakeout finding, run #2 2026-07-12).
           lfs: true
+          # bug-log #195: the bug-log gate resolves every commit a `fixed` row cites, and
+          # in a depth-1 clone nothing older than HEAD resolves. The gate refuses with
+          # exit 2 there rather than report a verdict that depends on the clone (#192),
+          # so the governance leg gets full history. No other gate reads history —
+          # checked: they use `diff --cached`, `check-ignore`, `ls-files` and
+          # `rev-parse HEAD`, all depth-independent — and Windows keeps depth 1.
+          # `'0'` is a STRING on purpose: in an Actions expression the NUMBER 0 is falsy,
+          # so `cond && 0 || 1` would evaluate to 1 on both legs. If that ever regresses,
+          # the gate's exit 2 says SHALLOW in the log instead of passing.
+          fetch-depth: ${{ matrix.os == 'macos-latest' && '0' || '1' }}
 
       # ── Canonical leg: repo governance gates (fail fast, before any compile) ──
       # The constitutional invariants — AD-2 anchors byte-immutability and the
@@ -438,6 +448,17 @@ jobs:
           python3 scripts/operator_ledger_check.py --self-test
           python3 scripts/queue_staleness_check.py
           python3 scripts/queue_staleness_check.py --self-test
+
+      - name: "Governance — bug-log Status schema (bug-log #195)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          # bug-log #195: the bug-log declares its own Status schema and nothing read it
+          # (36% of 139 entries had no Status line). Gated from `#189` — one declared
+          # number, not an exemption list; the PASS line counts the entries below it.
+          # Needs full history (see Checkout) because it resolves every cited commit.
+          python3 scripts/bug_log_schema_check.py
+          python3 scripts/bug_log_schema_check.py --self-test
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

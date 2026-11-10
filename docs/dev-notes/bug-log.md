@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-05-25
+updated: 2026-11-10
 ---
 
 # Bug log
@@ -24,8 +24,36 @@ ledger.
   - `partial-fix` — one or more sub-requirements shipped, others pending.
   - `open` — discovered but not yet fixed.
   - `wontfix` — investigated and explicitly closed without code change.
-- **Status anchor**: every row links the **landing commit hash(es)**
-  (and a feature folder when one exists).
+- **Status anchor**: every `fixed` / `partial-fix` row links the **landing
+  commit hash(es)**, in backticks, in its Status paragraph (and a feature
+  folder when one exists). An `open` or `wontfix` row has nothing landed to cite.
+- **Enforced from `#189`** (bug-log `#195`): `scripts/bug_log_schema_check.py`,
+  run by `.githooks/pre-commit` (`--staged`: what is being committed) and by the
+  CI step `Governance — bug-log Status schema (bug-log #195)`. From the first
+  `###` heading numbered `#189` or higher to the end of the file:
+  - every `###` heading is an entry, `` ### `#NN` — title `` (sub-sections are
+    `####`), and ids strictly increase — so an old id cannot be re-opened down
+    here; append a dated blockquote inside the original entry instead;
+  - an entry's first line is `**Status**: …`, and its value is the **first
+    word** after it: one of the values above, case-sensitive, never a
+    transition (`open` → `fixed`);
+  - a `fixed` / `partial-fix` Status paragraph cites at least one commit, every
+    commit it cites has landed (an ancestor of `HEAD`, or of `MERGE_HEAD` while
+    a merge is concluded), and it never says "this commit".
+  The values list and the number `#189` above are **parsed by the gate**: widen
+  the vocabulary here, and move the mark here and in the script together, or
+  the gate refuses. Entries before `#189` are not gated (`#195` option 3); the
+  PASS line says how many.
+- **A citation** is a backtick span that **starts** with 7-40 lowercase hex
+  characters (`` `1a2b3c4d` ``, `` `1a2b3c4d fix(x): y` ``). All-digit spans
+  are run ids and dates, never citations — about 1 in 40 eight-character short
+  hashes is all digits, so cite a longer prefix when that happens. To mention
+  other hex in a Status paragraph, label it inside the span (`` `body 9f8e7d6c` ``).
+- **A commit cannot cite itself.** Write the entry `open` (or `partial-fix`
+  citing an earlier commit) and flip it to `fixed` in a follow-up commit that
+  names the landing one. Do not `--amend` a commit that your own Status line
+  cites: the hook cannot see the amend, and the amended-away hash then fails the
+  next commit and CI.
 - **Append-only**: do not rewrite past rows; if a `fixed` bug regresses,
   open a new `#NN` and link to the prior row in its body.
 
@@ -9380,7 +9408,7 @@ English, not secrets.**
 ### `#194` — a thirty-command CI step is one bit of information, and the bit said "something"
 
 **Status**: **`partial-fix` 2026-11-10 — `ee767c87` (the ten-step split) + `8b5c5f6a` (the
-clock-gate step split three ways) + this commit (the `bash >= 4` requirement and the explicit
+clock-gate step split three ways) + `6ccad4c0` (the `bash >= 4` requirement and the explicit
 selection).** The failing gate is **identified** and the exit code **measured** (134, SIGABRT);
 the cause is **inferred and not yet proven**, and the guard added here is what will settle it in
 one read — which is exactly why this is `partial-fix` and not `fixed`. Anchor-impacting: **no**.

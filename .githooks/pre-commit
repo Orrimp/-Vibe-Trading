@@ -186,3 +186,39 @@ else
   python3 "$root/scripts/queue_staleness_check.py"
   python3 "$root/scripts/queue_staleness_check.py" --self-test
 fi
+
+# bug-log #195 (2026-11-10): the bug-log's own header declares a Status schema — four
+# values, and a landing commit on every fixed/partial-fix row — and nothing read it.
+# Measured over 139 entries: 36% had no Status line at all. Gated from `#189` only: ONE
+# declared number in the script, not an exemption list, and the PASS line counts what it
+# leaves out. It belongs HERE, not only in CI, because a Status line is cheapest to fix
+# before the commit exists. Measured: 0.55 s live + 1.0 s self-test.
+#
+# `--staged` reads the bug-log from the INDEX being committed, not the working tree
+# (2026-11-10 review, FP3/BYP-5/F3): an unstaged draft entry must not block an
+# unrelated commit, and a violation staged and then "fixed" only on disk must not pass.
+# This hook is handed git's own environment — under `git commit -a`, GIT_INDEX_FILE is an
+# ABSOLUTE path to the index.lock of the commit being made (measured, git 2.50.1) — so
+# the staged read keeps that variable on purpose, and every other git call the script
+# makes (above all the self-test's throwaway repos) scrubs GIT_*. Probes P11/P12g pin both,
+# and P14 re-runs the whole self-test under a hook's GIT_INDEX_FILE.
+#
+# The live check runs on EVERY commit (measured 1.2 s via uv). The self-test runs only when
+# this commit touches the gate or this hook, and says so when it does not: it costs 12.7 s
+# (measured — P14 runs it twice), it protects the gate's CODE, which only changes when the
+# script does, and CI runs it on every push. Same split as `check_no_raw_asof_join.sh`
+# above: what is fixable after the fact does not earn a dozen seconds on every commit.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/bug_log_schema_check.py" --staged
+else
+  python3 "$root/scripts/bug_log_schema_check.py" --staged
+fi
+if git diff --cached --name-only -- scripts/bug_log_schema_check.py .githooks/pre-commit | grep -q .; then
+  if command -v uv >/dev/null 2>&1; then
+    uv run --quiet "$root/scripts/bug_log_schema_check.py" --self-test
+  else
+    python3 "$root/scripts/bug_log_schema_check.py" --self-test
+  fi
+else
+  echo "bug-log schema self-test: not run (the gate and this hook are unchanged in this commit; CI runs it on every push)"
+fi
