@@ -868,7 +868,7 @@ So an operator who sets the documented flag gets **silence**: the config parses,
 **Moral**: closing a fork does not close a *family*. After unifying two paths onto one seam, enumerate every OTHER exit from the same state — here, forced liquidation was a third exit that neither unified path used. The caller census that proved `try_open_short`/`try_cover_short` are now production-dead is exactly what surfaced the sibling that isn't.
 
 ### `#91` — `spawn_lab_run`'s non-`live` arm reports a **successful run that did nothing**, where both its siblings return `Err` — written for a build configuration that lasted one day
-**Status**: OPEN, **LOW** severity (found by the cfg audit as NEW-B; reachability resolved by the orchestrator 2026-08-15). Anchor-impacting: **no**. Recorded with a deliberate **downgrade** — see "What is NOT true."
+**Status**: **`fixed` 2026-08-22 — `eb353b55`; recorded here 2026-11-10.** LOW severity (found by the cfg audit as NEW-B; reachability resolved by the orchestrator 2026-08-15). Anchor-impacting: **no**. Recorded with a deliberate **downgrade** — see "What is NOT true." *(Was: "OPEN, LOW severity" — stale for 80 days, for the same reason as #92: the fix landed and no artifact said so.)*
 
 `crates/ui/src/lab/runner.rs:1274-1291`, the `cfg(not(feature = "live"))` arm, returns
 `Message::LabRunCompleted(**Ok**(RunSummary{ equity_series: [], fills: [], kpis: default, report_path: None }))` — the exact wire shape of a real run that produced nothing. Its two siblings answer the same case the opposite way:
@@ -891,8 +891,27 @@ Two of three bail; one returns a plausible value. That is the discriminator this
 
 **Moral**: an unreachable branch is not automatically harmless, and it is not automatically a defect either. What makes this one worth logging is that its **comment out-lived its build**. Date the rationale, not just the code: `git log -L` on the explaining comment versus the commit that changed the world it described turns "this looks odd" into "this expired on a known day."
 
+
+> **CLOSED 2026-11-10 — fixed on 2026-08-22 by `eb353b55`, the same commit that fixed #92.** This
+> entry's own text explains why it could not be verified earlier: *"nothing compiles it"* — the fix
+> was ready on 2026-08-15 and the only configuration that exercises the arm was the
+> `--no-default-features` build that #92 had broken. Fixing #92 is what made #91 verifiable, which
+> is what that commit's subject means by *"the fix it was blocking finally lands"*.
+>
+> The arm now takes the Err path its two siblings always took:
+> `crates/ui/src/lab/runner.rs:1295-1296` returns
+> `Message::LabRunCompleted(Err(SmolStr::new(crate::strings::LAB_RUN_NEEDS_LIVE)))`, with
+> `LAB_RUN_NEEDS_LIVE` registered in the strings self-test alongside `LEADERBOARD_RUN_NEEDS_LIVE`
+> and the training string (`crates/ui/src/strings.rs:1583`, `:2947`). The source even carries the
+> history at `runner.rs:1274` — *"This arm used to return
+> `Message::LabRunCompleted(Ok(RunSummary{ empty }))`"*. Verified at HEAD on 2026-11-10 by reading
+> the arm, not by re-reading this entry.
+>
+> The **moral above stands and is the reason this row was worth keeping**: a comment that outlived
+> its build. The row itself then did the same thing for 80 days.
+
 ### `#92` — the `--no-default-features` build that `Cargo.toml` documents as supported does not compile, and nothing has ever built it
-**Status**: **OPEN — manifest honesty applied 2026-08-15; the three-way resolution is still the operator's.** (Found while attempting to compile-verify #91's fix.) Anchor-impacting: **no**. **Blocks #91.**
+**Status**: **`fixed` 2026-08-22 — `eb353b55` (+ ADR-0090); recorded here 2026-11-10.** (Found while attempting to compile-verify #91's fix.) Anchor-impacting: **no**. **Unblocked #91, fixed in the same commit.** *(Was: "OPEN — manifest honesty applied 2026-08-15; the three-way resolution is still the operator's" — stale for 80 days; see the closing block at the end of this entry.)*
 
 > **Interim applied.** `crates/ui/Cargo.toml`'s comment previously advertised `--no-default-features` as a supported opt-out. It now says the opposite in as many words: the configuration does not build, names the three offending files, records that nothing in CI/scripts/skills/README/runbooks builds it, and states that no shipping target needs it (`ui-gallery` and `cockpit` both build with defaults on). Zero risk — a comment; `cargo metadata` verified still clean.
 
@@ -919,6 +938,49 @@ Two of three bail; one returns a plausible value. That is the discriminator this
 3. **Fix it, then add a CI leg that builds it**, so the configuration cannot rot again. Only option 3 actually closes the family — 1 and 2 both leave "declared vs executed" unchecked, they just change which side is true.
 
 **Moral**: a feature-flag combination that nothing builds is untested code with a manifest comment promising otherwise. Feature *combinatorics* are a reachability surface in their own right — the audit that found #81 asked "is this feature on?" for single features; this is the question one level up, and `--no-default-features` is where it bites, because it is the one flag that turns things **off** that everything else assumes on.
+
+
+> **CLOSED 2026-11-10 — fixed on 2026-08-22, recorded 80 days late.** Appended rather than
+> rewritten, per this file's append-only rule; only the Status token above moved.
+>
+> **The landing commit is `eb353b55`** (2026-08-22, *"fix(#92,#91): the documented minimal build
+> compiles again — and the fix it was blocking finally lands"*). The operator had ruled resolution
+> **3** — *fix the gating AND add a CI leg* — on the same day (see this file's Changelog, "#92
+> RULED"), and the commit did both in one diff: the activity + halt **wire types** moved to
+> `trading_core` while the producer machinery (`ActivitySender`, `ActivityHandle`, the tokio
+> broadcast) deliberately stayed in `agent` (**ADR-0090**, accepted and Registry-rowed the same
+> day, so AD-18 was satisfied); `crates/core/src/activity.rs` (+107) and `crates/core/src/halt.rs`
+> (+38) are new in that diff, and all three accused imports were repointed at the exact line
+> numbers this entry cites. The commit measured `exit 0 (was 101)`. The CI step
+> `Check ui minimal build (--no-default-features)` was added by the same commit.
+>
+> **Why it sat open for 80 days.** The fixing commit never touched `crates/ui/Cargo.toml`, so the
+> ⚠️ block warning that the build *"DOES NOT BUILD TODAY ... it is unfixed ... do not present this
+> as a supported build"* outlived the defect — and by 2026-11-08 the manifest contradicted
+> **itself**, because the `live-fx` comment ~70 lines below treats the same command as a live
+> compiling constraint it was designed around. Nor did this ledger close: the Changelog records the
+> **ruling** and never the landing, and the strings `eb353b5` and `ADR-0090` appeared nowhere in
+> this file. A bug whose fix is recorded in a commit message, an ADR, and a CI step, but in none of
+> the three places a reader looks, is a bug that stays open on paper.
+>
+> **Re-verified 2026-11-10 five independent ways**, because a 10-week-old claim deserves more than
+> one: (1) **measured on this tree** — `Finished dev profile ... in 3m 49s`, 0 `error` lines,
+> 0 × `E0432`, with `Checking ui v0.1.0` present as the non-vacuity check that the subject itself
+> compiled; (2) **green on `macos-latest` in CI**, run `42762269706` step 8 — the first green
+> execution on the leg that has owned the step since the 2026-11-09 narrowing, every earlier one
+> being on the deleted ubuntu leg; (3) **source-level** — all three files now import
+> `trading_core`, and an exhaustive sweep finds no un-gated `agent` path left in the `ui` lib;
+> (4) **cargo's own fingerprints** — `lib-ui.json` records `features = ["fixtures"]` and nothing
+> else, `bin-cockpit_live` is absent exactly as `required-features = ["live"]` predicts, and the
+> unit's depfile contains all three accused files while `grep -c 'crates/agent'` over it returns
+> **0**, so the pass is vacuous neither by module exclusion nor by feature leak; (5) **by
+> chronology** — the one candidate for a silent workaround, the non-optional
+> `[dev-dependencies] agent`, was already present in the tree that measured `exit 101`, so it
+> cannot be what makes the build pass.
+>
+> **Still unmeasured, and deliberately not claimed:** whether the **bare**
+> `cargo check -p ui --no-default-features` (without `--features fixtures`) compiles. ADR-0030's
+> "Enforced by" names that exact form and nothing runs it — filed as `#191`.
 
 ### `#68-src` — the drift axis is INERT: `drift_rebalance_threshold` is parsed, range-validated, copied into a struct field, and never read
 **Status**: source-confirmed 2026-08-17 (story 1-25 AC3 work, orchestrator). This is the source confirmation for the `#68` drift-axis item the 1-16 review routed into 1-25. Anchor-impacting: **the fix would be** — the axis currently is not.
@@ -1397,6 +1459,8 @@ self-diagnosing.
 
 ## Changelog
 
+- 2026-11-10 (orchestrator): **#92 and #91 CLOSED — both fixed on 2026-08-22 by `eb353b55`, recorded 80 days late.** The ledger had the *ruling* and never the *landing*: `eb353b5` and `ADR-0090` appeared nowhere in this file, and `crates/ui/Cargo.toml` still carried the ⚠️ block saying the minimal build *"DOES NOT BUILD TODAY ... do not present this as a supported build"* while the same manifest, 70 lines below, relied on that command compiling as a design constraint. Re-verified five ways before flipping either Status: measured on this tree (`Finished ... 3m 49s`, 0 errors, 0 × E0432, `Checking ui v0.1.0` present as the non-vacuity check), green on `macos-latest` CI run `42762269706` step 8 (the first green on the leg that has owned the step since the 2026-11-09 narrowing), source-level (all three imports repointed to `trading_core`, no un-gated `agent` path left in the `ui` lib), cargo's own fingerprints (`features = ["fixtures"]` only, `bin-cockpit_live` absent, `crates/agent` absent from the unit's depfile), and by chronology (the non-optional dev-dep was already present in the tree that measured `exit 101`). Corrected in the same pass: the Cargo.toml block, `ci.yml`'s "(ADR pending)" (it is ADR-0090, accepted the day that was written), and ADR-0101's stale `ci.yml:199` pointer.
+- 2026-11-10 (orchestrator): **#191 added (OPEN, LOW)** — ADR-0030's "Enforced by" names `cargo check -p ui --no-default-features` and **nothing in the repository runs that exact command**. For that ADR's stated purpose the gate is nonetheless real (`fixtures = []` adds no dependency edges, so the `--features fixtures` form CI does run resolves the identical graph); what is unmeasured is whether the bare form **compiles**, since `fixtures` off removes `#[cfg(feature = "fixtures")]` items while `lib.rs` declares `pub mod fixtures;` unconditionally. The `#190` shape, one feature-set over.
 - 2026-08-29 (orchestrator): **#99 added (OPEN, product-side)** — the audit aggregator DISCARDS the final window's count when the tick bus closes: `run_aggregator_loop` breaks on `Closed` and drops the handle without flushing `agg.counter`, so every event since the last 100 ms boundary vanishes from the activity tape. Found by making the storm test's accounting exact: a clean run now reconciles at **5000/5000 (100 %)**, while a run whose close lands mid-window reads **3653/5000 (73 %)** — the gap is precisely the un-flushed window. It matters beyond the test: the tape is an operator-facing honesty surface, and runs normally end mid-window, so the reported write count is systematically low at the tail with nothing reconciling it against the ledger. The fix is ~3 lines before `drop(agg.handle)` but changes product behaviour (an extra shutdown `Tick`), and the same-day ruling deliberately chose test-side over product-side on the sibling question — so it is recorded for its own decision rather than folded in.
 - 2026-08-29 (orchestrator): **storm test accounting FIXED per the operator ruling.** `TOTAL_EVENTS` 10 000 -> 5 000 (below the aggregator's `K2_THRESHOLD` of 9 999, so the Start label stays parseable), and coverage now sums the Start-label count with the Tick counts — the first non-empty window emits NO Tick by design, so its events were previously invisible to the 90 % bar. Also removed the last scheduling assumption: `tick_count >= 1` required the burst to span two windows by luck (it does not, under load, 4 of 8 runs) and is replaced by `start_count >= 1` plus the accounting bar. Result: 9/10 under 42 CPU burners vs 2/5 FAILING unloaded at HEAD. Chunking the sends across windows was tried and REVERTED — it measured worse (65 %), because more windows means more chances to lose a partial one to #99.
 - 2026-08-29 (orchestrator): **#98 added (OPEN — needs an R13.3 ruling).** `t815_perf_smoke_90d_under_10s_and_under_256mib` measures **54.3 MiB on macOS and 269.6 MiB on ubuntu** for the same workload — a 5x gap, so the 256 MiB budget passes with 4.7x headroom on the calibration box and fails by 5 % in CI. The unit handling was checked FIRST and is correct (`cfg(target_os)`: bytes on macOS, KB x 1024 on Linux), and the binary holds a single test so `RUSAGE_SELF` is not polluted. The defect is not the number: a declared requirement is being enforced by an instrument that is not comparable across the platforms it now runs on, calibrated on the one that reads lowest. Options are a platform-aware budget, a comparable metric (instrumented allocator), or scoping R13.3 to the canonical box — explicitly NOT raising 256 to 300, which would fit a declared requirement to the noisiest platform (#77's failure in performance clothing). Visible only now: the ubuntu leg previously died earlier, and logs need repo admin.
@@ -8946,3 +9010,61 @@ something else; this found five named in CLAUDE.md, in `AGENT.md`'s capability t
 `claims-ledger` row that maps AD-18 to this exact script — all of them citations, none of them an
 invocation. The sequence stands: `#187` the rule, `#188` the scope, `#189` the subject, **`#190`
 the wiring.** A gate that nothing runs is not a weak gate; it is a document.
+
+### `#191` — an accepted ADR's "Enforced by" names a command nothing in the repository runs
+
+**Status**: **`open`, LOW** — found 2026-11-10 by the orchestrator while closing `#92`.
+Anchor-impacting: **no**. The enforcement claim is substantively TRUE; the command name is wrong
+and one real question behind it is unmeasured.
+
+`_bmad-output/planning-artifacts/architecture/decisions/0030-cockpit-in-process-backtest.md:132`
+lists, under **Enforced by:**
+
+> `cargo check -p ui --no-default-features` — ensures the `ui` crate does not gain a transitive
+> dependency on `strategy/exec/models/llm`.
+
+**Nothing runs that exact command** — not `.github/workflows/ci.yml`, not `.githooks/*`, not
+`scripts/*`, not the `rust-build`/`rust-validate` skills. What CI runs, at `ci.yml:404`, is the
+`--features fixtures` variant.
+
+#### Why this is LOW and not another `#190`
+
+For ADR-0030's **stated purpose** the two commands are equivalent, and the enforcement is real:
+`fixtures = []` (`crates/ui/Cargo.toml:310`) adds no dependency edges, so
+`--no-default-features --features fixtures` resolves the **identical dependency graph** as the bare
+form. A dependency-direction gate cannot tell them apart. So unlike `#190`'s five gates — which
+were cited and never invoked — this one has a live invocation under a different name. The fix is to
+the citation, applied in the same pass.
+
+#### The part that is genuinely unmeasured
+
+Whether the **bare** `cargo check -p ui --no-default-features` **compiles** at all. Turning
+`fixtures` off removes every `#[cfg(feature = "fixtures")]` item while `crates/ui/src/lib.rs`
+declares `pub mod fixtures;` **unconditionally** — the same unconditional-declaration shape that
+`#92` was made of, and the reason the ADR-0102 note about the dropped xvfb step could say
+`--features fixtures` gated only the `[[bin]]` targets. So it is a real question with a real
+precedent, and it is **not** answered by the green CI step.
+
+It was not measured here on purpose. The dev box is at **97% disk (15 GiB free)** and the `#92`
+re-measurement had just cost ~4 GiB; a third feature-set's artifacts are not worth spending that on
+to grade the severity of a finding that is already actionable. ADR-0030 makes no claim about
+compilability, so nothing currently published depends on the answer.
+
+#### Resolutions
+
+1. **Correct the citation only** (done 2026-11-10) — ADR-0030 now names the command that runs, and
+   says why the substitution is sound for its purpose.
+2. **Measure the bare form**, then either wire it as a second CI step or record it as unsupported
+   the way `#92` taught: in the manifest, at the definition, with a date.
+3. **Delete the bare form as a concept** — if no target ever needs `fixtures` off, say so once
+   rather than leaving a form nobody builds.
+
+Resolution 1 is applied. 2 and 3 are a scoping call, and the honest reason to leave them open is
+the disk, not the difficulty.
+
+#### Moral
+
+**`#190` asked what invokes a gate; this asks whether the thing invoked is the thing named.** An
+"Enforced by" line is a citation, and a citation that no longer resolves is the same defect as a
+dead link — which is what `#188` was about, one artifact class over. The sequence now reads:
+`#187` the rule, `#188` the scope, `#189` the subject, `#190` the wiring, **`#191` the citation**.

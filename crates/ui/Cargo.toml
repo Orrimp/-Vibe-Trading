@@ -262,23 +262,36 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Finance parquet cache reader for the Lab Source toggle). This means
 # `cargo run -p ui --bin cockpit_live` Just Works without `--features` flags.
 #
-# ⚠️ `--no-default-features` DOES NOT BUILD TODAY (bug-log #92, measured
-# 2026-08-15). `cargo check -p ui --no-default-features --features fixtures`
-# fails with 3 E0432 errors: `agent` is a `live`-only dependency, but
-# `src/state.rs`, `src/lab/activity.rs` and `src/widgets/activity_tape.rs`
-# import it unconditionally. The real surface is small — the activity types
-# plus `HaltReason`; most of state.rs's `agent::` mentions are doc comments —
-# but it is unfixed, and nothing in CI, scripts, skills, README or the runbooks
-# builds this configuration, which is why it rotted unnoticed (most likely at
-# the 2026-05-25 promotion below, after which every routine build carried
-# `agent`).
+# `--no-default-features --features fixtures` IS A SUPPORTED, CI-GATED BUILD.
+# Gated by `.github/workflows/ci.yml`'s "Check ui minimal build
+# (--no-default-features)" step on the canonical (macOS) leg — the only
+# automation in the repo that builds this configuration.
 #
-# This comment previously advertised the opt-out as supported. It is not.
-# `ui-gallery` and `cockpit` both build fine with defaults on, so no shipping
-# target needs it. Three resolutions are open (see #92): delete the option,
-# fix the cfg gating, or fix it AND add a CI leg — only the last actually stops
-# it rotting again. Until one is chosen, do not present this as a supported
-# build.
+# HISTORY, because the rot is the point. This block said the opposite — "⚠️
+# DOES NOT BUILD TODAY ... it is unfixed ... do not present this as a supported
+# build" — for 80 days after it stopped being true. That was accurate when
+# written on 2026-08-15 (bug-log `#92`: three E0432 errors, because
+# `src/state.rs`, `src/lab/activity.rs` and `src/widgets/activity_tape.rs`
+# imported the `live`-only `agent` crate unconditionally, and nothing built the
+# configuration, so it rotted from the 2026-05-25 promotion of `live` to a
+# default). The operator ruled resolution 3 — fix the gating AND add a CI leg —
+# and `eb353b55` (2026-08-22) did both in one commit: the activity + halt WIRE
+# TYPES moved to `trading_core` while the producer machinery stayed in `agent`
+# (**ADR-0090**), and the CI step was added in the same diff. The commit
+# measured `exit 0 (was 101)`.
+#
+# The fixing commit never touched this file, so the warning outlived the defect
+# by 80 days — and by 2026-11-08 the manifest contradicted ITSELF, since the
+# `live-fx` comment ~70 lines below treats this same command as a live
+# compiling constraint it was designed around. Re-measured 2026-11-10 on this
+# tree: `Finished dev profile ... in 3m 49s`, 0 errors, 0 × E0432, with
+# `Checking ui v0.1.0` in the log as proof the subject itself compiled; and
+# green on `macos-latest` in CI run `42762269706` (bug-log `#189`/`#190` sweep).
+#
+# Still true from the old block, and worth keeping: no SHIPPING target needs the
+# opt-out — `ui-gallery` and `cockpit` both build with defaults on. The
+# configuration is gated because a documented capability that nothing exercises
+# is how `#92` happened, not because a binary depends on it.
 #
 # 2026-05-25: promoted from explicit-opt-in to default per operator request.
 # 2026-06-13 (simple-strategies-realdata T-B5): `binance` added to default so

@@ -129,8 +129,21 @@ memo.
 - `cargo test -p backtest` — existing 11 body-SHA-256 anchor checks
   fail if the standalone bin's report bytes drift. The refactored
   bin **must** produce identical bytes; this is a hard gate.
-- `cargo check -p ui --no-default-features` — ensures the `ui` crate
-  does not gain a transitive dependency on `strategy/exec/models/llm`.
+- `cargo check -p ui --no-default-features --features fixtures` — ensures the
+  `ui` crate does not gain a transitive dependency on
+  `strategy/exec/models/llm`.
+  *(Corrected 2026-11-10, bug-log `#191`.* This line named the **bare**
+  `--no-default-features` form, and **nothing in the repository runs that
+  exact command** — not CI, not the hooks, not the skills. What CI does run,
+  at `.github/workflows/ci.yml:404`, is the `--features fixtures` variant.
+  For THIS ADR's stated purpose the two are equivalent and the enforcement is
+  real: `fixtures = []` (`crates/ui/Cargo.toml:310`) adds no dependency edges,
+  so both forms resolve the identical dependency graph. The correction is to
+  the command NAME, not to the claim. What remains genuinely unmeasured is
+  whether the bare form **compiles** — `fixtures` being off removes
+  `#[cfg(feature = "fixtures")]` items while `lib.rs` declares `pub mod
+  fixtures;` unconditionally — but that is a compilability question this ADR
+  never made a claim about.)*
   The `backtest` crate already encapsulates those edges; `ui`
   depends only on `backtest` (newly added under
   `ui/Cargo.toml [dependencies] backtest = { path = "../backtest" }`),

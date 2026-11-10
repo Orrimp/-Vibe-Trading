@@ -387,7 +387,11 @@ jobs:
       # 2026-08-22 it failed with three E0432 errors, because `state.rs`,
       # `lab/activity.rs` and `widgets/activity_tape.rs` imported the `live`-only
       # `agent` crate unconditionally. Fixed by relocating the wire types to
-      # `trading_core` (ADR pending); THIS STEP is what stops it happening again.
+      # `trading_core` — **ADR-0090**, accepted 2026-08-22 with its Registry row
+      # in the same commit, so the "(ADR pending)" this line used to say was
+      # discharged the day it was written. THIS STEP is what stops it happening
+      # again, and on 2026-11-10 it went green on macOS for the first time since
+      # the leg moved (run `42762269706`, step 8).
       #
       # Cheap by design — `cargo check`, one leg, no tests. The point is coverage
       # of a build configuration, not of behaviour. A documented capability that

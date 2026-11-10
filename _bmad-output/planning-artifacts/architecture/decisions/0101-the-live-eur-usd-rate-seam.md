@@ -44,7 +44,7 @@ already exists and is optional (`crates/ui/Cargo.toml:82`, pulled in by `yahoo` 
 
 **D2 — The ui side is gated by a feature of its own, `live-fx = ["dep:data"]`, in `default`.**
 `dep:data` creates no implicit `data` feature, so the live path needs a real `cfg` to hide
-behind, and CI's `cargo check -p ui --no-default-features --features fixtures` (ci.yml:199)
+behind, and CI's `cargo check -p ui --no-default-features --features fixtures` (ci.yml:404)
 must keep compiling. Gating on `yahoo` or `binance` would tie the rate to whichever data
 source happens to be on. With `live-fx` off, the static path is the whole path, which is the
 same state the binary shipped in before this story.
