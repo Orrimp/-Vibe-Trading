@@ -53,6 +53,7 @@ System Python (3.11+) also works:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -1220,7 +1221,59 @@ def _self_test_root_markdown_scanned() -> bool:
     return ok_flagged and ok_missed and ok_live_silent
 
 
+def _scrub_git_env() -> None:
+    """Remove every `GIT_*` variable from `os.environ` (self-test use only).
+
+    A pre-commit hook is handed git's own environment, and under `git commit -a`
+    (or `commit <paths>`) GIT_INDEX_FILE is an ABSOLUTE path to the index.lock of
+    the commit being made — measured 2026-11-10, git 2.50.1. Inherited by the
+    gitignore probe's fixture, `git add -f` wrote `.gitignore`, `pattern/doc.md`
+    and `tracked/doc.md` into that index, the fixture commit then failed, and the
+    probe reported "git unusable": wrong repository, wrong diagnosis (measured, bug-log
+    `#195`). The LIVE `drop_gitignored(REPO_ROOT)` path deliberately keeps the
+    variable: inside a hook, the index being committed is the right one to ask.
+    """
+    for key in [k for k in os.environ if k.startswith("GIT_")]:
+        del os.environ[key]
+
+
 def _self_test_gitignored_not_walked() -> bool:
+    """Run the probe under the environment a pre-commit hook is handed.
+
+    The probe is a real victim index aimed at by GIT_INDEX_FILE; the subject is
+    `_scrub_git_env()`. Remove the scrub and the victim is written, which the probe
+    reports as its own check rather than as a fixture failure.
+    """
+    import tempfile
+
+    clean = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    with tempfile.TemporaryDirectory() as vd:
+        victim = Path(vd).resolve()
+        try:
+            subprocess.run(["git", "init", "-q", str(victim)], env=clean,
+                           capture_output=True, check=True)
+            (victim / "victim.txt").write_text("v", encoding="utf-8")
+            subprocess.run(["git", "-C", str(victim), "add", "victim.txt"], env=clean,
+                           capture_output=True, check=True)
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(
+                "spec-lint --self-test (gitignored-not-walked): "
+                f"FAIL — victim index could not be built, git unusable ({exc})"
+            )
+            return False
+        sentinel = victim / ".git" / "index"
+        before = sentinel.read_bytes()
+        saved = dict(os.environ)
+        try:
+            os.environ["GIT_INDEX_FILE"] = str(sentinel)  # the probe: what a hook is handed
+            _scrub_git_env()  # the subject
+            return _gitignored_not_walked_probe(sentinel, before)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+
+def _gitignored_not_walked_probe(sentinel: Path, sentinel_before: bytes) -> bool:
     """Two-sided probe for the gitignore filter (bug-log `#189`).
 
     The dimension under test is IGNORED-ness and nothing else: two sibling
@@ -1291,9 +1344,11 @@ def _self_test_gitignored_not_walked() -> bool:
                 "commit", "-qm", "init",
             )
         except (OSError, subprocess.CalledProcessError) as exc:
+            written = sentinel.read_bytes() != sentinel_before
             print(
                 "spec-lint --self-test (gitignored-not-walked): "
-                f"FAIL — fixture could not be built, git unusable ({exc})"
+                f"FAIL — fixture could not be built ({exc}); the hook's index was "
+                + ("WRITTEN — the GIT_* scrub is not working" if written else "untouched")
             )
             return False
 
@@ -1318,12 +1373,14 @@ def _self_test_gitignored_not_walked() -> bool:
             any(c.as_posix().endswith("local/doc.md") for c in candidates)
             and not any(k.as_posix().endswith("local/doc.md") for k in kept)
         )
+    ok_hook_index_untouched = sentinel.read_bytes() == sentinel_before
     checks = [
         ("ignored subtree silent", ok_ignored_silent),
         ("tracked sibling flagged", ok_tracked_flagged),
         ("untracked-but-not-ignored flagged", ok_untracked_flagged),
         ("tracked file beats its ignore pattern", ok_pattern_tracked_flagged),
         ("filter is what dropped it", ok_filter_bites),
+        ("hook's GIT_INDEX_FILE never written", ok_hook_index_untouched),
     ]
     ok = all(passed for _, passed in checks)
     detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
