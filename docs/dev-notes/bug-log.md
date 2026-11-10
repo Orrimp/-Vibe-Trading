@@ -9293,3 +9293,79 @@ anything. The sequence: `#187` rule · `#188` scope · `#189` subject · `#190` 
 
 And the regex lesson is older than all of them: **an unanchored pattern over prose finds
 English, not secrets.**
+
+### `#194` — a thirty-command CI step is one bit of information, and the bit said "something"
+
+**Status**: **`partial-fix` 2026-11-10** — the diagnosability is fixed; **the cause of the red
+run is still unknown and this entry does not claim otherwise.** Anchor-impacting: **no**.
+
+**Found** by reading run `42772994148`, the first on the `ci.yml` rewritten by `#189`–`#193`.
+`macos-latest` concluded **failure** at step 4, *Governance gates (anchors + spec-lint)*.
+`windows-latest` passed. `Pin Python` (step 3) passed, so the interpreter was not it.
+
+#### The diagnostic trap
+
+That step held **thirty commands** under `set -eo pipefail`. Two consequences, and both bit:
+
+1. **I cannot read which one failed.** GitHub's log API answers **HTTP 403** without a
+   credential and this box has none (60 requests/hour by IP). The one signal that works
+   unauthenticated is `gh run view <id> --json jobs`, which carries per-**step** conclusions —
+   so a thirty-command step carries exactly **one bit**, and the bit said "something".
+2. **`set -e` stops at the first failure**, so even with logs a single run could only ever
+   teach me about one gate. Nine verdicts were discarded on every red run.
+
+#### Fix — ten steps, each `always()`
+
+The block is now one step per gate, named for it, each `if: always() && matrix.os ==
+'macos-latest'`. Every gate names itself in `--json jobs`, and one red gate no longer hides
+the nine behind it: the next red run reports **every** failing gate in one read instead of
+the first. Commands, order and leg are unchanged — all thirty replayed in the working tree
+**and** in a pristine short-path clone at HEAD, 0 failures both times.
+
+#### What I found while hunting, and what it does NOT prove
+
+`check_no_raw_asof_join.sh` — wired into CI by `#190` — is **unreliable under bash 3.2**,
+which is what `macos-latest` ships as `/bin/bash`. Measured, 8 runs per cell:
+
+| tree | bash | result |
+|---|---|---|
+| pristine clone, **130**-char path | 3.2.57 | **SIGABRT, rc 134, no output** — 8/8 |
+| same tree copied to a **35**-char path | 3.2.57 | rc 0, but the count prints **EMPTY** (`scanned  production src files`) — 5/5 |
+| either path | 5.3.20 | rc 0, `scanned 413 production src files` — 8/8 |
+| this working tree | 3.2.57 | rc 0, `scanned 413` — 8/8 |
+
+So: a real bash-3.2 defect with **two** faces — an abort that depends on path length, and a
+count that silently empties. Under `bash -x` the aborting case *passes*, which is why it read
+as flaky before it was counted.
+
+**And it is almost certainly NOT the cause of the red run.** The abort needs a long path;
+CI's workspace is `/Users/runner/work/<repo>/<repo>`, which is short. The short-path face
+exits **0**. I found a genuine defect and no causal link, and the difference matters: acting
+on a lead because it is the only one in hand is how `#114` aimed four months of readers at
+the wrong answer. The entry records both halves rather than the convenient one.
+
+Also recorded: the count was empty under bash 3.2 and I had *already run this gate under
+`/bin/bash`* earlier the same day — and missed it, because I checked the exit code and the
+last line's **prefix**, not the number inside it. A printed count only helps if somebody
+reads the digits.
+
+#### Three harness bugs of my own during the diagnosis, all caught before they misled me
+
+- **zsh does not word-split unquoted expansions.** My "run every Python gate under 3.12" loop
+  passed `scripts/x.py --self-test` as ONE argument, so uv reported *"Failed to spawn"* for
+  all ten self-tests and I briefly had ten "failures" that never ran. Re-run through `eval`:
+  **0 failures**, so Python 3.12 is innocent.
+- **My step-boundary scan over-reached**, swallowing the `components: clippy` comment block
+  that belongs to `Install Rust stable`. My own assert fired before anything was written —
+  the only reason that is a comment in the generator and not a bug in the workflow.
+- **A colon-space inside an unquoted YAML scalar is a mapping.** `- name: Governance: …`
+  produced *"mapping values are not allowed here"*. Names are quoted now, and the file is
+  re-parsed with a real parser after every edit.
+
+#### Moral
+
+**Granularity is a diagnostic property, and it is set by what you can READ, not by what you
+can log.** The right size for a CI step is "small enough that its name is the diagnosis" —
+and when the log API is closed to you, that is the *only* size that works. `#187` rule ·
+`#188` scope · `#189` subject · `#190` wiring · `#191` citation · `#192` environment ·
+`#193` coverage · **`#194` granularity.**

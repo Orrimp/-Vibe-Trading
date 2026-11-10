@@ -188,8 +188,26 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Governance gates (anchors + spec-lint)
-        if: matrix.os == 'macos-latest'
+      # ── SPLIT INTO ONE STEP PER GATE, 2026-11-10 (bug-log `#194`) ───────────
+      #
+      # These thirty commands were ONE step. On run `42772994148` that step went
+      # red and the dev box could not find out which command did it: GitHub's
+      # log API answers **HTTP 403** without a credential, and this repository
+      # has none (60 requests/hour by IP). The one signal that works unauthenticated
+      # is `gh run view <id> --json jobs`, which carries per-STEP conclusions — so
+      # a 30-command step is exactly one bit of information, and the bit said
+      # "something".
+      #
+      # Split, each gate names itself in `--json jobs`. And every step carries
+      # `always()`, so one red gate no longer hides the verdicts of the nine
+      # behind it: before this, `set -e` stopped at the first failure and a single
+      # run could only ever teach you about one gate.
+      #
+      # Cost: ten step boundaries instead of one, a second or two in total. The
+      # commands, their order and their leg are unchanged — verified by replaying
+      # all thirty locally and in a pristine clone before and after this split.
+      - name: "Governance — AD-2 anchors + the ADR-0082 triad lint"
+        if: always() && matrix.os == 'macos-latest'
         # `shell: bash` is LOAD-BEARING, not style (bug-log #84, 2026-08-15).
         # GitHub's default `run:` shell is `bash -e {0}` — WITHOUT `pipefail` — so
         # `verify_anchors.sh | tail -1` exited with *tail's* status (always 0) and
@@ -209,12 +227,22 @@ jobs:
           bash scripts/verify_anchors.sh | tail -1
           python3 scripts/spec_lint.py
           python3 scripts/spec_lint.py --self-test
+
+      - name: "Governance — verdict transcription (bug-log #154)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
           # bug-log #154: the three verdict classifiers live in [[bin]]s, so their tests
           # re-implement them and test the copy. This pins the branch conditions on both
           # sides against a set declared in the script, and its --self-test re-measures
           # the gate's own teeth on every run rather than trusting that they are still there.
           python3 scripts/verdict_transcription_check.py
           python3 scripts/verdict_transcription_check.py --self-test
+
+      - name: "Governance — feature-gated targets (bug-log #163)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
           # bug-log #163: a target whose required-features are unmet is skipped by
           # `cargo test` SILENTLY. Measured: 46 test fns across 13 targets have never
           # run in this workflow — including every candle-gated forecast test, while
@@ -224,6 +252,11 @@ jobs:
           # count on every run so the silence is in the log.
           python3 scripts/feature_gated_targets_check.py
           python3 scripts/feature_gated_targets_check.py --self-test
+
+      - name: "Governance — anchor namespaces (bug-log #179)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
 
           # bug-log #179: verify_anchors.sh above asks whether each row's SHA matches a
           # committed body. It is content for TWO rows of one scenario to point at the
@@ -236,6 +269,11 @@ jobs:
           # split lands unseen.
           python3 scripts/anchor_namespace_collapse_check.py
           python3 scripts/anchor_namespace_collapse_check.py --self-test
+
+      - name: "Governance — determinism pins + SHA mirrors (bug-log #183)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
 
           # bug-log #183 durable fix: this tool maps every in-test SHA literal to its
           # anchors.toml row, and until now it was named in this workflow only inside a
@@ -255,6 +293,11 @@ jobs:
           python3 scripts/sha_mirror_census.py
           python3 scripts/sha_mirror_census.py --self-test
 
+      - name: "Governance — AD-18 ADR registry (bug-log #190)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+
           # bug-log #190: a census of every `--self-test`-bearing script under
           # `scripts/` against this step and `.githooks/pre-commit` found SIX wired
           # and FIVE not. Among the five was `adr_registry_check.py`, which
@@ -266,6 +309,11 @@ jobs:
           # takes an hour.
           python3 scripts/adr_registry_check.py
           python3 scripts/adr_registry_check.py --self-test
+
+      - name: "Governance — AD-19 secrets scan (bug-log #190, #193)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
 
           # AD-19 — no secrets in git. Gated in the hook too, because this one is
           # unsaveable once a commit is pushed; here it is the backstop for a clone
@@ -282,6 +330,11 @@ jobs:
           # not just a marker convention. `#193` resolution 4.
           bash scripts/check_no_secrets_in_llm_artifacts.sh --min-files 1
           bash scripts/check_no_secrets_in_llm_artifacts.sh --self-test
+
+      - name: "Governance — AD-10 clock/RNG gate + bash 3.2 (bug-log #190, #192)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
 
           # AD-10 — the visual baselines are byte-compared, so a clock or RNG call
           # on the snapshot path makes them non-deterministic. Rebuilt 2026-11-10:
@@ -305,12 +358,22 @@ jobs:
           /bin/bash scripts/check_no_clocks_in_ui_tests.sh
           /bin/bash scripts/check_no_clocks_in_ui_tests.sh --self-test
 
+      - name: "Governance — operator ledger + backlog queue (bug-log #190)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+
           # Operator-ledger schema + backlog Queue staleness: sub-second, and
           # previously enforced by whoever remembered.
           python3 scripts/operator_ledger_check.py
           python3 scripts/operator_ledger_check.py --self-test
           python3 scripts/queue_staleness_check.py
           python3 scripts/queue_staleness_check.py --self-test
+
+      - name: "Governance — PIT as-of joins (bug-log #190, #194)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
 
           # PIT discipline over 413 production files. 6.0 s measured, which is why
           # this one is CI-only: an as-of join is fixable after the fact, so it does
