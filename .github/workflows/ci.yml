@@ -103,6 +103,31 @@ on:
   # otherwise have required inventing a commit.
   workflow_dispatch:
 
+# ── Serialize runs per ref (added 2026-11-10) ─────────────────────────────────
+#
+# Without this key every push starts a run that races the one before it. Measured
+# consequence, twice in two days: four concurrent runs on 2026-11-09, cancelled by
+# hand (the `workflow_dispatch:` note above is the fallout), and on 2026-11-10 a
+# push onto an in-progress `4777982f` would have put two COLD runs on `main` both
+# racing to populate the brand-new `Swatinem/rust-cache` entry — one wins, the
+# other spends ~80 Windows-minutes computing a cache save that is then discarded.
+# That is the opposite of the reason the Ubuntu leg was dropped.
+#
+# `cancel-in-progress` is TRUE for pull requests only: a superseded PR run is
+# pure waste. On `main` it is FALSE, because a main run is the record — it holds
+# the governance verdict and it is what writes the cache. GitHub keeps one RUNNING
+# and one PENDING run per group, so the trade-off, named rather than discovered:
+# push three commits quickly and the middle one is superseded WITHOUT a CI verdict
+# of its own. The newest commit is still verified and the skipped one is its
+# ancestor, which is the property that matters here; `workflow_dispatch` is the
+# lever if a specific intermediate commit ever needs its own run.
+#
+# This is a key, not a gate. Nothing fails if it is deleted — the symptom is a
+# pile-up two days from now, which is exactly how it got here.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
