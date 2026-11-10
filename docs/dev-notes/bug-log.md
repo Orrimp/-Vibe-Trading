@@ -9454,3 +9454,65 @@ can log.** The right size for a CI step is "small enough that its name is the di
 and when the log API is closed to you, that is the *only* size that works. `#187` rule ·
 `#188` scope · `#189` subject · `#190` wiring · `#191` citation · `#192` environment ·
 `#193` coverage · **`#194` granularity.**
+
+### `#195` — this file documents a Status schema that a third of its own entries do not follow
+
+**Status**: **`open`** — found 2026-11-10 by the orchestrator, by accident, while printing a
+summary of its own six entries from that day. Anchor-impacting: **no**. **No gate is being
+added in this pass, and the reason is the measurement below, not the difficulty.**
+
+#### How it surfaced
+
+`awk` printed `#189` and `#190` as carrying `#191`'s Status, because neither had one of its
+own. Two entries written that hour, by the person writing about `#92`, in a file whose header
+says:
+
+> **Status values**: `fixed` · `partial-fix` · `open` · `wontfix`
+> **Status anchor**: every row links the **landing commit hash(es)**.
+
+Repaired in `cd0f58e9`. Then the obvious question — how often is this wrong? — turned out to
+have an uncomfortable answer.
+
+#### Measured over all 139 entries
+
+| | count | share |
+|---|---:|---:|
+| **no `**Status**:` line at all** | **50** | 36% |
+| **terminal (`fixed`/`partial-fix`) but citing NO landing commit** | **42** | 30% |
+| **Status value outside the declared four** | **16** | 12% |
+
+The third row is the interesting one, because it is not obviously a defect: the values in use
+include `RESOLVED`, `OPTION 1 APPLIED`, `RULED`, `disclosed`, `re-emitted and gated`, `pins
+CORRECTED`. Those are *informative*. **The schema may be too narrow for how the ledger is
+actually used**, which makes "enforce the four values" the wrong first move.
+
+#### Why no gate here
+
+A strict lint would fail on 50+ pre-existing entries, forcing either a large backfill or a
+grandfather list — and an allowlist with fifty entries is precisely where coverage goes to die,
+which is the shape I argued against in `#193` B earlier the same day. Adding it would convert a
+documented-but-unenforced convention into an enforced-but-exempted one, which is not progress.
+
+It also needs a decision I should not make alone: **whether the four values are the vocabulary,
+or whether the vocabulary should be widened to what the file already uses.** That is an
+authorial call about this ledger's own conventions.
+
+#### The options, costed
+
+1. **Widen the vocabulary first, then gate it** — map the 16 observed prose statuses onto a
+   larger declared set, then lint for membership. Cheapest honest path; the backfill shrinks to
+   the 50 missing lines.
+2. **Backfill all 50 missing Status lines, then gate strictly** — most durable, and the 42
+   missing landing commits are recoverable from `git log --oneline | grep '#NN'` for most rows.
+   Real work, days not minutes.
+3. **Gate only NEW entries** — lint entries above a declared high-water mark (`#189`+, where the
+   convention has been followed deliberately). Stops the rot without a backfill, and the mark is
+   a declared number rather than a list of exemptions. **This is the one I would pick**, and it
+   is the only option whose exemption cannot grow silently.
+
+#### Moral
+
+**`#190` asked what runs a gate; this asks what happens when there is no gate at all and the
+convention is prose.** Thirty-six percent is the drift a file accumulates when its schema lives
+in its own header and nothing reads it — and I added to that number myself, twice, on the day I
+was auditing other people's gates for the same thing.
