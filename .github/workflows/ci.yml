@@ -346,17 +346,23 @@ jobs:
           bash scripts/check_no_secrets_in_llm_artifacts.sh --scan-spec --min-files 1300
           bash scripts/check_no_secrets_in_llm_artifacts.sh --self-test
 
-      - name: "Governance — AD-10 clock/RNG gate + bash 3.2 (bug-log #190, #192)"
-        if: always() && matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-
+      # ── SPLIT AGAIN, 2026-11-10 (bug-log `#194`) ────────────────────────────
+      #
+      # Run `42790539820` named this gate — which is exactly what the ten-step
+      # split was built to do, and the PIT gate I had found fragile and refused
+      # to blame came back GREEN, so declining that lead was right. But the step
+      # holds SIX commands across two interpreters, and all six pass locally in
+      # a pristine clone under bash 3.2 AND 5.3, so "this gate" is still not an
+      # answer. Split into three so the next run says WHICH invocation:
+      #   · the modern-bash gate (is the gate itself wrong?)
+      #   · the two `--version` probes (is it the pipes?)
+      #   · the bash-3.2 gate (is it my `#192` oldest-interpreter pin?)
+      # Re-merge once the answer is in; this granularity is a diagnostic, not a
+      # permanent shape.
           # AD-10 — the visual baselines are byte-compared, so a clock or RNG call
           # on the snapshot path makes them non-deterministic. Rebuilt 2026-11-10:
           # it had been RED on two doc comments and one marker whose reason wrapped
           # onto a second line, while nothing ran it but a hand-invoked skill.
-          bash scripts/check_no_clocks_in_ui_tests.sh
-          bash scripts/check_no_clocks_in_ui_tests.sh --self-test
           # bug-log #192: `shell: bash` resolves to whatever bash is on PATH, and
           # this leg is macOS, whose SYSTEM bash is 3.2.57 — where `set -u` plus
           # `"${arr[@]}"` on an EMPTY array aborts with `unbound variable`. That is
@@ -368,8 +374,33 @@ jobs:
           # this line, a 3.2-only regression is invisible whenever PATH happens to
           # offer a newer bash. Costs ~0.3 s. Also prints the version, so the log
           # says which bash ran everything else in this step.
+      - name: "Governance — AD-10 clocks, modern bash"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          bash scripts/check_no_clocks_in_ui_tests.sh
+          bash scripts/check_no_clocks_in_ui_tests.sh --self-test
+
+      - name: "Governance — AD-10 which bash is which"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          # Informational, and isolated so a pipe problem here cannot be mistaken
+          # for a gate problem. `| head -1` under `-eo pipefail` was my first
+          # suspect for the red step and was REFUTED locally (rc 0 under
+          # `bash --noprofile --norc -eo pipefail`), so this step exists to settle
+          # it on the runner rather than by argument.
           bash --version | head -1
           /bin/bash --version | head -1
+
+      - name: "Governance — AD-10 clocks, bash 3.2 (the #192 pin)"
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          # macOS ships /bin/bash 3.2.57, and `#192` pinned the gate against it
+          # on purpose: `set -u` plus `"${arr[@]}"` on an EMPTY array aborts
+          # there, which this gate once did. If THIS step is the red one, the pin
+          # found something the dev box cannot see — which is what a pin is for.
           /bin/bash scripts/check_no_clocks_in_ui_tests.sh
           /bin/bash scripts/check_no_clocks_in_ui_tests.sh --self-test
 
