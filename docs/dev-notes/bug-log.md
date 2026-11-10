@@ -9149,3 +9149,95 @@ The generalisation worth keeping is narrower and more useful than "test on all p
 
 `#187` the rule · `#188` the scope · `#189` the subject · `#190` the wiring · `#191` the citation ·
 **`#192` the environment.**
+
+### `#193` — the AD-19 secrets gate: I wired the invocation that scans one file, and its key-shape regex matches the word "risk-level"
+
+**Status**: **`open`** — found 2026-11-10 by the orchestrator, auditing its own `#190` wiring
+because the secrets scan was the one gate in either list with **no `--self-test`**, i.e. the
+one whose teeth were unmeasured. Anchor-impacting: **no**, but see § D. Four findings, one of
+them mine from this morning.
+
+**No real secret was found. AD-19 is not breached.** Every one of the 15 hits below is a false
+positive, and two of them are false for a reason worth fixing.
+
+#### A — the key-shape regex has no left boundary, so it matches inside English words
+
+`SK_RE='sk-[A-Za-z0-9_-]{12,}'`. Three of the 15 hits matched this "real key shape" pattern
+rather than a prefix literal, and two of the three are **substrings of ordinary words**:
+
+| file | what actually matched |
+|---|---|
+| `docs/dev-notes/archive/2026-Q2/testing-strategy-review-2026-05-25.md:200` | `ri`**`sk-manage`**`ment…` inside a markdown anchor `#risk-management` |
+| `docs/dev-notes/archive/2026-Q2/strategy-reformulation-survey-2026-05-22.md:986` | `ri`**`sk-level`**`…` inside the phrase "risk-level overlay" |
+| `evidence/v1/v2-1-tracing-layer-redactor/presentations/…-2026-06-16.md:72` | a genuine `sk-ant-…` **documentation example**, in the redactor's own before/after table (`→ sk-a***9abc  (rule: anthropic_key)`) — the third is a true placeholder, not a word |
+
+Any word ending in `sk` followed by `-` and 12+ word characters matches: *risk-*, *disk-*,
+*task-*, *desk-*. The fix is a left boundary — `(^|[^A-Za-z0-9_-])` before `sk-` — and it is
+**not** a one-line change: `crates/llm/tests/no_secrets_in_artifacts_test.rs` parses `SK_RE`
+out of the script at runtime and asserts it equals `SUPPORTED_SK_RE` (`:311`), because its
+matcher is hand-rolled. So the script's `SK_RE`, `SUPPORTED_SK_RE` and `sk_shape_hit` move
+together or the test fails on purpose. That coupling is **good design** — it is why this
+cannot drift — and it is also why this is not a drive-by.
+
+#### B — the doc leg is opt-out for two different reasons, and only one is legitimate
+
+`--scan-spec` greps `evidence/**`, `docs/**` and `_bmad-output/**` and currently **fails with
+15 hits** (`rc=1`). The header explains the leg is opt-in because those docs *"legitimately
+use `sk-…` / `Bearer …` as placeholder examples"* — true of some hits (`bug-log.md` and
+`cannot-fail-gate-sweep` quote the pattern list; `trace.toml` describes the gate itself; the
+redactor presentation demonstrates redaction), but **not** of the two word-substring matches,
+which are pure regex error. Fixing A shrinks the set to genuine placeholders, at which point
+the leg needs a **marker convention** — the `// CLOCK-OK:` shape from `#190` — rather than
+staying permanently off. Until then the realistic AD-19 risk in this repo, *a key pasted into
+a runbook or a story*, **is checked by nothing.**
+
+#### C — no count, no floor, and a documented exit code that does not exist
+
+`scan_text_file` / `scan_binary_file` both `return 0` when the file is absent, and each `find`
+leg sits behind `if [[ -d … ]]`. So every target is silently skippable and the gate prints
+`V9 PASS: no secret patterns found in any scanned artifact` **without saying how many files it
+read**. The header promises `2 — required artifact path missing (configuration / harness
+bug)`; the body's only `exit 2` is for an **unknown flag** (`:90`). A missing artifact exits
+**0**. That is a documented behaviour that does not exist — the `#188` shape inside a gate.
+
+#### D — and the invocation I wired this morning is the near-vacuous one
+
+`#190` wired the **bare** form into `.githooks/pre-commit` and the ci.yml governance block.
+Measured, by tracked-ness, what that form can scan **on a fresh CI checkout**:
+
+| default target | on disk here | tracked (⇒ present in CI) |
+|---|---|---|
+| `data/llm-replay.db` | no | **no** |
+| `data/audit.db` | yes | **no** |
+| `target/logs/**` | yes | **no** (gitignored) |
+| `crates/llm/fixtures/*.db` | yes | **yes — 1 file** |
+
+So in CI the AD-19 gate scans **one fixture database** and prints PASS. It is not literally
+zero, which is why it passed my `#190` review: I checked that it exited 0 and never asked what
+it had read. **"I wired a gate" and "I wired a gate that looks at something" are different
+claims**, and `#190`'s own moral — that a gate's wiring is part of the gate — plainly extends
+to *what the wired invocation covers*. One morning's half-life.
+
+#### Resolutions, in dependency order
+
+1. **Fix A** (left boundary) across the script, `SUPPORTED_SK_RE` and `sk_shape_hit`, verified
+   by `cargo test -p llm --test no_secrets_in_artifacts_test`.
+2. **Give the gate a `--self-test`** — a planted key fires, a clean fixture is silent, and a
+   **files-scanned floor** so "scanned nothing" cannot pass. Note the coupling: the Rust test
+   executes this script verbatim on unix, so a floor must not break that invocation's own
+   (smaller) scan set — the floor belongs per-leg, not global.
+3. **Print the count** on the PASS line, and make a missing *required* artifact exit 2 as
+   documented, or delete the promise.
+4. **Then** re-triage `--scan-spec` and give it a placeholder marker, so the doc leg can be
+   wired instead of excused.
+5. **Re-point the wired invocation** at whatever (4) makes safe.
+
+#### Moral
+
+**A gate's wiring includes its ARGUMENTS.** `#190` asked what invokes a gate and `#191` asked
+whether the invoked thing is the thing named; this asks whether the invocation looks at
+anything. The sequence: `#187` rule · `#188` scope · `#189` subject · `#190` wiring ·
+`#191` citation · `#192` environment · **`#193` coverage.**
+
+And the regex lesson is older than all of them: **an unanchored pattern over prose finds
+English, not secrets.**
