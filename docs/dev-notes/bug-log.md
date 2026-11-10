@@ -9545,9 +9545,11 @@ and when the log API is closed to you, that is the *only* size that works. `#187
 
 ### `#195` — this file documents a Status schema that a third of its own entries do not follow
 
-**Status**: **`open`** — found 2026-11-10 by the orchestrator, by accident, while printing a
-summary of its own six entries from that day. Anchor-impacting: **no**. **No gate is being
-added in this pass, and the reason is the measurement below, not the difficulty.**
+**Status**: **`fixed` 2026-11-10 — `c70828b5` (the gate, wired into the hook and CI) +
+`ba651b45` (the same hook-index hazard, found in `spec_lint`'s own self-test).** Found
+2026-11-10 by the orchestrator, by accident, while printing a summary of its own six entries
+from that day. Anchor-impacting: **no**. Option 3, and the Resolution at the end of this
+entry says what the review of its first version changed.
 
 #### How it surfaced
 
@@ -9604,3 +9606,79 @@ authorial call about this ledger's own conventions.
 convention is prose.** Thirty-six percent is the drift a file accumulates when its schema lives
 in its own header and nothing reads it — and I added to that number myself, twice, on the day I
 was auditing other people's gates for the same thing.
+
+#### Resolution, 2026-11-10 — option 3, and what the review changed
+
+> This entry's Status line first read: "**`open`** — … **No gate is being added in this pass,
+> and the reason is the measurement below, not the difficulty.**" That and *Why no gate here*
+> were true when written; the section is kept as written (append-only), and both are
+> superseded by what follows.
+
+**The decision was mine to make** under the standing decide-and-proceed authority. It is not a push, it does
+not delete evidence, it does not move a verdict, and it does not change the public claim, so it went to option 3 as
+recommended: `scripts/bug_log_schema_check.py` gates every entry from `#189` on. It runs in
+`.githooks/pre-commit` (`--staged`) and in the CI step `Governance — bug-log Status schema
+(bug-log #195)`. The rules now live in this file's header, which the gate parses, so they are not repeated here.
+
+**The first version was reviewed before it was committed, and it needed the review.** Four
+independent reviewers (bypass, false positive, environment and wiring, self-test integrity)
+each got a verifier who reproduced every claim from scratch: 45 findings, 38 confirmed real,
+7 by design. The ones that changed the design:
+
+- **BYP-1 (high): the exemption was by id, not by position.** An old id appended under `#195`
+  (the file has done that twice, `#156 § Resolution` and `#95` after `#143`) skipped every
+  check. The gated region is now positional: below `#189`, every `###` is an entry and ids
+  only increase.
+- **FP3 / BYP-5 / F3 (high): the hook read the working tree.** An unstaged draft blocked
+  unrelated commits, and a violation staged and then "fixed" only on disk passed. `--staged`
+  reads the index git hands the hook (it is the one git call that keeps the hook's
+  `GIT_INDEX_FILE`).
+- **FP1 (high): every backticked hex span was read as a commit.** CI run ids and dates are
+  hex. Citations are now spans that *start* with lowercase hex, all-digit spans never count,
+  and only `fixed` / `partial-fix` rows are resolved (the header always said so; the code did not).
+- **FP6 / F2: concluding a merge was blocked.** `MERGE_HEAD` now counts as landed.
+- **BYP-2 / BYP-3, FP2, FP7, F6, F7, FP9:** indented headings and fences, a wrapped
+  vocabulary line that truncated the vocabulary, and four environment faults. Each has a probe.
+
+**Four more were found by measurement while fixing those, not by the reviewers:**
+
+1. **`spec_lint.py`'s own `#189` self-test wrote into a hook's index.** I measured the hook
+   environment (git 2.50.1): under `git commit -a`, `GIT_INDEX_FILE` is an *absolute* path to
+   the real `index.lock`. Aimed at a victim index, the fixture wrote `.gitignore`,
+   `pattern/doc.md` and `tracked/doc.md` into it, then reported "git unusable". It was latent,
+   because nothing runs that self-test from the hook. Fixed in `ba651b45` with a scrub plus a
+   probe that fails by name when the scrub is removed.
+2. **`#194` cited "this commit".** That is the `#192` placeholder again, passing only because
+   two real hashes sat beside it. It is now rule E7 and repaired (`6ccad4c0`).
+3. **The gate's self-test was flaky: 3 failed runs in 30.** Fixture commits had fresh hashes,
+   and an 8-character prefix is all digits with probability (10/16)^8 = 2.3%, which the gate
+   correctly refuses to read as a citation. The fixtures are now deterministic (fixed dates,
+   SHA-1) behind a preflight. After the fix: 0 failed runs in 30. The same arithmetic is why
+   the header now tells authors to cite a longer prefix about 1 time in 40.
+4. **The new gate's own self-test was not hermetic, and only the real hook showed it.** The
+   `--staged` read honours the hook's `GIT_INDEX_FILE` on purpose, so under `git commit -a`
+   the self-test's staged probes read the outer commit's index and exited 2, which blocked
+   every `commit -a` that touched the gate. No in-process probe could see it. The
+   self-test now strips `GIT_*` for its whole run, and P14 re-runs it in a subprocess handed
+   a victim `GIT_INDEX_FILE`. It runs in the hook only when the gate or the hook changes
+   (12.7 s, measured), and CI runs it on every push.
+
+**What was measured before `c70828b5`:**
+
+- Probes: 84, plus a preflight.
+- Mutations: 48 of the gate's rules, every one caught by a NAMED probe, none survived, none caught only by a crash.
+- Flake rate: 0 failed runs in 30.
+- Interpreters: Python 3.9.6, 3.12 and 3.15.
+- CI step replay: under `bash --noprofile --norc -eo pipefail` it passes in a full clone and refuses with exit 2 in a depth-1 clone.
+- Hook end to end: 10 scenarios through the real hook block, every blocked one blocked for its stated reason, among them `commit -a`, `commit <path>`, an unstaged draft, a staged-then-fixed-on-disk violation, a merge conclusion and `commit -a` touching the gate itself. The negative control, the same harness with the hermetic scrub removed, is blocked from the first commit on.
+
+**Inferred, not measured.** Two CI claims cannot be checked from here (the logs are 403):
+
+- In GitHub Actions, the string `'0'` in `matrix.os == 'macos-latest' && '0' || '1'` is truthy. If that is wrong, the gate exits 2 with SHALLOW in the log; it does not pass.
+- `lfs: true` with full history still fetches LFS objects for the checked-out ref only. The next run's Checkout duration measures it.
+
+**Residuals, accepted, each loud one step later:**
+
+- `--amend` folding a citation of HEAD into HEAD itself cannot be seen at pre-commit time. The next commit and CI fail E4.
+- Raw `<h3>` HTML and HTML comments are not parsed.
+- Below the mark, re-measured with the gate's own definitions: 50 entries have no Status line (as before), 74 carry a value outside the four (47 of them `FIXED`/`OPEN`, because the gate is case-sensitive and the earlier count was not), and 1 terminal row cites no hash (the earlier 42 counted only the Status *line*; a `**Commit**:` line in the same paragraph counts here). Options 1 and 2 above still price that backlog.
