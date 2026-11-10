@@ -255,6 +255,43 @@ jobs:
           python3 scripts/sha_mirror_census.py
           python3 scripts/sha_mirror_census.py --self-test
 
+          # bug-log #190: a census of every `--self-test`-bearing script under
+          # `scripts/` against this step and `.githooks/pre-commit` found SIX wired
+          # and FIVE not. Among the five was `adr_registry_check.py`, which
+          # CLAUDE.md's AD-18 non-negotiable names AS the enforcement of ADR
+          # atomicity — flagged unwired by the 2026-08-17 and 2026-08-24 audits and
+          # still unwired on 2026-11-10, when ADR-0102's missing Registry row was
+          # caught only because somebody ran the script by hand. All six are pure
+          # stdlib Python or bash over source; together they cost ~9 s on a leg that
+          # takes an hour.
+          python3 scripts/adr_registry_check.py
+          python3 scripts/adr_registry_check.py --self-test
+
+          # AD-19 — no secrets in git. Gated in the hook too, because this one is
+          # unsaveable once a commit is pushed; here it is the backstop for a clone
+          # that never ran `git config core.hooksPath .githooks`.
+          bash scripts/check_no_secrets_in_llm_artifacts.sh
+
+          # AD-10 — the visual baselines are byte-compared, so a clock or RNG call
+          # on the snapshot path makes them non-deterministic. Rebuilt 2026-11-10:
+          # it had been RED on two doc comments and one marker whose reason wrapped
+          # onto a second line, while nothing ran it but a hand-invoked skill.
+          bash scripts/check_no_clocks_in_ui_tests.sh
+          bash scripts/check_no_clocks_in_ui_tests.sh --self-test
+
+          # Operator-ledger schema + backlog Queue staleness: sub-second, and
+          # previously enforced by whoever remembered.
+          python3 scripts/operator_ledger_check.py
+          python3 scripts/operator_ledger_check.py --self-test
+          python3 scripts/queue_staleness_check.py
+          python3 scripts/queue_staleness_check.py --self-test
+
+          # PIT discipline over 413 production files. 6.0 s measured, which is why
+          # this one is CI-only: an as-of join is fixable after the fact, so it does
+          # not earn 6 s on every local commit.
+          bash scripts/check_no_raw_asof_join.sh
+          bash scripts/check_no_raw_asof_join.sh --self-test
+
       # `components: clippy` is explicit rather than inherited. The clippy step
       # below was proven on the Ubuntu image and now runs on the macOS one, and
       # what made it work was the runner image's pre-installed toolchain, not this

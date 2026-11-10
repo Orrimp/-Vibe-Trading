@@ -94,3 +94,65 @@ if command -v uv >/dev/null 2>&1; then
 else
   python3 "$root/scripts/sha_mirror_census.py"
 fi
+
+# ── 2026-11-10 (bug-log #190): five gates that existed and ran nowhere ────────
+#
+# A census of every `--self-test`-bearing script under `scripts/` against this
+# hook and `ci.yml` found SIX wired and FIVE not — including
+# `adr_registry_check.py`, which CLAUDE.md's AD-18 non-negotiable names *as* the
+# enforcement ("plus its Registry row in the same commit — enforced by
+# `scripts/adr_registry_check.py`"). It was flagged unwired by the 2026-08-17
+# and 2026-08-24 audits and was still unwired on 2026-11-10. The proof it
+# matters arrived the same morning: ADR-0102 was written and the row was added
+# only because the script was run BY HAND, and the script is what caught the
+# omission.
+#
+# Split by WHERE the invariant can still be saved, not by runtime:
+#   - here AND in ci.yml: the four sub-second gates, plus the secrets scan.
+#     The secrets scan costs 2.95 s, which is the most expensive thing in this
+#     hook after `verify_anchors.sh` — and it belongs here anyway, because
+#     "No secrets in git" (AD-19) is unsaveable once a commit is pushed. A
+#     secret caught in CI is a secret that is already on the remote.
+#   - ci.yml ONLY: `check_no_raw_asof_join.sh` (6.0 s, 413 production files).
+#     PIT discipline is fixable after the fact, so it does not earn 6 s on
+#     every commit.
+# Measured, not estimated: this hook was 9.91 s before these lines and 15.24 s
+# after. The first draft of this comment said "~13.5 s" from arithmetic on the
+# individual timings; the whole point of the gate below it is that a number you
+# did not measure is not a number.
+#
+# Known gap, not fixed here: `check_no_secrets_in_llm_artifacts.sh` has NO
+# `--self-test` (it answers `--self-test` with "unknown flag"), so it is the one
+# gate below whose teeth are unmeasured. Its probe is its own task.
+
+# AD-18: an ADR without its Registry row, or a row without its ADR, is drift.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/adr_registry_check.py"
+  uv run --quiet "$root/scripts/adr_registry_check.py" --self-test
+else
+  python3 "$root/scripts/adr_registry_check.py"
+  python3 "$root/scripts/adr_registry_check.py" --self-test
+fi
+
+# AD-19: no secrets in git. Unsaveable after a push, which is why it is here.
+bash "$root/scripts/check_no_secrets_in_llm_artifacts.sh"
+
+# AD-10: the visual baselines are byte-compared, so a clock or RNG call on the
+# snapshot path makes them non-deterministic. Rebuilt 2026-11-10 — it had been
+# RED (on two doc comments and one wrapped marker) with nothing running it.
+bash "$root/scripts/check_no_clocks_in_ui_tests.sh"
+bash "$root/scripts/check_no_clocks_in_ui_tests.sh" --self-test
+
+# The operator-ledger schema and the backlog Queue's staleness: both sub-second,
+# both pure stdlib, both previously enforced by whoever remembered.
+if command -v uv >/dev/null 2>&1; then
+  uv run --quiet "$root/scripts/operator_ledger_check.py"
+  uv run --quiet "$root/scripts/operator_ledger_check.py" --self-test
+  uv run --quiet "$root/scripts/queue_staleness_check.py"
+  uv run --quiet "$root/scripts/queue_staleness_check.py" --self-test
+else
+  python3 "$root/scripts/operator_ledger_check.py"
+  python3 "$root/scripts/operator_ledger_check.py" --self-test
+  python3 "$root/scripts/queue_staleness_check.py"
+  python3 "$root/scripts/queue_staleness_check.py" --self-test
+fi

@@ -8819,3 +8819,109 @@ Two things follow, and the second is a correction to the paragraph above it:
    constitutional gate, and the 2026-10-10 incident is what an inherited interpreter costs when
    the image moves. But nothing was broken, and saying otherwise would be the `#176` mistake —
    a magnitude asserted from too little evidence.
+
+### `#190` — five gates existed and ran nowhere, and the one CLAUDE.md names as AD-18's enforcement was among them
+
+**Found** 2026-11-10 by the orchestrator, immediately after *using* one of them: ADR-0102's
+missing Registry row was caught because `adr_registry_check.py` was run **by hand**, and the
+next question was what runs it when nobody remembers.
+**A census of every `--self-test`-bearing script under `scripts/` against `.githooks/pre-commit`
+and `ci.yml` found SIX wired and FIVE not. CLAUDE.md's AD-18 non-negotiable says ADR
+registration is "enforced by `scripts/adr_registry_check.py`" — nothing invoked it. The 2026-08-17
+and 2026-08-24 audits both flagged it; it was still unwired 85 days later.**
+
+#### The census
+
+| script | hook | CI | runtime |
+|---|---|---|---|
+| `verify_anchors.sh` · `spec_lint.py` · `verdict_transcription_check.py` · `feature_gated_targets_check.py` · `anchor_namespace_collapse_check.py` · `check_determinism_anchors.py` · `sha_mirror_census.py` | yes | yes | — |
+| **`adr_registry_check.py`** (AD-18) | **NO** | **NO** | 0.18 s |
+| **`check_no_secrets_in_llm_artifacts.sh`** (AD-19) | **NO** | **NO** | 2.95 s |
+| **`check_no_clocks_in_ui_tests.sh`** (AD-10) | **NO** | **NO** | 0.31 s, **and RED** |
+| **`operator_ledger_check.py`** | **NO** | **NO** | 0.08 s |
+| **`queue_staleness_check.py`** | **NO** | **NO** | 0.07 s |
+| **`check_no_raw_asof_join.sh`** (PIT) | **NO** | **NO** | 6.00 s |
+| `check_presentation.sh` | NO | NO | needs a target argument — correctly not blanket-wired |
+| `reemission_classify.py` | NO | NO | an analysis tool, not a gate |
+
+All six wirable ones were **already green** except the clock gate. None of them was slow. The
+reason they were unwired is not cost.
+
+#### Wired by WHERE the invariant can still be saved, not by runtime
+
+Hook **and** CI: the four sub-second gates plus the secrets scan. The secrets scan is the most
+expensive thing in the hook after `verify_anchors.sh`, and it belongs there anyway — **"no secrets
+in git" is unsaveable once a commit is pushed.** A secret caught in CI is a secret already on the
+remote. CI only: `check_no_raw_asof_join.sh`, 6.0 s over 413 production files — an as-of join is
+fixable after the fact, so it does not earn 6 s on every local commit.
+
+Measured, not estimated: the hook was **9.91 s** before and **15.24 s** after. The first draft of
+that comment said "~13.5 s" from arithmetic on the individual timings, which is precisely the
+defect the gate below it exists to prevent; corrected to the measured number before commit.
+
+#### The clock gate was RED, and that is why nobody noticed
+
+`check_no_clocks_in_ui_tests.sh` failed on three lines of `crates/ui/src/widgets/chart.rs`. Its
+own header says it is *"listed in `rust-validate`'s pre-test gate"* — and it is, at step 1 of
+`.claude/skills/rust-validate/SKILL.md`, which is a **skill a human invokes**. So its one
+appearance was in a place where a red line is scrolled past. Four defects, each a shape already
+named in this log:
+
+1. **The marker lookback was one line, and a reason long enough to WRAP defeated it.** The
+   sanctioned production call at `chart.rs:301` carries
+   `// CLOCK-OK: production reads the OS-local offset; defensive` on `:299` and
+   `// UTC fallback if the lookup fails.` on `:300`. The immediately preceding line is the
+   continuation, which holds no marker — **so the gate failed the one call it was written to
+   permit, and punished writing a reason long enough to be useful.** This is the exact case
+   `spec_lint`'s own self-test already pins in the other direction ("marker 3 lines above does
+   NOT exempt", `#188`); here the one-line rule was too tight rather than too loose.
+2. **It matched prose.** `chart.rs:251` and `:2289` are doc comments that *mention*
+   `current_local_offset()`. Two of its three failures were sentences.
+3. **A missing watchlist file was silently skipped** — a `continue` with a comment about tests
+   being added incrementally. Measured: `crates/ui/src/screens/charts.rs` was **deleted** in
+   `f3cb7f92` (ui-rethink-phase-a-lab Wave 1), so the entry had been dead ever since and the gate
+   read 7 files.
+4. **The PASS line printed the array length**, `(${#WATCHLIST[@]} files / ${#PATTERNS[@]}
+   patterns)` — a count it never measured, which is a named sub-shape of the cannot-fail rule. It
+   printed "8 files" while reading 7.
+
+Rebuilt: comment-only lines are skipped; the marker lookback walks the contiguous comment block
+and stops at the first non-comment line; a missing entry is a **failure**, not a skip; and the
+PASS line reports files actually read, matching lines examined, and exemptions honoured —
+`CLOCKS PASS (7/7 files read · 4 patterns · 3 matching line(s) examined · 1 exemption(s)
+honoured)`.
+
+**With a `--self-test`, 10 probes, two-sided on every dimension:** a bare call fires; a same-line
+marker exempts; a marker one line above exempts; **a marker at the top of a wrapped block
+exempts** (defect 1); a marker separated by a blank line does **not**; a marker separated by a
+statement does **not**; a mention in a doc comment is silent; a mention in a block-comment body is
+silent; a clean file is silent; **a missing watchlist entry fails loudly** (defect 3). The pairs
+P3/P4 against P5/P6 are what pin the block walk as a *bounded* walk rather than an unbounded one.
+
+And the self-test's first run printed `PASS (01111111111/01111111111 probes)` — `local probes=0`
+makes `probes+=1` string **concatenation**. Defect 4, committed by me, inside the rewrite whose
+purpose was defect 4. Fixed with `local -i`, and the note is in the script so the next reader sees
+why the declaration is spelled that way.
+
+#### Not fixed here, priced instead
+
+- **The watchlist is still a hand-written list** — the `#188` defect one level up. Widening it to a
+  *walk* of `crates/ui/src/widgets/` + `crates/ui/src/screens/` was measured: **5 non-comment hits
+  in 5 files**, so the widening itself is cheap. But each hit needs a marker whose reason is
+  **true**, and only four could be verified: `chart_build_probe.rs:98` (behind an off-by-default
+  feature), `cache_state_summary_badge.rs:126` (inside a `#[test]` fn), `throttled_spinner.rs:230`
+  (carries its own H-arch-9 "`Instant::now` is test-unreachable" analysis) and `chart.rs:301`
+  (already marked). The fifth, `activity_tape.rs:63`, is an `Instant::now()` age filter against
+  `ACTIVITY_TICK_RENDER_FLOOR_MS` inside `view()`, and whether its **filter outcome** is
+  snapshot-invariant was not established. Writing a marker asserting that it is would be inventing
+  a reason — the `#186` defect. That analysis is the whole of the remaining work.
+- **`check_no_secrets_in_llm_artifacts.sh` has no `--self-test`** (it answers one with "unknown
+  flag"), so it is now the only gate in either list whose teeth are unmeasured.
+
+#### Moral
+
+**A gate's wiring is part of the gate.** `#183` found a tool named only inside a comment about
+something else; this found five named in CLAUDE.md, in `AGENT.md`'s capability table, and in a
+`claims-ledger` row that maps AD-18 to this exact script — all of them citations, none of them an
+invocation. The sequence stands: `#187` the rule, `#188` the scope, `#189` the subject, **`#190`
+the wiring.** A gate that nothing runs is not a weak gate; it is a document.
