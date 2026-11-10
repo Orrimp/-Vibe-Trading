@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1219,6 +1220,101 @@ def _self_test_root_markdown_scanned() -> bool:
     return ok_flagged and ok_missed and ok_live_silent
 
 
+def _self_test_gitignored_not_walked() -> bool:
+    """Two-sided probe for the gitignore filter (bug-log `#189`).
+
+    The dimension under test is IGNORED-ness and nothing else: two sibling
+    subtrees of one throwaway repository hold a markdown file with the SAME dead
+    link, and the only thing separating them is a line in `.gitignore`. The
+    ignored one must be silent and the tracked one must fire. A fixture
+    asserting only "dead link flagged" would pass against a filter that drops
+    everything; one asserting only "ignored file silent" would pass against a
+    filter that drops nothing, or against a fixture whose file was never a
+    candidate in the first place. So the pair is checked, AND the filter is
+    probed directly to prove the ignored file WAS enumerated and that the filter
+    is what removed it.
+
+    The third side is the one that keeps this from silencing repo content: a
+    TRACKED file matching an ignore pattern (`*.md` here, force-added) must
+    survive. That is `git check-ignore`'s index-aware default, which is why this
+    probe runs real `git init` + real `git check-ignore` instead of a
+    reimplementation of ignore semantics.
+    """
+    import tempfile
+
+    def git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td).resolve()
+        try:
+            git("init", "-q", str(tmp))
+            # `/local/` is the ignored subtree. `*.md` is deliberately ALSO here:
+            # it matches the tracked file too, so surviving it can only be the
+            # index taking precedence.
+            (tmp / ".gitignore").write_text("/local/\n*.md\n", encoding="utf-8")
+            for sub in ("local", "tracked"):
+                (tmp / sub).mkdir()
+                (tmp / sub / "doc.md").write_text(
+                    "see [gone](../nope.md)\n", encoding="utf-8"
+                )
+            git("-C", str(tmp), "add", "-f", ".gitignore", "tracked/doc.md")
+            git(
+                "-C", str(tmp),
+                "-c", "user.email=t@t", "-c", "user.name=t",
+                "commit", "-qm", "init",
+            )
+        except (OSError, subprocess.CalledProcessError) as exc:
+            print(
+                "spec-lint --self-test (gitignored-not-walked): "
+                f"FAIL — fixture could not be built, git unusable ({exc})"
+            )
+            return False
+
+        def dead_link_paths(roots: list[Path]) -> set[str]:
+            r = Report()
+            for md in iter_tree_md(roots, repo_root=tmp):
+                check_dead_links(md, md.read_text(encoding="utf-8"), r)
+            return {Path(v.path).as_posix() for v in r.violations if v.category == "dead-link"}
+
+        found = dead_link_paths(default_roots(tmp))
+        ok_ignored_silent = not any(f.endswith("local/doc.md") for f in found)
+        ok_tracked_flagged = any(f.endswith("tracked/doc.md") for f in found)
+
+        # Probe the gate: the ignored file must have been a candidate on disk and
+        # the filter must be what dropped it. Without this, "silent" is also what
+        # a missing fixture looks like.
+        candidates = sorted(tmp.rglob("*.md"))
+        kept = drop_gitignored(candidates, tmp)
+        ok_filter_bites = (
+            any(c.as_posix().endswith("local/doc.md") for c in candidates)
+            and not any(k.as_posix().endswith("local/doc.md") for k in kept)
+        )
+        ok_tracked_survives_pattern = any(
+            k.as_posix().endswith("tracked/doc.md") for k in kept
+        )
+
+    checks = [
+        ("ignored subtree silent", ok_ignored_silent),
+        ("tracked sibling flagged", ok_tracked_flagged),
+        ("filter is what dropped it", ok_filter_bites),
+        ("tracked file beats *.md pattern", ok_tracked_survives_pattern),
+    ]
+    ok = all(passed for _, passed in checks)
+    detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)
+    print(
+        "spec-lint --self-test (gitignored-not-walked): "
+        + (f"PASS — {detail}" if ok else f"FAIL — {detail}")
+    )
+    return ok
+
+
 def self_test() -> int:
     """Run every rule's synthetic-fixture self-test. Exit 0 iff all pass."""
     results = [
@@ -1227,6 +1323,7 @@ def self_test() -> int:
         _self_test_story_done_changelog_missing(),
         _self_test_dead_cargo_citation(),
         _self_test_root_markdown_scanned(),
+        _self_test_gitignored_not_walked(),
     ]
     return 0 if all(results) else 1
 
@@ -1235,19 +1332,80 @@ def self_test() -> int:
 # Driver
 # ---------------------------------------------------------------------------
 
-def iter_tree_md(roots: Iterable[Path]) -> Iterable[Path]:
+def drop_gitignored(paths: list[Path], repo_root: Path = REPO_ROOT) -> list[Path]:
+    """Drop the paths `git` ignores, so the verdict is a function of COMMITTED content.
+
+    Until 2026-11-10 this filter did not exist and `default_roots` walked the
+    working tree exactly as it sat on disk. On a box carrying any agent harness,
+    editor directory or local virtualenv beside the repo, the lint read those
+    files as repo documentation. Measured here: 52 dead links in exactly two
+    gitignored paths — `/.agents/` (37, a second vendored BMAD skills install
+    whose twin under `.claude/` is excluded BY NAME in `UNWALKED_TREES` for the
+    same 37 links) and `/AGENTS.md` (15, a Codex harness file citing a `.Codex/`
+    tree that does not exist here). Neither path is tracked, so CI — which
+    checks out tracked files only — printed PASS on the very commit where the
+    pre-commit hook printed 52 violations and refused it. A gate that is red
+    locally and green remotely gets `--no-verify`, which is the failure mode the
+    hook exists to prevent (bug-log `#189`).
+
+    `git check-ignore` is index-aware by default: a TRACKED file matching an
+    ignore pattern comes back NOT ignored, so this filter cannot silence repo
+    content. `.claude/` is tracked (253 files) and is untouched by it — that
+    exclusion stays hand-written and costed in `UNWALKED_TREES`. If git cannot
+    be run at all the filter drops nothing and says so on stderr: over-reporting
+    is the safe direction, but a skip has to be visible rather than assumed.
+    """
+    root_res = repo_root.resolve()
+
+    def rel_or_none(p: Path) -> str | None:
+        try:
+            return p.resolve().relative_to(root_res).as_posix()
+        except ValueError:
+            return None
+
+    rels = [r for r in (rel_or_none(p) for p in paths) if r is not None]
+    if not rels:
+        return list(paths)
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root_res), "check-ignore", "-z", "--stdin"],
+            input="\0".join(rels),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:  # git absent
+        print(f"  [note] gitignore filter skipped: cannot run git ({exc})", file=sys.stderr)
+        return list(paths)
+    # 0 = at least one path ignored, 1 = none ignored. Anything else (128: not a
+    # repository, bad pathspec) is a filter that did not run, not an empty result.
+    if proc.returncode not in (0, 1):
+        print(
+            "  [note] gitignore filter skipped: `git check-ignore` exited "
+            f"{proc.returncode} ({proc.stderr.strip().splitlines()[:1]})",
+            file=sys.stderr,
+        )
+        return list(paths)
+    ignored = {line for line in proc.stdout.split("\0") if line}
+    if not ignored:
+        return list(paths)
+    return [p for p in paths if (r := rel_or_none(p)) is None or r not in ignored]
+
+
+def iter_tree_md(roots: Iterable[Path], repo_root: Path = REPO_ROOT) -> Iterable[Path]:
+    candidates: list[Path] = []
     for root in roots:
         if root.is_file() and root.suffix == ".md":
-            yield root
+            candidates.append(root)
         elif root.is_dir():
             for p in sorted(root.rglob("*.md")):
                 try:
-                    rel = p.relative_to(REPO_ROOT).as_posix()
+                    rel = p.relative_to(repo_root).as_posix()
                 except ValueError:
                     # A root outside the repository — only `--self-test` does
                     # this. Both skips below are repo-specific paths, so there
                     # is nothing to skip.
-                    yield p
+                    candidates.append(p)
                     continue
                 # Skip archived content — frozen by design (this now covers
                 # BOTH the pre-existing `docs/archive/` tarball convention AND
@@ -1258,12 +1416,23 @@ def iter_tree_md(roots: Iterable[Path]) -> Iterable[Path]:
                 # corpus — pre-existing convention, unaffected by Phase 5b.
                 if rel.startswith("evidence/v1/") and "/reports/" in rel:
                     continue
-                yield p
+                candidates.append(p)
+    # The hand-written `UNWALKED_TREES` list above cannot name what is not in
+    # the repository; this does. Order is preserved so output stays stable.
+    yield from drop_gitignored(candidates, repo_root)
 
 
 # Trees deliberately NOT walked, each with the cost of excluding it MEASURED on
 # the day it was excluded. An exclusion with no number beside it is how `#188`
 # happened: three trees were listed, and nothing said what the rest contained.
+#
+# This dict is NOT the whole exclusion story and must not be read as one. It
+# carries TRACKED trees (`.claude/` is 253 committed files) and the walk-time
+# win of not descending into `target/`. Everything git IGNORES is removed
+# separately by `drop_gitignored` below, which is why a dev box's `.agents/`,
+# `AGENTS.md` and `lab-runs/` are absent from this list and still not linted
+# (bug-log `#189`: they were, for three commits, and cost 52 phantom violations
+# that CI never saw).
 UNWALKED_TREES: dict[str, str] = {
     ".git": "not content",
     ".codegraph": "gitignored index, not content",

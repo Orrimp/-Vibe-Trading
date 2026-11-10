@@ -8656,3 +8656,101 @@ restarted only by re-running it or by pushing a commit, and **both are Actions-A
 box cannot make** — unauthenticated `gh` reads runs at 60/hour by IP but every write is HTTP 401.
 The operator cancelled four runs and asked for fresh ones; without a manual trigger the only lever
 left is a commit, so the trigger is now there and the next restart costs a click.
+
+### `#189` — the `#188` fix made the lint walk the repo, and the repo on a dev box is not the repository
+
+**Found** 2026-11-10 by the orchestrator, running the governance block by hand before deciding
+whether the unpushed CI commit was safe to push.
+**`scripts/spec_lint.py` enumerated markdown by walking the working tree, with no regard for
+`.gitignore`. On this box that pulled in 200 untracked files and 52 dead links, none of them repo
+content — so the gate was RED locally and GREEN in CI on the identical commit. A pre-commit hook
+that blocks for reasons the committer cannot fix is a hook that gets `--no-verify`.**
+
+#### What `#188` fixed, and what it opened
+
+`#188` replaced three hand-listed directories with a walk minus `UNWALKED_TREES`, each exclusion
+carrying its measured cost. That was the right direction and it is still here. What it did not
+notice is that the two spaces had stopped being the same: a hand-written list of three trees could
+only ever name trees that existed in the repository, while a walk enumerates whatever is **on
+disk** — and a dev box carries agent harnesses, editor state, local virtualenvs and lab output
+beside the checkout.
+
+Measured on this box, before/after the filter, by loading both versions of the module and
+diffing their enumerations:
+
+| | files enumerated |
+|---|---|
+| before | **829** |
+| after | **629** |
+
+The 200 dropped, grouped: **`.agents/` 194**, **`AGENTS.md` 1**, **`lab-runs/` 5**. Tracked files
+dropped: **0**. Files newly added: **0**. All three paths are gitignored (`.gitignore:156`, `:157`).
+
+The 52 violations came from the first two:
+
+- **`/.agents/` — 37.** A *second* vendored BMAD skills install, byte-identical in shape to the one
+  under `.claude/`. The irony is exact: `UNWALKED_TREES` excludes `.claude` **by name** with the
+  cost written out — *"37 dead links on 2026-11-09, every one inside the vendored BMAD skills
+  install"* — and the number here is also 37, in the same three skills
+  (`bmad-document-project`, `bmad-index-docs`, `bmad-quick-dev`). The exclusion named one twin.
+- **`/AGENTS.md` — 15.** A Codex-harness entry file whose skill table points at `.Codex/skills/…`,
+  a tree that does not exist here. Nothing to fix: it is not this repository's file.
+
+#### Why this shape is worse than a plain false positive
+
+`.agents/` has sat there unchanged since 2026-09-26, so the gate went red the moment `#188`'s fix
+landed (`224b955c`, 2026-11-09) and stayed red through three commits. Neither CI leg ever saw it:
+a checkout contains tracked files only, so `spec_lint.py` in the governance step printed PASS on
+the same tree where the hook printed 52 violations. **A gate whose verdict is a function of
+untracked machine-local state is two gates that disagree**, and the one that loses is the one a
+human has to get past to commit. The house rule is that a gate which cannot fail is
+indistinguishable from one that passes; this is its sibling — a gate that fails for reasons outside
+its subject is indistinguishable from one that is broken, and is treated as one.
+
+#### Fix
+
+`drop_gitignored(paths, repo_root)` — one batched `git check-ignore -z --stdin`, applied to the
+candidate list inside `iter_tree_md`. Three properties worth naming:
+
+1. **It is git's own semantics, not a reimplementation.** No parsing of `.gitignore` patterns,
+   negations or nested files.
+2. **It is index-aware by default**, so a TRACKED file matching an ignore pattern comes back
+   *not* ignored and survives the filter. Verified in a throwaway repo: `*.md` in `.gitignore`,
+   `tracked/doc.md` force-added, still enumerated. This is what stops the filter from silencing
+   repo content, and it is why `.claude/` (tracked, 253 files) is untouched — that exclusion stays
+   hand-written and costed.
+3. **A skip is visible.** If git cannot run (absent, or not a repository) the filter drops nothing
+   and says so on stderr. Over-reporting is the safe direction, but an unmeasured skip is how
+   `#182` happened.
+
+`UNWALKED_TREES` keeps its entries. `target/` and `.codegraph/` are now redundant with the filter,
+but naming them still skips the *walk* — and `.claude/` is tracked, so the filter would never have
+covered it. The division is now: **the dict excludes tracked trees and saves walk time; the filter
+excludes everything git ignores.**
+
+#### The probe
+
+`--self-test (gitignored-not-walked)` builds a throwaway `git init` repository with two sibling
+subtrees holding **the same dead link in the same filename**, separated by one line of
+`.gitignore`, and asserts four things:
+
+| side | expectation |
+|---|---|
+| ignored subtree | silent |
+| tracked sibling | **fires** |
+| the ignored file *was* a candidate and the filter is what removed it | holds |
+| tracked file matching `*.md` survives the pattern | holds |
+
+The first two are the two-sided pair the house rule asks for: the fixtures differ in exactly one
+dimension and expect opposite outcomes. The third is the probe-the-probe — "silent" is also what a
+fixture that was never enumerated looks like, so the filter is called directly on the candidate
+list and the ignored file must be present before it and absent after. The fourth pins the
+index-aware default, which is the only thing standing between this filter and a lint that quietly
+stops reading the repository.
+
+#### Moral
+
+**A gate's SUBJECT is as much a part of it as its scope and its rule.** `#188` fixed the scope —
+*which* trees — and in doing so changed the subject from "the repository" to "this directory", two
+things that are identical in CI and never identical on a developer's machine. The three bugs now
+read as one sequence: `#187` the rule, `#188` the scope, `#189` the subject.
