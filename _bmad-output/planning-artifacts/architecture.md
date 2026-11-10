@@ -238,19 +238,37 @@ test/lint/gate is the current enforcement. Break one and a gate goes red.
   `docs/dev-notes/dsr-report-only-decision-2026-07-09.md`. **Enforced by:** AD-1's
   ranking-identity tests + the unbuilt veto.
 
-### AD-13 — Verification envelope: 3-OS CI active; macOS is the canonical visual box [ADOPTED]
+### AD-13 — Verification envelope: TWO-leg CI; macOS is the canonical box [ADOPTED]
 
-- **Binds:** CI; all snapshot/visual tests.
-- **Prevents:** platform-dependent font/render flake gating the build; baseline drift.
-- **Rule:** the 3-OS (Linux/Windows/macOS) matrix is **active** at
-  `.github/workflows/ci.yml` (operator-activated 2026-07-10, remediation P7; first-run
-  flakes are fix-forward). Visual PNG baselines remain **macOS-canonical**: snapshot test
-  files carry `#![cfg(target_os="macos")]` — the source gate *is* the CI filter; off-macOS
-  they compile to nothing. Linux/Windows visual regression is deferred and must supersede or
-  amend ADR-0057 when it lands. *(Restates the 2026-07-10 source, which still recorded CI as
-  operator-parked; activation commit 8b8e546 and the run-1/2 shakeout fixes post-date it.)*
-- **ADR:** ADR-0057 (+ operator P7 activation). **Enforced by:** the in-source `cfg` gate +
-  the live workflow.
+- **Binds:** CI; all snapshot/visual tests; every governance gate's remote enforcement.
+- **Prevents:** platform-dependent font/render flake gating the build; baseline drift; a
+  governance gate that exists only in a pre-commit hook.
+- **Rule:** the matrix at `.github/workflows/ci.yml` is **`{macos-latest,
+  windows-latest}`**, and **macos-latest is the canonical leg**: it runs the full `cargo
+  test -p ui` including all 56 visual baselines, every repo-governance gate, and every
+  feature-gated cargo invocation whose subject is the code rather than the operating system.
+  Windows runs build + non-visual `cargo test -p ui` + the workspace tests. Visual PNG
+  baselines remain **macOS-canonical**: snapshot test files carry
+  `#![cfg(target_os="macos")]` — the source gate *is* the CI filter; off-macOS they compile
+  to nothing. Linux/Windows visual regression is deferred and must supersede or amend
+  ADR-0057 when it lands.
+- **`Linux is built NOWHERE`** — the one property the narrowing cost, recorded here because
+  nothing else enforces it. `crates/ui/Cargo.toml`'s `x11` + `wayland` iced features are
+  load-bearing on Linux (25 errors without them, task `#11`); macOS uses the Cocoa backend,
+  so the dev box cannot see a regression and the dropped Ubuntu leg was the only thing that
+  ever compiled that dependency graph. A comment in that file is the whole of the
+  protection, and ADR-0102's alternatives section costs the only mechanism that would
+  replace it.
+- **History:** operator-activated as a **3-OS** matrix on 2026-07-10 (remediation P7,
+  commit `8b8e546`); narrowed to two legs on 2026-11-09 by operator decision, shipped in
+  `4777982f`. Eleven steps had run on Ubuntu and nowhere else — the whole governance block,
+  the repository's only clippy invocation, the `--no-default-features` build, the ADR-0097
+  figure reproduction and all four feature-gated test steps. Nine were re-homed to macOS;
+  three died with their reasons written into `ci.yml`.
+- **ADR:** **ADR-0102** (the two-leg envelope) + ADR-0057 (macOS-canonical baselines, not
+  amended by it) + operator P7 activation. **Enforced by:** the in-source `cfg` gate + the
+  live workflow; the governance gates additionally by `.githooks/pre-commit`, which is now
+  the *only* enforcement on any machine where CI has not yet run.
 
 ### AD-14 — The dependency-direction law [ADOPTED]
 
@@ -497,7 +515,7 @@ runtime environment beyond the operator's machine; distribution is `cargo build`
 source. Durable state: the audit SQLite ledger (additive numbered migrations), parquet
 corpora, git-LFS model checkpoints. Evidence lives in git (`spec/**/reports/` +
 `spec/anchors.toml`); run outputs that must never be anchored live in git-ignored sibling
-roots (`lab-runs/`, `plan-exports/`, `data/binance-dynamic/`). CI: GitHub Actions 3-OS
+roots (`lab-runs/`, `plan-exports/`, `data/binance-dynamic/`). CI: GitHub Actions two-leg
 matrix on push/PR to `main` (AD-13). Secrets: env / secret store only (never git).
 
 ## Capability → Architecture Map

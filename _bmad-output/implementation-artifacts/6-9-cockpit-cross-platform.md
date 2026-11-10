@@ -8,13 +8,52 @@ Status: in-progress
 ## Story
 
 As the operator of the Honest Advisor,
-I want the cockpit on Linux/Windows: source shipped + macOS-verified; the 3-OS CI matrix ACTIVATED 2026-07-10 (P7) - the run-2 shakeout is the open in-progress work,
+I want the cockpit on Linux/Windows: source shipped + macOS-verified; CI ACTIVATED 2026-07-10 (P7) and narrowed to TWO legs 2026-11-09 (ADR-0102) - the Windows lane going green is the open in-progress work,
 so that the gates, ledgers, and process infrastructure keep the repo honest without manual vigilance.
 
 ## Acceptance Criteria
 
-1. **Given** the activated 3-OS CI matrix (ci.yml live on push/PR) with run-2 shakeout reds open, **when** the shakeout fixes land (fix-forward per the operator direction), **then** the Linux/Windows lanes go green and the story flips to done - until then it is honestly in-progress.
-2. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
+1. **AMENDED 2026-11-10 by ADR-0102 — see § "What the two-leg narrowing did to this story".**
+   **Given** the live two-leg matrix `{macos-latest, windows-latest}`, **when** both lanes
+   go green on a push to `main`, **then** this story flips to done - until then it is
+   honestly in-progress. The ORIGINAL wording asked for *"the Linux/Windows lanes go
+   green"*, which became permanently unsatisfiable when the operator removed the Linux lane:
+   a story must not be left holding an AC whose subject no longer exists.
+2. **Linux is recorded as NO LONGER CI-VERIFIABLE, not as satisfied.** `crates/ui`'s
+   `x11`/`wayland` iced features remain load-bearing for a Linux build (25 errors without
+   them, task `#11`) and nothing compiles that graph any more. ADR-0102's alternatives
+   section costs the one mechanism that would restore the guard - a build-only
+   `cargo check -p ui --features fixtures` Linux leg - and explains why it was not added.
+   That is the route back, and it is a new decision, not this story's remit.
+3. The standing floor holds: `verify_anchors` 119/119; `python3 scripts/spec_lint.py` PASS.
+
+## What the two-leg narrowing did to this story
+
+**2026-11-10.** On 2026-11-09 the operator asked for the Ubuntu leg removed and CI made
+faster; it shipped in `4777982f` and is now recorded as **ADR-0102** (it shipped without
+one, which is the AD-18 violation that ADR repairs). AD-13 is amended in the same pass.
+
+This story's subject is *"the cockpit on Linux/Windows"*, so the narrowing lands directly
+on it, and the honest accounting is three lines rather than one:
+
+- **The Windows half is intact** and is now the whole of the open work. It had never been
+  confirmable for a different reason - CI was red on every push for fifteen days
+  (25 consecutive runs, 2026-09-27 -> 2026-10-11) with all three OSes failing identically,
+  so "Windows is broken" and "everything is broken" were indistinguishable. That is no
+  longer the case.
+- **The Linux half is discharged by deletion of its subject**, the same shape as bug-log
+  `#172` (one unexplained red of a step that no longer exists - retired, not diagnosed). The
+  story cannot be asked to turn green a lane the operator removed. What it CAN do, and now
+  does, is record that Linux portability is consequently unguarded rather than achieved.
+- **Nothing here claims Linux works.** The source-level portability work this story did
+  (the `windows` crate stanza, the `libc::__error()` -> `raw_os_error()` fix, rustls-tls)
+  is still in the tree and was green on Ubuntu before the leg went. It is simply no longer
+  *verified* by anything, and a future regression in it will be invisible until a human
+  builds on Linux.
+
+Do not flip this story to `done` on the strength of this section. It flips when AC1's two
+lanes are green on a push to `main`, with the trace row and the CHANGELOG line moving in the
+same pass (ADR-0082).
 
 ## Tasks / Subtasks
 

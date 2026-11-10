@@ -35,8 +35,12 @@ _(open / deferred items)_
 
 ### Deferred by decision
 - **cockpit-cross-platform CI** — Linux/Windows source shipped + macOS-verified; the
-  3-OS GitHub Actions matrix was ACTIVATED 2026-07-10 (remediation P7); the run-2
-  Linux/Windows shakeout is the open work (fix-forward) — tracked as story
+  GitHub Actions matrix was ACTIVATED 2026-07-10 (remediation P7) as three legs and
+  **narrowed to two** — `{macos-latest, windows-latest}` — on 2026-11-09 by operator
+  decision (**ADR-0102**). **Linux is consequently built nowhere**, and the `x11`/`wayland`
+  iced features it needs are guarded by a comment rather than a gate; ADR-0102's
+  alternatives section costs the build-only Linux leg that would replace it, which is now
+  the open forward item here. The old run-2 Linux shakeout is moot. Story
   `6-9-cockpit-cross-platform` (`in-progress`).
 - **`lab-recipe-test-harness v0.3.0+`** — Recipe / subscription harness extension;
   robustness gate cleared, awaiting an analyst spawn. **Still wanted** — re-confirmed in the

@@ -88,7 +88,9 @@ pre-BMAD era; stories under `_bmad-output/implementation-artifacts/` since the
 > detecting historical edges + their decay), not a crack. **Buy-and-hold is the always-present
 > bake-off benchmark arm** and the **Monte-Carlo robustness machine is the credibility layer**
 > that gates every pick. PAPER-ONLY (simulated fills, simulated €200); not financial advice; single-coin.
-> **No live trading** (removed 2026-06-12, out of scope). The 3-OS CI matrix is ACTIVE (2026-07-10);
+> **No live trading** (removed 2026-06-12, out of scope). CI is ACTIVE (2026-07-10), narrowed to
+> **two legs** `{macos-latest, windows-latest}` on 2026-11-09 by operator decision (ADR-0102 — macOS
+> is the canonical leg and Linux is now built nowhere);
 > the end-to-end demo runbook is operator-approved (v3 close-out 2026-07-09). Full spec: `_bmad-output/planning-artifacts/PRD.md`.
 
 ---

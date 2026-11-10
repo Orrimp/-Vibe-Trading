@@ -394,7 +394,7 @@ The **MVP loop** — (1) guided input, (2) bake-off of the existing strategies +
 - **DSR/PBO crown-eligibility veto** — a ready-but-unbuilt one-line switch; the scorecard stays report-only by explicit, repeatedly re-confirmed operator decision. [NOTE FOR PM: this is the one standing tension between credibility and simplicity — any future flip is an operator decision + ADR, never a maintenance edit.]
 - **`lab-recipe-test-harness` v0.3.0+** — the one genuinely-open forward build item (backlog), not required for feature-completeness.
 - **Candidates never built:** cockpit-app-bundle, iced-ecosystem-evaluation, ui-gallery-table-cell.
-- **3-OS CI matrix** — long parked by operator decision; activated 2026-07-10 (operator-directed) with first-run shakeout fixes following. [ASSUMPTION: the `CHANGELOG.md` "stays operator-parked" note predates the 2026-07-10 activation commits and the activated state is current.]
+- **CI matrix** — long parked by operator decision; activated 2026-07-10 (operator-directed) as three legs with first-run shakeout fixes following, then **narrowed to two legs `{macos-latest, windows-latest}` on 2026-11-09** by operator decision (ADR-0102). The assumption that once stood here is discharged: the activated state was confirmed, and the current state is two legs with macOS canonical.
 - **Out of scope (a hypothetical follow-up project, not this product):** real-money execution, KYC, exchange API keys, withdrawals, multi-venue real-money, tax/lot accounting.
 
 ### 8.3 Maintenance-mode posture
@@ -520,4 +520,4 @@ There is **no add-more-features roadmap**: the v3 scoping found no coherent feat
 ## 14. Assumptions Index
 
 - §6 — D1–D5 treated as **ratified-as-built**: the literal "_Operator to confirm._" checkboxes in `spec/product.md` § Open decisions were never ticked, but the spec's `status: shipped` flip and the delivered F1–F9 implement exactly the recommended defaults.
-- §8.2 — the 3-OS **CI matrix is taken as activated** (2026-07-10 operator-directed commits), superseding the older `CHANGELOG.md` "stays operator-parked" note.
+- §8.2 — the **CI matrix is activated** (2026-07-10 operator-directed commits), superseding the older `CHANGELOG.md` "stays operator-parked" note. No longer an assumption, and no longer three legs: narrowed to `{macos-latest, windows-latest}` on 2026-11-09 (ADR-0102).

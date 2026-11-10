@@ -67,7 +67,7 @@ NFR-6: Graceful degradation: missing corpora skip arms; LLM failure falls back t
 - AD-10 UI verified at the rendered-PIXEL layer
 - AD-11 do-not-build register binding; thesis era-qualified
 - AD-12 DSR report-only; crown-veto stays unbuilt
-- AD-13 3-OS CI active; macOS canonical visual box
+- AD-13 two-leg CI active {macos, windows}; macOS canonical (ADR-0102)
 - AD-14 dependency-direction law
 - AD-15 PAPER/SIM only - no live execution path
 - AD-16 day-1 baseline-equity-divergence e2e for every overlay/sizing modifier
@@ -1864,14 +1864,15 @@ so that the gates, ledgers, and process infrastructure keep the repo honest with
 ### Story 6.9: cockpit-cross-platform
 
 As the operator of the Honest Advisor,
-I want the cockpit on Linux/Windows: source shipped + macOS-verified; the 3-OS CI matrix ACTIVATED 2026-07-10 (P7) - the run-2 shakeout is the open in-progress work,
+I want the cockpit on Linux/Windows: source shipped + macOS-verified; CI ACTIVATED 2026-07-10 (P7) and narrowed to TWO legs 2026-11-09 (ADR-0102) - the Windows lane going green is the open in-progress work,
 so that the gates, ledgers, and process infrastructure keep the repo honest without manual vigilance.
 
-**Acceptance Criteria:**
+**Acceptance Criteria:** (AMENDED 2026-11-10 by ADR-0102 - the original asked for "the Linux/Windows lanes go green", which the operator's removal of the Linux lane made permanently unsatisfiable)
 
-**Given** the activated 3-OS CI matrix (ci.yml live on push/PR) with run-2 shakeout reds open
-**When** the shakeout fixes land (fix-forward per the operator direction)
-**Then** the Linux/Windows lanes go green and the story flips to done - until then it is honestly in-progress
+**Given** the live two-leg matrix `{macos-latest, windows-latest}`
+**When** both lanes go green on a push to `main`
+**Then** this story flips to done - until then it is honestly in-progress
+**And** Linux is recorded as NO LONGER CI-VERIFIABLE rather than satisfied: `crates/ui`'s x11/wayland iced features stay load-bearing for a Linux build and nothing compiles that graph any more; ADR-0102's alternatives section costs the build-only Linux leg that would restore the guard
 **And** the standing floor holds: `verify_anchors` 119/119, `spec_lint` PASS.
 
 ### Story 6.10: bmad-method-migration
