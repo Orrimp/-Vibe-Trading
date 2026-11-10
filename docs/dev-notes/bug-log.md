@@ -9407,10 +9407,11 @@ English, not secrets.**
 
 ### `#194` — a thirty-command CI step is one bit of information, and the bit said "something"
 
-**Status**: **`partial-fix` 2026-11-10 — `ee767c87` (the ten-step split) + `8b5c5f6a` (the
-clock-gate step split three ways) + `6ccad4c0` (the `bash >= 4` requirement and the explicit
-selection). The cause is now ESTABLISHED by measurement (see "Established" at the end of this
-entry); what is still pending is one green CI run of the step that provides bash >= 4.** The failing gate is **identified** and the exit code **measured** (134, SIGABRT);
+**Status**: **`fixed` 2026-11-10 — `ee767c87` (the ten-step split) + `8b5c5f6a` (the
+clock-gate step split three ways) + `6ccad4c0` (the `bash >= 4` requirement) + `2d2d95be`
+(bash >= 4 provided in its own step, installed when the runner has none). The cause is
+ESTABLISHED by measurement and the fix is GREEN on CI: see "Established" at the end of this
+entry.** The failing gate is **identified** and the exit code **measured** (134, SIGABRT);
 the cause is **inferred and not yet proven**, and the guard added here is what will settle it in
 one read — which is exactly why this is `partial-fix` and not `fixed`. Anchor-impacting: **no**.
 
@@ -9580,6 +9581,15 @@ and when the log API is closed to you, that is the *only* size that works. `#187
   Replayed locally under the Actions shell in four cases: found, installed (stub `brew`), install
   failed (exit 3 with an `::error::` annotation), and nothing provided to the gate step (exit 3).
   The `#192` comment that still said the gate was pinned to the oldest interpreter is gone.
+- **Closed by CI, run `42901588819` (`2d2d95be`): green on both legs.** The provisioning step's
+  annotation, read through the API:
+
+  > `[notice] bug-log #194 bash :: installed /opt/homebrew/bin/bash (5.3.20(1)-release); candidates before: /bin/bash=3.2.57(1)-release`
+
+  **The runner offered ONLY Apple's bash 3.2.57.** That settles the one remaining inference:
+  every earlier invocation, PATH `bash` included, ran under 3.2, and the exit 134 was 3.2's
+  layout-dependent abort measured above. Homebrew bash 5.3 is now installed per run
+  (provisioning took 12 s), and the clock + PIT gates pass under it (8 s).
 
 ### `#195` — this file documents a Status schema that a third of its own entries do not follow
 
