@@ -1255,16 +1255,23 @@ def _self_test_gitignored_not_walked() -> bool:
         tmp = Path(td).resolve()
         try:
             git("init", "-q", str(tmp))
-            # `/local/` is the ignored subtree. `*.md` is deliberately ALSO here:
-            # it matches the tracked file too, so surviving it can only be the
-            # index taking precedence.
-            (tmp / ".gitignore").write_text("/local/\n*.md\n", encoding="utf-8")
-            for sub in ("local", "tracked"):
+            # Four subtrees, one dead link each, differing ONLY in ignore/index
+            # state. `/pattern/*.md` is deliberately a pattern that matches a file
+            # which is then force-added, so surviving it can only be the index
+            # taking precedence.
+            (tmp / ".gitignore").write_text(
+                "/local/\n/pattern/*.md\n", encoding="utf-8"
+            )
+            for sub in ("local", "pattern", "fresh", "tracked"):
                 (tmp / sub).mkdir()
                 (tmp / sub / "doc.md").write_text(
                     "see [gone](../nope.md)\n", encoding="utf-8"
                 )
-            git("-C", str(tmp), "add", "-f", ".gitignore", "tracked/doc.md")
+            # `fresh/` is added to NEITHER .gitignore nor the index: untracked is
+            # not ignored, and that distinction is what the pre-commit hook rests
+            # on — a markdown file written this minute has to be linted before it
+            # can be staged.
+            git("-C", str(tmp), "add", "-f", ".gitignore", "tracked/doc.md", "pattern/doc.md")
             git(
                 "-C", str(tmp),
                 "-c", "user.email=t@t", "-c", "user.name=t",
@@ -1286,6 +1293,8 @@ def _self_test_gitignored_not_walked() -> bool:
         found = dead_link_paths(default_roots(tmp))
         ok_ignored_silent = not any(f.endswith("local/doc.md") for f in found)
         ok_tracked_flagged = any(f.endswith("tracked/doc.md") for f in found)
+        ok_untracked_flagged = any(f.endswith("fresh/doc.md") for f in found)
+        ok_pattern_tracked_flagged = any(f.endswith("pattern/doc.md") for f in found)
 
         # Probe the gate: the ignored file must have been a candidate on disk and
         # the filter must be what dropped it. Without this, "silent" is also what
@@ -1296,15 +1305,12 @@ def _self_test_gitignored_not_walked() -> bool:
             any(c.as_posix().endswith("local/doc.md") for c in candidates)
             and not any(k.as_posix().endswith("local/doc.md") for k in kept)
         )
-        ok_tracked_survives_pattern = any(
-            k.as_posix().endswith("tracked/doc.md") for k in kept
-        )
-
     checks = [
         ("ignored subtree silent", ok_ignored_silent),
         ("tracked sibling flagged", ok_tracked_flagged),
+        ("untracked-but-not-ignored flagged", ok_untracked_flagged),
+        ("tracked file beats its ignore pattern", ok_pattern_tracked_flagged),
         ("filter is what dropped it", ok_filter_bites),
-        ("tracked file beats *.md pattern", ok_tracked_survives_pattern),
     ]
     ok = all(passed for _, passed in checks)
     detail = ", ".join(f"{name}={'ok' if passed else 'FAIL'}" for name, passed in checks)

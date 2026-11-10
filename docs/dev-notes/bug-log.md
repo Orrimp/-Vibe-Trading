@@ -8730,23 +8730,40 @@ excludes everything git ignores.**
 
 #### The probe
 
-`--self-test (gitignored-not-walked)` builds a throwaway `git init` repository with two sibling
-subtrees holding **the same dead link in the same filename**, separated by one line of
-`.gitignore`, and asserts four things:
+`--self-test (gitignored-not-walked)` builds a throwaway `git init` repository with **four**
+sibling subtrees holding **the same dead link in the same filename**, differing only in
+ignore/index state:
 
-| side | expectation |
+| subtree | state | expectation |
+|---|---|---|
+| `local/` | matched by `/local/`, untracked | **silent** |
+| `tracked/` | not ignored, in the index | **fires** |
+| `fresh/` | not ignored, **not** in the index | **fires** |
+| `pattern/` | matched by `/pattern/*.md`, force-added | **fires** |
+| — | the ignored file *was* a candidate and the filter is what removed it | holds |
+
+`local/` vs `tracked/` is the two-sided pair the house rule asks for. `fresh/` pins the
+distinction the whole pre-commit flow rests on — **untracked is not ignored**, so a markdown file
+written this minute is still linted before it can be staged; a filter built on `git ls-files`
+instead of `check-ignore` would have failed exactly here, silently, and nobody would have noticed
+until a new document shipped with dead links. `pattern/` pins the index-aware default, which is
+the only thing standing between this filter and a lint that quietly stops reading the repository.
+The last row is the probe-the-probe: "silent" is also what a fixture that was never enumerated
+looks like, so the filter is called directly and the ignored file must be present in the candidate
+list before it and absent after.
+
+**The probe is itself probed, three ways, and each breakage fires a different subset** — which is
+what makes the five assertions five rather than one restated:
+
+| deliberate breakage | what fails |
 |---|---|
-| ignored subtree | silent |
-| tracked sibling | **fires** |
-| the ignored file *was* a candidate and the filter is what removed it | holds |
-| tracked file matching `*.md` survives the pattern | holds |
+| filter drops everything | the three `fires` rows |
+| filter drops nothing | `local/` silent, and filter-is-what-dropped-it |
+| `--no-index` added to `check-ignore` | **only** `pattern/` |
 
-The first two are the two-sided pair the house rule asks for: the fixtures differ in exactly one
-dimension and expect opposite outcomes. The third is the probe-the-probe — "silent" is also what a
-fixture that was never enumerated looks like, so the filter is called directly on the candidate
-list and the ignored file must be present before it and absent after. The fourth pins the
-index-aware default, which is the only thing standing between this filter and a lint that quietly
-stops reading the repository.
+The third is the one worth having: without that row, swapping in `--no-index` — a one-word change
+that reads like a tightening — would take the lint off the repository's tracked content with every
+other assertion still green.
 
 #### Moral
 
