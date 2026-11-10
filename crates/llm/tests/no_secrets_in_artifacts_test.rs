@@ -308,7 +308,7 @@ fn v9_script_path() -> std::path::PathBuf {
 /// of truth — the script is — but the matcher is hand-rolled, so a
 /// change to the script's regex must be mirrored here deliberately.
 /// [`SecretGate::parse`] refuses to run on any other spelling.
-const SUPPORTED_SK_RE: &str = "sk-[A-Za-z0-9_-]{12,}";
+const SUPPORTED_SK_RE: &str = "(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{12,}";
 
 /// The V9 secret patterns, parsed out of
 /// `scripts/check_no_secrets_in_llm_artifacts.sh` at runtime.
@@ -460,10 +460,62 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 fn sk_shape_hit(bytes: &[u8]) -> bool {
     bytes.windows(3).enumerate().any(|(i, w)| {
         w == b"sk-"
+            // The `(^|[^A-Za-z0-9_-])` half of `SUPPORTED_SK_RE`, and it is
+            // load-bearing (bug-log `#193` A, 2026-11-10). Without it this
+            // matched INSIDE ENGLISH WORDS: `ri`+`sk-management` in a markdown
+            // anchor and `ri`+`sk-level` in "risk-level overlay" were two of the
+            // three key-shape hits over the committed-docs corpus. Any word
+            // ending in `sk` before a hyphen matched.
+            && (i == 0 || !is_sk_word_byte(bytes[i - 1]))
             && bytes[i + 3..]
                 .iter()
-                .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_' || **b == b'-')
+                .take_while(|b| is_sk_word_byte(**b))
                 .count()
                 >= 12
     })
+}
+
+/// The character class `SUPPORTED_SK_RE` uses on both sides of `sk-`:
+/// `[A-Za-z0-9_-]`. Factored so the boundary test and the run-length test
+/// cannot drift apart — they are the same class in the regex.
+fn is_sk_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'-'
+}
+
+#[cfg(test)]
+mod sk_shape_boundary {
+    use super::sk_shape_hit;
+
+    /// Two-sided on the LEFT BOUNDARY, which is the only dimension `#193` A
+    /// changed. Each pair differs in exactly that dimension and expects
+    /// opposite outcomes; asserting only "a key is found" would pass against
+    /// the unanchored matcher that shipped for months, and asserting only
+    /// "risk-level is ignored" would pass against a matcher that finds nothing.
+    #[test]
+    fn the_left_boundary_separates_a_key_from_an_english_word() {
+        // FIRES — a key at the start of input, and after a non-word byte.
+        assert!(sk_shape_hit(b"sk-ant-api03-ABCDEFGHIJKLMNOP"));
+        assert!(sk_shape_hit(b"Authorization: sk-ant-api03-ABCDEFGHIJKLMNOP"));
+        assert!(sk_shape_hit(b"(sk-proj-ABCDEFGHIJKLMNOP)"));
+
+        // SILENT — the exact prose that produced the two false positives.
+        assert!(!sk_shape_hit(b"risk-management-and-sizing-overlay"));
+        assert!(!sk_shape_hit(b"see #risk-management-section-here"));
+        assert!(!sk_shape_hit(b"**risk-level-overlay** ADR amendment"));
+        assert!(!sk_shape_hit(b"disk-usage-measurements-here"));
+
+        // The run-length half still holds: 11 trailing chars is not a key.
+        assert!(!sk_shape_hit(b"sk-ABCDEFGHIJK"));
+        assert!(sk_shape_hit(b"sk-ABCDEFGHIJKL"));
+    }
+
+    /// `_` and `-` are in the class, so a word ending in them also blocks a
+    /// match. Pins the class itself rather than just the alphanumeric case.
+    #[test]
+    fn the_boundary_class_includes_underscore_and_hyphen() {
+        assert!(!sk_shape_hit(b"my_sk-ABCDEFGHIJKLMNOP"));
+        assert!(!sk_shape_hit(b"x-sk-ABCDEFGHIJKLMNOP"));
+        assert!(sk_shape_hit(b" sk-ABCDEFGHIJKLMNOP"));
+        assert!(sk_shape_hit(b"=sk-ABCDEFGHIJKLMNOP"));
+    }
 }

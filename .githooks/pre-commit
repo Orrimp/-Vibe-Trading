@@ -135,7 +135,17 @@ else
 fi
 
 # AD-19: no secrets in git. Unsaveable after a push, which is why it is here.
-bash "$root/scripts/check_no_secrets_in_llm_artifacts.sh"
+#
+# `--min-files 1` is DECLARED at the call site, not left to the default, because
+# bug-log `#193` found this gate printing PASS without saying what it read: of
+# its four default targets exactly one is tracked, so on a fresh checkout it
+# scans a single fixture database. The count is now on the PASS line — compare
+# it between here and CI and the difference is the point. The `--self-test`
+# line is new too: until 2026-11-10 this was the only gate in this hook with no
+# probe, which for the gate enforcing AD-19 was the worst one to leave
+# unmeasured.
+bash "$root/scripts/check_no_secrets_in_llm_artifacts.sh" --min-files 1
+bash "$root/scripts/check_no_secrets_in_llm_artifacts.sh" --self-test
 
 # AD-10: the visual baselines are byte-compared, so a clock or RNG call on the
 # snapshot path makes them non-deterministic. Rebuilt 2026-11-10 — it had been

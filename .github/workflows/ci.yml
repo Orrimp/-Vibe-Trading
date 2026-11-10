@@ -270,7 +270,18 @@ jobs:
           # AD-19 — no secrets in git. Gated in the hook too, because this one is
           # unsaveable once a commit is pushed; here it is the backstop for a clone
           # that never ran `git config core.hooksPath .githooks`.
-          bash scripts/check_no_secrets_in_llm_artifacts.sh
+          # `--min-files 1` is declared here rather than inherited, and the count
+          # it prints is the finding of bug-log `#193`: of this gate's four
+          # default targets exactly ONE is tracked, so on this fresh checkout it
+          # reads a single fixture database while the same command reads ~37 on a
+          # developer box. The doc leg (`--scan-spec`), which is the one that
+          # would catch a key pasted into a runbook or a story, is NOT wired yet:
+          # it still reports 14 placeholder hits, and four of the eight offending
+          # files are in FROZEN trees (`evidence/**`, `docs/dev-notes/archive/**`)
+          # where a marker cannot be added — so that leg needs path exclusions,
+          # not just a marker convention. `#193` resolution 4.
+          bash scripts/check_no_secrets_in_llm_artifacts.sh --min-files 1
+          bash scripts/check_no_secrets_in_llm_artifacts.sh --self-test
 
           # AD-10 — the visual baselines are byte-compared, so a clock or RNG call
           # on the snapshot path makes them non-deterministic. Rebuilt 2026-11-10:

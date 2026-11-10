@@ -9232,6 +9232,58 @@ to *what the wired invocation covers*. One morning's half-life.
    wired instead of excused.
 5. **Re-point the wired invocation** at whatever (4) makes safe.
 
+#### Applied 2026-11-10 — A, C and the probe; B deferred with its blocker named
+
+**A is fixed.** `SK_RE` gained the left boundary in all three coupled places: the script, the
+Rust mirror's `SUPPORTED_SK_RE`, and its hand-rolled `sk_shape_hit`. Both halves of the
+coupling were probed and they fire on **disjoint** tests, which is what makes them two checks
+rather than one restated:
+
+| deliberate breakage | what fails |
+|---|---|
+| boundary removed from `sk_shape_hit` | the two new `sk_shape_boundary` tests — T1926 still passes |
+| `SK_RE` changed in the SCRIPT only | T1926, with its anti-drift message — the boundary tests still pass |
+
+`sk_shape_boundary` is two-sided on exactly the dimension the fix changed: three key shapes
+fire (start of input, after a space, after a paren), four prose strings stay silent
+(`risk-management-…`, `#risk-management-…`, `risk-level-overlay`, `disk-usage-…`), and the
+run-length half is pinned either side of 12.
+
+**C is fixed.** The PASS line now reads
+`V9 PASS: no secret patterns in N scanned file(s) [floor N] · 8 literals + 1 key-shape regex`,
+a `--min-files` floor defaults to 1 so "scanned nothing" cannot pass, and a path **named
+explicitly** that does not exist exits **2** as the header always promised. `-e` and not `-f`
+on purpose: the T1926 harness passes `--audit-db /dev/null`, which exists and is then skipped.
+
+**The gate now has a `--self-test`: 8 probes, green on bash 5.3 AND 3.2** (`#192`'s lesson
+applied from the start). The pairs: a real key shape fires / `risk-level` is silent; a clean
+file passes / zero files fails the floor; an explicitly-named missing path exits 2 /
+`/dev/null` does not.
+
+**And the probes caught two of my own omissions before they shipped**, which is the argument
+for writing them at all. S6 failed first because `require_exists` was defined and **never
+called** — the dangling half of the exit-2 change. Then it failed again because my fix put the
+calls **above** the function definition (`require_exists: command not found`). Production never
+noticed either defect: the bare invocation names no paths and short-circuits before the call,
+so the probes exercise a path production does not.
+
+**B stays open, and its blocker is now established rather than guessed.** `--scan-spec` went
+from 15 hits to **14** — and that arithmetic is the finding: the two word-substring false
+positives disappeared, and **one new hit appeared, from this very entry**, because documenting
+a secret-pattern gate trips it. Of the 8 remaining offending files, **4 are in FROZEN trees** —
+`evidence/v1/v2-1-tracing-layer-redactor/presentations/…` (byte-immutable under AD-2) and three
+under `docs/dev-notes/archive/` — where a marker **cannot be added**. So the doc leg can never
+be made green by a marker convention alone; it needs **path exclusions for the frozen trees**
+plus a marker for live docs, and the exclusions need their own non-vacuity floor or they become
+the next place coverage goes to die. That is a design task, not a drive-by, and it is why the
+leg is still not wired.
+
+**D is addressed, not closed.** Both call sites now declare `--min-files 1` explicitly and run
+the self-test. The floor cannot yet be raised: in CI the gate genuinely has only one file to
+read, so a higher floor would fail honestly rather than usefully. **The count on the PASS line
+is the real fix** — CI prints `1 scanned file(s)` where a developer box prints `37`, and that
+difference is now in the log instead of in nobody's head.
+
 #### Moral
 
 **A gate's wiring includes its ARGUMENTS.** `#190` asked what invokes a gate and `#191` asked
