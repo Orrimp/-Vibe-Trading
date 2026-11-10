@@ -142,6 +142,27 @@ jobs:
       # (4, 20, 4 and 5 probes fired respectively). They stay the FIRST step of the
       # job, ahead of the toolchain install and the cache restore, so a
       # constitutional failure still costs seconds instead of an hour.
+      # Pinned because the gates below are invoked as bare `python3` and two of
+      # them — `spec_lint.py` and `check_determinism_anchors.py` — import
+      # `tomllib`, which is 3.11+. Both declare `requires-python = ">=3.11"` in a
+      # PEP-723 header that bare `python3` does not read, so the requirement is
+      # satisfied by whatever the runner image happens to ship. On the Ubuntu leg
+      # that was 3.12 and it never came up; the gates moved to macOS on
+      # 2026-11-09 and nothing in this file guarantees that leg's interpreter.
+      # The failure is not hypothetical: on 2026-10-10 a Homebrew update left
+      # `/usr/bin/python3` 3.9.6 first on PATH on the dev box and every
+      # governance command died on `ModuleNotFoundError: tomllib` mid-session
+      # (`.githooks/pre-commit` carries the same note, and solves it with `uv
+      # run`, which reads the header). 3.12 matches the interpreter `uv` selects
+      # locally, so the hook and this job now disagree about nothing. Costs ~5 s,
+      # against a one-leg governance block whose alternative is an inherited
+      # dependency (bug-log `#189`).
+      - name: Pin Python for the governance gates
+        if: matrix.os == 'macos-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Governance gates (anchors + spec-lint)
         if: matrix.os == 'macos-latest'
         # `shell: bash` is LOAD-BEARING, not style (bug-log #84, 2026-08-15).
@@ -156,6 +177,10 @@ jobs:
         # gate step without it.
         shell: bash
         run: |
+          # Declared, not assumed. If the pin above is ever removed or the image
+          # changes, this fails on the VERSION with the version in the log,
+          # instead of on `ModuleNotFoundError: tomllib` three commands later.
+          python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version; print("governance interpreter:", sys.version.split()[0])'
           bash scripts/verify_anchors.sh | tail -1
           python3 scripts/spec_lint.py
           python3 scripts/spec_lint.py --self-test

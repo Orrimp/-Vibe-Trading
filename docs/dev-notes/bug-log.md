@@ -8754,3 +8754,34 @@ stops reading the repository.
 *which* trees — and in doing so changed the subject from "the repository" to "this directory", two
 things that are identical in CI and never identical on a developer's machine. The three bugs now
 read as one sequence: `#187` the rule, `#188` the scope, `#189` the subject.
+
+#### Addendum, same pass — the governance block moved legs carrying an undeclared interpreter
+
+Checking whether `4777982f` was safe to push turned up the other half of the same posture.
+`ci.yml` sets up **no Python at all** and invokes every gate as bare `python3`. Two of them —
+`spec_lint.py` and `check_determinism_anchors.py` — import `tomllib`, which is 3.11+. Both
+declare `requires-python = ">=3.11"` in a PEP-723 header that bare `python3` **does not read**.
+So the requirement was satisfied by whatever the runner image happened to ship.
+
+On the Ubuntu leg that was 3.12 and it never came up. On 2026-11-09 the entire governance block
+moved to macOS — and the step's own comment names *portability* as the move's risk, measured on
+the dev box (`python3` 3.15.2) which says nothing about `macos-latest`. The failure mode is not
+hypothetical: on 2026-10-10 a Homebrew update left `/usr/bin/python3` 3.9.6 first on PATH here and
+every governance command died on `ModuleNotFoundError: tomllib` mid-session. `.githooks/pre-commit`
+carries a 10-line comment about exactly that and solves it with `uv run`, which reads the header.
+CI had no equivalent.
+
+Two steps, not one:
+
+- **`actions/setup-python@v5` pinned to `3.12`**, on the macOS leg only, ahead of the gates. 3.12
+  is the interpreter `uv` selects locally (3.12.13), so the hook and the job now disagree about
+  nothing. ~5 s against a one-leg block that otherwise inherits a dependency it never states.
+- **A declared precondition inside the step**: `assert sys.version_info >= (3, 11)`, printing the
+  version it got. Probed both ways before it landed — passes on 3.12 and 3.15, and on 3.10 it
+  raises with `AssertionError: 3.10.22` in the message. Without it, removing the pin fails three
+  commands later on `ModuleNotFoundError`, which reads like a broken gate rather than a missing
+  interpreter.
+
+The pin is the fix; the assertion is what makes the pin's absence legible. That ordering is the
+`#187` lesson — the thing that keeps a gate honest is not the gate, it is what happens when the
+gate's own precondition goes away.
