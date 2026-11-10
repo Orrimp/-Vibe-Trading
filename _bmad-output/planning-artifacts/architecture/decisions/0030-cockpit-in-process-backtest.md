@@ -139,11 +139,12 @@ memo.
   For THIS ADR's stated purpose the two are equivalent and the enforcement is
   real: `fixtures = []` (`crates/ui/Cargo.toml:310`) adds no dependency edges,
   so both forms resolve the identical dependency graph. The correction is to
-  the command NAME, not to the claim. What remains genuinely unmeasured is
-  whether the bare form **compiles** — `fixtures` being off removes
-  `#[cfg(feature = "fixtures")]` items while `lib.rs` declares `pub mod
-  fixtures;` unconditionally — but that is a compilability question this ADR
-  never made a claim about.)*
+  the command NAME, not to the claim. And the compilability question behind it
+  is no longer open: measured the same day, the bare form **compiles** —
+  `Checking ui v0.1.0` / `Finished dev profile … in 1m 18s`, zero errors. It is
+  deliberately NOT wired, because `fixtures = []` means both forms resolve the
+  identical dependency graph, so a second step would cost ~1 m 18 s for zero
+  additional coverage of what this ADR enforces.)*
   The `backtest` crate already encapsulates those edges; `ui`
   depends only on `backtest` (newly added under
   `ui/Cargo.toml [dependencies] backtest = { path = "../backtest" }`),

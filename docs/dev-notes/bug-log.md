@@ -9013,9 +9013,9 @@ the wiring.** A gate that nothing runs is not a weak gate; it is a document.
 
 ### `#191` — an accepted ADR's "Enforced by" names a command nothing in the repository runs
 
-**Status**: **`open`, LOW** — found 2026-11-10 by the orchestrator while closing `#92`.
-Anchor-impacting: **no**. The enforcement claim is substantively TRUE; the command name is wrong
-and one real question behind it is unmeasured.
+**Status**: **`fixed` 2026-11-10 — citation corrected, and the open question MEASURED.**
+Anchor-impacting: **no**. The enforcement claim was substantively true all along; the command
+name was wrong, and the one real question behind it is now answered — see § Measured.
 
 `_bmad-output/planning-artifacts/architecture/decisions/0030-cockpit-in-process-backtest.md:132`
 lists, under **Enforced by:**
@@ -9036,31 +9036,42 @@ form. A dependency-direction gate cannot tell them apart. So unlike `#190`'s fiv
 were cited and never invoked — this one has a live invocation under a different name. The fix is to
 the citation, applied in the same pass.
 
-#### The part that is genuinely unmeasured
+#### Measured, later the same day — and my hypothesis was wrong
 
-Whether the **bare** `cargo check -p ui --no-default-features` **compiles** at all. Turning
-`fixtures` off removes every `#[cfg(feature = "fixtures")]` item while `crates/ui/src/lib.rs`
-declares `pub mod fixtures;` **unconditionally** — the same unconditional-declaration shape that
-`#92` was made of, and the reason the ADR-0102 note about the dropped xvfb step could say
-`--features fixtures` gated only the `[[bin]]` targets. So it is a real question with a real
-precedent, and it is **not** answered by the green CI step.
+The open question was whether the **bare** `cargo check -p ui --no-default-features` compiles.
+I predicted it would **not**: turning `fixtures` off removes every
+`#[cfg(feature = "fixtures")]` item while `crates/ui/src/lib.rs` declares `pub mod fixtures;`
+**unconditionally** — the same unconditional-declaration shape `#92` was made of.
 
-It was not measured here on purpose. The dev box is at **97% disk (15 GiB free)** and the `#92`
-re-measurement had just cost ~4 GiB; a third feature-set's artifacts are not worth spending that on
-to grade the severity of a finding that is already actionable. ADR-0030 makes no claim about
-compilability, so nothing currently published depends on the answer.
+**It compiles.** Measured once disk recovered to 26 GiB free:
+
+    SDKROOT=…/MacOSX26.sdk cargo check -p ui --no-default-features
+    Checking ui v0.1.0 (…/crates/ui)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 18s
+
+`rc=0`, zero `error` lines, `Checking ui v0.1.0` present as the non-vacuity check that the
+subject itself compiled, and disk unchanged afterwards. The prediction was wrong because the
+module *declaration* compiles regardless of the feature — `fixtures` gates `[[bin]]
+required-features` and some internal state, not the module's existence. Recorded as a wrong
+prediction rather than quietly dropped: the reason `#193` D happened is that I did not ask
+what a passing command had actually done, and a prediction I never check is the same defect
+one step earlier.
+
+**So resolution 2 is discharged and resolution 3 is DECIDED: do not wire the bare form.** It
+would add ~1 m 18 s of CI for **zero** additional dependency coverage, because `fixtures = []`
+makes the two forms resolve the identical dependency graph — which is the same fact that made
+the citation correction sound in the first place. Both forms compile; the `--features fixtures`
+form is the gated one; ADR-0030's claim is true and now names the command that runs.
 
 #### Resolutions
 
-1. **Correct the citation only** (done 2026-11-10) — ADR-0030 now names the command that runs, and
-   says why the substitution is sound for its purpose.
-2. **Measure the bare form**, then either wire it as a second CI step or record it as unsupported
-   the way `#92` taught: in the manifest, at the definition, with a date.
-3. **Delete the bare form as a concept** — if no target ever needs `fixtures` off, say so once
-   rather than leaving a form nobody builds.
+1. **Correct the citation** — **done**. ADR-0030 names the command that runs and says why the
+   substitution is sound for its purpose.
+2. **Measure the bare form** — **done**, see § Measured. It compiles in 1 m 18 s.
+3. **Wire it or record it** — **DECIDED: record, do not wire.** Zero additional dependency
+   coverage for ~1 m 18 s, because `fixtures = []` means both forms resolve the same graph.
 
-Resolution 1 is applied. 2 and 3 are a scoping call, and the honest reason to leave them open is
-the disk, not the difficulty.
+All three discharged, so this closes.
 
 #### Moral
 
