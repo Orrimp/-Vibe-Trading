@@ -9730,3 +9730,78 @@ each got a verifier who reproduced every claim from scratch: 45 findings, 38 con
 - `--amend` folding a citation of HEAD into HEAD itself cannot be seen at pre-commit time. The next commit and CI fail E4.
 - Raw `<h3>` HTML and HTML comments are not parsed.
 - Below the mark, re-measured with the gate's own definitions: 50 entries have no Status line (as before), 74 carry a value outside the four (47 of them `FIXED`/`OPEN`, because the gate is case-sensitive and the earlier count was not), and 1 terminal row cites no hash (the earlier 42 counted only the Status *line*; a `**Commit**:` line in the same paragraph counts here). Options 1 and 2 above still price that backlog.
+
+### `#196` — the cockpit's training-log subscription panics on its first poll, and every test of it supplies the reactor production lacks
+
+**Status**: **`open`** — found 2026-11-10 by story `2-63` Wave 0 and confirmed by execution. Not
+fixed inside `2-63`, because that story's AC5 forbids production behaviour change; it gets its
+own fix. Anchor-impacting: **no**.
+
+**What runs, measured.** `crates/ui/src/lab/training_log.rs` `stream_impl` bridges a blocking
+`std::sync::mpsc::Receiver` with `tokio::task::spawn_blocking` **inside the stream body**.
+`TrainingLogRecipe::stream` enters `rt_handle` only around the `take()`, and drops the guard
+before returning the stream. Whether the body has a reactor is therefore up to whatever polls
+it. In the cockpit that is iced, and `cargo tree -e features -i iced_futures` shows **`thread-pool`
+only, with no `tokio`**, in the normal AND the dev-dependency graph. That is a futures
+`ThreadPool` with no tokio context.
+
+A throwaway two-sided test (deleted afterwards, never committed) built the real recipe, streamed
+it, and polled it both ways:
+
+```
+WAVE0 premise (no tokio context on the polling thread): true
+WAVE0 off-runtime poll: Err("there is no reactor running, must be called from the context of a Tokio 1.x runtime")
+   → panicked at crates/ui/src/lab/training_log.rs:115:34
+WAVE0 on-runtime poll (control): Ok(Some("TrainingLogLine(\"hello\")"))
+```
+
+**Why nothing caught it.** Every training-log test runs under `#[tokio::test]`, and that
+attribute supplies exactly the reactor production does not have. The tests are green over a
+path that cannot run. This is the bug-log `#66` class: a test that exists and passes is not a
+test that runs the shipped topology.
+
+**Not measured:** the effect in a running cockpit. Starting a real `train_tcn` subprocess from
+the GUI is an orchestrator-only cockpit run. The measured claim is that the subscription task
+panics on its first poll under the executor class iced uses. The inferred consequence is that
+the training-log panel never shows a line.
+
+**Fix (not yet applied):** stop depending on the poller's context. Run the blocking `recv` on
+the recipe's own `rt_handle` (`rt_handle.spawn_blocking`) instead of the ambient
+`tokio::task::spawn_blocking`. Pin it with an off-runtime test that polls with
+`futures::executor::block_on` on a fresh thread, two-sided against the on-runtime control. The
+same blind spot covers every recipe test in the crate, and `2-63` Wave B adds the executor-fidelity
+file for the rest.
+
+### `#197` — the shipped cockpit never calls the LLM for "Explain", while CHANGELOG, PRD and README say it does
+
+**Status**: **`open`** — found 2026-11-10 by the story `2-63` inventory and confirmed by reading.
+**This is a divergence between code and a PUBLIC claim, so the resolution is the operator's**:
+plumb the provider, or amend the claim. Anchor-impacting: **no**.
+
+**The code.** `crates/agent/src/runtime.rs` (the F9 narration task) sets
+`llm_provider = None` in **both** branches of `if config.llm.enabled { … } else { … }`, under
+`TODO(F9-v0.3): plumb the boot-built Arc<dyn LlmProvider> into RunHandles`. The task therefore
+answers every Explain request with `NarrationOutcome::FellBack`, and the user always sees the
+templated copy, even with `llm.enabled = true`. The fallback itself is honest and documented.
+What is not documented is that it is the ONLY path.
+
+**The claims.**
+
+- `CHANGELOG.md` § advisor-llm-narration F9: "the LLM renders the *already-computed*
+  `Recommendation` … into faithful plain-language prose".
+- `PRD.md` FR-11: "The user can opt in to an LLM-rendered narration".
+- `README.md`: "the LLM integration (narration …)".
+
+`git grep` finds the stub disclosed nowhere tracked except the `TODO` itself (and, since today,
+story `2-63`'s inventory).
+
+**What is NOT wrong.** The faithfulness machinery (the post-check, banned phrases,
+verbatim-number matching) exists and is tested on its own inputs. The claim that fails is that
+the cockpit's Explain reaches it with a real provider.
+
+**Options, for the operator:**
+
+1. **Make the claim true:** plumb the boot-built provider into `RunHandles` (the `TODO`'s own
+   plan) and add a test that a configured provider is actually called.
+2. **Make the claim honest:** amend the CHANGELOG, PRD and README wording to "the cockpit path
+   currently always falls back to the templated copy".
