@@ -34,14 +34,28 @@ updated: 2026-07-25
 _(open / deferred items)_
 
 ### Deferred by decision
-- **cockpit-cross-platform CI** — Linux/Windows source shipped + macOS-verified; the
-  GitHub Actions matrix was ACTIVATED 2026-07-10 (remediation P7) as three legs and
-  **narrowed to two** — `{macos-latest, windows-latest}` — on 2026-11-09 by operator
-  decision (**ADR-0102**). **Linux is consequently built nowhere**, and the `x11`/`wayland`
-  iced features it needs are guarded by a comment rather than a gate; ADR-0102's
-  alternatives section costs the build-only Linux leg that would replace it, which is now
-  the open forward item here. The old run-2 Linux shakeout is moot. Story
-  `6-9-cockpit-cross-platform` (`in-progress`).
+- **Linux portability is unguarded — put `x11`/`wayland` back behind a gate.** *(Opened
+  2026-11-10 by operator ruling (a) on story `6-9`; it is the residue of that story, not a
+  new idea.)* `crates/ui/Cargo.toml`'s `x11` + `wayland` iced features are load-bearing on
+  Linux — **25 compile errors without them** (task `#11`, reproduced in a `rust:latest`
+  container) — and since the matrix was narrowed to `{macos-latest, windows-latest}` on
+  2026-11-09 (**ADR-0102**) **nothing anywhere compiles that dependency graph**. macOS uses
+  the Cocoa backend, so the dev box cannot see a regression; dropping either feature now
+  yields a clean CI and a broken build for anyone on Linux. **A comment in that manifest is
+  the whole of the protection, and it says so in those words.**
+  **The priced fix** is in ADR-0102's § Alternatives, costed rather than hand-waved: a
+  build-only Linux leg running `cargo check -p ui --features fixtures` — no tests. It would
+  have caught `#11`; the whole Ubuntu leg was 51.1 min on run `42575316185` of which the
+  system-deps step was 0.23, so a check-only leg is a small fraction of that. It was not
+  added because the operator asked for Ubuntu **removed, not reduced** — so adding it back in
+  any form is a decision, which is why this sits in the queue rather than in a commit.
+  Story `6-9-cockpit-cross-platform` **shipped 2026-11-10** as `shipped-partial` (see
+  [CHANGELOG.md](../../CHANGELOG.md) § Recent) — closed as Windows-complete precisely so this
+  half stays visible instead of being implied. *(The `shipped 2026-…` wording is the
+  annotation `scripts/queue_staleness_check.py` recognises: a Queue item citing a story that
+  is `done` is stale by default, and that gate — wired into the hook this morning by bug-log
+  `#190` — blocked this very commit until the citation said so. This item is forward work with
+  NO story of its own; the reference to `6-9` is provenance, not a tracker.)*
 - **`lab-recipe-test-harness v0.3.0+`** — Recipe / subscription harness extension;
   robustness gate cleared, awaiting an analyst spawn. **Still wanted** — re-confirmed in the
   v3 close-out (2026-07-09) as the one genuinely-open forward *build* item; it is infra, NOT

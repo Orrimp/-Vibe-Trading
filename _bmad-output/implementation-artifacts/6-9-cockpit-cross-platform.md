@@ -1,6 +1,6 @@
 # Story 6.9: cockpit-cross-platform
 
-Status: in-progress
+Status: done
 
 <!-- Retro-generated 2026-07-25 (BMAD migration Phase 2, plan: docs/dev-notes/bmad-migration-plan-2026-07-24.md).
      spec/ remains authoritative until the Phase 5b cutover; this story is the BMAD-native registry entry. -->
@@ -74,12 +74,28 @@ question rather than a bookkeeping one, and scope on a story belongs to the oper
 | **(b) keep open pending the Linux leg** | the story stays the home for the whole original ask, and closes when something builds Linux again. Honest, but the board carries an item nothing is working on. |
 | **(c) close and drop Linux from scope** | the cleanest board, and the one that loses the information — I do not recommend it. |
 
-The orchestrator's preference is **(a)**: it is the only option where the board matches
-reality on both halves, and it leaves the Linux work priced rather than implied. Recorded here
-rather than acted on, and asked as one question.
+The orchestrator's preference was **(a)**: it is the only option where the board matches
+reality on both halves, and it leaves the Linux work priced rather than implied.
 
-Until that ruling, `Status:` stays `in-progress` and the trace row is non-terminal for this
-reason and not for the stale "run-2 shakeout" reason its old comment gave.
+### RULED (a) — 2026-11-10, operator
+
+**Closed as Windows-complete. `Status: done`, trace row `shipped-partial`.**
+
+`shipped-partial` and not `shipped` is the whole of the honesty here. Run `42762269706`
+concluded **success on both legs** with zero failing steps — macOS **19/19**, including the
+three steps that had never run off Ubuntu (clippy, the minimal `--no-default-features` build,
+and the ADR-0097 figure reproduction) — so what remains checkable was delivered and checked.
+**Linux was not tested and cannot be**, and this row says so rather than implying otherwise by
+a bare `done`.
+
+Closing evidence:
+`evidence/cockpit-cross-platform/reports/test-2026-11-10-1054-UTC-cockpit-cross-platform.md`
+— § 7 states the scope limitation as a finding rather than an aside, and § 6 records that the
+first cached run was **slower** on both legs, so nothing here may be cited as a cache win.
+
+**Linux portability is now a backlog item**, owning ADR-0102's costed build-only
+`cargo check -p ui --features fixtures` leg — the one mechanism that would put the
+`x11`/`wayland` features back behind a gate instead of a paragraph.
 
 ## Tasks / Subtasks
 
@@ -116,7 +132,7 @@ Job logs are **not readable without repo admin** (`gh run view --log-failed` →
 
 ### References
 
-- Trace: `REQ-COCKPIT-CROSS-PLATFORM-001` (state=`dev-done`)
+- Trace: `REQ-COCKPIT-CROSS-PLATFORM-001` (state=`shipped-partial`)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 6 (Remediation, Infra & Governance (P0-P8, lints, BMAD migration))
 
 ## Dev Agent Record
