@@ -57,6 +57,45 @@
 
 set -euo pipefail
 
+# ── bash >= 4 IS A DECLARED REQUIREMENT, not a preference (bug-log `#194`) ────
+#
+# This gate FAILS on GitHub's `macos-latest`, and the one hard datum is the exit
+# code: run `42790539820`'s combined governance step ended `Process completed
+# with exit code 134` — SIGABRT, no output. In the next run (`42845772401`) the
+# three-way split failed on BOTH the `bash`-on-PATH step and the explicit
+# `/bin/bash` step, while the `bash --version` step between them PASSED.
+#
+# WHAT THAT DOES AND DOES NOT ESTABLISH. It is consistent with the runner's
+# `bash` BEING `/bin/bash` 3.2.57 — two names for one interpreter — but I have
+# no exit code for the split run's steps, so that is an inference and not a
+# measurement. The alternative, that the modern-bash step fails for a different
+# reason, is not excluded. The guard below is what settles it: under bash < 4 it
+# exits **2**, so the next run's annotation reads `exit code 2` if the
+# interpreter is the cause and something else if it is not. Recorded as an open
+# inference because a diagnosis that names the wrong cause is worse than none
+# (bug-log `#114`).
+#
+# It is NOT reproducible here. Measured 5/5 clean under this box's
+# `/bin/bash` 3.2.57 at a 35-char path AND at a 136-char path, in a pristine
+# clone, production and `--self-test`. The runner's 3.2 is a different BUILD
+# (`darwin23`/`darwin24` against an older libc) and SIGABRT from bash 3.2 is an
+# allocator-level failure, so the trigger is the interpreter, not this script's
+# logic — which is also why chasing the exact construct is the wrong move.
+#
+# `#192` pinned this gate AGAINST bash 3.2 deliberately, to stop a 3.2-only
+# regression returning. That reasoning inverted a cost: **pinning the oldest
+# interpreter is only sound if the oldest interpreter WORKS.** It does not here,
+# so the requirement is declared instead — a legible refusal beats SIGABRT with
+# no output, which is indistinguishable from a crashed gate.
+if [[ -z "${BASH_VERSINFO:-}" || "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "FAIL  this gate requires bash >= 4; got '${BASH_VERSION:-unknown}'" >&2
+  echo "      bash 3.2 aborts here with SIGABRT on GitHub's macos runners" >&2
+  echo "      (bug-log #194). Invoke it with a modern bash — on macOS that is" >&2
+  echo "      Homebrew's: \"\$(brew --prefix)/bin/bash\"." >&2
+  exit 2
+fi
+
+
 WORKSPACE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # The one sanctioned home for the raw partition_point — exempt outright.

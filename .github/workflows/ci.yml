@@ -374,35 +374,58 @@ jobs:
           # this line, a 3.2-only regression is invisible whenever PATH happens to
           # offer a newer bash. Costs ~0.3 s. Also prints the version, so the log
           # says which bash ran everything else in this step.
-      - name: "Governance — AD-10 clocks, modern bash"
+      # ── Pick a bash that WORKS, and say which (bug-log `#194`) ──────────────
+      #
+      # `shell: bash` resolves bash from PATH, and on `macos-latest` that may be
+      # Apple's `/bin/bash` **3.2.57** — under which both of these gates died
+      # with `exit code 134` (SIGABRT, no output). They now refuse legibly with
+      # **exit 2** instead, so this step's own exit code is the diagnosis: 2 means
+      # the interpreter, anything else means something I have not found yet.
+      #
+      # `#192` pinned the clock gate AGAINST 3.2 on purpose, to stop a 3.2-only
+      # regression returning. That inverted a cost — **pinning the oldest
+      # interpreter is only sound if the oldest interpreter works** — so the pin
+      # is replaced by a declared requirement plus an explicit modern bash.
+      # The selection FAILS LOUDLY when no bash >= 4 exists rather than skipping:
+      # a gate that quietly does not run is the whole subject of `#190`.
+      - name: "Governance — AD-10 clocks + PIT joins (bash >= 4)"
         if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: |
-          bash scripts/check_no_clocks_in_ui_tests.sh
-          bash scripts/check_no_clocks_in_ui_tests.sh --self-test
+          # Report every candidate, so the log says what this runner actually has
+          # even when the choice is obvious.
+          echo "PATH bash: $(command -v bash || echo '<none>') -> $(bash --version | head -1)"
+          for cand in /opt/homebrew/bin/bash /usr/local/bin/bash /bin/bash; do
+            [ -x "$cand" ] || continue
+            echo "candidate: $cand -> $("$cand" --version | head -1)"
+          done
 
+          BASH4=""
+          for cand in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash || true)"; do
+            [ -x "$cand" ] || continue
+            major="$("$cand" -c 'echo ${BASH_VERSINFO[0]}' 2>/dev/null || echo 0)"
+            if [ "${major:-0}" -ge 4 ]; then BASH4="$cand"; break; fi
+          done
+          if [ -z "$BASH4" ]; then
+            echo "FAIL  no bash >= 4 on this runner; these two gates cannot run." >&2
+            echo "      Declared requirement, not a skip (bug-log #194 / #190)." >&2
+            exit 1
+          fi
+          echo "using: $BASH4 -> $("$BASH4" --version | head -1)"
+
+          "$BASH4" scripts/check_no_clocks_in_ui_tests.sh
+          "$BASH4" scripts/check_no_clocks_in_ui_tests.sh --self-test
+          "$BASH4" scripts/check_no_raw_asof_join.sh
+          "$BASH4" scripts/check_no_raw_asof_join.sh --self-test
+
+      # Kept deliberately: its exit code is a second, independent read on which
+      # bash this runner offers, and it cost nothing when the gate step was red.
       - name: "Governance — AD-10 which bash is which"
         if: always() && matrix.os == 'macos-latest'
         shell: bash
         run: |
-          # Informational, and isolated so a pipe problem here cannot be mistaken
-          # for a gate problem. `| head -1` under `-eo pipefail` was my first
-          # suspect for the red step and was REFUTED locally (rc 0 under
-          # `bash --noprofile --norc -eo pipefail`), so this step exists to settle
-          # it on the runner rather than by argument.
           bash --version | head -1
           /bin/bash --version | head -1
-
-      - name: "Governance — AD-10 clocks, bash 3.2 (the #192 pin)"
-        if: always() && matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          # macOS ships /bin/bash 3.2.57, and `#192` pinned the gate against it
-          # on purpose: `set -u` plus `"${arr[@]}"` on an EMPTY array aborts
-          # there, which this gate once did. If THIS step is the red one, the pin
-          # found something the dev box cannot see — which is what a pin is for.
-          /bin/bash scripts/check_no_clocks_in_ui_tests.sh
-          /bin/bash scripts/check_no_clocks_in_ui_tests.sh --self-test
 
       - name: "Governance — operator ledger + backlog queue (bug-log #190)"
         if: always() && matrix.os == 'macos-latest'
@@ -416,25 +439,6 @@ jobs:
           python3 scripts/queue_staleness_check.py
           python3 scripts/queue_staleness_check.py --self-test
 
-      - name: "Governance — PIT as-of joins (bug-log #190, #194)"
-        if: always() && matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-
-          # PIT discipline over 413 production files. 6.0 s measured, which is why
-          # this one is CI-only: an as-of join is fixable after the fact, so it does
-          # not earn 6 s on every local commit.
-          bash scripts/check_no_raw_asof_join.sh
-          bash scripts/check_no_raw_asof_join.sh --self-test
-
-      # `components: clippy` is explicit rather than inherited. The clippy step
-      # below was proven on the Ubuntu image and now runs on the macOS one, and
-      # what made it work was the runner image's pre-installed toolchain, not this
-      # action — `dtolnay/rust-toolchain` installs with `--profile minimal`, which
-      # does NOT include clippy. Naming the component means the step depends on a
-      # declaration instead of on an image's contents. Costs seconds; it is already
-      # installed on the hosted images, so this is a no-op there and insurance
-      # anywhere else.
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:

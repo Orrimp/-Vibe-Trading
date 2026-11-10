@@ -9380,9 +9380,10 @@ English, not secrets.**
 ### `#194` — a thirty-command CI step is one bit of information, and the bit said "something"
 
 **Status**: **`partial-fix` 2026-11-10 — `ee767c87` (the ten-step split) + `8b5c5f6a` (the
-clock-gate step split three ways).** The diagnosability is fixed; **the cause of the red run
-is still unknown and this entry does not claim otherwise** — which is exactly why the status
-is `partial-fix` and not `fixed`. Anchor-impacting: **no**.
+clock-gate step split three ways) + this commit (the `bash >= 4` requirement and the explicit
+selection).** The failing gate is **identified** and the exit code **measured** (134, SIGABRT);
+the cause is **inferred and not yet proven**, and the guard added here is what will settle it in
+one read — which is exactly why this is `partial-fix` and not `fixed`. Anchor-impacting: **no**.
 
 **Found** by reading run `42772994148`, the first on the `ci.yml` rewritten by `#189`–`#193`.
 `macos-latest` concluded **failure** at step 4, *Governance gates (anchors + spec-lint)*.
@@ -9446,6 +9447,65 @@ reads the digits.
 - **A colon-space inside an unquoted YAML scalar is a mapping.** `- name: Governance: …`
   produced *"mapping values are not allowed here"*. Names are quoted now, and the file is
   re-parsed with a real parser after every edit.
+
+#### The split answered it, twice over
+
+**Round one** (`42790539820`, the ten-step split): `Governance — AD-10 clock/RNG gate + bash
+3.2` was the only red step. Nine others green — **including the PIT as-of-join gate I had
+found aborting under bash 3.2 and explicitly refused to blame.** Declining that unproven lead
+was correct; it passes in CI.
+
+**Round two** (`42845772401`, that gate split three ways):
+
+| step | result |
+|---|---|
+| AD-10 clocks, **modern bash** | **failure** |
+| AD-10 which bash is which | success |
+| AD-10 clocks, **bash 3.2** (the `#192` pin) | **failure** |
+
+So it is **not** the `#192` pin: it fails under both invocations, and the `bash --version`
+step between them passes, which also retires the `| head -1` SIGPIPE hypothesis I had already
+refuted locally.
+
+**And the annotation gave the one hard datum:** `Process completed with exit code 134` —
+**SIGABRT, no output.** The same signature measured that morning for `check_no_raw_asof_join.sh`
+under bash 3.2 at a long path, now appearing for a different gate.
+
+#### What is established, what is inferred, and what is excluded
+
+- **Established:** exit 134, SIGABRT, on `macos-latest`; both the PATH-bash and `/bin/bash`
+  invocations fail; the version probe between them succeeds.
+- **Excluded by measurement:** the content (30/30 green in a pristine clone), Python 3.12
+  (0/19 failures), the pipes, path length for *this* gate (5/5 clean under local bash 3.2 at
+  both a 35- and a 136-char path), and the PIT gate as the culprit.
+- **Inferred, NOT measured:** that the runner's `bash` and `/bin/bash` are the same 3.2.57
+  interpreter, making both steps one test. Consistent with the evidence; not proven, because
+  `--json jobs` carries conclusions and not exit codes, and the one annotation I have belongs
+  to the earlier combined step. The alternative — the modern-bash step failing for some other
+  reason — is **not** excluded.
+
+Not reproducible here: this box's `/bin/bash` 3.2.57 runs the gate clean 5/5 at both path
+lengths, production and `--self-test`. The runner's 3.2 is a different **build**
+(`darwin23`/`darwin24` against an older libc) and SIGABRT out of bash 3.2 is an allocator-level
+failure, so the trigger is the interpreter rather than this script's logic — which is also why
+chasing the exact construct is the wrong move.
+
+#### Fix — a declared requirement instead of a pin, and the fix is its own instrument
+
+`#192` pinned the clock gate **against** bash 3.2 on purpose, to stop a 3.2-only regression
+returning. **That inverted a cost: pinning the oldest interpreter is only sound if the oldest
+interpreter works.** It does not here. So:
+
+1. Both gates now **declare** `bash >= 4` and **refuse legibly** — `exit 2` with the version in
+   the message — instead of aborting with no output. A legible refusal beats SIGABRT, which is
+   indistinguishable from a crashed gate.
+2. CI **selects** a bash ≥ 4 explicitly, reports every candidate it found and which it chose,
+   and **fails loudly** if none exists rather than skipping — a gate that quietly does not run
+   is the whole subject of `#190`.
+3. **The guard is the next measurement.** Under bash < 4 it exits **2**, so the next run's
+   annotation reads `exit code 2` if the interpreter is the cause, and something else if it is
+   not. That is why this entry stays `partial-fix`: the inference above is now falsifiable by
+   one read instead of argued.
 
 #### Moral
 
