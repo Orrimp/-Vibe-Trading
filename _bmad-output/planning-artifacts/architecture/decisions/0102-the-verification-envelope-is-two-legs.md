@@ -121,17 +121,30 @@ Consequences for what is still **pending** rather than verified.
   files are left alone, because rewriting them would falsify the record.
 - A Linux regression in the `ui` dependency graph is now invisible until a human builds on
   Linux. D3 names the exposure and the alternatives section names the fix.
-- **Pending, not verified** — the honest state at the time of writing. Run `42762269706`
-  (on `4777982f`) was read once while in progress: `Governance gates` **success on
-  macos-latest**, clippy **success** — the first time clippy has ever run on macOS. Still
-  `pending` on that run when it was read: `Check ui minimal build`, `Test workspace`,
-  **`Reproduce the sample figure (story 6-12)`**, the three feature-gated backtest steps,
-  `forecast candle-gated tests`, and both `Test ui` steps. The figure reproduction is the
-  one to watch: it hashes a body produced by running the binary, it has **only ever run on
-  Ubuntu**, and nothing has yet demonstrated that it reproduces the anchored SHA on macOS.
-  Until that step is green, "the move cost nothing" is a claim this ADR does not make.
+- **RESOLVED the same day — `macos-latest` finished 19/19, zero failures** (run
+  `42762269706` on `4777982f`). Every re-homed step is green on the leg that now owns it:
+  the governance block; **clippy**, for the first time ever on macOS; `Check ui minimal
+  build (--no-default-features)`; `Test workspace`; the three feature-gated backtest steps;
+  `forecast candle-gated tests`; and `Test ui` in full, including all 56 visual baselines.
+
+  **The one that mattered was the figure reproduction** (`story 6-12` / ADR-0097). It hashes
+  a body produced by *running the binary* and it had **only ever run on Ubuntu**, so nothing
+  had demonstrated that an anchored body-SHA reproduces on a different operating system —
+  the single genuine risk in the whole narrowing, and the reason the paragraph this replaces
+  refused to claim the move was free. **It is green.** ADR-0097 § D6's ground — that
+  reproducibility is a property of the data and the engine rather than of the OS — now has a
+  second OS behind it instead of an argument.
+
+  Recorded this way deliberately: the sentence above replaces a *"pending, not verified"*
+  bullet rather than overwriting a claim, because the ADR was accepted while the answer was
+  genuinely unknown and the honest version of that is a dated correction, not a tidy history.
+  `windows-latest` was on its final step (`Test ui (non-visual, Windows)`), 15/18 complete,
+  zero failures, when this was written.
 
 ## Changelog
 
 - 2026-11-10 — accepted. Records the 2026-11-09 operator-directed narrowing shipped in
   `4777982f`, adds D5/D6 from the 2026-11-10 follow-ups, and amends AD-13.
+- 2026-11-10 (same day, later) — the Consequences section's *"pending, not verified"* bullet
+  **resolved against run `42762269706`**: `macos-latest` 19/19, zero failures, the ADR-0097
+  figure reproduction among them. No decision changed; an unknown became a measurement.
