@@ -8785,3 +8785,20 @@ Two steps, not one:
 The pin is the fix; the assertion is what makes the pin's absence legible. That ordering is the
 `#187` lesson — the thing that keeps a gate honest is not the gate, it is what happens when the
 gate's own precondition goes away.
+
+**Both halves confirmed on the real runner, not inferred.** `4777982f` was pushed at
+2026-11-10T05:27Z and run `42762269706` read once while in progress:
+`Governance gates (anchors + spec-lint)` — **success on macos-latest**, skipped on windows.
+
+Two things follow, and the second is a correction to the paragraph above it:
+
+1. The asymmetry is **measured**, not deduced. `spec_lint.py` returned 0 on the same commit
+   where the pre-commit hook here returned 52. The gate's verdict genuinely was a function of
+   which machine ran it.
+2. **The interpreter risk was not live.** `macos-latest`'s `python3` is already ≥ 3.11 — the step
+   imported `tomllib` and passed. So the pin and the assertion are precautionary, not a repair of
+   a red leg, and the Addendum should be read that way. What justifies them is still true: the
+   version was an inherited property of a runner image on the one leg now carrying every
+   constitutional gate, and the 2026-10-10 incident is what an inherited interpreter costs when
+   the image moves. But nothing was broken, and saying otherwise would be the `#176` mistake —
+   a magnitude asserted from too little evidence.
