@@ -227,6 +227,10 @@ where
         // deliver `RedrawRequested`, so `state.t` and `state.last_update`
         // stay at their seed values throughout snapshot rendering.
         State::new(SpinnerState {
+            // CLOCK-OK: the H-arch-9 analysis in the comment above this fn —
+            // snapshot paths never deliver `RedrawRequested`, so `state.t` and
+            // `state.last_update` hold their seed values for the whole render and
+            // no elapsed value reaches the pixels.
             last_update: Instant::now(),
             t: 0.0,
         })

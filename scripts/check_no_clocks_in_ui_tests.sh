@@ -50,22 +50,34 @@
 #      It now prints files actually read, lines examined, and exemptions
 #      honoured, so the success path is observable.
 #
-# NOT DONE HERE, and priced rather than left vague: the watchlist is still a
-# hand-written list, which is the `#188` defect one level up. Widening it to a
-# WALK of `crates/ui/src/widgets/` + `crates/ui/src/screens/` was measured —
-# **5 non-comment hits in 5 files**, so the widening is cheap — but each hit
-# needs a marker whose reason is TRUE, and only four of the five could be
-# verified in that pass: `chart_build_probe.rs:98` (behind
-# `#[cfg(feature = "chart-build-probe")]`, off by default),
-# `cache_state_summary_badge.rs:126` (inside a `#[test]` fn asserting the label
-# ignores mtime), `throttled_spinner.rs:230` (carries its own H-arch-9
-# "Instant::now is test-unreachable" analysis: snapshot paths never deliver
-# `RedrawRequested`, so the seed values stand) and `chart.rs:301` (already
-# marked). The fifth, `activity_tape.rs:63`, is an `Instant::now()` age filter
-# against `ACTIVITY_TICK_RENDER_FLOOR_MS` inside `view()`, and whether its
-# FILTER OUTCOME is snapshot-invariant was not established — writing a marker
-# that says it is would be inventing a reason, which is the `#186` defect.
-# That analysis is the whole of the remaining work.
+# WIDENED THE SAME DAY, after the analysis the first draft deferred. The
+# watchlist is now a WALK of `crates/ui/src/widgets/` + `crates/ui/src/screens/`
+# plus five named harness files — 76 files against a floor of 60. The five
+# non-comment hits each carry a marker whose reason was verified individually,
+# not asserted:
+#
+#   - `chart.rs:301` — the sanctioned production read, already marked.
+#   - `chart_build_probe.rs:98` — the whole `impl` is behind
+#     `#[cfg(feature = "chart-build-probe")]`, off by default and enabled by no
+#     snapshot invocation.
+#   - `cache_state_summary_badge.rs:126` — inside a `#[test]` fn whose assertion
+#     IS that `populated_count == 0` makes the value irrelevant.
+#   - `throttled_spinner.rs:234` — its own H-arch-9 analysis: snapshot paths
+#     never deliver `RedrawRequested`, so the seed values stand.
+#   - `activity_tape.rs:63` — the one the first draft could not verify, now
+#     settled by reading the graph: `ActivityTape::apply` is the only mutator and
+#     is called from exactly one site (`state.rs:4043`) inside a message handler
+#     the harness never dispatches; the single gallery cell declares
+#     `state: "empty"` and seeds `Cockpit::default()`; and no gallery cell
+#     anywhere constructs an `ActivityEvent`. So `view` returns a zero-size
+#     `Space` before `now` reaches anything drawn.
+#
+# That last one changed the finding rather than closing it. `activity_tape.rs`
+# renders `format_elapsed(now.duration_since(state.started_at))` INTO THE PIXELS,
+# so what keeps it out of the baselines is a CONDITION — that its only gallery
+# cell is the empty state — and not a property of the call. The marker says so,
+# and says what to do instead (a seeded, fixed `started_at`) when someone adds a
+# populated cell. This gate is now the thing that will ask.
 #
 # Acceptance criteria (V4):
 #   - Exits 0 on the clean tree.
@@ -75,18 +87,37 @@
 
 set -euo pipefail
 
-# Files to scan — the rendering / Charts-screen paths reachable from
-# `iced_test::screenshot(&ui::test_support::program_from_cockpit(...))`.
-# Extending the watchlist is one line per file. Every entry MUST exist.
-WATCHLIST=(
-  "crates/ui/src/widgets/chart.rs"
-  "crates/ui/src/widgets/canvas_chart.rs"
+# WALKED, not listed. Until 2026-11-10 this was a hand-written list of eight
+# files, one of which had not existed since `f3cb7f92` — the `#188` defect, in a
+# gate. The subject is every rendering path reachable from
+# `iced_test::screenshot(&ui::test_support::program_from_cockpit(...))`, which is
+# the widget and screen trees plus the harness's own files, so that is what it
+# now walks. Cost of the widening, measured before it landed: 5 non-comment hits
+# in 5 files, each given a marker whose reason was individually verified
+# (bug-log `#190`).
+SCAN_DIRS=(
+  "crates/ui/src/widgets"
+  "crates/ui/src/screens"
+)
+
+# The harness's own files, which live outside those trees. Every entry MUST
+# exist — these five are also what makes a mis-rooted run impossible to mistake
+# for a clean one.
+NAMED_FILES=(
   "crates/ui/src/test_support.rs"
   "crates/ui/tests/visual_snapshots.rs"
   "crates/ui/tests/chart_hover_grid_sweep.rs"
   "crates/ui/tests/fixtures/mod.rs"
   "crates/ui/tests/fixtures/visual_diff.rs"
 )
+
+# Non-vacuity floor. Measured 2026-11-10: 51 `widgets/*.rs` + 20 `screens/*.rs`
+# + 5 named = 76. The floor's job is to make "the glob returned nothing" or a
+# mis-rooted walk impossible to mistake for a pass — NOT to turn every deleted
+# widget into a gate failure, which is why it sits below the measurement rather
+# than on it. A drop to 59 means something structural moved and should be read,
+# not bumped.
+MIN_FILES=60
 
 # Forbidden patterns. Whitespace + capture covers most call shapes
 # (`time::SystemTime::now()`, `std::time::Instant::now()`, etc.).
@@ -124,16 +155,33 @@ scan_tree() {
   local -i failed=0 scanned=0 examined=0 exempted=0
   local file abs pat lineno match
 
-  for file in "${WATCHLIST[@]}"; do
-    abs="${root}/${file}"
-    if [[ ! -f "$abs" ]]; then
+  # Resolve the subject: the walked trees, then the named harness files.
+  local -a files=()
+  local d
+  for d in "${SCAN_DIRS[@]}"; do
+    if [[ ! -d "${root}/${d}" ]]; then
+      echo "FAIL  ${d} — scan directory does not exist"
+      failed=1
+      continue
+    fi
+    while IFS= read -r found; do
+      files+=("${found#"${root}/"}")
+    done < <(find "${root}/${d}" -name '*.rs' -type f | sort)
+  done
+  for file in "${NAMED_FILES[@]}"; do
+    if [[ ! -f "${root}/${file}" ]]; then
       # Defect 3: this used to be a silent `continue`.
-      echo "FAIL  ${file} — watchlist entry does not exist"
-      echo "      A renamed or deleted path is a DECISION; update the watchlist"
+      echo "FAIL  ${file} — named harness file does not exist"
+      echo "      A renamed or deleted path is a DECISION; update NAMED_FILES"
       echo "      (or remove the entry and say why) rather than scanning fewer files."
       failed=1
       continue
     fi
+    files+=("$file")
+  done
+
+  for file in "${files[@]}"; do
+    abs="${root}/${file}"
     scanned+=1
     for pat in "${PATTERNS[@]}"; do
       while IFS=: read -r lineno match; do
@@ -164,11 +212,12 @@ scan_tree() {
   fi
 
   # Defect 4: measured, not declared.
-  if (( scanned != ${#WATCHLIST[@]} )); then
-    echo "FAIL  scanned ${scanned} file(s) but the watchlist declares ${#WATCHLIST[@]}"
+  if (( scanned < MIN_FILES )); then
+    echo "FAIL  scanned ${scanned} file(s), below the declared floor of ${MIN_FILES}"
+    echo "      Something structural moved. Read it before bumping the floor."
     return 1
   fi
-  echo "CLOCKS PASS  (${scanned}/${#WATCHLIST[@]} files read · ${#PATTERNS[@]} patterns · ${examined} matching line(s) examined · ${exempted} exemption(s) honoured)"
+  echo "CLOCKS PASS  (${scanned} file(s) read [floor ${MIN_FILES}] · ${#PATTERNS[@]} patterns · ${examined} matching line(s) examined · ${exempted} exemption(s) honoured)"
   return 0
 }
 
@@ -181,17 +230,21 @@ self_test() {
   # First run of this self-test reported "01111111111/01111111111 probes".
   local tmp
   local -i probes=0 fired=0
+  # The fixtures are a handful of files, so the production floor would fire on
+  # every probe and mask what each one is testing. P11 below pins the floor
+  # itself, which is the only place it belongs.
+  local -i MIN_FILES=1
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
 
   _probe() {
     # $1 = name, $2 = expected ("fire" | "silent"), $3 = file body
     local name="$1" expect="$2" body="$3" out rc verdict
-    mkdir -p "$tmp/crates/ui/src/widgets" "$tmp/crates/ui/src" \
-             "$tmp/crates/ui/tests/fixtures"
-    # Every watchlist entry must exist or defect-3 fires and masks the probe.
+    mkdir -p "$tmp/crates/ui/src/widgets" "$tmp/crates/ui/src/screens" \
+             "$tmp/crates/ui/src" "$tmp/crates/ui/tests/fixtures"
+    # Every named file must exist or defect-3 fires and masks the probe.
     local f
-    for f in "${WATCHLIST[@]}"; do
+    for f in "${NAMED_FILES[@]}"; do
       mkdir -p "$tmp/$(dirname "$f")"
       : > "$tmp/$f"
     done
@@ -260,6 +313,19 @@ fn f() {}'
     fired+=1
   else
     echo "  FAIL P10 a missing watchlist entry fails loudly (expected fire, rc=${rc})"
+  fi
+
+  # Defect 4 / non-vacuity: the floor must fire when the walk collapses.
+  local -i save_min=$MIN_FILES
+  MIN_FILES=9999
+  out="$(scan_tree "$tmp" 2>&1)" && rc=0 || rc=1
+  MIN_FILES=$save_min
+  probes+=1
+  if (( rc != 0 )) && [[ "$out" == *"below the declared floor"* ]]; then
+    echo "  OK   P11 a scan below the floor fails loudly (expected fire, rc=${rc})"
+    fired+=1
+  else
+    echo "  FAIL P11 a scan below the floor fails loudly (expected fire, rc=${rc})"
   fi
 
   echo ""

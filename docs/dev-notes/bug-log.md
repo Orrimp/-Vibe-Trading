@@ -8903,18 +8903,39 @@ makes `probes+=1` string **concatenation**. Defect 4, committed by me, inside th
 purpose was defect 4. Fixed with `local -i`, and the note is in the script so the next reader sees
 why the declaration is spelled that way.
 
-#### Not fixed here, priced instead
+#### Priced, then done the same day
 
-- **The watchlist is still a hand-written list** — the `#188` defect one level up. Widening it to a
-  *walk* of `crates/ui/src/widgets/` + `crates/ui/src/screens/` was measured: **5 non-comment hits
-  in 5 files**, so the widening itself is cheap. But each hit needs a marker whose reason is
-  **true**, and only four could be verified: `chart_build_probe.rs:98` (behind an off-by-default
-  feature), `cache_state_summary_badge.rs:126` (inside a `#[test]` fn), `throttled_spinner.rs:230`
-  (carries its own H-arch-9 "`Instant::now` is test-unreachable" analysis) and `chart.rs:301`
-  (already marked). The fifth, `activity_tape.rs:63`, is an `Instant::now()` age filter against
-  `ACTIVITY_TICK_RENDER_FLOOR_MS` inside `view()`, and whether its **filter outcome** is
-  snapshot-invariant was not established. Writing a marker asserting that it is would be inventing
-  a reason — the `#186` defect. That analysis is the whole of the remaining work.
+- **The watchlist was still a hand-written list** — the `#188` defect one level up — and that is
+  **fixed**, after doing the analysis the first draft had deferred. It is now a WALK of
+  `crates/ui/src/widgets/` + `crates/ui/src/screens/` plus five named harness files:
+  `CLOCKS PASS (76 file(s) read [floor 60] · 4 patterns · 16 matching line(s) examined · 5
+  exemption(s) honoured)`. The floor sits **below** the measured 76 on purpose — its job is to
+  make a collapsed or mis-rooted walk impossible to mistake for a pass, not to turn every deleted
+  widget into a failure — and `--self-test` gained **P11**, which drives the floor above the
+  fixture count and asserts it fires. Eleven probes.
+
+  Four of the five hits had reasons verifiable by reading them (an off-by-default feature, a
+  `#[test]` fn, the H-arch-9 spinner analysis, and the already-marked production read). **The
+  fifth changed the finding instead of closing it.** `activity_tape.rs` does not merely *filter*
+  on a clock: line ~128 renders `format_elapsed(now.duration_since(state.started_at))`
+  **into the pixels**. What keeps it out of the 56 baselines is a CONDITION, not a property of the
+  call — `ActivityTape::apply` is the only mutator and is called from exactly one site
+  (`state.rs:4043`) inside a message handler the harness never dispatches; the widget's single
+  gallery cell declares `state: "empty"` and seeds `Cockpit::default()`; and **no gallery cell
+  anywhere constructs an `ActivityEvent`**. So `view` returns a zero-size `Space` before `now`
+  reaches anything drawn. The marker records that chain and the hazard it leaves: the first
+  populated `activity_tape` gallery cell will bake a wall-clock duration into its baseline unless
+  it seeds a fixed `started_at`. **That is a trap the gate will now ask about**, which is the
+  difference between a verified exemption and a plausible one.
+
+  All four marker edits are **comment-only**: `git diff --numstat` reads 14/0, 3/0, 4/0, 4/0 —
+  25 added lines, **zero deletions**, zero added non-comment lines. No behaviour changed, so AD-10's
+  rendered-pixel requirement is not engaged.
+
+  And the gate caught my own first attempt: the spinner marker went above
+  `State::new(SpinnerState {`, so the upward walk hit a non-comment line and stopped, exactly as
+  P6 says it should. It fired on `throttled_spinner.rs:234` and the marker moved onto the line
+  above the call. A gate that rejects its author's first draft is the only kind worth wiring.
 - **`check_no_secrets_in_llm_artifacts.sh` has no `--self-test`** (it answers one with "unknown
   flag"), so it is now the only gate in either list whose teeth are unmeasured.
 

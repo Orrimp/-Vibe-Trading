@@ -123,6 +123,9 @@ mod tests {
     fn format_label_empty_ignores_newest_mtime() {
         let s = CacheSummary {
             populated_count: 0,
+            // CLOCK-OK: inside a `#[test]` fn whose entire point is that
+            // `populated_count == 0` makes `newest_mtime` irrelevant — the
+            // assertion below is that the label ignores this value. Never rendered.
             newest_mtime: Some(SystemTime::now()),
         };
         assert_eq!(format_label(&s), LAB_CACHE_STATE_EMPTY);

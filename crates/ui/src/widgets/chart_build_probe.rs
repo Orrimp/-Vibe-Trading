@@ -95,6 +95,10 @@ impl BuildTimer {
     #[must_use]
     pub(crate) fn start() -> Self {
         Self {
+            // CLOCK-OK: the whole `impl` is behind
+            // `#[cfg(feature = "chart-build-probe")]`, which is off by default and
+            // is not enabled by any snapshot or baseline invocation — this timer
+            // does not exist in the binary the screenshot harness builds.
             start: std::time::Instant::now(),
         }
     }

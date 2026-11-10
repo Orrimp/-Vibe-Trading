@@ -60,6 +60,20 @@ const MODE: ThemeMode = ThemeMode::Dark;
 /// iced element tree.
 #[must_use]
 pub fn view(tape: &ActivityTape) -> crate::Element<'_> {
+    // CLOCK-OK: unreachable on the snapshot path, and VERIFIED rather than
+    // assumed (2026-11-10, bug-log `#190`). `ActivityTape::apply` — the only
+    // mutator — is called from exactly one site, `state.rs:4043`, inside a
+    // message handler the gallery/snapshot harness never dispatches; the single
+    // gallery cell for this widget declares `state: "empty"` and seeds
+    // `Cockpit::default()`; and no gallery cell anywhere constructs an
+    // `ActivityEvent`. So `visible()` is empty, `renderable` is empty, and this
+    // function returns a zero-size `Space` before `now` reaches anything drawn.
+    //
+    // ⚠️ THE CONDITION, NOT THE CALL, IS WHAT MAKES THIS SAFE. Line ~128 renders
+    // `format_elapsed(now.duration_since(state.started_at))` INTO THE PIXELS, so
+    // the first populated `activity_tape` gallery cell bakes a wall-clock duration
+    // into its baseline and will flake. Add such a cell only with a seeded,
+    // fixed `started_at` — not with `Instant::now()`.
     let now = Instant::now();
     let render_floor = Duration::from_millis(ACTIVITY_TICK_RENDER_FLOOR_MS);
 
