@@ -1272,9 +1272,22 @@ def _self_test_gitignored_not_walked() -> bool:
             # on — a markdown file written this minute has to be linted before it
             # can be staged.
             git("-C", str(tmp), "add", "-f", ".gitignore", "tracked/doc.md", "pattern/doc.md")
+            # Every `-c` here pins something this fixture must NOT inherit from the
+            # machine. `commit.gpgsign` is the one that bit: it is `true` globally on
+            # the dev box with `gpg.format = ssh` and the key served by the
+            # 1Password SSH agent, so when that agent naps — a known, recurring
+            # failure here — `git commit` returns 128 with "1Password: failed to fill
+            # whole buffer" and THIS GATE GOES RED FOR A REASON OUTSIDE ITS SUBJECT.
+            # It passed in the morning and failed in the afternoon on an unchanged
+            # tree, which reads as flakiness and earns a retry instead of a fix
+            # (bug-log `#192`). `core.hooksPath` is pinned for the same class of
+            # reason, pre-emptively: there is no global one today, and a fixture
+            # that silently runs the repo's governance hooks would be absurd.
             git(
                 "-C", str(tmp),
                 "-c", "user.email=t@t", "-c", "user.name=t",
+                "-c", "commit.gpgsign=false",
+                "-c", "core.hooksPath=/dev/null",
                 "commit", "-qm", "init",
             )
         except (OSError, subprocess.CalledProcessError) as exc:

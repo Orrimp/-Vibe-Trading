@@ -9068,3 +9068,84 @@ the disk, not the difficulty.
 "Enforced by" line is a citation, and a citation that no longer resolves is the same defect as a
 dead link — which is what `#188` was about, one artifact class over. The sequence now reads:
 `#187` the rule, `#188` the scope, `#189` the subject, `#190` the wiring, **`#191` the citation**.
+
+### `#192` — two gates I wired this morning had verdicts that depended on the machine, not the subject
+
+**Status**: **`fixed` 2026-11-10 — this commit.** Found the same day, by running the gates under a
+different bash and then by an unrelated failure that was not mine. Anchor-impacting: **no**.
+**Both are `#189`'s SUBJECT rule turned on my own work**, hours after I wrote it down.
+
+#### Instance 1 — the clock gate crashes on the bash that `macos-latest` actually ships
+
+`#190` wired `check_no_clocks_in_ui_tests.sh` into CI and the hook. It had only ever run on Ubuntu
+(bash 5.x) and on this box, whose `bash` on PATH is Homebrew's **5.3.20**. It now runs on the macOS
+leg, and macOS's `/bin/bash` is **3.2.57**.
+
+Under `set -u`, bash 3.2 aborts on `"${arr[@]}"` when the array is **empty** — `arr[@]: unbound
+variable`. The rebuilt gate resolves its subject into a `files` array and iterates it, and `files`
+is empty on exactly one path: the one where a watchlist entry is missing. Measured both ways on the
+same tree:
+
+| interpreter | a root with nothing in it |
+|---|---|
+| bash **5.3** | reaches the FAIL block, prints *"A renamed or deleted path is a DECISION; update NAMED_FILES"* |
+| bash **3.2** | `/dev/stdin: line 66: files[@]: unbound variable` |
+
+So on the leg it now runs on, the gate reported a **crash** where it meant to report a
+**diagnosis** — and a diagnosis that names the wrong cause is worse than none, which this log has
+said since `#114`.
+
+**And its own probe could not tell the difference.** P10 asserted `rc != 0` **and** that the output
+contained `"does not exist"` — both of which a crash satisfies, because the message was already
+printed before the loop was reached. The probe passed on 3.2 against a script that died on every
+invocation past the named-files loop. P10 now asserts three things: the designed guidance line is
+present, and `"unbound variable"` is **absent**. Probed by reverting only the array expansion:
+P10 **fails** on 3.2 (10/11) and the whole suite stays green on 5.3 — so the strengthened
+assertion catches exactly what the old one missed.
+
+Fixed with `${files[@]+"${files[@]}"}`, and **pinned in CI** by running the gate and its self-test
+a second time under `/bin/bash` explicitly — the oldest interpreter the matrix can hand it. Without
+that line a 3.2-only regression is invisible whenever PATH happens to offer a newer bash, which is
+how this one got in. The step also now prints `bash --version`, so the log says which bash ran
+everything else in it. Both interpreters: production green, **11/11 probes**.
+
+#### Instance 2 — my gitignore probe inherited the operator's commit signing
+
+Mid-session, `spec_lint.py --self-test` went **red** on an unchanged tree:
+
+> `gitignored-not-walked: FAIL — fixture could not be built, git unusable (… 'commit', '-qm',
+> 'init'] returned non-zero exit status 128)`
+
+Nothing in the repo had changed. The cause is the machine: `commit.gpgsign = true` globally with
+`gpg.format = ssh` and the signing key served by the **1Password SSH agent**. When that agent stops
+answering — a known, recurring failure here — `git commit` returns 128 with
+`error: 1Password: failed to fill whole buffer`, and my fixture, which commits a tracked file to
+establish the index-aware half of the probe, dies with it.
+
+The `#189` shape exactly, and in one way worse: **it is intermittent.** The gate passed in the
+morning and failed in the afternoon on identical content, which reads as flakiness and earns a
+retry rather than a fix. A verdict that moves while the subject does not is not a flaky gate; it is
+a gate measuring the wrong thing.
+
+Fixed by pinning what the fixture must not inherit: `-c commit.gpgsign=false` (the one that bit)
+and `-c core.hooksPath=/dev/null` pre-emptively — there is no global `hooksPath` today, and a
+fixture that silently ran this repo's governance hooks would be absurd. **The probe is the
+circumstance**: the self-test now passes *while* global signing is still on and the agent is still
+returning `failed to fill whole buffer`, verified in that order.
+
+Surveyed for the same exposure: only `spec_lint.py` builds a git fixture with a commit.
+`check_determinism_anchors.py:1018` and `adr_registry_check.py:79,111` call only
+`git diff --cached --name-only` — read-only, unsigned, unexposed.
+
+#### Moral
+
+**A gate's SUBJECT includes the interpreter that runs it and the configuration it inherits.**
+`#189` said this about `.gitignore` and about `python3` and I wrote the sentence down the same
+morning; both instances here are the same sentence about `bash 3.2` and about `commit.gpgsign`.
+The generalisation worth keeping is narrower and more useful than "test on all platforms":
+
+> **Pin the oldest interpreter and every inherited setting the fixture touches — and assert the
+> DESIGNED failure, never merely a non-zero exit.** A crash is non-zero too.
+
+`#187` the rule · `#188` the scope · `#189` the subject · `#190` the wiring · `#191` the citation ·
+**`#192` the environment.**

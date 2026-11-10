@@ -180,7 +180,13 @@ scan_tree() {
     files+=("$file")
   done
 
-  for file in "${files[@]}"; do
+  # `${files[@]+...}` is NOT style — on bash 3.2, which is what `macos-latest`
+  # ships as /bin/bash, `set -u` + `"${files[@]}"` on an EMPTY array aborts with
+  # `files[@]: unbound variable`. Measured both ways 2026-11-10: on bash 5.3 a
+  # root with nothing in it reaches the FAIL block below and prints the
+  # guidance; on 3.2 it died here first, so the gate's diagnosis on the leg it
+  # now runs on named the wrong cause (bug-log `#192`).
+  for file in ${files[@]+"${files[@]}"}; do
     abs="${root}/${file}"
     scanned+=1
     for pat in "${PATTERNS[@]}"; do
@@ -308,11 +314,20 @@ fn f() {}'
   mkdir -p "$tmp/empty"
   out="$(scan_tree "$tmp/empty" 2>&1)" && rc=0 || rc=1
   probes+=1
-  if (( rc != 0 )) && [[ "$out" == *"does not exist"* ]]; then
-    echo "  OK   P10 a missing watchlist entry fails loudly (expected fire, rc=${rc})"
+  # Three conjuncts, and the last two are why this probe is not vacuous. Asserting
+  # only `rc != 0` plus "does not exist" passed on bash 3.2 against a script that
+  # CRASHED on `files[@]: unbound variable` straight after printing that line —
+  # the message was already out, so a crash satisfied both halves. A probe that
+  # cannot tell the designed failure from a crash is the thing this file is about.
+  if (( rc != 0 )) \
+     && [[ "$out" == *"does not exist"* ]] \
+     && [[ "$out" == *"update NAMED_FILES"* ]] \
+     && [[ "$out" != *"unbound variable"* ]]; then
+    echo "  OK   P10 a missing entry fails by DESIGN, not by crash (expected fire, rc=${rc})"
     fired+=1
   else
-    echo "  FAIL P10 a missing watchlist entry fails loudly (expected fire, rc=${rc})"
+    echo "  FAIL P10 a missing entry fails by DESIGN, not by crash (expected fire, rc=${rc})"
+    [[ "$out" == *"unbound variable"* ]] && echo "       -> it CRASHED: $(printf '%s' "$out" | grep -o 'unbound variable.*' | head -1)"
   fi
 
   # Defect 4 / non-vacuity: the floor must fire when the walk collapses.
@@ -321,11 +336,13 @@ fn f() {}'
   out="$(scan_tree "$tmp" 2>&1)" && rc=0 || rc=1
   MIN_FILES=$save_min
   probes+=1
-  if (( rc != 0 )) && [[ "$out" == *"below the declared floor"* ]]; then
-    echo "  OK   P11 a scan below the floor fails loudly (expected fire, rc=${rc})"
+  if (( rc != 0 )) \
+     && [[ "$out" == *"below the declared floor"* ]] \
+     && [[ "$out" != *"unbound variable"* ]]; then
+    echo "  OK   P11 a scan below the floor fails by DESIGN (expected fire, rc=${rc})"
     fired+=1
   else
-    echo "  FAIL P11 a scan below the floor fails loudly (expected fire, rc=${rc})"
+    echo "  FAIL P11 a scan below the floor fails by DESIGN (expected fire, rc=${rc})"
   fi
 
   echo ""

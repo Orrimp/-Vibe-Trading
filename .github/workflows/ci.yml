@@ -278,6 +278,21 @@ jobs:
           # onto a second line, while nothing ran it but a hand-invoked skill.
           bash scripts/check_no_clocks_in_ui_tests.sh
           bash scripts/check_no_clocks_in_ui_tests.sh --self-test
+          # bug-log #192: `shell: bash` resolves to whatever bash is on PATH, and
+          # this leg is macOS, whose SYSTEM bash is 3.2.57 — where `set -u` plus
+          # `"${arr[@]}"` on an EMPTY array aborts with `unbound variable`. That is
+          # not hypothetical: the gate above did exactly that for its
+          # missing-watchlist path, so on 3.2 it reported a crash where it meant to
+          # report a diagnosis, and its own probe could not tell the two apart.
+          # Fixed with `${arr[@]+"${arr[@]}"}`, and pinned HERE by running the
+          # self-test under the OLDEST interpreter this matrix can hand it. Without
+          # this line, a 3.2-only regression is invisible whenever PATH happens to
+          # offer a newer bash. Costs ~0.3 s. Also prints the version, so the log
+          # says which bash ran everything else in this step.
+          bash --version | head -1
+          /bin/bash --version | head -1
+          /bin/bash scripts/check_no_clocks_in_ui_tests.sh
+          /bin/bash scripts/check_no_clocks_in_ui_tests.sh --self-test
 
           # Operator-ledger schema + backlog Queue staleness: sub-second, and
           # previously enforced by whoever remembered.
