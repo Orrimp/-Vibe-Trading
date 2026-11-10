@@ -8723,6 +8723,15 @@ left is a commit, so the trigger is now there and the next restart costs a click
 
 ### `#189` — the `#188` fix made the lint walk the repo, and the repo on a dev box is not the repository
 
+**Status**: **`fixed` 2026-11-10 — `e3ba1283` (the gitignore filter) + `e425a8b0` (the
+untracked-vs-ignored probe) + `afcb684e` (the interpreter pin) + `e616244a` (the CI
+correction).** Anchor-impacting: **no**.
+*(This line was MISSING until `fcb821fa`+1, and the omission is the entry's own subject: this
+file's header defines four Status values and a "Status anchor: every row links the landing
+commit hash(es)", and I wrote two entries that hour with neither. A record that does not
+follow the schema it documents is the defect of `#92` in miniature, committed by the person
+writing about it.)*
+
 **Found** 2026-11-10 by the orchestrator, running the governance block by hand before deciding
 whether the unpushed CI commit was safe to push.
 **`scripts/spec_lint.py` enumerated markdown by walking the working tree, with no regard for
@@ -8886,6 +8895,11 @@ Two things follow, and the second is a correction to the paragraph above it:
 
 ### `#190` — five gates existed and ran nowhere, and the one CLAUDE.md names as AD-18's enforcement was among them
 
+**Status**: **`fixed` 2026-11-10 — `cb41720c` (the five gates wired) + `9f4ae76e` (the clock
+gate's watchlist widened to a walk).** Anchor-impacting: **no**. Carries a named follow-on,
+discharged separately: the AD-19 gate's coverage, filed and closed as `#193`.
+*(Status line added retroactively — see the note under `#189`.)*
+
 **Found** 2026-11-10 by the orchestrator, immediately after *using* one of them: ADR-0102's
 missing Registry row was caught because `adr_registry_check.py` was run **by hand**, and the
 next question was what runs it when nobody remembers.
@@ -9013,8 +9027,8 @@ the wiring.** A gate that nothing runs is not a weak gate; it is a document.
 
 ### `#191` — an accepted ADR's "Enforced by" names a command nothing in the repository runs
 
-**Status**: **`fixed` 2026-11-10 — citation corrected, and the open question MEASURED.**
-Anchor-impacting: **no**. The enforcement claim was substantively true all along; the command
+**Status**: **`fixed` 2026-11-10 — `184f1418` (citation corrected) + `fcb821fa` (the open
+question MEASURED).** Anchor-impacting: **no**. The enforcement claim was substantively true all along; the command
 name was wrong, and the one real question behind it is now answered — see § Measured.
 
 `_bmad-output/planning-artifacts/architecture/decisions/0030-cockpit-in-process-backtest.md:132`
@@ -9082,7 +9096,7 @@ dead link — which is what `#188` was about, one artifact class over. The seque
 
 ### `#192` — two gates I wired this morning had verdicts that depended on the machine, not the subject
 
-**Status**: **`fixed` 2026-11-10 — this commit.** Found the same day, by running the gates under a
+**Status**: **`fixed` 2026-11-10 — `4951d289`.** Found the same day, by running the gates under a
 different bash and then by an unrelated failure that was not mine. Anchor-impacting: **no**.
 **Both are `#189`'s SUBJECT rule turned on my own work**, hours after I wrote it down.
 
@@ -9163,10 +9177,16 @@ The generalisation worth keeping is narrower and more useful than "test on all p
 
 ### `#193` — the AD-19 secrets gate: I wired the invocation that scans one file, and its key-shape regex matches the word "risk-level"
 
-**Status**: **`open`** — found 2026-11-10 by the orchestrator, auditing its own `#190` wiring
-because the secrets scan was the one gate in either list with **no `--self-test`**, i.e. the
-one whose teeth were unmeasured. Anchor-impacting: **no**, but see § D. Four findings, one of
-them mine from this morning.
+**Status**: **`fixed` 2026-11-10 — `8e9e8af1` (found + recorded) + `cebba421` (A and C, with
+the 8-probe self-test) + `2c5f2d40` (B: the doc leg sharpened and WIRED).** Anchor-impacting:
+**no**. **D is addressed rather than closed** and the body says how: the floor cannot be
+raised while CI genuinely has one artifact file to read, so the printed COUNT is the fix — CI
+prints `1 scanned file(s)` where a dev box prints `37`, and that difference is now in the log
+instead of in nobody's head. Found by the orchestrator auditing its own `#190` wiring, because
+the secrets scan was the one gate in either list with **no `--self-test`** — i.e. the one
+whose teeth were unmeasured. Four findings, one of them mine from that morning.
+*(This token said `open` for four hours after A, B and C had shipped. Flipping it is the
+`#92` lesson applied to the entry that documents the `#92` lesson.)*
 
 **No real secret was found. AD-19 is not breached.** Every one of the 15 hits below is a false
 positive, and two of them are false for a reason worth fixing.
@@ -9359,8 +9379,10 @@ English, not secrets.**
 
 ### `#194` — a thirty-command CI step is one bit of information, and the bit said "something"
 
-**Status**: **`partial-fix` 2026-11-10** — the diagnosability is fixed; **the cause of the red
-run is still unknown and this entry does not claim otherwise.** Anchor-impacting: **no**.
+**Status**: **`partial-fix` 2026-11-10 — `ee767c87` (the ten-step split) + `8b5c5f6a` (the
+clock-gate step split three ways).** The diagnosability is fixed; **the cause of the red run
+is still unknown and this entry does not claim otherwise** — which is exactly why the status
+is `partial-fix` and not `fixed`. Anchor-impacting: **no**.
 
 **Found** by reading run `42772994148`, the first on the `ci.yml` rewritten by `#189`–`#193`.
 `macos-latest` concluded **failure** at step 4, *Governance gates (anchors + spec-lint)*.
