@@ -328,7 +328,22 @@ jobs:
           # files are in FROZEN trees (`evidence/**`, `docs/dev-notes/archive/**`)
           # where a marker cannot be added — so that leg needs path exclusions,
           # not just a marker convention. `#193` resolution 4.
-          bash scripts/check_no_secrets_in_llm_artifacts.sh --min-files 1
+          # `--scan-spec` is WIRED as of 2026-11-10, and that is the point of bug-log
+          # `#193`: this leg greps `evidence/`, `docs/` and `_bmad-output/`, so it is the
+          # one that would catch a key pasted into a runbook, a story or a report — the
+          # realistic AD-19 risk here — and it had been permanently opt-OUT because it
+          # reported 14 hits, every one a false positive. The fix was to sharpen the rule,
+          # not to excuse the matches: docs are scanned with the boundary-anchored key
+          # SHAPE plus the two V9 synthetic keys, NOT the bare literal prefixes, because a
+          # bare `sk-ant-` is six characters of documentation and over prose those
+          # prefixes match any document that DISCUSSES them. Measured over 1323 doc files:
+          # the literal set reports 14, the shape set reports 1 — and that 1 is allowlisted
+          # with a reason, re-verified on every run as still existing and still matching,
+          # so the hole cannot rot open.
+          #
+          # `--min-files 1300` against ~1324 in CI and ~1360 here: a floor, not a count,
+          # sized so a collapsed or mis-rooted walk cannot pass as clean.
+          bash scripts/check_no_secrets_in_llm_artifacts.sh --scan-spec --min-files 1300
           bash scripts/check_no_secrets_in_llm_artifacts.sh --self-test
 
       - name: "Governance — AD-10 clock/RNG gate + bash 3.2 (bug-log #190, #192)"

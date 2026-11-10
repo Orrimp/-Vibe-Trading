@@ -83,6 +83,7 @@ SCAN_SPEC=0
 # break it. CI and the hook pass a real floor explicitly.
 MIN_FILES="${MIN_FILES:-1}"
 RUN_SELF_TEST=0
+STALE_PROBE=0
 # Which paths the CALLER named. A default that is absent is skipped (a fresh
 # checkout has no `target/logs`); a path someone typed and got wrong is the
 # "configuration / harness bug" the header promises exit 2 for.
@@ -101,6 +102,9 @@ while [[ $# -gt 0 ]]; do
     --min-files) MIN_FILES="$2"; shift 2 ;;
     --self-test) exec bash "$0" --__run-self-test ;;
     --__run-self-test) RUN_SELF_TEST=1; shift ;;
+    # Self-test S11 only: replace the allowlist with an entry that cannot exist,
+    # so the "stale entry fails" path is exercised without editing the real list.
+    --__allowlist-stale-probe) SCAN_SPEC=1; STALE_PROBE=1; shift ;;
     -h|--help)
       sed -n 's/^# //p' "$0" | head -40
       exit 0
@@ -181,6 +185,58 @@ self_test() {
   _p "S8 an unmeetable --min-files FAILS even on a clean scan" 1 "below the floor" \
      --min-files 9999 --db /dev/null --audit-db /dev/null --log-dir "$tmp/logs" --fixtures-dir "$tmp/empty-fix"
 
+  # ── the DOC leg (bug-log `#193` B). Fixtures live in a tmp tree whose
+  # `docs/` the leg will walk, so `cd` there for these four.
+  mkdir -p "$tmp/spec/docs"
+  printf 'the Authorization: sk-ant-api03-ABCDEFGHIJKLMNOP line\n' > "$tmp/spec/docs/leak.md"
+  printf 'we grep for the `sk-ant-` and `sk-proj-` prefixes and for `bearer `\n' > "$tmp/spec/docs/about.md"
+  (
+    cd "$tmp/spec" || exit 1
+    out="$(bash "$SELF" --scan-spec --db /dev/null --audit-db /dev/null \
+             --log-dir "$tmp/empty-logs" --fixtures-dir "$tmp/empty-fix" 2>&1)" && rc=0 || rc=$?
+    printf '%s\n%s\n' "$rc" "$out" > "$tmp/docleg.out"
+  )
+  rc="$(head -1 "$tmp/docleg.out")"
+  out="$(tail -n +2 "$tmp/docleg.out")"
+  probes=$((probes + 1))
+  if [ "$rc" = 1 ] && case "$out" in *"leak.md matched the doc-leg"*) true ;; *) false ;; esac; then
+    echo "  OK   S9 a real key in a DOC fires on the doc leg (rc=$rc)"
+    fired=$((fired + 1))
+  else
+    echo "  FAIL S9 a real key in a DOC fires on the doc leg (rc=$rc)"
+  fi
+  probes=$((probes + 1))
+  # The pair: the same leg must NOT fire on a doc that merely DISCUSSES the
+  # prefixes. 14 hits over the real corpus were exactly this, and they are why
+  # the leg sat opt-out for months.
+  if case "$out" in *"about.md"*) false ;; *) true ;; esac; then
+    echo "  OK   S10 a doc that only DISCUSSES the prefixes is silent (the #193 B fix)"
+    fired=$((fired + 1))
+  else
+    echo "  FAIL S10 a doc that only DISCUSSES the prefixes is silent (the #193 B fix)"
+  fi
+
+  # ── the allowlist must be EARNED: a stale entry fails rather than lingering.
+  probes=$((probes + 1))
+  out="$(SPEC_ALLOWLIST_OVERRIDE=1 bash "$SELF" --__allowlist-stale-probe 2>&1)" && rc=0 || rc=$?
+  if [ "$rc" = 1 ] && case "$out" in *"STALE ALLOWLIST"*) true ;; *) false ;; esac; then
+    echo "  OK   S11 an allowlist entry that no longer exists FAILS (rc=$rc)"
+    fired=$((fired + 1))
+  else
+    echo "  FAIL S11 an allowlist entry that no longer exists FAILS (rc=$rc)"
+    echo "       got: $(printf '%s' "$out" | head -2 | tr '\n' ' ')"
+  fi
+
+  # ── and the real allowlist entry must still be matching TODAY, or it is a
+  # hole kept open for nothing. This is the production invariant, probed.
+  probes=$((probes + 1))
+  if spec_allowlist_is_earned 2>/dev/null; then
+    echo "  OK   S12 every real allowlist entry still exists and still matches"
+    fired=$((fired + 1))
+  else
+    echo "  FAIL S12 every real allowlist entry still exists and still matches"
+  fi
+
   echo ""
   if [ "$fired" = "$probes" ]; then
     echo "check_no_secrets --self-test: PASS ($fired/$probes probes)"
@@ -230,10 +286,6 @@ SK_RE='(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{12,}'
 # Absolute path to this script, for the self-test's re-entrant probe calls.
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
-if [[ "$RUN_SELF_TEST" -eq 1 ]]; then
-  self_test
-  exit $?
-fi
 
 hits=0
 scanned=0
@@ -300,6 +352,99 @@ scan_binary_file() {
 [[ "$EXPLICIT_FIXTURES" -eq 1 ]] && require_exists "$FIXTURES_DIR" "--fixtures-dir"
 true  # the `&&` chains above must not set the script's exit status under `set -e`
 
+# ---------------------------------------------------------------------------
+# The DOC leg (`--scan-spec`) — narrower patterns, not a narrower scope
+# ---------------------------------------------------------------------------
+#
+# This leg is the one that would catch a key pasted into a runbook, a story or a
+# report, which is the realistic AD-19 risk in this repository — and until
+# 2026-11-10 it was permanently opt-OUT because it reported 14 hits, every one a
+# false positive (bug-log `#193` B). The old reason given was "docs legitimately
+# use placeholder key shapes". Half true. Measured, the real cause was the
+# PATTERN SET: the literal prefixes (`sk-ant-`, `sk-proj-`, `bearer `,
+# `anthropic-api-key`, …) are substring greps, and over PROSE they match any
+# document that *discusses* them — a bug-log entry, a trace row describing this
+# gate, a note about the pattern list. That is `#193` A's lesson one level up:
+# a pattern broad enough to find English will find English.
+#
+# A bare prefix is not a secret. `sk-ant-` with no key body is six characters of
+# documentation. What distinguishes a leak is the SHAPE — `sk-` followed by 12+
+# key characters, which a real `sk-ant-api03-…` always satisfies. So the doc leg
+# scans with the boundary-anchored shape regex plus the two V9 synthetic test
+# keys (unique substrings that exist for exactly this purpose) and NOT with the
+# prefixes. The ARTIFACT legs keep the full literal list: those files are
+# machine-written, nobody discusses anything in them, and a bare prefix landing
+# in a replay DB or a log is suspicious on its own.
+#
+# MEASURED on 1323 `*.md`/`*.toml` files under `evidence/`, `docs/` and
+# `_bmad-output/`: the full list reports **14** hits, the shape+V9 set reports
+# **1**. Not 14 excused — 1 found.
+SPEC_ALLOWLIST_PATHS=(
+  "evidence/v1/v2-1-tracing-layer-redactor/presentations/v2-1-tracing-layer-redactor-2026-06-16.md"
+)
+SPEC_ALLOWLIST_WHY=(
+  "the tracing-redactor's OWN before/after example (a documented masked key, \`sk-ant-…0123456789abc  ->  sk-a***9abc\`); the file is a frozen presentation deck (CLAUDE.md:65, :202) so a marker cannot be added to it"
+)
+
+# An allowlist is a hole, so it is counted and it must stay EARNED. Every entry
+# must still exist AND still match — a stale entry is removed, not inherited.
+# Without this an allowlist is just the place coverage goes to die quietly.
+spec_allowed=0
+spec_allowlist_is_earned() {
+  local i=0 path why stale=0
+  while [[ $i -lt ${#SPEC_ALLOWLIST_PATHS[@]} ]]; do
+    path="${SPEC_ALLOWLIST_PATHS[$i]}"
+    why="${SPEC_ALLOWLIST_WHY[$i]}"
+    if [[ ! -f "$path" ]]; then
+      echo "V9 STALE ALLOWLIST: '$path' no longer exists — delete the entry" >&2
+      stale=1
+    elif ! spec_file_hits "$path"; then
+      echo "V9 STALE ALLOWLIST: '$path' no longer matches — delete the entry" >&2
+      echo "    (it was allowed because: $why)" >&2
+      stale=1
+    fi
+    i=$((i + 1))
+  done
+  return $stale
+}
+
+spec_is_allowlisted() {
+  local cand="$1" i=0
+  while [[ $i -lt ${#SPEC_ALLOWLIST_PATHS[@]} ]]; do
+    [[ "$cand" == "${SPEC_ALLOWLIST_PATHS[$i]}" ]] && return 0
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# True if the file matches the DOC pattern set (shape + V9 synthetic keys).
+spec_file_hits() {
+  local file="$1"
+  grep -E -q "$SK_RE" "$file" 2>/dev/null && return 0
+  grep -i -q -F "V9-secretkey-12345678" "$file" 2>/dev/null && return 0
+  grep -i -q -F "V9-OpenAI-secretkey-87654321" "$file" 2>/dev/null && return 0
+  return 1
+}
+
+scan_doc_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  scanned=$((scanned + 1))
+  if spec_is_allowlisted "$file"; then
+    spec_allowed=$((spec_allowed + 1))
+    return 0
+  fi
+  if grep -E -q "$SK_RE" "$file" 2>/dev/null; then
+    report_hit "$file contains sk-key-shape"
+  fi
+  local k
+  for k in "V9-secretkey-12345678" "V9-OpenAI-secretkey-87654321"; do
+    if grep -i -q -F "$k" "$file" 2>/dev/null; then
+      report_hit "$file contains the V9 test key '$k'"
+    fi
+  done
+}
+
 # 1. Replay DB (runtime + fixture).
 scan_binary_file "$REPLAY_DB"
 if [[ -d "$FIXTURES_DIR" ]]; then
@@ -329,24 +474,83 @@ scan_binary_file "$AUDIT_DB"
 #    (`sk-ant-...`, `Bearer ...`) so the default integration-test invocation
 #    skips this leg. `spec/` itself is RETIRED (Phase 5b, 2026-07-25) — no
 #    leg for it; the directory no longer exists.
-if [[ "$SCAN_SPEC" -eq 1 && -d "evidence" ]]; then
+# ONE PASS, NOT ONE PER FILE. The first version of this leg called `grep` three
+# times per file over ~1300 files — about 4000 process spawns, measured at
+# **24.3 s**, which pushed `.githooks/pre-commit` from 15 s to 48 s. A hook that
+# slow gets `--no-verify`, which is the same way a gate dies that `#189` is
+# about: not wrong, just not run. `xargs` batches the same patterns into three
+# passes over the whole corpus (bug-log `#193` B).
+if [[ "$SCAN_SPEC" -eq 1 ]]; then
+  doc_list="$(mktemp)"
+  for tree in evidence docs _bmad-output; do
+    [[ -d "$tree" ]] || continue
+    find "$tree" -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null
+  done | sort -u > "$doc_list"
+
+  # Count first: `scanned` must mean "files this leg actually read", and the
+  # floor is checked against it.
+  doc_count="$(wc -l < "$doc_list" | tr -d ' ')"
+  scanned=$((scanned + doc_count))
+
+  doc_hitfile="$(mktemp)"
+  # Pass 1: the boundary-anchored key shape. Pass 2 and 3: the two V9 synthetic
+  # keys, which are unique substrings and cannot appear by accident.
+  xargs -0 grep -l -E -e "$SK_RE" < <(tr '\n' '\0' < "$doc_list") 2>/dev/null >> "$doc_hitfile" || true
+  for k in "V9-secretkey-12345678" "V9-OpenAI-secretkey-87654321"; do
+    xargs -0 grep -l -i -F -e "$k" < <(tr '\n' '\0' < "$doc_list") 2>/dev/null >> "$doc_hitfile" || true
+  done
+
   while IFS= read -r f; do
-    scan_text_file "$f"
-  done < <(find evidence -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
-fi
-if [[ "$SCAN_SPEC" -eq 1 && -d "docs" ]]; then
-  while IFS= read -r f; do
-    scan_text_file "$f"
-  done < <(find docs -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
-fi
-if [[ "$SCAN_SPEC" -eq 1 && -d "_bmad-output" ]]; then
-  while IFS= read -r f; do
-    scan_text_file "$f"
-  done < <(find _bmad-output -type f \( -name '*.md' -o -name '*.toml' \) 2>/dev/null)
+    [[ -n "$f" ]] || continue
+    if spec_is_allowlisted "$f"; then
+      spec_allowed=$((spec_allowed + 1))
+      continue
+    fi
+    report_hit "$f matched the doc-leg key-shape / V9-key set"
+  done < <(sort -u "$doc_hitfile")
+
+  rm -f "$doc_list" "$doc_hitfile"
 fi
 
 if [[ $hits -gt 0 ]]; then
   echo "V9 FAIL: $hits secret pattern(s) found in $scanned scanned file(s)" >&2
+  exit 1
+fi
+
+# ORDER IS LOAD-BEARING, and this is the THIRD time today a bash dispatch ran
+# before the thing it dispatches to existed (bug-log `#193`: `require_exists`
+# defined-and-not-called, then called ABOVE its definition, now this). The
+# self-test exercises `spec_allowlist_is_earned` and `spec_file_hits`, which are
+# defined with the doc leg further up — so the dispatch has to sit AFTER every
+# definition, not next to the flag that sets it. Probes S11/S12 caught it;
+# production never would, because production does not call those two from the
+# self-test path.
+if [[ "$STALE_PROBE" -eq 1 ]]; then
+  # Replace the real allowlist with an entry that cannot exist. Assigned HERE,
+  # after the arrays are declared — in the arg loop it was silently clobbered by
+  # the later declaration, which is why S11 reported "allowlist earned".
+  SPEC_ALLOWLIST_PATHS=("evidence/__does-not-exist__/nope.md")
+  SPEC_ALLOWLIST_WHY=("self-test S11 fixture")
+fi
+
+if [[ "$RUN_SELF_TEST" -eq 1 ]]; then
+  self_test
+  exit $?
+fi
+
+# Self-test S11's fixture: judge the allowlist and stop, scanning nothing.
+if [[ "$STALE_PROBE" -eq 1 ]]; then
+  if spec_allowlist_is_earned; then
+    echo "V9 PASS: allowlist earned (stale-probe mode)"
+    exit 0
+  fi
+  echo "V9 FAIL: the --scan-spec allowlist has stale entries (see above)" >&2
+  exit 1
+fi
+
+# An allowlisted path that no longer matches is a hole kept open for nothing.
+if [[ "$SCAN_SPEC" -eq 1 ]] && ! spec_allowlist_is_earned; then
+  echo "V9 FAIL: the --scan-spec allowlist has stale entries (see above)" >&2
   exit 1
 fi
 
@@ -357,5 +561,9 @@ if [[ "$scanned" -lt "$MIN_FILES" ]]; then
   exit 1
 fi
 
-echo "V9 PASS: no secret patterns in $scanned scanned file(s) [floor $MIN_FILES] · ${#PATTERNS[@]} literals + 1 key-shape regex"
+if [[ "$SCAN_SPEC" -eq 1 ]]; then
+  echo "V9 PASS: no secret patterns in $scanned scanned file(s) [floor $MIN_FILES] · docs scanned with the key-SHAPE regex + 2 V9 keys · $spec_allowed allowlisted, each re-verified as still matching"
+else
+  echo "V9 PASS: no secret patterns in $scanned scanned file(s) [floor $MIN_FILES] · ${#PATTERNS[@]} literals + 1 key-shape regex"
+fi
 exit 0

@@ -9267,7 +9267,59 @@ calls **above** the function definition (`require_exists: command not found`). P
 noticed either defect: the bare invocation names no paths and short-circuits before the call,
 so the probes exercise a path production does not.
 
-**B stays open, and its blocker is now established rather than guessed.** `--scan-spec` went
+**B is FIXED later the same day, and the fix was to sharpen the rule rather than excuse the
+matches.** The design I had sketched — a marker convention plus path exclusions for the frozen
+trees — turned out to be the wrong shape. The 14 hits were not mostly "legitimate
+placeholders"; they were mostly **the pattern set being too broad for prose**. The literal
+prefixes (`sk-ant-`, `sk-proj-`, `bearer `, …) are substring greps, and a bare prefix **is not
+a secret** — `sk-ant-` with no key body is six characters of documentation. What distinguishes
+a leak is the SHAPE. So the doc leg now scans with the boundary-anchored shape regex plus the
+two V9 synthetic keys and **not** the prefixes, while the ARTIFACT legs keep the full literal
+list (those files are machine-written, nobody discusses anything in them, and a bare prefix
+landing in a replay DB is suspicious on its own).
+
+Measured over **1323** `*.md`/`*.toml` files under `evidence/`, `docs/` and `_bmad-output/`:
+the literal set reports **14** hits, the shape set reports **1**. Not fourteen excused — one
+found. That one is the tracing-redactor's own before/after example in a frozen presentation
+deck (CLAUDE.md:65, :202), and it is **allowlisted with a written reason** plus a rule that
+keeps the hole earned: every entry must still **exist** and still **match** on every run, or
+the gate fails with `V9 STALE ALLOWLIST`. An allowlist nobody re-verifies is where coverage
+goes to die quietly.
+
+So the frozen-tree problem dissolved: no path exclusions were needed at all, because with the
+right pattern set the three `docs/dev-notes/archive/` files stop matching on their own merits.
+
+**`--scan-spec` IS NOW WIRED** into both `.githooks/pre-commit` and the ci.yml AD-19 step,
+with `--min-files 1300` against ~1324 in CI and ~1360 locally. The realistic AD-19 risk — a key
+pasted into a runbook, a story or a report — is checked for the first time.
+
+**And the cost had to be fixed before it could be wired.** The first version called `grep`
+three times per file: ~4000 process spawns, **24.3 s**, which took the pre-commit hook from
+15.2 s to **48.2 s**. A hook nobody waits for is a hook that gets `--no-verify` — the same way
+a gate dies that `#189` is about, not wrong but not run. Batched into three `xargs` passes over
+the whole corpus: **3.7 s**, and the hook is **22.9 s**. Same 1360 files, same allowlist
+behaviour, verified before and after.
+
+**Four more probes (S9–S12), 12/12 on bash 5.3 AND 3.2.** S9/S10 are the pair that matters: a
+planted `sk-ant-api03-…` in a doc **fires**, and a doc that merely *discusses* the prefixes is
+**silent** — the two sides of the fix. S11 drives a deliberately-nonexistent allowlist entry
+and asserts `STALE ALLOWLIST` fires; S12 asserts the real entry is still earned today. Probed:
+disabling the batched shape pass makes **only S9** fail (11/12), so it is load-bearing.
+
+**Three more of my own mistakes, each caught by a check rather than by luck.** S9 first failed
+because I changed the hit message when batching and left the probe asserting the old wording —
+the exit code was right and the string was stale. S11/S12 both failed because the self-test
+**dispatched before the doc-leg functions and arrays existed**; that is the third ordering
+mistake of this shape today, after `require_exists` was defined-and-not-called and then called
+above its own definition. And wiring the comment block into `ci.yml` stripped its `#` markers,
+so **14 lines of prose would have executed as shell** — caught by an assertion that every
+command in the step starts with `bash scripts/`.
+
+**What remains of B:** nothing for the doc leg. The original resolution-4 sketch (markers +
+exclusions) is withdrawn as the wrong design, recorded here so it is not re-proposed.
+
+**The superseded paragraph, for the record.** It said: *B stays open, and its blocker is now
+established rather than guessed* — `--scan-spec` went
 from 15 hits to **14** — and that arithmetic is the finding: the two word-substring false
 positives disappeared, and **one new hit appeared, from this very entry**, because documenting
 a secret-pattern gate trips it. Of the 8 remaining offending files, **4 are in FROZEN trees** —
