@@ -7,8 +7,13 @@
 //! Mirrors `lab::progress::LabProgressRecipe` symbol-for-symbol with one delta:
 //! `LabProgressRecipe` holds a `tokio::sync::mpsc::Receiver<Progress>` (natively
 //! async), whereas this recipe holds a `std::sync::mpsc::Receiver<TrainingLogLine>`
-//! (blocking). The bridge is `tokio::task::spawn_blocking`: each blocking `recv()`
-//! call is lifted into a blocking-thread task so it doesn't block the async executor.
+//! (blocking). The bridge is a dedicated OS thread that owns the blocking `recv()`
+//! and forwards each line into a `futures` unbounded channel, so the stream body
+//! needs NO async runtime. It used to be `tokio::task::spawn_blocking`, which
+//! panics with "there is no reactor running" under the executor iced actually uses
+//! — `iced_futures` is built with `thread-pool` only, no `tokio` — so the cockpit's
+//! training-log subscription died on its first poll while every test, all running
+//! under `#[tokio::test]`, supplied the missing reactor (bug-log `#196`).
 //!
 //! ## K8 mitigation (same as `LabProgressRecipe` and `ServerTimeRecipe`)
 //!
@@ -42,6 +47,7 @@ pub use live_recipe::stream_impl;
 mod live_recipe {
     use std::sync::{Arc, Mutex};
 
+    use futures::StreamExt;
     use futures::stream::BoxStream;
     use iced::advanced::subscription::{EventStream, Hasher, Recipe};
     use smol_str::SmolStr;
@@ -94,46 +100,43 @@ mod live_recipe {
     /// Inner stream logic, extracted so integration tests can drive it directly
     /// without needing a running iced application or an `EventStream`.
     ///
-    /// - When `rx_opt` is `Some(rx)`: bridges the blocking `std::sync::mpsc::Receiver`
-    ///   to the async stream via `tokio::task::spawn_blocking`. Each received
-    ///   `TrainingLogLine` becomes `Message::TrainingLogLine(line.text)`.
-    ///   When the sender side closes (channel disconnected), the stream ends.
+    /// - When `rx_opt` is `Some(rx)`: a dedicated OS thread (`training-log-bridge`)
+    ///   owns the blocking `std::sync::mpsc::Receiver` and forwards every
+    ///   `TrainingLogLine` into a `futures` unbounded channel; the stream yields
+    ///   `Message::TrainingLogLine(line.text)` for each. The stream ends when the
+    ///   sender side closes (the subprocess exited) and the bridge thread returns.
+    ///   If the stream is dropped first, the bridge's next forward fails and it
+    ///   returns too; until then it is parked in `recv()` (bounded by the
+    ///   subprocess's lifetime).
     /// - When `rx_opt` is `None` (i.e. `stream()` was called a second time
     ///   after the receiver was already taken): the stream yields nothing.
+    ///
+    /// The body needs no async runtime, so it is correct under ANY executor —
+    /// including iced's futures `ThreadPool`, which has no tokio reactor
+    /// (bug-log `#196`; pinned by `recipe_stream_drains_without_a_tokio_runtime`).
     #[must_use]
     pub fn stream_impl(
         rx_opt: Option<std::sync::mpsc::Receiver<TrainingLogLine>>,
     ) -> BoxStream<'static, Message> {
-        Box::pin(async_stream::stream! {
-            if let Some(rx) = rx_opt {
-                // Wrap the blocking receiver in an Arc<Mutex<_>> so we can
-                // move it into the spawn_blocking closure on each iteration.
-                let rx = Arc::new(Mutex::new(rx));
-                loop {
-                    let rx_clone = Arc::clone(&rx);
-                    // Bridge std-mpsc blocking recv() into the async executor.
-                    let result = tokio::task::spawn_blocking(move || {
-                        rx_clone
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .recv()
-                    })
-                    .await;
-
-                    match result {
-                        Ok(Ok(line)) => {
-                            yield Message::TrainingLogLine(SmolStr::new(line.text.as_str()));
-                        }
-                        // Channel disconnected (sender dropped) — subprocess exited.
-                        Ok(Err(_recv_error)) => break,
-                        // spawn_blocking task panicked — stop the stream.
-                        Err(_join_error) => break,
+        let Some(rx) = rx_opt else {
+            // Double-stream() call after `.take()` already consumed the receiver.
+            return Box::pin(futures::stream::empty());
+        };
+        let (tx, lines) = futures::channel::mpsc::unbounded::<TrainingLogLine>();
+        let bridge = std::thread::Builder::new()
+            .name("training-log-bridge".into())
+            .spawn(move || {
+                while let Ok(line) = rx.recv() {
+                    if tx.unbounded_send(line).is_err() {
+                        break; // the stream was dropped
                     }
                 }
-            }
-            // If rx_opt was None: stream yields nothing (double-stream() call
-            // after .take() already consumed the receiver).
-        })
+            });
+        if let Err(e) = bridge {
+            tracing::warn!(error = %e, "training-log bridge thread could not be spawned; no log lines will be shown");
+            return Box::pin(futures::stream::empty());
+        }
+        Box::pin(lines.map(|line| Message::TrainingLogLine(SmolStr::new(line.text.as_str()))))
     }
 }
 
@@ -196,5 +199,60 @@ mod tests {
             out
         });
         assert!(messages.is_empty());
+    }
+
+    /// bug-log `#196`: the PRODUCTION topology. iced polls subscription streams on its
+    /// futures `ThreadPool` (`iced_futures` "thread-pool", no "tokio"), so the real
+    /// recipe is streamed and polled with `futures::executor::block_on` on a thread
+    /// that has no tokio context — asserted, not assumed. Before the fix this panicked
+    /// at the `spawn_blocking` ("there is no reactor running"); every other test here
+    /// supplies a reactor and could not see it.
+    #[test]
+    fn recipe_stream_drains_without_a_tokio_runtime() {
+        use super::live_recipe::TrainingLogRecipe;
+        use iced::advanced::subscription::Recipe;
+        use std::sync::{Arc, Mutex};
+
+        // The recipe carries a handle (production passes the agent runtime's), but
+        // nothing may need it while the stream is polled.
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<TrainingLogLine>();
+        for text in ["alpha", "beta"] {
+            tx.send(TrainingLogLine {
+                text: SmolStr::new(text),
+                is_stderr: false,
+            })
+            .unwrap();
+        }
+        drop(tx);
+        let recipe = Box::new(TrainingLogRecipe {
+            rt_handle: rt.handle().clone(),
+            rx: Arc::new(Mutex::new(Some(rx))),
+            salt: 1,
+        });
+
+        let (out_tx, out_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let no_reactor = tokio::runtime::Handle::try_current().is_err();
+            let stream = recipe.stream(Box::pin(futures::stream::empty()));
+            let got: Vec<Message> = futures::executor::block_on(stream.collect());
+            let _ = out_tx.send((no_reactor, got));
+        });
+        // A panic on the polling thread drops `out_tx`, so this fails instead of hanging.
+        let (no_reactor, got) = out_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the polling thread reported back (it did not panic or hang)");
+
+        assert!(
+            no_reactor,
+            "premise: the polling thread must have NO tokio context"
+        );
+        assert_eq!(got.len(), 2, "exactly the two lines, then the stream ends");
+        assert!(matches!(&got[0], Message::TrainingLogLine(s) if s == "alpha"));
+        assert!(matches!(&got[1], Message::TrainingLogLine(s) if s == "beta"));
     }
 }
