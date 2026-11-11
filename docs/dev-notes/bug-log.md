@@ -9733,9 +9733,10 @@ each got a verifier who reproduced every claim from scratch: 45 findings, 38 con
 
 ### `#196` — the cockpit's training-log subscription panics on its first poll, and every test of it supplies the reactor production lacks
 
-**Status**: **`open`** — found 2026-11-10 by story `2-63` Wave 0 and confirmed by execution. Not
-fixed inside `2-63`, because that story's AC5 forbids production behaviour change; it gets its
-own fix. Anchor-impacting: **no**.
+**Status**: **`fixed` 2026-11-11 — `dcce75e2`** (a runtime-free bridge thread, pinned by an
+off-runtime test with a measured negative control). Found 2026-11-10 by story `2-63` Wave 0
+and confirmed by execution; fixed outside `2-63`, because that story's AC5 forbids production
+behaviour change. Anchor-impacting: **no**.
 
 **What runs, measured.** `crates/ui/src/lab/training_log.rs` `stream_impl` bridges a blocking
 `std::sync::mpsc::Receiver` with `tokio::task::spawn_blocking` **inside the stream body**.
@@ -9772,6 +9773,23 @@ the recipe's own `rt_handle` (`rt_handle.spawn_blocking`) instead of the ambient
 same blind spot covers every recipe test in the crate, and `2-63` Wave B adds the executor-fidelity
 file for the rest.
 
+#### Resolution, 2026-11-11
+
+The bridge is now a dedicated OS thread, `training-log-bridge`. It owns the blocking `recv()`
+and forwards each line into a `futures` unbounded channel, so the stream body needs **no**
+async runtime and is correct under any executor. The public signature is unchanged, and so
+are its seven callers. Pinned by `recipe_stream_drains_without_a_tokio_runtime`: the real
+recipe, streamed and polled by `futures::executor::block_on` on a thread whose lack of a tokio
+context is asserted. It expects exactly two lines, then the end.
+
+**Negative control, measured.** With the old bridge restored and the new test kept, the test
+FAILS with the production panic, "there is no reactor running … training_log.rs:115". With the
+fix: 8/8 module tests and 3/3 harness tests pass, `clippy -p ui -- -D warnings` is clean, and
+fmt is clean.
+
+Still **not verified:** the visible panel in a running cockpit, which needs a real `train_tcn`
+subprocess and an orchestrator-only cockpit run.
+
 ### `#197` — the shipped cockpit never calls the LLM for "Explain", while CHANGELOG, PRD and README say it does
 
 **Status**: **`open`** — found 2026-11-10 by the story `2-63` inventory and confirmed by reading.
@@ -9805,3 +9823,14 @@ the cockpit's Explain reaches it with a real provider.
    plan) and add a test that a configured provider is actually called.
 2. **Make the claim honest:** amend the CHANGELOG, PRD and README wording to "the cockpit path
    currently always falls back to the templated copy".
+
+#### Operator ruling, 2026-11-11: option 1, make the claim true
+
+Recorded from the operator's "yes" in reply to the two recommended options (this entry's option
+1, and a push). The question dialog itself was dismissed, so the ruling is my reading of that
+"yes". **Correct it here if it was meant otherwise.** The plan is the `TODO`'s own: build the
+provider at cockpit boot through `LlmProviderFactory` when `llm.enabled = true`, carry it into
+the runtime as a new `RunHandles` field, and let the narration task use it instead of the
+hard-coded `None`. Add a test that a configured provider is actually called (a fake provider
+in, a `Ready` narration out). With `llm.enabled = false`, the default, behaviour stays
+byte-identical.
