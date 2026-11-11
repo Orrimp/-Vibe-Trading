@@ -9792,9 +9792,9 @@ subprocess and an orchestrator-only cockpit run.
 
 ### `#197` — the shipped cockpit never calls the LLM for "Explain", while CHANGELOG, PRD and README say it does
 
-**Status**: **`open`** — found 2026-11-10 by the story `2-63` inventory and confirmed by reading.
-**This is a divergence between code and a PUBLIC claim, so the resolution is the operator's**:
-plumb the provider, or amend the claim. Anchor-impacting: **no**.
+**Status**: **`fixed` 2026-11-11 — `bab164f0`** (operator ruling: make the claim true; the
+boot-built provider is plumbed into the narration task). Found 2026-11-10 by the story `2-63`
+inventory and confirmed by reading. Anchor-impacting: **no**.
 
 **The code.** `crates/agent/src/runtime.rs` (the F9 narration task) sets
 `llm_provider = None` in **both** branches of `if config.llm.enabled { … } else { … }`, under
@@ -9834,3 +9834,28 @@ the runtime as a new `RunHandles` field, and let the narration task use it inste
 hard-coded `None`. Add a test that a configured provider is actually called (a fake provider
 in, a `Ready` narration out). With `llm.enabled = false`, the default, behaviour stays
 byte-identical.
+
+#### Resolution, 2026-11-11
+
+- **`agent::llm_boot::build_llm_provider` is now the ONE build path**, used by both bins. It
+  is moved verbatim from the headless bin: the same budget, sink and mode mapping, and a
+  factory error is still non-fatal and returns `None`.
+- **`RunHandles::llm_provider` carries the provider to the narration task.** `None` means
+  `FellBack`, exactly as before.
+- **`cockpit_live` builds it on the agent runtime**, right before `run`. It never built one
+  until now.
+- **With `llm.enabled = false` (the default) nothing is built and nothing changes.** The
+  headless bin has no narration channel, so its narration task never spawns.
+
+**Pinned** by `crates/agent/tests/narration_task_uses_boot_provider.rs`. It drives the real
+`runtime::run` over the real request/outcome channels, in two tests that differ only in
+`llm_provider`: a no-network faithful provider gives `Ready(prose)`, and `None` gives
+`FellBack`.
+
+**T-T4 probe, measured.** Shadowing the provider with `None` inside `run` turns the first test
+red, with its own diagnosis ("got FellBack … the runtime ignored RunHandles::llm_provider"),
+and leaves the second green.
+
+**Still not verified: a real network call.** It needs an API key and `llm.enabled = true`,
+which is the operator's to switch on. The claim is now true of the code path; whether a given
+deployment has the LLM enabled is configuration.
