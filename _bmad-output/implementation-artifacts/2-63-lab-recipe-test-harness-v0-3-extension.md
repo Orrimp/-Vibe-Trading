@@ -24,6 +24,9 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
 
 - [x] Inventory pass (AC 1) — output as a table in this story's Dev Agent Record before coding. *(2026-11-10, below.)*
 - [ ] Wave-decomposed implementation per inventory (mirror v0.2's Wave A-D shape; one tester verdict per wave).
+  - [x] Wave 0: baselines + TrainingLog confirmation. *(2026-11-10; confirmed defect became bug-log `#196`, fixed in `dcce75e2`.)*
+  - [x] Wave A: post-v0.2 S1, test-only. *(2026-11-11; 27/27 probes red, see "Wave A results".)*
+  - [ ] Wave B · C1 · C2 · D · E1 · E2 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
 - [ ] Gates: anchors 119/119, spec-lint, clippy, fmt; T-T4 probe evidence in the tester report.
@@ -37,7 +40,7 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
 
 ### References
 
-- Trace: `REQ-LAB-RECIPE-HARNESS-V0-3-001` (state=`scoped`)
+- Trace: `REQ-LAB-RECIPE-HARNESS-V0-3-001` (state=`in-progress` since 2026-11-10)
 - Epic: `_bmad-output/planning-artifacts/epics.md` § Epic 2 (Cockpit & UI (Lumen shell, Live, Lab, charts, quality gates))
 - Decision record: PRD §13 Q2 (operator answer 2026-07-27); `_bmad-output/planning-artifacts/backlog.md` § Deferred by decision; ADR-0048 (+ v0.2.0 Changelog row); predecessor stories `2-41-lab-recipe-test-harness`, `2-42-lab-recipe-test-harness-v0-2-0-cross-surface-extension`; `docs/dev-notes/bug-log.md` #66.
 
@@ -50,6 +53,7 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
 ### Debug Log References
 
 - Inventory workflow run `wf_23e8261b-a57` (2026-11-10): 8 agents, 0 errors.
+- Wave A workflow run `wf_95e5c67f-b2a` (2026-11-11): implement → independent falsify → fix (12 vacuity findings) → re-probe; 3 agents, 0 errors.
 
 ### Completion Notes List
 
@@ -69,6 +73,47 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
 3. **Narration is `FellBack`-only in production.** `llm_provider` is `None` in both branches, `crates/agent/src/runtime.rs:1613-1625`, `TODO(F9-v0.3)`, tracked nowhere. That is disclosed through the bug-log, not tested around. A green harness here must not be read as "LLM narration works".
 4. **Wave G (the agent narration-producer seam) is deferred.** No AC requires it, so it is recorded as a residual.
 5. **Seam shape for C1: the `Held` enum + `SubscriptionBatchInputs`, not a struct of 7 bools.** `#![warn(clippy::pedantic)]` (`crates/ui/src/lib.rs:24`) plus CI's `-D warnings` would fail `struct_excessive_bools`. The existing 3-arg descriptor fn keeps its signature and DELEGATES, and a literal-order pin keeps that from becoming self-referential (bug-log `#161`/`#187` form).
+
+**Later outcomes of decisions 2 and 3. The decisions above stay as written.**
+- **Decision 2 was confirmed and fixed outside this story.** Wave 0's throwaway off-runtime test panicked. That became bug-log `#196`, fixed in `dcce75e2`: the stream is now a std-thread bridge with no tokio reactor. Its off-runtime test landed with that fix, as the decision required: `recipe_stream_drains_without_a_tokio_runtime` in `crates/ui/src/lab/training_log.rs`. Wave B therefore keeps "§6 without TrainingLog".
+- **Decision 3 is no longer true of production.** The operator ruled "make the claim true" (bug-log `#197`), and `bab164f0` plumbs the boot-built provider into the narration task. Explain now reaches the LLM when `llm.enabled`. The pin is `crates/agent/tests/narration_task_uses_boot_provider.rs`. The ui harness here still tests only the relay; it never calls a provider.
+
+**2026-11-10: Wave 0 results (baselines; nothing committed from the wave itself).**
+- **K4 baseline:** `cargo test -p ui --no-run` took **342 s** wall on a warm target and produced **119** test executables (same box). AC5's 10% ceiling is therefore about **376 s**. The Close wave re-measures on the same box.
+- **Anchors:** 119/119 before any Wave A edit, and spec_lint PASS.
+- **TrainingLog:** confirmed. See the decision 2 outcome above.
+
+**2026-11-11: Wave A results (post-v0.2 S1, test-only).**
+- **Files:** `crates/ui/tests/forward_narration_relay.rs` (11 tests), `crates/ui/tests/bakeoff_progress_relay.rs` (6), and the NEW `crates/ui/tests/sweep_progress_relay.rs` (4). There are 21 tests across the three files, and **no production edit**: `git diff -- crates/ui/src crates/agent/src` is empty.
+- **Round 1, independent falsifier.** An agent that wrote none of the tests applied all 13 designated probes, P1–P13, one at a time. Every probe turned a test red, and every restore was byte-identical (`cmp`).
+  - P3's red fired early, at a `SendError` unwrap, not at its designed assertion.
+  - The vacuity review raised **12 findings**: tautological counters, by-construction preconditions, an accepting timeout, self-computed arithmetic, and a test named for an enqueue it never exercised.
+  - Probe P4b was planned but never run.
+- **Round 2, fix plus re-probe.** All 12 findings were fixed in the same three files. The notable changes:
+  - An `assert_pending` helper (`now_or_never()` must be `Pending`). It distinguishes an ENDED stream from a live one, and catches an extra buffered item.
+  - Seeded stale state before every "cleared" or "untouched" precondition.
+  - A two-sided request-facts test over `fake_bakeoff_report_mirror` vs `…_benchmark_wins`, which differ in every dimension. It was renamed from `explain_action_enqueues_request_with_faithful_facts` to `narration_request_from_mirror_carries_the_on_screen_facts`.
+  - Checked sends throughout.
+- **The re-probe ran 27 probes:** the 13 originals, P4b, and 13 new ones (P14–P26), each aimed at a newly added assertion.
+  - **27/27 went red at their designed assertions.**
+  - All 27 restores were byte-identical (`cp` + `touch`, so cargo rebuilds).
+  - The SHA-256 of `live.rs`, `state.rs`, `leaderboard/state.rs` and `tune/screen_state.rs` was unchanged at the end.
+  - The same agent wrote and probed the round-2 tests, which is why the orchestrator re-checked below.
+- **Measured vacuity of the predecessor:** the previous `forward_narration_relay.rs` stays **11/11 green** under P19 (`winner_id: candidate_ids[0].clone()`). Its single-fixture request test could not catch a positional winner.
+- **Orchestrator re-check, independent of both agents:**
+  - The three targets are green after a fresh `Compiling ui` (6 + 11 + 4).
+  - `cargo fmt -p ui -- --check` exits 0.
+  - `cargo clippy -p ui --test forward_narration_relay --test bakeoff_progress_relay --test sweep_progress_relay -- -D warnings` is clean after a forced re-lint (`touch`; `Checking ui` was shown).
+  - Anchors are **119/119** and spec_lint PASS after the wave.
+  - I ran two probes with my own harness (exact-once replace, run, restore, `cmp`):
+    - **P19**: red at `forward_narration_relay.rs:710`, "BenchmarkWins mirror: the crowned winner id is carried", `v0.sma` ≠ `v0.buyhold`.
+    - **P25′**, my own *additive* variant: the SweepProgress arm writes the tune **and also** the leaderboard, a subtler cross-talk than the agent's replacement. It went red at `sweep_progress_relay.rs:224`, the cross-talk control itself, `(3,12,…)` ≠ `(2,7,"v0.5.macd")`.
+    - Both restores were byte-identical.
+- **Residuals the wave cannot close, stated in the module docs:**
+  - The Explain enqueue (`try_send` in `crates/ui/src/bin/cockpit_live.rs`) is unreachable from an integration test. That is the K3 #6 `AppState` builder residual.
+  - Recipe salt identity is unpinned here. It belongs to §5, Wave C2.
+- **Probe numbering:** P1–P26 are taken by the three Wave A files. Later waves prefix their probes with the wave (`B-P1`, `C1-P1`, …) so no two tables share an id.
+- **Evidence (scratch, not committed):** `/private/tmp/claude-502/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/362d2a09-04ba-4ea6-a7c1-07605f6e187a/scratchpad/wave-a/` holds `round1-P*.log`, `round2/summary.txt` and `round2/P*.log` (per-probe red list, failure text, restore check), and `orch/` (the orchestrator's two probes and clippy log).
 
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
@@ -416,3 +461,5 @@ Waves A, B and D touch no production code and are independent; they may run befo
 
 
 ### File List
+
+- Wave A (2026-11-11): `crates/ui/tests/forward_narration_relay.rs` (modified), `crates/ui/tests/bakeoff_progress_relay.rs` (modified), `crates/ui/tests/sweep_progress_relay.rs` (NEW). No production file.
