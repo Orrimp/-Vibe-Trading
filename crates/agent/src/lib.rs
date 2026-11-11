@@ -8,6 +8,7 @@ pub mod config;
 #[cfg(feature = "in_process_cron")]
 pub mod cron;
 pub mod kill_switch;
+pub mod llm_boot;
 /// F9 LLM narration: `BakeoffReport` → faithful prose generator + faithfulness post-check
 /// + `NarrationOutcome` (the `core`-clean return type) (ADR-0064 § D1–D5).
 pub mod narration;

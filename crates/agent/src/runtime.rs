@@ -186,6 +186,15 @@ pub struct RunHandles {
     ///
     /// `None` → byte-identical to today (headless / soak unaffected — D6 invariant).
     pub narration_outcome_tx: Option<tokio::sync::mpsc::Sender<crate::narration::NarrationOutcome>>,
+
+    /// F9-NARRATION — the boot-built LLM provider (bug-log `#197`).
+    ///
+    /// `Some` when the caller built one via [`crate::llm_boot::build_llm_provider`]
+    /// (i.e. `cfg.llm.enabled = true` and the factory succeeded). The narration task
+    /// uses it for every "Explain" request; `None` → every request answers
+    /// `NarrationOutcome::FellBack` (the honest templated fallback). Until 2026-11-11
+    /// the task hard-coded `None` here regardless of config.
+    pub llm_provider: Option<Arc<dyn llm::LlmProvider>>,
 }
 
 /// Build a [`strategy::StrategyRegistry`] pre-seeded with the strategies
@@ -844,6 +853,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
         plan_tx,
         narration_request_rx,
         narration_outcome_tx,
+        llm_provider,
     } = handles;
 
     // ── Kill-switch halt-file watcher ─────────────────────────────────────────
@@ -1607,23 +1617,15 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
     // `None` channels → byte-identical to today (headless / soak unaffected —
     // the absent-channel path is structurally guaranteed by the Option guards).
     if let (Some(mut req_rx), Some(outcome_tx)) = (narration_request_rx, narration_outcome_tx) {
-        // The LLM provider is built at agent boot (gated on cfg.llm.enabled).
-        // We clone the config's provider handle here; if absent the task still
-        // runs (receives requests + sends FellBack for each) so the UI never hangs.
-        let llm_provider: Option<Arc<dyn llm::LlmProvider>> = if config.llm.enabled {
-            // The production path: the factory was called at boot and stored
-            // the provider on the config. For now we re-build a minimal provider
-            // from the config so the task can operate. The preferred pattern is
-            // to pass an `Option<Arc<dyn LlmProvider>>` into RunHandles (the F9
-            // v0.3 hardening point); for MVP we use `None` and let the task
-            // FellBack (the honest fallback — the bake-off result is always shown).
-            //
-            // TODO(F9-v0.3): plumb the boot-built `Arc<dyn LlmProvider>` into
-            // RunHandles so the narration task uses the full BudgetedProvider stack.
-            None
-        } else {
-            None
-        };
+        // The LLM provider is built at boot by the caller (gated on
+        // cfg.llm.enabled) and arrives on `RunHandles::llm_provider`. If absent the
+        // task still runs (receives requests + sends FellBack for each) so the UI
+        // never hangs. Until 2026-11-11 this was a hard-coded `None` in BOTH
+        // branches of `if config.llm.enabled` (bug-log `#197`).
+        info!(
+            provider = llm_provider.as_ref().map_or("none", |p| p.name()),
+            "narration task: llm provider",
+        );
         let narration_cancel = cancel.child_token();
         set.spawn(async move {
             loop {
@@ -3346,6 +3348,7 @@ mod tests {
             plan_tx: None,              // tests: no plan channel (F6 gate; ADR-0062 § D6)
             narration_request_rx: None, // tests: no narration channel (F9 byte-identical gate)
             narration_outcome_tx: None, // tests: no narration outcome channel
+            llm_provider: None,         // tests: no LLM provider
         };
 
         let cancel = CancellationToken::new();

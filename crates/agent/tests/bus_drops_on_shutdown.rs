@@ -83,6 +83,7 @@ async fn t903d_bus_strong_count_collapses_on_cancel() {
         plan_tx: None,    // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
         narration_request_rx: None, // tests: no narration channel (F9 byte-identical gate)
         narration_outcome_tx: None, // tests: no narration outcome channel
+        llm_provider: None, // tests: no LLM provider
     };
 
     // Drop the outer `bus` rebinding so `bus_outer` is the only "outside

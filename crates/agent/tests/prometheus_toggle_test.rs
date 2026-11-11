@@ -143,6 +143,7 @@ async fn t912_runtime_with_prometheus_disabled_does_not_bind_9100() {
         plan_tx: None,    // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
         narration_request_rx: None, // tests: no narration channel (F9 byte-identical gate)
         narration_outcome_tx: None, // tests: no narration outcome channel
+        llm_provider: None, // tests: no LLM provider
     };
 
     let cancel = CancellationToken::new();

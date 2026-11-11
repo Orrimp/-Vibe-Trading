@@ -594,7 +594,12 @@ fn main() -> Result<()> {
             // build → the task is not spawned → byte-identical pre-F9 path.
             narration_request_rx: narration_request_rx_for_handles,
             narration_outcome_tx: narration_outcome_tx_for_handles,
+            // Built below ON THE AGENT RUNTIME, right before `run`, so the
+            // provider's resources belong to the runtime that uses them — not to
+            // the bootstrap runtime, which is dropped after boot (bug-log `#197`).
+            llm_provider: None,
         };
+        let llm_config_path = args.config.clone();
         let ledger_for_close = Arc::clone(&ledger);
         let boot_id_for_close = boot_id.clone();
 
@@ -654,6 +659,13 @@ fn main() -> Result<()> {
                             "audit-ledger activity aggregator spawned"
                         );
                     }
+
+                    // bug-log `#197`: until 2026-11-11 the cockpit never built a
+                    // provider, so "Explain" always fell back to the templated copy.
+                    let mut handles = handles;
+                    handles.llm_provider =
+                        agent::llm_boot::build_llm_provider(&handles.config, &llm_config_path)
+                            .await;
 
                     if let Err(e) = agent::runtime::run(handles, cancel).await {
                         warn!(error = %e, "agent runtime exited with error");

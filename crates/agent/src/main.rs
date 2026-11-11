@@ -29,9 +29,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use agent::{EventBus, KillSwitch, RunHandles};
-// T1931 (pass 6) — LLM factory wire-up at agent boot.
-use cost::{CostBudget, CostSink, NoopCostSink};
-use llm::factory::{LlmProviderFactory, Mode as LlmMode};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -262,39 +259,9 @@ async fn main() -> Result<()> {
     // When false (the foundation-only default), no provider is
     // constructed, no key files are read, no `.local` is required —
     // a fresh checkout boots cleanly.
-    let llm_provider: Option<Arc<dyn llm::LlmProvider>> = if cfg.llm.enabled {
-        let llm_cfg = Arc::new(cfg.llm.clone());
-        let budget = Arc::new(CostBudget::new(cfg.llm.budget_usd_month));
-        let sink: Arc<dyn CostSink> = Arc::new(NoopCostSink);
-        let llm_mode = match cfg.mode {
-            agent::config::Mode::Research => LlmMode::Research,
-            agent::config::Mode::Paper => LlmMode::Paper,
-        };
-        match LlmProviderFactory::build(Arc::clone(&llm_cfg), llm_mode, budget, sink, &args.config)
-            .await
-        {
-            Ok(p) => {
-                info!(
-                    provider = %p.name(),
-                    mode = %cfg.mode,
-                    "llm provider constructed",
-                );
-                Some(p)
-            }
-            Err(e) => {
-                // Auth / Provider errors at startup are non-fatal in
-                // v2.0.0 (foundation-only — no consumer wired up). The
-                // operator sees the error; the agent boots without LLM.
-                warn!(error = %e, "llm factory build failed (non-fatal); subsystem disabled");
-                None
-            }
-        }
-    } else {
-        info!("llm subsystem disabled (cfg.llm.enabled = false)");
-        None
-    };
-    // Suppress unused warning until a consumer brief plucks the provider.
-    let _llm_provider = llm_provider;
+    // Built by the function `cockpit_live` also uses (bug-log `#197`), so the two
+    // bins cannot disagree about how a provider is constructed.
+    let llm_provider = agent::llm_boot::build_llm_provider(&cfg, &args.config).await;
 
     // ── Cancellation token + Ctrl-C bridge ───────────────────────────────────
     // Single CancellationToken shared with `runtime::run`.  A
@@ -336,6 +303,9 @@ async fn main() -> Result<()> {
         plan_tx: None,    // headless bin: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
         narration_request_rx: None, // headless bin: no narration channel (F9 byte-identical gate; ADR-0064 § D6)
         narration_outcome_tx: None, // headless bin: no narration outcome channel
+        // Carried for parity with the cockpit; with no narration channel the
+        // narration task is not spawned, so the headless path is byte-identical.
+        llm_provider,
     };
     agent::runtime::run(handles, cancel).await?;
 

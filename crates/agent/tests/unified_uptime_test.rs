@@ -106,6 +106,7 @@ async fn t910_v3_graceful_shutdown_within_two_seconds_with_close_uptime_row() {
         plan_tx: None,    // tests: no plan channel (F6 byte-identical gate; ADR-0062 § D6)
         narration_request_rx: None, // tests: no narration channel (F9 byte-identical gate)
         narration_outcome_tx: None, // tests: no narration outcome channel
+        llm_provider: None, // tests: no LLM provider
     };
 
     let cancel = CancellationToken::new();
