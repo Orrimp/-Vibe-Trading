@@ -2,7 +2,7 @@
 slug: backlog
 status: living
 owner: orchestrator
-updated: 2026-07-25
+updated: 2026-11-11
 ---
 
 # Backlog (forward-looking queue)
@@ -61,6 +61,33 @@ _(open / deferred items)_
   v3 close-out (2026-07-09) as the one genuinely-open forward *build* item; it is infra, NOT
   required for product feature-completeness (see [`../../CHANGELOG.md`](../../CHANGELOG.md)
   § Deferred). Tracked as story `2-63-lab-recipe-test-harness-v0-3-extension` (`in-progress`: dev started 2026-11-10, the AC1 inventory and wave plan are in its Dev Agent Record).
+
+### Routed findings (outside the story that found them)
+*Found by story 2-63's inventory (2026-11-10) and verified by the orchestrator 2026-11-11. The story
+number is provenance, not a tracker: none of these has a story yet.*
+- **The sweep cell-progress emitter has never run with an enabled sender (test gap, not a
+  defect).** `run_param_sweep` (`crates/backtest/src/bakeoff/sweep.rs`) emits
+  `{done: cell_index, total: grid_size, current_id: params.label()}` before each cell.
+  - Every backtest caller passes `SweepProgressSender::disabled()` (13 sites in
+    `param_sweep_divergence_end_to_end.rs`). The ui relay tests start at the channel, not the
+    emitter.
+  - The bake-off sibling *is* covered with a live pair (`bakeoff_e2e.rs`, `bakeoff_progress_pair()`).
+  - Production wiring is correct: `cockpit_live.rs` passes `SweepProgressSender(sweep_progress_tx)`.
+  - **The fix:** one backtest test on a live pair, asserting `done == 0..grid_size` in grid order,
+    `total == grid_size`, and labels equal to the capped grid. The probe is to delete the
+    `try_send`.
+- **The production Yahoo cache root is cwd-relative.** `default_cache_root()`
+  (`crates/ui/src/lab/cache_state.rs`) and the Lab Yahoo arm (`crates/ui/src/lab/runner.rs`) both
+  use `PathBuf::from("data/yahoo")`.
+  - They agree with each other, so the badge and the loader never disagree.
+  - But a cockpit started from any directory other than the repo root shows the corpus as missing,
+    and the run cannot load it.
+  - This is the bug-log `#66` root-resolution class, in production code. Severity is low while the
+    cockpit is launched via `cargo run` from the repo root.
+- **`TrainingPoller` has no production caller: wire it or retire it.** Only its own tests reference
+  it (`crates/ui/src/lab/training_subscription.rs`, `crates/ui/tests/training_poller_subscription.rs`;
+  per `scripts/callers.sh`). It is a scope decision (K1 → analyst), so story 2-63 neither builds
+  around it nor deletes it.
 
 ### Gated on the parked v2 LLM strategy
 - **Lumen Phase 6 — right-rail Assistant slot** — reserved column-track in the shell grid;
