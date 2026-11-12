@@ -18,7 +18,8 @@
 //! | Test ID   | What it pins                                                  |
 //! |-----------|---------------------------------------------------------------|
 //! | T-ST-1a   | Happy path: `server_time_stream_impl` yields first tick       |
-//! | T-ST-1b   | Tick monotonicity: consecutive payloads are non-decreasing    |
+//! | T-ST-1b   | Exact 1 s cadence on a paused clock (every gap, for an hour   |
+//! |           | of paused time), each stamp fresh, still live afterwards      |
 //! | T-ST-1c   | Stream remains open after N=3 ticks (never terminates)        |
 //! | T-ST-1d   | Full `Recipe::stream()` end-to-end integration path           |
 //!
@@ -74,41 +75,162 @@ async fn server_time_stream_impl_yields_tick() {
     );
 }
 
-/// T-ST-1b — tick monotonicity: consecutive `ServerTimeTick` payloads are
-/// non-decreasing in `Timestamp` value.
+/// T-ST-1b — the 1 Hz cadence, pinned EXACTLY on a paused clock, every
+/// payload stamped when it was yielded, and the stream still live after an
+/// hour of (paused) ticks.
 ///
-/// `Timestamp::now()` is sourced from the system clock; on most platforms
-/// it is monotonically non-decreasing. We allow equality (same millisecond
-/// resolution under clock skew) but assert not-decreasing, mirroring the
-/// spec's `>=` requirement.
+/// ## Why a paused clock
 ///
-/// This test drives the stream for ~3 s (two full 1 Hz ticks after the
-/// skipped initial tick) and asserts the ordering invariant.
-#[tokio::test]
+/// `start_paused = true` freezes tokio's clock. Whenever the runtime is idle
+/// it jumps the clock straight to the next timer deadline (tokio's
+/// auto-advance), and nothing moves it in between. So the
+/// `tokio::time::Instant` read right after a tick arrives IS that tick's
+/// deadline, with no scheduler jitter in it, and each gap can be compared for
+/// EQUALITY with the documented period ("once per second"). Four gaps are
+/// checked: `stream()` to tick 1 (the interval's immediate first tick is
+/// skipped, so tick 1 is one whole period in), then tick 1 to 2, 2 to 3 and
+/// 3 to 4. Each must be exactly 1 s. The clock was not advanced before
+/// `stream()` built its interval, so even the first gap carries no rounding
+/// from tokio's 1 ms timer wheel.
+///
+/// This is the exact-period half of story 2-63's split. The off-runtime test
+/// (`recipe_off_runtime_poll.rs`, `server_time_stream_ticks_off_runtime`)
+/// runs on the real clock and pins only the window `[1 s, 1.5 s)`. This test
+/// is also the only one in THIS file that pins the period: the other three
+/// wait up to 1.5 s of real time for each tick, so they accept any interval
+/// under 1.5 s (round 5 measured them GREEN under a 1.4 s interval, B-P30,
+/// and under an unskipped immediate tick, B-P34). That is by design (story
+/// 2-63, round-5 decision 1): the period is pinned here.
+///
+/// ## Stamps: freshness, not monotonicity
+///
+/// Each payload is wall-clock `Timestamp::now()`, which keeps running while
+/// tokio's clock is paused. Right after each tick arrives the wall clock is
+/// read again, and the stamp may be neither LATER than that sample (a future
+/// stamp, B-P27) nor half a period or more OLDER (a stale stamp, B-P13).
+/// Between the two reads there is one return from `poll_next`: microseconds
+/// of real time, against a 500 ms bound. The bound assumes the wall clock does
+/// not step backward inside that window. A stamp stale by less than half a
+/// period passes, a stated limit (the off-runtime test has the same one).
+///
+/// This replaces the old monotonicity check (`t2 >= t1`), which could not
+/// fail on any production edit: round 5 measured it GREEN under both B-P13
+/// and B-P27, because on a paused clock the stamps are microseconds apart in
+/// real time, so only a wall-clock step backward could have failed it.
+///
+/// ## Never terminates, for an hour
+///
+/// The first four gaps are compared as one array. The test then takes ticks
+/// up to `TICKS`, an hour of PAUSED time (it costs real time only for the
+/// polls), each gap still exactly 1 s and each stamp fresh. Then one more
+/// poll, with no time passing, must find the stream PENDING: neither ended,
+/// nor a tick that needed no time. A loop that ends after a few ticks (B-P38:
+/// `for _ in 0..4`) fails at "the stream ENDED before ServerTimeTick #5".
+/// T-ST-1c accepts a timeout after its third tick, so it pins nothing past
+/// that tick.
+///
+/// ## Interval mutants, reasoned (story 2-63 Wave B probe ids)
+///
+/// - 100 ms (B-P14): every gap is 100 ms, so the gap assertion fails. Round 3
+///   measured the previous version of this test GREEN under it, because it
+///   asserted only `t2 >= t1`.
+/// - 1.4 s (B-P30): every gap is 1.4 s, so the gap assertion fails. 1.4 s
+///   lies inside the off-runtime test's window, so this test is the one that
+///   catches it.
+/// - 2 s (B-P28): every gap is 2 s, so the gap assertion fails. The per-tick
+///   bound is paused time too, and it is 60 s, so it cannot expire first.
+/// - the skip of the immediate tick deleted (B-P34): the first gap is 0, so
+///   the gap assertion fails.
+///
+/// Round 5 measured all four RED at the gap assertion. Freshness is checked
+/// per tick, before the gaps are compared at tick 4, and none of these four
+/// stamps stale or in the future, so they still fail there.
+///
+/// The per-tick bound is 60 s of PAUSED time. It is a hang detector only: it
+/// costs no real time, and its expiry fails the test.
+#[tokio::test(start_paused = true)]
 async fn server_time_stream_impl_emits_at_1_hz_cadence() {
+    /// `server_time_stream_impl`'s documented period: "once per second".
+    const PERIOD: Duration = Duration::from_secs(1);
+    /// The first gaps, compared as one array so a failure shows them all.
+    const GAPS: usize = 4;
+    /// Ticks taken in all: one hour of PAUSED time.
+    const TICKS: usize = 3_600;
+    const TICK_WAIT: Duration = Duration::from_secs(60);
+
+    /// Freshness, two-sided: `wall`, read right after tick `k` arrived, may
+    /// be neither earlier than the stamp nor half a period or more later.
+    fn assert_stamped_on_arrival(
+        k: usize,
+        stamp: trading_core::Timestamp,
+        wall: trading_core::Timestamp,
+    ) {
+        let age = wall.inner() - stamp.inner();
+        assert!(
+            !age.is_negative(),
+            "ServerTimeTick #{k}: the payload is stamped AFTER it was yielded (a future time): \
+             the stamp {stamp:?} is {:?} past the wall clock read right after the tick arrived \
+             ({wall:?})",
+            age.unsigned_abs()
+        );
+        let half = PERIOD / 2;
+        assert!(
+            age.unsigned_abs() < half,
+            "ServerTimeTick #{k}: the payload must be stamped when it was yielded: the wall clock \
+             read right after the tick arrived ({wall:?}) is {:?} past the stamp ({stamp:?}), \
+             half a period ({half:?}) or more",
+            age.unsigned_abs()
+        );
+    }
+
     let rt = tokio::runtime::Handle::current();
+    let built_at = tokio::time::Instant::now();
     let mut stream = server_time_stream_impl(&rt);
 
-    // Collect 2 ticks. Allow up to 3.5 s total (2 × 1 s interval + 1.5 s boot skip + jitter).
-    let first = timeout(Duration::from_millis(1500), stream.next())
-        .await
-        .expect("first tick within 1.5 s")
-        .expect("stream produced first tick");
+    let mut previous = built_at;
+    let mut first_gaps = Vec::with_capacity(GAPS);
+    for k in 1..=TICKS {
+        let msg = timeout(TICK_WAIT, stream.next())
+            .await
+            .unwrap_or_else(|_| {
+                panic!("ServerTimeTick #{k}: none within {TICK_WAIT:?} of paused time")
+            })
+            .unwrap_or_else(|| panic!("the stream ENDED before ServerTimeTick #{k}"));
+        let arrived = tokio::time::Instant::now();
+        let wall = trading_core::Timestamp::now();
+        assert_stamped_on_arrival(k, unwrap_tick(msg), wall);
 
-    let t1 = unwrap_tick(first);
+        let gap = arrived - previous;
+        previous = arrived;
+        if k <= GAPS {
+            first_gaps.push(gap);
+            if k == GAPS {
+                assert_eq!(
+                    first_gaps, [PERIOD; GAPS],
+                    "on a paused clock every gap (`stream()` to tick 1, then tick to tick) must be \
+                     exactly the documented period, {PERIOD:?}: a shorter gap is a faster \
+                     interval, a longer one a slower interval, and a first gap of 0 means the \
+                     immediate tick was not skipped"
+                );
+            }
+        } else {
+            assert_eq!(
+                gap, PERIOD,
+                "the gap before ServerTimeTick #{k} must be exactly {PERIOD:?} too: the interval \
+                 drifted"
+            );
+        }
+    }
 
-    let second = timeout(Duration::from_millis(2000), stream.next())
-        .await
-        .expect("second tick within 2 s of first")
-        .expect("stream produced second tick");
-
-    let t2 = unwrap_tick(second);
-
-    // Monotonicity: t2 must be >= t1 (non-decreasing timestamps).
-    assert!(
-        t2 >= t1,
-        "ServerTimeTick timestamps must be non-decreasing: first={t1:?} second={t2:?}"
-    );
+    // Still live: one more poll, with no time passing, must be Pending.
+    match futures::FutureExt::now_or_never(stream.next()) {
+        None => {}
+        Some(None) => panic!(
+            "the stream ENDED after {TICKS} ticks: an always-on stream must never end (the \
+             status-bar clock would freeze)"
+        ),
+        Some(Some(msg)) => panic!("a tick after #{TICKS} with no time passing: {msg:?}"),
+    }
 }
 
 /// T-ST-1c — stream remains open after N=3 ticks.

@@ -26,7 +26,8 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
 - [ ] Wave-decomposed implementation per inventory (mirror v0.2's Wave A-D shape; one tester verdict per wave).
   - [x] Wave 0: baselines + TrainingLog confirmation. *(2026-11-10; confirmed defect became bug-log `#196`, fixed in `dcce75e2`.)*
   - [x] Wave A: post-v0.2 S1, test-only. *(2026-11-11; 27/27 probes red, see "Wave A results".)*
-  - [ ] Wave B · C1 · C2 · D · E1 · E2 · F (G deferred, decision 4).
+  - [x] Wave B: executor fidelity, test-only. *(2026-11-12; 40/41 probes red, one survivor B-P41 routed to E1, see "Wave B results".)*
+  - [ ] C1 · C2 · D · E1 · E2 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
 - [ ] Gates: anchors 119/119, spec-lint, clippy, fmt; T-T4 probe evidence in the tester report.
@@ -114,6 +115,120 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
   - Recipe salt identity is unpinned here. It belongs to §5, Wave C2.
 - **Probe numbering:** P1–P26 are taken by the three Wave A files. Later waves prefix their probes with the wave (`B-P1`, `C1-P1`, …) so no two tables share an id.
 - **Evidence (scratch, not committed):** `/private/tmp/claude-502/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/362d2a09-04ba-4ea6-a7c1-07605f6e187a/scratchpad/wave-a/` holds `round1-P*.log`, `round2/summary.txt` and `round2/P*.log` (per-probe red list, failure text, restore check), and `orch/` (the orchestrator's two probes and clippy log).
+
+**2026-11-11 to 11-12: Wave B (executor fidelity, test-only). DONE; see "Wave B results" below. Decisions:**
+- **Executor.** The harness polls on iced's own default executor, `<iced::executor::Default as iced::Executor>::new()`.
+  - Its return type is pinned to `futures::executor::ThreadPool`, so it only type-checks while iced's default IS that pool (`iced_futures-0.14.0/src/backend/native/thread_pool.rs:4`).
+  - After round 2, `Recipe::stream()` runs on an event-loop stand-in thread, and only the drain goes to the pool. That is where iced 0.14 puts them: `iced_winit` `runtime.track` → `iced_futures` `tracker.rs` `recipe.stream(..)` synchronously, then `executor.spawn`.
+- **Round 1, independent falsifier (`wf_74575068-523`).** All 11 probes went red.
+  - **B-P1…B-P9 went red ONLY in the new file, and all 8 `#[tokio::test]` sibling targets stayed green.** These are reactor-dependent calls in a stream body (`tokio::time::timeout` around a recv) and deleted enter guards. Nine production regressions the pre-Wave-B harness cannot see: the blind spot this wave exists for, now measured.
+  - B-P10 and B-P11, leaked `EnterGuard`s, also turned siblings red: `server_time_recipe_stream` went 4/4 red, plus one `forward_narration_relay` test, via tokio's out-of-order guard-drop panic.
+  - The falsifier also raised 5 vacuity findings. They were fixed in round 2, which added B-P12…B-P16.
+- **Round 2 was stopped deliberately at B-P5.** B-P1…B-P4 had re-measured red, only in the new file, siblings green.
+  - Each probe cost about 12 min, because 9 test binaries were relinked each time.
+  - Meanwhile an independent read-only review (`wf_0b3be12f-0e4`: 3 lenses, each finding checked by 2 skeptics) left 7 verified weaknesses (below). Round 3 rewrites the file for them, so finishing round 2 would have measured a revision that is never committed.
+  - The `live.rs` it left mutated was restored from the agent's snapshot and shown byte-equal to `git show HEAD:crates/ui/src/live.rs`.
+- **Review verdict on fidelity: faithful, not stricter.**
+  - `cockpit_live.rs` holds no tokio `EnterGuard` on iced's thread: `fn main` has no `#[tokio::main]`, `drop(bootstrap_rt)` runs before `iced::application(..)`, and the agent runtime lives only in `rt.block_on` on the `agent-runtime` side thread.
+  - `Executor::enter` is the no-op trait default for the thread pool.
+  - So production `stream()` calls really do run with no tokio context.
+- **The 7 surviving review findings, fixed in round 3:**
+  - R1 (medium): a buffer-until-close recipe passed every relay test. The only wake proven was the close wake.
+  - R2 (medium): the take-once and eager-subscribe checks ran after the first poll.
+  - R3: TrainingLog was excluded, but its own test builds and polls on one thread.
+  - R4: the 11 BusRecipe streams were never exercised, and the headline claimed "every recipe".
+  - R5: server-time freshness spanned about 2 s of wall clock.
+  - R6: the 5 s hang guard on the expected-panic shapes may be too short for backtrace symbolization on Windows.
+  - R7: stamps were bounded only from below.
+- **Re-probe scope decision.** The final, fresh re-probe runs B-P1…B-P11 against the new target only.
+  - Those probes' sibling outcomes are an invariant already measured in round 1: neither the 8 sibling files nor those production probe texts changed since.
+  - New probes (B-P12 upward) run against the new target plus all siblings.
+- **Rounds 3 and 4 (`wf_0a2326a7-62d`).** The fix agent resolved R1–R7 and declared B-P17…B-P27 (11 → 14 tests). A fresh falsifier then applied all 27 probes to that revision (SHA `3d7a7f31…`): **27/27 went red at their designed assertion**, with every restore byte-identical and rebuilt. The 5× flake check was green.
+  - Siblings, now measured: B-P16 turns `toast_dismiss_recipe_stream` red 3/3; B-P17 turns `bakeoff_progress_relay` red 4/6. **B-P14 (a 10× faster server-time interval) leaves `server_time_recipe_stream` GREEN.** Its `…_emits_at_1_hz_cadence` test asserts only that the stamps do not decrease.
+  - Two survivors, measured: **X-1** (server-time interval 1 s → 2 s) and **X-2** (toast 500 ms → 1000 ms) left the new file 14/14 green. Cadence was pinned only from below.
+  - Round 4 added a `(k+1)`-period upper bound (B-P28, B-P29), symmetric freshness checks for both tick streams, a cancellable `Drain` guard so a failing test no longer prints a misleading "runtime is being shutdown" panic, and a read-on for the activity eager-subscribe test (14 → 15 tests, SHA `52bab6eb…`). Its re-falsifier measured B-P28 and B-P29 red, and each also turned its tick sibling red.
+- **Gap that decides round 5.** Round 4 changed the shared harness (the `Drain` guard, the tick helpers, the activity read-on) after B-P1…B-P27 were measured. **No probe except B-P28/29 has been measured on the file that would be committed.** Round 5 therefore re-applies every probe to the final revision.
+- **Round 4's re-falsifier left 9 findings. Decisions (2026-11-12):**
+  1. *Slow side pinned only to `[P, 1.5P)`.* **Split the labour instead of tightening the slack.** A tighter real-time bound trades load tolerance on the 4-vCPU Windows leg for drifts that no unit slip produces. Exact periods belong to the paused-clock siblings:
+     - `toast_dismiss_recipe_stream` already pins the period exactly (`advance(500ms)` → one tick).
+     - `server_time_recipe_stream::…_emits_at_1_hz_cadence` is made to do the same: paused clock, consecutive tick gaps equal to the period. That also fixes the sibling vacuity B-P14 measured, so the test's name stops lying.
+     - The new file keeps the coarse real-time window, and its doc states that window exactly instead of "pinned from both sides".
+  2. *Timing bounds are exposed to load from the deliberately panicking self-test (backtrace symbolization under `RUST_BACKTRACE=1`).* **Serialize them.** One `static` `RwLock`: the two tick tests take it for writing, every other test for reading. The tick tests then never share the binary with a panic in flight. The cost is about 1 s of binary time.
+  3. *Self-test shape (g) passes on an expired wait.* **Make it two-sided.** After the 1 s silence, drop the sender. The buffered items must then arrive in order, followed by END. That proves `next_item` sees items, and that the silence was buffering rather than a broken reader.
+  4. *Teardown-order claim stated as universal.* Doc fix only.
+  5. *Harness-shape asserts reported as a production panic.* Give harness self-checks a `HARNESS:` payload prefix, have `interpret()` report them as a harness defect, and add a self-test for the label.
+  6. *`expect_waiting` cannot tell a stale `Waiting` from a fresh one.* At each turn, drain the relay's queue: an `Item` before its own publish is named **cross-talk**. After each turn, sweep the other relays for `Item`s.
+  7. *Staleness under `P/2` passes.* Document it as a design limit. No realistic edit produces it, and tightening it would cost load tolerance.
+  8. *By-construction premises.* Already labelled as harness self-checks. No action.
+  9. *The T-T4 table is stale for B-P28/29.* Update the rows to measured.
+  - B-P20…B-P22's `--lib` claims (the training-log unit test) are measured in round 5. `cargo test -p ui --lib lab::training_log` is allowed for those three probes only.
+- **Round 5 sibling policy.** The sibling files are unchanged since they were measured, except `server_time_recipe_stream`, which decision 1 edits. Probes therefore run against the new target only, plus `server_time_recipe_stream` for every server-time probe (B-P1, B-P10, B-P13, B-P14, B-P27, B-P28) and plus `--lib lab::training_log` for B-P20…B-P22.
+- **Rounds 5 and 6 (`wf_f002d295-ed8`).**
+  - Round 5 resolved the 9 findings as decided above and added B-P30…B-P34.
+  - Its read-only review and its falsifier left 12 more:
+    - One review finding was rated high: the harness skipped `Tracker::update`'s per-recipe hash and same-id skip. A `BusRecipe::hash` that ignores the channel therefore passed every test, although iced would stream only Fills.
+    - Two production-fact counts were mislabelled "HARNESS DEFECT".
+    - Several doc claims were false.
+    - Three sibling vacuities were measured.
+  - Round 6 fixed them:
+    - test-thread asserts on iced-id identity and recipe count;
+    - per-recipe context sampling;
+    - bounded lock and teardown waits whose expiry fails the test;
+    - a grace period for a panic report that arrives late;
+    - two new self-tests (16 → 18 tests);
+    - in the server-time cadence test, a two-sided freshness check plus 3600 paused ticks of liveness;
+    - new probes B-P35…B-P38.
+  - A fresh falsifier then re-applied **every** probe to that file (SHA `bc9133fb…`, sibling `d132975d…`).
+- **Correction to decision 1.** Its premise, that "`toast_dismiss_recipe_stream` already pins the period exactly", was false.
+  - That sibling accepts a period in (375 ms, 500 ms].
+  - Its `toast_tick_instants_are_monotone` check cannot fail: on a paused clock it compares real `Instant`s about 24 µs apart, measured under B-P31.
+  - Toast's exact period and liveness therefore go to Wave E1, which owns that file.
+- **Correction to decision 2.** The cost is not "about 1 s". The binary went from about 2.0 s (no lock) to 4.07 s (round 5's lock), then 5.02 s (round 6's two self-tests), then 6.08 s (the close-out's third writer, below).
+
+**2026-11-12: Wave B results (executor fidelity, test-only). DONE.**
+- **Files.**
+  - NEW `crates/ui/tests/recipe_off_runtime_poll.rs` (18 tests).
+  - `crates/ui/tests/server_time_recipe_stream.rs`: only `server_time_stream_impl_emits_at_1_hz_cadence` was rewritten. It runs on a paused clock: every gap is exactly 1 s, over 3600 ticks; each stamp is fresh, checked from both sides; and the stream is still live at the end.
+  - **No production edit:** `git diff -- crates/ui/src crates/agent/src` is empty.
+- **Final falsifier sweep (round 6) on the file as probed:**
+  - **40 of 41 probes went red at their designed assertion.** That is 38 designated (B-P1…B-P38) plus two of the falsifier's own: B-P39 (server time at 1.6 s) and B-P40 (toast at 800 ms), the first measurement of the `k = 2` upper cadence bound.
+  - B-P30, B-P31 and B-P38 are green in this file by design, because 1.4 × P sits inside its documented `[P, 1.5P)` window and a ticker that stops after 4 ticks outlives its 2 ticks. Each was red in its paused-clock sibling, at the designed assertion.
+  - Every restore was byte-identical and rebuilt (`Compiling ui`).
+  - The flake check was 5× green (18/18 and 4/4).
+  - Production equalled HEAD at the end.
+- **The blind spot, measured.**
+  - B-P1…B-P9 (a reactor-dependent call in a stream body, or a deleted enter guard) are red **only** here. All 8 `#[tokio::test]` sibling targets stayed green (rounds 1 and 2).
+  - B-P21 and B-P22 (a leaked `EnterGuard` in `TrainingLogRecipe::stream`) are caught only by this file. The lib test that bug-log `#196` cites, `recipe_stream_drains_without_a_tokio_runtime`, was measured **green** under both.
+- **One measured survivor, routed: B-P41.**
+  - The mutation: `toast_dismiss_stream_impl`'s `loop {` → `for _ in 0..4 {`. This file stays 18/18 green and `toast_dismiss_recipe_stream` 3/3. Nothing pins the toast ticker past its 4th tick.
+  - **Routed to Wave E1**, which owns `toast_dismiss_recipe_stream.rs`. The fix is a paused-clock liveness test in the style of `server_time_stream_impl_emits_at_1_hz_cadence`, which measured B-P38 (the server-time analogue) red.
+  - B-P41 becomes an E1 designated probe.
+- **Close-out edit after the sweep (`wf_7005929c-184`): documentation plus one lock mode.**
+  - The T-T4 table's last column now holds the round-6 measurements, and rows B-P39…B-P41 were added.
+  - `a_late_panic_report_is_reported_as_the_panic` moved from the read lock to the write lock. It has a real-time bound of its own: the test thread must start a 100 ms wait within 900 ms, and the falsifier reasoned that load could turn it falsely red. No production probe targets it.
+  - An independent read-only checker audited every table cell against the probe logs. It found 10 wording errors and no code change beyond that one line. A fixer verified each error against the logs and corrected it.
+  - Final SHA `8db233d1…` (4082 lines).
+- **Orchestrator re-check, independent of every agent, on the final file:**
+  - `cargo fmt -p ui -- --check` exits 0.
+  - `cargo test -p ui --test recipe_off_runtime_poll --test server_time_recipe_stream` passed 4 times, with `Compiling ui` on the first run: 18/18 in 6.07–6.08 s and 4/4 in 3.20 s.
+  - `cargo clippy -p ui --test recipe_off_runtime_poll --test server_time_recipe_stream -- -D warnings` is clean after `touch` (`Checking ui` shown).
+  - I applied two probes with my own harness (exact-once replace, run, restore with `cp`, compare with `git show HEAD:`):
+    - **B-P35** went red at `bus_recipes_relay_off_runtime`'s "IDENTITY: bus recipe #2 (Positions) has the same iced id as bus recipe #1 (Fills)". That is the review's high finding, closed.
+    - **B-P1** went red at `server_time_stream_ticks_off_runtime`'s "`Recipe::stream` PANICKED on the event-loop stand-in thread (no tokio context)".
+    - Both restores are byte-equal to HEAD.
+  - Anchors are **119/119**, spec_lint PASS, and the bug-log schema check PASS.
+- **Routed, not fixed here:**
+  - **To E1, which owns that file:**
+    - The real-time server-time siblings (T-ST-1a/1c/1d) accept any interval under 1.5 s. That is by decision 1.
+    - T-ST-1d's doc claims it builds a real `ServerTimeRecipe`. E1 deletes T-ST-1d.
+    - The vacuous toast monotonicity check.
+  - **Recorded in the file:**
+    - Diagnosis quality, not vacuity: the bus cross-talk label names the foreign channel only when that channel publishes first. A relay rewired to a later channel fails as "hung", and is still red.
+    - A design limit: a stamp stale by less than P/2 passes.
+- **Evidence (scratch, not committed):** `/private/tmp/claude-502/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/362d2a09-04ba-4ea6-a7c1-07605f6e187a/scratchpad/wave-b/` holds:
+  - `r5x2-B-P*.{summary,log,diff}`, `r5x2-flake.out`, `r5x2-rwlock-measure.out` and `r5x2-final.log`;
+  - `closeout/` (the edit log, the diff, the pre-edit snapshots);
+  - `orch/` (my green, clippy, flake and probe logs).
 
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
@@ -403,7 +518,7 @@ The waves mirror v0.2's A-D shape with the same rules:
 | **C1** | **Shared seam** + descriptor S2 | live.rs (variants, `Held`, `SubscriptionBatchInputs`, `_from`, wrapper delegation, `SubscriptionCtx`, `subscription_batch`, moved ServerTime/Toast recipes, comment fixes); journal_transaction_modal.rs `esc_closes_modal`; cockpit_live.rs `subscription()` rewired (delete tail pushes + bin-private recipes); cockpit.rs uses `esc_closes_modal`; NEW subscription_batch_inclusion.rs (legacy pin, matrix, ctx-inputs, units agreement, modal fn tests); delete the 3 superseded v0.2 descriptor files | **YES**, API-additive (Wave C shape) | — | matrix probes (a)-(d); Sweep arm → `none()`; wrapper `forward_plan: Yes`; `inputs()` inner-filter |
 | **C2** | Real-batch S2 + identity, test-only | subscription_batch_inclusion.rs: `batched_*_recipe_relays` ×8, `forward_plan_stays_batched…`, three identity tests | no | C1 | live.rs:1073, :1148, progress.rs:64, training_log.rs:72 salt deletions; :1147 TypeId swap; :126 Bus channel hash; :902 per-instance counter |
 | **D** | State-machine S2, test-only | NEW advisor_recipe_state_gating.rs (§1-§4 S2 rows); drop the `fixtures` gate on promote_swept_config.rs | no | — | state.rs:3997, :3880 (×2), :3851, :3964; leaderboard/state.rs:1264, :1284; tune/screen_state.rs:800, :814 |
-| **E1** | AC3 sweep of v0.2 recipe-stream files, test-only | activity_recipe_stream.rs, trail_mirror_recipe_stream.rs, lab_progress_recipe_stream.rs, server_time_recipe_stream.rs, toast_dismiss_recipe_stream.rs, training_log_recipe_harness.rs, live_subscription_full_bus.rs (Bus dispatch); probe-citation rot → symbol + quoted line | no | C1 (moved ServerTime/Toast recipes) | live.rs:592; :751-759; :141; :810; training_log.rs:83-88 take-removal; progress.rs:107 |
+| **E1** | AC3 sweep of v0.2 recipe-stream files, test-only | activity_recipe_stream.rs, trail_mirror_recipe_stream.rs, lab_progress_recipe_stream.rs, server_time_recipe_stream.rs, toast_dismiss_recipe_stream.rs, training_log_recipe_harness.rs, live_subscription_full_bus.rs (Bus dispatch); probe-citation rot → symbol + quoted line | no | C1 (moved ServerTime/Toast recipes) | live.rs:592; :751-759; :141; :810; training_log.rs:83-88 take-removal; progress.rs:107; **B-P41** (Wave B's measured survivor: `toast_dismiss_stream_impl` `loop {` → `for _ in 0..4 {`; needs a paused-clock toast liveness test) |
 | **E2** | AC3 sweep of the remaining files, test-only (+1 agent test) | cockpit_live_lab_run_smoke.rs (#66 fix), cockpit_audit_aggregator_boot.rs, training_log_state_gating.rs, forward_narration_relay.rs leftovers, cockpit_training_pressed_wiring.rs doc, agent select_arm_survival.rs (+ source docstring) | docstring only (agent) | — | smoke: point at the sample corpus and confirm the test now **runs** (non-zero bars; no SKIPPED line in `--nocapture`); aggregator `fetch_add` |
 | **F** | Surface 1 de-tautologization | runner.rs `run_yahoo_preload_arm` extraction + rewrites of spawn_lab_run_yahoo_harness.rs, lab_runner_ticker_e2e.rs, lab_runner_cancel_e2e.rs | **YES**, extraction (the Binance-arm precedent). The test-only override branch gains a ticker and cancel; the shipped path is identical (passes `None`, cockpit_live.rs:2380). | — (runner.rs only) | sentinel moved after the loop; delete the ticker arm; delete runner.rs:1500 guard; delete the cancel arm; delete `abort()` |
 | **G** (optional) | Agent narration producer | agent runtime.rs `narration_task_loop` extraction + NEW agent test | **YES** (agent crate) | — | §8 |
@@ -463,3 +578,4 @@ Waves A, B and D touch no production code and are independent; they may run befo
 ### File List
 
 - Wave A (2026-11-11): `crates/ui/tests/forward_narration_relay.rs` (modified), `crates/ui/tests/bakeoff_progress_relay.rs` (modified), `crates/ui/tests/sweep_progress_relay.rs` (NEW). No production file.
+- Wave B (2026-11-12): `crates/ui/tests/recipe_off_runtime_poll.rs` (NEW), `crates/ui/tests/server_time_recipe_stream.rs` (modified: `server_time_stream_impl_emits_at_1_hz_cadence` only). No production file.
