@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-11-10
+updated: 2026-11-12
 ---
 
 # Bug log
@@ -9859,3 +9859,54 @@ and leaves the second green.
 **Still not verified: a real network call.** It needs an API key and `llm.enabled = true`,
 which is the operator's to switch on. The claim is now true of the code path; whether a given
 deployment has the LLM enabled is configuration.
+
+### `#198` — "Explain" tells the LLM a +18.37 % return was "0.18%": the narration facts format a fraction as a percentage
+
+**Status**: **`open`** 2026-11-12. Found by the story `2-63` Wave E2 brief (a read-only pass) and
+confirmed by reading the source at HEAD `51961dce`; not yet run against an LLM. Anchor-impacting:
+**no** (narration is report-free; no anchored report renders these strings). Live since `bab164f0`
+(`#197`), which made Explain reach a real provider. Before that, every request fell back to the
+templated copy, which does not use these strings.
+
+**The code.** Both narration builders format the KPI *fraction* with a `%` suffix and never
+multiply by 100:
+
+- `crates/ui/src/live.rs` builds `NarrationFacts` from `LeaderRow`. Its `fmt_pct2(d)` is
+  `format!("{}%", pad_fractional_kpi(&d.round_dp(2).to_string(), 2))`, applied to
+  `r.total_return_pct` and `r.max_drawdown`.
+- `crates/agent/src/narration.rs` `render_kpi_strings` has a `fmt_pct2` with the same body,
+  applied to `CandidateKpis.total_return_pct` / `.max_drawdown`.
+
+The inputs are fractions. `LeaderRow.total_return_pct` is documented as "Total return fraction
+(`0.1` = +10 %)", and `CandidateKpis` likewise ("0.1 = +10%"). The screen converts: the
+leaderboard renders `format_pct_max_dd(leader.max_drawdown * dec_100(), mode)`, and its return
+cell goes through `signed_pct`. So for one winner the screen says **+18.37 %** and the prompt says
+**`Total Return: 0.18%`**.
+
+**Why the faithfulness guard makes it worse.** P3 (`check_faithful`) is an exact-string match
+against `NarrationFacts::allowed_numbers`, which holds these same strings:
+
+- An LLM that repeats the prompt ("0.18%") passes P3 and shows prose that contradicts the numbers
+  on the screen.
+- An LLM that states the true figure ("18.37%") fails P3 as a *fabricated number* and falls back.
+
+The guard therefore enforces the wrong unit.
+
+**Why no test caught it.** The `agent` narration unit tests hand-write percent-unit fixtures
+(`total_return_pct: "5.00%"`, `"15.00%"`, …) instead of calling `render_kpi_strings` on a known
+fraction. No test pins the pair (fraction in, the screen's string out), so the dimension is
+unpinned in the house sense: there is no fixture pair that differs in units and expects a
+different string.
+
+**Fix (its own change, not story `2-63`, whose AC5 forbids production behaviour change):**
+
+- In both formatters, multiply by 100 before rounding, so the narration string is the leaderboard
+  cell's digits. Sign and minus-glyph conventions follow the screen's or are documented as
+  deliberately ASCII.
+- Add a two-sided pin: `0.1837` → the string the screen renders for the same row, and `0.05` → a
+  different one.
+- Add a cross-crate identity test: `ui`'s mirror and `agent`'s `render_kpi_strings` give the same
+  string for the same fraction.
+
+The `FROZEN — change only with num.rs` note on `render_kpi_strings` already ties these formats to
+the screen's, and they have drifted from it.
