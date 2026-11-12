@@ -9910,3 +9910,75 @@ different string.
 
 The `FROZEN — change only with num.rs` note on `render_kpi_strings` already ties these formats to
 the screen's, and they have drifted from it.
+
+### `#199` — the faithfulness check never returns on "top-3": a sign after an identifier character stalls the frozen tokenizer
+
+**Status**: **`open`** 2026-11-12. Found while fixing `#198`, by reading `extract_numeric_tokens`
+at HEAD `b73df9e8`, and confirmed in a Python port of it; not yet reproduced in Rust or against an
+LLM. Anchor-impacting: **no** (narration is report-free). Live whenever `llm.enabled = true`
+(default `false`), since `bab164f0` (`#197`) made Explain reach a real provider.
+
+**The code.** `crates/agent/src/narration.rs` `extract_numeric_tokens`, which P3 calls on every
+narration that passed P4, P1 and P2:
+
+- `:471` starts a token at a sign: `let sign_start = (c == '-' || c == '+') && i + 1 < n &&
+  chars[i + 1].is_ascii_digit();`
+- `:477` then asks whether the character before it belongs to an identifier: `let pre_is_ident =
+  pre_char.is_alphanumeric() || pre_char == '_' || pre_char == '.';`
+- `:481-485`, when it does, skips "the rest of the identifier" with `while i < n &&
+  (chars[i].is_alphanumeric() || chars[i] == '.' || chars[i] == '_') { i += 1; }` and `continue`s.
+
+When `chars[i]` is the sign, that loop runs zero times (`-` and `+` are none of the three), and
+`continue` re-enters at the same `i`. The loop never ends. Any ASCII `-` or `+` between an
+identifier character and a digit triggers it: `top-3`, `COVID-19`, `2023-2024`, `P2-1`,
+`v0.sma+5%`, and a range of two KPIs such as `0.3100-1.4200`, which a faithful narration can
+plausibly write. A sign after a space or a `%` is unaffected (`6.12%-18.72%` returns).
+
+**What it does to the cockpit.** `check_faithful` runs inside the narration task
+(`crates/agent/src/runtime.rs:1630` `set.spawn(async move {`, `:1641`
+`crate::narration::generate_narration(provider, &facts).await`), which runs on the cockpit's
+multi-thread runtime (`crates/ui/src/bin/cockpit_live.rs:430`). The spin never yields, so:
+
+- one runtime worker is pinned at 100 % CPU, and the `narration_cancel.cancelled()` arm
+  (`runtime.rs:1634`) cannot reach it: it is polled only between requests;
+- no outcome is ever sent, so the panel stays `InFlight`, and the `is_requested()` guard
+  (`crates/ui/src/state.rs:3880`, `cockpit_live.rs:1793-1797`) refuses a second Explain for that
+  result;
+- dropping a tokio runtime lets each running task go on until it next yields, and this one never
+  yields, so quitting the cockpit can block as well (reasoned from tokio's documented `Runtime`
+  drop behaviour, not measured).
+
+**Why no test caught it.** No prose any narration test hands to `check_faithful` contains the
+shape (checked by grep over `narration.rs`'s tests, `narration_faithfulness.rs`,
+`narration_task_uses_boot_provider.rs` and `forward_narration_relay.rs`; the only `P2-1` hits are
+comments and assert messages). A test that did would not fail: it would hang the suite.
+
+**Fix (an ADR-0064 § D2 amendment: the tokenizer is FROZEN).** In the `pre_is_ident` branch, step
+over the sign ALONE and re-scan, so the digits after it are still a token and still face P3:
+
+```rust
+if pre_is_ident && sign_start {
+    i += 1;
+    continue;
+}
+```
+
+- **Not the obvious edit.** `i += 1;` followed by the identifier skip also terminates, but it
+  swallows the digits after the sign as an "identifier": `0.3100-9.9999` would then pass P3 with
+  `9.9999` never checked.
+- **Behaviour changes only where HEAD never returned.** Exhaustively over the alphabet
+  `a1.-+% _9`, lengths 1-7 (5,380,839 strings, Python port): HEAD hangs on 687,820; on the other
+  4,693,019 the fix returns byte-identical tokens; the fix returns on all of them. The rejected
+  edit extracts fewer tokens than the fix on 504,780 of the hang inputs.
+- **Pin.** Two tests that run the tokenizer and `check_faithful` on a thread under a 5-second
+  deadline, so a regression fails instead of hanging: `top-3` → `3`, `COVID-19` → `19`,
+  `2023-2024` → `2023`, `2024`, a KPI range → both figures, and `0.1234-9.9999` →
+  `FabricatedNumber("9.9999")`.
+- **Line budget.** The fix adds 4 lines above `narration.rs:1032`, which `CHANGELOG.md:276`,
+  `crates/backtest/src/bakeoff/mod.rs:918` and others cite. The drafted patch shortens the
+  tokenizer's doc comment by the same 4 lines, so `:1032` stays put.
+- **Optional soft-layer companion (not part of the fix).** Append to the prompt's INSTRUCTION
+  (`narration.rs:822-827`): "Copy every number exactly as written above, including any leading
+  minus sign; cite numbers one at a time, never as a hyphenated range." It would lower the
+  fallback rate `#198`'s D12 accepts as a cost; its effect can only be measured against a real
+  provider.
