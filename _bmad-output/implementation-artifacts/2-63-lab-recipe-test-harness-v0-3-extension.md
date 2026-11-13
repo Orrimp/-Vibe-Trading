@@ -28,7 +28,8 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
   - [x] Wave A: post-v0.2 S1, test-only. *(2026-11-11; 27/27 probes red, see "Wave A results".)*
   - [x] Wave B: executor fidelity, test-only. *(2026-11-12; 40/41 probes red, one survivor B-P41 routed to E1, see "Wave B results".)*
   - [x] Wave D: advisor state machine S2, test-only. *(2026-11-13; D-P1…D-P28 red at their designed assertion; production finding routed as bug-log `#200`, see "Wave D results".)*
-  - [ ] C1 · C2 · E1 · E2 · F (G deferred, decision 4).
+  - [x] Wave E1a: AC3 sweep of the seven v0.2 recipe-stream files, test-only. *(2026-11-13; 28/28 listed probes red, the two falsifier survivors fixed or recorded, 8 orchestrator probes red incl. E1-P34…E1-P39; Wave B's survivor B-P41 killed; see "Wave E1a results".)*
+  - [ ] C1 · C2 (+ E1b) · E2 · E3 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
 - [ ] Gates: anchors 119/119, spec-lint, clippy, fmt; T-T4 probe evidence in the tester report.
@@ -283,6 +284,86 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
 - **(c)** The paused cadence test reads `const TICKS: usize = 3_600;`, not the 4 the brief's scratch had. So E1-P11 freezes after 3,600 ticks, and T-ST-1c reads 7,200 paused ticks.
 - **(d)** `assert_taken(&built, "training log")` is present, so E1-P14 and E1-P15 are expected red there too.
 - **E1 is split:** E1a now, and E1b (2 tests, E1-P21…P23) after C1, folded into C2's tester pass. E1-P26 stays retired.
+
+**2026-11-13: Wave E1a results (AC3 sweep of the seven v0.2 recipe-stream files, test-only). DONE.**
+- **Files** (test-only; `git diff -- crates/ui/src crates/agent/src` is empty). Tests after E1a, by file:
+  - `activity_recipe_stream.rs`: 5;
+  - `trail_mirror_recipe_stream.rs`: 6;
+  - `lab_progress_recipe_stream.rs`: 5;
+  - `server_time_recipe_stream.rs`: 3;
+  - `toast_dismiss_recipe_stream.rs`: 3;
+  - `training_log_recipe_harness.rs`: 4;
+  - `live_subscription_full_bus.rs`: 3.
+
+  Every file now carries a Wave A-shaped module doc: a non-vacuity contract, a T-T4 table citing symbol + quoted line, and a coverage table. The v0.2 line-number probe blocks are gone.
+- **The workflow (`wf_f2fc2790-557`).** Seven devs ran, one per file with serial cargo, then four serial falsifiers over the 28 listed probes, plus a read-only reviewer in parallel.
+  - **28/28 listed probes red**, each restored byte-identically, with production SHAs equal before and after and each group green at the end.
+  - The only strict-set mismatches (E1-P4, E1-P8, E1-P27, E1-P28) were against the brief's probe list (`_probes_E1a.json`), whose sibling sets were incomplete. Every dev's module-doc row had the full set.
+  - **Mid-run correction by the orchestrator, before the server_time group started:** E1-P11's mutation was still the pre-gate `0..4`; Wave B gate (c) makes it `0..3600`. The falsifier measured exactly the designed red, with T-ST-1b GREEN.
+- **The falsifiers' own probes: 8, of which 2 survived.**
+  - **AT-OWN-1 SURVIVED** (activity): a relay that ends itself after 100 ms of quiet passed 5/5, because every liveness check was one poll at t≈0.
+    - **Fixed by the orchestrator:** `stream_stays_open_while_sender_alive` (activity) and `trail_mirror_stream_stays_open_while_sender_alive` (trail) now run on a paused clock, and a second `assert_pending` follows `advance(3600 s)`.
+    - Adopted as designed probes **E1-P34** (activity) and **E1-P35** (trail). Both are MEASURED red at that new assertion only.
+  - **LT-OWN-2 SURVIVED** (training log): a bridge that drops its sender and then blocks forever, orphaning one OS thread per run, passes everything. The test doc had claimed "no orphan `training-log-bridge` thread"; that is now reworded to what the END proves (the sender was dropped). Recorded as a residual: joining the bridge needs a `JoinHandle` seam in production.
+  - Killed: AT-OWN-2, LT-OWN-1, ST-OWN-2, FB-OWN-1, FB-OWN-2, and **ST-OWN-1 = Wave B's B-P41**. ST-OWN-1 is red at "toast: the stream is still live after tick 4", so **Wave B's survivor is closed**.
+- **Orchestrator fixes after the workflow, test-only:**
+  - **`live_subscription_full_bus.rs`.** The falsifier found that the tape, P&L, latency and bar checks pinned only the variant (`Ready(_)`, `Known { .. }`, `is_some()`). They now compare content derived from the fixtures:
+    - the first fill's side, price and stamp;
+    - the first P&L snapshot's figures;
+    - `Known { ms: 1000 }`, since the tick fixture now arrives 1 s after its venue stamp;
+    - the first bar's close.
+
+    Adopted as **E1-P38** (`fill_to_view` side) and **E1-P39** (`stream_pnl` zeroes `cash`), both MEASURED red at those assertions. Cruft removed: the `FundingObs` dead-code anchor and the `SmolStr` / `synthetic_fill` "silence" lines.
+  - **Doc claims corrected to the measurement:**
+    - trail E1-P6's Wave B sibling is red at `expect_parked`, not at its receiver count;
+    - B-P12 now reddens T-TM-1d (reasoned);
+    - B-P21 and B-P22 are MEASURED red in `training_log_recipe_stream_takes_receiver_once`, at tokio's own "`EnterGuard` values dropped out of order", not at a designed assertion. Wave B's rows calling this file a GREEN sibling are stale;
+    - Wave B siblings MEASURED red, added to the rows: under E1-P12, E1-P25 (`toast_dismiss_stream_ticks_off_runtime`) and E1-P24 (`server_time_stream_ticks_off_runtime`);
+    - full_bus's "outside this target" paragraph and the E1-P18 row are now measured. E1-P18 fails at the Pnl wait, never at CROSS-TALK;
+    - the activity lib-sibling note is now measured.
+  - **Toast "exactly one" and presence sides**, which no listed probe reached: **E1-P36** (a duplicated yield) and **E1-P37** (Wave B's B-P31, 700 ms, re-run) are MEASURED red at "toast period 1: exactly one ToastTick at 500 ms".
+- **Orchestrator hand probes (8):** B-P21, B-P22, E1-P34…E1-P39. All red, each with exact-once apply, `Compiling ui` in the log, and a restore with `cp`, `touch` and `cmp`. Post-SHAs equal pre-SHAs. Evidence: `scratchpad/e1a/hand/`.
+- **Review findings (F0…F5), disposition:**
+  - F0 (medium): fixed. B-P21 and B-P22 are measured, and the doc is corrected.
+  - F1 (medium): the probe list was fixed mid-run, and B-P41 was measured as ST-OWN-1.
+  - F2 (low): fixed.
+  - F3 (low): stale Wave B sibling columns, recorded below.
+  - F4 (low): **ACCEPTED.** The server_time dev rewrote two doc sentences of Wave B's T-ST-1b, whose code is byte-identical. The T-ST-1c rewrite made the old sentences false.
+  - F5 (low): carried into E1b. **E1b's new asserts must use the exact texts E1a's rows already quote:**
+    - "toast recipe: `ToastDismissRecipe::stream` returns a live stream" (E1-P22);
+    - "toast recipe: the first ToastTick arrives within 750 ms (paused clock)" (E1-P23);
+    - `server_time_recipe_stream_yields_tick` (E1-P21).
+
+    Otherwise E1b updates those rows in the same edit.
+- **Stale since E1a, not E1a's files (F3).** `recipe_off_runtime_poll.rs`'s committed sibling columns describe the pre-E1a revisions of E1a's files:
+  - B-P12 (trail GREEN);
+  - B-P18 (lab_progress GREEN; now measured red under E1-P10);
+  - B-P21 and B-P22 (training_log GREEN; now measured red);
+  - B-P38 ("its other three tests … T-ST-1c accepts a timeout");
+  - B-P28 and B-P39 ("0 of 4 … current revision");
+  - B-P41 ("3/3 GREEN");
+  - the module doc's `toast_tick_instants_are_monotone` and T-ST-1d, both deleted.
+
+  **Decision:** E1b's dev corrects them, as the next wave in the E1 family. Each gets "(pre-E1a revision)" or the measured current state.
+- **Story corrections, recorded, not rewritten (planning text).** The §7 rows below are superseded by the E1a module docs:
+  - Activity: `activity_recipe_stream_subscribes_eagerly` → Wave B's B-P19.
+  - ServerTime: `server_time_period_is_one_second` → T-ST-1b, with E1-P24 as the guard.
+  - TrainingLog: stale line cites; it is now E1-P14 by symbol.
+  - Bus: `market_health_stream_relays_into_cockpit_state_then_ends`, with E1-P19, E1-P20 and E1-P32. `bus_recipe_stream_routes_…` was not added, per gate (a).
+  - LabProgress: the test is `lab_progress_second_recipe_on_a_taken_cell_ends_without_yielding`, its salt probe is deferred to C2, and progress.rs:107 = E1-P29.
+  - The AC3 audit's "clean / acceptable / optional" verdicts on server_time, toast and full_bus are falsified by the rewrite.
+  - The std-thread bridge (`training-log-bridge`, since `dcce75e2`) replaces the `spawn_blocking` wording at :74, :594 and inventory row 11.
+  - Wave B decision 1's "already pins the period exactly" is now TRUE, measured by E1-P12, E1-P36 and E1-P37.
+- **Residuals, recorded:**
+  - LT-OWN-2 (above).
+  - In training_log, the salt-2 half adds no take-state power: an empty cell and a dead receiver both end at once with nothing (reasoned).
+  - "Every sender, not any sender" is unpinned in activity (tokio's semantics guarantee it).
+  - T-ST-1c's `OPEN_TICKS = 7_200` is tied to Wave B's fn-local `TICKS = 3_600` by a comment only.
+  - The toast `for k in 5..=TICKS` loop and T-ST-1b's drift assert have never been measured red. They use the helpers that were measured red at earlier ticks.
+  - The kill-reason expected value is derived from `HaltReason`'s Display, deliberately. `"manual_operator"` itself is core's (`halt.rs:34`).
+  - The 150 ms sticky-trip window can read green on a loaded box, never red.
+- **Orchestrator gate on the final files:** **fmt clean; `cargo test -p ui` over the 7 targets: 29/29 green after `Compiling ui` (1004 s wall, mostly compile); `cargo test -p ui --lib lab::training_log` 3/3; `cargo clippy -p ui --tests -- -D warnings` clean after a touch (`Checking ui`, 383 s).** Final SHA-256 prefixes: activity `a9e46964`, trail `b889379e`, lab_progress `7134d970`, server_time `b9e03da8`, toast `7b3a219f`, training_log `0bac705f`, full_bus `c62403db`.
+- **Gate finding, fixed in its own commit `f5c89e19`.** The story's own wave-plan gate, `cargo clippy -p ui --tests -- -D warnings`, was RED at HEAD since `dcce75e2` (`#196`): `training_log.rs`'s test module allowed `unwrap_used` but not `expect_used`, and `:246` calls `.expect(..)`. CI's clippy does not lint tests, and every wave since (the E1a devs included) scoped clippy to its own `--test` target, which never lints the lib's test module, so nothing saw it. **Close-wave item:** decide whether CI's clippy step gains `--tests` (cost: one more full ui test-target check per push).
 
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
@@ -572,7 +653,7 @@ The waves mirror v0.2's A-D shape with the same rules:
 | **C1** | **Shared seam** + descriptor S2 | live.rs (variants, `Held`, `SubscriptionBatchInputs`, `_from`, wrapper delegation, `SubscriptionCtx`, `subscription_batch`, moved ServerTime/Toast recipes, comment fixes); journal_transaction_modal.rs `esc_closes_modal`; cockpit_live.rs `subscription()` rewired (delete tail pushes + bin-private recipes); cockpit.rs uses `esc_closes_modal`; NEW subscription_batch_inclusion.rs (legacy pin, matrix, ctx-inputs, units agreement, modal fn tests); delete the 3 superseded v0.2 descriptor files | **YES**, API-additive (Wave C shape) | — | matrix probes (a)-(d); Sweep arm → `none()`; wrapper `forward_plan: Yes`; `inputs()` inner-filter |
 | **C2** | Real-batch S2 + identity, test-only | subscription_batch_inclusion.rs: `batched_*_recipe_relays` ×8, `forward_plan_stays_batched…`, three identity tests | no | C1 | live.rs:1073, :1148, progress.rs:64, training_log.rs:72 salt deletions; :1147 TypeId swap; :126 Bus channel hash; :902 per-instance counter |
 | **D** | State-machine S2, test-only | NEW advisor_recipe_state_gating.rs (§1-§4 S2 rows); drop the `fixtures` gate on promote_swept_config.rs | no | — | state.rs:3997, :3880 (×2), :3851, :3964; leaderboard/state.rs:1264, :1284; tune/screen_state.rs:800, :814 |
-| **E1** | AC3 sweep of v0.2 recipe-stream files, test-only | activity_recipe_stream.rs, trail_mirror_recipe_stream.rs, lab_progress_recipe_stream.rs, server_time_recipe_stream.rs, toast_dismiss_recipe_stream.rs, training_log_recipe_harness.rs, live_subscription_full_bus.rs (Bus dispatch); probe-citation rot → symbol + quoted line | no | C1 (moved ServerTime/Toast recipes) | live.rs:592; :751-759; :141; :810; training_log.rs:83-88 take-removal; progress.rs:107; **B-P41** (Wave B's measured survivor: `toast_dismiss_stream_impl` `loop {` → `for _ in 0..4 {`; needs a paused-clock toast liveness test) |
+| **E1** | AC3 sweep of v0.2 recipe-stream files, test-only | activity_recipe_stream.rs, trail_mirror_recipe_stream.rs, lab_progress_recipe_stream.rs, server_time_recipe_stream.rs, toast_dismiss_recipe_stream.rs, training_log_recipe_harness.rs, live_subscription_full_bus.rs (Bus dispatch); probe-citation rot → symbol + quoted line | no | **Split 2026-11-13:** E1a depends on Wave B's commit (DONE, see "Wave E1a results"); E1b (2 tests, E1-P21…P23) depends on C1 (moved ServerTime/Toast recipes) and folds into C2's tester pass | live.rs:592; :751-759; :141; :810; training_log.rs:83-88 take-removal; progress.rs:107; **B-P41** (Wave B's measured survivor: `toast_dismiss_stream_impl` `loop {` → `for _ in 0..4 {`; needs a paused-clock toast liveness test) |
 | **E2** | AC3 sweep of the remaining files, test-only (+1 agent test) | cockpit_live_lab_run_smoke.rs (#66 fix), cockpit_audit_aggregator_boot.rs, training_log_state_gating.rs, forward_narration_relay.rs leftovers, cockpit_training_pressed_wiring.rs doc, agent select_arm_survival.rs (+ source docstring) | docstring only (agent) | — | smoke: point at the sample corpus and confirm the test now **runs** (non-zero bars; no SKIPPED line in `--nocapture`); aggregator `fetch_add` |
 | **F** | Surface 1 de-tautologization | runner.rs `run_yahoo_preload_arm` extraction + rewrites of spawn_lab_run_yahoo_harness.rs, lab_runner_ticker_e2e.rs, lab_runner_cancel_e2e.rs | **YES**, extraction (the Binance-arm precedent). The test-only override branch gains a ticker and cancel; the shipped path is identical (passes `None`, cockpit_live.rs:2380). | — (runner.rs only) | sentinel moved after the loop; delete the ticker arm; delete runner.rs:1500 guard; delete the cancel arm; delete `abort()` |
 | **G** (optional) | Agent narration producer | agent runtime.rs `narration_task_loop` extraction + NEW agent test | **YES** (agent crate) | — | §8 |
@@ -634,3 +715,4 @@ Waves A, B and D touch no production code and are independent; they may run befo
 - Wave A (2026-11-11): `crates/ui/tests/forward_narration_relay.rs` (modified), `crates/ui/tests/bakeoff_progress_relay.rs` (modified), `crates/ui/tests/sweep_progress_relay.rs` (NEW). No production file.
 - Wave B (2026-11-12): `crates/ui/tests/recipe_off_runtime_poll.rs` (NEW), `crates/ui/tests/server_time_recipe_stream.rs` (modified: `server_time_stream_impl_emits_at_1_hz_cadence` only). No production file.
 - Wave D (2026-11-13): `crates/ui/tests/advisor_recipe_state_gating.rs` (NEW), `crates/ui/tests/promote_swept_config.rs` (modified: un-gated, tests routed through `update`). No production file.
+- Wave E1a (2026-11-13): `crates/ui/tests/{activity_recipe_stream,trail_mirror_recipe_stream,lab_progress_recipe_stream,server_time_recipe_stream,toast_dismiss_recipe_stream,training_log_recipe_harness,live_subscription_full_bus}.rs` (modified). No production file. The gate finding's one-line test-module lint fix to `crates/ui/src/lab/training_log.rs` is its own commit, `f5c89e19`.
