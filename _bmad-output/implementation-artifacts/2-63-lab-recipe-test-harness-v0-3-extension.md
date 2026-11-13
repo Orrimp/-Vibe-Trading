@@ -264,6 +264,26 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
   - `r3-r2x3-measure.log`;
   - `orch/` (my probes, clippy and green logs).
 
+**2026-11-12 to 11-13: production bugs the waves found, fixed between waves (decide-and-proceed).** These are not story deliverables. Each is its own fix commit plus a docs commit, following the `#196`/`#197` precedent: no story, no trace row, no CHANGELOG line.
+- **`#198`, fixed in `dfe9e72a`** (ADR-0064 D12). Found by the E2 brief. The Explain facts gave the LLM the KPI fraction as a percent: `0.18%` for an on-screen `+18.37%`.
+  - Consequence for E2: retire E2's anchor `fmt_pct2 (no ×100)`, and E2-P11's note now reads `'18.37%'`.
+  - `live.rs` kept its 1,658 lines, so the briefs anchored below `:1301` stay valid.
+- **`#199`, fixed in `d2fa6bba`** (ADR-0064 D13). Found while fixing `#198`. The frozen P3 tokenizer never returned on `top-3` or `2023-2024`.
+- **`#201`, fixed in `cded86b5`** (ADR-0064 D14). Found by the `#199` review. P1 and P2 panicked on an em dash at a window edge, and one panic ended Explain for the session.
+  - The containment helper sits after `panic_message`, so `runtime.rs:1627-1653` (rows 18 and "Narration (Wave G)") did not move.
+  - Row 19's `runtime.rs:3346` was repointed to `:3375`. It was already stale by 2.
+- **Filed open:**
+  - `#200` (Wave D, above).
+  - `#202`: an Explain answer is not tied to its request, so A's answer can land under bake-off B, and a refused send leaves the panel `InFlight`. It needs an ADR-0064 amendment and gets its own change after this story's waves.
+- **Bug-log ids for the remaining waves:** C1's "gate that cannot fail" entry is now `#203` (E5: ids strictly increase). E2's entry goes to the next free id after C1's.
+
+**2026-11-13: Wave B gate, run by the orchestrator on the committed Wave B (`074e907a`) before E1a.** The results are mechanical and feed the E1a prompt (`scratchpad/e1a/wave-b-gate.md`):
+- **(a)** `bus_recipes_relay_off_runtime` is present. The dispatch-multiset fallback is skipped, and E1-P18 is measured against Wave B's test.
+- **(b)** `activity_recipe_subscribes_before_its_first_poll` is present. The activity fallback and E1-P33 are skipped.
+- **(c)** The paused cadence test reads `const TICKS: usize = 3_600;`, not the 4 the brief's scratch had. So E1-P11 freezes after 3,600 ticks, and T-ST-1c reads 7,200 paused ticks.
+- **(d)** `assert_taken(&built, "training log")` is present, so E1-P14 and E1-P15 are expected red there too.
+- **E1 is split:** E1a now, and E1b (2 tests, E1-P21…P23) after C1, folded into C2's tester pass. E1-P26 stays retired.
+
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
 ### Inventory (AC1)
