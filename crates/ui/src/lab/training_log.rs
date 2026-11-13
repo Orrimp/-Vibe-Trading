@@ -144,7 +144,7 @@ mod live_recipe {
 
 #[cfg(test)]
 #[cfg(feature = "live")]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::live_recipe::stream_impl;
     use crate::lab::trainer::TrainingLogLine;
