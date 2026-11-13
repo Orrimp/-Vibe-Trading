@@ -9982,3 +9982,45 @@ if pre_is_ident && sign_start {
   minus sign; cite numbers one at a time, never as a hyphenated range." It would lower the
   fallback rate `#198`'s D12 accepts as a cost; its effect can only be measured against a real
   provider.
+
+### `#200` — "Promote" pairs a grid swept on one coin with another coin, after Tune is re-opened from the Lab
+
+**Status**: **`open`** 2026-11-13. Found by story `2-63` Wave D's round-2 falsifier (its extra
+probe R2-X3 survived). Round 3 measured it through `ui::state::update` with a throwaway test, and
+the orchestrator confirmed it by reading HEAD `a79ad40b`. Anchor-impacting: **no** (the cockpit
+only; paper money only). Not verified in the rendered GUI.
+
+**The path, reachable from the GUI.** The Lab's "Tune…" button (`crates/ui/src/screens/lab.rs`
+`tune_entry_button`) sends `Message::OpenTuneEditor { family: Sma, coin, lookback: H1_2024 }`, with
+`coin` set to the Lab's current pair.
+
+- The arm (`crates/ui/src/state.rs:3923`) writes `model.tune_screen_state.select_family(family);`,
+  `model.tune_coin = coin;`, `model.tune_lookback = lookback;` and `model.current_screen =
+  Screen::Tune;`. It never touches `tune_screen_state.result`. `select_family` documents "Does NOT
+  clear the existing result".
+- So the sequence is: Lab on ETHUSDT → Tune… → Run (an ETH grid lands) → Lab, switch to SOLUSDT →
+  Tune…. The Tune screen still shows the ETH grid and its Promote buttons, while `tune_coin` is
+  SOLUSDT.
+- `promote_swept_config` then stores `coin: model.tune_coin.clone(),` (`:2801`) next to the landed
+  grid's `params` and its window label (`:2794`, `range_label_or_default()`, read off the grid).
+
+**Measured** (Wave D round 3, `scratchpad/wave-d/r3-r2x3-measure.log`, driven only through
+`update`): the promotion carried `strategy_id=v0.5.sma coin=SOLUSDT params=Sma { fast_len: 10,
+slow_len: 20 } window=2024 H1`, while the grid on screen had been swept on ETHUSDT.
+
+**Why it matters.** The forward plan then runs ETH-tuned parameters on SOL, and the provenance strip
+(ADR-0070) presents it as "tuned on 2024 H1". That is a claim about a sweep that never ran on this
+coin. Nothing is traded (paper/sim only), but the advisor's honesty copy is false in this state.
+
+**Why no test caught it.** Every promotion test swept on the Tune coin, so "the Tune coin" and "the
+grid's coin" could not be told apart. Story `2-63`'s `promote_swept_config.rs` now states this as
+a Known residual; it deliberately pins neither behaviour (AC5: no production change).
+
+**Fix (its own change), choose one:**
+
+1. `OpenTuneEditor` clears the landed result when the coin or lookback differs from the grid's.
+2. `promote_swept_config` takes the coin from the landed grid's mirror.
+3. The Promote buttons are disabled while the grid's coin differs from `tune_coin`.
+
+Whichever is chosen, the test that pins it is a pair through `update`: sweep on A, re-open on B,
+promote. Once with A == B, and once with A ≠ B expecting the chosen behaviour.
