@@ -1638,7 +1638,7 @@ pub async fn run(handles: RunHandles, cancel: CancellationToken) -> Result<()> {
                             break;
                         };
                         let outcome = if let Some(ref provider) = llm_provider {
-                            crate::narration::generate_narration(provider, &facts).await
+                            narrate_containing_panics(provider, &facts).await
                         } else {
                             tracing::debug!(
                                 winner = %facts.winner_id,
@@ -2950,6 +2950,33 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
         (*s).to_string()
     } else {
         "non-string panic payload".into()
+    }
+}
+
+/// Bug-log `#201`: run one narration so that a panic inside it costs THAT narration
+/// (`FellBack`, the templated floor) and not the narration task's loop, and with it
+/// Explain for the rest of the session. It lives here, not inline in the loop, so the
+/// loop's lines (cited by story 2-63 and the bug-log) do not move.
+///
+/// `AssertUnwindSafe` is sound here: the future borrows only `provider` and `facts`,
+/// immutably, and neither is read after a panic except through `provider`'s own next
+/// call. Containment needs the default `panic = "unwind"`; no profile sets `panic`.
+async fn narrate_containing_panics(
+    provider: &Arc<dyn llm::LlmProvider>,
+    facts: &crate::narration::NarrationFacts,
+) -> crate::narration::NarrationOutcome {
+    let attempt =
+        std::panic::AssertUnwindSafe(crate::narration::generate_narration(provider, facts));
+    match futures::FutureExt::catch_unwind(attempt).await {
+        Ok(outcome) => outcome,
+        Err(payload) => {
+            tracing::error!(
+                winner = %facts.winner_id,
+                panic = %panic_message(payload),
+                "narration_task: generate_narration panicked — FellBack (bug-log #201)"
+            );
+            crate::narration::NarrationOutcome::FellBack
+        }
     }
 }
 

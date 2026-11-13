@@ -719,8 +719,177 @@ and was restored byte-identically afterwards:
 **Anchor safety.** Unchanged from D7: the narration is report-free. `scripts/verify_anchors.sh` is
 119/119 before and after.
 
+## Amendment 2026-11-13b (bug-log `#201`: P1 and P2 windows sit on char boundaries; a narration panic falls back)
+
+**Context.** `check_faithful` lowercases the prose and finds each lexeme with `str::find`, which
+returns a BYTE offset. § D2.P1 then cut a window of ±120 bytes around each crown lexeme, and § D2.P2
+(`BenchmarkWins`) one of ±150 bytes around each contradiction lexeme, at raw offsets:
+`abs_lex.saturating_sub(120)` and `(abs_lex + lexeme.len() + 120).min(lower.len())`. Nothing moved
+either edge onto a char boundary, and `.min` only kept the end inside the string. When a multi-byte
+character straddled an edge, the slice `&lower[window_start..window_end]` panicked with "byte index
+N is not a char boundary". That character can be an em dash, an en dash, `€`, U+2212 or any
+non-ASCII letter, and LLM prose uses em dashes routinely. The lexemes are ASCII, so the
+`lower[search_start..]` slices were never at risk; only the two window slices were. The review's
+byte-slice model, recorded in bug-log `#201`, put three em dashes at random word gaps of a passing
+`ActiveWins` narration, and the slice panicked in 422 of 20,000 placements.
+
+The panic did not stay in one narration. `generate_narration` runs inside the narration task in
+`runtime::run`, which is ONE long-lived loop with no catch. Reasoned from the code in bug-log
+`#201`, the panic ends that task:
+
+- the request receiver and the outcome sender drop with it;
+- no outcome is ever sent, so the Explain panel stays `InFlight`;
+- every later Explain in the session stays `InFlight` too, because its request finds the channel
+  closed.
+
+This was live whenever `llm.enabled = true`, since `bab164f0` (bug-log `#197`).
+
+**D14: both windows sit on char boundaries, and a narration panic falls back.** Two layers.
+
+1. **The root cause (§ D2.P1 and § D2.P2).** Each window edge moves OUTWARD onto a char boundary
+   before the slice:
+   `window_start = lower.floor_char_boundary(abs_lex.saturating_sub(120))` and
+   `window_end = lower.ceil_char_boundary(abs_lex + lexeme.len() + 120)`, with 150 for P2.
+   `ceil_char_boundary` clamps to `lower.len()`, so the `.min` goes. Both functions are stable on
+   the pinned toolchain, 1.94.1 (ADR-0091).
+2. **Containment (the narration task).** The provider branch now calls
+   `narrate_containing_panics(provider, &facts)`, a private helper in `runtime.rs` placed after
+   `panic_message`. It awaits
+   `futures::FutureExt::catch_unwind(AssertUnwindSafe(generate_narration(provider, facts)))`.
+   - A panic becomes `NarrationOutcome::FellBack`. It is logged at error level with the winner id,
+     the panic message and "bug-log #201".
+   - The loop then serves the next request. One bad string costs one narration, not Explain for the
+     session.
+   - Placing the helper there, rather than inline at the await, keeps the loop at the lines story
+     2-63 and the bug-log cite (`runtime.rs:1627-1653`, `:1641`).
+
+**Why no verdict moves where the old code returned.** On an input where the old `check_faithful`
+returned, every window it cut was a valid slice, so both edges of every window were char boundaries
+(`str` slicing panics otherwise). On a char boundary, `floor_char_boundary` and
+`ceil_char_boundary` both return their argument. Past the end, `ceil_char_boundary` returns
+`lower.len()`, which is what the old `.min(lower.len())` gave. The loops, their order and their early
+returns are unchanged. So each window is the same byte range as before, each `contains` reads the
+same bytes, and every verdict is byte-identical on every input that did not panic. That follows from
+the two functions' contract; it is not a sample.
+
+**Where the old code panicked**, there was no old verdict to keep. An edge that splits a character
+now takes the whole character, so the window grows by at most 3 bytes at that edge, all of them
+bytes of that one character. An ASCII id cannot overlap a non-ASCII character. So for an ASCII id
+the verdict is the one an inward-rounded window would give. Outward is chosen so that the window
+never loses a byte that the byte window spanned. Every id in the fixtures and in the D11 corpus is
+ASCII.
+
+**What `AssertUnwindSafe` asserts.** The future borrows the task's `provider` and this request's
+`facts`, both immutably, and `facts` is dropped with the iteration.
+- **Poisoning.** A provider that panicked while holding a `std::sync::Mutex` would poison it, and its
+  later calls would fail or panic. Each of those is again `FellBack`: the safe floor, never a hung
+  panel.
+- **The boot stack holds no `std::sync` lock.** `BudgetedProvider` and `CostBudget` use atomics
+  (`CostBudget::spent_cents`, `BudgetedProvider::last_block_memo_at`). The Paper and Research
+  decorators hold a `SqlitePool` and a `tokio::sync::Mutex`, and neither of those poisons.
+- **The panic strategy.** `catch_unwind` needs unwind, and no profile in the workspace sets
+  `panic =`. The process's panic hook still runs before the catch.
+
+**Rejected alternatives.**
+
+- **Char-index windows** (±120 characters, not bytes). They cannot panic. But on prose with a
+  non-ASCII character within reach of a window they span more bytes than today. That changes the
+  window, and possibly the verdict, of every such prose, including prose that does not panic today.
+  A FROZEN predicate may not do that.
+- **ASCII-folding the prose** before the check (replacing or dropping each non-ASCII character).
+  It moves byte offsets, so windows shift on inputs that do not panic today. It also reaches P3. D12
+  passes the screen's `−6.12%` because U+2212 never joins a token, and folding it to `-` rejects it.
+  Folding `−4.57%`, which D12 rejects, lets it pass. So D12's verdicts would move in both directions.
+- **Catching the panic only in `check_faithful`**, or around it inside `generate_narration`. That
+  contains one class only: a panic in the request builder, the provider or the response extraction
+  would still end the task. It would also put `catch_unwind` inside the FROZEN pure predicate. The
+  task boundary covers everything `generate_narration` runs, with one seam.
+- **Skipping a window whose edge is not a boundary** (`str::get` returns `None`, read as "no id
+  here"). It cannot panic, but it fails OPEN: an id inside that window goes unseen, so a wrong crown
+  or a contradicted outcome passes. The outward edge keeps detection, and the edge tests pin it.
+- **Respawning the task after a panic.** The request and outcome channels move into the task and
+  drop with it, so a respawn needs new plumbing to the iced side. Catching at the await is one local
+  change.
+
+What does not change:
+
+- P1's and P2's half-widths (120 and 150 bytes), the crown and contradiction lexemes, the loops and
+  their order.
+- P3, P4, `extract_numeric_tokens`, `allowed_numbers`, `BANNED_PHRASES`, D12's glyph convention and
+  D13's tokenizer.
+- The D11 corpus (`crates/agent/tests/narration_faithfulness.rs`), byte-unchanged and green.
+- In the narration task: the cancel arm, the request and outcome channel handling, the
+  absent-provider `FellBack`, and the headless path, which spawns no narration task.
+
+**Verification.**
+
+- `crates/agent/src/narration.rs` gains four unit tests, one per old edge:
+  `p1_window_start_on_an_em_dash_keeps_its_verdict`, `p1_window_end_on_an_em_dash_keeps_its_verdict`,
+  `p2_window_start_on_an_em_dash_keeps_its_verdict` and `p2_window_end_on_an_em_dash_keeps_its_verdict`.
+  Each builds its prose from pieces, with an em dash (U+2014) across that one old edge, first 1 and
+  then 2 bytes into the dash. At each offset it runs three cases, which differ only in the id:
+  - no id gives `Pass`;
+  - the non-winner (P1) or active (P2) id, touching the dash from inside the window, gives
+    `WrongCrown` or `ContradictedOutcome`;
+  - the same id touching the dash from outside gives `Pass`.
+
+  Before each verdict it checks the lowercased input with `str::is_char_boundary`: the old edge
+  splits the dash, the other old edge is a boundary, and the prose holds exactly one lexeme of that
+  window's set. So no case can pass without reaching the old panic, and no test reaches another
+  test's edge. The verdict runs under the `#199` helper `within_deadline`, which re-raises a panic
+  as itself.
+- `crates/agent/tests/narration_task_uses_boot_provider.rs` gains
+  `a_panicking_narration_falls_back_and_the_task_serves_the_next_request`. It boots the real
+  `runtime::run` once, with a provider that panics on its first call and answers as
+  `FaithfulFakeProvider` on its second, and sends two requests. The first answer is `FellBack`, the
+  second is `Ready`, and the provider saw both calls. Every send and receive is under a 10-second
+  timeout and the test under a 60-second one, so a dead task fails the test instead of hanging it.
+  No new test binary is added.
+- Gates, all green:
+  - `cargo test -p agent --lib narration::tests`: 39 passed.
+  - `cargo test -p agent --test narration_task_uses_boot_provider --test narration_faithfulness`:
+    3 and 27 passed, re-run on the helper version.
+  - `cargo clippy -p agent`, with and without `--tests`, at `-D warnings`, also re-run on the helper
+    version.
+  - `cargo test -p ui --test narration_kpi_units --test forward_narration_relay`: 4 and 11 passed.
+  - `cargo check -p ui --no-default-features --features fixtures`.
+
+**T-T4, measured** by an independent falsifier. Each probe was one edit, applied and then restored
+byte-identically, and each log showed `Compiling agent`.
+
+- **The four edges.** P1 start and end, and P2 start and end, each reverted to its raw offset. Each
+  revert turns exactly its own edge test red (38 passed, 1 failed). The failure is the slice panic,
+  re-raised through `within_deadline`: "byte index N is not a char boundary; it is inside '—'".
+- **No catch.** Removing the `catch_unwind` fails the runtime test at "request 0: the outcome channel
+  closed, so the narration task ended". That was measured on the first, inline version and again on
+  the `narrate_containing_panics` helper.
+- **Three probes of the falsifier's own**, all killed:
+  - A P1 start edge made panic-free but fail-open (`str::get`, "no id here") fails the P1-start test
+    at the Inside case: `Pass` where `WrongCrown` is due.
+  - A P2 end edge over-widened by 16 bytes, only where it is off a boundary, fails the P2-end test at
+    the Outside case: `ContradictedOutcome` where `Pass` is due.
+  - A catch that answers `FellBack` and then ends the loop fails the runtime test at "request 1: the
+    request channel closed". That was measured on the inline version; the helper cannot end the loop.
+- **Recorded, not probed.**
+  - For ASCII ids the edge tests cannot tell outward rounding from inward. The two differ only in the
+    dash's own bytes, so this is an equivalent mutant here.
+  - The Inside/Outside pairs pin the FROZEN half-widths only to a band of a few bytes.
+
+**Anchor safety.** Unchanged from D7: the narration is report-free, and no `evidence/` file is
+touched. `scripts/verify_anchors.sh` is 119/119 after the change, which edits no file it reads.
+
 ## Changelog
 
+- 2026-11-13 (developer, bug-log `#201` amendment): **the P1 and P2 windows sit on char boundaries,
+  and a narration panic falls back.** **D14** `check_faithful` cut the P1 (±120) and P2
+  `BenchmarkWins` (±150) windows at raw byte offsets around a lexeme. A multi-byte character (an em
+  dash, `€`, U+2212) across an edge panicked the slice, and the panic ended the one long-lived
+  narration task, so Explain stayed dead for the session. Each edge now moves outward onto a char
+  boundary (`floor_char_boundary`, `ceil_char_boundary`). Both are the identity on a boundary, so
+  every verdict is byte-identical on every input that did not panic. The narration task also catches
+  a panic in `generate_narration`, answers `FellBack` and keeps serving. The lexemes, the
+  half-widths, P3, P4, D12, D13 and the D11 corpus are unchanged. Four edge unit tests and one
+  runtime test pin it. Anchor-neutral, 119/119.
 - 2026-11-13 (developer, bug-log `#199` amendment): **the P3 tokenizer returns on a sign after an
   identifier character.** **D13** `extract_numeric_tokens` used to spin forever on `top-3`,
   `2023-2024` or a KPI range `0.3100-1.4200`: its identifier-skip branch ran zero times on the sign

@@ -13,9 +13,17 @@
 //! T-T4 probe: in `runtime::run`, shadow the destructured `llm_provider` with
 //! `let llm_provider: Option<Arc<dyn llm::LlmProvider>> = None;` → the first test
 //! turns red (it gets `FellBack`), the second stays green.
+//!
+//! bug-log `#201`: the narration task is ONE long-lived loop, so a panic inside
+//! `generate_narration` used to end it, and with it Explain for the session. A third
+//! test sends two requests on one boot to a provider that panics on its first call
+//! only: the first answer is `FellBack`, the second `Ready`. Probe: drop the task's
+//! `catch_unwind` → the outcome channel closes and that test fails at its first
+//! answer.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use agent::config::{BusConfig, Config};
@@ -50,9 +58,13 @@ fn facts() -> NarrationFacts {
     }
 }
 
-/// Boot the real runtime with the narration channels wired, send one "Explain"
-/// request, and return the outcome the agent sends back.
-async fn explain_once(llm_provider: Option<Arc<dyn llm::LlmProvider>>) -> NarrationOutcome {
+/// Boot the real runtime with the narration channels wired, send `requests`
+/// "Explain" requests one after another, and return the outcomes the agent sends
+/// back, in order. Every send and receive is bounded, so a dead task fails the test.
+async fn explain(
+    llm_provider: Option<Arc<dyn llm::LlmProvider>>,
+    requests: usize,
+) -> Vec<NarrationOutcome> {
     let temp = tempfile::tempdir().expect("tempdir");
     let mut cfg = Config::default(); // research mode: no exchange reach-out
     cfg.audit.ledger_db_path = temp.path().join("ledger.db").to_string_lossy().into_owned();
@@ -99,18 +111,61 @@ async fn explain_once(llm_provider: Option<Arc<dyn llm::LlmProvider>>) -> Narrat
     let cancel = CancellationToken::new();
     let runtime = tokio::spawn(agent::runtime::run(handles, cancel.clone()));
 
-    req_tx
-        .send(NarrationRequest { facts: facts() })
-        .await
-        .expect("request sent");
-    let outcome = tokio::time::timeout(Duration::from_secs(10), out_rx.recv())
-        .await
-        .expect("the narration task answered within 10 s")
-        .expect("the outcome channel stayed open");
+    let mut outcomes = Vec::with_capacity(requests);
+    for i in 0..requests {
+        let send = req_tx.send(NarrationRequest { facts: facts() });
+        match tokio::time::timeout(Duration::from_secs(10), send).await {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) => panic!("request {i}: the request channel closed (bug-log #201)"),
+            Err(_) => panic!("request {i}: not taken within 10 s"),
+        }
+        let outcome = match tokio::time::timeout(Duration::from_secs(10), out_rx.recv()).await {
+            Ok(Some(outcome)) => outcome,
+            Ok(None) => panic!(
+                "request {i}: the outcome channel closed, so the narration task ended \
+                 (bug-log #201)"
+            ),
+            Err(_) => panic!("request {i}: the narration task did not answer within 10 s"),
+        };
+        outcomes.push(outcome);
+    }
 
     cancel.cancel();
     let _ = tokio::time::timeout(Duration::from_secs(5), runtime).await;
-    outcome
+    outcomes
+}
+
+/// Boot, send one request, return its outcome.
+async fn explain_once(llm_provider: Option<Arc<dyn llm::LlmProvider>>) -> NarrationOutcome {
+    explain(llm_provider, 1).await.remove(0)
+}
+
+/// Bug-log `#201`: panics on its FIRST call only, then answers as the faithful fake
+/// does, so a second request shows whether the narration task outlived the panic.
+struct PanicsOnceProvider {
+    calls: AtomicUsize,
+    then: FaithfulFakeProvider,
+}
+
+#[async_trait::async_trait]
+impl llm::LlmProvider for PanicsOnceProvider {
+    fn name(&self) -> &str {
+        "panics_once_fake"
+    }
+
+    fn provider_kind(&self) -> llm::ProviderKind {
+        llm::ProviderKind::Anthropic
+    }
+
+    async fn complete(
+        &self,
+        request: llm::ChatRequest,
+    ) -> Result<llm::ChatResponse, llm::LlmError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            panic!("PanicsOnceProvider: the first narration panics (bug-log #201)");
+        }
+        llm::LlmProvider::complete(&self.then, request).await
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -128,4 +183,34 @@ async fn a_configured_provider_is_called_and_its_narration_returns() {
 async fn no_provider_falls_back_to_the_templated_copy() {
     let outcome = explain_once(None).await;
     assert_eq!(outcome, NarrationOutcome::FellBack);
+}
+
+/// Bug-log `#201`: a panic inside `generate_narration` costs that one narration
+/// (`FellBack`), and the same task serves the next request (`Ready`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_panicking_narration_falls_back_and_the_task_serves_the_next_request() {
+    let provider = Arc::new(PanicsOnceProvider {
+        calls: AtomicUsize::new(0),
+        then: FaithfulFakeProvider { facts: facts() },
+    });
+    let dyn_provider: Arc<dyn llm::LlmProvider> = provider.clone();
+    let outcomes = tokio::time::timeout(Duration::from_secs(60), explain(Some(dyn_provider), 2))
+        .await
+        .expect("boot, two requests and shutdown finished within 60 s");
+
+    assert_eq!(
+        outcomes[0],
+        NarrationOutcome::FellBack,
+        "the panicking call must answer FellBack"
+    );
+    assert!(
+        matches!(&outcomes[1], NarrationOutcome::Ready(prose) if prose.contains("v0.5.macd")),
+        "the task must outlive the panic and serve the second request; got {:?}",
+        outcomes[1]
+    );
+    assert_eq!(
+        provider.calls.load(Ordering::SeqCst),
+        2,
+        "both requests reached the provider: the FellBack came from the panic"
+    );
 }

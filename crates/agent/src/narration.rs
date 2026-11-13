@@ -589,7 +589,7 @@ pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict
     // ── P1 — Wrong crown ─────────────────────────────────────────────────────
     //
     // For each candidate that is NOT the winner, check if a crown lexeme
-    // appears "near" the non-winner id (within a 120-char window).
+    // appears "near" the non-winner id (within a ±120-byte window).
     let winner_lower = facts.winner_id.to_lowercase();
     for lexeme in CROWN_LEXEMES {
         // Find all positions of this crown lexeme.
@@ -602,9 +602,9 @@ pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict
                 if cid_lower == winner_lower {
                     continue;
                 }
-                // Is this candidate id present in a ±120 char window?
-                let window_start = abs_lex.saturating_sub(120);
-                let window_end = (abs_lex + lexeme.len() + 120).min(lower.len());
+                // Is it in a ±120-BYTE window, both edges moved out to a char boundary (#201)?
+                let window_start = lower.floor_char_boundary(abs_lex.saturating_sub(120));
+                let window_end = lower.ceil_char_boundary(abs_lex + lexeme.len() + 120);
                 let window = &lower[window_start..window_end];
                 if window.contains(cid_lower.as_str()) {
                     tracing::warn!(
@@ -640,15 +640,15 @@ pub fn check_faithful(text: &str, facts: &NarrationFacts) -> FaithfulnessVerdict
                     let abs_lex = search_start + lex_pos;
                     // Check all non-benchmark candidate ids.
                     for cid in &facts.candidate_ids {
-                        // Heuristic: if any active strategy id is within ±150 chars of the
-                        // contradiction lexeme, it's a contradiction.
+                        // Heuristic: if any active strategy id is within ±150 bytes of the
+                        // lexeme (edges on a char boundary, #201), it's a contradiction.
                         let cid_lower = cid.to_lowercase();
                         // Skip "v0.buyhold" and "buy and hold" — they are the benchmark.
                         if cid_lower.contains("buyhold") || cid_lower.contains("buy and hold") {
                             continue;
                         }
-                        let window_start = abs_lex.saturating_sub(150);
-                        let window_end = (abs_lex + lexeme.len() + 150).min(lower.len());
+                        let window_start = lower.floor_char_boundary(abs_lex.saturating_sub(150));
+                        let window_end = lower.ceil_char_boundary(abs_lex + lexeme.len() + 150);
                         let window = &lower[window_start..window_end];
                         if window.contains(cid_lower.as_str()) {
                             tracing::warn!(
@@ -2046,5 +2046,189 @@ mod tests {
             "the faithful text cites the leaderboard's digits; got:\n{text}"
         );
         assert_eq!(check_faithful(&text, &facts), FaithfulnessVerdict::Pass);
+    }
+
+    // ── bug-log `#201`: the P1 and P2 windows sit on char boundaries ──────────
+    //
+    // P1 reads ±120 bytes around a crown lexeme, P2 (`BenchmarkWins`) ±150 around a
+    // contradiction lexeme. Each test below puts an em dash (U+2014, 3 bytes) across
+    // exactly ONE of those four old edges, 1 and then 2 bytes into the dash, and no other
+    // test in the crate has prose that does. The preconditions are checked on the
+    // input with `str::is_char_boundary`, never read off `check_faithful`, and the
+    // verdict runs under `within_deadline`, which re-raises the old "not a char
+    // boundary" slice panic as itself. Each expected verdict follows from where the
+    // prose puts the id: none passes, touching the dash from inside the window
+    // rejects, and touching it from outside passes, because an edge moves out only to
+    // the dash's own boundary.
+
+    const EM_DASH: &str = "\u{2014}";
+    const HEAD_201: &str = "Summary of the simulated run ";
+    const TAIL_201: &str = " End of summary.";
+
+    /// Which old window edge the em dash straddles.
+    #[derive(Clone, Copy, Debug)]
+    enum Edge201 {
+        Start,
+        End,
+    }
+
+    /// Where the `#201` prose puts the id that the window looks for.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum IdAt201 {
+        Absent,
+        /// Inside the window, touching the dash.
+        Inside,
+        /// Outside the window, touching the dash.
+        Outside,
+    }
+
+    /// One window: its half-width in bytes, its facts, the sentence around its lexeme,
+    /// the id it must catch and the verdict that catching it gives.
+    struct Window201 {
+        half: usize,
+        facts: fn() -> NarrationFacts,
+        lead: &'static str,
+        lexeme: &'static str,
+        trail: &'static str,
+        /// The lexeme set the window's loop walks: exactly one hit in the prose.
+        lexemes: &'static [&'static str],
+        /// Lexemes that must not appear at all (P1's, so P1 cannot pre-empt P2).
+        absent: &'static [&'static str],
+        id: &'static str,
+        reject: RejectReason,
+    }
+
+    const P1_201: Window201 = Window201 {
+        half: 120,
+        facts: make_facts_active_wins,
+        lead: "The strategy v0.5.macd was ",
+        lexeme: "crowned",
+        trail: " in this bake-off.",
+        lexemes: CROWN_LEXEMES,
+        absent: &[],
+        id: "v0.sma",
+        reject: RejectReason::WrongCrown,
+    };
+
+    const P2_201: Window201 = Window201 {
+        half: 150,
+        facts: make_facts_benchmark_wins,
+        lead: "No active strategy could ",
+        lexeme: "beat",
+        trail: " buy-and-hold.",
+        lexemes: ACTIVE_BEAT_BAH_LEXEMES,
+        absent: CROWN_LEXEMES,
+        id: "v0.5.macd",
+        reject: RejectReason::ContradictedOutcome,
+    };
+
+    /// Build the prose; spaces pad the gap, so every offset is a sum of piece lengths.
+    /// Returns `(prose, lexeme_at, dash_at)`.
+    ///
+    /// - `Start`: `HEAD [outside] — [inside] pad lead lexeme trail`, where the old
+    ///   start `lexeme_at - half` is `dash_at + into`.
+    /// - `End`: `lead lexeme trail pad [inside] — [outside] TAIL`, where the old end
+    ///   `lexeme_at + lexeme.len() + half` is `dash_at + into`.
+    fn em_dash_on_edge(
+        w: &Window201,
+        edge: Edge201,
+        into: usize,
+        at: IdAt201,
+    ) -> (String, usize, usize) {
+        let inside = if at == IdAt201::Inside { w.id } else { "" };
+        let outside = if at == IdAt201::Outside { w.id } else { "" };
+        match edge {
+            Edge201::Start => {
+                let pad = w.half + into - EM_DASH.len() - inside.len() - w.lead.len();
+                let dash_at = HEAD_201.len() + outside.len();
+                let text = format!(
+                    "{HEAD_201}{outside}{EM_DASH}{inside}{}{}{}{}",
+                    " ".repeat(pad),
+                    w.lead,
+                    w.lexeme,
+                    w.trail
+                );
+                (text, dash_at + into + w.half, dash_at)
+            }
+            Edge201::End => {
+                let pad = w.half - into - w.trail.len() - inside.len();
+                let lexeme_at = w.lead.len();
+                let dash_at = lexeme_at + w.lexeme.len() + w.trail.len() + pad + inside.len();
+                let text = format!(
+                    "{}{}{}{}{inside}{EM_DASH}{outside}{TAIL_201}",
+                    w.lead,
+                    w.lexeme,
+                    w.trail,
+                    " ".repeat(pad)
+                );
+                (text, lexeme_at, dash_at)
+            }
+        }
+    }
+
+    /// Run the six `#201` cases for one edge of one window.
+    fn run_edge_201(w: &Window201, edge: Edge201) {
+        for into in [1, 2] {
+            for (at, want) in [
+                (IdAt201::Absent, FaithfulnessVerdict::Pass),
+                (
+                    IdAt201::Inside,
+                    FaithfulnessVerdict::Reject(w.reject.clone()),
+                ),
+                (IdAt201::Outside, FaithfulnessVerdict::Pass),
+            ] {
+                let (text, lexeme_at, dash_at) = em_dash_on_edge(w, edge, into, at);
+                let case = format!("{edge:?} edge, {into} byte(s) into the dash, id {at:?}");
+                let lower = text.to_lowercase();
+                // The preconditions, all on the input.
+                assert_eq!(lower.len(), text.len(), "{case}: offsets carry over");
+                assert_eq!(lower.get(dash_at..dash_at + 3), Some(EM_DASH), "{case}");
+                assert_eq!(lower.find(w.lexeme), Some(lexeme_at), "{case}");
+                let hits: usize = w.lexemes.iter().map(|l| lower.matches(l).count()).sum();
+                assert_eq!(hits, 1, "{case}: one lexeme, so one window; {text:?}");
+                assert!(!w.absent.iter().any(|l| lower.contains(l)), "{case}");
+                let old_start = lexeme_at.saturating_sub(w.half);
+                let old_end = (lexeme_at + w.lexeme.len() + w.half).min(lower.len());
+                let (hit, other) = match edge {
+                    Edge201::Start => (old_start, old_end),
+                    Edge201::End => (old_end, old_start),
+                };
+                assert_eq!(hit, dash_at + into, "{case}");
+                assert!(
+                    !lower.is_char_boundary(hit),
+                    "{case}: the old edge must split the dash, or the case pins nothing"
+                );
+                assert!(
+                    lower.is_char_boundary(other),
+                    "{case}: only one edge is hit"
+                );
+
+                let facts = (w.facts)();
+                let got = within_deadline("check_faithful (#201)", move || {
+                    check_faithful(&text, &facts)
+                });
+                assert_eq!(got, want, "{case}");
+            }
+        }
+    }
+
+    #[test]
+    fn p1_window_start_on_an_em_dash_keeps_its_verdict() {
+        run_edge_201(&P1_201, Edge201::Start);
+    }
+
+    #[test]
+    fn p1_window_end_on_an_em_dash_keeps_its_verdict() {
+        run_edge_201(&P1_201, Edge201::End);
+    }
+
+    #[test]
+    fn p2_window_start_on_an_em_dash_keeps_its_verdict() {
+        run_edge_201(&P2_201, Edge201::Start);
+    }
+
+    #[test]
+    fn p2_window_end_on_an_em_dash_keeps_its_verdict() {
+        run_edge_201(&P2_201, Edge201::End);
     }
 }
