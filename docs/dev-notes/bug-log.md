@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Bug log
@@ -9862,11 +9862,12 @@ deployment has the LLM enabled is configuration.
 
 ### `#198` — "Explain" tells the LLM a +18.37 % return was "0.18%": the narration facts format a fraction as a percentage
 
-**Status**: **`open`** 2026-11-12. Found by the story `2-63` Wave E2 brief (a read-only pass) and
-confirmed by reading the source at HEAD `51961dce`; not yet run against an LLM. Anchor-impacting:
-**no** (narration is report-free; no anchored report renders these strings). Live since `bab164f0`
-(`#197`), which made Explain reach a real provider. Before that, every request fell back to the
-templated copy, which does not use these strings.
+**Status**: **`fixed` 2026-11-13 — `dfe9e72a`** (both builders now render the fraction × 100 through
+one pair of `agent::narration` fns; ADR-0064 amendment D12). Found by the story `2-63` Wave E2 brief
+(a read-only pass) and confirmed by reading the source at HEAD `51961dce`; not run against an LLM.
+Anchor-impacting: **no** (narration is report-free; no anchored report renders these strings). Live
+from `bab164f0` (`#197`), which made Explain reach a real provider, until the fix. Before
+`bab164f0`, every request fell back to the templated copy, which does not use these strings.
 
 **The code.** Both narration builders format the KPI *fraction* with a `%` suffix and never
 multiply by 100:
@@ -9910,6 +9911,125 @@ different string.
 
 The `FROZEN — change only with num.rs` note on `render_kpi_strings` already ties these formats to
 the screen's, and they have drifted from it.
+
+
+#### Resolution, 2026-11-13
+
+- **Each fraction now has one rendering.** `agent::narration::kpi_return_pct` and
+  `kpi_drawdown_pct` compute `(fraction × 100).round_dp(2)` in `Decimal` and pad it to 2 dp. Both
+  `render_kpi_strings` and `ui::live::narration_request_from_mirror` call them, so the two builders
+  cannot drift apart again. For `v0.sma`, the prompt now says `Total Return: 18.37% | Max Drawdown:
+  6.12%`, and the screen says `+18.37%` and `−6.12%`. The rounding is the screen's own call
+  (`round_dp`, banker's rounding), so a midpoint prints the same digits in both places: `0.18365`
+  gives `18.36` on each.
+- **The glyphs were decided against P3's frozen tokenizer, not copied from the screen.**
+  - A gain gets no `+`. P3 also tries each prose token with its leading `+` stripped, so both
+    `18.37%` and `+18.37%` pass.
+  - A loss gets an ASCII `-`. `4.57%`, `+4.57%` and `−4.57%` are all rejected, so a narration
+    cannot drop or flip the sign of a loss.
+  - A drawdown is unsigned, so the prompt's `6.12%` and the screen's `−6.12%` both pass.
+
+  This is recorded as ADR-0064 amendment D12. `check_faithful`, the tokenizer and
+  `allowed_numbers` are byte-unchanged.
+- **The accepted cost, written down rather than discovered later.** A faithful loss stated as a
+  magnitude (`lost 4.57%`), written with an en dash, or a hyphenated range of drawdowns
+  (`6.12%-18.72%`) falls back to the templated copy. That is the safe direction, and no glyph
+  convention avoids it while P3 reads no verbs: storing the loss unsigned to admit `lost 4.57%`
+  would admit `gained 4.57%`. A bear-market run will fall back more often. The P3 unit test pins
+  the en-dash and range forms, so the cost cannot change silently.
+- **A known divergence, left in place.** The D11 corpus (`narration_faithfulness.rs`) and the
+  `narration.rs` unit fixtures hand-write SIGNED drawdowns (`"-5.00%"`), and D11's faithful
+  baseline cites one. No producer ever emitted that form (it emitted `0.05%` before the fix and
+  `5.00%` after). Those tests supply their own facts and prose, so they stay green and
+  byte-unchanged; re-basing them on producer output is a follow-up amendment.
+- **The ui drawdown goes through `kpi_drawdown_pct`, not the return fn.** That keeps the screen's
+  `abs()` for every input, not just the non-negative ones the engine produces. A one-fn design
+  passed every fixture and failed only the edge row with a negative drawdown (probe K12).
+- **`live.rs` stays at 1,658 lines.** Only lines 1229–1232, 1241, 1268 and 1270 changed, so story
+  `2-63`'s briefs stay valid: all 105 probe OLD strings on `live.rs` keep their count and span.
+  Two follow-ups for E2:
+  - Its anchor `fmt_pct2 (no ×100)` (`live.rs:1270`) quoted the defect itself, so E2 retires it.
+  - E2-P11 still goes red, but its note's `'0.18%'` now reads `'18.37%'`.
+- **`narration.rs:1032` did not move**, so its citations (`CHANGELOG.md`, `bakeoff/mod.rs`, this
+  file) still point at `let winner_kpis = facts`. The 67 new non-test lines sit below it. Two
+  citations in the frozen `docs/archive/pre-bmad-spec/v2/advisor-narration-faithfulness/tasks.md`
+  (`narration.rs:1378-1454`, `:1580-1594`, test-module lines in a dated task record) now point 67
+  lines early. They are history and were not repointed.
+
+**Pinned, two-sided, with every expected value derived and never read off the subject:**
+
+- **Seven unit tests in `crates/agent/src/narration.rs`.**
+  - `0.1837` gives `18.37%` and `0.05` gives `5.00%`, and each differs from its pre-fix string.
+  - Midpoints: `0.18365` gives `18.36%` and `0.18375` gives `18.38%` (banker's rounding, as on
+    screen; rounding away from zero or toward zero would each fail one).
+  - The sign matrix includes `-Decimal::ZERO`, `-0.00001` and the negative midpoint `-0.00125`.
+  - The drawdown's `abs` is pinned, and so are the drawdown midpoints `0.00125` and `0.00375`.
+  - `render_kpi_strings` is checked per field.
+  - The prompt line is checked.
+  - A P3 matrix runs over facts built by the producer, including the accepted-cost forms.
+  - The faithful fake still passes.
+- **`cargo test -p ui --test narration_kpi_units`.**
+  - For every row of three fixtures plus six edge rows (zero, > 100 %, a negative drawdown and five
+    midpoints), the ui builder equals the real `num::fmt_pct_signed` / `num::format_pct_max_dd`
+    string, minus one glyph. Each per-row loop asserts its rows differ in units, sign and
+    rounding, and for each percent the midpoints separate banker's rounding from BOTH rival calls
+    (`rounds_apart`, computed from `rust_decimal`), so none can pass vacuously.
+  - Over one synthetic engine report, the ui builder equals `NarrationFacts::from_report`, which
+    gives `render_kpi_strings` its first caller. It asserts the run has a losing arm and one mirror
+    row per candidate, so its sign checks cannot go quiet and its zip cannot truncate.
+  - In a P3 round trip over the ui builder's facts, prose copying the screen passes and so does the
+    plain `18.37%` a faithful narration writes, while the pre-fix `0.18%` and an unsigned loss are
+    rejected.
+
+**T-T4 probes, measured** (one edit at a time: snapshot, apply, run the named target, restore,
+`touch`; `Compiling` confirmed and the restore SHA-256 checked each time):
+
+- **K1–K14, measured by an independent falsifier: all 14 killed.** Each probe ran both
+  `cargo test -p agent --lib narration::tests` and `cargo test -p ui --test narration_kpi_units`.
+  Every red set equalled the predicted one, each failure was at the designed assertion, and every
+  restore was byte-identical and rebuilt. The SHA-256 of the five changed files matched before and
+  after the run.
+  - K1 (drop the × 100): all 7 agent `#198` tests and all 4 ui tests red. ui test 1 printed `"0.18%"`
+    against the screen's `+18.37%`.
+  - K2, K3 (agent builder only): 4 agent tests and ui test 3 red, at the builders' agreement.
+  - K4, K5 (ui builder only): ui tests 1 or 2, 3 and 4 red; every agent test green.
+  - K6, K8, K11 (a loss drops its sign, takes U+2212, or doubles its `-`): red in both crates. ui
+    test 3 is red because the seeded run has a losing arm (`v0.sma` at −0.33 %).
+  - K7 (a `+` on gains): 6 agent tests and ui tests 1 and 3 red.
+  - K9 (drop the negative-zero guard): only the agent `-Decimal::ZERO` case red. No fixture row is a
+    negative zero.
+  - K10, K12 (the drawdown through the return fn): red at the edge mirror's negative drawdown.
+  - K13 (half away from zero): red at the midpoint rows in both crates.
+  - K14 (half toward zero): agent red at `0.18375` and `0.00375`; ui test 2 red at `0.00375`.
+- **Three probes of the falsifier's own, all killed.**
+  - K-X1 swaps the return for the drawdown in `render_kpi_strings`: 4 agent tests and ui test 3 red.
+  - K-X2 drops the 2-dp padding (`150.0%`, `0%`): 3 agent and 3 ui tests red.
+  - K-X3 takes the return midpoints out of the edge mirror: ui test 1 red at its guard, not at an
+    equality, so the guard is live.
+- **Its vacuity review found three gaps in the ui tests. All three were closed before the commit and
+  re-measured.**
+  - Test 3 had no losing-arm guard (the `#161` form), so its sign checks held only because the
+    seeded run happened to have a loser. It now asserts `losses > 0` and one mirror row per
+    candidate. Probe G3 (`losses > 99`) fails at the guard alone.
+  - Test 4 checked only one side of the `+` claim, so K7 survived it. It now also requires that the
+    plain `18.37%` passes. K7 now fails test 4 there with `Reject(FabricatedNumber("18.37%"))`.
+  - Test 1's midpoint guard counted only half-away-from-zero, and the edge mirror's doc claimed more
+    than the guard measured, so K14 survived test 1. The guard is now two-sided, with a `0.18375`
+    row. K14 now fails test 1 at that row (`18.37%` against `18.38%`). Probe G1 (`0.18375` →
+    `0.1837`) fails at the guard alone: "away-apart rows 2, toward-apart rows 0".
+- **Redundant, and kept.** Two sets of assertions never decided a kill, because every builder
+  mutation trips an earlier Pass:
+  - the agent P3 test's ten reject assertions;
+  - the prompt test's `!contains("Total Return: 0.18%")`.
+
+  They also pin the frozen tokenizer's handling of the accepted-cost forms.
+
+**Still not verified: a real LLM call.** It needs an API key and `llm.enabled = true`. What is now
+pinned is the strings the LLM is given and the check its answer must pass. What a given model
+writes is not pinned.
+
+**Found while fixing, filed separately:** `#199` (the tokenizer never returns on `top-3`), filed in
+`a79ad40b`.
 
 ### `#199` — the faithfulness check never returns on "top-3": a sign after an identifier character stalls the frozen tokenizer
 
