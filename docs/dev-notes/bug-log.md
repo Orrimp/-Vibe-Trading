@@ -10033,10 +10033,12 @@ writes is not pinned.
 
 ### `#199` — the faithfulness check never returns on "top-3": a sign after an identifier character stalls the frozen tokenizer
 
-**Status**: **`open`** 2026-11-12. Found while fixing `#198`, by reading `extract_numeric_tokens`
-at HEAD `b73df9e8`, and confirmed in a Python port of it; not yet reproduced in Rust or against an
-LLM. Anchor-impacting: **no** (narration is report-free). Live whenever `llm.enabled = true`
-(default `false`), since `bab164f0` (`#197`) made Explain reach a real provider.
+**Status**: **`fixed` 2026-11-13 — `d2fa6bba`** (the tokenizer steps over a sign glued to an
+identifier character alone and re-scans; ADR-0064 amendment D13). Found while fixing `#198`, by
+reading `extract_numeric_tokens` at HEAD `b73df9e8`, and confirmed in a Python port of it; reproduced
+in Rust by the fix's probe P1, not run against an LLM. Anchor-impacting: **no** (narration is
+report-free). Live whenever `llm.enabled = true` (default `false`), from `bab164f0` (`#197`), which
+made Explain reach a real provider, until the fix.
 
 **The code.** `crates/agent/src/narration.rs` `extract_numeric_tokens`, which P3 calls on every
 narration that passed P4, P1 and P2:
@@ -10103,6 +10105,54 @@ if pre_is_ident && sign_start {
   fallback rate `#198`'s D12 accepts as a cost; its effect can only be measured against a real
   provider.
 
+
+#### Resolution, 2026-11-13
+
+- **The drafted fix, unchanged.** `narration.rs:477-480` steps over a sign that follows an identifier
+  character, by itself, and re-scans. The tokenizer's doc comment lost 4 lines to make room, so `:1032`
+  (`let winner_kpis = facts`) did not move. The `:471`/`:477`/`:481-485` cited above are read at
+  `b73df9e8`. At the fix they are `:467`/`:473`/`:481-485`, with the new branch at `:477-480`.
+- **What a glued sign now means** (ADR-0064 amendment D13). It is read as a hyphen.
+  - A faithful `top-3`, `COVID-19` or `2023-2024` now FALLS BACK: its figure is not a KPI string. It
+    does not pass.
+  - A range whose second figure follows a digit (`0.3100-1.4200`) passes when both figures are
+    allowed. A range whose second figure follows a `%` still falls back, as D12 records.
+  - The signed-token alternative was weighed and rejected. It rejects the faithful `-1.4200-0.3100`,
+    and it passes a fabricated bound whenever the negative twin is allowed.
+- **Liveness only, checked three ways.**
+  - **Python port**, alphabet `a1.-+% _9`, lengths 1–7: 5,380,839 strings. HEAD hangs on 687,820; the
+    other 4,693,019 give byte-identical tokens.
+  - **Rust**, on copies of both bodies under the same step cap, alphabet `a19.-+% _stéZ٣`, lengths
+    1–7: 113,522,234 strings. The old body hangs on 7,980,040; the rest give byte-identical tokens;
+    the new body returns on all.
+  - **By construction.** `pre_is_ident && sign_start` was the old body's only state that does not
+    advance the index, and the new branch fires in exactly that state.
+
+  The independent review also ran its own port, alphabet `a1.-+%_ 9t`, lengths 1–6: 1,111,110
+  strings, 0 differ, 0 new hangs.
+- **Pinned and measured.** `cargo test -p agent --lib narration::tests`, one probe at a time, each
+  restored byte-identically:
+  - P1 removes the new branch. Both `#199` tests go red at "… did not return within 5 s (bug-log
+    #199)", and the suite still finishes in 5.01 s: the hang, reproduced in Rust.
+  - P2, the rejected skip-the-digits edit: `top-3` gives `[]`, and the range prose passes P3 with
+    `9.9999` never checked.
+  - P3, the signed-token edit: `top-3` gives `["-3"]`, and the range prose is rejected on `-9.9999`.
+  - The deadline helper used to report a panic inside its closure as the `#199` hang message. It now
+    re-raises the panic as itself (`within_deadline_re_raises_a_panic_as_itself`). With the old
+    helper restored, that test fails on "a panicking closure did not return within 5 s", where it
+    expects "the original panic". Re-run under the new helper, P1 still fails at the deadline.
+- **Review findings, applied before the commit.** An independent three-lens review found two
+  problems, each confirmed by a skeptic:
+  - D13 had claimed three HEAD-unchanged inputs in the first test. Only two are: HEAD also hung on
+    `v0.sma+5%`.
+  - D13's Rust cross-check wording overstated the harness: both copies carry the step cap.
+
+  It also found `#201`, below.
+- **Not adopted:** the optional prompt companion above. Its effect can only be measured against a
+  real provider.
+- **Found while fixing, filed separately:** `#201` (P1/P2 panic on a multi-byte character at a window
+  edge).
+
 ### `#200` — "Promote" pairs a grid swept on one coin with another coin, after Tune is re-opened from the Lab
 
 **Status**: **`open`** 2026-11-13. Found by story `2-63` Wave D's round-2 falsifier (its extra
@@ -10144,3 +10194,68 @@ a Known residual; it deliberately pins neither behaviour (AC5: no production cha
 
 Whichever is chosen, the test that pins it is a pair through `update`: sweep on A, re-open on B,
 promote. Once with A == B, and once with A ≠ B expecting the chosen behaviour.
+
+### `#201` — the faithfulness check panics when an em dash sits at the edge of a P1/P2 window, and one panic ends Explain for the session
+
+**Status**: **`open`** 2026-11-13. Found by the independent review of the `#199` fix (a read-only
+pass), by reading `check_faithful` at HEAD `7419472a`, and reproduced in a Python byte-slice model;
+not yet run in Rust or against an LLM. Anchor-impacting: **no** (narration is report-free). Live
+whenever `llm.enabled = true` (default `false`), since `bab164f0` (`#197`) made Explain reach a real
+provider.
+
+**The code.** `crates/agent/src/narration.rs` `check_faithful` lowercases the prose
+(`let lower = text.to_lowercase();`) and finds each crown or contradiction lexeme with `str::find`,
+which returns a BYTE offset. It then cuts a window around it at raw byte offsets:
+
+- P1 (`:606-608` at `7419472a`): `let window_start = abs_lex.saturating_sub(120);`,
+  `let window_end = (abs_lex + lexeme.len() + 120).min(lower.len());`,
+  `let window = &lower[window_start..window_end];`
+- P2, `BenchmarkWins` (`:650-652`): the same with 150.
+
+Nothing moves either edge onto a char boundary. `.min(lower.len())` only keeps the end inside the
+string. When a multi-byte character straddles an edge, `&lower[a..b]` panics with "byte index N is
+not a char boundary". That happens for an em dash (`—`), an en dash, `€`, U+2212 or any non-ASCII
+letter 120 (P1) or 150 (P2) bytes either side of a lexeme. LLM prose uses em dashes routinely. The
+lexemes themselves are ASCII, so `lower[search_start..]` is safe; only the two window slices are
+not.
+
+**A faithful narration triggers it.** The review's model takes a passing narration over the
+ActiveWins fixture and puts three em dashes at random word gaps. The slice then panics in 2.1 % of
+placements (422 of 20,000). P4 runs first, but P1 runs before P3, so no number check is needed to
+reach the panic.
+
+**What it does to the cockpit.** `check_faithful` runs inside `generate_narration`, which the
+narration task calls (`crates/agent/src/runtime.rs:1641`) inside ONE long-lived loop
+(`:1630` `set.spawn(async move {`). Nothing catches the panic, so (reasoned from the code, not
+measured):
+
+- the loop's task unwinds and ends. The workspace panic strategy is unwind (no `panic =` in any
+  profile), so the process lives and the `JoinSet` holds the panic until the shutdown drain;
+- `req_rx` and `outcome_tx` drop with it. The outcome stream ends (`ui/src/live.rs:1005`), no
+  `BakeoffNarrationCompleted` is ever sent, and the panel stays `InFlight`;
+- every later Explain in that session also stays `InFlight`. Its `try_send` fails as `Closed`,
+  which `cockpit_live.rs:1800-1810` logs as "narration_request channel full — Explain deferred".
+
+**Why no test caught it.** Every prose any narration test hands to `check_faithful` is ASCII at
+the window edges (the D11 corpus, the `narration.rs` unit tests, `narration_kpi_units.rs`). A test
+that hit it would fail loudly, but none had a multi-byte character 120 or 150 bytes from a lexeme.
+
+**Fix (an ADR-0064 § D2 amendment: P1 and P2 are FROZEN), in two layers:**
+
+1. **The root cause.** Move both edges OUTWARD onto a char boundary before slicing:
+   `lower.floor_char_boundary(abs_lex.saturating_sub(120))` and
+   `lower.ceil_char_boundary(abs_lex + lexeme.len() + 120)` (150 for P2). Both are stable on the
+   pinned 1.94.1 (checked: `rustc +1.94.1` compiles and runs them). `ceil_char_boundary` clamps to
+   the length, so the `.min` goes. On every input that does not panic today both edges are already
+   boundaries and the calls are the identity, so every verdict is byte-identical. Where it panicked,
+   the window grows by at most 3 bytes, which is too short to admit a whole candidate id. So no
+   verdict that the old code reached can change.
+2. **Containment.** The narration task turns a panic inside `generate_narration` into `FellBack`
+   and keeps serving: one bad string must cost one narration, not Explain for the session.
+
+**Pin.** For each of the four edges (P1 start and end, P2 start and end), one unit test builds the
+prose with a multi-byte character straddling that edge. It asserts the precondition, derived from
+`str::is_char_boundary` and not from the subject: the old edge is not a boundary. It then asserts
+the verdict under a deadline that re-raises a panic as itself. One agent test sends the narration
+task a request whose provider panics and asserts `FellBack`, then sends a second request and
+asserts it is served.
