@@ -5,7 +5,7 @@ status: accepted
 date: 2026-07-01
 supersedes: none
 superseded-by: none
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # ADR-0064: Advisor LLM "why this one" narration seam
@@ -621,8 +621,114 @@ against `NarrationFacts::from_report` over one synthetic engine report, and a P3
 screen's own strings. Run it with `cargo test -p ui --test narration_kpi_units`. The D11 corpus
 (`crates/agent/tests/narration_faithfulness.rs`) is byte-unchanged.
 
+## Amendment 2026-11-13 (bug-log `#199`: the P3 tokenizer returns on a sign after an identifier character)
+
+**Context.** § D2.P3 runs every narration that passed P4, P1 and P2 through `extract_numeric_tokens`.
+That function had a liveness hole. Take an ASCII `-` or `+` that follows an identifier character (a
+letter, a digit, `_` or `.`) and precedes a digit, as in `top-3`, `COVID-19`, `2023-2024` or a KPI
+range such as `0.3100-1.4200`. The sign enters the identifier-skip branch. There the skip loop runs
+zero times, because a sign is not an identifier character, and `continue` re-enters at the same
+index. The loop never ends. The consequences:
+
+- `check_faithful` never returns;
+- the narration task pins a cockpit runtime worker that its cancel arm cannot reach;
+- the panel stays `InFlight`.
+
+This was live whenever `llm.enabled = true`, since `bab164f0` (bug-log `#197`).
+
+**D13: a sign after an identifier character is stepped over alone.** In that case the tokenizer now
+advances past the sign by one character and re-scans. The digits after the sign still form a token,
+which is unsigned because its predecessor is now the sign, and that token still faces P3. So
+`0.1234-9.9999` is rejected as `FabricatedNumber("9.9999")`.
+
+**Rejected alternative.** One could step over the sign and then run the identifier skip. That also
+terminates, but it swallows the following digits as "identifier". A fabricated upper bound of a
+range would then never be checked.
+
+**What a glued sign now means.** A sign glued to an identifier character is read as a hyphen, not as
+a sign: `word-X` and `vs.-X` are checked as the unsigned `X`.
+- A faithful `top-3`, `COVID-19` or `2023-2024` now FALLS BACK. Its figure is not a KPI string, so P3
+  rejects it; it does not pass. That is the safe direction, and it is the outcome the hang denied.
+- A range whose second figure follows a digit (`0.3100-1.4200`) passes when both figures are allowed.
+  A range whose second figure follows a `%` (`6.12%-18.72%`) still tokenizes it as signed and falls
+  back, exactly as D12 records.
+- A gain written with a glued minus (`vs.-18.37%`) passes against a stored `18.37%`. HEAD already
+  passes the same flip written with U+2212, an en dash or a loss verb: P3 never adds a sign and reads
+  no verbs (D12).
+
+A second terminating option was weighed and REJECTED: let a glued sign start a SIGNED token. That
+option is not fail-safe either. It rejects the faithful range `-1.4200-0.3100`, because its second
+figure becomes `-0.3100`. It also passes a fabricated positive bound in `0.3100-1.4200` whenever the
+negative twin `-1.4200` is allowed. The hyphen reading matches how ranges are written.
+
+**Liveness only.** The amendment changes output only on inputs where the tokenizer never returned.
+This was modelled exhaustively in a Python port of the function, over the alphabet `a1.-+% _9` at
+lengths 1–7 (5,380,839 strings):
+
+- HEAD hangs on 687,820 of them.
+- On the other 4,693,019, the amended tokenizer returns byte-identical tokens.
+- It returns on all of them.
+
+It was cross-checked in Rust on copies of both function bodies, each with the same added step cap
+(it returns `None` after 8n + 64 loop iterations) and an `Option` return; apart from that they are
+byte-identical to the shipped bodies. The cap cannot report a false "returns", because every
+iteration outside the hang state advances the index. The alphabet `a19.-+% _stéZ٣` adds a non-ASCII
+letter, an Arabic-Indic digit and an uppercase letter to the Python one. At lengths 1–7 that is
+113,522,234 strings:
+
+- the old body hangs on 7,980,040;
+- the rest give byte-identical tokens;
+- the new body returns on all of them.
+
+It also holds by construction:
+
+- `pre_is_ident && sign_start` is the old body's only state that does not advance the index, and
+  the old body never leaves it.
+- The new branch fires in exactly that state, so wherever the old body returned, both make the
+  same transitions.
+- Every other branch advances the index, so the new body always terminates.
+
+What does not change:
+
+- P3's match rule (exact membership in `allowed_numbers`, then the `+`-stripped retry).
+- P1, P2 and P4.
+- `allowed_numbers`, `BANNED_PHRASES`, the crown and contradiction lexemes, the D11 corpus, and D12's glyph convention.
+
+**Verification.** Two `crates/agent/src/narration.rs` unit tests run the tokenizer and `check_faithful`
+on a thread under a 5-second deadline, so a regression fails instead of hanging the suite. A third,
+`within_deadline_re_raises_a_panic_as_itself`, pins the deadline helper: a panic inside its closure
+is re-raised as itself, not reported as a hang.
+
+- `numeric_token_extraction_returns_on_a_sign_after_an_identifier_character`: `top-3` → `3`,
+  `COVID-19` → `19`, `2023-2024` → `2023`, `2024`, a ratio range → both figures, and a `+` after a
+  letter, `v0.sma+5%` → `5%`. HEAD hung on all five. It also has two inputs whose tokens are
+  unchanged from HEAD: a sign after a `%` (`6.12%-18.72%`) and one after a space (`-5.00%`).
+- `p3_rejects_a_fabricated_figure_after_a_sign_that_follows_a_digit`: `0.1234-9.9999` →
+  `FabricatedNumber("9.9999")`.
+
+**T-T4, measured.** Each probe ran `cargo test -p agent --lib narration::tests`, one edit at a time,
+and was restored byte-identically afterwards:
+
+- **P1 removes the new branch.** Both `#199` tests go red at "… did not return within 5 s (bug-log
+  #199)", and the suite still finishes. That is the hang, reproduced in Rust.
+- **P2 is the rejected alternative**, which steps over the sign and then runs the identifier skip.
+  `top-3` gives `[]`, and the range prose passes P3 with `9.9999` never checked.
+- **P3 is the signed-token alternative.** `top-3` gives `["-3"]`, and the range prose is rejected on
+  `-9.9999`, not on `9.9999`.
+
+**Anchor safety.** Unchanged from D7: the narration is report-free. `scripts/verify_anchors.sh` is
+119/119 before and after.
+
 ## Changelog
 
+- 2026-11-13 (developer, bug-log `#199` amendment): **the P3 tokenizer returns on a sign after an
+  identifier character.** **D13** `extract_numeric_tokens` used to spin forever on `top-3`,
+  `2023-2024` or a KPI range `0.3100-1.4200`: its identifier-skip branch ran zero times on the sign
+  and re-entered at the same index. It now steps over that sign alone and re-scans, so the digits
+  after it still face P3. This is liveness only: in a model over 5.4 M strings the tokens are
+  byte-identical wherever the old tokenizer returned. P1–P4's predicates, `allowed_numbers`, the
+  lexemes, the D11 corpus and D12 are unchanged. Two deadline-guarded unit tests pin it.
+  Anchor-neutral, 119/119.
 - 2026-11-12 (developer, bug-log `#198` amendment): **the narration's percent KPIs carry the
   leaderboard's digits.** **D12** `CandidateKpiStrings.total_return_pct` and `.max_drawdown` are now
   `(fraction × 100).round_dp(2)`. They were the raw fraction plus `%`, `"0.18%"` beside an

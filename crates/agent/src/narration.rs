@@ -449,15 +449,11 @@ const FRAGILITY_CAVEAT_LEXEMES: &[&str] = &[
     "all candidates were fragile",
 ];
 
-/// Numeric-token extraction.
+/// Numeric-token extraction: standalone signed integers, decimals and percentages.
 ///
-/// Extracts standalone signed integers, decimals, and percentage tokens from
-/// text.  A token is "standalone" if it is NOT immediately preceded or followed
-/// by an ASCII alphanumeric character, an underscore, or a dot (so that version
-/// strings like "v0.5.macd" and strategy ids like "v0.buyhold" are not treated
-/// as numeric tokens — they are identifier components, not KPI numbers).
-///
-/// Excludes ordinals (1st, 2nd, 3rd, 4th, …).
+/// A token is "standalone" if it is NOT immediately preceded or followed by an ASCII
+/// alphanumeric character, an underscore, or a dot, so "v0.5.macd" and "v0.buyhold"
+/// are identifier components, not KPI numbers. Excludes ordinals (1st, 2nd, 3rd, 4th, …).
 fn extract_numeric_tokens(text: &str) -> Vec<String> {
     let lower = text.to_lowercase();
     let chars: Vec<char> = lower.chars().collect();
@@ -476,8 +472,12 @@ fn extract_numeric_tokens(text: &str) -> Vec<String> {
             let pre_char = if i > 0 { chars[i - 1] } else { ' ' };
             let pre_is_ident = pre_char.is_alphanumeric() || pre_char == '_' || pre_char == '.';
 
-            // If it's an embedded digit inside an identifier, skip to the next
-            // non-digit character.
+            // An embedded digit inside an identifier: skip to the next non-digit. A sign
+            // there is never part of the identifier: step over it alone and re-scan (`#199`).
+            if pre_is_ident && sign_start {
+                i += 1;
+                continue;
+            }
             if pre_is_ident {
                 while i < n && (chars[i].is_alphanumeric() || chars[i] == '.' || chars[i] == '_') {
                     i += 1;
@@ -1633,6 +1633,70 @@ mod tests {
     fn numeric_token_extraction_negative() {
         let tokens = extract_numeric_tokens("Max drawdown was -5.00%.");
         assert!(tokens.contains(&"-5.00%".to_string()));
+    }
+
+    /// Bug-log `#199`: run `f` on its own thread under a deadline, so a tokenizer that
+    /// never returns fails the test instead of hanging the suite. (A spinning thread
+    /// dies with the test process.) A panic inside `f` is re-raised as itself, not
+    /// reported as a hang.
+    fn within_deadline<T: Send + 'static>(what: &str, f: impl FnOnce() -> T + Send + 'static) -> T {
+        use std::sync::mpsc::RecvTimeoutError;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(value) => value,
+            Err(RecvTimeoutError::Timeout) => {
+                panic!("{what} did not return within 5 s (bug-log #199)")
+            }
+            // The only sender dropped without sending, so `f` panicked: re-raise it.
+            Err(RecvTimeoutError::Disconnected) => match handle.join() {
+                Err(payload) => std::panic::resume_unwind(payload),
+                Ok(()) => unreachable!("{what}: the sender dropped without a send or a panic"),
+            },
+        }
+    }
+
+    /// The deadline helper reports a panic inside `f` as that panic. Before this, a
+    /// crash read "did not return within 5 s", the `#199` liveness message.
+    #[test]
+    #[should_panic(expected = "the original panic")]
+    fn within_deadline_re_raises_a_panic_as_itself() {
+        within_deadline::<()>("a panicking closure", || panic!("the original panic"));
+    }
+
+    /// `#199`: a sign after an identifier character no longer stalls the tokenizer,
+    /// and the digits after it are still a token. Where HEAD already returned (a sign
+    /// after a space or a `%`), the tokens are unchanged.
+    #[test]
+    fn numeric_token_extraction_returns_on_a_sign_after_an_identifier_character() {
+        let tok = |text: &'static str| within_deadline(text, move || extract_numeric_tokens(text));
+        assert_eq!(tok("the top-3 strategies"), vec!["3"]);
+        assert_eq!(tok("the COVID-19 era"), vec!["19"]);
+        assert_eq!(tok("over 2023-2024"), vec!["2023", "2024"]);
+        assert_eq!(
+            tok("Sharpe ranged 0.1234-0.5678."),
+            vec!["0.1234", "0.5678"]
+        );
+        assert_eq!(tok("v0.sma+5%"), vec!["5%"]);
+        assert_eq!(tok("ranged 6.12%-18.72%."), vec!["6.12%", "-18.72%"]);
+        assert_eq!(tok("Max drawdown was -5.00%."), vec!["-5.00%"]);
+    }
+
+    /// `#199`, the bypass the obvious fix would open (step over the sign, then skip the
+    /// "identifier"): the figure after the sign must still face P3, so a fabricated
+    /// upper bound of a range is rejected.
+    #[test]
+    fn p3_rejects_a_fabricated_figure_after_a_sign_that_follows_a_digit() {
+        let facts = make_facts_active_wins();
+        let text = "The strategy v0.5.macd was crowned the winner of this bake-off. \
+                    Its Sharpe ratio was in the range 0.1234-9.9999 across the field.";
+        let verdict = within_deadline("check_faithful", move || check_faithful(text, &facts));
+        assert_eq!(
+            verdict,
+            FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber("9.9999".to_string()))
+        );
     }
 
     // ── F9 Sortino/Calmar round-trip (the previously-barred metrics) ──────────
