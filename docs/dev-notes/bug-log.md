@@ -10197,11 +10197,13 @@ promote. Once with A == B, and once with A ≠ B expecting the chosen behaviour.
 
 ### `#201` — the faithfulness check panics when an em dash sits at the edge of a P1/P2 window, and one panic ends Explain for the session
 
-**Status**: **`open`** 2026-11-13. Found by the independent review of the `#199` fix (a read-only
-pass), by reading `check_faithful` at HEAD `7419472a`, and reproduced in a Python byte-slice model;
-not yet run in Rust or against an LLM. Anchor-impacting: **no** (narration is report-free). Live
-whenever `llm.enabled = true` (default `false`), since `bab164f0` (`#197`) made Explain reach a real
-provider.
+**Status**: **`fixed` 2026-11-13 — `cded86b5`** (both window edges move outward onto a char
+boundary, and the narration task answers `FellBack` for a panic; ADR-0064 amendment D14). Found by
+the independent review of the `#199` fix (a read-only pass), by reading `check_faithful` at HEAD
+`7419472a`, and reproduced in a Python byte-slice model and then in Rust by the fix's edge probes.
+Not run against an LLM. Anchor-impacting: **no** (narration is report-free). Live whenever
+`llm.enabled = true` (default `false`), from `bab164f0` (`#197`), which made Explain reach a real
+provider, until the fix.
 
 **The code.** `crates/agent/src/narration.rs` `check_faithful` lowercases the prose
 (`let lower = text.to_lowercase();`) and finds each crown or contradiction lexeme with `str::find`,
@@ -10259,3 +10261,93 @@ prose with a multi-byte character straddling that edge. It asserts the precondit
 the verdict under a deadline that re-raises a panic as itself. One agent test sends the narration
 task a request whose provider panics and asserts `FellBack`, then sends a second request and
 asserts it is served.
+
+#### Resolution, 2026-11-13
+
+- **Both layers landed, as specified above** (ADR-0064 amendment D14).
+  - `narration.rs`: P1 and P2 each use `lower.floor_char_boundary(abs_lex.saturating_sub(N))` and
+    `lower.ceil_char_boundary(abs_lex + lexeme.len() + N)`. `:1032` did not move.
+  - `runtime.rs`: the narration loop's provider branch calls `narrate_containing_panics(provider,
+    &facts)`. It wraps `generate_narration` in `catch_unwind` and answers `FellBack`. The helper sits
+    after `panic_message`, so the loop (`:1627-1653`) and the call at `:1641` keep the lines cited
+    above. The only citation it moved, story `2-63`'s `runtime.rs:3346`, was repointed to `:3375`.
+- **No verdict moves where the old code returned.** On a char boundary both functions are the
+  identity. Past the end, `ceil_char_boundary` gives the length, exactly as the old `.min` did. This
+  follows from the functions' contract; it is not a sample.
+- **Pinned.**
+  - Four unit tests, one per old edge (`p1_window_start_…`, `p1_window_end_…`, `p2_window_start_…`,
+    `p2_window_end_…_on_an_em_dash_keeps_its_verdict`). Each runs 1 and 2 bytes into the dash, and
+    three cases at each offset: no id gives `Pass`; the id inside the window gives `WrongCrown` or
+    `ContradictedOutcome`; the id just outside gives `Pass`. Each first asserts, with
+    `str::is_char_boundary`, that the old edge splits the dash.
+  - In `narration_task_uses_boot_provider.rs`:
+    `a_panicking_narration_falls_back_and_the_task_serves_the_next_request`. Its provider panics
+    once. The outcomes are `FellBack` then `Ready`, and the provider saw 2 calls.
+- **T-T4, measured by an independent falsifier.** Each probe was one edit, restored
+  byte-identically.
+  - Each of the four edge reverts turns exactly its own test red (38 passed, 1 failed), at the
+    slice panic "byte index N is not a char boundary; it is inside '—'", re-raised through
+    `within_deadline`.
+  - Removing the catch fails the runtime test at "request 0: the outcome channel closed, so the
+    narration task ended". That was re-measured on the helper.
+  - Its own three probes were all killed: a fail-open edge (`str::get`) at the Inside case, an
+    over-widened edge at the Outside case, and a catch that ends the loop at "request 1: the
+    request channel closed".
+- **Recorded, not probed.**
+  - For ASCII ids, the edge tests cannot tell outward rounding from inward (an equivalent mutant).
+  - The FROZEN half-widths are pinned only to a band of a few bytes.
+  - Each boot-provider test spends about 50 s in runtime teardown after its last assertion. This
+    predates the change; the test bodies take about 30 ms.
+- **Found while fixing, filed separately:** `#202`. The review flagged that a refused Explain request
+  strands the panel. Reading that path showed that an answer is not tied to its request at all.
+
+### `#202` — an "Explain" answer for one bake-off lands on the next one, and a refused request leaves the panel spinning
+
+**Status**: **`open`** 2026-11-13. Found by reading `crates/ui/src/leaderboard/state.rs` and
+`crates/ui/src/bin/cockpit_live.rs` at HEAD `9a83b987`, after the `#201` review flagged the second
+half. Not yet reproduced in a test or against an LLM. Anchor-impacting: **no** (narration is
+report-free). Live whenever `llm.enabled = true` (default `false`), since `bab164f0` (`#197`) made
+Explain reach a real provider; before that, every answer was an immediate `FellBack`.
+
+**1. Outcomes are not tied to the request they answer.** `NarrationRequest` carries only `facts`.
+`NarrationOutcome` is only `Ready(prose) | FellBack`. On the iced side,
+`Message::BakeoffNarrationCompleted(outcome)` calls `set_narration(outcome)`, which overwrites
+`narration` unconditionally (`state.rs:1306-1311`). The only reset is `begin_run` (`:1257-1260`), and
+`finish_run` (`:1280`) leaves `narration` alone. So, reasoned from the code:
+
+- The operator presses Explain on bake-off A (coin X). The request goes to the agent, and a real
+  provider takes seconds to answer.
+- The operator presses Run for bake-off B, perhaps on coin Y. `begin_run` resets the narration to
+  `NotRequested`.
+- A's answer arrives during B's run or after it, and `set_narration` stores it. When B lands, its
+  leaderboard shows A's prose under B's table: A's winner, A's numbers, perhaps another coin.
+
+That prose passed P1–P4 against A's facts, never B's. The faithfulness guarantee is per request, and
+the panel presents it as an explanation of the result on screen. Nothing is traded (paper/sim only),
+but the advisor's explanation is false in this state.
+
+**2. A refused request strands the panel.** `update` sets `InFlight` first (`state.rs:3870-3883`).
+The cockpit then `try_send`s the request (`cockpit_live.rs:1800-1810`) and only logs an error,
+which covers `Closed` as well as `Full` and calls both "narration_request channel full — Explain
+deferred". No `BakeoffNarrationCompleted` follows, so the panel shows its spinner until the next Run.
+
+- `Full` needs four queued requests behind a slow provider (`channel(4)`, `cockpit_live.rs:525`).
+- `Closed` needs the narration task to have ended. Since the `#201` fix, a narration panic no longer
+  ends it.
+
+**Why no test caught it.** Every Explain test drives one request and its own answer. No test runs a
+second bake-off while an answer is in flight, or refuses a send.
+
+**Fix (its own change; an ADR-0064 amendment, since D1/D4 define the request and outcome).**
+
+1. Correlate answers with requests. Options, to be decided in the fix:
+   - a generation counter: stamped on the request, echoed on the outcome, bumped by `begin_run`, and
+     with a mismatched outcome dropped;
+   - or a pending flag that `begin_run` clears, after which a late outcome is ignored.
+2. On a refused `try_send`, dispatch `BakeoffNarrationCompleted(FellBack)`, so the templated copy
+   stays the floor. Log `Closed` as closed.
+
+The pin, through `update`:
+- Explain on A, Run B, then A's answer arrives: B's narration stays `NotRequested`.
+- The same with no Run in between: the answer lands.
+- A refused send ends at `FellBack`, not `InFlight`.
