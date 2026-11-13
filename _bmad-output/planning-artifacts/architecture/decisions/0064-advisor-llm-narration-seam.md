@@ -5,6 +5,7 @@ status: accepted
 date: 2026-07-01
 supersedes: none
 superseded-by: none
+updated: 2026-11-12
 ---
 
 # ADR-0064: Advisor LLM "why this one" narration seam
@@ -539,8 +540,99 @@ unaffected. No new dependency edge: `crates/llm` and `crates/backtest` were
 already hard deps of `agent`; nothing in `strategy`/`exec`/`models`/`ui` is
 touched.
 
+## Amendment 2026-11-12 (bug-log `#198`: the percent KPIs carry the leaderboard's digits)
+
+**Context.** § D2.P3 matches every numeric token against "a canonical rendering of some `facts`
+KPI", and freezes that canonicalisation "with the formatters in `crates/ui/src/widgets/num.rs`".
+Both builders of those renderings broke the rule for the two percent KPIs.
+`agent::narration::render_kpi_strings` and `ui::live::narration_request_from_mirror` each printed
+the total-return and max-drawdown FRACTION with a `%` suffix and no × 100: `0.1837` became
+`"0.18%"`, while the leaderboard renders `+18.37%` and `−6.12%` for the same row. P3 therefore
+enforced the wrong unit. A narration that repeated the prompt's `0.18%` passed; one that stated the
+on-screen `18.37%` fell back as `FabricatedNumber`. This was live from `bab164f0` (bug-log `#197`)
+whenever `llm.enabled = true`.
+
+**D12: the percent KPIs' canonical form.** Both builders call the same two `agent::narration`
+functions, so each fraction has exactly one rendering:
+
+- `kpi_return_pct(fraction)` is `(fraction × 100).round_dp(2)`, padded to 2 dp. A loss gets an
+  ASCII `-`, with the sign read off the unrounded fraction as `num::fmt_pct_signed` reads it. A
+  gain gets no `+`, and zero is unsigned.
+- `kpi_drawdown_pct(fraction)` gives the same digits, unsigned. `num::format_pct_max_dd` takes
+  `abs()` too.
+
+The digits are the `num` formatters' digits, from the same rounding call: `round_dp` is banker's
+rounding (`MidpointNearestEven`), so a midpoint such as `0.18365` prints `18.36` in the prompt and
+on screen alike. The glyphs differ from the screen on purpose: they are fitted to the frozen P3
+tokenizer. A signed token starts only at an ASCII `-` or `+`, and U+2212 never joins a token. P3
+tries each prose token as written and again with its leading `+` stripped
+(`trim_start_matches('+')`); it never adds a sign.
+
+| prose | against the stored `"18.37%"`, `"-4.57%"`, `"6.12%"` |
+|---|---|
+| `18.37%`, or the screen's `+18.37%` | pass |
+| `0.18%` (the pre-fix unit) or `-18.37%` (a flipped sign) | reject |
+| `-4.57%` (the screen's form) | pass |
+| `4.57%`, `+4.57%` or `−4.57%` | reject |
+| `6.12%`, or the screen's `−6.12%` | pass |
+| `-6.12%` | reject: a safe fallback, and the LLM is never shown this string |
+| `lost 4.57%`, `a 4.57% loss`, `–4.57%` (en dash), `6.12%-18.72%` (a range) | reject: the accepted cost below |
+
+Storing the screen's glyphs verbatim would reject the plain `18.37%` and every drawdown citation.
+Storing a loss unsigned would let `gained 4.57%` pass.
+
+**The accepted cost.** Some faithful phrasings fall back: a loss stated as a magnitude with a loss
+verb, a loss written with an en dash or U+2212, and a hyphenated range whose second figure then
+tokenizes as signed. Fallback is the safe direction (the templated copy is shown), and no glyph
+convention avoids it under the frozen P3, which reads no verbs. A bear-market run will therefore
+fall back more often than a bull-market one.
+
+**Known divergence.** The D11 corpus (`crates/agent/tests/narration_faithfulness.rs`, its
+`make_facts` drawdowns `"-10.00%"`, `"-5.00%"`, `"-12.00%"` and the `"-22.00%"` row) and the
+`narration.rs` unit-test fixtures hand-write SIGNED drawdowns, and D11's faithful baseline cites
+one (`a max drawdown of -5.00%`). Those strings are corpus-supplied facts, never producer output: no
+producer emitted them before `#198` (it emitted `0.05%`), and none emits them after. Under D12 a
+narration that cites a drawdown as `-X.XX%` falls back, which is safe; the `#198` P3 unit test
+pins exactly that (`-6.12%` is rejected). The corpus is left byte-unchanged here because its tests
+supply their own facts and prose. Re-basing it on `render_kpi_strings` output is a follow-up
+amendment, not part of D12.
+
+**Unchanged (§ D2 FROZEN).** `check_faithful`, P1–P4, `extract_numeric_tokens`, `allowed_numbers`,
+`BANNED_PHRASES` and the crown and contradiction lexemes are byte-identical, and so are the ratio
+and trade-count renderings. The match set is still global across candidates, and P3 still does
+not read verbs. Both are inherent to § D2 and out of scope here. This is the "single tuning point"
+that § Consequences reserves, not a predicate change.
+
+**Found while fixing, not changed here.** `extract_numeric_tokens` never returns when an ASCII `-`
+or `+` follows an identifier character and precedes a digit (`top-3`, `COVID-19`, `2023-2024`,
+`0.3100-1.4200`). It is filed as bug-log `#199`; its fix edits the frozen tokenizer and is its own
+amendment.
+
+**Anchor safety.** Unchanged from D7. The narration is ephemeral and produces no anchored artifact,
+and no `evidence/` file renders these strings. `scripts/verify_anchors.sh` is 119/119 by
+construction; it is still run before and after.
+
+**Verification.** `crates/agent/src/narration.rs` gains seven `#198` unit tests: fraction to
+digits (midpoints included), the sign matrix, the drawdown `abs`, `render_kpi_strings` per field,
+the prompt line, a P3 matrix over facts the producer built (the accepted-cost forms included), and
+the faithful fake still passing. A new ui target pins three things: the ui builder against the real
+`num` formatters (every fixture row, plus zero, > 100 % and midpoint edge rows), the ui builder
+against `NarrationFacts::from_report` over one synthetic engine report, and a P3 round trip of the
+screen's own strings. Run it with `cargo test -p ui --test narration_kpi_units`. The D11 corpus
+(`crates/agent/tests/narration_faithfulness.rs`) is byte-unchanged.
+
 ## Changelog
 
+- 2026-11-12 (developer, bug-log `#198` amendment): **the narration's percent KPIs carry the
+  leaderboard's digits.** **D12** `CandidateKpiStrings.total_return_pct` and `.max_drawdown` are now
+  `(fraction × 100).round_dp(2)`. They were the raw fraction plus `%`, `"0.18%"` beside an
+  on-screen `+18.37%`. The new `agent::narration::{kpi_return_pct, kpi_drawdown_pct}` renders them,
+  and BOTH builders call it: `render_kpi_strings` and `ui::live::narration_request_from_mirror`. The
+  glyphs are fitted to the frozen P3 tokenizer: no `+`, an ASCII `-` on a loss, and an unsigned
+  drawdown. The accepted cost (a loss stated as a magnitude, an en dash, a hyphenated range falls
+  back) and the known divergence from the signed-drawdown D11 corpus are recorded in the amendment.
+  This is the § Consequences "single tuning point", not a predicate change. P1–P4, the tokenizer,
+  `allowed_numbers` and the D11 corpus are byte-unchanged (§ D2 FROZEN). Anchor-neutral, 119/119.
 - 2026-07-01 (developer, P2-1 amendment): **narration faithfulness
   hardening** — closes the LLM-narration-hallucination risk
   `research/llms/application-llm-narration-and-agents.md` § 6 P0 flagged as

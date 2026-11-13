@@ -234,16 +234,22 @@ impl NarrationFacts {
 
 /// Render a `backtest::CandidateKpis` into canonical string representations.
 ///
-/// Uses the SAME formatting logic as `crates/ui/src/widgets/num.rs` — the
-/// exact decimal places / `%` suffix must match so P3 exact-string-match works.
+/// Uses the SAME digits as `crates/ui/src/widgets/num.rs` — the exact decimal
+/// places / `%` suffix must match so P3 exact-string-match works; signs: ADR-0064 D12.
 /// This keeps the `ui` dep out of `agent` while reproducing the formatters here.
 ///
-/// Format contracts (FROZEN — change only with `num.rs`):
+/// Format contracts (FROZEN — ADR-0064 § D2.P3 + D12; the digits change only with `num.rs`):
 /// - Sharpe: 4 decimal places (mirrors `format_sharpe`)
 /// - Sortino: 4 decimal places (same rule as Sharpe — same magnitude range)
 /// - Calmar: 4 decimal places (same)
-/// - total_return_pct: `"{:.2}%"` (mirrors `fmt_pct`)
-/// - max_drawdown: `"{:.2}%"` (mirrors `fmt_pct` / `format_pct_max_dd` body)
+/// - total_return_pct: [`kpi_return_pct`], the FRACTION × 100 at 2 dp: the digits
+///   `num::fmt_pct_signed` puts in the leaderboard's return cell. (Bug-log `#198`:
+///   this was the raw fraction plus `%`, so `0.1837` read `"0.18%"` beside `+18.37%`.)
+/// - max_drawdown: [`kpi_drawdown_pct`], the digits of `num::format_pct_max_dd` fed
+///   `max_drawdown × 100` (as the leaderboard feeds it), unsigned
+/// - Glyphs follow P3's frozen tokenizer, not the screen: no `+` on a gain (P3 strips
+///   leading `+`), ASCII `-` on a loss (U+2212 never joins a token), no sign on a
+///   drawdown. The two fns hold the full matrix (ADR-0064 D12).
 /// - trade_count: plain decimal integer (mirrors `format_count`)
 fn render_kpi_strings(strategy_id: &str, kpis: &backtest::CandidateKpis) -> CandidateKpiStrings {
     use rust_decimal::Decimal;
@@ -257,12 +263,6 @@ fn render_kpi_strings(strategy_id: &str, kpis: &backtest::CandidateKpis) -> Cand
         pad_fractional_kpi(&raw, 4)
     }
 
-    fn fmt_pct2(d: Decimal) -> String {
-        let rounded = d.round_dp(2);
-        let raw = rounded.to_string();
-        format!("{}%", pad_fractional_kpi(&raw, 2))
-    }
-
     fn fmt_count(n: usize) -> String {
         // Plain integer — mirrors `format_count` (no thousands sep needed for P3 match).
         n.to_string()
@@ -273,8 +273,8 @@ fn render_kpi_strings(strategy_id: &str, kpis: &backtest::CandidateKpis) -> Cand
         sharpe: fmt_ratio4(kpis.sharpe),
         sortino: fmt_ratio4(kpis.sortino),
         calmar: fmt_ratio4(kpis.calmar),
-        total_return_pct: fmt_pct2(kpis.total_return_pct),
-        max_drawdown: fmt_pct2(kpis.max_drawdown),
+        total_return_pct: kpi_return_pct(kpis.total_return_pct),
+        max_drawdown: kpi_drawdown_pct(kpis.max_drawdown),
         trade_count: fmt_count(kpis.trade_count),
     }
 }
@@ -1126,6 +1126,73 @@ fn make_text_response(text: String) -> llm::ChatResponse {
     }
 }
 
+// ── KPI percent strings, one rendering per fraction (bug-log `#198`) ──────────
+
+/// A total-return FRACTION (`0.1837` = +18.37 %) as the narration's canonical
+/// percent string: `"18.37%"`, `"-4.57%"`, `"0.00%"`.
+///
+/// The digits are the leaderboard return cell's. `ui::widgets::num::fmt_pct_signed`
+/// computes `(fraction × 100).round_dp(2)` and reads the sign off the UNROUNDED
+/// fraction, and so does this: `-0.00001` gives `"-0.00%"`, as on screen. Before
+/// bug-log `#198` both builders printed the raw fraction (`"0.18%"` for +18.37 %),
+/// so P3 accepted the wrong unit and rejected the true one.
+///
+/// Two glyphs differ from the screen on purpose. P3 ([`check_faithful`]) is an
+/// exact-string match on the tokens `extract_numeric_tokens` yields, and that
+/// tokenizer is frozen (ADR-0064 § D2; this convention is its amendment D12):
+///
+/// - **No `+` on a gain.** P3 tries each prose token as written and again with
+///   its leading `+` stripped (`trim_start_matches('+')`); it never adds one. A
+///   stored `"18.37%"` therefore accepts both `18.37%` and the screen's `+18.37%`,
+///   while a stored `"+18.37%"` would reject the plain `18.37%`.
+/// - **ASCII `-` on a loss, never U+2212.** A signed token starts only at ASCII
+///   `-` or `+`, so `−4.57%` tokenizes as `4.57%`. A stored `"-4.57%"` accepts the
+///   faithful copy and rejects `4.57%`, `+4.57%` and `−4.57%`: a narration cannot
+///   drop or flip the sign of a loss. The screen's return cell uses ASCII `-` too,
+///   so a loss is byte-identical to it.
+///
+/// The accepted cost: a loss stated as a magnitude (`lost 4.57%`) or with an en
+/// dash (`–4.57%`) falls back to the templated copy. P3 reads no verbs, so storing
+/// the loss unsigned to admit `lost 4.57%` would admit `gained 4.57%` as well.
+#[must_use]
+pub fn kpi_return_pct(fraction: rust_decimal::Decimal) -> String {
+    let digits = pct_digits(fraction);
+    if fraction.is_sign_negative() && !fraction.is_zero() {
+        format!("-{digits}%")
+    } else {
+        format!("{digits}%")
+    }
+}
+
+/// A max-drawdown FRACTION (`0.0612` = 6.12 %, non-negative by construction) as
+/// the narration's canonical percent string: the unsigned magnitude, `"6.12%"`.
+///
+/// The digits are those of `ui::widgets::num::format_pct_max_dd(fraction × 100)`,
+/// which takes `abs()` as this does. The screen prefixes U+2212, which the
+/// tokenizer drops, so a narration that copies the prompt (`6.12%`) or the screen
+/// (`−6.12%`) passes P3. A drawdown has no sign to protect; a stored `"-6.12%"`
+/// would reject both faithful copies and accept only a string nobody shows. A
+/// hyphenated range (`6.12%-18.72%`) tokenizes its second figure as `-18.72%` and
+/// falls back. (The hand-written ADR-0064 D11 corpus stores signed drawdowns such
+/// as `"-5.00%"`; no producer has ever emitted that form.)
+#[must_use]
+pub fn kpi_drawdown_pct(fraction: rust_decimal::Decimal) -> String {
+    format!("{}%", pct_digits(fraction))
+}
+
+/// `|fraction × 100|`, rounded to 2 dp and padded to exactly two fractional
+/// digits. `Decimal` only (AD-9): no `f64` anywhere in the conversion.
+///
+/// `round_dp` is banker's rounding (`MidpointNearestEven`), the very call
+/// `num::fmt_pct_signed` and `num::format_pct_max_dd` make, so a midpoint rounds
+/// the same way in the prompt and on screen: `0.18365` gives `18.36`, `0.18375`
+/// gives `18.38`. The rounding is symmetric about zero, so taking `abs()` after
+/// it equals the screen's `abs()` before it.
+fn pct_digits(fraction: rust_decimal::Decimal) -> String {
+    let pct = (fraction * rust_decimal::Decimal::ONE_HUNDRED).round_dp(2);
+    pad_fractional_kpi(&pct.abs().to_string(), 2)
+}
+
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1681,5 +1748,239 @@ mod tests {
             FaithfulnessVerdict::Pass,
             "a faithful calmar citation must PASS check_faithful"
         );
+    }
+
+    // ── bug-log `#198`: the percent KPIs carry the leaderboard's digits ───────
+    //
+    // A KPI fraction (`0.1837` = +18.37 %, per `backtest::CandidateKpis`' own
+    // docs) must reach the prompt and the P3 set as `(fraction × 100).round_dp(2)`,
+    // the digits the leaderboard renders. Every expected string below is that
+    // documented arithmetic written out; none is read off the subject. Parity
+    // with the screen's real formatters (`ui::widgets::num`) is pinned in
+    // `crates/ui/tests/narration_kpi_units.rs`, the one target that links both
+    // crates (`agent` cannot depend on `ui`).
+
+    /// The string both builders printed before `#198`: the FRACTION rounded to
+    /// 2 dp with a `%` glued on. The negative control every pin below differs from.
+    fn pre_198_unit(fraction: rust_decimal::Decimal) -> String {
+        format!(
+            "{}%",
+            pad_fractional_kpi(&fraction.round_dp(2).to_string(), 2)
+        )
+    }
+
+    /// A `CandidateKpis` with the two percents given and everything else fixed.
+    fn kpis_with(
+        total_return_pct: rust_decimal::Decimal,
+        max_drawdown: rust_decimal::Decimal,
+    ) -> backtest::CandidateKpis {
+        backtest::CandidateKpis {
+            sharpe: 1.42,
+            sortino: 1.95,
+            calmar: 2.32,
+            total_return_pct,
+            max_drawdown,
+            trade_count: 38,
+            turnover: rust_decimal::Decimal::ZERO,
+        }
+    }
+
+    /// `ActiveWins` facts over `v0.sma` (the winner: +18.37 %, 6.12 % drawdown)
+    /// and `v0.5.rsi` (a loser: -4.57 %, 18.72 %), built by `render_kpi_strings`
+    /// itself, the producer, rather than hand-written strings.
+    fn producer_facts() -> NarrationFacts {
+        use rust_decimal_macros::dec;
+        NarrationFacts {
+            outcome: NarrationOutcome_::ActiveWins,
+            winner_id: SmolStr::new("v0.sma"),
+            candidate_ids: vec![SmolStr::new("v0.sma"), SmolStr::new("v0.5.rsi")],
+            candidate_kpi_strings: vec![
+                render_kpi_strings("v0.sma", &kpis_with(dec!(0.1837), dec!(0.0612))),
+                render_kpi_strings("v0.5.rsi", &kpis_with(dec!(-0.0457), dec!(0.1872))),
+            ],
+            winner_robustness_label: Some(SmolStr::new("robust")),
+            reason_codes: vec![SmolStr::new("highest Sharpe among robust candidates")],
+        }
+    }
+
+    /// `#198`, two-sided: fractions that differ in the units dimension give
+    /// different strings, each the fraction × 100, and each differs from the
+    /// pre-fix string, so a reverted `× 100` cannot pass any case.
+    #[test]
+    fn kpi_return_pct_is_the_fraction_times_100() {
+        use rust_decimal_macros::dec;
+        let cases = [
+            (dec!(0.1837), "18.37%"),
+            (dec!(0.05), "5.00%"),
+            (dec!(0.0041), "0.41%"),
+            (dec!(1.5), "150.00%"),
+            // Midpoints after × 100 (18.365, 18.375). `round_dp` is banker's rounding,
+            // the very call `num::fmt_pct_signed` makes. Rounding a midpoint away from
+            // zero prints 18.37% for the first; toward zero, 18.37% for the second.
+            (dec!(0.18365), "18.36%"),
+            (dec!(0.18375), "18.38%"),
+        ];
+        for (fraction, want) in cases {
+            assert_eq!(kpi_return_pct(fraction), want, "return fraction {fraction}");
+            assert_ne!(
+                pre_198_unit(fraction),
+                want,
+                "case {fraction} must tell a fraction from a percent, or it pins nothing"
+            );
+        }
+    }
+
+    /// `#198`, sign: ASCII `-` on a loss, no `+` on a gain, none on zero. The sign
+    /// is read off the UNROUNDED fraction, as the leaderboard's `fmt_pct_signed`
+    /// reads it.
+    #[test]
+    fn kpi_return_pct_signs_a_loss_with_ascii_minus_and_never_writes_plus() {
+        use rust_decimal_macros::dec;
+        let cases = [
+            (dec!(-0.0457), "-4.57%"),
+            (dec!(-0.2884), "-28.84%"),
+            (rust_decimal::Decimal::ZERO, "0.00%"),
+            // Negative zero is zero: unsigned, as `fmt_pct_signed`'s `is_zero()` arm.
+            (-rust_decimal::Decimal::ZERO, "0.00%"),
+            // A loss that rounds to 0.00 keeps its sign; the screen shows "-0.00%".
+            (dec!(-0.00001), "-0.00%"),
+            // A gain that rounds to 0.00: the screen shows "+0.00%"; P3 strips '+'.
+            (dec!(0.00001), "0.00%"),
+            // A negative midpoint (-0.125): banker's rounding keeps -0.12, as on
+            // screen; rounding away from zero would print "-0.13%".
+            (dec!(-0.00125), "-0.12%"),
+        ];
+        for (fraction, want) in cases {
+            assert_eq!(kpi_return_pct(fraction), want, "return fraction {fraction}");
+        }
+    }
+
+    /// `#198`, drawdown: the unsigned magnitude at the leaderboard's digits
+    /// (`format_pct_max_dd` takes `abs()` too). The negative input is outside the
+    /// engine's contract (`max_drawdown` >= 0); it is here to pin the `abs`.
+    #[test]
+    fn kpi_drawdown_pct_is_the_unsigned_fraction_times_100() {
+        use rust_decimal_macros::dec;
+        let cases = [
+            (dec!(0.0612), "6.12%"),
+            (dec!(0.1872), "18.72%"),
+            (dec!(0.4173), "41.73%"),
+            (rust_decimal::Decimal::ZERO, "0.00%"),
+            (dec!(-0.0612), "6.12%"),
+            // Midpoints (0.125, 0.375): `format_pct_max_dd` rounds with `round_dp`
+            // too. Away from zero prints 0.13% for the first; toward zero, 0.37%.
+            (dec!(0.00125), "0.12%"),
+            (dec!(0.00375), "0.38%"),
+        ];
+        for (fraction, want) in cases {
+            assert_eq!(
+                kpi_drawdown_pct(fraction),
+                want,
+                "drawdown fraction {fraction}"
+            );
+            if !fraction.is_zero() {
+                assert_ne!(
+                    pre_198_unit(fraction),
+                    want,
+                    "case {fraction} must tell the units apart"
+                );
+            }
+        }
+    }
+
+    /// `#198`, the agent-side builder: `render_kpi_strings` routes each percent
+    /// through its own fn. The rows differ in value and sign, so a swapped field,
+    /// a dropped `× 100` or a dropped sign each fail at least one assertion.
+    #[test]
+    fn render_kpi_strings_carries_the_leaderboard_digits_per_field() {
+        use rust_decimal_macros::dec;
+        let win = render_kpi_strings("v0.sma", &kpis_with(dec!(0.1837), dec!(0.0612)));
+        assert_eq!(win.total_return_pct, "18.37%");
+        assert_eq!(win.max_drawdown, "6.12%");
+
+        let loss = render_kpi_strings("v0.5.rsi", &kpis_with(dec!(-0.0457), dec!(0.1872)));
+        assert_eq!(loss.total_return_pct, "-4.57%");
+        assert_eq!(loss.max_drawdown, "18.72%");
+
+        // Out of contract, but it tells the drawdown fn from the return fn.
+        let odd = render_kpi_strings("odd", &kpis_with(dec!(0.01), dec!(-0.0612)));
+        assert_eq!(odd.max_drawdown, "6.12%", "the drawdown is unsigned");
+
+        // The fields `#198` does not touch keep their own forms.
+        assert_eq!(win.sharpe, "1.4200");
+        assert_eq!(win.trade_count, "38");
+    }
+
+    /// `#198`, the symptom in the bug's title: the prompt line the LLM reads.
+    #[test]
+    fn facts_user_turn_tells_the_llm_the_leaderboard_digits() {
+        let turn = build_facts_user_turn(&producer_facts());
+        assert!(
+            turn.contains("Total Return: 18.37% | Max Drawdown: 6.12% | Trades: 38"),
+            "the prompt must carry the screen's +18.37 % and 6.12 %; got:\n{turn}"
+        );
+        assert!(
+            turn.contains("Total Return: -4.57% | Max Drawdown: 18.72%"),
+            "the losing row keeps its sign; got:\n{turn}"
+        );
+        assert!(
+            !turn.contains("Total Return: 0.18%"),
+            "the pre-#198 unit must be gone; got:\n{turn}"
+        );
+    }
+
+    /// `#198`, P3 round trip over PRODUCER-built facts. The figure the screen shows
+    /// passes, with or without its glyphs; the pre-fix figure and every sign
+    /// fabrication are rejected, and so are the forms D12 accepts as a cost.
+    /// `check_faithful` itself is unchanged (ADR-0064 § D2 FROZEN): this pins that
+    /// the strings it is given fit its tokenizer.
+    #[test]
+    fn p3_passes_the_leaderboard_figure_and_rejects_the_fraction_figure() {
+        let facts = producer_facts();
+        let verdict = |figure: &str| {
+            let text = format!(
+                "The strategy v0.sma was crowned the winner of this bake-off. \
+                 One figure from the run was {figure} over the window."
+            );
+            check_faithful(&text, &facts)
+        };
+        let fabricated =
+            |t: &str| FaithfulnessVerdict::Reject(RejectReason::FabricatedNumber(t.to_string()));
+
+        // The winner's return: the prompt's form, and the screen's `+` form.
+        assert_eq!(verdict("18.37%"), FaithfulnessVerdict::Pass);
+        assert_eq!(verdict("+18.37%"), FaithfulnessVerdict::Pass);
+        // The pre-#198 unit, and a flipped sign.
+        assert_eq!(verdict("0.18%"), fabricated("0.18%"));
+        assert_eq!(verdict("-18.37%"), fabricated("-18.37%"));
+        // The loser's return: only the signed form passes.
+        assert_eq!(verdict("-4.57%"), FaithfulnessVerdict::Pass);
+        assert_eq!(verdict("4.57%"), fabricated("4.57%"));
+        assert_eq!(verdict("+4.57%"), fabricated("+4.57%"));
+        assert_eq!(verdict("\u{2212}4.57%"), fabricated("4.57%"));
+        // The accepted cost (ADR-0064 D12): an en-dash loss falls back too.
+        assert_eq!(verdict("\u{2013}4.57%"), fabricated("4.57%"));
+        // The drawdown: the prompt's form and the screen's U+2212 form pass. An
+        // ASCII-signed one falls back: the LLM is never shown it, though the
+        // hand-written D11 corpus models a faithful drawdown that way (D12's
+        // "Known divergence"). So does a hyphenated range of two drawdowns.
+        assert_eq!(verdict("6.12%"), FaithfulnessVerdict::Pass);
+        assert_eq!(verdict("\u{2212}6.12%"), FaithfulnessVerdict::Pass);
+        assert_eq!(verdict("-6.12%"), fabricated("-6.12%"));
+        assert_eq!(verdict("6.12%-18.72%"), fabricated("-18.72%"));
+    }
+
+    /// `#198`: the faithful fake's text (`build_faithful_text`, what
+    /// `FaithfulFakeProvider` returns) over producer-built facts cites the new
+    /// strings verbatim and still passes, so the `Ready` path is intact.
+    #[test]
+    fn faithful_text_over_producer_facts_passes() {
+        let facts = producer_facts();
+        let text = build_faithful_text(&facts);
+        assert!(
+            text.contains("total return 18.37%, max drawdown 6.12%"),
+            "the faithful text cites the leaderboard's digits; got:\n{text}"
+        );
+        assert_eq!(check_faithful(&text, &facts), FaithfulnessVerdict::Pass);
     }
 }

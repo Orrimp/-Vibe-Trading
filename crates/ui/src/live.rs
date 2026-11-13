@@ -1226,10 +1226,10 @@ pub fn narration_request_from_mirror(
 
     let rec = &mirror.recommendation;
     let candidate_ids: Vec<SmolStr> = mirror.rows.iter().map(|r| r.strategy.clone()).collect();
-    // Canonical KPI strings using the SAME formatters `agent::narration`'s
-    // `render_kpi_strings` uses (4 dp ratios; "{:.2}%"; plain integer) so the P3
-    // exact-string match holds for the four KPIs the mirror carries. Sortino /
-    // Calmar are absent from the mirror (see the doc gap above) → empty string.
+    // Canonical KPI strings in the forms `agent::narration::render_kpi_strings`
+    // emits (4 dp ratios; plain integer) so P3's exact-string match holds. Both
+    // percents go through the agent's own FRACTION × 100 fns, so the two builders
+    // cannot drift apart and the digits are the leaderboard's (bug-log #198).
     let candidate_kpi_strings: Vec<CandidateKpiStrings> = mirror
         .rows
         .iter()
@@ -1238,7 +1238,7 @@ pub fn narration_request_from_mirror(
             sharpe: fmt_ratio4(r.sharpe),
             sortino: fmt_ratio4(r.sortino),
             calmar: fmt_ratio4(r.calmar),
-            total_return_pct: fmt_pct2(r.total_return_pct),
+            total_return_pct: agent::narration::kpi_return_pct(r.total_return_pct),
             max_drawdown: fmt_pct2(r.max_drawdown),
             trade_count: r.trade_count.to_string(),
         })
@@ -1265,9 +1265,9 @@ fn fmt_ratio4(v: f64) -> String {
     pad_fractional_kpi(&d.round_dp(4).to_string(), 4)
 }
 
-/// `"{:.2}%"` percentage formatter — mirrors `render_kpi_strings`' `fmt_pct2`.
+/// The drawdown percent (bug-log #198): `agent::narration::kpi_drawdown_pct`, unsigned.
 fn fmt_pct2(d: Decimal) -> String {
-    format!("{}%", pad_fractional_kpi(&d.round_dp(2).to_string(), 2))
+    agent::narration::kpi_drawdown_pct(d)
 }
 
 /// Pad a decimal string to exactly `places` fractional digits — mirrors
