@@ -27,7 +27,8 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
   - [x] Wave 0: baselines + TrainingLog confirmation. *(2026-11-10; confirmed defect became bug-log `#196`, fixed in `dcce75e2`.)*
   - [x] Wave A: post-v0.2 S1, test-only. *(2026-11-11; 27/27 probes red, see "Wave A results".)*
   - [x] Wave B: executor fidelity, test-only. *(2026-11-12; 40/41 probes red, one survivor B-P41 routed to E1, see "Wave B results".)*
-  - [ ] C1 · C2 · D · E1 · E2 · F (G deferred, decision 4).
+  - [x] Wave D: advisor state machine S2, test-only. *(2026-11-13; D-P1…D-P28 red at their designed assertion; production finding routed as bug-log `#200`, see "Wave D results".)*
+  - [ ] C1 · C2 · E1 · E2 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
 - [ ] Gates: anchors 119/119, spec-lint, clippy, fmt; T-T4 probe evidence in the tester report.
@@ -229,6 +230,39 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
   - `r5x2-B-P*.{summary,log,diff}`, `r5x2-flake.out`, `r5x2-rwlock-measure.out` and `r5x2-final.log`;
   - `closeout/` (the edit log, the diff, the pre-edit snapshots);
   - `orch/` (my green, clippy, flake and probe logs).
+
+**2026-11-12 to 11-13: Wave D results (advisor recipe state machine, S2, test-only). DONE.**
+- **Files.**
+  - NEW `crates/ui/tests/advisor_recipe_state_gating.rs`: 10 tests, driven only through `ui::state::update` plus the `forward_plan_stream_impl` / `narration_outcome_stream_impl` seams.
+  - `crates/ui/tests/promote_swept_config.rs`: un-gated. Its `#![cfg(feature = "fixtures")]` meant CI's default `cargo test -p ui` ran **0** of its tests (measured: `running 0 tests`). It now runs 4. Its tests now go through `update` only; before, they wrote state straight into the model's fields.
+  - **No production edit:** `git diff -- crates/ui/src crates/agent/src` is empty.
+- **Rounds (`wf_63b56ffc-609`, then `wf_672f98f1-bbe`).** Each round had an independent falsifier, and round 1 also had a parallel read-only reviewer.
+  - **Round 1:** the implementer's 10 tests plus D-P11…D-P15; 18 probes, of which 17 went red; 3 review findings.
+  - **Round 2:** fixed those (D-P16…D-P23). Its fresh falsifier measured all 23 designated probes red, and its own extras R2-X1…X3 survived.
+  - **Round 3:** decoupled the fixtures behind R2-X1 and R2-X2, both reachable through `update` (D-P24, D-P25), and measured R2-X3 (below). Its fresh falsifier measured **25/25 designated red at the designed assertion**, with 5× flake green and production equal to HEAD. Two of its three extras survived, R3-X1 and R3-X2.
+- **Orchestrator fix for R3-X1/R3-X2 (decision: two assertions do not need another 5-hour round).** Both mutations are a refused mid-run Run press that rewrites the result (a press that doubles as Cancel and lands `Error`). They passed because round 2 had removed the mid-run "still `Loading`" checks on a "holds by construction" argument. That argument covers only refuse versus accept, and story rows §3 and §4 require `Loading`.
+  - Restored as **D-P26** (`second_bakeoff_request_mid_run_keeps_progress`) and **D-P27** (`sweep_double_run_request_mid_run_keeps_progress`). Both are placed AFTER the bar and run checks, so every earlier probe still fails at its own assertion.
+  - R3-X3 (an Explain guard that forgets `FellBack`) was red at the second `D-P4` site, which no listed probe reached. It is adopted as **D-P28**.
+- **Orchestrator re-check on the final files** (gating `90e796d4…`, promote `aeb2c34c…`):
+  - fmt clean.
+  - `cargo clippy -p ui --test advisor_recipe_state_gating --test promote_swept_config -- -D warnings` clean after `touch` (`Checking ui`).
+  - Green 10/10 and 4/4 after `Compiling ui`.
+  - Five probes applied with my own harness (exact-once replace, `--no-fail-fast`, restore with `cp`, compare with `git show HEAD:`). Every restore was byte-equal to HEAD.
+    - **D-P26:** red at `:910`, "D-P26: a refused Run press mid-run must leave the in-flight run's Loading result".
+    - **D-P27:** red at `:1235`, "D-P27: … mid-sweep …".
+    - **D-P28:** red at `:745`, "D-P4: a re-press of Explain must not clobber the resolved FellBack".
+    - **D-P7:** still red at its own `:901`, "keep the live bar".
+    - **D-P12:** still red at its own `:1226`.
+- **Production finding, measured and routed: bug-log `#200`.** The Lab's "Tune…" button re-opens Tune on another coin without clearing the landed grid. Promote then pairs the old coin's grid parameters and window with the new `tune_coin`. That was R2-X3, measured in round 3 through `update`: `coin=SOLUSDT` with an ETHUSDT grid's params and "2024 H1". `promote_swept_config.rs` records it as a Known residual and pins neither behaviour (AC5).
+- **Deviations, recorded.**
+  - `relayed_plan_resolves_promotion_loading_to_ready` cannot tell the grid's window from the Tune lookback, because they are coupled there. `promote_swept_config.rs` (D-P24) separates them.
+  - Three preconditions read cold defaults that no message can seed (`pending_forward_promotion` is written only by `promote_swept_config` and cleared only by the bin; SMA is the default family). Both module docs say so.
+  - The false production doc on `LeaderboardScreenState::set_progress` is recorded, not edited (production code).
+- **Evidence (scratch):** `/private/tmp/claude-502/-Users-Vitaliy-Schreibmann-Projects-Privat-trading-trading/362d2a09-04ba-4ea6-a7c1-07605f6e187a/scratchpad/wave-d/`
+  - `r1-*`, `r2-*`, `r3-*` probe logs and diffs;
+  - `r3f-flake-*.log`;
+  - `r3-r2x3-measure.log`;
+  - `orch/` (my probes, clippy and green logs).
 
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
@@ -579,3 +613,4 @@ Waves A, B and D touch no production code and are independent; they may run befo
 
 - Wave A (2026-11-11): `crates/ui/tests/forward_narration_relay.rs` (modified), `crates/ui/tests/bakeoff_progress_relay.rs` (modified), `crates/ui/tests/sweep_progress_relay.rs` (NEW). No production file.
 - Wave B (2026-11-12): `crates/ui/tests/recipe_off_runtime_poll.rs` (NEW), `crates/ui/tests/server_time_recipe_stream.rs` (modified: `server_time_stream_impl_emits_at_1_hz_cadence` only). No production file.
+- Wave D (2026-11-13): `crates/ui/tests/advisor_recipe_state_gating.rs` (NEW), `crates/ui/tests/promote_swept_config.rs` (modified: un-gated, tests routed through `update`). No production file.
