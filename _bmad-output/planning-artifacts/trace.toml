@@ -1738,8 +1738,9 @@ state       = "shipped"   # reconciled→feature.md=shipped 2026-07-09 (audit-20
 # (crates/ui/tests/lab_progress_recipe_stream.rs) + `TrailMirrorRecipe`
 # (crates/ui/tests/trail_mirror_recipe_stream.rs); ServerTimeRecipe was
 # deferred because cockpit-activity-status-bar v0.1.0 was concurrently
-# touching crates/ui/src/bin/cockpit_live.rs (where ServerTimeRecipe lives
-# at lines 129-174). With cockpit-activity v0.1.0 SHIPPED 2026-05-26 (commit
+# touching crates/ui/src/bin/cockpit_live.rs (where ServerTimeRecipe lived
+# then, at lines 129-174; story 2-63 Wave C1 moved it into ui::live,
+# crates/ui/src/live.rs, on 2026-11-14). With cockpit-activity v0.1.0 SHIPPED 2026-05-26 (commit
 # chain 4248c00 → 0ff402f → e4f39ed → c1597ec), the carve-out closes.
 #
 # Closes 1 of 3 identified Recipe surfaces under

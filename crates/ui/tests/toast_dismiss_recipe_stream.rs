@@ -2,22 +2,28 @@
 //!
 //! `ui::live::toast_dismiss_stream_impl` (`crates/ui/src/live.rs`) is the
 //! stream `<ToastDismissRecipe as Recipe>::stream` hands to iced: the always-on
-//! ticker that ages toasts out. These tests drive it under
+//! ticker that ages toasts out. The three seam tests drive it under
 //! `#[tokio::test(flavor = "current_thread", start_paused = true)]` with
 //! `tokio::time::advance`, and assert that `Message::ToastTick` messages arrive
 //! at one tick per 500 ms period, exactly: none before a period ends, exactly
 //! one when it ends, and the ticker never stops.
 //!
+//! The Recipe itself is driven too: story 2-63 Wave C1 moved
+//! `ToastDismissRecipe` from the `cockpit_live` bin (which an integration test
+//! cannot link) into `ui::live` as a `pub` struct (`pub struct ToastDismissRecipe {`
+//! in `crates/ui/src/live.rs`), and Wave E1b's
+//! `toast_dismiss_recipe_stream_yields_tick` streams it through
+//! `Recipe::stream` on a paused clock (rows E1-P22 and E1-P23 below). The other
+//! three tests drive the seam its `stream` delegates to,
+//! `toast_dismiss_stream_impl(&self.rt_handle)`.
+//!
 //! ## What this file does not pin
 //!
-//! - **The Recipe wrapper.** Until story 2-63 C1, `ToastDismissRecipe` is
-//!   private to the `cockpit_live` binary (`struct ToastDismissRecipe {` in
-//!   `crates/ui/src/bin/cockpit_live.rs`), and an integration test cannot link
-//!   a bin target. Its `stream` is the one line
-//!   `ui::live::toast_dismiss_stream_impl(&self.rt_handle)`, so a recipe that
-//!   returns some other stream leaves this file green. C1 moves the recipe into
-//!   `ui::live`; Wave E1b then adds `toast_dismiss_recipe_stream_yields_tick`
-//!   to this file (rows E1-P22 and E1-P23 below).
+//! - **The Recipe's `hash`.** No test here hashes the recipe.
+//!   `subscription_batch_inclusion.rs` pins the ids of the batch production's
+//!   `ui::live::subscription_batch` builds, from a TEST ctx (its identity
+//!   tests; the bin's ctx literal stays checked by nothing), and its
+//!   `batched_toast_dismiss_recipe_relays` streams the unit that batch carries.
 //! - **The runtime guard**, `let _guard = rt_handle.enter();`. Every test here
 //!   runs inside a tokio runtime, so deleting the guard is unobservable here:
 //!   Wave B's B-P2 left this file green (measured, rounds 1 and 2).
@@ -32,8 +38,10 @@
 //!   on a paused clock the two stamps are microseconds apart in real time, so
 //!   a constant shift of the stamp stays monotone. It is deleted.
 //!
-//! ## Time-control protocol
+//! ## Time-control protocol (the three seam tests)
 //!
+//! This protocol is the three seam tests' (`stream_yields_toast_tick_every_500ms`,
+//! `toast_period_is_exactly_500ms`, `toast_dismiss_stream_remains_open`).
 //! `tokio::time::interval(500ms)` fires its FIRST tick immediately (at t = 0).
 //! The stream body skips it with the `interval.tick().await` before its loop.
 //! Under paused time:
@@ -58,10 +66,15 @@
 //! 499 ms, one tick at 500 ms), so the rounding is observed, not assumed; the
 //! absence half's red side is E1-P12's to measure.
 //!
+//! The E1b recipe test, `toast_dismiss_recipe_stream_yields_tick`, follows none
+//! of it: no poller task and no `advance`. It polls the Recipe's stream itself
+//! and lets tokio's auto-advance move the paused clock to the next timer
+//! deadline.
+//!
 //! ## Non-vacuity contract (bug-log #66 / story 2-63 AC3)
 //!
-//! Each read is one `try_recv` after the poller has had its turn, and all three
-//! outcomes are told apart: `Ok` (a message, whose kind is checked on the test
+//! In the three seam tests, each read is one `try_recv` after the poller has
+//! had its turn, and all three outcomes are told apart: `Ok` (a message, whose kind is checked on the test
 //! thread), `Empty` (the poller is parked on a live stream) and `Disconnected`
 //! (the stream ENDED). No outcome is accepted as "the poller may not have run
 //! yet": on a paused current-thread runtime the delivery is deterministic. The
@@ -69,6 +82,12 @@
 //! - per period: nothing before 500 ms, and exactly one tick at 500 ms;
 //! - per tick: the tick arrives, and the stream is still live with nothing
 //!   more buffered.
+//!
+//! The E1b recipe test reads no channel. Its first poll, with no time passing,
+//! is a three-way match (`now_or_never`: parked and live, ENDED, or yielded
+//! with no time passing), of which only "parked and live" passes; then it
+//! awaits the first item under a 750 ms timeout that FAILS the test (and an
+//! end fails with its own text).
 //!
 //! ## T-T4 falsification probe table (story 2-63 AC4, Wave E1)
 //!
@@ -88,9 +107,13 @@
 //! recipe-stream files E1 sweeps. B-P41 keeps its Wave B id: it is Wave B's
 //! measured survivor, routed to this file. E1-P12 and E1-P25 edit the same
 //! line, as do E1-P13, B-P41 and E1-P36, and E1-P37 shares E1-P12's: apply one
-//! at a time. Every row except the
-//! E1b ones was MEASURED, by the E1a falsifier or the orchestrator's hand
-//! probes (2026-11-13).
+//! at a time. Every row was MEASURED: the E1a rows by the E1a falsifier or
+//! the orchestrator's hand probes (2026-11-13), the E1b rows (E1-P22, E1-P23;
+//! they share one quoted line, applied in separate runs) by the Wave C2
+//! falsifier (2026-11-14, workflow `wf_a82b74dd-7bb`). That quoted line is
+//! also the quoted line of `subscription_batch_inclusion.rs`'s C2-P20: apply
+//! one at a time. C2-P20 is the EQUIVALENT edit of E1-P22, not the same text
+//! (its NEW spells the item type, `futures::stream::empty::<Message>()`).
 //!
 //! | # | symbol (file) | quoted line today | mutation | expected RED |
 //! |---|---|---|---|---|
@@ -100,8 +123,8 @@
 //! | B-P41 | `ui::live::toast_dismiss_stream_impl`, its `loop {` | `yield Message::ToastTick(Instant::now());` | `loop {` → `for _ in 0..4 {` (the ticker stops after four ticks and the stream ENDS: the toast analogue of B-P38) | `toast_dismiss_stream_remains_open`, at "toast: the stream is still live after tick 4" (the stream ENDED). Wave B measured it a survivor (`recipe_off_runtime_poll` 18/18 and this file 3/3 green, round 6). Any `for _ in 0..N` with 4 <= N <= 7,200 fails at "the stream is still live after tick N", a smaller N earlier; N > 7,200 passes, a stated limit. MEASURED red by the E1a falsifier (as ST-OWN-1), at exactly that text: the Wave B survivor is killed |
 //! | E1-P36 | `ui::live::toast_dismiss_stream_impl`, inside its `loop {` | `yield Message::ToastTick(Instant::now());` | the line duplicated (two ticks per period, the immediate skip untouched) | `toast_period_is_exactly_500ms`, at "toast period 1: exactly one ToastTick at 500 ms" (`an unexpected message was buffered`: the second tick of the period). This is the 'exactly one' side, which no other probe reaches. Also red: `stream_yields_toast_tick_every_500ms` (got 6) and `toast_dismiss_stream_remains_open` ("expected 3 ticks before open-stream check; got 6"). MEASURED (orchestrator hand probe, 2026-11-13) |
 //! | E1-P37 | `ui::live::toast_dismiss_stream_impl` | `tokio::time::interval(Duration::from_millis(500))` | `500` → `700` (Wave B's B-P31, re-run against this version) | `toast_period_is_exactly_500ms`, at "toast period 1: exactly one ToastTick at 500 ms" (`nothing was buffered`: no tick is due by 500 ms). This is the presence side. Also red: `stream_yields_toast_tick_every_500ms` (got 2) and `toast_dismiss_stream_remains_open` ("got 2"). MEASURED (orchestrator hand probe, 2026-11-13) |
-//! | E1-P22 (E1b) | `<ToastDismissRecipe as Recipe>::stream` (`crates/ui/src/bin/cockpit_live.rs` today; `crates/ui/src/live.rs` after C1) | `ui::live::toast_dismiss_stream_impl(&self.rt_handle)` (after C1: `toast_dismiss_stream_impl(&self.rt_handle)`) | → `Box::pin(futures::stream::empty())` | `toast_dismiss_recipe_stream_yields_tick` (E1b: added after C1, not in this file yet), at "toast recipe: `ToastDismissRecipe::stream` returns a live stream" |
-//! | E1-P23 (E1b) | `<ToastDismissRecipe as Recipe>::stream` | as E1-P22 | → `server_time_stream_impl(&self.rt_handle)` (the copy-paste cross-wire C1 makes possible) | `toast_dismiss_recipe_stream_yields_tick` (E1b), at "toast recipe: the first ToastTick arrives within 750 ms (paused clock)" |
+//! | E1-P22 (E1b) | `<ToastDismissRecipe as Recipe>::stream` (`crates/ui/src/live.rs`, since Wave C1) | `toast_dismiss_stream_impl(&self.rt_handle)` (the body's one line) | → `Box::pin(futures::stream::empty())` | `toast_dismiss_recipe_stream_yields_tick`, at "toast recipe: `ToastDismissRecipe::stream` returns a live stream" (its full text: "...: it ENDED at its first poll"). MEASURED (2026-11-14, `wf_a82b74dd-7bb` falsifier): exactly this red; the other three tests call the seam directly and stayed GREEN. Outside this target, MEASURED in the same run: `subscription_batch_inclusion::batched_toast_dismiss_recipe_relays` is red too, at "toast: stream ENDED before its first item" (its C2-P20 is the equivalent edit) |
+//! | E1-P23 (E1b) | `<ToastDismissRecipe as Recipe>::stream` | as E1-P22 | → `server_time_stream_impl(&self.rt_handle)` (the copy-paste cross-wire C1 makes possible) | `toast_dismiss_recipe_stream_yields_tick`, at "toast recipe: the first ToastTick arrives within 750 ms (paused clock)": the cross-wired tick is due at 1 s, so the 750 ms timeout fires first under auto-advance. MEASURED (2026-11-14, `wf_a82b74dd-7bb` falsifier): exactly this red; the other three tests stayed GREEN. Outside this target, MEASURED in the same run: `batched_toast_dismiss_recipe_relays` is red too, at "toast first item: ServerTimeTick(..)" (its 2 s bound lets the 1 s tick arrive) |
 //!
 //! Wave B's other interval probes were MEASURED red in v0.2's version of this
 //! file at its count asserts: B-P29 (1000 ms, round 4), B-P31 (700 ms) and
@@ -119,6 +142,7 @@
 //! | v0.2 C3-T1 | `stream_yields_toast_tick_every_500ms` | three 500 ms advances yield exactly 3 `ToastTick`s in all (a count over 1.5 s: alone, it accepts any period in (375 ms, 500 ms]) |
 //! | E1, replaces v0.2 C3-T2 (`toast_tick_instants_are_monotone`) | `toast_period_is_exactly_500ms` | each of 3 periods, two-sided: nothing after 499 ms, exactly one `ToastTick` at 500 ms |
 //! | v0.2 C3-T3, strict | `toast_dismiss_stream_remains_open` | tick 4 arrives on the 4th advance, then exactly one tick per advance for an hour of paused time (7,200 ticks), and the stream is live after every one |
+//! | E1b | `toast_dismiss_recipe_stream_yields_tick` | the real `<ToastDismissRecipe as Recipe>::stream` (in `ui::live` since Wave C1): live at its first poll, then a `ToastTick` within 750 ms of paused time. It accepts any period up to 750 ms (tokio's `Timeout` polls the inner future before its deadline, so a tick due exactly at 750 ms still arrives); the exact period is `toast_period_is_exactly_500ms`'s |
 //!
 //! `#[cfg(feature = "live")]` gates the whole file since `toast_dismiss_stream_impl`
 //! is only compiled under the `live` feature.
@@ -129,9 +153,10 @@
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
+use iced::advanced::subscription::{Event, EventStream, Recipe};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
-use ui::live::toast_dismiss_stream_impl;
+use ui::live::{ToastDismissRecipe, toast_dismiss_stream_impl};
 use ui::state::Message;
 
 /// The documented period: `toast_dismiss_stream_impl` "Emits
@@ -196,6 +221,12 @@ fn assert_idle(rx: &mut mpsc::Receiver<Message>, what: &str) {
         }
         Ok(msg) => panic!("{what}: an unexpected message was buffered: {msg:?}"),
     }
+}
+
+/// The iced runtime event stream a `Recipe::stream` receives. The ticker
+/// ignores it, so an empty one is faithful.
+fn empty_event_stream() -> EventStream {
+    Box::pin(futures::stream::empty::<Event>())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -352,4 +383,48 @@ async fn toast_dismiss_stream_remains_open() {
             &format!("toast: the stream is still live after tick {k}"),
         );
     }
+}
+
+/// Wave E1b — the real `<ToastDismissRecipe as Recipe>::stream`, moved into
+/// `ui::live` by story 2-63 Wave C1, polled directly on a PAUSED clock (no
+/// poller task: tokio's auto-advance moves the clock).
+///
+/// The first poll, with no time passing, must find the stream LIVE: it takes
+/// the interval's immediate tick (the skip) and parks on the one due at
+/// 500 ms. A body that returns an ended stream fails there (E1-P22). Then the
+/// first item must arrive within 750 ms of paused time and be a `ToastTick`.
+/// A body cross-wired to `server_time_stream_impl` (E1-P23) has its first tick
+/// due at 1 s, so the timeout's 750 ms deadline is the earlier one: tokio
+/// jumps the clock there and the test fails at the timeout.
+///
+/// The other three tests call the seam, `toast_dismiss_stream_impl`, directly;
+/// this is the only test in the file that goes through the `Recipe`.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn toast_dismiss_recipe_stream_yields_tick() {
+    let recipe = Box::new(ToastDismissRecipe {
+        rt_handle: tokio::runtime::Handle::current(),
+    });
+    let mut stream = recipe.stream(empty_event_stream());
+
+    match futures::FutureExt::now_or_never(stream.next()) {
+        None => {}
+        Some(None) => panic!(
+            "toast recipe: `ToastDismissRecipe::stream` returns a live stream: it ENDED at its \
+             first poll"
+        ),
+        Some(Some(msg)) => panic!(
+            "toast recipe: `ToastDismissRecipe::stream` returns a live stream: it yielded with no \
+             time passing: {msg:?}"
+        ),
+    }
+    let first = tokio::time::timeout(Duration::from_millis(750), stream.next())
+        .await
+        .unwrap_or_else(|_| {
+            panic!("toast recipe: the first ToastTick arrives within 750 ms (paused clock)")
+        })
+        .unwrap_or_else(|| panic!("toast recipe: the stream ENDED before its first ToastTick"));
+    assert!(
+        matches!(first, Message::ToastTick(_)),
+        "toast recipe: the first message is a ToastTick: {first:?}"
+    );
 }

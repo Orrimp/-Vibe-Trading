@@ -30,7 +30,8 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
   - [x] Wave D: advisor state machine S2, test-only. *(2026-11-13; D-P1…D-P28 red at their designed assertion; production finding routed as bug-log `#200`, see "Wave D results".)*
   - [x] Wave E1a: AC3 sweep of the seven v0.2 recipe-stream files, test-only. *(2026-11-13; 28/28 listed probes red, the two falsifier survivors fixed or recorded, 8 orchestrator probes red incl. E1-P34…E1-P39; Wave B's survivor B-P41 killed; see "Wave E1a results".)*
   - [x] Wave C1: the shared subscription seam, production + tests. *(2026-11-14, `0ce426cf`; C1-P1…C1-P12 red, the falsifier's two survivors fixed test-only and re-measured red as C1-P13/C1-P15, C1-RES1/RES2 named survivors; bug-log `#203` filed; see "Wave C1 results".)*
-  - [ ] C2 (+ E1b) · E2 · E3 · F (G deferred, decision 4).
+  - [x] Wave C2 (+ E1b): real-batch relays and recipe identity, test-only. *(2026-11-14; C2-P1…C2-P27 and E1-P21…E1-P23 red at their designed assertion over two falsifier passes; the falsifier's two survivors OWN-1/OWN-3 fixed test-only and adopted as C2-P21/C2-P23; see "Wave C2 (+E1b) results".)*
+  - [ ] E2 · E3 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
 - [ ] Gates: anchors 119/119, spec-lint, clippy, fmt; T-T4 probe evidence in the tester report.
@@ -446,6 +447,97 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
   C2's `forward_plan_stays_batched_after_receiver_taken` still adds frame-stability and relay, which the units rows do not.
 - **Orchestrator gate on the final files:** **`scratchpad/c1/gate/gate.sh`, run alone, every step `Compiling ui`/`Checking ui`:** `cargo fmt -p ui -- --check` clean; `cargo clippy -p ui --tests -- -D warnings` green (365 s); `cargo clippy -p ui --bin cockpit --features fixtures -- -D warnings` green; `--test subscription_batch_inclusion` 7/7. **The three hand probes, re-applied by the orchestrator, each red at its designed row:** OWN-1 → "units for a ctx holding a TAKEN bakeoff_progress cell" (14 vs 15); OWN-2 → "Esc press (status Captured) closes the modal: None"; OWN-3m → "Enter press (status Captured) must not close the modal: Some(TapeAuditModalClosed)". Each was restored sha-identical, and the target is 7/7 again after. `cargo check -p ui --no-default-features --features fixtures` green; both bins build. **Full `cargo test -p ui --no-fail-fast`: 1320 passed, 0 failed, 32 ignored over 122 result lines** (6 h 14 min wall; nearly all of it is macOS's first-launch check of each freshly linked test binary, about 2-3 min apiece, not test time). **cockpit-smoke PASS** with startup proven: the 7 s window opened only after the process had used 1.05 s of CPU, it was alive at the window's end, and the log has 0 panic lines. Anchors 119/119; spec-lint 0 violations; ADR registry clean; bug-log schema PASS (`#203` open).
 
+**2026-11-14: Wave C2 (+E1b) results (real-batch relays and recipe identity, test-only). DONE.**
+- **Commit.** The follow-up docs commit records this wave's sha and flips bug-log `#203` to `fixed`, citing it and `0ce426cf`.
+- **What landed (test-only).** The only `crates/ui/src` edits are doc-comment lines in `lab/progress.rs`, `lab/training_log.rs` and `lab/training_subscription.rs` (`comment_only_diff.py`: 0 non-comment lines). `live.rs`, both bins, the modal, `evidence/` and `vendor/` are byte-identical to `fad6fe25`.
+  - **`crates/ui/tests/subscription_batch_inclusion.rs`: 7 → 25 tests.**
+    - **12 relays**, one per unit kind: `batched_{forward_plan,narration_outcome,bakeoff_progress,sweep_progress,lab_progress,training_log,trail,activity,bus,server_time,toast_dismiss}_recipe_relays` and `batched_modal_esc_relays_escape_only`.
+      - Each takes its unit out of `subscription_batch(..)` by a reference id built from an independent recipe, streams it, and asserts the `Message` VARIANT.
+      - Nine also assert a distinctive payload. ServerTime and Toast cannot (their payload is a `now()` stamp), and ModalEsc has none.
+      - The seven relays whose sender the test owns relay a SECOND item while the sender lives and then end on its drop.
+    - **`batched_bakeoff_and_sweep_units_drain_own_cells_{equal,distinct}_salts`.** Both `BakeoffProgressCell`-typed cells are held at once, at salts 7/7 and 7/8. Each unit must empty ITS cell and relay ITS sender's value.
+    - **`forward_plan_stays_batched_after_receiver_taken`**, for the plan and narration cells.
+    - **Identity:** `recipe_ids_are_frame_stable`, `salted_recipe_ids_change_with_salt` (the exact differing set {13, 15, 19, 20}) and `recipe_ids_are_pairwise_distinct` (22 distinct ids at salt 0 and at salt 1).
+    - **T-T4 rows C2-P1…C2-P27.**
+  - **E1b:** `server_time_recipe_stream_yields_tick` and `toast_dismiss_recipe_stream_yields_tick`. Each is the real `Recipe::stream` of a recipe C1 moved into `ui::live`, on a paused clock (rows E1-P21…E1-P23).
+  - **Doc sweeps** (E1a's F3 and C1's "bin-private" finding): `recipe_off_runtime_poll.rs`'s module doc and sibling columns, the `server_time_recipe_stream.rs` and `toast_dismiss_recipe_stream.rs` headers, the three `lab/` doc lines, and the `trace.toml` comment near `:1741`.
+- **The workflows.**
+  - **`wf_a82b74dd-7bb`:** one dev, then a serial falsifier and two read-only reviewers (docs, tests), all on snapshot `c2/final`.
+  - **`wf_be1acf7b-3e7`:** one fixer applied the orchestrator's fix list (T1–T7, D1–D12, new rows C2-P21…C2-P27). A falsifier and a read-only checker followed, on snapshot `c2/final2`.
+  - **The orchestrator** applied the checker's seven lows and the MEASURED labels itself. These were doc lines only, checked comment-only against `c2/final2` (111 lines, 0 non-comment).
+- **Falsifier, pass 1:** C2-P1…C2-P20 and E1-P21…E1-P23 were **23/23 red** at the designed assertion. Each OLD was found once, and each file was restored SHA-identical with `Compiling ui`. Of its own probes, OWN-2 (an arm-level filter on a captured Esc) was killed. **OWN-1 and OWN-3 SURVIVED**, 23/23 green:
+  - **OWN-1:** the Sweep arm drains the bake-off cell whenever that cell is held. No fixture streamed with both cells held. This state is reachable in production. `cockpit_live` sets each cell on its own run request and clears each only on its own completion (`self.bakeoff_progress_rx = None;`, `self.sweep_progress_rx = None;`). A bake-off and a sweep in flight together would therefore race for one take-once receiver.
+  - **OWN-3:** a single-shot plan body. The relays sent one item and dropped the sender, so nothing checked that the stream stays open after an item. `forward_narration_relay` already killed it, so this was a coverage-row overclaim, not a suite gap.
+  - **Fixed test-only** by T1 (the both-cells pair) and T2 (the second item), and adopted as C2-P21 and C2-P23.
+- **Falsifier, pass 2:**
+  - It ran C2-P21…C2-P27, C2-P13 at its new label, C2-P19 and C2-P20 in their E1b targets as well, and B-P34. **11/11 red** at the designed assertion.
+  - OWN-1's and OWN-3's mutants are byte-identical to C2-P21's and C2-P23's. Both are now killed inside this target.
+  - The three unmutated runs were green: 25/25, 4/4, 4/4.
+  - **One under-claim:** C2-P24 also reddens `bakeoff_progress_relay_latest_event_wins_on_state`. Its row now names that red as MEASURED.
+- **Review findings, disposition.**
+  - **(medium) The activity/bus "another bus must not be heard" checks could never fail on the bus dimension**, because the other-bus event has zero receivers. **Fixed (T3):**
+    - they are relabelled as liveness checks, and the inert publishes are removed;
+    - the doc says the positive half pins the ctx-bus wiring and that no check claims two-sided bus isolation;
+    - C2-P13 was re-measured red at the new label.
+  - **(low) Each sibling swap was probed in one direction only.** **Added C2-P26** (the Bakeoff arm builds `SweepProgressRecipe`) **and C2-P27** (the ServerTime arm builds `ToastDismissRecipe`). Both are MEASURED red.
+  - **(low) The training-log relay crosses threads** (its `training-log-bridge` thread). It now waits up to `RELAY_XTHREAD`, 10 s (T4).
+  - **(low) The boot negative checked only the salt-7 id.** The four salted relays also check the boot salt's id, 0 (T5). That check is recorded as a one-sided extra negative, backed by C1's 14-unit boot count.
+  - **(low) The bus-only half of `recipe_ids_are_frame_stable` was built from temporaries.** It is dropped (T6). The 22-unit half covers the bus ids with both batches alive.
+  - **(low) The bus relay depends on the `BUS_CHANNELS` order.** Its positive label now says so (T7). Outside the file, `recipe_off_runtime_poll`'s `BUS_BATCH` table goes red on a reorder.
+  - **(low, D1–D12) Docs.** These covered:
+    - the MEASURED labels and the probe-overlap lists;
+    - "A reference id is never read off the unit under test, except `ModalEsc`'s";
+    - the two stale "Constructed by `cockpit_live.rs::subscription()`" lines in `lab/progress.rs` and `lab/training_log.rs`;
+    - E1b's state under B-P34 in `server_time_recipe_stream.rs`;
+    - the B-P35/B-P36/B-P37 sibling notes.
+  - **(low) The checker's seven lows on pass 2,** applied by the orchestrator:
+    - the "only fixture holding both cells" wording;
+    - the `--test bakeoff_progress_relay` target;
+    - the cross-file probe overlaps (C2-P23/C2-P25 are `forward_narration_relay`'s P1/P4);
+    - five more sibling notes in `recipe_off_runtime_poll.rs` (B-P12, B-P17, B-P18, B-P29, B-P40, REASONED) and its paragraph;
+    - T-ST-1c's "up to 1.5 s of paused time";
+    - the boot-salt check's one-sidedness;
+    - the snapshot gap, checked by SHA instead (`trace.toml` and `training_subscription.rs` equal `c2/final`).
+- **Dev deviations, accepted.**
+  - **The ModalEsc relay is wider than the brief.** It sends two Esc presses, at both statuses, and the non-closing kinds at both statuses. OWN-2 shows the widening earns its keep: the brief's single-Esc unit would have passed.
+  - **Label-prefixed assert texts.** The rows quote them verbatim.
+  - **The identity tests' 22-unit premise reddens extra tests** under C2-P14 and C2-P7. The rows say so.
+  - **The E1b texts** are E1a's quoted texts plus a suffix: ": it ENDED at its first poll" or ": it yielded with no time passing". E1-P22's row was updated in the same edit, as F5 allows.
+  - **`lab/progress.rs` corrected a false claim:** that `ServerTimeRecipe` uses the take-once channel pattern. It holds no receiver.
+- **Bug-log `#203`, the open part.**
+  - C2-P12 (the Sweep arm builds `BakeoffProgressRecipe`) and C2-P26 (its reverse) are MEASURED red.
+  - C2-P19 and C2-P27 cover the ServerTime↔Toast swap, body and arm.
+  - It goes to `fixed` in the follow-up commit.
+- **Story corrections, recorded, not rewritten (planning text).**
+  - **Wave plan row C2 and §5** say "`batched_*_recipe_relays` ×8". There are 12 relays, plus the both-cells pair.
+  - **§5 `recipe_ids_are_pairwise_distinct`** says "11 Bus + 10 others". The batch is 22 units, with ModalEsc the 11th other, and the test asserts it at salt 0 and at salt 1.
+  - **§5 `recipe_ids_are_frame_stable`** compares two whole all-Some batches, index by index, with both alive (`std::ptr::addr_eq` premise).
+  - **§5 `salted_recipe_ids_change_with_salt`** asserts the EXACT differing set {13, 15, 19, 20}, so the other 18 ids must not move.
+  - **Wave plan row C2's `training_log.rs:72`** is `:78` at `fad6fe25`. Cite it by text: `self.salt.hash(state);` in `<TrainingLogRecipe as Recipe>::hash`.
+  - **§5 `forward_plan_stays_batched…`** covers the plan AND the narration cell.
+  - **K3 #2 (§9) is false.** `recipe_ids_are_pairwise_distinct` does NOT cover the static discriminants: every recipe hashes `TypeId::of::<Self>()` first, so deleting any discriminant leaves every test green (by reasoning). Recorded as unobservable through iced ids, not as a gap to fill.
+  - **§0's "Timeouts are always `.expect(..)`"** holds for positive claims only. `assert_silent` accepts a timeout as the PASS of a liveness check.
+  - **E1a F5:** the shipped E1b texts carry the suffixes above.
+- **Residuals, recorded.**
+  - Nothing automated checks the bin's `SubscriptionCtx` literal (C1-RES1, C1-RES2, a swapped salt). The walk runbook catches C1-RES1's class only, and it is not yet walked.
+  - A ModalEsc arm-level filter on mouse, window or touch events would pass unit B, which gets three event kinds.
+  - Bus isolation is not a fault class of `subscription_batch`, and it is not pinned.
+  - **Still REASONED:**
+    - the both-cells tests' extra reds under C2-P5, C2-P8, C2-P11, C2-P12, C1-P2 and C1-P6;
+    - C2-P18's relabelled text;
+    - the boot-salt checks passing under C2-P1…C2-P4, C2-P11, C2-P15 and C2-P16;
+    - the five new sibling notes in `recipe_off_runtime_poll.rs`.
+- **Orchestrator gate on the final files:** **`scratchpad/c2/gate2/gate.sh`, run alone.**
+  - **Scope checks.** The three test files vs `c2/final2`: 111 changed lines, 0 non-comment. `crates/ui/src` vs HEAD: +9 −5, 0 non-comment. `live.rs`, the bins, the modal, `evidence/` and `vendor/` are unchanged.
+  - **Lints and tests.** `cargo fmt -p ui -- --check` is clean. `cargo clippy -p ui --tests -- -D warnings` is green (`Checking ui`, 366 s). The four targets after `Compiling ui` (674 s): `recipe_off_runtime_poll` 18/18, `server_time_recipe_stream` 4/4, `subscription_batch_inclusion` 25/25, `toast_dismiss_recipe_stream` 4/4.
+  - **Two hand probes, re-applied by the orchestrator.**
+    - **C2-P21:** 23 passed, 2 failed, red at "both cells, salts 7/7: the sweep unit took the SWEEP cell's receiver" and at "both cells, salts 7/8: sweep unit: exactly one batched unit carries the reference id" (0 vs 1).
+    - **C2-P26:** 21 passed, 4 failed, red at the three "…: exactly one batched unit carries the reference id" asserts (bake-off unit at 7/7 and at 7/8, `bakeoff_progress`; 0 vs 1 each) and at "all 22 units of the all-Some batch have distinct ids" (21).
+    - Each was restored equal to HEAD. The target was 25/25 again after `Compiling ui`, and 25/25 on a second run.
+  - **Repo gates.** Anchors 119/119, spec-lint 0 violations, the ADR registry clean, and the bug-log schema PASS.
+  - **No full `cargo test -p ui` this wave.** The change is test files plus doc-comment lines, and `clippy --tests` checks every test target. The full suite (6 h+ wall here) runs at Close.
+
+
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
 ### Inventory (AC1)
@@ -734,7 +826,7 @@ The waves mirror v0.2's A-D shape with the same rules:
 | **C1** | **Shared seam** + descriptor S2 | live.rs (variants, `Held`, `SubscriptionBatchInputs`, `_from`, wrapper delegation, `SubscriptionCtx`, `subscription_batch`, moved ServerTime/Toast recipes, comment fixes); journal_transaction_modal.rs `esc_closes_modal`; cockpit_live.rs `subscription()` rewired (delete tail pushes + bin-private recipes); cockpit.rs uses `esc_closes_modal`; NEW subscription_batch_inclusion.rs (legacy pin, matrix, ctx-inputs, units agreement, modal fn tests); delete the 3 superseded v0.2 descriptor files | **YES**, API-additive (Wave C shape) | — | matrix probes (a)-(d); Sweep arm → `none()`; wrapper `forward_plan: Yes`; `inputs()` inner-filter |
 | **C2** | Real-batch S2 + identity, test-only | subscription_batch_inclusion.rs: `batched_*_recipe_relays` ×8, `forward_plan_stays_batched…`, three identity tests | no | C1 | live.rs:1073, :1148, progress.rs:64, training_log.rs:72 salt deletions; :1147 TypeId swap; :126 Bus channel hash; :902 per-instance counter |
 | **D** | State-machine S2, test-only | NEW advisor_recipe_state_gating.rs (§1-§4 S2 rows); drop the `fixtures` gate on promote_swept_config.rs | no | — | state.rs:3997, :3880 (×2), :3851, :3964; leaderboard/state.rs:1264, :1284; tune/screen_state.rs:800, :814 |
-| **E1** | AC3 sweep of v0.2 recipe-stream files, test-only | activity_recipe_stream.rs, trail_mirror_recipe_stream.rs, lab_progress_recipe_stream.rs, server_time_recipe_stream.rs, toast_dismiss_recipe_stream.rs, training_log_recipe_harness.rs, live_subscription_full_bus.rs (Bus dispatch); probe-citation rot → symbol + quoted line | no | **Split 2026-11-13:** E1a depends on Wave B's commit (DONE, see "Wave E1a results"); E1b (2 tests, E1-P21…P23) depends on C1 (moved ServerTime/Toast recipes) and folds into C2's tester pass | live.rs:592; :751-759; :141; :810; training_log.rs:83-88 take-removal; progress.rs:107; **B-P41** (Wave B's measured survivor: `toast_dismiss_stream_impl` `loop {` → `for _ in 0..4 {`; needs a paused-clock toast liveness test) |
+| **E1** | AC3 sweep of v0.2 recipe-stream files, test-only | activity_recipe_stream.rs, trail_mirror_recipe_stream.rs, lab_progress_recipe_stream.rs, server_time_recipe_stream.rs, toast_dismiss_recipe_stream.rs, training_log_recipe_harness.rs, live_subscription_full_bus.rs (Bus dispatch); probe-citation rot → symbol + quoted line | no | **Split 2026-11-13:** E1a depends on Wave B's commit (DONE, see "Wave E1a results"); E1b (2 tests, E1-P21…P23) depends on C1 (moved ServerTime/Toast recipes) and folds into C2's tester pass (DONE with C2, see "Wave C2 (+E1b) results") | live.rs:592; :751-759; :141; :810; training_log.rs:83-88 take-removal; progress.rs:107; **B-P41** (Wave B's measured survivor: `toast_dismiss_stream_impl` `loop {` → `for _ in 0..4 {`; needs a paused-clock toast liveness test) |
 | **E2** | AC3 sweep of the remaining files, test-only (+1 agent test) | cockpit_live_lab_run_smoke.rs (#66 fix), cockpit_audit_aggregator_boot.rs, training_log_state_gating.rs, forward_narration_relay.rs leftovers, cockpit_training_pressed_wiring.rs doc, agent select_arm_survival.rs (+ source docstring) | docstring only (agent) | — | smoke: point at the sample corpus and confirm the test now **runs** (non-zero bars; no SKIPPED line in `--nocapture`); aggregator `fetch_add` |
 | **F** | Surface 1 de-tautologization | runner.rs `run_yahoo_preload_arm` extraction + rewrites of spawn_lab_run_yahoo_harness.rs, lab_runner_ticker_e2e.rs, lab_runner_cancel_e2e.rs | **YES**, extraction (the Binance-arm precedent). The test-only override branch gains a ticker and cancel; the shipped path is identical (passes `None`, cockpit_live.rs:2380). | — (runner.rs only) | sentinel moved after the loop; delete the ticker arm; delete runner.rs:1500 guard; delete the cancel arm; delete `abort()` |
 | **G** (optional) | Agent narration producer | agent runtime.rs `narration_task_loop` extraction + NEW agent test | **YES** (agent crate) | — | §8 |
@@ -798,3 +890,4 @@ Waves A, B and D touch no production code and are independent; they may run befo
 - Wave D (2026-11-13): `crates/ui/tests/advisor_recipe_state_gating.rs` (NEW), `crates/ui/tests/promote_swept_config.rs` (modified: un-gated, tests routed through `update`). No production file.
 - Wave E1a (2026-11-13): `crates/ui/tests/{activity_recipe_stream,trail_mirror_recipe_stream,lab_progress_recipe_stream,server_time_recipe_stream,toast_dismiss_recipe_stream,training_log_recipe_harness,live_subscription_full_bus}.rs` (modified). No production file. The gate finding's one-line test-module lint fix to `crates/ui/src/lab/training_log.rs` is its own commit, `f5c89e19`.
 - Wave C1 (2026-11-14): production `crates/ui/src/live.rs`, `crates/ui/src/widgets/journal_transaction_modal.rs`, `crates/ui/src/bin/cockpit_live.rs`, `crates/ui/src/bin/cockpit.rs` (modified); `crates/ui/tests/subscription_batch_inclusion.rs` (NEW); `crates/ui/tests/cockpit_subscription_server_time_always_batched.rs`, `crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs`, `crates/ui/tests/trail_mirror_subscription_handle_gating.rs` (DELETED, folded into the new file); `_bmad-output/planning-artifacts/trace.toml` (the 3 deleted paths commented out); `docs/dev-notes/bug-log.md` (`#203` filed; `#202`'s two line cites repointed); `docs/runbooks/cockpit-live-subscription-walk.md` (NEW).
+- Wave C2 + E1b (2026-11-14): `crates/ui/tests/{subscription_batch_inclusion,server_time_recipe_stream,toast_dismiss_recipe_stream,recipe_off_runtime_poll}.rs` (modified); doc-comment lines only in `crates/ui/src/lab/{progress,training_log,training_subscription}.rs`; `_bmad-output/planning-artifacts/trace.toml` (one comment). No production behaviour change.

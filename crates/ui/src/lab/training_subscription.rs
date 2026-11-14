@@ -29,7 +29,8 @@
 //! a reference to the tokio time driver at construction; subsequent `tick()`
 //! calls do not need the thread-local context.
 //!
-//! See also: `ServerTimeRecipe` in `crates/ui/src/bin/cockpit_live.rs`.
+//! See also: `ServerTimeRecipe` in `crates/ui/src/live.rs` (moved there from
+//! `crates/ui/src/bin/cockpit_live.rs` by story 2-63 Wave C1).
 
 use std::hash::Hash;
 use std::sync::Arc;

@@ -20,8 +20,11 @@
 //!
 //! The receiver is stored in `Arc<Mutex<Option<Receiver<Progress>>>>` on
 //! `AppState`. The `LabProgressRecipe` takes ownership of the `Receiver`
-//! in `stream()` via `.take()`. This is the same pattern used by
-//! `ServerTimeRecipe` in `cockpit_live.rs`.
+//! in `stream()` via `.take()`. The `ui::live` cell recipes (`ForwardPlanRecipe`
+//! and its siblings) mirror this take-once ownership. `ServerTimeRecipe`
+//! (`crates/ui/src/live.rs` since story 2-63 Wave C1; private to
+//! `cockpit_live.rs` before) holds no receiver: it shares only the K8 guard
+//! discipline above.
 //!
 //! lab-end-to-end-v2 T-AR-6 / R7.3-R7.4 / Wave D-4.
 
@@ -44,7 +47,7 @@ mod live_recipe {
     /// Iced `Recipe` that reads progress events from the in-flight backtest
     /// and emits them as `Message::LabRunProgress(Progress)`.
     ///
-    /// Constructed by `cockpit_live.rs::subscription()` when `lab_progress_rx`
+    /// Batched by `ui::live::subscription_batch` while `SubscriptionCtx::lab_progress`
     /// is `Some`.  Each `LabRunRequested` bumps `salt` so iced sees a new
     /// identity and constructs a new `stream()`.
     pub struct LabProgressRecipe {

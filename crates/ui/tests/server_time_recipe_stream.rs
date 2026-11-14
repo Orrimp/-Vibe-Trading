@@ -1,19 +1,21 @@
 //! Subscription-pipe tests for the server-time stream, the status-bar clock's
 //! 1 Hz ticker: `ui::live::server_time_stream_impl` (`crates/ui/src/live.rs`),
-//! the whole body of the bin's `ServerTimeRecipe::stream`. Closes the Wave 1
-//! carve-out from `subscription-pipe-server-time-template v0.1.0`.
+//! the whole body of `<ui::live::ServerTimeRecipe as Recipe>::stream`. Closes
+//! the Wave 1 carve-out from `subscription-pipe-server-time-template v0.1.0`.
 //!
-//! ## What this file drives, and what it cannot reach
+//! ## What this file drives, and what it does not pin
 //!
-//! `ServerTimeRecipe` is private to the `cockpit_live` bin
-//! (`struct ServerTimeRecipe {` in `crates/ui/src/bin/cockpit_live.rs`), and an
-//! integration test cannot link a bin target, so no test here builds the
-//! Recipe. Its `stream()` is one line,
-//! `ui::live::server_time_stream_impl(&self.rt_handle)`, and these tests drive
-//! that seam. The delegation itself and the Recipe's `hash` are a residual
-//! here, not a claim. Story 2-63 Wave C1 moves the recipe into `ui::live`;
-//! Wave E1b then adds `server_time_recipe_stream_yields_tick`, which streams
-//! `ui::live::ServerTimeRecipe` through `Recipe::stream` (probe E1-P21).
+//! Until story 2-63 Wave C1, `ServerTimeRecipe` was private to the
+//! `cockpit_live` bin, which an integration test cannot link. C1 moved it into
+//! `ui::live` as a `pub` struct (`pub struct ServerTimeRecipe {` in
+//! `crates/ui/src/live.rs`). T-ST-1a..T-ST-1c drive the seam its `stream()`
+//! delegates to, `server_time_stream_impl(&self.rt_handle)`; Wave E1b's
+//! `server_time_recipe_stream_yields_tick` streams the Recipe itself, through
+//! `Recipe::stream`, on a paused clock (probe E1-P21). The Recipe's `hash` is
+//! not pinned here: `subscription_batch_inclusion.rs` pins the ids of the
+//! batch production's `ui::live::subscription_batch` builds, from a TEST ctx
+//! (its identity tests; the bin's ctx literal stays checked by nothing), and
+//! its `batched_server_time_recipe_relays` streams the unit that batch carries.
 //!
 //! Wave E1a deleted T-ST-1d (`server_time_stream_impl_recipe_path_end_to_end`).
 //! Its doc said it exercised the full `Recipe::stream()` path, but it called
@@ -34,16 +36,21 @@
 //! | T-ST-1a | `server_time_stream_impl_yields_tick` | The first message is a `ServerTimeTick`, within 1.5 s of real time. Accepts any interval under 1.5 s and an unskipped immediate tick, by design |
 //! | T-ST-1b | `server_time_stream_impl_emits_at_1_hz_cadence` (Wave B) | The exact 1 s cadence on a paused clock: every gap, for an hour of paused time (3,600 ticks), each stamp fresh (two-sided), and the stream still live afterwards. The only test here that pins the period and the skip of the immediate tick |
 //! | T-ST-1c | `server_time_stream_impl_stream_remains_open` | The clock never freezes and the stream never ends: 7,200 paused ticks (twice T-ST-1b's horizon), each within 1.5 s of paused time |
-//! | (E1b) | `server_time_recipe_stream_yields_tick` | After Wave C1: the real `Recipe::stream` yields a tick. Not in this file yet |
+//! | E1b | `server_time_recipe_stream_yields_tick` | The real `<ServerTimeRecipe as Recipe>::stream` (in `ui::live` since Wave C1), on a paused clock: live at its first poll (neither ended nor a tick with no time passing), then a `ServerTimeTick` within 1.5 s of paused time. It accepts any interval up to 1.5 s (tokio's `Timeout` polls the inner future before its deadline, so a tick due exactly at 1.5 s still arrives); the period is T-ST-1b's |
 //!
 //! ## Non-vacuity contract (bug-log #66 / story 2-63 AC3)
 //!
 //! Every tick is awaited under a timeout that FAILS the test: no timeout is
 //! ever accepted as "the stream is still open". A stream END (`None`) fails
-//! too, with its own message. The paused-clock tests (T-ST-1b, T-ST-1c) cost
-//! real time only for their polls: whenever the runtime is idle tokio jumps
-//! the paused clock to the next timer deadline, so a tick that never comes
-//! shows up as the timeout's deadline firing, not as a slow test.
+//! too, with its own message. The paused-clock seam tests (T-ST-1b, T-ST-1c)
+//! cost real time only for their polls: whenever the runtime is idle tokio
+//! jumps the paused clock to the next timer deadline, so a tick that never
+//! comes shows up as the timeout's deadline firing, not as a slow test. The
+//! E1b recipe test is paused-clock too, and adds one check before its wait:
+//! its first poll, with no time passing, is a three-way match (`now_or_never`:
+//! parked and live, ENDED, or yielded with no time passing), of which only
+//! "parked and live" passes; then its 1.5 s timeout FAILS the test, like every
+//! other wait here.
 //!
 //! ## T-T4 falsification probe table (story 2-63 AC4, Wave E1)
 //!
@@ -60,17 +67,28 @@
 //!    `Compiling ui` and the file's SHA-256 equals the pre-probe one.
 //!
 //! Probe ids are the Wave E1 series, shared across the seven v0.2
-//! recipe-stream files E1 sweeps; this file's rows are E1-P11 and E1-P24.
-//! Both edit `crates/ui/src/live.rs`. E1-P21 (Wave E1b, after Wave C1) is not
-//! a row yet: the line it edits does not exist in `ui::live` until C1 moves
-//! the recipe there.
+//! recipe-stream files E1 sweeps; this file's rows are E1-P11, E1-P24 and
+//! E1-P21 (Wave E1b, after Wave C1 moved the recipe into `ui::live`). All three
+//! edit `crates/ui/src/live.rs`. E1-P11 and E1-P24 were MEASURED by the E1a
+//! falsifier; E1-P21 by the Wave C2 falsifier (2026-11-14, workflow
+//! `wf_a82b74dd-7bb`).
+//!
+//! E1-P21's quoted line is also the quoted line of
+//! `subscription_batch_inclusion.rs`'s C2-P19, a different edit of it: apply
+//! one at a time. C2-P19 (the body cross-wired to `toast_dismiss_stream_impl`)
+//! is red HERE too, MEASURED in that same run: `server_time_recipe_stream_yields_tick`,
+//! at "server time recipe: the first message is a ServerTimeTick: ToastTick(..)"
+//! (the swapped body ticks at 500 ms of paused time); T-ST-1a..T-ST-1c call the
+//! seam and stay green.
 //!
 //! | # | symbol (file) | quoted line today | mutation | expected RED |
 //! |---|---|---|---|---|
 //! | E1-P11 | `ui::live::server_time_stream_impl` (`crates/ui/src/live.rs`) | `loop {` (the line above `interval.tick().await;` and `yield Message::ServerTimeTick(Timestamp::now());`) | → `for _ in 0..3600 {`, and `std::future::pending::<()>().await;` after the loop's closing brace (the clock FREEZES, without ending, right after T-ST-1b's 3,600th tick) | `server_time_stream_impl_stream_remains_open`, at "server time: tick 3601 of 7200 did not arrive within 1.5 s of paused time (the clock froze)". MEASURED by the E1a falsifier: exactly this red, T-ST-1b and T-ST-1a GREEN, and Wave B's file 18/18 GREEN |
 //! | E1-P24 | `ui::live::server_time_stream_impl` | `tokio::time::interval(Duration::from_secs(1))` | → `tokio::time::interval(Duration::from_millis(100))` (Wave B's B-P14, re-run as a regression guard: E1's edits to this file did not weaken T-ST-1b or its helper) | `server_time_stream_impl_emits_at_1_hz_cadence`, at "on a paused clock every gap (`stream()` to tick 1, then tick to tick) must be exactly the documented period, 1s" (`left: [100ms, 100ms, 100ms, 100ms]`). Outside this target, MEASURED by the E1a falsifier: Wave B's `recipe_off_runtime_poll::server_time_stream_ticks_off_runtime` is red too, at "ServerTimeTick #1: yielded ~102ms after `stream()` began, expected no earlier than 1s" (B-P14's own Wave B primary) |
+//! | E1-P21 (E1b) | `<ServerTimeRecipe as Recipe>::stream` (`crates/ui/src/live.rs`) | `server_time_stream_impl(&self.rt_handle)` (the body's one line) | → `Box::pin(futures::stream::empty())` (the clock recipe returns an ended stream) | `server_time_recipe_stream_yields_tick`, at "server time recipe: `ServerTimeRecipe::stream` returns a live stream: it ENDED at its first poll". MEASURED (2026-11-14, `wf_a82b74dd-7bb` falsifier): exactly this red, T-ST-1a..T-ST-1c GREEN. Outside this target, MEASURED in the same run: `subscription_batch_inclusion::batched_server_time_recipe_relays` is red too, at "server-time: stream ENDED before its first item" |
 //!
-//! What each probe leaves GREEN, and why (reasoned; the falsifier measures):
+//! What each probe leaves GREEN, and why (reasoned; the E1a falsifier measured
+//! E1-P11's and E1-P24's, the Wave C2 falsifier E1-P21's):
 //! - E1-P11: T-ST-1b takes exactly its 3,600 ticks and then polls once with
 //!   no time passing. A stream parked on `pending()` answers that poll
 //!   `Pending`, just as a live one waiting for its next tick does, so T-ST-1b
@@ -78,9 +96,13 @@
 //!   B's `server_time_stream_ticks_off_runtime` takes two ticks and then finds
 //!   the stream live. So the red is attributable to T-ST-1c without a
 //!   `--skip` filter. This is why T-ST-1c reads 7,200 ticks: at T-ST-1b's own
-//!   horizon it would pin nothing T-ST-1b does not.
-//! - E1-P24: T-ST-1a and T-ST-1c accept any interval under 1.5 s, by design
-//!   (the period is T-ST-1b's), so both stay green.
+//!   horizon it would pin nothing T-ST-1b does not. The E1b recipe test takes
+//!   one tick, so it stays green too.
+//! - E1-P24: T-ST-1a accepts any interval under 1.5 s of real time, and
+//!   T-ST-1c and the E1b recipe test any up to 1.5 s of paused time, by design
+//!   (the period is T-ST-1b's), so all three stay green at 100 ms.
+//! - E1-P21: T-ST-1a..T-ST-1c call `server_time_stream_impl` directly, never
+//!   the Recipe, so all three stay green.
 //!
 //! Wave B's own probes on T-ST-1b (B-P13, B-P14, B-P27, B-P28, B-P30, B-P34,
 //! B-P38, B-P39) are tabled with their round-6 measurements in
@@ -90,9 +112,19 @@
 //! described the old T-ST-1c. Under E1a's T-ST-1c, three of them are expected
 //! red there as well (reasoned, not measured): B-P28 (2 s) and B-P39 (1.6 s)
 //! at tick 1's 1.5 s timeout, B-P38 (an end after four ticks) at "server time:
-//! the stream ENDED before tick 5".
+//! the stream ENDED before tick 5". E1b's recipe test is expected red under
+//! B-P28 and B-P39 as well, at "server time recipe: the first ServerTimeTick
+//! arrives within 1.5 s (paused clock)", and green under B-P38 (it takes one
+//! tick); reasoned, not measured. Under B-P34 (the skip of the immediate tick,
+//! `interval.tick().await;`, deleted) E1b's recipe test is expected red at
+//! "server time recipe: `ServerTimeRecipe::stream` returns a live stream: it
+//! yielded with no time passing": the unskipped immediate tick completes inside
+//! its first poll. MEASURED (2026-11-14, by the falsifier of workflow
+//! `wf_be1acf7b-3e7`): red at exactly that text, with T-ST-1b; T-ST-1a and
+//! T-ST-1c green.
 //!
-//! subscription-pipe-server-time-template v0.1.0 Wave A; story 2-63 Waves B and E1a.
+//! subscription-pipe-server-time-template v0.1.0 Wave A; story 2-63 Waves B, E1a
+//! and E1b.
 
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -100,9 +132,10 @@
 use std::time::Duration;
 
 use futures::StreamExt;
+use iced::advanced::subscription::{Event, EventStream, Recipe};
 use tokio::time::timeout;
 
-use ui::live::server_time_stream_impl;
+use ui::live::{ServerTimeRecipe, server_time_stream_impl};
 use ui::state::Message;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -114,6 +147,12 @@ fn unwrap_tick(msg: Message) -> trading_core::Timestamp {
         Message::ServerTimeTick(ts) => ts,
         other => panic!("expected ServerTimeTick, got {other:?}"),
     }
+}
+
+/// The iced runtime event stream a `Recipe::stream` receives. The clock
+/// ignores it, so an empty one is faithful.
+fn empty_event_stream() -> EventStream {
+    Box::pin(futures::stream::empty::<Event>())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -173,9 +212,10 @@ async fn server_time_stream_impl_yields_tick() {
 /// runs on the real clock and pins only the window `[1 s, 1.5 s)`. This test
 /// is also the only one in THIS file that pins the period: the others wait up
 /// to 1.5 s for each tick (T-ST-1a of real time; T-ST-1c, since story 2-63
-/// Wave E1a, of paused time), so they accept any interval under 1.5 s (round
-/// 5 measured the three real-time siblings of that revision GREEN under a
-/// 1.4 s interval, B-P30, and under an unskipped immediate tick, B-P34). That
+/// Wave E1a, of paused time), so they accept any interval under 1.5 s of
+/// real time or up to 1.5 s of paused time (round 5 measured the three
+/// real-time siblings of that revision GREEN under a 1.4 s interval, B-P30,
+/// and under an unskipped immediate tick, B-P34). That
 /// is by design (story 2-63, round-5 decision 1): the period is pinned here.
 ///
 /// ## Stamps: freshness, not monotonicity
@@ -337,9 +377,9 @@ async fn server_time_stream_impl_emits_at_1_hz_cadence() {
 ///
 /// ## What it does not pin
 ///
-/// The period. Any interval under 1.5 s passes (a 100 ms one, E1-P24, by
-/// design), and so does an unskipped immediate tick. T-ST-1b pins both, so no
-/// skip check is repeated here.
+/// The period. Any interval up to 1.5 s of paused time passes (a 100 ms one,
+/// E1-P24, by design), and so does an unskipped immediate tick. T-ST-1b pins
+/// both, so no skip check is repeated here.
 ///
 /// The previous revision read three real-time ticks and then accepted a
 /// 200 ms timeout as "still open", so a ticker that parked after its third
@@ -370,4 +410,51 @@ async fn server_time_stream_impl_stream_remains_open() {
             "server time: tick {k} of {OPEN_TICKS} is not a ServerTimeTick: {msg:?}"
         );
     }
+}
+
+/// Wave E1b — the real `<ServerTimeRecipe as Recipe>::stream`, moved into
+/// `ui::live` by story 2-63 Wave C1, on a PAUSED clock.
+///
+/// The first poll, with no time passing, must find the stream LIVE: it takes
+/// the interval's immediate tick (the skip) and parks on the one due at 1 s. A
+/// body that returns an ended stream fails there (E1-P21), and so does one that
+/// yields with no time passing. Then the first item must be a `ServerTimeTick`
+/// within 1.5 s of paused time: tokio jumps the clock to the interval's 1 s
+/// deadline, which comes before the timeout's. A body cross-wired to the toast
+/// helper yields a `ToastTick` at 500 ms and fails the variant check.
+///
+/// T-ST-1a..T-ST-1c call the seam, `server_time_stream_impl`, directly; this
+/// is the only test in the file that goes through the `Recipe`.
+#[tokio::test(start_paused = true)]
+async fn server_time_recipe_stream_yields_tick() {
+    let recipe = Box::new(ServerTimeRecipe {
+        rt_handle: tokio::runtime::Handle::current(),
+    });
+    let mut stream = recipe.stream(empty_event_stream());
+
+    match futures::FutureExt::now_or_never(stream.next()) {
+        None => {}
+        Some(None) => panic!(
+            "server time recipe: `ServerTimeRecipe::stream` returns a live stream: it ENDED at \
+             its first poll"
+        ),
+        Some(Some(msg)) => panic!(
+            "server time recipe: `ServerTimeRecipe::stream` returns a live stream: it yielded \
+             with no time passing: {msg:?}"
+        ),
+    }
+    let first = timeout(Duration::from_millis(1500), stream.next())
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "server time recipe: the first ServerTimeTick arrives within 1.5 s (paused clock)"
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!("server time recipe: the stream ENDED before its first ServerTimeTick")
+        });
+    assert!(
+        matches!(first, Message::ServerTimeTick(_)),
+        "server time recipe: the first message is a ServerTimeTick: {first:?}"
+    );
 }

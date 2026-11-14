@@ -58,7 +58,7 @@ mod live_recipe {
     /// Iced `Recipe` that reads training log lines from the in-flight training
     /// subprocess and emits them as `Message::TrainingLogLine(line)`.
     ///
-    /// Constructed by `cockpit_live.rs::subscription()` when `training_log_rx`
+    /// Batched by `ui::live::subscription_batch` while `SubscriptionCtx::training_log`
     /// is `Some`. Each `TrainingPressed` bumps `salt` so iced sees a new
     /// identity and constructs a new `stream()`.
     pub struct TrainingLogRecipe {
