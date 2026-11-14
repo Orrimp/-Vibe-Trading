@@ -29,7 +29,7 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
   - [x] Wave B: executor fidelity, test-only. *(2026-11-12; 40/41 probes red, one survivor B-P41 routed to E1, see "Wave B results".)*
   - [x] Wave D: advisor state machine S2, test-only. *(2026-11-13; D-P1…D-P28 red at their designed assertion; production finding routed as bug-log `#200`, see "Wave D results".)*
   - [x] Wave E1a: AC3 sweep of the seven v0.2 recipe-stream files, test-only. *(2026-11-13; 28/28 listed probes red, the two falsifier survivors fixed or recorded, 8 orchestrator probes red incl. E1-P34…E1-P39; Wave B's survivor B-P41 killed; see "Wave E1a results".)*
-  - [x] Wave C1: the shared subscription seam, production + tests. *(2026-11-14; C1-P1…C1-P12 red, the falsifier's two survivors fixed test-only and re-measured red as C1-P13/C1-P15, C1-RES1/RES2 named survivors; bug-log `#203` filed; see "Wave C1 results".)*
+  - [x] Wave C1: the shared subscription seam, production + tests. *(2026-11-14, `0ce426cf`; C1-P1…C1-P12 red, the falsifier's two survivors fixed test-only and re-measured red as C1-P13/C1-P15, C1-RES1/RES2 named survivors; bug-log `#203` filed; see "Wave C1 results".)*
   - [ ] C2 (+ E1b) · E2 · E3 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
@@ -368,6 +368,7 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
 
 
 **2026-11-14: Wave C1 results (the shared subscription seam, production + tests). DONE.**
+- **Landed in `0ce426cf`.** Bug-log `#203` was filed `open` there and is `partial-fix` citing it since the follow-up docs commit. It goes to `fixed` with C2.
 - **What landed (one diff; API-additive).**
   - **`crates/ui/src/live.rs`:**
     - five new `SubscriptionVariant`s (`ForwardPlan`, `NarrationOutcome`, `BakeoffProgress`, `SweepProgress`, `ModalEsc`), with `Held` and `SubscriptionBatchInputs`;

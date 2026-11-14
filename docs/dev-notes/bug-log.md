@@ -10356,12 +10356,14 @@ The pin, through `update`:
 
 ### `#203` — the v0.2 subscription-batch gates could not fail: no test ran a conversion arm, and the trail file's bin-arm probe edited code no test executes
 
-**Status**: **`open`** 2026-11-14. Story 2-63's AC3 audit found it (inventory workflow
+**Status**: **`partial-fix` 2026-11-14 — `0ce426cf`** (story 2-63 Wave C1: the conversion moved
+into the lib and the new pins landed; three of the four divergences below are now caught). Filed
+`open` in that same commit. Story 2-63's AC3 audit found it (inventory workflow
 `wf_23e8261b-a57`, 2026-11-10, read-only, at HEAD `2d2d95be`). It was re-read at HEAD `1a4d876c` by
 the Wave C1 brief and its critique. No product defect was found: the shipped batch was right. What
-was wrong is that the gates claimed to guard it could not go red. Wave C1 closes three of the four
-divergences listed below. The fourth, an arm building the sibling recipe, waits for Wave C2's relay
-and identity tests. Anchor-impacting: **no** (subscriptions write no report).
+was wrong is that the gates claimed to guard it could not go red. The fourth divergence, an arm
+building the sibling recipe, waits for Wave C2's relay and identity tests; the entry goes to
+`fixed` only with C2. Anchor-impacting: **no** (subscriptions write no report).
 
 **The code.** There were two claims.
 
