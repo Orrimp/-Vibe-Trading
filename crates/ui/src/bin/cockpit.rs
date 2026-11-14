@@ -335,12 +335,13 @@ impl App {
     ///   (T1509). `MarketHealth` is NOT subscribed here — fixtures boot
     ///   with `Fresh` per-venue state and never update.
     /// - The retired `live` arm now lives in `cockpit_live` (T908).
-    /// - When the tape-row → audit modal is open, batch in an
-    ///   `iced::event::listen_with` recipe that translates the keyboard
-    ///   `Esc` press into `Message::TapeAuditModalClosed` (Q6 —
-    ///   modal-open-gated subscription). Other keys are not consumed
-    ///   (the fixtures cockpit has no keyboard navigation today, so
-    ///   nothing leaks).
+    /// - When the tape-row → audit modal is open, batch in
+    ///   `iced::event::listen_with(journal_transaction_modal::esc_closes_modal)`,
+    ///   which translates the keyboard `Esc` press into
+    ///   `Message::TapeAuditModalClosed` (Q6 — modal-open-gated subscription;
+    ///   the same fn `cockpit_live` batches through `ui::live::subscription_batch`).
+    ///   Other keys are not consumed (the fixtures cockpit has no keyboard
+    ///   navigation today, so nothing leaks).
     fn subscription(&self) -> iced::Subscription<Message> {
         // 1 Hz server-time tick — drives the status-bar clock (T1509).
         // Use iced::advanced::subscription::from_recipe with a custom Recipe
@@ -351,13 +352,7 @@ impl App {
         if self.cockpit.tape_audit_modal.is_some() {
             iced::Subscription::batch(vec![
                 time_sub,
-                iced::event::listen_with(|event, _status, _window| match event {
-                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
-                        ..
-                    }) => Some(Message::TapeAuditModalClosed),
-                    _ => None,
-                }),
+                iced::event::listen_with(journal_transaction_modal::esc_closes_modal),
             ])
         } else {
             time_sub

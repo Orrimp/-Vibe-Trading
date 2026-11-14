@@ -710,7 +710,7 @@ fn trail_stage_to_ui(stage: &reflection::trail_mirror::TrailStage) -> TrailStage
 /// iced `Recipe` that subscribes to the activity broadcast channel and
 /// emits `Message::ActivityEventReceived` messages into the cockpit loop.
 ///
-/// Wired into the `Subscription::batch` call in `cockpit_live::subscription()`.
+/// Always in the batch [`subscription_batch`] builds (`SubscriptionVariant::Activity`).
 pub struct ActivityRecipe {
     pub bus: Arc<EventBus>,
 }
@@ -883,7 +883,7 @@ pub fn toast_dismiss_stream_impl(
 /// iced `Recipe` that drains the F6 forward-plan return channel and emits
 /// `Message::ForwardPlanReceived` per `agent::ForwardPlan`.
 ///
-/// Constructed by `cockpit_live::subscription()` when `plan_rx` is `Some`.
+/// Batched by [`subscription_batch`] while `SubscriptionCtx::forward_plan` is `Some`.
 /// Mirrors `LabProgressRecipe`'s tokio-mpsc-in-`Mutex` ownership: the receiver
 /// is `take()`-n from the `Arc<Mutex<Option<_>>>` in `stream()`.
 pub struct ForwardPlanRecipe {
@@ -958,7 +958,7 @@ pub fn forward_plan_stream_impl(
 /// iced `Recipe` that drains the F9 narration-outcome return channel and emits
 /// `Message::BakeoffNarrationCompleted` per `agent::NarrationOutcome`.
 ///
-/// Constructed by `cockpit_live::subscription()` when `narration_outcome_rx` is
+/// Batched by [`subscription_batch`] while `SubscriptionCtx::narration_outcome` is
 /// `Some`. Same tokio-mpsc-in-`Mutex` ownership as `ForwardPlanRecipe`.
 pub struct NarrationOutcomeRecipe {
     pub rt_handle: tokio::runtime::Handle,
@@ -1046,7 +1046,7 @@ pub fn narration_outcome_to_ui(
 /// iced `Recipe` that drains the bake-off candidate-progress return channel and
 /// emits `Message::BakeoffProgress` per `backtest::progress::BakeoffProgress`.
 ///
-/// Constructed by `cockpit_live::subscription()` when `bakeoff_progress_rx` is
+/// Batched by [`subscription_batch`] while `SubscriptionCtx::bakeoff_progress` is
 /// `Some`. Same tokio-mpsc-in-`Mutex` ownership + per-run salt as
 /// [`crate::lab::progress::LabProgressRecipe`].
 pub struct BakeoffProgressRecipe {
@@ -1122,7 +1122,7 @@ pub fn bakeoff_progress_stream_impl(
 /// salt — but its stream yields `Message::SweepProgress`, driving the Tune
 /// screen's DETERMINATE progress bar.
 ///
-/// Constructed by `cockpit_live::subscription()` when `sweep_progress_rx` is
+/// Batched by [`subscription_batch`] while `SubscriptionCtx::sweep_progress` is
 /// `Some`. THIS is the wiring whose absence would leave the Tune bar stuck on
 /// the indeterminate spinner.
 pub struct SweepProgressRecipe {
@@ -1298,40 +1298,33 @@ fn reason_code_str(label: crate::leaderboard::ReasonLabel) -> SmolStr {
     }
 }
 
-// ── SubscriptionBatchDescriptor seam (Wave C — ADR-0048 v0.2.0) ─────────────
+// ── SubscriptionBatchDescriptor seam (Wave C — ADR-0048 v0.2.0; story 2-63) ─
 //
-// `build_subscription_batch_descriptor` is the introspectable equivalent of
-// `cockpit_live::subscription()`.  It returns a `Vec<SubscriptionVariant>`
-// listing every recipe that WOULD be included in the iced batch — without
-// constructing any real `iced::Subscription` values.
+// `build_subscription_batch_descriptor_from` returns a `Vec<SubscriptionVariant>`
+// listing every recipe the cockpit's batch includes for one set of inputs,
+// without constructing any `iced::Subscription`. `subscription_batch` (below)
+// turns that same descriptor, variant by variant, into the real batch, and
+// `cockpit_live::subscription()` returns it (story 2-63 Wave C1).
 //
-// Purpose: integration tests can call this function directly and assert
-// membership (`descriptor.contains(&SubscriptionVariant::ServerTime)`) across
-// all `Screen::*` variants, proving each always-on recipe is never
-// accidentally screen-gated in the future.
+// Until Wave C1 the bin converted the descriptor itself and pushed five more
+// recipes outside it, and no test executed a single conversion arm. The v0.2
+// tests asserted descriptor membership only, so a diverging conversion could
+// never turn them red (bug-log `#203`).
 //
-// Production `cockpit_live::subscription()` calls this and converts the
-// result to actual iced subscriptions.  If the conversion and the descriptor
-// diverge, T-D-C2 / T-D-C4 catch it.
+// `crates/ui/tests/subscription_batch_inclusion.rs` now pins the descriptor
+// over all 256 input combinations, `SubscriptionCtx::inputs` field by field,
+// and the batch's unit count per context against written-out literals AND
+// against the descriptor. Its module doc carries the T-T4 probe table, by
+// symbol and quoted line.
 //
-// ## T-T4 falsification probe (C2 + C4)
-//
-// For `ServerTime` (row 6 of D-V0.2.0-3): remove `SubscriptionVariant::ServerTime`
-// from this function's body — the `cockpit_subscription_server_time_always_batched`
-// test's `descriptor.contains(&SubscriptionVariant::ServerTime)` asserts fail.
-//
-// For `ToastDismiss` (row 8 of D-V0.2.0-3): remove `SubscriptionVariant::ToastDismiss`
-// from this function's body — the `cockpit_subscription_toast_dismiss_always_batched`
-// test's `descriptor.contains(&SubscriptionVariant::ToastDismiss)` asserts fail.
-//
-// Restore the removed variant line verbatim after verifying the probe; all tests
-// must then PASS before handoff.
+// The 3-arg `build_subscription_batch_descriptor` stays for API compatibility
+// (story 2-63 decision 5) and delegates; production no longer calls it.
 
 /// Identifies one recipe variant in the iced subscription batch.
 ///
-/// Each variant corresponds to one `Recipe` impl in `cockpit_live.rs` or
-/// `ui::live`.  Tests assert on membership to verify that always-on recipes
-/// (e.g. `ServerTime`, `ToastDismiss`) are never accidentally screen-gated.
+/// Each variant is one arm of the private, exhaustive `variant_subscription`: a
+/// `Recipe` in `ui::live` or `ui::lab`, `Bus`'s 11-unit batch, or (`ModalEsc`)
+/// one `listen_with` unit. Four are always on; the inputs gate the other eight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubscriptionVariant {
     /// `BusRecipe` — live broadcast bus for fills, positions, and portfolio state.
@@ -1351,55 +1344,334 @@ pub enum SubscriptionVariant {
     TrainingLog,
     /// `ToastDismissRecipe` — 500 ms auto-dismiss ticker (always-on).
     ToastDismiss,
+    /// `ForwardPlanRecipe` — F6 plan return channel (while `plan_rx` is held).
+    ForwardPlan,
+    /// `NarrationOutcomeRecipe` — F9 narration return channel (while held).
+    NarrationOutcome,
+    /// `BakeoffProgressRecipe` — bake-off candidate progress (while a run holds it).
+    BakeoffProgress,
+    /// `SweepProgressRecipe` — sweep cell progress (while a sweep holds it).
+    SweepProgress,
+    /// `listen_with(esc_closes_modal)` — `Esc` closes the tape-row audit modal
+    /// (only while the modal is open).
+    ModalEsc,
 }
 
 /// Ordered list of recipe variants that the subscription batch includes.
 ///
-/// Call `build_subscription_batch_descriptor` to produce one; call
-/// `.into_iced_subscription()` on `cockpit_live`'s side to turn it into a
-/// real `iced::Subscription`.  Tests use `Vec::contains` to assert membership.
+/// [`build_subscription_batch_descriptor_from`] produces one, and
+/// [`subscription_batch`] turns each variant into its real `iced::Subscription`.
+/// Nothing else converts a descriptor.
 pub type SubscriptionBatchDescriptor = Vec<SubscriptionVariant>;
 
-/// Build the introspectable subscription-batch descriptor.
+/// The v0.2 three-input descriptor, kept for API compatibility only (story 2-63
+/// decision 5). Production calls [`subscription_batch`], never this.
 ///
-/// Returns a `Vec<SubscriptionVariant>` listing every recipe that WOULD be
-/// included in the iced `Subscription::batch(...)` call given the current
-/// cockpit state.  The caller decides the actual iced subscriptions separately;
-/// this function is purely for test introspection.
+/// Delegates to [`build_subscription_batch_descriptor_from`] with the five v0.3
+/// inputs (`forward_plan`, `narration_outcome`, `bakeoff_progress`,
+/// `sweep_progress`, `modal_esc`) at [`Held::No`], so it returns exactly the
+/// v0.2 lists. `legacy_three_arg_descriptor_is_pinned_to_its_literal_order`
+/// pins it against written-out rows: a compatibility pin, not a wiring pin.
 ///
 /// # Parameters
 ///
-/// - `has_trail`: `true` when the trail-mirror handle is `Some` (i.e.
-///   `trail_mirror_handle.is_some()` in `AppState`).
-/// - `has_lab_progress`: `true` when `lab_progress_rx` is `Some` (run in-flight).
-/// - `has_training_log`: `true` when `training_log_rx` is `Some` (training in-flight).
+/// - `has_trail`: the trail-mirror handle is held.
+/// - `has_lab_progress`: a Lab run's progress receiver is held.
+/// - `has_training_log`: a training run's log receiver is held.
 ///
-/// Note: `current_screen` is intentionally absent — all recipes are
-/// unconditionally batched regardless of the active screen.  The tests
-/// iterate over all `Screen::*` variants and call this function each time
-/// to serve as a regression guard: if a future change mistakenly gates an
-/// always-on recipe on the active screen, the tests will catch it.
+/// There is no screen parameter: no recipe is gated on the active screen.
 #[must_use]
 pub fn build_subscription_batch_descriptor(
     has_trail: bool,
     has_lab_progress: bool,
     has_training_log: bool,
 ) -> SubscriptionBatchDescriptor {
-    let mut desc = Vec::with_capacity(7);
+    build_subscription_batch_descriptor_from(SubscriptionBatchInputs {
+        trail: has_trail.into(),
+        lab_progress: has_lab_progress.into(),
+        training_log: has_training_log.into(),
+        ..SubscriptionBatchInputs::default()
+    })
+}
+
+// ── v0.3 subscription batch (story 2-63 Wave C1; ADR-0048 row at its Close) ──
+//
+// `subscription_batch` IS the cockpit's subscription: `cockpit_live::subscription()`
+// only maps `AppState` fields into a `SubscriptionCtx`. The batch tests in
+// `tests/subscription_batch_inclusion.rs` call this same function. Each
+// inclusion flag (`SubscriptionCtx::inputs`) is meant to read the same OUTER
+// `Option` its arm consumes. Nothing enforces that by construction: `inputs()`
+// and `variant_subscription` are separate code, so a mis-keyed flag lists a
+// variant whose arm then returns `Subscription::none()`. The agreement is pinned
+// by `ctx_inputs_key_each_field_on_its_own_option` and
+// `subscription_batch_units_match_descriptor`.
+// Keying on the outer `Option` is load-bearing: a take-once recipe whose inner
+// receiver is already gone must stay batched, because a frame without it makes
+// iced's tracker drop the running stream, and the only receiver with it.
+
+/// The F6 plan return channel as `cockpit_live` holds it; [`ForwardPlanRecipe`]
+/// takes the receiver once.
+pub type ForwardPlanCell =
+    Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::ForwardPlan>>>>;
+
+/// The F9 narration return channel; [`NarrationOutcomeRecipe`] takes it once.
+pub type NarrationOutcomeCell =
+    Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<agent::NarrationOutcome>>>>;
+
+/// The bake-off AND the sweep progress channel: both carry `BakeoffProgress`, so
+/// a swapped field in a `SubscriptionCtx` literal compiles (documented residual).
+pub type BakeoffProgressCell =
+    Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::BakeoffProgress>>>>;
+
+/// The Lab run progress channel; `LabProgressRecipe` takes it once.
+pub type LabProgressCell =
+    Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<backtest::progress::Progress>>>>;
+
+/// The training-log channel (a std receiver); `TrainingLogRecipe` takes it once.
+pub type TrainingLogCell =
+    Arc<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::lab::trainer::TrainingLogLine>>>>;
+
+/// Whether the cockpit holds one recipe's input (its receiver cell or handle).
+///
+/// An enum, not a `bool`: [`SubscriptionBatchInputs`] has eight of these, and the
+/// crate's `warn(clippy::pedantic)` plus CI's `-D warnings` rejects a struct with
+/// more than three `bool`s (`struct_excessive_bools`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Held {
+    /// The input is present, so the recipe joins the batch.
+    Yes,
+    /// The input is absent, so the recipe stays out of the batch.
+    #[default]
+    No,
+}
+
+impl From<bool> for Held {
+    fn from(held: bool) -> Self {
+        if held { Self::Yes } else { Self::No }
+    }
+}
+
+/// Which optional recipes the batch includes. The four always-on recipes (`Bus`,
+/// `ServerTime`, `Activity`, `ToastDismiss`) have no field: they are never gated.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SubscriptionBatchInputs {
+    pub trail: Held,
+    pub lab_progress: Held,
+    pub training_log: Held,
+    pub forward_plan: Held,
+    pub narration_outcome: Held,
+    pub bakeoff_progress: Held,
+    pub sweep_progress: Held,
+    pub modal_esc: Held,
+}
+
+/// Build the subscription-batch descriptor from every input.
+///
+/// The order is the batch order `cockpit_live` has always used: the seven v0.2
+/// variants, then `ForwardPlan`, `NarrationOutcome`, `BakeoffProgress`,
+/// `SweepProgress`, `ModalEsc`. iced keys running streams by recipe hash, so the
+/// order is not behaviour; it is pinned so a reorder is a visible decision.
+#[must_use]
+pub fn build_subscription_batch_descriptor_from(
+    inputs: SubscriptionBatchInputs,
+) -> SubscriptionBatchDescriptor {
+    let mut desc = Vec::with_capacity(12);
     desc.push(SubscriptionVariant::Bus);
     desc.push(SubscriptionVariant::ServerTime);
-    if has_trail {
+    if inputs.trail == Held::Yes {
         desc.push(SubscriptionVariant::Trail);
     }
-    if has_lab_progress {
+    if inputs.lab_progress == Held::Yes {
         desc.push(SubscriptionVariant::LabProgress);
     }
     desc.push(SubscriptionVariant::Activity);
-    if has_training_log {
+    if inputs.training_log == Held::Yes {
         desc.push(SubscriptionVariant::TrainingLog);
     }
     desc.push(SubscriptionVariant::ToastDismiss);
+    if inputs.forward_plan == Held::Yes {
+        desc.push(SubscriptionVariant::ForwardPlan);
+    }
+    if inputs.narration_outcome == Held::Yes {
+        desc.push(SubscriptionVariant::NarrationOutcome);
+    }
+    if inputs.bakeoff_progress == Held::Yes {
+        desc.push(SubscriptionVariant::BakeoffProgress);
+    }
+    if inputs.sweep_progress == Held::Yes {
+        desc.push(SubscriptionVariant::SweepProgress);
+    }
+    if inputs.modal_esc == Held::Yes {
+        desc.push(SubscriptionVariant::ModalEsc);
+    }
     desc
+}
+
+/// Everything [`subscription_batch`] reads, borrowed from `cockpit_live`'s `AppState`.
+///
+/// Each `Option` is the bin's OUTER `Option` (`Some` while the cockpit holds the
+/// cell), never the inner receiver: see [`SubscriptionCtx::inputs`].
+#[derive(Clone, Copy)]
+pub struct SubscriptionCtx<'a> {
+    pub rt_handle: &'a tokio::runtime::Handle,
+    pub bus: &'a Arc<EventBus>,
+    pub trail: Option<&'a TrailMirrorHandle>,
+    pub lab_progress: Option<(&'a LabProgressCell, u64)>,
+    pub training_log: Option<(&'a TrainingLogCell, u64)>,
+    pub forward_plan: Option<&'a ForwardPlanCell>,
+    pub narration_outcome: Option<&'a NarrationOutcomeCell>,
+    pub bakeoff_progress: Option<(&'a BakeoffProgressCell, u64)>,
+    pub sweep_progress: Option<(&'a BakeoffProgressCell, u64)>,
+    pub tape_audit_modal_open: bool,
+}
+
+impl SubscriptionCtx<'_> {
+    /// The inclusion flags, each from the OUTER `Option` its arm consumes.
+    #[must_use]
+    pub fn inputs(&self) -> SubscriptionBatchInputs {
+        SubscriptionBatchInputs {
+            trail: self.trail.is_some().into(),
+            lab_progress: self.lab_progress.is_some().into(),
+            training_log: self.training_log.is_some().into(),
+            forward_plan: self.forward_plan.is_some().into(),
+            narration_outcome: self.narration_outcome.is_some().into(),
+            bakeoff_progress: self.bakeoff_progress.is_some().into(),
+            sweep_progress: self.sweep_progress.is_some().into(),
+            modal_esc: self.tape_audit_modal_open.into(),
+        }
+    }
+}
+
+/// The cockpit's whole subscription batch: the descriptor for `ctx.inputs()`,
+/// each variant turned into its `iced::Subscription`.
+pub fn subscription_batch(ctx: &SubscriptionCtx<'_>) -> iced::Subscription<Message> {
+    iced::Subscription::batch(
+        build_subscription_batch_descriptor_from(ctx.inputs())
+            .into_iter()
+            .map(|variant| variant_subscription(ctx, variant)),
+    )
+}
+
+/// One descriptor variant as a real `iced::Subscription`. Exhaustive (no `_ =>`),
+/// so a new variant cannot compile without an arm.
+fn variant_subscription(
+    ctx: &SubscriptionCtx<'_>,
+    variant: SubscriptionVariant,
+) -> iced::Subscription<Message> {
+    match variant {
+        SubscriptionVariant::Bus => subscription(Arc::clone(ctx.bus)),
+        SubscriptionVariant::ServerTime => from_recipe(ServerTimeRecipe {
+            rt_handle: ctx.rt_handle.clone(),
+        }),
+        SubscriptionVariant::Trail => match ctx.trail {
+            Some(handle) => trail_mirror_subscription(handle.clone()),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::LabProgress => match ctx.lab_progress {
+            Some((rx, salt)) => from_recipe(crate::lab::progress::LabProgressRecipe {
+                rt_handle: ctx.rt_handle.clone(),
+                rx: Arc::clone(rx),
+                salt,
+            }),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::Activity => from_recipe(ActivityRecipe {
+            bus: Arc::clone(ctx.bus),
+        }),
+        SubscriptionVariant::TrainingLog => match ctx.training_log {
+            Some((rx, salt)) => from_recipe(crate::lab::training_log::TrainingLogRecipe {
+                rt_handle: ctx.rt_handle.clone(),
+                rx: Arc::clone(rx),
+                salt,
+            }),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::ToastDismiss => from_recipe(ToastDismissRecipe {
+            rt_handle: ctx.rt_handle.clone(),
+        }),
+        SubscriptionVariant::ForwardPlan => match ctx.forward_plan {
+            Some(rx) => from_recipe(ForwardPlanRecipe {
+                rt_handle: ctx.rt_handle.clone(),
+                rx: Arc::clone(rx),
+            }),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::NarrationOutcome => match ctx.narration_outcome {
+            Some(rx) => from_recipe(NarrationOutcomeRecipe {
+                rt_handle: ctx.rt_handle.clone(),
+                rx: Arc::clone(rx),
+            }),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::BakeoffProgress => match ctx.bakeoff_progress {
+            Some((rx, salt)) => from_recipe(BakeoffProgressRecipe {
+                rt_handle: ctx.rt_handle.clone(),
+                rx: Arc::clone(rx),
+                salt,
+            }),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::SweepProgress => match ctx.sweep_progress {
+            Some((rx, salt)) => from_recipe(SweepProgressRecipe {
+                rt_handle: ctx.rt_handle.clone(),
+                rx: Arc::clone(rx),
+                salt,
+            }),
+            None => iced::Subscription::none(),
+        },
+        SubscriptionVariant::ModalEsc => {
+            iced::event::listen_with(crate::widgets::journal_transaction_modal::esc_closes_modal)
+        }
+    }
+}
+
+/// iced `Recipe` for the 1 Hz status-bar clock (`Message::ServerTimeTick`).
+///
+/// Moved here from `bin/cockpit_live.rs` (story 2-63 Wave C1) so the batch the
+/// tests build is the batch production builds. The stream is
+/// [`server_time_stream_impl`]: it enters `rt_handle` only while it creates the
+/// `tokio::time::interval`, and drops the guard BEFORE `Box::pin` (K8). No guard
+/// is held while the stream runs.
+pub struct ServerTimeRecipe {
+    /// Agent-runtime handle, entered only to build the interval.
+    pub rt_handle: tokio::runtime::Handle,
+}
+
+impl Recipe for ServerTimeRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        server_time_stream_impl(&self.rt_handle)
+    }
+}
+
+/// iced `Recipe` for the 500 ms toast auto-dismiss ticker (`Message::ToastTick`).
+///
+/// Moved here from `bin/cockpit_live.rs` with [`ServerTimeRecipe`]; the stream is
+/// [`toast_dismiss_stream_impl`], with the same K8 guard discipline.
+pub struct ToastDismissRecipe {
+    /// Agent-runtime handle, entered only to build the interval.
+    pub rt_handle: tokio::runtime::Handle,
+}
+
+impl Recipe for ToastDismissRecipe {
+    type Output = Message;
+
+    fn hash(&self, state: &mut Hasher) {
+        use std::any::TypeId;
+        use std::hash::Hash;
+        TypeId::of::<Self>().hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
+        toast_dismiss_stream_impl(&self.rt_handle)
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────

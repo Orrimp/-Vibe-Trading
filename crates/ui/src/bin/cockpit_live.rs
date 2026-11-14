@@ -98,94 +98,6 @@ use ui::theme::ThemeMode;
 use ui::widgets::journal_transaction_modal;
 
 use iced::Element;
-use iced::advanced::subscription::{EventStream, Hasher, Recipe};
-use iced::futures;
-
-// ── Server-time recipe (T1509) ────────────────────────────────────────────────
-//
-// Emits `Message::ServerTimeTick` every second using a `tokio::time::interval`.
-// The `live` feature brings `tokio` as a direct dep, so
-// `tokio::time::interval` is available here.
-//
-// ## Runtime-context note (P1 bug fix — 2026-05-23)
-//
-// iced 0.14 uses `futures::executor::ThreadPool` when the `thread-pool`
-// feature is active (see `crates/ui/Cargo.toml` iced feature list).
-// That executor has NO tokio reactor context — calling
-// `tokio::time::interval()` or `tokio::time::sleep()` directly inside a
-// `Recipe::stream()` body panics with
-// "there is no reactor running, must be called from the context of a
-// Tokio 1.x runtime".
-//
-// Fix: carry the agent-runtime `Handle` into the recipe. At the start of
-// `stream()`, enter the handle with `handle.enter()` and keep the
-// `EnterGuard` alive for the entire duration of the stream (it is `'static`
-// — it lives inside the `Box::pin(async_stream::stream! {...})` future).
-// `Handle::enter()` is safe to call from any thread; the guard sets a
-// thread-local that `tokio::time::*` reads to find the reactor.
-
-struct ServerTimeRecipe {
-    /// Agent-runtime handle so the stream body can call `tokio::time::interval`
-    /// inside the iced `futures::ThreadPool` subscription executor.
-    rt_handle: tokio::runtime::Handle,
-}
-
-impl Recipe for ServerTimeRecipe {
-    type Output = Message;
-
-    fn hash(&self, state: &mut Hasher) {
-        use std::any::TypeId;
-        use std::hash::Hash;
-        TypeId::of::<Self>().hash(state);
-    }
-
-    fn stream(
-        self: Box<Self>,
-        _input: EventStream,
-    ) -> futures::stream::BoxStream<'static, Self::Output> {
-        // Delegate to the extracted helper in `ui::live` so integration tests
-        // can drive the stream without constructing a running iced application.
-        // Behavior is identical to the previous inline body — see
-        // `ui::live::server_time_stream_impl` for the full K8 rationale.
-        ui::live::server_time_stream_impl(&self.rt_handle)
-    }
-}
-
-// ── cockpit-toast-queue v0.1.0 — ToastDismissRecipe (6th subscription) ──────
-//
-// Mirrors `ServerTimeRecipe` above: carries the agent-runtime `Handle` so
-// `tokio::time::interval` is called inside the tokio reactor context.
-// Emits `Message::ToastTick(Instant::now())` every 500 ms via
-// `ui::live::toast_dismiss_stream_impl` (extracted for test reachability).
-//
-// Always-on — no salt / no per-run gating. The 500 ms idle cost is negligible
-// vs the 100 ms activity-tape tick already running.
-//
-// See ADR-0046 § Decision (ticker pattern) and T-D-N10.
-
-struct ToastDismissRecipe {
-    /// Agent-runtime handle so the stream body can call `tokio::time::interval`
-    /// inside the iced `futures::ThreadPool` subscription executor.
-    rt_handle: tokio::runtime::Handle,
-}
-
-impl Recipe for ToastDismissRecipe {
-    type Output = Message;
-
-    fn hash(&self, state: &mut Hasher) {
-        use std::any::TypeId;
-        use std::hash::Hash;
-        TypeId::of::<Self>().hash(state);
-    }
-
-    fn stream(
-        self: Box<Self>,
-        _input: EventStream,
-    ) -> futures::stream::BoxStream<'static, Self::Output> {
-        // Delegate to the extracted helper in `ui::live` for test reachability.
-        ui::live::toast_dismiss_stream_impl(&self.rt_handle)
-    }
-}
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -2480,194 +2392,45 @@ impl AppState {
         }
     }
 
-    /// Subscribe to the real bus — the entire point of `cockpit_live`.
-    /// `ui::live::subscription` already exists (T32) and batches the
-    /// six core channels + three v0.5 strategy lifecycle channels +
-    /// the T1508 `MarketHealth` channel.
+    /// Subscribe to the real bus plus every cockpit recipe — the entire point of
+    /// `cockpit_live`.
     ///
-    /// T1509 additions:
-    /// - The `MarketHealth` recipe is already included in
-    ///   `ui::live::subscription` (T1508 shipped it in `live.rs`).
-    /// - A 1 Hz `time::every` subscription emits `Message::ServerTimeTick`
-    ///   so the status-bar server-time field advances each second.
+    /// The batch is built by `ui::live::subscription_batch`, the function the
+    /// batch tests in `crates/ui/tests/subscription_batch_inclusion.rs` call; it only
+    /// maps `AppState` fields into a `ui::live::SubscriptionCtx`. Every `Option`
+    /// passed is the OUTER one (`Some` while the cell is held), which is what keeps
+    /// a take-once recipe batched after its receiver was taken.
     ///
-    /// When the tape-row → audit modal is open, batch in an
-    /// `iced::event::listen_with` recipe so `Esc` closes the modal
-    /// (Q6 — modal-open-gated subscription). Other keys are not
-    /// consumed; the live cockpit has no general keyboard navigation
-    /// today, so nothing leaks to the tape beneath.
+    /// Unpinned residual (story 2-63 K3 #6): `AppState` cannot be built in a test,
+    /// so this literal is checked by nothing automated (`cockpit-smoke` boots only
+    /// the fixtures `cockpit` bin, never this one). A wrong literal still compiles:
+    /// the bake-off and sweep cells share one type, the four `u64` salts are
+    /// interchangeable, and any `Option` field can be passed as `None`.
     fn subscription(&self) -> iced::Subscription<Message> {
-        // ── Wave C seam: build_subscription_batch_descriptor ──────────────────
-        //
-        // `build_subscription_batch_descriptor` returns a `Vec<SubscriptionVariant>`
-        // listing every recipe that should be included in the batch, based on the
-        // current cockpit state.  We convert each variant to the corresponding
-        // real `iced::Subscription` here.  This wires the introspectable
-        // descriptor (tested by `cockpit_subscription_server_time_always_batched`
-        // and `cockpit_subscription_toast_dismiss_always_batched`) to the actual
-        // production subscription batch, so removing a variant from the descriptor
-        // also removes it from the live subscription — closing the seam.
-        let descriptor = ui::live::build_subscription_batch_descriptor(
-            self.trail_mirror_handle.is_some(),
-            self.lab_progress_rx.is_some(),
-            self.training_log_rx.is_some(),
-        );
-
-        // Convert each descriptor variant to a real iced Subscription.
-        // Order matches the descriptor (Bus, ServerTime, [Trail], [LabProgress],
-        // Activity, [TrainingLog], ToastDismiss).
-        let mut subs: Vec<iced::Subscription<Message>> = descriptor
-            .iter()
-            .map(|variant| match variant {
-                ui::live::SubscriptionVariant::Bus => ui::live::subscription(Arc::clone(&self.bus)),
-                ui::live::SubscriptionVariant::ServerTime => {
-                    // 1 Hz server-time tick — drives the status-bar clock (T1509).
-                    // Uses `ServerTimeRecipe` (tokio interval via tokio_stream) rather
-                    // than `iced::time::every` which requires iced's `tokio` feature flag.
-                    // The rt_handle is passed so the recipe can enter the tokio runtime
-                    // context before calling `tokio::time::interval` (P1 bug fix — see
-                    // ServerTimeRecipe struct comment above for full rationale).
-                    iced::advanced::subscription::from_recipe(ServerTimeRecipe {
-                        rt_handle: self.rt_handle.clone(),
-                    })
-                }
-                ui::live::SubscriptionVariant::Trail => {
-                    // Phase D+ T-D-N9 — trail-mirror Subscription bridge (R1.3 / R1.5).
-                    // Only reached when has_trail = true, so unwrap is safe.
-                    self.trail_mirror_handle
-                        .as_ref()
-                        .map(|h| ui::live::trail_mirror_subscription(h.clone()))
-                        .unwrap_or_else(iced::Subscription::none)
-                }
-                ui::live::SubscriptionVariant::LabProgress => {
-                    // Wave D-4 T-AR-6 — Lab progress subscription.
-                    // Active only while a run is in-flight and the progress channel is open.
-                    // Salt-bumped per LabRunRequested so iced sees a fresh recipe each run.
-                    // Only reached when has_lab_progress = true, so unwrap is safe.
-                    self.lab_progress_rx
-                        .as_ref()
-                        .map(|rx| {
-                            iced::advanced::subscription::from_recipe(
-                                ui::lab::progress::LabProgressRecipe {
-                                    rt_handle: self.rt_handle.clone(),
-                                    rx: std::sync::Arc::clone(rx),
-                                    salt: self.lab_progress_recipe_salt,
-                                },
-                            )
-                        })
-                        .unwrap_or_else(iced::Subscription::none)
-                }
-                ui::live::SubscriptionVariant::Activity => {
-                    // cockpit-activity-status-bar v0.1.0 Wave B (T-D-N5).
-                    // Always active (no salt / no per-run gating).
-                    iced::advanced::subscription::from_recipe(ui::live::ActivityRecipe {
-                        bus: std::sync::Arc::clone(&self.bus),
-                    })
-                }
-                ui::live::SubscriptionVariant::TrainingLog => {
-                    // cockpit-training-pressed-wiring v0.1.0 T-D-N4.
-                    // Active only while a training run is in-flight.
-                    // Only reached when has_training_log = true, so unwrap is safe.
-                    self.training_log_rx
-                        .as_ref()
-                        .map(|rx| {
-                            iced::advanced::subscription::from_recipe(
-                                ui::lab::training_log::TrainingLogRecipe {
-                                    rt_handle: self.rt_handle.clone(),
-                                    rx: std::sync::Arc::clone(rx),
-                                    salt: self.training_log_recipe_salt,
-                                },
-                            )
-                        })
-                        .unwrap_or_else(iced::Subscription::none)
-                }
-                ui::live::SubscriptionVariant::ToastDismiss => {
-                    // cockpit-toast-queue v0.1.0 T-D-N10 — 6th subscription.
-                    // Always-on 500 ms ticker for auto-dismiss sweep; emits
-                    // `Message::ToastTick(Instant::now())`. No salt / no gating.
-                    iced::advanced::subscription::from_recipe(ToastDismissRecipe {
-                        rt_handle: self.rt_handle.clone(),
-                    })
-                }
-            })
-            .collect();
-
-        // F6-PLAN — the forward-plan return recipe (advisor-forward-plan / ADR-0062
-        // § D4). Added after the descriptor batch (like the modal-Esc listener
-        // below) because it is bin-side channel plumbing, not a descriptor-tested
-        // always-on recipe. Active whenever the plan receiver is held; the recipe
-        // `take()`s it once and drains `agent::ForwardPlan` → `ForwardPlanReceived`,
-        // filling the F6 Plan surface. THIS is the wiring whose absence left the
-        // live Plan screen empty.
-        if let Some(rx) = self.plan_rx.as_ref() {
-            subs.push(iced::advanced::subscription::from_recipe(
-                ui::live::ForwardPlanRecipe {
-                    rt_handle: self.rt_handle.clone(),
-                    rx: std::sync::Arc::clone(rx),
-                },
-            ));
-        }
-
-        // F9-NARRATION — the narration-outcome return recipe (advisor-llm-narration
-        // / ADR-0064 § D3). Active whenever the outcome receiver is held; drains
-        // `agent::NarrationOutcome` → `BakeoffNarrationCompleted`. THIS is the
-        // wiring whose absence left "Explain" able only to FellBack.
-        if let Some(rx) = self.narration_outcome_rx.as_ref() {
-            subs.push(iced::advanced::subscription::from_recipe(
-                ui::live::NarrationOutcomeRecipe {
-                    rt_handle: self.rt_handle.clone(),
-                    rx: std::sync::Arc::clone(rx),
-                },
-            ));
-        }
-
-        // advisor-bakeoff-progress — the bake-off candidate-progress recipe (the
-        // headline ask's "last mile"). Active whenever a run holds the progress
-        // receiver; the recipe drains `backtest::BakeoffProgress` →
-        // `Message::BakeoffProgress`, advancing the determinate progress bar.
-        // Salt-bumped per `BakeoffRunRequested` so iced rebuilds the stream each
-        // run (the `LabProgressRecipe` discipline). THIS is the wiring whose
-        // absence would leave the bar stuck on the indeterminate spinner.
-        if let Some(rx) = self.bakeoff_progress_rx.as_ref() {
-            subs.push(iced::advanced::subscription::from_recipe(
-                ui::live::BakeoffProgressRecipe {
-                    rt_handle: self.rt_handle.clone(),
-                    rx: std::sync::Arc::clone(rx),
-                    salt: self.bakeoff_progress_recipe_salt,
-                },
-            ));
-        }
-
-        // advisor-param-tuning (ADR-0069) — the sweep cell-progress recipe (the
-        // Tune determinate bar's "last mile"). Active whenever a sweep holds the
-        // progress receiver; the recipe drains `backtest::BakeoffProgress` →
-        // `Message::SweepProgress`, advancing the Tune progress bar. Salt-bumped
-        // per `SweepRunRequested` so iced rebuilds the stream each run.
-        if let Some(rx) = self.sweep_progress_rx.as_ref() {
-            subs.push(iced::advanced::subscription::from_recipe(
-                ui::live::SweepProgressRecipe {
-                    rt_handle: self.rt_handle.clone(),
-                    rx: std::sync::Arc::clone(rx),
-                    salt: self.sweep_progress_recipe_salt,
-                },
-            ));
-        }
-
-        // Q6 — modal-open-gated Esc keyboard listener.
-        // Added AFTER the base batch so the descriptor-to-iced loop stays clean.
-        if self.cockpit.tape_audit_modal.is_some() {
-            subs.push(iced::event::listen_with(
-                |event, _status, _window| match event {
-                    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                        key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
-                        ..
-                    }) => Some(Message::TapeAuditModalClosed),
-                    _ => None,
-                },
-            ));
-        }
-
-        iced::Subscription::batch(subs)
+        ui::live::subscription_batch(&ui::live::SubscriptionCtx {
+            rt_handle: &self.rt_handle,
+            bus: &self.bus,
+            trail: self.trail_mirror_handle.as_ref(),
+            lab_progress: self
+                .lab_progress_rx
+                .as_ref()
+                .map(|rx| (rx, self.lab_progress_recipe_salt)),
+            training_log: self
+                .training_log_rx
+                .as_ref()
+                .map(|rx| (rx, self.training_log_recipe_salt)),
+            forward_plan: self.plan_rx.as_ref(),
+            narration_outcome: self.narration_outcome_rx.as_ref(),
+            bakeoff_progress: self
+                .bakeoff_progress_rx
+                .as_ref()
+                .map(|rx| (rx, self.bakeoff_progress_recipe_salt)),
+            sweep_progress: self
+                .sweep_progress_rx
+                .as_ref()
+                .map(|rx| (rx, self.sweep_progress_recipe_salt)),
+            tape_audit_modal_open: self.cockpit.tape_audit_modal.is_some(),
+        })
     }
 
     fn view(&self) -> Element<'_, Message> {

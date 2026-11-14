@@ -29,7 +29,8 @@ so that the v0.2 durable contract ("harness coverage is every UI Recipe/Subscrip
   - [x] Wave B: executor fidelity, test-only. *(2026-11-12; 40/41 probes red, one survivor B-P41 routed to E1, see "Wave B results".)*
   - [x] Wave D: advisor state machine S2, test-only. *(2026-11-13; D-P1…D-P28 red at their designed assertion; production finding routed as bug-log `#200`, see "Wave D results".)*
   - [x] Wave E1a: AC3 sweep of the seven v0.2 recipe-stream files, test-only. *(2026-11-13; 28/28 listed probes red, the two falsifier survivors fixed or recorded, 8 orchestrator probes red incl. E1-P34…E1-P39; Wave B's survivor B-P41 killed; see "Wave E1a results".)*
-  - [ ] C1 · C2 (+ E1b) · E2 · E3 · F (G deferred, decision 4).
+  - [x] Wave C1: the shared subscription seam, production + tests. *(2026-11-14; C1-P1…C1-P12 red, the falsifier's two survivors fixed test-only and re-measured red as C1-P13/C1-P15, C1-RES1/RES2 named survivors; bug-log `#203` filed; see "Wave C1 results".)*
+  - [ ] C2 (+ E1b) · E2 · E3 · F (G deferred, decision 4).
 - [ ] #66 non-vacuity sweep over the existing harness suite (AC 3) — fix or document every skip path.
 - [ ] ADR-0048 § Changelog row for v0.3.0 (no new ADR expected — D-V0.2.0-4 precedent) unless a genuinely new pattern class emerges (K1 route: back to analyst).
 - [ ] Gates: anchors 119/119, spec-lint, clippy, fmt; T-T4 probe evidence in the tester report.
@@ -364,6 +365,85 @@ Claude Opus 5.5 (orchestrator). Inventory by a read-only workflow: one agent per
   - The 150 ms sticky-trip window can read green on a loaded box, never red.
 - **Orchestrator gate on the final files:** **fmt clean; `cargo test -p ui` over the 7 targets: 29/29 green after `Compiling ui` (1004 s wall, mostly compile); `cargo test -p ui --lib lab::training_log` 3/3; `cargo clippy -p ui --tests -- -D warnings` clean after a touch (`Checking ui`, 383 s).** Final SHA-256 prefixes: activity `a9e46964`, trail `b889379e`, lab_progress `7134d970`, server_time `b9e03da8`, toast `7b3a219f`, training_log `0bac705f`, full_bus `c62403db`.
 - **Gate finding, fixed in its own commit `f5c89e19`.** The story's own wave-plan gate, `cargo clippy -p ui --tests -- -D warnings`, was RED at HEAD since `dcce75e2` (`#196`): `training_log.rs`'s test module allowed `unwrap_used` but not `expect_used`, and `:246` calls `.expect(..)`. CI's clippy does not lint tests, and every wave since (the E1a devs included) scoped clippy to its own `--test` target, which never lints the lib's test module, so nothing saw it. **Close-wave item:** decide whether CI's clippy step gains `--tests` (cost: one more full ui test-target check per push).
+
+
+**2026-11-14: Wave C1 results (the shared subscription seam, production + tests). DONE.**
+- **What landed (one diff; API-additive).**
+  - **`crates/ui/src/live.rs`:**
+    - five new `SubscriptionVariant`s (`ForwardPlan`, `NarrationOutcome`, `BakeoffProgress`, `SweepProgress`, `ModalEsc`), with `Held` and `SubscriptionBatchInputs`;
+    - `build_subscription_batch_descriptor_from`, to which the 3-arg fn delegates;
+    - `#[derive(Clone, Copy)] SubscriptionCtx` with `inputs()`;
+    - `subscription_batch` and the private, exhaustive `variant_subscription`;
+    - `ServerTimeRecipe` and `ToastDismissRecipe` moved in from the bin as `pub`;
+    - the false "T-D-C2 / T-D-C4 catch it" seam comment rewritten.
+  - **`crates/ui/src/widgets/journal_transaction_modal.rs`:** `pub fn esc_closes_modal`, which both bins batch.
+  - **`crates/ui/src/bin/cockpit_live.rs`:** `subscription()` is now the 40-line `SubscriptionCtx` literal, and the bin-private recipes are deleted.
+  - **`crates/ui/src/bin/cockpit.rs`:** `listen_with(journal_transaction_modal::esc_closes_modal)`.
+  - **NEW `crates/ui/tests/subscription_batch_inclusion.rs`**, with 7 tests.
+  - **Deleted:** the three v0.2 files `cockpit_subscription_server_time_always_batched.rs`, `cockpit_subscription_toast_dismiss_always_batched.rs` and `trail_mirror_subscription_handle_gating.rs`. Their `trace.toml` lines are commented out, following the `:2263` precedent.
+  - **Bug-log `#203`** is filed, see below.
+- **The workflow (`wf_8469a45c-804`).** One dev first; then a serial falsifier and two read-only reviewers (equivalence, tests+docs) worked from snapshots. The dev's STEP 0 re-validated the brief at HEAD `1a4d876c`: BAD 0, and the shift map was unchanged.
+- **Falsifier.**
+  - **C1-P1…C1-P12 red** at their designed rows, each restored byte-identically with `Compiling ui`.
+  - **C1-P2's red set was one test larger than claimed:** `ctx_inputs_key_on_outer_option_not_inner_receiver` also went red, at "the taken-receiver ctx's descriptor lists SweepProgress". The table row now names it.
+  - **C1-RES1 and C1-RES2 left every target green**, `cargo test -p ui --bin cockpit_live` included. Both are named survivors of K3 #6.
+- **The falsifier's own probes: 3, of which 2 survived. Both survivors are fixed by the orchestrator, test-only.**
+  - **OWN-1 SURVIVED.** A take-once arm (bake-off) was keyed on its INNER receiver. The flag test checked only `inputs()` and the descriptor, and the units test used only held cells.
+    - In production, the bake-off bar would freeze one frame after its recipe took the receiver.
+    - **Fixed:** `ctx_inputs_key_on_outer_option_not_inner_receiver` now asserts `subscription_batch(..).units()` for a TAKEN cell: 15 for each of the six take-once fields alone, 20 for all six.
+    - Adopted as **C1-P13**.
+  - **OWN-3m SURVIVED.** "Any captured event closes the modal" passed, because the negatives ran only at `Status::Ignored`.
+    - **Fixed:** each negative now runs at both statuses.
+    - Adopted as **C1-P15**.
+  - **OWN-2** was killed, and is tabled as **C1-P14**.
+  - **Vacuity finding (low), fixed:** the 128/256 derived-count loop held by construction once the per-mask assert passed. It is now a comment. In its place, an oracle self-check pins the hand-written table: each input bit keys exactly one variant.
+- **Review findings, disposition.**
+  - **(medium, both reviewers) The salt residual.** Neither C1-RES2 nor the walk could detect a salt swap. The bin clears each take-once cell when its run ends (`self.training_log_rx = None;`, and likewise for lab, bake-off and sweep). iced then drops the id on that frame, so the next run streams afresh whatever its salt is.
+    - **Decision:** a swapped salt is recorded as checked by NOTHING, the walk included. The RES2 row, the test module doc, bug-log `#203` and the runbook all say so. The walk's "second run checks the salt" claims and its salt diagnosis lines are deleted.
+  - **(medium) "An arm building the sibling recipe" survives C1.** `units()` counts recipes and does not check what they are.
+    - **Decision:** `#203` is filed `open`, is flipped to `partial-fix` citing the C1 commit, and goes to `fixed` only with C2. C2's brief already plans `batched_*_recipe_relays` asserting the emitted `Message` VARIANT (e.g. `SweepProgress`, not `BakeoffProgress`) and `recipe_ids_are_pairwise_distinct`.
+  - **(low) Docs.** The seam and bin comments said "every test calls `subscription_batch`", but only the units tests do; fixed. `SubscriptionVariant`'s doc now notes that `Bus` is an 11-unit batch. The modal's view doc no longer says Esc routes to the caller's close message. The test's non-vacuity paragraph is corrected: not every assert is in a loop, and the agreement half is a deliberate subject cross-check, guarded by the literal half.
+  - **(low) The fixtures `cockpit` bin's `listen_with(esc_closes_modal)` wiring** is now listed under "What this file does not pin". That bin needs `fixtures`, and `cockpit-smoke` presses nothing.
+  - **(low) Forward references.** The live.rs headers cited "ADR-0048 v0.3.0", which does not exist until Close. They now say "story 2-63" and "ADR-0048 row at its Close". `#203` is filed in this commit, so its citations resolve.
+  - **(low) Line cites shifted by C1** (the bin's lines 190..2482 moved by −88; 101..189 were deleted).
+    - **Repointed:** bug-log `#202`, which is open and gets implemented next: `:1800-1810` → `:1712-1722` and `:525` → `:437`.
+    - **Left as dated history, by decision:**
+      - ADR-0050's Context cite `cockpit_live.rs:104-126`, a 2026-05-29 narrative; the rule it names now lives in the `ServerTimeRecipe` doc in `ui::live`;
+      - bug-log `#199` and the old entry at `:912`;
+      - the 2026-08-15 audits (`reachability-map`, `claims-ledger`, `feature-reachability-audit`);
+      - `review-rubric-walker.md`;
+      - the done story 3-19.
+
+      Each says what was true at its date.
+    - `runner.rs:1496` stays routed to Wave F.
+  - **(low) Texts still calling the recipes "bin-private" or naming a deleted target.** These are in `recipe_off_runtime_poll.rs` (:21-27, :412, :537, :631-636, :2963, :3023), `server_time_recipe_stream.rs:8-9`, `toast_dismiss_recipe_stream.rs:14-15`, `lab/progress.rs:24`, `lab/training_subscription.rs:32`, and the `trace.toml` comment at :1741.
+    - **Decision:** E1b's dev sweeps all of them, alongside the F3 sibling-column fix.
+  - **(low) The human recipe's diagnosis cargo step** now has a timing note and a `watch` block.
+- **The operator walk** is durable now: [`docs/runbooks/cockpit-live-subscription-walk.md`](../../docs/runbooks/cockpit-live-subscription-walk.md). It has 10 steps and covers the `trail:` field the scratch draft missed.
+  - It catches C1-RES1's class: a `None` passed for a held cell, or a field wired to the wrong cell.
+  - It cannot catch C1-RES2.
+  - It is the ONLY check of the bin literal, and it is not yet walked.
+- **Story corrections, recorded, not rewritten (planning text).**
+  - **K3 #6 (§9) said the residual "goes to cockpit-smoke".** That is false: `cockpit-smoke` boots only the fixtures `cockpit` bin and presses nothing. The residual is wider than §0 says: the salts are interchangeable and any `Option` can be `None`.
+  - **§0 "Why this shape" #1 overclaims.** It closes flag⇔arm divergence, not the field-mapping residual (C1-RES1).
+  - **§0's sketch `#[must_use] pub fn subscription_batch`** shipped without `#[must_use]`. iced's `Subscription` is already `#[must_use]`, so adding it trips `clippy::double_must_use`.
+  - **§5's test names and coverage are out of date.**
+    - The test is `non_escape_events_map_to_none`.
+    - The outer-Option test covers all 6 take-once cells.
+    - The units test has a literal half (14/15/22).
+    - §5 probe (d) is retargeted as C1-P5.
+  - **Line cites are pre-C1 and are superseded by symbol.**
+    - The AC5 / critic / inventory cites of live.rs:1361-1403 are replaced post-C1 by the 3-arg wrapper `build_subscription_batch_descriptor`, `build_subscription_batch_descriptor_from`, `subscription_batch` and `variant_subscription`.
+    - The inventory rows citing bin code C1 moved or deleted: §7 rows, the Esc arm, the recipe structs, and the deleted test files' lines. These are "pre-C1 (HEAD `1a4d876c`)".
+  - **Wave F's cite "Production passes `None` (cockpit_live.rs:2380)"** is a `2d2d95be` number. It is `:2392` at `1a4d876c` and `:2304` after C1. Cite it by the quoted `None,` argument of `spawn_lab_run(`.
+  - **The salt and lifecycle cites at story §5 and K3 #6** are `2d2d95be` numbers (+12 at HEAD, then −88). Cite them by quoted text: `bakeoff_progress_recipe_salt: 0,` and `self.bakeoff_progress_rx = None;`.
+- **For C2's dev.** C2 builds on the CURRENT test file, not the brief's C1 skeleton. Three things changed since the skeleton:
+  - the outer-Option test now carries the taken-cell unit rows;
+  - the count loop is gone;
+  - the negatives run at both statuses.
+
+  C2's `forward_plan_stays_batched_after_receiver_taken` still adds frame-stability and relay, which the units rows do not.
+- **Orchestrator gate on the final files:** **`scratchpad/c1/gate/gate.sh`, run alone, every step `Compiling ui`/`Checking ui`:** `cargo fmt -p ui -- --check` clean; `cargo clippy -p ui --tests -- -D warnings` green (365 s); `cargo clippy -p ui --bin cockpit --features fixtures -- -D warnings` green; `--test subscription_batch_inclusion` 7/7. **The three hand probes, re-applied by the orchestrator, each red at its designed row:** OWN-1 → "units for a ctx holding a TAKEN bakeoff_progress cell" (14 vs 15); OWN-2 → "Esc press (status Captured) closes the modal: None"; OWN-3m → "Enter press (status Captured) must not close the modal: Some(TapeAuditModalClosed)". Each was restored sha-identical, and the target is 7/7 again after. `cargo check -p ui --no-default-features --features fixtures` green; both bins build. **Full `cargo test -p ui --no-fail-fast`: 1320 passed, 0 failed, 32 ignored over 122 result lines** (6 h 14 min wall; nearly all of it is macOS's first-launch check of each freshly linked test binary, about 2-3 min apiece, not test time). **cockpit-smoke PASS** with startup proven: the 7 s window opened only after the process had used 1.05 s of CPU, it was alive at the window's end, and the log has 0 panic lines. Anchors 119/119; spec-lint 0 violations; ADR registry clean; bug-log schema PASS (`#203` open).
 
 ### Inventory (AC1), audit (AC3) and wave plan, re-verified at HEAD `2d2d95be`
 
@@ -716,3 +796,4 @@ Waves A, B and D touch no production code and are independent; they may run befo
 - Wave B (2026-11-12): `crates/ui/tests/recipe_off_runtime_poll.rs` (NEW), `crates/ui/tests/server_time_recipe_stream.rs` (modified: `server_time_stream_impl_emits_at_1_hz_cadence` only). No production file.
 - Wave D (2026-11-13): `crates/ui/tests/advisor_recipe_state_gating.rs` (NEW), `crates/ui/tests/promote_swept_config.rs` (modified: un-gated, tests routed through `update`). No production file.
 - Wave E1a (2026-11-13): `crates/ui/tests/{activity_recipe_stream,trail_mirror_recipe_stream,lab_progress_recipe_stream,server_time_recipe_stream,toast_dismiss_recipe_stream,training_log_recipe_harness,live_subscription_full_bus}.rs` (modified). No production file. The gate finding's one-line test-module lint fix to `crates/ui/src/lab/training_log.rs` is its own commit, `f5c89e19`.
+- Wave C1 (2026-11-14): production `crates/ui/src/live.rs`, `crates/ui/src/widgets/journal_transaction_modal.rs`, `crates/ui/src/bin/cockpit_live.rs`, `crates/ui/src/bin/cockpit.rs` (modified); `crates/ui/tests/subscription_batch_inclusion.rs` (NEW); `crates/ui/tests/cockpit_subscription_server_time_always_batched.rs`, `crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs`, `crates/ui/tests/trail_mirror_subscription_handle_gating.rs` (DELETED, folded into the new file); `_bmad-output/planning-artifacts/trace.toml` (the 3 deleted paths commented out); `docs/dev-notes/bug-log.md` (`#203` filed; `#202`'s two line cites repointed); `docs/runbooks/cockpit-live-subscription-walk.md` (NEW).

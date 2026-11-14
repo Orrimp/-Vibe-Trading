@@ -23,9 +23,9 @@
 //! `on_close`, `backdrop`, or keyboard hooks. Consequences: click-outside
 //! dismiss stays via the existing hand-rolled
 //! `MouseArea::new(Space).on_press(close_msg)` backdrop sibling;
-//! Escape-to-dismiss stays in the cockpit's keyboard subscription
-//! (`bin/cockpit.rs::subscription` at line 251 — modal-open-gated
-//! `iced::event::listen_with` recipe routes `Esc` →
+//! Escape-to-dismiss stays in each cockpit's keyboard subscription
+//! ([`esc_closes_modal`], batched by both bins as a modal-open-gated
+//! `iced::event::listen_with(esc_closes_modal)` unit that routes `Esc` →
 //! `Message::TapeAuditModalClosed`); and card centering stays via the
 //! inner Container's `center_x` / `center_y` chrome — `Float`'s
 //! `translate` closure is reserved for future use; default scale and
@@ -66,7 +66,7 @@ use iced::{Element, Length};
 
 use trading_core::JournalEntry;
 
-use crate::state::{JournalModalState, JournalTransactionView, PanelState};
+use crate::state::{JournalModalState, JournalTransactionView, Message, PanelState};
 use crate::strings::{
     TAPE_AUDIT_MODAL_CLOSE_LABEL, TAPE_AUDIT_MODAL_COL_ACCOUNT, TAPE_AUDIT_MODAL_COL_CREDIT,
     TAPE_AUDIT_MODAL_COL_CURRENCY, TAPE_AUDIT_MODAL_COL_DEBIT, TAPE_AUDIT_MODAL_DESC_LABEL,
@@ -111,9 +111,9 @@ const MODAL_WIDTH_PX: u32 = 480;
 /// generic lets this widget compile across the cockpit and `cockpit_live`
 /// callers. The third close path — `Esc` — is **not** wired in this
 /// widget: `Float` has zero keyboard participation (H-arch-A7b
-/// FALSIFIED, 2026-05-13). Escape stays in `bin/cockpit.rs::subscription`
-/// and `bin/cockpit_live.rs::subscription` (modal-open-gated keyboard
-/// recipe routing `Esc` to `Message::TapeAuditModalClosed`).
+/// FALSIFIED, 2026-05-13). Escape is [`esc_closes_modal`], which both
+/// bins batch as a modal-open-gated `listen_with` unit (`cockpit_live`
+/// through `ui::live::subscription_batch`); it emits `Message::TapeAuditModalClosed`.
 ///
 /// Returns a `Float<Stack>` with the cockpit body underneath the modal —
 /// when the caller's `Cockpit.tape_audit_modal == None`, callers render
@@ -516,6 +516,28 @@ where
         .width(Length::FillPortion(2))
         .align_x(iced::alignment::Horizontal::Center)
         .into()
+}
+
+/// The modal's third close path: `Esc` → `Message::TapeAuditModalClosed`.
+///
+/// Both cockpits batch it as `iced::event::listen_with(esc_closes_modal)` while the
+/// modal is open (`cockpit_live` through `ui::live::subscription_batch`). Only a
+/// key PRESS of the named `Escape` key maps; the event status is ignored, so an
+/// `Esc` a widget captured still closes the modal (the pre-extraction behaviour).
+#[must_use]
+#[allow(clippy::needless_pass_by_value)] // the signature is fixed by `listen_with`'s `fn` pointer
+pub fn esc_closes_modal(
+    event: iced::Event,
+    _status: iced::event::Status,
+    _window: iced::window::Id,
+) -> Option<Message> {
+    match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+            ..
+        }) => Some(Message::TapeAuditModalClosed),
+        _ => None,
+    }
 }
 
 /// Render a `Timestamp` as RFC 3339, monospaced. The cockpit's `widgets::num`

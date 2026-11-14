@@ -2232,10 +2232,10 @@ tests       = [
   "crates/ui/tests/training_log_recipe_harness.rs",                                                                 # Wave A — S1 boundary (250 LoC; 3 tests: sentinel + salt-bump-take + graceful-shutdown; T-T4 P1 probe verified)
   "crates/ui/tests/training_log_state_gating.rs",                                                                   # Wave A — S2 gating (240 LoC; 3 tests: inflight-visibility + clears-on-completion + state-after-cancellation; T-T4 P3 probe verified)
   "crates/agent/tests/activity_audit_aggregator_select_arm_survival.rs",                                            # Wave B — S1 select-arm-survival (~150 LoC, ≥ 2 tests)
-  "crates/ui/tests/cockpit_subscription_server_time_always_batched.rs",                                             # Wave C — S2 always-batched (~110 LoC; 2 tests: screen-batch + all-optional-active; T-T4 P-C2 verified RED 2026-05-30)
+  # (path removed 2026-11-14: crates/ui/tests/cockpit_subscription_server_time_always_batched.rs folded into crates/ui/tests/subscription_batch_inclusion.rs by story 2-63 Wave C1)   # Wave C — S2 always-batched (~110 LoC; 2 tests: screen-batch + all-optional-active; T-T4 P-C2 verified RED 2026-05-30)
   "crates/ui/tests/toast_dismiss_recipe_stream.rs",                                                                 # Wave C — S1 boundary (~190 LoC; 3 tests: tick-per-500ms + monotone + stream-open; T-T4 P-C3 verified RED 2026-05-30)
-  "crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs",                                           # Wave C — S2 always-batched (~160 LoC; 3 tests: screen-batch + all-optional + queue-empty; T-T4 P-C4 verified RED 2026-05-30)
-  "crates/ui/tests/trail_mirror_subscription_handle_gating.rs",                                                     # Wave D — S2 handle-gated (~80 LoC)
+  # (path removed 2026-11-14: crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs folded into crates/ui/tests/subscription_batch_inclusion.rs by story 2-63 Wave C1)   # Wave C — S2 always-batched (~160 LoC; 3 tests: screen-batch + all-optional + queue-empty; T-T4 P-C4 verified RED 2026-05-30)
+  # (path removed 2026-11-14: crates/ui/tests/trail_mirror_subscription_handle_gating.rs folded into crates/ui/tests/subscription_batch_inclusion.rs by story 2-63 Wave C1)   # Wave D — S2 handle-gated (~80 LoC)
   "crates/ui/tests/activity_recipe_stream.rs",                                                                      # Wave D — S1 boundary (~120 LoC)
   "crates/ui/tests/training_poller_subscription.rs",                                                                # Wave D — S1+S2 audit-DB poll (~150 LoC)
   # NON-REGRESSION GATES (re-verified post-v0.2.0 merge per D-V0.2.0-6):

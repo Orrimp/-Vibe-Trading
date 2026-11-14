@@ -10327,11 +10327,13 @@ the panel presents it as an explanation of the result on screen. Nothing is trad
 but the advisor's explanation is false in this state.
 
 **2. A refused request strands the panel.** `update` sets `InFlight` first (`state.rs:3870-3883`).
-The cockpit then `try_send`s the request (`cockpit_live.rs:1800-1810`) and only logs an error,
+The cockpit then `try_send`s the request (`cockpit_live.rs:1800-1810` at `9a83b987`, `:1712-1722`
+after story 2-63 Wave C1) and only logs an error,
 which covers `Closed` as well as `Full` and calls both "narration_request channel full — Explain
 deferred". No `BakeoffNarrationCompleted` follows, so the panel shows its spinner until the next Run.
 
-- `Full` needs four queued requests behind a slow provider (`channel(4)`, `cockpit_live.rs:525`).
+- `Full` needs four queued requests behind a slow provider (`channel(4)`, `cockpit_live.rs:525`,
+  `:437` after Wave C1).
 - `Closed` needs the narration task to have ended. Since the `#201` fix, a narration panic no longer
   ends it.
 
@@ -10351,3 +10353,113 @@ The pin, through `update`:
 - Explain on A, Run B, then A's answer arrives: B's narration stays `NotRequested`.
 - The same with no Run in between: the answer lands.
 - A refused send ends at `FellBack`, not `InFlight`.
+
+### `#203` — the v0.2 subscription-batch gates could not fail: no test ran a conversion arm, and the trail file's bin-arm probe edited code no test executes
+
+**Status**: **`open`** 2026-11-14. Story 2-63's AC3 audit found it (inventory workflow
+`wf_23e8261b-a57`, 2026-11-10, read-only, at HEAD `2d2d95be`). It was re-read at HEAD `1a4d876c` by
+the Wave C1 brief and its critique. No product defect was found: the shipped batch was right. What
+was wrong is that the gates claimed to guard it could not go red. Wave C1 closes three of the four
+divergences listed below. The fourth, an arm building the sibling recipe, waits for Wave C2's relay
+and identity tests. Anchor-impacting: **no** (subscriptions write no report).
+
+**The code.** There were two claims.
+
+1. **The descriptor comment.** At `1a4d876c`, `crates/ui/src/live.rs` opened the
+   `SubscriptionBatchDescriptor` seam with: "Production `cockpit_live::subscription()` calls this
+   and converts the result to actual iced subscriptions. If the conversion and the descriptor
+   diverge, T-D-C2 / T-D-C4 catch it." (`:1313-1315`).
+   - T-D-C2 and T-D-C4 are `crates/ui/tests/cockpit_subscription_server_time_always_batched.rs` and
+     `crates/ui/tests/cockpit_subscription_toast_dismiss_always_batched.rs`. All 5 of their tests
+     call only `build_subscription_batch_descriptor(..)` and assert `descriptor.contains(..)`.
+   - The conversion lived in the BIN: `crates/ui/src/bin/cockpit_live.rs:2521-2592` at `1a4d876c`,
+     `.map(|variant| match variant {`. An integration test cannot link a bin target, so no test
+     executed a single arm.
+   - Four divergences therefore left both files green: an arm returning `Subscription::none()`, an
+     arm building the sibling recipe, a variant the conversion skipped, and a variant that only the
+     descriptor listed.
+   - Five more recipes were pushed after the descriptor batch, outside any descriptor
+     (`:2595-2668`): ForwardPlan, NarrationOutcome, BakeoffProgress, SweepProgress, and the
+     modal-Esc `listen_with`. No v0.2 gate saw them.
+2. **The trail probe.** At `1a4d876c`, `crates/ui/tests/trail_mirror_subscription_handle_gating.rs:22-33`
+   documented a two-part T-T4 probe.
+   - Part 1 replaced the bin's `Trail =>` arm body with `iced::Subscription::none()`. No test runs
+     the bin arm, so that part could never turn anything red.
+   - Part 2 deleted the descriptor's `if has_trail { .. }` push.
+   - The "Expected failure" paragraph names only the descriptor part ("(after the descriptor
+     probe)"). The bin part was recorded as a probe, but nothing could fail on it.
+   - The same file's `:12-13` gives the premise for the design: "`cockpit_live::subscription()`
+     returns an opaque `iced::Subscription<Message>` that cannot be introspected". That premise is
+     false at iced 0.14. `Subscription::units()` (iced_futures-0.14.0 `src/subscription.rs:404`)
+     and `iced::advanced::subscription::into_recipes` (`:419`) are public.
+
+**Why no test caught it.** Each gate asserted membership in a list built BESIDE the conversion. The
+list was never the input of a function a test could call. Every recorded probe broke the
+descriptor, never the conversion. That is the `#161` form: a dimension is pinned only by a pair of
+cases that differ in it, here "break the conversion, keep the descriptor", and no such pair
+existed. It is also the `#190` wiring shape. The tested function did run in production, but the
+part that decides the batch did not run in any test.
+
+**Fix (story 2-63 Wave C1, one diff).**
+- **The conversion is in the lib.**
+  - `ui::live::subscription_batch(&SubscriptionCtx)` builds the descriptor from
+    `SubscriptionCtx::inputs()` and maps each variant through the private, exhaustive
+    `variant_subscription`.
+  - `cockpit_live`'s `subscription()` only builds the ctx literal and returns
+    `subscription_batch(&ctx)`. Tests call the function production calls.
+- **The five tail recipes are now descriptor variants**: `ForwardPlan`, `NarrationOutcome`,
+  `BakeoffProgress`, `SweepProgress` and `ModalEsc`.
+- **Two recipes moved.** `ServerTimeRecipe` and `ToastDismissRecipe` moved from the bin into
+  `ui::live`.
+- **One Esc function.** The `Esc` mapping is `ui::widgets::journal_transaction_modal::esc_closes_modal`,
+  shared by both bins.
+- **Deletions.** The false comment is gone. The three v0.2 files are deleted, and their
+  `trace.toml` rows are commented out, following the `:2263` precedent.
+- **The new pins.** They are in `crates/ui/tests/subscription_batch_inclusion.rs`:
+  - a 256-mask descriptor matrix, which catches a variant keyed on the wrong input or on none;
+  - two `inputs()` keying tests: one keys on the outer Option, the other is field by field;
+  - the batch built for a TAKEN cell, per take-once arm: 15 units each, 20 for all six;
+  - `subscription_batch_units_match_descriptor`, with two halves:
+    - its LITERAL half (14 / 15 / 22 units per ctx) catches an arm that builds nothing for a
+      present input. That is probe C1-P6, the exact divergence the old comment claimed was caught;
+    - its AGREEMENT half (`11 + len - 1`) catches a variant that only the descriptor lists: probes
+      C1-P3, C1-P5 and C1-P12.
+- **The 3-arg fn stays.** It is kept for API compatibility (story decision 5) and delegates.
+  `legacy_three_arg_descriptor_is_pinned_to_its_literal_order` is labelled a COMPATIBILITY pin, not
+  a wiring pin.
+
+**What stays open, and what stays unpinned.**
+- **An arm building the sibling recipe (this entry's open part).**
+  - `Subscription::units()` counts recipes and does not check what they are, so it cannot see this
+    divergence. For example, `ServerTime => from_recipe(ToastDismissRecipe { .. })` keeps every
+    count right, and at runtime the clock would never tick.
+  - The same holds for a Sweep arm building `BakeoffProgressRecipe`, which compiles because the two
+    cells share one type.
+  - Wave C2 adds `batched_*_recipe_relays`, which assert the emitted `Message` VARIANT, and
+    `recipe_ids_are_pairwise_distinct`.
+- **The bin's ctx literal** (story K3 #6, which said the residual "goes to cockpit-smoke"; that is
+  false).
+  - `AppState` cannot be built in a test, and `cockpit-smoke` boots only the fixtures `cockpit` bin,
+    with no input synthesis. So the literal is checked by nothing automated.
+  - Probes C1-RES1 (`forward_plan: self.plan_rx.as_ref(),` → `forward_plan: None,`) and C1-RES2
+    (training paired with `self.lab_progress_recipe_salt`) left every target green. They are
+    recorded as named survivors.
+  - The operator walk in `docs/runbooks/cockpit-live-subscription-walk.md` catches C1-RES1's
+    class: a field passed as `None`, or wired to the wrong cell.
+  - It cannot catch C1-RES2. The bin clears each take-once cell when its run ends, so iced drops
+    the recipe's id and the next run streams afresh whatever its salt is. A swapped salt is
+    therefore checked by nothing.
+
+**Pin / T-T4.** Probes C1-P1..C1-P15 and C1-RES1/RES2 are tabled in the new file's module doc, by
+symbol and quoted line.
+- **Falsifier, 2026-11-14.** The Wave C1 falsifier measured C1-P1..C1-P12 one at a time, each red
+  at its named rows.
+  - C1-P2's red set was one test larger than the table first said; the table is corrected.
+  - C1-RES1 and C1-RES2 left every target green, `--bin cockpit_live` included.
+- **Its own three probes.**
+  - Two survived (7/7 green). OWN-1 was a take-once arm keyed on its inner receiver, which in
+    production freezes the bake-off bar one frame after its recipe takes the receiver. OWN-3m made
+    any captured event close the modal.
+  - The orchestrator added the taken-cell unit rows and ran each negative `Esc` case at both
+    statuses, then re-measured these probes as C1-P13 and C1-P15.
+  - OWN-2 was red as designed and is tabled as C1-P14.
