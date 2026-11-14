@@ -10356,14 +10356,13 @@ The pin, through `update`:
 
 ### `#203` — the v0.2 subscription-batch gates could not fail: no test ran a conversion arm, and the trail file's bin-arm probe edited code no test executes
 
-**Status**: **`partial-fix` 2026-11-14 — `0ce426cf`** (story 2-63 Wave C1: the conversion moved
-into the lib and the new pins landed; three of the four divergences below are now caught). Filed
-`open` in that same commit. Story 2-63's AC3 audit found it (inventory workflow
+**Status**: **`fixed` 2026-11-14 — `0ce426cf` + `73bfde06`** (story 2-63: Wave C1 moved the
+conversion into the lib and landed the count and descriptor pins, which catch three of the four
+divergences below; Wave C2 landed the relay and identity tests, which catch the fourth, an arm
+building the sibling recipe). Filed `open` in `0ce426cf`, `partial-fix` since `fad6fe25`. Story 2-63's AC3 audit found it (inventory workflow
 `wf_23e8261b-a57`, 2026-11-10, read-only, at HEAD `2d2d95be`). It was re-read at HEAD `1a4d876c` by
 the Wave C1 brief and its critique. No product defect was found: the shipped batch was right. What
-was wrong is that the gates claimed to guard it could not go red. The fourth divergence, an arm
-building the sibling recipe, waits for Wave C2's relay and identity tests; the entry goes to
-`fixed` only with C2. Anchor-impacting: **no** (subscriptions write no report).
+was wrong is that the gates claimed to guard it could not go red. Anchor-impacting: **no** (subscriptions write no report).
 
 **The code.** There were two claims.
 
@@ -10430,15 +10429,24 @@ part that decides the batch did not run in any test.
   `legacy_three_arg_descriptor_is_pinned_to_its_literal_order` is labelled a COMPATIBILITY pin, not
   a wiring pin.
 
-**What stays open, and what stays unpinned.**
-- **An arm building the sibling recipe (this entry's open part).**
+**What C2 closed, and what stays unpinned.**
+- **An arm building the sibling recipe: closed by Wave C2 (`73bfde06`).**
   - `Subscription::units()` counts recipes and does not check what they are, so it cannot see this
     divergence. For example, `ServerTime => from_recipe(ToastDismissRecipe { .. })` keeps every
     count right, and at runtime the clock would never tick.
   - The same holds for a Sweep arm building `BakeoffProgressRecipe`, which compiles because the two
     cells share one type.
-  - Wave C2 adds `batched_*_recipe_relays`, which assert the emitted `Message` VARIANT, and
-    `recipe_ids_are_pairwise_distinct`.
+  - Wave C2's 12 `batched_*_recipe_relays` take each unit out of `subscription_batch(..)` by an
+    independently built reference id and assert the emitted `Message` VARIANT, and
+    `recipe_ids_are_pairwise_distinct` asserts 22 distinct ids at salt 0 and at salt 1.
+  - MEASURED red (falsifiers of `wf_a82b74dd-7bb` and `wf_be1acf7b-3e7`):
+    - C2-P12, the Sweep arm builds `BakeoffProgressRecipe`;
+    - C2-P26, the reverse: the Bakeoff arm builds `SweepProgressRecipe` (also re-applied by hand
+      by the orchestrator, red at the four rows its table names);
+    - C2-P19, the ServerTime body cross-wired to the toast body;
+    - C2-P27, the ServerTime arm builds `ToastDismissRecipe`.
+  - Also caught since C2, the falsifier's OWN-1 (now C2-P21): the Sweep arm drains the bake-off
+    cell whenever both are held, as they are while a bake-off and a sweep run together.
 - **The bin's ctx literal** (story K3 #6, which said the residual "goes to cockpit-smoke"; that is
   false).
   - `AppState` cannot be built in a test, and `cockpit-smoke` boots only the fixtures `cockpit` bin,
@@ -10452,8 +10460,8 @@ part that decides the batch did not run in any test.
     the recipe's id and the next run streams afresh whatever its salt is. A swapped salt is
     therefore checked by nothing.
 
-**Pin / T-T4.** Probes C1-P1..C1-P15 and C1-RES1/RES2 are tabled in the new file's module doc, by
-symbol and quoted line.
+**Pin / T-T4.** Probes C1-P1..C1-P15, C1-RES1/RES2 and, since Wave C2, C2-P1..C2-P27 are tabled
+in the new file's module doc, by symbol and quoted line.
 - **Falsifier, 2026-11-14.** The Wave C1 falsifier measured C1-P1..C1-P12 one at a time, each red
   at its named rows.
   - C1-P2's red set was one test larger than the table first said; the table is corrected.
