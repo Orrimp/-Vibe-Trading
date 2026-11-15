@@ -10510,3 +10510,60 @@ in the new file's module doc, by symbol and quoted line.
 - **T12-P1 (the defect itself):** re-add the third `.join("..")`. The test must go RED at the new existence assertion. At HEAD it is green.
 - **T12-P2 (two-sided on the value):** change line 1 of `config/agent.toml` (or of the tempdir copy) to `mode = "paper"`. The test must go RED at `assert_eq!(cfg.mode, Mode::Research);`. Restore the file byte-identically and compare its SHA-256.
 - In the fixed test's doc, cite both probes by symbol and quoted line, never by line number (`2-63`'s T-T4 convention).
+
+### `#205` — the Reports picker and the Lab's committed-evidence fallback read one directory level, but the corpus has been two levels deep since the `spec/v1` reorganisation
+
+**Status**: **`open`** 2026-11-15. Story `2-63`'s Wave E2 re-audit found it (its `reports_populated_curve_render.rs` row, then the backlog's § Routed findings). It is its own production change, not story `2-63`'s, whose AC5 forbids a production behaviour change (the `#196` route). MEASURED at HEAD `78075ee7` (macOS dev box, 2026-11-15): `cargo test -p ui --test reports_populated_curve_render -- --nocapture` reports `10 passed`, and 5 of those 10 printed a `skipping (pruned checkout)` line (the demo twice, the avax companion twice, the avax/dot pair once), so the five live-corpus tests ran no assertion. The corpus counts are MEASURED read-only with `find`, `git ls-files` and `git ls-tree` (2026-11-15). Anchor-impacting: **no**: discovery only reads `evidence/`, and no report byte changes. Paper/sim only.
+
+**The code.**
+- `crates/ui/src/reports/loader.rs`, `pub fn discover_reports()`, reads `evidence/<x>/reports/` only: `let reports_dir = slug_path.join("reports");`. `reports::state::load_into`, the boot one-shot of `bin/cockpit.rs` and `bin/cockpit_live.rs`, lists that result and auto-selects `newest_companion_index`.
+- `crates/ui/src/lab/equity_loader.rs`, `fn discover_reports(report_root, slug)`, reads `<root>/<slug>/reports/` only: `let dir = report_root.join(slug).join("reports");`. The production roots are `default_report_roots()` = `[lab-runs/, evidence/]` (ADR-0055 § D5). `lab-runs/<slug>/reports/` is depth 1 and still found; `evidence/` is not.
+- Since `1395520629dc` (2026-06-28) the corpus sits at `evidence/<container>/<slug>/reports/` (`spec/` became `evidence/` in `452ce026d`, 2026-07-25):
+  - 108 tracked reports are at depth 1, all in the four `evidence/v5-latency-slippage-sim-v0.*` dirs, and none of them has an equity companion;
+  - 89 are at depth 2 (87 under `v1`, 2 under `v3`, none under `v2`), and nothing is deeper;
+  - all 14 reports with a stem-matched equity companion are at depth 2, in `evidence/v1/v0-paper-sma/reports/artifacts/<stem>/` (the 2 `paper-soak-longevity` artifact dirs pair with no report).
+- Every slug `strategy_slug` maps to lives only under `evidence/v1/`: `v0-paper-sma` (20 reports), `v1-cross-sectional-momentum` (2), `v05-composed-strategies` (3), `v15a-mean-reversion-pairs` (2).
+
+**Why it matters.**
+- **The Reports screen** opens on its default curve-only view with 0 rows. "All" lists only the 108 v5 latency-migration re-emits. None of the 89 v1/v3 reports is listed, including all 14 that draw a curve, and boot auto-select selects nothing: the empty screen that `6a3b0a09` (auto-select) and `762c3474` (the curve-only default) were built to prevent.
+- **The Lab's** committed-evidence fallback (ADR-0055 § D5) resolves nothing from `evidence/`; only `lab-runs/` answers.
+- **ADR drift.** ADR-0055 § D1's premise (the `lab-runs/` layout is identical to the `spec/` layout, so both loaders read it with only a ROOT change) has been false since `1395520629dc`, and nothing amended it (AD-18).
+
+**Why no test caught it.**
+- `crates/ui/tests/reports_populated_curve_render.rs` has five live-corpus tests that find the committed demo, or the avax/dot companions, through `loader::discover_reports()`, and `return;` on a miss (``eprintln!("demo report `{DEMO_STEM}` not discovered — skipping (pruned checkout)");``), at eight sites. That is the `#66` skip-as-pass shape: the demo is committed, so the "pruned checkout" never happens; the miss is the depth.
+- The two in-source discovery tests assert properties of whatever is found, and the 108 v5 entries satisfy them. Neither asserts that a tracked report is found.
+- `load_equity_companion_real_demo_report_is_ready` and `report_has_companion_agrees_with_loader_on_real_demo` hard-code the depth-2 path (`1395520629dc` itself repointed them), so they pass without discovery.
+- `integration_load_real_v1_report` gates on the flat path and accepts `NoReport` as a pass. Its doc comment (`452ce026d`) says it "has skipped since that reorg".
+
+**Fix (its own change; plan in the orchestrator's #205 design, verified against the code):**
+1. One layout contract, `crates/ui/src/reports/layout.rs`: `MAX_CONTAINER_DEPTH = 1`, `<root>[/<container>]/<slug>/reports/backtest-*.md`; a dir named `reports` is never a container or a slug; the slug is the leaf dir name. Both readers use it.
+2. Reports: `discover_reports_in(root)` sorted by (slug, stem, path), and `load_into_from(model, root)`; the old functions become wrappers.
+3. Lab: `discover_reports` becomes the union over `layout::report_dirs_for_slug`; `get_or_load_roots` and D5's precedence are untouched.
+4. Tests: the eight skips become assertions; a git-index oracle pins discovery against every tracked report; hermetic depth-2/depth-3 pairs on both readers; the boot auto-select render.
+5. ADR-0055 gets a dated amendment (D8, the layout contract; D1's premise corrected). No story, trace row or CHANGELOG line (the `#196` precedent).
+
+**Pin / T-T4.** Each probe FAIL → restore → PASS, with `Compiling ui` before the red run, cited by symbol + quoted line. The full table lives in the module docs of `reports_populated_curve_render.rs` and `live_equity_render.rs`. The defect probe: `MAX_CONTAINER_DEPTH` back to `0` must turn the oracle, companion, boot auto-select, depth-2 fixture and Lab depth-2 tests red; `2` must turn the depth-3 controls red.
+
+### `#206` — Compare's report scan reads one directory level, the `#205` walk in a third reader
+
+**Status**: **`open`** 2026-11-15. Found by the `#205` design pass (read-only, 2026-11-15) and re-read by the orchestrator. REASONED from code; not measured with cargo. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.** `crates/ui/src/compare/cache.rs`, `fn scan_one_root(spec_root, ..)`, walks `spec_root/<x>/reports/` only (`let reports_dir = strategy_dir.join("reports");`), under the comment `// Walk spec_root/**/ looking for backtest-*.md files.`, which claims a recursive walk. Its roots are ADR-0055 § D5's two, so on `evidence/` it sees only the four depth-1 v5 dirs and none of the 89 depth-2 reports (counts in `#205`).
+
+**Why it matters.** The Compare matrix has no committed-evidence cells for the v1 strategies; only `lab-runs/` cells appear.
+
+**Fix (its own change, after `#205`):** walk with `#205`'s `reports::layout::report_dirs`. It changes the Compare matrix and its scan tally, so it ships with its own render proof, and the stale `**` comment goes.
+
+### `#207` — the Lab's start/end-only equity overlay carries placeholder timestamps, so with price bars on screen it draws nothing and still reserves the equity gutter
+
+**Status**: **`open`** 2026-11-15. Found by the `#205` design pass and re-read by the orchestrator (REASONED from code; not rendered). It is masked today by `#205` (no committed report resolves); `#205`'s Lab leg unmasks it. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.**
+- `crates/ui/src/lab/equity_loader.rs`, `fn make_start_end_series`: `Ok(vec![(0, initial), (1, final_eq)])`, under `// Use synthetic timestamps: 0 (epoch) and 1 for start/end so the` … `// anchoring is Phase B scope.`
+- `crates/ui/src/widgets/chart.rs`, the chart program's draw: `let has_equity = self.equity.is_some() || !self.compare.is_empty();` widens the right gutter (`chart_inner_rect_with_equity`). With bars present, Pass 5 calls `compute_equity_range` with the bar window (`self.bars.first().map(|b| b.open_ts.unix_millis())` … `close_ts`), so samples at 0 and 1 ms are outside it, the range is `None`, and nothing is drawn.
+- With no bars (the F9 path), `draw_equity_polyline_standalone` draws a full-width start→end line from the same two samples.
+- Every Lab-reachable committed report is start/end-only: the four mapped slugs hold 0 `## Equity curve` sections and 0 `-equity.csv` siblings (MEASURED by the `#205` design pass, 2026-11-15).
+
+**Why it matters.** Once `#205` restores the committed fallback, a Lab tuple that resolves a committed report shows a narrower price chart with an empty equity gutter and no curve, a visible regression the operator cannot explain.
+
+**Fix:** designed and shipped in the same push batch as `#205`, so the pushed state never carries the empty gutter (orchestrator decision D3, 2026-11-15).
