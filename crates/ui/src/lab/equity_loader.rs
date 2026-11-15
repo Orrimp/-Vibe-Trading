@@ -1,7 +1,9 @@
 //! Cached backtest report equity-curve loader — ui-rethink-phase-a-lab T-D-10.
 //!
-//! Scans `evidence/<strategy-slug>/reports/backtest-*.md` for reports that match
-//! a `(strategy, pair, range)` tuple and parses the per-bar equity series.
+//! Scans `<root>[/<container>]/<strategy-slug>/reports/backtest-*.md` (the
+//! `crate::reports::layout` contract, ADR-0055 D8 / bug-log #205) under each
+//! report root (`lab-runs/`, `evidence/`) for reports that match a
+//! `(strategy, pair, range)` tuple and parses the per-bar equity series.
 //!
 //! ## Design notes (Design § 4.3 / R7)
 //!
@@ -33,6 +35,7 @@ use thiserror::Error;
 use trading_core::{StrategyId, Symbol, Venue};
 
 use crate::lab::state::{DateRange, LabDataSource, Preset};
+use crate::reports::layout;
 
 // ── Public data shapes ────────────────────────────────────────────────────────
 
@@ -129,7 +132,11 @@ impl LabTuple {
 /// Errors from the equity loader.
 #[derive(Debug, Error)]
 pub enum EquityLoadError {
-    #[error("report directory not found: {0}")]
+    /// No `backtest-*.md` file for the strategy's slug under the root, at any
+    /// container depth ≤ `reports::layout::MAX_CONTAINER_DEPTH`. Despite the
+    /// name it covers BOTH empties; the message says which: no `reports/` dir
+    /// for the slug at all, or such dirs exist but hold no `backtest-*.md`.
+    #[error("no backtest report to load: {0}")]
     ReportDirNotFound(String),
     #[error("no cached report found for ({strategy}, {symbol}, {range:?}, {data_source:?})")]
     NoReport {
@@ -170,7 +177,8 @@ impl EquityCache {
     ///
     /// `report_root` should point to one report root (e.g. the repository's
     /// `evidence/` directory, or a `lab-runs/` tempdir). The loader searches
-    /// `<root>/<strategy-slug>/reports/backtest-*.md`.
+    /// `<root>[/<container>]/<strategy-slug>/reports/backtest-*.md`, container
+    /// depth ≤ `reports::layout::MAX_CONTAINER_DEPTH` (bug-log #205).
     ///
     /// This single-root entry point is the H3 invariant's read seam
     /// (ADR-0055 § D6 — `crates/ui/tests/lab_run_engine.rs` calls it with the
@@ -265,35 +273,48 @@ fn strategy_slug(id: &str) -> SmolStr {
 
 // ── Report scanning and parsing ───────────────────────────────────────────────
 
-/// Discover all `backtest-*.md` paths under `<report_root>/<slug>/reports/`
-/// (production roots: `evidence/` or `lab-runs/`).
+/// Discover all `backtest-*.md` paths of `slug` under `report_root`: the files
+/// of every `reports/` dir the layout lists for the slug —
+/// `<root>/<slug>/reports/` (container depth 0) AND
+/// `<root>/<container>/<slug>/reports/` (container depth 1). Production roots:
+/// `lab-runs/`, and `evidence/`, whose committed reports sit at container
+/// depth 1 since `1395520629dc` (bug-log #205: a one-level walk found none).
+///
+/// **Order = the D8 tie rule (ADR-0055 amendment).** The dirs come in
+/// (container depth, path) order and each dir's files by path; they are
+/// concatenated in that order and NEVER re-sorted by full path. So the
+/// strict-`>` "first best" in [`load_equity`] keeps a container-depth-0 report
+/// (the only place the walk looked before #205) on an equal-score tie with a
+/// container-depth-1 one, whether the container name sorts before or after the
+/// slug name. Pinned by E4b
+/// (`equal_score_tie_across_container_depths_goes_to_container_depth_0`).
 fn discover_reports(report_root: &std::path::Path, slug: &str) -> Vec<PathBuf> {
-    let dir = report_root.join(slug).join("reports");
-    if !dir.is_dir() {
-        return Vec::new();
+    layout::report_dirs_for_slug(report_root, slug)
+        .into_iter()
+        .flat_map(|d| layout::backtest_files(&d))
+        .collect()
+}
+
+/// The `ReportDirNotFound` detail: names the slug, the root and the container
+/// depth bound, and says which empty it is (`dirs` = how many `reports/` dirs
+/// the layout lists for the slug).
+fn no_report_detail(report_root: &std::path::Path, slug: &str, dirs: usize) -> String {
+    let bound = layout::MAX_CONTAINER_DEPTH;
+    if dirs == 0 {
+        format!(
+            "no `{}/` dir for slug `{slug}` under {} at container depth ≤ {bound} \
+             (`<root>[/<container>]/<slug>/reports/`)",
+            layout::REPORTS_DIR,
+            report_root.display()
+        )
+    } else {
+        format!(
+            "{dirs} `{}/` dir(s) for slug `{slug}` under {} (container depth ≤ {bound}) hold \
+             no `backtest-*.md`",
+            layout::REPORTS_DIR,
+            report_root.display()
+        )
     }
-    let Ok(read_dir) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut paths: Vec<PathBuf> = read_dir
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                // Backtest report files are always written with lowercase ".md" extension.
-                .is_some_and(|n| {
-                    n.starts_with("backtest-") && {
-                        #[allow(clippy::case_sensitive_file_extension_comparisons)]
-                        let ok = n.ends_with(".md");
-                        ok
-                    }
-                })
-        })
-        .collect();
-    // Sort deterministically so the "first best" pick is reproducible.
-    paths.sort();
-    paths
 }
 
 /// Parsed front-matter fields relevant to cache-key matching.
@@ -621,7 +642,10 @@ fn parse_equity_section(body: &str) -> Vec<(i64, Decimal)> {
 ///
 /// # Errors
 ///
-/// Returns `EquityLoadError::NoReport` when no matching report is found;
+/// Returns `EquityLoadError::ReportDirNotFound` when the slug has no
+/// `backtest-*.md` under the root at all (its message names the slug, the root,
+/// the container depth bound and which empty it is);
+/// `EquityLoadError::NoReport` when no matching report is found;
 /// `EquityLoadError::ParseError` when the best candidate cannot be parsed.
 pub fn load_equity(
     tuple: &LabTuple,
@@ -631,10 +655,12 @@ pub fn load_equity(
     let reports = discover_reports(report_root, &slug);
 
     if reports.is_empty() {
-        return Err(EquityLoadError::ReportDirNotFound(format!(
-            "{}/{}",
-            report_root.display(),
-            slug
+        // Error path only: one more targeted walk says WHICH empty it is.
+        let dirs = layout::report_dirs_for_slug(report_root, &slug).len();
+        return Err(EquityLoadError::ReportDirNotFound(no_report_detail(
+            report_root,
+            &slug,
+            dirs,
         )));
     }
 
@@ -1186,6 +1212,22 @@ data_source: synthetic
     /// field) and a parameterized equity-point count so two same-tuple
     /// reports are distinguishable by `samples.len()`.
     fn sma_2024_h1_report(data_source: Option<&str>, equity_points: usize) -> String {
+        sma_report(
+            "btc-2024-h1-sma-cross",
+            data_source,
+            equity_points,
+            "2026-06-01T12:00:00Z",
+        )
+    }
+
+    /// [`sma_2024_h1_report`] with the `scenario:` and `generated:` values as
+    /// parameters (bug-log #205: the tie-rule fixtures vary both).
+    fn sma_report(
+        scenario: &str,
+        data_source: Option<&str>,
+        equity_points: usize,
+        generated: &str,
+    ) -> String {
         let ds_line = data_source.map_or(String::new(), |ds| format!("data_source: {ds}\n"));
         let mut equity_rows = String::new();
         for i in 0..equity_points {
@@ -1197,20 +1239,20 @@ data_source: synthetic
         }
         format!(
             "---\n\
-             scenario: btc-2024-h1-sma-cross\n\
+             scenario: {scenario}\n\
              seed: 0xC0FFEE\n\
-             generated: 2026-06-01T12:00:00Z\n\
+             generated: {generated}\n\
              wall_clock_s: 0.1\n\
              {ds_line}\
              ---\n\
              \n\
-             # Backtest Report — btc-2024-h1-sma-cross\n\
+             # Backtest Report — {scenario}\n\
              \n\
              ## Summary\n\
              \n\
              | Metric               | Value                         |\n\
              |----------------------|-------------------------------|\n\
-             | Scenario             | btc-2024-h1-sma-cross         |\n\
+             | Scenario             | {scenario:<30}|\n\
              | Initial capital      | $100000.00 USDT               |\n\
              | Final equity         | $103000.00 USDT               |\n\
              \n\
@@ -1600,54 +1642,492 @@ data_source: synthetic
         assert!(result.is_none(), "empty mirror series must fall through");
     }
 
-    /// T-D-10 — integration test: load the real v1 report from evidence/.
-    ///
-    /// Skipped if the report file doesn't exist (CI without the full
-    /// evidence tree). NOTE: this mirrors `default_evidence_root()`'s flat
-    /// `<slug>/reports` join (no `v1/` container) — pre-existing since the
-    /// 2026-06-28 v1/v2 spec reorg added the container a level above the
-    /// slug; the real committed report lives at
-    /// `evidence/v1/v1-cross-sectional-momentum/reports/` today, so this
-    /// probe has skipped since that reorg and continues to skip post the
-    /// 2026-07-25 evidence/ move (unchanged behaviour — out of scope here).
-    #[test]
-    fn integration_load_real_v1_report() {
-        let evidence = default_evidence_root();
-        if !evidence
-            .join("v1-cross-sectional-momentum")
-            .join("reports")
-            .is_dir()
-        {
-            eprintln!("skipped: evidence/v1-cross-sectional-momentum/reports not found");
-            return;
-        }
+    // ── bug-log #205: container depth (ADR-0055 D8) ──────────────────────────
 
-        let tuple = LabTuple {
+    /// A v1 momentum tuple over XRPUSDT, H1 2024 (the
+    /// `FIXTURE_REPORT_WITH_EQUITY` scenario).
+    fn momentum_tuple(source: LabDataSource) -> LabTuple {
+        LabTuple {
             strategy: SmolStr::new("v1.momentum"),
             symbol: SmolStr::new("XRPUSDT"),
             range: DateRange::Preset(Preset::H1_2024),
+            source,
+        }
+    }
+
+    /// Write `content` at `<root>/<rel>/<filename>`, creating dirs.
+    fn write_at(root: &std::path::Path, rel: &str, filename: &str, content: &str) {
+        let dir = root.join(rel);
+        std::fs::create_dir_all(&dir).unwrap();
+        write_fixture_report(&dir, filename, content);
+    }
+
+    /// The container depth of a fixture's `reports/` dir, counted from its
+    /// root-relative path (`<slug>/reports` = 0, `<c>/<slug>/reports` = 1) —
+    /// never asked of the subject.
+    fn container_depth_of(rel: &str) -> usize {
+        rel.split('/').count() - 2
+    }
+
+    /// E1 — a report at container depth 1 (`evidence/v1/<slug>/reports/`, the
+    /// committed layout since `1395520629dc`) resolves. `load_equity_per_bar_fixture`
+    /// is the container-depth-0 side of the pair.
+    #[test]
+    fn load_equity_resolves_a_container_depth_1_evidence_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let evidence = tmp.path().join("evidence");
+        write_at(
+            &evidence,
+            "v1/v1-cross-sectional-momentum/reports",
+            "backtest-20260429-195243-top10-2024-h1-momentum.md",
+            FIXTURE_REPORT_WITH_EQUITY,
+        );
+        let series = load_equity(&momentum_tuple(LabDataSource::Synthetic), &evidence)
+            .expect("a committed-layout evidence/v1/<slug>/reports report must resolve (#205)");
+        assert_eq!(series.fidelity, Fidelity::PerBar);
+        assert_eq!(
+            series.samples.len(),
+            4,
+            "the 4-point fixture must resolve from container depth 1 (#205)"
+        );
+    }
+
+    /// E1b — the other side of E1: container depth 2 is out of contract.
+    #[test]
+    fn load_equity_does_not_reach_a_container_depth_2_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let evidence = tmp.path().join("evidence");
+        write_at(
+            &evidence,
+            "v1/x/v1-cross-sectional-momentum/reports",
+            "backtest-20260429-195243-top10-2024-h1-momentum.md",
+            FIXTURE_REPORT_WITH_EQUITY,
+        );
+        assert!(
+            evidence
+                .join("v1/x/v1-cross-sectional-momentum/reports/backtest-20260429-195243-top10-2024-h1-momentum.md")
+                .is_file(),
+            "the container-depth-2 fixture must exist, so the negative is not 'file missing'"
+        );
+        let result = load_equity(&momentum_tuple(LabDataSource::Synthetic), &evidence);
+        assert!(
+            matches!(result, Err(EquityLoadError::ReportDirNotFound(_))),
+            "a report at container depth 2 must NOT resolve (ADR-0055 D8); got {result:?}"
+        );
+    }
+
+    /// Lab-runs (container depth 0, 2 points) + committed evidence (container
+    /// depth 1, 4 points) for the SAME tuple. Returns `(lab_runs, evidence)`.
+    fn depth_precedence_scene(tmp: &tempfile::TempDir) -> (PathBuf, PathBuf) {
+        let lab_runs = tmp.path().join("lab-runs");
+        let evidence = tmp.path().join("evidence");
+        write_at(
+            &lab_runs,
+            "v1-cross-sectional-momentum/reports",
+            "backtest-20260601-120000-top10-2024-h1-momentum.md",
+            LAB_RUNS_REPORT_TWO_POINT,
+        );
+        write_at(
+            &evidence,
+            "v1/v1-cross-sectional-momentum/reports",
+            "backtest-20260101-000000-top10-2024-h1-momentum.md",
+            FIXTURE_REPORT_WITH_EQUITY,
+        );
+        (lab_runs, evidence)
+    }
+
+    /// E2 — D5 precedence holds with a container-depth-1 evidence report:
+    /// lab-runs, searched first, shadows it.
+    #[test]
+    fn lab_runs_shadows_a_container_depth_1_evidence_report() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (lab_runs, evidence) = depth_precedence_scene(&tmp);
+        let mut cache = EquityCache::new();
+        let series = cache
+            .get_or_load_roots(
+                &momentum_tuple(LabDataSource::Synthetic),
+                &[lab_runs, evidence],
+            )
+            .expect("the union must resolve");
+        assert_eq!(
+            series.samples.len(),
+            2,
+            "lab-runs (2-point) must shadow the container-depth-1 evidence report (4-point) — \
+             ADR-0055 D5"
+        );
+    }
+
+    /// E2b — E2's pair: the container-depth-1 evidence report wins when its
+    /// root is searched first. Without it, E2 passes under #205 (evidence
+    /// unread).
+    #[test]
+    fn container_depth_1_evidence_report_wins_when_searched_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (lab_runs, evidence) = depth_precedence_scene(&tmp);
+        let mut cache = EquityCache::new();
+        let series = cache
+            .get_or_load_roots(
+                &momentum_tuple(LabDataSource::Synthetic),
+                &[evidence, lab_runs],
+            )
+            .expect("the union must resolve");
+        assert_eq!(
+            series.samples.len(),
+            4,
+            "with evidence/ searched first its container-depth-1 report (4-point) must win (#205)"
+        );
+    }
+
+    /// E4 — the within-root tie rule at ONE container depth (ADR-0055 D8):
+    /// equal-score reports of one slug under TWO container-depth-1 dirs resolve
+    /// to the first dir in path order — not to the newest stamp, not to the
+    /// smallest file name, and not to the newest `generated:` (the min-path
+    /// fixture carries the OLDEST `generated:`). The winning dir holds ONE
+    /// report, so E4 does not pin the order inside one dir: the layout's file
+    /// order is LY4's, and the Lab's within-dir pick is bug-log #209's. The
+    /// expected report is derived from the fixture table.
+    #[test]
+    fn equal_score_tie_at_one_container_depth_goes_to_the_first_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let evidence = tmp.path().join("evidence");
+        // (reports dir, file name, generated:, equity points): v1 holds the
+        // MIDDLE stamp and the OLDEST `generated:`; v2 the oldest stamp, the
+        // newest stamp and the newest `generated:`.
+        let table: [(&str, &str, &str, usize); 3] = [
+            (
+                "v1/v0-paper-sma/reports",
+                "backtest-20260301-000000-btc-2024-h1-sma-cross.md",
+                "2026-01-01T00:00:00Z",
+                4,
+            ),
+            (
+                "v2/v0-paper-sma/reports",
+                "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+                "2026-05-01T00:00:00Z",
+                3,
+            ),
+            (
+                "v2/v0-paper-sma/reports",
+                "backtest-20260601-000000-btc-2024-h1-sma-cross.md",
+                "2026-09-01T00:00:00Z",
+                5,
+            ),
+        ];
+        for (rel, name, generated, n) in table {
+            write_at(
+                &evidence,
+                rel,
+                name,
+                &sma_report("btc-2024-h1-sma-cross", Some("synthetic"), n, generated),
+            );
+        }
+        let expected = table
+            .iter()
+            .min_by_key(|(rel, name, _, _)| (container_depth_of(rel), evidence.join(rel), *name))
+            .map(|r| r.3)
+            .unwrap();
+        let newest_stamp = table.iter().max_by_key(|r| r.1).unwrap().3;
+        let first_name = table.iter().min_by_key(|r| r.1).unwrap().3;
+        let newest_generated = table.iter().max_by_key(|r| r.2).unwrap().3;
+        assert!(
+            expected != newest_stamp && expected != first_name && expected != newest_generated,
+            "the fixture must make every alternative rule pick another report"
+        );
+        let series = load_equity(&sma_tuple(LabDataSource::Synthetic), &evidence)
+            .expect("the slug resolves under both containers");
+        assert_eq!(
+            series.samples.len(),
+            expected,
+            "an equal-score tie must go to the first dir in path order ({expected} points), not the newest stamp ({newest_stamp}), the smallest file name \
+             ({first_name}) or the newest generated: ({newest_generated})"
+        );
+    }
+
+    /// E4b — the D8 tie rule ACROSS container depths, two-sided. In each of
+    /// two roots the slug sits at container depth 0 AND 1 with EQUAL scores.
+    /// In root `a0` the container name sorts BEFORE the slug name, in root `zz`
+    /// AFTER it, and the stamps and `generated:` values are arranged so that
+    /// full-path order, the newest stamp, the oldest stamp and the newest
+    /// `generated:` each pick the container-depth-1 report in at least one
+    /// root (asserted on the table). Of those four rules and "(container depth,
+    /// path), first best", only the last picks container depth 0 in both —
+    /// where HEAD looked before #205. Any rule that tries container depth 0
+    /// first passes E4b; E4 pins the dir order within one container depth.
+    #[test]
+    fn equal_score_tie_across_container_depths_goes_to_container_depth_0() {
+        // (reports dir, file name, generated:, equity points)
+        type Fx = (&'static str, &'static str, &'static str, usize);
+        let roots: [(&str, [Fx; 2]); 2] = [
+            (
+                "root-a0",
+                [
+                    (
+                        "v0-paper-sma/reports",
+                        "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+                        "2026-01-01T00:00:00Z",
+                        3,
+                    ),
+                    (
+                        "a0/v0-paper-sma/reports",
+                        "backtest-20260601-000000-btc-2024-h1-sma-cross.md",
+                        "2026-06-01T00:00:00Z",
+                        5,
+                    ),
+                ],
+            ),
+            (
+                "root-zz",
+                [
+                    (
+                        "v0-paper-sma/reports",
+                        "backtest-20260601-000000-btc-2024-h1-sma-cross.md",
+                        "2026-01-01T00:00:00Z",
+                        3,
+                    ),
+                    (
+                        "zz/v0-paper-sma/reports",
+                        "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+                        "2026-06-01T00:00:00Z",
+                        5,
+                    ),
+                ],
+            ),
+        ];
+        let tmp = tempfile::tempdir().unwrap();
+        // Per root: the points each candidate rule picks.
+        let mut d0_points = Vec::new();
+        let mut full_path = Vec::new();
+        let mut newest_stamp = Vec::new();
+        let mut oldest_stamp = Vec::new();
+        let mut newest_generated = Vec::new();
+        for (root_name, fx) in &roots {
+            let root = tmp.path().join(root_name);
+            for (rel, name, generated, n) in fx {
+                write_at(
+                    &root,
+                    rel,
+                    name,
+                    &sma_report("btc-2024-h1-sma-cross", Some("synthetic"), *n, generated),
+                );
+            }
+            let d0 = fx.iter().find(|r| container_depth_of(r.0) == 0).unwrap();
+            assert!(
+                fx.iter().any(|r| container_depth_of(r.0) == 1),
+                "each root holds the slug at container depth 0 AND 1"
+            );
+            d0_points.push(d0.3);
+            full_path.push(
+                fx.iter()
+                    .min_by_key(|r| root.join(r.0).join(r.1))
+                    .unwrap()
+                    .3,
+            );
+            newest_stamp.push(fx.iter().max_by_key(|r| r.1).unwrap().3);
+            oldest_stamp.push(fx.iter().min_by_key(|r| r.1).unwrap().3);
+            newest_generated.push(fx.iter().max_by_key(|r| r.2).unwrap().3);
+        }
+        for (rule, picks) in [
+            ("full-path order", &full_path),
+            ("newest stamp", &newest_stamp),
+            ("oldest stamp", &oldest_stamp),
+            ("newest generated:", &newest_generated),
+        ] {
+            assert_ne!(
+                picks, &d0_points,
+                "the fixture must make `{rule}` miss container depth 0 in at least one root"
+            );
+        }
+        for ((root_name, _), want) in roots.iter().zip(&d0_points) {
+            let series = load_equity(
+                &sma_tuple(LabDataSource::Synthetic),
+                &tmp.path().join(root_name),
+            )
+            .expect("the slug resolves in both roots");
+            assert_eq!(
+                series.samples.len(),
+                *want,
+                "{root_name}: an equal-score tie across container depths must go to the \
+                 container-depth-0 report ({want} points) — ADR-0055 D8 tie rule (#205)"
+            );
+        }
+    }
+
+    /// E4c — the within-root UNION is complete (falsifier O3): the strictly
+    /// better report sits in the SECOND dir of the (container depth, path)
+    /// order, so a reader that stops after the first dir picks the worse one.
+    /// Range `Last90d`: a `2024` scenario covers it better than a `2023` one.
+    #[test]
+    fn a_strictly_better_report_in_the_second_report_dir_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let evidence = tmp.path().join("evidence");
+        // (reports dir, file name, scenario, equity points); the 2024 row wins.
+        let table: [(&str, &str, &str, usize); 2] = [
+            (
+                "v1/v0-paper-sma/reports",
+                "backtest-20260601-000000-btc-2023-sma-cross.md",
+                "btc-2023-sma-cross",
+                4,
+            ),
+            (
+                "v2/v0-paper-sma/reports",
+                "backtest-20260101-000000-btc-2024-sma-cross.md",
+                "btc-2024-sma-cross",
+                3,
+            ),
+        ];
+        for (rel, name, scenario, n) in table {
+            write_at(
+                &evidence,
+                rel,
+                name,
+                &sma_report(scenario, Some("synthetic"), n, "2026-06-01T12:00:00Z"),
+            );
+        }
+        let better = table.iter().find(|r| r.2.contains("2024")).unwrap();
+        let first_dir = table
+            .iter()
+            .min_by_key(|r| (container_depth_of(r.0), evidence.join(r.0)))
+            .unwrap();
+        assert_ne!(
+            better.0, first_dir.0,
+            "the better report must sit in the SECOND dir, else E4c pins nothing"
+        );
+        assert_ne!(
+            better.3, first_dir.3,
+            "the two reports must differ in point count, else E4c cannot tell which won"
+        );
+        let tuple = LabTuple {
+            strategy: SmolStr::new("v0.sma"),
+            symbol: SmolStr::new("BTCUSDT"),
+            range: DateRange::Preset(Preset::Last90d),
             source: LabDataSource::Synthetic,
         };
+        let series = load_equity(&tuple, &evidence).expect("the slug resolves");
+        assert_eq!(
+            series.samples.len(),
+            better.3,
+            "the better-scoring report in the second report dir must win; every dir of the \
+             slug is read (#205)"
+        );
+    }
 
-        // The existing reports don't have an equity-curve section, so we
-        // expect StartEndOnly fidelity with valid start/end values.
-        let result = load_equity(&tuple, &evidence);
-        match result {
-            Ok(series) => {
+    /// E5 — `ReportDirNotFound` names the slug, the root and the container
+    /// depth bound, and tells its two empties apart: no `reports/` dir for the
+    /// slug at all, vs a container-depth-1 dir that holds no `backtest-*.md`.
+    #[test]
+    fn report_dir_not_found_names_slug_root_bound_and_which_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slug = "v1-cross-sectional-momentum";
+        let bound = format!("container depth ≤ {}", layout::MAX_CONTAINER_DEPTH);
+        let absent = tmp.path().join("empty-root");
+        std::fs::create_dir_all(&absent).unwrap();
+        let with_dir = tmp.path().join("dir-root");
+        write_at(
+            &with_dir,
+            &format!("v1/{slug}/reports"),
+            "test-week2-smoke.md",
+            FIXTURE_REPORT_WITH_EQUITY,
+        );
+        for (root, which, other) in [
+            (&absent, "no `reports/` dir", "hold no `backtest-*.md`"),
+            (&with_dir, "hold no `backtest-*.md`", "no `reports/` dir"),
+        ] {
+            let Err(EquityLoadError::ReportDirNotFound(msg)) =
+                load_equity(&momentum_tuple(LabDataSource::Synthetic), root)
+            else {
+                panic!("{} must give ReportDirNotFound", root.display());
+            };
+            let root_text = root.display().to_string();
+            let parts: [&str; 4] = [slug, &root_text, &bound, which];
+            for part in parts {
                 assert!(
-                    series.samples.len() >= 2,
-                    "expected at least 2 samples, got {}",
-                    series.samples.len()
+                    msg.contains(part),
+                    "ReportDirNotFound for {} must say `{part}`; got: {msg}",
+                    root.display()
                 );
-                // Start equity should be positive.
-                let (_, start_eq) = series.samples[0];
-                assert!(start_eq > Decimal::ZERO, "start equity must be positive");
             }
-            Err(EquityLoadError::NoReport { .. }) => {
-                // Acceptable — the report may not exist in CI.
-                eprintln!("integration: no matching report found (acceptable in CI)");
-            }
-            Err(e) => panic!("unexpected error: {e}"),
+            assert!(
+                !msg.contains(other),
+                "ReportDirNotFound for {} must NOT say the other empty's `{other}`; got: {msg}",
+                root.display()
+            );
         }
+    }
+
+    /// E3 — the REAL committed v1 momentum report resolves through the
+    /// production `evidence/` root (it sits at `evidence/v1/<slug>/reports/`).
+    /// Was gated on the flat path and accepted `NoReport`, so it had skipped
+    /// since `1395520629dc` (bug-log #205). Every expected value is derived
+    /// from the git listing (the shared evidence oracle: tracked, or untracked
+    /// on disk) and the committed file, not from the loader.
+    #[test]
+    fn integration_load_real_v1_report() {
+        use crate::test_support::evidence_oracle;
+        let evidence = default_evidence_root();
+        let ws = evidence
+            .parent()
+            .expect("evidence/ sits under the workspace root")
+            .to_path_buf();
+        let files = evidence_oracle::git_listed_files(&mut evidence_oracle::live_git(&ws))
+            .unwrap_or_else(|e| panic!("the #205 evidence oracle must run: {e}"));
+        let hits: Vec<&Vec<String>> = files
+            .iter()
+            .filter(|c| {
+                evidence_oracle::is_contract_report(c)
+                    && c[c.len() - 3] == "v1-cross-sectional-momentum"
+                    && c[c.len() - 1].contains("-2024-h1-")
+            })
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "exactly one git-listed (tracked or on-disk) v1-cross-sectional-momentum 2024-h1 \
+             report must exist: a second one (e.g. a backtest-CLI twin at container depth 0) \
+             changes which report the Lab resolves (ADR-0055 D8 tie rule), so re-derive E3; \
+             got {hits:?}"
+        );
+        let report = hits[0].iter().fold(ws.clone(), |p, c| p.join(c));
+        let body = std::fs::read_to_string(&report).expect("the committed report reads");
+        let name = report.file_name().unwrap().to_str().unwrap().to_string();
+        let stem = name.strip_suffix(".md").unwrap();
+        let has_section = body.contains("## Equity curve") || body.contains("## Equity Curve");
+        let has_csv = report
+            .with_file_name(format!("{stem}-equity.csv"))
+            .is_file();
+        assert!(
+            !has_section && !has_csv,
+            "the committed momentum report is start/end-only (no ## Equity curve, no \
+             -equity.csv); if that changed, re-derive E3's fidelity"
+        );
+
+        let series = load_equity(&momentum_tuple(LabDataSource::Synthetic), &evidence)
+            .unwrap_or_else(|e| {
+                panic!("the committed v1 momentum report must resolve (#205): {e}")
+            });
+        assert_eq!(series.source_report, SmolStr::new(&name));
+        assert_eq!(series.fidelity, Fidelity::StartEndOnly);
+        assert_eq!(
+            series.samples.len(),
+            2,
+            "start/end-only gives exactly 2 points"
+        );
+        assert!(
+            series.samples[0].1 > Decimal::ZERO,
+            "start equity must be positive"
+        );
+    }
+
+    /// E3b — E3's pair: the SAME committed slug with a `BinanceCache` tuple
+    /// gives `NoReport` — the dir IS found and the synthetic-tagged reports
+    /// are filtered by source. Under #205 it gave `ReportDirNotFound`.
+    #[test]
+    fn integration_real_v1_report_binance_tuple_is_no_report() {
+        let evidence = default_evidence_root();
+        let result = load_equity(&momentum_tuple(LabDataSource::BinanceCache), &evidence);
+        assert!(
+            matches!(result, Err(EquityLoadError::NoReport { .. })),
+            "the committed v1 momentum dir must be FOUND and its synthetic reports filtered \
+             (NoReport), not ReportDirNotFound (#205); got {result:?}"
+        );
     }
 }

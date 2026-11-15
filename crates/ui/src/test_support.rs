@@ -704,3 +704,327 @@ pub mod widgets_for_test {
         crate::widgets::strategies::id_cell(id, label, is_active)
     }
 }
+
+/// bug-log #205 — the ONE live-corpus oracle the `reports` /
+/// `lab` lib tests and `tests/reports_populated_curve_render.rs` share: which
+/// files under `evidence/` exist according to git, independent of the
+/// discovery code under test. Always compiled for the same reason as the rest
+/// of this module (integration tests only see `pub` items); nothing in a
+/// production path calls it.
+///
+/// **What it lists.** `git ls-files -z --cached --others -- evidence`: the
+/// index (so a tracked report deleted from disk is still listed, and a test
+/// comparing discovery against it fails — #66) PLUS every untracked file on
+/// disk, ignored ones included (no `--exclude-standard`), so a report a
+/// backtest-CLI run writes under `evidence/` on a dev box is in the oracle as
+/// well as in discovery. The discovery-coverage tests (the `reports` loader's
+/// D2/D3/D5 and the boot auto-select render test) therefore cannot turn red
+/// for a reason outside their subject (#189). The Lab's E3 is strict the other
+/// way on purpose: it requires exactly ONE git-listed momentum 2024-h1 report,
+/// because a second one can change which report the Lab resolves.
+pub mod evidence_oracle {
+    use std::path::Path;
+    use std::process::Command;
+
+    /// A `git` command for the LIVE oracle on the real workspace: `current_dir`
+    /// = `workspace`, environment NOT scrubbed — under a hook the exported
+    /// `GIT_INDEX_FILE` is the index being committed, which is the one to read.
+    /// A hermetic fixture builds its own `Command` with every `GIT_*` removed.
+    #[must_use]
+    pub fn live_git(workspace: &Path) -> Command {
+        let mut git = Command::new("git");
+        git.current_dir(workspace);
+        git
+    }
+
+    /// Run `git ls-files -z --cached --others -- evidence` through `git` (a
+    /// `Command::new("git")` with `current_dir` set to the workspace, see
+    /// [`live_git`]) and split every listed path into its `/`-separated
+    /// components (git prints `/` on every OS).
+    ///
+    /// # Errors
+    ///
+    /// A `String` naming the failure when `git` cannot run, exits non-zero,
+    /// or prints a non-UTF-8 path. Callers panic on it: the oracle never
+    /// skips.
+    pub fn git_listed_files(git: &mut Command) -> Result<Vec<Vec<String>>, String> {
+        let out = git
+            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])
+            .output()
+            .map_err(|e| format!("git ls-files could not run: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "git ls-files exited {}: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        let text = String::from_utf8(out.stdout)
+            .map_err(|e| format!("git printed a non-UTF-8 path under evidence/: {e}"))?;
+        Ok(text
+            .split('\0')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.split('/').map(str::to_string).collect())
+            .collect())
+    }
+
+    /// The `backtest-*.md` name rule, restated here (not borrowed from the
+    /// code under test).
+    #[must_use]
+    pub fn is_backtest_name(name: &str) -> bool {
+        // Writers emit a lowercase `.md` extension.
+        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+        let md = name.ends_with(".md");
+        name.starts_with("backtest-") && md
+    }
+
+    /// The `equity-*.csv` companion name rule (lowercase extension).
+    #[must_use]
+    pub fn is_equity_csv_name(name: &str) -> bool {
+        #[allow(clippy::case_sensitive_file_extension_comparisons)]
+        let csv = name.ends_with(".csv");
+        name.starts_with("equity-") && csv
+    }
+
+    /// An in-contract report path, by components: `[evidence, <slug>, reports,
+    /// backtest-*.md]` (container depth 0) or `[evidence, <container>, <slug>,
+    /// reports, backtest-*.md]` (container depth 1), with no middle component
+    /// named `reports`. Stated independently of `reports::layout`.
+    #[must_use]
+    pub fn is_contract_report(c: &[String]) -> bool {
+        let n = c.len();
+        (n == 4 || n == 5)
+            && c[0] == "evidence"
+            && c[n - 2] == "reports"
+            && is_backtest_name(&c[n - 1])
+            && c[1..n - 2].iter().all(|m| m != "reports")
+    }
+
+    /// The in-contract reports among `files` whose stem-matched
+    /// `reports/artifacts/<stem>/equity-*.csv` is also among `files` — the
+    /// companion rule, derived from the listing alone. Sorted.
+    #[must_use]
+    pub fn companion_reports(files: &[Vec<String>]) -> Vec<Vec<String>> {
+        let companion_dirs: std::collections::HashSet<&[String]> = files
+            .iter()
+            .filter(|c| {
+                let n = c.len();
+                n >= 4 && c[n - 3] == "artifacts" && is_equity_csv_name(&c[n - 1])
+            })
+            .map(|c| &c[..c.len() - 1])
+            .collect();
+        let mut out: Vec<Vec<String>> = files
+            .iter()
+            .filter(|c| is_contract_report(c))
+            .filter(|r| {
+                let n = r.len();
+                let stem = r[n - 1].strip_suffix(".md").unwrap_or(&r[n - 1]);
+                let mut d = r[..n - 1].to_vec();
+                d.push("artifacts".to_string());
+                d.push(stem.to_string());
+                companion_dirs.contains(d.as_slice())
+            })
+            .cloned()
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    mod tests {
+        use super::*;
+
+        fn workspace_root() -> std::path::PathBuf {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+        }
+
+        /// A `git` for the HERMETIC fixture repo at `dir`: every inherited
+        /// `GIT_*` variable removed (a hook's absolute `GIT_INDEX_FILE` would
+        /// otherwise point a fixture at the real index), global and system
+        /// config replaced by an empty file, identity and dates pinned.
+        fn fixture_git(dir: &Path, empty_config: &Path) -> Command {
+            let mut git = Command::new("git");
+            git.current_dir(dir);
+            for (k, _) in std::env::vars_os() {
+                if k.to_string_lossy().starts_with("GIT_") {
+                    git.env_remove(&k);
+                }
+            }
+            git.env("GIT_CONFIG_GLOBAL", empty_config)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_AUTHOR_NAME", "fixture")
+                .env("GIT_AUTHOR_EMAIL", "fixture@example.invalid")
+                .env("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z")
+                .env("GIT_COMMITTER_NAME", "fixture")
+                .env("GIT_COMMITTER_EMAIL", "fixture@example.invalid")
+                .env("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z");
+            git
+        }
+
+        fn run(git: &mut Command, args: &[&str]) {
+            let out = git.args(args).output().unwrap();
+            assert!(
+                out.status.success(),
+                "fixture git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+
+        /// OR1 — HERMETIC, two-sided: in a fixture repo the oracle lists a
+        /// committed report, a committed report deleted from disk (#66), an
+        /// untracked report and an ignored report (#189), and nothing outside
+        /// `evidence/`. Expected values come from the fixture table below.
+        /// Dropping `--others` (probe P12) loses the untracked and ignored rows.
+        #[test]
+        fn git_listed_files_lists_committed_deleted_untracked_and_ignored() {
+            let tmp = tempfile::tempdir().unwrap();
+            let repo = tmp.path().join("repo");
+            std::fs::create_dir_all(&repo).unwrap();
+            let empty_config = tmp.path().join("empty.gitconfig");
+            std::fs::write(&empty_config, "").unwrap();
+            let rd = "evidence/v1/s/reports";
+            // (path, committed, deleted from disk after the commit, listed)
+            let table: [(String, bool, bool, bool); 6] = [
+                (
+                    format!("{rd}/backtest-20260101-000000-committed.md"),
+                    true,
+                    false,
+                    true,
+                ),
+                (
+                    format!("{rd}/backtest-20260102-000000-deleted.md"),
+                    true,
+                    true,
+                    true,
+                ),
+                (
+                    format!("{rd}/backtest-20260103-000000-untracked.md"),
+                    false,
+                    false,
+                    true,
+                ),
+                (
+                    format!("{rd}/backtest-20260104-000000-ignored.md"),
+                    false,
+                    false,
+                    true,
+                ),
+                (
+                    "outside/backtest-20260105-000000-x.md".to_string(),
+                    false,
+                    false,
+                    false,
+                ),
+                (".gitignore".to_string(), true, false, false),
+            ];
+            for (path, _, _, _) in &table {
+                let p = repo.join(path);
+                std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                std::fs::write(&p, "ts\n").unwrap();
+            }
+            std::fs::write(
+                repo.join(".gitignore"),
+                format!("{rd}/backtest-20260104-000000-ignored.md\n"),
+            )
+            .unwrap();
+            run(&mut fixture_git(&repo, &empty_config), &["init", "-q"]);
+            let mut add = vec!["add", "--"];
+            add.extend(table.iter().filter(|r| r.1).map(|r| r.0.as_str()));
+            run(&mut fixture_git(&repo, &empty_config), &add);
+            run(
+                &mut fixture_git(&repo, &empty_config),
+                &[
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "fixture",
+                ],
+            );
+            for (path, _, deleted, _) in &table {
+                if *deleted {
+                    std::fs::remove_file(repo.join(path)).unwrap();
+                }
+            }
+
+            let mut want: Vec<Vec<String>> = table
+                .iter()
+                .filter(|r| r.3)
+                .map(|r| r.0.split('/').map(str::to_string).collect())
+                .collect();
+            want.sort();
+            assert!(
+                table.iter().any(|r| !r.1 && r.3) && table.iter().any(|r| r.2 && r.3),
+                "the table must hold an untracked AND a deleted listed row, else OR1 pins nothing"
+            );
+            let mut got = git_listed_files(&mut fixture_git(&repo, &empty_config)).unwrap();
+            got.sort();
+            assert_eq!(
+                got, want,
+                "the oracle must list committed, deleted-but-tracked, untracked and ignored \
+                 reports under evidence/, and nothing outside it (#205)"
+            );
+        }
+
+        /// OR2 — the oracle is not partial (falsifier O5b): every in-contract
+        /// report in the index, read HERE with `git ls-files -z --cached` and
+        /// NO pathspec, then filtered to `evidence/` in Rust (so narrowing the
+        /// oracle's pathspec cannot narrow this side), is in the oracle's
+        /// listing. Both sides read the same index, so staging a move or
+        /// deletion of a committed report keeps them in step (#189). Only the
+        /// `evidence/` entries are decoded, so a non-UTF-8 file name elsewhere
+        /// in the repo cannot fail it (#189). Live and read-only, so the
+        /// environment is not scrubbed.
+        #[test]
+        fn git_listed_files_contains_every_indexed_contract_report() {
+            let ws = workspace_root();
+            let out = live_git(&ws)
+                .args(["ls-files", "-z", "--cached"])
+                .output()
+                .unwrap_or_else(|e| panic!("git ls-files must run for OR2: {e}"));
+            assert!(
+                out.status.success(),
+                "git ls-files failed for OR2: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            let indexed: Vec<Vec<String>> = out
+                .stdout
+                .split(|b| *b == 0)
+                .filter(|s| s.starts_with(b"evidence/"))
+                .map(|s| {
+                    std::str::from_utf8(s)
+                        .unwrap_or_else(|e| panic!("an indexed evidence/ path must be UTF-8: {e}"))
+                        .split('/')
+                        .map(str::to_string)
+                        .collect::<Vec<String>>()
+                })
+                .filter(|c| is_contract_report(c))
+                .collect();
+            assert!(
+                indexed.iter().any(|c| c.len() == 4) && indexed.iter().any(|c| c.len() == 5),
+                "the index must hold contract reports at container depth 0 AND 1, else OR2 pins \
+                 nothing"
+            );
+            let listed: std::collections::HashSet<Vec<String>> =
+                git_listed_files(&mut live_git(&ws))
+                    .unwrap()
+                    .into_iter()
+                    .collect();
+            let missing: Vec<String> = indexed
+                .iter()
+                .filter(|c| !listed.contains(*c))
+                .map(|c| c.join("/"))
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "{} of {} indexed contract reports are missing from the evidence oracle (a \
+                 partial oracle lets a discovery gap pass); first: {:?}",
+                missing.len(),
+                indexed.len(),
+                missing.first()
+            );
+        }
+    }
+}

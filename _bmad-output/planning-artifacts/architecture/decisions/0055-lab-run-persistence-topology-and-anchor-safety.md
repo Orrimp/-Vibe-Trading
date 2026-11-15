@@ -5,6 +5,7 @@ status: accepted
 date: 2026-06-12
 supersedes: none
 superseded-by: none
+updated: 2026-11-15
 ---
 
 # ADR-0055: Lab run persistence topology & anchor-safety
@@ -171,8 +172,191 @@ index well — but that is out of scope here.
 - **Retention is bounded** (D7) so the cache dir does not grow without bound
   (the feature's AC8).
 
+## Amendment 2026-11-15 (bug-log `#205`: the Reports picker and the Lab walk container depth ≤ 1)
+
+**Vocabulary.** **Container depth** counts the directories between a report root and `<slug>/`:
+`<root>/<slug>/reports/` is container depth 0, `<root>/<container>/<slug>/reports/` is container
+depth 1. Every `spec/` in § Context and § D1–D7 reads `evidence/` since `452ce026` (2026-07-25),
+which moved the tree with its container depths unchanged.
+
+**What this amendment corrects, and what it hands off.** It rewrites no sentence of D1–D7.
+
+1. **§ D1, second sentence** ("the `<slug>/reports/backtest-*.md` shape underneath the root is
+   **identical** to the `spec/` layout, so both loaders read it with only a ROOT change"): false
+   since `1395520629dc`. Corrected under "D1's premise corrected"; D8 replaces it for the readers
+   that walk D8, and for Compare it stays false until bug-log `#206`.
+2. **§ D5, third sentence** ("the existing most-recent-wins tiebreaker (`generated:` frontmatter)
+   decides the Lab hot-path pick"): the Lab has never done this. Recorded under "The Lab's
+   precedence" and handed off to bug-log `#209` (AD-18), where either the code or § D5 moves.
+3. **§ D1, third sentence** ("The `<strategy-slug>` matches `equity_loader::strategy_slug`"): the
+   engine's `strategy_dir_slug` maps ids that `strategy_slug` does not. Handed off to bug-log
+   `#212`; D8 does not depend on it.
+
+**Context.** `1395520629dc` (2026-06-28, the `spec/v1` reorganisation) moved 68 of the 125
+committed `backtest-*.md` reports from container depth 0 to container depth 1, every report of the
+four slugs `strategy_slug` maps to among them. The 57 reports of the four
+`v5-latency-slippage-sim-v0.*` dirs stayed at container depth 0, and `lab-runs/` kept container
+depth 0. Nothing amended D1, and both `ui` readers of the committed corpus kept a one-level walk:
+
+- **The Lab:** `equity_loader::discover_reports` read only
+  `let dir = report_root.join(slug).join("reports");`. On `evidence/` it found no report for any
+  mapped slug, so § D5's "load a committed report" fallback answered nothing.
+- **The Reports picker** (`reports::loader::discover_reports`, a reader this ADR does not name)
+  read only `let reports_dir = slug_path.join("reports");`. It listed no container-depth-1 report,
+  and every report with an equity companion is one, so boot auto-select selected nothing.
+
+No test failed: the tests that should have caught it skipped. The corpus census, the skip
+sites and the probe kills are recorded in bug-log `#205` and in the T-T4 tables in the module docs
+of `crates/ui/tests/reports_populated_curve_render.rs` and `crates/ui/tests/live_equity_render.rs`.
+
+**D1's premise corrected.** D1's home is unchanged; what changes is the reason both roots are read.
+D1's "both loaders" are the Lab's `EquityCache::get_or_load` / `discover_reports` and Compare's
+`compare::cache::scan_spec_tree` (walking in `scan_one_root`). The shapes are not identical:
+`lab-runs/` is container depth 0; the committed corpus is container depth 0 (the v5 dirs) plus
+container depth 1 (`evidence/v1/`, `evidence/v3/`). The Lab reads both roots because it walks D8,
+not because the layouts match, and the Reports picker walks D8 too. Compare still walks only
+`<root>/<x>/reports/` (`let reports_dir = strategy_dir.join("reports");`), so for Compare the
+premise stays false until bug-log `#206`.
+
+**D8: the report-root layout contract, for the `ui` readers that walk it.** One module,
+`crates/ui/src/reports/layout.rs`, holds the rule:
+
+- The layout is `<root>[/<container>]/<slug>/reports/backtest-*.md`, at container depth ≤
+  `layout::MAX_CONTAINER_DEPTH` (= 1). Nothing deeper is read; raising the constant amends D8.
+- A directory named `reports` (`layout::REPORTS_DIR`) is never a container and never a slug, so the
+  walk never descends into `reports/artifacts/…`.
+- The slug is the LEAF directory name directly above `reports/`. The full path, which carries the
+  container, stays in the reader's `PathBuf`.
+- `backtest-*.md` is a FILE directly inside `reports/` whose name starts with `backtest-` and ends
+  in lowercase `.md` (`layout::is_backtest_report`).
+- **Order.** `layout::report_dirs(root)` yields the `reports/` dirs in (container depth, path)
+  order: every container-depth-0 dir before any container-depth-1 dir, then by path.
+  `layout::backtest_files(dir)` yields one dir's files by path. `layout::report_dirs_for_slug(root,
+  slug)` equals `report_dirs` filtered to the slug, order included; it is empty for `reports` and
+  for any slug that is not exactly one plain path component.
+- Symlinks are followed, and a symlink loop stops at the depth bound. An absent or unreadable
+  directory contributes nothing and never panics.
+
+**The order rule, and why.** The order matters only to a reader that keeps the FIRST best
+candidate (the Lab), and only on an equal-score tie inside one tier: a report tagged with the
+tuple's data source still beats an untagged one, and a strictly better range score still wins, at
+either container depth. On such a tie container depth 0 wins:
+- It is where the one-level walk looked, so on such a tie the pick stays the report that walk
+  would have found (for example a backtest-CLI twin at `evidence/<feature>/reports/`).
+- The winner no longer depends on whether a slug's name sorts before its container's name:
+  `"v1" < "v1-cross-sectional-momentum"`, but `"v0-paper-sma" < "v1"`, so full-path order would
+  pick container depth 1 for one slug and container depth 0 for another.
+
+**The readers D8 binds:**
+- **The Reports picker:** `reports::loader::discover_reports_in(root)`, with `discover_reports()`
+  its `evidence/` wrapper, and `reports::state::load_into_from(model, root)`, with `load_into` its
+  wrapper. It re-sorts its list by (slug, file stem, path), so the D8 order decides nothing there.
+  Boot auto-select takes the companion-bearing entry with the greatest file stem
+  (`newest_companion_index`).
+- **The Lab's report lookup, over both roots:** `lab::equity_loader::discover_reports(root, slug)`,
+  behind `load_equity`, `EquityCache::get_or_load` / `get_or_load_roots` and
+  `route_equity_overlay`. It concatenates `backtest_files` over `report_dirs_for_slug` in D8 order
+  and never re-sorts, so the order is its tie rule.
+
+**The readers outside D8:**
+- **Compare** (`compare::cache::scan_one_root`), until bug-log `#206` moves it onto D8.
+- **The backtest CLI:** `report_dir_for_scenario` writes `evidence/<feature>/reports/` (container
+  depth 0), and `find_latest_report` reads only that dir. `backtest` cannot depend on `ui`, so it
+  cannot walk this module (bug-log `#210`). Because D8 reads container depth 0 under `evidence/`, a
+  CLI run's report there is listed by the Reports picker and wins an equal-score, same-tier Lab tie
+  against the committed container-depth-1 report.
+- **The anchor gate:** `scripts/verify_anchors.sh` is not a `ui` reader. It `find`s
+  `*/reports/backtest-*-<scenario>.md` at any depth under `evidence/`, and D8 does not bind it.
+
+**The Lab's precedence (what the code does; it diverges from § D5).** The hot path is unchanged:
+the in-memory mirror of the last run wins while its tuple is on screen. The cold path:
+
+1. **Across roots, the first root with a match wins.** `get_or_load_roots` tries
+   `default_report_roots()` = `[lab-runs/, evidence/]` in order and returns at the first root whose
+   `load_equity` returns `Ok` (`for root in roots {` … `return Ok(arc);`), so `lab-runs/` wins
+   every tuple collision.
+2. **Within a root, the tier, then the first strictly-best score in D8 order.** A report tagged
+   with the tuple's data source beats any untagged legacy one (`best_tagged.or(best_untagged)`).
+   Inside a tier the FIRST report with the best `range_score` wins
+   (`let is_better = slot.as_ref().is_none_or(|(s, _)| range_score > *s);`).
+3. **So within one dir the OLDEST stamp wins a tie.** Names are `backtest-<stamp>-<scenario>.md`,
+   so path order is stamp order. `generated:` is never read.
+
+§ D5 says the Lab pick is "the existing most-recent-wins tiebreaker (`generated:` frontmatter)";
+item 1 ignores `generated:` across roots, and item 3 picks the oldest report within a dir. Compare
+does implement § D5 (`cell.generated_at.as_str() <= existing.generated_at.as_str()` skips a report
+not newer than the kept one), so the two readers settle a collision differently. This predates
+`#205`, which changes neither half; per AD-18 it is handed off to bug-log `#209`, and § D5 is not
+rewritten.
+
+**Pins.** Item 1: `route_overlay_two_root_union_lab_runs_wins_collision`,
+`default_roots_order_lab_runs_first`, `lab_runs_shadows_a_container_depth_1_evidence_report` /
+`container_depth_1_evidence_report_wins_when_searched_first`. The order rule, two-sided (the
+container's name sorts before the slug's in one root, after it in the other):
+`equal_score_tie_across_container_depths_goes_to_container_depth_0`, with
+`equal_score_tie_at_one_container_depth_goes_to_the_first_dir` and
+`a_strictly_better_report_in_the_second_report_dir_wins`. Item 3 inside ONE dir is not pinned;
+bug-log `#209` adds that pin with its fix.
+
+**What the Lab draws from committed evidence.** The committed reports of the four mapped slugs, all
+under `evidence/v1/`, have no `## Equity curve` section and no sibling `-equity.csv` (the Lab's
+companion rule); the Reports companions under `artifacts/<stem>/` use a layout the Lab does not
+read. So every committed report the Lab resolves is `StartEndOnly`: two samples at the placeholder
+timestamps `(0, 1)` (`make_start_end_series`: `Ok(vec![(0, initial), (1, final_eq)])`). It draws
+only on the bar-less path, where `draw_equity_polyline_standalone` draws a full-width start→end
+line. Over price bars it draws nothing, because both samples fall outside the bar window, and the
+equity gutter is still reserved, empty, until bug-log `#207`. LR3
+(`lab_207_characterization_committed_start_end_only_report_draws_no_overlay`) characterises this
+and must flip when `#207` is fixed.
+
+**Unchanged.** D1's home; D2 (`/lab-runs/` is still git-ignored, and anchor safety still rests on
+the git boundary); D3; D4; D5's root order, its identical-filename rule and its millisecond stamps;
+D6 (`h3_in_memory_equals_cached_disk` still reads the engine's container-depth-0 write root through
+`get_or_load`); D7. **Anchor safety:** no byte under `evidence/` changes, because both readers only
+read it; `bash scripts/verify_anchors.sh` prints `ANCHORS PASS  (119 / 119)`, and
+`git status --porcelain -- evidence` prints nothing after the full test runs.
+
+**Verification (2026-11-15, on the tree this amendment ships with).**
+
+- `cargo test -p ui --lib`: 676 passed.
+- `cargo test -p ui --test reports_populated_curve_render` passes with no "skipping" line (its
+  former skip sites now fail); `cargo test -p ui --test live_equity_render`,
+  `cargo test -p ui --test lab_run_engine` and the snapshot targets pass, baselines unmoved.
+- Eleven probes, each applied exactly once and restored byte-identical, the FAILED set compared by name with its designed red set: P1 (`MAX_CONTAINER_DEPTH` 1 → 0) turns 22 tests red, D2, D3, R6, R7a, E1 and LR1 among them; P2 (1 → 2) turns 7 red, the container-depth-2 controls among them; P4, P6, P10, P11, P12, O5b, Q3, Q6 and Q8 each turn exactly their designed tests red (the full sets are in the T-T4 tables).
+- Pixel margins (macOS): the Reports curve covers 3721–4371 px on the frames that must draw (threshold > 1000) and 0–252 px on the frames that must not (threshold < 500); the Lab's container-depth-1 overlay adds 1284 ACCENT px (threshold ≥ 400), and LR3 adds 0 (the `#207` characterisation, threshold < 120).
+- Boot `load_into` over the committed corpus, with the auto-selected companion load: 13.8–16.5 ms (debug build, two runs).
+- The live-corpus oracle is git, never discovery (`evidence_oracle::git_listed_files`:
+  `git ls-files -z --cached --others -- evidence`), pinned by
+  `git_listed_files_lists_committed_deleted_untracked_and_ignored` and, against a partial listing,
+  `git_listed_files_contains_every_indexed_contract_report`.
+- The rendered-pixel proof (AD-10), each test with the PNG it writes:
+  `reports_boot_autoselects_newest_git_listed_companion_and_paints_it`
+  (`/tmp/reports_boot_autoselect.png`); `reports_container_depth_hermetic_pair_depth_1_paints` /
+  `reports_container_depth_hermetic_pair_depth_2_is_empty`
+  (`/tmp/reports_container_depth_{1,2}_fixture.png`); `reports_switch_to_no_companion_is_empty`
+  (`/tmp/reports_no_companion_empty.png`);
+  `lab_curve_hydrated_from_container_depth_1_evidence_report_renders` /
+  `lab_curve_from_container_depth_2_evidence_report_does_not_resolve`
+  (`/tmp/lab_container_depth_{1,2}_evidence_overlay.png`); and LR3
+  (`/tmp/lab_207_committed_overlay.png`).
+- Each probe's edit and its red and green sets: the T-T4 tables named under § Context.
+
 ## Changelog
 
+- 2026-11-15 (orchestrator, bug-log `#205` amendment): **the Reports picker and the Lab walk
+  container depth ≤ 1.** § D1's "identical to the `spec/` layout, so both loaders read it with only
+  a ROOT change" has been false since `1395520629dc` moved 68 of the 125 committed reports to
+  container depth 1, and the two one-level walks read none of them. **D8** is ONE layout contract,
+  `crates/ui/src/reports/layout.rs`: `<root>[/<container>]/<slug>/reports/backtest-*.md`,
+  container depth ≤ `MAX_CONTAINER_DEPTH` = 1, `reports` never a container or a slug, the slug is
+  the leaf dir name, dirs in (container depth, path) order, which decides only an equal-score,
+  same-tier Lab tie. It binds the Reports picker and the Lab's lookup over both roots; Compare
+  (`#206`), the backtest CLI (`#210`) and the anchor gate are outside it. The Lab's precedence
+  (the first root with a match, then the first strictly-best score in D8 order, so the oldest stamp
+  wins a tie) diverges from § D5's "most-recent-wins (`generated:`)" and is handed off to `#209`;
+  § D5 is not rewritten. D1's slug-match sentence is handed off to `#212`. A committed start/end-only
+  report draws only on the bar-less path. D1's home, D2–D4, D5's root order, D6 and D7 are
+  unchanged. Anchor-neutral, 119/119.
 - 2026-06-12 (Wave-2 amendment): the `.md` report persists the equity curve as a
   SPARKLINE only (visual, not machine-parseable). The Lab artifact therefore
   ALSO writes a **companion equity CSV** (`backtest-<stamp>-<scenario>-equity.csv`,

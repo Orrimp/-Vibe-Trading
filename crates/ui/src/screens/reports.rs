@@ -131,9 +131,10 @@ fn picker_pane(st: &crate::reports::ReportsScreenState, mode: ThemeMode) -> crat
             }
 
             if visible == 0 {
-                // Curve-only is active but the corpus has zero companion rows
-                // (belt-and-braces — live corpus has 14). Graceful hint, not a
-                // blank rail; points the operator at the "All" toggle above.
+                // Curve-only is active but the discovered corpus has zero
+                // companion rows (belt-and-braces: the committed corpus ships
+                // some). Graceful hint, not a blank rail; points the operator
+                // at the "All" toggle above.
                 col = col.push(
                     Text::new(REPORTS_FILTER_NO_CURVE_HINT)
                         .size(text::BODY)

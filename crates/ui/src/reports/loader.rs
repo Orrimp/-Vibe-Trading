@@ -17,8 +17,10 @@
 //!    5-column schema), `Empty` when no companion exists. The run-id dir
 //!    name is the report's own file stem, so the pairing is 1:1 — see the
 //!    fn doc for why a first-match scan was the wrong contract.
-//! 3. [`discover_reports`] — a **new** all-slug scan of
-//!    `evidence/*/reports/backtest-*.md`, the corpus the picker browses. K2
+//! 3. [`discover_reports`] — the all-slug scan of
+//!    `evidence/[<container>/]<slug>/reports/backtest-*.md` (the
+//!    [`crate::reports::layout`] contract, ADR-0055 D8 / bug-log #205), the
+//!    corpus the picker browses; [`discover_reports_in`] takes the root. K2
 //!    never-panic: an unreadable dir is skipped with a `tracing` breadcrumb;
 //!    an absent `evidence/` yields an empty `Vec`. The `robustness-sweep-*.md`
 //!    and `test-*.md` families are excluded by the `backtest-` filter.
@@ -32,6 +34,7 @@ use std::path::{Path, PathBuf};
 
 use trading_core::{BacktestMetrics, EquitySeries, Money, Timestamp, Usdt};
 
+use crate::reports::layout;
 use crate::reports::state::ReportEntry;
 use crate::state::PanelState;
 use crate::viewer::{ReportFrontMatter, ReportLoadResult};
@@ -76,9 +79,8 @@ pub fn load_report(path: &Path) -> Result<ReportLoadResult, std::io::Error> {
     // Equity CSV — companion file at `<dir>/artifacts/<run_id>/equity-*.csv`.
     // When the companion is missing or unreadable, the equity curve /
     // drawdown band render their empty state independently of the KPI strip
-    // (R11.3). No `backtest-*.md` in the current corpus ships this companion,
-    // so this is `Empty` for every report today (the honest, accepted state
-    // per § Data contract).
+    // (R11.3). Most committed reports ship no companion, so this is `Empty`
+    // for them (the honest, accepted state per § Data contract).
     let equity = load_equity_companion(path)
         .unwrap_or_else(|e| PanelState::Error(smol_str::SmolStr::new(e.as_str())));
 
@@ -271,103 +273,79 @@ pub fn strip_front_matter(raw: &str) -> &str {
     trimmed
 }
 
-/// Discover every committed `backtest-*.md` report under
-/// `evidence/*/reports/`, across **all** feature slugs (R1 / R7 / AC1).
-///
-/// This is the corpus the Reports picker browses. It is a **new** top-level
-/// scan — the existing `lab::equity_loader::discover_reports` is private +
-/// per-slug, so it is not directly reusable; this walks all slugs. (This is
-/// not the R4/AC5 parse — that concern is the markdown/CSV parse, shared via
-/// [`load_report`]; discovery is a distinct filename-only concern.)
-///
-/// **K2 never-panic contract** (mirrors `models::registry_read` +
-/// `baseline::loader`): an unreadable `evidence/` root → empty `Vec` + a
-/// `tracing::debug!` breadcrumb; an unreadable per-slug `reports/` dir →
-/// skipped with a breadcrumb. Never panics.
-///
-/// The `robustness-sweep-*.md` and `test-*.md` families are excluded by the
-/// `starts_with("backtest-") && ends_with(".md")` filter (the same filter
-/// `lab::equity_loader` uses) — they never match, so they are excluded by
-/// construction, not silently dropped.
-///
-/// Result is sorted deterministically by `(slug, file_stem)` for stable
-/// list ordering + reproducible snapshots.
+/// The committed report root, `<workspace>/evidence` — the root
+/// [`discover_reports`] and `reports::state::load_into` read.
+pub(crate) fn evidence_root() -> PathBuf {
+    workspace_root().join("evidence")
+}
+
+/// Discover every committed `backtest-*.md` report under `evidence/`, across
+/// **all** slugs and both container depths (R1 / R7 / AC1; bug-log #205).
+/// A thin wrapper over [`discover_reports_in`] at [`evidence_root`].
 #[must_use]
 pub fn discover_reports() -> Vec<ReportEntry> {
-    let evidence_root = workspace_root().join("evidence");
-    let Ok(slug_dirs) = std::fs::read_dir(&evidence_root) else {
-        tracing::debug!(
-            path = %evidence_root.display(),
-            "discover_reports: evidence/ not found or unreadable — returning empty list"
-        );
-        return Vec::new();
-    };
+    discover_reports_in(&evidence_root())
+}
 
+/// Discover every `backtest-*.md` report under `root`, walked through the ONE
+/// layout contract ([`crate::reports::layout`], ADR-0055 D8):
+/// `<root>[/<container>]/<slug>/reports/backtest-*.md`, container depth ≤
+/// [`crate::reports::layout::MAX_CONTAINER_DEPTH`]. Since `1395520629dc` the
+/// committed corpus sits at container depth 1 (`evidence/<container>/<slug>/reports/`)
+/// as well as container depth 0 (`evidence/<slug>/reports/`); a one-level walk
+/// listed only the container-depth-0 reports, none of which ships an equity
+/// companion (#205).
+///
+/// This is the corpus the Reports picker browses. (This is not the R4/AC5
+/// parse — that concern is the markdown/CSV parse, shared via
+/// [`load_report`]; discovery is a distinct filename-only concern.) Each
+/// entry's `slug` is the leaf directory above `reports/`; its `path` carries
+/// the container.
+///
+/// **K2 never-panic contract** (mirrors `models::registry_read` +
+/// `baseline::loader`): an absent or unreadable root → empty `Vec` + a
+/// `tracing` breadcrumb; an unreadable `reports/` dir → skipped with a
+/// breadcrumb. Never panics.
+///
+/// The `robustness-sweep-*.md` and `test-*.md` families are excluded by the
+/// `starts_with("backtest-") && ends_with(".md")` filter
+/// ([`crate::reports::layout::is_backtest_report`], the same filter the Lab
+/// uses) — they never match, so they are excluded by construction, not
+/// silently dropped.
+///
+/// Result is sorted deterministically by `(slug, file_stem, path)` for stable
+/// list ordering + reproducible snapshots (the `path` key orders the same stem
+/// under two containers). This re-sort replaces the layout's (container depth,
+/// path) order, so the D8 tie rule does not decide anything here.
+#[must_use]
+pub fn discover_reports_in(root: &Path) -> Vec<ReportEntry> {
     let mut out: Vec<ReportEntry> = Vec::new();
-    for slug_entry in slug_dirs.flatten() {
-        let slug_path = slug_entry.path();
-        if !slug_path.is_dir() {
-            continue;
-        }
-        let Some(slug) = slug_path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        let reports_dir = slug_path.join("reports");
-        if !reports_dir.is_dir() {
-            continue;
-        }
-        let Ok(report_files) = std::fs::read_dir(&reports_dir) else {
-            tracing::debug!(
-                path = %reports_dir.display(),
-                "discover_reports: reports/ dir unreadable — skipping slug"
-            );
-            continue;
-        };
-        for file_entry in report_files.flatten() {
-            let file_path = file_entry.path();
-            let Some(name) = file_path.file_name().and_then(|n| n.to_str()) else {
+    for rd in layout::report_dirs(root) {
+        for path in layout::backtest_files(&rd.dir) {
+            // `file_stem` = `backtest-<YYYYMMDD-HHMMSS>-<scenario>` (drop `.md`).
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if !is_backtest_report(name) {
-                continue;
-            }
-            // `file_stem` = `backtest-<YYYYMMDD-HHMMSS>-<scenario>` (drop `.md`).
-            let stem = file_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or(name);
+            let file_stem = smol_str::SmolStr::new(stem);
             // Cheap existence-only companion probe (no CSV parse) so the
             // picker can mark which rows paint a curve + the boot can
             // auto-select the newest companion-bearing report.
-            let has_companion = report_has_companion(&file_path);
+            let has_companion = report_has_companion(&path);
             out.push(ReportEntry {
-                slug: smol_str::SmolStr::new(slug),
-                file_stem: smol_str::SmolStr::new(stem),
-                path: file_path.clone(),
+                slug: rd.slug.clone(),
+                file_stem,
+                path,
                 has_companion,
             });
         }
     }
-
-    // Deterministic order: by slug, then by file_stem (carries the date).
     out.sort_by(|a, b| {
         a.slug
             .cmp(&b.slug)
             .then_with(|| a.file_stem.cmp(&b.file_stem))
+            .then_with(|| a.path.cmp(&b.path))
     });
     out
-}
-
-/// The established `backtest-*.md` filter (per `lab/equity_loader.rs:261`):
-/// only files whose name `starts_with("backtest-")` and ends with the
-/// lowercase `.md` extension. Excludes `robustness-sweep-*.md` +
-/// `test-*.md` by construction.
-fn is_backtest_report(name: &str) -> bool {
-    name.starts_with("backtest-") && {
-        #[allow(clippy::case_sensitive_file_extension_comparisons)]
-        let ok = name.ends_with(".md");
-        ok
-    }
 }
 
 /// Workspace root, derived from this crate's manifest dir
@@ -411,79 +389,191 @@ mod tests {
         assert_eq!(strip_front_matter(raw), "# Summary\nrow\n");
     }
 
-    // ── discover_reports (AC1 / AC3 / K2) ────────────────────────────────────
+    // ── discover_reports (AC1 / AC3 / K2; bug-log #205) ──────────────────────
 
-    /// Discovery finds `backtest-*.md` and **excludes** the
-    /// `robustness-sweep-*.md` + `test-*.md` families (AC1). Gated on
-    /// `evidence/` being present so a minimal checkout that omits the reports
-    /// tree does not fail this unit test (the absent-root path is covered
-    /// separately below) — mirrors `baseline/loader.rs`'s
-    /// `committed_csvs_load_to_ready` skip-if-absent guard.
-    #[test]
-    fn discover_finds_backtest_excludes_other_families() {
-        let evidence_root = workspace_root().join("evidence");
-        if !evidence_root.is_dir() {
-            // Minimal checkout — skip; the absent-root path is tested below.
-            return;
-        }
-        let entries = discover_reports();
-        // Every discovered entry is a `backtest-*` stem (never sweep/test).
-        for e in &entries {
-            assert!(
-                e.file_stem.starts_with("backtest-"),
-                "only backtest-* reports are listed; got {}",
-                e.file_stem
-            );
-            assert!(
-                !e.file_stem.starts_with("robustness-sweep-"),
-                "robustness-sweep family must be excluded"
-            );
-            assert!(
-                !e.file_stem.starts_with("test-"),
-                "test-report family must be excluded"
-            );
-            // The held PathBuf points at the discovered file on disk.
-            assert!(
-                e.path.exists(),
-                "discovered path must exist: {}",
-                e.path.display()
-            );
-        }
-    }
+    use std::collections::HashSet;
 
-    /// Discovery is deterministically sorted by `(slug, file_stem)` so the
-    /// list order + snapshots are stable across runs (AC1). Gated on
-    /// `evidence/` present.
+    use crate::reports::layout::test_tree::{self, TREE};
+
+    use crate::test_support::evidence_oracle;
+
+    /// The committed no-companion control: a `v0-paper-sma` report with NO
+    /// `artifacts/<stem>/` path in the git listing (asserted, not assumed).
+    const NO_COMPANION_STEM: &str = "backtest-20260527-143549-btc-2024-h1-sma-cross";
+
+    /// D1 — on the shared fixture TREE, `discover_reports_in` lists exactly the
+    /// rows the table marks listed (slug = the leaf dir, `has_companion` from
+    /// the stem-matched artifacts dir), in `(slug, stem, path)` order. Replaces
+    /// the old live-corpus property tests, which asserted only properties of
+    /// whatever was found — 108 container-depth-0 entries satisfied them under
+    /// #205.
     #[test]
-    fn discover_is_deterministically_sorted() {
-        let evidence_root = workspace_root().join("evidence");
-        if !evidence_root.is_dir() {
-            return;
-        }
-        let entries = discover_reports();
-        let mut sorted = entries.clone();
-        sorted.sort_by(|a, b| {
-            a.slug
-                .cmp(&b.slug)
-                .then_with(|| a.file_stem.cmp(&b.file_stem))
-        });
-        let keys: Vec<(&str, &str)> = entries
+    fn discover_reports_in_lists_exactly_the_declared_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        test_tree::build(tmp.path());
+        let mut expected: Vec<(String, String, PathBuf, bool)> = TREE
             .iter()
-            .map(|e| (e.slug.as_str(), e.file_stem.as_str()))
+            .filter_map(|r| {
+                r.listed.map(|(slug, has_companion)| {
+                    let path = tmp.path().join(r.path);
+                    let stem = path.file_stem().unwrap().to_str().unwrap().to_string();
+                    (slug.to_string(), stem, path, has_companion)
+                })
+            })
             .collect();
-        let sorted_keys: Vec<(&str, &str)> = sorted
-            .iter()
-            .map(|e| (e.slug.as_str(), e.file_stem.as_str()))
+        // Tuple order = (slug, stem, path); the flag never decides (the three
+        // keys are unique per row).
+        expected.sort();
+        assert!(
+            expected.len() >= 3,
+            "the TREE must declare ≥3 listed rows, else D1 pins nothing"
+        );
+        let got: Vec<(String, String, PathBuf, bool)> = discover_reports_in(tmp.path())
+            .into_iter()
+            .map(|e| {
+                (
+                    e.slug.to_string(),
+                    e.file_stem.to_string(),
+                    e.path,
+                    e.has_companion,
+                )
+            })
             .collect();
         assert_eq!(
-            keys, sorted_keys,
-            "discover_reports must be (slug, stem)-sorted"
+            got, expected,
+            "discover_reports_in must list exactly the declared rows in (slug, stem, path) order (#205)"
+        );
+    }
+
+    /// K2: an absent root discovers nothing and never panics; the fixture
+    /// root discovers something (two-sided).
+    #[test]
+    fn discover_reports_in_absent_root_is_empty_fixture_root_is_not() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(discover_reports_in(&tmp.path().join("absent")).is_empty());
+        test_tree::build(tmp.path());
+        assert!(!discover_reports_in(tmp.path()).is_empty());
+    }
+
+    /// The live-corpus oracle: every file under `evidence/` that git lists,
+    /// tracked OR untracked on disk (`evidence_oracle::git_listed_files`, the
+    /// ONE copy shared with the integration tests; bug-log #205). Read from
+    /// git, never from the subject. A failing `git` PANICS — the oracle never
+    /// skips (the #66 skip-as-pass shape that hid #205).
+    fn git_listed_evidence_files() -> Vec<Vec<String>> {
+        let ws = workspace_root();
+        evidence_oracle::git_listed_files(&mut evidence_oracle::live_git(&ws))
+            .unwrap_or_else(|e| panic!("the #205 evidence oracle must run: {e}"))
+    }
+
+    /// Repo-relative components of a discovered path (Windows-safe: compared
+    /// component-wise, never as a `/`-joined string).
+    fn rel_components(p: &Path) -> Vec<String> {
+        p.strip_prefix(workspace_root())
+            .unwrap_or_else(|_| {
+                panic!(
+                    "discovered path {} is not under the workspace root",
+                    p.display()
+                )
+            })
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// D2 — every git-listed (tracked, or untracked on disk) in-contract report
+    /// is discovered by the production `discover_reports()`, at container depth
+    /// 0 AND 1 (#205: the container-depth-1 reports — every one with an equity
+    /// companion — were not). Subset, not equality, so a stray file discovery
+    /// lists cannot turn it red (#189); a deleted tracked report is still in the
+    /// listing (`--cached`) and does turn it red (#66).
+    #[test]
+    fn discover_reports_covers_every_git_listed_report() {
+        let listed: Vec<Vec<String>> = git_listed_evidence_files()
+            .into_iter()
+            .filter(|c| evidence_oracle::is_contract_report(c))
+            .collect();
+        let d0 = listed.iter().filter(|c| c.len() == 4).count();
+        let d1 = listed.iter().filter(|c| c.len() == 5).count();
+        assert!(
+            d0 >= 1,
+            "the oracle must hold ≥1 container-depth-0 report — else D2 pins nothing"
+        );
+        assert!(
+            d1 >= 1,
+            "the oracle must hold ≥1 container-depth-1 report — else D2 pins nothing"
+        );
+        let mut names: Vec<&str> = listed.iter().map(|c| c[c.len() - 1].as_str()).collect();
+        names.sort_unstable();
+        let n_names = names.len();
+        names.dedup();
+        assert_eq!(
+            names.len(),
+            n_names,
+            "git-listed report file names must be unique (the stem is the picker's lookup key)"
+        );
+        let discovered: HashSet<Vec<String>> = discover_reports()
+            .iter()
+            .map(|e| rel_components(&e.path))
+            .collect();
+        let missing: Vec<String> = listed
+            .iter()
+            .filter(|c| !discovered.contains(*c))
+            .map(|c| c.join("/"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{} of {} git-listed (tracked or on-disk) reports not discovered (#205); container \
+             depth 0: {d0}, container depth 1: {d1}; first: {:?}",
+            missing.len(),
+            listed.len(),
+            missing.first()
+        );
+    }
+
+    /// D3 — the production `has_companion` flag equals the git-derived
+    /// companion set: a git-listed report whose stem-matched
+    /// `reports/artifacts/<stem>/equity-*.csv` is git-listed beside it
+    /// (`evidence_oracle::companion_reports`, the rule R6 uses too). Both
+    /// sides are asserted non-empty first.
+    #[test]
+    fn discover_reports_companion_flags_match_git_listed_companions() {
+        let files = git_listed_evidence_files();
+        let listed_set: HashSet<Vec<String>> = files.iter().cloned().collect();
+        let reports = files
+            .iter()
+            .filter(|c| evidence_oracle::is_contract_report(c))
+            .count();
+        let derived: HashSet<Vec<String>> = evidence_oracle::companion_reports(&files)
+            .into_iter()
+            .collect();
+        assert!(
+            !derived.is_empty(),
+            "the oracle must hold ≥1 derived companion — else D3 pins nothing"
+        );
+        assert!(
+            reports > derived.len(),
+            "the oracle must hold ≥1 report WITHOUT a companion — D3's other side"
+        );
+        let flagged: HashSet<Vec<String>> = discover_reports()
+            .iter()
+            .filter(|e| e.has_companion)
+            .map(|e| rel_components(&e.path))
+            .filter(|c| listed_set.contains(c))
+            .collect();
+        assert_eq!(
+            flagged,
+            derived,
+            "the git-listed reports flagged has_companion must be exactly the {} git-derived \
+             companions (#205)",
+            derived.len()
         );
     }
 
     /// The `backtest-` filter excludes the other families by construction.
     #[test]
     fn is_backtest_report_filter() {
+        use crate::reports::layout::is_backtest_report;
         assert!(is_backtest_report("backtest-20260420-152017-btc.md"));
         assert!(!is_backtest_report("robustness-sweep-20260420.md"));
         assert!(!is_backtest_report("test-week2-smoke.md"));
@@ -673,17 +763,23 @@ mod tests {
     /// Real-demo smoke (backtest-equity-companion): the committed
     /// `btc-2024-h1-sma-cross` demo report has a stem-matched companion on
     /// disk, so it resolves to `Ready` (the populated-curve case AC3
-    /// renders). Skip-if-absent (mirrors the `discover_*` guards) so a
-    /// checkout that prunes the demo artifact does not fail this unit test.
+    /// renders). The demo and its CSV are committed (not LFS), so a missing
+    /// file FAILS — the old skip-if-absent guard could only ever hide a
+    /// regression (bug-log #205).
     #[test]
     fn load_equity_companion_real_demo_report_is_ready() {
         let demo = workspace_root()
             .join("evidence/v1/v0-paper-sma/reports")
             .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
-        if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
-            // Demo artifact pruned from this checkout — skip.
-            return;
-        }
+        assert!(
+            demo.is_file(),
+            "the committed demo report must exist at {} (#205: committed, never pruned)",
+            demo.display()
+        );
+        assert!(
+            report_has_companion(&demo),
+            "the committed demo report must probe has-companion (#205)"
+        );
         let state =
             load_equity_companion(&demo).expect("real demo companion must read without Err");
         assert!(
@@ -786,25 +882,65 @@ mod tests {
         );
     }
 
-    /// Consistency invariant: when `report_has_companion` reports `true` for
-    /// the real committed demo, `load_equity_companion` resolves it to `Ready`
-    /// — the probe must agree with the loader on the live corpus (skip-if-
-    /// absent, mirroring the other real-demo guards).
+    /// Consistency invariant, two-sided, on the live corpus: the probe and the
+    /// loader agree on the committed demo (true → `Ready`) AND on a committed
+    /// no-companion report (false → `Empty`). No skip: both files are
+    /// committed (bug-log #205); "no companion" is derived from the git
+    /// listing (tracked or on disk), not from the probe under test.
     #[test]
     fn report_has_companion_agrees_with_loader_on_real_demo() {
         let demo = workspace_root()
             .join("evidence/v1/v0-paper-sma/reports")
             .join("backtest-20260617-180015-btc-2024-h1-sma-cross.md");
-        if !demo.parent().is_some_and(|p| p.join("artifacts").is_dir()) {
-            return; // demo artifact pruned — skip
-        }
-        if report_has_companion(&demo) {
-            let state = load_equity_companion(&demo).expect("loader must not Err on the demo");
-            assert!(
-                matches!(state, PanelState::Ready(_)),
-                "probe says has-companion → loader must resolve Ready, got {}",
-                state.variant_name()
-            );
-        }
+        assert!(
+            demo.is_file(),
+            "the committed demo report must exist at {} (#205)",
+            demo.display()
+        );
+        assert!(
+            report_has_companion(&demo),
+            "the probe must say has-companion for the committed demo (#205)"
+        );
+        let state = load_equity_companion(&demo).expect("loader must not Err on the demo");
+        assert!(
+            matches!(state, PanelState::Ready(_)),
+            "probe says has-companion → loader must resolve Ready, got {}",
+            state.variant_name()
+        );
+
+        // Negative pair: a git-listed report with no git-listed artifacts/<stem>/.
+        let files = git_listed_evidence_files();
+        let dir: Vec<String> = ["evidence", "v1", "v0-paper-sma", "reports"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        let mut report_rel = dir.clone();
+        report_rel.push(format!("{NO_COMPANION_STEM}.md"));
+        assert!(
+            files.contains(&report_rel),
+            "the no-companion control `{NO_COMPANION_STEM}` must be git-listed (tracked or on disk)"
+        );
+        let mut artifacts_rel = dir;
+        artifacts_rel.push("artifacts".to_string());
+        artifacts_rel.push(NO_COMPANION_STEM.to_string());
+        assert!(
+            !files.iter().any(|c| c.starts_with(&artifacts_rel)),
+            "the git listing (tracked or on disk) must hold no artifacts/{NO_COMPANION_STEM}/ \
+             path for the control"
+        );
+        let control = workspace_root()
+            .join("evidence/v1/v0-paper-sma/reports")
+            .join(format!("{NO_COMPANION_STEM}.md"));
+        assert!(
+            !report_has_companion(&control),
+            "the probe must say NO companion for the committed control report"
+        );
+        let control_state =
+            load_equity_companion(&control).expect("loader must not Err on the control");
+        assert!(
+            matches!(control_state, PanelState::Empty),
+            "no companion → loader must resolve Empty, got {}",
+            control_state.variant_name()
+        );
     }
 }

@@ -4,7 +4,8 @@
 //! Pure-`ui` over `trading_core` + `reports` (the report-writer crate) +
 //! `std::fs` — **no new crate edge** (AC7). A navigable `Screen::Reports`
 //! list-detail screen: a left picker over the discovered
-//! `evidence/*/reports/backtest-*.md` corpus + a right detail pane that renders
+//! `evidence/[<container>/]<slug>/reports/backtest-*.md` corpus (the
+//! [`layout`] contract, bug-log #205) + a right detail pane that renders
 //! the selected report via the existing `kpi_strip` / `equity_curve` /
 //! `drawdown_band` widgets verbatim, plus the markdown body.
 //!
@@ -16,6 +17,7 @@
 //! ├── loader.rs       — load_report + discover_reports + parse/strip front-matter
 //! │                     (D2 lift from bin/viewer.rs — the ONE shared parse, AC5)
 //! ├── body_render.rs  — markdown heading pre-pass (D2 lift from bin/viewer.rs)
+//! ├── layout.rs       — the ONE report-root layout contract (ADR-0055 D8, #205)
 //! └── state.rs        — ReportsScreenState + ReportEntry + boot-load helper (D1)
 //! ```
 //!
@@ -31,7 +33,8 @@
 //! crate, exactly as `bin/viewer.rs` already does.
 
 pub mod body_render;
+pub mod layout;
 pub mod loader;
 pub mod state;
 
-pub use state::{ReportEntry, ReportsScreenState, load_into};
+pub use state::{ReportEntry, ReportsScreenState, load_into, load_into_from};

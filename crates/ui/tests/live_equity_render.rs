@@ -25,6 +25,73 @@
 //! background; gridlines are `BORDER_1`, never `ACCENT`). A real Ready curve
 //! draws a visible `ACCENT` polyline. So `ACCENT`-pixel-count > threshold
 //! ⟺ the curve actually rendered. THIS is the signal the prior tests lacked.
+//!
+//! ## bug-log #205 — the Lab's committed-evidence fallback (PHASE 4b)
+//!
+//! Vocabulary: **container depth 0** = `<root>/<slug>/reports/`, **container
+//! depth 1** = `<root>/<container>/<slug>/reports/`. The Lab's cold path reads
+//! `[lab-runs/, evidence/]` (ADR-0055 § D5), but its report walk read
+//! container depth 0 only, while every committed report the Lab maps to sits at
+//! container depth 1 (`evidence/v1/<slug>/reports/`) since `1395520629dc` — so
+//! `evidence/` answered nothing. The walk now goes through
+//! `ui::reports::layout` (ADR-0055 D8, container depth ≤ 1; within one root a
+//! tie goes to container depth 0 first). PHASE 4b proves it on the same
+//! overlay draw path `lab::view` uses:
+//!
+//! - **LR1** [`lab_curve_hydrated_from_container_depth_1_evidence_report_renders`]
+//!   — a report at `<tmp>/evidence/v1/<slug>/reports/`, resolved by
+//!   `route_equity_overlay` over the production-ordered roots, adds
+//!   ≥ `OVERLAY_ACCENT_DELTA_MIN` ACCENT px. PNG
+//!   `/tmp/lab_container_depth_1_evidence_overlay.png`.
+//! - **LR2** [`lab_curve_from_container_depth_2_evidence_report_does_not_resolve`]
+//!   — the same bytes one container deeper resolve to nothing
+//!   (`route_equity_overlay` is `None`, `load_equity` is `ReportDirNotFound`).
+//!   The routing assertion carries the negative control; there is no pixel
+//!   assertion (a `None` overlay renders the bars-only baseline by
+//!   construction). PNG `/tmp/lab_container_depth_2_evidence_overlay.png`.
+//! - **LR3** [`lab_207_characterization_committed_start_end_only_report_draws_no_overlay`]
+//!   — a CHARACTERISATION of bug-log #207, not a contract: the real committed
+//!   momentum report now resolves, but it is start/end-only with placeholder
+//!   `(0, 1)` timestamps, so with bars on screen it draws no curve while the
+//!   frame still changes (the reserved equity gutter). It MUST flip when #207
+//!   is fixed. PNG `/tmp/lab_207_committed_overlay.png`.
+//!
+//! LR1 and LR3 print their ACCENT deltas and thresholds on stderr
+//! (`#205 pixel margin …`; run with `--nocapture`).
+//!
+//! ### T-T4 probe table (bug-log #205), Lab legs
+//!
+//! The same probes as the table in `reports_populated_curve_render.rs` (which
+//! also holds the test keys and the Reports-leg sets), with the OLD → NEW text
+//! repeated verbatim and the Lab-side sets: `E*` = `lab::equity_loader` lib
+//! tests, `LR*` = this file, H3 = `lab_run_engine.rs`. Protocol: replace the
+//! exactly-once OLD with NEW, `touch`, re-run (a `Compiling ui` line precedes
+//! the red run), restore with `cp` + `touch`, `cmp` against the backup. `\|`
+//! below is the Markdown escape of `|`. Paths are under `crates/ui/src/`.
+//! "Measured" = applied and run on 2026-11-15; "REASONED" = derived from code.
+//!
+//! | Probe | File / symbol | OLD → NEW | Lab RED | Lab GREEN | Measured |
+//! |---|---|---|---|---|---|
+//! | P1 | `reports/layout.rs` `MAX_CONTAINER_DEPTH` | `pub const MAX_CONTAINER_DEPTH: usize = 1;` → `pub const MAX_CONTAINER_DEPTH: usize = 0;` | E1, E2b (2 ≠ 4), E3, E3b, E4, E4c, E5, LR1 (None), LR3 ("must resolve") | E1b, E2, E4b, LR2, the container-depth-0 Lab tests, H3 | measured |
+//! | P2 | same | `pub const MAX_CONTAINER_DEPTH: usize = 1;` → `pub const MAX_CONTAINER_DEPTH: usize = 2;` | E1b (Ok), LR2 (resolves) | E1, E2, E2b, E3, E3b, E4, E4b, E4c, E5, LR1, LR3 | measured (E4b/E4c/E5 cells REASONED) |
+//! | P3 | `reports/loader.rs` `discover_reports_in` | `    for rd in layout::report_dirs(root) {` → `    for rd in layout::report_dirs(root).into_iter().filter(\|rd\| rd.dir.parent().and_then(Path::parent) == Some(root)) {` | — | every E*, LR1-LR3, H3 | measured (E4b/E4c/E5 cells REASONED) |
+//! | P4 | `lab/equity_loader.rs` `discover_reports` | `        .flat_map(\|d\| layout::backtest_files(&d))` → `        .filter(\|d\| d.parent().and_then(\|p\| p.parent()) == Some(report_root)).flat_map(\|d\| layout::backtest_files(&d))` | E1, E2b, E3, E3b, E4, E4c, LR1, LR3 | E1b, E2, E4b, E5, LR2, container-depth-0 Lab tests, H3 | measured (E4b/E4c/E5 cells REASONED) |
+//! | P5 | `reports/layout.rs` `child_dirs` | `        .filter(\|p\| p.is_dir() && p.file_name() != Some(OsStr::new(REPORTS_DIR)))` → `        .filter(\|p\| p.is_dir())` | — | every E*, LR1-LR3 | measured |
+//! | P6 | `lab/equity_loader.rs` `EquityCache::get_or_load_roots` | `    for root in roots {` → `    for root in roots.iter().rev() {` | `route_overlay_two_root_union_lab_runs_wins_collision`, E2 (4 ≠ 2), E2b (2 ≠ 4) | E1, E1b, E3, E3b, E4, E4b, E4c, E5, LR1-LR3 (lab-runs/ is absent there), single-root tests | measured (E4b/E4c/E5 cells REASONED) |
+//! | P7 | `test_support.rs` `evidence_oracle::git_listed_files` | `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence/v5-latency-slippage-sim-v0.2.0-anchor-migration"])` | E3 (0 momentum reports listed) | every other E*, LR1-LR3 | REASONED |
+//! | P8 | `reports/loader.rs` `discover_reports_in` | `            .then_with(\|\| a.file_stem.cmp(&b.file_stem))` → `            .then_with(\|\| std::cmp::Ordering::Equal)` | — | every E*, LR1-LR3 | measured |
+//! | P9 | `reports/loader.rs` `discover_reports_in` | `                slug: rd.slug.clone(),` → `                slug: smol_str::SmolStr::new(rd.dir.to_string_lossy()),` | — | every E*, LR1-LR3 | measured |
+//! | existing pin | `lab/equity_loader.rs` `default_report_roots` | `    vec![default_lab_runs_root(), default_evidence_root()]` → `    vec![default_evidence_root(), default_lab_runs_root()]` | `default_roots_order_lab_runs_first` | the rest | measured |
+//! | P10 | `lab/equity_loader.rs` `discover_reports` | `        .flat_map(\|d\| layout::backtest_files(&d))` → `        .flat_map(\|d\| layout::backtest_files(&d)).collect::<std::collections::BTreeSet<PathBuf>>().into_iter()` | E4b (`root-a0` resolves the container-depth-1 report: 5 points, not 3) | every other E*, LR1-LR3 (18 of 18 in this file), H3 | measured |
+//! | P11 | `reports/layout.rs` `is_slug_component` | `        (Some(Component::Normal(c)), None) if c == OsStr::new(slug) && c != OsStr::new(REPORTS_DIR)` → `        (Some(Component::Normal(c)), None) if c != OsStr::new(REPORTS_DIR)` | — (LY3, a layout test, is the only red) | every E*, LR1-LR3 (18 of 18) | measured |
+//! | P12 | `test_support.rs` `evidence_oracle::git_listed_files` | `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--", "evidence"])` | — (OR1, an oracle test, is the only red) | every E* (E3 reads the same listing on a checkout with 0 untracked files under `evidence/`); LR1-LR3 do not use the oracle | measured |
+//! | O3 | `lab/equity_loader.rs` `discover_reports` | `    layout::report_dirs_for_slug(report_root, slug)` → `    layout::report_dirs_for_slug(report_root, slug).into_iter().take(1).collect::<Vec<_>>()` | E4c (left 4, right 3) | every other E*, LR1-LR3 (18 of 18) | measured (second falsifier) |
+//! | O9 | `reports/loader.rs` `discover_reports_in` | `            .cmp(&b.slug)` → `            .cmp(&a.slug)` | — | every E*, LR1-LR3 | measured, lib (second falsifier) |
+//! | O6 | `reports/layout.rs` `report_dirs` | `            if dir.is_dir() {` → `            if dir.exists() {` | — (`report_dirs_for_slug` keeps its own `is_dir` filter) | every E* | measured, lib (second falsifier); LR cells REASONED |
+//! | O5b | `reports/loader.rs` `discover_reports_in` AND `test_support.rs` `evidence_oracle::git_listed_files` | `    for rd in layout::report_dirs(root) {` → `    for rd in layout::report_dirs(root).into_iter().filter(\|rd\| !rd.dir.starts_with(root.join("v3"))) {` AND `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence/v5-latency-slippage-sim-v0.2.0-anchor-migration", "evidence/v1"])` | — | every E* (E3's momentum report is under `evidence/v1`) | measured, lib (second falsifier); LR cells REASONED |
+//! | Q3 | `reports/layout.rs` `backtest_files` | `    out.sort_unstable();` → `    out.sort_unstable_by(\|a, b\| b.cmp(a));` | — (no Lab test's winning dir holds two tied reports; LY4, a layout test, is the red) | every E*, LR1-LR3 (18 of 18), H3 | measured (second falsifier, in the `sort_by` form) |
+//! | Q6 | `reports/loader.rs` `discover_reports_in` | `            .then_with(\|\| a.path.cmp(&b.path))` → `            .then_with(\|\| std::cmp::Ordering::Equal)` | — (the Lab never calls `discover_reports_in`) | every E*, LR1-LR3 | REASONED |
+//! | Q8 | `reports/layout.rs` `is_slug_component` | `        (Some(Component::Normal(c)), None) if c == OsStr::new(slug) && c != OsStr::new(REPORTS_DIR)` → `        (Some(Component::Normal(c)), None) if c == OsStr::new(slug)` | — (no Lab slug is `reports`) | every E*, LR1-LR3 | REASONED |
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::cast_precision_loss)]
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -1207,6 +1274,178 @@ fn single_run_overlay_draws_no_accent2() {
         "single-run overlay must draw NO second (ACCENT_2) curve, but saw {accent2} ACCENT_2 \
          pixels (≥ {OVERLAY_DREW_MIN}). If this fails the two-curve discriminator is reading \
          chrome/AA bleed, not the actual compare series — fix the detector before trusting it."
+    );
+}
+
+// ── PHASE 4b — bug-log #205: the Lab's committed-evidence fallback ──────────
+
+use ui::lab::equity_loader::{
+    EquityCache, EquityLoadError, Fidelity, default_evidence_root, route_equity_overlay,
+};
+use ui::lab::state::LabState;
+
+/// The momentum tuple both fixtures and the committed report answer.
+fn momentum_tuple() -> LabTuple {
+    LabTuple {
+        strategy: smol_str::SmolStr::new("v1.momentum"),
+        symbol: smol_str::SmolStr::new("XRPUSDT"),
+        range: LabDateRange::Preset(Preset::H1_2024),
+        source: LabDataSource::Synthetic,
+    }
+}
+
+/// The momentum fixture's file name (its scenario matches `momentum_tuple`).
+const MOMENTUM_FIXTURE: &str = "backtest-20260601-120000-top10-2024-h1-momentum.md";
+
+/// **LR1 — a committed-layout evidence report repaints the Lab curve (#205).**
+/// The fixture sits at `<tmp>/evidence/v1/<slug>/reports/` — container depth
+/// 1, the committed layout since `1395520629dc` — and is resolved by the
+/// production cold path `route_equity_overlay` over the production-ordered
+/// roots `[lab-runs/ (absent), evidence/]`. It must add a visible overlay
+/// polyline on the real chart draw path.
+#[test]
+fn lab_curve_hydrated_from_container_depth_1_evidence_report_renders() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let evidence = tmp.path().join("evidence");
+    write_lab_run(
+        &evidence.join("v1"),
+        "v1-cross-sectional-momentum",
+        MOMENTUM_FIXTURE,
+        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+    );
+    let lab_runs = tmp.path().join("lab-runs");
+    assert!(
+        !lab_runs.exists(),
+        "lab-runs/ is absent: evidence/ must answer"
+    );
+    let roots = [lab_runs, evidence];
+
+    let mut cache = EquityCache::new();
+    let series = route_equity_overlay(&LabState::default(), &mut cache, &momentum_tuple(), &roots)
+        .expect(
+            "a report at evidence/v1/<slug>/reports must resolve through the Lab cold path (#205)",
+        );
+    assert_eq!(series.fidelity, Fidelity::PerBar);
+    assert!(series.samples.len() >= 2);
+
+    let bars = render_bars();
+    let (baseline_accent, _) = count_curve_pixels(&render_overlay(bars.clone(), None, vec![]));
+    let shot = render_overlay(bars, Some(series), vec![]);
+    if let Some(img) =
+        image::RgbaImage::from_raw(shot.size.width, shot.size.height, shot.rgba.to_vec())
+    {
+        let _ = img.save("/tmp/lab_container_depth_1_evidence_overlay.png");
+    }
+    let (with_equity_accent, _) = count_curve_pixels(&shot);
+    let delta = with_equity_accent.saturating_sub(baseline_accent);
+    eprintln!(
+        "#205 pixel margin LR1: +{delta} ACCENT px ({baseline_accent} -> {with_equity_accent}; \
+         threshold >= {OVERLAY_ACCENT_DELTA_MIN})"
+    );
+    assert!(
+        delta >= OVERLAY_ACCENT_DELTA_MIN,
+        "the container-depth-1 evidence report must paint the Lab overlay (+{delta} ACCENT px, \
+         {baseline_accent} → {with_equity_accent}; expected +≥{OVERLAY_ACCENT_DELTA_MIN}) (#205). \
+         PNG: /tmp/lab_container_depth_1_evidence_overlay.png"
+    );
+}
+
+/// **LR2 — LR1's pair: an out-of-contract container depth resolves nothing.** The SAME
+/// bytes at `<tmp>/evidence/v1/x/<slug>/reports/` (container depth 2) are not
+/// read (ADR-0055 D8): `route_equity_overlay` is `None` and `load_equity` is
+/// `ReportDirNotFound`. The routing assertion (`overlay.is_none()`) carries
+/// the negative control; there is no pixel assertion, because a `None`
+/// overlay renders the bars-only frame by construction (a pixel delta against
+/// that same frame could not fail). The PNG is still written for reading.
+#[test]
+fn lab_curve_from_container_depth_2_evidence_report_does_not_resolve() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let evidence = tmp.path().join("evidence");
+    write_lab_run(
+        &evidence.join("v1").join("x"),
+        "v1-cross-sectional-momentum",
+        MOMENTUM_FIXTURE,
+        &lab_runs_report_at("top10-2024-h1-momentum", "XRPUSDT", 100_000),
+    );
+    assert!(
+        evidence
+            .join("v1/x/v1-cross-sectional-momentum/reports")
+            .join(MOMENTUM_FIXTURE)
+            .is_file(),
+        "the container-depth-2 fixture must exist, so the negative is not 'file missing'"
+    );
+    let roots = [tmp.path().join("lab-runs"), evidence.clone()];
+
+    let mut cache = EquityCache::new();
+    let overlay = route_equity_overlay(&LabState::default(), &mut cache, &momentum_tuple(), &roots);
+    assert!(
+        overlay.is_none(),
+        "a report at container depth 2 must NOT resolve (ADR-0055 D8)"
+    );
+    let direct = load_equity(&momentum_tuple(), &evidence);
+    assert!(
+        matches!(direct, Err(EquityLoadError::ReportDirNotFound(_))),
+        "load_equity must report ReportDirNotFound for an out-of-contract report; got {direct:?}"
+    );
+
+    // For reading only (see the doc): the bars-only frame the `None` overlay
+    // routes to.
+    let shot = render_overlay(render_bars(), overlay, vec![]);
+    if let Some(img) =
+        image::RgbaImage::from_raw(shot.size.width, shot.size.height, shot.rgba.to_vec())
+    {
+        let _ = img.save("/tmp/lab_container_depth_2_evidence_overlay.png");
+    }
+}
+
+/// **LR3 — CHARACTERISATION of bug-log #207 (not a contract).** The REAL
+/// committed v1 momentum report now resolves through the production roots
+/// (`[lab-runs/ (absent), evidence/]`), but it is start/end-only: its two
+/// samples carry the placeholder timestamps `(0, 1)` (`make_start_end_series`),
+/// which fall outside the bar window, so the overlay draws NO curve — while
+/// the frame still changes, because the equity gutter is reserved. This test
+/// documents that empty-gutter reality and MUST flip when #207 is fixed.
+#[test]
+fn lab_207_characterization_committed_start_end_only_report_draws_no_overlay() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let roots = [tmp.path().join("lab-runs"), default_evidence_root()];
+    let mut cache = EquityCache::new();
+    let series = route_equity_overlay(&LabState::default(), &mut cache, &momentum_tuple(), &roots)
+        .expect(
+            "the committed v1 momentum report must resolve through the production roots (#205)",
+        );
+    assert_eq!(series.fidelity, Fidelity::StartEndOnly);
+    let ts: Vec<i64> = series.samples.iter().map(|(t, _)| *t).collect();
+    assert_eq!(
+        ts,
+        vec![0, 1],
+        "#207: start/end-only samples carry placeholder (0, 1) timestamps"
+    );
+
+    let bars = render_bars();
+    let baseline = render_overlay(bars.clone(), None, vec![]);
+    let (baseline_accent, _) = count_curve_pixels(&baseline);
+    let shot = render_overlay(bars, Some(series), vec![]);
+    if let Some(img) =
+        image::RgbaImage::from_raw(shot.size.width, shot.size.height, shot.rgba.to_vec())
+    {
+        let _ = img.save("/tmp/lab_207_committed_overlay.png");
+    }
+    let (with_equity_accent, _) = count_curve_pixels(&shot);
+    let delta = with_equity_accent.saturating_sub(baseline_accent);
+    eprintln!(
+        "#205 pixel margin LR3: +{delta} ACCENT px ({baseline_accent} -> {with_equity_accent}; \
+         #207 characterisation threshold < {OVERLAY_DREW_MIN})"
+    );
+    assert!(
+        delta < OVERLAY_DREW_MIN,
+        "#207 characterisation: the (0, 1) samples sit outside the bar window, so no curve draws \
+         (+{delta} ACCENT px). If this fails, #207 changed — update this test with it."
+    );
+    assert!(
+        shot.rgba != baseline.rgba,
+        "#207 characterisation: the overlay is present, so the frame differs from the \
+         bars-only baseline (the reserved equity gutter). If this fails, #207 changed."
     );
 }
 

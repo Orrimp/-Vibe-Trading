@@ -18,8 +18,8 @@
 //!    real `discover_reports()` → find the committed demo by `file_stem` →
 //!    `load_report(&entry.path)` → assert `equity: Ready`. Catches any
 //!    discovery/companion-resolver path mismatch a hand-built unit fixture
-//!    would miss. Skip-if-absent so a checkout that prunes the demo artifact
-//!    does not fail.
+//!    would miss. No skip: the demo is committed, so a miss FAILS (it used to
+//!    skip "for a pruned checkout", which hid bug-log #205 — see below).
 //!
 //! 2. [`reports_populated_curve_draws_in_detail_pane`] — renders the REAL
 //!    `screens::reports::view` (via the full cockpit shell) HEADLESS with a
@@ -35,6 +35,109 @@
 //!    discriminates the populated curve from the "No equity data" empty
 //!    state).
 //!
+//! ## bug-log #205 — the live-corpus tests can no longer skip
+//!
+//! Vocabulary: **container depth 0** = `<root>/<slug>/reports/`, **container
+//! depth 1** = `<root>/<container>/<slug>/reports/`. Since `1395520629dc` the
+//! committed reports this file reads sit at container depth 1
+//! (`evidence/v1/<slug>/reports/`), but discovery walked container depth 0
+//! only, so the five live-corpus tests here found nothing and `return;`ed at
+//! eight skip sites (five printed "skipping (pruned checkout)") — passing with
+//! no assertion run. The fix routes the `ui` readers through
+//! `ui::reports::layout` (ADR-0055 D8: `<root>[/<container>]/<slug>/reports/
+//! backtest-*.md`, container depth ≤ `MAX_CONTAINER_DEPTH` = 1). The eight
+//! skips are now assertions naming #205, and three tests are new:
+//!
+//! - **R6** [`reports_boot_autoselects_newest_git_listed_companion_and_paints_it`]
+//!   — the operator's boot view: production `load_into` must auto-select the
+//!   newest companion-bearing report, whose stem is DERIVED from the git
+//!   listing (tracked, or untracked on disk: `ui::test_support::evidence_oracle`),
+//!   not from discovery, and paint its curve. Also prints the boot scan's wall
+//!   time. PNG `/tmp/reports_boot_autoselect.png`.
+//! - **R7a / R7b** [`reports_container_depth_hermetic_pair_depth_1_paints`] /
+//!   [`reports_container_depth_hermetic_pair_depth_2_is_empty`] — the SAME
+//!   committed demo bytes copied under a tempdir root at container depth 1
+//!   (listed, auto-selected, painted;
+//!   `/tmp/reports_container_depth_1_fixture.png`) and at container depth 2
+//!   (out of contract: `Empty`, nothing selected, no curve;
+//!   `/tmp/reports_container_depth_2_fixture.png`), through `load_into_from`.
+//!
+//! Every pixel-asserting test of this change prints its count and threshold
+//! on stderr (`#205 pixel margin …`; run with `--nocapture`).
+//!
+//! ### T-T4 probe table (bug-log #205)
+//!
+//! Each probe replaces ONE exact substring (OLD, occurring exactly once in its
+//! file) with NEW, re-runs the affected targets (a `Compiling ui` line must
+//! precede the red run), then restores the file byte-identically (`cp` from a
+//! backup + `touch`; `cmp` against the backup). In the table, `\|` is the
+//! Markdown escape of `|` (the OLD/NEW text contains no backslash). The table
+//! lives HERE (and, for the Lab legs, in `live_equity_render.rs`), never in a
+//! probed source file, so each OLD stays unique. Paths are under `crates/ui/src/`.
+//!
+//! Test keys: `LY1-LY5` = `reports::layout` tests (LY1
+//! `report_dirs_lists_exactly_the_in_contract_dirs`, LY2
+//! `report_dirs_absent_root_is_empty_fixture_root_is_not`, LY3
+//! `report_dirs_for_slug_agrees_with_report_dirs`, LY4
+//! `backtest_files_lists_only_direct_backtest_md_files`, LY5
+//! `report_dirs_follows_symlinks_and_a_symlink_loop_terminates`, unix only);
+//! `D1-D5`, `K2` = `reports::loader` tests (D1
+//! `discover_reports_in_lists_exactly_the_declared_rows`, D2
+//! `discover_reports_covers_every_git_listed_report`, D3
+//! `discover_reports_companion_flags_match_git_listed_companions`, D4
+//! `load_equity_companion_real_demo_report_is_ready`, D5
+//! `report_has_companion_agrees_with_loader_on_real_demo`, K2
+//! `discover_reports_in_absent_root_is_empty_fixture_root_is_not`); `OR1-OR2`
+//! = `test_support::evidence_oracle` tests (OR1
+//! `git_listed_files_lists_committed_deleted_untracked_and_ignored`, hermetic;
+//! OR2 `git_listed_files_contains_every_indexed_contract_report`); `E1-E5` =
+//! `lab::equity_loader` tests (E1
+//! `load_equity_resolves_a_container_depth_1_evidence_report`, E1b
+//! `load_equity_does_not_reach_a_container_depth_2_report`, E2
+//! `lab_runs_shadows_a_container_depth_1_evidence_report`, E2b
+//! `container_depth_1_evidence_report_wins_when_searched_first`, E3
+//! `integration_load_real_v1_report`, E3b
+//! `integration_real_v1_report_binance_tuple_is_no_report`, E4
+//! `equal_score_tie_at_one_container_depth_goes_to_the_first_dir`,
+//! E4b `equal_score_tie_across_container_depths_goes_to_container_depth_0`,
+//! E4c `a_strictly_better_report_in_the_second_report_dir_wins`, E5
+//! `report_dir_not_found_names_slug_root_bound_and_which_empty`); `R1-R5` =
+//! the five converted live tests in this file (R1
+//! `reports_demo_discover_load_is_ready`, R2
+//! `reports_demo_real_selection_renders_curve`, R3
+//! `reports_switch_between_companions_repaints_distinct_curve`, R4
+//! `reports_switch_to_no_companion_is_empty`, R5
+//! `reports_filter_curve_only_selects_correct_report_by_true_index`),
+//! R6/R7a/R7b above; `LR1-LR3` = `live_equity_render.rs` (LR1
+//! `lab_curve_hydrated_from_container_depth_1_evidence_report_renders`, LR2
+//! `lab_curve_from_container_depth_2_evidence_report_does_not_resolve`, LR3
+//! `lab_207_characterization_committed_start_end_only_report_draws_no_overlay`);
+//! H3 = `lab_run_engine.rs`. "Measured" = applied and run on 2026-11-15;
+//! "REASONED" cells were derived from the code, not run.
+//!
+//! | Probe | File / symbol | OLD → NEW | Expected RED | Expected GREEN | Measured |
+//! |---|---|---|---|---|---|
+//! | P1 the one-level walk is back | `reports/layout.rs` `MAX_CONTAINER_DEPTH` | `pub const MAX_CONTAINER_DEPTH: usize = 1;` → `pub const MAX_CONTAINER_DEPTH: usize = 0;` | LY1, LY3 (`for_slug("sma")` finds 1 of 4), LY5 (`[]`), D1, D2 ("89 of 197 … not discovered"; container depth 0: 108, container depth 1: 89), D3 (flagged ∅ vs 14), E1, E2b (2 ≠ 4), E3, E3b (`ReportDirNotFound`, not `NoReport`), E4, E4c (`ReportDirNotFound`), E5 (the dir case reads "no `reports/` dir"), R1-R6 ("must be discovered" / nothing selected), R7a, LR1, LR3 — lib 13 of 676 red, this file 7 of 13, `live_equity_render.rs` 2 of 18 | LY2, LY4, K2, D4, D5, OR1, OR2, E1b, E2, E4b (container depth 0 is all that is left), R7b, LR2, the other 663 lib tests, H3 (1 passed) | measured (lib whole, R, LR, H3) |
+//! | P2 over-widening | same | same OLD → `pub const MAX_CONTAINER_DEPTH: usize = 2;` | LY1, LY3 (`too-deep` resolves, the TREE says not), LY5 (`link/c/s/reports` listed), D1 (`too-deep` listed), E1b (Ok), R7b (discovered, curve paints), LR2 (resolves) | LY2, LY4, K2, D2, D3 (no `reports` dir deeper in `evidence/`), D4, D5, OR1, OR2, E1-E5 except E1b, R1-R7a, LR1, LR3 | measured before LY3 compared against the TREE and before LY5 existed; those two cells REASONED |
+//! | P3 Reports leg only | `reports/loader.rs` `discover_reports_in` | `    for rd in layout::report_dirs(root) {` → `    for rd in layout::report_dirs(root).into_iter().filter(\|rd\| rd.dir.parent().and_then(Path::parent) == Some(root)) {` | D1, D2, D3, R1-R6, R7a | LY*, K2, D4, D5, OR*, E*, R7b, LR*, H3 | measured (the OR/E4b/E4c/E5 cells REASONED) |
+//! | P4 Lab leg only | `lab/equity_loader.rs` `discover_reports` | `        .flat_map(\|d\| layout::backtest_files(&d))` → `        .filter(\|d\| d.parent().and_then(\|p\| p.parent()) == Some(report_root)).flat_map(\|d\| layout::backtest_files(&d))` | E1, E2b (2 ≠ 4), E3, E3b (`ReportDirNotFound`, not `NoReport`), E4, E4c, LR1, LR3 | LY*, K2, D*, OR*, R*, E1b, E2, E4b (container depth 0 still wins), E5 (the error path counts the unfiltered dirs), LR2, container-depth-0 Lab tests | measured (E4b/E4c/E5 cells REASONED) |
+//! | P5 `reports` is never a container | `reports/layout.rs` `child_dirs` | `        .filter(\|p\| p.is_dir() && p.file_name() != Some(OsStr::new(REPORTS_DIR)))` → `        .filter(\|p\| p.is_dir())` | LY1, LY3 (`inner` resolves, the TREE says not), D1 (`inner` listed) | LY2, LY4, LY5, K2, D2-D5, OR*, E*, R*, LR* (no `evidence/reports` dir) | measured before LY3 compared against the TREE; that cell REASONED |
+//! | P6 lab-runs precedence | `lab/equity_loader.rs` `EquityCache::get_or_load_roots` | `    for root in roots {` → `    for root in roots.iter().rev() {` | `route_overlay_two_root_union_lab_runs_wins_collision`, E2 (4 ≠ 2), E2b (2 ≠ 4) | E1, E1b, E3, E3b, E4, E4b, E4c, E5, LR1-LR3, single-root tests | measured (E4b/E4c/E5 cells REASONED) |
+//! | P7 the oracle is not narrowed | `test_support.rs` `evidence_oracle::git_listed_files` | `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence/v5-latency-slippage-sim-v0.2.0-anchor-migration"])` | D2 ("≥1 container-depth-1 report"), D3 ("≥1 derived companion"), D5 (control "must be git-listed"), OR1 (the fixture's `evidence/v1/…` rows fall outside), OR2 (indexed reports missing), E3 (0 momentum reports), R6 (no companion stem) | everything else | REASONED (this OLD moved here from `reports/loader.rs` tests in this change) |
+//! | P8 the sort key | `reports/loader.rs` `discover_reports_in` | `            .then_with(\|\| a.file_stem.cmp(&b.file_stem))` → `            .then_with(\|\| std::cmp::Ordering::Equal)` | D1 (the `sma` rows come out in path order) | the rest | measured |
+//! | P9 slug = the leaf dir | `reports/loader.rs` `discover_reports_in` | `                slug: rd.slug.clone(),` → `                slug: smol_str::SmolStr::new(rd.dir.to_string_lossy()),` | D1 (slug column), R7a (its slug assertion: left `<tmp>/v9/demo/reports`, right `"demo"`) | D2, D3, R1-R6, R7b (they look up by stem and path) | measured (the earlier table listed R7a as green; the falsifier measured it red) |
+//! | existing pin | `lab/equity_loader.rs` `default_report_roots` | `    vec![default_lab_runs_root(), default_evidence_root()]` → `    vec![default_evidence_root(), default_lab_runs_root()]` | `default_roots_order_lab_runs_first` ("lab-runs MUST be searched first") | the rest | measured |
+//! | P10 the D8 tie rule | `lab/equity_loader.rs` `discover_reports` | `        .flat_map(\|d\| layout::backtest_files(&d))` → `        .flat_map(\|d\| layout::backtest_files(&d)).collect::<std::collections::BTreeSet<PathBuf>>().into_iter()` (a full-path sort of the union) | E4b only (`root-a0`: left 5, right 3 — the container-depth-1 report won) — lib 1 of 676 red | every other lib test (675), LR1-LR3 and the rest of `live_equity_render.rs` (18 of 18), H3 | measured (lib whole, LR, H3) |
+//! | P11 exact slug round-trip | `reports/layout.rs` `is_slug_component` | `        (Some(Component::Normal(c)), None) if c == OsStr::new(slug) && c != OsStr::new(REPORTS_DIR)` → `        (Some(Component::Normal(c)), None) if c != OsStr::new(REPORTS_DIR)` | LY3 only (`report_dirs_for_slug("sma/")` returns the 4 `sma` dirs, the filtered walk none) — lib 1 of 676 red | every other lib test (675), this file 13 of 13, `live_equity_render.rs` 18 of 18 | measured (lib whole, R, LR) |
+//! | P12 the oracle lists untracked files | `test_support.rs` `evidence_oracle::git_listed_files` | `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--", "evidence"])` | OR1 only (left: the committed and the deleted rows; right: also the untracked and the ignored rows) — lib 1 of 676 red | every other lib test (675) and this file 13 of 13: on this checkout `git ls-files --others -- evidence` lists 0 files, so D2, D3, D5, E3, OR2 and R6 read the same listing either way | measured (lib whole, R) |
+//! | O3 the Lab union is complete | `lab/equity_loader.rs` `discover_reports` | `    layout::report_dirs_for_slug(report_root, slug)` → `    layout::report_dirs_for_slug(report_root, slug).into_iter().take(1).collect::<Vec<_>>()` | E4c (the better report sits in the second dir; left 4, right 3) — lib 1 of 676 red | the rest (E4b: container depth 0 is the first dir), `live_equity_render.rs` 18 of 18 | measured (lib whole, LR; second falsifier) |
+//! | O9 the slug sort key | `reports/loader.rs` `discover_reports_in` | `            .cmp(&b.slug)` → `            .cmp(&a.slug)` (the slug key compares a row with itself: always `Equal`) | D1 (the `flat` row's stem `backtest-20261231-…` sorts after every `sma` stem) — lib 1 of 676 red | the rest, this file 13 of 13 | measured (lib whole, R; second falsifier) |
+//! | O6 a FILE named `reports` | `reports/layout.rs` `report_dirs` | `            if dir.is_dir() {` → `            if dir.exists() {` | LY1 (`fslug/reports`, a file, listed), LY3 (`for_slug("fslug")` left `[]`, right `[<tmp>/fslug/reports]`) — lib 2 of 676 red | the rest (`backtest_files` of a file is empty) | measured (lib whole; second falsifier) |
+//! | O5b a partial oracle hides a discovery gap | `reports/loader.rs` `discover_reports_in` AND `test_support.rs` `evidence_oracle::git_listed_files` (two edits) | `    for rd in layout::report_dirs(root) {` → `    for rd in layout::report_dirs(root).into_iter().filter(\|rd\| !rd.dir.starts_with(root.join("v3"))) {` AND `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence"])` → `            .args(["ls-files", "-z", "--cached", "--others", "--", "evidence/v5-latency-slippage-sim-v0.2.0-anchor-migration", "evidence/v1"])` | OR2 (the indexed `evidence/v3/…` reports are missing from the oracle) — lib 1 of 676 red | the rest (D2 and D3 compare against the same partial oracle: that was the survivor) | measured, lib: against the earlier HEAD-tree OR2 by the second falsifier ("90 of 197"), against the index-based OR2 by the orchestrator's gate; integration cells REASONED |
+//! | Q3 one dir's files by path | `reports/layout.rs` `backtest_files` | `    out.sort_unstable();` → `    out.sort_unstable_by(\|a, b\| b.cmp(a));` | LY4 (`a0/sma/reports` lists its two reports in reverse) | the rest (the Reports list re-sorts; no Lab test's winning dir holds two tied reports — E4's tied pair in `v2/` loses to `v1/`; the Lab's within-dir pick is bug-log #209's) | measured, lib (orchestrator's gate, after the `a0` twin row); integration measured by the second falsifier in the `sort_by` form (`live_equity_render.rs` 18 of 18, H3 1 of 1) |
+//! | Q6 the Reports path key | `reports/loader.rs` `discover_reports_in` | `            .then_with(\|\| a.path.cmp(&b.path))` → `            .then_with(\|\| std::cmp::Ordering::Equal)` | D1 (the `a0` twin of the `d0` row comes out after the container-depth-0 copy) | the rest | measured, lib (orchestrator's gate, after the twin row); integration cells REASONED |
+//! | Q8 `reports` is never a slug | `reports/layout.rs` `is_slug_component` | `        (Some(Component::Normal(c)), None) if c == OsStr::new(slug) && c != OsStr::new(REPORTS_DIR)` → `        (Some(Component::Normal(c)), None) if c == OsStr::new(slug)` | LY3 (`for_slug("reports")` returns `<tmp>/reports/reports`, the walk none) | the rest | measured, lib (orchestrator's gate, after the `reports/reports` row); integration cells REASONED |
+//!
 //! ## macOS gate (ADR-0057 D2)
 //!
 //! Like `render_snapshots.rs`, real-renderer pixel assertions are
@@ -46,7 +149,7 @@
 #![cfg(target_os = "macos")]
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::cast_precision_loss)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use smol_str::SmolStr;
@@ -54,12 +157,19 @@ use trading_core::{BacktestMetrics, EquitySeries};
 use ui::reports::state::newest_companion_index;
 use ui::reports::{ReportEntry, ReportsScreenState, loader};
 use ui::state::{Cockpit, PanelState, Screen};
-use ui::test_support::{charts_screen_cockpit, program_from_cockpit};
+use ui::test_support::{charts_screen_cockpit, evidence_oracle, program_from_cockpit};
 use ui::viewer::{ReportFrontMatter, ReportLoadResult};
 
 /// The committed demo report (a non-anchored `btc-2024-h1-sma-cross` run
 /// whose stem-matched companion CSV makes the curve populate).
 const DEMO_STEM: &str = "backtest-20260617-180015-btc-2024-h1-sma-cross";
+
+/// A committed `v0-paper-sma` report with NO equity companion (its stem has no
+/// `artifacts/` dir in the git listing — asserted by the loader's D5 test).
+const NO_COMPANION_STEM: &str = "backtest-20260527-143549-btc-2024-h1-sma-cross";
+
+/// The committed demo's report dir, workspace-relative.
+const DEMO_REPORTS_REL: &str = "evidence/v1/v0-paper-sma/reports";
 
 // ─── JOB 1: live discover → load round-trips to a Ready curve ────────────
 
@@ -70,26 +180,29 @@ const DEMO_STEM: &str = "backtest-20260617-180015-btc-2024-h1-sma-cross";
 /// companion resolver a path it can follow (a hand-built unit fixture cannot
 /// catch a discovery/resolver path mismatch; this can).
 ///
-/// Skip-if-absent (mirrors the loader's `load_equity_companion_real_demo_*`
-/// guard) so a checkout that prunes the demo artifact does not fail.
+/// No skip: the demo and its companion CSV are committed (not LFS), so a miss
+/// is a discovery bug — bug-log #205 hid behind exactly this skip since
+/// `1395520629dc` (2026-06-28).
 #[test]
 fn reports_demo_discover_load_is_ready() {
     let entries = loader::discover_reports();
-    let Some(entry) = entries.iter().find(|e| e.file_stem.as_str() == DEMO_STEM) else {
-        eprintln!("demo report `{DEMO_STEM}` not discovered — skipping (pruned checkout)");
-        return;
-    };
-    // Guard the companion too: if the .md is committed but the artifacts/ CSV
-    // was pruned, skip rather than fail (the curve can't be Ready without it).
-    let has_companion = entry
-        .path
-        .parent()
-        .map(|p| p.join("artifacts").join(DEMO_STEM))
-        .is_some_and(|d| d.is_dir());
-    if !has_companion {
-        eprintln!("demo companion CSV pruned — skipping");
-        return;
-    }
+    let entry = entries
+        .iter()
+        .find(|e| e.file_stem.as_str() == DEMO_STEM)
+        .unwrap_or_else(|| {
+            panic!(
+                "the committed demo report `{DEMO_STEM}` must be discovered by \
+                 discover_reports() (#205: it sits at {DEMO_REPORTS_REL}/); \
+                 discovered {} entries",
+                entries.len()
+            )
+        });
+    // The PRODUCTION flag, not a recomputation: discovery must mark the
+    // committed demo as companion-bearing.
+    assert!(
+        entry.has_companion,
+        "discovery must flag the committed demo `{DEMO_STEM}` has_companion (#205)"
+    );
 
     let loaded = loader::load_report(&entry.path).expect("load_report ok for the discovered demo");
     assert!(
@@ -111,26 +224,23 @@ fn reports_demo_discover_load_is_ready() {
 /// → `screens::reports::view`). This is the closest possible replica of what
 /// the operator sees when they click the demo row, and it regenerates the
 /// operator-facing deliverable PNG at `/tmp/reports_demo_render.png`. Asserts
-/// the rendered detail pane paints a populated curve. Skip-if-absent.
+/// the rendered detail pane paints a populated curve. No skip (bug-log #205).
 #[test]
 fn reports_demo_real_selection_renders_curve() {
     let entries = loader::discover_reports();
-    let Some(idx) = entries
+    let idx = entries
         .iter()
         .position(|e| e.file_stem.as_str() == DEMO_STEM)
-    else {
-        eprintln!("demo `{DEMO_STEM}` not discovered — skipping (pruned checkout)");
-        return;
-    };
-    let has_companion = entries[idx]
-        .path
-        .parent()
-        .map(|p| p.join("artifacts").join(DEMO_STEM))
-        .is_some_and(|d| d.is_dir());
-    if !has_companion {
-        eprintln!("demo companion CSV pruned — skipping");
-        return;
-    }
+        .unwrap_or_else(|| {
+            panic!(
+                "the committed demo `{DEMO_STEM}` must be discovered (#205); none of {} entries",
+                entries.len()
+            )
+        });
+    assert!(
+        entries[idx].has_companion,
+        "discovery must flag the committed demo `{DEMO_STEM}` has_companion (#205)"
+    );
 
     // Production boot + selection path — NOT a hand-built loaded state.
     let mut cockpit = charts_screen_cockpit();
@@ -150,6 +260,7 @@ fn reports_demo_real_selection_renders_curve() {
         let _ = img.save("/tmp/reports_demo_render.png");
     }
     let hits = curve_pixels(w, h, &rgba);
+    eprintln!("#205 pixel margin R2: {hits} curve px (threshold > 1000)");
     assert!(
         hits > 1000,
         "the REAL demo report, selected via the production path, must paint a \
@@ -308,7 +419,7 @@ fn reports_empty_equity_draws_no_curve() {
 // ─── JOB 3: discoverability render proof (marker + auto-select curve) ─────
 //
 // backtest-equity-companion UX follow-on. The operator could not find the one
-// companion-bearing report (buried in a 112-row picker, with a no-companion
+// companion-bearing report (buried in a long picker, with a no-companion
 // near-duplicate sorting above it), so the Reports screen looked empty. Two
 // changes fix discoverability: a "● curve" picker marker on companion rows,
 // and a boot auto-select of the newest companion-bearing report. This render
@@ -495,7 +606,7 @@ fn reports_marker_and_autoselect_render() {
 // companion-bearing set (6 → 14). These guards lock the real behaviour in at
 // the PIXEL layer: switching between two distinct companion reports repaints a
 // DIFFERENT populated curve each time, and switching to a no-companion report
-// shows the honest empty state. Skip-if-absent (pruned checkout).
+// shows the honest empty state. No skip: the companions are committed (#205).
 
 /// Index of the newest discovered companion report whose `file_stem` contains
 /// `needle` (the live `discover_reports` list, exactly as the cockpit sees it).
@@ -522,13 +633,10 @@ fn reports_switch_between_companions_repaints_distinct_curve() {
     ui::reports::load_into(&mut cockpit);
 
     // Two distinct curve-bearing reports from the 2026-06-19 companion batch.
-    let (Some(a), Some(b)) = (
-        companion_idx_for(&cockpit, "avax-2024-sma-cross"),
-        companion_idx_for(&cockpit, "dot-2024-sma-cross"),
-    ) else {
-        eprintln!("avax/dot companions not discovered — skipping (pruned checkout)");
-        return;
-    };
+    let a = companion_idx_for(&cockpit, "avax-2024-sma-cross")
+        .expect("the committed avax companion report must be discovered (#205)");
+    let b = companion_idx_for(&cockpit, "dot-2024-sma-cross")
+        .expect("the committed dot companion report must be discovered (#205)");
 
     // Select report A → render.
     cockpit.reports_screen_state.selected = Some(a);
@@ -538,6 +646,7 @@ fn reports_switch_between_companions_repaints_distinct_curve() {
         let _ = img.save("/tmp/reports_switch_a_avax.png");
     }
     let hits_a = curve_pixels(wa, ha, &rgba_a);
+    eprintln!("#205 pixel margin R3 (avax): {hits_a} curve px (threshold > 1000)");
     assert!(
         hits_a > 1000,
         "companion report A (avax) must paint a populated curve (got {hits_a}). \
@@ -552,6 +661,7 @@ fn reports_switch_between_companions_repaints_distinct_curve() {
         let _ = img.save("/tmp/reports_switch_b_dot.png");
     }
     let hits_b = curve_pixels(wb, hb, &rgba_b);
+    eprintln!("#205 pixel margin R3 (dot): {hits_b} curve px (threshold > 1000)");
     assert!(
         hits_b > 1000,
         "after switching A->B the curve must STILL paint — this is the operator's \
@@ -569,39 +679,53 @@ fn reports_switch_between_companions_repaints_distinct_curve() {
 /// the state the operator saw and (correctly) read as "empty": a report with no
 /// companion CSV has no curve to draw. Proves the empties are honest data, not
 /// a render/selection bug — and that the populated guard above discriminates.
+///
+/// Pinned to a NAMED committed no-companion report ([`NO_COMPANION_STEM`]),
+/// not "the first no-companion row": since #205 the first such row is a v3
+/// verdict doc, which proves nothing about the `v0-paper-sma` empties.
 #[test]
 fn reports_switch_to_no_companion_is_empty() {
     let mut cockpit = charts_screen_cockpit();
     cockpit.current_screen = Screen::Reports;
     ui::reports::load_into(&mut cockpit);
 
-    let Some(a) = companion_idx_for(&cockpit, "avax-2024-sma-cross") else {
-        eprintln!("avax companion not discovered — skipping (pruned checkout)");
-        return;
-    };
-    let no_comp = match &cockpit.reports_screen_state.discovered {
-        PanelState::Ready(list) => list.iter().position(|e| !e.has_companion),
+    let a = companion_idx_for(&cockpit, "avax-2024-sma-cross")
+        .expect("the committed avax companion report must be discovered (#205)");
+    let (no_comp, no_comp_flag) = match &cockpit.reports_screen_state.discovered {
+        PanelState::Ready(list) => list
+            .iter()
+            .position(|e| e.file_stem.as_str() == NO_COMPANION_STEM)
+            .map(|i| (i, list[i].has_companion)),
         _ => None,
-    };
-    let Some(no_comp) = no_comp else {
-        eprintln!("no no-companion report in corpus — skipping");
-        return;
-    };
+    }
+    .unwrap_or_else(|| {
+        panic!("the committed no-companion report `{NO_COMPANION_STEM}` must be discovered (#205)")
+    });
+    assert!(
+        !no_comp_flag,
+        "the committed `{NO_COMPANION_STEM}` has no companion; discovery must not flag it"
+    );
 
     // Start on the companion report → curve paints.
     cockpit.reports_screen_state.selected = Some(a);
     cockpit.reports_screen_state.load_selection(a);
     let (wa, ha, rgba_a) = render_reports_rgba(cockpit.clone());
+    let hits_a = curve_pixels(wa, ha, &rgba_a);
+    eprintln!("#205 pixel margin R4 (avax precondition): {hits_a} curve px (threshold > 1000)");
     assert!(
-        curve_pixels(wa, ha, &rgba_a) > 1000,
-        "precondition: the companion report must paint a curve first"
+        hits_a > 1000,
+        "precondition: the companion report must paint a curve first (got {hits_a})"
     );
 
     // Switch to a no-companion report → honest empty state (CORRECT behaviour).
     cockpit.reports_screen_state.selected = Some(no_comp);
     cockpit.reports_screen_state.load_selection(no_comp);
     let (we, he, rgba_e) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(we, he, rgba_e.clone()) {
+        let _ = img.save("/tmp/reports_no_companion_empty.png");
+    }
     let hits_e = curve_pixels(we, he, &rgba_e);
+    eprintln!("#205 pixel margin R4 (no companion): {hits_e} curve px (threshold < 500)");
     assert!(
         hits_e < 500,
         "a no-companion report must show the empty state (no curve); got {hits_e} \
@@ -611,8 +735,8 @@ fn reports_switch_to_no_companion_is_empty() {
 
 // ─── JOB 5: curve-only picker filter (reports-picker-curve-filter) ────────
 //
-// The operator kept landing on companion-less "no equity data" reports (only
-// 14 of 117 ship a curve), so the picker now DEFAULTS to a curve-only filter
+// The operator kept landing on companion-less "no equity data" reports (most
+// reports ship no curve), so the picker now DEFAULTS to a curve-only filter
 // with an "All" toggle. These render guards prove, at the PIXEL layer:
 //   (a) default (curve-only) shows ONLY companion rows;
 //   (b) toggled (show_all) shows STRICTLY MORE rows (the full corpus);
@@ -869,7 +993,7 @@ fn reports_filter_show_all_reveals_more_rows() {
 /// production handler (the same message the curve-only picker row emits) and
 /// asserts the detail pane paints avax's OWN curve AND that the loaded
 /// front-matter scenario is avax's — proving the index resolved to the intended
-/// report, not a neighbour. Skip-if-absent (pruned checkout).
+/// report, not a neighbour. No skip: the avax report is committed (#205).
 #[test]
 fn reports_filter_curve_only_selects_correct_report_by_true_index() {
     let mut cockpit = charts_screen_cockpit();
@@ -878,10 +1002,8 @@ fn reports_filter_curve_only_selects_correct_report_by_true_index() {
     cockpit.reports_screen_state.show_all_reports = false;
     ui::reports::load_into(&mut cockpit);
 
-    let Some(true_idx) = companion_idx_for(&cockpit, "avax-2024-sma-cross") else {
-        eprintln!("avax companion not discovered — skipping (pruned checkout)");
-        return;
-    };
+    let true_idx = companion_idx_for(&cockpit, "avax-2024-sma-cross")
+        .expect("the committed avax companion report must be discovered (#205)");
 
     // Precondition that makes re-indexing a real, detectable bug: there is at
     // least one HIDDEN (no-companion) report at an index BELOW the avax row. If
@@ -939,10 +1061,208 @@ fn reports_filter_curve_only_selects_correct_report_by_true_index() {
         let _ = img.save("/tmp/reports_filter_index_safety.png");
     }
     let hits = curve_pixels(w, h, &rgba);
+    eprintln!("#205 pixel margin R5: {hits} curve px (threshold > 1000)");
     assert!(
         hits > 1000,
         "selecting the filtered companion row by its TRUE index ({true_idx}) must \
          load THAT report and paint its curve (>1000 px, got {hits}). PNG: \
          /tmp/reports_filter_index_safety.png"
+    );
+}
+
+// ─── JOB 6: bug-log #205 — boot auto-select + the hermetic container-depth pair
+
+/// The workspace root (`crates/ui` → `crates` → root).
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+}
+
+/// The stems of every git-listed (tracked, or untracked on disk) in-contract
+/// report whose stem-matched `reports/artifacts/<stem>/equity-*.csv` is
+/// git-listed beside it — from the ONE shared oracle and companion rule
+/// (`ui::test_support::evidence_oracle`, also behind the loader's D3 test),
+/// independent of discovery. A failing `git` PANICS: the oracle never skips.
+fn git_listed_companion_stems() -> Vec<String> {
+    let files =
+        evidence_oracle::git_listed_files(&mut evidence_oracle::live_git(&workspace_root()))
+            .unwrap_or_else(|e| panic!("the #205 R6 evidence oracle must run: {e}"));
+    let mut stems: Vec<String> = evidence_oracle::companion_reports(&files)
+        .iter()
+        .filter_map(|c| c.last()?.strip_suffix(".md").map(str::to_string))
+        .collect();
+    stems.sort();
+    stems
+}
+
+/// **R6 — the operator's boot view (bug-log #205).** The production boot
+/// one-shot `ui::reports::load_into` (= `load_into_from` at the committed
+/// `evidence/` root) must auto-select the NEWEST companion-bearing report and
+/// paint its curve. The expected stem is the maximum of the git-derived
+/// companion stems (the `newest_companion_index` rule over the git listing),
+/// never read off discovery. Under #205 `selected` was `None` here — the empty
+/// Reports screen the operator saw.
+///
+/// The oracle lists untracked files on disk too (bug-log #205), so a
+/// backtest-CLI run that writes a newer companion report under `evidence/`
+/// moves the expected stem with the boot pick instead of turning this red
+/// (#189); a tracked report deleted from disk is still listed and fails (#66).
+/// Also prints the boot scan's wall time (debug build) for the record.
+#[test]
+fn reports_boot_autoselects_newest_git_listed_companion_and_paints_it() {
+    let stems = git_listed_companion_stems();
+    assert!(
+        !stems.is_empty(),
+        "the git listing must hold ≥1 companion-bearing report — else R6 pins nothing"
+    );
+    let expected = stems.iter().max().expect("non-empty").clone();
+
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    let t0 = std::time::Instant::now();
+    ui::reports::load_into(&mut cockpit);
+    let boot_ms = t0.elapsed().as_secs_f64() * 1000.0;
+    let n = match &cockpit.reports_screen_state.discovered {
+        PanelState::Ready(list) => list.len(),
+        _ => 0,
+    };
+    eprintln!(
+        "#205 boot cost R6: load_into (load_into_from at evidence/) took {boot_ms:.1} ms for {n} \
+         discovered reports, incl. the auto-selected companion load (debug build)"
+    );
+
+    let selected = cockpit
+        .reports_screen_state
+        .selected_entry()
+        .map(|e| (e.file_stem.to_string(), e.has_companion))
+        .unwrap_or_else(|| {
+            panic!(
+                "boot load_into must auto-select a committed companion report (#205: nothing \
+                 was selected — the empty Reports screen); expected `{expected}`"
+            )
+        });
+    assert_eq!(
+        selected,
+        (expected.clone(), true),
+        "boot must auto-select the newest git-listed companion report (#205)"
+    );
+    assert!(
+        matches!(&cockpit.reports_screen_state.loaded, PanelState::Ready(r) if matches!(r.equity, PanelState::Ready(_))),
+        "the auto-selected `{expected}` must load with Ready equity"
+    );
+
+    let (w, h, rgba) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/reports_boot_autoselect.png");
+    }
+    let hits = curve_pixels(w, h, &rgba);
+    eprintln!("#205 pixel margin R6: {hits} curve px (threshold > 1000)");
+    assert!(
+        hits > 1000,
+        "the boot view must paint the auto-selected `{expected}` curve (expected >1000 \
+         ACCENT/UP_500 px, got {hits}) (#205). PNG: /tmp/reports_boot_autoselect.png"
+    );
+}
+
+/// Copy the committed demo report AND every file of its stem-matched
+/// companion dir into `reports_dir` (`reports_dir/<stem>.md`,
+/// `reports_dir/artifacts/<stem>/…`). Returns the copied `.md` path. Asserts
+/// the copies exist, so R7b's negative can never be "files missing".
+fn copy_committed_demo_into(reports_dir: &Path) -> PathBuf {
+    let src_dir = workspace_root().join(DEMO_REPORTS_REL);
+    let src_md = src_dir.join(format!("{DEMO_STEM}.md"));
+    let src_art = src_dir.join("artifacts").join(DEMO_STEM);
+    let dst_art = reports_dir.join("artifacts").join(DEMO_STEM);
+    std::fs::create_dir_all(&dst_art).expect("create fixture artifacts dir");
+    let dst_md = reports_dir.join(format!("{DEMO_STEM}.md"));
+    std::fs::copy(&src_md, &dst_md).expect("copy the committed demo .md");
+    let mut csvs = 0usize;
+    for entry in std::fs::read_dir(&src_art).expect("the committed demo artifacts dir reads") {
+        let src = entry.expect("dir entry").path();
+        let name = src.file_name().expect("file name").to_owned();
+        std::fs::copy(&src, dst_art.join(&name)).expect("copy a committed companion file");
+        if name.to_string_lossy().starts_with("equity-") {
+            csvs += 1;
+        }
+    }
+    assert!(dst_md.is_file(), "the copied demo .md must exist");
+    assert!(
+        csvs >= 1,
+        "the committed demo companion dir must hold ≥1 equity-*.csv to copy"
+    );
+    dst_md
+}
+
+/// **R7a — hermetic container-depth pair, positive side (bug-log #205).**
+/// The committed demo bytes at container depth 1 under a tempdir root
+/// (`<tmp>/v9/demo/reports/`), discovered through `load_into_from`: listed
+/// with slug = the leaf `demo`, auto-selected, and painted.
+#[test]
+fn reports_container_depth_hermetic_pair_depth_1_paints() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let md = copy_committed_demo_into(&tmp.path().join("v9").join("demo").join("reports"));
+
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    ui::reports::load_into_from(&mut cockpit, tmp.path());
+
+    let entry = cockpit
+        .reports_screen_state
+        .selected_entry()
+        .cloned()
+        .expect("the container-depth-1 fixture must be discovered and auto-selected (#205)");
+    assert_eq!(entry.file_stem.as_str(), DEMO_STEM);
+    assert_eq!(
+        entry.slug.as_str(),
+        "demo",
+        "slug = the leaf dir above reports/"
+    );
+    assert_eq!(entry.path, md);
+    assert!(entry.has_companion);
+
+    let (w, h, rgba) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/reports_container_depth_1_fixture.png");
+    }
+    let hits = curve_pixels(w, h, &rgba);
+    eprintln!("#205 pixel margin R7a: {hits} curve px (threshold > 1000)");
+    assert!(
+        hits > 1000,
+        "the container-depth-1 fixture must paint its curve (expected >1000 px, got {hits}) \
+         (#205). PNG: /tmp/reports_container_depth_1_fixture.png"
+    );
+}
+
+/// **R7b — hermetic container-depth pair, negative side.** The SAME bytes one
+/// container deeper (`<tmp>/v9/x/demo/reports/`, container depth 2) are out of
+/// contract (ADR-0055 D8): nothing is discovered, nothing is selected, no
+/// curve paints. Its frame is the empty-LIST state, not an empty detail pane.
+#[test]
+fn reports_container_depth_hermetic_pair_depth_2_is_empty() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let md =
+        copy_committed_demo_into(&tmp.path().join("v9").join("x").join("demo").join("reports"));
+    assert!(md.is_file(), "the container-depth-2 fixture must exist");
+
+    let mut cockpit = charts_screen_cockpit();
+    cockpit.current_screen = Screen::Reports;
+    ui::reports::load_into_from(&mut cockpit, tmp.path());
+
+    assert!(
+        matches!(cockpit.reports_screen_state.discovered, PanelState::Empty),
+        "a report at container depth 2 must NOT be discovered (ADR-0055 D8); got {}",
+        cockpit.reports_screen_state.discovered.variant_name()
+    );
+    assert_eq!(cockpit.reports_screen_state.selected, None);
+
+    let (w, h, rgba) = render_reports_rgba(cockpit);
+    if let Some(img) = image::RgbaImage::from_raw(w, h, rgba.clone()) {
+        let _ = img.save("/tmp/reports_container_depth_2_fixture.png");
+    }
+    let hits = curve_pixels(w, h, &rgba);
+    eprintln!("#205 pixel margin R7b: {hits} curve px (threshold < 500)");
+    assert!(
+        hits < 500,
+        "an out-of-contract fixture must paint no curve (expected <500 px, got {hits}). \
+         PNG: /tmp/reports_container_depth_2_fixture.png"
     );
 }

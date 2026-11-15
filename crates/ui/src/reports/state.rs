@@ -28,7 +28,9 @@ use crate::viewer::ReportLoadResult;
 /// typed index into the discovered list (R1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportEntry {
-    /// Feature slug (the `spec/<slug>/` dir name).
+    /// Feature slug: the LEAF dir name directly above `reports/`
+    /// (`<root>[/<container>]/<slug>/reports/`, ADR-0055 D8 / bug-log #205);
+    /// `path` carries the container.
     pub slug: SmolStr,
     /// Report filename stem `backtest-<YYYYMMDD-HHMMSS>-<scenario>` (carries
     /// both the date and the scenario).
@@ -72,8 +74,8 @@ pub struct ReportsScreenState {
     /// default) shows ONLY companion-bearing reports — the `has_companion`
     /// rows that paint a populated equity curve. `true` reveals the full
     /// discovered corpus. The operator kept landing on companion-less
-    /// "no equity data" reports (only 14 of 117 ship a curve), so curve-only
-    /// is the default and a compact toggle reveals all.
+    /// "no equity data" reports (most committed reports ship no curve), so
+    /// curve-only is the default and a compact toggle reveals all.
     ///
     /// **Filter affects the picker LIST only, never the selection.** The
     /// rows are filtered at render time by iterating the FULL discovered list
@@ -157,11 +159,11 @@ impl ReportsScreenState {
 /// deterministic empty-list surface in a fixtures-only checkout.
 ///
 /// **Auto-select the newest companion-bearing report (backtest-equity-
-/// companion UX follow-on).** Only one report in the corpus today ships a
-/// stem-matched equity companion, and it sorts deep in the `(slug, stem)`
-/// list with a no-companion near-duplicate right above it, so the operator
-/// could not find the row whose curve actually populates — the screen looked
-/// empty on entry. To fix discoverability, when the discovered list first
+/// companion UX follow-on).** Few committed reports ship a stem-matched
+/// equity companion, and they sort deep in the `(slug, stem)` list among
+/// no-companion near-duplicates, so the operator could not find a row whose
+/// curve actually populates — the screen looked empty on entry. To fix
+/// discoverability, when the discovered list first
 /// becomes `Ready` we default the selection to the **newest** entry whose
 /// `has_companion == true` (newest = highest `file_stem`, which carries the
 /// `YYYYMMDD-HHMMSS` stamp) and load it synchronously, so a populated curve
@@ -171,8 +173,19 @@ impl ReportsScreenState {
 /// overridden (guarded on `selected.is_none()`); `load_into` runs once at
 /// boot, before any interaction, so this guard holds by construction and is
 /// belt-and-braces against a future re-call.
+///
+/// A thin wrapper over [`load_into_from`] at the committed `evidence/` root.
 pub fn load_into(model: &mut crate::state::Cockpit) {
-    let discovered = loader::discover_reports();
+    load_into_from(model, &loader::evidence_root());
+}
+
+/// [`load_into`] over an explicit report root (bug-log #205): discovery walks
+/// `evidence_root` through `loader::discover_reports_in` (the
+/// `reports::layout` contract), then lands the list and the boot auto-select
+/// exactly as [`load_into`] does. The seam the hermetic container-depth render
+/// tests drive; production passes the committed `evidence/`.
+pub fn load_into_from(model: &mut crate::state::Cockpit, evidence_root: &std::path::Path) {
+    let discovered = loader::discover_reports_in(evidence_root);
     let st = &mut model.reports_screen_state;
     if discovered.is_empty() {
         st.discovered = PanelState::Empty;
@@ -198,7 +211,7 @@ pub fn load_into(model: &mut crate::state::Cockpit) {
 /// "Newest" = the lexicographically-greatest `file_stem` among
 /// `has_companion == true` rows — the stem embeds the `YYYYMMDD-HHMMSS` stamp
 /// (`backtest-<stamp>-<scenario>`), so a string `max` is a chronological max.
-/// Pure + total (no panic, no I/O); factored out of [`load_into`] so the
+/// Pure + total (no panic, no I/O); factored out of [`load_into_from`] so the
 /// auto-select decision is unit-testable without disk discovery.
 #[must_use]
 pub fn newest_companion_index(entries: &[ReportEntry]) -> Option<usize> {
