@@ -1489,21 +1489,59 @@ enabled = true
         );
     }
 
+    /// `Config::load` parses the COMMITTED `config/agent.toml`, the default
+    /// `--config` of the `trading` and `cockpit_live` bins (bug-log `#204`).
+    ///
+    /// Which file is loaded: a tempdir COPY of the committed file, not the
+    /// committed path. `Config::load` also merges a sibling `agent.toml.local`
+    /// into `[llm]` whenever one sits next to the path it loads (the T1928
+    /// overlay; `config/*.local` is gitignored, so a developer can keep one).
+    /// Loading the committed path would make that overlay part of this test, and
+    /// a malformed one would turn it red for a reason outside its subject
+    /// (bug-log `#189`). The tempdir holds no `.local`, so the test reads the
+    /// committed bytes alone, on every machine.
+    ///
+    /// Until `#204` the path took three `..` joins from `CARGO_MANIFEST_DIR` and
+    /// climbed one level above the repository. An `if path.exists()` guard then
+    /// passed with no assertion run (the `#66` skip-as-pass shape). The file is
+    /// tracked, so a missing one is a broken checkout, and the test now fails.
+    ///
+    /// T-T4 probes (story 2-63). Run `cargo test -p agent --lib
+    /// config::tests::t12_load_from_file`, then restore byte-identically. A
+    /// green counts only if its log shows `Compiling agent` and `1 passed`:
+    ///
+    /// - T12-P1, the defect itself. In this fn, add a third `.join("..")` right
+    ///   below the join whose comment names the repository root. Expected RED:
+    ///   this test, at "the committed config/agent.toml must ship; absent means
+    ///   a broken checkout, not a skip (bug-log #66)". Story 2-63's probe row
+    ///   quotes that code line verbatim. This doc does not, because a copy here
+    ///   would make the line occur twice in this file.
+    /// - T12-P2, two-sided on the value. In `config/agent.toml`, replace line 1,
+    ///   `mode = "research"   # research | paper ; "live" rejected in v0`, with
+    ///   `mode = "paper"`. Expected RED: this test, at
+    ///   `assert_eq!(cfg.mode, Mode::Research);`
+    ///   (`` assertion `left == right` failed ``, `left: Paper`,
+    ///   `right: Research`). The copy is taken at run time, so this probe needs
+    ///   no rebuild. Restore the file and compare its SHA-256.
     #[test]
     fn t12_load_from_file() {
-        // Load the canonical config/agent.toml from the workspace root.
-        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
-        let path = std::path::PathBuf::from(&manifest)
-            .join("..") // agent/
-            .join("..") // crates/
-            .join("..") // trading/
+        // `CARGO_MANIFEST_DIR` is `<repo>/crates/agent`, fixed at compile time.
+        // Each comment names the directory its join LANDS in.
+        let committed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..") // lands in `<repo>/crates`
+            .join("..") // lands at the repository root, `<repo>`
             .join("config")
             .join("agent.toml");
-        if path.exists() {
-            let cfg = Config::load(&path).expect("load config/agent.toml");
-            assert_eq!(cfg.mode, Mode::Research);
-        }
-        // Skip silently if file not present (CI without workspace root)
+        assert!(
+            committed.is_file(),
+            "the committed config/agent.toml must ship; absent means a broken checkout, not a skip (bug-log #66)"
+        );
+        // Load a COPY, so no sibling `agent.toml.local` can join the load.
+        let td = tempfile::tempdir().expect("tempdir");
+        let copy = td.path().join("agent.toml");
+        std::fs::copy(&committed, &copy).expect("copy config/agent.toml into the tempdir");
+        let cfg = Config::load(&copy).expect("load the tempdir copy of config/agent.toml");
+        assert_eq!(cfg.mode, Mode::Research);
     }
 
     // ── T1928 (pass 6) — LlmConfig wire-up tests ──────────────────────────────
