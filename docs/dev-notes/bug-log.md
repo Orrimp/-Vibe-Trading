@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-11-13
+updated: 2026-11-15
 ---
 
 # Bug log
@@ -10511,59 +10511,275 @@ in the new file's module doc, by symbol and quoted line.
 - **T12-P2 (two-sided on the value):** change line 1 of `config/agent.toml` (or of the tempdir copy) to `mode = "paper"`. The test must go RED at `assert_eq!(cfg.mode, Mode::Research);`. Restore the file byte-identically and compare its SHA-256.
 - In the fixed test's doc, cite both probes by symbol and quoted line, never by line number (`2-63`'s T-T4 convention).
 
-### `#205` — the Reports picker and the Lab's committed-evidence fallback read one directory level, but the corpus has been two levels deep since the `spec/v1` reorganisation
+### `#205` — the Reports picker and the Lab's committed-evidence fallback walk only container depth 0, but the `spec/v1` reorganisation moved the reports they need to container depth 1
 
-**Status**: **`open`** 2026-11-15. Story `2-63`'s Wave E2 re-audit found it (its `reports_populated_curve_render.rs` row, then the backlog's § Routed findings). It is its own production change, not story `2-63`'s, whose AC5 forbids a production behaviour change (the `#196` route). MEASURED at HEAD `78075ee7` (macOS dev box, 2026-11-15): `cargo test -p ui --test reports_populated_curve_render -- --nocapture` reports `10 passed`, and 5 of those 10 printed a `skipping (pruned checkout)` line (the demo twice, the avax companion twice, the avax/dot pair once), so the five live-corpus tests ran no assertion. The corpus counts are MEASURED read-only with `find`, `git ls-files` and `git ls-tree` (2026-11-15). Anchor-impacting: **no**: discovery only reads `evidence/`, and no report byte changes. Paper/sim only.
+**Status**: **`open`** 2026-11-15. Story `2-63`'s Wave E2 re-audit found it (its `reports_populated_curve_render.rs` row, then the backlog's § Routed findings). It is its own production change, not story `2-63`'s, whose AC5 forbids a production behaviour change (the `#196` route). MEASURED at HEAD `78075ee7` (macOS dev box, 2026-11-15), before any fix: the output of `cargo test -p ui --test reports_populated_curve_render -- --nocapture 2>&1` has 5 lines matching `grep -c skipping` and reports `10 passed`, so 5 of the 10 tests (the demo twice, the avax companion twice, the avax/dot pair once) printed `skipping (pruned checkout)` and ran no assertion. The corpus counts are MEASURED read-only (2026-11-15) over `git ls-files -z --cached --others -- evidence` (the index ∪ every untracked file on disk; it listed no untracked file under `evidence/` on this box), with `find` and `git ls-tree`. Anchor-impacting: **no**: discovery only reads `evidence/`, and no report byte changes. Paper/sim only.
+
+**Vocabulary.** "Container depth N" counts the directories between a report root and `<slug>/`: `<root>/<slug>/reports/` is container depth 0, and `<root>/<container>/<slug>/reports/` is container depth 1.
 
 **The code.**
-- `crates/ui/src/reports/loader.rs`, `pub fn discover_reports()`, reads `evidence/<x>/reports/` only: `let reports_dir = slug_path.join("reports");`. `reports::state::load_into`, the boot one-shot of `bin/cockpit.rs` and `bin/cockpit_live.rs`, lists that result and auto-selects `newest_companion_index`.
-- `crates/ui/src/lab/equity_loader.rs`, `fn discover_reports(report_root, slug)`, reads `<root>/<slug>/reports/` only: `let dir = report_root.join(slug).join("reports");`. The production roots are `default_report_roots()` = `[lab-runs/, evidence/]` (ADR-0055 § D5). `lab-runs/<slug>/reports/` is depth 1 and still found; `evidence/` is not.
-- Since `1395520629dc` (2026-06-28) the corpus sits at `evidence/<container>/<slug>/reports/` (`spec/` became `evidence/` in `452ce026d`, 2026-07-25):
-  - 108 tracked reports are at depth 1, all in the four `evidence/v5-latency-slippage-sim-v0.*` dirs, and none of them has an equity companion;
-  - 89 are at depth 2 (87 under `v1`, 2 under `v3`, none under `v2`), and nothing is deeper;
-  - all 14 reports with a stem-matched equity companion are at depth 2, in `evidence/v1/v0-paper-sma/reports/artifacts/<stem>/` (the 2 `paper-soak-longevity` artifact dirs pair with no report).
-- Every slug `strategy_slug` maps to lives only under `evidence/v1/`: `v0-paper-sma` (20 reports), `v1-cross-sectional-momentum` (2), `v05-composed-strategies` (3), `v15a-mean-reversion-pairs` (2).
+- `crates/ui/src/reports/loader.rs`, `pub fn discover_reports()`, reads container depth 0 only, `evidence/<x>/reports/`: `let reports_dir = slug_path.join("reports");`. `reports::state::load_into`, the boot one-shot of `bin/cockpit.rs` and `bin/cockpit_live.rs`, lists that result and auto-selects `newest_companion_index`.
+- `crates/ui/src/lab/equity_loader.rs`, `fn discover_reports(report_root, slug)`, reads container depth 0 only, `<root>/<slug>/reports/`: `let dir = report_root.join(slug).join("reports");`. The production roots are `default_report_roots()` = `[lab-runs/, evidence/]` (ADR-0055 § D5). `lab-runs/<slug>/reports/` is container depth 0 and still found; the committed `evidence/<container>/<slug>/reports/` is container depth 1 and is not.
+- Since `1395520629dc` (2026-06-28) the reports both readers need sit at container depth 1, `evidence/<container>/<slug>/reports/` (`spec/` became `evidence/` in `452ce026d`, 2026-07-25):
+  - 108 reports are at container depth 0, all in the four `evidence/v5-latency-slippage-sim-v0.*` dirs, and none of them has an equity companion;
+  - 89 are at container depth 1 (87 under `v1`, 2 under `v3`, none under `v2`), and nothing is deeper;
+  - all 14 reports with a stem-matched equity companion are at container depth 1, in `evidence/v1/v0-paper-sma/reports/artifacts/<stem>/` (the 2 `paper-soak-longevity` artifact dirs pair with no report).
+- Every slug `strategy_slug` maps to lives only under `evidence/v1/`, at container depth 1: `v0-paper-sma` (20 reports), `v1-cross-sectional-momentum` (2), `v05-composed-strategies` (3), `v15a-mean-reversion-pairs` (2).
 
 **Why it matters.**
-- **The Reports screen** opens on its default curve-only view with 0 rows. "All" lists only the 108 v5 latency-migration re-emits. None of the 89 v1/v3 reports is listed, including all 14 that draw a curve, and boot auto-select selects nothing: the empty screen that `6a3b0a09` (auto-select) and `762c3474` (the curve-only default) were built to prevent.
+- **The Reports screen** opens on its default curve-only view with 0 rows. "All" lists only the 108 container-depth-0 v5 latency-migration re-emits. None of the 89 container-depth-1 reports (`v1`, `v3`) is listed, including all 14 that draw a curve, and boot auto-select selects nothing: the empty screen that `6a3b0a09` (auto-select) and `762c3474` (the curve-only default) were built to prevent.
 - **The Lab's** committed-evidence fallback (ADR-0055 § D5) resolves nothing from `evidence/`; only `lab-runs/` answers.
 - **ADR drift.** ADR-0055 § D1's premise (the `lab-runs/` layout is identical to the `spec/` layout, so both loaders read it with only a ROOT change) has been false since `1395520629dc`, and nothing amended it (AD-18).
+- **Stale copy.**
+  - `REPORTS_EMPTY_LIST` in `crates/ui/src/strings.rs` still reads `"No backtest reports found in spec/ yet."`, and its doc says the reports are "discovered under `spec/`". But `spec/` became `evidence/` in `452ce026d`.
+  - The committed text snapshot `crates/ui/tests/snapshots/panel_snapshots__reports_screen__reports_snapshot__empty_list_dark.snap` pins it (`empty: No backtest reports found in spec/ yet.`), and the fix's container-depth-2 fixture PNG (`/tmp/reports_container_depth_2_fixture.png`, from `reports_container_depth_hermetic_pair_depth_2_is_empty`) shows it.
+  - `#205` leaves it alone. Correcting it is a copy change and moves that snapshot.
 
 **Why no test caught it.**
-- `crates/ui/tests/reports_populated_curve_render.rs` has five live-corpus tests that find the committed demo, or the avax/dot companions, through `loader::discover_reports()`, and `return;` on a miss (``eprintln!("demo report `{DEMO_STEM}` not discovered — skipping (pruned checkout)");``), at eight sites. That is the `#66` skip-as-pass shape: the demo is committed, so the "pruned checkout" never happens; the miss is the depth.
+- `crates/ui/tests/reports_populated_curve_render.rs` has five live-corpus tests that find the committed demo, or the avax/dot companions, through `loader::discover_reports()`, and `return;` on a miss (``eprintln!("demo report `{DEMO_STEM}` not discovered — skipping (pruned checkout)");``), at eight sites. That is the `#66` skip-as-pass shape: the demo is committed, so the "pruned checkout" never happens; the miss is the container depth.
 - The two in-source discovery tests assert properties of whatever is found, and the 108 v5 entries satisfy them. Neither asserts that a tracked report is found.
-- `load_equity_companion_real_demo_report_is_ready` and `report_has_companion_agrees_with_loader_on_real_demo` hard-code the depth-2 path (`1395520629dc` itself repointed them), so they pass without discovery.
-- `integration_load_real_v1_report` gates on the flat path and accepts `NoReport` as a pass. Its doc comment (`452ce026d`) says it "has skipped since that reorg".
+- `load_equity_companion_real_demo_report_is_ready` and `report_has_companion_agrees_with_loader_on_real_demo` hard-code the container-depth-1 path (`1395520629dc` itself repointed them), so they pass without discovery.
+- `integration_load_real_v1_report` gates on the container-depth-0 path and accepts `NoReport` as a pass. Its doc comment (`452ce026d`) says it "has skipped since that reorg".
 
-**Fix (its own change; plan in the orchestrator's #205 design, verified against the code):**
-1. One layout contract, `crates/ui/src/reports/layout.rs`: `MAX_CONTAINER_DEPTH = 1`, `<root>[/<container>]/<slug>/reports/backtest-*.md`; a dir named `reports` is never a container or a slug; the slug is the leaf dir name. Both readers use it.
-2. Reports: `discover_reports_in(root)` sorted by (slug, stem, path), and `load_into_from(model, root)`; the old functions become wrappers.
-3. Lab: `discover_reports` becomes the union over `layout::report_dirs_for_slug`; `get_or_load_roots` and D5's precedence are untouched.
-4. Tests: the eight skips become assertions; a git-index oracle pins discovery against every tracked report; hermetic depth-2/depth-3 pairs on both readers; the boot auto-select render.
-5. ADR-0055 gets a dated amendment (D8, the layout contract; D1's premise corrected). No story, trace row or CHANGELOG line (the `#196` precedent).
+**Fix (its own change; what the fix's final tree does, read 2026-11-15):**
+1. **One layout contract**, `crates/ui/src/reports/layout.rs` (ADR-0055 D8, amended in the fix commit): `<root>[/<container>]/<slug>/reports/backtest-*.md`, with `pub const MAX_CONTAINER_DEPTH: usize = 1;`.
+   - A directory named `reports` is never a container or a slug, so the walk never enters `reports/artifacts/`. The slug is the leaf dir above `reports/`. Symlinks are followed, and a symlink loop stops at the bound.
+   - `report_dirs` yields dirs in (container depth, path) order (`out.sort_by(|a, b| (a.container_depth, &a.dir).cmp(&(b.container_depth, &b.dir)));`), and `backtest_files` yields one dir's `backtest-*.md` files in path order.
+   - `report_dirs_for_slug` is the Lab's targeted lookup. Through `is_slug_component` it returns nothing for a slug that is not exactly one plain path component (`..`, `a/b`, `sma/`, `reports`).
+   - Compare does not use it yet (`#206`), and neither does the backtest CLI (`#210`).
+2. **Reports.** `discover_reports_in(root)` walks the contract and re-sorts by (slug, file stem, path). `discover_reports()` is its wrapper at `evidence/`, and `load_into` is a wrapper over `load_into_from(model, evidence_root)`.
+3. **Lab.** `discover_reports(report_root, slug)` is the union over `layout::report_dirs_for_slug`, in D8 order with no re-sort. So within one root an equal-score tie between container depth 0 and 1 goes to container depth 0, where HEAD looked; a strictly better or source-tagged container-depth-1 report still wins. `get_or_load_roots`, D5's root order and the strict `range_score > *s` are untouched. `ReportDirNotFound` names the slug, the root, the container-depth bound and which kind of empty it is (`#[error("no backtest report to load: {0}")]`).
+4. **Tests.**
+   - The eight `return;` skips are assertions that name `#205`.
+   - ONE live-corpus oracle, `test_support::evidence_oracle::git_listed_files`: `git ls-files -z --cached --others -- evidence`, the index ∪ every untracked file on disk, ignored ones included. A report on disk that is not yet staged cannot turn D2, D3, D5 or R6 red for a reason outside their subject (`#189`), and a deleted tracked file stays listed and still fails (`#66`). It is git-derived, never discovery-derived. OR1 (`git_listed_files_lists_committed_deleted_untracked_and_ignored`) pins that listing in a hermetic git fixture; OR2 (`git_listed_files_contains_every_indexed_contract_report`) checks it against the index read with no pathspec.
+   - D2 (`discover_reports_covers_every_git_listed_report`) asserts that every git-listed report is discovered, D3 that the companion flags match the git-listed companions, and R6 (`reports_boot_autoselects_newest_git_listed_companion_and_paints_it`) that boot auto-selects the newest git-listed companion and paints it.
+   - Hermetic container-depth pairs on both readers: Reports `reports_container_depth_hermetic_pair_depth_1_paints` / `reports_container_depth_hermetic_pair_depth_2_is_empty`; Lab `lab_curve_hydrated_from_container_depth_1_evidence_report_renders` / `lab_curve_from_container_depth_2_evidence_report_does_not_resolve`.
+   - The D8 tie rule, two-sided: E4b `equal_score_tie_across_container_depths_goes_to_container_depth_0` (in one root the container name sorts before the slug name, in the other after it). The Lab's pick between two equal-score reports inside ONE dir is deliberately left unpinned; it is `#209`'s to change.
+   - LR3 `lab_207_characterization_committed_start_end_only_report_draws_no_overlay` characterises `#207`, and must flip when `#207` is fixed.
+5. ADR-0055 gets a dated amendment (D8, the layout contract; D1's premise corrected for these two readers), with the decisions README `updated:` bump. No story, trace row or CHANGELOG line (the `#196` precedent).
+6. **Not in this fix:** Compare's walk (`#206`), the Lab's precedence (`#209`), the backtest CLI's output dir (`#210`), the per-view re-read on a miss (`#208`), and the stale `REPORTS_EMPTY_LIST` copy above.
 
-**Pin / T-T4.** Each probe FAIL → restore → PASS, with `Compiling ui` before the red run, cited by symbol + quoted line. The full table lives in the module docs of `reports_populated_curve_render.rs` and `live_equity_render.rs`. The defect probe: `MAX_CONTAINER_DEPTH` back to `0` must turn the oracle, companion, boot auto-select, depth-2 fixture and Lab depth-2 tests red; `2` must turn the depth-3 controls red.
+**Pin / T-T4.** Each probe FAIL → restore → PASS, with `Compiling ui` before the red run, cited by symbol + quoted line. The full table, with each cell marked measured or REASONED, lives in the module docs of `reports_populated_curve_render.rs` and `live_equity_render.rs`. The defect probe P1, `pub const MAX_CONTAINER_DEPTH: usize = 1;` → `pub const MAX_CONTAINER_DEPTH: usize = 0;`, must turn the oracle tests (D2, D3), boot auto-select (R6), the container-depth-1 fixture (R7a) and the Lab's container-depth-1 tests (E1, LR1) red. P2, the same line → `= 2;`, must turn the container-depth-2 controls (E1b, R7b, LR2) red.
 
-### `#206` — Compare's report scan reads one directory level, the `#205` walk in a third reader
+### `#206` — Compare's report scan walks only container depth 0, the `#205` walk in a third reader
 
 **Status**: **`open`** 2026-11-15. Found by the `#205` design pass (read-only, 2026-11-15) and re-read by the orchestrator. REASONED from code; not measured with cargo. Anchor-impacting: **no**. Paper/sim only.
 
-**The code.** `crates/ui/src/compare/cache.rs`, `fn scan_one_root(spec_root, ..)`, walks `spec_root/<x>/reports/` only (`let reports_dir = strategy_dir.join("reports");`), under the comment `// Walk spec_root/**/ looking for backtest-*.md files.`, which claims a recursive walk. Its roots are ADR-0055 § D5's two, so on `evidence/` it sees only the four depth-1 v5 dirs and none of the 89 depth-2 reports (counts in `#205`).
+**The code.** `crates/ui/src/compare/cache.rs`, `fn scan_one_root(spec_root, ..)`, walks `spec_root/<x>/reports/` only (`let reports_dir = strategy_dir.join("reports");`), under the comment `// Walk spec_root/**/ looking for backtest-*.md files.`, which claims a recursive walk. Its roots are ADR-0055 § D5's two, so on `evidence/` it sees only the four container-depth-0 v5 dirs and none of the 89 container-depth-1 reports (counts in `#205`).
 
-**Why it matters.** The Compare matrix has no committed-evidence cells for the v1 strategies; only `lab-runs/` cells appear.
+**Why it matters.** It does not change the matrix.
+- **Production renders no matrix.** Production never sets `strategies_config`. Its one assignment is `cockpit.strategies_config = Some(ui::fixtures::fake_strategies_config());` in `bin/cockpit.rs`, inside `#[cfg(feature = "fixtures")]`. So `widgets::matrix` renders `MATRIX_EMPTY_STATE` ("No strategies registered — configure strategies to populate the matrix."), and the overlay chips live in matrix cells.
+- **The fixtures build gains nothing visible.** Its rows are `btc_macd_trend`, `btc_rsi_reversion` and `btc_bbands_mean_revert` × BTCUSDT.
+  - The `#205` design pass emulated `scan_one_root` in Python (an emulation, not a Rust run). Today it finds 66 cells, all from the 108 container-depth-0 v5 re-emits. After the fix it finds the same 66 keys.
+  - Only one winner changes, at `(sma_crossover, BTCUSDT)`, and no row renders it.
+- **What the one-level walk does get wrong:**
+  - the `compare_reports` scan tally counts 108 discovered of the 197 in-contract reports;
+  - `// Walk spec_root/**/ looking for backtest-*.md files.` claims a recursive walk;
+  - ADR-0055 § D1's premise stays false for Compare;
+  - the unsorted `fs::read_dir` walk lets directory order pick the duplicate-filename and equal-`generated:` winners.
 
 **Fix (its own change, after `#205`):** walk with `#205`'s `reports::layout::report_dirs`. It changes the Compare matrix and its scan tally, so it ships with its own render proof, and the stale `**` comment goes.
 
 ### `#207` — the Lab's start/end-only equity overlay carries placeholder timestamps, so with price bars on screen it draws nothing and still reserves the equity gutter
 
-**Status**: **`open`** 2026-11-15. Found by the `#205` design pass and re-read by the orchestrator (REASONED from code; not rendered). It is masked today by `#205` (no committed report resolves); `#205`'s Lab leg unmasks it. Anchor-impacting: **no**. Paper/sim only.
+**Status**: **`open`** 2026-11-15. Found by the `#205` design pass and re-read by the orchestrator. Since then it has been seen at the pixel layer: `/tmp/lab_207_committed_overlay.png` (rendered by `lab_207_characterization_committed_start_end_only_report_draws_no_overlay` on the `#205` tree, read by the orchestrator 2026-11-15) shows price only, an empty right gutter, no curve and no equity axis. Only its committed-report half is masked by `#205` (no committed report resolves at HEAD). The `lab-runs/` half is live at HEAD: a persisted per-bar run whose samples all miss the bars on screen also reserves the gutter and draws nothing. Anchor-impacting: **no**. Paper/sim only.
 
 **The code.**
 - `crates/ui/src/lab/equity_loader.rs`, `fn make_start_end_series`: `Ok(vec![(0, initial), (1, final_eq)])`, under `// Use synthetic timestamps: 0 (epoch) and 1 for start/end so the` … `// anchoring is Phase B scope.`
 - `crates/ui/src/widgets/chart.rs`, the chart program's draw: `let has_equity = self.equity.is_some() || !self.compare.is_empty();` widens the right gutter (`chart_inner_rect_with_equity`). With bars present, Pass 5 calls `compute_equity_range` with the bar window (`self.bars.first().map(|b| b.open_ts.unix_millis())` … `close_ts`), so samples at 0 and 1 ms are outside it, the range is `None`, and nothing is drawn.
 - With no bars (the F9 path), `draw_equity_polyline_standalone` draws a full-width start→end line from the same two samples.
 - Every Lab-reachable committed report is start/end-only: the four mapped slugs hold 0 `## Equity curve` sections and 0 `-equity.csv` siblings (MEASURED by the `#205` design pass, 2026-11-15).
+- **The `lab-runs/` half, live at HEAD (REASONED; files MEASURED).**
+  - The run is PerBar, from its companion CSV, but its timestamps lie outside the bar window. Every `Last30d` or `Last90d` synthetic run is stamped in 2023 (`date_range_to_scenario_params`: `DateRange::Last90d => (2023, 2_160), // 90 × 24 = 2160 h`). So it misses the `cockpit` bin's 2024-01-15 12:00–12:59 candles.
+  - On this dev box, `lab-runs/v0-paper-sma/reports/backtest-20260624-112531349-btc-2023-1m-sma-cross.md` (`data_source: synthetic`, CSV 2023-01-01T00:00Z → 2023-04-01T00:00Z, 2,161 samples) resolves for `(v0.sma, any coin, Last90d, Synthetic)`. Last90d and Synthetic are the `LabState` defaults, and "any coin" is `#212`.
+  - `compute_equity_range` then returns `None`, while `has_equity` still picks `chart_inner_rect_with_equity`.
 
 **Why it matters.** Once `#205` restores the committed fallback, a Lab tuple that resolves a committed report shows a narrower price chart with an empty equity gutter and no curve, a visible regression the operator cannot explain.
 
 **Fix:** designed and shipped in the same push batch as `#205`, so the pushed state never carries the empty gutter (orchestrator decision D3, 2026-11-15).
+
+### `#208` — the Lab re-reads a slug's reports on every `view` while its tuple resolves nothing, and nothing calls `EquityCache::invalidate`
+
+**Status**: **`open`** 2026-11-15. Filed from the `#205` code and contract reviews, read-verified at HEAD `a926ca4d` and in the `#205` snapshot (read-only; nothing timed or rendered). The per-`view` re-read on a miss pre-exists for `lab-runs/`; `#205`'s Lab leg extends it to `evidence/`. Anchor-impacting: **no** (the Lab only reads reports). Paper/sim only. The fix is planned for the same push batch as `#205`, after `#207`.
+
+**The code.**
+- `crates/ui/src/screens/lab.rs`, `pub fn view(model: &Cockpit, mode: ThemeMode)`, resolves the overlay on every call: `let overlay = route_equity_overlay(&model.lab_state, &mut cache, &current_tuple, &roots);`. `view` runs after every processed message, and the `cockpit` bin's `ServerTimeRecipe` alone ticks one per second.
+- `EquityCache::get_or_load_roots` caches only a hit (`self.by_tuple.insert(tuple.clone(), Arc::clone(&arc));` in the `Ok(loaded)` arm). A miss is dropped (`Err(e) => last_err = Some(e),`), and `route_equity_overlay` turns it into `None` (`.get_or_load_roots(current_tuple, roots)` … `.ok()`). So on a miss, every `view` repeats the whole `load_equity` scan: it lists the slug's dirs, then runs `std::fs::read_to_string` and `parse_report_meta` on every `backtest-*.md`.
+- **A concrete miss: `v0.sma` with `BinanceCache` or `YahooCache`, for any coin and range.**
+  - `evidence/v1/v0-paper-sma/reports/` holds 20 reports (33,893 B).
+  - 18 of them say `data_source: real (Binance Vision)`, which no `source_tag_matches` arm accepts (`LabDataSource::BinanceCache => report_data_source.starts_with("binance"),`).
+  - The other 2 say `synthetic (seeded RNG, v0 fallback)`, which only `Synthetic` accepts.
+  - No report lacks the field, so `Some(_) => continue, // tagged with a different source — excluded` drops all 20.
+  - `Synthetic` with `H1_2024` or `H2_2024` misses too: both synthetic scenarios are 2023, so `range_score` is 0.
+- **What a miss costs.**
+  - At HEAD, the `evidence/` half of that miss is one stat (`let dir = report_root.join(slug).join("reports");`).
+  - With `#205` it reads all 20 files on every `view`.
+  - The `lab-runs/` half already re-read on every view at HEAD. On this dev box, `lab-runs/v0-paper-sma/reports/` holds 2 reports (yahoo, synthetic), which a `BinanceCache` tuple reads and then rejects each time.
+- **A second walk per miss, from `#205` (REASONED; the review of the `#205` fixer pass, finding 8).** When a root holds no `backtest-*.md` for the slug at all (an absent `lab-runs/`, or a slug that `strategy_slug` does not map, see `#212`), `load_equity`'s error path walks the slug again to say which kind of empty it is: `// Error path only: one more targeted walk says WHICH empty it is.`, then `let dirs = layout::report_dirs_for_slug(report_root, &slug).len();`. Uncached, that is two walks per root per `view`. The negative cache below removes both.
+- **Nothing calls `EquityCache::invalidate` in production.**
+  - `scripts/callers.sh invalidate crates/ui` finds one call site, the test `cache_invalidate_re_reads`, and neither bin mentions `equity_cache`.
+  - Two comments claim otherwise. The `EquityCache` doc says tuples are invalidated "(called on `Message::LabRunCompleted(Ok(...))`)". The `Message::LabRunCompleted` arm of `state::update` says "The equity cache invalidation + repaint is triggered by the binary-side `update` wrapper".
+- **The module doc's I/O claim.** It says "**No I/O on the iced thread during a paint.** `EquityCache::get_or_load` blocks only on the *first* access". That holds only for a hit, and even a hit costs one stat: `view` calls `default_report_roots()`, and `default_evidence_root` runs `if candidate.is_dir() {` each time. A miss is never cached, so its "first access" repeats on every view.
+
+**Why it matters.**
+- While the Lab shows a tuple that resolves nothing, the iced thread reads files at least once a second. The operator reaches that state by picking a real-data source for `v0.sma`.
+- A cached hit never expires either, and `#205` adds a new way to get a stale one:
+  1. On a fresh checkout, `(v0.sma, BTCUSDT, Last90d, Synthetic)` first resolves the committed `btc-2023` report, and that hit is cached.
+  2. The operator runs that tuple. The persisted `lab-runs/` report should win (ADR-0055 § D5).
+  3. Once the run mirror is cleared (any chip change and back), the cache keeps returning the committed report until restart.
+  At HEAD the same tuple missed `evidence/`, so nothing was cached and the cold path found the new run.
+- **A negative cache is safe only if a completed run clears it.** Nothing calls `invalidate`, so a cached miss would hide a just-persisted run for the rest of the session. Clearing only the run's own tuple is not enough, for two reasons:
+  - One new report can satisfy other tuples' misses: per `#212`, `Custom` matches every report, and legacy scenario names match any coin.
+  - The bin's `lab_run_completed_pre_tuple` is the tuple on screen when the run completes, not the tuple the run was requested for. Its comment says "operator MAY have clicked away during the run", and the chips stay live while a run is in flight.
+
+**Fix (proposed; its own change, after `#207`):**
+1. `EquityCache` records misses, and `get_or_load_roots` returns a cached miss without I/O.
+2. Clear the whole cache, hits and misses, in the `Ok(_)` arm of `Message::LabRunCompleted` in `state::update`, beside `model.compare_screen_state.last_indexed_at = None;` (the Compare index is reset there for the same reason). `equity_cache` is a `Cockpit` field, so no bin wrapper is needed.
+   Steps 1 and 2 land together. A negative cache without the whole-cache clear in `LabRunCompleted(Ok)` hides a just-persisted run for the rest of the session, because nothing else calls `invalidate`.
+3. Correct the two false comments ("called on `Message::LabRunCompleted(Ok(...))`", "triggered by the binary-side `update` wrapper") and the module doc's I/O claim.
+4. A two-sided pin, through `state::update`:
+   - after a miss, add a matching report under the root, and the route still returns `None` (red without the negative cache);
+   - after `LabRunCompleted(Ok(..))`, it resolves the report (red if the clear is not wired).
+
+**MEASURED vs REASONED.** MEASURED (read-only):
+- the 20 files and their 33,893 bytes (`ls`, `wc -c`);
+- the `data_source:` value of each of the 20;
+- the dev box's `lab-runs/` contents;
+- the `invalidate` census (`scripts/callers.sh`) and the bins' `git grep`.
+
+REASONED: the per-view repetition, its rate, and the stale-hit and negative-cache consequences.
+
+### `#209` — the Lab's report precedence contradicts ADR-0055 § D5: the first root with a match wins, and inside one `reports/` dir the oldest stamp wins a tie
+
+**Status**: **`open`** 2026-11-15. This is the AD-18 handoff for the `#205` ADR-0055 amendment, which records what the Lab actually does and routes the contradiction here. It pre-exists `#205`, and `#205` changes neither half. Read-verified at HEAD `a926ca4d` and in the `#205` snapshot. The precedence is REASONED from code; the competing reports' stamps are MEASURED (`grep`, `ls`). Anchor-impacting: **no**. Paper/sim only. Not fixed in the `#205` push batch: both halves change which report the Lab shows.
+
+**The code.**
+- **ADR-0055 § D5** says: "Collision rule: when a `lab-runs/` report and a `spec/` report resolve to the **same `(strategy, symbol, range)` tuple**, the existing most-recent-wins tiebreaker (`generated:` frontmatter) decides the Lab hot-path pick; on an *identical filename* across both roots, **`lab-runs/` wins** (it is searched first)."
+- **Across roots**, `EquityCache::get_or_load_roots` returns at the first root whose `load_equity` matches (`for root in roots {` … `Ok(loaded) => {` … `return Ok(arc);`). The roots are `[lab-runs/, evidence/]`, so `lab-runs/` wins every collision whatever `generated:` says.
+  - `generated:` is never parsed: `parse_report_meta` reads `scenario:` and `data_source:`.
+  - `route_overlay_two_root_union_lab_runs_wins_collision` pins this behaviour.
+- **Within a root**, `discover_reports` ends with `paths.sort();`, and `load_equity` keeps the first best (`let is_better = slot.as_ref().is_none_or(|(s, _)| range_score > *s);`). Names are `backtest-<stamp>-<scenario>.md`, so on an equal score the OLDEST stamp wins.
+- **In `lab-runs/`**:
+  - Every run of a tuple has the same scenario name (`lab_scenario_name`: `format!("{symbol}-{range_token}-{arm_slug}-{source_token}")`), so all of them score the same.
+  - The engine keeps 20 runs per scenario (`purge_old_lab_reports`: `const KEEP_LAST_N: usize = 20;`), plus `const GLOBAL_KEEP_LAST_N: usize = 200;` per dir.
+  - So once the run mirror is cleared (by a restart, or by any chip change and back), the cold path shows the oldest retained run. After the 21st run purges the first, it shows the second-oldest. It never shows the newest.
+  - On this dev box, `lab-runs/v05-composed-strategies/reports/` holds three yahoo runs of `btc-2023-1m-macd-trend` (`194642145`, `194647991`, `194653726`). `(v0.5.macd, any coin, Last90d, YahooCache)` shows `194642145`.
+- **The committed corpus, once `#205` lands.**
+  - `(v0.sma, any coin, Last30d|Last90d|Custom, Synthetic)` ties `backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md` (`generated: 2026-04-20T15:19:44Z`) with `backtest-20260420-202621-btc-2023-1m-sma-cross.md` (`20:26:21Z`). The code picks the older; D5 would pick the newer.
+  - The three `v05-composed-strategies` reports tie on every tuple. The code gives the macd tuple the macd report (`152014`, the oldest). A bare most-recent rule would give it the bbands report (`152020`), because nothing filters by strategy (`#212`).
+- **Compare does follow D5.** It keeps the most recent per tuple (`// R3.3: keep only the most-recent report per tuple.`), so the two readers settle a collision by different rules.
+- **What `#205` does and does not change.** `#205`'s fix orders a root's report DIRS by (container depth, path) (ADR-0055 D8, amended by the `#205` fix), which settles which dir is read first. The within-dir tie and the cross-root rule are unchanged.
+- **The within-dir tie is unpinned on purpose.** `#205`'s tests pin the layout's file order inside one dir (LY4, `backtest_files_lists_only_direct_backtest_md_files`), but no Lab test's outcome depends on which of two equal-score reports in ONE dir wins: E4's second dir holds two, and its first dir decides the result. So nothing goes red when this fix changes that pick, and the fix must bring its own two-sided pin (Fix 3).
+
+**Why it matters.**
+- After a restart, the Lab never shows the operator's latest run of a tuple. It shows the oldest one still retained.
+- D5 states a rule the Lab never implemented ("the existing most-recent-wins tiebreaker"), and nothing amended it (AD-18).
+- D5 puts the tiebreak on the "hot-path pick", but the hot path is the in-memory mirror and never chooses between reports.
+
+**Fix (proposed; AD-18: the ADR or the code moves, not neither):**
+1. **Within a root**, pick the best score, then the newest `generated:`, then the path. **Ordering hazard:** land it only after `#212`'s strategy filter. Before that filter, a most-recent rule gives the macd tuple the bbands report (`152020`).
+2. **Across roots**, either amend D5 to "the first root with a match wins" (what ships, pinned as above), or compare `generated:` across roots.
+3. **Pin it two-sided.** Two equal-score reports in one dir, where the newer `generated:` sits in the SMALLER path: the newer must win (red today). Give the fixtures `generated:` values that differ from their filename stamps, so the test tells "newest `generated:`" from "filename order".
+
+### `#210` — the backtest CLI still writes and reads `evidence/<feature>/reports/`, which has been empty since the `spec/v1` reorganisation, so its baseline lookups find nothing
+
+**Status**: **`open`** 2026-11-15. Filed from the `#205` design and contract review, spot-checked by the orchestrator, and read-verified at HEAD `a926ca4d`. Read-only checks: `ls`, `git check-ignore`, and an `LC_ALL=C sort` of path strings. The CLI was not run. Anchor-impacting: **no** for this entry, which changes no report. The anchor gate's resolver is affected; see Why it matters. Paper/sim only.
+
+**The code.** `crates/backtest/src/main.rs`:
+- **The default output dir.** `fn report_dir_for_scenario` builds `PathBuf::from("evidence")` `.join(scenario_to_feature(scenario))` `.join("reports")`, which is container depth 0.
+  - `fn scenario_to_feature` maps each scenario to one of 10 features, or to `"_unknown"`. All 10 live at `evidence/v1/<feature>` since `1395520629dc` (2026-06-28), and none exists at `evidence/<feature>` (`ls`).
+  - All eight report writers default to this dir (`.unwrap_or_else(|| report_dir_for_scenario(&args.scenario));`); `--reports-dir` overrides it.
+- **The baseline lookups.**
+  - For `btc-2024-h1-sma-cross`: `let baseline_dir = report_dir_for_scenario("btc-2023-1m-sma-cross");`, then `if let Some(b) = find_latest_report(&baseline_dir, "btc-2023-1m-sma-cross") {`.
+  - For the macd, rsi and bbands scenarios: `let baseline_dir = report_dir_for_scenario("btc-2023-1m-sma-baseline-refresh");`, then `if let Some(b) = find_latest_report(&baseline_dir, "btc-2023-1m-sma-baseline-refresh") {`.
+  - `find_latest_report` opens with `if !dir.exists() {` / `return None;`. Neither call site has an `else`, so `report::sma` writes `"baseline_report: n/a"`, with no log line.
+  - The committed reports name their baseline (`baseline_report: backtest-20260420-202621-btc-2023-1m-sma-cross.md`, `baseline_report: backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md`); a fresh run writes `n/a`. The field is front matter, so it is outside the hashed body.
+
+**Why it matters.**
+- **A twin tree under `evidence/`.**
+  - CLI output lands in `evidence/<feature>/reports/`, beside the committed `evidence/v1/<feature>/reports/`.
+  - Nothing ignores it: `git check-ignore -v --no-index` exits 1 for both a `.md` and an `-equity.csv` there. So it shows up untracked under `evidence/`.
+  - Once `#205` lands, the Reports picker and the Lab also read it (container depth 0).
+- **The anchor gate sees some re-runs and not others.**
+  - `verify_anchors.sh` picks a body with `find … -path "*/reports/backtest-*-$scenario.md" … | sort | tail -1`, a byte sort over full paths.
+  - A container-depth-0 twin sorts BEFORE `evidence/v1/…` for `v0-paper-sma`, `v05-composed-strategies`, `v1-cross-sectional-momentum` and `backtest-real-binance-data`. A fresh re-run of those is never the body the gate compares.
+  - For `v15a-…`, `v25-…`, `v25a-…` and the three `v3-…` features, the twin sorts AFTER, so it replaces the committed body in the comparison.
+- **It is a defect, not intent.**
+  - The only contract text is ADR-0037: the CLI "produces the same `spec/<feature>/reports/backtest-<stamp>-<scenario>.md` file at the same path". That was written for the container-depth-0 layout.
+  - `scenario_to_feature`'s doc says it maps a scenario to "the feature slug that owns its reports".
+  - No runbook or ADR names `evidence/<feature>/reports` as a post-reorganisation home (`grep` over `docs/runbooks/` and the ADR corpus).
+  - The routing landed in `d6de0601` (2026-05-08); the reorganisation moved the folders and left `main.rs` alone. The `backtest` skill's `evidence/<feature>/reports/artifacts/<run_id>/` is stale in the same way.
+
+**Fix (proposed; its own change in `backtest`, which cannot use `ui::reports::layout`):**
+1. **Decide, as an ADR, where CLI output goes.** The `#205` amendment of ADR-0055 names the CLI as an exception until then. Recommended: a git-ignored root, so a re-run can never add files under `evidence/`. This is the `.gitignore` precedent of `/lab-runs/`, `/plan-exports/` and `/advisor-runs/`. The anchor gate would then take that root as an explicit input.
+2. **Baseline lookups.** Read them where the committed reports are. A scenario that declares a baseline and finds none fails; it does not write `n/a` (`#66`).
+3. **Two-sided test.** In a fixture tree with the baseline at container depth 1, the lookup returns it; with the baseline removed, the lookup errors.
+
+**MEASURED vs REASONED.** MEASURED:
+- the 10 absent container-depth-0 dirs;
+- the `git check-ignore` exits;
+- the byte-sort order;
+- the committed `baseline_report:` lines.
+
+REASONED: the silent `n/a`, what the gate does on a real re-run (no CLI ran), and the readers' listing.
+
+### `#211` — the Lab chart clamps out-of-window equity samples onto the plot edges, so a series with one sample inside the bar window draws off-scale edge strokes
+
+**Status**: **`open`** 2026-11-15. Found by the `#207`/`#206` design pass and read-verified at HEAD `a926ca4d`. REASONED from code; not rendered. `#205` does not unmask it, because no committed report the Lab reaches is per-bar. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.** `crates/ui/src/widgets/chart.rs`:
+- **The axis.** `fn compute_equity_range` sizes the equity axis from in-window samples only (`if ts >= win_start && ts <= win_end {`), then applies `let span = (max_v - min_v).max(1.0);` and 5 % padding. With one in-window sample, the axis spans 1.1 USDT around that sample.
+- **The stroke.** `fn draw_equity_polyline` then strokes EVERY sample, clamping each x into the window: `let ts_clamped = ts.clamp(min_bar_ts, max_bar_ts);`. The y is not clamped: `let y = inner.y + (1.0 - y_frac) * inner.height;`.
+  - Every earlier sample lands on the left edge and every later one on the right edge, each at its own y on that 1.1 USDT axis.
+- **What it draws.** The line climbs up and down the left edge through every earlier equity value, goes to the one in-window point, then climbs the right edge. Those strokes leave the plot rect, while the axis labels a 1.1 USDT range.
+  - With more samples in the window, the edges still smear whenever an outside sample's equity lies outside the in-window range.
+
+**Why it matters (reachable, REASONED).**
+- **The bar window.** The `cockpit` bin seeds 60 one-minute candles per pair from `const FIXED_EPOCH_SECS: i64 = 1_705_320_000;` (2024-01-15T12:00:00Z, `date -u -r`), with `let close_ts = fixed_ts(i * 60 + 59);`. The window is 12:00:00–12:59:59.
+- **The series.** `cockpit_live` persists every Lab run (`write_report: true,`). An `H1_2024` run is hourly from 2024-01-01 (`DateRange::H1_2024 => (2024, 4_344), // ~181 × 24 = 4344 h`, and `synthetic_timestamps` adds `time::Duration::hours(i as i64)`), so exactly one sample, the 12:00 one, falls inside the window.
+- **How it gets drawn.** `Cockpit::boot` restores the Lab tuple (`let (lab_state, lab_restore) = persistence::restore(&path);`). Opening the `cockpit` bin on that tuple, or picking it, which clears the mirror, draws the run over the seeded hour: 1 sample in, about 4,343 out.
+
+**Fix (proposed; its own change, because it moves pixels on populated paths):**
+1. Stroke only in-window samples, optionally with one interpolated point at each edge.
+2. Treat fewer than two in-window samples as no overlay. Make `#207`'s gutter helper use the same gate, so the gutter and the stroke agree.
+3. Pixel pair:
+   - the H1_2024-over-the-seeded-hour case draws no ACCENT pixel outside the plot rect (red today);
+   - a series fully inside the window still draws.
+
+### `#212` — the Lab's report lookup is coarser than its tuple, and 5 of the 8 Lab strategy chips look in directories the engine never writes
+
+**Status**: **`open`** 2026-11-15. Filed from the `#205` and `#207` design passes, and read-verified at HEAD `a926ca4d` (unchanged in the `#205` snapshot). Each sub-claim was checked separately:
+- (a) "multi-symbol reports match any coin" holds, and is broader;
+- (b) "Preset/Custom match every report" holds only for `Last30d`, `Last90d` and `Custom`;
+- (c) and (d) hold, and (d) is broader.
+
+The report facts are MEASURED read-only: a Python re-implementation of `parse_report_meta`, plus `grep` and `ls`. The resolution is REASONED. The `lab-runs/` half pre-exists; `#205` exposes the committed half. Anchor-impacting: **no**. Paper/sim only.
+
+**The code.** `crates/ui/src/lab/equity_loader.rs`:
+- **(a) Coin.** `fn report_matches` accepts every report whose symbol did not parse: `None => true, // Multi-symbol reports: pass if symbol is in universe.`. No universe check follows.
+  - `parse_symbol_from_body` reads only a `## Universe` section, and the scenario fallback looks for names like `BTCUSDT`.
+  - All 27 reports of the four mapped slugs parse `None`. The 23 single-symbol reports state their coin only in the Summary (`| Symbol | BTCUSDT |`), under `btc-…`/`eth-…` scenario names. The 4 multi-symbol reports list 10 or 4 coins.
+  - So `(v0.sma, ETHUSDT, Last90d, Synthetic)` resolves `backtest-20260420-151944-btc-2023-1m-sma-baseline-refresh.md`, a BTC run.
+  - The older `lab-runs/` reports on this dev box behave the same way: runs whose Summary says `| Symbol | XRPUSDT |` or `| Symbol | ADAUSDT |` but whose scenario is `btc-2023-1m-…` match every coin. Runs named by `lab_scenario_name` carry the coin, and parse (REASONED).
+- **(b) Range.** `fn range_score` never returns 0 for `Preset::Last30d` or `Preset::Last90d` (10, 5 or 3, by year), and `Custom` scores every report 1 (`// Custom ranges: any report is a superset fallback.`). Those three ranges match every report of the slug, from any year. Only `H1_2024` and `H2_2024` filter.
+- **(c) Strategy.**
+  - `fn report_matches(meta: &ReportMeta, sym: &str, range: &DateRange) -> MatchQuality {` takes no strategy, though all 27 reports record one (`id:` in the `strategy:` front-matter block).
+  - `v05-composed-strategies` holds macd, rsi and bbands (`152014`, `152017`, `152020`) under the same scenario shape, so they tie on every tuple. The macd tuple gets macd only because its report sorts first.
+  - In `lab-runs/`, the engine writes rsi and bbands runs into the same dir (see (d)). A macd tuple can therefore resolve an older rsi run of the same coin, range and source.
+- **(d) Slug map.**
+  - `fn strategy_slug` sends any id it does not know to `other => SmolStr::new(other),`.
+  - Of the 8 chips `cockpit_live` seeds, 5 fall through: `v0.5.rsi`, `v0.5.bbands`, `v1.5a.pairs`, `v2.5.tcn` and `v2.5.tcn.weights`. In the fixtures build, `btc_rsi_reversion` and `btc_bbands_mean_revert` fall through too.
+  - The engine's `strategy_dir_slug` writes those runs elsewhere: `"v0.5.rsi"` and `"v0.5.bbands"` to `v05-composed-strategies`; `"v1.5a.mr" | "v1.5a.pairs" | "pairs_mr_h1" => "v15a-mean-reversion-pairs",`; and `"v2.5.tcn" | "v2.5.tcn_overlay" | "tcn_overlay_momentum" => "v2.5.tcn_overlay",`.
+  - Two docs claim the maps agree, and both are false: `strategy_dir_slug`'s own doc ("Mirrors `ui::lab::equity_loader::strategy_slug` exactly") and ADR-0055 § D1 (the slug "matches `equity_loader::strategy_slug`").
+
+**Why it matters.**
+- The Lab can draw one coin's equity, or one strategy's, under another's label.
+- For 5 of its 8 chips, a persisted run is never read back. Its curve lasts only as long as the in-memory mirror.
+- Among the over-matched reports, `#209`'s path order decides which one is shown.
+- Outside this entry: the 18 `real (Binance Vision)` reports match no source, because `source_tag_matches` expects `binance`. The `#207` design treats accepting them as a K1 reachability decision.
+
+**Fix (proposed; its own change, before `#209`'s newest-wins rule):**
+1. Read the coin from the Summary's `| Symbol |` row. A multi-symbol report matches only a coin in its `## Universe`.
+2. Filter on the report's `id:`, which must be one of the tuple strategy's ids.
+3. Decide in the ADR-0055 amendment what `Last30d`, `Last90d` and `Custom` may match. The reports do not record their span (`#207` design § 1), so the honest default is "no committed report".
+4. Use one slug map. `ui` already depends on `backtest`, so make `strategy_dir_slug` `pub` and call it from `strategy_slug`. Pin it with a test that checks every Lab chip id resolves to the dir the engine writes.
