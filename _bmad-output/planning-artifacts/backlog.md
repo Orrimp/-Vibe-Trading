@@ -89,6 +89,57 @@ number is provenance, not a tracker: none of these has a story yet.*
   per `scripts/callers.sh`). It is a scope decision (K1 → analyst), so story 2-63 neither builds
   around it nor deletes it.
 
+*Found by story 2-63's Wave E2 AC3 sweep (brief at `51961dce`, re-verified at HEAD `33ca205d` on 2026-11-14; read-only, no cargo run). None of these is a harness file, so AC3 does not cover them. The story number is provenance, not a tracker: none has a story yet.*
+- **Two of the three tests in `crates/agent/tests/v15a_hard_stop.rs` return early, and pass, when their precondition fails.**
+  - `t710_hard_stop_close_pair_on_z_stop` does `if !opened {` … `return;` under the comment `// This is acceptable per spec — the test's hard-stop check only applies`.
+  - `t710_cooldown_blocks_reentry_after_hard_stop` has `return; // Nothing to test if no entry` and `return; // No close, no cooldown to test`.
+  - The bars are synthetic, at fixed prices, so each precondition either always holds or never does, and nothing records which. If an entry or stop regression made it false, both tests would go on passing with no assertion run. That is the bug-log `#66` shape.
+  - **The fix:** make each guard an assertion that names its precondition (`assert!(opened, ..)`, `assert!(closed, ..)`). The probe: set the entry bar to the warmup price so no position opens. The test must then go red at the new assertion, not pass.
+- **`crates/ui/tests/journal_replay.rs` replays zero sessions and passes.**
+  - `crates/ui/tests/recorded-sessions/` holds only `.gitkeep`.
+  - The module doc says so: `//! test passes vacuously — exits 0 with "replayed 0 recorded`. The only trace of the vacuity is `eprintln!("ui-session-journal-iced-tester: replayed {ice_count} recorded session(s)");`.
+  - **The fix:** commit one recorded `.ice` session and assert `ice_count > 0`, or mark the test `#[ignore = "no recorded sessions committed"]`, so a run reports "ignored" rather than "ok".
+- **Five live-corpus tests in `crates/ui/tests/reports_populated_curve_render.rs` skip on every checkout, because Reports discovery stops one directory level short. This is likely a production defect.**
+  - Each test finds the demo, or the avax/dot companions, through `loader::discover_reports()`. It skips with `eprintln!` + `return;` when they are missing, e.g. ``eprintln!("demo report `{DEMO_STEM}` not discovered — skipping (pruned checkout)");``. The doc calls this a guard for a "pruned checkout".
+  - The demo IS committed: `evidence/v1/v0-paper-sma/reports/backtest-20260617-180015-btc-2024-h1-sma-cross.md`, with its `artifacts/` CSV.
+  - `discover_reports` (`crates/ui/src/reports/loader.rs`) reads only `evidence/<x>/reports/` (`let reports_dir = slug_path.join("reports");`). At HEAD every companion is one level deeper, under `evidence/<version>/<slug>/reports/`. There are 0 `reports/artifacts/` directories at depth 1, and 89 backtest reports at depth 2.
+  - The mismatch dates from `13955206` (2026-06-28, the `spec/v1` reorganisation). The tests were last edited on 2026-06-19, while the corpus was still one level deep. The five hand-built tests in the file still run.
+  - **The probable consequence (REASONED; unmeasured; not checked in the GUI):** the cockpit's Reports picker lists none of the evidence/v1, v2 or v3 reports. No listed report has a companion, so `newest_companion_index` selects nothing, and the default curve-only view has no rows.
+  - **On-disk counts (MEASURED with `ls`/`find`, 2026-11-15, no cargo):**
+    - Depth 1 (`evidence/<x>/reports/`): 108 backtest reports, all in the four `v5-latency-slippage-sim-v0.*` dirs, and 0 `artifacts/` dirs. The picker lists these, and none of them can paint a curve.
+    - Depth 2 (`evidence/<version>/<slug>/reports/`): 89 backtest reports, and 16 stem dirs holding an `equity-*.csv`. 14 are in `evidence/v1/v0-paper-sma/reports/artifacts/`, which holds the demo; 2 are in `evidence/v1/paper-soak-longevity/reports/artifacts/`, and those 2 pair with no report, so 14 reports have a companion (the #205 design pass, 2026-11-15, by `git ls-files`). The 89 are 87 under `v1` and 2 under `v3`; `v2` holds none.
+  - **The Lab has the same depth error (REASONED from code).** `lab::equity_loader::discover_reports(report_root, slug)` reads `<root>/<slug>/reports/`, and production passes `default_evidence_root()` = `evidence/`. Every slug `strategy_slug` maps to has its reports under `evidence/v1/<slug>/reports/` only (`v0-paper-sma`: 20, `v1-cross-sectional-momentum`: 2, `v05-composed-strategies`: 3, `v15a-mean-reversion-pairs`: 2), so the Lab's committed-evidence fallback finds none of them, and only `lab-runs/` resolves. Fix both readers in one bug-log entry.
+  - **The fix:** measure first, on macOS: `cargo test -p ui --test reports_populated_curve_render -- --nocapture 2>&1 | grep -c skipping` should print 5. Then file a bug-log entry and fix `discover_reports` as its own production change, walking `evidence/<version>/<slug>/reports/` as well. Then turn the five skips into assertions, because the demo is committed.
+- **`crates/ui/tests/headless_emulator_smoke.rs` never asserts that the emulator reached `Ready`.**
+  - Each of its four Ready-waits (`for tick in 0..READY_DEADLINE_TICKS {`) gives up after 10 events. On a closed channel it only prints, e.g. `eprintln!("event channel closed at tick {tick} before Ready");`. The test then renders and asserts anyway.
+  - The module doc still says it "Proves the Emulator boots the FULL iced subscription pump headlessly". The doc's own "What these tests are, and are NOT" section narrows that to a smoke test.
+  - **The fix:** one `drain_until_ready` helper that panics on the deadline or on `None`, used by all four tests; correct the doc's opening paragraph.
+- **Two non-harness tests carry a check that cannot fail (found by the same sweep, low).**
+  - `crates/agent/tests/kill_switch_trip_writes_both.rs`: `let expected_period_arg =
+    format!("since:{}", call.halt_ts_rfc3339);` is followed by
+    `expected_period_arg.starts_with("since:"),`, which tests the test's own `format!` and never
+    the production argument builder (`CommandIncidentSpawner`). Its idempotence check waits for the
+    FIRST row only, so a late extra write from a non-idempotent `trip` could still read 1
+    (reasoned, timing-dependent).
+  - `crates/ui/tests/embedded_font_contract.rs`: `rust_sources` skips an unreadable directory
+    (`let Ok(entries) = std::fs::read_dir(&dir) else {` then `continue;`), and the
+    `offenders.is_empty()` checks have no files-scanned floor. If the walk found nothing, they
+    would pass with nothing scanned.
+  - **The fix:** delete the tautological assert, or drive the real spawner; give each walker test a
+    floor (`assert!(files.len() > N)`, with N derived from a `git ls-files` count at the time).
+- **`smoke_cancel_mid_run` (`crates/ui/tests/cockpit_live_lab_run_smoke.rs`) is still a real-time
+  race, with about 0.5 s of margin (low; story 2-63 Wave E2 widened it from about 2 ms).**
+  - The cancel must land between the bar-32 progress emit and the engine's last cancel poll. E2
+    raised the run to 500 000 synthetic bars through the existing `bars_override` knob: on the dev
+    box an uncancelled run reports `elapsed_ms: 489` at its last bar against `0` at bar 32
+    (MEASURED 2026-11-14). A 2 s margin would need about 2.1M bars, about 6.7 s and about 1 GB on
+    every passing run, so E2 stopped at 500 000.
+  - A lost race fails red (an `Ok` fails `matches!(engine_result, Err(RunError::Cancelled))`), never
+    a false pass. It is load-sensitive: run it alone if a loaded CI box flakes it.
+  - **The fix:** a production-side test seam that holds the engine at a known bar until the cancel is
+    observed (for example a cancel-poll hook), so the test no longer races wall-clock time. It is
+    production code, so it needs its own story.
+
 ### Gated on the parked v2 LLM strategy
 - **Lumen Phase 6 — right-rail Assistant slot** — reserved column-track in the shell grid;
   hidden until the v2 LLM strategy is enabled. Tracked as story

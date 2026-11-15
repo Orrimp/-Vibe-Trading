@@ -124,9 +124,10 @@
 //! E1-P9 leaves it green. Wave B's B-P18 row still names this file as its
 //! green sibling ("its end-to-end test reads the cell only after the first
 //! message"); that is no longer true after E1. `cockpit_live_lab_run_smoke.rs`
-//! also drives `stream_impl`, but its drains stop at
-//! `Some(Message::LabRunProgressDone) | None => break`; it is not reasoned
-//! about here. `progress.rs` has no lib unit tests.
+//! also drives `stream_impl`, and since story 2-63 Wave E2 its drains are
+//! strict (`drain_progress_to_done`: a stream end before `Done` panics, M7),
+//! so a suppressed `Done` (its E2-P3) turns it red too. `progress.rs` has no
+//! lib unit tests.
 //!
 //! ## Coverage
 //!

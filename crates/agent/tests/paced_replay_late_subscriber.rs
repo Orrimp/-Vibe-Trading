@@ -35,7 +35,9 @@
 //!
 //! This test does not run the full `runtime::run` — it calls
 //! `spawn_research_trading_loop` directly with an injected feed.  A separate
-//! smoke test (`cockpit_live_lab_run_smoke.rs`) covers the full binary path.
+//! smoke test (`cockpit_live_lab_run_smoke.rs`, in the `ui` crate) covers the
+//! engine and progress-relay path through test-local copies of the binary's
+//! wiring (story 2-63's K3 #6 residual), not the full binary path.
 
 #![allow(
     clippy::unwrap_used,

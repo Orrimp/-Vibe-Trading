@@ -228,6 +228,8 @@ test result: ok. 4 passed; 0 failed; 0 ignored
 - A.5: this entry.
 **Moral** (same class as #65 and the v3-vol no-op): a test that exists and passes is not a test that runs — skip paths need positive proof of execution (non-zero runtime, no-skip assertion when the fixture is present), and the 2026-06-13 tester recorded vacuous passes as "ran for real". The review's revival of one test chain surfaced three real product bugs within the hour.
 
+> **2026-11-14 (story 2-63, Wave E2): a same-shape survivor outside this entry's scope.** `crates/ui/tests/cockpit_live_lab_run_smoke.rs::smoke_yahoo_cache_hit` probed a cwd-relative, gitignored `data/yahoo/` path, printed `SKIPPED` and returned, so it passed with no assertion run on every CI run until Wave E2 re-rooted it at the committed `data/yahoo-sample/` corpus (`CARGO_MANIFEST_DIR`-derived) and made an absent corpus a failure. The Status above stays `FIXED`: the three files it scoped were fixed. Wave E2's sweep found the same shape again in an in-source unit test, filed as `#204`.
+
 ### `#67` — Research-harness lanes priced cross-symbol fills at the trigger bar's close (anchored C2/C3 evidence = execution-artifact noise)
 **Status**: OPEN — fix + formal re-lock owned by story 1-25-harness-fill-correctness-relock (CRITICAL; one program with 1-24). Disclosure entry, 2026-07-31.
 **Discovery**: story 1-14 code-review Blind Hunter finding, orchestrator-verified same day at HEAD.
@@ -10473,3 +10475,38 @@ in the new file's module doc, by symbol and quoted line.
   - The orchestrator added the taken-cell unit rows and ran each negative `Esc` case at both
     statuses, then re-measured these probes as C1-P13 and C1-P15.
   - OWN-2 was red as designed and is tabled as C1-P14.
+
+### `#204` — `t12_load_from_file` has never loaded the committed config: its path climbs out of the repository, and a missing file passes
+
+**Status**: **`open`** 2026-11-14. The adversarial critique of story `2-63`'s Wave E2 brief found it (read-only, at HEAD `51961dce`). The E2 AC3 re-audit re-verified it by reading HEAD `33ca205d`. No cargo was run, so "never loaded" is reasoned from the path arithmetic, plus one existence check of the escaped path on the dev box (absent, 2026-11-14). Anchor-impacting: **no** (an in-source unit test of `agent::config`; no report reads it). Paper/sim only.
+
+**The code.** `crates/agent/src/config.rs`, `mod tests`, `fn t12_load_from_file() {`:
+- `let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();` resolves to `<repo>/crates/agent` for this crate.
+- The path then joins `.join("..") // agent/`, `.join("..") // crates/` and `.join("..") // trading/`, then `.join("config")` and `.join("agent.toml")`.
+  - Each comment names the directory the join LEAVES, not the one it reaches. The first `..` lands in `crates/`, the second at the repo root, and the third one level ABOVE the repository.
+  - So the path is `<parent of the repo>/config/agent.toml`, never the tracked `config/agent.toml`.
+- The only assertion, `assert_eq!(cfg.mode, Mode::Research);`, sits inside `if path.exists() {`. The test then ends with `// Skip silently if file not present (CI without workspace root)`.
+- The guard is false on this dev box (checked). On a CI runner the checkout's parent directory holds no `config/` (reasoned). The test therefore passes with zero assertions wherever it runs: the `#66` skip-as-pass shape, in an in-source test.
+- If a machine's parent directory did hold a `config/agent.toml`, the test would load THAT file, not the repository's.
+
+**Why it matters.** `config/agent.toml` is tracked, and it is the default `--config` of both shipped entry points. `crates/agent/src/main.rs` and `crates/ui/src/bin/cockpit_live.rs` each declare `#[arg(long, default_value = "config/agent.toml")]` and call `agent::config::Config::load(&args.config)`.
+- Nothing else parses the committed file through `Config::load`. The T1928 tests parse string literals or tempdir copies.
+- `crates/audit/tests/per_symbol_post_fill.rs` does read the committed file, and correctly, with two `..` joins in `fn agent_toml_path()`. But it deserializes only a `[funding]` slice, not through `Config::load`.
+- So a committed edit that breaks `Config::load` reaches the operator's first `cargo run` with no test red. Examples: a mistyped key, `fast_len >= slow_len`, or an `[llm]` block that `LlmConfig::validate_keys` rejects.
+
+**Why no test caught it.** The success path is unobservable: a pass with the file found and a pass with the file missing look the same (house rules `#187`/`#161`: a skip is unmeasured).
+- The comment presents the skip as legitimate ("CI without workspace root"). But CI always has the workspace root, and `CARGO_MANIFEST_DIR` makes the path independent of cwd. The only reason the file is "not present" is the off-by-one.
+- Story 2-63's AC3 sweep covers `crates/ui/tests` and `crates/agent/tests` only. In-source `#[cfg(test)] mod tests` were not swept, which is why this needed a critic to find it.
+
+**Fix (its own change, test-only):**
+1. Use two `..` joins, not three, and make each comment name where its join lands: `crates/agent` → `crates` → `<repo>`. `per_symbol_post_fill.rs`'s `fn agent_toml_path()` is the precedent.
+2. Replace the `if path.exists() {` guard with an assertion that the file exists, then load it. Message: "the committed config/agent.toml must ship; absent means a broken checkout, not a skip (bug-log #66)". Delete the "Skip silently" comment.
+3. Keep `assert_eq!(cfg.mode, Mode::Research);`. The revived test would likely pass (reasoned; the full parse is unmeasured):
+   - line 1 of `config/agent.toml` is `mode = "research"`;
+   - its `[llm]` block has `enabled = true` and `default_provider = "anthropic"`, with a non-empty placeholder `api_key` under `[llm.providers.anthropic]`, which `LlmConfig::validate_keys` accepts.
+4. Make it hermetic. `Config::load` merges a sibling `agent.toml.local` when one exists (gitignored by `.gitignore`'s `config/*.local`). A developer's malformed overlay would turn the revived test red for a reason outside its subject (the `#189` sibling form). Either copy the committed file into a tempdir and load that copy, or keep the real path and say in the test doc that a local overlay is part of what it loads.
+
+**Pin / T-T4.** Record each probe as FAIL → restore → PASS in the fixing commit, run with `cargo test -p agent --lib config::tests::t12_load_from_file`. The log must show a `Compiling agent` line and `1 passed` after the restore.
+- **T12-P1 (the defect itself):** re-add the third `.join("..")`. The test must go RED at the new existence assertion. At HEAD it is green.
+- **T12-P2 (two-sided on the value):** change line 1 of `config/agent.toml` (or of the tempdir copy) to `mode = "paper"`. The test must go RED at `assert_eq!(cfg.mode, Mode::Research);`. Restore the file byte-identically and compare its SHA-256.
+- In the fixed test's doc, cite both probes by symbol and quoted line, never by line number (`2-63`'s T-T4 convention).

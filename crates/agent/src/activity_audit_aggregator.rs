@@ -151,19 +151,32 @@ impl Aggregator {
 /// 1. `rx.recv()` — an audit tick arrived; increment the counter.
 /// 2. `interval.tick()` — 100 ms boundary; snapshot counter → emit.
 ///
-/// ## T-T4 falsification probes (Bug #64 select-arm starvation)
+/// ## T-T4 falsification probes (Bug #64 select-arm starvation; story 2-63 Wave E2)
 ///
-/// **P-B1 — `biased; interval.tick()` priority swap (EXPECTED FAIL)**
-/// Add `biased;` to the `tokio::select!` with `interval.tick()` arm listed FIRST.
-/// Under `tokio::time::pause()` + `advance(500 ms)`, all 5 interval ticks
-/// fire before the recv arm gets a turn. `recv_arm_survives_n_interval_boundaries`
-/// fails because the recv arm starves and the counter stays 0 after `tx.send(tick)`.
+/// Each probe is ONE edit inside this function. The tests that measure them are
+/// in `crates/agent/tests/activity_audit_aggregator_select_arm_survival.rs`.
+/// That file's T-T4 table gives each row's quoted line and its exact red text.
+/// This table locates each edit by arm and statement and does not repeat those
+/// quoted lines: a copy here would make each one occur twice in this file.
 ///
-/// **P-B2 — interval arm no-op (EXPECTED PASS — negative control)**
-/// Comment out the interval arm body. Neither test fails (interval arm only
-/// affects the handle lifecycle, not whether recv processes ticks). This proves
-/// P-B1 is not a tautology — the tests are sensitive to recv starvation, not
-/// merely to interval firing.
+/// | probe | edit (in this function) | expected RED in `activity_audit_aggregator_select_arm_survival` |
+/// |---|---|---|
+/// | P-B1 | replace the whole `rx.recv()` arm with `_ = futures::future::pending::<()>() => {}` | the four tests that close right after their windows, at their exit `expect`: the loop never sees `Closed`, so it never exits. `idle_window_ends_the_activity_before_the_close` at its first drain: no tick is counted, so no `Start` |
+/// | P-B2 | empty the body of the interval arm (the negative control) | `recv_arm_increments_counter`, `recv_arm_counts_every_tick_after_idle_windows` and `idle_window_ends_the_activity_before_the_close` (no `Start`). `recv_arm_increments_after_interval_fires` and `recv_arm_survives_n_interval_boundaries` stay GREEN: they pin exit only |
+/// | E2-P0 | delete the `fetch_add(1, ..)` statement of the `Ok(_tick)` arm (story 2-63's designated probe) | `recv_arm_increments_counter`, `recv_arm_counts_every_tick_after_idle_windows` and `idle_window_ends_the_activity_before_the_close` (no `Start`). Not unique: other aggregator tests go red too |
+/// | E2-P4 | `panic!` in the `RecvError::Closed` arm, before its `break` | all five tests, at the `JoinError` `expect`. Before Wave E2 the three tests then present passed it: `is_ok()` on the timeout layer and a discarded result both accept a panicked task |
+/// | E2-P5 | after the interval arm's `swap(0, ..)`, report `n - 1` whenever `n > 1` | `recv_arm_counts_every_tick_after_idle_windows` only (`"Audit: 2 writes"` for 3 ticks). `recv_arm_increments_counter` and `idle_window_ends_the_activity_before_the_close` (1 tick each) stay GREEN: they are the other half of the count pair |
+/// | E2-A1 | in the `(n, None)` arm, drop the new handle instead of storing it | `recv_arm_increments_counter` and `recv_arm_counts_every_tick_after_idle_windows`, at their End-on-close check: the `End` arrives before the close; their full-sequence check stays GREEN. `idle_window_ends_the_activity_before_the_close` at its first drain (`Start` and `End` in one window) |
+/// | E2-P15 | in the `(n, None)` arm, add 1 to the count the `Start` label is built from | `recv_arm_increments_counter`, `recv_arm_counts_every_tick_after_idle_windows` and `idle_window_ends_the_activity_before_the_close`, at the label. The first two survival tests stay GREEN |
+/// | E2-P16 | in the `(n, None)` arm, after the handle is stored, add the window's `n` back to the counter | `idle_window_ends_the_activity_before_the_close` only, at its second drain: no `End` at the idle boundary, because the re-counted window reaches the `(n, Some(h))` arm, whose `tick` is throttled, because `ActivityHandle` reads `std::time::Instant` and the real clock has barely moved. That second drain is the deterministic red. The real-time sibling `activity_audit_aggregator::aggregator_idle_drops_handle` is red in 3 of 21 runs under this edit (MEASURED, falsifier pass 3, 2026-11-15: GREEN in the main run, red in 3 of 20 repeats), timing-dependent (REASONED cause: `TICK_THROTTLE` and `AGGREGATION_WINDOW` are both 100 ms, and the interval's first tick is immediate) |
+/// | E2-P17 | in the `(0, Some(_))` arm, delete the statement that ends the handle | `idle_window_ends_the_activity_before_the_close` only, at its second drain: the idle window emits nothing |
+/// | E2-P20 | in the `(0, Some(_))` arm, replace the statement that ends the handle with a `break` out of the loop | `idle_window_ends_the_activity_before_the_close` only, at the assert after its second drain that the loop is still running (MEASURED, pass-4 fixer, 2026-11-15). The second drain passes, because the exit's handle drop sends the same `End` (REASONED). Before story 2-63 Wave E2's pass 4 added that assert, every test in that file stayed GREEN under this edit (MEASURED, falsifier pass 3, 2026-11-15, its OWN-C); the real-time `aggregator_idle_drops_handle` and `aggregator_handle_resumes_after_idle` go red (MEASURED, the same run) |
+///
+/// `biased;` with the interval arm listed first is NOT a starvation probe. It
+/// replaces an older P-B1 row here that said it was. Reasoned, not measured:
+/// tokio's default `MissedTickBehavior::Burst` interval fires its missed
+/// boundaries back to back, then returns `Pending` once it has caught up, so
+/// the recv arm is still polled on every later iteration and no test can fail.
 pub async fn run_aggregator_loop(mut agg: Aggregator) {
     loop {
         tokio::select! {

@@ -2,9 +2,9 @@
 //!
 //! Until 2026-11-11 `runtime::run` hard-coded `llm_provider = None` in BOTH branches
 //! of `if config.llm.enabled`, so every "Explain" answered `FellBack` while the
-//! CHANGELOG, PRD FR-11 and README said an LLM wrote the narration. These two tests
-//! drive the REAL runtime (`agent::runtime::run`) over the real request/outcome
-//! channels and differ ONLY in `RunHandles::llm_provider`:
+//! CHANGELOG, PRD FR-11 and README said an LLM wrote the narration. The first two
+//! of this file's three tests drive the REAL runtime (`agent::runtime::run`) over the real
+//! request/outcome channels and differ ONLY in `RunHandles::llm_provider`:
 //!
 //! - a configured (no-network) faithful provider → `Ready(prose)`: the provider was
 //!   called and its text passed the faithfulness post-check;

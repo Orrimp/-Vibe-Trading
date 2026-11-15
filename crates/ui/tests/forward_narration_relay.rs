@@ -72,6 +72,16 @@
 //! | P6 | `ui::state::update`, arm `Message::BakeoffNarrationRequested` (`crates/ui/src/state.rs`) | `st.begin_narration();` | delete the line | `narration_outcome_relay_ready_yields_message_and_sets_state`, `narration_outcome_relay_fellback_yields_message_and_sets_state`, the two-runs test (`request_explain`'s `InFlight` precondition) |
 //! | P18 | `ui::leaderboard::LeaderboardScreenState::begin_run` (`crates/ui/src/leaderboard/state.rs`) | `self.narration = NarrationState::NotRequested;` | delete the line | the ready, fellback and two-runs tests, all at `cockpit_with_ready_bakeoff`'s `NotRequested` precondition (the seeded prior run's `Ready` narration survives the new run) |
 //! | P19 | `ui::live::narration_request_from_mirror` | `winner_id: rec.winner.clone(),` | → `winner_id: candidate_ids[0].clone(),` | `narration_request_from_mirror_carries_the_on_screen_facts` (the `BenchmarkWins` mirror crowns its 2nd row). Its single-fixture predecessor stayed GREEN under this probe: the `ActiveWins` fixture's winner IS row 0 |
+//! | E2-P10 | `ui::live::narration_request_from_mirror` | `sortino: fmt_ratio4(r.sortino),` | → `sortino: fmt_ratio4(r.sharpe),` | `narration_request_from_mirror_carries_the_on_screen_facts`, at F1 "ActiveWins mirror: sortino string of v0.sma carries its own row's value" (got `"1.4200"`; row 1.95). `explain_request_carries_non_empty_sortino_and_calmar` stays GREEN: the swapped string is still a 4-dp member of the allowed set. Sibling target `narration_kpi_units`: `ui_mirror_and_agent_from_report_agree_on_one_engine_report` red at "the agent and ui builders must agree on every KPI string" (left sortino `"-7.1852"`, right `"-5.3956"`); its tests 1, 2 and 4 stay green. All MEASURED (falsifier pass 2, 2026-11-14) |
+//! | E2-P11 | `ui::live::narration_request_from_mirror` | `max_drawdown: fmt_pct2(r.max_drawdown),` | → `max_drawdown: fmt_pct2(r.total_return_pct),` | the same test, at F2 "ActiveWins mirror: max_drawdown string of v0.sma carries its own row's value ×100" (got `"18.37%"`; left 18.37, right 6.12). Sibling target `narration_kpi_units`: `narration_drawdown_string_is_the_leaderboard_drawdown_cell_minus_its_minus` at "the narration must say the screen's" (left `"18.37%"`), `ui_mirror_and_agent_from_report_agree_on_one_engine_report` at "the agent and ui builders must agree on every KPI string", and `prose_citing_the_screen_passes_p3_and_the_fraction_figure_is_rejected` at "prose that copies the screen" (left `Reject(FabricatedNumber("6.12%"))`: the winner's on-screen drawdown is no longer an allowed number); its test 1 stays green. All MEASURED (falsifier pass 2, 2026-11-14) |
+//! | E2-P12 | `ui::live::narration_request_from_mirror` | `trade_count: r.trade_count.to_string(),` | → `trade_count: String::from("0"),` | the same test, at F3 "ActiveWins mirror: trade count of v0.sma carries its own row's value" (left `"0"`, right `"38"`). Sibling target `narration_kpi_units`: `ui_mirror_and_agent_from_report_agree_on_one_engine_report` red at "the agent and ui builders must agree on every KPI string" (`"21"` against `"0"`); its tests 1, 2 and 4 stay green. All MEASURED (falsifier pass 2, 2026-11-14) |
+//!
+//! Rows E2-P10..E2-P12 come from story 2-63 Wave E2: before it, no KPI string
+//! VALUE was checked (only the Sharpe string's 4-dp format), so all three
+//! probes were reasoned GREEN here. `narration_kpi_units.rs` (bug-log #198)
+//! reads the same fixtures through the same builder, so it is a sibling target
+//! of all three; the falsifier's pass 2 (2026-11-14) ran it under each probe,
+//! and each row gives the reds it MEASURED.
 //!
 //! Gated on `live` (the only build where the wiring + the `agent` types exist),
 //! NOT on `target_os` (no pixels here — pure channel/state logic, deterministic
@@ -80,12 +90,14 @@
 #![cfg(feature = "live")]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt};
 use iced::advanced::subscription::{EventStream, Recipe};
+use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use smol_str::SmolStr;
 use tokio::time::timeout;
@@ -701,8 +713,134 @@ async fn narration_outcome_recipe_stream_takes_receiver_once_and_relays() {
 
 // ── F9 — Explain request BUILD (iced→agent) ─────────────────────────────────
 
+/// Half a step of the canonical 4-dp ratio form: a ratio string rounded to
+/// 4 dp lies within this of its own row's `f64` value.
+const RATIO4_HALF_STEP: f64 = 5e-5;
+
+/// The number of digits after the `.` in a number string, or `None` without
+/// one. The canonical ratio form `agent::narration` expects has exactly 4.
+fn fraction_digits(s: &str) -> Option<usize> {
+    s.split_once('.').map(|(_, frac)| frac.len())
+}
+
+/// Parse a narration percent string as a `Decimal`: strip one trailing `%`
+/// and an optional leading `+`. Panics, naming `what`, on any other shape.
+///
+/// Stripping the `+` means F2 does NOT pin the no-`+` form (see
+/// [`assert_kpi_pair_preconditions`] for where it is pinned).
+fn parse_pct(s: &str, what: &str) -> Decimal {
+    let body = s
+        .strip_suffix('%')
+        .unwrap_or_else(|| panic!("{what}: a percent string ends in '%' (got {s:?})"));
+    let body = body.strip_prefix('+').unwrap_or(body);
+    Decimal::from_str(body)
+        .unwrap_or_else(|e| panic!("{what}: not a decimal percent (got {s:?}: {e})"))
+}
+
+/// The pair preconditions for ONE fixture's KPI value checks (F1-F3 in
+/// [`assert_request_mirrors`]). A value check pins a dimension only if the
+/// fixture varies in it (bug-log #161), so each is asserted from the rows:
+///
+/// - F1: a row whose three ratios differ pairwise by more than 1e-3, so one
+///   ratio field swapped for another (T-T4 E2-P10) leaves the 4-dp window;
+/// - F1, form: for each ratio field, a row whose value's shortest decimal form
+///   (`{v}`) does NOT have exactly 4 digits after the `.` (these fixtures have
+///   at most 2, e.g. `1.95` against the canonical `1.9500`), so a formatter
+///   that drops the 4-dp padding fails the form check;
+/// - F2, fields: a row whose two percents differ at 2 dp, so a swapped percent
+///   field (E2-P11) changes the value;
+/// - F2, unit (bug-log #198): for each percent field, a row whose FRACTION and
+///   × 100 readings differ at 2 dp, so a regression to the fraction unit fails
+///   the × 100 value check;
+/// - F3: the rows' trade counts are not all equal, so a constant count
+///   (E2-P12) fails a row.
+///
+/// Three F2 dimensions have NO second side in these fixtures, so F2 does not
+/// pin them, and no precondition here claims it does (fixture rows are shared
+/// with other tests and are not added to):
+///
+/// - the drawdown SIGN: every fixture drawdown is >= 0, so the `.abs()` in the
+///   expected drawdown never matters;
+/// - the absence of `+` on a gain: [`parse_pct`] strips a `+`;
+/// - banker's rounding: every fixture fraction has at most 4 dp, so × 100 is
+///   exact at 2 dp and no rounding call is exercised.
+///
+/// The first two are pinned in `crates/ui/tests/narration_kpi_units.rs`
+/// (T-T4 K7, K10 and K12: its test 2 at the edge mirror's negative drawdown,
+/// its tests 1, 3 and 4 for the `+`); the third there too (K13, K14: its tests
+/// 1 and 2 at the edge mirror's midpoint rows) and in `agent::narration`'s own
+/// `#198` unit tests. What F2 pins two-sided HERE is the × 100 unit, the
+/// return's sign, and field identity.
+fn assert_kpi_pair_preconditions(mirror: &BakeoffReportMirror, label: &str) {
+    assert!(
+        mirror
+            .rows
+            .iter()
+            .any(|r| (r.sharpe - r.sortino).abs() > 1e-3
+                && (r.sortino - r.calmar).abs() > 1e-3
+                && (r.sharpe - r.calmar).abs() > 1e-3),
+        "{label}: a row whose sharpe, sortino and calmar differ pairwise (a swapped ratio field is caught)"
+    );
+    for (i, field) in ["sharpe", "sortino", "calmar"].into_iter().enumerate() {
+        let some_row_unpadded = mirror.rows.iter().any(|r| {
+            let value = [r.sharpe, r.sortino, r.calmar][i];
+            fraction_digits(&value.to_string()) != Some(4)
+        });
+        assert!(
+            some_row_unpadded,
+            "{label}: a row whose {field} is not already 4-dp in its shortest form \
+             (a formatter that drops the canonical padding is caught)"
+        );
+    }
+    assert!(
+        mirror.rows.iter().any(|r| {
+            (r.total_return_pct * Decimal::ONE_HUNDRED).round_dp(2)
+                != (r.max_drawdown * Decimal::ONE_HUNDRED).round_dp(2).abs()
+        }),
+        "{label}: a row whose total return and max drawdown differ at 2 dp (a swapped percent field is caught)"
+    );
+    let units_differ = |v: Decimal| v.round_dp(2) != (v * Decimal::ONE_HUNDRED).round_dp(2);
+    assert!(
+        mirror.rows.iter().any(|r| units_differ(r.total_return_pct)),
+        "{label}: a row whose total return reads differently as a fraction and as a percent at 2 dp"
+    );
+    assert!(
+        mirror.rows.iter().any(|r| units_differ(r.max_drawdown)),
+        "{label}: a row whose max drawdown reads differently as a fraction and as a percent at 2 dp"
+    );
+    assert!(
+        mirror
+            .rows
+            .windows(2)
+            .any(|w| w[0].trade_count != w[1].trade_count),
+        "{label}: the rows' trade counts differ (a constant trade count is caught)"
+    );
+}
+
 /// Assert one mirror's request carries that mirror's facts. Every expected
 /// value is DERIVED from the mirror, never copied from the subject's output.
+///
+/// Per row, the KPI strings carry THAT row's values (story 2-63 Wave E2):
+/// - F1: sharpe, sortino and calmar are each in the canonical 4-dp form
+///   (exactly 4 digits after the `.`; Wave E2's follow-up, until then only
+///   Sharpe's form was checked), and each parses (`f64`) within
+///   [`RATIO4_HALF_STEP`] of the row's own value (T-T4 E2-P10);
+/// - F2: total return and max drawdown are the row's FRACTION × 100 at 2 dp,
+///   the unit the leaderboard shows (bug-log #198, fixed in `dfe9e72a`): the
+///   return signed by the fraction (ASCII `-` on a loss), the drawdown as its
+///   unsigned magnitude, the convention `agent::narration::kpi_return_pct` and
+///   `kpi_drawdown_pct` document (T-T4 E2-P11). The expected number is derived
+///   here from the row, never by calling those fns;
+/// - F3: the trade count is the row's count as an integer string (E2-P12).
+///
+/// What F2 pins two-sided on these fixtures is the × 100 unit, the return's
+/// sign and field identity. The drawdown's sign, the absence of `+` on a gain
+/// and banker's rounding are one-sided here: every fixture drawdown is >= 0,
+/// [`parse_pct`] strips a `+`, and every fixture fraction has at most 4 dp, so
+/// × 100 is exact at 2 dp. They are pinned in `narration_kpi_units.rs` (K7,
+/// K10, K12 for the signs; K13, K14 for the rounding) and in
+/// `agent::narration`'s `#198` unit tests ([`assert_kpi_pair_preconditions`]
+/// names them).
 fn assert_request_mirrors(mirror: &BakeoffReportMirror, label: &str) {
     let facts = ui::live::narration_request_from_mirror(mirror).facts;
     let rec = &mirror.recommendation;
@@ -726,12 +864,64 @@ fn assert_request_mirrors(mirror: &BakeoffReportMirror, label: &str) {
             kpi.strategy_id, row.strategy,
             "{label}: KPI strings keyed to their own row"
         );
-        // The Sharpe string is the canonical 4-dp form `agent::narration` expects.
-        assert!(
-            kpi.sharpe.contains('.') && kpi.sharpe.split('.').nth(1).unwrap().len() == 4,
-            "{label}: Sharpe of {} is the canonical 4-dp string (got {:?})",
-            row.strategy,
-            kpi.sharpe
+        // F1 — each ratio string is the canonical 4-dp form `agent::narration`
+        // expects, and carries ITS OWN row's value (T-T4 E2-P10).
+        for (field, s, v) in [
+            ("sharpe", &kpi.sharpe, row.sharpe),
+            ("sortino", &kpi.sortino, row.sortino),
+            ("calmar", &kpi.calmar, row.calmar),
+        ] {
+            assert_eq!(
+                fraction_digits(s),
+                Some(4),
+                "{label}: {field} string of {} is the canonical 4-dp form (got {s:?}; row {v})",
+                row.strategy
+            );
+            let parsed: f64 = s.parse().unwrap_or_else(|e| {
+                panic!(
+                    "{label}: {field} string of {} is not a number (got {s:?}: {e})",
+                    row.strategy
+                )
+            });
+            assert!(
+                (parsed - v).abs() <= RATIO4_HALF_STEP,
+                "{label}: {field} string of {} carries its own row's value (got {s:?}; row {v})",
+                row.strategy
+            );
+        }
+
+        // F2 — each percent string is its own row's fraction × 100 at 2 dp
+        // (bug-log #198; T-T4 E2-P11). Derived from the row.
+        let want_return = (row.total_return_pct * Decimal::ONE_HUNDRED).round_dp(2);
+        let want_drawdown = (row.max_drawdown * Decimal::ONE_HUNDRED).round_dp(2).abs();
+        for (field, s, v, want) in [
+            (
+                "total_return_pct",
+                &kpi.total_return_pct,
+                row.total_return_pct,
+                want_return,
+            ),
+            (
+                "max_drawdown",
+                &kpi.max_drawdown,
+                row.max_drawdown,
+                want_drawdown,
+            ),
+        ] {
+            let what = format!("{label}: {field} string of {}", row.strategy);
+            assert_eq!(
+                parse_pct(s, &what),
+                want,
+                "{what} carries its own row's value ×100 (got {s:?}; row {v})"
+            );
+        }
+
+        // F3 — the trade count is the row's own (T-T4 E2-P12).
+        assert_eq!(
+            kpi.trade_count,
+            row.trade_count.to_string(),
+            "{label}: trade count of {} carries its own row's value",
+            row.strategy
         );
     }
     let outcome_carried = match rec.outcome {
@@ -765,13 +955,18 @@ fn assert_request_mirrors(mirror: &BakeoffReportMirror, label: &str) {
     );
 }
 
-/// **F9 request BUILD, two-sided (T-T4 P19).** `narration_request_from_mirror`
-/// — the build the binary's Explain dispatch `try_send`s — carries the
-/// on-screen mirror's facts: winner, every candidate id in order, the KPI
-/// strings keyed per row, the outcome, the robustness label, the reasons.
+/// **F9 request BUILD, two-sided (T-T4 P19, E2-P10..E2-P12).**
+/// `narration_request_from_mirror` — the build the binary's Explain dispatch
+/// `try_send`s — carries the on-screen mirror's facts: winner, every candidate
+/// id in order, the KPI strings keyed per row AND carrying that row's values
+/// (F1-F3 in [`assert_request_mirrors`]), the outcome, the robustness label,
+/// the reasons.
 ///
 /// Two fixtures that DIFFER in each of those dimensions, asserted below, so a
-/// constant or positional mapping cannot satisfy both. The single-fixture
+/// constant or positional mapping cannot satisfy both. The KPI value checks get
+/// their own per-fixture preconditions ([`assert_kpi_pair_preconditions`]),
+/// plus one across the pair on the sign of a loss: `ActiveWins` holds a
+/// negative total return and `BenchmarkWins` holds none. The single-fixture
 /// version this replaces also routed the request through an mpsc channel the
 /// test built and drained itself — a self-loop that tested tokio, not the
 /// cockpit (the enqueue is binary-side, see the module doc).
@@ -807,6 +1002,23 @@ fn narration_request_from_mirror_carries_the_on_screen_facts() {
         active.recommendation.reasons.len(),
         bench.recommendation.reasons.len(),
         "fixture pair: the reason counts differ"
+    );
+
+    // The KPI value dimensions (F1-F3), per fixture, then the sign across the pair.
+    assert_kpi_pair_preconditions(&active, "ActiveWins mirror");
+    assert_kpi_pair_preconditions(&bench, "BenchmarkWins mirror");
+    let has_loss = |m: &BakeoffReportMirror| {
+        m.rows
+            .iter()
+            .any(|r| r.total_return_pct.is_sign_negative() && !r.total_return_pct.is_zero())
+    };
+    assert!(
+        has_loss(&active),
+        "fixture pair: ActiveWins holds a negative total return (a dropped loss sign is caught)"
+    );
+    assert!(
+        !has_loss(&bench),
+        "fixture pair: BenchmarkWins holds no negative total return (the other side of the sign dimension)"
     );
 
     assert_request_mirrors(&active, "ActiveWins mirror");
