@@ -1342,6 +1342,11 @@ pub struct Cockpit {
     /// `Cockpit` immutably. The iced update/view cycle is single-threaded
     /// (only the iced thread ever calls `view`), so `RefCell` is safe here.
     pub equity_cache: std::cell::RefCell<crate::lab::equity_loader::EquityCache>,
+    /// The Lab's equity report roots, `[lab-runs/, evidence/]`, resolved once
+    /// at construction from `lab::equity_loader::default_report_roots()`, so
+    /// `lab::view` does not resolve (and stat) them again on every view
+    /// (bug-log #208). Tests point it at temp roots.
+    pub lab_report_roots: Vec<std::path::PathBuf>,
 
     // ── F5 — Forward paper-trade budget context ──────────────────────────
     /// The budget the forward paper run is trading against (F5).
@@ -1473,6 +1478,7 @@ impl std::fmt::Debug for Cockpit {
             .field("toast_next_id", &self.toast_next_id)
             .field("activity_tape", &"<ActivityTape>")
             .field("equity_cache", &"<EquityCache>")
+            .field("lab_report_roots", &self.lab_report_roots)
             .field("settings_active_tab", &self.settings_active_tab)
             .field("forward_budget", &self.forward_budget)
             .field("forward_fx", &self.forward_fx)
@@ -1552,6 +1558,7 @@ impl Default for Cockpit {
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
+            lab_report_roots: crate::lab::equity_loader::default_report_roots(),
             forward_budget: None,
             forward_fx: None,
             advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
@@ -1706,6 +1713,7 @@ impl Cockpit {
             toast_next_id: Cell::new(0),
             activity_tape: ActivityTape::new(),
             equity_cache: std::cell::RefCell::new(crate::lab::equity_loader::EquityCache::new()),
+            lab_report_roots: crate::lab::equity_loader::default_report_roots(),
             forward_budget: None,
             forward_fx: None,
             advisor_eur_usd_rate: DEFAULT_EUR_USD_RATE,
@@ -3518,6 +3526,11 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
             model.lab_run_inflight = false;
             // R9.3 — clear progress on run completion.
             model.lab_state.run_progress = None;
+            // bug-log #208: drop the WHOLE equity cache, hits and misses, on
+            // every completed run. Ok persisted a report (and may have purged
+            // old ones); Err can follow a written `.md` (its CSV write failed).
+            // One new report can satisfy OTHER tuples' misses (#212).
+            model.equity_cache.get_mut().clear();
             // Bug #54 — track success/failure so Run button can render
             // RunState::Failed and the screen can show the error message
             // instead of silently flipping back to "Run".
@@ -3563,9 +3576,7 @@ fn update_state_machine(model: &mut Cockpit, msg: Message) {
                 crate::lab::cache_state::ALL_YAHOO_TICKERS,
                 std::time::SystemTime::now(),
             ));
-            // T-D-N10: The equity cache invalidation + repaint is triggered by
-            // the binary-side `update` wrapper after pure-state `update` returns.
-            // Pure state only clears the inflight flag here.
+            // T-D-N10: the equity cache is cleared above, in pure state (bug-log #208).
             // NOTE: RunReportMirror rotation (last→prev, set last=new) is done
             // by the binary-side update wrapper which has access to the full
             // RunSummary + equity series. The pure update cannot build a
@@ -6919,6 +6930,180 @@ mod tests {
             c.compare_screen_state.last_indexed_at.is_none(),
             "a successful Lab run must clear the Compare index so the freshly-persisted \
              report is picked up on the next Compare visit"
+        );
+    }
+
+    // ── bug-log #208: every completed Lab run clears the equity cache ───────
+
+    /// The first equity value of the committed report (`T_hit`, under the
+    /// temp `evidence/` root) and of the newer `lab-runs/` reports written
+    /// after the lookups were cached. `lab_runs_report_at`'s first sample is
+    /// its `level`, so the value a lookup returns names the report it read.
+    const LEVEL_COMMITTED_208: i64 = 100_000;
+    const LEVEL_NEW_208: i64 = 200_000;
+
+    /// The `compare_cold_boot_index_gating` summary: a completed run that
+    /// carries no data (the pure update cannot build a run mirror).
+    fn empty_run_summary_208() -> crate::lab::runner::RunSummary {
+        crate::lab::runner::RunSummary {
+            strategy_id: SmolStr::new("v1.momentum"),
+            symbol: SmolStr::new("XRPUSDT"),
+            report_path: None,
+            equity_series: Vec::new(),
+            fills: Vec::new(),
+            kpis: backtest::BacktestKpis::default(),
+            bars: std::sync::Arc::new(Vec::new()),
+            position_curve: Vec::new(),
+        }
+    }
+
+    fn tuple_208(strategy: &str) -> crate::lab::equity_loader::LabTuple {
+        crate::lab::equity_loader::LabTuple {
+            strategy: SmolStr::new(strategy),
+            symbol: SmolStr::new("BTCUSDT"),
+            range: crate::lab::state::DateRange::Preset(crate::lab::state::Preset::H1_2024),
+            source: crate::lab::state::LabDataSource::Synthetic,
+        }
+    }
+
+    fn write_report_208(reports_dir: &std::path::Path, scenario: &str, level: i64) {
+        std::fs::create_dir_all(reports_dir).unwrap();
+        std::fs::write(
+            reports_dir.join(format!("backtest-20260601-120000-{scenario}.md")),
+            crate::test_support::lab_runs_report_at(scenario, "BTCUSDT", level),
+        )
+        .unwrap();
+    }
+
+    /// The Lab's overlay lookup for `tuple`, as `lab::view` makes it: the
+    /// cockpit's own cache over the cockpit's own roots.
+    fn overlay_208(
+        c: &mut Cockpit,
+        tuple: &crate::lab::equity_loader::LabTuple,
+    ) -> Option<crate::lab::equity_loader::LabEquitySeries> {
+        crate::lab::equity_loader::route_equity_overlay(
+            &c.lab_state,
+            c.equity_cache.get_mut(),
+            tuple,
+            &c.lab_report_roots,
+        )
+    }
+
+    fn first_level_208(
+        series: Option<&crate::lab::equity_loader::LabEquitySeries>,
+    ) -> Option<Decimal> {
+        series.and_then(|s| s.samples.first()).map(|(_, v)| *v)
+    }
+
+    /// The (b)/(c) scene, then `outcome` through `update`. `T_hit` = v0.sma
+    /// resolves the committed report under `evidence/` (container depth 1);
+    /// `T_miss` = v1.momentum has no slug dir in either root, so it misses.
+    /// Then `lab-runs/` gains a newer report for each. An unrelated message
+    /// (the control) leaves both cached outcomes in place; `outcome` drops
+    /// both, so `T_hit` reads the newer report and `T_miss` resolves.
+    fn completed_run_clears_equity_cache_208(outcome: crate::lab::runner::LabRunResult) {
+        let tmp = tempfile::tempdir().unwrap();
+        let lab_runs = tmp.path().join("lab-runs");
+        let evidence = tmp.path().join("evidence");
+        write_report_208(
+            &evidence.join("v1/v0-paper-sma/reports"),
+            "btc-2024-h1-sma-cross",
+            LEVEL_COMMITTED_208,
+        );
+        let mut c = Cockpit::new();
+        c.lab_report_roots = vec![lab_runs.clone(), evidence];
+        let (t_hit, t_miss) = (tuple_208("v0.sma"), tuple_208("v1.momentum"));
+        let committed = Some(Decimal::from(LEVEL_COMMITTED_208));
+        let newer = Some(Decimal::from(LEVEL_NEW_208));
+
+        assert_eq!(
+            first_level_208(overlay_208(&mut c, &t_hit).as_ref()),
+            committed
+        );
+        assert!(
+            overlay_208(&mut c, &t_miss).is_none(),
+            "T_miss resolves nothing yet"
+        );
+
+        write_report_208(
+            &lab_runs.join("v0-paper-sma/reports"),
+            "btc-2024-h1-sma-cross",
+            LEVEL_NEW_208,
+        );
+        write_report_208(
+            &lab_runs.join("v1-cross-sectional-momentum/reports"),
+            "top10-2024-h1-momentum",
+            LEVEL_NEW_208,
+        );
+        // Control: a fresh cache over the same roots sees both new reports.
+        let mut fresh = crate::lab::equity_loader::EquityCache::new();
+        for t in [&t_hit, &t_miss] {
+            let got = fresh.get_or_load_roots(t, &c.lab_report_roots).ok();
+            assert_eq!(first_level_208(got.as_deref()), newer, "control: {t:?}");
+        }
+
+        update(&mut c, Message::LabRunProgressDone);
+        assert_eq!(
+            first_level_208(overlay_208(&mut c, &t_hit).as_ref()),
+            committed,
+            "before a run completes, T_hit keeps its cached hit"
+        );
+        assert!(
+            overlay_208(&mut c, &t_miss).is_none(),
+            "before a run completes, T_miss keeps its cached miss"
+        );
+
+        // The Lab shows a THIRD tuple (neither T_hit nor T_miss) when the run
+        // completes: a clear that dropped only the Lab's own tuple would leave
+        // both outcomes cached, and one new report can satisfy other tuples'
+        // misses (#212).
+        c.lab_state.strategy = Some(StrategyId::new("v1.momentum"));
+        c.lab_state.pair = Some((Venue::Binance, Symbol::new("ETHUSDT")));
+        update(&mut c, Message::LabRunCompleted(outcome));
+        assert_eq!(
+            first_level_208(overlay_208(&mut c, &t_hit).as_ref()),
+            newer,
+            "a completed run clears T_hit's hit: the newer lab-runs/ report wins"
+        );
+        assert_eq!(
+            first_level_208(overlay_208(&mut c, &t_miss).as_ref()),
+            newer,
+            "a completed run clears T_miss's miss: the new report resolves"
+        );
+    }
+
+    /// bug-log #208 (b) — `LabRunCompleted(Ok)` clears hits and misses.
+    #[test]
+    fn lab_run_completed_ok_clears_equity_cache_hits_and_misses() {
+        completed_run_clears_equity_cache_208(Ok(empty_run_summary_208()));
+    }
+
+    /// bug-log #208 (c) — `LabRunCompleted(Err)` clears them too: the engine
+    /// writes the `.md` before its companion CSV, so a run that failed on the
+    /// CSV write can leave a readable report behind.
+    #[test]
+    fn lab_run_completed_err_clears_equity_cache_too() {
+        completed_run_clears_equity_cache_208(Err(SmolStr::new(
+            "report write error: write equity csv: No space left on device (os error 28)",
+        )));
+    }
+
+    /// bug-log #208 — the root seam: every constructor resolves the Lab's
+    /// roots to the production union (`lab::view` reads them from here).
+    #[test]
+    fn cockpit_lab_report_roots_are_the_production_union() {
+        let union = crate::lab::equity_loader::default_report_roots();
+        assert_eq!(Cockpit::default().lab_report_roots, union);
+        assert_eq!(Cockpit::new().lab_report_roots, union);
+        assert_eq!(
+            Cockpit::ready(Vec::new(), Vec::new(), pnl_snap()).lab_report_roots,
+            union
+        );
+        // `boot` is the constructor both bins call.
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(
+            Cockpit::boot(Some(&tmp.path().join("lab_state.json"))).lab_report_roots,
+            union
         );
     }
 }

@@ -19,9 +19,14 @@
 //!   (R7.3). `Fidelity::StartEndOnly` is set in that case; its ordinal
 //!   timestamps make it draw only on the chart's bar-less path (bug-log #207).
 //!
-//! **No I/O on the iced thread during a paint.** `EquityCache::get_or_load`
-//! blocks only on the *first* access; all subsequent accesses return the
-//! cached `Arc<LabEquitySeries>`.
+//! **I/O on the iced thread: once per tuple per cache generation.** A tuple's
+//! first lookup walks the roots synchronously from `lab::view`; its outcome
+//! (series OR error) is cached, so later views of it touch no file (the roots
+//! are resolved once, into `Cockpit::lab_report_roots`). Every
+//! `Message::LabRunCompleted` clears the cache. A report written by anything
+//! else while the app runs is seen by a tuple's first lookup of the current
+//! generation; a tuple already looked up since the last clear does not see it
+//! until the next completed run or a restart (bug-log #208).
 //!
 //! **Zero string literals in this module** — all user-visible copy lives in
 //! `crate::strings`.
@@ -137,7 +142,7 @@ impl LabTuple {
 }
 
 /// Errors from the equity loader.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum EquityLoadError {
     /// No `backtest-*.md` file for the strategy's slug under the root, at any
     /// container depth ≤ `reports::layout::MAX_CONTAINER_DEPTH`. Despite the
@@ -164,12 +169,13 @@ pub enum EquityLoadError {
 
 /// Per-session in-memory cache for loaded equity series (Design § 4.3).
 ///
-/// All reads are synchronous. The cache grows monotonically; individual
-/// tuples are invalidated via [`EquityCache::invalidate`] (called on
-/// `Message::LabRunCompleted(Ok(...))`).
+/// Caches each tuple's outcome: a hit (the series) or a miss (the error), so
+/// a tuple that resolves nothing costs one walk, not one per view. Emptied
+/// whole by [`EquityCache::clear`], which `state::update` calls on every
+/// `Message::LabRunCompleted` (bug-log #208).
 #[derive(Debug, Default, Clone)]
 pub struct EquityCache {
-    by_tuple: HashMap<LabTuple, Arc<LabEquitySeries>>,
+    by_tuple: HashMap<LabTuple, Result<Arc<LabEquitySeries>, EquityLoadError>>,
 }
 
 impl EquityCache {
@@ -179,8 +185,9 @@ impl EquityCache {
         Self::default()
     }
 
-    /// Return a cached `Arc<LabEquitySeries>` if present, otherwise load it
-    /// synchronously from a SINGLE disk root, cache it, and return it.
+    /// Return the tuple's cached outcome if present, otherwise load it
+    /// synchronously from a SINGLE disk root, cache the outcome (series or
+    /// error), and return it.
     ///
     /// `report_root` should point to one report root (e.g. the repository's
     /// `evidence/` directory, or a `lab-runs/` tempdir). The loader searches
@@ -196,19 +203,16 @@ impl EquityCache {
     /// # Errors
     ///
     /// Returns `EquityLoadError` when no matching report is found or the
-    /// report body cannot be parsed (see `load_equity`).
+    /// report body cannot be parsed (see `load_equity`). A cached miss
+    /// returns a clone of that error without touching the root.
     pub fn get_or_load(
         &mut self,
         tuple: &LabTuple,
         report_root: &std::path::Path,
     ) -> Result<Arc<LabEquitySeries>, EquityLoadError> {
-        if let Some(cached) = self.by_tuple.get(tuple) {
-            return Ok(Arc::clone(cached));
-        }
-        let loaded = load_equity(tuple, report_root)?;
-        let arc = Arc::new(loaded);
-        self.by_tuple.insert(tuple.clone(), Arc::clone(&arc));
-        Ok(arc)
+        let roots = [report_root.to_path_buf()];
+        // One root: the walk's error is that root's, as before.
+        self.get_or_load_roots(tuple, &roots)
     }
 
     /// Two-root union loader (lab-run-save-compare T2 / Q4 / ADR-0055 § D5).
@@ -226,38 +230,42 @@ impl EquityCache {
     ///
     /// Returns the LAST root's `EquityLoadError` when no root yields a report
     /// (the evidence-root error is the most informative for the operator — it
-    /// is the committed tree). Empty `roots` yields a `NoReport` error.
+    /// is the committed tree). Empty `roots` yields a `NoReport` error. A
+    /// cached miss returns a clone of that error without touching the roots.
     pub fn get_or_load_roots(
         &mut self,
         tuple: &LabTuple,
         roots: &[PathBuf],
     ) -> Result<Arc<LabEquitySeries>, EquityLoadError> {
         if let Some(cached) = self.by_tuple.get(tuple) {
-            return Ok(Arc::clone(cached));
+            return cached.clone();
         }
         let mut last_err: Option<EquityLoadError> = None;
+        let mut found: Option<Arc<LabEquitySeries>> = None;
         for root in roots {
             match load_equity(tuple, root) {
                 Ok(loaded) => {
-                    let arc = Arc::new(loaded);
-                    self.by_tuple.insert(tuple.clone(), Arc::clone(&arc));
-                    return Ok(arc);
+                    found = Some(Arc::new(loaded));
+                    break;
                 }
                 Err(e) => last_err = Some(e),
             }
         }
-        Err(last_err.unwrap_or_else(|| EquityLoadError::NoReport {
-            strategy: tuple.strategy.clone(),
-            symbol: tuple.symbol.clone(),
-            range: tuple.range.clone(),
-            data_source: tuple.source,
-        }))
+        let resolved = found.ok_or_else(|| {
+            last_err.unwrap_or_else(|| EquityLoadError::NoReport {
+                strategy: tuple.strategy.clone(),
+                symbol: tuple.symbol.clone(),
+                range: tuple.range.clone(),
+                data_source: tuple.source,
+            })
+        });
+        self.by_tuple.insert(tuple.clone(), resolved.clone());
+        resolved
     }
 
-    /// Invalidate a cached series so the next `get_or_load` re-reads from
-    /// disk. Called after a fresh backtest run completes (M2.5 / T-D-14).
-    pub fn invalidate(&mut self, tuple: &LabTuple) {
-        self.by_tuple.remove(tuple);
+    /// Drop every cached outcome, hits and misses (bug-log #208).
+    pub fn clear(&mut self) {
+        self.by_tuple.clear();
     }
 }
 
@@ -918,8 +926,8 @@ pub fn default_report_roots() -> Vec<PathBuf> {
 ///    equity overlay (graceful degradation).
 ///
 /// `roots` is searched in order; pass `default_report_roots()` in production.
-/// `cache` is mutated only on cache misses (existing Phase A behaviour
-/// unchanged).
+/// `cache` is mutated only for a tuple not seen since the last clear; its
+/// outcome, hit or miss, is then cached.
 #[must_use]
 pub fn route_equity_overlay(
     lab_state: &crate::lab::state::LabState,
@@ -1165,9 +1173,10 @@ data_source: synthetic
         );
     }
 
-    /// T-D-10 — cache invalidate causes re-read.
+    /// T-D-10 — clearing the cache causes a re-read (bug-log #208: the
+    /// per-tuple `invalidate` it replaced had no production caller).
     #[test]
-    fn cache_invalidate_re_reads() {
+    fn cache_clear_re_reads() {
         let tmp = tempfile::tempdir().unwrap();
         let spec = setup_fixture_dir(&tmp);
 
@@ -1180,12 +1189,12 @@ data_source: synthetic
 
         let mut cache = EquityCache::new();
         let first = cache.get_or_load(&tuple, &spec).unwrap();
-        cache.invalidate(&tuple);
+        cache.clear();
         let after = cache.get_or_load(&tuple, &spec).unwrap();
-        // Contents are the same (same file); Arc pointers differ after invalidation.
+        // Contents are the same (same file); Arc pointers differ after the clear.
         assert!(
             !Arc::ptr_eq(&first, &after),
-            "expected new Arc after invalidation"
+            "expected new Arc after the clear"
         );
     }
 
@@ -1450,6 +1459,129 @@ data_source: synthetic
             .get_or_load_roots(&tuple, &roots)
             .expect("lab-runs report must resolve via the union");
         assert_eq!(series.samples.len(), 4);
+    }
+
+    /// bug-log #208 (a) — a cached miss is not re-read until the cache is
+    /// cleared. Both roots start absent, so the first lookup misses
+    /// (`ReportDirNotFound`). A matching report written afterwards under
+    /// `<root>/<rel>` is NOT found by the same cache: the miss is cached and
+    /// returned without touching EITHER root. Control: a fresh cache finds the
+    /// report, so the file is there and matches; after the clear the original
+    /// cache finds it too.
+    fn assert_cached_miss_is_not_re_read_until_clear(root: &str, rel: &str) {
+        const POINTS: usize = 3;
+        let tmp = tempfile::tempdir().unwrap();
+        let lab_runs = tmp.path().join("lab-runs");
+        let roots = [lab_runs.clone(), tmp.path().join("evidence")];
+        let write_root = tmp.path().join(root);
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+
+        let mut cache = EquityCache::new();
+        let first = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect_err("both roots are absent: the first lookup misses");
+        assert!(
+            matches!(first, EquityLoadError::ReportDirNotFound(_)),
+            "an absent root is ReportDirNotFound, got {first:?}"
+        );
+
+        write_at(
+            &write_root,
+            rel,
+            "backtest-20260601-120000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(Some("synthetic"), POINTS),
+        );
+
+        let second = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect_err("the cached miss must stay a miss: the roots are not re-read");
+        assert_eq!(
+            second.to_string(),
+            first.to_string(),
+            "a cached miss returns the walk's own error"
+        );
+
+        let fresh = EquityCache::new()
+            .get_or_load_roots(&tuple, &roots)
+            .expect("control: a fresh cache resolves the written report");
+        assert_eq!(fresh.samples.len(), POINTS);
+
+        cache.clear();
+        let after = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect("after the clear the written report resolves");
+        assert_eq!(after.samples.len(), POINTS);
+    }
+
+    /// bug-log #208 (a), the `lab-runs/` root (container depth 0).
+    #[test]
+    fn cached_miss_is_not_re_read_until_clear() {
+        assert_cached_miss_is_not_re_read_until_clear("lab-runs", "v0-paper-sma/reports");
+    }
+
+    /// bug-log #208 (a), the `evidence/` root at container depth 1 — the root
+    /// `#205` widened the walk to. A cache that re-walked only the last root
+    /// on a cached miss would find this report.
+    #[test]
+    fn cached_miss_is_not_re_read_until_clear_under_evidence() {
+        assert_cached_miss_is_not_re_read_until_clear("evidence", "v1/v0-paper-sma/reports");
+    }
+
+    /// bug-log #208 (d) — a cached HIT is stale until the clear, then the
+    /// newer `lab-runs/` report wins (lab-runs is searched first). A committed
+    /// report of `COMMITTED` points under `evidence/` (container depth 1) is
+    /// cached as the tuple's hit; a `lab-runs/` report of `NEWER` points
+    /// written afterwards is not seen by the same cache (the same `Arc` comes
+    /// back). Control: a fresh cache resolves the `lab-runs/` report. After
+    /// `clear()` the original cache does too.
+    #[test]
+    fn clear_replaces_a_stale_committed_hit_with_the_newer_lab_runs_report() {
+        const COMMITTED: usize = 2;
+        const NEWER: usize = 5;
+        let tmp = tempfile::tempdir().unwrap();
+        let lab_runs = tmp.path().join("lab-runs");
+        let evidence = tmp.path().join("evidence");
+        let roots = [lab_runs.clone(), evidence.clone()];
+        let tuple = sma_tuple(LabDataSource::Synthetic);
+        write_at(
+            &evidence,
+            "v1/v0-paper-sma/reports",
+            "backtest-20260101-000000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(Some("synthetic"), COMMITTED),
+        );
+
+        let mut cache = EquityCache::new();
+        let first = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect("the committed report resolves");
+        assert_eq!(first.samples.len(), COMMITTED);
+
+        write_at(
+            &lab_runs,
+            "v0-paper-sma/reports",
+            "backtest-20260601-120000-btc-2024-h1-sma-cross.md",
+            &sma_2024_h1_report(Some("synthetic"), NEWER),
+        );
+
+        let second = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect("the cached hit is returned");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "before the clear the cached hit is returned as is"
+        );
+        assert_eq!(second.samples.len(), COMMITTED);
+
+        let fresh = EquityCache::new()
+            .get_or_load_roots(&tuple, &roots)
+            .expect("control: a fresh cache resolves the lab-runs report");
+        assert_eq!(fresh.samples.len(), NEWER);
+
+        cache.clear();
+        let after = cache
+            .get_or_load_roots(&tuple, &roots)
+            .expect("after the clear the lab-runs report resolves");
+        assert_eq!(after.samples.len(), NEWER);
     }
 
     // ── route_equity_overlay tests (T-D-N11) ────────────────────────────────

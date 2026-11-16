@@ -1224,7 +1224,7 @@ pub async fn run_binance_preload_arm(
 ///
 /// In default (non-`live`) builds the tokio runtime is not available; the
 /// function immediately resolves with a placeholder `RunSummary` that marks
-/// the run as complete so the `EquityCache` invalidation path fires and the
+/// the run as complete so `state::update` clears the `EquityCache` and the
 /// equity loader re-reads from disk (useful for the fixture cockpit).
 ///
 /// In `live` builds (`cfg(feature = "live")`), the function expects an

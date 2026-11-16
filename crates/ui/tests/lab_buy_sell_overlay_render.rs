@@ -25,6 +25,68 @@
 //! buy/sell volume bar (histogram band) and asserts they align within a tight
 //! tolerance — a RED-before / GREEN-after guard. NEGATIVE control: a long-only
 //! (buys-only) seed paints buy bars but no sell bars in the histogram band.
+//!
+//! ## bug-log #208 — a cached miss stays a miss until a Lab run completes
+//!
+//! `lab::equity_loader::EquityCache` caches each tuple's outcome, a hit (the
+//! series) or a miss (the error), so a tuple that resolves nothing costs one
+//! walk of the report roots, not one per `view`. `state::update` empties the
+//! whole cache on every `Message::LabRunCompleted`, Ok and Err (the engine
+//! writes the `.md` before its companion CSV). `lab::view` reads the roots
+//! from `Cockpit::lab_report_roots`, resolved once at construction. Tests:
+//!
+//! - **(a)** `lab::equity_loader::tests::cached_miss_is_not_re_read_until_clear`
+//!   — after a miss, a matching report is written: the same cache returns the
+//!   same error, a fresh cache resolves the report (the control), and after
+//!   `clear()` the original cache resolves it. RED at `141f9bd7`, before the
+//!   fix (the second lookup resolved the report).
+//! - **(d)** `lab::equity_loader::tests::clear_replaces_a_stale_committed_hit_with_the_newer_lab_runs_report`
+//!   — a cached committed hit (2 points) is returned as is (the same `Arc`)
+//!   after a `lab-runs/` report (5 points) is written; after `clear()` the
+//!   `lab-runs/` report wins.
+//! - **(b)** `state::tests::lab_run_completed_ok_clears_equity_cache_hits_and_misses`
+//!   and **(c)** `state::tests::lab_run_completed_err_clears_equity_cache_too`
+//!   — through `state::update`: a committed hit (first equity 100,000) and a
+//!   miss both survive `LabRunProgressDone` (the control) after newer
+//!   `lab-runs/` reports (200,000) are written; `LabRunCompleted(Ok)` (b) or
+//!   `LabRunCompleted(Err)` (c) drops both.
+//! - **seam** `state::tests::cockpit_lab_report_roots_are_the_production_union`
+//!   — `Cockpit::default()`, `new()` and `ready(…)` hold
+//!   `default_report_roots()`.
+//! - **LR-208** [`lab_cached_miss_hides_a_new_report_until_a_lab_run_completes_then_draws_it`]
+//!   — the full Lab screen: F0 (the miss, seeded through
+//!   `ui::screens::lab::view`) and F1 (after an in-window report is written)
+//!   are byte-identical; after `ui::state::update(LabRunCompleted(Ok))`, F2
+//!   draws the report and the plot's right edge moves left by the derived
+//!   `EQUITY_GUTTER_WIDENING_PX` (40 px) within `[34, 44]`. It prints `#208
+//!   pixel margin …`. PNGs (with `UI_DUMP_PNG`) `/tmp/lab_208_F0.png`,
+//!   `/tmp/lab_208_F1.png`, `/tmp/lab_208_F2.png`.
+//!
+//! ### T-T4 probe table (bug-log #208)
+//!
+//! The protocol of the #205 and #207 tables in `live_equity_render.rs`; paths
+//! under `crates/ui/src/`; each OLD occurs exactly once in its file. "lib" =
+//! `cargo test -p ui --lib` (691 tests when Q1–Q6 were measured; 692 since
+//! `cached_miss_is_not_re_read_until_clear_under_evidence`); "pixel" = this
+//! file (5, then 6 with LR-208e) and `live_equity_render.rs` (23). "measured"
+//! = applied and run on 2026-11-16 (lib and both pixel files); "REASONED" =
+//! derived from the code. (a-ev) = `cached_miss_is_not_re_read_until_clear_under_evidence`;
+//! LR-208e = `lab_cached_miss_under_evidence_hides_a_new_report_until_a_lab_run_completes`.
+//! Rows Q1–Q6 were measured before (a-ev) and LR-208e existed; their cells for
+//! those two are REASONED until the orchestrator's gate measures them.
+//!
+//! | Probe | File / symbol | OLD → NEW | RED | GREEN | Measured |
+//! |---|---|---|---|---|---|
+//! | Q1 no negative cache | `lab/equity_loader.rs` `EquityCache::get_or_load_roots` | `        self.by_tuple.insert(tuple.clone(), resolved.clone());` → `        if resolved.is_ok() { self.by_tuple.insert(tuple.clone(), resolved.clone()); }` | lib: (a) (its second lookup resolves the report), (b) and (c) (before the run completes, the miss resolves); pixel: LR-208 (F0 vs F1: 19,025 px differ; then shift 0); (a-ev) and LR-208e (REASONED) | lib 688 of 691, among them (d), `cache_hit_returns_same_arc`, `cache_clear_re_reads`, the `route_overlay_*` tests and the seam test; pixel: the other 4 of 5 here (LR-207d among them), 23 of 23 in `live_equity_render.rs` | measured |
+//! | Q2 clear unwired | `state.rs` `update`, the `Message::LabRunCompleted` arm | `            model.equity_cache.get_mut().clear();` → `            let _ = &model.equity_cache;` | lib: (b), (c) (after the run, the hit still reads 100,000); pixel: LR-208 (F0 vs F1 0 px; right-edge shift 0); LR-208e (REASONED) | lib 689 of 691, among them (a), (d) and `compare_cold_boot_index_gating`; pixel: the other 4 of 5 here, 23 of 23 in `live_equity_render.rs` | measured |
+//! | Q3 clear keeps misses | `lab/equity_loader.rs` `EquityCache::clear` | `        self.by_tuple.clear();` → `        self.by_tuple.retain(\|_, c\| c.is_err());` | (a); (b) and (c) at the miss after the run; LR-208 (shift 0); (a-ev), LR-208e (REASONED) | (d), `cache_clear_re_reads` | measured by the falsifier (lib 688 of 691, this file 4 of 5, 23 of 23) |
+//! | Q4 clear keeps hits | same | `        self.by_tuple.clear();` → `        self.by_tuple.retain(\|_, c\| c.is_ok());` | (d), `cache_clear_re_reads`; (b) and (c) at the hit after the run | (a), (a-ev), LR-208, LR-208e (REASONED) | measured by the falsifier (lib 687 of 691, this file 5 of 5, 23 of 23) |
+//! | Q5 Ok-only clear | `state.rs` `update`, the `Message::LabRunCompleted` arm | `            model.equity_cache.get_mut().clear();` → `            if outcome.is_ok() { model.equity_cache.get_mut().clear(); }` | (c) only | (b), LR-208, LR-208e, the rest of lib | measured by the falsifier (lib 690 of 691, this file 5 of 5, 23 of 23) |
+//! | Q6 root seam bypassed | `screens/lab.rs` `view` | `        let roots = &model.lab_report_roots;` → `        let roots = &crate::lab::equity_loader::default_report_roots();` | LR-208, LR-208e (REASONED) (the real roots hold no in-window report for its tuple: F2 draws what F1 drew, shift 0) | every lib test ((b) and (c) read `Cockpit::lab_report_roots` directly), LR-207d (its pre-warmed cache is keyed by tuple, not root), the rest of both pixel files | measured by the falsifier (lib 691 of 691, this file 4 of 5, 23 of 23) |
+//! | Q7 a cached miss re-walks the last root | `lab/equity_loader.rs` `EquityCache::get_or_load_roots` | `        if let Some(cached) = self.by_tuple.get(tuple) {` → `        if let Some(cached) = self.by_tuple.get(tuple).filter(\|c\| c.is_ok() \|\| roots.last().is_none_or(\|l\| load_equity(tuple, l).is_err())) {` | (a-ev) (its second lookup resolves the report under `evidence/`); LR-208e (F0 vs F1 differ) | (a), (b), (c), (d), LR-208 (their late reports sit under `lab-runs/`) | REASONED (the falsifier's multi-line form survived before (a-ev) and LR-208e existed) |
+//! | Q8 clear only the Lab's own tuple | `lab/equity_loader.rs` `EquityCache::clear` AND `state.rs` the `Message::LabRunCompleted` arm (two edits) | `    pub fn clear(&mut self) {` → `    pub fn remove(&mut self, t: &LabTuple) { self.by_tuple.remove(t); } pub fn clear(&mut self) {` AND `            model.equity_cache.get_mut().clear();` → `            if let (Some(s), Some((v, sym))) = (&model.lab_state.strategy, &model.lab_state.pair) { model.equity_cache.get_mut().remove(&crate::lab::equity_loader::LabTuple::new(s, *v, sym, model.lab_state.range.clone(), model.lab_state.data_source)); } else { model.equity_cache.get_mut().clear(); }` | (b), (c) (the Lab shows a third tuple when the run completes, so T_hit keeps its stale hit) | (a), (a-ev), (d), LR-208, LR-208e (the run's tuple is the missed tuple) | REASONED (the falsifier's form survived before (b)/(c) set a third tuple) |
+//! | Q9 seam empty in `boot` | `state.rs` `Cockpit::boot` | `            session_log: open_session_log(),` → `            session_log: open_session_log(), lab_report_roots: Vec::new(),` | `cockpit_lab_report_roots_are_the_production_union` (its `boot` half) | every other test | REASONED (survived before the seam test covered `boot`) |
+//! | Q10 view passes only the first root | `screens/lab.rs` `view` | `        let roots = &model.lab_report_roots;` → `        let roots: &[std::path::PathBuf] = model.lab_report_roots.get(..1).unwrap_or(&[]);` | LR-208e (F2 cannot read `evidence/`: shift 0) | every lib test, LR-208 (its report is under `lab-runs/`, the first root), LR-207d | REASONED (survived before LR-208e existed) |
 
 #![cfg(target_os = "macos")]
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::cast_precision_loss)]
@@ -661,3 +723,146 @@ fn lab_start_end_only_overlay_keeps_the_chart_full_width_and_aligned() {
 /// volume-bar centroids are integer column means, and the shifts derived from
 /// the gutter constants are 8.1 to 32.5 px.
 const HISTO_SHIFT_TOL_PX: f32 = 4.0;
+
+// ── bug-log #208 — a cached miss hides a new report until a run completes ──
+
+/// The completed-run summary `ui::state::update` receives: no data (the pure
+/// update builds no run mirror, so `last_run_report` stays `None`, the state
+/// after the mirror is cleared, and the overlay comes from the cache).
+fn empty_run_summary() -> ui::lab::runner::RunSummary {
+    ui::lab::runner::RunSummary {
+        strategy_id: smol_str::SmolStr::new("v1.momentum"),
+        symbol: smol_str::SmolStr::new("BTCUSDT"),
+        report_path: None,
+        equity_series: Vec::new(),
+        fills: Vec::new(),
+        kpis: backtest::BacktestKpis::default(),
+        bars: std::sync::Arc::new(Vec::new()),
+        position_curve: Vec::new(),
+    }
+}
+
+/// How many pixels differ between two same-size RGBA frames.
+fn differing_pixels(a: &[u8], b: &[u8]) -> usize {
+    a.chunks_exact(4)
+        .zip(b.chunks_exact(4))
+        .filter(|(p, q)| p != q)
+        .count()
+}
+
+/// **LR-208 — a cached miss hides a new report until a Lab run completes,
+/// then the report draws (bug-log #208).** The LR-207d Lab scene (v1
+/// momentum on BTCUSDT), its `Cockpit::lab_report_roots` pointed at two
+/// absent temp roots, and NO pre-warm: the miss is seeded on the cockpit
+/// itself through the real `ui::screens::lab::view`, and every render clones
+/// the cockpit, cache included (`program_from_cockpit`).
+///   F0 — the cached miss: no overlay, the chart full width.
+///   F1 — after an in-window report (`write_in_window_root`, LR-207d's
+///        scene B) is written under the temp `lab-runs/`: byte-identical to
+///        F0, the miss is not re-read. A fresh cache over the same roots
+///        resolves the report (the control: the file is there and matches).
+///   F2 — after `ui::state::update(LabRunCompleted(Ok))`: the report draws,
+///        so the chart reserves the equity gutter and the plot's right edge
+///        moves left by the derived `EQUITY_GUTTER_WIDENING_PX` (40 px) within
+///        LR-207d's band `[40 − 6, 40 + 4]`. Only the right edge is compared:
+///        the completed run also refreshes the cache-status badges.
+/// PNGs (with `UI_DUMP_PNG`): `/tmp/lab_208_F0.png`, `/tmp/lab_208_F1.png`,
+/// `/tmp/lab_208_F2.png`.
+#[test]
+fn lab_cached_miss_hides_a_new_report_until_a_lab_run_completes_then_draws_it() {
+    assert_cached_miss_hides_then_draws_208(false, "lab_208", "LR-208");
+}
+
+/// **LR-208e — LR-208 with the report under the temp `evidence/` root at
+/// container depth 1** (`evidence/v1/v1-cross-sectional-momentum/reports/`).
+/// F1 == F0 pins that a cached miss re-walks NO root (not even the last,
+/// which `#205` widened); F2's shift pins that `lab::view` passes the whole
+/// seam (`Cockpit::lab_report_roots`), `evidence/` included. PNGs (with
+/// `UI_DUMP_PNG`): `/tmp/lab_208_evidence_F{0,1,2}.png`.
+#[test]
+fn lab_cached_miss_under_evidence_hides_a_new_report_until_a_lab_run_completes() {
+    assert_cached_miss_hides_then_draws_208(true, "lab_208_evidence", "LR-208e");
+}
+
+fn assert_cached_miss_hides_then_draws_208(under_evidence: bool, png: &str, key: &str) {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let lab_runs = tmp.path().join("lab-runs");
+    let report_root = if under_evidence {
+        tmp.path().join("evidence").join("v1")
+    } else {
+        lab_runs.clone()
+    };
+    let mut cockpit = charts_screen_cockpit();
+    let strategy = StrategyId::new("v1.momentum");
+    let symbol = Symbol::new("BTCUSDT");
+    cockpit.lab_state.strategy = Some(strategy.clone());
+    cockpit.lab_state.pair = Some((Venue::Binance, symbol.clone()));
+    cockpit.lab_report_roots = vec![lab_runs.clone(), tmp.path().join("evidence")];
+    assert!(
+        cockpit.lab_state.last_run_report.is_none(),
+        "precondition: no run mirror, so the overlay comes from the equity cache"
+    );
+    // The tuple exactly as `lab::view` builds it from `lab_state`.
+    let tuple = LabTuple::new(
+        &strategy,
+        Venue::Binance,
+        &symbol,
+        cockpit.lab_state.range.clone(),
+        cockpit.lab_state.data_source,
+    );
+
+    drop(ui::screens::lab::view(&cockpit, ThemeMode::Dark));
+    let (w0, f0) = render(cockpit.clone());
+    dump_png(w0, &f0, &format!("/tmp/{png}_F0.png"));
+
+    write_in_window_root(&report_root);
+    let control = ui::lab::equity_loader::EquityCache::new()
+        .get_or_load_roots(&tuple, &cockpit.lab_report_roots)
+        .expect("control: a fresh cache resolves the written report");
+    let (win_start, win_end) = btc_bar_window_ms();
+    assert!(
+        control
+            .samples
+            .iter()
+            .all(|(ts, _)| (win_start..=win_end).contains(ts)),
+        "control: every sample of the written report lies in the bar window"
+    );
+    let (w1, f1) = render(cockpit.clone());
+    dump_png(w1, &f1, &format!("/tmp/{png}_F1.png"));
+
+    ui::state::update(
+        &mut cockpit,
+        ui::state::Message::LabRunCompleted(Ok(empty_run_summary())),
+    );
+    let (w2, f2) = render(cockpit.clone());
+    dump_png(w2, &f2, &format!("/tmp/{png}_F2.png"));
+
+    let frame_1 = measure_lab_frame("#208 F1 (cached miss, new report on disk)", w1, &f1);
+    let frame_2 = measure_lab_frame("#208 F2 (after LabRunCompleted)", w2, &f2);
+    let differ_01 = differing_pixels(&f0, &f1);
+    let (edge_1, edge_2) = (frame_1.plot_right, frame_2.plot_right);
+    let shift = i64::from(edge_1) - i64::from(edge_2);
+    let expected = EQUITY_GUTTER_WIDENING_PX.round() as i64;
+    let (lo, hi) = (expected - 6, expected + 4);
+    eprintln!(
+        "#208 pixel margin {key}: F0 vs F1 {differ_01} px differ (threshold == 0); right edge \
+         F1 {edge_1} - F2 {edge_2} = {shift} px (expected {expected}, band [{lo}, {hi}])"
+    );
+
+    assert_eq!(
+        [w0, w1, w2],
+        [VIEW_W; 3],
+        "the three frames must have the requested width"
+    );
+    assert_eq!(
+        differ_01, 0,
+        "#208: while the miss is cached, a new report on disk must not change the frame \
+         (F0 vs F1: {differ_01} px differ)"
+    );
+    assert!(
+        (lo..=hi).contains(&shift),
+        "#208: after LabRunCompleted the new report must draw and reserve the equity gutter: \
+         right edge F1 {edge_1}, F2 {edge_2}, shift {shift} px, expected {expected} within \
+         [{lo}, {hi}]"
+    );
+}

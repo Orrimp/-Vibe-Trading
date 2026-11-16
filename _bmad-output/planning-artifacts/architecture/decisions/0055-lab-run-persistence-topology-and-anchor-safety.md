@@ -272,9 +272,12 @@ either container depth. On such a tie container depth 0 wins:
 the in-memory mirror of the last run wins while its tuple is on screen. The cold path:
 
 1. **Across roots, the first root with a match wins.** `get_or_load_roots` tries
-   `default_report_roots()` = `[lab-runs/, evidence/]` in order and returns at the first root whose
-   `load_equity` returns `Ok` (`for root in roots {` … `return Ok(arc);`), so `lab-runs/` wins
-   every tuple collision.
+   `default_report_roots()` = `[lab-runs/, evidence/]` in order (resolved once, into
+   `Cockpit::lab_report_roots`, since bug-log `#208`) and stops at the first root whose
+   `load_equity` returns `Ok` (`for root in roots {` … `found = Some(Arc::new(loaded));` …
+   `break;`), so `lab-runs/` wins every tuple collision. The outcome, a hit or a miss, is then
+   cached per tuple until the next `Message::LabRunCompleted` clears the whole cache (bug-log
+   `#208`); that is the cache's lifetime, not a precedence rule.
 2. **Within a root, the tier, then the first strictly-best score in D8 order.** A report tagged
    with the tuple's data source beats any untagged legacy one (`best_tagged.or(best_untagged)`).
    Inside a tier the FIRST report with the best `range_score` wins
@@ -348,6 +351,14 @@ read it; `bash scripts/verify_anchors.sh` prints `ANCHORS PASS  (119 / 119)`, an
 
 ## Changelog
 
+- 2026-11-16 (orchestrator, bug-log `#208` fix): **the 2026-11-15 amendment's precedence item 1
+  quotes the root loop as it now reads.** The Lab's `EquityCache` caches each tuple's outcome, a
+  miss as well as a hit, and `get_or_load_roots` leaves its root loop with `break;`, so the quoted
+  `return Ok(arc);` is gone; `lab::view` reads the roots from `Cockpit::lab_report_roots`,
+  resolved once from `default_report_roots()`. `state::update` clears the whole cache on every
+  `Message::LabRunCompleted`, Ok and Err, so a tuple already looked up sees a report written
+  outside the app at the next completed Lab run or a restart (a tuple's first lookup sees it). Cache lifetime is not a decision of this ADR: D5's root order
+  and the precedence are unchanged, and no ADR is added. Anchor-neutral, 119/119.
 - 2026-11-16 (orchestrator, bug-log `#207` fix): **the 2026-11-15 amendment's "What the Lab draws
   from committed evidence" now states the fixed gutter rule.** The chart reserves its right equity
   gutter only when an overlay draws (`widgets::chart::equity_axis_shown`), so a committed

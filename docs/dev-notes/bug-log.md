@@ -10673,7 +10673,7 @@ REASONED: the per-view repetition, its rate, and the stale-hit and negative-cach
 
 **The code.**
 - **ADR-0055 § D5** says: "Collision rule: when a `lab-runs/` report and a `spec/` report resolve to the **same `(strategy, symbol, range)` tuple**, the existing most-recent-wins tiebreaker (`generated:` frontmatter) decides the Lab hot-path pick; on an *identical filename* across both roots, **`lab-runs/` wins** (it is searched first)."
-- **Across roots**, `EquityCache::get_or_load_roots` returns at the first root whose `load_equity` matches (`for root in roots {` … `Ok(loaded) => {` … `return Ok(arc);`). The roots are `[lab-runs/, evidence/]`, so `lab-runs/` wins every collision whatever `generated:` says.
+- **Across roots**, `EquityCache::get_or_load_roots` stops at the first root whose `load_equity` matches (`for root in roots {` … `Ok(loaded) => {` … `found = Some(Arc::new(loaded));` … `break;`), and caches that outcome for the tuple until the next completed Lab run clears the cache (`#208`). The roots are `[lab-runs/, evidence/]`, so `lab-runs/` wins every collision whatever `generated:` says.
   - `generated:` is never parsed: `parse_report_meta` reads `scenario:` and `data_source:`.
   - `route_overlay_two_root_union_lab_runs_wins_collision` pins this behaviour.
 - **Within a root**, `discover_reports` ends with `paths.sort();`, and `load_equity` keeps the first best (`let is_better = slot.as_ref().is_none_or(|(s, _)| range_score > *s);`). Names are `backtest-<stamp>-<scenario>.md`, so on an equal score the OLDEST stamp wins.
