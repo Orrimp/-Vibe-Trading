@@ -2,7 +2,7 @@
 slug: bug-log
 status: living
 owner: orchestrator
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # Bug log
@@ -10557,7 +10557,7 @@ in the new file's module doc, by symbol and quoted line.
    - D2 (`discover_reports_covers_every_git_listed_report`) asserts that every git-listed report is discovered, D3 that the companion flags match the git-listed companions, and R6 (`reports_boot_autoselects_newest_git_listed_companion_and_paints_it`) that boot auto-selects the newest git-listed companion and paints it.
    - Hermetic container-depth pairs on both readers: Reports `reports_container_depth_hermetic_pair_depth_1_paints` / `reports_container_depth_hermetic_pair_depth_2_is_empty`; Lab `lab_curve_hydrated_from_container_depth_1_evidence_report_renders` / `lab_curve_from_container_depth_2_evidence_report_does_not_resolve`.
    - The D8 tie rule, two-sided: E4b `equal_score_tie_across_container_depths_goes_to_container_depth_0` (in one root the container name sorts before the slug name, in the other after it). The Lab's pick between two equal-score reports inside ONE dir is deliberately left unpinned; it is `#209`'s to change.
-   - LR3 `lab_207_characterization_committed_start_end_only_report_draws_no_overlay` characterises `#207`, and must flip when `#207` is fixed.
+   - LR3 `lab_207_characterization_committed_start_end_only_report_draws_no_overlay` characterised `#207`: the committed report resolves and draws no curve, and the frame still differs from the bars-only frame (the empty gutter). The `#207` fix replaced it under the same key with `lab_committed_start_end_only_report_over_bars_is_pixel_identical_to_bars_only`, which asserts the same resolution and then that the frame is byte-identical to the bars-only frame.
 5. ADR-0055 gets a dated amendment (D8, the layout contract; D1's premise corrected for these two readers), with the decisions README `updated:` bump. No story, trace row or CHANGELOG line (the `#196` precedent).
 6. **Not in this fix:** Compare's walk (`#206`), the Lab's precedence (`#209`), the backtest CLI's output dir (`#210`), the per-view re-read on a miss (`#208`), and the stale `REPORTS_EMPTY_LIST` copy above.
 

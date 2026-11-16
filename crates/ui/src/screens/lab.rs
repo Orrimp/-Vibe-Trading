@@ -665,7 +665,7 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
             model.lab_state.data_source,
         );
         // lab-run-save-compare T4 / R4 / Q4 — read the two-root union
-        // (`lab-runs/` FIRST, then `spec/`) so a persisted Lab run repaints the
+        // (`lab-runs/` FIRST, then `evidence/`) so a persisted Lab run repaints the
         // curve from disk on the next boot / tuple-select (the cold path), not
         // only from the in-memory `last_run_report` mirror.
         let roots = crate::lab::equity_loader::default_report_roots();
@@ -688,10 +688,27 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         );
         None
     };
+    // lab-buy-sell-overlay-align — the chart reserves a WIDE right gutter for
+    // the equity Y-axis only when its equity axis paints: at least one sample
+    // inside the bar window (`chart::equity_axis_shown`, the gate the chart
+    // itself paints with; `compare` is always empty here). An overlay whose
+    // samples all miss the bars — a committed start/end-only report's ordinal
+    // `0`/`1` timestamps, a persisted run from another period — leaves the
+    // chart full width (bug-log #207). The volume histogram below must mirror
+    // that choice so its plot area stays horizontally aligned with the
+    // chart's — i.e. each per-bar volume bar sits directly beneath its
+    // buy/sell triangle. It asks the helper with exactly what the chart is
+    // given: with no `active` pair the chart gets no bars and no overlay
+    // (below), so no gutter. Captured here BEFORE `bars` and `equity_overlay`
+    // are moved into `chart::view`.
+    let chart_has_equity_axis =
+        active.is_some() && chart::equity_axis_shown(&bars, equity_overlay.as_ref(), &[]);
     // Bug #54 diagnostic — log what the chart actually receives. If the
     // operator reports "no triangles" or "empty chart" we want immediate
     // visibility into bars/markers/overlay counts without a debugger.
-    // Info-level so a default RUST_LOG surfaces it.
+    // Info-level so a default RUST_LOG surfaces it. `equity_overlay_drawn`
+    // separates "an overlay resolved" from "it draws over these bars"
+    // (bug-log #207).
     tracing::info!(
         target: "lab.chart",
         active_pair = ?active.as_ref().map(|(_, s)| s.0.as_str()),
@@ -699,20 +716,13 @@ pub fn view(model: &Cockpit, mode: ThemeMode) -> crate::Element<'_> {
         markers_count = active_markers.len(),
         signals_count = active_signals.len(),
         equity_overlay_present = equity_overlay.is_some(),
+        equity_overlay_drawn = chart_has_equity_axis,
         first_bar_ts = bars.first().map(|b| b.open_ts.unix_millis()),
         last_bar_ts = bars.last().map(|b| b.close_ts.unix_millis()),
         first_marker_ts = active_markers.first().map(|m| m.venue_ts.unix_millis()),
         last_run_report_present = model.lab_state.last_run_report.is_some(),
         "lab::view chart inputs"
     );
-    // lab-buy-sell-overlay-align — the chart reserves a WIDE right gutter for
-    // the equity Y-axis when an equity overlay is present (`compare` is always
-    // empty at Phase A, so this equals `equity_overlay.is_some()`). The volume
-    // histogram below must mirror that choice so its plot area stays
-    // horizontally aligned with the chart's — i.e. each per-bar volume bar sits
-    // directly beneath its buy/sell triangle. Captured here BEFORE
-    // `equity_overlay` is moved into `chart::view`.
-    let chart_has_equity_axis = equity_overlay.is_some();
     let chart_body = if let Some((_, _)) = active {
         chart::view(
             bars,

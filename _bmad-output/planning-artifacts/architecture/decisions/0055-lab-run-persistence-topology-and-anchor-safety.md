@@ -5,7 +5,7 @@ status: accepted
 date: 2026-06-12
 supersedes: none
 superseded-by: none
-updated: 2026-11-15
+updated: 2026-11-16
 ---
 
 # ADR-0055: Lab run persistence topology & anchor-safety
@@ -304,10 +304,15 @@ companion rule); the Reports companions under `artifacts/<stem>/` use a layout t
 read. So every committed report the Lab resolves is `StartEndOnly`: two samples at the placeholder
 timestamps `(0, 1)` (`make_start_end_series`: `Ok(vec![(0, initial), (1, final_eq)])`). It draws
 only on the bar-less path, where `draw_equity_polyline_standalone` draws a full-width start→end
-line. Over price bars it draws nothing, because both samples fall outside the bar window, and the
-equity gutter is still reserved, empty, until bug-log `#207`. LR3
-(`lab_207_characterization_committed_start_end_only_report_draws_no_overlay`) characterises this
-and must flip when `#207` is fixed.
+line. Over price bars it draws nothing, because both samples fall outside the bar window, and since
+bug-log `#207` it reserves no equity gutter either: the chart widens its right gutter only when an
+overlay draws (`widgets::chart::equity_axis_shown`, the bar-window gate of `compute_equity_range`
+that the equity pass draws behind), so the frame equals the bars-only frame. LR3 first held
+`lab_207_characterization_committed_start_end_only_report_draws_no_overlay`, which pinned the
+empty gutter (its frame differed from the bars-only frame), so the `#207` fix replaced it under the
+same key with `lab_committed_start_end_only_report_over_bars_is_pixel_identical_to_bars_only`,
+which asserts that the report resolves through the production roots and then that the frame is
+byte-identical to the bars-only frame.
 
 **Unchanged.** D1's home; D2 (`/lab-runs/` is still git-ignored, and anchor safety still rests on
 the git boundary); D3; D4; D5's root order, its identical-filename rule and its millisecond stamps;
@@ -323,7 +328,7 @@ read it; `bash scripts/verify_anchors.sh` prints `ANCHORS PASS  (119 / 119)`, an
   former skip sites now fail); `cargo test -p ui --test live_equity_render`,
   `cargo test -p ui --test lab_run_engine` and the snapshot targets pass, baselines unmoved.
 - Eleven probes, each applied exactly once and restored byte-identical, the FAILED set compared by name with its designed red set: P1 (`MAX_CONTAINER_DEPTH` 1 → 0) turns 22 tests red, D2, D3, R6, R7a, E1 and LR1 among them; P2 (1 → 2) turns 7 red, the container-depth-2 controls among them; P4, P6, P10, P11, P12, O5b, Q3, Q6 and Q8 each turn exactly their designed tests red (the full sets are in the T-T4 tables).
-- Pixel margins (macOS): the Reports curve covers 3721–4371 px on the frames that must draw (threshold > 1000) and 0–252 px on the frames that must not (threshold < 500); the Lab's container-depth-1 overlay adds 1284 ACCENT px (threshold ≥ 400), and LR3 adds 0 (the `#207` characterisation, threshold < 120).
+- Pixel margins (macOS): the Reports curve covers 3721–4371 px on the frames that must draw (threshold > 1000) and 0–252 px on the frames that must not (threshold < 500); the Lab's container-depth-1 overlay adds 1284 ACCENT px (threshold ≥ 400), and the `#207` characterisation that then held the LR3 key adds 0 (threshold < 120).
 - Boot `load_into` over the committed corpus, with the auto-selected companion load: 13.8–16.5 ms (debug build, two runs).
 - The live-corpus oracle is git, never discovery (`evidence_oracle::git_listed_files`:
   `git ls-files -z --cached --others -- evidence`), pinned by
@@ -343,6 +348,14 @@ read it; `bash scripts/verify_anchors.sh` prints `ANCHORS PASS  (119 / 119)`, an
 
 ## Changelog
 
+- 2026-11-16 (orchestrator, bug-log `#207` fix): **the 2026-11-15 amendment's "What the Lab draws
+  from committed evidence" now states the fixed gutter rule.** The chart reserves its right equity
+  gutter only when an overlay draws (`widgets::chart::equity_axis_shown`), so a committed
+  start/end-only report over price bars leaves the frame byte-identical to the bars-only frame;
+  the empty gutter the amendment recorded is gone. LR3 now names
+  `lab_committed_start_end_only_report_over_bars_is_pixel_identical_to_bars_only`, which replaced
+  the `#207` characterisation; the Verification list's LR3 figure is that characterisation's. No
+  decision changes. Anchor-neutral, 119/119.
 - 2026-11-15 (orchestrator, bug-log `#205` amendment): **the Reports picker and the Lab walk
   container depth ≤ 1.** § D1's "identical to the `spec/` layout, so both loaders read it with only
   a ROOT change" has been false since `1395520629dc` moved 68 of the 125 committed reports to

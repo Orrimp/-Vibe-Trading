@@ -49,7 +49,8 @@ enum Alignment {
     /// Symmetric gutter — no sibling chart to line up with.
     Standalone,
     /// Match the sibling chart's plot area; `true` ⇒ the chart reserved
-    /// its wide right equity gutter (an equity overlay was present).
+    /// its wide right equity gutter, i.e. `chart::equity_axis_shown(bars,
+    /// equity, compare)` held for the chart's own inputs (bug-log #207).
     ChartAligned { equity_axis: bool },
 }
 
@@ -131,9 +132,10 @@ pub fn view<'a>(bins: Vec<VolumeBin>, mode: ThemeMode) -> crate::Element<'a> {
 /// `x` the chart maps that bar to, so it sits directly beneath its
 /// buy/sell triangle marker (lab-buy-sell-overlay-align).
 ///
-/// `equity_axis` must mirror the chart: pass `true` when the chart
-/// reserved its wide right equity gutter (an equity overlay was present),
-/// `false` for the plain price+markers shape.
+/// `equity_axis` must mirror the chart: pass `true` iff the chart
+/// reserved its wide right equity gutter, i.e. `chart::equity_axis_shown(bars,
+/// equity, compare)` over the chart's own inputs (bug-log #207); `false` for
+/// the plain price+markers shape.
 #[must_use]
 pub fn view_aligned<'a>(
     bins: Vec<VolumeBin>,

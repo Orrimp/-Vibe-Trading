@@ -111,9 +111,15 @@
 //! R6/R7a/R7b above; `LR1-LR3` = `live_equity_render.rs` (LR1
 //! `lab_curve_hydrated_from_container_depth_1_evidence_report_renders`, LR2
 //! `lab_curve_from_container_depth_2_evidence_report_does_not_resolve`, LR3
-//! `lab_207_characterization_committed_start_end_only_report_draws_no_overlay`);
+//! `lab_committed_start_end_only_report_over_bars_is_pixel_identical_to_bars_only`);
 //! H3 = `lab_run_engine.rs`. "Measured" = applied and run on 2026-11-15;
-//! "REASONED" cells were derived from the code, not run.
+//! "REASONED" cells were derived from the code, not run. The LR3 cells were
+//! measured against `lab_207_characterization_committed_start_end_only_report_draws_no_overlay`,
+//! which held the key until the bug-log #207 fix replaced it; the replacement
+//! keeps its routing precondition (`… must resolve …`), so the cells carry
+//! over: RED under P1 and P4 at that precondition, GREEN elsewhere (REASONED;
+//! the derivation is in `live_equity_render.rs`). Counts such as "18 of 18"
+//! for `live_equity_render.rs` are of that file before the #207 tests.
 //!
 //! | Probe | File / symbol | OLD → NEW | Expected RED | Expected GREEN | Measured |
 //! |---|---|---|---|---|---|

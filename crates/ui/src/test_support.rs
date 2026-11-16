@@ -281,6 +281,82 @@ pub fn chart_overlay_program(
         .theme(ChartOverlayApp::theme)
 }
 
+/// bug-log #207 — how many logical px narrower the chart's plot rect is when
+/// the right equity gutter is reserved: `AXIS_GUTTER_EQUITY_PX` (56) −
+/// `AXIS_GUTTER_RIGHT_PX` (16) = 40. Derived from the widget's own constants
+/// so a pixel test's expected right-edge shift follows them instead of being
+/// read off a rendered frame.
+pub const EQUITY_GUTTER_WIDENING_PX: f32 =
+    crate::widgets::chart::AXIS_GUTTER_EQUITY_PX - crate::theme::layout::AXIS_GUTTER_RIGHT_PX;
+
+/// A `lab-runs/`-style backtest report (`data_source: synthetic`) whose
+/// `## Equity curve` timestamps lie INSIDE the fixtures' 60-bar window: six
+/// samples at the open times of bars 0, 10, 20, 30, 40 and 50 of
+/// [`synthetic_candles`] (`fixtures::fixed_ts(n * 60)`, 2024-01-15 12:00Z +
+/// `n` minutes), so the chart's equity overlay draws over those bars.
+///
+/// `scenario` becomes the front-matter `scenario:` (the Lab's range match
+/// reads it); `symbol` is the single `## Universe` entry (the Lab's symbol
+/// match). `level` shifts the whole curve vertically — the six values are
+/// `level + {0, +3000, +1000, -3000, +4000, +8000}` — so two runs can be put
+/// in disjoint y-bands. Shared by the Lab overlay render tests
+/// (`live_equity_render.rs`, `lab_buy_sell_overlay_render.rs`).
+#[must_use]
+pub fn lab_runs_report_at(scenario: &str, symbol: &str, level: i64) -> String {
+    let bar_ms = |n: i64| crate::fixtures::fixed_ts(n * 60).unix_millis();
+    let p = |off: i64| level + off;
+    format!(
+        r"---
+scenario: {scenario}
+seed: 0xC0FFEE
+generated: 2026-06-01T12:00:00Z
+wall_clock_s: 0.0
+data_source: synthetic
+---
+
+# Backtest Report — {scenario}
+
+## Summary
+
+| Metric          | Value             |
+|-----------------|-------------------|
+| Scenario        | {scenario}        |
+| Initial capital | ${} USDT          |
+| Final equity    | ${} USDT          |
+| Max drawdown    | 18.00%            |
+
+## Universe
+
+- {symbol}
+
+## Equity curve
+
+| Timestamp (ms) | Equity (USDT) |
+|----------------|---------------|
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+| {}    | {}.00     |
+",
+        level,
+        p(8000),
+        bar_ms(0),
+        p(0),
+        bar_ms(10),
+        p(3000),
+        bar_ms(20),
+        p(1000),
+        bar_ms(30),
+        p(-3000),
+        bar_ms(40),
+        p(4000),
+        bar_ms(50),
+        p(8000),
+    )
+}
+
 /// Owned inputs for the [`chart_overlay_program`] render scene.
 #[derive(Clone)]
 struct ChartOverlayScene {

@@ -16,7 +16,8 @@
 //!   `narrowed_from` annotation (R5.4 / R7.2).
 //! - Low-fidelity fallback: if the report has no `## Equity curve` table, a
 //!   two-point segment (start → end) is synthesised from the Summary block
-//!   (R7.3). `Fidelity::StartEndOnly` is set in that case.
+//!   (R7.3). `Fidelity::StartEndOnly` is set in that case; its ordinal
+//!   timestamps make it draw only on the chart's bar-less path (bug-log #207).
 //!
 //! **No I/O on the iced thread during a paint.** `EquityCache::get_or_load`
 //! blocks only on the *first* access; all subsequent accesses return the
@@ -45,8 +46,14 @@ pub enum Fidelity {
     /// Per-bar data points from the report's `## Equity curve` table.
     PerBar,
     /// Only start + end equity available (older v0/v1 reports without the
-    /// per-bar section). The chart renders a straight two-point segment and
-    /// the legend chip shows a dotted-line decoration.
+    /// per-bar section or a companion CSV). The two samples carry the ORDINAL
+    /// timestamps `0` (start) and `1` (end), not times: a report does not
+    /// record its span (see `make_start_end_series`). So the series draws
+    /// only on the chart's bar-less path, as a straight full-width
+    /// start→end segment; over price bars both samples miss the bar window
+    /// and the overlay is absent — no curve, no equity axis, no gutter
+    /// (bug-log #207). No other consumer reads this variant: there is no
+    /// legend or chip decoration for it.
     StartEndOnly,
 }
 
@@ -795,9 +802,14 @@ fn make_start_end_series(
             msg: "missing final equity in Summary".to_string(),
         })?;
 
-    // Use synthetic timestamps: 0 (epoch) and 1 for start/end so the
-    // chart x-axis can always project two points. The real date-range
-    // anchoring is Phase B scope.
+    // Ordinal timestamps, not times: 0 = start, 1 = end. They are not
+    // anchored in time on purpose: a report records neither its first nor
+    // its last bar time (only a start year, a bar count and its write time
+    // `generated:`), so an anchor would be inferred, and over price bars an
+    // inferred span that half-overlaps the window would draw equity the
+    // report does not have. With bars on screen both samples therefore miss
+    // the bar window and the chart draws no overlay and reserves no gutter
+    // (bug-log #207); without bars they span the chart's full width.
     Ok(vec![(0, initial), (1, final_eq)])
 }
 

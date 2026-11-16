@@ -307,8 +307,12 @@ pub(crate) fn local_offset_or_utc() -> time::UtcOffset {
 /// canvas.
 ///
 /// New Phase A parameters (Design § 3 / T-D-11):
-/// - `equity` — primary strategy equity curve; activates the right Y-axis
-///   gutter when `Some`. Pass `None` for the v1.10.0 price+markers shape
+/// - `equity` — primary strategy equity curve. It (or a `compare` curve)
+///   activates the right Y-axis gutter only when it will draw: at least one
+///   sample inside the `bars` window, or any sample when `bars` is empty
+///   (`equity_axis_shown`). A series whose samples all miss the bars draws
+///   nothing and reserves no gutter, so the frame equals the `None` frame
+///   (bug-log #207). Pass `None` for the v1.10.0 price+markers shape
 ///   (backward-compatible — all existing call sites remain pixel-identical).
 /// - `compare` — up to 4 comparison-strategy equity curves (M3 / T-D-15).
 ///   Pass `vec![]` at all existing call sites.
@@ -370,7 +374,9 @@ pub(crate) struct ChartProgram {
     #[allow(dead_code)]
     pub(crate) tooltip: Option<ChartTooltipView>,
     /// Primary equity-curve overlay (T-D-11 / Design § 3). `None` disables
-    /// the overlay and the right Y-axis gutter — backward-compatible.
+    /// the overlay and the right Y-axis gutter — backward-compatible. A
+    /// `Some` whose samples all miss the bar window disables both too
+    /// (`equity_axis_shown`, bug-log #207).
     pub(crate) equity: Option<LabEquitySeries>,
     /// Comparison equity curves (T-D-15 / Design § 3). Empty vec disables
     /// the comparison pass.
@@ -415,13 +421,9 @@ impl canvas::Program<Message> for ChartProgram {
                         // inner rect the draw pass paints into.
                         // Single source of truth keeps the visual
                         // and hit-test coordinate systems pinned to
-                        // the same rectangle (R1.2 / V13).
-                        let has_eq = self.equity.is_some() || !self.compare.is_empty();
-                        let inner = if has_eq {
-                            chart_inner_rect_with_equity(bounds.size())
-                        } else {
-                            chart_inner_rect(bounds.size())
-                        };
+                        // the same rectangle (R1.2 / V13); `plot_rect`
+                        // applies `draw`'s gutter rule (bug-log #207).
+                        let inner = self.plot_rect(bounds.size());
                         self.hit_test(p, inner)
                     }
                     None => None,
@@ -453,12 +455,7 @@ impl canvas::Program<Message> for ChartProgram {
                 let cursor_pos = cursor.position_in(bounds)?;
                 // T3010 — same inner-rect single-source-of-truth as
                 // the CursorMoved branch above.
-                let has_eq = self.equity.is_some() || !self.compare.is_empty();
-                let inner = if has_eq {
-                    chart_inner_rect_with_equity(bounds.size())
-                } else {
-                    chart_inner_rect(bounds.size())
-                };
+                let inner = self.plot_rect(bounds.size());
                 let hit = self.hit_test(cursor_pos, inner)?;
                 // Ghosts have no transaction_id — click is a no-op (R5.6).
                 if let (ChartMarkerIndex::Fill(i), _) = hit {
@@ -497,11 +494,18 @@ impl canvas::Program<Message> for ChartProgram {
         // (price-axis LEFT, margin RIGHT, time-axis BOTTOM) so the
         // visual content + hit-test math share one rectangle.
         //
-        // T-D-11 — when an equity overlay is active, widen the right
-        // gutter to `AXIS_GUTTER_EQUITY_PX` (56 px) for the right Y-axis
-        // (Design § 3). `chart_inner_rect_with_equity` keeps the inner
+        // T-D-11 — when the equity axis will paint, widen the right gutter
+        // to `AXIS_GUTTER_EQUITY_PX` (56 px) for the right Y-axis (Design
+        // § 3). The frame's equity range is computed ONCE here
+        // (`ChartProgram::equity_range`: every primary and compare sample
+        // inside the bar window, or any sample without bars) and that one
+        // value both decides the gutter and scales Pass 5 / the bar-less
+        // path, so the gutter and the axis cannot disagree. An overlay whose
+        // samples all miss the bars has no range and reserves no gutter
+        // (bug-log #207). `chart_inner_rect_with_equity` keeps the inner
         // rect math as the single source of truth.
-        let has_equity = self.equity.is_some() || !self.compare.is_empty();
+        let equity_range = self.equity_range();
+        let has_equity = equity_range.is_some();
         let inner = if has_equity {
             chart_inner_rect_with_equity(bounds.size())
         } else {
@@ -518,14 +522,11 @@ impl canvas::Program<Message> for ChartProgram {
             // bars yet), render the equity curve using its own timestamp window
             // instead of falling through to the "No data" early return.
             // Only the equity pass fires; price axis, time axis, and markers are
-            // all skipped (no bar data to anchor them).
+            // all skipped (no bar data to anchor them). Without bars there is
+            // no window (`bar_window_ms` is `(None, None)`), so the frame's
+            // `equity_range` spans every sample — a start/end-only series
+            // draws here as a full-width segment.
             if has_equity {
-                let equity_range = compute_equity_range(
-                    self.equity.as_ref(),
-                    &self.compare,
-                    None, // no bar-window clamp — use full equity extent
-                    None,
-                );
                 let equity_range_present = equity_range.is_some();
                 if let Some((min_eq, max_eq)) = equity_range {
                     if let Some(ref eq) = self.equity {
@@ -620,18 +621,15 @@ impl canvas::Program<Message> for ChartProgram {
         // (Pass 6+) so buy/sell markers stay visually dominant (R2.4).
         //
         // The right Y-axis gutter was widened in the inner-rect calculation
-        // above when `has_equity` is true. The pass is a no-op when both
-        // `self.equity` and `self.compare` are empty — no gutter chrome
-        // appears and the chart degrades to the v1.10.0 shape (R2.5).
+        // above when `has_equity` is true, i.e. when at least one primary or
+        // compare sample lies inside the bar window. Otherwise — no overlay,
+        // or one whose samples all miss the bars (a start/end-only report's
+        // ordinal `0`/`1` timestamps, a persisted run from another period) —
+        // the pass is skipped, no gutter chrome appears and the chart keeps
+        // the v1.10.0 price+markers shape (R2.5, bug-log #207).
         if has_equity {
-            // Compute the equity range across primary + compare series.
-            let equity_range = compute_equity_range(
-                self.equity.as_ref(),
-                &self.compare,
-                self.bars.first().map(|b| b.open_ts.unix_millis()),
-                self.bars.last().map(|b| b.close_ts.unix_millis()),
-            );
-
+            // The equity range across primary + compare series is the one
+            // `draw` computed above (windowed to the bars), not recomputed.
             if let Some((min_eq, max_eq)) = equity_range {
                 // Draw primary equity curve (color::ACCENT — same as the
                 // price line accent, "I am the focused one"; Design § 3).
@@ -787,6 +785,33 @@ impl canvas::Program<Message> for ChartProgram {
 }
 
 impl ChartProgram {
+    /// bug-log #207 — this chart's equity range: [`bar_window_equity_range`]
+    /// over its own bars, primary and compare series. `draw` computes it once
+    /// per frame; the gutter decision, Pass 5 and the bar-less path all read
+    /// that one value.
+    fn equity_range(&self) -> Option<(f32, f32)> {
+        bar_window_equity_range(&self.bars, self.equity.as_ref(), &self.compare)
+    }
+
+    /// bug-log #207 — whether this chart reserves the right equity gutter:
+    /// its [`ChartProgram::equity_range`] exists (the rule the free
+    /// [`equity_axis_shown`] applies to the same inputs).
+    fn equity_axis_shown(&self) -> bool {
+        self.equity_range().is_some()
+    }
+
+    /// The plot rect both hit-test arms of `update` test against, chosen by
+    /// the rule `draw` paints with (`equity_axis_shown`): a click lands on
+    /// the marker drawn under the cursor, with or without the equity gutter
+    /// (bug-log #207).
+    fn plot_rect(&self, size: Size) -> Rectangle {
+        if self.equity_axis_shown() {
+            chart_inner_rect_with_equity(size)
+        } else {
+            chart_inner_rect(size)
+        }
+    }
+
     /// T2033 — build a `ChartTooltipView` directly from the canvas's
     /// `markers` / `signals` slice at the hovered index, with no
     /// dependency on the `self.tooltip` round-trip from Cockpit. Used
@@ -1252,6 +1277,62 @@ pub(crate) fn strategy_label_or_none(strategy_id: Option<&SmolStr>) -> &str {
 }
 
 // ── Equity-overlay helpers (T-D-11 / Design § 3) ─────────────────────────────
+
+/// `[first bar open, last bar close]` in Unix milliseconds — the visible bar
+/// window the overlay is clipped to — or `(None, None)` without bars (the
+/// bar-less path, where [`compute_equity_range`] takes every sample).
+fn bar_window_ms(bars: &[Bar]) -> (Option<i64>, Option<i64>) {
+    (
+        bars.first().map(|b| b.open_ts.unix_millis()),
+        bars.last().map(|b| b.close_ts.unix_millis()),
+    )
+}
+
+/// bug-log #207 — the equity range a chart over `bars` scales its overlay
+/// and its right axis to: [`compute_equity_range`] over every primary and
+/// compare sample inside the bar window ([`bar_window_ms`]; every sample when
+/// there are no bars). `None` when no sample lies in the window. The one
+/// window both the gutter decision ([`equity_axis_shown`]) and the draw
+/// ([`ChartProgram::equity_range`]) use.
+fn bar_window_equity_range(
+    bars: &[Bar],
+    equity: Option<&LabEquitySeries>,
+    compare: &[LabEquitySeries],
+) -> Option<(f32, f32)> {
+    let (start, end) = bar_window_ms(bars);
+    compute_equity_range(equity, compare, start, end)
+}
+
+/// bug-log #207 — `true` iff the chart reserves its right equity gutter
+/// ([`AXIS_GUTTER_EQUITY_PX`]): [`bar_window_equity_range`] is `Some`, i.e.
+/// at least one primary or compare sample lies inside the bar window (any
+/// sample at all when there are no bars). That range is the one the right
+/// equity axis paints with (Pass 5, or the bar-less path), so the gutter is
+/// reserved exactly when the equity axis paints. An overlay whose samples all
+/// miss the bars — a start/end-only report's ordinal `0`/`1` timestamps, a
+/// persisted run from another period — leaves the chart in its price+markers
+/// shape instead of an empty gutter.
+///
+/// The axis can paint with no curve beside it in two corner cases:
+/// - every in-window sample belongs to a series of exactly ONE sample: the
+///   range exists, but `draw_equity_polyline` (and its bar-less twin) needs
+///   two samples per series and strokes nothing (bug-log #211's fix, "fewer
+///   than two in-window samples is no overlay", removes this case);
+/// - an in-window sample only in a FIFTH or later compare series: the range
+///   spans every compare series, the draw strokes the first four (`.take(4)`).
+///   Not reachable today: the Lab passes no compare series and the Compare
+///   screen at most one.
+///
+/// `screens::lab` calls it with the series it hands to [`view`], so the volume
+/// histogram below the chart mirrors the chart's plot width.
+#[must_use]
+pub(crate) fn equity_axis_shown(
+    bars: &[Bar],
+    equity: Option<&LabEquitySeries>,
+    compare: &[LabEquitySeries],
+) -> bool {
+    bar_window_equity_range(bars, equity, compare).is_some()
+}
 
 /// Compute `(min_equity, max_equity)` across primary + compare series,
 /// restricted to the timestamp window `[ts_start, ts_end]` (the visible
@@ -2295,5 +2376,411 @@ mod tests {
         // Under `cfg(test)`, the helper returns UTC deterministically.
         // This is the snapshot-determinism gate.
         assert_eq!(local_offset_or_utc(), time::UtcOffset::UTC);
+    }
+
+    // ── bug-log #207 — the equity gutter is reserved iff the overlay draws ──
+
+    /// The 60 one-minute bars the #207 tests chart (bar `i` at minute `i`).
+    fn bars_207() -> Vec<Bar> {
+        (0..60)
+            .map(|i| make_bar(i, dec!(40_000) + Decimal::from(i) * dec!(2.5)))
+            .collect()
+    }
+
+    fn series_207(
+        samples: Vec<(i64, Decimal)>,
+        fidelity: crate::lab::equity_loader::Fidelity,
+    ) -> LabEquitySeries {
+        LabEquitySeries {
+            samples,
+            source_report: smol_str::SmolStr::new("bug-207.md"),
+            fidelity,
+            narrowed_from: None,
+        }
+    }
+
+    /// A start/end-only series exactly as `make_start_end_series` builds it:
+    /// ordinal timestamps `0` and `1` (the committed v1 momentum report's
+    /// start and end equity).
+    fn start_end_only_207() -> LabEquitySeries {
+        series_207(
+            vec![(0, dec!(100_000)), (1, dec!(46_401.41))],
+            crate::lab::equity_loader::Fidelity::StartEndOnly,
+        )
+    }
+
+    /// A per-bar series stamped at the bars' own open times (bars 0, 10, …,
+    /// 50), so every sample lies inside the bar window.
+    fn in_window_207(bars: &[Bar]) -> LabEquitySeries {
+        let samples = bars
+            .iter()
+            .step_by(10)
+            .zip(0_u32..)
+            .map(|(b, k)| {
+                (
+                    b.open_ts.unix_millis(),
+                    dec!(100_000) + Decimal::from(k * 100),
+                )
+            })
+            .collect();
+        series_207(samples, crate::lab::equity_loader::Fidelity::PerBar)
+    }
+
+    /// C1 — samples that all miss the bar window reserve no equity axis. The
+    /// precondition is derived from the bars, not from the subject.
+    #[test]
+    fn equity_axis_hidden_when_no_sample_in_bar_window() {
+        let bars = bars_207();
+        let s = start_end_only_207();
+        let first = bars[0].open_ts.unix_millis();
+        assert!(
+            s.samples.iter().all(|(ts, _)| *ts < first),
+            "precondition: both ordinal samples precede the bar window"
+        );
+        assert!(!equity_axis_shown(&bars, Some(&s), &[]));
+    }
+
+    /// C2 — one sample inside the bar window is enough: a fully in-window
+    /// series and a series with a single in-window sample both show the axis.
+    /// The `one_inside` half pins TODAY's gate (at least one in-window
+    /// sample); bug-log #211's fix makes it at least two per series, which
+    /// flips that half.
+    #[test]
+    fn equity_axis_shown_when_a_sample_is_in_bar_window() {
+        let bars = bars_207();
+        assert!(equity_axis_shown(&bars, Some(&in_window_207(&bars)), &[]));
+        let one_inside = series_207(
+            vec![
+                (0, dec!(100_000)),
+                (bars[30].open_ts.unix_millis(), dec!(101_000)),
+            ],
+            crate::lab::equity_loader::Fidelity::PerBar,
+        );
+        assert!(equity_axis_shown(&bars, Some(&one_inside), &[]));
+    }
+
+    /// C3 — without bars there is no window: any sample shows the axis (the
+    /// bar-less path draws the start/end-only segment full width).
+    #[test]
+    fn equity_axis_shown_without_bars_for_any_sample() {
+        assert!(equity_axis_shown(&[], Some(&start_end_only_207()), &[]));
+    }
+
+    /// C4 — no series at all never shows the axis, with or without bars.
+    #[test]
+    fn equity_axis_hidden_without_any_series() {
+        assert!(!equity_axis_shown(&bars_207(), None, &[]));
+        assert!(!equity_axis_shown(&[], None, &[]));
+    }
+
+    /// C5a/C5b — a compare-only overlay follows the same window rule.
+    #[test]
+    fn equity_axis_follows_the_window_for_compare_only_series() {
+        let bars = bars_207();
+        assert!(
+            equity_axis_shown(&bars, None, &[in_window_207(&bars)]),
+            "C5a: an in-window compare series shows the axis"
+        );
+        assert!(
+            !equity_axis_shown(&bars, None, &[start_end_only_207()]),
+            "C5b: an out-of-window compare series does not"
+        );
+    }
+
+    /// The canvas bounds the #207 hit-test pair dispatches into.
+    fn bounds_207() -> Rectangle {
+        Rectangle::new(Point::ORIGIN, Size::new(1280.0, 720.0))
+    }
+
+    /// A chart with one buy fill on the RIGHTMOST bar (59), where the 40-px
+    /// gutter difference moves the marker furthest, plus `equity`.
+    fn program_207(equity: LabEquitySeries) -> ChartProgram {
+        let bars = bars_207();
+        let close = bars[59].close.get();
+        ChartProgram {
+            markers: vec![make_fill(59, Side::Buy, close)],
+            bars,
+            signals: vec![],
+            tooltip: None,
+            equity: Some(equity),
+            compare: vec![],
+            mode: ThemeMode::Dark,
+        }
+    }
+
+    /// The fill's centroid when the chart paints into `inner`.
+    fn fill_centroid_207(program: &ChartProgram, inner: Rectangle) -> Point {
+        let range = price_range(&program.bars).expect("price range");
+        let ts = program.markers[0].venue_ts.unix_millis();
+        let (x, y) = anchor_for_ts(ts, &program.bars, range, inner).expect("fill in window");
+        Point::new(x, y)
+    }
+
+    /// Dispatch one mouse event at `at` through `update` (fresh hover state).
+    fn dispatch_207(program: &ChartProgram, event: mouse::Event, at: Point) -> Option<Message> {
+        let mut state = ChartState::default();
+        canvas::Program::update(
+            program,
+            &mut state,
+            &canvas::Event::Mouse(event),
+            bounds_207(),
+            mouse::Cursor::Available(at),
+        )
+        .and_then(|action| action.into_inner().0)
+    }
+
+    /// Both hit-test arms at `at`: (click opened the fill, hover hit the fill).
+    fn hits_207(program: &ChartProgram, at: Point) -> (bool, bool) {
+        let click = dispatch_207(
+            program,
+            mouse::Event::ButtonPressed(mouse::Button::Left),
+            at,
+        );
+        let hover = dispatch_207(program, mouse::Event::CursorMoved { position: at }, at);
+        (
+            matches!(click, Some(Message::TapeRowClicked(ref tx)) if tx.as_str() == "fixture-59-Buy"),
+            matches!(
+                hover,
+                Some(Message::ChartMarkerHovered(ChartMarkerIndex::Fill(0)))
+            ),
+        )
+    }
+
+    /// C6 — both hit-test arms of `update` use the plot rect `draw` paints
+    /// into. With an out-of-window overlay (no gutter drawn) the fill is hit
+    /// at its no-gutter centroid and missed at its gutter centroid; with an
+    /// in-window overlay (gutter drawn) the reverse. The two centroids are
+    /// further apart than half the hit rect, so each half is two-sided.
+    #[test]
+    fn hit_test_uses_the_plot_rect_draw_paints_into() {
+        let size = bounds_207().size();
+        let out_of_window = program_207(start_end_only_207());
+        let plain = fill_centroid_207(&out_of_window, chart_inner_rect(size));
+        let gutter = fill_centroid_207(&out_of_window, chart_inner_rect_with_equity(size));
+        let half_hit = MARKER_HIT_RECT_PX / 2.0;
+        assert!(
+            (plain.x - gutter.x).abs() > half_hit,
+            "precondition: the centroids (x {} vs {}) must be more than {half_hit} px apart",
+            plain.x,
+            gutter.x
+        );
+
+        assert_eq!(
+            hits_207(&out_of_window, plain),
+            (true, true),
+            "out-of-window overlay: the fill drawn at its no-gutter centroid must be hit"
+        );
+        assert_eq!(
+            hits_207(&out_of_window, gutter),
+            (false, false),
+            "out-of-window overlay: the gutter centroid is empty canvas"
+        );
+
+        let bars = bars_207();
+        let in_window = program_207(in_window_207(&bars));
+        assert_eq!(
+            hits_207(&in_window, gutter),
+            (true, true),
+            "in-window overlay: the fill drawn at its gutter centroid must be hit"
+        );
+        assert_eq!(
+            hits_207(&in_window, plain),
+            (false, false),
+            "in-window overlay: the no-gutter centroid is past the plot's right edge"
+        );
+    }
+
+    /// A chart with no primary series and `compare` as its only overlay.
+    fn compare_only_program_207(bars: Vec<Bar>, compare: Vec<LabEquitySeries>) -> ChartProgram {
+        ChartProgram {
+            bars,
+            markers: vec![],
+            signals: vec![],
+            tooltip: None,
+            equity: None,
+            compare,
+            mode: ThemeMode::Dark,
+        }
+    }
+
+    /// C7 — a compare-only `ChartProgram` (no primary series, bars present)
+    /// decides its gutter from its OWN compare series: in-window → it shows
+    /// the axis and its plot rect is the equity rect; out-of-window → it
+    /// shows none and its plot rect is the plain rect. C5 pins only the free
+    /// helper; this pins that the program hands `compare` to the gate.
+    #[test]
+    fn compare_only_program_reserves_the_gutter_iff_its_series_is_in_window() {
+        let size = bounds_207().size();
+        assert_ne!(
+            chart_inner_rect(size),
+            chart_inner_rect_with_equity(size),
+            "precondition: the plain and the equity plot rects differ"
+        );
+        let bars = bars_207();
+
+        let in_window = compare_only_program_207(bars.clone(), vec![in_window_207(&bars)]);
+        assert!(
+            in_window.equity_axis_shown(),
+            "C7a: an in-window compare-only overlay shows the axis"
+        );
+        assert_eq!(
+            in_window.plot_rect(size),
+            chart_inner_rect_with_equity(size),
+            "C7a: an in-window compare-only overlay reserves the equity gutter"
+        );
+
+        let out_of_window = compare_only_program_207(bars, vec![start_end_only_207()]);
+        assert!(
+            !out_of_window.equity_axis_shown(),
+            "C7b: an out-of-window compare-only overlay shows no axis"
+        );
+        assert_eq!(
+            out_of_window.plot_rect(size),
+            chart_inner_rect(size),
+            "C7b: an out-of-window compare-only overlay reserves no gutter"
+        );
+    }
+
+    /// C8 — the Compare screen with slot 0 unresolved and slot 1 resolved:
+    /// no bars, no primary series, one compare series. Without bars any
+    /// sample shows the axis, so the compare curve draws on the bar-less
+    /// path (F9) in the equity rect. Negative half: no bars and no series
+    /// shows no axis.
+    #[test]
+    fn bar_less_compare_only_program_shows_the_axis() {
+        let size = bounds_207().size();
+        let compare_only = compare_only_program_207(Vec::new(), vec![start_end_only_207()]);
+        assert!(
+            compare_only.equity_axis_shown(),
+            "C8: a bar-less compare-only overlay shows the axis"
+        );
+        assert_eq!(
+            compare_only.plot_rect(size),
+            chart_inner_rect_with_equity(size),
+            "C8: a bar-less compare-only overlay paints into the equity rect"
+        );
+
+        let nothing = compare_only_program_207(Vec::new(), Vec::new());
+        assert!(
+            !nothing.equity_axis_shown(),
+            "C8 negative: no bars and no series shows no axis"
+        );
+        assert_eq!(nothing.plot_rect(size), chart_inner_rect(size));
+    }
+
+    /// `bars_207()` with real one-minute spans: each bar closes 59 999 ms
+    /// after it opens. (The `bars_207` bars open and close at the same
+    /// instant, so they cannot tell a window that ends at the last OPEN from
+    /// one that ends at the last CLOSE.)
+    fn spanning_bars_207() -> Vec<Bar> {
+        bars_207()
+            .into_iter()
+            .map(|mut b| {
+                b.close_ts =
+                    Timestamp::new(b.open_ts.inner() + time::Duration::milliseconds(59_999));
+                b
+            })
+            .collect()
+    }
+
+    /// C9 — the bar window is `[first bar open, last bar close]`, both ends
+    /// inclusive: a lone sample at the last bar's close shows the axis and
+    /// one at close + 1 ms does not; a lone sample at the first bar's open
+    /// shows it and one at open − 1 ms does not. Like C2's `one_inside` half,
+    /// each "shows" half pins TODAY's gate (at least one in-window sample);
+    /// bug-log #211's fix makes it at least two per series.
+    #[test]
+    fn bar_window_is_first_open_to_last_close_inclusive() {
+        let bars = spanning_bars_207();
+        let first_open = bars[0].open_ts.unix_millis();
+        let last = bars.last().expect("bars");
+        let (last_open, last_close) = (last.open_ts.unix_millis(), last.close_ts.unix_millis());
+        assert!(
+            last_close > last_open,
+            "precondition: the last bar spans time (open {last_open} < close {last_close})"
+        );
+        let lone = |ts: i64| {
+            series_207(
+                vec![(ts, dec!(100_000))],
+                crate::lab::equity_loader::Fidelity::PerBar,
+            )
+        };
+        assert!(
+            equity_axis_shown(&bars, Some(&lone(last_close)), &[]),
+            "a sample AT the last bar's close ({last_close}) is inside the window"
+        );
+        assert!(
+            !equity_axis_shown(&bars, Some(&lone(last_close + 1)), &[]),
+            "a sample 1 ms after the last bar's close is outside the window"
+        );
+        assert!(
+            equity_axis_shown(&bars, Some(&lone(first_open)), &[]),
+            "a sample AT the first bar's open ({first_open}) is inside the window"
+        );
+        assert!(
+            !equity_axis_shown(&bars, Some(&lone(first_open - 1)), &[]),
+            "a sample 1 ms before the first bar's open is outside the window"
+        );
+    }
+
+    /// C10 — the chart's equity range (the one value `draw` scales Pass 5
+    /// and the right axis to) spans only in-window samples. A series made of
+    /// `in_window_207`'s samples plus one far out-of-window sample (ordinal
+    /// ts `0`) with an extreme equity has the range DERIVED from the
+    /// in-window values alone (their min and max, each padded by
+    /// `RANGE_PAD_FRACTION` of the span). Negative side: the same extreme
+    /// placed INSIDE the window (at bar 59's open) moves the range's top to
+    /// at least the extreme.
+    #[test]
+    fn equity_range_spans_only_in_window_samples() {
+        let bars = bars_207();
+        let inside = in_window_207(&bars).samples;
+        let extreme = dec!(10_000_000);
+        let extreme_f32 = extreme.to_f32().expect("f32");
+        let first_open = bars[0].open_ts.unix_millis();
+        assert!(0 < first_open, "precondition: ts 0 precedes the bar window");
+
+        let values: Vec<f32> = inside
+            .iter()
+            .map(|(_, v)| v.to_f32().expect("f32"))
+            .collect();
+        let lo = values.iter().copied().fold(f32::INFINITY, f32::min);
+        let hi = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let pad = (hi - lo).max(1.0) * RANGE_PAD_FRACTION;
+        let (want_min, want_max) = (lo - pad, hi + pad);
+        assert!(
+            want_max < extreme_f32,
+            "precondition: the extreme lies above the in-window range"
+        );
+
+        let program = |samples: Vec<(i64, Decimal)>| ChartProgram {
+            equity: Some(series_207(
+                samples,
+                crate::lab::equity_loader::Fidelity::PerBar,
+            )),
+            ..compare_only_program_207(bars.clone(), Vec::new())
+        };
+
+        let mut mixed = vec![(0, extreme)];
+        mixed.extend(inside.iter().copied());
+        let (got_min, got_max) = program(mixed)
+            .equity_range()
+            .expect("in-window samples give a range");
+        assert!(
+            (got_min - want_min).abs() < 0.01 && (got_max - want_max).abs() < 0.01,
+            "the out-of-window extreme must not enter the range: got ({got_min}, {got_max}), \
+             want the in-window range ({want_min}, {want_max})"
+        );
+
+        let mut moved = inside.clone();
+        moved.push((bars[59].open_ts.unix_millis(), extreme));
+        let (_, moved_max) = program(moved)
+            .equity_range()
+            .expect("in-window samples give a range");
+        assert!(
+            moved_max >= extreme_f32,
+            "negative side: the extreme INSIDE the window must reach the range's top \
+             ({moved_max} < {extreme_f32})"
+        );
     }
 }
